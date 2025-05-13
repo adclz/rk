@@ -32,8 +32,7 @@ module.exports = grammar({
  extras: $ => [
         /\s/, // Whitespace
         $.comment,
-        $.WS,
-        $.EOL,
+        token(choice('\t', '\r', '\n')),
     ],
 
     precedences: $ => [
@@ -122,9 +121,6 @@ module.exports = grammar({
             seq('(*', repeat(choice(/[^*]/, /\*[^)]/)), '*)'),
             seq('/*', repeat(choice(/[^*]/, /\*[^/]/)), '*/')
         ),
-
-        WS: $ => token(choice('\t', '\r', '\n')),
-        EOL: $ => token("\n"),
 
         // Table 4 - Pragma 
 
@@ -1686,7 +1682,7 @@ module.exports = grammar({
                 $.il_formal_func_call,
                 $.il_return_operator
             )),
-            repeat1($.EOL)
+            repeat1(token("\n"))
         )),
 
         il_simple_inst: $ => choice(
@@ -1706,7 +1702,7 @@ module.exports = grammar({
             $.il_expr_operator,
             '(',
             optional($.il_operand),
-            repeat1($.EOL),
+            repeat1(token("\n")),
             optional($.il_simple_inst),
             ')'
         ),
@@ -1735,7 +1731,7 @@ module.exports = grammar({
                     optional(seq(
                         '(',
                         choice(
-                            seq(repeat1($.EOL), optional($.il_param_list)),
+                            seq(repeat1(token("\n")), optional($.il_param_list)),
                             optional($.il_operand_list)
                         ),
                         ')'
@@ -1748,7 +1744,7 @@ module.exports = grammar({
         il_formal_func_call: $ => seq(
             $.func_access,
             '(',
-            repeat1($.EOL),
+            repeat1(token("\n")),
             optional($.il_param_list),
             ')'
         ),
@@ -1770,7 +1766,7 @@ module.exports = grammar({
 
         il_simple_instruction: $ => seq(
             choice($.il_simple_operation, $.il_expr, $.il_formal_func_call),
-            repeat1($.EOL)
+            repeat1(token("\n"))
         ),
 
         il_param_list: $ => seq(
@@ -1781,19 +1777,19 @@ module.exports = grammar({
         il_param_inst: $ => seq(
             choice($.il_param_assign, $.il_param_out_assign),
             ',',
-            repeat1($.EOL)
+            repeat1(token("\n"))
         ),
 
         il_param_last_inst: $ => seq(
             choice($.il_param_assign, $.il_param_out_assign),
-            repeat1($.EOL)
+            repeat1(token("\n"))
         ),
 
         il_param_assign: $ => seq(
             $.il_assignment,
             choice(
                 seq(':=', $.il_operand),
-                seq('(', repeat1($.EOL), $.il_simple_inst_list, ')')
+                seq('(', repeat1(token("\n")), $.il_simple_inst_list, ')')
             )
         ),
 
