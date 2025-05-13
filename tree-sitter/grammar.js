@@ -117,7 +117,7 @@ module.exports = grammar({
         // Table 3 - Comments 
 
         comment: $ => choice(
-            seq('//', repeat(/[^(\n|\r)]*/), optional('\r'), '\n'),
+            seq('//', /[^\r\n]*/),
             seq('(*', repeat(choice(/[^*]/, /\*[^)]/)), '*)'),
             seq('/*', repeat(choice(/[^*]/, /\*[^/]/)), '*/')
         ),
