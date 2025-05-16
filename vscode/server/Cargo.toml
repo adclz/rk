@@ -1,0 +1,8 @@
+[package]
+name = "vscode-lsp-server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+auto-lsp = { workspace = true, features = ["lsp_server"] }
+fastrace = { version = "0.7", features = ["enable"] }

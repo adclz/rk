@@ -10,10 +10,12 @@ publish = false
 [workspace]
 members = [
     "crates/ast",
+    "crates/db",
     "crates/server",
     "crates/tree-sitter",
+    "vscode/server"
 ]
 
 [workspace.dependencies]
-auto-lsp = { git = "https://github.com/adclz/auto-lsp", rev = "b632c9f" }
-auto-lsp-codegen = { git = "https://github.com/adclz/auto-lsp", rev = "b632c9f" }
+auto-lsp = { git = "https://github.com/adclz/auto-lsp", branch = "capabilities" }
+auto-lsp-codegen = { git = "https://github.com/adclz/auto-lsp", branch = "capabilities" }
