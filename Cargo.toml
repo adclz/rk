@@ -1,0 +1,19 @@
+[package]
+name = "rk-tests"
+authors = ["Clauzel Adrien"]
+license = "AGPL-3.0-only"
+description = ""
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+members = [
+    "crates/ast",
+    "crates/server",
+    "crates/tree-sitter",
+]
+
+[workspace.dependencies]
+auto-lsp = { git = "https://github.com/adclz/auto-lsp", rev = "b632c9f" }
+auto-lsp-codegen = { git = "https://github.com/adclz/auto-lsp", rev = "b632c9f" }

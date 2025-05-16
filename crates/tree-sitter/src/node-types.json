@@ -1656,10 +1656,6 @@
           "named": true
         },
         {
-          "type": "instruction_list",
-          "named": true
-        },
-        {
           "type": "ladder_diagram",
           "named": true
         },
@@ -2112,10 +2108,6 @@
           "named": true
         },
         {
-          "type": "instruction_list",
-          "named": true
-        },
-        {
           "type": "ladder_diagram",
           "named": true
         },
@@ -2438,11 +2430,6 @@
     }
   },
   {
-    "type": "il_call_operator",
-    "named": true,
-    "fields": {}
-  },
-  {
     "type": "il_expr",
     "named": true,
     "fields": {},
@@ -2484,123 +2471,6 @@
         },
         {
           "type": "il_param_list",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "il_instruction",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": false,
-      "types": [
-        {
-          "type": "il_expr",
-          "named": true
-        },
-        {
-          "type": "il_formal_func_call",
-          "named": true
-        },
-        {
-          "type": "il_invocation",
-          "named": true
-        },
-        {
-          "type": "il_jump_operation",
-          "named": true
-        },
-        {
-          "type": "il_label",
-          "named": true
-        },
-        {
-          "type": "il_return_operator",
-          "named": true
-        },
-        {
-          "type": "il_simple_operation",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "il_invocation",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "class_instance_name",
-          "named": true
-        },
-        {
-          "type": "fb_instance_name",
-          "named": true
-        },
-        {
-          "type": "func_name",
-          "named": true
-        },
-        {
-          "type": "il_call_operator",
-          "named": true
-        },
-        {
-          "type": "il_operand_list",
-          "named": true
-        },
-        {
-          "type": "il_param_list",
-          "named": true
-        },
-        {
-          "type": "method_name",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "il_jump_operation",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "il_jump_operator",
-          "named": true
-        },
-        {
-          "type": "il_label",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "il_jump_operator",
-    "named": true,
-    "fields": {}
-  },
-  {
-    "type": "il_label",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "identifier",
           "named": true
         }
       ]
@@ -2742,11 +2612,6 @@
         }
       ]
     }
-  },
-  {
-    "type": "il_return_operator",
-    "named": true,
-    "fields": {}
   },
   {
     "type": "il_simple_inst",
@@ -2956,21 +2821,6 @@
       "types": [
         {
           "type": "input_decl",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "instruction_list",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "il_instruction",
           "named": true
         }
       ]
@@ -4566,22 +4416,22 @@
           }
         ]
       },
+      "resource_type_name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "resource_type_name",
+            "named": true
+          }
+        ]
+      },
       "ressource": {
         "multiple": false,
         "required": true,
         "types": [
           {
             "type": "single_resource_decl",
-            "named": true
-          }
-        ]
-      },
-      "ressource_type_name": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "resource_type_name",
             "named": true
           }
         ]
@@ -4915,22 +4765,6 @@
       "types": [
         {
           "type": "config_decl",
-          "named": true
-        },
-        {
-          "type": "data_type_decl",
-          "named": true
-        },
-        {
-          "type": "enum_type_decl",
-          "named": true
-        },
-        {
-          "type": "fb_decl",
-          "named": true
-        },
-        {
-          "type": "func_decl",
           "named": true
         },
         {
@@ -6475,18 +6309,6 @@
     "named": false
   },
   {
-    "type": "CAL",
-    "named": false
-  },
-  {
-    "type": "CALC",
-    "named": false
-  },
-  {
-    "type": "CALCN",
-    "named": false
-  },
-  {
     "type": "CASE",
     "named": false
   },
@@ -6787,18 +6609,6 @@
     "named": false
   },
   {
-    "type": "JMP",
-    "named": false
-  },
-  {
-    "type": "JMPC",
-    "named": false
-  },
-  {
-    "type": "JMPCN",
-    "named": false
-  },
-  {
     "type": "K",
     "named": false
   },
@@ -7047,14 +6857,6 @@
     "named": false
   },
   {
-    "type": "RETC",
-    "named": false
-  },
-  {
-    "type": "RETCN",
-    "named": false
-  },
-  {
     "type": "RETURN",
     "named": false
   },
@@ -7072,10 +6874,6 @@
   },
   {
     "type": "RS",
-    "named": false
-  },
-  {
-    "type": "RT",
     "named": false
   },
   {

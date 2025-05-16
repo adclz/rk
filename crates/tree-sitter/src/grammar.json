@@ -19,22 +19,6 @@
           {
             "type": "SYMBOL",
             "name": "namespace_decl"
-          },
-          {
-            "type": "SYMBOL",
-            "name": "fb_decl"
-          },
-          {
-            "type": "SYMBOL",
-            "name": "func_decl"
-          },
-          {
-            "type": "SYMBOL",
-            "name": "enum_type_decl"
-          },
-          {
-            "type": "SYMBOL",
-            "name": "data_type_decl"
           }
         ]
       }
@@ -5344,10 +5328,6 @@
         },
         {
           "type": "SYMBOL",
-          "name": "instruction_list"
-        },
-        {
-          "type": "SYMBOL",
           "name": "stmt_list"
         },
         {
@@ -5837,10 +5817,6 @@
         {
           "type": "SYMBOL",
           "name": "fb_diagram"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "instruction_list"
         },
         {
           "type": "SYMBOL",
@@ -7093,7 +7069,7 @@
         },
         {
           "type": "FIELD",
-          "name": "ressource_type_name",
+          "name": "resource_type_name",
           "content": {
             "type": "SYMBOL",
             "name": "resource_type_name"
@@ -10328,11 +10304,6 @@
       "method_name"
     ],
     [
-      "fb_name",
-      "derived_func_name",
-      "class_name"
-    ],
-    [
       "variable_name",
       "ref_name"
     ],
@@ -10556,5 +10527,100 @@
   "externals": [],
   "inline": [],
   "supertypes": [],
-  "reserved": {}
+  "reserved": {
+    "global": [
+      {
+        "type": "STRING",
+        "value": "PROGRAM"
+      },
+      {
+        "type": "STRING",
+        "value": "END_PROGRAM"
+      },
+      {
+        "type": "STRING",
+        "value": "CONFIGURATION"
+      },
+      {
+        "type": "STRING",
+        "value": "END_CONFIGURATION"
+      },
+      {
+        "type": "STRING",
+        "value": "RESOURCE"
+      },
+      {
+        "type": "STRING",
+        "value": "END_RESOURCE"
+      },
+      {
+        "type": "STRING",
+        "value": "NAMESPACE"
+      },
+      {
+        "type": "STRING",
+        "value": "END_NAMESPACE"
+      },
+      {
+        "type": "STRING",
+        "value": "USING"
+      },
+      {
+        "type": "STRING",
+        "value": "FUNCTION"
+      },
+      {
+        "type": "STRING",
+        "value": "END_FUNCTION"
+      },
+      {
+        "type": "STRING",
+        "value": "FUNCTION_BLOCK"
+      },
+      {
+        "type": "STRING",
+        "value": "END_FUNCTION_BLOCK"
+      },
+      {
+        "type": "STRING",
+        "value": "TYPE"
+      },
+      {
+        "type": "STRING",
+        "value": "END_TYPE"
+      },
+      {
+        "type": "STRING",
+        "value": "VAR"
+      },
+      {
+        "type": "STRING",
+        "value": "END_VAR"
+      },
+      {
+        "type": "STRING",
+        "value": "VAR_INPUT"
+      },
+      {
+        "type": "STRING",
+        "value": "VAR_OUTPUT"
+      },
+      {
+        "type": "STRING",
+        "value": "VAR_IN_OUT"
+      },
+      {
+        "type": "STRING",
+        "value": "VAR_TEMP"
+      },
+      {
+        "type": "STRING",
+        "value": "VAR_EXTERNAL"
+      },
+      {
+        "type": "STRING",
+        "value": "VAR_GLOBAL"
+      }
+    ]
+  }
 }
