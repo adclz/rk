@@ -23,9 +23,27 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>
  * @license AGPL-3.0-only
  */
 
+
+const RESERVED_NAMES = [
+    "PROGRAM", "END_PROGRAM",
+    "CONFIGURATION", "END_CONFIGURATION",
+    "RESOURCE", "END_RESOURCE",
+    "NAMESPACE", "END_NAMESPACE",
+    "USING",
+    "FUNCTION", "END_FUNCTION", 
+    "FUNCTION_BLOCK", "END_FUNCTION_BLOCK",
+    "TYPE", "END_TYPE",
+    "VAR", "END_VAR",
+    "VAR_INPUT",
+    "VAR_OUTPUT",
+    "VAR_IN_OUT",
+    "VAR_TEMP",
+    "VAR_EXTERNAL",
+    "VAR_GLOBAL"
+];
+
 /// <reference types="tree-sitter-cli/dsl" />
 // @ts-check
-
 module.exports = grammar({
   name: "rk",
 
@@ -35,6 +53,10 @@ module.exports = grammar({
         token(choice('\t', '\r', '\n')),
     ],
 
+    //@ts-ignore (update cli to 0.25)
+    reserved: {
+        global: $ => RESERVED_NAMES,
+    },
 
     precedences: $ => [
         // string type name > byte string access
