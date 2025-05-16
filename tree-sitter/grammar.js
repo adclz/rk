@@ -56,7 +56,6 @@ module.exports = grammar({
         [$.class_name, $.namespace_name, $.variable_name],
         [$.class_name, $.namespace_name],
         [$.derived_func_name, $.method_name],
-        [$.fb_name, $.derived_func_name, $.class_name],
         [$.variable_name, $.ref_name],
         [$.variable_name, $.fb_name],
         [$.variable_name, $.namespace_name],
@@ -77,7 +76,7 @@ module.exports = grammar({
         [$.no_retain_var_decls, $.loc_var_decls, $.loc_partly_var_decl],
         [$.no_retain_var_decls, $.loc_partly_var_decl],
 
-        // ambiguity in NAMESPACE declaration
+        // conflicts in type declarations
         [$.simple_type_name, $.subrange_type_name, $.enum_type_name, $.array_type_name, $.struct_type_name, $.ref_type_name, $.class_type_name, $.interface_type_name],
         [$.simple_type_name, $.subrange_type_name, $.enum_type_name, $.array_type_name, $.struct_type_name, $.ref_type_name, $.interface_type_name],
         [$.simple_type_name, $.subrange_type_name, $.enum_type_name, $.array_type_name, $.struct_type_name, $.ref_type_name],
@@ -106,12 +105,6 @@ module.exports = grammar({
                 $.config_decl, // Declaration of CONFIGURATION and RESOURCE
                 $.prog_decl, // Declaration of PROGRAM
                 $.namespace_decl, // Declaration of NAMESPACE (including all other declarations)
-
-                // To ensure inter-operability with rev 2, we also add all declarations without namespace
-                $.fb_decl, // Declaration of FUNCTION_BLOCK
-                $.func_decl, // Declaration of FUNCTION
-                $.enum_type_decl, // Declaration of ENUM
-                $.data_type_decl, // Declaration of TYPE
             )
         ),
 
@@ -1155,7 +1148,7 @@ module.exports = grammar({
         func_body: $ => choice(
             $.ladder_diagram,
             $.fb_diagram,
-            $.instruction_list,
+            //$.instruction_list,
             $.stmt_list,
             $.other_languages
         ),
@@ -1238,7 +1231,7 @@ module.exports = grammar({
             $.SFC,
             $.ladder_diagram,
             $.fb_diagram,
-            $.instruction_list,
+            //$.instruction_list,
             $.stmt_list,
             $.other_languages
         ),
