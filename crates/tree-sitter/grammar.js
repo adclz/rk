@@ -556,7 +556,7 @@ module.exports = grammar({
 
         data_type_decl: $ => seq(
             'TYPE',
-            repeat1(seq($.type_decl, ';')),
+            repeat(seq($.type_decl, ';')),
             'END_TYPE'
         ),
 
@@ -1637,7 +1637,7 @@ module.exports = grammar({
             field("internal", optional('INTERNAL')),
             field("name", $.namespace_h_name),
             field("directive", repeat($.using_directive)),
-            field("elements", $.namespace_elements),
+            field("elements", optional($.namespace_elements)),
             'END_NAMESPACE'
         ),
 
