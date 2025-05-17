@@ -9,3 +9,4 @@ publish = false
 
 [dependencies]
 auto-lsp = { workspace = true }
+dashmap = { workspace = true }
