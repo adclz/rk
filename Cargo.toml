@@ -13,9 +13,15 @@ members = [
     "crates/db",
     "crates/server",
     "crates/tree-sitter",
-    "vscode/server"
+    "vscode/server",
 ]
 
 [workspace.dependencies]
 auto-lsp = { git = "https://github.com/adclz/auto-lsp", branch = "capabilities" }
 auto-lsp-codegen = { git = "https://github.com/adclz/auto-lsp", branch = "capabilities" }
+log = "0.4.27"
+dashmap = "6.1.0"
+ast = { path = "crates/ast" }
+tree-sitter = { path = "crates/tree-sitter" }
+server = { path = "crates/server" }
+db = { path = "crates/db" }

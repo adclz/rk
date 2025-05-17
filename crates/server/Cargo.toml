@@ -6,3 +6,9 @@ description = ""
 version = "0.1.0"
 edition = "2021"
 publish = false
+
+[dependencies]
+auto-lsp = { workspace = true, features = ["lsp_server"] }
+ast = { workspace = true }
+db = { workspace = true }
+log = { workspace = true }
