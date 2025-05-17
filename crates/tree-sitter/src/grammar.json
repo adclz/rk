@@ -2260,7 +2260,7 @@
           "value": "TYPE"
         },
         {
-          "type": "REPEAT1",
+          "type": "REPEAT",
           "content": {
             "type": "SEQ",
             "members": [
@@ -8005,8 +8005,16 @@
           "type": "FIELD",
           "name": "elements",
           "content": {
-            "type": "SYMBOL",
-            "name": "namespace_elements"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "namespace_elements"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
           }
         },
         {

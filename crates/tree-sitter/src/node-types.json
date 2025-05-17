@@ -1094,7 +1094,7 @@
     "fields": {},
     "children": {
       "multiple": true,
-      "required": true,
+      "required": false,
       "types": [
         {
           "type": "type_decl",
@@ -3531,7 +3531,7 @@
       },
       "elements": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "namespace_elements",
