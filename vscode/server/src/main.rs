@@ -17,6 +17,19 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 use std::error::Error;
 
+use fastrace::collector::{Config, ConsoleReporter};
+use server::boot;
+
 fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
-    Ok(())
+    stderrlog::new()
+        .modules([module_path!(), "server"])
+        .quiet(false)
+        .verbosity(4)
+        .timestamp(stderrlog::Timestamp::Second)
+        .init()
+        .unwrap();
+
+    fastrace::set_reporter(ConsoleReporter, Config::default());
+
+    boot()
 }
