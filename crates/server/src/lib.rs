@@ -13,11 +13,11 @@ use auto_lsp::lsp_types::notification::DidOpenTextDocument;
 use auto_lsp::lsp_types::notification::DidSaveTextDocument;
 use auto_lsp::lsp_types::notification::LogTrace;
 use auto_lsp::lsp_types::notification::SetTrace;
-use auto_lsp::lsp_types::request::DocumentDiagnosticRequest;
+use auto_lsp::lsp_types::request::{DocumentDiagnosticRequest, SemanticTokensFullRequest, SemanticTokensRangeRequest};
 use auto_lsp::lsp_types::request::DocumentSymbolRequest;
-use auto_lsp::lsp_types::{DiagnosticOptions, DiagnosticServerCapabilities, OneOf};
+use auto_lsp::lsp_types::{DiagnosticOptions, DiagnosticServerCapabilities, OneOf, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions, SemanticTokensServerCapabilities};
 use auto_lsp::lsp_types::ServerCapabilities;
-use auto_lsp::server::capabilities::changed_watched_files;
+use auto_lsp::server::capabilities::{changed_watched_files, get_semantic_tokens_full, get_semantic_tokens_range};
 use auto_lsp::server::capabilities::get_diagnostics;
 use auto_lsp::server::capabilities::get_document_symbols;
 use auto_lsp::server::capabilities::open_text_document;
@@ -25,6 +25,7 @@ use auto_lsp::server::capabilities::TraversalKind;
 use auto_lsp::server::{InitOptions, Session, TEXT_DOCUMENT_SYNC, WORKSPACE_PROVIDER};
 use auto_lsp::server::{NotificationRegistry, RequestRegistry};
 use capabilties::document_symbols::dispatch_document_symbols;
+use capabilties::semantic_tokens::{dispatch_semantic_tokens, SUPPORTED_TYPES};
 use db::RootDatabase;
 use std::error::Error;
 use std::panic::RefUnwindSafe;
@@ -48,6 +49,17 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
                     ..Default::default()
                 })),
                 text_document_sync: TEXT_DOCUMENT_SYNC.clone(),
+                semantic_tokens_provider: Some(SemanticTokensServerCapabilities::SemanticTokensOptions(
+                    SemanticTokensOptions {
+                        legend: SemanticTokensLegend {
+                            token_types: SUPPORTED_TYPES.to_vec(),
+                            token_modifiers: vec![],
+                        },
+                        range: Some(true),
+                        full: Some(SemanticTokensFullOptions::Bool(true)),
+                        ..Default::default()
+                    },
+                )),
                 ..Default::default()
             },
             server_info: None,
@@ -71,10 +83,17 @@ fn on_requests<Db: BaseDatabase + Clone + RefUnwindSafe>(
     registry: &mut RequestRegistry<Db>,
 ) -> &mut RequestRegistry<Db> {
     registry
-        .on::<DocumentDiagnosticRequest, _>(|s, p| get_diagnostics(s, p))
+        .on::<DocumentDiagnosticRequest, _>(get_diagnostics)
         .on::<DocumentSymbolRequest, _>(|s, p| {
             get_document_symbols(s, p, TraversalKind::Single, dispatch_document_symbols)
         })
+        .on::<SemanticTokensFullRequest, _>(|s, p| {
+            get_semantic_tokens_full(s, p, TraversalKind::Iter, dispatch_semantic_tokens)
+        })
+        .on::<SemanticTokensRangeRequest, _>(|s, p| {
+            get_semantic_tokens_range(s, p, dispatch_semantic_tokens)
+        })
+
 }
 
 fn on_notifications<Db: BaseDatabase + Clone + RefUnwindSafe>(

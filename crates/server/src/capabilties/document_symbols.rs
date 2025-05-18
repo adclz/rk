@@ -1,6 +1,6 @@
 #![allow(deprecated)]
 
-use ast::generated::{ClassDecl, ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl, ConfigDecl_NamespaceDecl_ProgDecl, DataTypeDecl, FbDecl, FuncDecl, NamespaceDecl, SourceFile};
+use ast::generated::{ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl, ConfigDecl_NamespaceDecl_ProgDecl, DataTypeDecl, FbDecl, FuncDecl, NamespaceDecl, SourceFile};
 use auto_lsp::{
     anyhow,
     core::{
