@@ -1,5 +1,3 @@
-use std::sync::{Arc, Mutex};
-
 use auto_lsp::{default::db::{BaseDatabase, File}, lsp_types::Url, salsa};
 use dashmap::DashMap;
 
@@ -8,8 +6,6 @@ use dashmap::DashMap;
 pub struct RootDatabase {
     storage: salsa::Storage<Self>,
     pub(crate) files: DashMap<Url, File>,
-    #[cfg(debug_assertions)]
-    logs: Arc<Mutex<Vec<String>>>,
 }
 
 #[salsa::db]

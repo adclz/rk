@@ -17,9 +17,9 @@ use auto_lsp::lsp_types::notification::DidOpenTextDocument;
 use auto_lsp::lsp_types::notification::DidSaveTextDocument;
 use auto_lsp::lsp_types::notification::LogTrace;
 use auto_lsp::lsp_types::notification::SetTrace;
-use auto_lsp::lsp_types::request::{DocumentDiagnosticRequest, SemanticTokensFullRequest, SemanticTokensRangeRequest};
+use auto_lsp::lsp_types::request::SemanticTokensFullRequest;
 use auto_lsp::lsp_types::request::DocumentSymbolRequest;
-use auto_lsp::lsp_types::{DiagnosticOptions, DiagnosticServerCapabilities, OneOf, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions, SemanticTokensServerCapabilities};
+use auto_lsp::lsp_types::{OneOf, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions, SemanticTokensServerCapabilities};
 use auto_lsp::lsp_types::ServerCapabilities;
 use auto_lsp::server::notification_registry::NotificationRegistry;
 use auto_lsp::server::options::InitOptions;
@@ -42,7 +42,7 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
     let mut request_registry = RequestRegistry::<RootDatabase>::default();
     let mut notification_registry = NotificationRegistry::<RootDatabase>::default();
 
-    let (mut session, params) = Session::create(
+    let (mut session, _params) = Session::create(
         InitOptions {
             parsers: &RK_PARSER,
             capabilities: ServerCapabilities {

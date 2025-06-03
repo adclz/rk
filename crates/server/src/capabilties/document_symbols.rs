@@ -1,13 +1,13 @@
 #![allow(deprecated)]
 
-use ast::generated::{ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl, ConfigDecl_NamespaceDecl_ProgDecl, DataTypeDecl, FbDecl, FuncDecl, NamespaceDecl, SourceFile};
+use ast::generated::{ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl, ConfigDecl_NamespaceDecl_ProgDecl, FbDecl, FuncDecl, NamespaceDecl, SourceFile};
 use auto_lsp::{
     anyhow, core::{
         ast::AstNode,
         dispatch,
         document::Document,
         document_symbols_builder::DocumentSymbolsBuilder,
-    }, default::db::{tracked::get_ast, BaseDatabase, File}, lsp_types::{DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, SymbolKind}
+    }, default::db::{tracked::get_ast, BaseDatabase}, lsp_types::{DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, SymbolKind}
 };
 
 pub fn document_symbols(
@@ -72,7 +72,7 @@ impl Symbols for NamespaceDecl {
         }?;
 
         builder.push_symbol(DocumentSymbol {
-            name: self.name.get_text(&doc.texter.text.as_bytes())?.to_string(),
+            name: self.name.get_text(doc.texter.text.as_bytes())?.to_string(),
             detail: None,
             kind: SymbolKind::NAMESPACE,
             selection_range: self.name.get_lsp_range(),
@@ -89,7 +89,7 @@ impl Symbols for NamespaceDecl {
 impl Symbols for FuncDecl {
     fn symbols(&self, doc: &Document, builder: &mut DocumentSymbolsBuilder) -> anyhow::Result<()> {
         builder.push_symbol(DocumentSymbol {
-            name: self.name.get_text(&doc.texter.text.as_bytes())?.to_string(),
+            name: self.name.get_text(doc.texter.text.as_bytes())?.to_string(),
             detail: None,
             kind: SymbolKind::FUNCTION,
             selection_range: self.name.get_lsp_range(),
@@ -105,7 +105,7 @@ impl Symbols for FuncDecl {
 impl Symbols for FbDecl {
     fn symbols(&self, doc: &Document, builder: &mut DocumentSymbolsBuilder) -> anyhow::Result<()> {
         builder.push_symbol(DocumentSymbol {
-            name: self.name.get_text(&doc.texter.text.as_bytes())?.to_string(),
+            name: self.name.get_text(doc.texter.text.as_bytes())?.to_string(),
             detail: None,
             kind: SymbolKind::FUNCTION,
             selection_range: self.name.get_lsp_range(),
