@@ -2,7 +2,11 @@
 mod capabilties;
 
 use ast::RK_PARSER;
-use auto_lsp::core::salsa::db::{BaseDatabase, FileManager};
+use auto_lsp::default::db::BaseDatabase;
+use auto_lsp::default::server::capabilities::TEXT_DOCUMENT_SYNC;
+use auto_lsp::default::server::capabilities::WORKSPACE_PROVIDER;
+use auto_lsp::default::server::file_events::changed_watched_files;
+use auto_lsp::default::server::file_events::open_text_document;
 use auto_lsp::lsp_server;
 use auto_lsp::lsp_server::Connection;
 use auto_lsp::lsp_types::notification::Cancel;
@@ -17,18 +21,18 @@ use auto_lsp::lsp_types::request::{DocumentDiagnosticRequest, SemanticTokensFull
 use auto_lsp::lsp_types::request::DocumentSymbolRequest;
 use auto_lsp::lsp_types::{DiagnosticOptions, DiagnosticServerCapabilities, OneOf, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions, SemanticTokensServerCapabilities};
 use auto_lsp::lsp_types::ServerCapabilities;
-use auto_lsp::server::capabilities::{changed_watched_files, get_semantic_tokens_full, get_semantic_tokens_range};
-use auto_lsp::server::capabilities::get_diagnostics;
-use auto_lsp::server::capabilities::get_document_symbols;
-use auto_lsp::server::capabilities::open_text_document;
-use auto_lsp::server::capabilities::TraversalKind;
-use auto_lsp::server::{InitOptions, Session, TEXT_DOCUMENT_SYNC, WORKSPACE_PROVIDER};
-use auto_lsp::server::{NotificationRegistry, RequestRegistry};
-use capabilties::document_symbols::dispatch_document_symbols;
-use capabilties::semantic_tokens::{dispatch_semantic_tokens, SUPPORTED_TYPES};
+use auto_lsp::server::notification_registry::NotificationRegistry;
+use auto_lsp::server::options::InitOptions;
+use auto_lsp::server::request_registry::RequestRegistry;
+use auto_lsp::server::Session;
+use auto_lsp::default::db::FileManager;
+use capabilties::semantic_tokens::{SUPPORTED_TYPES};
 use db::RootDatabase;
 use std::error::Error;
 use std::panic::RefUnwindSafe;
+
+use crate::capabilties::document_symbols::document_symbols;
+use crate::capabilties::semantic_tokens;
 
 pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
     log::info!("Starting IEC LSP");
@@ -38,16 +42,16 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
     let mut request_registry = RequestRegistry::<RootDatabase>::default();
     let mut notification_registry = NotificationRegistry::<RootDatabase>::default();
 
-    let mut session = Session::create(
+    let (mut session, params) = Session::create(
         InitOptions {
             parsers: &RK_PARSER,
             capabilities: ServerCapabilities {
                 document_symbol_provider: Some(OneOf::Left(true)),
                 workspace: WORKSPACE_PROVIDER.clone(),
-                diagnostic_provider: Some(DiagnosticServerCapabilities::Options(DiagnosticOptions {
+                /*diagnostic_provider: Some(DiagnosticServerCapabilities::Options(DiagnosticOptions {
                     workspace_diagnostics: false,
                     ..Default::default()
-                })),
+                })),*/
                 text_document_sync: TEXT_DOCUMENT_SYNC.clone(),
                 semantic_tokens_provider: Some(SemanticTokensServerCapabilities::SemanticTokensOptions(
                     SemanticTokensOptions {
@@ -55,7 +59,7 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
                             token_types: SUPPORTED_TYPES.to_vec(),
                             token_modifiers: vec![],
                         },
-                        range: Some(true),
+                        range: Some(false),
                         full: Some(SemanticTokensFullOptions::Bool(true)),
                         ..Default::default()
                     },
@@ -83,16 +87,8 @@ fn on_requests<Db: BaseDatabase + Clone + RefUnwindSafe>(
     registry: &mut RequestRegistry<Db>,
 ) -> &mut RequestRegistry<Db> {
     registry
-        .on::<DocumentDiagnosticRequest, _>(get_diagnostics)
-        .on::<DocumentSymbolRequest, _>(|s, p| {
-            get_document_symbols(s, p, TraversalKind::Single, dispatch_document_symbols)
-        })
-        .on::<SemanticTokensFullRequest, _>(|s, p| {
-            get_semantic_tokens_full(s, p, TraversalKind::Iter, dispatch_semantic_tokens)
-        })
-        .on::<SemanticTokensRangeRequest, _>(|s, p| {
-            get_semantic_tokens_range(s, p, dispatch_semantic_tokens)
-        })
+        .on::<DocumentSymbolRequest, _>( document_symbols)
+        .on::<SemanticTokensFullRequest, _>(semantic_tokens::semantic_tokens_full)
 
 }
 

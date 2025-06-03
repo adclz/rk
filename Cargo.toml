@@ -17,8 +17,8 @@ members = [
 ]
 
 [workspace.dependencies]
-auto-lsp = { git = "https://github.com/adclz/auto-lsp", branch = "capabilities" }
-auto-lsp-codegen = { git = "https://github.com/adclz/auto-lsp", branch = "capabilities" }
+auto-lsp = "0.6.0"
+auto-lsp-codegen = "0.2.0"
 log = "0.4.27"
 dashmap = "6.1.0"
 ast = { path = "crates/ast" }

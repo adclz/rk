@@ -2,31 +2,35 @@
 
 use ast::generated::{ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl, ConfigDecl_NamespaceDecl_ProgDecl, DataTypeDecl, FbDecl, FuncDecl, NamespaceDecl, SourceFile};
 use auto_lsp::{
-    anyhow,
-    core::{
+    anyhow, core::{
         ast::AstNode,
         dispatch,
         document::Document,
         document_symbols_builder::DocumentSymbolsBuilder,
-        salsa::db::{BaseDatabase, File},
-    },
-    lsp_types::{DocumentSymbol, SymbolKind},
+    }, default::db::{tracked::get_ast, BaseDatabase, File}, lsp_types::{DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, SymbolKind}
 };
 
-pub fn dispatch_document_symbols(
+pub fn document_symbols(
     db: &impl BaseDatabase,
-    file: File,
-    node: &dyn AstNode,
-    builder: &mut DocumentSymbolsBuilder,
-) -> anyhow::Result<()> {
-    let doc = file.document(db).read();
-    dispatch!(
-        node,
-        [
-            SourceFile => symbols(&*doc, builder)
-        ]
-    );
-    Ok(())
+    params: DocumentSymbolParams,
+) -> anyhow::Result<Option<DocumentSymbolResponse>> {
+    let uri = params.text_document.uri;
+
+    let file = db
+        .get_file(&uri)
+        .ok_or_else(|| anyhow::format_err!("File not found in workspace"))?;
+
+    let doc = file.document(db);
+    let mut builder = DocumentSymbolsBuilder::default();
+
+    if let Some(node) = get_ast(db, file).get_root() {
+        dispatch!(node.lower(),
+            [
+                SourceFile => symbols(&doc, &mut builder)
+            ]
+        );
+    }
+    Ok(Some(DocumentSymbolResponse::Nested(builder.finalize())))
 }
 
 trait Symbols {

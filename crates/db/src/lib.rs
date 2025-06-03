@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use auto_lsp::{core::salsa::db::{BaseDatabase, File}, lsp_types::Url, salsa};
+use auto_lsp::{default::db::{BaseDatabase, File}, lsp_types::Url, salsa};
 use dashmap::DashMap;
 
 #[salsa::db]
@@ -13,17 +13,7 @@ pub struct RootDatabase {
 }
 
 #[salsa::db]
-impl salsa::Database for RootDatabase {
-    fn salsa_event(&self, _event: &dyn Fn() -> salsa::Event) {
-        #[cfg(debug_assertions)]
-        {
-            let event = _event();
-            if let salsa::EventKind::WillExecute { .. } = event.kind {
-                self.logs.lock().unwrap().push(format!("{event:?}"));
-            }
-        }
-    }
-}
+impl salsa::Database for RootDatabase {}
 
 impl std::panic::RefUnwindSafe for RootDatabase {}
 
@@ -35,10 +25,5 @@ impl BaseDatabase for RootDatabase {
 
     fn get_file(&self,url: &Url) -> Option<File> {
         self.files.get(url).map(|file| *file)
-    }
-
-    #[cfg(debug_assertions)]
-    fn take_logs(&self) -> Vec<String> {
-        std::mem::take(&mut self.logs.lock().unwrap())
     }
 }
