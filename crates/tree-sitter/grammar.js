@@ -61,11 +61,6 @@ module.exports = grammar({
     precedences: $ => [
         // string type name > byte string access
         [$.string_type_name, $.s_byte_str_spec, $.d_byte_str_spec],
-        // solve $.fb_body ambiguity since tree sitter could mistake a std_name with a il or st keyword
-        // in this case, tree sitter will first check if a keyword exists and then check std func name
-        [$.il_expr_operator, $.il_simple_operator, $.std_func_name],
-        [$.il_label, $.access_name],
-
         [$.std_func_name, $.unary_expr],
         [$.unsigned_int, $.signed_int, $.int_literal,  $.bit_str_literal],
     ],
@@ -1170,7 +1165,6 @@ module.exports = grammar({
         func_body: $ => choice(
             $.ladder_diagram,
             $.fb_diagram,
-            //$.instruction_list,
             $.stmt_list,
             $.other_languages
         ),
@@ -1456,8 +1450,7 @@ module.exports = grammar({
 
         transition_cond: $ => choice(
             seq(':=', $.expression, ';'),
-            seq(':', choice($.fbd_network, $.ld_rung),
-                seq(':=', $.il_simple_inst)
+            seq(':', choice($.fbd_network, $.ld_rung)
             )
         ),
 
@@ -1680,179 +1673,6 @@ module.exports = grammar({
                     $.namespace_decl
                 )
             )
-        ),
-
-        // Table 67 - 70 - Instruction List (il) 
-
-        instruction_list: $ => seq(
-            repeat1($.il_instruction),
-        ),
-
-        il_instruction: $ => prec.left(seq(
-            optional(seq($.il_label, ':')),
-            optional(choice(
-                $.il_simple_operation,
-                $.il_expr,
-                $.il_jump_operation,
-                $.il_invocation,
-                $.il_formal_func_call,
-                $.il_return_operator
-            )),
-            repeat1(token("\n"))
-        )),
-
-        il_simple_inst: $ => choice(
-            $.il_simple_operation,
-            $.il_expr,
-            $.il_formal_func_call,
-        ),
-
-        il_label: $ => $.identifier,
-
-        il_simple_operation: $ => choice(
-            seq($.il_simple_operator, optional($.il_operand)),
-            seq($.func_access, optional($.il_operand_list))
-        ),
-
-        il_expr: $ => seq(
-            $.il_expr_operator,
-            '(',
-            optional($.il_operand),
-            repeat1(token("\n")),
-            optional($.il_simple_inst),
-            ')'
-        ),
-
-        il_jump_operation: $ => seq(
-            $.il_jump_operator,
-            $.il_label
-        ),
-
-        il_invocation: $ => seq(
-            $.il_call_operator,
-            choice(
-                seq(
-                    choice(
-                        $.fb_instance_name,
-                        $.func_name,
-                        $.method_name,
-                        'THIS',
-                        seq(
-                            'THIS',
-                            '.',
-                            repeat(seq(choice($.fb_instance_name, $.class_instance_name), '.')),
-                            $.method_name
-                        )
-                    ),
-                    optional(seq(
-                        '(',
-                        choice(
-                            seq(repeat1(token("\n")), optional($.il_param_list)),
-                            optional($.il_operand_list)
-                        ),
-                        ')'
-                    ))
-                ),
-                seq('SUPER', '(', ')')
-            )
-        ),
-
-        il_formal_func_call: $ => seq(
-            $.func_access,
-            '(',
-            repeat1(token("\n")),
-            optional($.il_param_list),
-            ')'
-        ),
-
-        il_operand: $ => choice(
-            $.constant,
-            $.enum_value,
-            $.variable_access
-        ),
-
-        il_operand_list: $ => seq(
-            $.il_operand,
-            repeat(seq(',', $.il_operand))
-        ),
-
-        il_simple_inst_list: $ => seq(
-            repeat1($.il_simple_instruction)
-        ),
-
-        il_simple_instruction: $ => seq(
-            choice($.il_simple_operation, $.il_expr, $.il_formal_func_call),
-            repeat1(token("\n"))
-        ),
-
-        il_param_list: $ => seq(
-            repeat($.il_param_inst),
-            $.il_param_last_inst
-        ),
-
-        il_param_inst: $ => seq(
-            choice($.il_param_assign, $.il_param_out_assign),
-            ',',
-            repeat1(token("\n"))
-        ),
-
-        il_param_last_inst: $ => seq(
-            choice($.il_param_assign, $.il_param_out_assign),
-            repeat1(token("\n"))
-        ),
-
-        il_param_assign: $ => seq(
-            $.il_assignment,
-            choice(
-                seq(':=', $.il_operand),
-                seq('(', repeat1(token("\n")), $.il_simple_inst_list, ')')
-            )
-        ),
-
-        il_param_out_assign: $ => seq(
-            $.il_assign_out_operator,
-            $.variable_access
-        ),
-
-        il_simple_operator: $ => choice(
-            'LD', 'LDN', 'ST', 'STN', 'ST?', 'NOT', 'S', 'R',
-            'S1', 'R1', 'CLK', 'CU', 'CD', 'PV',
-            'IN', 'PT', $.il_expr_operator
-        ),
-
-        il_expr_operator: $ => choice(
-            'AND', '&', 'OR', 'XOR', 'ANDN', '&N', 'ORN',
-            'XORN', 'ADD', 'SUB', 'MUL', 'DIV',
-            'MOD', 'GT', 'GE', 'EQ', 'LT', 'LE', 'NE'
-        ),
-
-        il_assignment: $ => seq(
-            $.variable_name,
-            ':='
-        ),
-
-        il_assign_out_operator: $ => seq(
-            optional('NOT'),
-            $.variable_name,
-            '=>'
-        ),
-
-        il_call_operator: $ => choice(
-            'CAL',
-            'CALC',
-            'CALCN'
-        ),
-
-        il_return_operator: $ => choice(
-            'RT',
-            'RETC',
-            'RETCN',
-        ),
-
-        il_jump_operator: $ => choice(
-            'JMP',
-            'JMPC',
-            'JMPCN'
         ),
 
         // Table 71 - 72 - Language Structured Text (ST) 
