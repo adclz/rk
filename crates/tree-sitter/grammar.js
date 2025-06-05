@@ -61,7 +61,6 @@ module.exports = grammar({
     precedences: $ => [
         // string type name > byte string access
         [$.string_type_name, $.s_byte_str_spec, $.d_byte_str_spec],
-        [$.std_func_name, $.unary_expr],
         [$.unsigned_int, $.signed_int, $.int_literal,  $.bit_str_literal],
     ],
 
@@ -72,7 +71,6 @@ module.exports = grammar({
         // ambiguity in PROGRAM declaration
         [$.class_name, $.namespace_name, $.variable_name],
         [$.class_name, $.namespace_name],
-        [$.derived_func_name, $.method_name],
         [$.variable_name, $.ref_name],
         [$.variable_name, $.fb_name],
         [$.variable_name, $.namespace_name],
@@ -111,6 +109,8 @@ module.exports = grammar({
         [$.global_var_name, $.resource_name, $.prog_name],
         [$.global_var_name, $.resource_name],
         [$.global_var_name, $.enum_value],
+
+        [$.func_access, $.invocation]
     ],
 
     word: $ => $.identifier,
@@ -1120,30 +1120,14 @@ module.exports = grammar({
 
         // Table 19 - Function declaration
 
-        func_name: $ => choice($.std_func_name, $.derived_func_name),
-
         func_access: $ => seq(
             repeat(seq($.namespace_name, '.')),
-            $.func_name
+            $.identifier
         ),
-
-        std_func_name: $ => choice(
-            'TRUNC', 'ABS', 'SQRT', 'LN', 'LOG', 'EXP',
-            'SIN', 'COS', 'TAN', 'ASIN', 'ACOS', 'ATAN', 'ATAN2',
-            'ADD', 'SUB', 'MUL', 'DIV', 'MOD', 'EXPT', 'MOVE',
-            'SHL', 'SHR', 'ROL', 'ROR',
-            'AND', 'OR', 'XOR', 'NOT',
-            'SEL', 'MAX', 'MIN', 'LIMIT', 'MUX',
-            'GT', 'GE', 'EQ', 'LE', 'LT', 'NE',
-            'LEN', 'LEFT', 'RIGHT', 'MID', 'CONCAT', 'INSERT', 'DELETE', 'REPLACE', 'FIND'
-            // incomplete list ?
-        ),
-
-        derived_func_name: $ => $.identifier,
 
         func_decl: $ => seq(
             'FUNCTION',
-            field("name", $.derived_func_name),
+            field("name", $.identifier),
             field("access", optional(seq(':', $.data_type_access))),
             field("directive", repeat($.using_directive)),
             field("variables", repeat(choice($.io_var_decls, $.func_var_decls, $.temp_var_decls))),
@@ -1247,7 +1231,6 @@ module.exports = grammar({
             $.SFC,
             $.ladder_diagram,
             $.fb_diagram,
-            //$.instruction_list,
             $.stmt_list,
             $.other_languages
         ),
@@ -1257,14 +1240,12 @@ module.exports = grammar({
             $.access_spec,
             optional(choice('FINAL', 'ABSTRACT')),
             optional('OVERRIDE'),
-            $.method_name,
+            $.identifier,
             optional(seq(':', $.data_type_access)),
             repeat(choice($.io_var_decls, $.func_var_decls, $.temp_var_decls)),
             $.func_body,
             'END_METHOD'
         ),
-
-        method_name: $ => $.identifier,
 
         // Table 48 - Class
         // Table 50 Textual call of methods – Formal and non-formal parameter list 
@@ -1305,7 +1286,7 @@ module.exports = grammar({
 
         method_prototype: $ => seq(
             'METHOD',
-            field("name", $.method_name),
+            field("name", $.identifier),
             field("data_type", optional(seq(':', $.data_type_access))),
             field("variables", repeat($.io_var_decls)),
             'END_METHOD'
@@ -1750,7 +1731,7 @@ module.exports = grammar({
         func_call: $ => seq(
             $.func_access,
             '(',
-            optional(seq($.param_assign, repeat(seq(',', $.param_assign)))),
+                optional(seq($.param_assign, repeat(seq(',', $.param_assign)))),
             ')'
         ),
 
@@ -1782,16 +1763,16 @@ module.exports = grammar({
         invocation: $ => seq(
             choice(
                 $.fb_instance_name,
-                $.method_name,
+                $.identifier,
                 'THIS',
                 seq(
                     optional(seq('THIS', '.')),
                     repeat1(seq(choice($.fb_instance_name, $.class_instance_name), '.')),
-                    $.method_name
+                    $.identifier
                 )
             ),
             '(',
-            optional(seq($.param_assign, repeat(seq(',', $.param_assign)))),
+                optional(seq($.param_assign, repeat(seq(',', $.param_assign)))),
             ')'
         ),
 
