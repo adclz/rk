@@ -65,17 +65,17 @@ module.exports = grammar({
     ],
 
     conflicts: $ => [
+        [$.symbolic_variable, $.func_access, $.instance_name],
+        [$.func_access, $.instance_name, $.invocation],
+        [$.func_access, $.instance_name],
+        [$.variable_list, $.fb_name],
+        [$.instance_name],
+        [$.ref_name, $.param_assign],
+
         [$.signed_int],
         [$.signed_int, $.bit_str_literal],
 
         // ambiguity in PROGRAM declaration
-        [$.class_name, $.namespace_name, $.variable_name],
-        [$.class_name, $.namespace_name],
-        [$.variable_name, $.ref_name],
-        [$.variable_name, $.fb_name],
-        [$.variable_name, $.namespace_name],
-        [$.variable_name, $.class_name],
-        [$.fb_name, $.class_name],
         [$.derived_fb_name, $.class_type_name],
         [$.array_elem_init_value, $.primary_expr],
         [$.struct_elem_init, $.primary_expr],
@@ -109,8 +109,6 @@ module.exports = grammar({
         [$.global_var_name, $.resource_name, $.prog_name],
         [$.global_var_name, $.resource_name],
         [$.global_var_name, $.enum_value],
-
-        [$.func_access, $.invocation]
     ],
 
     word: $ => $.identifier,
@@ -504,7 +502,7 @@ module.exports = grammar({
         ),
 
         string_type_access: $ => seq(
-            repeat(seq($.namespace_name, '.')),
+            repeat(seq(field("namespace", $.identifier), '.')),
             $.string_type_name
         ),
 
@@ -515,27 +513,27 @@ module.exports = grammar({
         ),
 
         simple_type_access: $ => seq(
-            repeat(seq($.namespace_name, '.')),
+            repeat(seq(field("namespace", $.identifier), '.')),
             $.simple_type_name
         ),
 
         subrange_type_access: $ => seq(
-            repeat(seq($.namespace_name, '.')),
+            repeat(seq(field("namespace", $.identifier), '.')),
             $.subrange_type_name
         ),
 
         enum_type_access: $ => seq(
-            repeat(seq($.namespace_name, '.')),
+            repeat(seq(field("namespace", $.identifier), '.')),
             $.enum_type_name
         ),
 
         array_type_access: $ => seq(
-            repeat(seq($.namespace_name, '.')),
+            repeat(seq(field("namespace", $.identifier), '.')),
             $.array_type_name
         ),
 
         struct_type_access: $ => seq(
-            repeat(seq($.namespace_name, '.')),
+            repeat(seq(field("namespace", $.identifier), '.')),
             $.struct_type_name
         ),
 
@@ -770,7 +768,7 @@ module.exports = grammar({
         ref_type_name: $ => $.identifier,
 
         ref_type_access: $ => seq(
-            repeat(seq($.namespace_name, '.')),
+            repeat(seq(field("namespace", $.identifier), '.')),
             $.ref_type_name
         ),
 
@@ -784,7 +782,7 @@ module.exports = grammar({
         ref_addr: $ => seq(
             'REF',
             '(',
-            choice($.symbolic_variable, $.fb_instance_name, $.class_instance_name),
+            choice($.symbolic_variable, $.instance_name),
             ')'
         ),
 
@@ -806,14 +804,12 @@ module.exports = grammar({
         symbolic_variable: $ => prec.right(seq(
             optional(choice(
                 seq('THIS', '.'),
-                repeat1(seq($.namespace_name, '.'))
+                repeat1(seq(field("namespace", $.identifier), '.'))
             )),
             choice($.var_access, $.multi_elem_var)
         )),
 
-        var_access: $ => choice($.variable_name, $.ref_deref),
-
-        variable_name: $ => $.identifier,
+        var_access: $ => choice($.ref_deref),
 
         multi_elem_var: $ => prec.left(seq(
             $.var_access,
@@ -881,8 +877,8 @@ module.exports = grammar({
         ),
 
         variable_list: $ => seq(
-            $.variable_name,
-            repeat(seq(',', $.variable_name))
+            $.identifier,
+            repeat(seq(',', $.identifier))
         ),
 
         array_var_decl_init: $ => seq(
@@ -927,12 +923,6 @@ module.exports = grammar({
         ),
 
         fb_name: $ => $.identifier,
-
-        fb_instance_name: $ => seq(
-            repeat(seq($.namespace_name, '.')),
-            $.fb_name,
-            '^' //check
-        ),
 
         output_decls: $ => seq(
             'VAR_OUTPUT',
@@ -1000,7 +990,7 @@ module.exports = grammar({
         ),
 
         loc_var_decl: $ => seq(
-            optional($.variable_name),
+            optional(field("variable_name", $.identifier)),
             $.located_at,
             ':',
             $.loc_var_spec_init
@@ -1101,7 +1091,7 @@ module.exports = grammar({
         ),
 
         loc_partly_var: $ => seq(
-            $.variable_name,
+            field("variable_name", $.identifier),
             'AT',
             '%',
             choice('I', 'Q', 'M'),
@@ -1121,7 +1111,7 @@ module.exports = grammar({
         // Table 19 - Function declaration
 
         func_access: $ => seq(
-            repeat(seq($.namespace_name, '.')),
+            repeat(seq(field("namespace", $.identifier), '.')),
             $.identifier
         ),
 
@@ -1150,7 +1140,6 @@ module.exports = grammar({
             $.ladder_diagram,
             $.fb_diagram,
             $.stmt_list,
-            $.other_languages
         ),
 
         // Table 40 – Function block type declaration
@@ -1159,7 +1148,7 @@ module.exports = grammar({
         fb_type_name: $ => choice($.std_fb_name, $.derived_fb_name),
 
         fb_type_access: $ => seq(
-            repeat(seq($.namespace_name, '.')),
+            repeat(seq(field("namespace", $.identifier), '.')),
             $.fb_type_name
         ),
 
@@ -1232,7 +1221,6 @@ module.exports = grammar({
             $.ladder_diagram,
             $.fb_diagram,
             $.stmt_list,
-            $.other_languages
         ),
 
         method_decl: $ => seq(
@@ -1264,15 +1252,13 @@ module.exports = grammar({
         class_type_name: $ => $.identifier,
 
         class_type_access: $ => (
-            repeat(seq($.namespace_name, '.')),
+            repeat(seq(field("namespace", $.identifier), '.')),
             $.class_type_name
         ),
 
-        class_name: $ => $.identifier,
-
-        class_instance_name: $ => seq(
-            repeat(seq($.namespace_name, '.')),
-            $.class_name,
+        instance_name: $ => seq(
+            repeat(seq(field("namespace", $.identifier), '.')),
+            field("name", $.identifier),
             repeat('^') //todo: check
         ),
 
@@ -1299,8 +1285,7 @@ module.exports = grammar({
 
         interface_value: $ => choice(
             $.symbolic_variable,
-            $.fb_instance_name,
-            $.class_instance_name,
+            $.instance_name,
             'NULL'
         ),
 
@@ -1312,7 +1297,7 @@ module.exports = grammar({
         interface_type_name: $ => $.identifier,
 
         interface_type_access: $ => seq(
-            repeat(seq($.namespace_name, '.')),
+            repeat(seq(field("namespace", $.identifier), '.')),
             $.interface_type_name
         ),
 
@@ -1324,23 +1309,28 @@ module.exports = grammar({
 
         prog_decl: $ => seq(
             'PROGRAM',
-            field("name", $.prog_type_name),
-            field("declarations", repeat(choice($.io_var_decls, $.func_var_decls, $.temp_var_decls, $.other_var_decls, $.loc_var_decls, $.prog_access_decl))),
+            field("name", $.identifier),
+            field("declarations", repeat(choice(
+                $.io_var_decls, 
+                $.func_var_decls, 
+                $.temp_var_decls, 
+                $.other_var_decls, 
+                $.loc_var_decls, 
+                $.prog_access_decl
+            ))),
             field("body", $.fb_body),
             'END_PROGRAM'
         ),
 
-        prog_type_name: $ => $.identifier,
-
         prog_type_access: $ => seq(
-            repeat(seq($.namespace_name, '.')),
-            $.prog_type_name
+            repeat(seq(field("namespace", $.identifier), '.')),
+            $.identifier
         ),
 
         prog_access_decls: $ => seq(
             'VAR_ACCESS',
             repeat(seq($.prog_access_decl, ';')),
-            $.prog_type_name
+            $.identifier
         ),
 
         prog_access_decl: $ => seq(
@@ -1384,7 +1374,7 @@ module.exports = grammar({
             $.action_name,
             '(',
             optional($.action_qualifier),
-            repeat(seq($.indicator_name, ';')),
+            repeat(seq(field("variable_name", $.identifier), ';')),
             ')'
         ),
 
@@ -1404,10 +1394,8 @@ module.exports = grammar({
 
         action_time: $ => choice(
             $.duration,
-            $.variable_name
+            field("variable_name", $.identifier)
         ),
-
-        indicator_name: $ => $.variable_name,
 
         transition: $ => seq(
             'TRANSITION',
@@ -1493,7 +1481,7 @@ module.exports = grammar({
             seq(
                 optional(seq($.resource_name, '.')),
                 optional(seq($.prog_name, '.')),
-                repeat(seq(choice($.fb_instance_name, $.class_instance_name), '.')),
+                repeat(seq(choice($.instance_name), '.')),
                 $.symbolic_variable
             )
         ),
@@ -1560,7 +1548,7 @@ module.exports = grammar({
         ),
 
         fb_task: $ => seq(
-            $.fb_instance_name,
+            $.instance_name,
             'WITH',
             $.task_name
         ),
@@ -1590,13 +1578,13 @@ module.exports = grammar({
 
         config_inst_init: $ => seq(
             $.resource_name, '.', $.prog_name, '.',
-            repeat(seq(choice($.fb_instance_name, $.class_instance_name), '.')),
+            repeat(seq(choice($.instance_name), '.')),
             choice(
-                seq($.variable_name, optional($.located_at), ':', $.loc_var_spec_init),
+                seq($.identifier, optional($.located_at), ':', $.loc_var_spec_init),
                 seq(
                     choice(
-                        seq($.fb_instance_name, ':', $.fb_type_access),
-                        seq($.class_instance_name, ':', $.class_type_access)
+                        seq($.instance_name, ':', $.fb_type_access),
+                        seq($.instance_name, ':', $.class_type_access)
                     ),
                     ':=',
                     $.struct_init
@@ -1627,11 +1615,9 @@ module.exports = grammar({
         ),
 
         namespace_h_name: $ => seq(
-            $.namespace_name,
-            repeat(seq('.', $.namespace_name))
+            $.identifier,
+            repeat(seq('.', $.identifier))
         ),
-
-        namespace_name: $ => $.identifier,
 
         using_directive: $ => seq(
             'USING',
@@ -1762,12 +1748,12 @@ module.exports = grammar({
 
         invocation: $ => seq(
             choice(
-                $.fb_instance_name,
+                $.instance_name,
                 $.identifier,
                 'THIS',
                 seq(
                     optional(seq('THIS', '.')),
-                    repeat1(seq(choice($.fb_instance_name, $.class_instance_name), '.')),
+                    repeat1(seq(choice($.instance_name), '.')),
                     $.identifier
                 )
             ),
@@ -1784,9 +1770,9 @@ module.exports = grammar({
         ),
 
         param_assign: $ => choice(
-           seq(optional(seq($.variable_name, ':=')), $.expression),
+           seq(optional(seq(field("variable_name", $.identifier), ':=')), $.expression),
            $.ref_assign,
-           seq(optional('NOT'), $.variable_name, '=>', $.variable)
+           seq(optional('NOT'), field("variable_name", $.identifier), '=>', $.variable)
         ),
 
         selection_stmt: $ => choice(
@@ -1889,9 +1875,7 @@ module.exports = grammar({
 
         fbd_network: $ => "todo_fbd",
 
-        other_languages: $ => "todo_other",
-
-                // Table 1 - Character sets
+        // Table 1 - Character sets
         // Table 2 - Identifiers
 
         letter: $ => /[a-zA-Z_]/,
