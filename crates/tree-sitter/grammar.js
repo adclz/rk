@@ -62,6 +62,8 @@ module.exports = grammar({
         // string type name > byte string access
         [$.string_type_name, $.s_byte_str_spec, $.d_byte_str_spec],
         [$.unsigned_int, $.signed_int, $.int_literal,  $.bit_str_literal],
+
+        [$.global_ref_deref, $.enum_value]
     ],
 
     conflicts: $ => [
@@ -76,7 +78,6 @@ module.exports = grammar({
         [$.signed_int, $.bit_str_literal],
 
         // ambiguity in PROGRAM declaration
-        [$.derived_fb_name, $.class_type_name],
         [$.array_elem_init_value, $.primary_expr],
         [$.struct_elem_init, $.primary_expr],
         [$.string_type_name, $.var_spec],
@@ -92,23 +93,13 @@ module.exports = grammar({
         [$.no_retain_var_decls, $.loc_partly_var_decl],
 
         // conflicts in type declarations
-        [$.simple_type_name, $.subrange_type_name, $.enum_type_name, $.array_type_name, $.struct_type_name, $.ref_type_name, $.class_type_name, $.interface_type_name],
-        [$.simple_type_name, $.subrange_type_name, $.enum_type_name, $.array_type_name, $.struct_type_name, $.ref_type_name, $.interface_type_name],
-        [$.simple_type_name, $.subrange_type_name, $.enum_type_name, $.array_type_name, $.struct_type_name, $.ref_type_name],
-        [$.simple_type_name, $.subrange_type_name, $.enum_type_name, $.array_type_name, $.struct_type_name],
-        [$.simple_type_name, $.array_type_name, $.struct_type_name, $.ref_type_name, $.derived_fb_name],
-        [$.simple_type_name, $.array_type_name, $.struct_type_name, $.derived_fb_name],
-        [$.simple_type_name, $.array_type_name, $.struct_type_name],
-        [$.simple_type_name, $.interface_type_name],
-        [$.elem_type_name, $.string_type_access],
         [$.enum_spec_init, $.enum_value_spec],
-        [$.array_type_name, $.struct_type_name],
         [$.numeric_literal, $.enum_value_spec],
+        [$.numeric_type_name, $.subrange_spec],
+        [$.subrange_spec, $.enum_spec_init],
 
-        // ambiguity in CONFIGURATION declaration
-        [$.global_var_name, $.resource_name, $.prog_name],
-        [$.global_var_name, $.resource_name],
-        [$.global_var_name, $.enum_value],
+        [$.global_ref_deref],
+        [$.global_ref_deref, $.symbolic_variable]
     ],
 
     word: $ => $.identifier,
@@ -491,61 +482,12 @@ module.exports = grammar({
 
         // Table 11 - Declaration of user-defined data types and initialization
 
-        derived_type_access: $ => choice(
-            $.single_elem_type_access,
-            $.array_type_access,
-            $.struct_type_access,
-            $.string_type_access,
-            $.class_type_access,
-            $.ref_type_access,
-            $.interface_type_access
+        derived_type_access: $ => $.type_access,
+
+        type_access: $ => seq(
+            repeat(seq(field("ressource_or_namespace", $.identifier), '.')),
+            field("access", $.identifier)
         ),
-
-        string_type_access: $ => seq(
-            repeat(seq(field("namespace", $.identifier), '.')),
-            $.string_type_name
-        ),
-
-        single_elem_type_access: $ => choice(
-            $.simple_type_access,
-            $.subrange_type_access,
-            $.enum_type_access
-        ),
-
-        simple_type_access: $ => seq(
-            repeat(seq(field("namespace", $.identifier), '.')),
-            $.simple_type_name
-        ),
-
-        subrange_type_access: $ => seq(
-            repeat(seq(field("namespace", $.identifier), '.')),
-            $.subrange_type_name
-        ),
-
-        enum_type_access: $ => seq(
-            repeat(seq(field("namespace", $.identifier), '.')),
-            $.enum_type_name
-        ),
-
-        array_type_access: $ => seq(
-            repeat(seq(field("namespace", $.identifier), '.')),
-            $.array_type_name
-        ),
-
-        struct_type_access: $ => seq(
-            repeat(seq(field("namespace", $.identifier), '.')),
-            $.struct_type_name
-        ),
-
-        simple_type_name: $ => $.identifier,
-
-        subrange_type_name: $ => $.identifier,
-
-        enum_type_name: $ => $.identifier,
-
-        array_type_name: $ => $.identifier,
-
-        struct_type_name: $ => $.identifier,
 
         data_type_decl: $ => seq(
             'TYPE',
@@ -553,46 +495,56 @@ module.exports = grammar({
             'END_TYPE'
         ),
 
-        type_decl: $ => choice(
-            $.simple_type_decl,
-            $.subrange_type_decl,
-            $.enum_type_decl,
-            $.array_type_decl,
-            $.struct_type_decl,
-            $.str_type_decl,
-            $.ref_type_decl
+        type_decl: $ =>  seq( 
+            field("name", $.identifier),   
+            field("declaration", choice(
+                $.simple_type_decl,
+                $.subrange_type_decl,
+                $.enum_type_decl,
+                $.array_type_decl,
+                $.struct_type_decl,
+                $.str_type_decl,
+                $.ref_type_decl,
+            )),
+            field("spec", optional(
+                choice(
+                    $.array_spec,
+                    $.simple_spec,
+                    $.struct_spec_init,
+                    $.subrange_spec_init
+                )
+            ))
         ),
 
-        simple_type_decl: $ => seq(
-            $.simple_type_name,
-            ':',
-            $.simple_spec_init
+        spec: $ => seq(
+            $.type_access,
+            choice(
+                $.array_spec,
+                $.simple_spec,
+                $.struct_spec_init,
+                $.subrange_spec_init
+            )
         ),
 
-        simple_spec_init: $ => seq(
+        simple_type_decl: $ => seq(':', $.simple_spec_init),
+
+        simple_spec_init: $ => prec.left(seq(
             $.simple_spec,
             optional(seq(':=', $.constant_expr))
-        ),
+        )),
 
-        simple_spec: $ => choice(
-            $.elem_type_name,
-            $.simple_type_access
-        ),
+        simple_spec: $ =>  $.elem_type_name,
 
-        subrange_type_decl: $ => seq(
-            $.subrange_type_name,
-            ':',
-            $.subrange_spec_init
-        ),
+        subrange_type_decl: $ => seq(':', $.subrange_spec_init),
 
-        subrange_spec_init: $ => seq(
+        subrange_spec_init: $ => prec.left(seq(
             $.subrange_spec,
             optional(seq(':=', $.signed_int))
-        ),
+        )),
 
         subrange_spec: $ => choice(
             seq($.int_type_name, '(', $.subrange, ')'),
-            $.subrange_type_access
+            $.type_access
         ),
 
         subrange: $ => seq(
@@ -602,20 +554,19 @@ module.exports = grammar({
         ),
 
         enum_type_decl: $ => seq(
-            $.enum_type_name,
             ':',
             choice(seq(optional($.elem_type_name), $.named_spec_init), $.enum_spec_init)
         ),
 
-        named_spec_init: $ => seq(
+        named_spec_init: $ => prec.left(seq(
             '(',
             $.enum_value_spec,
             repeat(seq(',', $.enum_value_spec)),
             ')',
             optional(seq(':=', $.enum_value))
-        ),
+        )),
 
-        enum_spec_init: $ => seq(
+        enum_spec_init: $ => prec.left(seq(
             choice(
                 seq(
                     '(',
@@ -623,10 +574,10 @@ module.exports = grammar({
                     repeat(seq(',', $.identifier)),
                     ')'
                 ),
-                $.enum_type_access
+                $.type_access
             ),
             optional(seq(':=', $.enum_value))
-        ),
+        )),
 
         enum_value_spec: $ => seq(
             $.identifier,
@@ -637,25 +588,18 @@ module.exports = grammar({
         ),
 
         enum_value: $ => seq(
-            optional(seq($.enum_type_name, '#')),
+            optional(seq($.identifier, '#')),
             $.identifier
         ),
 
-        array_type_decl: $ => seq(
-            $.array_type_name,
-            ':',
-            $.array_spec_init
-        ),
+        array_type_decl: $ => seq(':', $.array_spec_init),
 
-        array_spec_init: $ => seq(
+        array_spec_init: $ => prec.left(seq(
             $.array_spec,
             optional(seq(':=', $.array_init))
-        ),
+        )),
 
-        array_spec: $ => choice(
-            $.array_type_access,
-            seq('ARRAY', '[', $.subrange, repeat(seq(',', $.subrange)), ']', 'OF', $.data_type_access)
-        ),
+        array_spec: $ => seq('ARRAY', '[', $.subrange, repeat(seq(',', $.subrange)), ']', 'OF', $.data_type_access),
 
         array_init: $ => seq(
             '[',
@@ -676,21 +620,13 @@ module.exports = grammar({
             $.array_init
         ),
 
-        struct_type_decl: $ => seq(
-            $.struct_type_name,
-            ':',
-            $.struct_spec
-        ),
+        struct_type_decl: $ => seq(':', $.struct_spec),
 
         struct_spec: $ => choice(
             $.struct_decl,
-            $.struct_spec_init
         ),
 
-        struct_spec_init: $ => seq(
-            $.struct_type_access,
-            optional(seq(':=', $.struct_init))
-        ),
+        struct_spec_init: $ => seq(':=', $.struct_init),
 
         struct_decl: $ => seq(
             'STRUCT',
@@ -700,7 +636,7 @@ module.exports = grammar({
         ),
 
         struct_elem_decl: $ => seq(
-            $.struct_elem_name,
+            field("name", $.identifier),
             optional(seq(
                 $.located_at,
                 optional($.multibit_part_access)
@@ -715,8 +651,6 @@ module.exports = grammar({
             )
         ),
 
-        struct_elem_name: $ => $.identifier,
-
         struct_init: $ => seq(
             '(',
             $.struct_elem_init,
@@ -725,17 +659,17 @@ module.exports = grammar({
         ),
 
         struct_elem_init: $ => seq(
-            $.struct_elem_name,
+            field("name", $.identifier),
             ':=',
             choice($.constant_expr, $.enum_value, $.array_init, $.struct_init, $.ref_value)
         ),
 
-        str_type_decl: $ => seq(
+        str_type_decl: $ => prec.left(seq(
             $.string_type_name,
             ':',
             $.string_type_name,
             optional(seq(':=', $.char_str))
-        ),
+        )),
 
         // Table 16 - Directly represented variables 
 
@@ -750,26 +684,19 @@ module.exports = grammar({
         // Table 12 - Reference operations 
 
         ref_type_decl: $ => seq(
-            $.ref_type_name,
+            field("name", $.identifier),
             ':',
             $.ref_spec_init
         ),
 
-        ref_spec_init: $ => seq(
+        ref_spec_init: $ => prec.left(seq(
             $.ref_spec,
             optional(seq(':=', $.ref_value))
-        ),
+        )),
 
         ref_spec: $ => seq(
             'REF_TO',
             $.data_type_access
-        ),
-
-        ref_type_name: $ => $.identifier,
-
-        ref_type_access: $ => seq(
-            repeat(seq(field("namespace", $.identifier), '.')),
-            $.ref_type_name
         ),
 
         ref_name: $ => $.identifier,
@@ -801,20 +728,18 @@ module.exports = grammar({
 
         variable: $ => choice($.direct_variable, $.symbolic_variable),
 
-        symbolic_variable: $ => prec.right(seq(
+        symbolic_variable: $ => prec(1, seq(
             optional(choice(
                 seq('THIS', '.'),
-                repeat1(seq(field("namespace", $.identifier), '.'))
+                prec.left(repeat1(seq(field("namespace", $.identifier), '.')))
             )),
-            choice($.var_access, $.multi_elem_var)
+            choice($.ref_deref, $.multi_elem_var)
         )),
 
-        var_access: $ => choice($.ref_deref),
-
-        multi_elem_var: $ => prec.left(seq(
-            $.var_access,
-            repeat1(choice($.subscript_list, $.struct_variable))
-        )),
+        multi_elem_var: $ => seq(
+            $.ref_deref,
+            prec.left(repeat1(choice($.subscript_list, $.struct_variable)))
+        ),
 
         subscript_list: $ => seq(
             '[',
@@ -830,7 +755,7 @@ module.exports = grammar({
             $.struct_elem_select
         ),
 
-        struct_elem_select: $ => $.var_access,
+        struct_elem_select: $ => $.ref_deref,
 
         input_decls: $ => seq(
             'VAR_INPUT',
@@ -873,7 +798,7 @@ module.exports = grammar({
         interface_var_decl: $ => seq(
             $.variable_list,
             ':',
-            $.interface_type_access
+            $.type_access
         ),
 
         variable_list: $ => seq(
@@ -914,7 +839,7 @@ module.exports = grammar({
             $.fb_name,
             repeat(seq(',', $.fb_name)),
             ':',
-            $.fb_type_access
+            $.type_access
         ),
 
         fb_decl_init: $ => seq(
@@ -963,7 +888,7 @@ module.exports = grammar({
         struct_var_decl: $ => seq(
             $.variable_list,
             ':',
-            $.struct_type_access
+            $.type_access
         ),
 
         var_decls: $ => seq(
@@ -1010,12 +935,10 @@ module.exports = grammar({
         ),
 
         external_decl: $ => seq(
-            $.global_var_name,
+            field("global_var_name", $.identifier),
             ':',
-            choice($.simple_spec, $.array_spec, $.struct_type_access, $.fb_type_access, $.ref_type_access),
+            choice($.simple_spec, $.array_spec, $.type_access),
         ),
-
-        global_var_name: $ => $.identifier,
 
         global_var_decls: $ => seq(
             'VAR_GLOBAL',
@@ -1027,16 +950,16 @@ module.exports = grammar({
         global_var_decl: $ => seq(
             $.global_var_spec,
             ':',
-            choice($.loc_var_spec_init, $.fb_type_access)
+            choice($.loc_var_spec_init, $.type_access)
         ),
 
         global_var_spec: $ => choice(
             seq(
-                $.global_var_name,
-                repeat(seq(',', $.global_var_name))
+                $.identifier,
+                repeat(seq(',', $.identifier))
             ),
             seq(
-                $.global_var_name,
+                $.identifier,
                 $.located_at
             )
         ),
@@ -1104,7 +1027,7 @@ module.exports = grammar({
         var_spec: $ => choice(
             $.simple_spec,
             $.array_spec,
-            $.struct_type_access,
+            $.type_access,
             seq(choice('STRING', 'WSTRING'), optional(seq('[', $.unsigned_int, ']'))),
         ),
 
@@ -1145,25 +1068,12 @@ module.exports = grammar({
         // Table 40 – Function block type declaration
         // Table 41 - Function block instance declaration
 
-        fb_type_name: $ => choice($.std_fb_name, $.derived_fb_name),
-
-        fb_type_access: $ => seq(
-            repeat(seq(field("namespace", $.identifier), '.')),
-            $.fb_type_name
-        ),
-
-        std_fb_name: $ => choice(
-            'SR', 'RS', 'R_TRIG', 'F_TRIG', 'CTU', 'CTD', 'CTUD', 'TP', 'TON', 'TOF'
-        ), // incomplete list ?
-
-        derived_fb_name: $ => $.identifier,
-
         fb_decl: $ => seq(
             'FUNCTION_BLOCK',
             field("qualifier", optional(choice('FINAL', 'ABSTRACT'))),
-            field("name", $.derived_fb_name),
+            field("name", $.identifier),
             field("directives", repeat($.using_directive)),
-            field("extends", optional(seq("EXTENDS", choice($.fb_type_access, $.class_type_access)))),
+            field("extends", optional(seq("EXTENDS", choice($.type_access)))),
             field("implements", optional(seq("IMPLEMENTS", $.interface_name_list))),
             field("variables", repeat(choice($.fb_io_var_decls, $.func_var_decls, $.temp_var_decls, $.other_var_decls))),
             field("method", repeat($.method_decl)),
@@ -1242,7 +1152,7 @@ module.exports = grammar({
             'CLASS',
             field("qualifier", optional(choice('FINAL', 'ABSTRACT'))),
             field("directive", repeat(seq($.class_type_name, $.using_directive))),
-            field("extends", optional(seq("EXTENDS", $.class_type_access))),
+            field("extends", optional(seq("EXTENDS", $.type_access))),
             field("implements", optional(seq("IMPLEMENTS", $.interface_name_list))),
             field("declarations", repeat(choice($.func_var_decls, $.other_var_decls))),
             field("method", repeat($.method_decl)),
@@ -1250,11 +1160,6 @@ module.exports = grammar({
         ),
 
         class_type_name: $ => $.identifier,
-
-        class_type_access: $ => (
-            repeat(seq(field("namespace", $.identifier), '.')),
-            $.class_type_name
-        ),
 
         instance_name: $ => seq(
             repeat(seq(field("namespace", $.identifier), '.')),
@@ -1264,7 +1169,7 @@ module.exports = grammar({
 
         interface_decl: $ => seq(
             'INTERFACE',
-            field("directive", repeat(seq($.interface_type_name, $.using_directive))),
+            field("directive", repeat(seq($.identifier, $.using_directive))),
             field("extends", optional(seq('EXTENDS', $.interface_name_list))),
             field("prototype", repeat($.method_prototype)),
             'END_INTERFACE'
@@ -1290,15 +1195,8 @@ module.exports = grammar({
         ),
 
         interface_name_list: $ => seq(
-            $.interface_type_access,
-            repeat(seq(',', $.interface_type_access))
-        ),
-
-        interface_type_name: $ => $.identifier,
-
-        interface_type_access: $ => seq(
-            repeat(seq(field("namespace", $.identifier), '.')),
-            $.interface_type_name
+            $.type_access,
+            repeat(seq(',', $.type_access))
         ),
 
         interface_name: $ => $.identifier,
@@ -1328,7 +1226,7 @@ module.exports = grammar({
         ),
 
         prog_access_decls: $ => seq(
-            'VAR_ACCESS',
+            'ref_deref',
             repeat(seq($.prog_access_decl, ';')),
             $.identifier
         ),
@@ -1447,7 +1345,7 @@ module.exports = grammar({
 
         resource_decl: $ => seq(
             'RESOURCE',
-            field("name", $.resource_name),
+            field("name", $.identifier),
             'ON',
             field("resource_type_name", $.resource_type_name),
             field("global_variables", optional($.global_var_decls)),
@@ -1460,10 +1358,8 @@ module.exports = grammar({
             repeat1(seq($.prog_config, ';'))
         ),
 
-        resource_name: $ => $.identifier,
-
         access_decls: $ => seq(
-            'VAR_ACCESS',
+            'ref_deref',
             repeat(seq($.access_decl, ';')),
             'END_VAR'
         ),
@@ -1477,40 +1373,35 @@ module.exports = grammar({
         ),
 
         access_path: $ => choice(
-            seq(optional(seq($.resource_name, '.')), $.direct_variable),
+            seq(optional(seq($.identifier, '.')), $.direct_variable),
             seq(
-                optional(seq($.resource_name, '.')),
-                optional(seq($.prog_name, '.')),
+                optional(seq($.identifier, '.')),
                 repeat(seq(choice($.instance_name), '.')),
                 $.symbolic_variable
             )
         ),
 
-        global_var_access: $ => seq(
-            optional(seq($.resource_name, '.')),
-            $.global_var_name,
-            optional(seq('.', $.struct_elem_name))
-        ),
+        global_ref_deref: $ => prec.left(seq(
+            optional(seq($.identifier, '.')),
+            field("name", $.identifier),
+            optional(seq('.', field("struct_name", $.identifier)))
+        )),
 
         access_name: $ => $.identifier,
 
         prog_output_access: $ => seq(
-            $.prog_name,
+            field("prog_name", $.identifier),
             '.',
             $.symbolic_variable
         ),
-
-        prog_name: $ => $.identifier,
 
         access_direction: $ => choice('READ_WRITE', 'READ_ONLY'),
 
         task_config: $ => seq(
             'TASK',
-            field("name", $.task_name),
+            field("name", $.identifier),
             field("init", $.task_init)
         ),
-
-        task_name: $ => $.identifier,
 
         task_init: $ => seq(
             '(',
@@ -1522,7 +1413,7 @@ module.exports = grammar({
 
         data_source: $ => choice(
             $.constant,
-            $.global_var_access,
+            $.global_ref_deref,
             $.prog_output_access,
             $.direct_variable
         ),
@@ -1530,8 +1421,8 @@ module.exports = grammar({
         prog_config: $ => seq(
             'PROGRAM',
             field("retain", optional(choice('RETAIN', 'NON_RETAIN'))),
-            field("name", $.prog_name),
-            field("task", optional(seq('WITH', $.task_name))),
+            field("name", $.identifier),
+            field("task", optional(seq('WITH', $.identifier))),
             ':',
             field("access", $.prog_type_access),
             field("configuration_elements", optional(seq('(', $.prog_conf_elems, ')')))
@@ -1550,7 +1441,7 @@ module.exports = grammar({
         fb_task: $ => seq(
             $.instance_name,
             'WITH',
-            $.task_name
+            field("task", $.identifier)
         ),
 
         prog_cnxn: $ => choice(
@@ -1561,12 +1452,12 @@ module.exports = grammar({
         prog_data_source: $ => choice(
             $.constant,
             $.enum_value,
-            $.global_var_access,
+            $.global_ref_deref,
             $.direct_variable
         ),
 
         data_sink: $ => choice(
-            $.global_var_access,
+            $.global_ref_deref,
             $.direct_variable
         ),
 
@@ -1577,15 +1468,17 @@ module.exports = grammar({
         ),
 
         config_inst_init: $ => seq(
-            $.resource_name, '.', $.prog_name, '.',
+            field("resource", $.identifier),
+             '.', 
+             field("prog", $.identifier),
+              '.',
             repeat(seq(choice($.instance_name), '.')),
             choice(
                 seq($.identifier, optional($.located_at), ':', $.loc_var_spec_init),
                 seq(
-                    choice(
-                        seq($.instance_name, ':', $.fb_type_access),
-                        seq($.instance_name, ':', $.class_type_access)
-                    ),
+                    $.instance_name, 
+                    ':', 
+                    $.type_access,
                     ':=',
                     $.struct_init
                 )
