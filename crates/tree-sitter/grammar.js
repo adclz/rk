@@ -30,7 +30,7 @@ const RESERVED_NAMES = [
     "RESOURCE", "END_RESOURCE",
     "NAMESPACE", "END_NAMESPACE",
     "USING",
-    "FUNCTION", "END_FUNCTION", 
+    "FUNCTION", "END_FUNCTION",
     "FUNCTION_BLOCK", "END_FUNCTION_BLOCK",
     "TYPE", "END_TYPE",
     "VAR", "END_VAR",
@@ -45,7 +45,7 @@ const RESERVED_NAMES = [
 /// <reference types="tree-sitter-cli/dsl" />
 // @ts-check
 module.exports = grammar({
-  name: "rk",
+    name: "rk",
 
     extras: $ => [
         /\s/, // Whitespace
@@ -61,7 +61,7 @@ module.exports = grammar({
     precedences: $ => [
         // string type name > byte string access
         [$.string_type_name, $.s_byte_str_spec, $.d_byte_str_spec],
-        [$.unsigned_int, $.signed_int, $.int_literal,  $.bit_str_literal],
+        [$.unsigned_int, $.signed_int, $.int_literal, $.bit_str_literal],
 
         [$.global_ref_deref, $.enum_value]
     ],
@@ -99,14 +99,14 @@ module.exports = grammar({
         [$.subrange_spec, $.enum_spec_init],
 
         [$.global_ref_deref],
-        [$.global_ref_deref, $.symbolic_variable]
+        [$.global_ref_deref, $.symbolic_variable],
     ],
 
     word: $ => $.identifier,
 
     rules: {
         // Source file declaration
-        source_file : $ => repeat(
+        source_file: $ => repeat(
             choice(
                 $.config_decl, // Declaration of CONFIGURATION and RESOURCE
                 $.prog_decl, // Declaration of PROGRAM
@@ -151,10 +151,10 @@ module.exports = grammar({
             )
         ),
 
-        unsigned_int: $ => seq(
+        unsigned_int: $ => prec.left(seq(
             $.digit,
             repeat(seq(optional('_',), $.digit))
-        ),
+        )),
 
         signed_int: $ => seq(
             optional(choice('+', '-')),
@@ -294,53 +294,53 @@ module.exports = grammar({
             $.nanoseconds
         ),
 
-        days: $ => choice(
+        days: $ => prec.left(choice(
             seq($.fix_point, 'd'),
             seq(
                 $.unsigned_int, 'd', optional('_'),
                 optional($.hours)
             )
-        ),
+        )),
 
-        hours: $ => choice(
+        hours: $ => prec.left(choice(
             seq($.fix_point, 'h'),
             seq(
                 $.unsigned_int, 'h', optional('_'),
                 optional($.minutes)
             )
-        ),
+        )),
 
-        minutes: $ => choice(
+        minutes: $ => prec.left(choice(
             seq($.fix_point, 'm'),
             seq(
                 $.unsigned_int, 'm', optional('_'),
                 optional($.seconds)
             )
-        ),
+        )),
 
-        seconds: $ => choice(
+        seconds: $ => prec.left(choice(
             seq($.fix_point, 's'),
             seq(
                 $.unsigned_int, 's', optional('_'),
                 optional($.milliseconds)
             )
-        ),
+        )),
 
-        milliseconds: $ => choice(
+        milliseconds: $ => prec.left(choice(
             seq($.fix_point, 'ms'),
             seq(
                 $.unsigned_int, 'ms', optional('_'),
                 optional($.microseconds)
             )
-        ),
+        )),
 
-        microseconds: $ => choice(
+        microseconds: $ => prec.left(choice(
             seq($.fix_point, 'us'),
             seq(
                 $.unsigned_int, 'us', optional('_'),
                 optional($.nanoseconds)
             )
-        ),
+        )),
 
         nanoseconds: $ => seq(
             $.fix_point,
@@ -495,8 +495,8 @@ module.exports = grammar({
             'END_TYPE'
         ),
 
-        type_decl: $ =>  seq( 
-            field("name", $.identifier),   
+        type_decl: $ => seq(
+            field("name", $.identifier),
             field("declaration", choice(
                 $.simple_type_decl,
                 $.subrange_type_decl,
@@ -533,7 +533,7 @@ module.exports = grammar({
             optional(seq(':=', $.constant_expr))
         )),
 
-        simple_spec: $ =>  $.elem_type_name,
+        simple_spec: $ => $.elem_type_name,
 
         subrange_type_decl: $ => seq(':', $.subrange_spec_init),
 
@@ -1044,7 +1044,7 @@ module.exports = grammar({
             field("access", optional(seq(':', $.data_type_access))),
             field("directive", repeat($.using_directive)),
             field("variables", repeat(choice($.io_var_decls, $.func_var_decls, $.temp_var_decls))),
-            field("body", $.func_body),
+            field("body", optional($.func_body)),
             'END_FUNCTION'
         ),
 
@@ -1141,7 +1141,7 @@ module.exports = grammar({
             $.identifier,
             optional(seq(':', $.data_type_access)),
             repeat(choice($.io_var_decls, $.func_var_decls, $.temp_var_decls)),
-            $.func_body,
+            field("body", optional($.func_body)),
             'END_METHOD'
         ),
 
@@ -1151,7 +1151,8 @@ module.exports = grammar({
         class_decl: $ => seq(
             'CLASS',
             field("qualifier", optional(choice('FINAL', 'ABSTRACT'))),
-            field("directive", repeat(seq($.class_type_name, $.using_directive))),
+            field("name", $.class_type_name),
+            field("directives", repeat( $.using_directive)),
             field("extends", optional(seq("EXTENDS", $.type_access))),
             field("implements", optional(seq("IMPLEMENTS", $.interface_name_list))),
             field("declarations", repeat(choice($.func_var_decls, $.other_var_decls))),
@@ -1209,14 +1210,14 @@ module.exports = grammar({
             'PROGRAM',
             field("name", $.identifier),
             field("declarations", repeat(choice(
-                $.io_var_decls, 
-                $.func_var_decls, 
-                $.temp_var_decls, 
-                $.other_var_decls, 
-                $.loc_var_decls, 
+                $.io_var_decls,
+                $.func_var_decls,
+                $.temp_var_decls,
+                $.other_var_decls,
+                $.loc_var_decls,
                 $.prog_access_decl
             ))),
-            field("body", $.fb_body),
+            field("body", optional($.fb_body)),
             'END_PROGRAM'
         ),
 
@@ -1469,15 +1470,15 @@ module.exports = grammar({
 
         config_inst_init: $ => seq(
             field("resource", $.identifier),
-             '.', 
-             field("prog", $.identifier),
-              '.',
+            '.',
+            field("prog", $.identifier),
+            '.',
             repeat(seq(choice($.instance_name), '.')),
             choice(
                 seq($.identifier, optional($.located_at), ':', $.loc_var_spec_init),
                 seq(
-                    $.instance_name, 
-                    ':', 
+                    $.instance_name,
+                    ':',
                     $.type_access,
                     ':=',
                     $.struct_init
@@ -1565,10 +1566,10 @@ module.exports = grammar({
             repeat(seq(choice('<', '>', '<=', '>='), $.add_expr))
         ),
 
-        add_expr: $ => seq(
+        add_expr: $ => prec.left(seq(
             $.term,
             repeat(seq(choice('+', '-'), $.term))
-        ),
+        )),
 
         term: $ => seq(
             $.power_expr,
@@ -1610,27 +1611,25 @@ module.exports = grammar({
         func_call: $ => seq(
             $.func_access,
             '(',
-                optional(seq($.param_assign, repeat(seq(',', $.param_assign)))),
+            optional(seq($.param_assign, repeat(seq(',', $.param_assign)))),
             ')'
         ),
 
         // note: IEC does not specify at least one occurence of a statement in a statement list
         // but since tree sitter does not support empty string, we have to add at least one statement.
-        stmt_list: $ => prec.left(repeat1(
-            seq(optional($.stmt), ';')
-        )),
+        stmt_list: $ => prec.right(repeat1(seq($.stmt, ";"))),
 
         stmt: $ => choice(
             $.assign_stmt,
             $.subprog_ctrl_stmt,
             $.selection_stmt,
-            $.iteration_stmt
+            $.iteration_stmt,
         ),
 
         assign_stmt: $ => choice(
             seq($.variable, ':=', $.expression),
             $.ref_assign,
-            $.assignment_attempt
+            $.assignment_attempt,
         ),
 
         assignment_attempt: $ => seq(
@@ -1651,7 +1650,7 @@ module.exports = grammar({
                 )
             ),
             '(',
-                optional(seq($.param_assign, repeat(seq(',', $.param_assign)))),
+            optional(seq($.param_assign, repeat(seq(',', $.param_assign)))),
             ')'
         ),
 
@@ -1663,9 +1662,9 @@ module.exports = grammar({
         ),
 
         param_assign: $ => choice(
-           seq(optional(seq(field("variable_name", $.identifier), ':=')), $.expression),
-           $.ref_assign,
-           seq(optional('NOT'), field("variable_name", $.identifier), '=>', $.variable)
+            seq(optional(seq(field("variable_name", $.identifier), ':=')), $.expression),
+            $.ref_assign,
+            seq(optional('NOT'), field("variable_name", $.identifier), '=>', $.variable)
         ),
 
         selection_stmt: $ => choice(
@@ -1776,6 +1775,6 @@ module.exports = grammar({
         bit: $ => /[01]/,
         octal_digit: $ => /[0-7]/,
         hex_digit: $ => /[0-9a-fA-F]/,
-        identifier: $ =>  /[0-9a-zA-Z_]+/,
+        identifier: $ => /[0-9a-zA-Z_]+/,
     }
 });
