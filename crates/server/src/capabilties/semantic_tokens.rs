@@ -1,5 +1,5 @@
 use ast::generated::NamespaceDecl;
-use auto_lsp::{anyhow, core::{ast::AstNode, dispatch, semantic_tokens_builder::SemanticTokensBuilder}, default::db::{tracked::get_ast, BaseDatabase, File}, define_semantic_token_types, lsp_types::{SemanticTokensParams, SemanticTokensResult}};
+use auto_lsp::{anyhow, core::{ast::AstNode, dispatch, semantic_tokens_builder::SemanticTokensBuilder}, default::db::{tracked::get_ast, BaseDatabase, File}, define_semantic_token_modifiers, define_semantic_token_types, lsp_types::{SemanticTokensParams, SemanticTokensResult}};
 
 define_semantic_token_types![
     standard {
@@ -9,6 +9,16 @@ define_semantic_token_types![
 
     custom {
 
+    }
+];
+
+define_semantic_token_modifiers![
+    standard {
+
+    }
+
+    custom {
+        (INTERNAL, "internal")
     }
 ];
 
@@ -44,7 +54,9 @@ impl Tokens for NamespaceDecl {
     fn tokens(&self, _db: &impl BaseDatabase, _file: File, builder: &mut SemanticTokensBuilder) -> anyhow::Result<()> {
         builder.push(self.name.get_lsp_range(), 
         SUPPORTED_TYPES.iter().position(|x| *x == NAMESPACE).unwrap() as u32, 
-        0);
+        if self.internal.is_some() { 
+            SUPPORTED_MODIFIERS.iter().position(|x| *x == INTERNAL).unwrap() as u32
+         } else { 0 });
         Ok(())
     }
 }

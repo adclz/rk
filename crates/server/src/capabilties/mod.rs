@@ -1,2 +1,9 @@
 pub mod document_symbols;
 pub mod semantic_tokens;
+pub mod hover;
+pub mod code_actions;
+pub mod code_lens;
+pub mod folding_ranges;
+pub mod diagnostics;
+pub mod completions;
+pub mod inlay_hints;

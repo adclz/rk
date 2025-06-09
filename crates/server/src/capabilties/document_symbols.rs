@@ -1,13 +1,13 @@
 #![allow(deprecated)]
 
-use ast::generated::{ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl, ConfigDecl_NamespaceDecl_ProgDecl, FbDecl, FuncDecl, NamespaceDecl, SourceFile};
+use ast::generated::{ClassDecl, ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl, ConfigDecl_NamespaceDecl_ProgDecl, FbDecl, FuncDecl, NamespaceDecl, SourceFile};
 use auto_lsp::{
     anyhow, core::{
         ast::AstNode,
         dispatch,
         document::Document,
         document_symbols_builder::DocumentSymbolsBuilder,
-    }, default::db::{tracked::get_ast, BaseDatabase}, lsp_types::{DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, SymbolKind}
+    }, default::db::{tracked::get_ast, BaseDatabase}, lsp_types::{self, DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, SymbolKind}
 };
 
 pub fn document_symbols(
@@ -64,6 +64,7 @@ impl Symbols for NamespaceDecl {
                     Children::NamespaceDecl(n) => n.symbols(doc, &mut nested_builder),
                     Children::FbDecl(d) => d.symbols(doc, &mut nested_builder),
                     Children::FuncDecl(d) => d.symbols(doc, &mut nested_builder),
+                    Children::ClassDecl(d) => d.symbols(doc, &mut nested_builder),
                     _ => Ok(()),
                 }
             })
@@ -108,6 +109,23 @@ impl Symbols for FbDecl {
             name: self.name.get_text(doc.texter.text.as_bytes())?.to_string(),
             detail: None,
             kind: SymbolKind::FUNCTION,
+            selection_range: self.name.get_lsp_range(),
+            deprecated: None,
+            tags: None,
+            children: None,
+            range: self.get_lsp_range(),
+        });
+        Ok(())
+    }
+}
+
+
+impl Symbols for ClassDecl {
+    fn symbols(&self, doc: &Document, builder: &mut DocumentSymbolsBuilder) -> anyhow::Result<()> {
+        builder.push_symbol(DocumentSymbol {
+            name: self.name.get_text(doc.texter.text.as_bytes())?.to_string(),
+            detail: None,
+            kind: SymbolKind::CLASS,
             selection_range: self.name.get_lsp_range(),
             deprecated: None,
             tags: None,
