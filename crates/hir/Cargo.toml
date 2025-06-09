@@ -1,0 +1,15 @@
+[package]
+name = "hir"
+authors = ["Clauzel Adrien"]
+license = "AGPL-3.0-only"
+description = ""
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+auto-lsp = { workspace = true }
+dashmap = { workspace = true }
+ast = { workspace = true }
+expect-test = "1.5.1"
+salsa = "0.22.0"
