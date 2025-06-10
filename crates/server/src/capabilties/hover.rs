@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 use ast::generated::{ClassDecl, FbDecl, FuncDecl, Identifier, NamespaceDecl};
 use auto_lsp::{anyhow, core::dispatch_once, default::db::{tracked::get_ast, BaseDatabase, File}, lsp_types::{Hover, HoverContents, HoverParams, MarkupContent, MarkupKind}, tree_sitter::{self, Point}};
 use auto_lsp::core::ast::AstNode;
-use db::namespaces::namespace_solver;
+use db::solver::namespace_solver;
 
 pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Option<Hover>> {
     let uri = &params.text_document_position_params.text_document.uri;

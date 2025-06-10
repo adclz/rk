@@ -1,7 +1,7 @@
 use ast::generated::{ClassDecl, FbDecl, FuncDecl, NamespaceDecl};
 use auto_lsp::{anyhow, core::dispatch, default::db::{tracked::get_ast, BaseDatabase, File}, lsp_types::{CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams, InlayHint, InlayHintKind, InlayHintLabel, InlayHintParams}};
 use auto_lsp::core::ast::AstNode;
-use db::namespaces::{namespace_solver};
+use db::solver::{namespace_solver};
 
 pub fn inlay_hints(db: &impl BaseDatabase, params: InlayHintParams) -> anyhow::Result<Option<Vec<InlayHint>>> {
     let uri = &params.text_document.uri;

@@ -1,6 +1,8 @@
 #![recursion_limit = "256"]
 
-pub mod namespaces;
+pub mod hir;
+pub mod solver;
+pub mod builder;
 
 use auto_lsp::{default::db::{BaseDatabase, File}, lsp_types::Url, salsa};
 use dashmap::DashMap;

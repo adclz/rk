@@ -1,7 +1,7 @@
 use ast::generated::NamespaceDecl;
 use auto_lsp::{anyhow, core::dispatch, default::db::{tracked::get_ast, BaseDatabase, File}, lsp_types::{CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams, CodeLens, CodeLensParams, Command}};
 use auto_lsp::core::ast::AstNode;
-use db::namespaces::{namespace_path, namespace_solver};
+use db::solver::{namespace_path, namespace_solver};
 
 pub fn code_lens(db: &impl BaseDatabase, params: CodeLensParams) -> anyhow::Result<Option<Vec<CodeLens>>> {
     let uri = &params.text_document.uri;
