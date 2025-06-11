@@ -19,7 +19,6 @@ define_semantic_token_types![
         TYPE,
         VARIABLE,
         KEYWORD,
-        COMMENT,
         MODIFIER
     }
 
@@ -69,8 +68,6 @@ static HIGHLIGHT_QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         (func_decl name: (_) @declaration.function)
         (fb_decl name: (_) @declaration.function_block)
         (class_decl name: (_) @declaration.class)
-
-        (comment) @comment
         "#,
     )
     .unwrap()
@@ -138,7 +135,6 @@ pub fn semantic_tokens_full(
                     SUPPORTED_TYPES.iter().position(|x| *x == KEYWORD).unwrap() as u32
                 }
             }
-            "comment" => SUPPORTED_TYPES.iter().position(|x| *x == COMMENT).unwrap() as u32,
             "declaration" => {
                 modifiers |= DECLARATION;
                 match parse_captures[1] {
