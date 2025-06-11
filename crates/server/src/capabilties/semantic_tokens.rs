@@ -57,6 +57,14 @@ static HIGHLIGHT_QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
          "END_CLASS"
          "INTERFACE"
          "END_INTERFACE"
+         "VAR_INPUT"
+         "VAR_OUTPUT"
+         "VAR_IN_OUT"
+         "VAR_TEMP"
+         "VAR_EXTERNAL"
+         "VAR_GLOBAL"
+         "VAR"
+         "END_VAR"
         ] @keyword
 
         ["PUBLIC" "PROTECTED" "PRIVATE" "INTERNAL"] @keyword.modifiers

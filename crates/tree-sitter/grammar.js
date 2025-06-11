@@ -762,7 +762,7 @@ module.exports = grammar({
         input_decls: $ => seq(
             'VAR_INPUT',
             optional(choice('RETAIN', 'NON_RETAIN')),
-            repeat(seq($.input_decl, ';')),
+            repeat(seq($.input_decl, optional(';'))),
             'END_VAR'
         ),
 
@@ -854,7 +854,7 @@ module.exports = grammar({
         output_decls: $ => seq(
             'VAR_OUTPUT',
             optional(choice('RETAIN', 'NON_RETAIN')),
-            repeat(seq($.output_decl, ';')),
+            repeat(seq($.output_decl, optional(';'))),
             'END_VAR'
         ),
 
@@ -865,7 +865,7 @@ module.exports = grammar({
 
         in_out_decls: $ => seq(
             'VAR_IN_OUT',
-            repeat(seq($.in_out_var_decl, ';')),
+            repeat(seq($.in_out_var_decl, optional(';'))),
             'END_VAR'
         ),
 
@@ -897,7 +897,7 @@ module.exports = grammar({
             'VAR',
             optional('CONSTANT'),
             optional($.access_spec),
-            repeat(seq($.var_decl_init, ';')),
+            repeat(seq($.var_decl_init, optional(';'))),
             'END_VAR'
         ),
 
@@ -905,14 +905,14 @@ module.exports = grammar({
             'VAR',
             'RETAIN',
             optional($.access_spec),
-            repeat(seq($.var_decl_init, ';')),
+            repeat(seq($.var_decl_init, optional(';'))),
             'END_VAR'
         ),
 
         loc_var_decls: $ => seq(
             'VAR',
             optional(choice('CONSTANT', 'RETAIN', 'NON_RETAIN')),
-            repeat(seq($.loc_var_decl, ';')),
+            repeat(seq($.loc_var_decl, optional(';'))),
             'END_VAR'
         ),
 
@@ -925,14 +925,14 @@ module.exports = grammar({
 
         temp_var_decls: $ => seq(
             'VAR_TEMP',
-            repeat(seq(choice($.var_decl, $.ref_var_decl, $.interface_var_decl), ';')),
+            repeat(seq(choice($.var_decl, $.ref_var_decl, $.interface_var_decl), optional(';'))),
             'END_VAR'
         ),
 
         external_var_decls: $ => seq(
             'VAR_EXTERNAL',
             optional('CONSTANT'),
-            repeat(seq($.external_decl, ';')),
+            repeat(seq($.external_decl, optional(';'))),
             'END_VAR'
         ),
 
@@ -945,7 +945,7 @@ module.exports = grammar({
         global_var_decls: $ => seq(
             'VAR_GLOBAL',
             optional(choice('CONSTANT', 'RETAIN')),
-            repeat(seq($.global_var_decl, ';')),
+            repeat(seq($.global_var_decl, optional(';'))),
             'END_VAR'
         ),
 
@@ -1023,7 +1023,7 @@ module.exports = grammar({
             '*',
             ':',
             $.var_spec,
-            ';'
+            optional(';')
         ),
 
         var_spec: $ => choice(
@@ -1092,7 +1092,7 @@ module.exports = grammar({
         fb_input_decls: $ => seq(
             'VAR_INPUT',
             optional(choice('RETAIN', 'NON_RETAIN')),
-            repeat(seq($.fb_input_decl, ';')),
+            repeat(seq($.fb_input_decl, optional(';'))),
             'END_VAR'
         ),
 
@@ -1105,7 +1105,7 @@ module.exports = grammar({
         fb_output_decls: $ => seq(
             'VAR_OUTPUT',
             optional(choice('RETAIN', 'NON_RETAIN')),
-            repeat(seq($.fb_output_decl, ';')),
+            repeat(seq($.fb_output_decl, optional(';'))),
             'END_VAR'
         ),
 
@@ -1124,7 +1124,7 @@ module.exports = grammar({
             'VAR',
             'NON_RETAIN',
             optional($.access_spec),
-            repeat(seq($.var_decl_init, ';')),
+            repeat(seq($.var_decl_init, optional(';'))),
             'END_VAR'
         ),
 
@@ -1466,7 +1466,7 @@ module.exports = grammar({
 
         config_init: $ => seq(
             'VAR_CONFIG',
-            repeat(seq($.config_inst_init, ';')),
+            repeat(seq($.config_inst_init, optional(';'))),
             'END_VAR'
         ),
 

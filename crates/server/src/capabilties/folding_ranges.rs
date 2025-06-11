@@ -12,11 +12,19 @@ static FOLD: &str = r#"
   (fb_decl)
   (class_decl)
   (interface_decl)
+
+  (fb_io_var_decls)
+  (func_var_decls)
+  (temp_var_decls) 
+  (other_var_decls)
+
+  (io_var_decls)
+  (func_var_decls) 
+  (temp_var_decls)
 ] @fold
 
-[
-  (comment) @fold.comment
-] @fold.comment"#;
+(comment) @fold.comment
+"#;
 
 pub static FOLD_QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
     tree_sitter::Query::new(&tree_sitter_rk::LANGUAGE.into(), FOLD)
