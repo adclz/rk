@@ -17,7 +17,7 @@ members = [
 ]
 
 [workspace.dependencies]
-auto-lsp = "0.6.0"
+auto-lsp = "0.6.1"
 auto-lsp-codegen = "0.2.0"
 log = "0.4.27"
 dashmap = "6.1.0"
