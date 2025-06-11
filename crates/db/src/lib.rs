@@ -6,12 +6,22 @@ pub mod builder;
 
 use auto_lsp::{default::db::{BaseDatabase, File}, lsp_types::Url, salsa};
 use dashmap::DashMap;
+use salsa::Event;
 
 #[salsa::db]
 #[derive(Default, Clone)]
 pub struct RootDatabase {
     storage: salsa::Storage<Self>,
     pub(crate) files: DashMap<Url, File>,
+}
+
+impl RootDatabase {
+    pub fn new(logs: Option<Box<dyn Fn(Event)  + Send + Sync>>) -> Self {
+        Self {
+            storage: salsa::Storage::new(logs),
+            files: DashMap::default(),
+        }
+    }
 }
 
 #[salsa::db]

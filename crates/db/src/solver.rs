@@ -48,7 +48,7 @@ pub fn namespaces_in_file(db: &dyn BaseDatabase, file: File) -> FileNamespaces {
 pub fn namespace_path<'db>(db: &'db dyn BaseDatabase, path: NamespacePath) -> Vec<FileNamespaces> {
     db.get_files().iter().enumerate().filter_map(|(_, file)| {
         let namespaces = namespaces_in_file(db, *file);
-        if namespaces.0.contains_key(&path) {
+        if namespaces.namespaces.contains_key(&path) {
             Some(namespaces)
         } else {
             None
