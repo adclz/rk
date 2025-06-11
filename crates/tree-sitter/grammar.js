@@ -1519,7 +1519,7 @@ module.exports = grammar({
             'USING',
             $.namespace_h_name,
             repeat(seq(',', $.namespace_h_name)),
-            ';'
+            optional(';')
         ),
 
         pou_decl: $ => seq(
