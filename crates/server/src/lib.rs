@@ -51,7 +51,7 @@ use std::panic::RefUnwindSafe;
 
 use crate::capabilties::code_actions::code_actions;
 use crate::capabilties::code_lens::code_lens;
-use crate::capabilties::completions::completions;
+use crate::capabilties::completions::request::completions;
 use crate::capabilties::diagnostics::diagnostics;
 use crate::capabilties::document_symbols::document_symbols;
 use crate::capabilties::folding_ranges::folding_ranges;
