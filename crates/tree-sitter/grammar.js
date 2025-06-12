@@ -23,6 +23,13 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>
  * @license AGPL-3.0-only
  */
 
+function commaSep1(rule) {
+  return seq(rule, repeat(seq(',', rule)))
+}
+
+function commaSep(rule) {
+  return optional(commaSep1(rule))
+}
 
 const RESERVED_NAMES = [
     "PROGRAM", "END_PROGRAM",
@@ -562,21 +569,13 @@ module.exports = grammar({
         ),
 
         named_spec_init: $ => prec.left(seq(
-            '(',
-            $.enum_value_spec,
-            repeat(seq(',', $.enum_value_spec)),
-            ')',
+            '(', commaSep1($.enum_value_spec),')',
             optional(seq(':=', $.enum_value))
         )),
 
         enum_spec_init: $ => prec.left(seq(
             choice(
-                seq(
-                    '(',
-                    $.identifier,
-                    repeat(seq(',', $.identifier)),
-                    ')'
-                ),
+                seq( '(', commaSep($.identifier),')' ),
                 $.type_access
             ),
             optional(seq(':=', $.enum_value))
@@ -602,14 +601,9 @@ module.exports = grammar({
             optional(seq(':=', $.array_init))
         )),
 
-        array_spec: $ => seq('ARRAY', '[', $.subrange, repeat(seq(',', $.subrange)), ']', 'OF', $.data_type_access),
+        array_spec: $ => seq('ARRAY', '[', commaSep1($.subrange), ']', 'OF', $.data_type_access),
 
-        array_init: $ => seq(
-            '[',
-            $.array_elem_init,
-            repeat(seq(',', $.array_elem_init)),
-            ']'
-        ),
+        array_init: $ => seq('[', commaSep($.array_elem_init),']'),
 
         array_elem_init: $ => choice(
             $.array_elem_init_value,
@@ -650,12 +644,7 @@ module.exports = grammar({
             )
         ),
 
-        struct_init: $ => seq(
-            '(',
-                $.struct_elem_init,
-                repeat(seq(',', $.struct_elem_init)),
-            ')'
-        ),
+        struct_init: $ => seq('(', commaSep($.struct_elem_init), ')'),
 
         struct_elem_init: $ => seq(
             field("name", $.identifier),
@@ -740,12 +729,7 @@ module.exports = grammar({
             prec.left(repeat1(choice($.subscript_list, $.struct_variable)))
         ),
 
-        subscript_list: $ => seq(
-            '[',
-            $.subscript,
-            repeat(seq(',', $.subscript)),
-            ']'
-        ),
+        subscript_list: $ => seq('[', commaSep($.subscript), ']'),
 
         subscript: $ => $.expression,
 
@@ -807,16 +791,12 @@ module.exports = grammar({
             $.type_access
         ),
 
-        variable_list: $ => seq(
-            $.identifier,
-            repeat(seq(',', $.identifier))
-        ),
+        variable_list: $ => commaSep1($.identifier),
 
         array_conformand: $ => seq(
             'ARRAY',
             '[',
-            '*',
-            repeat(seq(',', '*')),
+            commaSep1('*'),
             ']',
             'OF',
             $.data_type_access
@@ -829,8 +809,7 @@ module.exports = grammar({
         ),
 
         fb_decl_no_init: $ => seq(
-            $.fb_name,
-            repeat(seq(',', $.fb_name)),
+            commaSep1($.fb_name),
             ':',
             $.type_access
         ),
@@ -944,10 +923,7 @@ module.exports = grammar({
         ),
 
         global_var_spec: $ => choice(
-            seq(
-                $.identifier,
-                repeat(seq(',', $.identifier))
-            ),
+            seq(commaSep1($.identifier)),
             seq(
                 $.identifier,
                 $.located_at
@@ -1170,10 +1146,7 @@ module.exports = grammar({
             'NULL'
         ),
 
-        interface_name_list: $ => seq(
-            $.type_access,
-            repeat(seq(',', $.type_access))
-        ),
+        interface_name_list: $ => commaSep1($.type_access),
 
         interface_name: $ => $.identifier,
 
@@ -1404,10 +1377,7 @@ module.exports = grammar({
             field("configuration_elements", optional(seq('(', $.prog_conf_elems, ')')))
         ),
 
-        prog_conf_elems: $ => seq(
-            $.prog_conf_elem,
-            repeat(seq(',', $.prog_conf_elem))
-        ),
+        prog_conf_elems: $ => commaSep1($.prog_conf_elem),
 
         prog_conf_elem: $ => choice(
             $.fb_task,
@@ -1490,8 +1460,7 @@ module.exports = grammar({
 
         using_directive: $ => seq(
             'USING',
-            $.namespace_h_name,
-            repeat(seq(',', $.namespace_h_name)),
+            commaSep1($.namespace_h_name),
             optional(';')
         ),
 
@@ -1585,9 +1554,7 @@ module.exports = grammar({
 
         func_call: $ => seq(
             $.func_access,
-            '(',
-            optional(seq($.param_assign, repeat(seq(',', $.param_assign)))),
-            ')'
+            '(', commaSep($.param_assign), ')'
         ),
 
         stmt_list: $ => prec.right(repeat1(seq($.stmt, optional(";")))),
@@ -1622,9 +1589,7 @@ module.exports = grammar({
                     $.identifier
                 )
             ),
-            '(',
-            optional(seq($.param_assign, repeat(seq(',', $.param_assign)))),
-            ')'
+            '(', commaSep($.param_assign), ')'
         ),
 
         subprog_ctrl_stmt: $ => choice(
@@ -1670,10 +1635,7 @@ module.exports = grammar({
             $.stmt_list
         ),
 
-        case_list: $ => seq(
-            $.case_list_elem,
-            repeat(seq(',', $.case_list_elem))
-        ),
+        case_list: $ => commaSep1($.case_list_elem),
 
         case_list_elem: $ => choice(
             $.subrange,
