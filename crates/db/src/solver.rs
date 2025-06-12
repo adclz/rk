@@ -1,6 +1,8 @@
 use auto_lsp::{core::{ast::AstNode, document::Document}, default::db::{tracked::get_ast, BaseDatabase, File}};
 
-use crate::{parser::namespace::FileNamespacesBuilder, hir::namespace::FileNamespaces};
+use crate::{hir::namespace::FileNamespaces, parser::namespace::FileNamespacesBuilder, RootDatabase};
+use rustc_hash::{FxBuildHasher};
+use std::{hash::{BuildHasher, Hasher}, ops::Range};
 
 /// Interned identifier
 #[salsa::interned(debug, no_lifetime)]
@@ -12,25 +14,42 @@ pub struct Ident {
 /// Interned namespace path
 #[salsa::interned(debug, no_lifetime)]
 pub struct NamespacePath {
-    #[return_ref]
-    pub path: Vec<Ident>,
+    pub path: Ident,
 }
 
 impl NamespacePath {
     pub fn concat(&self, db: &dyn BaseDatabase, other: &NamespacePath) -> NamespacePath {
-        let mut path = self.path(db).to_vec();
-        path.extend(other.path(db));
-        NamespacePath::new(db, &path)
+        let mut path = self.path(db).text(db).to_owned();
+        path.push_str(&other.path(db).text(db));
+        NamespacePath::new(db, Ident::new(db, path))
     }
 
     pub fn extend(&self, db: &dyn BaseDatabase, ident: Ident) -> NamespacePath {
-        let mut path = self.path(db).to_vec();
-        path.push(ident);
-        NamespacePath::new(db, &path)
+        let mut path = self.path(db).text(db).to_owned();
+        path.push_str(&ident.text(db));
+        NamespacePath::new(db, Ident::new(db, path))
     }
 
     pub fn display(&self, db: &dyn BaseDatabase) -> String {
-        self.path(db).iter().map(|i| i.text(db)).collect::<Vec<_>>().join(".")
+        self.path(db).text(db).to_string()
+    }
+}
+
+impl From<(&dyn BaseDatabase, &[Ident])> for NamespacePath {
+    fn from(from: (&dyn BaseDatabase, &[Ident])) -> Self {
+        NamespacePath::new(from.0, Ident::new(from.0, from.1.iter().map(|i| i.text(from.0)).collect::<Vec<_>>().join(".")))
+    }
+}
+
+impl From<(&dyn BaseDatabase, Vec<Ident>)> for NamespacePath {
+    fn from(from: (&dyn BaseDatabase, Vec<Ident>)) -> Self {
+        NamespacePath::new(from.0, Ident::new(from.0, from.1.iter().map(|i| i.text(from.0)).collect::<Vec<_>>().join(".")))
+    }
+}
+
+impl From<(&dyn BaseDatabase, &Vec<Ident>)> for NamespacePath {
+    fn from(from: (&dyn BaseDatabase, &Vec<Ident>)) -> Self {
+        NamespacePath::new(from.0, Ident::new(from.0, from.1.iter().map(|i| i.text(from.0)).collect::<Vec<_>>().join(".")))
     }
 }
 
@@ -66,7 +85,7 @@ fn add_path(db: &dyn BaseDatabase, doc: &Document, path: &mut Vec<Ident>, namesp
 }
 
 /// Returns the namespace path of the given node
-pub fn namespace_solver(db: &dyn BaseDatabase, file: File, node: &dyn AstNode) -> NamespacePath {
+pub fn namespace_solver<'db>(db: &'db dyn BaseDatabase, file: File, node: &dyn AstNode) -> NamespacePath {
     let list = get_ast(db, file);
     let mut path = vec![];
 
@@ -81,6 +100,5 @@ pub fn namespace_solver(db: &dyn BaseDatabase, file: File, node: &dyn AstNode) -
         }
         node = parent.get_parent(list);
     }
-
-    NamespacePath::new(db, &path)
+    NamespacePath::from((db, path))
 }
