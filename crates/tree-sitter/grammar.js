@@ -1124,6 +1124,7 @@ module.exports = grammar({
 
         interface_decl: $ => seq(
             'INTERFACE',
+            field("name", $.identifier),
             field("directive", repeat(seq($.identifier, $.using_directive))),
             field("extends", optional(seq('EXTENDS', $.interface_name_list))),
             field("prototype", repeat($.method_prototype)),
