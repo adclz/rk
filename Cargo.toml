@@ -21,6 +21,7 @@ auto-lsp = "0.6.1"
 auto-lsp-codegen = "0.2.0"
 log = "0.4.27"
 dashmap = "6.1.0"
+rustc-hash = "2.1.0"
 ast = { path = "crates/ast" }
 tree-sitter-rk = { path = "crates/tree-sitter" }
 server = { path = "crates/server" }

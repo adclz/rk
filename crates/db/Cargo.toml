@@ -12,4 +12,5 @@ auto-lsp = { workspace = true }
 dashmap = { workspace = true }
 ast = { workspace = true }
 expect-test = "1.5.1"
+rustc-hash = { workspace = true }
 salsa = "0.22.0"

@@ -2,8 +2,8 @@
 
 pub mod hir;
 pub mod solver;
-pub mod builder;
-
+pub mod parser;
+ 
 use auto_lsp::{default::db::{BaseDatabase, File}, lsp_types::Url, salsa};
 use dashmap::DashMap;
 use salsa::Event;

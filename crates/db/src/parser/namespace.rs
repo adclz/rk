@@ -1,6 +1,4 @@
 use std::collections::HashMap;
-use std::ops::Deref;
-use std::sync::Arc;
 
 use ast::generated::{
     ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl, NamespaceDecl,
@@ -9,17 +7,19 @@ use auto_lsp::core::ast::AstNode;
 use auto_lsp::core::document::Document;
 use auto_lsp::default::db::{tracked::get_ast, BaseDatabase, File};
 use auto_lsp::salsa;
+use rustc_hash::FxHashMap;
 
-use crate::hir::namespace::{
-    Class, DataType, FileNamespaces, Function, FunctionBlock, Interface, Namespace,
+use crate::hir::function::Function;
+use crate::hir::namespace::{FileNamespaces, Namespace,
 };
+use crate::parser::Parse;
 use crate::solver::{Ident, NamespacePath};
 
 pub struct FileNamespacesBuilder<'db> {
     db: &'db dyn BaseDatabase,
     pub(crate) file: File,
     source: &'db ast::generated::SourceFile,
-    pub(crate) paths: HashMap<NamespacePath, Namespace>,
+    pub(crate) paths: FxHashMap<NamespacePath, Namespace<'db>>,
 }
 
 impl<'db> FileNamespacesBuilder<'db> {
@@ -36,7 +36,7 @@ impl<'db> FileNamespacesBuilder<'db> {
         }
     }
 
-    pub fn build(mut self) -> FileNamespaces {
+    pub fn build(mut self) -> FileNamespaces<'db> {
         // Top level namespaces
         // Since namespaces can be nested, we check
         self.source
@@ -96,7 +96,7 @@ impl<'db> FileNamespacesBuilder<'db> {
                     .entry(namespace_path)
                     .or_insert(Namespace::new(nested))
                     .in_scopes
-                    .push(NamespacePath::new(self.db, parent_path));
+                    .insert(NamespacePath::new(self.db, parent_path));
             })
         }
         
@@ -130,7 +130,7 @@ impl<'db> FileNamespacesBuilder<'db> {
                             .get_mut(&current_namespace)
                             .unwrap()
                             .functions
-                            .insert(name, Function {});
+                            .insert(name, func.parse(self.db, self.file));
                     }
                 }
                 Decl::FbDecl(fb) => {
@@ -146,7 +146,7 @@ impl<'db> FileNamespacesBuilder<'db> {
                             .get_mut(&current_namespace)
                             .unwrap()
                             .function_blocks
-                            .insert(name, FunctionBlock {});
+                            .insert(name, fb.parse(self.db, self.file));
                     }
                 }
                 Decl::ClassDecl(class) => {
@@ -163,7 +163,7 @@ impl<'db> FileNamespacesBuilder<'db> {
                             .get_mut(&current_namespace)
                             .unwrap()
                             .classes
-                            .insert(name, Class {});
+                            .insert(name, class.parse(self.db, self.file));
                     }
                 }
                 _ => (),
@@ -174,19 +174,22 @@ impl<'db> FileNamespacesBuilder<'db> {
 
 #[cfg(test)]
 mod tests {
-    use crate::solver::namespaces_in_file;
+    use std::sync::{Arc, Mutex};
+
+    use crate::{solver::{namespace_path, namespace_solver, namespaces_in_file}, RootDatabase};
     use auto_lsp::{
-        default::db::{BaseDb, FileManager},
+        default::db::{FileManager},
         lsp_types,
         texter::core::text::Text,
     };
     use expect_test::expect;
+    use salsa::{Event, EventKind};
 
     use super::*;
 
     #[test]
     fn multiple_namespaces() {
-        let mut db = BaseDb::default();
+        let mut db = RootDatabase::default();
         let url = lsp_types::Url::parse("file:///test.st").unwrap();
         let texter = Text::new(
             r#"
@@ -211,39 +214,57 @@ END_NAMESPACE"#
         let file = db.get_file(&url).unwrap();
         let namespaces = namespaces_in_file(&db, file);
 
-        let expected = expect![[r#"[["TEST", "TEST2"], ["TEST"]]"#]];
-        let actual = format!(
-            "{:?}",
-            namespaces
+        let actual = namespaces
                 .namespaces
                 .iter()
-                .map(|n| n
-                    .0
-                    .path(&db)
-                    .iter()
-                    .map(|n| n.text(&db))
-                    .collect::<Vec<_>>())
-                .collect::<Vec<_>>()
-        );
-        expected.assert_eq(&actual);
+                .map(|n| n.0.display(&db))
+                .collect::<Vec<_>>();
+
+        assert_eq!(actual.len(), 3);    
+        assert!(actual.contains(&"TEST.k".to_string()));
+        assert!(actual.contains(&"TEST.k.TEST235333.m.a".to_string()));
+        assert!(actual.contains(&"TEST.k.TEST235333.m.a.TEST.b".to_string()));
     }
 
     #[test]
-    fn nested_namespaces() {
-        let mut db = BaseDb::default();
+    fn interned_paths() {
+        let db = RootDatabase::default();
+        let first_id = Ident::new(&db, "first".to_string());
+        let second_id = Ident::new(&db, "second".to_string());
+
+        assert_ne!(first_id, second_id);
+
+        let first_path = NamespacePath::new(&db, vec![Ident::new(&db, "first".to_string()), Ident::new(&db, "second".to_string())]);
+        let second_path = NamespacePath::new(&db, vec![Ident::new(&db, "first".to_string()), Ident::new(&db, "second".to_string())]);
+
+        assert_eq!(first_path, second_path);
+    }
+
+    #[test]
+    fn tracked_namespaces() {
+        let logs = Arc::new(Mutex::new(Vec::new()));
+        let ptr = logs.clone();
+
+        let mut db = RootDatabase::new(Some(Box::new(move |event| {
+            if let EventKind::WillExecute{ .. } = event.kind  {
+                ptr.lock().unwrap().push(event);
+            }
+        })));
+
         let url = lsp_types::Url::parse("file:///test.st").unwrap();
         let texter = Text::new(
             r#"
-        NAMESPACE TEST
+NAMESPACE first
+    NAMESPACE second
+        NAMESPACE third
+            FUNCTION N
 
-            NAMESPACE TEST2
-
-            END_NAMESPACE
-
-        END_NAMESPACE"#
+            END_FUNCTION
+        END_NAMESPACE
+    END_NAMESPACE
+END_NAMESPACE"#
                 .into(),
         );
-
         db.add_file_from_texter(
             ast::RK_PARSER.get("structured_text").unwrap(),
             &url,
@@ -251,18 +272,22 @@ END_NAMESPACE"#
         )
         .unwrap();
 
-        let file = db.get_file(&url).unwrap();
-        let namespaces = namespaces_in_file(&db, file);
+        let first = NamespacePath::new(&db, &vec![Ident::new(&db, "first".to_string())]);
+        let second = NamespacePath::new(&db, &vec![Ident::new(&db, "first".to_string()), Ident::new(&db, "second".to_string())]);
+        let third = NamespacePath::new(&db, &vec![Ident::new(&db, "first".to_string()), Ident::new(&db, "second".to_string()), Ident::new(&db, "third".to_string())]);
+        
+        assert!(!namespace_path(&db, first).is_empty());
+        assert!(!namespace_path(&db, second).is_empty());
+        assert!(!namespace_path(&db, third).is_empty());
 
-        let expected = expect![[r#"[["TEST", "TEST2"], ["TEST"]]"#]];
-        let actual = format!(
-            "{:?}",
-            namespaces
-                .namespaces
-                .iter()
-                .map(|n| n.0.path(&db))
-                .collect::<Vec<_>>()
-        );
-        expected.assert_eq(&actual);
+        logs.lock().unwrap().clear();
+
+        // Getting paths on a same file should not trigger recomputation
+
+        assert!(!namespace_path(&db, first).is_empty());
+        assert!(!namespace_path(&db, second).is_empty());
+        assert!(!namespace_path(&db, third).is_empty());
+
+        assert_eq!(logs.lock().unwrap().len(), 0);
     }
 }

@@ -1,6 +1,6 @@
 use auto_lsp::{core::{ast::AstNode, document::Document}, default::db::{tracked::get_ast, BaseDatabase, File}};
 
-use crate::{builder::namespace::FileNamespacesBuilder, hir::namespace::FileNamespaces};
+use crate::{parser::namespace::FileNamespacesBuilder, hir::namespace::FileNamespaces};
 
 /// Interned identifier
 #[salsa::interned(debug, no_lifetime)]
@@ -36,7 +36,7 @@ impl NamespacePath {
 
 /// Returns the namespaces in the given file
 #[salsa::tracked(no_eq)]
-pub fn namespaces_in_file(db: &dyn BaseDatabase, file: File) -> FileNamespaces {
+pub fn namespaces_in_file<'db>(db: &'db dyn BaseDatabase, file: File) -> FileNamespaces<'db> {
     let ast = get_ast(db, file).get_root().unwrap();
     let source = ast.downcast_ref::<ast::generated::SourceFile>().unwrap();
 
@@ -44,8 +44,8 @@ pub fn namespaces_in_file(db: &dyn BaseDatabase, file: File) -> FileNamespaces {
 }
 
 /// Returns the namespaces that contain the given path
-#[salsa::tracked(returns(ref))]
-pub fn namespace_path<'db>(db: &'db dyn BaseDatabase, path: NamespacePath) -> Vec<FileNamespaces> {
+#[salsa::tracked(returns(ref), no_eq)]
+pub fn namespace_path<'db>(db: &'db dyn BaseDatabase, path: NamespacePath) -> Vec<FileNamespaces<'db>> {
     db.get_files().iter().enumerate().filter_map(|(_, file)| {
         let namespaces = namespaces_in_file(db, *file);
         if namespaces.namespaces.contains_key(&path) {
