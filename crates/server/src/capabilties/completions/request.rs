@@ -9,9 +9,22 @@ use auto_lsp::{
     }, default::db::{tracked::{get_ast, ParsedAst}, BaseDatabase, File}, lsp_types::{self, CompletionItem, CompletionItemKind, CompletionParams, CompletionResponse, DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, SymbolKind}
 };
 
-use crate::capabilties::completions::snippets::{class, test, function, function_block, interface, namespace, type_, using};
+use crate::capabilties::completions::snippets::{class, function, function_block, interface, namespace, test, type_, using, var, var_input, var_output, var_temp};
 
 const COMPLETION_MARKER: &str = "iecCompletionMarker";
+
+pub fn closest(nodes: &[Arc<dyn AstNode>], offset: usize) -> Option<&Arc<dyn AstNode>> {
+    let mut result = None;
+    for node in nodes {
+        let range = node.get_range();
+        
+        if range.start_byte >= offset {
+            result = Some(node);
+            break;
+        }
+    }
+    result
+}
 
 pub fn completions(
     db: &impl BaseDatabase,
@@ -29,11 +42,11 @@ pub fn completions(
 
     let mut results = vec![];
 
-    completion_context(db, file, offset, &mut results)?;
+    completion_context(db, file, offset, &params, &mut results)?;
     Ok(Some(CompletionResponse::Array(results)))
 }
 
-fn completion_context(db: &impl BaseDatabase, file: File, offset: usize, results: &mut Vec<CompletionItem>) -> anyhow::Result<()> {
+fn completion_context(db: &impl BaseDatabase, file: File, offset: usize, params: &CompletionParams, results: &mut Vec<CompletionItem>) -> anyhow::Result<()> {
     let mut clone = (*file.document(db)).clone();
     let start= file.document(db).position_at(offset).unwrap();
     let end = lsp_types::Position::new(start.line, start.character + COMPLETION_MARKER.len() as u32);
@@ -45,11 +58,30 @@ fn completion_context(db: &impl BaseDatabase, file: File, offset: usize, results
         range_length: None,
         text: COMPLETION_MARKER.into(),
     }])?;
-    let mut nodes = (file.parsers(db).ast_parser)(db, &clone)?;
-    nodes.sort_unstable();
-    let ast = ParsedAst { nodes: Arc::new(nodes) };
-    let node = ast.descendant_at(offset).unwrap();
+    let ast = ParsedAst::new((file.parsers(db).ast_parser)(db, &clone)?);
+    let node = match closest(&ast, offset) {
+        Some(node) => node,
+        None => {
+            if ast.get_root().is_none() {
+                results.push(namespace());
+            }
+            return Ok(())
+        },
+    };
 
+    if let Some(ctx) = &params.context {
+        if ctx.trigger_character == Some(".".into()) {
+            return Ok(());
+        } else {
+            no_ctx_completions(&node, &ast, results)?;
+        }
+    } else {
+        no_ctx_completions(&node, &ast, results)?;
+    }
+    Ok(())
+}
+
+fn no_ctx_completions(node: &Arc<dyn AstNode>, ast: &ParsedAst, results: &mut Vec<CompletionItem>) -> anyhow::Result<()>  {
     let mut node = node.get_parent(&ast);
 
     if node.is_none() {
@@ -71,13 +103,17 @@ fn completion_context(db: &impl BaseDatabase, file: File, offset: usize, results
             results.push(class());
             results.push(interface());
             break;
+        } else if lower.is::<ast::generated::FuncDecl>() {
+            results.push(var_input());
+            results.push(var_output());
+            results.push(var_temp());
+            results.push(var());
+            break;
         } else if lower.is::<ast::generated::UsingDirective>() {
             results.push(test());
             break;
         }
-        
-        else if lower.is::<ast::generated::FuncDecl>() || 
-                  lower.is::<ast::generated::FbDecl>() ||
+        else if lower.is::<ast::generated::FbDecl>() ||
                   lower.is::<ast::generated::ClassDecl>() || 
                   lower.is::<ast::generated::DataTypeDecl>() || 
                   lower.is::<ast::generated::InterfaceDecl>() {
