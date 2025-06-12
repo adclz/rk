@@ -17,8 +17,8 @@ use crate::solver::{Ident, NamespacePath};
 
 pub struct FileNamespacesBuilder<'db> {
     db: &'db dyn BaseDatabase,
-    pub(crate) file: File,
     source: &'db ast::generated::SourceFile,
+    pub(crate) file: File,
     pub(crate) paths: FxHashMap<NamespacePath, Namespace<'db>>,
 }
 
@@ -45,7 +45,7 @@ impl<'db> FileNamespacesBuilder<'db> {
             .for_each(|child| match child.as_ref() {
                 ast::generated::ConfigDecl_NamespaceDecl_ProgDecl::NamespaceDecl(namespace) => {
                     let path = self.get_namespace_path(namespace);
-                    let namespace_path = NamespacePath::new(self.db, &path);
+                    let namespace_path = NamespacePath::from((self.db, &path));
                     self.paths
                         .entry(namespace_path)
                         .or_insert(Namespace::new(namespace));
@@ -91,12 +91,12 @@ impl<'db> FileNamespacesBuilder<'db> {
                     })
                     .collect::<Vec<_>>();
 
-                let namespace_path = NamespacePath::new(self.db, &path);
+                let namespace_path = NamespacePath::from((self.db, &path));
                 self.paths
                     .entry(namespace_path)
                     .or_insert(Namespace::new(nested))
                     .in_scopes
-                    .insert(NamespacePath::new(self.db, parent_path));
+                    .insert(NamespacePath::from((self.db, parent_path)));
             })
         }
         
@@ -109,7 +109,7 @@ impl<'db> FileNamespacesBuilder<'db> {
                     let mut path = parent_path.to_vec();
                     path.extend(self.get_namespace_path(namespace));
 
-                    let namespace_path: NamespacePath = NamespacePath::new(self.db, &path);
+                    let namespace_path: NamespacePath = NamespacePath::from((self.db, &path));
                     self.paths
                         .entry(namespace_path)
                         .or_insert(Namespace::new(namespace));
@@ -234,8 +234,8 @@ END_NAMESPACE"#
 
         assert_ne!(first_id, second_id);
 
-        let first_path = NamespacePath::new(&db, vec![Ident::new(&db, "first".to_string()), Ident::new(&db, "second".to_string())]);
-        let second_path = NamespacePath::new(&db, vec![Ident::new(&db, "first".to_string()), Ident::new(&db, "second".to_string())]);
+        let first_path = NamespacePath::from((&db as _, vec![Ident::new(&db, "first".to_string()), Ident::new(&db, "second".to_string())]));
+        let second_path = NamespacePath::from((&db as _, vec![Ident::new(&db, "first".to_string()), Ident::new(&db, "second".to_string())]));
 
         assert_eq!(first_path, second_path);
     }
@@ -272,9 +272,9 @@ END_NAMESPACE"#
         )
         .unwrap();
 
-        let first = NamespacePath::new(&db, &vec![Ident::new(&db, "first".to_string())]);
-        let second = NamespacePath::new(&db, &vec![Ident::new(&db, "first".to_string()), Ident::new(&db, "second".to_string())]);
-        let third = NamespacePath::new(&db, &vec![Ident::new(&db, "first".to_string()), Ident::new(&db, "second".to_string()), Ident::new(&db, "third".to_string())]);
+        let first = NamespacePath::from((&db as _, &vec![Ident::new(&db, "first".to_string())]));
+        let second = NamespacePath::from((&db as _, &vec![Ident::new(&db, "first".to_string()), Ident::new(&db, "second".to_string())]));
+        let third = NamespacePath::from((&db as _, &vec![Ident::new(&db, "first".to_string()), Ident::new(&db, "second".to_string()), Ident::new(&db, "third".to_string())]));
         
         assert!(!namespace_path(&db, first).is_empty());
         assert!(!namespace_path(&db, second).is_empty());
