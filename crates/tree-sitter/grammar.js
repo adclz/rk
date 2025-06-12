@@ -72,6 +72,7 @@ module.exports = grammar({
         [$.symbolic_variable, $.func_access, $.instance_name],
         [$.func_access, $.instance_name, $.invocation],
         [$.func_access, $.instance_name],
+        [$.func_access, $.enum_value],
         [$.variable_list, $.fb_name],
         [$.instance_name],
         [$.ref_name, $.param_assign],
@@ -1613,13 +1614,11 @@ module.exports = grammar({
         func_call: $ => seq(
             $.func_access,
             '(',
-            optional(seq($.param_assign, repeat(seq(',', $.param_assign)))),
+                optional(seq($.param_assign, repeat(seq(',', $.param_assign)))),
             ')'
         ),
 
-        // note: IEC does not specify at least one occurence of a statement in a statement list
-        // but since tree sitter does not support empty string, we have to add at least one statement.
-        stmt_list: $ => prec.right(repeat1(seq($.stmt, ";"))),
+        stmt_list: $ => prec.right(repeat1(seq($.stmt, optional(";")))),
 
         stmt: $ => choice(
             $.assign_stmt,
