@@ -623,11 +623,7 @@ module.exports = grammar({
             $.array_init
         ),
 
-        struct_type_decl: $ => seq(':', $.struct_spec),
-
-        struct_spec: $ => choice(
-            $.struct_decl,
-        ),
+        struct_type_decl: $ => seq(':', $.struct_decl),
 
         struct_spec_init: $ => seq(':=', $.struct_init),
 
@@ -656,8 +652,8 @@ module.exports = grammar({
 
         struct_init: $ => seq(
             '(',
-            $.struct_elem_init,
-            repeat(seq(',', $.struct_elem_init)),
+                $.struct_elem_init,
+                repeat(seq(',', $.struct_elem_init)),
             ')'
         ),
 
@@ -762,7 +758,7 @@ module.exports = grammar({
 
         input_decls: $ => seq(
             'VAR_INPUT',
-            optional(choice('RETAIN', 'NON_RETAIN')),
+            field("retain", optional(choice('RETAIN', 'NON_RETAIN'))),
             repeat(seq($.input_decl, optional(';'))),
             'END_VAR'
         ),
@@ -777,20 +773,27 @@ module.exports = grammar({
             $.variable_list,
             ':',
             'BOOL',
-            choice('R_EDGE', 'F_EDGE')
+            field("edge", optional(choice('R_EDGE', 'F_EDGE')))
         ),
 
-        var_decl_init: $ => choice(
-            seq(
-                $.variable_list,
-                ':',
-                choice($.simple_spec_init, $.str_var_decl, $.ref_spec_init)
-            ),
-            $.array_var_decl_init,
-            $.struct_var_decl_init,
-            $.fb_decl_init,
-            $.interface_spec_init
+        var_decl_init: $ => seq(
+            field("variables", $.variable_list),
+            ':',
+            field("init", 
+                choice(
+                    $.array_spec_init,
+                    $.str_var_decl,
+                    seq(
+                        field("type", $.identifier),
+                        optional(choice(
+                            seq(":=", field("default", $.identifier)),
+                            seq(":=", $.struct_init),
+                        )
+                    )
+                )),
+            )
         ),
+
 
         ref_var_decl: $ => seq(
             $.variable_list,
@@ -809,13 +812,6 @@ module.exports = grammar({
             repeat(seq(',', $.identifier))
         ),
 
-        array_var_decl_init: $ => seq(
-            $.variable_list,
-            ':',
-            $.array_spec_init
-        ),
-
-        //todo: check if this is correct
         array_conformand: $ => seq(
             'ARRAY',
             '[',
@@ -832,12 +828,6 @@ module.exports = grammar({
             $.array_conformand
         ),
 
-        struct_var_decl_init: $ => seq(
-            $.variable_list,
-            ':',
-            $.struct_spec_init
-        ),
-
         fb_decl_no_init: $ => seq(
             $.fb_name,
             repeat(seq(',', $.fb_name)),
@@ -845,10 +835,7 @@ module.exports = grammar({
             $.type_access
         ),
 
-        fb_decl_init: $ => seq(
-            $.fb_decl_no_init,
-            optional(seq(':=', $.struct_init))
-        ),
+        fb_decl_init: $ => seq(':=', $.struct_init),
 
         fb_name: $ => $.identifier,
 
@@ -896,23 +883,23 @@ module.exports = grammar({
 
         var_decls: $ => seq(
             'VAR',
-            optional('CONSTANT'),
-            optional($.access_spec),
+            field("constant", optional('CONSTANT')),
+            field("access", optional($.access_spec)),
             repeat(seq($.var_decl_init, optional(';'))),
             'END_VAR'
         ),
 
         retain_var_decls: $ => seq(
             'VAR',
-            'RETAIN',
-            optional($.access_spec),
+            field("retain", 'RETAIN'),
+            field("access", optional($.access_spec)),
             repeat(seq($.var_decl_init, optional(';'))),
             'END_VAR'
         ),
 
         loc_var_decls: $ => seq(
             'VAR',
-            optional(choice('CONSTANT', 'RETAIN', 'NON_RETAIN')),
+            field("constant_or_retain", optional(choice('CONSTANT', 'RETAIN', 'NON_RETAIN'))),
             repeat(seq($.loc_var_decl, optional(';'))),
             'END_VAR'
         ),
@@ -932,7 +919,7 @@ module.exports = grammar({
 
         external_var_decls: $ => seq(
             'VAR_EXTERNAL',
-            optional('CONSTANT'),
+            field("constant", optional('CONSTANT')),
             repeat(seq($.external_decl, optional(';'))),
             'END_VAR'
         ),
@@ -945,13 +932,13 @@ module.exports = grammar({
 
         global_var_decls: $ => seq(
             'VAR_GLOBAL',
-            optional(choice('CONSTANT', 'RETAIN')),
+            field("constant_or_retain", optional(choice('CONSTANT', 'RETAIN'))),
             repeat(seq($.global_var_decl, optional(';'))),
             'END_VAR'
         ),
 
         global_var_decl: $ => seq(
-            $.global_var_spec,
+            field("spec", $.global_var_spec),
             ':',
             choice($.loc_var_spec_init, $.type_access)
         ),
@@ -981,26 +968,14 @@ module.exports = grammar({
         ),
 
         str_var_decl: $ => choice(
-            $.s_byte_str_var_decl,
-            $.d_byte_str_var_decl
-        ),
-
-        s_byte_str_var_decl: $ => seq(
-            $.variable_list,
-            ':',
-            $.s_byte_str_spec
+            $.s_byte_str_spec,
+            $.d_byte_str_spec
         ),
 
         s_byte_str_spec: $ => seq(
             'STRING',
             optional(seq('[', $.unsigned_int, ']')),
             optional(seq(':=', $.s_byte_char_str))
-        ),
-
-        d_byte_str_var_decl: $ => seq(
-            $.variable_list,
-            ':',
-            $.d_byte_str_spec
         ),
 
         d_byte_str_spec: $ => seq(
@@ -1155,7 +1130,7 @@ module.exports = grammar({
             'CLASS',
             field("qualifier", optional(choice('FINAL', 'ABSTRACT'))),
             field("name", $.class_type_name),
-            field("directives", repeat( $.using_directive)),
+            field("directives", repeat($.using_directive)),
             field("extends", optional(seq("EXTENDS", $.type_access))),
             field("implements", optional(seq("IMPLEMENTS", $.interface_name_list))),
             field("declarations", repeat(choice($.func_var_decls, $.other_var_decls))),
@@ -1187,10 +1162,7 @@ module.exports = grammar({
             'END_METHOD'
         ),
 
-        interface_spec_init: $ => seq(
-            $.variable_list,
-            optional(seq(':=', $.interface_value))
-        ),
+        interface_spec_init: $ => seq(':=', $.interface_value),
 
         interface_value: $ => choice(
             $.symbolic_variable,
@@ -1614,7 +1586,7 @@ module.exports = grammar({
         func_call: $ => seq(
             $.func_access,
             '(',
-                optional(seq($.param_assign, repeat(seq(',', $.param_assign)))),
+            optional(seq($.param_assign, repeat(seq(',', $.param_assign)))),
             ')'
         ),
 
