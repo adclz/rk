@@ -13,14 +13,20 @@ static FOLD: &str = r#"
   (class_decl)
   (interface_decl)
 
-  (fb_io_var_decls)
-  (func_var_decls)
-  (temp_var_decls) 
-  (other_var_decls)
+  (input_decls)
+  (output_decls)
+  (in_out_decls)
 
-  (io_var_decls)
-  (func_var_decls) 
+  (fb_input_decls)
+  (fb_output_decls)
   (temp_var_decls)
+
+  (external_var_decls)
+  (var_decls)
+
+  (retain_var_decls)
+  (no_retain_var_decls)
+  (loc_var_decls)
 ] @fold
 
 (comment) @fold.comment
