@@ -287,7 +287,7 @@
     "fields": {},
     "children": {
       "multiple": true,
-      "required": true,
+      "required": false,
       "types": [
         {
           "type": "array_elem_init",
@@ -359,25 +359,6 @@
       "types": [
         {
           "type": "array_spec",
-          "named": true
-        },
-        {
-          "type": "variable_list",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "array_var_decl_init",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "array_spec_init",
           "named": true
         },
         {
@@ -934,25 +915,6 @@
     }
   },
   {
-    "type": "d_byte_str_var_decl",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "d_byte_str_spec",
-          "named": true
-        },
-        {
-          "type": "variable_list",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
     "type": "data_sink",
     "named": true,
     "fields": {},
@@ -1265,7 +1227,22 @@
   {
     "type": "edge_decl",
     "named": true,
-    "fields": {},
+    "fields": {
+      "edge": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "F_EDGE",
+            "named": false
+          },
+          {
+            "type": "R_EDGE",
+            "named": false
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": false,
       "required": true,
@@ -1314,7 +1291,7 @@
     "fields": {},
     "children": {
       "multiple": true,
-      "required": true,
+      "required": false,
       "types": [
         {
           "type": "enum_value",
@@ -1459,7 +1436,18 @@
   {
     "type": "external_var_decls",
     "named": true,
-    "fields": {},
+    "fields": {
+      "constant": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "CONSTANT",
+            "named": false
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": true,
       "required": false,
@@ -1606,25 +1594,6 @@
           }
         ]
       }
-    }
-  },
-  {
-    "type": "fb_decl_init",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "fb_decl_no_init",
-          "named": true
-        },
-        {
-          "type": "struct_init",
-          "named": true
-        }
-      ]
     }
   },
   {
@@ -2044,15 +2013,22 @@
   {
     "type": "global_var_decl",
     "named": true,
-    "fields": {},
+    "fields": {
+      "spec": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "global_var_spec",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
-      "multiple": true,
+      "multiple": false,
       "required": true,
       "types": [
-        {
-          "type": "global_var_spec",
-          "named": true
-        },
         {
           "type": "loc_var_spec_init",
           "named": true
@@ -2067,7 +2043,22 @@
   {
     "type": "global_var_decls",
     "named": true,
-    "fields": {},
+    "fields": {
+      "constant_or_retain": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "CONSTANT",
+            "named": false
+          },
+          {
+            "type": "RETAIN",
+            "named": false
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": true,
       "required": false,
@@ -2238,7 +2229,22 @@
   {
     "type": "input_decls",
     "named": true,
-    "fields": {},
+    "fields": {
+      "retain": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "NON_RETAIN",
+            "named": false
+          },
+          {
+            "type": "RETAIN",
+            "named": false
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": true,
       "required": false,
@@ -2330,14 +2336,10 @@
     "type": "interface_decl",
     "named": true,
     "fields": {
-      "directive": {
+      "directives": {
         "multiple": true,
         "required": false,
         "types": [
-          {
-            "type": "identifier",
-            "named": true
-          },
           {
             "type": "using_directive",
             "named": true
@@ -2354,6 +2356,16 @@
           },
           {
             "type": "interface_name_list",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
             "named": true
           }
         ]
@@ -2380,44 +2392,6 @@
       "types": [
         {
           "type": "type_access",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "interface_spec_init",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "interface_value",
-          "named": true
-        },
-        {
-          "type": "variable_list",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "interface_value",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": false,
-      "types": [
-        {
-          "type": "instance_name",
-          "named": true
-        },
-        {
-          "type": "symbolic_variable",
           "named": true
         }
       ]
@@ -2639,7 +2613,26 @@
   {
     "type": "loc_var_decls",
     "named": true,
-    "fields": {},
+    "fields": {
+      "constant_or_retain": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "CONSTANT",
+            "named": false
+          },
+          {
+            "type": "NON_RETAIN",
+            "named": false
+          },
+          {
+            "type": "RETAIN",
+            "named": false
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": true,
       "required": false,
@@ -3815,15 +3808,32 @@
   {
     "type": "retain_var_decls",
     "named": true,
-    "fields": {},
+    "fields": {
+      "access": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "access_spec",
+            "named": true
+          }
+        ]
+      },
+      "retain": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "RETAIN",
+            "named": false
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": true,
       "required": false,
       "types": [
-        {
-          "type": "access_spec",
-          "named": true
-        },
         {
           "type": "var_decl_init",
           "named": true
@@ -3879,25 +3889,6 @@
         },
         {
           "type": "unsigned_int",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "s_byte_str_var_decl",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "s_byte_str_spec",
-          "named": true
-        },
-        {
-          "type": "variable_list",
           "named": true
         }
       ]
@@ -4176,11 +4167,11 @@
       "required": true,
       "types": [
         {
-          "type": "d_byte_str_var_decl",
+          "type": "d_byte_str_spec",
           "named": true
         },
         {
-          "type": "s_byte_str_var_decl",
+          "type": "s_byte_str_spec",
           "named": true
         }
       ]
@@ -4329,25 +4320,10 @@
     "fields": {},
     "children": {
       "multiple": true,
-      "required": true,
+      "required": false,
       "types": [
         {
           "type": "struct_elem_init",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "struct_spec",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "struct_decl",
           "named": true
         }
       ]
@@ -4377,7 +4353,7 @@
       "required": true,
       "types": [
         {
-          "type": "struct_spec",
+          "type": "struct_decl",
           "named": true
         }
       ]
@@ -4393,25 +4369,6 @@
       "types": [
         {
           "type": "type_access",
-          "named": true
-        },
-        {
-          "type": "variable_list",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "struct_var_decl_init",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "struct_spec_init",
           "named": true
         },
         {
@@ -4548,7 +4505,7 @@
     "fields": {},
     "children": {
       "multiple": true,
-      "required": true,
+      "required": false,
       "types": [
         {
           "type": "subscript",
@@ -4990,58 +4947,90 @@
   {
     "type": "var_decl_init",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "array_var_decl_init",
-          "named": true
-        },
-        {
-          "type": "fb_decl_init",
-          "named": true
-        },
-        {
-          "type": "interface_spec_init",
-          "named": true
-        },
-        {
-          "type": "ref_spec_init",
-          "named": true
-        },
-        {
-          "type": "simple_spec_init",
-          "named": true
-        },
-        {
-          "type": "str_var_decl",
-          "named": true
-        },
-        {
-          "type": "struct_var_decl_init",
-          "named": true
-        },
-        {
-          "type": "variable_list",
-          "named": true
-        }
-      ]
+    "fields": {
+      "default": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "init": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": ":=",
+            "named": false
+          },
+          {
+            "type": "array_spec_init",
+            "named": true
+          },
+          {
+            "type": "str_var_decl",
+            "named": true
+          },
+          {
+            "type": "struct_init",
+            "named": true
+          }
+        ]
+      },
+      "type": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "variables": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "variable_list",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
     "type": "var_decls",
     "named": true,
-    "fields": {},
+    "fields": {
+      "access": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "access_spec",
+            "named": true
+          }
+        ]
+      },
+      "constant": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "CONSTANT",
+            "named": false
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": true,
       "required": false,
       "types": [
-        {
-          "type": "access_spec",
-          "named": true
-        },
         {
           "type": "var_decl_init",
           "named": true
