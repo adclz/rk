@@ -3,6 +3,7 @@
 pub mod hir;
 pub mod solver;
 pub mod parser;
+pub mod diagnostics;
  
 use auto_lsp::{default::db::{BaseDatabase, File}, lsp_types::Url, salsa};
 use dashmap::DashMap;

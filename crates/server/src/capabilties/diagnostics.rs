@@ -6,6 +6,7 @@ use auto_lsp::lsp_types::{
     DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
     FullDocumentDiagnosticReport, RelatedFullDocumentDiagnosticReport,
 };
+use db::diagnostics::{get_diagnostics};
 
 pub fn diagnostics(
     db: &impl BaseDatabase,
@@ -22,10 +23,7 @@ pub fn diagnostics(
             related_documents: None,
             full_document_diagnostic_report: FullDocumentDiagnosticReport {
                 result_id: None,
-                items: get_ast::accumulated::<ParseErrorAccumulator>(db, file)
-                    .into_iter()
-                    .map(|d| d.into())
-                    .collect(),
+                items: get_diagnostics(db, file).clone(),
             },
         }),
     ))
