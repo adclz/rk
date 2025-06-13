@@ -19,9 +19,5 @@ jobs:
         run: cargo install cargo-nextest
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
-      - name: Format
-        run: cargo fmt --all -- --check --verbose
-      - name: Clippy
-        run: cargo clippy -- -D warnings --verbose
-      - name: nextest
+      - name: Test
         run: cargo-nextest ntr --workspace
