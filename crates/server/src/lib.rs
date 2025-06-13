@@ -23,6 +23,7 @@ use auto_lsp::lsp_types::request::CodeLensRequest;
 use auto_lsp::lsp_types::request::Completion;
 use auto_lsp::lsp_types::request::DocumentHighlightRequest;
 use auto_lsp::lsp_types::request::FoldingRangeRequest;
+use auto_lsp::lsp_types::request::Formatting;
 use auto_lsp::lsp_types::request::HoverRequest;
 use auto_lsp::lsp_types::request::InlayHintRequest;
 use auto_lsp::lsp_types::request::SemanticTokensFullRequest;
@@ -34,6 +35,7 @@ use auto_lsp::lsp_types::CompletionList;
 use auto_lsp::lsp_types::CompletionOptions;
 use auto_lsp::lsp_types::DiagnosticOptions;
 use auto_lsp::lsp_types::DiagnosticServerCapabilities;
+use auto_lsp::lsp_types::DocumentFormattingParams;
 use auto_lsp::lsp_types::FoldingRangeProviderCapability;
 use auto_lsp::lsp_types::HoverProviderCapability;
 use auto_lsp::lsp_types::WorkDoneProgressOptions;
@@ -55,6 +57,7 @@ use crate::capabilties::completions::request::completions;
 use crate::capabilties::diagnostics::diagnostics;
 use crate::capabilties::document_symbols::document_symbols;
 use crate::capabilties::folding_ranges::folding_ranges;
+use crate::capabilties::formatting::formatting;
 use crate::capabilties::hover::hover;
 use crate::capabilties::inlay_hints::inlay_hints;
 use crate::capabilties::semantic_tokens;
@@ -108,6 +111,7 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
                     completion_item: None,
                     work_done_progress_options: WorkDoneProgressOptions { work_done_progress: None },
                 }),
+                document_formatting_provider: Some(OneOf::Left(true)),
                 ..Default::default()
             },
             server_info: None,
@@ -142,6 +146,7 @@ fn on_requests<Db: BaseDatabase + Clone + RefUnwindSafe>(
         .on::<FoldingRangeRequest, _>(folding_ranges)
         .on::<Completion, _>(completions)
         .on::<InlayHintRequest, _>(inlay_hints)
+        .on::<Formatting, _>(formatting)
 }
 
 fn on_notifications<Db: BaseDatabase + Clone + RefUnwindSafe>(

@@ -13,4 +13,5 @@ ast = { workspace = true }
 db = { workspace = true }
 log = { workspace = true }
 tree-sitter-rk = { workspace = true }
+topiary-core = { workspace = true }
 serde_json = "1.0.109"

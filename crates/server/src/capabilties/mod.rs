@@ -7,3 +7,4 @@ pub mod folding_ranges;
 pub mod diagnostics;
 pub mod completions;
 pub mod inlay_hints;
+pub mod formatting;
