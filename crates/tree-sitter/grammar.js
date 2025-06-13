@@ -996,7 +996,7 @@ module.exports = grammar({
             'FUNCTION',
             field("name", $.identifier),
             field("access", optional(seq(':', $.data_type_access))),
-            field("directive", repeat($.using_directive)),
+            field("directives", repeat($.using_directive)),
             field("variables", repeat(choice($.io_var_decls, $.func_var_decls, $.temp_var_decls))),
             field("body", optional($.func_body)),
             'END_FUNCTION'
@@ -1125,7 +1125,7 @@ module.exports = grammar({
         interface_decl: $ => seq(
             'INTERFACE',
             field("name", $.identifier),
-            field("directive", repeat(seq($.identifier, $.using_directive))),
+            field("directives", repeat($.using_directive)),
             field("extends", optional(seq('EXTENDS', $.interface_name_list))),
             field("prototype", repeat($.method_prototype)),
             'END_INTERFACE'
@@ -1438,7 +1438,7 @@ module.exports = grammar({
             'NAMESPACE',
             field("internal", optional('INTERNAL')),
             field("name", $.namespace_h_name),
-            field("directive", repeat($.using_directive)),
+            field("directives", repeat($.using_directive)),
             field("elements", optional($.namespace_elements)),
             'END_NAMESPACE'
         ),
