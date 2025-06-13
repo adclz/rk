@@ -1,10 +1,9 @@
 use std::sync::LazyLock;
 
-use ast::generated::{ClassDecl, DataTypeDecl, FbDecl, FuncDecl, InterfaceDecl, NamespaceDecl};
 use auto_lsp::{
     anyhow,
-    core::{ast::AstNode, dispatch, semantic_tokens_builder::SemanticTokensBuilder},
-    default::db::{tracked::get_ast, BaseDatabase, File},
+    core::semantic_tokens_builder::SemanticTokensBuilder,
+    default::db::BaseDatabase,
     define_semantic_token_modifiers, define_semantic_token_types,
     lsp_types::{self, SemanticTokenModifier, SemanticTokensParams, SemanticTokensResult},
     tree_sitter::{self, StreamingIterator},

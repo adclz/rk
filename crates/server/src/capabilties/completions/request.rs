@@ -2,11 +2,8 @@
 
 use std::sync::Arc;
 
-use ast::generated::{ClassDecl, ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl, ConfigDecl_NamespaceDecl_ProgDecl, FbDecl, FuncDecl, NamespaceDecl, SourceFile};
 use auto_lsp::{
-    anyhow, core::{
-        ast::AstNode, dispatch, dispatch_once, document::Document, document_symbols_builder::DocumentSymbolsBuilder
-    }, default::db::{tracked::{get_ast, ParsedAst}, BaseDatabase, File}, lsp_types::{self, CompletionItem, CompletionItemKind, CompletionParams, CompletionResponse, DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, SymbolKind}
+    anyhow, core::ast::AstNode, default::db::{tracked::ParsedAst, BaseDatabase, File}, lsp_types::{self, CompletionItem, CompletionParams, CompletionResponse}
 };
 
 use crate::capabilties::completions::snippets::{class, function, function_block, interface, namespace, test, type_, using, var, var_input, var_output, var_temp};
@@ -33,7 +30,7 @@ pub fn completions(
     let uri = &params.text_document_position.text_document.uri;
 
     let file = db
-        .get_file(&uri)
+        .get_file(uri)
         .ok_or_else(|| anyhow::format_err!("File not found in workspace"))?;
 
     let doc = file.document(db);
@@ -73,16 +70,16 @@ fn completion_context(db: &impl BaseDatabase, file: File, offset: usize, params:
         if ctx.trigger_character == Some(".".into()) {
             return Ok(());
         } else {
-            no_ctx_completions(&node, &ast, results)?;
+            no_ctx_completions(node, &ast, results)?;
         }
     } else {
-        no_ctx_completions(&node, &ast, results)?;
+        no_ctx_completions(node, &ast, results)?;
     }
     Ok(())
 }
 
 fn no_ctx_completions(node: &Arc<dyn AstNode>, ast: &ParsedAst, results: &mut Vec<CompletionItem>) -> anyhow::Result<()>  {
-    let mut node = node.get_parent(&ast);
+    let mut node = node.get_parent(ast);
 
     if node.is_none() {
         results.push(namespace());
@@ -119,7 +116,7 @@ fn no_ctx_completions(node: &Arc<dyn AstNode>, ast: &ParsedAst, results: &mut Ve
                   lower.is::<ast::generated::InterfaceDecl>() {
             break;
         }
-        node = parent.get_parent(&ast);
+        node = parent.get_parent(ast);
     }
     Ok(())
 }

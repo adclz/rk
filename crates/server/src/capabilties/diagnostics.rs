@@ -1,6 +1,4 @@
 use auto_lsp::anyhow;
-use auto_lsp::core::errors::ParseErrorAccumulator;
-use auto_lsp::default::db::tracked::get_ast;
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::{
     DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,

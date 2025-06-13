@@ -1,8 +1,6 @@
 use auto_lsp::{core::{ast::AstNode, document::Document}, default::db::{tracked::get_ast, BaseDatabase, File}};
 
-use crate::{hir::namespace::FileNamespaces, parser::namespace::FileNamespacesBuilder, RootDatabase};
-use rustc_hash::{FxBuildHasher};
-use std::{hash::{BuildHasher, Hasher}, ops::Range};
+use crate::{hir::namespace::FileNamespaces, parser::namespace::FileNamespacesBuilder};
 
 /// Interned identifier
 #[salsa::interned(debug, no_lifetime)]
@@ -65,7 +63,7 @@ pub fn namespaces_in_file<'db>(db: &'db dyn BaseDatabase, file: File) -> FileNam
 /// Returns the namespaces that contain the given path
 #[salsa::tracked(returns(ref), no_eq)]
 pub fn namespace_path<'db>(db: &'db dyn BaseDatabase, path: NamespacePath) -> Vec<FileNamespaces<'db>> {
-    db.get_files().iter().enumerate().filter_map(|(_, file)| {
+    db.get_files().iter().filter_map(|file| {
         let namespaces = namespaces_in_file(db, *file);
         if namespaces.namespaces.contains_key(&path) {
             Some(namespaces)
@@ -85,7 +83,7 @@ fn add_path(db: &dyn BaseDatabase, doc: &Document, path: &mut Vec<Ident>, namesp
 }
 
 /// Returns the namespace path of the given node
-pub fn namespace_solver<'db>(db: &'db dyn BaseDatabase, file: File, node: &dyn AstNode) -> NamespacePath {
+pub fn namespace_solver(db: &dyn BaseDatabase, file: File, node: &dyn AstNode) -> NamespacePath {
     let list = get_ast(db, file);
     let mut path = vec![];
 

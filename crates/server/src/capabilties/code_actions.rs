@@ -1,5 +1,5 @@
 use ast::generated::NamespaceDecl;
-use auto_lsp::{anyhow, core::{dispatch, dispatch_once}, default::db::{tracked::get_ast, BaseDatabase, File}, lsp_types::{CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams}};
+use auto_lsp::{anyhow, core::dispatch, default::db::{tracked::get_ast, BaseDatabase, File}, lsp_types::{CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams}};
 
 pub fn code_actions(db: &impl BaseDatabase, params: CodeActionParams) -> anyhow::Result<Option<Vec<CodeActionOrCommand>>> {
     let uri = &params.text_document.uri;
@@ -31,7 +31,7 @@ pub trait GetCodeActions {
 
 
 impl GetCodeActions for ast::generated::NamespaceDecl {
-    fn code_actions(&self, db: &impl BaseDatabase, file: File, results: &mut Vec<CodeActionOrCommand>) -> anyhow::Result<()> {
+    fn code_actions(&self, _db: &impl BaseDatabase, _file: File, results: &mut Vec<CodeActionOrCommand>) -> anyhow::Result<()> {
         if self.internal.is_some() {
             results.push(CodeActionOrCommand::CodeAction(CodeAction {
                 title: "Remove internal".to_string(),

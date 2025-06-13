@@ -1,5 +1,5 @@
 use ast::generated::{ClassDecl, FbDecl, FuncDecl, NamespaceDecl};
-use auto_lsp::{anyhow, core::dispatch, default::db::{tracked::get_ast, BaseDatabase, File}, lsp_types::{CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams, InlayHint, InlayHintKind, InlayHintLabel, InlayHintParams}};
+use auto_lsp::{anyhow, core::dispatch, default::db::{tracked::get_ast, BaseDatabase, File}, lsp_types::{InlayHint, InlayHintKind, InlayHintLabel, InlayHintParams}};
 use auto_lsp::core::ast::AstNode;
 use db::solver::{namespace_solver};
 
@@ -68,9 +68,9 @@ impl GetInlayHints for ast::generated::NamespaceDecl {
 impl GetInlayHints for ast::generated::FuncDecl {
     fn inlay_hints(&self, db: &impl BaseDatabase, file: File, results: &mut Vec<InlayHint>) -> anyhow::Result<()> {
         let doc = file.document(db);
-        let name = self.name.get_text(&doc.texter.text.as_bytes())?;
+        let name = self.name.get_text(doc.texter.text.as_bytes())?;
             results.push(InlayHint {
-                label: InlayHintLabel::String(format!("fn {}", name)),
+                label: InlayHintLabel::String(format!("fn {name}")),
                 position: self.get_lsp_range().end,
                 kind: Some(InlayHintKind::TYPE),   
                 text_edits: None,
@@ -86,9 +86,9 @@ impl GetInlayHints for ast::generated::FuncDecl {
 impl GetInlayHints for ast::generated::FbDecl {
     fn inlay_hints(&self, db: &impl BaseDatabase, file: File, results: &mut Vec<InlayHint>) -> anyhow::Result<()> {
         let doc = file.document(db);
-        let name = self.name.get_text(&doc.texter.text.as_bytes())?;
+        let name = self.name.get_text(doc.texter.text.as_bytes())?;
             results.push(InlayHint {
-                label: InlayHintLabel::String(format!("fn_block {}", name)),
+                label: InlayHintLabel::String(format!("fn_block {name}")),
                 position: self.get_lsp_range().end,
                 kind: Some(InlayHintKind::TYPE),   
                 text_edits: None,
@@ -104,9 +104,9 @@ impl GetInlayHints for ast::generated::FbDecl {
 impl GetInlayHints for ast::generated::ClassDecl {
     fn inlay_hints(&self, db: &impl BaseDatabase, file: File, results: &mut Vec<InlayHint>) -> anyhow::Result<()> {
         let doc = file.document(db);
-        let name = self.name.get_text(&doc.texter.text.as_bytes())?;
+        let name = self.name.get_text(doc.texter.text.as_bytes())?;
             results.push(InlayHint {
-                label: InlayHintLabel::String(format!("class {}", name)),
+                label: InlayHintLabel::String(format!("class {name}")),
                 position: self.get_lsp_range().end,
                 kind: Some(InlayHintKind::TYPE),   
                 text_edits: None,

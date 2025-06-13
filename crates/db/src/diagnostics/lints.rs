@@ -86,7 +86,7 @@ pub fn query_lints(db: &dyn BaseDatabase, file: File) {
                     severity: Some(auto_lsp::lsp_types::DiagnosticSeverity::WARNING),
                     code: None,
                     source: Some("IEC".into()),
-                    message: format!("duplicate declarations of namespace '{name}' in same scope").into(),
+                    message: format!("duplicate declarations of namespace '{name}' in same scope"),
                     related_information: Some(vec![DiagnosticRelatedInformation {
                         location: auto_lsp::lsp_types::Location {
                             uri: file.url(db).clone(),
@@ -96,7 +96,7 @@ pub fn query_lints(db: &dyn BaseDatabase, file: File) {
                                 ),
                             },
                         },
-                        message: format!("'{name}' is previously declared here").into(),
+                        message: format!("'{name}' is previously declared here"),
                     }]),
                     tags: None,
                     data: None,

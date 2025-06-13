@@ -1,19 +1,16 @@
 use std::sync::LazyLock;
 
-use ast::generated::NamespaceDecl;
 use auto_lsp::{
     anyhow,
-    core::{dispatch, dispatch_once},
-    default::db::{tracked::get_ast, BaseDatabase, File},
+    default::db::BaseDatabase,
     lsp_types::{
-        self, CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams,
+        self,
         DocumentFormattingParams, TextEdit,
     },
-    texter::core::text::Text,
 };
-use topiary_core::{apply_query, formatter, Language, Operation, TopiaryQuery, Visualisation};
+use topiary_core::{formatter, Language, Operation, TopiaryQuery};
 
-static QUERY: &'static str = r#"
+static QUERY: &str = r#"
 [
   (comment)
 ] @leaf

@@ -1,15 +1,10 @@
 use std::collections::HashMap;
 
-use ast::generated::{
-    ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl, NamespaceDecl,
-};
+use ast::generated::ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl;
 use auto_lsp::core::ast::AstNode;
-use auto_lsp::core::document::Document;
-use auto_lsp::default::db::{tracked::get_ast, BaseDatabase, File};
-use auto_lsp::salsa;
+use auto_lsp::default::db::{BaseDatabase, File};
 use rustc_hash::FxHashMap;
 
-use crate::hir::function::Function;
 use crate::hir::namespace::{FileNamespaces, Namespace,
 };
 use crate::parser::Parse;
@@ -42,17 +37,14 @@ impl<'db> FileNamespacesBuilder<'db> {
         self.source
             .children
             .iter()
-            .for_each(|child| match child.as_ref() {
-                ast::generated::ConfigDecl_NamespaceDecl_ProgDecl::NamespaceDecl(namespace) => {
-                    let path = self.get_namespace_path(namespace);
-                    let namespace_path = NamespacePath::from((self.db, &path));
-                    self.paths
-                        .entry(namespace_path)
-                        .or_insert(Namespace::new(namespace));
+            .for_each(|child| if let ast::generated::ConfigDecl_NamespaceDecl_ProgDecl::NamespaceDecl(namespace) = child.as_ref() {
+                let path = self.get_namespace_path(namespace);
+                let namespace_path = NamespacePath::from((self.db, &path));
+                self.paths
+                    .entry(namespace_path)
+                    .or_insert(Namespace::new(namespace));
 
-                    self.handle_namespace_elements(&path, namespace);
-                }
-                _ => (),
+                self.handle_namespace_elements(&path, namespace);
             });
         FileNamespaces::new(self)
     }
@@ -176,14 +168,14 @@ impl<'db> FileNamespacesBuilder<'db> {
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use crate::{solver::{namespace_path, namespace_solver, namespaces_in_file}, RootDatabase};
+    use crate::{solver::{namespace_path, namespaces_in_file}, RootDatabase};
     use auto_lsp::{
         default::db::{FileManager},
         lsp_types,
         texter::core::text::Text,
     };
-    use expect_test::expect;
-    use salsa::{Event, EventKind};
+    
+    use salsa::EventKind;
 
     use super::*;
 

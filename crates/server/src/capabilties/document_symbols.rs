@@ -7,7 +7,7 @@ use auto_lsp::{
         dispatch,
         document::Document,
         document_symbols_builder::DocumentSymbolsBuilder,
-    }, default::db::{tracked::get_ast, BaseDatabase}, lsp_types::{self, DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, SymbolKind}
+    }, default::db::{tracked::get_ast, BaseDatabase}, lsp_types::{DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, SymbolKind}
 };
 
 pub fn document_symbols(

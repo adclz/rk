@@ -1,4 +1,3 @@
-use std::sync::LazyLock;
 
 use ast::generated::{ClassDecl, FbDecl, FuncDecl, Identifier, NamespaceDecl};
 use auto_lsp::core::ast::AstNode;
@@ -7,7 +6,6 @@ use auto_lsp::{
     core::{dispatch_once, document::Document},
     default::db::{tracked::get_ast, BaseDatabase, File},
     lsp_types::{Hover, HoverContents, HoverParams, MarkupContent, MarkupKind},
-    tree_sitter::{self, Point},
 };
 use db::solver::namespace_solver;
 
@@ -249,7 +247,7 @@ fn get_comment(doc: &Document, line: usize) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use auto_lsp::texter::core::text::Text;
+    use auto_lsp::{texter::core::text::Text, tree_sitter};
 
     use super::*;
 
