@@ -24,11 +24,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>
  */
 
 function commaSep1(rule) {
-  return seq(rule, repeat(seq(',', rule)))
+    return seq(rule, repeat(seq(',', rule)))
 }
 
 function commaSep(rule) {
-  return optional(commaSep1(rule))
+    return optional(commaSep1(rule))
 }
 
 const RESERVED_NAMES = [
@@ -51,6 +51,23 @@ const RESERVED_NAMES = [
     "VAR_GLOBAL"
 ];
 
+const io_var_decls = $ => [
+    $.input_decls,
+    $.output_decls,
+    $.in_out_decls
+]
+
+const func_var_decls = $ => [
+    $.external_var_decls,
+    $.var_decls
+]
+
+const other_var_decls = $ => [
+    $.retain_var_decls,
+    $.no_retain_var_decls,
+    $.loc_partly_var_decl
+]
+
 /// <reference types="tree-sitter-cli/dsl" />
 // @ts-check
 module.exports = grammar({
@@ -66,6 +83,13 @@ module.exports = grammar({
     reserved: {
         global: $ => RESERVED_NAMES,
     },
+
+    supertypes: $ => [
+        $._func_variables,
+        $._fb_variables,
+        $._class_variables,
+        $._method_variables
+    ],
 
     precedences: $ => [
         // string type name > byte string access
@@ -569,13 +593,13 @@ module.exports = grammar({
         ),
 
         named_spec_init: $ => prec.left(seq(
-            '(', commaSep1($.enum_value_spec),')',
+            '(', commaSep1($.enum_value_spec), ')',
             optional(seq(':=', $.enum_value))
         )),
 
         enum_spec_init: $ => prec.left(seq(
             choice(
-                seq( '(', commaSep($.identifier),')' ),
+                seq('(', commaSep($.identifier), ')'),
                 $.type_access
             ),
             optional(seq(':=', $.enum_value))
@@ -603,7 +627,7 @@ module.exports = grammar({
 
         array_spec: $ => seq('ARRAY', '[', commaSep1($.subrange), ']', 'OF', $.data_type_access),
 
-        array_init: $ => seq('[', commaSep($.array_elem_init),']'),
+        array_init: $ => seq('[', commaSep($.array_elem_init), ']'),
 
         array_elem_init: $ => choice(
             $.array_elem_init_value,
@@ -763,7 +787,7 @@ module.exports = grammar({
         var_decl_init: $ => seq(
             field("variables", $.variable_list),
             ':',
-            field("init", 
+            field("init",
                 choice(
                     $.array_spec_init,
                     $.str_var_decl,
@@ -773,8 +797,8 @@ module.exports = grammar({
                             seq(":=", field("default", $.identifier)),
                             seq(":=", $.struct_init),
                         )
-                    )
-                )),
+                        )
+                    )),
             )
         ),
 
@@ -997,20 +1021,15 @@ module.exports = grammar({
             field("name", $.identifier),
             field("access", optional(seq(':', $.data_type_access))),
             field("directives", repeat($.using_directive)),
-            field("variables", repeat(choice($.io_var_decls, $.func_var_decls, $.temp_var_decls))),
+            field("variables", repeat($._func_variables)),
             field("body", optional($.func_body)),
             'END_FUNCTION'
         ),
 
-        io_var_decls: $ => choice(
-            $.input_decls,
-            $.output_decls,
-            $.in_out_decls
-        ),
-
-        func_var_decls: $ => choice(
-            $.external_var_decls,
-            $.var_decls
+        _func_variables: $ => choice(
+            ...io_var_decls($),
+            ...func_var_decls($),
+            $.temp_var_decls,
         ),
 
         func_body: $ => choice(
@@ -1029,16 +1048,19 @@ module.exports = grammar({
             field("directives", repeat($.using_directive)),
             field("extends", optional(seq("EXTENDS", choice($.type_access)))),
             field("implements", optional(seq("IMPLEMENTS", $.interface_name_list))),
-            field("variables", repeat(choice($.fb_io_var_decls, $.func_var_decls, $.temp_var_decls, $.other_var_decls))),
+            field("variables", repeat($._fb_variables)),
             field("method", repeat($.method_decl)),
             field("body", optional($.fb_body)),
             "END_FUNCTION_BLOCK"
         ),
 
-        fb_io_var_decls: $ => choice(
+        _fb_variables: $ => choice(
             $.fb_input_decls,
             $.fb_output_decls,
-            $.in_out_decls
+            $.in_out_decls,
+            $.temp_var_decls,
+            ...func_var_decls($),
+            ...other_var_decls($)
         ),
 
         fb_input_decls: $ => seq(
@@ -1066,12 +1088,6 @@ module.exports = grammar({
             $.array_conform_decl
         ),
 
-        other_var_decls: $ => choice(
-            $.retain_var_decls,
-            $.no_retain_var_decls,
-            $.loc_partly_var_decl
-        ),
-
         no_retain_var_decls: $ => seq(
             'VAR',
             'NON_RETAIN',
@@ -1094,7 +1110,7 @@ module.exports = grammar({
             optional('OVERRIDE'),
             $.identifier,
             optional(seq(':', $.data_type_access)),
-            repeat(choice($.io_var_decls, $.func_var_decls, $.temp_var_decls)),
+            repeat(choice(...io_var_decls($), ...func_var_decls($), $.temp_var_decls)),
             field("body", optional($.func_body)),
             'END_METHOD'
         ),
@@ -1109,9 +1125,14 @@ module.exports = grammar({
             field("directives", repeat($.using_directive)),
             field("extends", optional(seq("EXTENDS", $.type_access))),
             field("implements", optional(seq("IMPLEMENTS", $.interface_name_list))),
-            field("declarations", repeat(choice($.func_var_decls, $.other_var_decls))),
+            field("declarations", repeat($._class_variables)),
             field("method", repeat($.method_decl)),
             'END_CLASS'
+        ),
+
+        _class_variables: $ => choice(
+            ...func_var_decls($),
+            ...other_var_decls($)
         ),
 
         class_type_name: $ => $.identifier,
@@ -1135,8 +1156,12 @@ module.exports = grammar({
             'METHOD',
             field("name", $.identifier),
             field("data_type", optional(seq(':', $.data_type_access))),
-            field("variables", repeat($.io_var_decls)),
+            field("variables", repeat($._method_variables)),
             'END_METHOD'
+        ),
+
+        _method_variables: $ => choice(
+            ...io_var_decls($)
         ),
 
         interface_spec_init: $ => seq(':=', $.interface_value),
@@ -1159,10 +1184,10 @@ module.exports = grammar({
             'PROGRAM',
             field("name", $.identifier),
             field("declarations", repeat(choice(
-                $.io_var_decls,
-                $.func_var_decls,
+                ...io_var_decls($),
+                ...func_var_decls($),
                 $.temp_var_decls,
-                $.other_var_decls,
+                ...other_var_decls($),
                 $.loc_var_decls,
                 $.prog_access_decl
             ))),
