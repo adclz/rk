@@ -99,7 +99,6 @@ module.exports = grammar({
 
     precedences: $ => [
         // string type name > byte string access
-        //[$.string_type_name, $.s_byte_str_spec, $.d_byte_str_spec],
         [$.unsigned_int, $.signed_int, $.int_literal, $.bit_str_literal],
 
         [$.global_ref_deref, $.enum_value]
@@ -120,7 +119,6 @@ module.exports = grammar({
         // ambiguity in PROGRAM declaration
         [$.array_elem_init_value, $.primary_expr],
         [$.struct_elem_init, $.primary_expr],
-        [$.string_type_name, $.var_spec],
 
         // local variable declarations
         [$.var_decls, $.loc_var_decls],
@@ -525,7 +523,7 @@ module.exports = grammar({
         derived_type_access: $ => $.type_access,
 
         type_access: $ => seq(
-            repeat(seq(field("ressource_or_namespace", $.identifier), '.')),
+            repeat1(seq(field("ressource_or_namespace", $.identifier), '.')),
             field("access", $.identifier)
         ),
 
@@ -548,8 +546,8 @@ module.exports = grammar({
             )),
             field("spec", optional(
                 choice(
+                    $.identifier,
                     $.array_spec,
-                    $.simple_spec,
                     $.struct_spec_init,
                     $.subrange_spec_init
                 )
@@ -560,7 +558,7 @@ module.exports = grammar({
             $.type_access,
             choice(
                 $.array_spec,
-                $.simple_spec,
+                $.identifier,
                 $.struct_spec_init,
                 $.subrange_spec_init
             )
@@ -569,11 +567,9 @@ module.exports = grammar({
         simple_type_decl: $ => seq(':', $.simple_spec_init),
 
         simple_spec_init: $ => prec.left(seq(
-            $.simple_spec,
+            $.identifier,
             optional(seq(':=', $.constant_expr))
         )),
-
-        simple_spec: $ => $.elem_type_name,
 
         subrange_type_decl: $ => seq(':', $.subrange_spec_init),
 
@@ -868,7 +864,7 @@ module.exports = grammar({
         ),
 
         _simple_var_kind: $ => choice(
-            $.simple_spec, 
+            $.identifier, 
             $.str_var_decl, 
             $.array_var_decl, 
             $.struct_var_decl
@@ -934,7 +930,7 @@ module.exports = grammar({
         external_decl: $ => seq(
             field("global_var_name", $.identifier),
             ':',
-            choice($.simple_spec, $.array_spec, $.type_access),
+            choice($.identifier, $.array_spec, $.type_access),
         ),
 
         global_var_decls: $ => seq(
@@ -1007,7 +1003,7 @@ module.exports = grammar({
         ),
 
         var_spec: $ => choice(
-            $.simple_spec,
+            $.identifier,
             $.array_spec,
             $.type_access,
             seq(choice('STRING', 'WSTRING'), optional(seq('[', $.unsigned_int, ']'))),
