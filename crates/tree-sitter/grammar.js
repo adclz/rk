@@ -778,7 +778,7 @@ module.exports = grammar({
         ),
 
         edge_decl: $ => seq(
-            $.variable_list,
+            field("variables", $.variable_list),
             ':',
             'BOOL',
             field("edge", optional(choice('R_EDGE', 'F_EDGE')))
@@ -804,13 +804,13 @@ module.exports = grammar({
 
 
         ref_var_decl: $ => seq(
-            $.variable_list,
+            field("variables", $.variable_list),
             ':',
             $.ref_spec
         ),
 
         interface_var_decl: $ => seq(
-            $.variable_list,
+            field("variables", $.variable_list),
             ':',
             $.type_access
         ),
@@ -827,7 +827,7 @@ module.exports = grammar({
         ),
 
         array_conform_decl: $ => seq(
-            $.variable_list,
+            field("variables", $.variable_list),
             ':',
             $.array_conformand
         ),
@@ -867,19 +867,20 @@ module.exports = grammar({
         ),
 
         var_decl: $ => seq(
-            $.variable_list,
+            field("variables", $.variable_list),
             ':',
             choice($.simple_spec, $.str_var_decl, $.array_var_decl, $.struct_var_decl)
         ),
 
         array_var_decl: $ => seq(
-            $.variable_list,
+            field("variables", $.variable_list),
+
             ':',
             $.array_spec
         ),
 
         struct_var_decl: $ => seq(
-            $.variable_list,
+            field("variables", $.variable_list),
             ':',
             $.type_access
         ),
