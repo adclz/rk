@@ -88,12 +88,18 @@ module.exports = grammar({
         $._func_variables,
         $._fb_variables,
         $._class_variables,
-        $._method_variables
+        $._method_variables,
+
+        $._input_var_kind,
+        $._output_var_kind,
+        $._simple_var_kind,
+        $._temp_var_kind,
+        $._in_out_var_kind
     ],
 
     precedences: $ => [
         // string type name > byte string access
-        [$.string_type_name, $.s_byte_str_spec, $.d_byte_str_spec],
+        //[$.string_type_name, $.s_byte_str_spec, $.d_byte_str_spec],
         [$.unsigned_int, $.signed_int, $.int_literal, $.bit_str_literal],
 
         [$.global_ref_deref, $.enum_value]
@@ -767,15 +773,11 @@ module.exports = grammar({
         input_decls: $ => seq(
             'VAR_INPUT',
             field("retain", optional(choice('RETAIN', 'NON_RETAIN'))),
-            repeat(seq($.input_decl, optional(';'))),
+            repeat(seq($._input_var_kind, optional(';'))),
             'END_VAR'
         ),
 
-        input_decl: $ => choice(
-            $.var_decl_init,
-            $.edge_decl,
-            $.array_conform_decl
-        ),
+        _input_var_kind: $ => choice($.var_decl_init, $.edge_decl, $.array_conform_decl),
 
         edge_decl: $ => seq(
             field("variables", $.variable_list),
@@ -845,36 +847,35 @@ module.exports = grammar({
         output_decls: $ => seq(
             'VAR_OUTPUT',
             optional(choice('RETAIN', 'NON_RETAIN')),
-            repeat(seq($.output_decl, optional(';'))),
+            repeat(seq($._output_var_kind, optional(';'))),
             'END_VAR'
         ),
 
-        output_decl: $ => choice(
-            $.var_decl_init,
-            $.array_conform_decl
-        ),
+        _output_var_kind: $ => choice($.var_decl_init, $.array_conform_decl),
 
         in_out_decls: $ => seq(
             'VAR_IN_OUT',
-            repeat(seq($.in_out_var_decl, optional(';'))),
+            repeat(seq($._in_out_var_kind, optional(';'))),
             'END_VAR'
         ),
 
-        in_out_var_decl: $ => choice(
-            $.var_decl,
-            $.array_conform_decl,
-            $.fb_decl_no_init
-        ),
+        _in_out_var_kind: $ => choice($.var_decl, $.array_conform_decl, $.fb_decl_no_init),
 
         var_decl: $ => seq(
             field("variables", $.variable_list),
             ':',
-            choice($.simple_spec, $.str_var_decl, $.array_var_decl, $.struct_var_decl)
+            $._simple_var_kind
+        ),
+
+        _simple_var_kind: $ => choice(
+            $.simple_spec, 
+            $.str_var_decl, 
+            $.array_var_decl, 
+            $.struct_var_decl
         ),
 
         array_var_decl: $ => seq(
             field("variables", $.variable_list),
-
             ':',
             $.array_spec
         ),
@@ -917,9 +918,11 @@ module.exports = grammar({
 
         temp_var_decls: $ => seq(
             'VAR_TEMP',
-            repeat(seq(choice($.var_decl, $.ref_var_decl, $.interface_var_decl), optional(';'))),
+            repeat(seq($._temp_var_kind, optional(';'))),
             'END_VAR'
         ),
+
+        _temp_var_kind : $ => choice($.var_decl, $.ref_var_decl, $.interface_var_decl),
 
         external_var_decls: $ => seq(
             'VAR_EXTERNAL',
