@@ -1,43 +1,70 @@
 use std::{sync::Arc};
 
-use auto_lsp::default::db::File;
+use auto_lsp::default::db::{BaseDatabase, File};
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::{hir::{class::Class, data_type::DataType, function::Function, function_block::FunctionBlock, interface::Interface}, parser::namespace::FileNamespacesBuilder, solver::{Ident, NamespacePath}};
+use crate::{hir::{class::Class, data_type::DataType, function::Function, function_block::FunctionBlock, interface::Interface}, ident::Ident, solver::{NamespacePath}, RootDatabase};
 
-/// Represents a group of namespaces in a file
-#[derive(Clone, salsa::Update)]
-pub struct FileNamespaces<'db> {
-    pub namespaces: Arc<FxHashMap<NamespacePath, Namespace<'db>>>,
-    pub file: File,
+pub fn to_lsp_range(range: auto_lsp::tree_sitter::Range) -> auto_lsp::lsp_types::Range {
+    auto_lsp::lsp_types::Range {
+        start: auto_lsp::lsp_types::Position::new(range.start_point.row as u32, range.start_point.column as u32),
+        end: auto_lsp::lsp_types::Position::new(range.end_point.row as u32, range.end_point.column as u32),
+    }
 }
 
+/// Represents a group of namespaces in a file
+#[salsa::tracked]
+pub struct FileNamespaces<'db> {
+    pub file: File,
+    #[tracked]
+    #[return_ref]
+    pub namespaces: FxHashMap<NamespacePath, Namespace<'db>>,
+}
+
+#[salsa::tracked]
 impl<'db> FileNamespaces<'db> {
-    pub fn new(builder: FileNamespacesBuilder<'db>) -> Self {
-        Self {
-            namespaces: Arc::new(builder.paths),
-            file: builder.file,
-        }
+    #[salsa::tracked(returns(as_ref))]
+    pub fn get_pou(self, db: &'db dyn BaseDatabase, path: NamespacePath, key: Ident) -> Option<PouDecl<'db>> {
+        self.namespaces(db).get(&path)?.pous(db).get(&key).copied()
     }
 }
 
 /// Represents a view of a namespace
-#[derive(Default, Clone, PartialEq, Eq, salsa::Update)]
+#[salsa::tracked(debug)]
 pub struct Namespace<'db> {
     pub internal: bool, 
+    #[tracked]
+    #[return_ref]
     pub in_scopes: FxHashSet<NamespacePath>,
-    pub functions: FxHashMap<Ident, Function<'db>>,
-    pub function_blocks: FxHashMap<Ident, FunctionBlock<'db>>,
-    pub classes: FxHashMap<Ident, Class<'db>>,
-    pub interfaces: FxHashMap<Ident, Interface<'db>>,
-    pub data_types: FxHashMap<Ident, DataType<'db>>,
+
+    #[return_ref]
+    pub span: auto_lsp::tree_sitter::Range,
+
+    #[tracked]
+    #[return_ref]
+    pub pous: FxHashMap<Ident, PouDecl<'db>>,
 }
 
-impl<'db> Namespace<'db> {
-    pub fn new(namespace: &ast::generated::NamespaceDecl) -> Self {
-        Self {
-            internal: namespace.internal.is_some(),
-            ..Default::default()
-        }
-    }
+
+#[salsa::tracked(debug)]
+pub struct PouDecl<'db> {
+    #[tracked]
+    #[return_ref]
+    pub pou: Pou<'db>,
+
+    #[return_ref]
+    pub span: auto_lsp::tree_sitter::Range,
+
+    #[tracked]
+    #[return_ref]
+    pub name_span: auto_lsp::tree_sitter::Range,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+pub enum Pou<'db> {
+    Function(Function<'db>),
+    FunctionBlock(FunctionBlock<'db>),
+    Class(Class<'db>),
+    Interface(Interface<'db>),
+    DataType(DataType<'db>),
 }

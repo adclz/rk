@@ -1,5 +1,5 @@
 
-use crate::solver::Ident;
+use crate::{hir::variable::Variable};
 
 #[salsa::tracked(debug)]
 pub struct Function<'db> {
@@ -9,9 +9,4 @@ pub struct Function<'db> {
     temp_variables: Vec<Variable<'db>>,
     external_variables: Vec<Variable<'db>>,
     global_variables: Vec<Variable<'db>>,
-}
-
-#[salsa::tracked(debug)]
-pub struct Variable<'db> {
-    name: Ident,
 }
