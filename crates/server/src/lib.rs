@@ -7,6 +7,7 @@ use auto_lsp::default::server::capabilities::TEXT_DOCUMENT_SYNC;
 use auto_lsp::default::server::capabilities::WORKSPACE_PROVIDER;
 use auto_lsp::default::server::file_events::changed_watched_files;
 use auto_lsp::default::server::file_events::open_text_document;
+use auto_lsp::default::server::workspace_init::WorkspaceInit;
 use auto_lsp::lsp_server;
 use auto_lsp::lsp_server::Connection;
 use auto_lsp::lsp_types::notification::Cancel;
@@ -27,6 +28,7 @@ use auto_lsp::lsp_types::request::InlayHintRequest;
 use auto_lsp::lsp_types::request::SemanticTokensFullRequest;
 use auto_lsp::lsp_types::request::DocumentSymbolRequest;
 use auto_lsp::lsp_types::request::DocumentDiagnosticRequest;
+use auto_lsp::lsp_types::request::WorkspaceDiagnosticRequest;
 use auto_lsp::lsp_types::CodeActionProviderCapability;
 use auto_lsp::lsp_types::CodeLensOptions;
 use auto_lsp::lsp_types::CompletionOptions;
@@ -51,6 +53,7 @@ use crate::capabilties::code_actions::code_actions;
 use crate::capabilties::code_lens::code_lens;
 use crate::capabilties::completions::request::completions;
 use crate::capabilties::diagnostics::diagnostics;
+use crate::capabilties::diagnostics::workspace_diagnostics;
 use crate::capabilties::document_symbols::document_symbols;
 use crate::capabilties::folding_ranges::folding_ranges;
 use crate::capabilties::formatting::formatting;
@@ -74,7 +77,8 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
                 document_symbol_provider: Some(OneOf::Left(true)),
                 workspace: WORKSPACE_PROVIDER.clone(),
                 diagnostic_provider: Some(DiagnosticServerCapabilities::Options(DiagnosticOptions {
-                    workspace_diagnostics: false,
+                    workspace_diagnostics: true,
+                    inter_file_dependencies: true,
                     ..Default::default()
                 })),
                 text_document_sync: TEXT_DOCUMENT_SYNC.clone(),
@@ -116,7 +120,7 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
         db,
     )?;
 
-    //session.init_workspace(params)?;
+    session.init_workspace(params)?;
 
     session.main_loop(
         on_requests(&mut request_registry),
@@ -134,6 +138,7 @@ fn on_requests<Db: BaseDatabase + Clone + RefUnwindSafe>(
 ) -> &mut RequestRegistry<Db> {
     registry
         .on::<DocumentDiagnosticRequest, _>(diagnostics)
+        .on::<WorkspaceDiagnosticRequest, _>(workspace_diagnostics)
         .on::<DocumentSymbolRequest, _>( document_symbols)
         .on::<SemanticTokensFullRequest, _>(semantic_tokens::semantic_tokens_full)
         .on::<HoverRequest, _>(hover)

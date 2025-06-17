@@ -4,6 +4,7 @@ pub mod hir;
 pub mod solver;
 pub mod parser;
 pub mod diagnostics;
+pub mod ident;
  
 use auto_lsp::{default::db::{BaseDatabase, File}, lsp_types::Url, salsa};
 use dashmap::DashMap;
@@ -17,10 +18,10 @@ pub struct RootDatabase {
 }
 
 impl RootDatabase {
-    pub fn new(logs: Option<Box<dyn Fn(Event)  + Send + Sync>>) -> Self {
+    pub fn new(logs: Option<Box<dyn Fn(Event) + Send + Sync>>) -> Self {
         Self {
             storage: salsa::Storage::new(logs),
-            files: DashMap::default(),
+            ..Default::default()
         }
     }
 }
