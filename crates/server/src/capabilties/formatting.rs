@@ -100,8 +100,6 @@ static QUERY: &str = r#"
     (namespace_elements)
     (func_body)
     (fb_body)
-    (func_var_decls)
-    (other_var_decls)
 ]   
     @prepend_spaced_softline
 
@@ -178,4 +176,18 @@ pub fn formatting(
         },
         output,
     )]))
+}
+
+#[cfg(test)]
+mod tests {
+    use auto_lsp::{tree_sitter};
+
+    use super::*;
+
+    #[test]
+    fn load_formatting_query() {
+        tree_sitter::Query::new(&tree_sitter_rk::LANGUAGE.into(), QUERY)
+        .expect("Failed to create formatting query");
+    }
+
 }
