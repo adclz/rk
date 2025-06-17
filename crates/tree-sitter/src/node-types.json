@@ -1,5 +1,229 @@
 [
   {
+    "type": "_class_variables",
+    "named": true,
+    "subtypes": [
+      {
+        "type": "external_var_decls",
+        "named": true
+      },
+      {
+        "type": "loc_partly_var_decl",
+        "named": true
+      },
+      {
+        "type": "no_retain_var_decls",
+        "named": true
+      },
+      {
+        "type": "retain_var_decls",
+        "named": true
+      },
+      {
+        "type": "var_decls",
+        "named": true
+      }
+    ]
+  },
+  {
+    "type": "_fb_variables",
+    "named": true,
+    "subtypes": [
+      {
+        "type": "external_var_decls",
+        "named": true
+      },
+      {
+        "type": "fb_input_decls",
+        "named": true
+      },
+      {
+        "type": "fb_output_decls",
+        "named": true
+      },
+      {
+        "type": "in_out_decls",
+        "named": true
+      },
+      {
+        "type": "loc_partly_var_decl",
+        "named": true
+      },
+      {
+        "type": "no_retain_var_decls",
+        "named": true
+      },
+      {
+        "type": "retain_var_decls",
+        "named": true
+      },
+      {
+        "type": "temp_var_decls",
+        "named": true
+      },
+      {
+        "type": "var_decls",
+        "named": true
+      }
+    ]
+  },
+  {
+    "type": "_func_variables",
+    "named": true,
+    "subtypes": [
+      {
+        "type": "external_var_decls",
+        "named": true
+      },
+      {
+        "type": "in_out_decls",
+        "named": true
+      },
+      {
+        "type": "input_decls",
+        "named": true
+      },
+      {
+        "type": "output_decls",
+        "named": true
+      },
+      {
+        "type": "temp_var_decls",
+        "named": true
+      },
+      {
+        "type": "var_decls",
+        "named": true
+      }
+    ]
+  },
+  {
+    "type": "_in_out_var_kind",
+    "named": true,
+    "subtypes": [
+      {
+        "type": "array_conform_decl",
+        "named": true
+      },
+      {
+        "type": "fb_decl_no_init",
+        "named": true
+      },
+      {
+        "type": "var_decl",
+        "named": true
+      }
+    ]
+  },
+  {
+    "type": "_input_var_kind",
+    "named": true,
+    "subtypes": [
+      {
+        "type": "array_conform_decl",
+        "named": true
+      },
+      {
+        "type": "edge_decl",
+        "named": true
+      },
+      {
+        "type": "var_decl_init",
+        "named": true
+      }
+    ]
+  },
+  {
+    "type": "_method_variables",
+    "named": true,
+    "subtypes": [
+      {
+        "type": "in_out_decls",
+        "named": true
+      },
+      {
+        "type": "input_decls",
+        "named": true
+      },
+      {
+        "type": "output_decls",
+        "named": true
+      }
+    ]
+  },
+  {
+    "type": "_output_var_kind",
+    "named": true,
+    "subtypes": [
+      {
+        "type": "array_conform_decl",
+        "named": true
+      },
+      {
+        "type": "var_decl_init",
+        "named": true
+      }
+    ]
+  },
+  {
+    "type": "_simple_var_kind",
+    "named": true,
+    "subtypes": [
+      {
+        "type": "array_var_decl",
+        "named": true
+      },
+      {
+        "type": "identifier",
+        "named": true
+      },
+      {
+        "type": "str_var_decl",
+        "named": true
+      },
+      {
+        "type": "struct_var_decl",
+        "named": true
+      }
+    ]
+  },
+  {
+    "type": "_temp_var_kind",
+    "named": true,
+    "subtypes": [
+      {
+        "type": "interface_var_decl",
+        "named": true
+      },
+      {
+        "type": "ref_var_decl",
+        "named": true
+      },
+      {
+        "type": "var_decl",
+        "named": true
+      }
+    ]
+  },
+  {
+    "type": "_var_decl_kind",
+    "named": true,
+    "subtypes": [
+      {
+        "type": "array_spec_init",
+        "named": true
+      },
+      {
+        "type": "simple_var_decl",
+        "named": true
+      },
+      {
+        "type": "str_var_decl",
+        "named": true
+      }
+    ]
+  },
+  {
     "type": "SFC",
     "named": true,
     "fields": {},
@@ -204,17 +428,24 @@
   {
     "type": "array_conform_decl",
     "named": true,
-    "fields": {},
+    "fields": {
+      "variables": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "variable_list",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
-      "multiple": true,
+      "multiple": false,
       "required": true,
       "types": [
         {
           "type": "array_conformand",
-          "named": true
-        },
-        {
-          "type": "variable_list",
           "named": true
         }
       ]
@@ -299,36 +530,54 @@
   {
     "type": "array_spec",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "data_type_access",
-          "named": true
-        },
-        {
-          "type": "subrange",
-          "named": true
-        }
-      ]
+    "fields": {
+      "ranges": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": ",",
+            "named": false
+          },
+          {
+            "type": "subrange",
+            "named": true
+          }
+        ]
+      },
+      "type": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "data_type_access",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
     "type": "array_spec_init",
     "named": true,
-    "fields": {},
+    "fields": {
+      "spec": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "array_spec",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
-      "multiple": true,
-      "required": true,
+      "multiple": false,
+      "required": false,
       "types": [
         {
           "type": "array_init",
-          "named": true
-        },
-        {
-          "type": "array_spec",
           "named": true
         }
       ]
@@ -352,17 +601,24 @@
   {
     "type": "array_var_decl",
     "named": true,
-    "fields": {},
+    "fields": {
+      "variables": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "variable_list",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
-      "multiple": true,
+      "multiple": false,
       "required": true,
       "types": [
         {
           "type": "array_spec",
-          "named": true
-        },
-        {
-          "type": "variable_list",
           "named": true
         }
       ]
@@ -436,32 +692,43 @@
   {
     "type": "bit_str_literal",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "binary_int",
-          "named": true
-        },
-        {
-          "type": "hex_int",
-          "named": true
-        },
-        {
-          "type": "multibits_type_name",
-          "named": true
-        },
-        {
-          "type": "octal_int",
-          "named": true
-        },
-        {
-          "type": "unsigned_int",
-          "named": true
-        }
-      ]
+    "fields": {
+      "int": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "binary_int",
+            "named": true
+          },
+          {
+            "type": "hex_int",
+            "named": true
+          },
+          {
+            "type": "octal_int",
+            "named": true
+          },
+          {
+            "type": "unsigned_int",
+            "named": true
+          }
+        ]
+      },
+      "multibits": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "#",
+            "named": false
+          },
+          {
+            "type": "multibits_type_name",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -486,16 +753,35 @@
   {
     "type": "bool_literal",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": false,
-      "types": [
-        {
-          "type": "bool_type_name",
-          "named": true
-        }
-      ]
+    "fields": {
+      "type": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "#",
+            "named": false
+          },
+          {
+            "type": "bool_type_name",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "FALSE",
+            "named": false
+          },
+          {
+            "type": "TRUE",
+            "named": false
+          }
+        ]
+      }
     }
   },
   {
@@ -582,16 +868,17 @@
   {
     "type": "char_literal",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "char_str",
-          "named": true
-        }
-      ]
+    "fields": {
+      "char": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "char_str",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -622,11 +909,7 @@
         "required": false,
         "types": [
           {
-            "type": "func_var_decls",
-            "named": true
-          },
-          {
-            "type": "other_var_decls",
+            "type": "_class_variables",
             "named": true
           }
         ]
@@ -840,7 +1123,7 @@
       "required": true,
       "types": [
         {
-          "type": "expression",
+          "type": "constant",
           "named": true
         }
       ]
@@ -864,16 +1147,17 @@
   {
     "type": "d_byte_char_str",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "d_byte_char_value",
-          "named": true
-        }
-      ]
+    "fields": {
+      "char": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "d_byte_char_value",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -1241,17 +1525,17 @@
             "named": false
           }
         ]
+      },
+      "variables": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "variable_list",
+            "named": true
+          }
+        ]
       }
-    },
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "variable_list",
-          "named": true
-        }
-      ]
     }
   },
   {
@@ -1423,7 +1707,7 @@
           "named": true
         },
         {
-          "type": "simple_spec",
+          "type": "identifier",
           "named": true
         },
         {
@@ -1577,19 +1861,7 @@
         "required": false,
         "types": [
           {
-            "type": "fb_io_var_decls",
-            "named": true
-          },
-          {
-            "type": "func_var_decls",
-            "named": true
-          },
-          {
-            "type": "other_var_decls",
-            "named": true
-          },
-          {
-            "type": "temp_var_decls",
+            "type": "_fb_variables",
             "named": true
           }
         ]
@@ -1663,29 +1935,6 @@
       "types": [
         {
           "type": "fb_input_decl",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "fb_io_var_decls",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "fb_input_decls",
-          "named": true
-        },
-        {
-          "type": "fb_output_decls",
-          "named": true
-        },
-        {
-          "type": "in_out_decls",
           "named": true
         }
       ]
@@ -1915,7 +2164,7 @@
           }
         ]
       },
-      "directive": {
+      "directives": {
         "multiple": true,
         "required": false,
         "types": [
@@ -1940,38 +2189,11 @@
         "required": false,
         "types": [
           {
-            "type": "func_var_decls",
-            "named": true
-          },
-          {
-            "type": "io_var_decls",
-            "named": true
-          },
-          {
-            "type": "temp_var_decls",
+            "type": "_func_variables",
             "named": true
           }
         ]
       }
-    }
-  },
-  {
-    "type": "func_var_decls",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "external_var_decls",
-          "named": true
-        },
-        {
-          "type": "var_decls",
-          "named": true
-        }
-      ]
     }
   },
   {
@@ -2155,30 +2377,7 @@
       "required": false,
       "types": [
         {
-          "type": "in_out_var_decl",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "in_out_var_decl",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "array_conform_decl",
-          "named": true
-        },
-        {
-          "type": "fb_decl_no_init",
-          "named": true
-        },
-        {
-          "type": "var_decl",
+          "type": "_in_out_var_kind",
           "named": true
         }
       ]
@@ -2198,29 +2397,6 @@
         },
         {
           "type": "step_name",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "input_decl",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "array_conform_decl",
-          "named": true
-        },
-        {
-          "type": "edge_decl",
-          "named": true
-        },
-        {
-          "type": "var_decl_init",
           "named": true
         }
       ]
@@ -2250,7 +2426,7 @@
       "required": false,
       "types": [
         {
-          "type": "input_decl",
+          "type": "_input_var_kind",
           "named": true
         }
       ]
@@ -2285,32 +2461,43 @@
   {
     "type": "int_literal",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "binary_int",
-          "named": true
-        },
-        {
-          "type": "hex_int",
-          "named": true
-        },
-        {
-          "type": "int_type_name",
-          "named": true
-        },
-        {
-          "type": "octal_int",
-          "named": true
-        },
-        {
-          "type": "signed_int",
-          "named": true
-        }
-      ]
+    "fields": {
+      "int": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "binary_int",
+            "named": true
+          },
+          {
+            "type": "hex_int",
+            "named": true
+          },
+          {
+            "type": "octal_int",
+            "named": true
+          },
+          {
+            "type": "signed_int",
+            "named": true
+          }
+        ]
+      },
+      "type_name": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "#",
+            "named": false
+          },
+          {
+            "type": "int_type_name",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -2400,17 +2587,24 @@
   {
     "type": "interface_var_decl",
     "named": true,
-    "fields": {},
+    "fields": {
+      "variables": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "variable_list",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
-      "multiple": true,
+      "multiple": false,
       "required": true,
       "types": [
         {
           "type": "type_access",
-          "named": true
-        },
-        {
-          "type": "variable_list",
           "named": true
         }
       ]
@@ -2473,29 +2667,6 @@
         },
         {
           "type": "param_assign",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "io_var_decls",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "in_out_decls",
-          "named": true
-        },
-        {
-          "type": "input_decls",
-          "named": true
-        },
-        {
-          "type": "output_decls",
           "named": true
         }
       ]
@@ -2718,7 +2889,7 @@
           "named": true
         },
         {
-          "type": "func_var_decls",
+          "type": "external_var_decls",
           "named": true
         },
         {
@@ -2726,11 +2897,23 @@
           "named": true
         },
         {
-          "type": "io_var_decls",
+          "type": "in_out_decls",
+          "named": true
+        },
+        {
+          "type": "input_decls",
+          "named": true
+        },
+        {
+          "type": "output_decls",
           "named": true
         },
         {
           "type": "temp_var_decls",
+          "named": true
+        },
+        {
+          "type": "var_decls",
           "named": true
         }
       ]
@@ -2769,7 +2952,7 @@
         "required": false,
         "types": [
           {
-            "type": "io_var_decls",
+            "type": "_method_variables",
             "named": true
           }
         ]
@@ -2926,7 +3109,7 @@
     "type": "namespace_decl",
     "named": true,
     "fields": {
-      "directive": {
+      "directives": {
         "multiple": true,
         "required": false,
         "types": [
@@ -3106,48 +3289,6 @@
     }
   },
   {
-    "type": "other_var_decls",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "loc_partly_var_decl",
-          "named": true
-        },
-        {
-          "type": "no_retain_var_decls",
-          "named": true
-        },
-        {
-          "type": "retain_var_decls",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "output_decl",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "array_conform_decl",
-          "named": true
-        },
-        {
-          "type": "var_decl_init",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
     "type": "output_decls",
     "named": true,
     "fields": {},
@@ -3156,7 +3297,7 @@
       "required": false,
       "types": [
         {
-          "type": "output_decl",
+          "type": "_output_var_kind",
           "named": true
         }
       ]
@@ -3452,11 +3593,19 @@
         "required": false,
         "types": [
           {
-            "type": "func_var_decls",
+            "type": "external_var_decls",
             "named": true
           },
           {
-            "type": "io_var_decls",
+            "type": "in_out_decls",
+            "named": true
+          },
+          {
+            "type": "input_decls",
+            "named": true
+          },
+          {
+            "type": "loc_partly_var_decl",
             "named": true
           },
           {
@@ -3464,7 +3613,11 @@
             "named": true
           },
           {
-            "type": "other_var_decls",
+            "type": "no_retain_var_decls",
+            "named": true
+          },
+          {
+            "type": "output_decls",
             "named": true
           },
           {
@@ -3472,7 +3625,15 @@
             "named": true
           },
           {
+            "type": "retain_var_decls",
+            "named": true
+          },
+          {
             "type": "temp_var_decls",
+            "named": true
+          },
+          {
+            "type": "var_decls",
             "named": true
           }
         ]
@@ -3544,24 +3705,55 @@
   {
     "type": "real_literal",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "real_type_name",
-          "named": true
-        },
-        {
-          "type": "signed_int",
-          "named": true
-        },
-        {
-          "type": "unsigned_int",
-          "named": true
-        }
-      ]
+    "fields": {
+      "exp": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "E",
+            "named": false
+          },
+          {
+            "type": "signed_int",
+            "named": true
+          }
+        ]
+      },
+      "frac": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "unsigned_int",
+            "named": true
+          }
+        ]
+      },
+      "real": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "signed_int",
+            "named": true
+          }
+        ]
+      },
+      "type_name": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "#",
+            "named": false
+          },
+          {
+            "type": "real_type_name",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -3709,17 +3901,24 @@
   {
     "type": "ref_var_decl",
     "named": true,
-    "fields": {},
+    "fields": {
+      "variables": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "variable_list",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
-      "multiple": true,
+      "multiple": false,
       "required": true,
       "types": [
         {
           "type": "ref_spec",
-          "named": true
-        },
-        {
-          "type": "variable_list",
           "named": true
         }
       ]
@@ -3844,16 +4043,17 @@
   {
     "type": "s_byte_char_str",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "s_byte_char_value",
-          "named": true
-        }
-      ]
+    "fields": {
+      "char": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "s_byte_char_value",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -3957,21 +4157,6 @@
     }
   },
   {
-    "type": "simple_spec",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "elem_type_name",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
     "type": "simple_spec_init",
     "named": true,
     "fields": {},
@@ -3984,7 +4169,7 @@
           "named": true
         },
         {
-          "type": "simple_spec",
+          "type": "identifier",
           "named": true
         }
       ]
@@ -4000,6 +4185,42 @@
       "types": [
         {
           "type": "simple_spec_init",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "simple_var_decl",
+    "named": true,
+    "fields": {
+      "default": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "type": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "struct_init",
           "named": true
         }
       ]
@@ -4362,17 +4583,24 @@
   {
     "type": "struct_var_decl",
     "named": true,
-    "fields": {},
+    "fields": {
+      "variables": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "variable_list",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
-      "multiple": true,
+      "multiple": false,
       "required": true,
       "types": [
         {
           "type": "type_access",
-          "named": true
-        },
-        {
-          "type": "variable_list",
           "named": true
         }
       ]
@@ -4415,16 +4643,27 @@
   {
     "type": "subrange",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "constant_expr",
-          "named": true
-        }
-      ]
+    "fields": {
+      "lower": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "constant_expr",
+            "named": true
+          }
+        ]
+      },
+      "upper": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "constant_expr",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -4615,15 +4854,7 @@
       "required": false,
       "types": [
         {
-          "type": "interface_var_decl",
-          "named": true
-        },
-        {
-          "type": "ref_var_decl",
-          "named": true
-        },
-        {
-          "type": "var_decl",
+          "type": "_temp_var_kind",
           "named": true
         }
       ]
@@ -4781,7 +5012,7 @@
       },
       "ressource_or_namespace": {
         "multiple": true,
-        "required": false,
+        "required": true,
         "types": [
           {
             "type": "identifier",
@@ -4848,7 +5079,7 @@
             "named": true
           },
           {
-            "type": "simple_spec",
+            "type": "identifier",
             "named": true
           },
           {
@@ -4916,29 +5147,24 @@
   {
     "type": "var_decl",
     "named": true,
-    "fields": {},
+    "fields": {
+      "variables": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "variable_list",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
-      "multiple": true,
+      "multiple": false,
       "required": true,
       "types": [
         {
-          "type": "array_var_decl",
-          "named": true
-        },
-        {
-          "type": "simple_spec",
-          "named": true
-        },
-        {
-          "type": "str_var_decl",
-          "named": true
-        },
-        {
-          "type": "struct_var_decl",
-          "named": true
-        },
-        {
-          "type": "variable_list",
+          "type": "_simple_var_kind",
           "named": true
         }
       ]
@@ -4948,44 +5174,12 @@
     "type": "var_decl_init",
     "named": true,
     "fields": {
-      "default": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "identifier",
-            "named": true
-          }
-        ]
-      },
       "init": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": ":=",
-            "named": false
-          },
-          {
-            "type": "array_spec_init",
-            "named": true
-          },
-          {
-            "type": "str_var_decl",
-            "named": true
-          },
-          {
-            "type": "struct_init",
-            "named": true
-          }
-        ]
-      },
-      "type": {
         "multiple": false,
-        "required": false,
+        "required": true,
         "types": [
           {
-            "type": "identifier",
+            "type": "_var_decl_kind",
             "named": true
           }
         ]
@@ -5051,7 +5245,7 @@
           "named": true
         },
         {
-          "type": "simple_spec",
+          "type": "identifier",
           "named": true
         },
         {
@@ -5596,6 +5790,10 @@
     "named": false
   },
   {
+    "type": "FALSE",
+    "named": false
+  },
+  {
     "type": "FINAL",
     "named": false
   },
@@ -5917,6 +6115,10 @@
   },
   {
     "type": "TRANSITION",
+    "named": false
+  },
+  {
+    "type": "TRUE",
     "named": false
   },
   {
