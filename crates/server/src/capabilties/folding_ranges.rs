@@ -29,7 +29,8 @@ static FOLD: &str = r#"
   (loc_var_decls)
 ] @fold
 
-(comment) @fold.comment
+(comment) @comment
+(using_directive) @import
 "#;
 
 pub static FOLD_QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
@@ -60,8 +61,10 @@ pub fn folding_ranges(
 
     while let Some((m, capture_index)) = captures.next() {
         let capture = m.captures[*capture_index];
+
         let kind = match FOLD_QUERY.capture_names()[capture.index as usize] {
-            "fold.comment" => FoldingRangeKind::Comment,
+            "comment" => FoldingRangeKind::Comment,
+            "import" => FoldingRangeKind::Imports,
             _ => FoldingRangeKind::Region,
         };
         let range = capture.node.range();
@@ -76,4 +79,18 @@ pub fn folding_ranges(
     }
 
     Ok(Some(ranges))
+}
+
+#[cfg(test)]
+mod tests {
+    use auto_lsp::{tree_sitter};
+
+    use super::*;
+
+    #[test]
+    fn load_fold_query() {
+        tree_sitter::Query::new(&tree_sitter_rk::LANGUAGE.into(), FOLD)
+        .expect("Failed to create fold query");
+    }
+
 }
