@@ -1,13 +1,6 @@
 use auto_lsp::{core::{ast::AstNode, document::Document}, default::db::{tracked::get_ast, BaseDatabase, File}};
 
-use crate::{hir::namespace::FileNamespaces, parser::namespace::FileNamespacesBuilder};
-
-/// Interned identifier
-#[salsa::interned(debug, no_lifetime)]
-pub struct Ident {
-    #[return_ref]
-    pub text: String,
-}
+use crate::{hir::namespace::FileNamespaces, ident::Ident, parser::namespace::FileNamespacesBuilder};
 
 /// Interned namespace path
 #[salsa::interned(debug, no_lifetime)]
@@ -52,20 +45,23 @@ impl From<(&dyn BaseDatabase, &Vec<Ident>)> for NamespacePath {
 }
 
 /// Returns the namespaces in the given file
-#[salsa::tracked(no_eq)]
-pub fn namespaces_in_file<'db>(db: &'db dyn BaseDatabase, file: File) -> FileNamespaces<'db> {
-    let ast = get_ast(db, file).get_root().unwrap();
-    let source = ast.downcast_ref::<ast::generated::SourceFile>().unwrap();
+#[salsa::tracked]
+pub fn namespaces_in_file<'db>(db: &'db dyn BaseDatabase, file: File) -> Option<FileNamespaces<'db>> {
+    let ast = get_ast(db, file).get_root()?;
+    let source = ast.downcast_ref::<ast::generated::SourceFile>()?;
 
-    FileNamespacesBuilder::new(db, file, source).build()
+    Some(FileNamespacesBuilder::new(db, file, source).build())
 }
 
 /// Returns the namespaces that contain the given path
-#[salsa::tracked(returns(ref), no_eq)]
+#[salsa::tracked(returns(ref))]
 pub fn namespace_path<'db>(db: &'db dyn BaseDatabase, path: NamespacePath) -> Vec<FileNamespaces<'db>> {
     db.get_files().iter().filter_map(|file| {
-        let namespaces = namespaces_in_file(db, *file);
-        if namespaces.namespaces.contains_key(&path) {
+        let namespaces = match namespaces_in_file(db, *file) {
+            Some(namespaces) => namespaces,
+            None => return None,
+        };
+        if namespaces.namespaces(db).contains_key(&path) {
             Some(namespaces)
         } else {
             None
@@ -99,4 +95,150 @@ pub fn namespace_solver(db: &dyn BaseDatabase, file: File, node: &dyn AstNode) -
         node = parent.get_parent(list);
     }
     NamespacePath::from((db, path))
+}
+
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use crate::{
+        solver::{namespace_path, namespaces_in_file},
+        RootDatabase,
+    };
+    use auto_lsp::{default::db::FileManager, lsp_types, texter::core::text::Text};
+
+    use salsa::EventKind;
+
+    use super::*;
+
+    #[test]
+    fn multiple_namespaces() {
+        let mut db = RootDatabase::default();
+        let url = lsp_types::Url::parse("file:///test.st").unwrap();
+        let texter = Text::new(
+            r#"
+NAMESPACE TEST.k
+    NAMESPACE TEST235333.m.a
+        NAMESPACE TEST.b
+            FUNCTION N
+
+            END_FUNCTION
+        END_NAMESPACE
+    END_NAMESPACE
+END_NAMESPACE"#
+                .into(),
+        );
+        db.add_file_from_texter(
+            ast::RK_PARSER.get("structured_text").unwrap(),
+            &url,
+            texter,
+        )
+        .unwrap();
+
+        let file = db.get_file(&url).unwrap();
+        let namespaces = namespaces_in_file(&db, file);
+
+        let actual = namespaces
+            .unwrap()
+            .namespaces(&db)
+            .iter()
+            .map(|n| n.0.display(&db))
+            .collect::<Vec<_>>();
+
+        assert_eq!(actual.len(), 3);
+        assert!(actual.contains(&"TEST.k".to_string()));
+        assert!(actual.contains(&"TEST.k.TEST235333.m.a".to_string()));
+        assert!(actual.contains(&"TEST.k.TEST235333.m.a.TEST.b".to_string()));
+    }
+
+    #[test]
+    fn interned_paths() {
+        let db = RootDatabase::default();
+        let first_id = Ident::new(&db, "first".to_string());
+        let second_id = Ident::new(&db, "second".to_string());
+
+        assert_ne!(first_id, second_id);
+
+        let first_path = NamespacePath::from((
+            &db as _,
+            vec![
+                Ident::new(&db, "first".to_string()),
+                Ident::new(&db, "second".to_string()),
+            ],
+        ));
+        let second_path = NamespacePath::from((
+            &db as _,
+            vec![
+                Ident::new(&db, "first".to_string()),
+                Ident::new(&db, "second".to_string()),
+            ],
+        ));
+
+        assert_eq!(first_path, second_path);
+    }
+
+    #[test]
+    fn tracked_namespaces() {
+        let logs = Arc::new(Mutex::new(Vec::new()));
+        let ptr = logs.clone();
+
+        let mut db = RootDatabase::new(Some(Box::new(move |event| {
+            if let EventKind::WillExecute { .. } = event.kind {
+                ptr.lock().unwrap().push(event);
+            }
+        })));
+
+        let url = lsp_types::Url::parse("file:///test.st").unwrap();
+        let texter = Text::new(
+            r#"
+NAMESPACE first
+    NAMESPACE second
+        NAMESPACE third
+            FUNCTION N
+
+            END_FUNCTION
+        END_NAMESPACE
+    END_NAMESPACE
+END_NAMESPACE"#
+                .into(),
+        );
+        db.add_file_from_texter(
+            ast::RK_PARSER.get("structured_text").unwrap(),
+            &url,
+            texter,
+        )
+        .unwrap();
+
+        let first = NamespacePath::from((&db as _, &vec![Ident::new(&db, "first".to_string())]));
+        let second = NamespacePath::from((
+            &db as _,
+            &vec![
+                Ident::new(&db, "first".to_string()),
+                Ident::new(&db, "second".to_string()),
+            ],
+        ));
+        let third = NamespacePath::from((
+            &db as _,
+            &vec![
+                Ident::new(&db, "first".to_string()),
+                Ident::new(&db, "second".to_string()),
+                Ident::new(&db, "third".to_string()),
+            ],
+        ));
+
+        assert!(!namespace_path(&db, first).is_empty());
+        assert!(!namespace_path(&db, second).is_empty());
+        assert!(!namespace_path(&db, third).is_empty());
+
+        logs.lock().unwrap().clear();
+
+        // Getting paths on a same file should not trigger recomputation
+
+        assert!(!namespace_path(&db, first).is_empty());
+        assert!(!namespace_path(&db, second).is_empty());
+        assert!(!namespace_path(&db, third).is_empty());
+
+        assert_eq!(logs.lock().unwrap().len(), 0);
+    }
 }
