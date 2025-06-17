@@ -79,7 +79,6 @@ module.exports = grammar({
         token(choice('\t', '\r', '\n')),
     ],
 
-    //@ts-ignore (update cli to 0.25)
     reserved: {
         global: $ => RESERVED_NAMES,
     },
@@ -94,7 +93,9 @@ module.exports = grammar({
         $._output_var_kind,
         $._simple_var_kind,
         $._temp_var_kind,
-        $._in_out_var_kind
+        $._in_out_var_kind,
+
+        $._var_decl_kind
     ],
 
     precedences: $ => [
@@ -108,17 +109,12 @@ module.exports = grammar({
         [$.symbolic_variable, $.func_access, $.instance_name],
         [$.func_access, $.instance_name, $.invocation],
         [$.func_access, $.instance_name],
-        [$.func_access, $.enum_value],
         [$.variable_list, $.fb_name],
         [$.instance_name],
         [$.ref_name, $.param_assign],
 
         [$.signed_int],
         [$.signed_int, $.bit_str_literal],
-
-        // ambiguity in PROGRAM declaration
-        [$.array_elem_init_value, $.primary_expr],
-        [$.struct_elem_init, $.primary_expr],
 
         // local variable declarations
         [$.var_decls, $.loc_var_decls],
@@ -180,13 +176,13 @@ module.exports = grammar({
         ),
 
         int_literal: $ => seq(
-            optional(seq($.int_type_name, '#')),
-            choice(
+            field("type_name", optional(seq($.int_type_name, '#'))),
+            field("int", choice(
                 $.signed_int,
                 $.binary_int,
                 $.octal_int,
                 $.hex_int
-            )
+            ))
         ),
 
         unsigned_int: $ => prec.left(seq(
@@ -218,26 +214,27 @@ module.exports = grammar({
         ),
 
         real_literal: $ => seq(
-            optional(seq($.real_type_name, '#')),
-            $.signed_int,
+            field("type_name", optional(seq($.real_type_name, '#'))),
+            field("real", $.signed_int),
             '.',
-            $.unsigned_int,
-            optional(seq('E', $.signed_int))
+            field("frac", $.unsigned_int),
+            field("exp", optional(seq('E', $.signed_int)))
         ),
 
         bit_str_literal: $ => seq(
-            optional(seq($.multibits_type_name, '#')),
-            choice(
+            field("multibits", optional(seq($.multibits_type_name, '#'))),
+            field("int", choice(
                 $.unsigned_int,
                 $.binary_int,
                 $.octal_int,
                 $.hex_int
-            )
+            ))
         ),
 
         bool_literal: $ => seq(
-            optional(seq($.bool_type_name, '#')),
-            token(choice('0', '1', 'TRUE', 'FALSE'))
+            field("type", optional(seq($.bool_type_name, '#'))),
+            // '0' '1' are valid identifiers, but not supported (yet) by codegen!
+            field("value", choice('TRUE', 'FALSE'))
         ),
 
         // Table 6 - Character String literals
@@ -245,7 +242,7 @@ module.exports = grammar({
 
         char_literal: $ => seq(
             optional('STRING#'),
-            $.char_str
+            field("char", $.char_str)
         ),
 
         char_str: $ => choice(
@@ -255,13 +252,13 @@ module.exports = grammar({
 
         s_byte_char_str: $ => seq(
             "'",
-            $.s_byte_char_value,
+            field("char", $.s_byte_char_value),
             "'"
         ),
 
         d_byte_char_str: $ => seq(
             '"',
-            $.d_byte_char_value,
+            field("char", $.d_byte_char_value),
             '"'
         ),
 
@@ -584,9 +581,9 @@ module.exports = grammar({
         ),
 
         subrange: $ => seq(
-            $.constant_expr,
+            field("lower", $.constant_expr),
             '..',
-            $.constant_expr
+            field("upper", $.constant_expr)
         ),
 
         enum_type_decl: $ => seq(
@@ -623,11 +620,11 @@ module.exports = grammar({
         array_type_decl: $ => seq(':', $.array_spec_init),
 
         array_spec_init: $ => prec.left(seq(
-            $.array_spec,
+            field("spec", $.array_spec),
             optional(seq(':=', $.array_init))
         )),
 
-        array_spec: $ => seq('ARRAY', '[', commaSep1($.subrange), ']', 'OF', $.data_type_access),
+        array_spec: $ => seq('ARRAY', '[', field("ranges", commaSep1($.subrange)), ']', 'OF', field("type", $.data_type_access)),
 
         array_init: $ => seq('[', commaSep($.array_elem_init), ']'),
 
@@ -785,21 +782,22 @@ module.exports = grammar({
         var_decl_init: $ => seq(
             field("variables", $.variable_list),
             ':',
-            field("init",
-                choice(
-                    $.array_spec_init,
-                    $.str_var_decl,
-                    seq(
-                        field("type", $.identifier),
-                        optional(choice(
-                            seq(":=", field("default", $.identifier)),
-                            seq(":=", $.struct_init),
-                        )
-                        )
-                    )),
-            )
+            field("init", $._var_decl_kind)
         ),
 
+        _var_decl_kind: $ => choice(
+            $.array_spec_init,
+            $.str_var_decl,
+            $.simple_var_decl
+        ),
+
+        simple_var_decl: $ => seq(
+            field("type", $.identifier),
+            optional(choice(
+                seq(":=", field("default", $.identifier)),
+                seq(":=", $.struct_init),
+            ))
+        ),
 
         ref_var_decl: $ => seq(
             field("variables", $.variable_list),
@@ -864,9 +862,9 @@ module.exports = grammar({
         ),
 
         _simple_var_kind: $ => choice(
-            $.identifier, 
-            $.str_var_decl, 
-            $.array_var_decl, 
+            $.identifier,
+            $.str_var_decl,
+            $.array_var_decl,
             $.struct_var_decl
         ),
 
@@ -918,7 +916,7 @@ module.exports = grammar({
             'END_VAR'
         ),
 
-        _temp_var_kind : $ => choice($.var_decl, $.ref_var_decl, $.interface_var_decl),
+        _temp_var_kind: $ => choice($.var_decl, $.ref_var_decl, $.interface_var_decl),
 
         external_var_decls: $ => seq(
             'VAR_EXTERNAL',
@@ -1513,8 +1511,9 @@ module.exports = grammar({
             repeat(seq('OR', $.xor_expr))
         ),
 
-        constant_expr: $ => $.expression,
+        constant_expr: $ => $.constant,
         //todo: a constant expression must evaluate to a constant value at compile time 
+        // for now we just accept any constant - but no expressions
 
         xor_expr: $ => seq(
             $.and_expr,
