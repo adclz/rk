@@ -1,108 +1,339 @@
-use std::sync::LazyLock;
+use std::{collections::HashMap, sync::LazyLock};
 use salsa::Accumulator;
-use auto_lsp::{default::db::{BaseDatabase, File}, lsp_types::DiagnosticRelatedInformation, tree_sitter::{self, StreamingIterator}};
+use auto_lsp::{
+    default::db::{BaseDatabase, File}, 
+    lsp_types::{
+        CodeAction, DiagnosticRelatedInformation, TextEdit, WorkspaceEdit, 
+        DiagnosticSeverity, Range, Position, Diagnostic, Location
+    }, 
+    tree_sitter::{self, StreamingIterator}
+};
 
-#[salsa::accumulator]
-pub struct LintAccumulator(pub auto_lsp::lsp_types::Diagnostic);
+use crate::diagnostics::{DiagnosticAccumulator, IdeDiagnostic};
 
-impl From<auto_lsp::lsp_types::Diagnostic> for LintAccumulator {
-    fn from(d: auto_lsp::lsp_types::Diagnostic) -> Self {
-        LintAccumulator(d)
-    }
-}
-
-impl From<&LintAccumulator> for auto_lsp::lsp_types::Diagnostic {
-    fn from(error: &LintAccumulator) -> Self {
-        error.0.clone()
-    }
-}
-
-static UNMERGED_USING_QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
+// Combined query for all linting rules
+static LINTS_QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
     tree_sitter::Query::new(&tree_sitter_rk::LANGUAGE.into(),
 r#"
-((using_directive) . (using_directive)+ @duplicates) @unmerged_using"#)
-        .expect("Failed to create unmerged using query")
-});
+; Unmerged using directives
+((using_directive) @top_using . (using_directive)+ @duplicates)
 
-static UNMERGED_NAMESPACE_DECLARATION_QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
-    tree_sitter::Query::new(&tree_sitter_rk::LANGUAGE.into(),
-r#"
+; Duplicate namespace declarations
 ( 
- (namespace_decl name: (_) @dup1) 
- (namespace_decl name: (_) @dup2) 
- (#eq? @dup1 @dup2)
-) "#)
-        .expect("Failed to create namespace declaration query")
+ (namespace_decl name: (_) @dup_ns1) 
+ (namespace_decl name: (_) @dup_ns2) 
+ (#eq? @dup_ns1 @dup_ns2)
+)
+
+; Duplicate declarations in namespaces
+( 
+ [
+    (func_decl name: (_) @dup_decl1)
+    (fb_decl name: (_) @dup_decl1)
+    (class_decl name: (_) @dup_decl1)
+ ] 
+ [
+    (func_decl name: (_) @dup_decl2)
+    (fb_decl name: (_) @dup_decl2)
+    (class_decl name: (_) @dup_decl2)
+ ] 
+ (#eq? @dup_decl1 @dup_decl2)
+)
+"#).expect("Failed to create lints query")
 });
 
-pub fn query_lints(db: &dyn BaseDatabase, file: File) {
+/// Executed per file
+#[salsa::tracked]
+pub fn get_duplicates_by_query(db: &dyn BaseDatabase, file: File) {
     let doc = file.document(db);
     let root_node = doc.tree.root_node();
     let source = doc.texter.text.as_str();
 
     let mut query_cursor = tree_sitter::QueryCursor::new();
-    let mut captures = query_cursor.captures(&UNMERGED_USING_QUERY, root_node, source.as_bytes());
+    let mut captures = query_cursor.captures(&LINTS_QUERY, root_node, source.as_bytes());
+    
+    // Track state for each lint type
+    let mut main_using = None;
+    let mut dup_ns1 = None;
+    let mut dup_decl1 = None;
 
     while let Some((m, capture_index)) = captures.next() {
         let capture = m.captures[*capture_index];
-        if UNMERGED_USING_QUERY.capture_names()[capture.index as usize] == "duplicates" {
-            let range = capture.node.range();
-            LintAccumulator::accumulate(auto_lsp::lsp_types::Diagnostic {
-                range: auto_lsp::lsp_types::Range {
-                    start: auto_lsp::lsp_types::Position::new(range.start_point.row as u32, range.start_point.column as u32),
-                    end: auto_lsp::lsp_types::Position::new(range.end_point.row as u32, range.end_point.column as u32
-                        ),
-                },
-                code_description: None,
-                severity: Some(auto_lsp::lsp_types::DiagnosticSeverity::INFORMATION),
-                code: None,
-                source: Some("IEC".into()),
-                message: "using directives can be merged".into(),
-                related_information: None,
-                tags: None,
-                data: None,
-            }.into(), db)
+        let capture_name = LINTS_QUERY.capture_names()[capture.index as usize];
+        
+        match capture_name {
+            // Unmerged using directives
+            "top_using" => {
+                main_using = Some(capture.node);
+            },
+            "duplicates" => {
+                if let Some(main_decl) = main_using {
+                    handle_unmerged_using(db, file, &doc, main_decl, capture.node);
+                }
+                main_using = None;
+            },
+            
+            // Duplicate namespace declarations
+            "dup_ns1" => {
+                dup_ns1 = Some(capture.node.range());
+            },
+            "dup_ns2" => {
+                if let Some(range1) = dup_ns1 {
+                    handle_duplicate_namespace(db, file, source, range1, capture.node);
+                }
+                dup_ns1 = None;
+            },
+            
+            // Duplicate declarations in namespaces
+            "dup_decl1" => {
+                dup_decl1 = Some(capture.node.range());
+            },
+            "dup_decl2" => {
+                if let Some(range1) = dup_decl1 {
+                    handle_duplicate_declaration(db, file, source, range1, capture.node);
+                }
+                dup_decl1 = None;
+            },
+            
+            _ => {}
         }
     }
+}
 
-    let mut captures = query_cursor.captures(&UNMERGED_NAMESPACE_DECLARATION_QUERY, root_node, source.as_bytes());
-    let mut dup1 = None;
-    while let Some((m, capture_index)) = captures.next() {
-        let capture = m.captures[*capture_index];
-        if UNMERGED_NAMESPACE_DECLARATION_QUERY.capture_names()[capture.index as usize] == "dup1" {
-            let range = capture.node.range();
-            dup1 = Some(range);
-        } else if UNMERGED_NAMESPACE_DECLARATION_QUERY.capture_names()[capture.index as usize] == "dup2" {
-            if let Some(dup1) = dup1 {
-                let range = capture.node.range();
-                let name = capture.node.utf8_text(source.as_bytes()).unwrap();  
-                LintAccumulator::accumulate(auto_lsp::lsp_types::Diagnostic {
-                    range: auto_lsp::lsp_types::Range {
-                        start: auto_lsp::lsp_types::Position::new(range.start_point.row as u32, range.start_point.column as u32),
-                        end: auto_lsp::lsp_types::Position::new(range.end_point.row as u32, range.end_point.column as u32
-                        ),
-                    },
-                    code_description: None,
-                    severity: Some(auto_lsp::lsp_types::DiagnosticSeverity::WARNING),
-                    code: None,
-                    source: Some("IEC".into()),
-                    message: format!("duplicate declarations of namespace '{name}' in same scope"),
-                    related_information: Some(vec![DiagnosticRelatedInformation {
-                        location: auto_lsp::lsp_types::Location {
-                            uri: file.url(db).clone(),
-                            range: auto_lsp::lsp_types::Range {
-                                start: auto_lsp::lsp_types::Position::new(dup1.start_point.row as u32, dup1.start_point.column as u32), 
-                                end: auto_lsp::lsp_types::Position::new(dup1.end_point.row as u32, dup1.end_point.column as u32
-                                ),
-                            },
-                        },
-                        message: format!("'{name}' is previously declared here"),
-                    }]),
-                    tags: None,
-                    data: None,
-                }.into(), db);
-            }
-            dup1 = None;
-        }
+fn handle_unmerged_using(
+    db: &dyn BaseDatabase, 
+    file: File, 
+    doc: &auto_lsp::core::document::Document,
+    main_decl: tree_sitter::Node,
+    duplicate: tree_sitter::Node
+) {
+    let range = duplicate.range();
+    let mut diag = IdeDiagnostic::new(Diagnostic {
+        range: Range {
+            start: Position::new(range.start_point.row as u32, range.start_point.column as u32),
+            end: Position::new(range.end_point.row as u32, range.end_point.column as u32),
+        },
+        severity: Some(DiagnosticSeverity::INFORMATION),
+        source: Some("IEC".into()),
+        message: "using directives can be merged".into(),
+        code: None,
+        code_description: None,
+        related_information: None,
+        tags: None,
+        data: None
+    });
+
+    let main_text = main_decl.utf8_text(doc.texter.text.as_bytes()).unwrap();
+    let duplicate_text = duplicate.utf8_text(doc.texter.text.as_bytes()).unwrap();
+    let main_without_semicolon = main_text.trim_end_matches(';');
+    let duplicate_without_using = duplicate_text.replace("USING ", "");
+    let duplicate_without_using = duplicate_without_using.trim().trim_end_matches(';');
+    
+    let merged_text = format!("{}, {}{}", main_without_semicolon, duplicate_without_using, ";");
+
+    diag.with_fix(CodeAction {
+        title: "Merge using directives".into(),
+        kind: Some(auto_lsp::lsp_types::CodeActionKind::QUICKFIX),
+        diagnostics: Some(vec![diag.diagnostic.clone()]),
+        is_preferred: Some(true),
+        edit: Some(WorkspaceEdit::new(HashMap::from([(
+            file.url(db).clone(),
+            vec![TextEdit::new(
+                Range {
+                    start: Position::new(main_decl.range().start_point.row as u32, 
+                                        main_decl.range().start_point.column as u32),
+                    end: Position::new(range.end_point.row as u32, 
+                                      range.end_point.column as u32),
+                },
+                merged_text,
+            )],
+        )]))),
+        command: None,
+        data: None,
+        disabled: None,
+    });
+    
+    DiagnosticAccumulator::accumulate(diag.into(), db);
+}
+
+fn handle_duplicate_namespace(
+    db: &dyn BaseDatabase, 
+    file: File, 
+    source: &str,
+    first_range: tree_sitter::Range,
+    duplicate_node: tree_sitter::Node
+) {
+    let range = duplicate_node.range();
+    let name = duplicate_node.utf8_text(source.as_bytes()).unwrap();
+    
+    DiagnosticAccumulator::accumulate(Diagnostic {
+        range: Range {
+            start: Position::new(range.start_point.row as u32, range.start_point.column as u32),
+            end: Position::new(range.end_point.row as u32, range.end_point.column as u32),
+        },
+        severity: Some(DiagnosticSeverity::INFORMATION),
+        source: Some("IEC".into()),
+        message: format!("duplicate declarations of namespace '{name}' in same scope"),
+        related_information: Some(vec![DiagnosticRelatedInformation {
+            location: Location {
+                uri: file.url(db).clone(),
+                range: Range {
+                    start: Position::new(first_range.start_point.row as u32, 
+                                        first_range.start_point.column as u32),
+                    end: Position::new(first_range.end_point.row as u32, 
+                                      first_range.end_point.column as u32),
+                },
+            },
+            message: format!("'{name}' is previously declared here"),
+        }]),
+        code: None,
+        code_description: None,
+        tags: None,
+        data: None,
+    }.into(), db);
+}
+
+fn handle_duplicate_declaration(
+    db: &dyn BaseDatabase, 
+    file: File, 
+    source: &str,
+    first_range: tree_sitter::Range,
+    duplicate_node: tree_sitter::Node
+) {
+    let range = duplicate_node.range();
+    let name = duplicate_node.utf8_text(source.as_bytes()).unwrap();
+    
+    DiagnosticAccumulator::accumulate(Diagnostic {
+        range: Range {
+            start: Position::new(range.start_point.row as u32, range.start_point.column as u32),
+            end: Position::new(range.end_point.row as u32, range.end_point.column as u32),
+        },
+        severity: Some(DiagnosticSeverity::ERROR),
+        source: Some("IEC".into()),
+        message: format!("duplicate declarations of '{name}' in same namespace"),
+        related_information: Some(vec![DiagnosticRelatedInformation {
+            location: Location {
+                uri: file.url(db).clone(),
+                range: Range {
+                    start: Position::new(first_range.start_point.row as u32, 
+                                        first_range.start_point.column as u32),
+                    end: Position::new(first_range.end_point.row as u32, 
+                                      first_range.end_point.column as u32),
+                },
+            },
+            message: format!("'{name}' is previously declared here"),
+        }]),
+        code: None,
+        code_description: None,
+        tags: None,
+        data: None,
+    }.into(), db);
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{diagnostics::{cached_diagnostics}, RootDatabase};
+    use auto_lsp::{default::db::{BaseDatabase, FileManager}, lsp_types::{self, DiagnosticSeverity}, texter::core::text::Text};
+
+    #[test]
+    fn unmerged_using() {
+        let mut db = RootDatabase::default();
+        let url = lsp_types::Url::parse("file:///test.st").unwrap();
+        let texter = Text::new(
+            r#"
+NAMESPACE ns            
+    USING FOR1;
+    USING FOR2;
+    USING FOR3;
+END_NAMESPACE
+"#.into(),
+        );
+        db.add_file_from_texter(
+            ast::RK_PARSER.get("structured_text").unwrap(),
+            &url,
+            texter,
+        )
+        .unwrap();
+
+        let file = db.get_file(&url).unwrap();
+
+        let diagnostics = cached_diagnostics(&db, file);
+        assert_eq!(diagnostics.len(), 2);
+
+        let diagnostic = diagnostics[0].diagnostic.clone();
+        assert_eq!(diagnostic.severity, Some(DiagnosticSeverity::INFORMATION));
+        assert_eq!(diagnostic.message, "using directives can be merged");
+
+        let diagnostic = diagnostics[1].diagnostic.clone();
+        assert_eq!(diagnostic.severity, Some(DiagnosticSeverity::INFORMATION));
+        assert_eq!(diagnostic.message, "using directives can be merged");
+    }
+
+    #[test]
+    fn duplicate_namespace() {
+        let mut db = RootDatabase::default();
+        let url = lsp_types::Url::parse("file:///test.st").unwrap();
+        let texter = Text::new(
+            r#"
+NAMESPACE ns 
+
+END_NAMESPACE
+
+NAMESPACE ns    
+
+END_NAMESPACE
+"#.into(),
+        );
+        db.add_file_from_texter(
+            ast::RK_PARSER.get("structured_text").unwrap(),
+            &url,
+            texter,
+        )
+        .unwrap();
+
+        let file = db.get_file(&url).unwrap();
+
+        let diagnostics = cached_diagnostics(&db, file);
+        assert_eq!(diagnostics.len(), 1);
+
+        let diagnostic = diagnostics[0].diagnostic.clone();
+        assert_eq!(diagnostic.severity, Some(DiagnosticSeverity::INFORMATION));
+        assert_eq!(diagnostic.message, "duplicate declarations of namespace 'ns' in same scope");
+    }
+
+    #[test]
+    fn duplicate_declaration() {
+        let mut db = RootDatabase::default();
+        let url = lsp_types::Url::parse("file:///test.st").unwrap();
+        let texter = Text::new(
+            r#"
+NAMESPACE ns 
+
+    FUNCTION f
+
+    END_FUNCTION
+
+    FUNCTION f
+
+    END_FUNCTION
+
+END_NAMESPACE
+"#.into(),
+        );
+        db.add_file_from_texter(
+            ast::RK_PARSER.get("structured_text").unwrap(),
+            &url,
+            texter,
+        )
+        .unwrap();
+
+        let file = db.get_file(&url).unwrap();
+
+        let diagnostics = cached_diagnostics(&db, file);
+        assert_eq!(diagnostics.len(), 1);
+
+        let diagnostic = diagnostics[0].diagnostic.clone();
+        assert_eq!(diagnostic.severity, Some(DiagnosticSeverity::ERROR));
+        assert_eq!(diagnostic.message, "duplicate declarations of 'f' in same namespace");
     }
 }
