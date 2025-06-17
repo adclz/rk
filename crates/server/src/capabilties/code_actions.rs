@@ -1,5 +1,6 @@
 use ast::generated::NamespaceDecl;
 use auto_lsp::{anyhow, core::dispatch, default::db::{tracked::get_ast, BaseDatabase, File}, lsp_types::{CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams}};
+use db::diagnostics::cached_diagnostics;
 
 pub fn code_actions(db: &impl BaseDatabase, params: CodeActionParams) -> anyhow::Result<Option<Vec<CodeActionOrCommand>>> {
     let uri = &params.text_document.uri;
@@ -21,6 +22,18 @@ pub fn code_actions(db: &impl BaseDatabase, params: CodeActionParams) -> anyhow:
             ]
         );
     }
+
+    cached_diagnostics(db, file).iter().for_each(|diagnostic| {
+        if diagnostic.fixes.is_empty() {
+            return;
+        }
+        if diagnostic.diagnostic.range.start <= range.end && diagnostic.diagnostic.range.end >= range.start {
+            diagnostic.fixes.iter().for_each(|fix| {
+                results.push(CodeActionOrCommand::CodeAction(fix.clone()));
+            });
+        }
+    });
+
     Ok(Some(results))
 }
 
