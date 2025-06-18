@@ -27,3 +27,4 @@ ast = { path = "crates/ast" }
 tree-sitter-rk = { path = "crates/tree-sitter" }
 server = { path = "crates/server" }
 db = { path = "crates/db" }
+bon = "3.6.4"

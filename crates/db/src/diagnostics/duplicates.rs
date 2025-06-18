@@ -5,7 +5,7 @@ use auto_lsp::{
 use salsa::Accumulator;
 
 use crate::{
-    diagnostics::{DiagnosticAccumulator, IdeDiagnostic},
+    diagnostics::{diagnostic_builder::{diag, RangeKind}, DiagnosticAccumulator, IdeDiagnostic},
     solver::{namespace_path, namespaces_in_file},
 };
 
@@ -24,63 +24,23 @@ pub fn duplicate_declarations<'db>(
 
                     if let Some(other_pou) = other_decl.get_pou(db, *path, *name) {
                         let duplicate = name.text(db);
-                        acc.push(duplicate_diagnostic(
-                            db,
-                            pou.span(db),
-                            format!("Duplicate declarations of {duplicate} POU").into(),
-                            other_pou.span(db),
-                            duplicate,
-                            other_decl.file(db),
-                        ));
+                        acc.push(diag()
+                            .range(pou.span(db).into())
+                            .message(format!("duplicate declarations of {duplicate} POU"))
+                            .source("IEC".into())
+                            .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+                            .related_information(vec![DiagnosticRelatedInformation {
+                                location: auto_lsp::lsp_types::Location {
+                                    uri: other_decl.file(db).url(db).clone(),
+                                    range: RangeKind::from(other_pou.span(db)).into(),
+                                },
+                                message: format!("'{duplicate}' is previously declared here"),
+                            }])
+                            .call()
+                        );
                     }
                 }
             }
         }
     }
-}
-
-fn duplicate_diagnostic(
-    db: &dyn BaseDatabase,
-    range: auto_lsp::tree_sitter::Range,
-    message: String,
-    related_range: auto_lsp::tree_sitter::Range,
-    related_name: String,
-    related_file: File,
-) -> IdeDiagnostic {
-    auto_lsp::lsp_types::Diagnostic {
-        range: lsp_types::Range {
-            start: lsp_types::Position::new(
-                range.start_point.row as u32,
-                range.start_point.column as u32,
-            ),
-            end: lsp_types::Position::new(
-                range.end_point.row as u32,
-                range.end_point.column as u32,
-            ),
-        },
-        code_description: None,
-        severity: Some(auto_lsp::lsp_types::DiagnosticSeverity::ERROR),
-        code: None,
-        source: Some("IEC".into()),
-        message,
-        related_information: Some(vec![DiagnosticRelatedInformation {
-            location: auto_lsp::lsp_types::Location {
-                uri: related_file.url(db).clone(),
-                range: auto_lsp::lsp_types::Range {
-                    start: auto_lsp::lsp_types::Position::new(
-                        related_range.start_point.row as u32,
-                        related_range.start_point.column as u32,
-                    ),
-                    end: auto_lsp::lsp_types::Position::new(
-                        related_range.end_point.row as u32,
-                        related_range.end_point.column as u32,
-                    ),
-                },
-            },
-            message: format!("'{related_name}' is previously declared here"),
-        }]),
-        tags: None,
-        data: None,
-    }
-    .into()
 }

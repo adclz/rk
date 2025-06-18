@@ -13,5 +13,6 @@ dashmap = { workspace = true }
 ast = { workspace = true }
 rustc-hash = { workspace = true }
 tree-sitter-rk = { workspace = true }
+bon = { workspace = true }
 salsa = "0.22.0"
 expect-test = "1.5.1"

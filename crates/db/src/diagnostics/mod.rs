@@ -1,12 +1,23 @@
-use std::{ops::Deref, sync::Arc};
+use std::{collections::HashMap, ops::Deref, sync::Arc};
 
-use auto_lsp::{core::errors::ParseErrorAccumulator, default::db::{tracked::get_ast, BaseDatabase, File}, tree_sitter};
+use auto_lsp::{
+    core::errors::ParseErrorAccumulator,
+    default::db::{tracked::get_ast, BaseDatabase, File},
+    lsp_types::{
+        self, CodeAction, CodeActionKind, DiagnosticRelatedInformation, DiagnosticSeverity,
+        DiagnosticTag, NumberOrString, WorkspaceEdit,
+    },
+    tree_sitter,
+};
 
-use crate::diagnostics::{duplicates::duplicate_declarations, lexer::lexer_error_with_fix, lints::get_duplicates_by_query};
+use crate::diagnostics::{
+    duplicates::duplicate_declarations, lexer::add_fixes_to_parse_errors, lints::get_duplicates_by_query,
+};
 
-pub mod lints;
 pub mod duplicates;
 pub mod lexer;
+pub mod lints;
+pub mod diagnostic_builder;
 
 #[derive(Debug, Clone)]
 pub struct IdeDiagnostic {
@@ -22,10 +33,7 @@ impl IdeDiagnostic {
         }
     }
 
-    pub fn with_fix(
-        &mut self,
-        fix: auto_lsp::lsp_types::CodeAction,
-    ) {
+    pub fn with_fix(&mut self, fix: auto_lsp::lsp_types::CodeAction) {
         self.fixes.push(fix);
     }
 }
@@ -71,7 +79,10 @@ impl From<IdeDiagnostic> for DiagnosticAccumulator {
 
 impl From<&DiagnosticAccumulator> for IdeDiagnostic {
     fn from(error: &DiagnosticAccumulator) -> Self {
-        IdeDiagnostic { diagnostic: error.0.diagnostic.clone(), fixes: error.0.fixes.clone() }
+        IdeDiagnostic {
+            diagnostic: error.0.diagnostic.clone(),
+            fixes: error.0.fixes.clone(),
+        }
     }
 }
 
@@ -99,7 +110,7 @@ impl Deref for DiagnosticResults {
 
 pub fn cached_diagnostics(db: &dyn BaseDatabase, file: File) -> DiagnosticResults {
     let mut parse_errors = get_ast::accumulated::<ParseErrorAccumulator>(db, file);
-    let lexer_errors = lexer_error_with_fix(db, &file, &mut parse_errors);
+    let lexer_errors = add_fixes_to_parse_errors(db, &file, &mut parse_errors);
     let lints = get_duplicates_by_query::accumulated::<DiagnosticAccumulator>(db, file);
 
     let mut uncached_diags = vec![];

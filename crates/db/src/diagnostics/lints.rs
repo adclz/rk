@@ -9,7 +9,7 @@ use auto_lsp::{
     tree_sitter::{self, StreamingIterator}
 };
 
-use crate::diagnostics::{DiagnosticAccumulator, IdeDiagnostic};
+use crate::diagnostics::{diagnostic_builder::{action, diag, edit, RangeKind}, DiagnosticAccumulator, IdeDiagnostic};
 
 // Combined query for all linting rules
 static LINTS_QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
@@ -108,51 +108,34 @@ fn handle_unmerged_using(
     duplicate: tree_sitter::Node
 ) {
     let range = duplicate.range();
-    let mut diag = IdeDiagnostic::new(Diagnostic {
-        range: Range {
-            start: Position::new(range.start_point.row as u32, range.start_point.column as u32),
-            end: Position::new(range.end_point.row as u32, range.end_point.column as u32),
-        },
-        severity: Some(DiagnosticSeverity::INFORMATION),
-        source: Some("IEC".into()),
-        message: "using directives can be merged".into(),
-        code: None,
-        code_description: None,
-        related_information: None,
-        tags: None,
-        data: None
-    });
+    let mut diag = diag()
+        .range(range.into())
+        .message("using directives can be merged".into())
+        .source("IEC".into())
+        .severity(auto_lsp::lsp_types::DiagnosticSeverity::INFORMATION)
+        .call();
 
     let main_text = main_decl.utf8_text(doc.texter.text.as_bytes()).unwrap();
     let duplicate_text = duplicate.utf8_text(doc.texter.text.as_bytes()).unwrap();
     let main_without_semicolon = main_text.trim_end_matches(';');
     let duplicate_without_using = duplicate_text.replace("USING ", "");
     let duplicate_without_using = duplicate_without_using.trim().trim_end_matches(';');
-    
     let merged_text = format!("{}, {}{}", main_without_semicolon, duplicate_without_using, ";");
 
-    diag.with_fix(CodeAction {
-        title: "Merge using directives".into(),
-        kind: Some(auto_lsp::lsp_types::CodeActionKind::QUICKFIX),
-        diagnostics: Some(vec![diag.diagnostic.clone()]),
-        is_preferred: Some(true),
-        edit: Some(WorkspaceEdit::new(HashMap::from([(
+    diag.with_fix(action()
+        .title("Merge using directives".into())
+        .kind(auto_lsp::lsp_types::CodeActionKind::QUICKFIX)
+        .diagnostics(vec![diag.diagnostic.clone()])
+        .is_preferred(true)
+        .edit(WorkspaceEdit::new(HashMap::from([(
             file.url(db).clone(),
-            vec![TextEdit::new(
-                Range {
-                    start: Position::new(main_decl.range().start_point.row as u32, 
-                                        main_decl.range().start_point.column as u32),
-                    end: Position::new(range.end_point.row as u32, 
-                                      range.end_point.column as u32),
-                },
-                merged_text,
-            )],
-        )]))),
-        command: None,
-        data: None,
-        disabled: None,
-    });
-    
+            vec![edit()
+                .new_text(merged_text)
+                .range(range.into())
+                .call()],
+        )])))
+        .call());
+
     DiagnosticAccumulator::accumulate(diag.into(), db);
 }
 
@@ -165,32 +148,20 @@ fn handle_duplicate_namespace(
 ) {
     let range = duplicate_node.range();
     let name = duplicate_node.utf8_text(source.as_bytes()).unwrap();
-    
-    DiagnosticAccumulator::accumulate(Diagnostic {
-        range: Range {
-            start: Position::new(range.start_point.row as u32, range.start_point.column as u32),
-            end: Position::new(range.end_point.row as u32, range.end_point.column as u32),
-        },
-        severity: Some(DiagnosticSeverity::INFORMATION),
-        source: Some("IEC".into()),
-        message: format!("duplicate declarations of namespace '{name}' in same scope"),
-        related_information: Some(vec![DiagnosticRelatedInformation {
-            location: Location {
+
+    DiagnosticAccumulator::accumulate(diag()
+        .range(range.into())
+        .message(format!("duplicate declarations of namespace '{name}' in same scope"))
+        .source("IEC".into())
+        .severity(auto_lsp::lsp_types::DiagnosticSeverity::INFORMATION)
+        .related_information(vec![DiagnosticRelatedInformation {
+            location: auto_lsp::lsp_types::Location {
                 uri: file.url(db).clone(),
-                range: Range {
-                    start: Position::new(first_range.start_point.row as u32, 
-                                        first_range.start_point.column as u32),
-                    end: Position::new(first_range.end_point.row as u32, 
-                                      first_range.end_point.column as u32),
-                },
+                range: RangeKind::from(first_range).into(),
             },
             message: format!("'{name}' is previously declared here"),
-        }]),
-        code: None,
-        code_description: None,
-        tags: None,
-        data: None,
-    }.into(), db);
+        }])
+        .call().into(), db);
 }
 
 fn handle_duplicate_declaration(
@@ -202,32 +173,20 @@ fn handle_duplicate_declaration(
 ) {
     let range = duplicate_node.range();
     let name = duplicate_node.utf8_text(source.as_bytes()).unwrap();
-    
-    DiagnosticAccumulator::accumulate(Diagnostic {
-        range: Range {
-            start: Position::new(range.start_point.row as u32, range.start_point.column as u32),
-            end: Position::new(range.end_point.row as u32, range.end_point.column as u32),
-        },
-        severity: Some(DiagnosticSeverity::ERROR),
-        source: Some("IEC".into()),
-        message: format!("duplicate declarations of '{name}' in same namespace"),
-        related_information: Some(vec![DiagnosticRelatedInformation {
-            location: Location {
+
+    DiagnosticAccumulator::accumulate(diag()
+        .range(range.into())
+        .message(format!("duplicate declarations of '{name}' in same namespace"))
+        .source("IEC".into())
+        .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+        .related_information(vec![DiagnosticRelatedInformation {
+            location: auto_lsp::lsp_types::Location {
                 uri: file.url(db).clone(),
-                range: Range {
-                    start: Position::new(first_range.start_point.row as u32, 
-                                        first_range.start_point.column as u32),
-                    end: Position::new(first_range.end_point.row as u32, 
-                                      first_range.end_point.column as u32),
+                range: RangeKind::from(first_range).into(),
                 },
-            },
             message: format!("'{name}' is previously declared here"),
-        }]),
-        code: None,
-        code_description: None,
-        tags: None,
-        data: None,
-    }.into(), db);
+        }])
+        .call().into(), db);
 }
 
 #[cfg(test)]
