@@ -130,3 +130,131 @@ pub fn add_fixes_to_parse_errors(
         })
         .collect()
 }
+
+
+#[cfg(test)]
+mod tests {
+    use auto_lsp::{core::errors::ParseErrorAccumulator, default::db::{tracked::get_ast, BaseDatabase, FileManager}, lsp_types, texter::core::text::Text};
+    use super::*;
+    use crate::RootDatabase;
+
+    #[test]
+    fn missing_identifier() {
+        
+        let mut db = RootDatabase::default();
+        let url = lsp_types::Url::parse("file:///test.st").unwrap();
+        let texter = Text::new(
+            r#"
+NAMESPACE 
+END_NAMESPACE"#
+                .into(),
+        );
+
+        db.add_file_from_texter(
+            ast::RK_PARSER.get("structured_text").unwrap(),
+            &url,
+            texter,
+        )
+        .unwrap();
+
+        let file = db.get_file(&url).unwrap();
+        let mut diagnostics = get_ast::accumulated::<ParseErrorAccumulator>(&db, file);
+        let lexer_errors = add_fixes_to_parse_errors(&db, &file, &mut diagnostics);
+
+        assert_eq!(lexer_errors.len(), 1);
+        assert_eq!(lexer_errors[0].diagnostic.message, "Syntax error: Missing 'identifier'");
+    }
+
+        #[test]
+    fn unexpected_token() {
+        
+        let mut db = RootDatabase::default();
+        let url = lsp_types::Url::parse("file:///test.st").unwrap();
+        let texter = Text::new(
+            r#"
+NAMESPACE ns :
+END_NAMESPACE"#
+                .into(),
+        );
+
+        db.add_file_from_texter(
+            ast::RK_PARSER.get("structured_text").unwrap(),
+            &url,
+            texter,
+        )
+        .unwrap();
+
+        let file = db.get_file(&url).unwrap();
+        let mut diagnostics = get_ast::accumulated::<ParseErrorAccumulator>(&db, file);
+        let lexer_errors = add_fixes_to_parse_errors(&db, &file, &mut diagnostics);
+
+        assert_eq!(lexer_errors.len(), 1);
+        assert_eq!(lexer_errors[0].diagnostic.message, "Unexpected token(s): ':'");
+    }
+
+
+    #[test]
+    fn reserved_keyword() {
+        
+        let mut db = RootDatabase::default();
+        let url = lsp_types::Url::parse("file:///test.st").unwrap();
+        let texter = Text::new(
+            r#"
+NAMESPACE first
+    FUNCTION
+
+            FUNCTION
+
+    END_FUNCTION
+END_NAMESPACE"#
+                .into(),
+        );
+
+        db.add_file_from_texter(
+            ast::RK_PARSER.get("structured_text").unwrap(),
+            &url,
+            texter,
+        )
+        .unwrap();
+
+        let file = db.get_file(&url).unwrap();
+        let mut diagnostics = get_ast::accumulated::<ParseErrorAccumulator>(&db, file);
+        let lexer_errors = add_fixes_to_parse_errors(&db, &file, &mut diagnostics);
+
+        assert_eq!(lexer_errors.len(), 1);
+        assert_eq!(lexer_errors[0].diagnostic.message, "FUNCTION is a reserved keyword that is not valid in this context");
+    }
+
+       #[test]
+    fn reserved_keyword_in_expression() {
+        
+        let mut db = RootDatabase::default();
+        let url = lsp_types::Url::parse("file:///test.st").unwrap();
+        let texter = Text::new(
+            r#"
+NAMESPACE first
+    FUNCTION
+
+            FUNCTION := something
+
+    END_FUNCTION
+END_NAMESPACE"#
+                .into(),
+        );
+
+        db.add_file_from_texter(
+            ast::RK_PARSER.get("structured_text").unwrap(),
+            &url,
+            texter,
+        )
+        .unwrap();
+
+        let file = db.get_file(&url).unwrap();
+        let mut diagnostics = get_ast::accumulated::<ParseErrorAccumulator>(&db, file);
+        let lexer_errors = add_fixes_to_parse_errors(&db, &file, &mut diagnostics);
+
+        assert_eq!(lexer_errors.len(), 1);
+        assert_eq!(lexer_errors[0].diagnostic.message, "FUNCTION is a reserved keyword that is not valid in this context");
+    }
+
+}

@@ -14,5 +14,6 @@ ast = { workspace = true }
 rustc-hash = { workspace = true }
 tree-sitter-rk = { workspace = true }
 bon = { workspace = true }
+phf = { workspace = true }
 salsa = "0.22.0"
 expect-test = "1.5.1"
