@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 
-use auto_lsp::{anyhow, core::ast::AstNode, default::db::{BaseDatabase, File}};
+use auto_lsp::{anyhow, core::ast::AstNode, default::db::{BaseDatabase, File}, texter::core::text::Text};
 
 /// Interned identifier
 #[salsa::interned(debug, no_lifetime)]
@@ -83,6 +83,7 @@ impl<'db> Ident {
         self.text(db).as_str().parse::<f64>().ok()
     }
 }
+
 
 #[salsa::tracked]
 impl Ident {
@@ -168,8 +169,29 @@ impl Ident {
     pub fn is_LREAL(self, db: &dyn BaseDatabase) -> bool {
         self.as_f64(db).is_some()
     }
-}
 
+    // String data types
+
+    #[salsa::tracked]
+    pub fn is_STRING(self, db: &dyn BaseDatabase) -> bool {
+        self.text(db).starts_with("'") && self.text(db).ends_with("'")
+    }
+
+    #[salsa::tracked]
+    pub fn is_WSTRING(self, db: &dyn BaseDatabase) -> bool {
+        self.text(db).starts_with("\"") && self.text(db).ends_with("\"")
+    }
+
+    #[salsa::tracked]
+    pub fn is_CHAR(self, db: &dyn BaseDatabase) -> bool {
+        self.text(db).len() == 1
+    }
+
+    #[salsa::tracked]
+    pub fn is_DCHAR(self, db: &dyn BaseDatabase) -> bool {
+        self.text(db).len() == 2
+    }
+}
 
 #[cfg(test)]
 mod tests {
