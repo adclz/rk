@@ -1,16 +1,13 @@
-use std::{collections::HashMap, ops::Deref, sync::Arc};
 
 use auto_lsp::{
-    core::errors::ParseErrorAccumulator,
-    default::db::{tracked::get_ast, BaseDatabase, File},
     lsp_types::{
         self, CodeAction, CodeActionKind, DiagnosticRelatedInformation, DiagnosticSeverity,
-        DiagnosticTag, NumberOrString, TextEdit, WorkspaceEdit,
+        DiagnosticTag, NumberOrString, TextEdit,
     },
     tree_sitter,
 };
 
-use crate::{diagnostics::IdeDiagnostic, RootDatabase};
+use crate::diagnostics::IdeDiagnostic;
 
 pub enum RangeKind {
     TreeSitter(tree_sitter::Range),
@@ -30,7 +27,7 @@ impl RangeKind {
                     range.end_point.column as u32,
                 ),
             },
-            RangeKind::Lsp(range) => range.clone(),
+            RangeKind::Lsp(range) => *range,
         }
     }
 }

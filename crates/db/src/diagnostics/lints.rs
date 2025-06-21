@@ -3,13 +3,12 @@ use salsa::Accumulator;
 use auto_lsp::{
     default::db::{BaseDatabase, File}, 
     lsp_types::{
-        CodeAction, DiagnosticRelatedInformation, TextEdit, WorkspaceEdit, 
-        DiagnosticSeverity, Range, Position, Diagnostic, Location
+        DiagnosticRelatedInformation, WorkspaceEdit
     }, 
     tree_sitter::{self, StreamingIterator}
 };
 
-use crate::diagnostics::{diagnostic_builder::{action, diag, edit, RangeKind}, DiagnosticAccumulator, IdeDiagnostic};
+use crate::diagnostics::{diagnostic_builder::{action, diag, edit, RangeKind}, DiagnosticAccumulator};
 
 // Combined query for all linting rules
 static LINTS_QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {

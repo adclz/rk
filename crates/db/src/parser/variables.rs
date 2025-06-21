@@ -1,3 +1,4 @@
+#![allow(unused)]
 use std::ops::Deref;
 
 use ast::generated::{ExternalVarKind, GlobalVarKind};
@@ -186,7 +187,7 @@ impl<'db> ParseVariable<'db> for ast::generated::VarDeclInit {
         file: File,
         name: Ident,
     ) -> anyhow::Result<Variable<'db>> {
-        match self.deref() {
+        match self {
             Self::ArraySpecInit(array) => todo!(),
             Self::InterfaceSpecInit(_) => todo!(),
             Self::RefSpecInit(_) => todo!(),

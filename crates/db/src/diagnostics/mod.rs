@@ -1,13 +1,8 @@
-use std::{collections::HashMap, ops::Deref, sync::Arc};
+use std::{ops::Deref, sync::Arc};
 
 use auto_lsp::{
     core::errors::ParseErrorAccumulator,
     default::db::{tracked::get_ast, BaseDatabase, File},
-    lsp_types::{
-        self, CodeAction, CodeActionKind, DiagnosticRelatedInformation, DiagnosticSeverity,
-        DiagnosticTag, NumberOrString, WorkspaceEdit,
-    },
-    tree_sitter,
 };
 
 use crate::diagnostics::{
@@ -117,9 +112,9 @@ pub fn cached_diagnostics(db: &dyn BaseDatabase, file: File) -> DiagnosticResult
     duplicate_declarations(db, file, &mut uncached_diags);
 
     let mut all_diagnostics = vec![];
-    all_diagnostics.extend(lexer_errors.into_iter().map(|d| d.into()));
+    all_diagnostics.extend(lexer_errors.into_iter());
     all_diagnostics.extend(lints.into_iter().map(|d| d.into()));
-    all_diagnostics.extend(uncached_diags.into_iter().map(|d| d.into()));
+    all_diagnostics.extend(uncached_diags.into_iter());
 
     DiagnosticResults(Arc::new(all_diagnostics))
 }

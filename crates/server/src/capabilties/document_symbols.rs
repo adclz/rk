@@ -1,6 +1,5 @@
 #![allow(deprecated)]
 
-use std::{ops::Deref, sync::Arc};
 
 use ast::generated::{ClassDecl, ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl, ConfigDecl_NamespaceDecl_ProgDecl, FbDecl, FuncDecl, InterfaceDecl, NamespaceDecl, SourceFile};
 use auto_lsp::{

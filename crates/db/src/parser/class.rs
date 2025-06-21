@@ -6,8 +6,7 @@ use crate::hir;
 impl<'db> Parse<'db> for ast::generated::ClassDecl {
     type Output = hir::class::Class<'db>;
 
-    fn parse(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output> {
-        let doc = file.document(db);
+    fn parse(&self, db: &'db dyn BaseDatabase, _file: File) -> anyhow::Result<Self::Output> {
         Ok(hir::class::Class::new(db))
     }
 }

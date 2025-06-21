@@ -96,10 +96,10 @@ impl<'db> ParseVariable<'db> for ast::generated::FuncDecl {
 
 #[cfg(test)]
 mod tests {
-    use auto_lsp::{default::db::{tracked::get_ast, FileManager}, lsp_types, texter::core::text::Text};
+    use auto_lsp::{default::db::FileManager, lsp_types, texter::core::text::Text};
 
     use super::*;
-    use crate::{hir::namespace::{Pou, PouDecl}, ident::Ident, solver::{namespaces_in_file, NamespacePath}, RootDatabase};
+    use crate::{hir::namespace::Pou, ident::Ident, solver::{namespaces_in_file, NamespacePath}, RootDatabase};
 
     #[test]
     fn variables_in_function() {

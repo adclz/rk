@@ -54,7 +54,7 @@ impl<'db> FileNamespacesBuilder<'db> {
             {
                 let path = match self.get_namespace_path(namespace) {
                     Ok(path) => path,
-                    Err(err) => {
+                    Err(_err) => {
                         // todo: report error
                         continue;
                     }
@@ -62,7 +62,7 @@ impl<'db> FileNamespacesBuilder<'db> {
                 let namespace_path = NamespacePath::from((self.db, &path));
                 let namespace = match self.handle_namespace_elements(&path, namespace) {
                     Ok(namespace) => namespace,
-                    Err(err) => {
+                    Err(_err) => {
                         // todo: report error
                         continue;
                     }

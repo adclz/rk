@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 
-use auto_lsp::{anyhow, core::ast::AstNode, default::db::{BaseDatabase, File}, texter::core::text::Text};
+use auto_lsp::{anyhow, core::ast::AstNode, default::db::{BaseDatabase, File}};
 
 /// Interned identifier
 #[salsa::interned(debug, no_lifetime)]
@@ -202,145 +202,145 @@ mod tests {
     #[test]
     fn is_BOOL() {
         let db = RootDatabase::default();
-        assert_eq!(Ident::new(&db, "TRUE".to_string()).is_BOOL(&db), true);
-        assert_eq!(Ident::new(&db, "FALSE".to_string()).is_BOOL(&db), true);
-        assert_eq!(Ident::new(&db, "1".to_string()).is_BOOL(&db), true);
-        assert_eq!(Ident::new(&db, "0".to_string()).is_BOOL(&db), true);
-        assert_eq!(Ident::new(&db, "2".to_string()).is_BOOL(&db), false);
+        assert!(Ident::new(&db, "TRUE".to_string()).is_BOOL(&db));
+        assert!(Ident::new(&db, "FALSE".to_string()).is_BOOL(&db));
+        assert!(Ident::new(&db, "1".to_string()).is_BOOL(&db));
+        assert!(Ident::new(&db, "0".to_string()).is_BOOL(&db));
+        assert!(!Ident::new(&db, "2".to_string()).is_BOOL(&db));
     }
 
     #[test]
     fn is_BYTE() {
         let db = RootDatabase::default();
-        assert_eq!(Ident::new(&db, "0".to_string()).is_BYTE(&db), true);
-        assert_eq!(Ident::new(&db, "255".to_string()).is_BYTE(&db), true);
-        assert_eq!(Ident::new(&db, "256".to_string()).is_BYTE(&db), false);
+        assert!(Ident::new(&db, "0".to_string()).is_BYTE(&db));
+        assert!(Ident::new(&db, "255".to_string()).is_BYTE(&db));
+        assert!(!Ident::new(&db, "256".to_string()).is_BYTE(&db));
     }
 
     #[test]
     fn is_WORD() {
         let db = RootDatabase::default();
-        assert_eq!(Ident::new(&db, "0".to_string()).is_WORD(&db), true);
-        assert_eq!(Ident::new(&db, "65535".to_string()).is_WORD(&db), true);
-        assert_eq!(Ident::new(&db, "65536".to_string()).is_WORD(&db), false);
-        assert_eq!(Ident::new(&db, "-1".to_string()).is_WORD(&db), false);
+        assert!(Ident::new(&db, "0".to_string()).is_WORD(&db));
+        assert!(Ident::new(&db, "65535".to_string()).is_WORD(&db));
+        assert!(!Ident::new(&db, "65536".to_string()).is_WORD(&db));
+        assert!(!Ident::new(&db, "-1".to_string()).is_WORD(&db));
     }
 
     #[test]
     fn is_DWORD() {
         let db = RootDatabase::default();
-        assert_eq!(Ident::new(&db, "0".to_string()).is_DWORD(&db), true);
-        assert_eq!(Ident::new(&db, "4294967295".to_string()).is_DWORD(&db), true);
-        assert_eq!(Ident::new(&db, "4294967296".to_string()).is_DWORD(&db), false);
-        assert_eq!(Ident::new(&db, "-1".to_string()).is_DWORD(&db), false);
+        assert!(Ident::new(&db, "0".to_string()).is_DWORD(&db));
+        assert!(Ident::new(&db, "4294967295".to_string()).is_DWORD(&db));
+        assert!(!Ident::new(&db, "4294967296".to_string()).is_DWORD(&db));
+        assert!(!Ident::new(&db, "-1".to_string()).is_DWORD(&db));
     }
 
     #[test]
     fn is_LWORD() {
         let db = RootDatabase::default();
-        assert_eq!(Ident::new(&db, "0".to_string()).is_LWORD(&db), true);
-        assert_eq!(Ident::new(&db, "18446744073709551615".to_string()).is_LWORD(&db), true);
-        assert_eq!(Ident::new(&db, "18446744073709551616".to_string()).is_LWORD(&db), false);
-        assert_eq!(Ident::new(&db, "-1".to_string()).is_LWORD(&db), false);
+        assert!(Ident::new(&db, "0".to_string()).is_LWORD(&db));
+        assert!(Ident::new(&db, "18446744073709551615".to_string()).is_LWORD(&db));
+        assert!(!Ident::new(&db, "18446744073709551616".to_string()).is_LWORD(&db));
+        assert!(!Ident::new(&db, "-1".to_string()).is_LWORD(&db));
     }
 
     #[test]
     fn is_SINT() {
         let db = RootDatabase::default();
-        assert_eq!(Ident::new(&db, "0".to_string()).is_SINT(&db), true);
-        assert_eq!(Ident::new(&db, "127".to_string()).is_SINT(&db), true);
-        assert_eq!(Ident::new(&db, "128".to_string()).is_SINT(&db), false);
-        assert_eq!(Ident::new(&db, "-128".to_string()).is_SINT(&db), true);
-        assert_eq!(Ident::new(&db, "-129".to_string()).is_SINT(&db), false);
+        assert!(Ident::new(&db, "0".to_string()).is_SINT(&db));
+        assert!(Ident::new(&db, "127".to_string()).is_SINT(&db));
+        assert!(!Ident::new(&db, "128".to_string()).is_SINT(&db));
+        assert!(Ident::new(&db, "-128".to_string()).is_SINT(&db));
+        assert!(!Ident::new(&db, "-129".to_string()).is_SINT(&db));
     }
 
     #[test]
     fn is_INT() {
         let db = RootDatabase::default();
-        assert_eq!(Ident::new(&db, "0".to_string()).is_INT(&db), true);
-        assert_eq!(Ident::new(&db, "32767".to_string()).is_INT(&db), true);
-        assert_eq!(Ident::new(&db, "32768".to_string()).is_INT(&db), false);
-        assert_eq!(Ident::new(&db, "-32768".to_string()).is_INT(&db), true);
-        assert_eq!(Ident::new(&db, "-32769".to_string()).is_INT(&db), false);
+        assert!(Ident::new(&db, "0".to_string()).is_INT(&db));
+        assert!(Ident::new(&db, "32767".to_string()).is_INT(&db));
+        assert!(!Ident::new(&db, "32768".to_string()).is_INT(&db));
+        assert!(Ident::new(&db, "-32768".to_string()).is_INT(&db));
+        assert!(!Ident::new(&db, "-32769".to_string()).is_INT(&db));
     }
 
     #[test]
     fn is_DINT() {
         let db = RootDatabase::default();
-        assert_eq!(Ident::new(&db, "0".to_string()).is_DINT(&db), true);
-        assert_eq!(Ident::new(&db, "2147483647".to_string()).is_DINT(&db), true);
-        assert_eq!(Ident::new(&db, "2147483648".to_string()).is_DINT(&db), false);
-        assert_eq!(Ident::new(&db, "-2147483648".to_string()).is_DINT(&db), true);
-        assert_eq!(Ident::new(&db, "-2147483649".to_string()).is_DINT(&db), false);
+        assert!(Ident::new(&db, "0".to_string()).is_DINT(&db));
+        assert!(Ident::new(&db, "2147483647".to_string()).is_DINT(&db));
+        assert!(!Ident::new(&db, "2147483648".to_string()).is_DINT(&db));
+        assert!(Ident::new(&db, "-2147483648".to_string()).is_DINT(&db));
+        assert!(!Ident::new(&db, "-2147483649".to_string()).is_DINT(&db));
     }
 
     #[test]
     fn is_LINT() {
         let db = RootDatabase::default();
-        assert_eq!(Ident::new(&db, "0".to_string()).is_LINT(&db), true);
-        assert_eq!(Ident::new(&db, "9223372036854775807".to_string()).is_LINT(&db), true);
-        assert_eq!(Ident::new(&db, "9223372036854775808".to_string()).is_LINT(&db), false);
-        assert_eq!(Ident::new(&db, "-9223372036854775808".to_string()).is_LINT(&db), true);
-        assert_eq!(Ident::new(&db, "-9223372036854775809".to_string()).is_LINT(&db), false);
+        assert!(Ident::new(&db, "0".to_string()).is_LINT(&db));
+        assert!(Ident::new(&db, "9223372036854775807".to_string()).is_LINT(&db));
+        assert!(!Ident::new(&db, "9223372036854775808".to_string()).is_LINT(&db));
+        assert!(Ident::new(&db, "-9223372036854775808".to_string()).is_LINT(&db));
+        assert!(!Ident::new(&db, "-9223372036854775809".to_string()).is_LINT(&db));
     }
 
     #[test]
     fn is_USINT() {
         let db = RootDatabase::default();
-        assert_eq!(Ident::new(&db, "0".to_string()).is_USINT(&db), true);
-        assert_eq!(Ident::new(&db, "255".to_string()).is_USINT(&db), true);
-        assert_eq!(Ident::new(&db, "256".to_string()).is_USINT(&db), false);
-        assert_eq!(Ident::new(&db, "-1".to_string()).is_USINT(&db), false);
+        assert!(Ident::new(&db, "0".to_string()).is_USINT(&db));
+        assert!(Ident::new(&db, "255".to_string()).is_USINT(&db));
+        assert!(!Ident::new(&db, "256".to_string()).is_USINT(&db));
+        assert!(!Ident::new(&db, "-1".to_string()).is_USINT(&db));
     }
 
     #[test]
     fn is_UINT() {
         let db = RootDatabase::default();
-        assert_eq!(Ident::new(&db, "0".to_string()).is_UINT(&db), true);
-        assert_eq!(Ident::new(&db, "65535".to_string()).is_UINT(&db), true);
-        assert_eq!(Ident::new(&db, "65536".to_string()).is_UINT(&db), false);
-        assert_eq!(Ident::new(&db, "-1".to_string()).is_UINT(&db), false);
+        assert!(Ident::new(&db, "0".to_string()).is_UINT(&db));
+        assert!(Ident::new(&db, "65535".to_string()).is_UINT(&db));
+        assert!(!Ident::new(&db, "65536".to_string()).is_UINT(&db));
+        assert!(!Ident::new(&db, "-1".to_string()).is_UINT(&db));
     }
 
     #[test]
     fn is_UDINT() {
         let db = RootDatabase::default();
-        assert_eq!(Ident::new(&db, "0".to_string()).is_UDINT(&db), true);
-        assert_eq!(Ident::new(&db, "4294967295".to_string()).is_UDINT(&db), true);
-        assert_eq!(Ident::new(&db, "4294967296".to_string()).is_UDINT(&db), false);
-        assert_eq!(Ident::new(&db, "-1".to_string()).is_UDINT(&db), false);
+        assert!(Ident::new(&db, "0".to_string()).is_UDINT(&db));
+        assert!(Ident::new(&db, "4294967295".to_string()).is_UDINT(&db));
+        assert!(!Ident::new(&db, "4294967296".to_string()).is_UDINT(&db));
+        assert!(!Ident::new(&db, "-1".to_string()).is_UDINT(&db));
     }
 
     #[test]
     fn is_ULINT() {
         let db = RootDatabase::default();
-        assert_eq!(Ident::new(&db, "0".to_string()).is_ULINT(&db), true);
-        assert_eq!(Ident::new(&db, "18446744073709551615".to_string()).is_ULINT(&db), true);
-        assert_eq!(Ident::new(&db, "18446744073709551616".to_string()).is_ULINT(&db), false);
-        assert_eq!(Ident::new(&db, "-1".to_string()).is_ULINT(&db), false);
+        assert!(Ident::new(&db, "0".to_string()).is_ULINT(&db));
+        assert!(Ident::new(&db, "18446744073709551615".to_string()).is_ULINT(&db));
+        assert!(!Ident::new(&db, "18446744073709551616".to_string()).is_ULINT(&db));
+        assert!(!Ident::new(&db, "-1".to_string()).is_ULINT(&db));
     }       
 
     #[test]
     fn is_REAL() {
         let db = RootDatabase::default();
-        assert_eq!(Ident::new(&db, "0.0".to_string()).is_REAL(&db), true);
-        assert_eq!(Ident::new(&db, "1.0".to_string()).is_REAL(&db), true);
-        assert_eq!(Ident::new(&db, "1.1".to_string()).is_REAL(&db), true);
-        assert_eq!(Ident::new(&db, "1.1e1".to_string()).is_REAL(&db), true);
-        assert_eq!(Ident::new(&db, "1.1e-1".to_string()).is_REAL(&db), true);
-        assert_eq!(Ident::new(&db, "1.1e+1".to_string()).is_REAL(&db), true);
-        assert_eq!(Ident::new(&db, "1.1e1.1".to_string()).is_REAL(&db), false);
+        assert!(Ident::new(&db, "0.0".to_string()).is_REAL(&db));
+        assert!(Ident::new(&db, "1.0".to_string()).is_REAL(&db));
+        assert!(Ident::new(&db, "1.1".to_string()).is_REAL(&db));
+        assert!(Ident::new(&db, "1.1e1".to_string()).is_REAL(&db));
+        assert!(Ident::new(&db, "1.1e-1".to_string()).is_REAL(&db));
+        assert!(Ident::new(&db, "1.1e+1".to_string()).is_REAL(&db));
+        assert!(!Ident::new(&db, "1.1e1.1".to_string()).is_REAL(&db));
     }
 
     #[test]
     fn is_LREAL() {
         let db = RootDatabase::default();
-        assert_eq!(Ident::new(&db, "0.0".to_string()).is_LREAL(&db), true);
-        assert_eq!(Ident::new(&db, "1.0".to_string()).is_LREAL(&db), true);
-        assert_eq!(Ident::new(&db, "1.1".to_string()).is_LREAL(&db), true);
-        assert_eq!(Ident::new(&db, "1.1e1".to_string()).is_LREAL(&db), true);
-        assert_eq!(Ident::new(&db, "1.1e-1".to_string()).is_LREAL(&db), true);
-        assert_eq!(Ident::new(&db, "1.1e+1".to_string()).is_LREAL(&db), true);
-        assert_eq!(Ident::new(&db, "1.1e1.1".to_string()).is_LREAL(&db), false);
+        assert!(Ident::new(&db, "0.0".to_string()).is_LREAL(&db));
+        assert!(Ident::new(&db, "1.0".to_string()).is_LREAL(&db));
+        assert!(Ident::new(&db, "1.1".to_string()).is_LREAL(&db));
+        assert!(Ident::new(&db, "1.1e1".to_string()).is_LREAL(&db));
+        assert!(Ident::new(&db, "1.1e-1".to_string()).is_LREAL(&db));
+        assert!(Ident::new(&db, "1.1e+1".to_string()).is_LREAL(&db));
+        assert!(!Ident::new(&db, "1.1e1.1".to_string()).is_LREAL(&db));
     }
 } 

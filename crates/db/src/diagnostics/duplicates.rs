@@ -1,11 +1,10 @@
 use auto_lsp::{
     default::db::{BaseDatabase, File},
-    lsp_types::{self, DiagnosticRelatedInformation},
+    lsp_types::DiagnosticRelatedInformation,
 };
-use salsa::Accumulator;
 
 use crate::{
-    diagnostics::{diagnostic_builder::{diag, RangeKind}, DiagnosticAccumulator, IdeDiagnostic},
+    diagnostics::{diagnostic_builder::{diag, RangeKind}, IdeDiagnostic},
     solver::{namespace_path, namespaces_in_file},
 };
 

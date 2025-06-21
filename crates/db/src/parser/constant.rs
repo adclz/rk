@@ -1,3 +1,4 @@
+#![allow(unused)]
 use std::ops::Deref;
 
 use auto_lsp::{

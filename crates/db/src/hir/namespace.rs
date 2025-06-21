@@ -1,9 +1,8 @@
-use std::{sync::Arc};
 
 use auto_lsp::default::db::{BaseDatabase, File};
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::{hir::{class::Class, data_type::DataType, function::Function, function_block::FunctionBlock, interface::Interface}, ident::Ident, solver::{NamespacePath}, RootDatabase};
+use crate::{hir::{class::Class, data_type::DataType, function::Function, function_block::FunctionBlock, interface::Interface}, ident::Ident, solver::{NamespacePath}};
 
 pub fn to_lsp_range(range: auto_lsp::tree_sitter::Range) -> auto_lsp::lsp_types::Range {
     auto_lsp::lsp_types::Range {

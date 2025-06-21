@@ -30,7 +30,7 @@ pub fn diagnostics(
 
 pub fn workspace_diagnostics(
     db: &impl BaseDatabase,
-    params: WorkspaceDiagnosticParams,
+    _params: WorkspaceDiagnosticParams,
 ) -> anyhow::Result<WorkspaceDiagnosticReportResult> {
 
     let result: Vec<WorkspaceDocumentDiagnosticReport> = db

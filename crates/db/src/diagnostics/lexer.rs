@@ -29,7 +29,7 @@ pub fn add_fixes_to_parse_errors(
     errors: &mut Vec<&ParseErrorAccumulator>,
 ) -> Vec<IdeDiagnostic> {
     errors
-        .into_iter()
+        .iter_mut()
         .map(|error| match (*error).into() {
             ParseError::LexerError {
                 range,
@@ -48,15 +48,15 @@ pub fn add_fixes_to_parse_errors(
                     .related_information(vec![DiagnosticRelatedInformation {
                         location: auto_lsp::lsp_types::Location {
                             uri: file.url(db).clone(),
-                            range: range.into(),
+                            range,
                         },
-                        message: format!("help: add missing {grammar_name} here").into(),
+                        message: format!("help: add missing {grammar_name} here"),
                     }])
                     .call();
 
                 diagnostic.with_fix(
                     action()
-                        .title(format!("Insert missing '{}'", grammar_name))
+                        .title(format!("Insert missing '{grammar_name}'"))
                         .kind(auto_lsp::lsp_types::CodeActionKind::QUICKFIX)
                         .diagnostics(vec![diagnostic.diagnostic.clone()])
                         .is_preferred(true)
@@ -89,9 +89,9 @@ pub fn add_fixes_to_parse_errors(
                         .related_information(vec![DiagnosticRelatedInformation {
                             location: auto_lsp::lsp_types::Location {
                                 uri: file.url(db).clone(),
-                                range: range.into(),
+                                range,
                             },
-                            message: format!("help: remove '{affected}'").into(),
+                            message: format!("help: remove '{affected}'"),
                         }])
                         .call();
 
@@ -117,9 +117,9 @@ pub fn add_fixes_to_parse_errors(
                         .related_information(vec![DiagnosticRelatedInformation {
                             location: auto_lsp::lsp_types::Location {
                                 uri: file.url(db).clone(),
-                                range: range.into(),
+                                range,
                             },
-                            message: format!("help: remove '{}'", affected.split_whitespace().next().unwrap_or("")).into(),
+                            message: format!("help: remove '{}'", affected.split_whitespace().next().unwrap_or("")),
                         }])
                         .call()
                 } else {
