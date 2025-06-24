@@ -111,7 +111,7 @@ static QUERY: &str = r#"
     "FUNCTION_BLOCK" 
     "TYPE" 
     "INTERFACE"
-     "VAR_INPUT" "VAR_OUTPUT" "VAR_IN_OUT" "VAR_TEMP" "VAR_EXTERNAL" "VAR_GLOBAL"
+    "VAR" "VAR_INPUT" "VAR_OUTPUT" "VAR_IN_OUT" "VAR_TEMP" "VAR_EXTERNAL" "VAR_GLOBAL"
 ] @append_indent_start
 
 [   "END_NAMESPACE"

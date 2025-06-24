@@ -1,4 +1,3 @@
-
 use ast::generated::{ClassDecl, FbDecl, FuncDecl, Identifier, NamespaceDecl};
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::{
@@ -7,7 +6,8 @@ use auto_lsp::{
     default::db::{tracked::get_ast, BaseDatabase, File},
     lsp_types::{Hover, HoverContents, HoverParams, MarkupContent, MarkupKind},
 };
-use db::solver::namespace_solver;
+use db::solver::{namespace_solver, namespaces_in_file};
+use db::to_proto::IterToProto;
 
 pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Option<Hover>> {
     let uri = &params.text_document_position_params.text_document.uri;
@@ -27,139 +27,42 @@ pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Opti
             )
         })?;
 
-    if let Some(node) = get_ast(db, file).descendant_at(position) {
-        dispatch_once!(node.lower(),
-            [
-                Identifier => hover(db, file)
-            ]
-        );
-    }
-    Ok(None)
-}
-
-pub trait GetHover {
-    fn hover(&self, db: &impl BaseDatabase, file: File) -> anyhow::Result<Option<Hover>>;
-}
-
-impl GetHover for ast::generated::Identifier {
-    fn hover(&self, db: &impl BaseDatabase, file: File) -> anyhow::Result<Option<Hover>> {
-        let ast = get_ast(db, file);
-        let mut node = self.get_parent(ast);
-        while let Some(parent) = node {
-            dispatch_once!(parent.lower(),
-                [
-                    NamespaceDecl => hover(db, file),
-                    FuncDecl => hover(db, file),
-                    FbDecl => hover(db, file),
-                    ClassDecl => hover(db, file)
-                ]
-            );
-            node = parent.get_parent(ast);
-        }
-        Ok(None)
-    }
-}
-
-impl GetHover for ast::generated::NamespaceDecl {
-    fn hover(&self, db: &impl BaseDatabase, file: File) -> anyhow::Result<Option<Hover>> {
-        let path = namespace_solver(db, file, self);
-        Ok(Some(Hover {
-            contents: HoverContents::Markup(MarkupContent {
-                kind: MarkupKind::Markdown,
-                value: format!(
-                    r#"```typescript               
-namespace {}
-```
-{}
-"#,
-                    path.display(db), 
-                    get_comment(&file.document(db), self.get_lsp_range().start.line as usize).unwrap_or_default()
-                ),
-            }),
-            range: Some(self.get_lsp_range()),
-        }))
-    }
-}
-
-impl GetHover for ast::generated::FuncDecl {
-    fn hover(&self, db: &impl BaseDatabase, file: File) -> anyhow::Result<Option<Hover>> {
-        let path = namespace_solver(db, file, self);
-        let doc = file.document(db);
-        let text = doc.texter.text.as_bytes();
-        let name = self.name.get_text(text)?.to_string();
-
-        Ok(Some(Hover {
+    let ns = namespaces_in_file(db, file).unwrap();
+    Ok(ns.descendant_at(db, position).and_then(|symbol| {
+        let ns = ns.namespace_at(db, position)?;
+        let kind = match symbol.kind? {
+            auto_lsp::lsp_types::SymbolKind::NAMESPACE => "namespace",
+            auto_lsp::lsp_types::SymbolKind::FUNCTION => "function",
+            auto_lsp::lsp_types::SymbolKind::CLASS => "class",
+            auto_lsp::lsp_types::SymbolKind::INTERFACE => "interface",
+            auto_lsp::lsp_types::SymbolKind::TYPE_PARAMETER => "type",
+            auto_lsp::lsp_types::SymbolKind::VARIABLE => "var",
+            _ => return None,
+                    
+        };
+        Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,
                 value: format!(
                     r#"```typescript
 namespace {}
-function {}
-```
-{}                
-"#,
-                    path.display(db),
-                    name,
-                    get_comment(&doc, self.get_lsp_range().start.line as usize).unwrap_or_default()
-                ),
-            }),
-            range: Some(self.get_lsp_range()),
-        }))
-    }
-}
-
-impl GetHover for ast::generated::FbDecl {
-    fn hover(&self, db: &impl BaseDatabase, file: File) -> anyhow::Result<Option<Hover>> {
-        let path = namespace_solver(db, file, self);
-        let doc = file.document(db);
-        let text = doc.texter.text.as_bytes();
-        let name = self.name.get_text(text)?.to_string();
-
-        Ok(Some(Hover {
-            contents: HoverContents::Markup(MarkupContent {
-                kind: MarkupKind::Markdown,
-                value: format!(
-                    r#"```typescript
-namespace {}
-function_block {}
+{} {}
 ```
 {}
 "#,
-                    path.display(db),
-                    name,
-                    get_comment(&doc, self.get_lsp_range().start.line as usize).unwrap_or_default(),
+                    ns.path(db).display(db),
+                    kind,
+                    symbol.name,
+                    get_comment(
+                        &file.document(db),
+                        symbol.range.as_lsp().start.line as usize
+                    )
+                    .unwrap_or_default()
                 ),
             }),
-            range: Some(self.get_lsp_range()),
-        }))
-    }
-}
-
-impl GetHover for ast::generated::ClassDecl {
-    fn hover(&self, db: &impl BaseDatabase, file: File) -> anyhow::Result<Option<Hover>> {
-        let path = namespace_solver(db, file, self);
-        let doc = file.document(db);
-        let text = doc.texter.text.as_bytes();
-        let name = self.name.get_text(text)?.to_string();
-
-        Ok(Some(Hover {
-            contents: HoverContents::Markup(MarkupContent {
-                kind: MarkupKind::Markdown,
-                value: format!(
-                    r#"```typescript
-namespace {}
-class {}
-```
-{}
-"#,
-                    path.display(db),
-                    name,
-                    get_comment(&doc, self.get_lsp_range().start.line as usize).unwrap_or_default()
-                ),
-            }),
-            range: Some(self.get_lsp_range()),
-        }))
-    }
+            range: Some(symbol.range.into()),
+        })
+    }))
 }
 
 fn get_comment(doc: &Document, line: usize) -> Option<String> {
