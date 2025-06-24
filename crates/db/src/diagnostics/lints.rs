@@ -8,7 +8,7 @@ use auto_lsp::{
     tree_sitter::{self, StreamingIterator}
 };
 
-use crate::diagnostics::{diagnostic_builder::{action, diag, edit, RangeKind}, DiagnosticAccumulator};
+use crate::diagnostics::{diagnostic_builder::{action, diag, edit, OneOf, RangeKind}, DiagnosticAccumulator};
 
 // Combined query for all linting rules
 static LINTS_QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
@@ -108,7 +108,7 @@ fn handle_unmerged_using(
 ) {
     let range = duplicate.range();
     let mut diag = diag()
-        .range(range.into())
+        .range(OneOf::T(range.into()))
         .message("using directives can be merged".into())
         .source("IEC".into())
         .severity(auto_lsp::lsp_types::DiagnosticSeverity::INFORMATION)
@@ -130,7 +130,7 @@ fn handle_unmerged_using(
             file.url(db).clone(),
             vec![edit()
                 .new_text(merged_text)
-                .range(range.into())
+                .range(OneOf::T(range.into()))
                 .call()],
         )])))
         .call());
@@ -149,7 +149,7 @@ fn handle_duplicate_namespace(
     let name = duplicate_node.utf8_text(source.as_bytes()).unwrap();
 
     DiagnosticAccumulator::accumulate(diag()
-        .range(range.into())
+        .range(OneOf::T(range.into()))
         .message(format!("duplicate declarations of namespace '{name}' in same scope"))
         .source("IEC".into())
         .severity(auto_lsp::lsp_types::DiagnosticSeverity::INFORMATION)
@@ -174,7 +174,7 @@ fn handle_duplicate_declaration(
     let name = duplicate_node.utf8_text(source.as_bytes()).unwrap();
 
     DiagnosticAccumulator::accumulate(diag()
-        .range(range.into())
+        .range(OneOf::T(range.into()))
         .message(format!("duplicate declarations of '{name}' in same namespace"))
         .source("IEC".into())
         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)

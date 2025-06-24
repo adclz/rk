@@ -5,7 +5,7 @@ use auto_lsp::core::errors::{LexerError, ParseError, ParseErrorAccumulator};
 use auto_lsp::lsp_types::{DiagnosticRelatedInformation, WorkspaceEdit};
 use phf::phf_set;
 
-use crate::diagnostics::diagnostic_builder::{action, diag, edit};
+use crate::diagnostics::diagnostic_builder::{action, diag, edit, OneOf};
 use crate::diagnostics::IdeDiagnostic;
 
 static KEYWORDS: phf::Set<&'static str> = phf_set! {
@@ -41,7 +41,7 @@ pub fn add_fixes_to_parse_errors(
                     },
             } => {
                 let mut diagnostic = diag()
-                    .range(range.into())
+                    .range(OneOf::U(range))
                     .message(missing_error.to_string())
                     .source("IEC".into())
                     .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
@@ -64,7 +64,7 @@ pub fn add_fixes_to_parse_errors(
                             file.url(db).clone(),
                             vec![edit()
                                 .new_text(grammar_name.to_string())
-                                .range(range.into())
+                                .range(OneOf::U(range))
                                 .call()],
                         )])))
                         .call(),
@@ -82,7 +82,7 @@ pub fn add_fixes_to_parse_errors(
             } => {
                 if affected.len() == 1 {
                     let mut diagnostic = diag()
-                        .range(range.into())
+                        .range(OneOf::U(range))
                         .message(syntax_error.to_string())
                         .source("IEC".into())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
@@ -103,14 +103,14 @@ pub fn add_fixes_to_parse_errors(
                             .is_preferred(true)
                             .edit(WorkspaceEdit::new(HashMap::from([(
                                 file.url(db).clone(),
-                                vec![edit().new_text("".to_string()).range(range.into()).call()],
+                                vec![edit().new_text("".to_string()).range(OneOf::U(range)).call()],
                             )])))
                             .call(),
                     );
                     diagnostic
                 } else if KEYWORDS.contains(affected.split_whitespace().next().unwrap_or("")) {
                     diag()
-                        .range(range.into())
+                        .range(OneOf::U(range))
                         .message(format!("{} is a reserved keyword that is not valid in this context", affected.split_whitespace().next().unwrap_or("")))
                         .source("IEC".into())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)

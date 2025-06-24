@@ -4,7 +4,7 @@ use auto_lsp::{
 };
 
 use crate::{
-    diagnostics::{diagnostic_builder::{diag, RangeKind}, IdeDiagnostic},
+    diagnostics::{diagnostic_builder::{diag, OneOf, RangeKind}, IdeDiagnostic},
     solver::{namespace_path, namespaces_in_file},
 };
 
@@ -24,7 +24,7 @@ pub fn duplicate_declarations<'db>(
                     if let Some(other_pou) = other_decl.get_pou(db, *path, *name) {
                         let duplicate = name.text(db);
                         acc.push(diag()
-                            .range(pou.span(db).into())
+                            .range(OneOf::T(pou.span(db).into()))
                             .message(format!("duplicate declarations of {duplicate} POU"))
                             .source("IEC".into())
                             .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
