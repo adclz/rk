@@ -6,6 +6,7 @@ use auto_lsp::{
     anyhow,
     default::db::{BaseDatabase, File},
 };
+use auto_lsp::core::ast::AstNode;
 
 use crate::{hir::variable::Variable, ident::Ident};
 
@@ -32,7 +33,7 @@ macro_rules! parse_multi_variable_sections {
                 $($section_kind(var_decl) => {
                     for variable in child.variables.children.iter() {
                         let name = Ident::from_node(db, file, variable.deref())?;
-                        section.push(Variable::from(db, name));
+                        section.push(Variable::new(db, name, *variable.get_range(), *variable.get_range()));
                     }
                 }),*
             }
@@ -99,11 +100,11 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
             match child.Type.deref() {
                 ExternalVarKind::VarDecl(var_decl) => {
                     let name = Ident::from_node(db, file, child.name.deref())?;
-                    section.push(Variable::from(db, name))
+                    section.push(Variable::new(db, name, *child.get_range(), *child.name.get_range()))
                 }
                 ExternalVarKind::ArrayConformDecl(var_decl) => {
                     let name = Ident::from_node(db, file, child.name.deref())?;
-                    section.push(Variable::from(db, name))
+                    section.push(Variable::new(db, name, *child.get_range(), *child.name.get_range()))
                 }
             }
         }
@@ -120,7 +121,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::LocPartlyVarDecl {
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
             let name = Ident::from_node(db, file, child.variable_name.deref())?;
-            section.push(Variable::from(db, name))
+            section.push(Variable::new(db, name, *child.get_range(), *child.variable_name.get_range()))
         }
         Ok(())
     }
@@ -137,11 +138,11 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
             match child.Type.deref() {
                 GlobalVarKind::TypeAccess(var_decl) => {
                     let name = Ident::from_node(db, file, child.spec.deref())?;
-                    section.push(Variable::from(db, name))
+                    section.push(Variable::new(db, name, *child.get_range(), *child.spec.get_range()))
                 }
                 GlobalVarKind::LocVarSpecInit(var_decl) => {
                     let name = Ident::from_node(db, file, child.spec.deref())?;
-                    section.push(Variable::from(db, name))
+                    section.push(Variable::new(db, name, *child.get_range(), *child.spec.get_range()))
                 }
             }
         }

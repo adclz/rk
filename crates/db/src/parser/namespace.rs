@@ -112,8 +112,9 @@ impl<'db> FileNamespacesBuilder<'db> {
                             PouDecl::new(
                                 self.db,
                                 Pou::Function(func.parse(self.db, self.file)?),
-                                *func.name.get_range(),
                                 *func.get_range(),
+                                name,
+                                *func.name.get_range(),
                             ),
                         );
                     }
@@ -124,8 +125,9 @@ impl<'db> FileNamespacesBuilder<'db> {
                             PouDecl::new(
                                 self.db,
                                 Pou::FunctionBlock(fb.parse(self.db, self.file)?),
-                                *fb.name.get_range(),
                                 *fb.get_range(),
+                                name,
+                                *fb.name.get_range(),
                             ),
                         );
                     }
@@ -136,8 +138,9 @@ impl<'db> FileNamespacesBuilder<'db> {
                             PouDecl::new(
                                 self.db,
                                 Pou::Class(class.parse(self.db, self.file)?),
-                                *class.name.get_range(),
                                 *class.get_range(),
+                                name,
+                                *class.name.get_range(),
                             ),
                         );
                     }
@@ -150,6 +153,8 @@ impl<'db> FileNamespacesBuilder<'db> {
             nested.internal.is_some(),
             in_scopes,
             *nested.get_range(),
+            NamespacePath::from((self.db, parent_path)),
+            *nested.name.get_range(),
             pous,
         ))
     }

@@ -1,4 +1,4 @@
-use crate::hir::variable::Variable;
+use crate::{hir::variable::Variable, to_proto::{IterToProto, SymbolInfo}};
 
 #[salsa::tracked(debug)]
 pub struct FunctionBlock<'db> {
@@ -12,3 +12,4 @@ pub struct FunctionBlock<'db> {
     pub no_retain_variables: Vec<Variable<'db>>,
     pub loc_partly_variables: Vec<Variable<'db>>,
 }
+

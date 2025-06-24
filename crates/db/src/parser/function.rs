@@ -25,8 +25,8 @@ impl<'db> Parse<'db> for ast::generated::FuncDecl {
             input_variables,
             output_variables,
             in_out_variables,
-            external_variables,
             temp_variables,
+            external_variables,
             variables,
         ))
     }

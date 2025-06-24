@@ -1,16 +1,29 @@
 use auto_lsp::default::db::BaseDatabase;
 
-use crate::{ident::Ident};
+use crate::{ident::Ident, to_proto::{SymbolInfo, ToProto}};
 
 
 #[salsa::tracked(debug)]
 pub struct Variable<'db> {
+    #[returns(ref)]
     name: Ident,
+
+    #[returns(ref)]
+    pub range: auto_lsp::tree_sitter::Range,
+
+    #[returns(ref)]
+    pub name_span: auto_lsp::tree_sitter::Range,
 }
 
-impl <'db> Variable<'db> {
-    pub fn from(db: &'db dyn BaseDatabase, name: Ident) -> Self {
-        Self::new(db, name)
+
+impl<'db> ToProto<'db> for Variable<'db> {
+    fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> SymbolInfo<'db> {
+        SymbolInfo::builder()
+        .kind(auto_lsp::lsp_types::SymbolKind::VARIABLE)
+        .name(self.name(db).text(db))
+        .range(self.range(db).into())
+        .name_range(self.name_span(db).into())
+        .build()
     }
 }
 
