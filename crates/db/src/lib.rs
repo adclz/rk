@@ -10,6 +10,7 @@ pub mod to_proto;
 use auto_lsp::{default::db::{BaseDatabase, File}, lsp_types::Url, salsa};
 use dashmap::DashMap;
 use salsa::Event;
+pub use ast::RK_PARSER;
 
 #[salsa::db]
 #[derive(Default, Clone)]

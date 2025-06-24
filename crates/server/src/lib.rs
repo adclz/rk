@@ -1,7 +1,7 @@
 #![recursion_limit = "256"]
 mod capabilties;
 
-use ast::RK_PARSER;
+use db::RK_PARSER;
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::default::server::capabilities::TEXT_DOCUMENT_SYNC;
 use auto_lsp::default::server::capabilities::WORKSPACE_PROVIDER;

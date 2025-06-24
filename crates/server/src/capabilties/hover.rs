@@ -1,4 +1,3 @@
-use ast::generated::{ClassDecl, FbDecl, FuncDecl, Identifier, NamespaceDecl};
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::{
     anyhow,

@@ -1,4 +1,3 @@
-use ast::generated::NamespaceDecl;
 use auto_lsp::{
     anyhow,
     core::dispatch,
@@ -53,47 +52,4 @@ pub fn code_actions(
     });
 
     Ok(Some(results))
-}
-
-pub trait GetCodeActions {
-    fn code_actions(
-        &self,
-        db: &impl BaseDatabase,
-        file: File,
-        results: &mut Vec<CodeActionOrCommand>,
-    ) -> anyhow::Result<()>;
-}
-
-impl GetCodeActions for ast::generated::NamespaceDecl {
-    fn code_actions(
-        &self,
-        _db: &impl BaseDatabase,
-        _file: File,
-        results: &mut Vec<CodeActionOrCommand>,
-    ) -> anyhow::Result<()> {
-        if self.internal.is_some() {
-            results.push(CodeActionOrCommand::CodeAction(CodeAction {
-                title: "Remove internal".to_string(),
-                kind: Some(CodeActionKind::REFACTOR),
-                diagnostics: None,
-                is_preferred: None,
-                edit: None,
-                command: None,
-                data: None,
-                disabled: None,
-            }));
-        } else {
-            results.push(CodeActionOrCommand::CodeAction(CodeAction {
-                title: "Add internal".to_string(),
-                kind: Some(CodeActionKind::REFACTOR),
-                diagnostics: None,
-                is_preferred: None,
-                edit: None,
-                command: None,
-                data: None,
-                disabled: None,
-            }));
-        }
-        Ok(())
-    }
 }
