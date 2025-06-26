@@ -48,7 +48,14 @@ const RESERVED_NAMES = [
     "VAR_IN_OUT",
     "VAR_TEMP",
     "VAR_EXTERNAL",
-    "VAR_GLOBAL"
+    "VAR_GLOBAL",
+    "IF", "THEN", "ELSE", "END_IF",
+    "CASE", "OF", "END_CASE",
+    "FOR", "TO", "BY", "END_FOR",
+    "REPEAT", "UNTIL", "END_REPEAT",
+    "WHILE", "END_WHILE",
+    "DO",
+    "EXIT", "RETURN",
 ];
 
 const io_var_decls = $ => [
@@ -130,18 +137,10 @@ module.exports = grammar({
     ],
 
     conflicts: $ => [
-        [$.instance_name, $.invocation],
-        [$.instance_name],
         [$.variable_list, $.fb_name],
-        [$.instance_name],
         [$.ref_name, $.param_assign],
-        [$.type_access, $.instance_name],
-        [$.ref_name, $.local_variable],
-        [$.type_access, $.local_variable],
         [$.local_variable, $.multi_elem_var],
-        [$.local_variable, $.instance_name],
         [$.this_variable, $.multi_elem_var],
-        [$.local_variable, $.global_ref_deref],
 
         [$.signed_int],
 
@@ -158,10 +157,13 @@ module.exports = grammar({
         // conflicts in type declarations
         [$.enum_spec_init, $.enum_value_spec],
         [$.numeric_literal, $.enum_value_spec],
-        [$.numeric_type_name, $.subrange_spec],
         [$.subrange_spec, $.enum_spec_init],
 
         [$.global_ref_deref],
+        [$.namespace_qualifier_target],
+        [$.namespace_qualifier_target, $.ref_name],
+        [$.local_variable, $.ref_name],
+        [$.global_ref_deref, $.local_variable]
     ],
 
     word: $ => $.identifier,
@@ -358,7 +360,7 @@ module.exports = grammar({
 
         fix_point: $ => seq(
             field("real", $.unsigned_int),
-            '.', 
+            '.',
             field("frac", $.unsigned_int)
         ),
 
@@ -427,7 +429,7 @@ module.exports = grammar({
             $.string_type_name,
             $.date_type_name,
             $.time_type_name,
-            $.type_access
+            $.namespace_qualifier_target
         ),
 
         _elem_type_name: $ => choice(
@@ -510,13 +512,6 @@ module.exports = grammar({
 
         // Table 11 - Declaration of user-defined data types and initialization
 
-        derived_type_access: $ => $.type_access,
-
-        type_access: $ => seq(
-            repeat1(seq(field("path", $.identifier), '.')),
-            field("access", $.identifier)
-        ),
-
         data_type_decl: $ => seq(
             'TYPE',
             repeat(seq($.type_decl, ';')),
@@ -526,13 +521,13 @@ module.exports = grammar({
         type_decl: $ => seq(
             field("name", $.identifier),
             field("declaration", choice(
-                $.simple_type_decl,
-                $.subrange_type_decl,
-                $.enum_type_decl,
-                $.array_type_decl,
-                $.struct_type_decl,
-                $.str_type_decl,
-                $.ref_type_decl,
+                //$.simple_type_decl,
+                //$.subrange_type_decl,
+                //$.enum_type_decl,
+                //$.array_type_decl,
+                //$.struct_type_decl,
+                //$.str_type_decl,
+                //$.ref_type_decl,
             )),
             field("spec", optional(
                 choice(
@@ -545,7 +540,7 @@ module.exports = grammar({
         ),
 
         spec: $ => seq(
-            $.type_access,
+            $.namespace_qualifier_target,
             choice(
                 $.array_spec,
                 $.identifier,
@@ -556,10 +551,7 @@ module.exports = grammar({
 
         simple_type_decl: $ => seq(':', $.simple_spec_init),
 
-        simple_spec_init: $ => prec.left(seq(
-            $.identifier,
-            optional(seq(':=', $.constant_expr))
-        )),
+        simple_spec_init: $ => prec.left(seq(seq(':=', $.constant_expr))),
 
         subrange_type_decl: $ => seq(':', $.subrange_spec_init),
 
@@ -570,7 +562,7 @@ module.exports = grammar({
 
         subrange_spec: $ => choice(
             seq($.int_type_name, '(', $.subrange, ')'),
-            $.type_access
+            $.namespace_qualifier_target
         ),
 
         subrange: $ => seq(
@@ -592,7 +584,7 @@ module.exports = grammar({
         enum_spec_init: $ => prec.left(seq(
             choice(
                 seq('(', commaSep($.identifier), ')'),
-                $.type_access
+                $.namespace_qualifier_target
             ),
             optional(seq(':=', $.enum_value))
         )),
@@ -606,7 +598,7 @@ module.exports = grammar({
         ),
 
         enum_value: $ => seq(
-            optional(seq($.identifier, '#')),
+            "#",
             $.identifier
         ),
 
@@ -618,8 +610,8 @@ module.exports = grammar({
         )),
 
         array_spec: $ => seq(
-            'ARRAY', '[', field("ranges", commaSep1($.subrange)), ']', 
-            'OF', 
+            'ARRAY', '[', field("ranges", commaSep1($.subrange)), ']',
+            'OF',
             field("type", $._data_type_access)),
 
         array_init: $ => seq('[', commaSep($.array_elem_init), ']'),
@@ -725,7 +717,7 @@ module.exports = grammar({
             choice($.ref_name, $.ref_deref, $.ref_value)
         ),
 
-        ref_deref: $ => (
+        ref_deref: $ => seq(
             $.ref_name,
             prec(PREC.dereference, '^')
         ),
@@ -740,12 +732,12 @@ module.exports = grammar({
         ),
 
         local_variable: $ => choice(
-                $.identifier,
-                $.ref_deref,
-                $.multi_elem_var
+            $.identifier,
+            $.ref_deref,
+            $.multi_elem_var
         ),
 
-        this_variable: $ => seq('THIS', '.', 
+        this_variable: $ => seq('THIS', '.',
             choice(
                 $.identifier,
                 $.ref_deref,
@@ -814,7 +806,7 @@ module.exports = grammar({
         // INOUT
         // TEMP
         _var_decl: $ => choice(
-            $.type_access,
+            $.namespace_qualifier_target,
             $.str_var_decl,
             $.array_spec,
         ),
@@ -839,7 +831,7 @@ module.exports = grammar({
         fb_decl_no_init: $ => seq(
             commaSep1($.fb_name),
             ':',
-            $.type_access
+            $.namespace_qualifier_target
         ),
 
         fb_decl_init: $ => seq(':=', $.struct_init),
@@ -953,7 +945,7 @@ module.exports = grammar({
             field("type", $._global_var_kind)
         ),
 
-        _global_var_kind: $ => choice($.loc_var_spec_init, $.type_access),
+        _global_var_kind: $ => choice($.loc_var_spec_init, $.namespace_qualifier_target),
 
         global_var_spec: $ => choice(
             seq(commaSep1($.identifier)),
@@ -1012,9 +1004,8 @@ module.exports = grammar({
         ),
 
         var_spec: $ => choice(
-            $.identifier,
             $.array_spec,
-            $.type_access,
+            $.namespace_qualifier_target,
             seq(choice('STRING', 'WSTRING'), optional(seq('[', $.unsigned_int, ']'))),
         ),
 
@@ -1050,7 +1041,7 @@ module.exports = grammar({
             field("qualifier", optional(choice('FINAL', 'ABSTRACT'))),
             field("name", $.identifier),
             field("directives", repeat($.using_directive)),
-            field("extends", optional(seq("EXTENDS", $.type_access))),
+            field("extends", optional(seq("EXTENDS", $.namespace_qualifier_target))),
             field("implements", optional(seq("IMPLEMENTS", $.interface_name_list))),
             field("variables", repeat($._fb_variables)),
             field("method", repeat($.method_decl)),
@@ -1138,7 +1129,7 @@ module.exports = grammar({
             field("qualifier", optional(choice('FINAL', 'ABSTRACT'))),
             field("name", $.class_type_name),
             field("directives", repeat($.using_directive)),
-            field("extends", optional(seq("EXTENDS", $.type_access))),
+            field("extends", optional(seq("EXTENDS", $.namespace_qualifier_target))),
             field("implements", optional(seq("IMPLEMENTS", $.interface_name_list))),
             field("declarations", repeat($._class_variables)),
             field("method", repeat($.method_decl)),
@@ -1152,11 +1143,10 @@ module.exports = grammar({
 
         class_type_name: $ => $.identifier,
 
-        instance_name: $ => seq(
-            repeat(seq(field("namespace", $.identifier), '.')),
-            field("name", $.identifier),
-            repeat(prec(PREC.dereference, '^'))
-        ),
+        instance_name: $ => prec(PREC.dereference, seq(
+            $.namespace_qualifier_target,
+            repeat1('^')
+        )),
 
         interface_decl: $ => seq(
             'INTERFACE',
@@ -1187,7 +1177,7 @@ module.exports = grammar({
             'NULL'
         ),
 
-        interface_name_list: $ => commaSep1($.type_access),
+        interface_name_list: $ => commaSep1($.namespace_qualifier_target),
 
         interface_name: $ => $.identifier,
 
@@ -1210,10 +1200,7 @@ module.exports = grammar({
             'END_PROGRAM'
         ),
 
-        prog_type_access: $ => seq(
-            repeat(seq(field("namespace", $.identifier), '.')),
-            $.identifier
-        ),
+        prog_type_access: $ => $.namespace_qualifier_target,
 
         prog_access_decls: $ => seq(
             'ref_deref',
@@ -1465,7 +1452,7 @@ module.exports = grammar({
                 seq(
                     $.instance_name,
                     ':',
-                    $.type_access,
+                    $.namespace_qualifier_target,
                     ':=',
                     $.struct_init
                 )
@@ -1523,69 +1510,58 @@ module.exports = grammar({
 
         // Table 71 - 72 - Language Structured Text (ST) 
 
-        expression: $ => prec(PREC.expression, seq(
-            $.xor_expr,
-            prec(PREC.boolean_or, repeat(
-                seq('OR', $.xor_expr))
-            )
-        )),
-
-        constant_expr: $ => $.constant,
-        //todo: a constant expression must evaluate to a constant value at compile time 
-        // for now we just accept any constant - but no expressions
-
-        xor_expr: $ => seq(
-            $.and_expr,
-            prec(PREC.boolean_xor, repeat(seq('XOR', $.and_expr))
-        )),
-
-        and_expr: $ => seq(
-            $.compare_expr,
-            prec(PREC.boolean_and, repeat(seq(choice('&', 'AND'), $.compare_expr)))
+        expression: $ => choice(
+            $.boolean_operator,
+            $.comparison_operator,
+            $.add_operator,
+            $.mult_operator,
+            $.power_operator,
+            $.unary_operator,
+            $.primary_expression
         ),
 
-        compare_expr: $ => seq(
-            $.equ_expr,
-            prec(PREC.equality, repeat(seq(choice('=', '<>'), $.equ_expr))
-        )),
-
-        equ_expr: $ => seq(
-            $.add_expr,
-            prec(PREC.comparison, repeat(seq(choice('<', '>', '<=', '>='), $.add_expr))
-        )),
-
-        add_expr: $ => prec.left(seq(
-            $.term,
-            prec(PREC.add, repeat(seq(choice('+', '-'), $.term))
-        ))),
-
-        term: $ => prec.left(seq(
-            $.power_expr,
-            prec(PREC.modulo, repeat(seq(
-                choice(seq('*', '/', 'MOD'), $.power_expr))
-            ))
-        )),
-
-        power_expr: $ => seq(
-            $.unary_expr,
-            prec(PREC.exponentiation, (
-                repeat(seq('**', $.unary_expr))
-            ))
-        ),
-
-        unary_expr: $ => prec(PREC.unary, seq(
-            optional(choice('-', '+', 'NOT')),
-            $.primary_expr
-        )),
-
-        primary_expr: $ => choice(
+        primary_expression: $ => choice(
             $.constant,
+            $.namespace_qualifier_target,
             $.enum_value,
             $.variable_access,
             $.func_call,
             $.ref_value,
-            seq('(', $.expression, ')')
+            $.parenthesized_expression
         ),
+
+        parenthesized_expression: $ => seq('(', $.expression, ')'),
+
+        boolean_operator: $ => choice(
+            prec.left(PREC.boolean_or, seq($.expression, 'OR', $.expression)),
+            prec.left(PREC.boolean_xor, seq($.expression, 'XOR', $.expression)),
+            prec.left(PREC.boolean_and, seq($.expression, choice('&', 'AND'), $.expression))
+        ),
+
+        comparison_operator: $ => choice(
+            prec.left(PREC.equality, seq($.expression, choice('=', '<>'), $.expression)),
+            prec.left(PREC.comparison, seq($.expression, choice('<', '>', '<=', '>='), $.expression))
+        ),
+
+        add_operator: $ => prec.left(PREC.add,
+            seq($.expression, choice('+', '-'), $.expression)
+        ),
+
+        mult_operator: $ => prec.left(PREC.modulo,
+            seq($.expression, choice('*', '/', 'MOD'), $.expression)
+        ),
+
+        power_operator: $ => prec.right(PREC.exponentiation,
+            seq($.expression, '**', $.expression)
+        ),
+
+        unary_operator: $ => prec(PREC.unary,
+            seq(choice('-', '+', 'NOT'), $.expression)
+        ),
+
+        constant_expr: $ => $.constant,
+        //todo: a constant expression must evaluate to a constant value at compile time 
+        // for now we just accept any constant - but no expressions
 
         variable_access: $ => seq(
             $.variable,
@@ -1601,24 +1577,32 @@ module.exports = grammar({
         ),
 
         func_call: $ => seq(
-            $.type_access,
+            $.namespace_qualifier_target,
             '(', prec(PREC.parameter_list, commaSep($.param_assign)), ')'
         ),
 
-        stmt_list: $ => prec.right(repeat1(seq($.stmt, optional(";")))),
+        stmt_list: $ => repeat1(seq($.stmt, optional(";"))),
 
         stmt: $ => choice(
-            $.assign_stmt,
-            $.subprog_ctrl_stmt,
-            $.selection_stmt,
-            $.iteration_stmt,
-        ),
-
-        assign_stmt: $ => prec.left(choice(
-            seq($.variable, ':=', $.constant_expr),
+            // assignments
+            seq($.variable, ':=', $.expression),
             $.ref_assign,
             $.assignment_attempt,
-        )),
+            // subprog
+            $.func_call,
+            $.invocation,
+            seq('SUPER', '(', ')'),
+            'RETURN',
+            // iteration
+            $.if_stmt,
+            $.case_stmt,
+            $.for_stmt,
+            $.while_stmt,
+            $.repeat_stmt,
+            // control flow
+            'EXIT',
+            'CONTINUE'
+        ),
 
         assignment_attempt: $ => seq(
             choice($.ref_name, $.ref_deref),
@@ -1629,7 +1613,6 @@ module.exports = grammar({
         invocation: $ => seq(
             choice(
                 $.instance_name,
-                $.identifier,
                 'THIS',
                 seq(
                     optional(seq('THIS', '.')),
@@ -1640,29 +1623,17 @@ module.exports = grammar({
             '(', commaSep($.param_assign), ')'
         ),
 
-        subprog_ctrl_stmt: $ => choice(
-            $.func_call,
-            $.invocation,
-            seq('SUPER', '(', ')'),
-            'RETURN'
-        ),
-
         param_assign: $ => choice(
-            seq(optional(seq(field("variable_name", $.identifier), ':=')), $.expression),
+            seq(field("variable_name", $.identifier), ':=', $.expression),
             $.ref_assign,
             seq(optional('NOT'), field("variable_name", $.identifier), '=>', $.variable)
-        ),
-
-        selection_stmt: $ => choice(
-            $.if_stmt,
-            $.case_stmt
         ),
 
         if_stmt: $ => seq(
             'IF',
             $.expression,
             'THEN',
-            $.stmt_list,
+            optional($.stmt_list),
             repeat(seq('ELSE IF', $.expression, 'THEN', $.stmt_list)),
             optional(seq('ELSE', $.stmt_list)),
             'END_IF'
@@ -1690,16 +1661,8 @@ module.exports = grammar({
             $.constant_expr
         ),
 
-        iteration_stmt: $ => choice(
-            $.for_stmt,
-            $.while_stmt,
-            $.repeat_stmt,
-            'EXIT',
-            'CONTINUE'
-        ),
-
         for_stmt: $ => seq(
-            'FOR',
+            "FOR",
             $.control_variable,
             ':=',
             $.for_list,
@@ -1719,7 +1682,7 @@ module.exports = grammar({
 
         while_stmt: $ => seq(
             'WHILE',
-            $.expression,
+            $.primary_expression,
             'DO',
             $.stmt_list,
             'END_WHILE'
@@ -1731,6 +1694,15 @@ module.exports = grammar({
             'UNTIL',
             $.expression,
             'END_REPEAT'
+        ),
+
+        // Other
+
+        namespace_qualifier_target: $ => prec.left(
+            seq(
+                optional(seq(repeat(seq("::", $.identifier)), "::")),
+                field("target", $.identifier)
+            ),
         ),
 
         // Table 73 - 76 - Graphic languages elements 
