@@ -29,3 +29,4 @@ server = { path = "crates/server" }
 db = { path = "crates/db" }
 bon = "3.6.4"
 phf = { version = "0.11.3", features = ["macros"] }
+bitflags = "2.9.1"
