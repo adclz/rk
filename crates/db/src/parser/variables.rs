@@ -75,17 +75,17 @@ parse_multi_variable_sections! {
     VarDecls, [
         ast::generated::VarDecl::ArraySpec,
         ast::generated::VarDecl::StrVarDecl,
-        ast::generated::VarDecl::TypeAccess
+        ast::generated::VarDecl::NamespaceQualifierTarget
     ],
     RetainVarDecls, [
         ast::generated::VarDecl::ArraySpec,
         ast::generated::VarDecl::StrVarDecl,
-        ast::generated::VarDecl::TypeAccess
+        ast::generated::VarDecl::NamespaceQualifierTarget
     ],
     NoRetainVarDecls, [
         ast::generated::VarDecl::ArraySpec,
         ast::generated::VarDecl::StrVarDecl,
-        ast::generated::VarDecl::TypeAccess
+        ast::generated::VarDecl::NamespaceQualifierTarget
     ]
 }
 
@@ -136,7 +136,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
             match child.Type.deref() {
-                GlobalVarKind::TypeAccess(var_decl) => {
+                GlobalVarKind::NamespaceQualifierTarget(var_decl) => {
                     let name = Ident::from_node(db, file, child.spec.deref())?;
                     section.push(Variable::new(db, name, *child.get_range(), *child.spec.get_range()))
                 }
@@ -176,7 +176,7 @@ impl<'db> ParseVariable<'db> for ast::generated::VarDecl {
                 }
             },
             Self::ArraySpec(array_spec) => todo!(),
-            Self::TypeAccess(type_access) => todo!(),
+            Self::NamespaceQualifierTarget(type_access) => todo!(),
         }
     }
 }
