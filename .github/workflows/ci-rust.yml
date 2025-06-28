@@ -1,4 +1,4 @@
-name: Codegen
+name: rust
 on:
   push:
     paths-ignore:
