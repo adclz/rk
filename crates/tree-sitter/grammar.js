@@ -370,7 +370,7 @@ module.exports = grammar({
             field("value", $.time_value)
         ),
 
-        time_value: $ => /([0-9._]+[dhms])+/,
+        time_value: $ => /([0-9._]+(d|h|ms|ns|m|s))+/,
 
         fix_point: $ => seq(
             field("real", $.unsigned_int),
@@ -395,7 +395,7 @@ module.exports = grammar({
             field("value", $.daytime)
         ),
 
-        daytime: $ => /[0-9]{2}:[0-9]{2}:[0-9]{2}/,
+        daytime: $ => /[0-9a-zA-Z_.:]+/,
 
         date: $ => choice(
             $.short_date,
@@ -414,7 +414,7 @@ module.exports = grammar({
             field("value", $.date_literal)
         ),
 
-        date_literal: $ => /[0-9]{4}-[0-9]{2}-[0-9]{2}/,
+        date_literal: $ => /[0-9a-zA-Z_.:-]+/,
 
         date_and_time: $ => choice(
             $.short_date_and_time,
@@ -433,7 +433,7 @@ module.exports = grammar({
             field("value", $.date_and_daytime)
         ),
 
-        date_and_daytime: $ => /[0-9]{4}-[0-9]{2}-[0-9]{2}[0-9]{2}:[0-9]{2}:[0-9]{2}/,
+        date_and_daytime: $ => /[0-9dhmsDHMS_.]+/,
 
         // Table 10 - Elementary data types
 
