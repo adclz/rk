@@ -1,0 +1,283 @@
+================================================================================
+Enumerated data types with initialization
+================================================================================
+
+NAMESPACE ns
+    TYPE
+        ANALOG_SIGNAL_RANGE: 
+            (BIPOLAR_10V,
+            UNIPOLAR_10V,
+            UNIPOLAR_1_5V,
+            UNIPOLAR_0_5V,
+            UNIPOLAR_4_20_MA,
+            UNIPOLAR_0_20_MA)
+                := UNIPOLAR_1_5V;
+    END_TYPE
+END_NAMESPACE    
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (namespace_decl
+        (namespace_h_name
+          (identifier))
+        (namespace_elements
+          (data_type_decl
+            (type_decl
+              (identifier)
+              (enum_type_spec
+                (enum_spec
+                  (identifier)
+                  (identifier)
+                  (identifier)
+                  (identifier)
+                  (identifier)
+                  (identifier)))
+              (ref_init
+                (namespace_qualifier_target
+                  (identifier))))))))
+
+================================================================================
+Data types with named values
+================================================================================
+
+TYPE
+    Colors: DWORD
+    (Red := 16#00FF0000,
+        Green:= 16#0000FF00,
+        Blue := 16#000000FF,
+        White:= Red OR Green OR Blue,
+        Black:= Red AND Green AND Blue)
+    := Green;
+END_TYPE    
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (data_type_decl
+        (type_decl
+          (identifier)
+          (enum_type_spec
+            (bit_str_type_name
+              (multibits_type_name))
+            (named_spec
+              (enum_value_spec
+                (identifier)
+                (int_literal
+                  (hex_int
+                    (hex_digit)
+                    (hex_digit)
+                    (hex_digit)
+                    (hex_digit)
+                    (hex_digit)
+                    (hex_digit)
+                    (hex_digit)
+                    (hex_digit))))
+              (enum_value_spec
+                (identifier)
+                (int_literal
+                  (hex_int
+                    (hex_digit)
+                    (hex_digit)
+                    (hex_digit)
+                    (hex_digit)
+                    (hex_digit)
+                    (hex_digit)
+                    (hex_digit)
+                    (hex_digit))))
+              (enum_value_spec
+                (identifier)
+                (int_literal
+                  (hex_int
+                    (hex_digit)
+                    (hex_digit)
+                    (hex_digit)
+                    (hex_digit)
+                    (hex_digit)
+                    (hex_digit)
+                    (hex_digit)
+                    (hex_digit))))
+              (enum_value_spec
+                (identifier)
+                (expression
+                  (boolean_operator
+                    (expression
+                      (boolean_operator
+                        (expression
+                          (primary_expression
+                            (namespace_qualifier_target
+                              (identifier))))
+                        (expression
+                          (primary_expression
+                            (namespace_qualifier_target
+                              (identifier))))))
+                    (expression
+                      (primary_expression
+                        (namespace_qualifier_target
+                          (identifier)))))))
+              (enum_value_spec
+                (identifier)
+                (expression
+                  (boolean_operator
+                    (expression
+                      (boolean_operator
+                        (expression
+                          (primary_expression
+                            (namespace_qualifier_target
+                              (identifier))))
+                        (expression
+                          (primary_expression
+                            (namespace_qualifier_target
+                              (identifier))))))
+                    (expression
+                      (primary_expression
+                        (namespace_qualifier_target
+                          (identifier)))))))))
+          (ref_init
+            (namespace_qualifier_target
+              (identifier))))))
+
+================================================================================
+Subrange data types
+================================================================================
+
+TYPE
+    ANALOG_DATA: INT(-4095 .. 4095):= 0;
+END_TYPE    
+
+--------------------------------------------------------------------------------
+
+   (source_file
+      (data_type_decl
+        (type_decl
+          (identifier)
+          (subrange_type_spec
+            (int_type_name
+              (sign_int_type_name))
+            (subrange
+              (constant_expr
+                (expression
+                  (primary_expression
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int))))))))
+              (constant_expr
+                (expression
+                  (primary_expression
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int))))))))))
+          (subrange_type_init
+            (signed_int
+              (unsigned_int))))))
+
+================================================================================
+Array data types
+================================================================================
+
+TYPE 
+    ANALOG_16_INPUT_DATA: ARRAY [1..16] OF ANALOG_DATA := [8(-4095), 8(4095)];
+END_TYPE   
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (data_type_decl
+        (type_decl
+          (identifier)
+          (array_type_spec
+            (subrange
+              (constant_expr
+                (expression
+                  (primary_expression
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int))))))))
+              (constant_expr
+                (expression
+                  (primary_expression
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int)))))))))
+            (namespace_qualifier_target
+              (identifier)))
+          (array_type_init
+            (array_elem_init
+              (unsigned_int)
+              (array_elem_init_value
+                (constant_expr
+                  (expression
+                    (primary_expression
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int))))))))))
+            (array_elem_init
+              (unsigned_int)
+              (array_elem_init_value
+                (constant_expr
+                  (expression
+                    (primary_expression
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int))))))))))))))                            
+
+================================================================================
+FB types and classes as array elements
+================================================================================
+
+TYPE
+    TONs: ARRAY[1..50] OF TON := [50(PT:=T#100ms)];
+END_TYPE  
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (data_type_decl
+        (type_decl
+          (identifier)
+          (array_type_spec
+            (subrange
+              (constant_expr
+                (expression
+                  (primary_expression
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int))))))))
+              (constant_expr
+                (expression
+                  (primary_expression
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int)))))))))
+            (namespace_qualifier_target
+              (identifier)))
+          (array_type_init
+            (array_elem_init
+              (unsigned_int)
+              (array_elem_init_value
+                (struct_elem_init
+                  (identifier)
+                  (constant_expr
+                    (expression
+                      (primary_expression
+                        (constant
+                          (time_literal
+                            (duration
+                              (time
+                                (time_value)))))))))))))))

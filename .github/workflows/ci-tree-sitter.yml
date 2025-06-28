@@ -1,0 +1,41 @@
+name: tree-sitter
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - crates/tree-sitter/grammar.js
+      - crates/tree-sitter/src/**
+      - crates/tree-sitter/bindings/**
+      - crates/tree-sitter/binding.gyp
+  pull_request:
+    paths:
+      - crates/tree-sitter/grammar.js
+      - crates/tree-sitter/src/**
+      - crates/tree-sitter/bindings/**
+      - crates/tree-sitter/binding.gyp
+
+jobs:
+  test:
+    name: Test parser
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    defaults:
+      run:
+        working-directory: crates/tree-sitter
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Tree-sitter CLI
+        uses: tree-sitter/setup-action/cli@v1
+
+      - name: Test parser
+        uses: tree-sitter/parser-test-action@v2
+        with:
+          test-rust: true
