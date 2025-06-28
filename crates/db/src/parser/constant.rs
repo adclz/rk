@@ -47,14 +47,7 @@ impl<'db> ParseConstant<'db> for ast::generated::Constant {
                 Constant::BoolLiteral(bool_literal) => {
                     Literal::Bool(Ident::from_node(db, file, bool_literal.value.deref())?)
                 }
-                Constant::CharLiteral(char_literal) => match char_literal.char.children.deref() {
-                    ast::generated::DByteCharStr_SByteCharStr::SByteCharStr(s_byte_char_str) => {
-                        Literal::Char(Ident::from_node(db, file, s_byte_char_str.char.deref())?)
-                    }
-                    ast::generated::DByteCharStr_SByteCharStr::DByteCharStr(d_byte_char_str) => {
-                        Literal::DChar(Ident::from_node(db, file, d_byte_char_str.char.deref())?)
-                    }
-                },
+                Constant::CharLiteral(char_literal) => todo!(),
                 Constant::NumericLiteral(numeric_literal) => {
                     match numeric_literal.children.deref() {
                     ast::generated::IntLiteral_RealLiteral::IntLiteral(int_literal) => {

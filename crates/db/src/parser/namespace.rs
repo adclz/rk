@@ -49,7 +49,7 @@ impl<'db> FileNamespacesBuilder<'db> {
         // Top level namespaces
         // Since namespaces can be nested, we check
         for child in self.source.children.iter() {
-            if let ast::generated::ConfigDecl_NamespaceDecl_ProgDecl::NamespaceDecl(namespace) =
+            if let ast::generated::ClassDecl_ConfigDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl_ProgDecl::NamespaceDecl(namespace) =
                 child.as_ref()
             {
                 let path = match self.get_namespace_path(namespace) {

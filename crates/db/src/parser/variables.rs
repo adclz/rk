@@ -47,21 +47,21 @@ macro_rules! parse_multi_variable_sections {
 parse_multi_variable_sections! {
     InputDecls, [
         ast::generated::InputVarKind::VarDeclInit,
-        ast::generated::InputVarKind::ArrayConformDecl,
+        ast::generated::InputVarKind::ArrayConformand,
         ast::generated::InputVarKind::EdgeDecl
     ],
     FbInputDecls, [
         ast::generated::FbInputVarKind::VarDeclInit,
-        ast::generated::FbInputVarKind::ArrayConformDecl,
+        ast::generated::FbInputVarKind::ArrayConformand,
         ast::generated::FbInputVarKind::EdgeDecl
     ],
     OutputDecls, [
         ast::generated::OutputVarKind::VarDeclInit,
-        ast::generated::OutputVarKind::ArrayConformDecl
+        ast::generated::OutputVarKind::ArrayConformand
     ],
     FbOutputDecls, [
         ast::generated::FbOutputVarKind::VarDeclInit,
-        ast::generated::FbOutputVarKind::ArrayConformDecl
+        ast::generated::FbOutputVarKind::ArrayConformand
     ],
     TempVarDecls, [
         ast::generated::TempVarKind::VarDecl,
@@ -69,23 +69,29 @@ parse_multi_variable_sections! {
     ],
     InOutDecls, [
         ast::generated::InOutVarKind::VarDecl,
-        ast::generated::InOutVarKind::ArrayConformDecl,
+        ast::generated::InOutVarKind::ArrayConformand,
         ast::generated::InOutVarKind::FbDeclNoInit
     ],
     VarDecls, [
-        ast::generated::VarDecl::ArraySpec,
-        ast::generated::VarDecl::StrVarDecl,
-        ast::generated::VarDecl::NamespaceQualifierTarget
+        ast::generated::VarDecl::StrTypeSpecInit,
+        ast::generated::VarDecl::ArrayTypeSpecInit,
+        ast::generated::VarDecl::NamespaceQualifierTarget,
+        ast::generated::VarDecl::SimpleTypeSpecInit,
+        ast::generated::VarDecl::StructTypeSpecInit
     ],
     RetainVarDecls, [
-        ast::generated::VarDecl::ArraySpec,
-        ast::generated::VarDecl::StrVarDecl,
-        ast::generated::VarDecl::NamespaceQualifierTarget
+        ast::generated::VarDecl::StrTypeSpecInit,
+        ast::generated::VarDecl::ArrayTypeSpecInit,
+        ast::generated::VarDecl::NamespaceQualifierTarget,
+        ast::generated::VarDecl::SimpleTypeSpecInit,
+        ast::generated::VarDecl::StructTypeSpecInit
     ],
     NoRetainVarDecls, [
-        ast::generated::VarDecl::ArraySpec,
-        ast::generated::VarDecl::StrVarDecl,
-        ast::generated::VarDecl::NamespaceQualifierTarget
+        ast::generated::VarDecl::StrTypeSpecInit,
+        ast::generated::VarDecl::ArrayTypeSpecInit,
+        ast::generated::VarDecl::NamespaceQualifierTarget,
+        ast::generated::VarDecl::SimpleTypeSpecInit,
+        ast::generated::VarDecl::StructTypeSpecInit
     ]
 }
 
@@ -102,7 +108,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
                     let name = Ident::from_node(db, file, child.name.deref())?;
                     section.push(Variable::new(db, name, *child.get_range(), *child.name.get_range()))
                 }
-                ExternalVarKind::ArrayConformDecl(var_decl) => {
+                ExternalVarKind::ArrayConformand(var_decl) => {
                     let name = Ident::from_node(db, file, child.name.deref())?;
                     section.push(Variable::new(db, name, *child.get_range(), *child.name.get_range()))
                 }
@@ -167,16 +173,11 @@ impl<'db> ParseVariable<'db> for ast::generated::VarDecl {
         name: Ident,
     ) -> anyhow::Result<Variable<'db>> {
         match self {
-            Self::StrVarDecl(str_var_decl) => match str_var_decl.children.deref() {
-                ast::generated::DByteStrSpec_SByteStrSpec::DByteStrSpec(str) => {
-                    todo!()
-                }
-                ast::generated::DByteStrSpec_SByteStrSpec::SByteStrSpec(w_str) => {
-                    todo!()
-                }
-            },
-            Self::ArraySpec(array_spec) => todo!(),
+            Self::StrTypeSpecInit(str_var_decl) => todo!(),
+            Self::ArrayTypeSpecInit(array_spec) => todo!(),
             Self::NamespaceQualifierTarget(type_access) => todo!(),
+            Self::SimpleTypeSpecInit(simple_type_spec_init) => todo!(),
+            Self::StructTypeSpecInit(struct_type_spec_init) => todo!(),
         }
     }
 }
@@ -189,26 +190,24 @@ impl<'db> ParseVariable<'db> for ast::generated::VarDeclInit {
         name: Ident,
     ) -> anyhow::Result<Variable<'db>> {
         match self {
-            Self::ArraySpecInit(array) => todo!(),
+            Self::NamespaceQualifierTarget(type_access) => todo!(),
+            Self::ArrayTypeSpecInit(array) => todo!(),
             Self::InterfaceSpecInit(_) => todo!(),
             Self::RefSpecInit(_) => todo!(),
-            Self::SimpleSpecInit(_) => todo!(),
-            Self::StrVarDecl(_) => todo!(),
-            Self::StructSpecInit(_) => todo!(),
+            Self::SimpleTypeSpecInit(_) => todo!(),
+            Self::StrTypeSpecInit(_) => todo!(),
+            Self::StructTypeSpecInit(_) => todo!(),
         }
     }
 }
 
-impl<'db> ParseVariable<'db> for ast::generated::StrVarDecl {
+impl<'db> ParseVariable<'db> for ast::generated::StrTypeSpecInit {
     fn parse(
         &self,
         db: &'db dyn BaseDatabase,
         file: File,
         name: Ident,
     ) -> anyhow::Result<Variable<'db>> {
-        match self.children.deref() {
-            ast::generated::DByteStrSpec_SByteStrSpec::DByteStrSpec(_) => todo!(),
-            ast::generated::DByteStrSpec_SByteStrSpec::SByteStrSpec(_) => todo!(),
-        }
+        todo!()
     }
 }
