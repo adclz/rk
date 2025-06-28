@@ -70,6 +70,7 @@ const RESERVED_NAMES = [
     "EXIT", "RETURN",
 ];
 
+// Variable declarations
 const io_var_decls = $ => [
     $.input_decls,
     $.output_decls,
