@@ -957,7 +957,6 @@ module.exports = grammar({
 
         external_decl: $ => seq(
             field("name", $.identifier),
-            ':',
             field("type", $._external_var_kind)
         ),
 
