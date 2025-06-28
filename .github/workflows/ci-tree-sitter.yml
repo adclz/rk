@@ -24,10 +24,6 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
 
-    defaults:
-      run:
-        working-directory: crates/tree-sitter
-
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -36,6 +32,5 @@ jobs:
         uses: tree-sitter/setup-action/cli@v1
 
       - name: Test parser
-        uses: tree-sitter/parser-test-action@v2
-        with:
-          test-rust: true
+        working-directory: crates/tree-sitter
+        run: tree-sitter test

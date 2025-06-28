@@ -19,5 +19,5 @@ jobs:
         run: cargo install cargo-nextest
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
-      - name: Test
+      - name: Test workspace
         run: cargo-nextest ntr --workspace
