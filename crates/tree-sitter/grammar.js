@@ -42,6 +42,7 @@ function create_type_decl(name, spec, init = null) {
     return result;
 }
 
+// Reserved keywords that cannot be used as identifiers
 const RESERVED_NAMES = [
     "PROGRAM", "END_PROGRAM",
     "CONFIGURATION", "END_CONFIGURATION",
