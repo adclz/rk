@@ -1,6 +1,6 @@
 use auto_lsp::{default::db::{BaseDatabase, File}, lsp_types::SymbolKind};
 
-use crate::{diagnostics::diagnostic_builder::RangeKind, hir::namespace::PouDecl, solver::NamespacePath};
+use crate::{diagnostics::diagnostic_builder::RangeKind, hir::{expression::Expr, namespace::PouDecl, variable::Spec}, solver::NamespacePath};
 
 pub(crate) trait Spanned {
     fn span(&self, db: &dyn crate::BaseDatabase) -> RangeKind;
@@ -12,6 +12,61 @@ pub struct SymbolInfo<'a> {
     pub name: String,
     pub name_range: RangeKind<'a>,
     pub kind: Option<SymbolKind>,
+    pub spec: Option<Spec<'a>>,
+    pub init: Option<Expr<'a>>,
+}
+
+impl SymbolInfo<'_> {
+    pub fn kind_to_string(&self) -> &'static str {
+        match self.kind {
+            Some(SymbolKind::VARIABLE) => "var",
+            Some(SymbolKind::FUNCTION) => "func",
+            Some(SymbolKind::CLASS) => "class",
+            Some(SymbolKind::INTERFACE) => "interface",
+            Some(SymbolKind::TYPE_PARAMETER) => "type",
+            Some(SymbolKind::NAMESPACE) => "namespace",
+            _ => "unknown",
+        }
+    }
+
+    pub fn spec_to_string(&self, db: &dyn BaseDatabase) -> String {
+        match self.spec {
+            Some(Spec::Target(target)) => target.text(db),
+            Some(Spec::Array(_)) => "ARRAY".into(),
+            Some(Spec::Subrange(_)) => "SUBRANGE".into(),
+            Some(Spec::Enum) => "ENUM".into(),
+            Some(Spec::Struct) => "STRUCT".into(),
+            Some(Spec::Edge) => "EDGE".into(),
+            Some(Spec::Bool) => "BOOL".into(),
+            Some(Spec::Byte) => "BYTE (8 bits)".into(),
+            Some(Spec::Word) => "WORD (16 bits)".into(),
+            Some(Spec::DWord) => "DWORD (32 bits)".into(),
+            Some(Spec::LWord) => "LWORD (64 bits)".into(),
+            Some(Spec::SInt) => "SINT (8 bits)".into(),
+            Some(Spec::USInt) => "USINT (8 bits)".into(),
+            Some(Spec::UInt) => "UINT (16 bits)".into(),
+            Some(Spec::Int) => "INT (16 bits)".into(),
+            Some(Spec::DInt) => "DINT (32 bits)".into(),
+            Some(Spec::UDInt) => "UDINT (32 bits)".into(),
+            Some(Spec::LInt) => "LINT (64 bits)".into(),
+            Some(Spec::ULInt) => "ULINT (64 bits)".into(),
+            Some(Spec::Real) => "REAL (64 bits)".into(),
+            Some(Spec::LReal) => "LREAL (128 bits)".into(),
+            Some(Spec::String) => "STRING".into(),
+            Some(Spec::WString) => "WSTRING".into(),
+            Some(Spec::Char) => "CHAR".into(),
+            Some(Spec::WChar) => "WCHAR".into(),
+            Some(Spec::Date) => "DATE".into(),
+            Some(Spec::LDate) => "LONG DATE".into(),
+            Some(Spec::Dt) => "DATE AND TIME D".into(),
+            Some(Spec::Ldt) => "LONG DATE AND TIME".into(),
+            Some(Spec::Time) => "TIME".into(),
+            Some(Spec::LTime) => "LONG TIME".into(),
+            Some(Spec::Tod) => "TIME OF DAY".into(),
+            Some(Spec::LTod) => "LONG TIME OF DAY".into(),
+            _ => "unknown".into(),
+        }
+    }
 }
 
 pub trait ToProto<'db> {
