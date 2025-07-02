@@ -18,7 +18,11 @@ define_semantic_token_types![
         TYPE,
         VARIABLE,
         KEYWORD,
-        MODIFIER
+        MODIFIER,
+        OPERATOR,
+        TYPE_PARAMETER,
+        NUMBER,
+        STRING,
     }
 
     custom {
@@ -29,7 +33,8 @@ define_semantic_token_types![
 define_semantic_token_modifiers![
     standard {
         DECLARATION,
-        MODIFICATION
+        MODIFICATION,
+
     }
 
     custom {
@@ -56,6 +61,16 @@ static HIGHLIGHT_QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
          "END_CLASS"
          "INTERFACE"
          "END_INTERFACE"
+        ] @keyword
+
+        (variable_list (identifier) @variable) 
+        (type_decl name: (identifier) @declaration.type)
+
+        ["PUBLIC" "PROTECTED" "PRIVATE" "INTERNAL"
+            (assignment) (ref_assign) (assignment_attempt)
+        ] @keyword.modifiers
+        
+        [
          "VAR_INPUT"
          "VAR_OUTPUT"
          "VAR_IN_OUT"
@@ -63,12 +78,22 @@ static HIGHLIGHT_QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
          "VAR_EXTERNAL"
          "VAR_GLOBAL"
          "VAR"
-         "END_VAR"
-        ] @keyword
-
-        ["PUBLIC" "PROTECTED" "PRIVATE" "INTERNAL"] @keyword.modifiers
-        ["USING" "EXTENDS" "IMPLEMENTS"] @keyword.oop
+         "END_VAR" 
+         "USING" 
+         "EXTENDS" 
+         "IMPLEMENTS"
+        ] @keyword.oop
         ["+" "-" ":=" "=" ":"] @keyword.control
+        [ 
+	        (bool_name)
+            (byte_name) (word_name) (dword_name) (lword_name)
+            (sint_name) (int_name) (dint_name) (lint_name)
+            (usint_name) (uint_name) (udint_name) (ulint_name)
+            (real_name) (lreal_name)   
+        ] @type_parameter
+
+        ((_) @int (#match? @int "^[0-9_]+")) @int
+        (char_str) @string
 
         (using_directive (_) @declaration.namespace)
         (namespace_decl name: (_) @declaration.namespace)
@@ -142,6 +167,14 @@ pub fn semantic_tokens_full(
                     SUPPORTED_TYPES.iter().position(|x| *x == KEYWORD).unwrap() as u32
                 }
             }
+            "type_parameter" => SUPPORTED_TYPES
+                .iter()
+                .position(|x| *x == TYPE_PARAMETER)
+                .unwrap() as u32,
+            "variable" => SUPPORTED_TYPES.iter().position(|x| *x == VARIABLE).unwrap() as u32,
+            "operator" => SUPPORTED_TYPES.iter().position(|x| *x == OPERATOR).unwrap() as u32,
+            "int" => SUPPORTED_TYPES.iter().position(|x| *x == NUMBER).unwrap() as u32,
+            "string" => SUPPORTED_TYPES.iter().position(|x| *x == STRING).unwrap() as u32,
             "declaration" => {
                 modifiers |= DECLARATION;
                 match parse_captures[1] {
