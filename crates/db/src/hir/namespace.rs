@@ -1,3 +1,4 @@
+use auto_enums::auto_enum;
 use auto_lsp::default::db::{BaseDatabase, File};
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -16,7 +17,13 @@ pub struct FileNamespaces<'db> {
 impl<'db> FileNamespaces<'db> {
     #[salsa::tracked(returns(as_ref))]
     pub fn get_pou(self, db: &'db dyn BaseDatabase, path: NamespacePath, key: Ident) -> Option<PouDecl<'db>> {
-        self.namespaces(db).get(&path)?.pous(db).get(&key).copied()
+        self.namespaces(db).get(&path)?.pous(db).iter().find_map(|pou| {
+            if pou.name(db) == &key {
+                Some(*pou)
+            } else {
+                None
+            }
+        })
     }
 }
 
@@ -60,12 +67,12 @@ pub struct Namespace<'db> {
 
     #[tracked]
     #[returns(ref)]
-    pub pous: FxHashMap<Ident, PouDecl<'db>>,
+    pub pous: Vec<PouDecl<'db>>,
 }
 
 impl<'db> Namespace<'db> {
     pub fn pou_at(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<PouDecl<'db>> {
-        self.pous(db).iter().find_map(|(name, pou)| {
+        self.pous(db).iter().find_map(|pou| {
             if pou.span(db).start_byte <= offset && offset <= pou.span(db).end_byte {
                 Some(*pou)
             } else {
@@ -85,7 +92,7 @@ impl<'db> IterToProto<'db> for Namespace<'db> {
                 .build();
 
         std::iter::once(namespace_symbol)
-            .chain(self.pous(db).iter().flat_map(|(_, pou)| pou.iter(db)))
+            .chain(self.pous(db).iter().flat_map(|pou| pou.iter(db)))
     }
 }
 
@@ -107,13 +114,17 @@ pub struct PouDecl<'db> {
     pub name_span: auto_lsp::tree_sitter::Range,
 }
 
+
 impl<'db> IterToProto<'db> for PouDecl<'db> {
+    #[auto_enum(Iterator)]
     fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = SymbolInfo<'db>> {
-        std::iter::once(self.symbol_info(db))
-        .chain(match self.pou(db) {
-            Pou::Function(f) => f.iter(db),
-            _ => todo!(),
-        })
+        match self.pou(db) {
+            Pou::Function(f) => std::iter::once(self.symbol_info(db)).chain(f.iter(db)),
+            Pou::FunctionBlock(fb) => std::iter::once(self.symbol_info(db)).chain(fb.iter(db)),
+            Pou::Class(c) => std::iter::once(self.symbol_info(db)).chain(c.iter(db)),
+            Pou::DataType(d) => std::iter::once(self.symbol_info(db)).chain(d.iter(db)),
+            Pou::Interface(i) => std::iter::empty(),
+        }
     }
 }
 
@@ -129,6 +140,14 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
         })
         .name(self.name(db).text(db))
         .range(self.span(db).into())
+        .maybe_spec(match self.pou(db) {
+            Pou::DataType(d) => Some(d.spec(db)),
+            _ => None,
+        })
+        .maybe_init(match self.pou(db) {
+            Pou::DataType(d) => d.init(db),
+            _ => None,
+        })
         .name_range(self.name_span(db).into())
         .build()
     }
