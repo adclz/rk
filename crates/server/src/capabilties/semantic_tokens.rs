@@ -44,10 +44,7 @@ define_semantic_token_modifiers![
     }
 ];
 
-static HIGHLIGHT_QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
-    tree_sitter::Query::new(
-        &tree_sitter_rk::LANGUAGE.into(),
-        r#"
+static QUERY: &str = r#"
         [
          "NAMESPACE"
          "END_NAMESPACE"
@@ -100,9 +97,10 @@ static HIGHLIGHT_QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
         (func_decl name: (_) @declaration.function)
         (fb_decl name: (_) @declaration.function_block)
         (class_decl name: (_) @declaration.class)
-        "#,
-    )
-    .unwrap()
+"#;
+
+static HIGHLIGHT_QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
+    tree_sitter::Query::new(&tree_sitter_rk::LANGUAGE.into(), QUERY).unwrap()
 });
 
 #[derive(Default)]
@@ -217,4 +215,17 @@ pub fn semantic_tokens_full(
     }
 
     Ok(Some(SemanticTokensResult::Tokens(builder.build())))
+}
+
+#[cfg(test)]
+mod tests {
+    use auto_lsp::tree_sitter;
+
+    use super::*;
+
+    #[test]
+    fn load_formatting_query() {
+        tree_sitter::Query::new(&tree_sitter_rk::LANGUAGE.into(), QUERY)
+            .expect("Failed to create formatting query");
+    }
 }
