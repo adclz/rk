@@ -1,15 +1,17 @@
-use crate::{hir::variable::Variable, to_proto::{IterToProto, SymbolInfo}};
+use auto_lsp::default::db::BaseDatabase;
+
+use crate::{hir::variable::Variable, to_proto::{IterToProto, SymbolInfo, ToProto}};
+
 
 #[salsa::tracked(debug)]
 pub struct FunctionBlock<'db> {
-    pub input_variables: Vec<Variable<'db>>,
-    pub output_variables: Vec<Variable<'db>>,
-    pub in_out_variables: Vec<Variable<'db>>,
-    pub temp_variables: Vec<Variable<'db>>,
-    pub external_variables: Vec<Variable<'db>>,
-    pub global_variables: Vec<Variable<'db>>,
-    pub retain_variables: Vec<Variable<'db>>,
-    pub no_retain_variables: Vec<Variable<'db>>,
-    pub loc_partly_variables: Vec<Variable<'db>>,
+    #[returns(ref)]
+    pub variables: Vec<Variable<'db>>,
 }
 
+
+impl<'db> IterToProto<'db> for FunctionBlock<'db> {
+    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = SymbolInfo<'db>> {
+        self.variables(db).iter().map(|v| v.symbol_info(db))
+    }
+}

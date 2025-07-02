@@ -1,6 +1,6 @@
 use auto_lsp::default::db::BaseDatabase;
 
-use crate::{ident::Ident, to_proto::{SymbolInfo, ToProto}};
+use crate::{hir::expression::Expr, ident::Ident, to_proto::{SymbolInfo, ToProto}};
 
 
 #[salsa::tracked(debug)]
@@ -13,6 +13,28 @@ pub struct Variable<'db> {
 
     #[returns(ref)]
     pub name_span: auto_lsp::tree_sitter::Range,
+
+    pub kind: VariableKind,
+
+    #[tracked]
+    pub spec: Spec<'db>,
+
+    #[tracked]
+    pub init: Option<Expr<'db>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum VariableKind {
+    Input,
+    Output,
+    InOut,
+    Temp,
+    Local,
+    External,
+    Global,
+    Retain,
+    NoRetain,
+    LocPartly,
 }
 
 
@@ -22,31 +44,22 @@ impl<'db> ToProto<'db> for Variable<'db> {
         .kind(auto_lsp::lsp_types::SymbolKind::VARIABLE)
         .name(self.name(db).text(db))
         .range(self.range(db).into())
+        .spec(self.spec(db))
+        .maybe_init(self.init(db))
         .name_range(self.name_span(db).into())
         .build()
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum VariableKind {
-    Primitive(PrimitiveKind),
-    Edge,
+pub enum Spec<'db> {
+    Target(Ident),
     Array(Array),
+    Subrange(Subrange<'db>),
+    Expr(Expr<'db>),
+    Enum,
     Struct,
-}
-
-impl VariableKind {
-    pub fn primitive_kind(&self) -> Option<PrimitiveKind> {
-        match self {
-            Self::Primitive(p) => Some(*p),
-            Self::Edge => Some(PrimitiveKind::Bool),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum PrimitiveKind {
+    Edge,
     Bool,
     Byte,
     Word,
@@ -57,12 +70,23 @@ pub enum PrimitiveKind {
     UInt,
     Int,
     DInt,
+    UDInt,
     LInt,
     ULInt,
     Real,
     LReal,
     String,
-    WString
+    WString,
+    Char,
+    WChar,
+    Date,
+    LDate,
+    Dt,
+    Ldt,
+    Time,
+    LTime,
+    Tod,
+    LTod,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -70,51 +94,9 @@ pub struct Array {
     subrange: Vec<[Ident; 2]>
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Literal {
-    // Any numeric type (non floating point)
-    AnyNumeric(Numeric),
-
-    // Signed
-    SInt(Numeric),
-    Int(Numeric),
-    DInt(Numeric),
-    LInt(Numeric),
-
-    // Unsigned
-    USInt(Numeric),
-    UInt(Numeric),
-    UDInt(Numeric),
-    ULInt(Numeric),
-
-    // Bit string
-    Byte(Numeric),
-    Word(Numeric),
-    DWord(Numeric),
-    LWord(Numeric),
-    
-    Real(Ident),
-    LReal(Ident),
-
-    Bool(Ident),
-
-    Char(Ident),
-    DChar(Ident),
-
-    Date(Ident),
-    LDate(Ident),
-    Tod(Ident),
-    LTod(Ident),
-    Time(Ident),
-    LTime(Ident),
-    DateTime(Ident),
-    LDateTime(Ident),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Numeric {
-    Binary(Ident),
-    Hex(Ident),
-    Octal(Ident),
-    Signed(Ident),
+#[salsa::tracked(debug)]
+pub struct Subrange<'db> {
+    spec: Spec<'db>,
+    lower: Expr<'db>,
+    upper: Expr<'db>,
 }
