@@ -9,7 +9,7 @@ use crate::diagnostics::diagnostic_builder::{action, diag, edit, OneOf};
 use crate::diagnostics::IdeDiagnostic;
 
 static KEYWORDS: phf::Set<&'static str> = phf_set! {
-    "PROGRAM", "END_PROGRAM",
+"PROGRAM", "END_PROGRAM",
     "CONFIGURATION", "END_CONFIGURATION",
     "RESOURCE", "END_RESOURCE",
     "NAMESPACE", "END_NAMESPACE",
@@ -21,6 +21,26 @@ static KEYWORDS: phf::Set<&'static str> = phf_set! {
     "TYPE", "END_TYPE",
     "VAR", "END_VAR",
     "VAR_INPUT",
+    "VAR_OUTPUT",
+    "VAR_IN_OUT",
+    "VAR_TEMP",
+    "VAR_EXTERNAL",
+    "VAR_GLOBAL",
+    "IF", "THEN", "ELSE", "END_IF",
+    "CASE", "OF", "END_CASE",
+    "FOR", "TO", "BY", "END_FOR",
+    "REPEAT", "UNTIL", "END_REPEAT",
+    "WHILE", "END_WHILE",
+    "DO",
+    "EXIT", "RETURN",
+    // Types
+    "BOOL", "BYTE", "WORD", "DWORD", "LWORD",
+    "SINT", "INT", "DINT", "LINT",
+    "USINT", "UINT", "UDINT", "ULINT",
+    "REAL", "LREAL",
+    "CHAR", "WCHAR",
+    "STRING", "WSTRING",
+    "DATE", "TIME", "DT", "TOD", "LDATE", "LTIME", "LDT", "LTOD"
 };
 
 pub fn add_fixes_to_parse_errors(
@@ -63,7 +83,7 @@ pub fn add_fixes_to_parse_errors(
                         .edit(WorkspaceEdit::new(HashMap::from([(
                             file.url(db).clone(),
                             vec![edit()
-                                .new_text(grammar_name.to_string())
+                                .new_text(format!(" {}", grammar_name))
                                 .range(OneOf::U(range))
                                 .call()],
                         )])))
@@ -119,7 +139,7 @@ pub fn add_fixes_to_parse_errors(
                                 uri: file.url(db).clone(),
                                 range,
                             },
-                            message: format!("help: remove '{}'", affected.split_whitespace().next().unwrap_or("")),
+                            message: format!("help: remove or replace '{}'", affected.split_whitespace().next().unwrap_or("")),
                         }])
                         .call()
                 } else {
