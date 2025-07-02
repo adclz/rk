@@ -123,7 +123,7 @@ impl<'db> IterToProto<'db> for PouDecl<'db> {
             Pou::FunctionBlock(fb) => std::iter::once(self.symbol_info(db)).chain(fb.iter(db)),
             Pou::Class(c) => std::iter::once(self.symbol_info(db)).chain(c.iter(db)),
             Pou::DataType(d) => std::iter::once(self.symbol_info(db)).chain(d.iter(db)),
-            Pou::Interface(i) => std::iter::empty(),
+            Pou::Interface(i) => std::iter::once(self.symbol_info(db)).chain(i.iter(db))
         }
     }
 }

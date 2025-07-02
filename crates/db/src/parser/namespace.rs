@@ -145,7 +145,18 @@ impl<'db> FileNamespacesBuilder<'db> {
                     Decl::DataTypeDecl(data_type) => {
                         data_type.parse(self.db, self.file, &mut pous)?;
                     },
-                    _ => (),
+                    Decl::InterfaceDecl(interface) => {
+                        let name = Ident::from_node(self.db, self.file, &*interface.name)?;
+                        pous.push(
+                            PouDecl::new(
+                                self.db,
+                                Pou::Interface(interface.parse(self.db, self.file)?),
+                                *interface.get_range(),
+                                name,
+                                *interface.name.get_range(),
+                            ),
+                        );
+                    },
                 }
             }
         }
