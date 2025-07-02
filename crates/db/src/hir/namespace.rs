@@ -2,7 +2,7 @@ use auto_enums::auto_enum;
 use auto_lsp::default::db::{BaseDatabase, File};
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::{hir::{class::Class, data_type::DataType, function::Function, function_block::FunctionBlock, interface::Interface}, ident::Ident, solver::NamespacePath, to_proto::{IterToProto, SymbolInfo, ToProto}};
+use crate::{diagnostics::diagnostic_builder::RangeKind, hir::{class::Class, data_type::DataType, function::Function, function_block::FunctionBlock, interface::Interface}, ident::Ident, solver::NamespacePath, to_proto::{IterToProto, SymbolInfo, ToProto}};
 
 /// Represents a group of namespaces in a file
 #[salsa::tracked]
@@ -28,7 +28,7 @@ impl<'db> FileNamespaces<'db> {
 }
 
 impl<'db> IterToProto<'db> for FileNamespaces<'db> {
-    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = SymbolInfo<'db>> {
+    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
         self.namespaces(db).iter()
         .map(|(_, ns)| ns.iter(db))
         .flatten()
@@ -38,7 +38,7 @@ impl<'db> IterToProto<'db> for FileNamespaces<'db> {
 impl<'db> FileNamespaces<'db> {
     pub fn namespace_at(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Namespace<'db>> {
         self.namespaces(db).iter().find_map(|(path, ns)| {
-            if ns.span(db).start_byte <= offset && offset <= ns.span(db).end_byte {
+            if ns.spanned(db).start_byte <= offset && offset <= ns.spanned(db).end_byte {
                 Some(*ns)
             } else {
                 None
@@ -73,7 +73,7 @@ pub struct Namespace<'db> {
 impl<'db> Namespace<'db> {
     pub fn pou_at(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<PouDecl<'db>> {
         self.pous(db).iter().find_map(|pou| {
-            if pou.span(db).start_byte <= offset && offset <= pou.span(db).end_byte {
+            if pou.spanned(db).start_byte <= offset && offset <= pou.spanned(db).end_byte {
                 Some(*pou)
             } else {
                 None
@@ -82,16 +82,28 @@ impl<'db> Namespace<'db> {
     }
 }
 
-impl<'db> IterToProto<'db> for Namespace<'db> {
-    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = SymbolInfo<'db>> {
-        let namespace_symbol = SymbolInfo::builder()
-                .kind(auto_lsp::lsp_types::SymbolKind::NAMESPACE)
-                .range(self.span(db).into())
-                .name(self.path(db).display(db))
-                .name_range(self.name_span(db).into())
-                .build();
+impl<'db> ToProto<'db> for Namespace<'db> {
+    fn spanned(&'db self, db: &'db dyn BaseDatabase) -> RangeKind<'db> {
+        self.span(db).into()
+    }
 
-        std::iter::once(namespace_symbol)
+    fn named_span(&'db self, db: &'db dyn BaseDatabase) -> RangeKind<'db> {
+        self.name_span(db).into()
+    }
+
+    fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> SymbolInfo<'db> {
+        SymbolInfo::builder()
+        .kind(auto_lsp::lsp_types::SymbolKind::NAMESPACE)
+        .name(self.path(db).display(db))
+        .range(self.spanned(db).into())
+        .name_range(self.name_span(db).into())
+        .build()
+    }
+}
+
+impl<'db> IterToProto<'db> for Namespace<'db> {
+    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+        std::iter::once::<&'db dyn ToProto<'db>>(self)
             .chain(self.pous(db).iter().flat_map(|pou| pou.iter(db)))
     }
 }
@@ -117,18 +129,26 @@ pub struct PouDecl<'db> {
 
 impl<'db> IterToProto<'db> for PouDecl<'db> {
     #[auto_enum(Iterator)]
-    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = SymbolInfo<'db>> {
+    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
         match self.pou(db) {
-            Pou::Function(f) => std::iter::once(self.symbol_info(db)).chain(f.iter(db)),
-            Pou::FunctionBlock(fb) => std::iter::once(self.symbol_info(db)).chain(fb.iter(db)),
-            Pou::Class(c) => std::iter::once(self.symbol_info(db)).chain(c.iter(db)),
-            Pou::DataType(d) => std::iter::once(self.symbol_info(db)).chain(d.iter(db)),
-            Pou::Interface(i) => std::iter::once(self.symbol_info(db)).chain(i.iter(db))
+            Pou::Function(f) => std::iter::once::<&'db dyn ToProto<'db>>(self).chain(f.iter(db)),
+            Pou::FunctionBlock(fb) => std::iter::once::<&'db dyn ToProto<'db>>(self).chain(fb.iter(db)),
+            Pou::Class(c) => std::iter::once::<&'db dyn ToProto<'db>>(self).chain(c.iter(db)),
+            Pou::DataType(d) => std::iter::once::<&'db dyn ToProto<'db>>(self).chain(d.iter(db)),
+            Pou::Interface(i) => std::iter::once::<&'db dyn ToProto<'db>>(self).chain(i.iter(db)),
         }
     }
 }
 
 impl<'db> ToProto<'db> for PouDecl<'db> {
+    fn spanned(&'db self, db: &'db dyn BaseDatabase) -> RangeKind<'db> {
+        self.span(db).into()
+    }
+
+    fn named_span(&'db self, db: &'db dyn BaseDatabase) -> RangeKind<'db> {
+        self.name_span(db).into()
+    }
+
     fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> SymbolInfo<'db> {
         SymbolInfo::builder()
         .kind(match self.pou(db) {
@@ -139,7 +159,7 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
             Pou::DataType(_) => auto_lsp::lsp_types::SymbolKind::TYPE_PARAMETER,
         })
         .name(self.name(db).text(db))
-        .range(self.span(db).into())
+        .range(self.spanned(db).into())
         .maybe_spec(match self.pou(db) {
             Pou::DataType(d) => Some(d.spec(db)),
             _ => None,

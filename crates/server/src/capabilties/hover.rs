@@ -28,7 +28,8 @@ pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Opti
 
     let ns = namespaces_in_file(db, file).unwrap();
     Ok(ns.descendant_at(db, position).and_then(|symbol| {
-        let ns = ns.namespace_at(db, position)?; 
+        let ns = ns.namespace_at(db, position)?;
+        let symbol = symbol.symbol_info(db);
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,

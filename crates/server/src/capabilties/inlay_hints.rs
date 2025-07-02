@@ -13,6 +13,7 @@ pub fn inlay_hints(db: &impl BaseDatabase, params: InlayHintParams) -> anyhow::R
 
     let ns = namespaces_in_file(db, file).unwrap();
     ns.iter(db).for_each(|symbol| {
+        let symbol = symbol.symbol_info(db);
         if symbol.range.as_lsp().start.line < range.start.line ||
            symbol.range.as_lsp().end.line > range.end.line {
             return;

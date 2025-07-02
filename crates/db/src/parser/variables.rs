@@ -354,7 +354,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::LocVarSpecInit {
         &'db self,
         db: &'db dyn BaseDatabase,
         file: File,
-    ) -> anyhow::Result<SpecInitResult> {
+    ) -> anyhow::Result<SpecInitResult<'db>> {
         type Spec = ast::generated::ArrayTypeSpec_SimpleTypeSpec_StrTypeSpec_StructTypeSpec;
 
         let spec = match self.spec.deref() {

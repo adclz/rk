@@ -85,6 +85,7 @@ pub fn document_symbols(
     // Collect all symbols first
     let symbols: Vec<_> = ns
         .iter(db)
+        .map(|symbol| symbol.symbol_info(db))
         .filter(|symbol| !symbol.name.is_empty())
         .filter_map(|symbol| symbol.kind.map(|kind| (symbol, kind)))
         .collect();

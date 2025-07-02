@@ -10,7 +10,7 @@ pub struct Function<'db> {
 }
 
 impl<'db> IterToProto<'db> for Function<'db> {
-    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = SymbolInfo<'db>> {
-        self.variables(db).iter().map(|v| v.symbol_info(db))
+    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+        self.variables(db).iter().map(|v| v as _)
     }
 }

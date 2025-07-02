@@ -1,6 +1,6 @@
 use auto_lsp::default::db::BaseDatabase;
 
-use crate::{hir::expression::Expr, ident::Ident, to_proto::{SymbolInfo, ToProto}};
+use crate::{diagnostics::diagnostic_builder::RangeKind, hir::expression::Expr, ident::Ident, to_proto::{SymbolInfo, ToProto}};
 
 
 #[salsa::tracked(debug)]
@@ -39,6 +39,14 @@ pub enum VariableKind {
 
 
 impl<'db> ToProto<'db> for Variable<'db> {
+    fn spanned(&'db self, db: &'db dyn BaseDatabase) -> RangeKind<'db> {
+        self.range(db).into()
+    }
+
+    fn named_span(&'db self, db: &'db dyn BaseDatabase) -> RangeKind<'db> {
+        self.name_span(db).into()
+    }
+
     fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> SymbolInfo<'db> {
         SymbolInfo::builder()
         .kind(auto_lsp::lsp_types::SymbolKind::VARIABLE)
