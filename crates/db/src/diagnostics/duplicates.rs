@@ -15,14 +15,15 @@ pub fn duplicate_declarations<'db>(
 ) {
     if let Some(namespaces) = namespaces_in_file(db, file) {
         for (path, namespace) in namespaces.namespaces(db).iter() {
-            for (name, pou) in namespace.pous(db).iter() {
+            for (pou) in namespace.pous(db).iter() {
+                let name = pou.name(db);
                 for other_decl in namespace_path(db, *path) {
                     if other_decl.file(db) == file {
                         continue;
                     }
 
                     if let Some(other_pou) = other_decl.get_pou(db, *path, *name) {
-                        let duplicate = name.text(db);
+                        let duplicate = pou.name(db).text(db);
                         acc.push(diag()
                             .range(OneOf::T(pou.span(db).into()))
                             .message(format!("duplicate declarations of {duplicate} POU"))
