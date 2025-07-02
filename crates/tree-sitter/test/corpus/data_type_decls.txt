@@ -33,9 +33,10 @@ END_NAMESPACE
                   (identifier)
                   (identifier)
                   (identifier)))
-              (ref_init
-                (namespace_qualifier_target
-                  (identifier))))))))
+              (simple_type_init
+                (constant_expr
+                  (fq_name
+                    (identifier)))))))))
 
 ================================================================================
 Data types with named values
@@ -53,89 +54,51 @@ END_TYPE
 
 --------------------------------------------------------------------------------
 
-    (source_file
+(source_file
       (data_type_decl
         (type_decl
           (identifier)
           (enum_type_spec
             (bit_str_type_name
-              (multibits_type_name))
+              (multibits_type_name
+                (dword_name)))
             (named_spec
               (enum_value_spec
                 (identifier)
                 (int_literal
-                  (hex_int
-                    (hex_digit)
-                    (hex_digit)
-                    (hex_digit)
-                    (hex_digit)
-                    (hex_digit)
-                    (hex_digit)
-                    (hex_digit)
-                    (hex_digit))))
+                  (hex_int)))
               (enum_value_spec
                 (identifier)
                 (int_literal
-                  (hex_int
-                    (hex_digit)
-                    (hex_digit)
-                    (hex_digit)
-                    (hex_digit)
-                    (hex_digit)
-                    (hex_digit)
-                    (hex_digit)
-                    (hex_digit))))
+                  (hex_int)))
               (enum_value_spec
                 (identifier)
                 (int_literal
-                  (hex_int
-                    (hex_digit)
-                    (hex_digit)
-                    (hex_digit)
-                    (hex_digit)
-                    (hex_digit)
-                    (hex_digit)
-                    (hex_digit)
-                    (hex_digit))))
+                  (hex_int)))
               (enum_value_spec
                 (identifier)
-                (expression
+                (boolean_operator
                   (boolean_operator
-                    (expression
-                      (boolean_operator
-                        (expression
-                          (primary_expression
-                            (namespace_qualifier_target
-                              (identifier))))
-                        (expression
-                          (primary_expression
-                            (namespace_qualifier_target
-                              (identifier))))))
-                    (expression
-                      (primary_expression
-                        (namespace_qualifier_target
-                          (identifier)))))))
+                    (fq_name
+                      (identifier))
+                    (fq_name
+                      (identifier)))
+                  (fq_name
+                    (identifier))))
               (enum_value_spec
                 (identifier)
-                (expression
+                (boolean_operator
                   (boolean_operator
-                    (expression
-                      (boolean_operator
-                        (expression
-                          (primary_expression
-                            (namespace_qualifier_target
-                              (identifier))))
-                        (expression
-                          (primary_expression
-                            (namespace_qualifier_target
-                              (identifier))))))
-                    (expression
-                      (primary_expression
-                        (namespace_qualifier_target
-                          (identifier)))))))))
-          (ref_init
-            (namespace_qualifier_target
-              (identifier))))))
+                    (fq_name
+                      (identifier))
+                    (fq_name
+                      (identifier)))
+                  (fq_name
+                    (identifier))))))
+          (simple_type_init
+            (constant_expr
+              (fq_name
+                (identifier)))))))
 
 ================================================================================
 Subrange data types
@@ -147,33 +110,34 @@ END_TYPE
 
 --------------------------------------------------------------------------------
 
-   (source_file
+ (source_file
       (data_type_decl
         (type_decl
           (identifier)
           (subrange_type_spec
             (int_type_name
-              (sign_int_type_name))
+              (sign_int_type_name
+                (int_name)))
             (subrange
               (constant_expr
-                (expression
-                  (primary_expression
-                    (constant
-                      (numeric_literal
-                        (int_literal
-                          (signed_int
-                            (unsigned_int))))))))
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int))))))
               (constant_expr
-                (expression
-                  (primary_expression
-                    (constant
-                      (numeric_literal
-                        (int_literal
-                          (signed_int
-                            (unsigned_int))))))))))
-          (subrange_type_init
-            (signed_int
-              (unsigned_int))))))
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int))))))))
+          (simple_type_init
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))))))
 
 ================================================================================
 Array data types
@@ -183,55 +147,7 @@ TYPE
     ANALOG_16_INPUT_DATA: ARRAY [1..16] OF ANALOG_DATA := [8(-4095), 8(4095)];
 END_TYPE   
 
---------------------------------------------------------------------------------
-
-    (source_file
-      (data_type_decl
-        (type_decl
-          (identifier)
-          (array_type_spec
-            (subrange
-              (constant_expr
-                (expression
-                  (primary_expression
-                    (constant
-                      (numeric_literal
-                        (int_literal
-                          (signed_int
-                            (unsigned_int))))))))
-              (constant_expr
-                (expression
-                  (primary_expression
-                    (constant
-                      (numeric_literal
-                        (int_literal
-                          (signed_int
-                            (unsigned_int)))))))))
-            (namespace_qualifier_target
-              (identifier)))
-          (array_type_init
-            (array_elem_init
-              (unsigned_int)
-              (array_elem_init_value
-                (constant_expr
-                  (expression
-                    (primary_expression
-                      (constant
-                        (numeric_literal
-                          (int_literal
-                            (signed_int
-                              (unsigned_int))))))))))
-            (array_elem_init
-              (unsigned_int)
-              (array_elem_init_value
-                (constant_expr
-                  (expression
-                    (primary_expression
-                      (constant
-                        (numeric_literal
-                          (int_literal
-                            (signed_int
-                              (unsigned_int))))))))))))))                            
+--------------------------------------------------------------------------------                         
 
 ================================================================================
 FB types and classes as array elements
@@ -250,22 +166,18 @@ END_TYPE
           (array_type_spec
             (subrange
               (constant_expr
-                (expression
-                  (primary_expression
-                    (constant
-                      (numeric_literal
-                        (int_literal
-                          (signed_int
-                            (unsigned_int))))))))
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int))))))
               (constant_expr
-                (expression
-                  (primary_expression
-                    (constant
-                      (numeric_literal
-                        (int_literal
-                          (signed_int
-                            (unsigned_int)))))))))
-            (namespace_qualifier_target
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int)))))))
+            (fq_name
               (identifier)))
           (array_type_init
             (array_elem_init
@@ -274,10 +186,8 @@ END_TYPE
                 (struct_elem_init
                   (identifier)
                   (constant_expr
-                    (expression
-                      (primary_expression
-                        (constant
-                          (time_literal
-                            (duration
-                              (time
-                                (time_value)))))))))))))))
+                    (constant
+                      (time_literal
+                        (duration
+                          (time
+                            (time_value)))))))))))))
