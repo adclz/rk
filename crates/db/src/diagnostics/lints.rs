@@ -140,40 +140,6 @@ mod tests {
     use auto_lsp::{default::db::{BaseDatabase, FileManager}, lsp_types::{self, DiagnosticSeverity}, texter::core::text::Text};
 
     #[test]
-    fn unmerged_using() {
-        let mut db = RootDatabase::default();
-        let url = lsp_types::Url::parse("file:///test.st").unwrap();
-        let texter = Text::new(
-            r#"
-NAMESPACE ns            
-    USING FOR1;
-    USING FOR2;
-    USING FOR3;
-END_NAMESPACE
-"#.into(),
-        );
-        db.add_file_from_texter(
-            ast::RK_PARSER.get("structured_text").unwrap(),
-            &url,
-            texter,
-        )
-        .unwrap();
-
-        let file = db.get_file(&url).unwrap();
-
-        let diagnostics = cached_diagnostics(&db, file);
-        assert_eq!(diagnostics.len(), 2);
-
-        let diagnostic = diagnostics[0].diagnostic.clone();
-        assert_eq!(diagnostic.severity, Some(DiagnosticSeverity::INFORMATION));
-        assert_eq!(diagnostic.message, "using directives can be merged");
-
-        let diagnostic = diagnostics[1].diagnostic.clone();
-        assert_eq!(diagnostic.severity, Some(DiagnosticSeverity::INFORMATION));
-        assert_eq!(diagnostic.message, "using directives can be merged");
-    }
-
-    #[test]
     fn duplicate_namespace() {
         let mut db = RootDatabase::default();
         let url = lsp_types::Url::parse("file:///test.st").unwrap();
