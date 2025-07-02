@@ -4,113 +4,58 @@ use ast::generated::FbVariables;
 use auto_lsp::anyhow;
 use auto_lsp::default::db::{BaseDatabase, File};
 use crate::hir::variable::Variable;
-use crate::parser::variables::ParseVarSection;
-use crate::parser::Parse;
+use crate::parser::{Parse, ParseVarSection};
 use crate::hir;
 
 impl<'db> Parse<'db> for ast::generated::FbDecl {
     type Output = hir::function_block::FunctionBlock<'db>;
 
-    fn parse(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output> {
-        let (
-            input_variables,
-            output_variables,
-            in_out_variables,
-            external_variables,
-            temp_variables,
-            variables,
-            retain_variables,
-            no_retain_variables,
-            loc_partly_variables,
-        ) = self.parse_variables(db, file)?;
+    fn parse(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output> {
+        let variables = self.parse_variables(db, file)?;
         Ok(hir::function_block::FunctionBlock::new(
             db,
-            input_variables,
-            output_variables,
-            in_out_variables,
-            external_variables,
-            temp_variables,
             variables,
-            retain_variables,
-            no_retain_variables,
-            loc_partly_variables,
         ))
     }
 }
 
 trait ParseVariable<'db> {
     fn parse_variables(
-        &self,
+        &'db self,
         db: &'db dyn BaseDatabase,
         file: File,
-    ) -> anyhow::Result<(
-        Vec<Variable<'db>>,
-        Vec<Variable<'db>>,
-        Vec<Variable<'db>>,
-        Vec<Variable<'db>>,
-        Vec<Variable<'db>>,
-        Vec<Variable<'db>>,
-        Vec<Variable<'db>>,
-        Vec<Variable<'db>>,
-        Vec<Variable<'db>>,
-    )>;
+    ) -> anyhow::Result<
+        Vec<Variable<'db>>>;
 }
 
 impl<'db> ParseVariable<'db> for ast::generated::FbDecl {
     fn parse_variables(
-        &self,
+        &'db self,
         db: &'db dyn BaseDatabase,
         file: File,
-    ) -> anyhow::Result<(
-        Vec<Variable<'db>>,
-        Vec<Variable<'db>>,
-        Vec<Variable<'db>>,
-        Vec<Variable<'db>>,
-        Vec<Variable<'db>>,
-        Vec<Variable<'db>>,
-        Vec<Variable<'db>>,
-        Vec<Variable<'db>>,
-        Vec<Variable<'db>>,
-    )> {
-        let mut input_variables = vec![];
-        let mut output_variables = vec![];
-        let mut in_out_variables = vec![];
-        let mut external_variables = vec![];
-        let mut temp_variables = vec![];
+    ) -> anyhow::Result<
+        Vec<Variable<'db>>> {
         let mut variables = vec![];
-        let mut retain_variables = vec![];
-        let mut no_retain_variables = vec![];
-        let mut loc_partly_variables = vec![];
 
         for variable in self.variables.iter() {
             match variable.deref() {
-                FbVariables::FbInputDecls(decls) => decls.parse(db, file, &mut input_variables)?,
+                FbVariables::FbInputDecls(decls) => decls.parse(db, file, &mut variables)?,
                 FbVariables::FbOutputDecls(decls) => {
-                                decls.parse(db, file, &mut output_variables)?
+                                decls.parse(db, file, &mut variables)?
                             }
-                FbVariables::InOutDecls(decls) => decls.parse(db, file, &mut in_out_variables)?,
+                FbVariables::InOutDecls(decls) => decls.parse(db, file, &mut variables)?,
                 FbVariables::ExternalVarDecls(decls) => {
-                                decls.parse(db, file, &mut external_variables)?
+                                decls.parse(db, file, &mut variables)?
                             }
-                FbVariables::TempVarDecls(decls) => decls.parse(db, file, &mut temp_variables)?,
+                FbVariables::TempVarDecls(decls) => decls.parse(db, file, &mut variables)?,
                 FbVariables::VarDecls(decls) => decls.parse(db, file, &mut variables)?,
-                FbVariables::LocPartlyVarDecl(loc_partly_var_decl) => loc_partly_var_decl.parse(db, file, &mut loc_partly_variables)?,
-                FbVariables::NoRetainVarDecls(no_retain_var_decls) => no_retain_var_decls.parse(db, file, &mut no_retain_variables)?,
-                FbVariables::RetainVarDecls(retain_var_decls) => retain_var_decls.parse(db, file, &mut retain_variables)?,
+                FbVariables::LocPartlyVarDecl(loc_partly_var_decl) => loc_partly_var_decl.parse(db, file, &mut variables)?,
+                FbVariables::NoRetainVarDecls(no_retain_var_decls) => no_retain_var_decls.parse(db, file, &mut variables)?,
+                FbVariables::RetainVarDecls(retain_var_decls) => retain_var_decls.parse(db, file, &mut variables)?,
             }
         }
         
-        Ok((
-            input_variables,
-            output_variables,
-            in_out_variables,
-            external_variables,
-            temp_variables,
-            variables,
-            retain_variables,
-            no_retain_variables,
-            loc_partly_variables,
-        ))
+        Ok(variables)
     }
 }
 
@@ -186,15 +131,7 @@ END_NAMESPACE
         let function = namespaces.get_pou(&db as _, NamespacePath::from((&db as _, vec![ns])), fn_name).unwrap().pou(&db);
         
         if let Pou::FunctionBlock(f) = function {
-            assert_eq!(f.input_variables(&db).len(), 1);
-            assert_eq!(f.output_variables(&db).len(), 1);
-            assert_eq!(f.in_out_variables(&db).len(), 1);
-            assert_eq!(f.temp_variables(&db).len(), 1);
-            assert_eq!(f.external_variables(&db).len(), 1);
-            assert_eq!(f.global_variables(&db).len(), 3);
-            assert_eq!(f.retain_variables(&db).len(), 1);
-            assert_eq!(f.no_retain_variables(&db).len(), 3);
-            assert_eq!(f.loc_partly_variables(&db).len(), 1);
+            assert_eq!(f.variables(&db).len(), 12);
         } else {
             panic!("Not a function");
         }

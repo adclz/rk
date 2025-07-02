@@ -11,6 +11,7 @@ use crate::hir::namespace::{FileNamespaces, Namespace, Pou, PouDecl};
 use crate::ident::Ident;
 use crate::parser::Parse;
 use crate::solver::NamespacePath;
+use crate::parser::data_type::ParseDataType;
 
 pub struct FileNamespacesBuilder<'db> {
     db: &'db dyn BaseDatabase,
@@ -77,7 +78,7 @@ impl<'db> FileNamespacesBuilder<'db> {
     pub fn handle_namespace_elements(
         &mut self,
         parent_path: &[Ident],
-        nested: &ast::generated::NamespaceDecl,
+        nested: &'db ast::generated::NamespaceDecl,
     ) -> anyhow::Result<Namespace<'db>> {
         type Decl = ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl;
 
@@ -93,7 +94,7 @@ impl<'db> FileNamespacesBuilder<'db> {
             in_scopes.insert(namespace_path);
         }
 
-        let mut pous = FxHashMap::default();
+        let mut pous = vec![];
         if let Some(elements) = nested.elements.as_ref() {
             for child in elements.children.iter() {
                 match child.as_ref() {
@@ -107,8 +108,7 @@ impl<'db> FileNamespacesBuilder<'db> {
                     }
                     Decl::FuncDecl(func) => {
                         let name = Ident::from_node(self.db, self.file, &*func.name)?;
-                        pous.insert(
-                            name,
+                        pous.push(
                             PouDecl::new(
                                 self.db,
                                 Pou::Function(func.parse(self.db, self.file)?),
@@ -120,8 +120,7 @@ impl<'db> FileNamespacesBuilder<'db> {
                     }
                     Decl::FbDecl(fb) => {
                         let name = Ident::from_node(self.db, self.file, &*fb.name)?;
-                        pous.insert(
-                            name,
+                        pous.push(
                             PouDecl::new(
                                 self.db,
                                 Pou::FunctionBlock(fb.parse(self.db, self.file)?),
@@ -133,8 +132,7 @@ impl<'db> FileNamespacesBuilder<'db> {
                     }
                     Decl::ClassDecl(class) => {
                         let name = Ident::from_node(self.db, self.file, &*class.name)?;
-                        pous.insert(
-                            name,
+                        pous.push(
                             PouDecl::new(
                                 self.db,
                                 Pou::Class(class.parse(self.db, self.file)?),
@@ -143,7 +141,10 @@ impl<'db> FileNamespacesBuilder<'db> {
                                 *class.name.get_range(),
                             ),
                         );
-                    }
+                    },
+                    Decl::DataTypeDecl(data_type) => {
+                        data_type.parse(self.db, self.file, &mut pous)?;
+                    },
                     _ => (),
                 }
             }

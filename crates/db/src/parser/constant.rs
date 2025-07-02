@@ -3,12 +3,14 @@ use std::ops::Deref;
 
 use auto_lsp::{
     anyhow,
+    core::ast::AstNode,
     default::db::{BaseDatabase, File},
 };
 
 use crate::{
-    hir::variable::{Literal, Numeric},
+    hir::expression::{Expr, Literal, Numeric},
     ident::Ident,
+    solver::NamespacePath,
 };
 
 pub trait ParseNumeric<'db> {
@@ -35,14 +37,45 @@ impl<'db> ParseNumeric<'db> for ast::generated::BinaryInt_HexInt_OctalInt_Signed
 }
 
 pub(crate) trait ParseConstant<'db> {
-    fn parse(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Literal>;
+    fn to_constant(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>>;
+}
+
+impl<'db> ParseConstant<'db> for ast::generated::Expression {
+    fn to_constant(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>> {
+        match self {
+            ast::generated::Expression::PrimaryExpression(p) => match p {
+                ast::generated::PrimaryExpression::Constant(c) => c.to_constant(db, file),
+                ast::generated::PrimaryExpression::FqName(path) => {
+                    Ok(Expr::new_target(
+                        db,
+                        *path.get_range(),
+                        NamespacePath::from((
+                            db,
+                             path
+                                .fragment
+                                .iter()
+                                .map(|f| Ident::from_node(db, file, f.deref()))
+                                .collect::<anyhow::Result<Vec<_>>>()?,
+                        )),
+                        Ident::from_node(db, file, path.target.deref())?,
+                    ))
+                },
+                ast::generated::PrimaryExpression::EnumValue(enum_value) => {
+                    Ok(Expr::new_enum_value(db, *enum_value.get_range(), Ident::from_node(db, file, enum_value.children.deref())?))
+                },
+                _ => unreachable!(),
+            },
+            _ => todo!(),
+        }
+    }
 }
 
 impl<'db> ParseConstant<'db> for ast::generated::Constant {
-    fn parse(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Literal> {
+    fn to_constant(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>> {
         type Constant = ast::generated::BoolLiteral_CharLiteral_NumericLiteral_TimeLiteral;
-
-        Ok(
+        Ok(Expr::new_literal(
+            db,
+            *self.children.get_range(),
             match self.children.deref() {
                 Constant::BoolLiteral(bool_literal) => {
                     Literal::Bool(Ident::from_node(db, file, bool_literal.value.deref())?)
@@ -58,32 +91,29 @@ impl<'db> ParseConstant<'db> for ast::generated::Constant {
                                     ast::generated::IntTypeName_MultibitsTypeName::IntTypeName(int_type_name) => {
                                         match int_type_name.children.deref() {
                                             ast::generated::SignIntTypeName_UnsignIntTypeName::SignIntTypeName(sign_int_type_name) => {
-                                                match Ident::from_node(db, file, sign_int_type_name)?.text(db).as_str() {
-                                                    "SINT" => Literal::SInt(int_literal.int.parse(db, file)?),
-                                                    "INT" => Literal::Int(int_literal.int.parse(db, file)?),
-                                                    "DINT" => Literal::DInt(int_literal.int.parse(db, file)?),
-                                                    "LINT" => Literal::LInt(int_literal.int.parse(db, file)?),
-                                                    _ => unreachable!(),
+                                                match sign_int_type_name.children.deref() {
+                                                    ast::generated::DintName_IntName_LintName_SintName::SintName(_) => Literal::SInt(int_literal.int.parse(db, file)?),
+                                                    ast::generated::DintName_IntName_LintName_SintName::IntName(_) => Literal::Int(int_literal.int.parse(db, file)?),
+                                                    ast::generated::DintName_IntName_LintName_SintName::DintName(_) => Literal::DInt(int_literal.int.parse(db, file)?),
+                                                    ast::generated::DintName_IntName_LintName_SintName::LintName(_) => Literal::LInt(int_literal.int.parse(db, file)?),
                                                 }
                                             },
                                             ast::generated::SignIntTypeName_UnsignIntTypeName::UnsignIntTypeName(unsign_int_type_name) => {
-                                                match  Ident::from_node(db, file, unsign_int_type_name)?.text(db).as_str() {
-                                                    "USINT" => Literal::USInt(int_literal.int.parse(db, file)?),
-                                                    "UINT" => Literal::UInt(int_literal.int.parse(db, file)?),
-                                                    "UDINT" => Literal::UDInt(int_literal.int.parse(db, file)?),
-                                                    "ULINT" => Literal::ULInt(int_literal.int.parse(db, file)?),
-                                                    _ => unreachable!(),
+                                                match unsign_int_type_name.children.deref() {
+                                                    ast::generated::UdintName_UintName_UlintName_UsintName::UsintName(_) => Literal::USInt(int_literal.int.parse(db, file)?),
+                                                    ast::generated::UdintName_UintName_UlintName_UsintName::UintName(_) => Literal::UInt(int_literal.int.parse(db, file)?),
+                                                    ast::generated::UdintName_UintName_UlintName_UsintName::UdintName(_) => Literal::UDInt(int_literal.int.parse(db, file)?),
+                                                    ast::generated::UdintName_UintName_UlintName_UsintName::UlintName(_) => Literal::ULInt(int_literal.int.parse(db, file)?),
                                                 }
                                             },
                                         }
                                     },
                                     ast::generated::IntTypeName_MultibitsTypeName::MultibitsTypeName(multibits_type_name) => {
-                                        match Ident::from_node(db, file, multibits_type_name)?.text(db).as_str() {
-                                            "BYTE" => Literal::Byte(int_literal.int.parse(db, file)?),
-                                            "WORD" => Literal::Word(int_literal.int.parse(db, file)?),
-                                            "DWORD" => Literal::DWord(int_literal.int.parse(db, file)?),
-                                            "LWORD" => Literal::LWord(int_literal.int.parse(db, file)?),
-                                            _ => unreachable!(),
+                                        match multibits_type_name.children.deref() {
+                                            ast::generated::ByteName_DwordName_LwordName_WordName::ByteName(_) => Literal::Byte(int_literal.int.parse(db, file)?),
+                                            ast::generated::ByteName_DwordName_LwordName_WordName::WordName(_) => Literal::Word(int_literal.int.parse(db, file)?),
+                                            ast::generated::ByteName_DwordName_LwordName_WordName::DwordName(_) => Literal::DWord(int_literal.int.parse(db, file)?),
+                                            ast::generated::ByteName_DwordName_LwordName_WordName::LwordName(_) => Literal::LWord(int_literal.int.parse(db, file)?),
                                         }
                                     },
                                 }
@@ -153,6 +183,6 @@ impl<'db> ParseConstant<'db> for ast::generated::Constant {
                     }
                 },
             },
-        )
+        ))
     }
 }

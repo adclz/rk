@@ -2,28 +2,24 @@
 use std::ops::Deref;
 
 use ast::generated::{ExternalVarKind, GlobalVarKind};
+use auto_lsp::core::ast::AstNode;
 use auto_lsp::{
     anyhow,
     default::db::{BaseDatabase, File},
 };
-use auto_lsp::core::ast::AstNode;
 
-use crate::{hir::variable::Variable, ident::Ident};
-
-pub trait ParseVarSection<'db> {
-    fn parse(
-        &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
-        section: &mut Vec<Variable<'db>>,
-    ) -> anyhow::Result<()>;
-}
+use crate::parser::{ParseInit, ParseSpec, ParseSpecInit, ParseVarSection, SpecInitResult};
+use crate::{
+    hir::variable::{Spec, Variable, VariableKind},
+    ident::Ident,
+    parser::constant::ParseConstant,
+};
 
 macro_rules! parse_multi_variable_sections {
-    ($($section: ident, [$( $section_kind: path ),*]), *) => {
+    ($($section: ident, $kind: ident, [$( $section_kind: path ),*]), *) => {
     $(impl<'db> ParseVarSection<'db> for ast::generated::$section {
         fn parse(
-        &self,
+            &'db self,
             db: &'db dyn BaseDatabase,
             file: File,
             section: &mut Vec<Variable<'db>>,
@@ -33,7 +29,16 @@ macro_rules! parse_multi_variable_sections {
                 $($section_kind(var_decl) => {
                     for variable in child.variables.children.iter() {
                         let name = Ident::from_node(db, file, variable.deref())?;
-                        section.push(Variable::new(db, name, *variable.get_range(), *variable.get_range()));
+                        let result = var_decl.to_spec_init(db, file)?;
+                        section.push(
+                            Variable::new(db,
+                                name,
+                                *variable.get_range(),
+                                *variable.get_range(),
+                                VariableKind::$kind,
+                                result.spec,
+                                result.init,
+                            ));
                     }
                 }),*
             }
@@ -45,59 +50,38 @@ macro_rules! parse_multi_variable_sections {
 }
 
 parse_multi_variable_sections! {
-    InputDecls, [
+    InputDecls, Input, [
         ast::generated::InputVarKind::VarDeclInit,
         ast::generated::InputVarKind::ArrayConformand,
         ast::generated::InputVarKind::EdgeDecl
     ],
-    FbInputDecls, [
+    FbInputDecls, Input, [
         ast::generated::FbInputVarKind::VarDeclInit,
         ast::generated::FbInputVarKind::ArrayConformand,
         ast::generated::FbInputVarKind::EdgeDecl
     ],
-    OutputDecls, [
+    OutputDecls, Output, [
         ast::generated::OutputVarKind::VarDeclInit,
         ast::generated::OutputVarKind::ArrayConformand
     ],
-    FbOutputDecls, [
+    FbOutputDecls, Output, [
         ast::generated::FbOutputVarKind::VarDeclInit,
         ast::generated::FbOutputVarKind::ArrayConformand
     ],
-    TempVarDecls, [
+    TempVarDecls, Temp, [
         ast::generated::TempVarKind::VarDecl,
         ast::generated::TempVarKind::RefSpec
     ],
-    InOutDecls, [
+    InOutDecls, InOut, [
         ast::generated::InOutVarKind::VarDecl,
         ast::generated::InOutVarKind::ArrayConformand,
         ast::generated::InOutVarKind::FbDeclNoInit
-    ],
-    VarDecls, [
-        ast::generated::VarDecl::StrTypeSpecInit,
-        ast::generated::VarDecl::ArrayTypeSpecInit,
-        ast::generated::VarDecl::NamespaceQualifierTarget,
-        ast::generated::VarDecl::SimpleTypeSpecInit,
-        ast::generated::VarDecl::StructTypeSpecInit
-    ],
-    RetainVarDecls, [
-        ast::generated::VarDecl::StrTypeSpecInit,
-        ast::generated::VarDecl::ArrayTypeSpecInit,
-        ast::generated::VarDecl::NamespaceQualifierTarget,
-        ast::generated::VarDecl::SimpleTypeSpecInit,
-        ast::generated::VarDecl::StructTypeSpecInit
-    ],
-    NoRetainVarDecls, [
-        ast::generated::VarDecl::StrTypeSpecInit,
-        ast::generated::VarDecl::ArrayTypeSpecInit,
-        ast::generated::VarDecl::NamespaceQualifierTarget,
-        ast::generated::VarDecl::SimpleTypeSpecInit,
-        ast::generated::VarDecl::StructTypeSpecInit
     ]
 }
 
 impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
     fn parse(
-        &self,
+        &'db self,
         db: &'db dyn BaseDatabase,
         file: File,
         section: &mut Vec<Variable<'db>>,
@@ -106,12 +90,108 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
             match child.Type.deref() {
                 ExternalVarKind::VarDecl(var_decl) => {
                     let name = Ident::from_node(db, file, child.name.deref())?;
-                    section.push(Variable::new(db, name, *child.get_range(), *child.name.get_range()))
+                    let result = var_decl.to_spec_init(db, file)?;
+                    section.push(Variable::new(
+                        db,
+                        name,
+                        *child.get_range(),
+                        *child.name.get_range(),
+                        VariableKind::External,
+                        result.spec,
+                        result.init,
+                    ))
                 }
                 ExternalVarKind::ArrayConformand(var_decl) => {
                     let name = Ident::from_node(db, file, child.name.deref())?;
-                    section.push(Variable::new(db, name, *child.get_range(), *child.name.get_range()))
+                    let result = var_decl.to_spec_init(db, file)?;
+                    section.push(Variable::new(
+                        db,
+                        name,
+                        *child.get_range(),
+                        *child.name.get_range(),
+                        VariableKind::External,
+                        result.spec,
+                        result.init,
+                    ))
                 }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
+    fn parse(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        file: File,
+        section: &mut Vec<Variable<'db>>,
+    ) -> anyhow::Result<()> {
+        for child in self.children.iter() {
+            for variable in child.variables.children.iter() {
+                let name = Ident::from_node(db, file, variable.deref())?;
+                let result = child.Type.to_spec_init(db, file)?;
+                section.push(Variable::new(
+                    db,
+                    name,
+                    *child.get_range(),
+                    *variable.get_range(),
+                    VariableKind::Local,
+                    result.spec,
+                    result.init,
+                ))
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<'db> ParseVarSection<'db> for ast::generated::RetainVarDecls {
+    fn parse(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        file: File,
+        section: &mut Vec<Variable<'db>>,
+    ) -> anyhow::Result<()> {
+        for child in self.children.iter() {
+            for variable in child.variables.children.iter() {
+                let name = Ident::from_node(db, file, variable.deref())?;
+                let result = child.Type.to_spec_init(db, file)?;
+                section.push(Variable::new(
+                    db,
+                    name,
+                    *child.get_range(),
+                    *variable.get_range(),
+                    VariableKind::Retain,
+                    result.spec,
+                    result.init,
+                ))
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<'db> ParseVarSection<'db> for ast::generated::NoRetainVarDecls {
+    fn parse(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        file: File,
+        section: &mut Vec<Variable<'db>>,
+    ) -> anyhow::Result<()> {
+        for child in self.children.iter() {
+            for variable in child.variables.children.iter() {
+                let name = Ident::from_node(db, file, variable.deref())?;
+                let result = child.Type.to_spec_init(db, file)?;
+                section.push(Variable::new(
+                    db,
+                    name,
+                    *child.get_range(),
+                    *variable.get_range(),
+                    VariableKind::NoRetain,
+                    result.spec,
+                    result.init,
+                ))
             }
         }
         Ok(())
@@ -120,14 +200,23 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
 
 impl<'db> ParseVarSection<'db> for ast::generated::LocPartlyVarDecl {
     fn parse(
-        &self,
+        &'db self,
         db: &'db dyn BaseDatabase,
         file: File,
         section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
             let name = Ident::from_node(db, file, child.variable_name.deref())?;
-            section.push(Variable::new(db, name, *child.get_range(), *child.variable_name.get_range()))
+            let result = child.to_spec_init(db, file)?;
+            section.push(Variable::new(
+                db,
+                name,
+                *child.get_range(),
+                *child.variable_name.get_range(),
+                VariableKind::LocPartly,
+                result.spec,
+                result.init,
+            ))
         }
         Ok(())
     }
@@ -135,20 +224,38 @@ impl<'db> ParseVarSection<'db> for ast::generated::LocPartlyVarDecl {
 
 impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
     fn parse(
-        &self,
+        &'db self,
         db: &'db dyn BaseDatabase,
         file: File,
         section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
             match child.Type.deref() {
-                GlobalVarKind::NamespaceQualifierTarget(var_decl) => {
+                GlobalVarKind::FqName(var_decl) => {
                     let name = Ident::from_node(db, file, child.spec.deref())?;
-                    section.push(Variable::new(db, name, *child.get_range(), *child.spec.get_range()))
+                    let result = var_decl.to_spec_init(db, file)?;
+                    section.push(Variable::new(
+                        db,
+                        name,
+                        *child.get_range(),
+                        *child.spec.get_range(),
+                        VariableKind::Global,
+                        result.spec,
+                        result.init,
+                    ))
                 }
                 GlobalVarKind::LocVarSpecInit(var_decl) => {
                     let name = Ident::from_node(db, file, child.spec.deref())?;
-                    section.push(Variable::new(db, name, *child.get_range(), *child.spec.get_range()))
+                    let result = var_decl.to_spec_init(db, file)?;
+                    section.push(Variable::new(
+                        db,
+                        name,
+                        *child.get_range(),
+                        *child.spec.get_range(),
+                        VariableKind::Global,
+                        result.spec,
+                        result.init,
+                    ))
                 }
             }
         }
@@ -156,58 +263,115 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
     }
 }
 
-pub trait ParseVariable<'db> {
-    fn parse(
+impl<'db> ParseSpecInit<'db> for ast::generated::EdgeDecl {
+    fn to_spec_init(
         &self,
         db: &'db dyn BaseDatabase,
         file: File,
-        name: Ident,
-    ) -> anyhow::Result<Variable<'db>>;
-}
-
-impl<'db> ParseVariable<'db> for ast::generated::VarDecl {
-    fn parse(
-        &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
-        name: Ident,
-    ) -> anyhow::Result<Variable<'db>> {
-        match self {
-            Self::StrTypeSpecInit(str_var_decl) => todo!(),
-            Self::ArrayTypeSpecInit(array_spec) => todo!(),
-            Self::NamespaceQualifierTarget(type_access) => todo!(),
-            Self::SimpleTypeSpecInit(simple_type_spec_init) => todo!(),
-            Self::StructTypeSpecInit(struct_type_spec_init) => todo!(),
-        }
-    }
-}
-
-impl<'db> ParseVariable<'db> for ast::generated::VarDeclInit {
-    fn parse(
-        &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
-        name: Ident,
-    ) -> anyhow::Result<Variable<'db>> {
-        match self {
-            Self::NamespaceQualifierTarget(type_access) => todo!(),
-            Self::ArrayTypeSpecInit(array) => todo!(),
-            Self::InterfaceSpecInit(_) => todo!(),
-            Self::RefSpecInit(_) => todo!(),
-            Self::SimpleTypeSpecInit(_) => todo!(),
-            Self::StrTypeSpecInit(_) => todo!(),
-            Self::StructTypeSpecInit(_) => todo!(),
-        }
-    }
-}
-
-impl<'db> ParseVariable<'db> for ast::generated::StrTypeSpecInit {
-    fn parse(
-        &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
-        name: Ident,
-    ) -> anyhow::Result<Variable<'db>> {
+    ) -> anyhow::Result<SpecInitResult> {
         todo!()
+    }
+}
+
+impl<'db> ParseSpecInit<'db> for ast::generated::LocPartlyVar {
+    fn to_spec_init(
+        &self,
+        db: &'db dyn BaseDatabase,
+        file: File,
+    ) -> anyhow::Result<SpecInitResult> {
+        todo!()
+    }
+}
+
+impl<'db> ParseSpecInit<'db> for ast::generated::FbDeclNoInit {
+    fn to_spec_init(
+        &self,
+        db: &'db dyn BaseDatabase,
+        file: File,
+    ) -> anyhow::Result<SpecInitResult> {
+        todo!()
+    }
+}
+
+// todo: VarDecl should contain no init
+impl<'db> ParseSpecInit<'db> for ast::generated::VarDecl {
+    fn to_spec_init(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        file: File,
+    ) -> anyhow::Result<SpecInitResult<'db>> {
+        type Spec = ast::generated::ArrayTypeSpec_SimpleTypeSpec_StrTypeSpec_StructTypeSpec;
+
+        let spec = match self.spec.deref() {
+            Spec::ArrayTypeSpec(a) => a.to_spec(db, file),
+            Spec::SimpleTypeSpec(a) => a.to_spec(db, file),
+            Spec::StrTypeSpec(a) => a.to_spec(db, file),
+            Spec::StructTypeSpec(a) => a.to_spec(db, file),
+        };
+
+        type Init = ast::generated::ArrayTypeInit_SimpleTypeInit_StructTypeInit;
+
+        let init = match self.init.as_deref() {
+            Some(Init::ArrayTypeInit(a)) => Some(a.to_init(db, file)?),
+            Some(Init::SimpleTypeInit(a)) => Some(a.to_init(db, file)?),
+            Some(Init::StructTypeInit(a)) => Some(a.to_init(db, file)?),
+            None => None,
+        };
+
+        Ok(SpecInitResult::new(spec?, init))
+    }
+}
+
+impl<'db> ParseSpecInit<'db> for ast::generated::VarDeclInit {
+    fn to_spec_init(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        file: File,
+    ) -> anyhow::Result<SpecInitResult<'db>> {
+        type Spec = ast::generated::ArrayTypeSpec_SimpleTypeSpec_StrTypeSpec_StructTypeSpec;
+
+        let spec = match self.spec.deref() {
+            Spec::ArrayTypeSpec(a) => a.to_spec(db, file),
+            Spec::SimpleTypeSpec(a) => a.to_spec(db, file),
+            Spec::StrTypeSpec(a) => a.to_spec(db, file),
+            Spec::StructTypeSpec(a) => a.to_spec(db, file),
+        };
+
+        type Init = ast::generated::ArrayTypeInit_SimpleTypeInit_StructTypeInit;
+        let init = match self.init.as_deref() {
+            Some(Init::ArrayTypeInit(a)) => Some(a.to_init(db, file)?),
+            Some(Init::SimpleTypeInit(a)) => Some(a.to_init(db, file)?),
+            Some(Init::StructTypeInit(a)) => Some(a.to_init(db, file)?),
+            None => None,
+        };
+
+        Ok(SpecInitResult::new(spec?, init))
+    }
+}
+
+impl<'db> ParseSpecInit<'db> for ast::generated::LocVarSpecInit {
+    fn to_spec_init(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        file: File,
+    ) -> anyhow::Result<SpecInitResult> {
+        type Spec = ast::generated::ArrayTypeSpec_SimpleTypeSpec_StrTypeSpec_StructTypeSpec;
+
+        let spec = match self.spec.deref() {
+            Spec::ArrayTypeSpec(a) => a.to_spec(db, file),
+            Spec::SimpleTypeSpec(a) => a.to_spec(db, file),
+            Spec::StrTypeSpec(a) => a.to_spec(db, file),
+            Spec::StructTypeSpec(a) => a.to_spec(db, file),
+        };
+
+        type Init = ast::generated::ArrayTypeInit_SimpleTypeInit_StructTypeInit;
+        let init = match self.init.as_deref() {
+            Some(Init::ArrayTypeInit(a)) => Some(a.to_init(db, file)?),
+            Some(Init::SimpleTypeInit(a)) => Some(a.to_init(db, file)?),
+            Some(Init::StructTypeInit(a)) => Some(a.to_init(db, file)?),
+            None => None,
+        };
+
+        Ok(SpecInitResult::new(spec?, init))
     }
 }
