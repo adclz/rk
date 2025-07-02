@@ -31,15 +31,61 @@ function commaSep(rule) {
     return optional(commaSep1(rule))
 }
 
-function create_type_decl(name, spec, init = null) {
+/// Create rules for a new type with a spec and an init
+function createSpecInit(name, spec, init = null) {
     let result = {
         [`${name}_type_spec`]: $ => spec($)
     };
     if (init) {
-        result[`${name}_type_init`] = $ => init($),
-            result[`${name}_type_spec_init`] = $ => prec.left(seq(spec($), optional(init($))))
+        result[`${name}_type_init`] = $ => init($)
     };
     return result;
+}
+
+/// Use a list of specs and inits to complete a new rule
+function useSpecInit(specs, inits) {
+    return $ => seq(
+        field("spec", choice(...specs.map(rule => $[`${rule}_type_spec`]))),
+        field("init", optional(choice(...inits.map(rule => $[`${rule}_type_init`]))))
+    )
+
+}
+
+// Variable declarations
+const io_var_decls = $ => [
+    $.input_decls,
+    $.output_decls,
+    $.in_out_decls
+]
+
+const func_var_decls = $ => [
+    $.external_var_decls,
+    $.var_decls
+]
+
+const other_var_decls = $ => [
+    $.retain_var_decls,
+    $.no_retain_var_decls,
+    $.loc_partly_var_decl
+]
+
+// Precedences from the standard
+const PREC = {
+    expression: 11,
+    parameter_list: 10, // _ (parameter_list)
+    dereference: 9, // ^
+    unary: 8, // + - NOT
+    exponentiation: 7, // **
+    multiply: 6, // *
+    divide: 6, // /
+    modulo: 6, // MOD
+    add: 5, // +
+    substract: 5, // -
+    comparison: 4, // < > <= >=
+    equality: 4, // = <>
+    boolean_and: 3, // & AND
+    boolean_xor: 2, // XOR
+    boolean_or: 1 // OR
 }
 
 // Reserved keywords that cannot be used as identifiers
@@ -68,43 +114,15 @@ const RESERVED_NAMES = [
     "WHILE", "END_WHILE",
     "DO",
     "EXIT", "RETURN",
+    // Types
+    "BOOL", "BYTE", "WORD", "DWORD", "LWORD",
+    "SINT", "INT", "DINT", "LINT",
+    "USINT", "UINT", "UDINT", "ULINT",
+    "REAL", "LREAL",
+    "CHAR", "WCHAR",
+    "STRING", "WSTRING",
+    "DATE", "TIME", "DT", "TOD", "LDATE", "LTIME", "LDT", "LTOD"
 ];
-
-// Variable declarations
-const io_var_decls = $ => [
-    $.input_decls,
-    $.output_decls,
-    $.in_out_decls
-]
-
-const func_var_decls = $ => [
-    $.external_var_decls,
-    $.var_decls
-]
-
-const other_var_decls = $ => [
-    $.retain_var_decls,
-    $.no_retain_var_decls,
-    $.loc_partly_var_decl
-]
-
-const PREC = {
-    expression: 11,
-    parameter_list: 10, // _ (parameter_list)
-    dereference: 9, // ^
-    unary: 8, // + - NOT
-    exponentiation: 7, // **
-    multiply: 6, // *
-    divide: 6, // /
-    modulo: 6, // MOD
-    add: 5, // +
-    substract: 5, // -
-    comparison: 4, // < > <= >=
-    equality: 4, // = <>
-    boolean_and: 3, // & AND
-    boolean_xor: 2, // XOR
-    boolean_or: 1 // OR
-}
 
 /// <reference types="tree-sitter-cli/dsl" />
 // @ts-check
@@ -136,11 +154,11 @@ module.exports = grammar({
         $._external_var_kind,
         $._global_var_kind,
 
-        $._var_decl,
-        $._var_decl_init,
-
         $._data_type_access,
-        $._elem_type_name
+        $._elem_type_name,
+
+        $._expression,
+        $._primary_expression
     ],
 
     precedences: $ => [
@@ -167,12 +185,11 @@ module.exports = grammar({
         // conflicts in type declarations
         [$.numeric_literal, $.enum_value_spec],
 
-        [$.namespace_qualifier_target],
-        [$.namespace_qualifier_target, $.ref_name],
+        [$.fq_name],
+        [$.fq_name, $.ref_name],
         [$.local_variable, $.ref_name],
         [$.global_ref_deref, $.local_variable],
 
-        [$.subrange_type_spec_init, $.numeric_type_name],
         [$.subrange_type_spec, $.numeric_type_name],
     ],
 
@@ -244,20 +261,17 @@ module.exports = grammar({
 
         binary_int: $ => seq(
             '2#',
-            $.bit,
-            repeat1(seq(optional('_'), $.bit))
+            field("value", $._bit,repeat1(seq(optional('_'), $._bit)))
         ),
 
         octal_int: $ => seq(
             '8#',
-            $.octal_digit,
-            repeat1(seq(optional('_'), $.octal_digit))
+            field("value", seq($._octal_digit, repeat1(seq(optional('_'), $._octal_digit)))),
         ),
 
         hex_int: $ => seq(
             '16#',
-            $.hex_digit,
-            repeat1(seq(optional('_'), $.hex_digit))
+            field("value", seq($._hex_digit, repeat1(seq(optional('_'), $._hex_digit))))
         ),
 
         real_literal: $ => choice(
@@ -278,7 +292,7 @@ module.exports = grammar({
         real_value: $ => /[0-9]+(_[0-9]+)*/,
 
         bool_literal: $ => seq(
-            field("type", optional(seq($.bool_type_name, '#'))),
+            field("type", optional('BOOL#')),
             // fixme! Add support for numbers in auto-lsp
             field("value", choice('TRUE', 'FALSE'))
         ),
@@ -312,14 +326,14 @@ module.exports = grammar({
             $._common_char_value,
             '$\'',
             '"',
-            seq('$', $.hex_digit, $.hex_digit)
+            seq('$', $._hex_digit, $._hex_digit)
         ),
 
         _d_byte_char_value: $ => choice(
             $._common_char_value,
             "'",
             '$"',
-            seq('$', $.hex_digit, $.hex_digit, $.hex_digit, $.hex_digit)
+            seq('$', $._hex_digit, $._hex_digit, $._hex_digit, $._hex_digit)
         ),
 
         _common_char_value: $ => choice(
@@ -440,12 +454,8 @@ module.exports = grammar({
         // Table 10 - Elementary data types
 
         _data_type_access: $ => choice(
-            $.numeric_type_name,
-            $.bit_str_type_name,
-            $.string_type_name,
-            $.date_type_name,
-            $.time_type_name,
-            $.namespace_qualifier_target
+            $.fq_name,
+            $._elem_type_name,
         ),
 
         _elem_type_name: $ => choice(
@@ -453,6 +463,8 @@ module.exports = grammar({
             $.bit_str_type_name,
             $.date_type_name,
             $.time_type_name,
+            $.tod_type_name,
+            $.dt_type_name
         ),
 
         numeric_type_name: $ => choice(
@@ -466,22 +478,22 @@ module.exports = grammar({
         ),
 
         sign_int_type_name: $ => choice(
-            'SINT',
-            'INT',
-            'DINT',
-            'LINT'
+            alias('SINT', $.sint_name),
+            alias('INT', $.int_name),
+            alias('DINT', $.dint_name),
+            alias('LINT', $.lint_name)
         ),
 
         unsign_int_type_name: $ => choice(
-            'USINT',
-            'UINT',
-            'UDINT',
-            'ULINT'
+            alias('USINT', $.usint_name),
+            alias('UINT', $.uint_name),
+            alias('UDINT', $.udint_name),
+            alias('ULINT', $.ulint_name)
         ),
 
         real_type_name: $ => choice(
-            'REAL',
-            'LREAL'
+            alias('REAL', $.real_name),
+            alias('LREAL', $.lreal_name)
         ),
 
         string_type_name: $ => choice(
@@ -492,39 +504,35 @@ module.exports = grammar({
         ),
 
         time_type_name: $ => choice(
-            'TIME',
-            'LTIME'
+            alias('TIME', $.time_name),
+            alias('LTIME', $.ltime_name)
         ),
 
         date_type_name: $ => choice(
-            'DATE',
-            'LDATE'
+            alias('DATE', $.date_name),
+            alias('LDATE', $.ldate_name),
         ),
 
         tod_type_name: $ => choice(
-            'TIME_OF_DAY',
-            'TOD',
-            'LTOD'
+            alias(choice('TOD', 'TIME_OF_DAY'), $.tod_name),
+            alias(choice('LTOD', 'LTIME_OF_DAY'), $.ltod_name),
         ),
 
         dt_type_name: $ => choice(
-            'DATE_AND_TIME',
-            'DT',
-            'LDT'
+            alias(choice('DT', 'DATE_AND_TIME'), $.dt_name),
+            alias('LDT', $.ldt_name)
         ),
 
         bit_str_type_name: $ => choice(
-            $.bool_type_name,
+            alias('BOOL', $.bool_name),
             $.multibits_type_name
         ),
 
-        bool_type_name: $ => 'BOOL',
-
         multibits_type_name: $ => choice(
-            'BYTE',
-            'WORD',
-            'DWORD',
-            'LWORD'
+            alias('BYTE', $.byte_name),
+            alias('WORD', $.word_name),
+            alias('DWORD', $.dword_name),
+            alias('LWORD', $.lword_name)
         ),
 
         // Table 11 - Declaration of user-defined data types and initialization
@@ -535,43 +543,39 @@ module.exports = grammar({
             'END_TYPE'
         ),
 
-        type_decl: $ => prec.left(seq(
-            // type name
-            field("name", $.identifier),
-            // type declaration
-            field("declaration", choice(
-                $.simple_type_spec,
-                $.subrange_type_spec,
-                $.enum_type_spec,
-                $.array_type_spec,
-                $.struct_type_spec,
-                $.str_type_spec,
-                $.ref_type_decl,
-            )),
-            // type initialization
-            optional(
-                field("spec",
-                    choice(
-                        $.ref_init,
-                        $.array_type_init,
-                        $.struct_type_init,
-                        $.subrange_type_init,
-                        $.str_type_init,
-                    )
-                )
-            )
-        )),
 
-        ref_init: $ => seq(":=", $.namespace_qualifier_target),
+        // Type_Decl : Simple_Type_Decl | Subrange_Type_Decl | Enum_Type_Decl | Array_Type_Decl | Struct_Type_Decl |
+        //  Str_Type_Decl | Ref_Type_Decl;
+        type_decl: $ =>
+            seq(
+                field("name", $.identifier),
+                useSpecInit([
+                    "simple",
+                    "subrange",
+                    "enum",
+                    "array",
+                    "struct",
+                    "str",
+                    "ref"
+                ], [
+                    "simple",
+                    //"subrange", handled by simple
+                    //"enum", handled by simple
+                    "array",
+                    "struct",
+                    // "str", handled by simple
+                    // "ref"
+                ])($),
+            ),
 
-        ...create_type_decl("simple",
+        ...createSpecInit("simple",
             $ => seq(":", $._elem_type_name),
             $ => seq(':=', $.constant_expr)
         ),
 
-        ...create_type_decl("subrange",
-            $ => seq(":", $.int_type_name, '(', $.subrange, ')'),
-            $ => seq(':=', $.signed_int)
+        ...createSpecInit("subrange",
+            $ => seq(":", field("type", $.int_type_name), '(', field("range", $.subrange), ')'),
+            $ => $.simple_type_init
         ),
 
         subrange: $ => seq(
@@ -582,7 +586,7 @@ module.exports = grammar({
 
         // Enum_Type_Decl : Enum_Type_Name ':' ( ( Elem_Type_Name ? Named_Spec_Init ) | Enum_Spec_Init ); 
         // Enum_Spec_Init : ( ( '(' Identifier ( ',' Identifier )* ')' ) | Enum_Type_Access ) ( ':=' Enum_Value )?; 
-        ...create_type_decl("enum",
+        ...createSpecInit("enum",
             $ => seq(":",
                 choice(
                     seq(optional($._elem_type_name), $.named_spec),
@@ -595,13 +599,13 @@ module.exports = grammar({
         enum_spec: $ => prec.left(seq(
             choice(
                 seq('(', commaSep($.identifier), ')'),
-                $.namespace_qualifier_target
+                $.fq_name
             ),
         )),
         // Named_Spec_Init : '(' Enum_Value_Spec ( ',' Enum_Value_Spec )* ')' ( ':=' Enum_Value )?; 
         named_spec: $ => prec.left(seq('(', commaSep1($.enum_value_spec), ')')),
 
-        ...create_type_decl("array",
+        ...createSpecInit("array",
             $ => seq(
                 ":",
                 'ARRAY', '[', field("ranges", commaSep1($.subrange)), ']',
@@ -611,7 +615,7 @@ module.exports = grammar({
             $ => seq(':=', '[', commaSep($.array_elem_init), ']')
         ),
 
-        ...create_type_decl("struct",
+        ...createSpecInit("struct",
             $ => seq(
                 ":",
                 'STRUCT',
@@ -622,33 +626,31 @@ module.exports = grammar({
             $ => seq(':=', '(', commaSep($.struct_elem_init), ')')
         ),
 
-        ...create_type_decl("str",
-            $ => seq(":", $.str_spec),
+        ...createSpecInit("str",
+            $ => seq(":", choice(
+                $.s_byte_str_spec,
+                $.d_byte_str_spec,
+                alias("CHAR", $.s_char),
+                alias("WCHAR", $.d_char),
+            )),
             $ => seq(':=', $.char_str)
         ),
 
-        str_spec: $ => choice(
-            $.s_byte_str_spec,
-            $.d_byte_str_spec,
-            "CHAR",
-            "WCHAR"
-        ),
-
-        s_byte_str_spec: $ => prec.left(seq(
+        s_byte_str_spec: $ => seq(
             'STRING',
             optional(seq('[', field("size", $.unsigned_int), ']'))
-        )),
+        ),
 
-        d_byte_str_spec: $ => prec.left(seq(
+        d_byte_str_spec: $ => seq(
             'WSTRING',
             optional(seq('[', field("size", $.unsigned_int), ']'))
-        )),
+        ),
 
         enum_value_spec: $ => prec.right(seq(
             $.identifier,
             optional(seq(
                 ':=',
-                choice($.int_literal, $.expression)
+                choice($.int_literal, $._expression)
             ))
         )),
 
@@ -676,20 +678,27 @@ module.exports = grammar({
             'END_STRUCT'
         ),
 
+        // Struct_Elem_Decl : Struct_Elem_Name ( Located_At Multibit_Part_Access ? )? ':'
+        // ( Simple_Spec_Init | Subrange_Spec_Init | Enum_Spec_Init | Array_Spec_Init | Struct_Spec_Init );
         struct_elem_decl: $ => seq(
             field("name", $.identifier),
             optional(seq(
                 $.located_at,
                 optional($.multibit_part_access)
             )),
-            ':',
-            choice(
-                $.simple_type_spec_init,
-                $.subrange_type_spec_init,
-                $.enum_type_spec_init,
-                $.array_type_spec_init,
-                $.struct_type_spec_init
-            )
+            useSpecInit([
+                "simple",
+                "subrange",
+                "enum",
+                "array",
+                "struct"
+            ], [
+                "simple",
+                // "subrange", handled by simple
+                "array",
+                "struct",
+                // "enum" handled by simple
+            ])($),
         ),
 
         struct_init: $ => seq('(', commaSep($.struct_elem_init), ')'),
@@ -711,6 +720,14 @@ module.exports = grammar({
         )),
 
         // Table 12 - Reference operations 
+
+        ...createSpecInit("ref",
+            $ => seq(":",
+                'REF_TO',
+                $._data_type_access
+            ),
+            $ => seq(':=', $.ref_value)
+        ),
 
         ref_type_decl: $ => seq(
             field("name", $.identifier),
@@ -783,7 +800,7 @@ module.exports = grammar({
 
         subscript_list: $ => seq('[', commaSep($.subscript), ']'),
 
-        subscript: $ => $.expression,
+        subscript: $ => $._expression,
 
         struct_variable: $ => seq(
             '.',
@@ -804,7 +821,7 @@ module.exports = grammar({
             field("type", $._input_var_kind)
         ),
 
-        _input_var_kind: $ => choice($._var_decl_init, $.edge_decl, $.array_conformand),
+        _input_var_kind: $ => choice($.var_decl_init, $.edge_decl, $.array_conformand),
 
         edge_decl: $ => seq(
             field("variables", $.variable_list),
@@ -820,29 +837,36 @@ module.exports = grammar({
         // OUTPUTS
         // VARS
         // RETAIN
-        _var_decl_init: $ => choice(
-            $.simple_type_spec_init,
-            $.str_type_spec_init,
-            $.ref_spec_init,
-            $.array_type_spec_init,
-            $.struct_type_spec_init,
-            $.interface_spec_init,
-            $.namespace_qualifier_target
-        ),
+        var_decl_init: $ => useSpecInit([
+            "simple",
+            "str",
+            "array",
+            "struct"
+        ], [
+            "simple",
+            // "str", handled by simple
+            "array",
+            "struct"
 
-        interface_spec_init: $ => seq(':=', $.interface_value),
+        ]
+        )($),
 
         // ( Simple_Spec | Str_Var_Decl | Array_Var_Decl | Struct_Var_Decl )
 
         // INOUT
         // TEMP
-        _var_decl: $ => choice(
-            $.namespace_qualifier_target,
-            $.simple_type_spec_init,
-            $.str_type_spec_init,
-            $.array_type_spec_init,
-            $.struct_type_spec_init
-        ),
+        var_decl: $ => useSpecInit([
+            "simple",
+            "str",
+            "array",
+            "struct"
+        ], [
+            "simple",
+            // "str", handled by simple
+            "array",
+            "struct"
+        ]
+        )($),
 
         variable_list: $ => commaSep1($.identifier),
 
@@ -859,7 +883,7 @@ module.exports = grammar({
         fb_decl_no_init: $ => seq(
             commaSep1($.fb_name),
             ':',
-            $.namespace_qualifier_target
+            $.fq_name
         ),
 
         fb_decl_init: $ => seq(':=', $.struct_init),
@@ -879,7 +903,7 @@ module.exports = grammar({
             field("type", $._output_var_kind)
         ),
 
-        _output_var_kind: $ => choice($._var_decl_init, $.array_conformand),
+        _output_var_kind: $ => choice($.var_decl_init, $.array_conformand),
 
         in_out_decls: $ => seq(
             'VAR_IN_OUT',
@@ -893,7 +917,7 @@ module.exports = grammar({
             field("type", $._in_out_var_kind)
         ),
 
-        _in_out_var_kind: $ => choice($._var_decl, $.array_conformand, $.fb_decl_no_init),
+        _in_out_var_kind: $ => choice($.var_decl, $.array_conformand, $.fb_decl_no_init),
 
         var_decls: $ => seq(
             'VAR',
@@ -915,7 +939,7 @@ module.exports = grammar({
 
         var_decl_init_list: $ => seq(
             field("variables", $.variable_list),
-            field("type", $._var_decl)
+            field("type", $.var_decl)
         ),
 
         loc_var_decls: $ => seq(
@@ -945,7 +969,7 @@ module.exports = grammar({
             field("type", $._temp_var_kind)
         ),
 
-        _temp_var_kind: $ => choice($._var_decl, $.ref_spec),
+        _temp_var_kind: $ => choice($.var_decl, $.ref_spec),
 
         external_var_decls: $ => seq(
             'VAR_EXTERNAL',
@@ -960,7 +984,7 @@ module.exports = grammar({
             field("type", $._external_var_kind)
         ),
 
-        _external_var_kind: $ => choice($._var_decl, $.array_conformand),
+        _external_var_kind: $ => choice($.var_decl, $.array_conformand),
 
         global_var_decls: $ => seq(
             'VAR_GLOBAL',
@@ -976,7 +1000,7 @@ module.exports = grammar({
             field("type", $._global_var_kind)
         ),
 
-        _global_var_kind: $ => choice($.loc_var_spec_init, $.namespace_qualifier_target),
+        _global_var_kind: $ => choice($.loc_var_spec_init, $.fq_name),
 
         global_var_spec: $ => choice(
             seq(commaSep1($.identifier)),
@@ -986,12 +1010,18 @@ module.exports = grammar({
             )
         ),
 
-        loc_var_spec_init: $ => choice(
-            $.simple_type_spec_init,
-            $.array_type_spec_init,
-            $.struct_type_spec_init,
-            $.str_type_spec_init
-        ),
+        // Loc_Var_Spec_Init : Simple_Spec_Init | Array_Spec_Init | Struct_Spec_Init | S_Byte_Str_Spec | D_Byte_Str_Spec; 
+        loc_var_spec_init: $ => useSpecInit([
+            "simple",
+            "array",
+            "struct",
+            "str"
+        ], [
+            "simple",
+            "array",
+            "struct"
+            // "str" handled by simple
+        ])($),
 
         located_at: $ => seq(
             'AT',
@@ -1018,7 +1048,7 @@ module.exports = grammar({
 
         var_spec: $ => choice(
             $.array_type_spec,
-            $.namespace_qualifier_target,
+            $.fq_name,
             seq(choice('STRING', 'WSTRING'), optional(seq('[', $.unsigned_int, ']'))),
         ),
 
@@ -1054,7 +1084,7 @@ module.exports = grammar({
             field("qualifier", optional(choice('FINAL', 'ABSTRACT'))),
             field("name", $.identifier),
             field("directives", repeat($.using_directive)),
-            field("extends", optional(seq("EXTENDS", $.namespace_qualifier_target))),
+            field("extends", optional(seq("EXTENDS", $.fq_name))),
             field("implements", optional(seq("IMPLEMENTS", $.interface_name_list))),
             field("variables", repeat($._fb_variables)),
             field("method", repeat($.method_decl)),
@@ -1085,7 +1115,7 @@ module.exports = grammar({
         ),
 
         _fb_input_var_kind: $ => choice(
-            $._var_decl_init,
+            $.var_decl_init,
             $.edge_decl,
             $.array_conformand
         ),
@@ -1104,7 +1134,7 @@ module.exports = grammar({
         ),
 
         _fb_output_var_kind: $ => choice(
-            $._var_decl_init,
+            $.var_decl_init,
             $.array_conformand
         ),
 
@@ -1143,7 +1173,7 @@ module.exports = grammar({
             field("qualifier", optional(choice('FINAL', 'ABSTRACT'))),
             field("name", $.class_type_name),
             field("directives", repeat($.using_directive)),
-            field("extends", optional(seq("EXTENDS", $.namespace_qualifier_target))),
+            field("extends", optional(seq("EXTENDS", $.fq_name))),
             field("implements", optional(seq("IMPLEMENTS", $.interface_name_list))),
             field("declarations", repeat($._class_variables)),
             field("method", repeat($.method_decl)),
@@ -1158,7 +1188,7 @@ module.exports = grammar({
         class_type_name: $ => $.identifier,
 
         instance_name: $ => prec(PREC.dereference, seq(
-            $.namespace_qualifier_target,
+            $.fq_name,
             repeat1('^')
         )),
 
@@ -1191,7 +1221,7 @@ module.exports = grammar({
             'NULL'
         ),
 
-        interface_name_list: $ => commaSep1($.namespace_qualifier_target),
+        interface_name_list: $ => commaSep1($.fq_name),
 
         interface_name: $ => $.identifier,
 
@@ -1214,7 +1244,7 @@ module.exports = grammar({
             'END_PROGRAM'
         ),
 
-        prog_type_access: $ => $.namespace_qualifier_target,
+        prog_type_access: $ => $.fq_name,
 
         prog_access_decls: $ => seq(
             'ref_deref',
@@ -1307,7 +1337,7 @@ module.exports = grammar({
         ),
 
         transition_cond: $ => choice(
-            seq(':=', $.expression, ';'),
+            seq(':=', $._expression, ';'),
             seq(':', choice($.fbd_network, $.ld_rung)
             )
         ),
@@ -1468,7 +1498,7 @@ module.exports = grammar({
                 seq(
                     $.instance_name,
                     ':',
-                    $.namespace_qualifier_target,
+                    $.fq_name,
                     ':=',
                     $.struct_init
                 )
@@ -1526,19 +1556,19 @@ module.exports = grammar({
 
         // Table 71 - 72 - Language Structured Text (ST) 
 
-        expression: $ => choice(
+        _expression: $ => choice(
             $.boolean_operator,
             $.comparison_operator,
             $.add_operator,
             $.mult_operator,
             $.power_operator,
             $.unary_operator,
-            $.primary_expression
+            $._primary_expression
         ),
 
-        primary_expression: $ => prec.left(choice(
+        _primary_expression: $ => prec.left(choice(
             $.constant,
-            $.namespace_qualifier_target,
+            $.fq_name,
             $.enum_value,
             $.variable_access,
             $.func_call,
@@ -1546,37 +1576,37 @@ module.exports = grammar({
             $.parenthesized_expression
         )),
 
-        parenthesized_expression: $ => seq('(', $.expression, ')'),
+        parenthesized_expression: $ => seq('(', $._expression, ')'),
 
         boolean_operator: $ => choice(
-            prec.left(PREC.boolean_or, seq($.expression, 'OR', $.expression)),
-            prec.left(PREC.boolean_xor, seq($.expression, 'XOR', $.expression)),
-            prec.left(PREC.boolean_and, seq($.expression, choice('&', 'AND'), $.expression))
+            prec.left(PREC.boolean_or, seq($._expression, 'OR', $._expression)),
+            prec.left(PREC.boolean_xor, seq($._expression, 'XOR', $._expression)),
+            prec.left(PREC.boolean_and, seq($._expression, choice('&', 'AND'), $._expression))
         ),
 
         comparison_operator: $ => choice(
-            prec.left(PREC.equality, seq($.expression, choice('=', '<>'), $.expression)),
-            prec.left(PREC.comparison, seq($.expression, choice('<', '>', '<=', '>='), $.expression))
+            prec.left(PREC.equality, seq($._expression, choice('=', '<>'), $._expression)),
+            prec.left(PREC.comparison, seq($._expression, choice('<', '>', '<=', '>='), $._expression))
         ),
 
         add_operator: $ => prec.left(PREC.add,
-            seq($.expression, choice('+', '-'), $.expression)
+            seq($._expression, choice('+', '-'), $._expression)
         ),
 
         mult_operator: $ => prec.left(PREC.modulo,
-            seq($.expression, choice('*', '/', 'MOD'), $.expression)
+            seq($._expression, choice('*', '/', 'MOD'), $._expression)
         ),
 
         power_operator: $ => prec.right(PREC.exponentiation,
-            seq($.expression, '**', $.expression)
+            seq($._expression, '**', $._expression)
         ),
 
         unary_operator: $ => prec(PREC.unary,
-            seq(choice('-', '+', 'NOT'), $.expression)
+            seq(choice('-', '+', 'NOT'), $._expression)
         ),
 
         // A constant expression must evaluate to a constant value at compile time 
-        constant_expr: $ => $.expression,
+        constant_expr: $ => $._expression,
 
         variable_access: $ => seq(
             $.variable,
@@ -1592,7 +1622,7 @@ module.exports = grammar({
         ),
 
         func_call: $ => seq(
-            $.namespace_qualifier_target,
+            $.fq_name,
             '(', prec(PREC.parameter_list, commaSep($.param_assign)), ')'
         ),
 
@@ -1600,7 +1630,7 @@ module.exports = grammar({
 
         stmt: $ => choice(
             // assignments
-            seq($.variable, ':=', $.expression),
+            $.assignment,
             $.ref_assign,
             $.assignment_attempt,
             // subprog
@@ -1618,6 +1648,8 @@ module.exports = grammar({
             'EXIT',
             'CONTINUE'
         ),
+
+        assignment: $ => seq($.variable, ':=', $._expression),
 
         assignment_attempt: $ => seq(
             choice($.ref_name, $.ref_deref),
@@ -1639,24 +1671,24 @@ module.exports = grammar({
         ),
 
         param_assign: $ => choice(
-            seq(field("param", $.identifier), ':=', $.expression),
+            seq(field("param", $.identifier), ':=', $._expression),
             $.ref_assign,
             seq(optional('NOT'), field("param", $.identifier), '=>', $.variable)
         ),
 
         if_stmt: $ => seq(
             'IF',
-            $.expression,
+            $._expression,
             'THEN',
             optional($.stmt_list),
-            repeat(seq('ELSE IF', $.expression, 'THEN', $.stmt_list)),
+            repeat(seq('ELSE IF', $._expression, 'THEN', $.stmt_list)),
             optional(seq('ELSE', $.stmt_list)),
             'END_IF'
         ),
 
         case_stmt: $ => seq(
             'CASE',
-            $.expression,
+            $._expression,
             'OF',
             repeat1($.case_selection),
             optional(seq('ELSE', $.stmt_list)),
@@ -1689,15 +1721,15 @@ module.exports = grammar({
         control_variable: $ => $.identifier,
 
         for_list: $ => seq(
-            $.expression,
+            $._expression,
             'TO',
-            $.expression,
-            optional(seq('BY', $.expression))
+            $._expression,
+            optional(seq('BY', $._expression))
         ),
 
         while_stmt: $ => seq(
             'WHILE',
-            $.primary_expression,
+            $._primary_expression,
             'DO',
             $.stmt_list,
             'END_WHILE'
@@ -1707,15 +1739,15 @@ module.exports = grammar({
             'REPEAT',
             $.stmt_list,
             'UNTIL',
-            $.expression,
+            $._expression,
             'END_REPEAT'
         ),
 
         // Other
 
-        namespace_qualifier_target: $ => prec.left(
+        fq_name: $ => prec.left(
             seq(
-                optional(seq(repeat(seq("::", $.identifier)), "::")),
+                optional(seq(repeat(seq("::", field("fragment", $.identifier))), "::")),
                 field("target", $.identifier)
             ),
         ),
@@ -1740,9 +1772,9 @@ module.exports = grammar({
         // Table 1 - Character sets
         // Table 2 - Identifiers
 
-        bit: $ => /[01]/,
-        octal_digit: $ => /[0-7]/,
-        hex_digit: $ => /[0-9a-fA-F]/,
+        _bit: $ => /[01]/,
+        _octal_digit: $ => /[0-7]/,
+        _hex_digit: $ => /[0-9a-fA-F]/,
         identifier: $ => /[0-9a-zA-Z_]+/,
     }
 });
