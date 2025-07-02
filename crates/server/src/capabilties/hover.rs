@@ -34,22 +34,21 @@ pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Opti
                 kind: MarkupKind::Markdown,
                 value: format!(
                     r#"```typescript
-namespace {}                    
-{} {}
+{}{} {}
 ```
 {}
 "#,
-                    ns.path(db).display(db),
-                    match symbol.kind {
-                        Some(auto_lsp::lsp_types::SymbolKind::NAMESPACE) => "namespace",
-                        Some(auto_lsp::lsp_types::SymbolKind::FUNCTION) => "function",
-                        Some(auto_lsp::lsp_types::SymbolKind::CLASS) => "class",
-                        Some(auto_lsp::lsp_types::SymbolKind::INTERFACE) => "interface",
-                        Some(auto_lsp::lsp_types::SymbolKind::TYPE_PARAMETER) => "type",
-                        Some(auto_lsp::lsp_types::SymbolKind::VARIABLE) => "var",
-                        _ => "unknown",
+                    if symbol.kind == Some(auto_lsp::lsp_types::SymbolKind::NAMESPACE) {
+                        "".into()
+                    } else {
+                        format!("namespace {}\n", ns.path(db).display(db))
                     },
-                    symbol.name,
+                    symbol.kind_to_string(),
+                    if symbol.spec.is_some() {
+                        format!("{}: {}", symbol.name, symbol.spec_to_string(db))
+                    } else {
+                        symbol.name
+                    },
                     get_comment(
                         &file.document(db),
                         symbol.range.as_lsp().start.line as usize
