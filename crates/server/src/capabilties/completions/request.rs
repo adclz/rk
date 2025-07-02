@@ -35,8 +35,6 @@ pub fn completions(
 
     let doc = file.document(db);
 
-    let offset = doc.offset_at(params.text_document_position.position).unwrap();
-
     let mut results = vec![];
 
     Ok(Some(CompletionResponse::Array(results)))
