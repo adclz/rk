@@ -45,24 +45,14 @@ impl<'db> ParseConstant<'db> for ast::generated::Expression {
         match self {
             ast::generated::Expression::PrimaryExpression(p) => match p {
                 ast::generated::PrimaryExpression::Constant(c) => c.to_constant(db, file),
-                ast::generated::PrimaryExpression::FqName(path) => {
-                    Ok(Expr::new_target(
-                        db,
-                        *path.get_range(),
-                        NamespacePath::from((
-                            db,
-                             path
-                                .fragment
-                                .iter()
-                                .map(|f| Ident::from_node(db, file, f.deref()))
-                                .collect::<anyhow::Result<Vec<_>>>()?,
-                        )),
-                        Ident::from_node(db, file, path.target.deref())?,
-                    ))
-                },
+                ast::generated::PrimaryExpression::FqName(path) => Expr::new_target(db, file, path),
                 ast::generated::PrimaryExpression::EnumValue(enum_value) => {
-                    Ok(Expr::new_enum_value(db, *enum_value.get_range(), Ident::from_node(db, file, enum_value.children.deref())?))
-                },
+                    Ok(Expr::new_enum_value(
+                        db,
+                        *enum_value.get_range(),
+                        Ident::from_node(db, file, enum_value.children.deref())?,
+                    ))
+                }
                 _ => unreachable!(),
             },
             _ => todo!(),

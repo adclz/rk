@@ -1,9 +1,13 @@
 use auto_lsp::default::db::BaseDatabase;
 
-use crate::{ident::Ident, to_proto::{IterToProto, SymbolInfo, ToProto}};
+use crate::{hir::expression::{Expr, PrimaryExpr}, to_proto::{IterToProto, SymbolInfo, ToProto}};
 
 #[salsa::tracked(debug)]
-pub struct Class<'db> {}
+pub struct Class<'db> {
+    pub extends: Option<Expr<'db>>,
+
+    pub implements: Option<Vec<Expr<'db>>>,
+}
 
 impl<'db> IterToProto<'db> for Class<'db> {
     fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {

@@ -2,7 +2,7 @@ use auto_enums::auto_enum;
 use auto_lsp::default::db::{BaseDatabase, File};
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::{diagnostics::diagnostic_builder::RangeKind, hir::{class::Class, data_type::DataType, function::Function, function_block::FunctionBlock, interface::Interface}, ident::Ident, solver::NamespacePath, to_proto::{IterToProto, SymbolInfo, ToProto}};
+use crate::{diagnostics::diagnostic_builder::RangeKind, hir::{class::Class, data_type::DataType, function::Function, function_block::FunctionBlock, interface::Interface}, ident::Ident, solver::NamespacePath, to_proto::{Extends, IterToProto, SymbolInfo, ToProto}};
 
 /// Represents a group of namespaces in a file
 #[salsa::tracked]
@@ -169,6 +169,17 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
             _ => None,
         })
         .name_range(self.name_span(db).into())
+        .maybe_extends(match self.pou(db) {
+            Pou::Class(c) => c.extends(db).map(|a| Extends::Single(a)),
+            Pou::FunctionBlock(fb) => fb.extends(db).map(|a| Extends::Single(a)),
+            Pou::Interface(i) => i.extends(db).map(|a| Extends::Multiple(a)),
+            _ => None,
+        })
+        .maybe_implements(match self.pou(db) {
+            Pou::Class(c) => c.implements(db),
+            Pou::FunctionBlock(fb) => fb.implements(db),
+            _ => None,
+        })
         .build()
     }
 }

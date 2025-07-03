@@ -2,11 +2,7 @@ use auto_lsp::{default::db::{BaseDatabase, File}, lsp_types::SymbolKind};
 
 use crate::{diagnostics::diagnostic_builder::RangeKind, hir::{expression::Expr, namespace::PouDecl, variable::Spec}, solver::NamespacePath};
 
-pub(crate) trait Spanned {
-    fn span(&self, db: &dyn crate::BaseDatabase) -> RangeKind;
-}
-
-#[derive(bon::Builder, Clone)]
+#[derive(bon::Builder, Debug, Clone)]
 pub struct SymbolInfo<'a> {
     pub range: RangeKind<'a>,
     pub name: String,
@@ -14,6 +10,14 @@ pub struct SymbolInfo<'a> {
     pub kind: Option<SymbolKind>,
     pub spec: Option<Spec<'a>>,
     pub init: Option<Expr<'a>>,
+    pub implements: Option<Vec<Expr<'a>>>,
+    pub extends: Option<Extends<'a>>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Extends<'a> {
+    Single(Expr<'a>),
+    Multiple(Vec<Expr<'a>>),
 }
 
 impl SymbolInfo<'_> {
@@ -70,16 +74,18 @@ impl SymbolInfo<'_> {
 }
 
 pub trait ToProto<'db> {
+    fn spanned(&'db self, db: &'db dyn crate::BaseDatabase) -> RangeKind<'db>;
+    fn named_span(&'db self, db: &'db dyn crate::BaseDatabase) -> RangeKind<'db>;
     fn symbol_info(&'db self, db: &'db dyn crate::BaseDatabase) -> SymbolInfo<'db>;
 }
 
 pub trait IterToProto<'db> {
-    fn iter(&'db self, db: &'db dyn crate::BaseDatabase) -> impl Iterator<Item = SymbolInfo<'db>>;
+    fn iter(&'db self, db: &'db dyn crate::BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>>;
 
-    fn descendant_at(&'db self, db: &'db dyn crate::BaseDatabase, offset: usize) -> Option<SymbolInfo<'db>> {
+    fn descendant_at(&'db self, db: &'db dyn crate::BaseDatabase, offset: usize) -> Option<&'db dyn ToProto<'db>> {
         let mut result = None;
         for node in self.iter(db) {
-            let range = &node.name_range;
+            let range = node.named_span(db);
 
             if range.start_byte <= offset && offset <= range.end_byte {
                 result = Some(node);

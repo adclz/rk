@@ -1,10 +1,14 @@
 use auto_lsp::default::db::BaseDatabase;
 
-use crate::{hir::variable::Variable, to_proto::{IterToProto, SymbolInfo, ToProto}};
+use crate::{hir::{expression::Expr, variable::Variable}, to_proto::{IterToProto, SymbolInfo, ToProto}};
 
 
 #[salsa::tracked(debug)]
 pub struct FunctionBlock<'db> {
+    pub extends: Option<Expr<'db>>,
+
+    pub implements: Option<Vec<Expr<'db>>>,
+
     #[returns(ref)]
     pub variables: Vec<Variable<'db>>,
 }

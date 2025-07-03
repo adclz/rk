@@ -5,8 +5,9 @@ use auto_lsp::{
     default::db::{tracked::get_ast, BaseDatabase, File},
     lsp_types::{Hover, HoverContents, HoverParams, MarkupContent, MarkupKind},
 };
+use db::hir::expression::{Expr, ExprKind, PrimaryExpr};
 use db::solver::{namespace_solver, namespaces_in_file};
-use db::to_proto::IterToProto;
+use db::to_proto::{Extends, IterToProto};
 
 pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Option<Hover>> {
     let uri = &params.text_document_position_params.text_document.uri;
@@ -30,35 +31,65 @@ pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Opti
     Ok(ns.descendant_at(db, position).and_then(|symbol| {
         let ns = ns.namespace_at(db, position)?;
         let symbol = symbol.symbol_info(db);
+
+        let namespace = if symbol.kind == Some(auto_lsp::lsp_types::SymbolKind::NAMESPACE) {
+            "".into()
+        } else {
+            format!("namespace {}\n", ns.path(db).display(db))
+        };
+
+        let kind = symbol.kind_to_string();
+
+        let spec = if symbol.spec.is_some() {
+            format!("{}: {}", symbol.name, symbol.spec_to_string(db))
+        } else {
+            symbol.name
+        };
+
+        let comment = get_comment(
+            &file.document(db),
+            symbol.range.as_lsp().start.line as usize,
+        )
+        .unwrap_or_default();
+
+        let implements = if let Some(implements) = symbol.implements {
+            format!(" implements {}", implements.iter().map(|i| match i.expr(db) {
+                ExprKind::PrimaryExpr{ expr: PrimaryExpr::Target { target, .. } } => target.text(db),
+                _ => "unknown".into(),
+            }).collect::<Vec<_>>().join(", "))
+        } else {
+            "".into()
+        };
+
+        let extends = if let Some(extends) = symbol.extends {
+            match extends {
+                Extends::Single(extends) => format!(" extends {}", match extends.expr(db) {
+                    ExprKind::PrimaryExpr{ expr: PrimaryExpr::Target { target, .. } } => target.text(db),
+                    _ => "unknown".into(),
+                }),
+                Extends::Multiple(extends) => format!(" extends {}", extends.iter().map(|i| match i.expr(db) {
+                    ExprKind::PrimaryExpr{ expr: PrimaryExpr::Target { target, .. } } => target.text(db),
+                    _ => "unknown".into(),
+                }).collect::<Vec<_>>().join(", ")),
+            }
+        } else {
+            "".into()
+        };
+        
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,
                 value: format!(
                     r#"```typescript
-{}{} {}
+{namespace}{kind} {spec}{implements}{extends}
 ```
-{}
+{comment}
 "#,
-                    if symbol.kind == Some(auto_lsp::lsp_types::SymbolKind::NAMESPACE) {
-                        "".into()
-                    } else {
-                        format!("namespace {}\n", ns.path(db).display(db))
-                    },
-                    symbol.kind_to_string(),
-                    if symbol.spec.is_some() {
-                        format!("{}: {}", symbol.name, symbol.spec_to_string(db))
-                    } else {
-                        symbol.name
-                    },
-                    get_comment(
-                        &file.document(db),
-                        symbol.range.as_lsp().start.line as usize
-                    )
-                    .unwrap_or_default()
                 ),
             }),
             range: Some(symbol.range.into()),
-    })}))
+        })
+    }))
 }
 
 fn get_comment(doc: &Document, line: usize) -> Option<String> {

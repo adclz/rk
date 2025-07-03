@@ -1,13 +1,17 @@
-use auto_lsp::default::db::BaseDatabase;
+use std::ops::Deref;
 
 use crate::{ident::Ident, solver::NamespacePath};
+use auto_lsp::anyhow;
+use auto_lsp::core::ast::AstNode;
+use auto_lsp::default::db::File;
+use auto_lsp::{anyhow::anyhow, default::db::BaseDatabase};
 
 #[salsa::tracked(debug)]
 pub struct Expr<'db> {
     span: auto_lsp::tree_sitter::Range,
 
     #[return_ref]
-    expr: ExprKind<'db>,
+    pub expr: ExprKind<'db>,
 }
 
 impl<'db> Expr<'db> {
@@ -27,17 +31,26 @@ impl<'db> Expr<'db> {
 
     pub fn new_target(
         db: &'db dyn BaseDatabase,
-        span: auto_lsp::tree_sitter::Range,
-        path: NamespacePath,
-        target: Ident,
-    ) -> Expr<'db> {
-        Expr::new(
+        file: File,
+        fq_name: &ast::generated::FqName,
+    ) -> anyhow::Result<Expr<'db>> {
+        Ok(Expr::new(
             db,
-            span,
+            *fq_name.get_range(),
             ExprKind::PrimaryExpr {
-                expr: PrimaryExpr::Target { path, target },
+                expr: PrimaryExpr::Target {
+                    target: Ident::from_node(db, file, fq_name.target.deref())?,
+                    path: NamespacePath::from((
+                        db,
+                        fq_name
+                            .fragment
+                            .iter()
+                            .map(|f| Ident::from_node(db, file, f.deref()))
+                            .collect::<anyhow::Result<Vec<_>>>()?,
+                    )),
+                },
             },
-        )
+        ))
     }
 
     pub fn new_enum_value(
