@@ -1,12 +1,14 @@
 use auto_lsp::default::db::BaseDatabase;
 
-use crate::{hir::expression::{Expr, PrimaryExpr}, to_proto::{IterToProto, SymbolInfo, ToProto}};
+use crate::{hir::{expression::{Expr, PrimaryExpr}, visibility::Modifiers}, to_proto::{IterToProto, SymbolInfo, ToProto}};
 
 #[salsa::tracked(debug)]
 pub struct Class<'db> {
     pub extends: Option<Expr<'db>>,
 
     pub implements: Option<Vec<Expr<'db>>>,
+
+    pub modifiers: Modifiers,
 }
 
 impl<'db> IterToProto<'db> for Class<'db> {

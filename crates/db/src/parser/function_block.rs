@@ -5,6 +5,7 @@ use auto_lsp::anyhow;
 use auto_lsp::default::db::{BaseDatabase, File};
 use crate::hir::expression::Expr;
 use crate::hir::variable::Variable;
+use crate::hir::visibility::Modifiers;
 use crate::parser::{Parse, ParseVarSection};
 use crate::hir;
 
@@ -26,11 +27,18 @@ impl<'db> Parse<'db> for ast::generated::FbDecl {
             .map(|i| i.children.iter().map(|i| Expr::new_target(db, file, i)).collect())
             .transpose()?;
 
+        let mut modifiers = Modifiers::empty();
+        self.qualifier.as_ref().map(|q| match q.deref() {
+            ast::generated::Operators_1::Token_ABSTRACT(_) => modifiers.insert(Modifiers::ABSTRACT),
+            ast::generated::Operators_1::Token_FINAL(_) =>  modifiers.insert(Modifiers::FINAL),
+        });
+
         Ok(hir::function_block::FunctionBlock::new(
             db,
             extends,
             implements,
             variables,
+            modifiers,
         ))
     }
 }

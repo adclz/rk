@@ -1,5 +1,8 @@
+use std::ops::Deref;
+
 use crate::hir;
 use crate::hir::expression::Expr;
+use crate::hir::visibility::Modifiers;
 use crate::parser::Parse;
 use auto_lsp::anyhow;
 use auto_lsp::default::db::{BaseDatabase, File};
@@ -20,6 +23,12 @@ impl<'db> Parse<'db> for ast::generated::ClassDecl {
             .map(|i| i.children.iter().map(|i| Expr::new_target(db, file, i)).collect())
             .transpose()?;
 
-        Ok(hir::class::Class::new(db, extends, implements))
+        let mut modifiers = Modifiers::empty();
+        self.qualifier.as_ref().map(|q| match q.deref() {
+            ast::generated::Operators_1::Token_ABSTRACT(_) => modifiers.insert(Modifiers::ABSTRACT),
+            ast::generated::Operators_1::Token_FINAL(_) =>  modifiers.insert(Modifiers::FINAL),
+        });
+
+        Ok(hir::class::Class::new(db, extends, implements, modifiers))
     }
 }

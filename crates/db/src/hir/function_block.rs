@@ -1,6 +1,6 @@
 use auto_lsp::default::db::BaseDatabase;
 
-use crate::{hir::{expression::Expr, variable::Variable}, to_proto::{IterToProto, SymbolInfo, ToProto}};
+use crate::{hir::{expression::Expr, variable::Variable, visibility::Modifiers}, to_proto::{IterToProto, SymbolInfo, ToProto}};
 
 
 #[salsa::tracked(debug)]
@@ -11,6 +11,8 @@ pub struct FunctionBlock<'db> {
 
     #[returns(ref)]
     pub variables: Vec<Variable<'db>>,
+
+    pub modifiers: Modifiers,
 }
 
 

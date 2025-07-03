@@ -9,11 +9,8 @@ bitflags! {
         const INTERNAL = 1 << 2;
         const PRIVATE = 1 << 3;
 
-        const IMPLEMENTS = 1 << 4;
-        const EXTENDS = 1 << 5;
-
-        const ABSTRACT = 1 << 6;
-        const FINAL = 1 << 7;
-        const OVERRIDE = 1 << 8;
+        const ABSTRACT = 1 << 4;
+        const FINAL = 1 << 5;
+        const OVERRIDE = 1 << 6;
     }
 }
