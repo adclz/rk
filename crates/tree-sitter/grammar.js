@@ -97,6 +97,7 @@ const RESERVED_NAMES = [
     "USING",
     "CLASS", "END_CLASS",
     "INTERFACE", "END_INTERFACE",
+    "METHOD", "END_METHOD",
     "FUNCTION", "END_FUNCTION",
     "FUNCTION_BLOCK", "END_FUNCTION_BLOCK",
     "TYPE", "END_TYPE",
@@ -160,17 +161,7 @@ module.exports = grammar({
         $._primary_expression
     ],
 
-    precedences: $ => [
-        [$.global_ref_deref, $.enum_value],
-    ],
-
     conflicts: $ => [
-        [$.ref_name, $.param_assign],
-        [$.local_variable, $.multi_elem_var],
-        [$.this_variable, $.multi_elem_var],
-
-        [$.signed_int],
-
         // local variable declarations
         [$.var_decls, $.loc_var_decls],
         [$.var_decls, $.loc_var_decls, $.loc_partly_var_decl],
@@ -183,13 +174,13 @@ module.exports = grammar({
 
         // conflicts in type declarations
         [$.numeric_literal, $.enum_value_spec],
+        [$.subrange_type_spec, $.numeric_type_name],
+
+        [$.signed_int],
+        [$.symbolic_variable, $.multi_elem_var],
 
         [$.fq_name],
-        [$.fq_name, $.ref_name],
-        [$.local_variable, $.ref_name],
-        [$.global_ref_deref, $.local_variable],
-
-        [$.subrange_type_spec, $.numeric_type_name],
+        [$.global_ref_deref, $.var_access],
     ],
 
     word: $ => $.identifier,
@@ -260,7 +251,7 @@ module.exports = grammar({
 
         binary_int: $ => seq(
             '2#',
-            field("value", $._bit,repeat1(seq(optional('_'), $._bit)))
+            field("value", $._bit, repeat1(seq(optional('_'), $._bit)))
         ),
 
         octal_int: $ => seq(
@@ -744,8 +735,6 @@ module.exports = grammar({
             $._data_type_access
         ),
 
-        ref_name: $ => $.identifier,
-
         ref_value: $ => choice(
             $.ref_addr,
             'NULL'
@@ -759,41 +748,31 @@ module.exports = grammar({
         ),
 
         ref_assign: $ => seq(
-            $.ref_name,
             ':=',
-            choice($.ref_name, $.ref_deref, $.ref_value)
+            choice($.ref_deref)
         ),
 
-        ref_deref: $ => seq(
-            $.ref_name,
-            prec(PREC.dereference, '^')
-        ),
+        ref_deref: $ => prec(PREC.dereference, seq(
+            $.identifier,
+            '^'
+        )),
 
         // Table 13 - Declaration of variables/Table 14 – Initialization of variables 
 
         variable: $ => choice($.direct_variable, $.symbolic_variable),
 
-        symbolic_variable: $ => choice(
-            $.local_variable,
-            $.this_variable,
-        ),
-
-        local_variable: $ => choice(
-            $.identifier,
-            $.ref_deref,
-            $.multi_elem_var
-        ),
-
-        this_variable: $ => seq('THIS', '.',
+        symbolic_variable: $ => seq(
+            optional(field("this", seq('THIS', '.'))),
             choice(
-                $.identifier,
-                $.ref_deref,
-                $.multi_elem_var
-            )
-        ),
+                $.var_access,
+                $.multi_elem_var,
+        )),
+
+        // Var_Access : Variable_Name | Ref_Deref; 
+        var_access: $ => choice($.identifier, $.ref_deref),
 
         multi_elem_var: $ => seq(
-            $.ref_deref,
+            $.var_access,
             prec.left(repeat1(choice($.subscript_list, $.struct_variable)))
         ),
 
@@ -803,10 +782,8 @@ module.exports = grammar({
 
         struct_variable: $ => seq(
             '.',
-            $.struct_elem_select
+            $.var_access
         ),
-
-        struct_elem_select: $ => $.ref_deref,
 
         input_decls: $ => seq(
             'VAR_INPUT',
@@ -1187,7 +1164,7 @@ module.exports = grammar({
         class_type_name: $ => $.identifier,
 
         instance_name: $ => prec(PREC.dereference, seq(
-            $.fq_name,
+            $.identifier,
             repeat1('^')
         )),
 
@@ -1195,7 +1172,7 @@ module.exports = grammar({
             'INTERFACE',
             field("name", $.identifier),
             field("directives", repeat($.using_directive)),
-            optional(seq('EXTENDS', field("extends",$.interface_name_list))),
+            optional(seq('EXTENDS', field("extends", $.interface_name_list))),
             field("prototype", repeat($.method_prototype)),
             'END_INTERFACE'
         ),
@@ -1617,21 +1594,19 @@ module.exports = grammar({
         ),
 
         func_call: $ => seq(
-            $.fq_name,
-            '(', prec(PREC.parameter_list, commaSep($.param_assign)), ')'
+            field("target", $.fq_name),
+            '(', prec(PREC.parameter_list, field("params", commaSep($.param_assign))), ')'
         ),
 
         stmt_list: $ => prec.left(repeat1(seq($.stmt, optional(";")))),
 
         stmt: $ => choice(
             // assignments
-            $.assignment,
-            $.ref_assign,
-            $.assignment_attempt,
+            $.assign,
             // subprog
             $.func_call,
             $.invocation,
-            seq('SUPER', '(', ')'),
+            alias(seq('SUPER', '(', ')'), $.super),
             'RETURN',
             // iteration
             $.if_stmt,
@@ -1644,31 +1619,74 @@ module.exports = grammar({
             'CONTINUE'
         ),
 
-        assignment: $ => seq($.variable, ':=', $._expression),
+        // assignment: $ => seq(
+        //    $.variable, 
+        //    ':=', 
+        //    $._expression
+        //),
+        // ref_assign: $ => seq(
+        //    ':=',
+        //    choice($.ref_name, $.ref_deref, $.ref_value)
+        //),
+        // assignment_attempt: $ => seq(
+        //    field("value", choice($.identifier, $.ref_deref)),
+        //    '?=',
+        //    field("target", choice($.identifier, $.ref_deref, $.ref_value))
+        //),
+        assign: $ => seq(
+            field("variable", $.variable),
+            field("target", choice(
+                $.assignment_attempt,
+                $.assignment,
+                $.ref_assign,
+            )
+            )),
+
+        assignment: $ => seq(
+            ':=',
+            $._expression
+        ),
 
         assignment_attempt: $ => seq(
-            choice($.ref_name, $.ref_deref),
             '?=',
-            choice($.ref_name, $.ref_deref, $.ref_value)
+            field("target", choice($.identifier, $.ref_deref, $.ref_value))
         ),
 
         invocation: $ => seq(
             choice(
                 $.instance_name,
-                'THIS',
-                seq(
-                    optional(seq('THIS', '.')),
-                    repeat1(seq(choice($.instance_name), '.')),
-                    $.identifier
-                )
+                alias('THIS', $.this),
+                $.this_invocation
             ),
             '(', commaSep($.param_assign), ')'
         ),
 
+        this_invocation: $ => seq(
+            seq('THIS', '.'),
+            repeat1(seq($.instance_name, '.')),
+            alias($.identifier, $.method_name),
+            '(', prec(PREC.parameter_list, field("params", commaSep($.param_assign))), ')'
+        ),
+
         param_assign: $ => choice(
-            seq(field("param", $.identifier), ':=', $._expression),
-            $.ref_assign,
-            seq(optional('NOT'), field("param", $.identifier), '=>', $.variable)
+            $.param_assign_input,
+            $.param_assign_output
+        ),
+
+        param_assign_input: $ => seq(
+            optional(
+                seq(
+                    field("param", $.identifier),
+                    ':=')
+            ),
+            field("value", $._expression)
+        ),
+
+        param_assign_output: $ => seq(
+            field("not", optional('NOT')),
+            field("param", $.identifier),
+            '=>',
+            field("variable", $.variable)
         ),
 
         if_stmt: $ => seq(
@@ -1740,6 +1758,8 @@ module.exports = grammar({
 
         // Other
 
+        // Fully qualified name (not present in the standard)
+        // Inspired from rust and C++ qualified names
         fq_name: $ => prec.left(
             seq(
                 optional(seq(repeat(seq("::", field("fragment", $.identifier))), "::")),
@@ -1749,8 +1769,6 @@ module.exports = grammar({
 
         // Table 73 - 76 - Graphic languages elements 
 
-        // note: IEC does not specify at least one occurence of a statement in a ladder diagram
-        // but since tree sitter does not support empty string, we have to add at least one rung.
         ladder_diagram: $ => repeat1(
             $.ld_rung,
         ),
