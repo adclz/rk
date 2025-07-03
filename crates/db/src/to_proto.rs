@@ -17,18 +17,19 @@ pub struct SymbolInfo<'a> {
 #[derive(Debug, Clone)]
 pub enum Extends<'a> {
     Single(Expr<'a>),
-    Multiple(Vec<Expr<'a>>),
+    Multiple(&'a Vec<Expr<'a>>),
 }
 
 impl SymbolInfo<'_> {
     pub fn kind_to_string(&self) -> &'static str {
         match self.kind {
             Some(SymbolKind::VARIABLE) => "var",
-            Some(SymbolKind::FUNCTION) => "func",
+            Some(SymbolKind::FUNCTION) => "function",
             Some(SymbolKind::CLASS) => "class",
             Some(SymbolKind::INTERFACE) => "interface",
             Some(SymbolKind::TYPE_PARAMETER) => "type",
             Some(SymbolKind::NAMESPACE) => "namespace",
+            Some(SymbolKind::METHOD) => "method",
             _ => "unknown",
         }
     }

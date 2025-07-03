@@ -19,15 +19,7 @@ pub fn inlay_hints(db: &impl BaseDatabase, params: InlayHintParams) -> anyhow::R
             return;
         }
         results.push(InlayHint {
-            label: InlayHintLabel::String(format!("{} {}", match symbol.kind {
-                Some(auto_lsp::lsp_types::SymbolKind::NAMESPACE) => "namespace",
-                Some(auto_lsp::lsp_types::SymbolKind::FUNCTION) => "function",
-                Some(auto_lsp::lsp_types::SymbolKind::CLASS) => "class",
-                Some(auto_lsp::lsp_types::SymbolKind::INTERFACE) => "interface",
-                Some(auto_lsp::lsp_types::SymbolKind::TYPE_PARAMETER) => "type",
-                Some(auto_lsp::lsp_types::SymbolKind::VARIABLE) => "variable",
-                _ => "unknown",
-            }, symbol.name)),
+            label: InlayHintLabel::String(format!("{} {}", symbol.kind_to_string(), symbol.name)),
             position: symbol.range.as_lsp().end,
             kind: Some(InlayHintKind::TYPE),   
             text_edits: None,

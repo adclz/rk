@@ -143,7 +143,6 @@ module.exports = grammar({
         $._func_variables,
         $._fb_variables,
         $._class_variables,
-        $._method_variables,
 
         $._input_var_kind,
         $._fb_input_var_kind,
@@ -1084,8 +1083,8 @@ module.exports = grammar({
             field("qualifier", optional(choice('FINAL', 'ABSTRACT'))),
             field("name", $.identifier),
             field("directives", repeat($.using_directive)),
-            field("extends", optional(seq("EXTENDS", $.fq_name))),
-            field("implements", optional(seq("IMPLEMENTS", $.interface_name_list))),
+            optional(seq("EXTENDS", field("extends", $.fq_name))),
+            optional(seq("IMPLEMENTS", field("implements", $.interface_name_list))),
             field("variables", repeat($._fb_variables)),
             field("method", repeat($.method_decl)),
             field("body", optional($.fb_body)),
@@ -1173,8 +1172,8 @@ module.exports = grammar({
             field("qualifier", optional(choice('FINAL', 'ABSTRACT'))),
             field("name", $.class_type_name),
             field("directives", repeat($.using_directive)),
-            field("extends", optional(seq("EXTENDS", $.fq_name))),
-            field("implements", optional(seq("IMPLEMENTS", $.interface_name_list))),
+            optional(seq("EXTENDS", field("extends", $.fq_name))),
+            optional(seq("IMPLEMENTS", field("implements", $.interface_name_list))),
             field("declarations", repeat($._class_variables)),
             field("method", repeat($.method_decl)),
             'END_CLASS'
@@ -1196,7 +1195,7 @@ module.exports = grammar({
             'INTERFACE',
             field("name", $.identifier),
             field("directives", repeat($.using_directive)),
-            field("extends", optional(seq('EXTENDS', $.interface_name_list))),
+            optional(seq('EXTENDS', field("extends",$.interface_name_list))),
             field("prototype", repeat($.method_prototype)),
             'END_INTERFACE'
         ),
@@ -1204,13 +1203,9 @@ module.exports = grammar({
         method_prototype: $ => seq(
             'METHOD',
             field("name", $.identifier),
-            field("data_type", optional(seq(':', $._data_type_access))),
-            field("variables", repeat($._method_variables)),
+            optional(seq(':', field("data_type", $._data_type_access))),
+            field("variables", repeat(choice(...io_var_decls($)))),
             'END_METHOD'
-        ),
-
-        _method_variables: $ => choice(
-            ...io_var_decls($)
         ),
 
         interface_spec_init: $ => seq(':=', $.interface_value),

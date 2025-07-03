@@ -1,19 +1,62 @@
+use std::ops::Deref;
+
 use auto_lsp::anyhow;
 use auto_lsp::default::db::{BaseDatabase, File};
+use auto_lsp::core::ast::AstNode;
 use crate::hir::expression::Expr;
-use crate::parser::Parse;
+use crate::ident::Ident;
+use crate::parser::{Parse, ParseSpec, ParseVarSection};
 use crate::hir;
 
 impl<'db> Parse<'db> for ast::generated::InterfaceDecl {
     type Output = hir::interface::Interface<'db>;
 
-    fn parse(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output> {
+    fn parse(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output> {
         let extends = self
             .extends
             .as_ref()
             .map(|i| i.children.iter().map(|i| Expr::new_target(db, file, i)).collect())
             .transpose()?;
+
+        let methods = self
+            .prototype
+            .iter()
+            .map(|m| m.parse(db, file))
+            .collect::<anyhow::Result<Vec<_>>>()?;
  
-        Ok(hir::interface::Interface::new(db, extends))
+        Ok(hir::interface::Interface::new(db, extends, methods))
     }
 }
+
+impl<'db> Parse<'db> for ast::generated::MethodPrototype {
+    type Output = hir::interface::Method<'db>;
+
+    fn parse(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output> {
+
+        let name = Ident::from_node(db, file, &*self.name)?;
+        let return_type = self
+            .data_type
+            .as_ref()
+            .map(|i| match i.deref() {
+                ast::generated::DataTypeAccess::ElemTypeName(elem_type_name) => {
+                    elem_type_name.to_spec(db, file)
+                }
+                ast::generated::DataTypeAccess::FqName(target) => {
+                    target.to_spec(db, file)
+                }
+            })
+            .transpose()?;
+
+        let mut variables = vec![];
+        for variable in self.variables.iter() {
+            match variable.deref() {
+                ast::generated::InOutDecls_InputDecls_OutputDecls::InputDecls(decls) => decls.parse(db, file, &mut variables)?,
+                ast::generated::InOutDecls_InputDecls_OutputDecls::InOutDecls(decls) => decls.parse(db, file, &mut variables)?,
+                ast::generated::InOutDecls_InputDecls_OutputDecls::OutputDecls(decls) => decls.parse(db, file, &mut variables)?,
+            }
+        }
+        
+        Ok(hir::interface::Method::new(db, *self.get_range(), name, *self.name.get_range(), return_type, variables))
+    }
+}
+ 

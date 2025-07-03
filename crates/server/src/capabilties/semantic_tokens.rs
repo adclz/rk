@@ -23,6 +23,7 @@ define_semantic_token_types![
         TYPE_PARAMETER,
         NUMBER,
         STRING,
+        METHOD
     }
 
     custom {
@@ -58,6 +59,8 @@ static QUERY: &str = r#"
          "END_CLASS"
          "INTERFACE"
          "END_INTERFACE"
+         "METHOD"
+         "END_METHOD"
         ] @keyword
 
         (variable_list (identifier) @variable) 
@@ -97,6 +100,8 @@ static QUERY: &str = r#"
         (func_decl name: (_) @declaration.function)
         (fb_decl name: (_) @declaration.function_block)
         (class_decl name: (_) @declaration.class)
+        (interface_decl name: (_) @declaration.interface)
+        (method_prototype name: (_) @declaration.method)
 "#;
 
 static HIGHLIGHT_QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
@@ -192,6 +197,7 @@ pub fn semantic_tokens_full(
                         .position(|x| *x == INTERFACE)
                         .unwrap() as u32,
                     "type" => SUPPORTED_TYPES.iter().position(|x| *x == TYPE).unwrap() as u32,
+                    "method" => SUPPORTED_TYPES.iter().position(|x| *x == METHOD).unwrap() as u32,
                     _ => continue,
                 }
             }
