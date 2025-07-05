@@ -1,6 +1,7 @@
 use std::ops::Deref;
 
-use crate::{ident::Ident, solver::NamespacePath};
+use crate::solver::fq_name::FqName;
+use crate::{ident::Ident, solver::namespace::NamespacePath};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::default::db::BaseDatabase;
@@ -39,17 +40,20 @@ impl<'db> Expr<'db> {
             db,
             *fq_name.get_range(),
             ExprKind::PrimaryExpr {
-                expr: PrimaryExpr::Target {
-                    target: Ident::from_node(db, file, fq_name.target.deref())?,
-                    path: NamespacePath::from((
+                expr: PrimaryExpr::Target(
+                    FqName::new(
                         db,
-                        fq_name
-                            .fragment
-                            .iter()
-                            .map(|f| Ident::from_node(db, file, f.deref()))
-                            .collect::<anyhow::Result<Vec<_>>>()?,
-                    )),
-                },
+                        NamespacePath::from((
+                            db,
+                            fq_name
+                                .fragment
+                                .iter()
+                                .map(|f| Ident::from_node(db, file, f.deref()))
+                                .collect::<anyhow::Result<Vec<_>>>()?,
+                        )),
+                        Ident::from_node(db, file, fq_name.target.deref())?,
+                    ),
+                ),
             },
         ))
     }
@@ -133,21 +137,46 @@ pub enum ExprKind<'db> {
 pub enum PrimaryExpr<'db> {
     Literal(Literal),
     // Path --> Target
-    Target {
-        path: NamespacePath,
-        target: Ident,
-    },
+    Target(FqName),
     EnumValue {
         value: Ident,
     },
-    VariableAccess, // todo
+    VariableAccess {
+        variable: Variable<'db>,
+        multibits: MultibitsPart,
+    }, 
     FuncCall {
         expr: Expr<'db>,
         params: Vec<ParamAssign<'db>>,
     },
-    RefValue, // todo
+    RefValue {
+        value: RefValue<'db>,
+    },
     ParenthesizedExpr {
         expr: Expr<'db>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum MultibitsPart {
+    Offset { offset: Ident },
+    SizedOffset { size: SizeOperator, offset: Ident },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum RefValue<'db> {
+    Address { adress: RefAdress<'db> },
+    Null,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum RefAdress<'db> {
+    Symbolic {
+        this: bool,
+        kind: SymbolicVariableKind<'db>,
+    },
+    Instance {
+        instance: Ident,
     },
 }
 
@@ -164,27 +193,27 @@ pub enum ParamAssign<'db> {
     },
 }
 
-bitflags! {
-    #[repr(transparent)]
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub struct AccessOperator: u16 {
-        const I = 1 << 0;
-        const Q = 1 << 1;
-        const M = 1 << 2;
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum AccessOperator {
+    I,
+    Q,
+    M,
+}
 
-        const X = 1 << 3;
-        const B = 1 << 4;
-        const W = 1 << 5;
-        const D = 1 << 6;
-        const L = 1 << 7;
-    }
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum SizeOperator {
+    X,
+    B,
+    W,
+    D,
+    L,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum Variable<'db> {
     Direct {
         kind: AccessOperator,
-        size: Option<AccessOperator>,
+        size: Option<SizeOperator>,
         offset: Vec<Ident>,
     },
     Symbolic {
@@ -195,23 +224,23 @@ pub enum Variable<'db> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum SymbolicVariableKind<'db> {
-    VariableAccess {
-        access: VariableAccess,
+    VarAccess {
+        access: VarAccess,
     },
     MultiElemVar {
-        base: VariableAccess,
+        base: VarAccess,
         elements: Vec<MultiElemVarElement<'db>>,
     },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum MultiElemVarElement<'db> {
-    Subscript { expr: Expr<'db> },             // []
-    StructVariable { access: VariableAccess }, // .
+    Subscript { expr: Vec<Expr<'db>> },        // []
+    StructVariable { access: VarAccess },      // .
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum VariableAccess {
+pub enum VarAccess {
     Simple(Ident),
     Deref(Ident), // ^
 }

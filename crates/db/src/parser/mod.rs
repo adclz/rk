@@ -7,11 +7,11 @@ pub mod namespace;
 pub mod function;
 pub mod function_block;
 pub mod class;
-pub mod constant;
 pub mod variables;
 pub mod types;
 pub mod data_type;
 pub mod interface;
+pub mod expression;
 
 trait Parse<'db>: Sized {
     type Output: Update;

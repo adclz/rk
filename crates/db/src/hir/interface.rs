@@ -21,21 +21,20 @@ pub struct Interface<'db> {
 
 impl<'db> IterToProto<'db> for Interface<'db> {
     fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        self.methods(db).iter().map(|m| m .iter(db)).flatten()
+        self.methods(db)
+            .iter()
+            .map(|m| m.iter(db).map(|n| n as _))
+            .flatten()
     }
 }
 
 #[salsa::tracked(debug)]
 pub struct Method<'db> {
     pub range: auto_lsp::tree_sitter::Range,
-
     pub name: Ident,
-
     pub name_span: auto_lsp::tree_sitter::Range,
-
     #[returns(as_ref)]
     pub return_type: Option<Spec<'db>>,
-    
     #[returns(ref)]
     pub variables: Vec<Variable<'db>>,
 }
@@ -62,7 +61,6 @@ impl<'db> ToProto<'db> for Method<'db> {
 
 impl<'db> IterToProto<'db> for Method<'db> {
     fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        std::iter::once::<&'db dyn ToProto<'db>>(self)
-            .chain(self.variables(db).iter().map(|v| v as _))
+        self.variables(db).iter().map(|v| v as _)
     }
 }

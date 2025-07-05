@@ -59,7 +59,7 @@ mod tests {
     use auto_lsp::{default::db::FileManager, lsp_types, texter::core::text::Text};
 
     use super::*;
-    use crate::{hir::namespace::Pou, ident::Ident, solver::{namespaces_in_file, NamespacePath}, RootDatabase};
+    use crate::{hir::namespace::Pou, ident::Ident, solver::namespace::{namespaces_in_file, NamespacePath}, RootDatabase};
 
     #[test]
     fn variables_in_function() {
