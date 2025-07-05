@@ -158,7 +158,18 @@ module.exports = grammar({
         $._elem_type_name,
 
         $._expression,
-        $._primary_expression
+        $._primary_expression,
+
+        // operators
+        $.unary,
+        $.add,
+        $.mult,
+        $.eq,
+        $.ord,
+
+        // access and size
+        $.IQM,
+        $.XBWDL
     ],
 
     conflicts: $ => [
@@ -176,7 +187,6 @@ module.exports = grammar({
         [$.numeric_literal, $.enum_value_spec],
         [$.subrange_type_spec, $.numeric_type_name],
 
-        [$.signed_int],
         [$.symbolic_variable, $.multi_elem_var],
 
         [$.fq_name],
@@ -703,10 +713,10 @@ module.exports = grammar({
 
         direct_variable: $ => prec.left(seq(
             '%',
-            choice('I', 'Q', 'M'),
-            optional(choice('X', 'B', 'W', 'D', 'L')),
-            $.unsigned_int,
-            repeat(seq('.', $.unsigned_int))
+            field("kind", $.IQM),
+            field("size", optional($.XBWDL)),
+            field("offset", seq($.unsigned_int,
+                repeat(seq('.', $.unsigned_int))))
         )),
 
         // Table 12 - Reference operations 
@@ -737,7 +747,7 @@ module.exports = grammar({
 
         ref_value: $ => choice(
             $.ref_addr,
-            'NULL'
+            alias('NULL', $.null)
         ),
 
         ref_addr: $ => seq(
@@ -762,23 +772,21 @@ module.exports = grammar({
         variable: $ => choice($.direct_variable, $.symbolic_variable),
 
         symbolic_variable: $ => seq(
-            optional(field("this", seq('THIS', '.'))),
+            field("this", alias(optional(seq('THIS', '.')), $.this)),
             choice(
                 $.var_access,
                 $.multi_elem_var,
-        )),
+            )),
 
         // Var_Access : Variable_Name | Ref_Deref; 
         var_access: $ => choice($.identifier, $.ref_deref),
 
         multi_elem_var: $ => seq(
-            $.var_access,
+            field("access", $.var_access),
             prec.left(repeat1(choice($.subscript_list, $.struct_variable)))
         ),
 
-        subscript_list: $ => seq('[', commaSep($.subscript), ']'),
-
-        subscript: $ => $._expression,
+        subscript_list: $ => seq('[', commaSep($._expression), ']'),
 
         struct_variable: $ => seq(
             '.',
@@ -1016,7 +1024,7 @@ module.exports = grammar({
             field("variable_name", $.identifier),
             'AT',
             '%',
-            choice('I', 'Q', 'M'),
+            $.IQM,
             '*',
             ':',
             $.var_spec,
@@ -1152,7 +1160,7 @@ module.exports = grammar({
             optional(seq("EXTENDS", field("extends", $.fq_name))),
             optional(seq("IMPLEMENTS", field("implements", $.interface_name_list))),
             field("declarations", repeat($._class_variables)),
-            field("method", repeat($.method_decl)),
+            field("methods", repeat($.method_decl)),
             'END_CLASS'
         ),
 
@@ -1164,7 +1172,7 @@ module.exports = grammar({
         class_type_name: $ => $.identifier,
 
         instance_name: $ => prec(PREC.dereference, seq(
-            $.identifier,
+            field("name", $.identifier),
             repeat1('^')
         )),
 
@@ -1551,45 +1559,72 @@ module.exports = grammar({
         parenthesized_expression: $ => seq('(', $._expression, ')'),
 
         boolean_operator: $ => choice(
-            prec.left(PREC.boolean_or, seq($._expression, 'OR', $._expression)),
-            prec.left(PREC.boolean_xor, seq($._expression, 'XOR', $._expression)),
-            prec.left(PREC.boolean_and, seq($._expression, choice('&', 'AND'), $._expression))
+            $.or_operator,
+            $.xor_operator,
+            $.and_operator
         ),
+
+        or_operator: $ => prec.left(PREC.boolean_or, seq(field("left", $._expression), 'OR', field("right", $._expression))),
+        xor_operator: $ => prec.left(PREC.boolean_xor, seq(field("left", $._expression), 'XOR', field("right", $._expression))),
+        and_operator: $ => prec.left(PREC.boolean_and, seq(field("left", $._expression), choice('&', 'AND'), field("right", $._expression))),
 
         comparison_operator: $ => choice(
-            prec.left(PREC.equality, seq($._expression, choice('=', '<>'), $._expression)),
-            prec.left(PREC.comparison, seq($._expression, choice('<', '>', '<=', '>='), $._expression))
+            $.eq_operator,
+            $.ord_operator
         ),
+
+        eq_operator: $ => prec.left(PREC.equality, seq(field("left", $._expression), field("operator", $.eq), field("right", $._expression))),
+        ord_operator: $ => prec.left(PREC.comparison, seq(field("left", $._expression), field("operator", $.ord), field("right", $._expression))),
+
+        eq: $ => prec(PREC.equality, choice('=', '<>')),
+        ord: $ => prec(PREC.comparison, choice('<', '>', '<=', '>=')),
+
 
         add_operator: $ => prec.left(PREC.add,
-            seq($._expression, choice('+', '-'), $._expression)
+            seq(
+                field("left", $._expression),
+                field("operator", $.add),
+                field("right", $._expression)
+            )
         ),
+
+        add: $ => prec(PREC.add, choice('+', '-')),
 
         mult_operator: $ => prec.left(PREC.modulo,
-            seq($._expression, choice('*', '/', 'MOD'), $._expression)
+            seq(
+                field("left", $._expression),
+                field("operator", $.mult),
+                field("right", $._expression)
+            )
         ),
 
-        power_operator: $ => prec.right(PREC.exponentiation,
-            seq($._expression, '**', $._expression)
+        mult: $ => prec(PREC.modulo, choice('*', '/', 'MOD')),
+
+        power_operator: $ => prec.left(PREC.exponentiation,
+            seq(
+                field("left", $._expression),
+                '**',
+                field("right", $._expression)
+            )
         ),
 
-        unary_operator: $ => prec(PREC.unary,
-            seq(choice('-', '+', 'NOT'), $._expression)
-        ),
+        unary_operator: $ => seq(field("operator",  $.unary), field("expr", $._expression)),
+
+        unary: $ => prec(PREC.unary,choice('-', '+', 'NOT')),
 
         // A constant expression must evaluate to a constant value at compile time 
         constant_expr: $ => $._expression,
 
         variable_access: $ => seq(
-            $.variable,
-            $.multibit_part_access
+            field("variable", $.variable),
+            field("access", $.multibit_part_access)
         ),
 
         multibit_part_access: $ => seq(
             '.',
             choice(
                 $.unsigned_int,
-                seq('%', optional(choice('X', 'B', 'W', 'D', 'L')), $.unsigned_int)
+                seq('%', field("size", optional($.XBWDL)), $.unsigned_int)
             )
         ),
 
@@ -1766,6 +1801,9 @@ module.exports = grammar({
                 field("target", $.identifier)
             ),
         ),
+
+        IQM: $ => choice('I', 'Q', 'M'),
+        XBWDL: $ => choice('X', 'B', 'W', 'D', 'L'),
 
         // Table 73 - 76 - Graphic languages elements 
 
