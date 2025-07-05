@@ -6,7 +6,7 @@ use auto_lsp::{
     lsp_types::{Hover, HoverContents, HoverParams, MarkupContent, MarkupKind},
 };
 use db::hir::expression::{Expr, ExprKind, PrimaryExpr};
-use db::solver::{namespace_solver, namespaces_in_file};
+use db::solver::namespace::{namespace_solver, namespaces_in_file};
 use db::to_proto::{Extends, IterToProto};
 
 pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Option<Hover>> {
@@ -33,10 +33,10 @@ pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Opti
         let symbol = symbol.symbol_info(db);
 
         let namespace = if symbol.kind == Some(auto_lsp::lsp_types::SymbolKind::NAMESPACE) {
-            "".into()
+            String::default()
         } else {
-            format!("namespace {}\n", ns.path(db).display(db))
-        };
+            format!("namespace {}\n", ns.path(db).path(db).text(db))
+        }; 
 
         let kind = symbol.kind_to_string();
 
@@ -54,28 +54,28 @@ pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Opti
 
         let implements = if let Some(implements) = symbol.implements {
             format!(" implements {}", implements.iter().map(|i| match i.expr(db) {
-                ExprKind::PrimaryExpr{ expr: PrimaryExpr::Target { target, .. } } => target.text(db),
-                _ => "unknown".into(),
+                ExprKind::PrimaryExpr{ expr: PrimaryExpr::Target(target) } => target.namespace(db).path(db).text(db),
+                _ => "unknown".into(), 
             }).collect::<Vec<_>>().join(", "))
         } else {
-            "".into()
+            String::default()
         };
 
         let extends = if let Some(extends) = symbol.extends {
             match extends {
                 Extends::Single(extends) => format!(" extends {}", match extends.expr(db) {
-                    ExprKind::PrimaryExpr{ expr: PrimaryExpr::Target { target, .. } } => target.text(db),
+                    ExprKind::PrimaryExpr{ expr: PrimaryExpr::Target(target) } => target.namespace(db).path(db).text(db),
                     _ => "unknown".into(),
                 }),
                 Extends::Multiple(extends) => format!(" extends {}", extends.iter().map(|i| match i.expr(db) {
-                    ExprKind::PrimaryExpr{ expr: PrimaryExpr::Target { target, .. } } => target.text(db),
+                    ExprKind::PrimaryExpr{ expr: PrimaryExpr::Target(target) } => target.namespace(db).path(db).text(db),
                     _ => "unknown".into(),
                 }).collect::<Vec<_>>().join(", ")),
             }
         } else {
-            "".into()
+            String::default()
         };
-        
+         
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,

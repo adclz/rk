@@ -2,7 +2,7 @@ use auto_enums::auto_enum;
 use auto_lsp::default::db::{BaseDatabase, File};
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::{diagnostics::diagnostic_builder::RangeKind, hir::{class::Class, data_type::DataType, function::Function, function_block::FunctionBlock, interface::Interface}, ident::Ident, solver::NamespacePath, to_proto::{Extends, IterToProto, SymbolInfo, ToProto}};
+use crate::{diagnostics::diagnostic_builder::RangeKind, hir::{class::Class, data_type::DataType, function::Function, function_block::FunctionBlock, interface::Interface}, ident::Ident, solver::namespace::NamespacePath, to_proto::{Extends, IterToProto, SymbolInfo, ToProto}};
 
 /// Represents a group of namespaces in a file
 #[salsa::tracked]
@@ -70,6 +70,7 @@ pub struct Namespace<'db> {
     pub pous: Vec<PouDecl<'db>>,
 }
 
+#[salsa::tracked]
 impl<'db> Namespace<'db> {
     pub fn pou_at(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<PouDecl<'db>> {
         self.pous(db).iter().find_map(|pou| {
@@ -80,6 +81,18 @@ impl<'db> Namespace<'db> {
             }
         })
     }
+
+    #[salsa::tracked(returns(as_ref))]
+    pub fn get_pou(self, db: &'db dyn BaseDatabase, key: Ident) -> Option<PouDecl<'db>> {
+        self.pous(db).iter().find_map(|pou| {
+            if pou.name(db) == &key {
+                Some(*pou)
+            } else {
+                None
+            }
+        })
+    }
+
 }
 
 impl<'db> ToProto<'db> for Namespace<'db> {
@@ -94,7 +107,7 @@ impl<'db> ToProto<'db> for Namespace<'db> {
     fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> SymbolInfo<'db> {
         SymbolInfo::builder()
         .kind(auto_lsp::lsp_types::SymbolKind::NAMESPACE)
-        .name(self.path(db).display(db))
+        .name(self.path(db).path(db).text(db))
         .range(self.spanned(db).into())
         .name_range(self.name_span(db).into())
         .build()

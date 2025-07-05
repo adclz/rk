@@ -4,7 +4,7 @@ use auto_lsp::{
     default::db::{tracked::get_ast, BaseDatabase, File},
     lsp_types::{CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams, SymbolKind},
 };
-use db::{diagnostics::cached_diagnostics, solver::namespaces_in_file, to_proto::IterToProto};
+use db::{diagnostics::cached_diagnostics, solver::namespace::namespaces_in_file, to_proto::IterToProto};
 
 pub fn code_actions(
     db: &impl BaseDatabase,

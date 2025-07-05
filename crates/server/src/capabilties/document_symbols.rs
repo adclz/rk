@@ -8,7 +8,7 @@ use auto_lsp::{
 };
 use db::{
     diagnostics::diagnostic_builder::RangeKind,
-    solver::namespaces_in_file,
+    solver::namespace::namespaces_in_file,
     to_proto::{IterToProto, SymbolInfo},
 };
 

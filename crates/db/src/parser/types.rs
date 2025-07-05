@@ -8,7 +8,7 @@ use auto_lsp::{
 use crate::{
     hir::{expression::Expr, variable::{Spec, Subrange}},
     ident::Ident,
-    parser::{constant::ParseConstant, ParseInit, ParseSpec, ParseSpecInit, SpecInitResult},
+    parser::{expression::ParseExpression, ParseInit, ParseSpec, ParseSpecInit, SpecInitResult},
 };
 
 // Target
@@ -127,7 +127,7 @@ impl<'db> ParseSpec<'db> for ast::generated::IntTypeName {
 
 impl<'db> ParseInit<'db> for ast::generated::SimpleTypeInit {
     fn to_init(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>> {
-        Ok(self.children.children.to_constant(db, file)?)
+        Ok(self.children.children.to_expr(db, file)?)
     }
 }
 
@@ -226,8 +226,8 @@ impl<'db> ParseSpec<'db> for ast::generated::SubrangeTypeSpec {
     fn to_spec(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
         let spec = self.Type.deref().to_spec(db, file)?;
         let range = self.range.deref();
-        let lower = range.lower.children.to_constant(db, file)?;
-        let upper = range.upper.children.to_constant(db, file)?;
+        let lower = range.lower.children.to_expr(db, file)?;
+        let upper = range.upper.children.to_expr(db, file)?;
         Ok(Spec::Subrange(Subrange::new(db, spec, lower, upper)))
     }
 }

@@ -1,6 +1,6 @@
 use auto_lsp::{default::db::{BaseDatabase, File}, lsp_types::SymbolKind};
 
-use crate::{diagnostics::diagnostic_builder::RangeKind, hir::{expression::Expr, namespace::PouDecl, variable::Spec}, solver::NamespacePath};
+use crate::{diagnostics::diagnostic_builder::RangeKind, hir::{expression::Expr, namespace::PouDecl, variable::Spec}, solver::namespace::NamespacePath};
 
 #[derive(bon::Builder, Debug, Clone)]
 pub struct SymbolInfo<'a> {

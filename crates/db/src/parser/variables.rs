@@ -12,7 +12,6 @@ use crate::parser::{ParseInit, ParseSpec, ParseSpecInit, ParseVarSection, SpecIn
 use crate::{
     hir::variable::{Spec, Variable, VariableKind},
     ident::Ident,
-    parser::constant::ParseConstant,
 };
 
 macro_rules! parse_multi_variable_sections {

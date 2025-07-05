@@ -5,7 +5,7 @@ use auto_lsp::{
 
 use crate::{
     diagnostics::{diagnostic_builder::{diag, OneOf, RangeKind}, IdeDiagnostic},
-    solver::{namespace_path, namespaces_in_file},
+    solver::namespace::{namespace_path, namespaces_in_file},
 };
 
 pub fn duplicate_declarations<'db>(

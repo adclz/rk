@@ -10,7 +10,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::hir::namespace::{FileNamespaces, Namespace, Pou, PouDecl};
 use crate::ident::Ident;
 use crate::parser::Parse;
-use crate::solver::NamespacePath;
+use crate::solver::namespace::NamespacePath;
 use crate::parser::data_type::ParseDataType;
 
 pub struct FileNamespacesBuilder<'db> {
