@@ -8,7 +8,7 @@ pub struct NamespacePath {
     pub path: Ident,
 }
 
-impl NamespacePath {
+impl<'db> NamespacePath {
     pub fn concat(&self, db: &dyn BaseDatabase, other: &NamespacePath) -> NamespacePath {
         let mut path = self.path(db).text(db).to_owned();
         path.push_str(&other.path(db).text(db));
@@ -19,10 +19,6 @@ impl NamespacePath {
         let mut path = self.path(db).text(db).to_owned();
         path.push_str(&ident.text(db));
         NamespacePath::new(db, Ident::new(db, path))
-    }
-
-    pub fn display(&self, db: &dyn BaseDatabase) -> String {
-        self.path(db).text(db).to_string()
     }
 }
 
@@ -103,7 +99,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use crate::{
-        solver::{namespace_path, namespaces_in_file},
+        solver::namespace::{namespace_path, namespaces_in_file},
         RootDatabase,
     };
     use auto_lsp::{default::db::FileManager, lsp_types, texter::core::text::Text};
@@ -143,7 +139,7 @@ END_NAMESPACE"#
             .unwrap()
             .namespaces(&db)
             .iter()
-            .map(|n| n.0.display(&db))
+            .map(|n| n.0.path(&db).text(&db))
             .collect::<Vec<_>>();
 
         assert_eq!(actual.len(), 3);

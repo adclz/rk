@@ -1,11 +1,11 @@
 #![recursion_limit = "256"]
 
 pub mod hir;
-pub mod solver;
 pub mod parser;
 pub mod diagnostics;
 pub mod ident;
 pub mod to_proto;
+pub mod solver; 
  
 use auto_lsp::{default::db::{BaseDatabase, File}, lsp_types::Url, salsa};
 use dashmap::DashMap;
