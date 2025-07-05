@@ -54,7 +54,7 @@ END_TYPE
 
 --------------------------------------------------------------------------------
 
-(source_file
+    (source_file
       (data_type_decl
         (type_decl
           (identifier)
@@ -78,23 +78,27 @@ END_TYPE
               (enum_value_spec
                 (identifier)
                 (boolean_operator
-                  (boolean_operator
+                  (or_operator
+                    (boolean_operator
+                      (or_operator
+                        (fq_name
+                          (identifier))
+                        (fq_name
+                          (identifier))))
                     (fq_name
-                      (identifier))
-                    (fq_name
-                      (identifier)))
-                  (fq_name
-                    (identifier))))
+                      (identifier)))))
               (enum_value_spec
                 (identifier)
                 (boolean_operator
-                  (boolean_operator
+                  (and_operator
+                    (boolean_operator
+                      (and_operator
+                        (fq_name
+                          (identifier))
+                        (fq_name
+                          (identifier))))
                     (fq_name
-                      (identifier))
-                    (fq_name
-                      (identifier)))
-                  (fq_name
-                    (identifier))))))
+                      (identifier)))))))
           (simple_type_init
             (constant_expr
               (fq_name
@@ -110,7 +114,7 @@ END_TYPE
 
 --------------------------------------------------------------------------------
 
- (source_file
+  (source_file
       (data_type_decl
         (type_decl
           (identifier)
@@ -120,11 +124,12 @@ END_TYPE
                 (int_name)))
             (subrange
               (constant_expr
-                (constant
-                  (numeric_literal
-                    (int_literal
-                      (signed_int
-                        (unsigned_int))))))
+                (unary_operator
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int)))))))
               (constant_expr
                 (constant
                   (numeric_literal
