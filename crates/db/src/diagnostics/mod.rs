@@ -2,7 +2,7 @@ use std::{ops::Deref, sync::Arc};
 
 use auto_lsp::{
     core::errors::ParseErrorAccumulator,
-    default::db::{tracked::get_ast, BaseDatabase, File},
+    default::db::{tracked::get_ast, BaseDatabase, file::File},
 };
 
 use crate::diagnostics::{

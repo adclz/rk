@@ -5,7 +5,7 @@ use ast::generated::{ExternalVarKind, GlobalVarKind};
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::{
     anyhow,
-    default::db::{BaseDatabase, File},
+    default::db::{BaseDatabase, file::File},
 };
 
 use crate::parser::{ParseInit, ParseSpec, ParseSpecInit, ParseVarSection, SpecInitResult};
@@ -32,8 +32,8 @@ macro_rules! parse_multi_variable_sections {
                         section.push(
                             Variable::new(db,
                                 name,
-                                *variable.get_range(),
-                                *variable.get_range(),
+                                variable.get_span(),
+                                variable.get_span(),
                                 VariableKind::$kind,
                                 result.spec,
                                 result.init,
@@ -93,8 +93,8 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
                     section.push(Variable::new(
                         db,
                         name,
-                        *child.get_range(),
-                        *child.name.get_range(),
+                        child.get_span(),
+                        child.name.get_span(),
                         VariableKind::External,
                         result.spec,
                         result.init,
@@ -106,8 +106,8 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
                     section.push(Variable::new(
                         db,
                         name,
-                        *child.get_range(),
-                        *child.name.get_range(),
+                        child.get_span(),
+                        child.name.get_span(),
                         VariableKind::External,
                         result.spec,
                         result.init,
@@ -133,8 +133,8 @@ impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
                 section.push(Variable::new(
                     db,
                     name,
-                    *child.get_range(),
-                    *variable.get_range(),
+                    child.get_span(),
+                    variable.get_span(),
                     VariableKind::Local,
                     result.spec,
                     result.init,
@@ -159,8 +159,8 @@ impl<'db> ParseVarSection<'db> for ast::generated::RetainVarDecls {
                 section.push(Variable::new(
                     db,
                     name,
-                    *child.get_range(),
-                    *variable.get_range(),
+                    child.get_span(),
+                    variable.get_span(),
                     VariableKind::Retain,
                     result.spec,
                     result.init,
@@ -185,8 +185,8 @@ impl<'db> ParseVarSection<'db> for ast::generated::NoRetainVarDecls {
                 section.push(Variable::new(
                     db,
                     name,
-                    *child.get_range(),
-                    *variable.get_range(),
+                    child.get_span(),
+                    variable.get_span(),
                     VariableKind::NoRetain,
                     result.spec,
                     result.init,
@@ -210,8 +210,8 @@ impl<'db> ParseVarSection<'db> for ast::generated::LocPartlyVarDecl {
             section.push(Variable::new(
                 db,
                 name,
-                *child.get_range(),
-                *child.variable_name.get_range(),
+                child.get_span(),
+                child.variable_name.get_span(),
                 VariableKind::LocPartly,
                 result.spec,
                 result.init,
@@ -236,8 +236,8 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
                     section.push(Variable::new(
                         db,
                         name,
-                        *child.get_range(),
-                        *child.spec.get_range(),
+                        child.get_span(),
+                        child.spec.get_span(),
                         VariableKind::Global,
                         result.spec,
                         result.init,
@@ -249,8 +249,8 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
                     section.push(Variable::new(
                         db,
                         name,
-                        *child.get_range(),
-                        *child.spec.get_range(),
+                        child.get_span(),
+                        child.spec.get_span(),
                         VariableKind::Global,
                         result.spec,
                         result.init,

@@ -1,7 +1,7 @@
 
 use auto_lsp::default::db::BaseDatabase;
 
-use crate::{hir::variable::Variable, to_proto::{IterToProto, SymbolInfo, ToProto}};
+use crate::{hir::variable::Variable, to_proto::{IterToProto, ToProto}};
 
 #[salsa::tracked(debug)]
 pub struct Function<'db> {

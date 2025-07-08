@@ -2,7 +2,7 @@ use std::ops::Deref;
 
 use ast::generated::FbVariables;
 use auto_lsp::anyhow;
-use auto_lsp::default::db::{BaseDatabase, File};
+use auto_lsp::default::db::{BaseDatabase, file::File};
 use crate::hir::expression::Expr;
 use crate::hir::variable::Variable;
 use crate::hir::visibility::Modifiers;
@@ -94,7 +94,7 @@ mod tests {
     fn variables_in_function_block() {
         let mut db = RootDatabase::default();
         let url = lsp_types::Url::parse("file:///test.st").unwrap();
-        let texter = Text::new(
+        let source = 
             r#"
 NAMESPACE nss
     FUNCTION_BLOCK f
@@ -137,14 +137,15 @@ NAMESPACE nss
     END_FUNCTION_BLOCK
 
 END_NAMESPACE
-"#.into(),
-        );
-        db.add_file_from_texter(
-            ast::RK_PARSER.get("structured_text").unwrap(),
-            &url,
-            texter,
-        )
-        .unwrap();
+"#;
+        let file = File::from_string()
+            .db(&db)
+            .parsers(ast::RK_PARSER.get("structured_text").unwrap())
+            .url(&url)
+            .source(source.to_string())
+            .call().unwrap();
+
+        db.add_file(file).unwrap();
 
         let file = db.get_file(&url).unwrap();
         let namespaces = namespaces_in_file(&db, file).unwrap();

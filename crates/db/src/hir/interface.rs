@@ -1,7 +1,6 @@
-use auto_lsp::default::db::BaseDatabase;
+use auto_lsp::{core::span::Span, default::db::BaseDatabase};
 
 use crate::{
-    diagnostics::diagnostic_builder::RangeKind,
     hir::{
         expression::Expr,
         variable::{Spec, Variable},
@@ -30,9 +29,11 @@ impl<'db> IterToProto<'db> for Interface<'db> {
 
 #[salsa::tracked(debug)]
 pub struct Method<'db> {
-    pub range: auto_lsp::tree_sitter::Range,
+    #[returns(ref)]
+    pub range: Span,
     pub name: Ident,
-    pub name_span: auto_lsp::tree_sitter::Range,
+    #[returns(ref)]
+    pub name_span: Span,
     #[returns(as_ref)]
     pub return_type: Option<Spec<'db>>,
     #[returns(ref)]
@@ -40,20 +41,20 @@ pub struct Method<'db> {
 }
 
 impl<'db> ToProto<'db> for Method<'db> {
-    fn spanned(&'db self, db: &'db dyn BaseDatabase) -> RangeKind<'db> {
-        self.range(db).into()
+    fn spanned(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
+        self.range(db)
     }
 
-    fn named_span(&'db self, db: &'db dyn BaseDatabase) -> RangeKind<'db> {
-        self.name_span(db).into()
+    fn named_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
+        self.name_span(db)
     }
 
     fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> SymbolInfo<'db> {
         SymbolInfo::builder()
             .kind(auto_lsp::lsp_types::SymbolKind::METHOD)
             .name(self.name(db).text(db))
-            .range(self.range(db).into())
-            .name_range(self.name_span(db).into())
+            .range(self.range(db).clone())
+            .name_range(self.name_span(db).clone())
             .maybe_spec(self.return_type(db).cloned())
             .build()
     }

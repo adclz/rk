@@ -1,6 +1,6 @@
-use auto_lsp::default::db::BaseDatabase;
+use auto_lsp::{core::span::Span, default::db::BaseDatabase};
 
-use crate::{diagnostics::diagnostic_builder::RangeKind, hir::expression::Expr, ident::Ident, to_proto::{SymbolInfo, ToProto}};
+use crate::{hir::expression::Expr, ident::Ident, to_proto::{SymbolInfo, ToProto}};
 
 
 #[salsa::tracked(debug)]
@@ -9,10 +9,10 @@ pub struct Variable<'db> {
     name: Ident,
 
     #[returns(ref)]
-    pub range: auto_lsp::tree_sitter::Range,
+    pub range: Span,
 
     #[returns(ref)]
-    pub name_span: auto_lsp::tree_sitter::Range,
+    pub name_span: Span,
 
     pub kind: VariableKind,
 
@@ -39,11 +39,11 @@ pub enum VariableKind {
 
 
 impl<'db> ToProto<'db> for Variable<'db> {
-    fn spanned(&'db self, db: &'db dyn BaseDatabase) -> RangeKind<'db> {
+    fn spanned(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         self.range(db).into()
     }
 
-    fn named_span(&'db self, db: &'db dyn BaseDatabase) -> RangeKind<'db> {
+    fn named_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         self.name_span(db).into()
     }
 
@@ -51,10 +51,10 @@ impl<'db> ToProto<'db> for Variable<'db> {
         SymbolInfo::builder()
         .kind(auto_lsp::lsp_types::SymbolKind::VARIABLE)
         .name(self.name(db).text(db))
-        .range(self.range(db).into())
+        .range(self.range(db).clone())
         .spec(self.spec(db))
         .maybe_init(self.init(db))
-        .name_range(self.name_span(db).into())
+        .name_range(self.name_span(db).clone())
         .build()
     }
 }

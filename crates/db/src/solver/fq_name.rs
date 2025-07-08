@@ -5,7 +5,7 @@ use crate::{
     ident::Ident,
     solver::namespace::namespace_path,
 };
-use auto_lsp::default::db::{BaseDatabase, File};
+use auto_lsp::default::db::{BaseDatabase, file::File};
 
 /// Interned Fully Qualified Name
 #[salsa::interned(debug, no_lifetime)]
@@ -64,7 +64,7 @@ pub fn fq_name_solver<'db>(
 
 #[cfg(test)]
 mod tests {
-    use auto_lsp::{default::db::FileManager, lsp_types, texter::core::text::Text};
+    use auto_lsp::{default::db::FileManager, lsp_types};
 
     use super::*;
     use crate::{ident::Ident, solver::namespace::NamespacePath, RootDatabase};
@@ -73,21 +73,22 @@ mod tests {
     fn pou_solver() {
         let mut db = RootDatabase::default();
         let url = lsp_types::Url::parse("file:///test.st").unwrap();
-        let texter = Text::new(
+        let source = 
             r#"
 NAMESPACE ns
     FUNCTION f
 
     END_FUNCTION
-END_NAMESPACE"#
-                .into(),
-        );
-        db.add_file_from_texter(
-            ast::RK_PARSER.get("structured_text").unwrap(),
-            &url,
-            texter,
-        )
-        .unwrap();
+END_NAMESPACE"#;
+
+        let file = File::from_string()
+            .db(&db)
+            .parsers(ast::RK_PARSER.get("structured_text").unwrap())
+            .url(&url)
+            .source(source.to_string())
+            .call().unwrap();
+
+        db.add_file(file).unwrap();
 
         let file = db.get_file(&url).unwrap();
 
@@ -108,38 +109,40 @@ END_NAMESPACE"#
     fn hidden_pou_solver() {
         let mut db = RootDatabase::default();
         let url = lsp_types::Url::parse("file:///test.st").unwrap();
-        let texter = Text::new(
+        let source = 
             r#"
 NAMESPACE INTERNAL ns
     FUNCTION f
 
     END_FUNCTION
-END_NAMESPACE"#
-                .into(),
-        );
-        db.add_file_from_texter(
-            ast::RK_PARSER.get("structured_text").unwrap(),
-            &url,
-            texter,
-        )
-        .unwrap();
+END_NAMESPACE"#;
+
+        let file = File::from_string()
+            .db(&db)
+            .parsers(ast::RK_PARSER.get("structured_text").unwrap())
+            .url(&url)
+            .source(source.to_string())
+            .call().unwrap();
+
+        db.add_file(file).unwrap();
 
         let url = lsp_types::Url::parse("file:///test2.st").unwrap();
-        let texter = Text::new(
+        let source = 
             r#"
 NAMESPACE ns2
     FUNCTION f
 
     END_FUNCTION
-END_NAMESPACE"#
-                .into(),
-        );
-        db.add_file_from_texter(
-            ast::RK_PARSER.get("structured_text").unwrap(),
-            &url,
-            texter,
-        )
-        .unwrap();
+END_NAMESPACE"#;
+
+        let file = File::from_string()
+            .db(&db)
+            .parsers(ast::RK_PARSER.get("structured_text").unwrap())
+            .url(&url)
+            .source(source.to_string())
+            .call().unwrap();
+
+        db.add_file(file).unwrap();
 
         let file = db.get_file(&url).unwrap();
 

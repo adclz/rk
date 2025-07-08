@@ -1,4 +1,4 @@
-use auto_lsp::{anyhow, default::db::File};
+use auto_lsp::{anyhow, default::db::file::File};
 use salsa::Update;
 
 use crate::{hir::{expression::Expr, variable::{Spec, Variable}}, BaseDatabase};

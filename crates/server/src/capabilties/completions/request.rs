@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use auto_lsp::{
-    anyhow, core::ast::AstNode, default::db::{tracked::ParsedAst, BaseDatabase, File}, lsp_types::{self, CompletionItem, CompletionParams, CompletionResponse}
+    anyhow, core::ast::AstNode, default::db::{tracked::ParsedAst, BaseDatabase, file::File}, lsp_types::{self, CompletionItem, CompletionParams, CompletionResponse}
 };
 
 use crate::capabilties::completions::snippets::{class, function, function_block, interface, namespace, test, type_, using, var, var_input, var_output, var_temp};

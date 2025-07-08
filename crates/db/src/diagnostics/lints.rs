@@ -1,14 +1,12 @@
 use std::{collections::HashMap, sync::LazyLock};
 use salsa::Accumulator;
 use auto_lsp::{
-    default::db::{BaseDatabase, File}, 
-    lsp_types::{
+    core::span::Span, default::db::{file::File, BaseDatabase}, lsp_types::{
         DiagnosticRelatedInformation, WorkspaceEdit
-    }, 
-    tree_sitter::{self, StreamingIterator}
+    }, tree_sitter::{self, StreamingIterator}
 };
 
-use crate::diagnostics::{diagnostic_builder::{action, diag, edit, OneOf, RangeKind}, DiagnosticAccumulator};
+use crate::diagnostics::{diagnostic_builder::{action, diag, edit}, DiagnosticAccumulator};
 
 // Combined query for all linting rules
 static LINTS_QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
@@ -91,18 +89,18 @@ fn handle_duplicate_namespace(
     first_range: tree_sitter::Range,
     duplicate_node: tree_sitter::Node
 ) {
-    let range = duplicate_node.range();
+    let range = Span::from(duplicate_node.range());
     let name = duplicate_node.utf8_text(source.as_bytes()).unwrap();
 
     DiagnosticAccumulator::accumulate(diag()
-        .range(OneOf::T(range.into()))
+        .range(range.into())
         .message(format!("duplicate declarations of namespace '{name}' in same scope"))
         .source("IEC".into())
         .severity(auto_lsp::lsp_types::DiagnosticSeverity::INFORMATION)
         .related_information(vec![DiagnosticRelatedInformation {
             location: auto_lsp::lsp_types::Location {
                 uri: file.url(db).clone(),
-                range: RangeKind::from(first_range).into(),
+                range: Span::from(first_range).into(),
             },
             message: format!("'{name}' is previously declared here"),
         }])
@@ -116,18 +114,18 @@ fn handle_duplicate_declaration(
     first_range: tree_sitter::Range,
     duplicate_node: tree_sitter::Node
 ) {
-    let range = duplicate_node.range();
+    let range = Span::from(duplicate_node.range());
     let name = duplicate_node.utf8_text(source.as_bytes()).unwrap();
 
     DiagnosticAccumulator::accumulate(diag()
-        .range(OneOf::T(range.into()))
+        .range(range.into())
         .message(format!("duplicate declarations of '{name}' in same namespace"))
         .source("IEC".into())
         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
         .related_information(vec![DiagnosticRelatedInformation {
             location: auto_lsp::lsp_types::Location {
                 uri: file.url(db).clone(),
-                range: RangeKind::from(first_range).into(),
+                range: Span::from(first_range).into(),
                 },
             message: format!("'{name}' is previously declared here"),
         }])
@@ -137,13 +135,13 @@ fn handle_duplicate_declaration(
 #[cfg(test)]
 mod tests {
     use crate::{diagnostics::{cached_diagnostics}, RootDatabase};
-    use auto_lsp::{default::db::{BaseDatabase, FileManager}, lsp_types::{self, DiagnosticSeverity}, texter::core::text::Text};
+    use auto_lsp::{default::db::{file::File, BaseDatabase, FileManager}, lsp_types::{self, DiagnosticSeverity}, texter::core::text::Text};
 
     #[test]
     fn duplicate_namespace() {
         let mut db = RootDatabase::default();
         let url = lsp_types::Url::parse("file:///test.st").unwrap();
-        let texter = Text::new(
+        let source = 
             r#"
 NAMESPACE ns 
 
@@ -152,14 +150,17 @@ END_NAMESPACE
 NAMESPACE ns    
 
 END_NAMESPACE
-"#.into(),
-        );
-        db.add_file_from_texter(
-            ast::RK_PARSER.get("structured_text").unwrap(),
-            &url,
-            texter,
-        )
-        .unwrap();
+"#;
+
+        let file = File::from_string()
+            .db(&db)
+            .parsers(ast::RK_PARSER.get("structured_text").unwrap())
+            .url(&url)
+            .source(source.to_string())
+            .call().unwrap();
+
+        db.add_file(file).unwrap();
+
 
         let file = db.get_file(&url).unwrap();
 
@@ -175,7 +176,7 @@ END_NAMESPACE
     fn duplicate_declaration() {
         let mut db = RootDatabase::default();
         let url = lsp_types::Url::parse("file:///test.st").unwrap();
-        let texter = Text::new(
+        let source = 
             r#"
 NAMESPACE ns 
 
@@ -188,14 +189,17 @@ NAMESPACE ns
     END_FUNCTION
 
 END_NAMESPACE
-"#.into(),
-        );
-        db.add_file_from_texter(
-            ast::RK_PARSER.get("structured_text").unwrap(),
-            &url,
-            texter,
-        )
-        .unwrap();
+"#;
+
+        let file = File::from_string()
+            .db(&db)
+            .parsers(ast::RK_PARSER.get("structured_text").unwrap())
+            .url(&url)
+            .source(source.to_string())
+            .call().unwrap();
+
+        db.add_file(file).unwrap();
+
 
         let file = db.get_file(&url).unwrap();
 

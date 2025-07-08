@@ -14,13 +14,13 @@ pub fn inlay_hints(db: &impl BaseDatabase, params: InlayHintParams) -> anyhow::R
     let ns = namespaces_in_file(db, file).unwrap();
     ns.iter(db).for_each(|symbol| {
         let symbol = symbol.symbol_info(db);
-        if symbol.range.as_lsp().start.line < range.start.line ||
-           symbol.range.as_lsp().end.line > range.end.line {
+        if symbol.range.lsp().start.line < range.start.line ||
+           symbol.range.lsp().end.line > range.end.line {
             return;
         }
         results.push(InlayHint {
             label: InlayHintLabel::String(format!("{} {}", symbol.kind_to_string(), symbol.name)),
-            position: symbol.range.as_lsp().end,
+            position: symbol.range.lsp().end,
             kind: Some(InlayHintKind::TYPE),   
             text_edits: None,
             padding_left: Some(true),

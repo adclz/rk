@@ -1,6 +1,6 @@
 use auto_lsp::default::db::BaseDatabase;
 
-use crate::{hir::{expression::Expr, variable::{Spec}}, ident::Ident, to_proto::{IterToProto, SymbolInfo, ToProto}};
+use crate::{hir::{expression::Expr, variable::{Spec}}, to_proto::{IterToProto, ToProto}};
 
 #[salsa::tracked(debug)]
 pub struct DataType<'db> {

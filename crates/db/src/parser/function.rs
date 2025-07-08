@@ -5,7 +5,7 @@ use crate::hir::variable::Variable;
 use crate::parser::{Parse, ParseVarSection};
 use ast::generated::FuncVariables;
 use auto_lsp::anyhow::{self};
-use auto_lsp::default::db::{BaseDatabase, File};
+use auto_lsp::default::db::{BaseDatabase, file::File};
 
 impl<'db> Parse<'db> for ast::generated::FuncDecl {
     type Output = hir::function::Function<'db>;
@@ -65,7 +65,7 @@ mod tests {
     fn variables_in_function() {
         let mut db = RootDatabase::default();
         let url = lsp_types::Url::parse("file:///test.st").unwrap();
-        let texter = Text::new(
+        let source = 
             r#"
 NAMESPACE nss
     FUNCTION f
@@ -96,14 +96,15 @@ NAMESPACE nss
     END_FUNCTION
 
 END_NAMESPACE
-"#.into(),
-        );
-        db.add_file_from_texter(
-            ast::RK_PARSER.get("structured_text").unwrap(),
-            &url,
-            texter,
-        )
-        .unwrap();
+"#;
+        let file = File::from_string()
+            .db(&db)
+            .parsers(ast::RK_PARSER.get("structured_text").unwrap())
+            .url(&url)
+            .source(source.to_string())
+            .call().unwrap();
+
+        db.add_file(file).unwrap();
 
         let file = db.get_file(&url).unwrap();
         let namespaces = namespaces_in_file(&db, file).unwrap();

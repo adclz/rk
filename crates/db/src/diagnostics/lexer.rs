@@ -5,7 +5,7 @@ use auto_lsp::core::errors::{LexerError, ParseError, ParseErrorAccumulator};
 use auto_lsp::lsp_types::{DiagnosticRelatedInformation, WorkspaceEdit};
 use phf::phf_set;
 
-use crate::diagnostics::diagnostic_builder::{action, diag, edit, OneOf};
+use crate::diagnostics::diagnostic_builder::{action, diag, edit};
 use crate::diagnostics::IdeDiagnostic;
 
 static KEYWORDS: phf::Set<&'static str> = phf_set! {
@@ -45,14 +45,14 @@ static KEYWORDS: phf::Set<&'static str> = phf_set! {
 
 pub fn add_fixes_to_parse_errors(
     db: &dyn auto_lsp::default::db::BaseDatabase,
-    file: &auto_lsp::default::db::File,
+    file: &auto_lsp::default::db::file::File,
     errors: &mut Vec<&ParseErrorAccumulator>,
 ) -> Vec<IdeDiagnostic> {
     errors
         .iter_mut()
         .map(|error| match (*error).into() {
             ParseError::LexerError {
-                range,
+                span,
                 error:
                     LexerError::Missing {
                         error: missing_error,
@@ -61,14 +61,14 @@ pub fn add_fixes_to_parse_errors(
                     },
             } => {
                 let mut diagnostic = diag()
-                    .range(OneOf::U(range))
+                    .range(span.clone().into())
                     .message(missing_error.to_string())
                     .source("IEC".into())
                     .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                     .related_information(vec![DiagnosticRelatedInformation {
                         location: auto_lsp::lsp_types::Location {
                             uri: file.url(db).clone(),
-                            range,
+                            range: span.clone().into(),
                         },
                         message: format!("help: add missing {grammar_name} here"),
                     }])
@@ -84,7 +84,7 @@ pub fn add_fixes_to_parse_errors(
                             file.url(db).clone(),
                             vec![edit()
                                 .new_text(format!(" {}", grammar_name))
-                                .range(OneOf::U(range))
+                                .range(span.into())
                                 .call()],
                         )])))
                         .call(),
@@ -92,7 +92,7 @@ pub fn add_fixes_to_parse_errors(
                 diagnostic
             }
             ParseError::LexerError {
-                range,
+                span,
                 error:
                     LexerError::Syntax {
                         error: syntax_error,
@@ -102,14 +102,14 @@ pub fn add_fixes_to_parse_errors(
             } => {
                 if affected.len() == 1 {
                     let mut diagnostic = diag()
-                        .range(OneOf::U(range))
+                        .range(span.clone().into())
                         .message(syntax_error.to_string())
                         .source("IEC".into())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                         .related_information(vec![DiagnosticRelatedInformation {
                             location: auto_lsp::lsp_types::Location {
                                 uri: file.url(db).clone(),
-                                range,
+                                range: span.clone().into(),
                             },
                             message: format!("help: remove '{affected}'"),
                         }])
@@ -123,21 +123,21 @@ pub fn add_fixes_to_parse_errors(
                             .is_preferred(true)
                             .edit(WorkspaceEdit::new(HashMap::from([(
                                 file.url(db).clone(),
-                                vec![edit().new_text("".to_string()).range(OneOf::U(range)).call()],
+                                vec![edit().new_text("".to_string()).range(span.clone().into()).call()],
                             )])))
                             .call(),
                     );
                     diagnostic
                 } else if KEYWORDS.contains(affected.split_whitespace().next().unwrap_or("")) {
                     diag()
-                        .range(OneOf::U(range))
+                        .range(span.clone().into())
                         .message(format!("{} is a reserved keyword that is not valid in this context", affected.split_whitespace().next().unwrap_or("")))
                         .source("IEC".into())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                         .related_information(vec![DiagnosticRelatedInformation {
                             location: auto_lsp::lsp_types::Location {
                                 uri: file.url(db).clone(),
-                                range,
+                                range: span.clone().into(),
                             },
                             message: format!("help: remove or replace '{}'", affected.split_whitespace().next().unwrap_or("")),
                         }])
@@ -154,7 +154,7 @@ pub fn add_fixes_to_parse_errors(
 
 #[cfg(test)]
 mod tests {
-    use auto_lsp::{core::errors::ParseErrorAccumulator, default::db::{tracked::get_ast, BaseDatabase, FileManager}, lsp_types, texter::core::text::Text};
+    use auto_lsp::{core::errors::ParseErrorAccumulator, default::db::{file::File, tracked::get_ast, BaseDatabase, FileManager}, lsp_types, texter::core::text::Text};
     use super::*;
     use crate::RootDatabase;
 
@@ -163,19 +163,20 @@ mod tests {
         
         let mut db = RootDatabase::default();
         let url = lsp_types::Url::parse("file:///test.st").unwrap();
-        let texter = Text::new(
+        let source = 
             r#"
 NAMESPACE 
-END_NAMESPACE"#
-                .into(),
-        );
+END_NAMESPACE"#;
 
-        db.add_file_from_texter(
-            ast::RK_PARSER.get("structured_text").unwrap(),
-            &url,
-            texter,
-        )
-        .unwrap();
+        let file = File::from_string()
+            .db(&db)
+            .parsers(ast::RK_PARSER.get("structured_text").unwrap())
+            .url(&url)
+            .source(source.to_string())
+            .call().unwrap();
+
+        db.add_file(file).unwrap();
+
 
         let file = db.get_file(&url).unwrap();
         let mut diagnostics = get_ast::accumulated::<ParseErrorAccumulator>(&db, file);
@@ -190,19 +191,20 @@ END_NAMESPACE"#
         
         let mut db = RootDatabase::default();
         let url = lsp_types::Url::parse("file:///test.st").unwrap();
-        let texter = Text::new(
+        let source = 
             r#"
 NAMESPACE ns :
-END_NAMESPACE"#
-                .into(),
-        );
+END_NAMESPACE"#;
 
-        db.add_file_from_texter(
-            ast::RK_PARSER.get("structured_text").unwrap(),
-            &url,
-            texter,
-        )
-        .unwrap();
+        let file = File::from_string()
+            .db(&db)
+            .parsers(ast::RK_PARSER.get("structured_text").unwrap())
+            .url(&url)
+            .source(source.to_string())
+            .call().unwrap();
+
+        db.add_file(file).unwrap();
+
 
         let file = db.get_file(&url).unwrap();
         let mut diagnostics = get_ast::accumulated::<ParseErrorAccumulator>(&db, file);
@@ -218,7 +220,7 @@ END_NAMESPACE"#
         
         let mut db = RootDatabase::default();
         let url = lsp_types::Url::parse("file:///test.st").unwrap();
-        let texter = Text::new(
+        let source = 
             r#"
 NAMESPACE first
     FUNCTION
@@ -226,16 +228,17 @@ NAMESPACE first
             FUNCTION
 
     END_FUNCTION
-END_NAMESPACE"#
-                .into(),
-        );
+END_NAMESPACE"#;
 
-        db.add_file_from_texter(
-            ast::RK_PARSER.get("structured_text").unwrap(),
-            &url,
-            texter,
-        )
-        .unwrap();
+        let file = File::from_string()
+            .db(&db)
+            .parsers(ast::RK_PARSER.get("structured_text").unwrap())
+            .url(&url)
+            .source(source.to_string())
+            .call().unwrap();
+
+        db.add_file(file).unwrap();
+
 
         let file = db.get_file(&url).unwrap();
         let mut diagnostics = get_ast::accumulated::<ParseErrorAccumulator>(&db, file);
@@ -250,7 +253,7 @@ END_NAMESPACE"#
         
         let mut db = RootDatabase::default();
         let url = lsp_types::Url::parse("file:///test.st").unwrap();
-        let texter = Text::new(
+        let source = 
             r#"
 NAMESPACE first
     FUNCTION
@@ -258,16 +261,17 @@ NAMESPACE first
             FUNCTION := something
 
     END_FUNCTION
-END_NAMESPACE"#
-                .into(),
-        );
+END_NAMESPACE"#;
 
-        db.add_file_from_texter(
-            ast::RK_PARSER.get("structured_text").unwrap(),
-            &url,
-            texter,
-        )
-        .unwrap();
+        let file = File::from_string()
+            .db(&db)
+            .parsers(ast::RK_PARSER.get("structured_text").unwrap())
+            .url(&url)
+            .source(source.to_string())
+            .call().unwrap();
+
+        db.add_file(file).unwrap();
+
 
         let file = db.get_file(&url).unwrap();
         let mut diagnostics = get_ast::accumulated::<ParseErrorAccumulator>(&db, file);

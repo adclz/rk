@@ -2,7 +2,7 @@ use std::{ops::Deref, sync::Arc};
 
 use auto_lsp::{
     anyhow::{self},
-    default::db::{BaseDatabase, File},
+    default::db::{BaseDatabase, file::File},
 };
 
 use crate::{

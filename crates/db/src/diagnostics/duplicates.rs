@@ -1,10 +1,10 @@
 use auto_lsp::{
-    default::db::{BaseDatabase, File},
+    default::db::{BaseDatabase, file::File},
     lsp_types::DiagnosticRelatedInformation,
 };
 
 use crate::{
-    diagnostics::{diagnostic_builder::{diag, OneOf, RangeKind}, IdeDiagnostic},
+    diagnostics::{diagnostic_builder::{diag}, IdeDiagnostic},
     solver::namespace::{namespace_path, namespaces_in_file},
 };
 
@@ -25,14 +25,14 @@ pub fn duplicate_declarations<'db>(
                     if let Some(other_pou) = other_decl.get_pou(db, *path, *name) {
                         let duplicate = pou.name(db).text(db);
                         acc.push(diag()
-                            .range(OneOf::T(pou.span(db).into()))
+                            .range(pou.name_span(db).clone())
                             .message(format!("duplicate declarations of {duplicate} POU"))
                             .source("IEC".into())
                             .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                             .related_information(vec![DiagnosticRelatedInformation {
                                 location: auto_lsp::lsp_types::Location {
                                     uri: other_decl.file(db).url(db).clone(),
-                                    range: RangeKind::from(other_pou.span(db)).into(),
+                                    range: other_pou.name_span(db).into(),
                                 },
                                 message: format!("'{duplicate}' is previously declared here"),
                             }])

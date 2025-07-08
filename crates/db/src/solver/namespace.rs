@@ -1,4 +1,4 @@
-use auto_lsp::{core::{ast::AstNode, document::Document}, default::db::{tracked::get_ast, BaseDatabase, File}};
+use auto_lsp::{core::{ast::AstNode, document::Document}, default::db::{tracked::get_ast, BaseDatabase, file::File}};
 
 use crate::{hir::namespace::FileNamespaces, ident::Ident, parser::namespace::FileNamespacesBuilder};
 
@@ -102,7 +102,7 @@ mod tests {
         solver::namespace::{namespace_path, namespaces_in_file},
         RootDatabase,
     };
-    use auto_lsp::{default::db::FileManager, lsp_types, texter::core::text::Text};
+    use auto_lsp::{default::db::FileManager, lsp_types};
 
     use salsa::EventKind;
 
@@ -112,7 +112,7 @@ mod tests {
     fn multiple_namespaces() {
         let mut db = RootDatabase::default();
         let url = lsp_types::Url::parse("file:///test.st").unwrap();
-        let texter = Text::new(
+        let source = 
             r#"
 NAMESPACE TEST.k
     NAMESPACE TEST235333.m.a
@@ -122,15 +122,16 @@ NAMESPACE TEST.k
             END_FUNCTION
         END_NAMESPACE
     END_NAMESPACE
-END_NAMESPACE"#
-                .into(),
-        );
-        db.add_file_from_texter(
-            ast::RK_PARSER.get("structured_text").unwrap(),
-            &url,
-            texter,
-        )
-        .unwrap();
+END_NAMESPACE"#;
+
+        let file = File::from_string()
+            .db(&db)
+            .parsers(ast::RK_PARSER.get("structured_text").unwrap())
+            .url(&url)
+            .source(source.to_string())
+            .call().unwrap();
+
+        db.add_file(file).unwrap();
 
         let file = db.get_file(&url).unwrap();
         let namespaces = namespaces_in_file(&db, file);
@@ -186,7 +187,7 @@ END_NAMESPACE"#
         })));
 
         let url = lsp_types::Url::parse("file:///test.st").unwrap();
-        let texter = Text::new(
+        let source = 
             r#"
 NAMESPACE first
     NAMESPACE second
@@ -196,15 +197,16 @@ NAMESPACE first
             END_FUNCTION
         END_NAMESPACE
     END_NAMESPACE
-END_NAMESPACE"#
-                .into(),
-        );
-        db.add_file_from_texter(
-            ast::RK_PARSER.get("structured_text").unwrap(),
-            &url,
-            texter,
-        )
-        .unwrap();
+END_NAMESPACE"#;
+
+        let file = File::from_string()
+            .db(&db)
+            .parsers(ast::RK_PARSER.get("structured_text").unwrap())
+            .url(&url)
+            .source(source.to_string())
+            .call().unwrap();
+
+        db.add_file(file).unwrap();
 
         let first = NamespacePath::from((&db as _, &vec![Ident::new(&db, "first".to_string())]));
         let second = NamespacePath::from((

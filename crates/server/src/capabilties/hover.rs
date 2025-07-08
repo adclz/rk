@@ -2,7 +2,7 @@ use auto_lsp::core::ast::AstNode;
 use auto_lsp::{
     anyhow,
     core::{dispatch_once, document::Document},
-    default::db::{tracked::get_ast, BaseDatabase, File},
+    default::db::{tracked::get_ast, BaseDatabase, file::File},
     lsp_types::{Hover, HoverContents, HoverParams, MarkupContent, MarkupKind},
 };
 use db::hir::expression::{Expr, ExprKind, PrimaryExpr};
@@ -48,7 +48,7 @@ pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Opti
 
         let comment = get_comment(
             &file.document(db),
-            symbol.range.as_lsp().start.line as usize,
+            symbol.range.lsp().start.line as usize,
         )
         .unwrap_or_default();
 
@@ -177,7 +177,7 @@ fn get_comment(doc: &Document, line: usize) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use auto_lsp::{texter::core::text::Text, tree_sitter};
+    use auto_lsp::{lsp_types::PositionEncodingKind, texter::core::text::Text, tree_sitter};
 
     use super::*;
 
@@ -200,7 +200,7 @@ NAMESPACE NS
 END_NAMESPACE
 "#;
         let tree = p.parse(text, None).unwrap();
-        let doc = Document::new(Text::new(text.into()), tree);
+        let doc = Document::new(Text::new(text.into()), tree, None);
 
         assert_eq!(get_comment(&doc, 1), Some("This is a comment".to_string()));
 
@@ -230,7 +230,7 @@ NAMESPACE NS
 END_NAMESPACE
 "#;
         let tree = p.parse(text, None).unwrap();
-        let doc = Document::new(Text::new(text.into()), tree);
+        let doc = Document::new(Text::new(text.into()), tree, None);
         assert_eq!(get_comment(&doc, 1), Some("This is a comment".to_string()));
 
         assert_eq!(
@@ -259,7 +259,7 @@ NAMESPACE NS
 END_NAMESPACE
 "#;
         let tree = p.parse(text, None).unwrap();
-        let doc = Document::new(Text::new(text.into()), tree);
+        let doc = Document::new(Text::new(text.into()), tree, None);
         assert_eq!(get_comment(&doc, 1), Some("This is a comment".to_string()));
 
         assert_eq!(

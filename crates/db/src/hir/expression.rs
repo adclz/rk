@@ -4,13 +4,14 @@ use crate::solver::fq_name::FqName;
 use crate::{ident::Ident, solver::namespace::NamespacePath};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
+use auto_lsp::core::span::Span;
 use auto_lsp::default::db::BaseDatabase;
-use auto_lsp::default::db::File;
+use auto_lsp::default::db::file::File;
 use bitflags::bitflags;
 
 #[salsa::tracked(debug)]
 pub struct Expr<'db> {
-    span: auto_lsp::tree_sitter::Range,
+    span: Span,
 
     #[return_ref]
     pub expr: ExprKind<'db>,
@@ -24,7 +25,7 @@ impl<'db> Expr<'db> {
     ) -> Expr<'db> {
         Expr::new(
             db,
-            span,
+            span.into(),
             ExprKind::PrimaryExpr {
                 expr: PrimaryExpr::Literal(literal),
             },
@@ -34,11 +35,11 @@ impl<'db> Expr<'db> {
     pub fn new_target(
         db: &'db dyn BaseDatabase,
         file: File,
-        fq_name: &ast::generated::FqName,
+        fq_name: &'db ast::generated::FqName,
     ) -> anyhow::Result<Expr<'db>> {
         Ok(Expr::new(
             db,
-            *fq_name.get_range(),
+            fq_name.get_span().into(),
             ExprKind::PrimaryExpr {
                 expr: PrimaryExpr::Target(
                     FqName::new(
@@ -65,7 +66,7 @@ impl<'db> Expr<'db> {
     ) -> Expr<'db> {
         Expr::new(
             db,
-            span,
+            span.into(),
             ExprKind::PrimaryExpr {
                 expr: PrimaryExpr::EnumValue { value },
             },

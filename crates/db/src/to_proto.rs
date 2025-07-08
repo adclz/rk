@@ -1,12 +1,12 @@
-use auto_lsp::{default::db::{BaseDatabase, File}, lsp_types::SymbolKind};
+use auto_lsp::{core::span::Span, default::db::{BaseDatabase}, lsp_types::SymbolKind};
 
-use crate::{diagnostics::diagnostic_builder::RangeKind, hir::{expression::Expr, namespace::PouDecl, variable::Spec}, solver::namespace::NamespacePath};
+use crate::{hir::{expression::Expr, variable::Spec}};
 
 #[derive(bon::Builder, Debug, Clone)]
 pub struct SymbolInfo<'a> {
-    pub range: RangeKind<'a>,
+    pub range: Span,
     pub name: String,
-    pub name_range: RangeKind<'a>,
+    pub name_range: Span,
     pub kind: Option<SymbolKind>,
     pub spec: Option<Spec<'a>>,
     pub init: Option<Expr<'a>>,
@@ -75,8 +75,8 @@ impl SymbolInfo<'_> {
 }
 
 pub trait ToProto<'db> {
-    fn spanned(&'db self, db: &'db dyn crate::BaseDatabase) -> RangeKind<'db>;
-    fn named_span(&'db self, db: &'db dyn crate::BaseDatabase) -> RangeKind<'db>;
+    fn spanned(&'db self, db: &'db dyn crate::BaseDatabase) -> &'db Span;
+    fn named_span(&'db self, db: &'db dyn crate::BaseDatabase) -> &'db Span;
     fn symbol_info(&'db self, db: &'db dyn crate::BaseDatabase) -> SymbolInfo<'db>;
 }
 

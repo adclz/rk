@@ -7,7 +7,7 @@ pub mod ident;
 pub mod to_proto;
 pub mod solver; 
  
-use auto_lsp::{default::db::{BaseDatabase, File}, lsp_types::Url, salsa};
+use auto_lsp::{default::db::{BaseDatabase, file::File}, lsp_types::Url, salsa};
 use dashmap::DashMap;
 use salsa::Event;
 pub use ast::RK_PARSER;

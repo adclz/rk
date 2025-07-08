@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use auto_lsp::{anyhow, default::db::{BaseDatabase, File}};
+use auto_lsp::{anyhow, default::db::{BaseDatabase, file::File}};
 use auto_lsp::core::ast::AstNode;
 
 use crate::{
@@ -10,11 +10,11 @@ use crate::{
     ident::Ident,
 };
 pub trait ParseExpression<'db> { 
-    fn to_expr(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>>;
+    fn to_expr(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>>;
 }
 
 impl<'db> ParseExpression<'db> for ast::generated::Expression {
-    fn to_expr(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>> {
+    fn to_expr(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>> {
         match self {
             ast::generated::Expression::PrimaryExpression(p) => p.to_expr(db, file),
             ast::generated::Expression::BooleanOperator(boolean_operator) => match boolean_operator
@@ -27,7 +27,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
 
                     Ok(Expr::new(
                         db,
-                        *or_operator.get_range(),
+                        or_operator.get_span(),
                         ExprKind::BooleanOperator {
                             left,
                             operator: Operator::Or,
@@ -41,7 +41,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
 
                     Ok(Expr::new(
                         db,
-                        *xor_operator.get_range(),
+                        xor_operator.get_span(),
                         ExprKind::BooleanOperator {
                             left,
                             operator: Operator::Xor,
@@ -55,7 +55,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
 
                     Ok(Expr::new(
                         db,
-                        *and_operator.get_range(),
+                        and_operator.get_span(),
                         ExprKind::BooleanOperator {
                             left,
                             operator: Operator::And,
@@ -77,7 +77,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
 
                         Ok(Expr::new(
                             db,
-                            *eq_operator.get_range(),
+                            eq_operator.get_span(),
                             ExprKind::ComparisonOperator {
                                 left,
                                 operator,
@@ -98,7 +98,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
 
                         Ok(Expr::new(
                             db,
-                            *ord_operator.get_range(),
+                            ord_operator.get_span(),
                             ExprKind::ComparisonOperator {
                                 left,
                                 operator,
@@ -118,7 +118,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
 
                 Ok(Expr::new(
                     db,
-                    *add_operator.get_range(),
+                    add_operator.get_span(),
                     ExprKind::AddOperator {
                         left,
                         operator,
@@ -137,7 +137,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
 
                 Ok(Expr::new(
                     db,
-                    *mult_operator.get_range(),
+                    mult_operator.get_span(),
                     ExprKind::MultOperator {
                         left,
                         operator,
@@ -151,7 +151,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
 
                 Ok(Expr::new(
                     db,
-                    *power_operator.get_range(),
+                    power_operator.get_span(),
                     ExprKind::PowerOperator { left, right },
                 ))
             }
@@ -166,7 +166,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
 
                 Ok(Expr::new(
                     db,
-                    *unary_operator.get_range(),
+                    unary_operator.get_span(),
                     ExprKind::UnaryOperator { expr, operator },
                 ))
             }
@@ -175,14 +175,14 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
 }
 
 impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
-    fn to_expr(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>> {
+    fn to_expr(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>> {
         match self {
                 ast::generated::PrimaryExpression::Constant(c) => c.to_expr(db, file),
                 ast::generated::PrimaryExpression::FqName(path) => Expr::new_target(db, file, path),
                 ast::generated::PrimaryExpression::EnumValue(enum_value) => {
                     Ok(Expr::new_enum_value(
                         db,
-                        *enum_value.get_range(),
+                        *enum_value.get_span(),
                         Ident::from_node(db, file, enum_value.children.deref())?,
                     ))
                 },
@@ -295,7 +295,7 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                     }
                     Ok(Expr::new(
                         db,
-                        *c.get_range(),
+                        c.get_span(),
                         ExprKind::PrimaryExpr {
                             expr: PrimaryExpr::FuncCall {
                                 expr: target,
@@ -306,7 +306,7 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                 }
                 ast::generated::PrimaryExpression::ParenthesizedExpression(p) => Ok(Expr::new(
                     db,
-                    *p.get_range(),
+                    p.get_span(),
                     ExprKind::PrimaryExpr {
                         expr: PrimaryExpr::ParenthesizedExpr {
                             expr: p.children.to_expr(db, file)?,
@@ -317,7 +317,7 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                     match r.children.deref() {
                         ast::generated::Null_RefAddr::Null(_) => Ok(Expr::new(
                             db,
-                            *r.get_range(),
+                            r.get_span(),
                             ExprKind::PrimaryExpr {
                                 expr: PrimaryExpr::RefValue {
                                     value: RefValue::Null,
@@ -332,7 +332,7 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                                 ast::generated::InstanceName_SymbolicVariable::InstanceName(i) => {
                                     Ok(Expr::new(
                                         db,
-                                    *r.get_range(),
+                                    r.get_span(),
                                     ExprKind::PrimaryExpr {
                                                 expr: PrimaryExpr::RefValue {
                                                 value: RefValue::Address {
@@ -353,11 +353,11 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
 }
 
 pub trait ParseNumeric<'db> {
-    fn parse(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Numeric>;
+    fn parse(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Numeric>;
 }
 
 impl<'db> ParseNumeric<'db> for ast::generated::BinaryInt_HexInt_OctalInt_SignedInt {
-    fn parse(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Numeric> {
+    fn parse(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Numeric> {
         Ok(match self {
             ast::generated::BinaryInt_HexInt_OctalInt_SignedInt::BinaryInt(binary_int) => {
                 Numeric::Binary(Ident::from_node(db, file, binary_int)?)
@@ -381,7 +381,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Constant {
         type Constant = ast::generated::BoolLiteral_CharLiteral_NumericLiteral_TimeLiteral;
         Ok(Expr::new_literal(
             db,
-            *self.children.get_range(),
+            *self.children.get_span(),
             match self.children.deref() {
                 Constant::BoolLiteral(bool_literal) => {
                     Literal::Bool(Ident::from_node(db, file, bool_literal.value.deref())?)

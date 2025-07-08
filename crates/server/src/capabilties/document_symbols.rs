@@ -2,20 +2,19 @@
 
 use auto_lsp::{
     anyhow,
-    core::document_symbols_builder::DocumentSymbolsBuilder,
+    core::{document_symbols_builder::DocumentSymbolsBuilder, span::Span},
     default::db::BaseDatabase,
     lsp_types::{DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse},
 };
 use db::{
-    diagnostics::diagnostic_builder::RangeKind,
     solver::namespace::namespaces_in_file,
     to_proto::{IterToProto, SymbolInfo},
 };
 
 /// Helper function to check if one range is inside another
-fn is_range_inside(inner: &RangeKind, outer: &RangeKind) -> bool {
-    let inner_lsp = inner.as_lsp();
-    let outer_lsp = outer.as_lsp();
+fn is_range_inside(inner: &Span, outer: &Span) -> bool {
+    let inner_lsp = inner.lsp();
+    let outer_lsp = outer.lsp();
 
     // Check if inner range is completely contained within outer range
     (outer_lsp.start.line < inner_lsp.start.line
@@ -50,11 +49,11 @@ fn build_children(
                 name: symbol.name.clone(),
                 detail: None,
                 kind: *kind,
-                selection_range: symbol.name_range.as_lsp(),
+                selection_range: symbol.name_range.lsp(),
                 deprecated: None,
                 tags: None,
                 children: None,
-                range: symbol.range.as_lsp(),
+                range: symbol.range.lsp(),
             };
             // Recursively build children for this child
             child.children = build_children(symbol, all_symbols);
@@ -104,11 +103,11 @@ pub fn document_symbols(
             name: symbol.name.clone(),
             detail: None,
             kind: *kind,
-            selection_range: symbol.name_range.as_lsp(),
+            selection_range: symbol.name_range.lsp(),
             deprecated: None,
             tags: None,
             children: None,
-            range: symbol.range.as_lsp(),
+            range: symbol.range.lsp(),
         };
 
         if parent.is_none() {

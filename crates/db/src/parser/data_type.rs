@@ -8,7 +8,7 @@ use crate::{
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::{
     anyhow,
-    default::db::{BaseDatabase, File},
+    default::db::{BaseDatabase, file::File},
 };
 
 pub trait ParseDataType<'db> {
@@ -54,9 +54,9 @@ impl<'db> ParseDataType<'db> for ast::generated::DataTypeDecl {
             types.push(PouDecl::new(
                 db,
                 crate::hir::namespace::Pou::DataType(DataType::new(db, spec, init)),
-                *child.get_range(),
+                child.get_span(),
                 name,
-                *child.name.get_range(),
+                child.name.get_span(),
             ))
         }
 

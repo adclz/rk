@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 
-use auto_lsp::{anyhow, core::ast::AstNode, default::db::{BaseDatabase, File}};
+use auto_lsp::{anyhow, core::ast::AstNode, default::db::{BaseDatabase, file::File}};
 
 /// Interned identifier
 #[salsa::interned(debug, no_lifetime)]

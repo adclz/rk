@@ -1,7 +1,7 @@
 use auto_lsp::{
     anyhow,
     core::dispatch,
-    default::db::{tracked::get_ast, BaseDatabase, File},
+    default::db::{tracked::get_ast, BaseDatabase, file::File},
     lsp_types::{CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams, SymbolKind},
 };
 use db::{diagnostics::cached_diagnostics, solver::namespace::namespaces_in_file, to_proto::IterToProto};
@@ -23,7 +23,7 @@ pub fn code_actions(
     for symbol in ns.iter(db) {
         let symbol = symbol.symbol_info(db);
         // Only process symbols that are inside the selected range
-        if symbol.range.as_lsp().start >= range.start && symbol.range.as_lsp().end >= range.end {
+        if symbol.range.lsp().start >= range.start && symbol.range.lsp().end >= range.end {
             //if let Some(SymbolKind::NAMESPACE) = symbol.kind {
                 results.push(CodeActionOrCommand::CodeAction(CodeAction {
                     title: format!("Add internal to {}", symbol.name),

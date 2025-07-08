@@ -1,6 +1,7 @@
 #![recursion_limit = "256"]
 mod capabilties;
 
+use auto_lsp::anyhow;
 use db::RK_PARSER;
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::default::server::capabilities::TEXT_DOCUMENT_SYNC;
@@ -156,7 +157,11 @@ fn on_notifications<Db: BaseDatabase + Clone + RefUnwindSafe>(
     registry
         .on_mut::<DidOpenTextDocument, _>(|s, p| Ok(open_text_document(s, p)?))
         .on_mut::<DidChangeTextDocument, _>(|s, p| -> Result<(), auto_lsp::anyhow::Error> {
-            Ok(s.db.update(&p.text_document.uri, &p.content_changes)?)
+            let file =
+                s.db.get_file(&p.text_document.uri)
+                    .ok_or_else(|| anyhow::format_err!("File not found in workspace"))?;
+            file.update_edit(&mut s.db, &p)?;
+            Ok(())
         })
         .on_mut::<DidChangeWatchedFiles, _>(|s, p| Ok(changed_watched_files(s, p)?))
         .on_mut::<Cancel, _>(|s, p| {

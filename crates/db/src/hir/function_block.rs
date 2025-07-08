@@ -1,6 +1,6 @@
 use auto_lsp::default::db::BaseDatabase;
 
-use crate::{hir::{expression::Expr, variable::Variable, visibility::Modifiers}, to_proto::{IterToProto, SymbolInfo, ToProto}};
+use crate::{hir::{expression::Expr, variable::Variable, visibility::Modifiers}, to_proto::{IterToProto, ToProto}};
 
 
 #[salsa::tracked(debug)]

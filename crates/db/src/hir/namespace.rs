@@ -1,8 +1,9 @@
 use auto_enums::auto_enum;
-use auto_lsp::default::db::{BaseDatabase, File};
+use auto_lsp::default::db::{BaseDatabase, file::File};
+use auto_lsp::core::span::Span;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::{diagnostics::diagnostic_builder::RangeKind, hir::{class::Class, data_type::DataType, function::Function, function_block::FunctionBlock, interface::Interface}, ident::Ident, solver::namespace::NamespacePath, to_proto::{Extends, IterToProto, SymbolInfo, ToProto}};
+use crate::{hir::{class::Class, data_type::DataType, function::Function, function_block::FunctionBlock, interface::Interface}, ident::Ident, solver::namespace::NamespacePath, to_proto::{Extends, IterToProto, SymbolInfo, ToProto}};
 
 /// Represents a group of namespaces in a file
 #[salsa::tracked]
@@ -37,7 +38,7 @@ impl<'db> IterToProto<'db> for FileNamespaces<'db> {
 
 impl<'db> FileNamespaces<'db> {
     pub fn namespace_at(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Namespace<'db>> {
-        self.namespaces(db).iter().find_map(|(path, ns)| {
+        self.namespaces(db).iter().find_map(|(_path, ns)| {
             if ns.spanned(db).start_byte <= offset && offset <= ns.spanned(db).end_byte {
                 Some(*ns)
             } else {
@@ -57,13 +58,13 @@ pub struct Namespace<'db> {
 
     #[tracked]
     #[returns(ref)]
-    pub span: auto_lsp::tree_sitter::Range,
+    pub span: Span,
 
     #[returns(ref)]
     pub path: NamespacePath,
 
     #[returns(ref)]
-    pub name_span: auto_lsp::tree_sitter::Range,
+    pub name_span: Span,
 
     #[tracked]
     #[returns(ref)]
@@ -96,20 +97,20 @@ impl<'db> Namespace<'db> {
 }
 
 impl<'db> ToProto<'db> for Namespace<'db> {
-    fn spanned(&'db self, db: &'db dyn BaseDatabase) -> RangeKind<'db> {
-        self.span(db).into()
+    fn spanned(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
+        self.span(db)
     }
 
-    fn named_span(&'db self, db: &'db dyn BaseDatabase) -> RangeKind<'db> {
-        self.name_span(db).into()
+    fn named_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
+        self.name_span(db)
     }
 
     fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> SymbolInfo<'db> {
         SymbolInfo::builder()
         .kind(auto_lsp::lsp_types::SymbolKind::NAMESPACE)
         .name(self.path(db).path(db).text(db))
-        .range(self.spanned(db).into())
-        .name_range(self.name_span(db).into())
+        .range(self.spanned(db).clone())
+        .name_range(self.name_span(db).clone())
         .build()
     }
 }
@@ -129,14 +130,14 @@ pub struct PouDecl<'db> {
     pub pou: Pou<'db>,
 
     #[returns(ref)]
-    pub span: auto_lsp::tree_sitter::Range,
+    pub span: Span,
 
     #[returns(ref)]
     pub name: Ident,
 
     #[tracked]
     #[returns(ref)]
-    pub name_span: auto_lsp::tree_sitter::Range,
+    pub name_span: Span,
 }
 
 
@@ -154,11 +155,11 @@ impl<'db> IterToProto<'db> for PouDecl<'db> {
 }
 
 impl<'db> ToProto<'db> for PouDecl<'db> {
-    fn spanned(&'db self, db: &'db dyn BaseDatabase) -> RangeKind<'db> {
+    fn spanned(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         self.span(db).into()
     }
 
-    fn named_span(&'db self, db: &'db dyn BaseDatabase) -> RangeKind<'db> {
+    fn named_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         self.name_span(db).into()
     }
 
@@ -172,7 +173,7 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
             Pou::DataType(_) => auto_lsp::lsp_types::SymbolKind::TYPE_PARAMETER,
         })
         .name(self.name(db).text(db))
-        .range(self.spanned(db).into())
+        .range(self.spanned(db).clone())
         .maybe_spec(match self.pou(db) {
             Pou::DataType(d) => Some(d.spec(db)),
             _ => None,
@@ -181,7 +182,7 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
             Pou::DataType(d) => d.init(db),
             _ => None,
         })
-        .name_range(self.name_span(db).into())
+        .name_range(self.name_span(db).clone())
         .maybe_extends(match self.pou(db) {
             Pou::Class(c) => c.extends(db).map(|a| Extends::Single(a)),
             Pou::FunctionBlock(fb) => fb.extends(db).map(|a| Extends::Single(a)),

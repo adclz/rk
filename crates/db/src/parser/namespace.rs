@@ -4,7 +4,7 @@ use std::ops::Deref;
 use ast::generated::ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl;
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
-use auto_lsp::default::db::{BaseDatabase, File};
+use auto_lsp::default::db::{BaseDatabase, file::File};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::hir::namespace::{FileNamespaces, Namespace, Pou, PouDecl};
@@ -112,9 +112,9 @@ impl<'db> FileNamespacesBuilder<'db> {
                             PouDecl::new(
                                 self.db,
                                 Pou::Function(func.parse(self.db, self.file)?),
-                                *func.get_range(),
+                                func.get_span(),
                                 name,
-                                *func.name.get_range(),
+                                func.name.get_span(),
                             ),
                         );
                     }
@@ -124,9 +124,9 @@ impl<'db> FileNamespacesBuilder<'db> {
                             PouDecl::new(
                                 self.db,
                                 Pou::FunctionBlock(fb.parse(self.db, self.file)?),
-                                *fb.get_range(),
+                                fb.get_span(),
                                 name,
-                                *fb.name.get_range(),
+                                fb.name.get_span(),
                             ),
                         );
                     }
@@ -136,9 +136,9 @@ impl<'db> FileNamespacesBuilder<'db> {
                             PouDecl::new(
                                 self.db,
                                 Pou::Class(class.parse(self.db, self.file)?),
-                                *class.get_range(),
+                                class.get_span(),
                                 name,
-                                *class.name.get_range(),
+                                class.name.get_span(),
                             ),
                         );
                     },
@@ -151,9 +151,9 @@ impl<'db> FileNamespacesBuilder<'db> {
                             PouDecl::new(
                                 self.db,
                                 Pou::Interface(interface.parse(self.db, self.file)?),
-                                *interface.get_range(),
+                                interface.get_span(),
                                 name,
-                                *interface.name.get_range(),
+                                interface.name.get_span(),
                             ),
                         );
                     },
@@ -164,9 +164,9 @@ impl<'db> FileNamespacesBuilder<'db> {
             self.db,
             nested.internal.is_some(),
             in_scopes,
-            *nested.get_range(),
+            nested.get_span(),
             NamespacePath::from((self.db, parent_path)),
-            *nested.name.get_range(),
+            nested.name.get_span(),
             pous,
         ))
     }
