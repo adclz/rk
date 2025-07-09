@@ -1826,6 +1826,6 @@ module.exports = grammar({
         _bit: $ => /[01]/,
         _octal_digit: $ => /[0-7]/,
         _hex_digit: $ => /[0-9a-fA-F]/,
-        identifier: $ => /[0-9a-zA-Z_]+/,
+        identifier: _ => /[_\p{XID_Start}][_\p{XID_Continue}]*/
     }
 });
