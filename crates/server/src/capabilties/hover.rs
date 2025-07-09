@@ -6,7 +6,7 @@ use auto_lsp::{
     lsp_types::{Hover, HoverContents, HoverParams, MarkupContent, MarkupKind},
 };
 use db::hir::expression::{Expr, ExprKind, PrimaryExpr};
-use db::solver::namespace::{namespace_solver, namespaces_in_file};
+use db::solver::namespace::{namespaces_in_file};
 use db::to_proto::{Extends, IterToProto};
 
 pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Option<Hover>> {
@@ -28,14 +28,14 @@ pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Opti
         })?;
 
     let ns = namespaces_in_file(db, file).unwrap();
-    Ok(ns.descendant_at(db, position).and_then(|symbol| {
+    Ok(ns.named_descendant_at(db, position).and_then(|symbol| {
         let ns = ns.namespace_at(db, position)?;
         let symbol = symbol.symbol_info(db);
 
         let namespace = if symbol.kind == Some(auto_lsp::lsp_types::SymbolKind::NAMESPACE) {
             String::default()
         } else {
-            format!("namespace {}\n", ns.path(db).path(db).text(db))
+            format!("namespace {}\n", ns.path(db).to_string(db))
         }; 
 
         let kind = symbol.kind_to_string();
@@ -54,7 +54,7 @@ pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Opti
 
         let implements = if let Some(implements) = symbol.implements {
             format!(" implements {}", implements.iter().map(|i| match i.expr(db) {
-                ExprKind::PrimaryExpr{ expr: PrimaryExpr::Target(target) } => target.namespace(db).path(db).text(db),
+                ExprKind::PrimaryExpr{ expr: PrimaryExpr::Target(target) } => target.namespace(db).to_string(db),
                 _ => "unknown".into(), 
             }).collect::<Vec<_>>().join(", "))
         } else {
@@ -64,11 +64,11 @@ pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Opti
         let extends = if let Some(extends) = symbol.extends {
             match extends {
                 Extends::Single(extends) => format!(" extends {}", match extends.expr(db) {
-                    ExprKind::PrimaryExpr{ expr: PrimaryExpr::Target(target) } => target.namespace(db).path(db).text(db),
+                    ExprKind::PrimaryExpr{ expr: PrimaryExpr::Target(target) } => target.namespace(db).to_string(db),
                     _ => "unknown".into(),
                 }),
                 Extends::Multiple(extends) => format!(" extends {}", extends.iter().map(|i| match i.expr(db) {
-                    ExprKind::PrimaryExpr{ expr: PrimaryExpr::Target(target) } => target.namespace(db).path(db).text(db),
+                    ExprKind::PrimaryExpr{ expr: PrimaryExpr::Target(target) } => target.namespace(db).to_string(db),
                     _ => "unknown".into(),
                 }).collect::<Vec<_>>().join(", ")),
             }
@@ -200,7 +200,7 @@ NAMESPACE NS
 END_NAMESPACE
 "#;
         let tree = p.parse(text, None).unwrap();
-        let doc = Document::new(Text::new(text.into()), tree, None);
+        let doc = Document::new(text.into(), tree, None);
 
         assert_eq!(get_comment(&doc, 1), Some("This is a comment".to_string()));
 
@@ -230,7 +230,7 @@ NAMESPACE NS
 END_NAMESPACE
 "#;
         let tree = p.parse(text, None).unwrap();
-        let doc = Document::new(Text::new(text.into()), tree, None);
+        let doc = Document::new(text.into(), tree, None);
         assert_eq!(get_comment(&doc, 1), Some("This is a comment".to_string()));
 
         assert_eq!(
@@ -259,7 +259,7 @@ NAMESPACE NS
 END_NAMESPACE
 "#;
         let tree = p.parse(text, None).unwrap();
-        let doc = Document::new(Text::new(text.into()), tree, None);
+        let doc = Document::new(text.into(), tree, None);
         assert_eq!(get_comment(&doc, 1), Some("This is a comment".to_string()));
 
         assert_eq!(

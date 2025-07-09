@@ -1,6 +1,10 @@
-use auto_lsp::{core::span::Span, default::db::{BaseDatabase}, lsp_types::SymbolKind};
+use auto_lsp::{
+    core::span::Span,
+    default::db::BaseDatabase,
+    lsp_types::{CompletionItem, SymbolKind},
+};
 
-use crate::{hir::{expression::Expr, variable::Spec}};
+use crate::hir::{expression::Expr, variable::Spec};
 
 #[derive(bon::Builder, Debug, Clone)]
 pub struct SymbolInfo<'a> {
@@ -78,12 +82,51 @@ pub trait ToProto<'db> {
     fn spanned(&'db self, db: &'db dyn crate::BaseDatabase) -> &'db Span;
     fn named_span(&'db self, db: &'db dyn crate::BaseDatabase) -> &'db Span;
     fn symbol_info(&'db self, db: &'db dyn crate::BaseDatabase) -> SymbolInfo<'db>;
+    fn completion_ctx(&'db self, _db: &'db dyn crate::BaseDatabase, _offset: usize) -> Option<Vec<CompletionItem>> {
+        None
+    }
 }
 
 pub trait IterToProto<'db> {
-    fn iter(&'db self, db: &'db dyn crate::BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>>;
+    fn iter(
+        &'db self,
+        db: &'db dyn crate::BaseDatabase,
+    ) -> impl Iterator<Item = &'db dyn ToProto<'db>>;
 
-    fn descendant_at(&'db self, db: &'db dyn crate::BaseDatabase, offset: usize) -> Option<&'db dyn ToProto<'db>> {
+    fn descendant_at(
+        &'db self,
+        db: &'db dyn crate::BaseDatabase,
+        offset: usize,
+    ) -> Option<&'db dyn ToProto<'db>> {
+        let mut best_match: Option<&'db dyn ToProto<'db>> = None;
+
+        for node in self.iter(db) {
+            let range = node.spanned(db);
+
+            // Only consider nodes that contain the offset
+            if range.start_byte <= offset && offset <= range.end_byte {
+                // Compare old best match with new node
+                if let Some(a) = best_match {
+                    let a = a.spanned(db);
+
+                    if a.start_byte >= range.start_byte {
+                        continue;
+                    } else {
+                        best_match = Some(node);
+                    }
+                } else {
+                    best_match = Some(node);
+                }
+            }
+        }
+        best_match
+    }
+
+    fn named_descendant_at(
+        &'db self,
+        db: &'db dyn crate::BaseDatabase,
+        offset: usize,
+    ) -> Option<&'db dyn ToProto<'db>> {
         let mut result = None;
         for node in self.iter(db) {
             let range = node.named_span(db);

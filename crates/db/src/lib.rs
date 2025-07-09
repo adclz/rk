@@ -6,6 +6,7 @@ pub mod diagnostics;
 pub mod ident;
 pub mod to_proto;
 pub mod solver; 
+pub mod completions;
  
 use auto_lsp::{default::db::{BaseDatabase, file::File}, lsp_types::Url, salsa};
 use dashmap::DashMap;

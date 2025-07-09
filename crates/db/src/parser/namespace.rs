@@ -7,7 +7,7 @@ use auto_lsp::core::ast::AstNode;
 use auto_lsp::default::db::{BaseDatabase, file::File};
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::hir::namespace::{FileNamespaces, Namespace, Pou, PouDecl};
+use crate::hir::namespace::{FileNamespaces, Namespace, Pou, PouDecl, Using};
 use crate::ident::Ident;
 use crate::parser::Parse;
 use crate::solver::namespace::NamespacePath;
@@ -82,16 +82,20 @@ impl<'db> FileNamespacesBuilder<'db> {
     ) -> anyhow::Result<Namespace<'db>> {
         type Decl = ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl;
 
-        let mut in_scopes = FxHashSet::default();
+        let mut in_scopes = Vec::default();
         for directive in nested.directives.iter() {
-            let path = directive
-                .children
-                .iter()
-                .map(|n| Ident::from_node(self.db, self.file, n.deref()))
-                .collect::<anyhow::Result<Vec<_>>>()?;
-
-            let namespace_path = NamespacePath::from((self.db, &path));
-            in_scopes.insert(namespace_path);
+            for child in directive.children.iter() {
+                let mut path = vec![];
+                for child in child.children.iter() {
+                    path.push(Ident::from_node(self.db, self.file, child.deref())?);
+                }
+                in_scopes.push(
+                    Using::new(
+                        self.db,
+                    NamespacePath::from((self.db, &path)),
+                    child.get_span(),
+                ));
+            }
         }
 
         let mut pous = vec![];

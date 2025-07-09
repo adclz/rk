@@ -3,25 +3,12 @@
 use std::sync::Arc;
 
 use auto_lsp::{
-    anyhow, core::ast::AstNode, default::db::{tracked::ParsedAst, BaseDatabase, file::File}, lsp_types::{self, CompletionItem, CompletionParams, CompletionResponse}
+    anyhow,
+    core::ast::AstNode,
+    default::db::{file::File, tracked::ParsedAst, BaseDatabase},
+    lsp_types::{self, CompletionItem, CompletionParams, CompletionResponse, TextDocumentContentChangeEvent},
 };
-
-use crate::capabilties::completions::snippets::{class, function, function_block, interface, namespace, test, type_, using, var, var_input, var_output, var_temp};
-
-const COMPLETION_MARKER: &str = "iecCompletionMarker";
-
-pub fn closest(nodes: &[Arc<dyn AstNode>], offset: usize) -> Option<&Arc<dyn AstNode>> {
-    let mut result = None;
-    for node in nodes {
-        let range = node.get_range();
-        
-        if range.start_byte >= offset {
-            result = Some(node);
-            break;
-        }
-    }
-    result
-}
+use db::{solver::namespace::namespaces_in_file, to_proto::IterToProto};
 
 pub fn completions(
     db: &impl BaseDatabase,
@@ -35,7 +22,52 @@ pub fn completions(
 
     let doc = file.document(db);
 
-    let mut results = vec![];
+    let position = params.text_document_position.position;
+    let offset = match doc.offset_at(position) {
+        Some(offset) => offset,
+        None => return Ok(None),
+    };
 
-    Ok(Some(CompletionResponse::Array(results)))
+    match params.context {
+        Some(ctx) => match ctx.trigger_character.as_ref() {
+            Some(char) => match char.as_str() {
+                "." => use_completion_marker(db, file, position, offset),
+                _ => use_completion_marker(db, file, position, offset),
+            },
+            None => use_completion_marker(db, file, position, offset),
+        },
+        None => use_completion_marker(db, file, position, offset),
+    }
+}
+
+pub fn use_completion_ctx(db: &impl BaseDatabase, file: File, offset: usize, marker: bool) -> anyhow::Result<Option<CompletionResponse>> {
+    let ns = namespaces_in_file(db, file).unwrap();
+    if let Some(symbol) = ns.descendant_at(db, offset) {
+        eprintln!("{}", symbol.symbol_info(db).name);
+        if let Some(ctx) = symbol.completion_ctx(db, offset) {
+            return Ok(Some(CompletionResponse::Array(ctx)));
+        }
+    }
+    Ok(Some(CompletionResponse::Array(vec![])))
+}
+
+const COMPLETION_MARKER: &str = "cmpMarker";
+
+pub fn use_completion_marker(db: &impl BaseDatabase, file: File, position: lsp_types::Position, offset: usize) -> anyhow::Result<Option<CompletionResponse>> {
+    let mut doc = (*file.document(db)).clone();
+
+    let changes = vec![lsp_types::TextDocumentContentChangeEvent {
+        range: Some(lsp_types::Range {
+            start: position,
+            end: position,
+        }),
+        range_length: Some(COMPLETION_MARKER.len() as u32),
+        text: COMPLETION_MARKER.into(),
+    }];
+
+    doc.update(&mut file.parsers(db).parser.write(), &changes)?;
+
+    let file = File::new(db, file.url(db), file.parsers(db), Arc::new(doc), None);
+
+    use_completion_ctx(db, file, offset, true)
 }

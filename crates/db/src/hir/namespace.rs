@@ -1,9 +1,20 @@
 use auto_enums::auto_enum;
-use auto_lsp::default::db::{BaseDatabase, file::File};
 use auto_lsp::core::span::Span;
+use auto_lsp::default::db::{file::File, BaseDatabase};
+use auto_lsp::lsp_types::CompletionItem;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::{hir::{class::Class, data_type::DataType, function::Function, function_block::FunctionBlock, interface::Interface}, ident::Ident, solver::namespace::NamespacePath, to_proto::{Extends, IterToProto, SymbolInfo, ToProto}};
+use crate::completions;
+use crate::solver::namespace::{namespace_path, starts, starts_with};
+use crate::{
+    hir::{
+        class::Class, data_type::DataType, function::Function, function_block::FunctionBlock,
+        interface::Interface,
+    },
+    ident::Ident,
+    solver::namespace::NamespacePath,
+    to_proto::{Extends, IterToProto, SymbolInfo, ToProto},
+};
 
 /// Represents a group of namespaces in a file
 #[salsa::tracked]
@@ -17,27 +28,41 @@ pub struct FileNamespaces<'db> {
 #[salsa::tracked]
 impl<'db> FileNamespaces<'db> {
     #[salsa::tracked(returns(as_ref))]
-    pub fn get_pou(self, db: &'db dyn BaseDatabase, path: NamespacePath, key: Ident) -> Option<PouDecl<'db>> {
-        self.namespaces(db).get(&path)?.pous(db).iter().find_map(|pou| {
-            if pou.name(db) == &key {
-                Some(*pou)
-            } else {
-                None
-            }
-        })
+    pub fn get_pou(
+        self,
+        db: &'db dyn BaseDatabase,
+        path: NamespacePath,
+        key: Ident,
+    ) -> Option<PouDecl<'db>> {
+        self.namespaces(db)
+            .get(&path)?
+            .pous(db)
+            .iter()
+            .find_map(|pou| {
+                if pou.name(db) == &key {
+                    Some(*pou)
+                } else {
+                    None
+                }
+            })
     }
 }
 
 impl<'db> IterToProto<'db> for FileNamespaces<'db> {
     fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        self.namespaces(db).iter()
-        .map(|(_, ns)| ns.iter(db))
-        .flatten()
+        self.namespaces(db)
+            .iter()
+            .map(|(_, ns)| ns.iter(db))
+            .flatten()
     }
 }
 
 impl<'db> FileNamespaces<'db> {
-    pub fn namespace_at(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Namespace<'db>> {
+    pub fn namespace_at(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        offset: usize,
+    ) -> Option<Namespace<'db>> {
         self.namespaces(db).iter().find_map(|(_path, ns)| {
             if ns.spanned(db).start_byte <= offset && offset <= ns.spanned(db).end_byte {
                 Some(*ns)
@@ -51,10 +76,10 @@ impl<'db> FileNamespaces<'db> {
 /// Represents a view of a namespace
 #[salsa::tracked(debug)]
 pub struct Namespace<'db> {
-    pub internal: bool, 
+    pub internal: bool,
     #[tracked]
     #[returns(ref)]
-    pub in_scopes: FxHashSet<NamespacePath>,
+    pub in_scopes: Vec<Using<'db>>,
 
     #[tracked]
     #[returns(ref)]
@@ -69,6 +94,89 @@ pub struct Namespace<'db> {
     #[tracked]
     #[returns(ref)]
     pub pous: Vec<PouDecl<'db>>,
+}
+
+#[salsa::tracked(debug)]
+pub struct Using<'db> {
+    pub path: NamespacePath,
+    #[returns(ref)]
+    pub span: Span,
+}
+
+impl<'db> ToProto<'db> for Using<'db> {
+    fn spanned(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
+        self.span(db)
+    }
+
+    fn named_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
+        self.span(db)
+    }
+
+    fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> SymbolInfo<'db> {
+        SymbolInfo::builder()
+            .name(self.path(db).to_string(db))
+            .range(self.spanned(db).clone())
+            .name_range(self.named_span(db).clone())
+            .build()
+    }
+
+    fn completion_ctx(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        offset: usize,
+    ) -> Option<Vec<CompletionItem>> {
+        let fragments = self.path(db).fragments(db);
+        let mut marker_index = None;
+
+        for (i, fragment) in fragments.iter().enumerate() {
+            if fragment.text(db).contains("cmpMarker") {
+                marker_index = Some(i);
+                break;
+            }
+        }
+
+        let marker_index = marker_index?;
+
+        let mut seen = FxHashSet::default();
+
+        // Case 1: marker is in the first fragment -> we can only prefix-match from root
+        if marker_index == 0 {
+            let prefix = fragments[0].text(db).replace("cmpMarker", "");
+            return Some(
+                starts_with(db, Ident::new(db, prefix))
+                    .iter()
+                    .filter_map(|ns| ns.path(db).fragments(db).get(0))
+                    .filter(|ident| seen.insert(*ident))
+                    .map(|ident| CompletionItem::new_simple(ident.text(db), ident.text(db)))
+                    .collect(),
+            );
+        }
+
+        // Case 2: marker is in a deeper fragment -> walk through layers with exact match
+        let mut matching = starts(db, fragments[0]).to_vec();
+
+        for i in 1..marker_index {
+            matching = matching
+                .into_iter()
+                .filter(|ns| {
+                    ns.path(db)
+                        .fragments(db)
+                        .get(i)
+                        .map_or(false, |frag| frag == &fragments[i])
+                })
+                .collect();
+        }
+
+        // Now suggest completions for the fragment at `marker_index`
+        let completions = matching
+            .iter()
+            .filter_map(|ns| ns.path(db).fragments(db).get(marker_index))
+            .filter(|ident| seen.insert(*ident))
+            .map(|ident| CompletionItem::new_simple(ident.text(db), ident.text(db)))
+            .collect();
+
+        Some(completions)
+    }
 }
 
 #[salsa::tracked]
@@ -93,7 +201,6 @@ impl<'db> Namespace<'db> {
             }
         })
     }
-
 }
 
 impl<'db> ToProto<'db> for Namespace<'db> {
@@ -107,21 +214,56 @@ impl<'db> ToProto<'db> for Namespace<'db> {
 
     fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> SymbolInfo<'db> {
         SymbolInfo::builder()
-        .kind(auto_lsp::lsp_types::SymbolKind::NAMESPACE)
-        .name(self.path(db).path(db).text(db))
-        .range(self.spanned(db).clone())
-        .name_range(self.name_span(db).clone())
-        .build()
+            .kind(auto_lsp::lsp_types::SymbolKind::NAMESPACE)
+            .name(self.path(db).to_string(db))
+            .range(self.spanned(db).clone())
+            .name_range(self.name_span(db).clone())
+            .build()
+    }
+
+    fn completion_ctx(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        offset: usize,
+    ) -> Option<Vec<CompletionItem>> {
+        // Don't provide completions between the namespace keyword and the namespace name
+        if self.name_span(db).end_byte >= offset {
+            if !self.internal(db) {
+                return Some(vec![CompletionItem::new_simple(
+                    "INTERNAL".into(),
+                    "internal".into(),
+                )]);
+            } else {
+                return None;
+            }
+        }
+        let mut completions = vec![
+            completions::snippets::namespace(),
+            completions::snippets::function(),
+            completions::snippets::function_block(),
+            completions::snippets::type_(),
+            completions::snippets::class(),
+            completions::snippets::interface(),
+        ];
+        // Using directives can only be added before any POU declarations
+        if let Some(pou) = self.pous(db).first() {
+            if pou.spanned(db).end_byte >= offset {
+                completions.push(completions::snippets::using());
+            }
+        } else {
+            completions.push(completions::snippets::using());
+        }
+        Some(completions)
     }
 }
 
 impl<'db> IterToProto<'db> for Namespace<'db> {
     fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
         std::iter::once::<&'db dyn ToProto<'db>>(self)
+            .chain(self.in_scopes(db).iter().map(|using| using as _))
             .chain(self.pous(db).iter().flat_map(|pou| pou.iter(db)))
     }
 }
-
 
 #[salsa::tracked(debug)]
 pub struct PouDecl<'db> {
@@ -140,13 +282,14 @@ pub struct PouDecl<'db> {
     pub name_span: Span,
 }
 
-
 impl<'db> IterToProto<'db> for PouDecl<'db> {
     #[auto_enum(Iterator)]
     fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
         match self.pou(db) {
             Pou::Function(f) => std::iter::once::<&'db dyn ToProto<'db>>(self).chain(f.iter(db)),
-            Pou::FunctionBlock(fb) => std::iter::once::<&'db dyn ToProto<'db>>(self).chain(fb.iter(db)),
+            Pou::FunctionBlock(fb) => {
+                std::iter::once::<&'db dyn ToProto<'db>>(self).chain(fb.iter(db))
+            }
             Pou::Class(c) => std::iter::once::<&'db dyn ToProto<'db>>(self).chain(c.iter(db)),
             Pou::DataType(d) => std::iter::once::<&'db dyn ToProto<'db>>(self).chain(d.iter(db)),
             Pou::Interface(i) => std::iter::once::<&'db dyn ToProto<'db>>(self).chain(i.iter(db)),
@@ -165,36 +308,50 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
 
     fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> SymbolInfo<'db> {
         SymbolInfo::builder()
-        .kind(match self.pou(db) {
-            Pou::Function(_) => auto_lsp::lsp_types::SymbolKind::FUNCTION,
-            Pou::FunctionBlock(_) => auto_lsp::lsp_types::SymbolKind::FUNCTION,
-            Pou::Class(_) => auto_lsp::lsp_types::SymbolKind::CLASS,
-            Pou::Interface(_) => auto_lsp::lsp_types::SymbolKind::INTERFACE,
-            Pou::DataType(_) => auto_lsp::lsp_types::SymbolKind::TYPE_PARAMETER,
-        })
-        .name(self.name(db).text(db))
-        .range(self.spanned(db).clone())
-        .maybe_spec(match self.pou(db) {
-            Pou::DataType(d) => Some(d.spec(db)),
-            _ => None,
-        })
-        .maybe_init(match self.pou(db) {
-            Pou::DataType(d) => d.init(db),
-            _ => None,
-        })
-        .name_range(self.name_span(db).clone())
-        .maybe_extends(match self.pou(db) {
-            Pou::Class(c) => c.extends(db).map(|a| Extends::Single(a)),
-            Pou::FunctionBlock(fb) => fb.extends(db).map(|a| Extends::Single(a)),
-            Pou::Interface(i) => i.extends(db).map(|a| Extends::Multiple(a)),
-            _ => None,
-        })
-        .maybe_implements(match self.pou(db) {
-            Pou::Class(c) => c.implements(db),
-            Pou::FunctionBlock(fb) => fb.implements(db),
-            _ => None,
-        })
-        .build()
+            .kind(match self.pou(db) {
+                Pou::Function(_) => auto_lsp::lsp_types::SymbolKind::FUNCTION,
+                Pou::FunctionBlock(_) => auto_lsp::lsp_types::SymbolKind::FUNCTION,
+                Pou::Class(_) => auto_lsp::lsp_types::SymbolKind::CLASS,
+                Pou::Interface(_) => auto_lsp::lsp_types::SymbolKind::INTERFACE,
+                Pou::DataType(_) => auto_lsp::lsp_types::SymbolKind::TYPE_PARAMETER,
+            })
+            .name(self.name(db).text(db))
+            .range(self.spanned(db).clone())
+            .maybe_spec(match self.pou(db) {
+                Pou::DataType(d) => Some(d.spec(db)),
+                _ => None,
+            })
+            .maybe_init(match self.pou(db) {
+                Pou::DataType(d) => d.init(db),
+                _ => None,
+            })
+            .name_range(self.name_span(db).clone())
+            .maybe_extends(match self.pou(db) {
+                Pou::Class(c) => c.extends(db).map(|a| Extends::Single(a)),
+                Pou::FunctionBlock(fb) => fb.extends(db).map(|a| Extends::Single(a)),
+                Pou::Interface(i) => i.extends(db).map(|a| Extends::Multiple(a)),
+                _ => None,
+            })
+            .maybe_implements(match self.pou(db) {
+                Pou::Class(c) => c.implements(db),
+                Pou::FunctionBlock(fb) => fb.implements(db),
+                _ => None,
+            })
+            .build()
+    }
+
+    fn completion_ctx(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        offset: usize,
+    ) -> Option<Vec<CompletionItem>> {
+        match self.pou(db) {
+            Pou::Function(f) => f.completion_ctx(db, offset),
+            Pou::FunctionBlock(_) => Some(vec![completions::snippets::var_input()]),
+            Pou::Class(_) => Some(vec![completions::snippets::var_input()]),
+            Pou::Interface(_) => Some(vec![completions::snippets::var_input()]),
+            Pou::DataType(_) => None,
+        }
     }
 }
 

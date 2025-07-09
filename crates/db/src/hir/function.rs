@@ -1,7 +1,7 @@
 
-use auto_lsp::default::db::BaseDatabase;
+use auto_lsp::{default::db::BaseDatabase, lsp_types::CompletionItem};
 
-use crate::{hir::variable::Variable, to_proto::{IterToProto, ToProto}};
+use crate::{completions, hir::variable::Variable, to_proto::{IterToProto, ToProto}};
 
 #[salsa::tracked(debug)]
 pub struct Function<'db> {
@@ -9,8 +9,20 @@ pub struct Function<'db> {
     pub variables: Vec<Variable<'db>>,
 }
 
+impl<'db> Function<'db> {
+    pub fn completion_ctx(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Vec<CompletionItem>> {
+        Some(vec![
+            completions::snippets::var_input(),
+            completions::snippets::var_output(),
+            completions::snippets::var_temp(),
+            completions::snippets::var(),
+        ])
+    }
+}
+
 impl<'db> IterToProto<'db> for Function<'db> {
     fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
         self.variables(db).iter().map(|v| v as _)
     }
 }
+
