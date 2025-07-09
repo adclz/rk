@@ -112,14 +112,6 @@ impl<'db> ToProto<'db> for Using<'db> {
         self.span(db)
     }
 
-    fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> SymbolInfo<'db> {
-        SymbolInfo::builder()
-            .name(self.path(db).to_string(db))
-            .range(self.spanned(db).clone())
-            .name_range(self.named_span(db).clone())
-            .build()
-    }
-
     fn completion_ctx(
         &'db self,
         db: &'db dyn BaseDatabase,
@@ -212,13 +204,13 @@ impl<'db> ToProto<'db> for Namespace<'db> {
         self.name_span(db)
     }
 
-    fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> SymbolInfo<'db> {
-        SymbolInfo::builder()
+    fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> Option<SymbolInfo<'db>> {
+        Some(SymbolInfo::builder()
             .kind(auto_lsp::lsp_types::SymbolKind::NAMESPACE)
             .name(self.path(db).to_string(db))
             .range(self.spanned(db).clone())
             .name_range(self.name_span(db).clone())
-            .build()
+            .build())
     }
 
     fn completion_ctx(
@@ -306,8 +298,8 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
         self.name_span(db).into()
     }
 
-    fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> SymbolInfo<'db> {
-        SymbolInfo::builder()
+    fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> Option<SymbolInfo<'db>> {
+        Some(SymbolInfo::builder()
             .kind(match self.pou(db) {
                 Pou::Function(_) => auto_lsp::lsp_types::SymbolKind::FUNCTION,
                 Pou::FunctionBlock(_) => auto_lsp::lsp_types::SymbolKind::FUNCTION,
@@ -337,7 +329,7 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
                 Pou::FunctionBlock(fb) => fb.implements(db),
                 _ => None,
             })
-            .build()
+            .build())
     }
 
     fn completion_ctx(

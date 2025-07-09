@@ -21,7 +21,10 @@ pub fn code_actions(
 
     let ns = namespaces_in_file(db, file).unwrap();
     for symbol in ns.iter(db) {
-        let symbol = symbol.symbol_info(db);
+        let symbol = match symbol.symbol_info(db) {
+            Some(symbol) => symbol,
+            None => continue,
+        };
         // Only process symbols that are inside the selected range
         if symbol.range.lsp().start >= range.start && symbol.range.lsp().end >= range.end {
             //if let Some(SymbolKind::NAMESPACE) = symbol.kind {

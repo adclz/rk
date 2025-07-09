@@ -30,7 +30,10 @@ pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Opti
     let ns = namespaces_in_file(db, file).unwrap();
     Ok(ns.named_descendant_at(db, position).and_then(|symbol| {
         let ns = ns.namespace_at(db, position)?;
-        let symbol = symbol.symbol_info(db);
+        let symbol = match symbol.symbol_info(db) {
+            Some(symbol) => symbol,
+            None => return None,
+        };
 
         let namespace = if symbol.kind == Some(auto_lsp::lsp_types::SymbolKind::NAMESPACE) {
             String::default()

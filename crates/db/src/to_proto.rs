@@ -81,7 +81,9 @@ impl SymbolInfo<'_> {
 pub trait ToProto<'db> {
     fn spanned(&'db self, db: &'db dyn crate::BaseDatabase) -> &'db Span;
     fn named_span(&'db self, db: &'db dyn crate::BaseDatabase) -> &'db Span;
-    fn symbol_info(&'db self, db: &'db dyn crate::BaseDatabase) -> SymbolInfo<'db>;
+    fn symbol_info(&'db self, _db: &'db dyn crate::BaseDatabase) -> Option<SymbolInfo<'db>> {
+        None
+    }
     fn completion_ctx(&'db self, _db: &'db dyn crate::BaseDatabase, _offset: usize) -> Option<Vec<CompletionItem>> {
         None
     }

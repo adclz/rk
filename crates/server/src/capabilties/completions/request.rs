@@ -43,7 +43,6 @@ pub fn completions(
 pub fn use_completion_ctx(db: &impl BaseDatabase, file: File, offset: usize, marker: bool) -> anyhow::Result<Option<CompletionResponse>> {
     let ns = namespaces_in_file(db, file).unwrap();
     if let Some(symbol) = ns.descendant_at(db, offset) {
-        eprintln!("{}", symbol.symbol_info(db).name);
         if let Some(ctx) = symbol.completion_ctx(db, offset) {
             return Ok(Some(CompletionResponse::Array(ctx)));
         }

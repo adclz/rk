@@ -47,15 +47,15 @@ impl<'db> ToProto<'db> for Variable<'db> {
         self.name_span(db).into()
     }
 
-    fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> SymbolInfo<'db> {
-        SymbolInfo::builder()
+    fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> Option<SymbolInfo<'db>> {
+        Some(SymbolInfo::builder()
         .kind(auto_lsp::lsp_types::SymbolKind::VARIABLE)
         .name(self.name(db).text(db))
         .range(self.range(db).clone())
         .spec(self.spec(db))
         .maybe_init(self.init(db))
         .name_range(self.name_span(db).clone())
-        .build()
+        .build())
     }
 }
 

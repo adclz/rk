@@ -49,14 +49,14 @@ impl<'db> ToProto<'db> for Method<'db> {
         self.name_span(db)
     }
 
-    fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> SymbolInfo<'db> {
-        SymbolInfo::builder()
+    fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> Option<SymbolInfo<'db>> {
+        Some(SymbolInfo::builder()
             .kind(auto_lsp::lsp_types::SymbolKind::METHOD)
             .name(self.name(db).text(db))
             .range(self.range(db).clone())
             .name_range(self.name_span(db).clone())
             .maybe_spec(self.return_type(db).cloned())
-            .build()
+            .build())
     }
 }
 
