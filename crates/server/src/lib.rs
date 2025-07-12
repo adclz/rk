@@ -2,12 +2,22 @@
 mod capabilties;
 
 use auto_lsp::anyhow;
-use db::RK_PARSER;
+use auto_lsp::core::errors::FileSystemError;
+use auto_lsp::core::errors::RuntimeError;
+use auto_lsp::default::db::file::File;
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::default::server::capabilities::TEXT_DOCUMENT_SYNC;
 use auto_lsp::default::server::capabilities::WORKSPACE_PROVIDER;
-use auto_lsp::default::server::file_events::changed_watched_files;
-use auto_lsp::default::server::file_events::open_text_document;
+use auto_lsp::lsp_types;
+use auto_lsp::lsp_types::DidChangeWatchedFilesParams;
+use auto_lsp::lsp_types::DidOpenTextDocumentParams;
+use auto_lsp::lsp_types::FileChangeType;
+use auto_lsp::salsa::Setter;
+use db::solver::namespace::namespaces_in_file;
+use db::RK_PARSER;
+//use auto_lsp::default::server::file_events::changed_watched_files;
+use auto_lsp::default::db::FileManager;
+//use auto_lsp::default::server::file_events::open_text_document;
 use auto_lsp::default::server::workspace_init::WorkspaceInit;
 use auto_lsp::lsp_server;
 use auto_lsp::lsp_server::Connection;
@@ -22,13 +32,13 @@ use auto_lsp::lsp_types::notification::SetTrace;
 use auto_lsp::lsp_types::request::CodeActionRequest;
 use auto_lsp::lsp_types::request::CodeLensRequest;
 use auto_lsp::lsp_types::request::Completion;
+use auto_lsp::lsp_types::request::DocumentDiagnosticRequest;
+use auto_lsp::lsp_types::request::DocumentSymbolRequest;
 use auto_lsp::lsp_types::request::FoldingRangeRequest;
 use auto_lsp::lsp_types::request::Formatting;
 use auto_lsp::lsp_types::request::HoverRequest;
 use auto_lsp::lsp_types::request::InlayHintRequest;
 use auto_lsp::lsp_types::request::SemanticTokensFullRequest;
-use auto_lsp::lsp_types::request::DocumentSymbolRequest;
-use auto_lsp::lsp_types::request::DocumentDiagnosticRequest;
 use auto_lsp::lsp_types::request::WorkspaceDiagnosticRequest;
 use auto_lsp::lsp_types::CodeActionProviderCapability;
 use auto_lsp::lsp_types::CodeLensOptions;
@@ -37,15 +47,17 @@ use auto_lsp::lsp_types::DiagnosticOptions;
 use auto_lsp::lsp_types::DiagnosticServerCapabilities;
 use auto_lsp::lsp_types::FoldingRangeProviderCapability;
 use auto_lsp::lsp_types::HoverProviderCapability;
-use auto_lsp::lsp_types::WorkDoneProgressOptions;
-use auto_lsp::lsp_types::{OneOf, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions, SemanticTokensServerCapabilities};
 use auto_lsp::lsp_types::ServerCapabilities;
+use auto_lsp::lsp_types::WorkDoneProgressOptions;
+use auto_lsp::lsp_types::{
+    OneOf, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
+    SemanticTokensServerCapabilities,
+};
 use auto_lsp::server::notification_registry::NotificationRegistry;
 use auto_lsp::server::options::InitOptions;
 use auto_lsp::server::request_registry::RequestRegistry;
 use auto_lsp::server::Session;
-use auto_lsp::default::db::FileManager;
-use capabilties::semantic_tokens::{SUPPORTED_TYPES};
+use capabilties::semantic_tokens::SUPPORTED_TYPES;
 use db::RootDatabase;
 use std::error::Error;
 use std::panic::RefUnwindSafe;
@@ -77,23 +89,27 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
             capabilities: ServerCapabilities {
                 document_symbol_provider: Some(OneOf::Left(true)),
                 workspace: WORKSPACE_PROVIDER.clone(),
-                diagnostic_provider: Some(DiagnosticServerCapabilities::Options(DiagnosticOptions {
-                    workspace_diagnostics: true,
-                    inter_file_dependencies: true,
-                    ..Default::default()
-                })),
-                text_document_sync: TEXT_DOCUMENT_SYNC.clone(),
-                semantic_tokens_provider: Some(SemanticTokensServerCapabilities::SemanticTokensOptions(
-                    SemanticTokensOptions {
-                        legend: SemanticTokensLegend {
-                            token_types: SUPPORTED_TYPES.to_vec(),
-                            token_modifiers: SUPPORTED_MODIFIERS.to_vec(),
-                        },
-                        range: Some(false),
-                        full: Some(SemanticTokensFullOptions::Bool(true)),
+                diagnostic_provider: Some(DiagnosticServerCapabilities::Options(
+                    DiagnosticOptions {
+                        workspace_diagnostics: true,
+                        inter_file_dependencies: true,
                         ..Default::default()
                     },
                 )),
+                text_document_sync: TEXT_DOCUMENT_SYNC.clone(),
+                semantic_tokens_provider: Some(
+                    SemanticTokensServerCapabilities::SemanticTokensOptions(
+                        SemanticTokensOptions {
+                            legend: SemanticTokensLegend {
+                                token_types: SUPPORTED_TYPES.to_vec(),
+                                token_modifiers: SUPPORTED_MODIFIERS.to_vec(),
+                            },
+                            range: Some(false),
+                            full: Some(SemanticTokensFullOptions::Bool(true)),
+                            ..Default::default()
+                        },
+                    ),
+                ),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
                 code_lens_provider: Some(CodeLensOptions {
@@ -101,16 +117,14 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
                 }),
                 inlay_hint_provider: Some(OneOf::Left(true)),
                 folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
-                    completion_provider: Some(CompletionOptions {
+                completion_provider: Some(CompletionOptions {
                     resolve_provider: None,
-                    trigger_characters: Some(vec![
-                        ":".to_owned(),
-                        ".".to_owned(),
-                        "(".to_owned(),
-                    ]),
+                    trigger_characters: Some(vec![":".to_owned(), ".".to_owned(), "(".to_owned()]),
                     all_commit_characters: None,
                     completion_item: None,
-                    work_done_progress_options: WorkDoneProgressOptions { work_done_progress: None },
+                    work_done_progress_options: WorkDoneProgressOptions {
+                        work_done_progress: None,
+                    },
                 }),
                 document_formatting_provider: Some(OneOf::Left(true)),
                 ..Default::default()
@@ -140,10 +154,10 @@ fn on_requests<Db: BaseDatabase + Clone + RefUnwindSafe>(
     registry
         .on::<DocumentDiagnosticRequest, _>(diagnostics)
         .on::<WorkspaceDiagnosticRequest, _>(workspace_diagnostics)
-        .on::<DocumentSymbolRequest, _>( document_symbols)
+        .on::<DocumentSymbolRequest, _>(document_symbols)
         .on::<SemanticTokensFullRequest, _>(semantic_tokens::semantic_tokens_full)
         .on::<HoverRequest, _>(hover)
-        .on::<CodeActionRequest, _>(code_actions)  
+        .on::<CodeActionRequest, _>(code_actions)
         .on::<CodeLensRequest, _>(code_lens)
         .on::<FoldingRangeRequest, _>(folding_ranges)
         .on::<Completion, _>(completions)
@@ -163,7 +177,44 @@ fn on_notifications<Db: BaseDatabase + Clone + RefUnwindSafe>(
             file.update_edit(&mut s.db, &p)?;
             Ok(())
         })
-        .on_mut::<DidChangeWatchedFiles, _>(|s, p| Ok(changed_watched_files(s, p)?))
+        .on_mut::<DidChangeWatchedFiles, _>(|s, p| {
+            eprintln!(
+                "Files changed: {:?}",
+                p.changes.iter().map(|c| c.typ).collect::<Vec<_>>()
+            );
+            eprintln!(
+                "< db: {:?}",
+                s.db.get_files()
+                    .iter()
+                    .map(|file| file.url(&s.db).to_string())
+                    .collect::<Vec<_>>()
+            );
+            eprintln!(
+                "< namespaces: {:?}",
+                s.db.get_files()
+                    .iter()
+                    .map(|file| namespaces_in_file(&s.db, *file))
+                    .count()
+            );
+
+            let r = Ok(changed_watched_files(s, p)?);
+
+            eprintln!(
+                "> db: {:?}",
+                s.db.get_files()
+                    .iter()
+                    .map(|file| file.url(&s.db).to_string())
+                    .collect::<Vec<_>>()
+            );
+            eprintln!(
+                "> namespaces: {:?}",
+                s.db.get_files()
+                    .iter()
+                    .map(|file| namespaces_in_file(&s.db, *file))
+                    .count()
+            );
+            r
+        })
         .on_mut::<Cancel, _>(|s, p| {
             let id: lsp_server::RequestId = match p.id {
                 auto_lsp::lsp_types::NumberOrString::Number(id) => id.into(),
@@ -178,4 +229,83 @@ fn on_notifications<Db: BaseDatabase + Clone + RefUnwindSafe>(
         .on::<DidCloseTextDocument, _>(|_s, _p| Ok(()))
         .on::<SetTrace, _>(|_s, _p| Ok(()))
         .on::<LogTrace, _>(|_s, _p| Ok(()))
+}
+
+pub fn open_text_document<Db: BaseDatabase>(
+    session: &mut Session<Db>,
+    params: DidOpenTextDocumentParams,
+) -> Result<(), RuntimeError> {
+    let url = &params.text_document.uri;
+
+    match session.db.get_file(url) {
+        Some(file) => {
+            log::info!("Did Open Text Document: Already exists - {url}");
+            file.set_version(&mut session.db)
+                .to(Some(params.text_document.version));
+            Ok(())
+        }
+        None => {
+            let file = File::from_text_doc()
+                .doc(&params.text_document)
+                .session(session)
+                .call()?;
+
+            log::info!("Did Open Text Document: Created - {url}");
+            session.db.add_file(file).map_err(|e| e.into())
+        }
+    }
+}
+
+/// Handle the watched files change notification.
+///
+/// The differences between this and the document requests is that the watched files are not necessarily modified by the client.
+///
+/// Some changes can be made by external tools, github, someone editing the project with NotePad while the IDE is active, etc ...
+pub fn changed_watched_files<Db: BaseDatabase>(
+    session: &mut Session<Db>,
+    params: DidChangeWatchedFilesParams,
+) -> Result<(), RuntimeError> {
+    params.changes.iter().try_for_each(|file| {
+        if file.uri.scheme() != "file" {
+            return Ok(());
+        }
+        match file.typ {
+            FileChangeType::CREATED => {
+                let url = &file.uri;
+                if session.db.get_file(url).is_some() {
+                    // The file is already in db
+                    // We can ignore this change
+                    return Ok(());
+                }
+                let file = File::from_fs().session(session).url(&url).call()?;
+
+                log::info!("Watched Files: Created - {url}");
+                session.db.add_file(file).map_err(RuntimeError::from)
+            }
+            FileChangeType::CHANGED => {
+                let url: &lsp_types::Url = &file.uri;
+                let file = session.db.get_file(&url).ok_or_else(|| {
+                    RuntimeError::from(FileSystemError::FileUrlToFilePath { path: url.clone() })
+                })?;
+
+                log::info!("Watched Files: Changed - {url}");
+                file.update_full_fs(session).map_err(RuntimeError::from)
+            }
+            FileChangeType::DELETED => {
+                let url = &file.uri;
+                if session.db.get_file(&url).is_none() {
+                    // The file is not in db, we can ignore this change
+                    return Ok(());
+                }
+
+                let file = session.db.get_file(&url).unwrap();
+                file.reset(&mut session.db).map_err(RuntimeError::from)?;
+
+                log::info!("Watched Files: Deleted - {}", &url);
+                session.db.remove_file(&url).map_err(RuntimeError::from)
+            }
+            // Should never happen
+            _ => Ok(()),
+        }
+    })
 }
