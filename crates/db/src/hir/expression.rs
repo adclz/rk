@@ -1,6 +1,8 @@
 use std::ops::Deref;
+use std::path::Display;
 
 use crate::solver::fq_name::FqName;
+use crate::to_proto::{IterToProto, ToProto};
 use crate::{ident::Ident, solver::namespace::NamespacePath};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
@@ -11,10 +13,25 @@ use bitflags::bitflags;
 
 #[salsa::tracked(debug)]
 pub struct Expr<'db> {
-    span: Span,
+    #[returns(ref)]
+    pub span: Span,
 
-    #[return_ref]
+    #[returns(ref)]
     pub expr: ExprKind<'db>,
+}
+
+impl<'db> ToProto<'db> for Expr<'db> {
+    fn spanned(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
+        self.span(db)
+    }
+
+    fn named_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
+        self.span(db)
+    }
+}
+
+fn self_iter<'db>(s: &'db impl ToProto<'db>, db: &dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+    std::iter::once::<&'db dyn ToProto<'db>>(s)
 }
 
 impl<'db> Expr<'db> {
@@ -293,4 +310,53 @@ pub enum Numeric {
     Hex(Ident),
     Octal(Ident),
     Signed(Ident),
+}
+
+impl Numeric {
+    pub fn to_string<'db>(&self, db: &'db dyn BaseDatabase) -> String {
+        match self {
+            Numeric::Binary(ident) => format!("Binary {}", ident.text(db)),
+            Numeric::Hex(ident) => format!("Hex {}", ident.text(db)),
+            Numeric::Octal(ident) => format!("Octal {}", ident.text(db)),
+            Numeric::Signed(ident) => format!("Signed {}", ident.text(db)),
+        }
+    }
+}
+
+impl Literal {
+    pub fn to_string<'db>(&self, db: &'db dyn BaseDatabase) -> String {
+        match self {
+            Literal::AnyNumeric(n) => format!("Number {}", match n {
+                Numeric::Binary(ident) => ident.text(db),
+                Numeric::Hex(ident) => ident.text(db),
+                Numeric::Octal(ident) => ident.text(db),
+                Numeric::Signed(ident) => ident.text(db),
+            }),
+            Literal::SInt(ident) => format!("SInt {}", ident.to_string(db)),
+            Literal::Int(ident) => format!("Int {}", ident.to_string(db)),
+            Literal::DInt(ident) => format!("DInt {}", ident.to_string(db)),
+            Literal::LInt(ident) => format!("LInt {}", ident.to_string(db)),
+            Literal::USInt(ident) => format!("USInt {}", ident.to_string(db)),
+            Literal::UInt(ident) => format!("UInt {}", ident.to_string(db)),
+            Literal::UDInt(ident) => format!("UDInt {}", ident.to_string(db)),
+            Literal::ULInt(ident) => format!("ULInt {}", ident.to_string(db)),
+            Literal::Byte(ident) => format!("Byte {}", ident.to_string(db)),
+            Literal::Word(ident) => format!("Word {}", ident.to_string(db)),
+            Literal::DWord(ident) => format!("DWord {}", ident.to_string(db)),
+            Literal::LWord(ident) => format!("LWord {}", ident.to_string(db)),
+            Literal::Real(ident) => format!("Real {}", ident.text(db)),
+            Literal::LReal(ident) => format!("LReal {}", ident.text(db)),
+            Literal::Bool(ident) => format!("Bool {}", ident.text(db)),
+            Literal::Char(ident) => format!("Char {}", ident.text(db)),
+            Literal::DChar(ident) => format!("DChar {}", ident.text(db)),
+            Literal::Date(ident) => format!("Date {}", ident.text(db)),
+            Literal::LDate(ident) => format!("LDate {}", ident.text(db)),
+            Literal::Tod(ident) => format!("Tod {}", ident.text(db)),
+            Literal::LTod(ident) => format!("LTod {}", ident.text(db)),
+            Literal::Time(ident) => format!("Time {}", ident.text(db)),
+            Literal::LTime(ident) => format!("LTime {}", ident.text(db)),
+            Literal::DateTime(ident) => format!("DateTime {}", ident.text(db)),
+            Literal::LDateTime(ident) => format!("LDateTime {}", ident.text(db)),
+        }
+    }
 }
