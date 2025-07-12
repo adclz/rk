@@ -364,6 +364,60 @@
     ]
   },
   {
+    "type": "_stmt",
+    "named": true,
+    "subtypes": [
+      {
+        "type": "CONTINUE",
+        "named": false
+      },
+      {
+        "type": "EXIT",
+        "named": false
+      },
+      {
+        "type": "RETURN",
+        "named": false
+      },
+      {
+        "type": "assign",
+        "named": true
+      },
+      {
+        "type": "case_stmt",
+        "named": true
+      },
+      {
+        "type": "for_stmt",
+        "named": true
+      },
+      {
+        "type": "func_call",
+        "named": true
+      },
+      {
+        "type": "if_stmt",
+        "named": true
+      },
+      {
+        "type": "invocation",
+        "named": true
+      },
+      {
+        "type": "repeat_stmt",
+        "named": true
+      },
+      {
+        "type": "super_stmt",
+        "named": true
+      },
+      {
+        "type": "while_stmt",
+        "named": true
+      }
+    ]
+  },
+  {
     "type": "_temp_var_kind",
     "named": true,
     "subtypes": [
@@ -1426,15 +1480,11 @@
         ]
       },
       "offset": {
-        "multiple": true,
+        "multiple": false,
         "required": true,
         "types": [
           {
-            "type": ".",
-            "named": false
-          },
-          {
-            "type": "unsigned_int",
+            "type": "offset",
             "named": true
           }
         ]
@@ -3287,6 +3337,21 @@
     }
   },
   {
+    "type": "offset",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "unsigned_int",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "or_operator",
     "named": true,
     "fields": {
@@ -4321,53 +4386,6 @@
     }
   },
   {
-    "type": "stmt",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": false,
-      "types": [
-        {
-          "type": "assign",
-          "named": true
-        },
-        {
-          "type": "case_stmt",
-          "named": true
-        },
-        {
-          "type": "for_stmt",
-          "named": true
-        },
-        {
-          "type": "func_call",
-          "named": true
-        },
-        {
-          "type": "if_stmt",
-          "named": true
-        },
-        {
-          "type": "invocation",
-          "named": true
-        },
-        {
-          "type": "repeat_stmt",
-          "named": true
-        },
-        {
-          "type": "super",
-          "named": true
-        },
-        {
-          "type": "while_stmt",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
     "type": "stmt_list",
     "named": true,
     "fields": {},
@@ -4376,7 +4394,7 @@
       "required": true,
       "types": [
         {
-          "type": "stmt",
+          "type": "_stmt",
           "named": true
         }
       ]
@@ -4643,6 +4661,11 @@
         }
       ]
     }
+  },
+  {
+    "type": "super_stmt",
+    "named": true,
+    "fields": {}
   },
   {
     "type": "symbolic_variable",
@@ -6141,6 +6164,10 @@
     "named": false
   },
   {
+    "type": "SUPER",
+    "named": false
+  },
+  {
     "type": "T",
     "named": false
   },
@@ -6462,10 +6489,6 @@
   },
   {
     "type": "sint_name",
-    "named": true
-  },
-  {
-    "type": "super",
     "named": true
   },
   {

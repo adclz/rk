@@ -23,12 +23,20 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>
  * @license AGPL-3.0-only
  */
 
-function commaSep1(rule) {
-    return seq(rule, repeat(seq(',', rule)))
+function commaSep1(rule, $) {
+    return seq(rule, repeat(seq($._comma, rule)))
 }
 
-function commaSep(rule) {
-    return optional(commaSep1(rule))
+function commaSep(rule, $) {
+    return optional(commaSep1(rule, $))
+}
+
+function dotSep1(rule, $) {
+    return seq(rule, repeat(seq('.', rule)))
+}
+
+function dotSep(rule, $) {
+    return optional(commaSep1(rule, $))
 }
 
 /// Create rules for a new type with a spec and an init
@@ -130,6 +138,10 @@ const RESERVED_NAMES = [
 module.exports = grammar({
     name: "rk",
 
+    inline: $ => [
+        $.dot
+    ],
+
     extras: $ => [
         /\s/, // Whitespace
         $.comment,
@@ -169,7 +181,9 @@ module.exports = grammar({
 
         // access and size
         $.IQM,
-        $.XBWDL
+        $.XBWDL,
+
+        $._stmt
     ],
 
     conflicts: $ => [
@@ -598,21 +612,21 @@ module.exports = grammar({
 
         enum_spec: $ => prec.left(seq(
             choice(
-                seq('(', commaSep($.identifier), ')'),
+                seq('(', commaSep($.identifier, $), ')'),
                 $.fq_name
             ),
         )),
         // Named_Spec_Init : '(' Enum_Value_Spec ( ',' Enum_Value_Spec )* ')' ( ':=' Enum_Value )?; 
-        named_spec: $ => prec.left(seq('(', commaSep1($.enum_value_spec), ')')),
+        named_spec: $ => prec.left(seq('(', commaSep1($.enum_value_spec, $), ')')),
 
         ...createSpecInit("array",
             $ => seq(
                 ":",
-                'ARRAY', '[', field("ranges", commaSep1($.subrange)), ']',
+                'ARRAY', '[', field("ranges", commaSep1($.subrange, $)), ']',
                 'OF',
                 field("type", $._data_type_access)
             ),
-            $ => seq(':=', '[', commaSep($.array_elem_init), ']')
+            $ => seq(':=', '[', commaSep($.array_elem_init, $), ']')
         ),
 
         ...createSpecInit("struct",
@@ -623,7 +637,7 @@ module.exports = grammar({
                 repeat1(seq($.struct_elem_decl, ';')),
                 'END_STRUCT'
             ),
-            $ => seq(':=', '(', commaSep($.struct_elem_init), ')')
+            $ => seq(':=', '(', commaSep($.struct_elem_init, $), ')')
         ),
 
         ...createSpecInit("str",
@@ -701,7 +715,7 @@ module.exports = grammar({
             ])($),
         ),
 
-        struct_init: $ => seq('(', commaSep($.struct_elem_init), ')'),
+        struct_init: $ => seq('(', commaSep($.struct_elem_init, $), ')'),
 
         struct_elem_init: $ => seq(
             field("name", $.identifier),
@@ -711,13 +725,14 @@ module.exports = grammar({
 
         // Table 16 - Directly represented variables 
 
-        direct_variable: $ => prec.left(seq(
+        direct_variable: $ => seq(
             '%',
             field("kind", $.IQM),
             field("size", optional($.XBWDL)),
-            field("offset", seq($.unsigned_int,
-                repeat(seq('.', $.unsigned_int))))
-        )),
+            field("offset", $.offset)
+        ),
+
+        offset: $ => prec.left(dotSep1($.unsigned_int, $)),
 
         // Table 12 - Reference operations 
 
@@ -786,7 +801,7 @@ module.exports = grammar({
             prec.left(repeat1(choice($.subscript_list, $.struct_variable)))
         ),
 
-        subscript_list: $ => seq('[', commaSep($._expression), ']'),
+        subscript_list: $ => seq('[', commaSep($._expression, $), ']'),
 
         struct_variable: $ => seq(
             '.',
@@ -852,20 +867,20 @@ module.exports = grammar({
         ]
         )($),
 
-        variable_list: $ => commaSep1($.identifier),
+        variable_list: $ => commaSep1($.identifier, $),
 
         array_conformand: $ => seq(
             ":",
             'ARRAY',
             '[',
-            commaSep1('*'),
+            commaSep1('*', $),
             ']',
             'OF',
             $._data_type_access
         ),
 
         fb_decl_no_init: $ => seq(
-            commaSep1($.fb_name),
+            commaSep1($.fb_name, $),
             ':',
             $.fq_name
         ),
@@ -987,7 +1002,7 @@ module.exports = grammar({
         _global_var_kind: $ => choice($.loc_var_spec_init, $.fq_name),
 
         global_var_spec: $ => choice(
-            seq(commaSep1($.identifier)),
+            seq(commaSep1($.identifier, $)),
             seq(
                 $.identifier,
                 $.located_at
@@ -1201,7 +1216,7 @@ module.exports = grammar({
             'NULL'
         ),
 
-        interface_name_list: $ => commaSep1($.fq_name),
+        interface_name_list: $ => commaSep1($.fq_name, $),
 
         interface_name: $ => $.identifier,
 
@@ -1430,7 +1445,7 @@ module.exports = grammar({
             field("configuration_elements", optional(seq('(', $.prog_conf_elems, ')')))
         ),
 
-        prog_conf_elems: $ => commaSep1($.prog_conf_elem),
+        prog_conf_elems: $ => commaSep1($.prog_conf_elem, $),
 
         prog_conf_elem: $ => choice(
             $.fb_task,
@@ -1507,14 +1522,11 @@ module.exports = grammar({
             )
         ),
 
-        namespace_h_name: $ => seq(
-            $.identifier,
-            repeat(seq('.', $.identifier))
-        ),
+        namespace_h_name: $ => dotSep1($.identifier, $),
 
         using_directive: $ => seq(
             'USING',
-            commaSep1($.namespace_h_name),
+            commaSep1($.namespace_h_name, $),
             optional(';')
         ),
 
@@ -1630,18 +1642,18 @@ module.exports = grammar({
 
         func_call: $ => seq(
             field("target", $.fq_name),
-            '(', prec(PREC.parameter_list, field("params", commaSep($.param_assign))), ')'
+            '(', prec(PREC.parameter_list, field("params", commaSep($.param_assign, $))), ')'
         ),
 
-        stmt_list: $ => prec.left(repeat1(seq($.stmt, optional(";")))),
+        stmt_list: $ => prec.left(repeat1(seq($._stmt, optional(";")))),
 
-        stmt: $ => choice(
+        _stmt: $ => choice(
             // assignments
             $.assign,
             // subprog
             $.func_call,
             $.invocation,
-            alias(seq('SUPER', '(', ')'), $.super),
+            $.super_stmt,
             'RETURN',
             // iteration
             $.if_stmt,
@@ -1653,6 +1665,8 @@ module.exports = grammar({
             'EXIT',
             'CONTINUE'
         ),
+
+        super_stmt: $ => seq('SUPER','(',')'),
 
         // assignment: $ => seq(
         //    $.variable, 
@@ -1693,14 +1707,14 @@ module.exports = grammar({
                 alias('THIS', $.this),
                 $.this_invocation
             ),
-            '(', commaSep($.param_assign), ')'
+            '(', commaSep($.param_assign, $), ')'
         ),
 
         this_invocation: $ => seq(
             seq('THIS', '.'),
             repeat1(seq($.instance_name, '.')),
             alias($.identifier, $.method_name),
-            '(', prec(PREC.parameter_list, field("params", commaSep($.param_assign))), ')'
+            '(', prec(PREC.parameter_list, field("params", commaSep($.param_assign, $))), ')'
         ),
 
         param_assign: $ => choice(
@@ -1749,7 +1763,7 @@ module.exports = grammar({
             $.stmt_list
         ),
 
-        case_list: $ => commaSep1($.case_list_elem),
+        case_list: $ => commaSep1($.case_list_elem, $),
 
         case_list_elem: $ => choice(
             $.subrange,
@@ -1826,6 +1840,11 @@ module.exports = grammar({
         _bit: $ => /[01]/,
         _octal_digit: $ => /[0-7]/,
         _hex_digit: $ => /[0-9a-fA-F]/,
-        identifier: _ => /[_\p{XID_Start}][_\p{XID_Continue}]*/
+        identifier: _ => /[_\p{XID_Start}][_\p{XID_Continue}]*/,
+
+        // Other
+
+        _comma: $ => ',',
+        dot: $ => '.',
     }
 });
