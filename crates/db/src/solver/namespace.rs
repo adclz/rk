@@ -75,7 +75,7 @@ pub fn namespaces_in_file<'db>(
 }
 
 /// Returns the namespaces that contain the given path
-#[salsa::tracked(returns(ref))]
+#[salsa::tracked(returns(ref), no_eq)]
 pub fn namespace_path<'db>(
     db: &'db dyn BaseDatabase,
     path: NamespacePath,
@@ -142,6 +142,32 @@ mod tests {
 
     use super::*;
 
+        #[test]
+    fn interned_namespace_paths() {
+        let db = RootDatabase::default();
+        let first_id = Ident::new(&db, "first".to_string());
+        let second_id = Ident::new(&db, "second".to_string());
+
+        assert_ne!(first_id, second_id);
+
+        let first_path = NamespacePath::from((
+            &db as _,
+            vec![
+                Ident::new(&db, "first".to_string()),
+                Ident::new(&db, "second".to_string()),
+            ],
+        ));
+        let second_path = NamespacePath::from((
+            &db as _,
+            vec![
+                Ident::new(&db, "first".to_string()),
+                Ident::new(&db, "second".to_string()),
+            ],
+        ));
+
+        assert_eq!(first_path, second_path);
+    }
+
     #[test]
     fn namespace_fragments() {
         let mut db = RootDatabase::default();
@@ -163,8 +189,8 @@ END_NAMESPACE"#;
         let file = db.get_file(&url).unwrap();
         let namespaces = namespaces_in_file(&db, file).unwrap();
 
-       let test = namespaces.namespaces(&db).values().next().unwrap();
-       assert!(test.path(&db).fragments(&db).len() == 4);
+        let test = namespaces.namespaces(&db).values().next().unwrap();
+        assert!(test.path(&db).fragments(&db).len() == 4);
     }
 
     #[test]
@@ -194,7 +220,7 @@ END_NAMESPACE"#;
     }
 
     #[test]
-    fn multiple_namespaces() {
+    fn nested_namespaces() {
         let mut db = RootDatabase::default();
         let url = lsp_types::Url::parse("file:///test.st").unwrap();
         let source = r#"
@@ -238,32 +264,6 @@ END_NAMESPACE"#;
         assert!(actual.contains(&"TEST.k".to_string()));
         assert!(actual.contains(&"TEST.k.TEST235333.m.a".to_string()));
         assert!(actual.contains(&"TEST.k.TEST235333.m.a.TEST.b".to_string()));
-    }
-
-    #[test]
-    fn interned_paths() {
-        let db = RootDatabase::default();
-        let first_id = Ident::new(&db, "first".to_string());
-        let second_id = Ident::new(&db, "second".to_string());
-
-        assert_ne!(first_id, second_id);
-
-        let first_path = NamespacePath::from((
-            &db as _,
-            vec![
-                Ident::new(&db, "first".to_string()),
-                Ident::new(&db, "second".to_string()),
-            ],
-        ));
-        let second_path = NamespacePath::from((
-            &db as _,
-            vec![
-                Ident::new(&db, "first".to_string()),
-                Ident::new(&db, "second".to_string()),
-            ],
-        ));
-
-        assert_eq!(first_path, second_path);
     }
 
     #[test]
@@ -322,12 +322,58 @@ END_NAMESPACE"#;
 
         logs.lock().unwrap().clear();
 
-        // Getting paths on a same file should not trigger recomputation
+        // Getting paths on a same file should not trigger recomputation until the next db revision
 
         assert!(!namespace_path(&db, first).is_empty());
         assert!(!namespace_path(&db, second).is_empty());
         assert!(!namespace_path(&db, third).is_empty());
 
+        assert_eq!(logs.lock().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn getting_all_tracked_namespaces() {
+        let logs = Arc::new(Mutex::new(Vec::new()));
+        let ptr = logs.clone();
+
+        let mut db = RootDatabase::new(Some(Box::new(move |event| {
+            if let EventKind::WillExecute { .. } = event.kind {
+                ptr.lock().unwrap().push(event);
+            }
+        })));
+        let url = lsp_types::Url::parse("file:///test.st").unwrap();
+        let source = r#"
+NAMESPACE first
+
+END_NAMESPACE"#;
+
+        let file = File::from_string()
+            .db(&db)
+            .parsers(ast::RK_PARSER.get("structured_text").unwrap())
+            .url(&url)
+            .source(source.to_string())
+            .call()
+            .unwrap();
+
+        db.add_file(file).unwrap();
+
+        let all_namespaces = namespace_path(
+            &db,
+            NamespacePath::from((&db as _, &vec![Ident::new(&db, "first".to_string())])),
+        );
+
+        assert_eq!(all_namespaces.len(), 1);
+        assert_eq!(logs.lock().unwrap().len(), 3);
+
+        logs.lock().unwrap().clear();
+
+        // Getting all namespaces again should not trigger recomputation until the next db revision
+
+        let all_namespaces = namespace_path(
+            &db,
+            NamespacePath::from((&db as _, &vec![Ident::new(&db, "first".to_string())])),
+        );
+        assert_eq!(all_namespaces.len(), 1);
         assert_eq!(logs.lock().unwrap().len(), 0);
     }
 }

@@ -205,83 +205,7 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                                         })
                                     }
                                     ast::generated::ParamAssignInput_ParamAssignOutput::ParamAssignOutput(p) => {
-                                        let variable = match p.variable.children.deref() {
-                                            ast::generated::DirectVariable_SymbolicVariable::DirectVariable(d) => {
-                                                Variable::Direct {
-                                                    kind: match d.kind.deref() {
-                                                        ast::generated::IQM::Token_I(_) => AccessOperator::I,
-                                                        ast::generated::IQM::Token_Q(_) => AccessOperator::Q,
-                                                        ast::generated::IQM::Token_M(_) => AccessOperator::M,
-                                                    },
-                                                    size: d.size.as_ref().map(|s| match s.deref() {
-                                                        ast::generated::XBWDL::Token_X(_) => SizeOperator::X,
-                                                        ast::generated::XBWDL::Token_B(_) => SizeOperator::B,
-                                                        ast::generated::XBWDL::Token_W(_) => SizeOperator::W,
-                                                        ast::generated::XBWDL::Token_D(_) => SizeOperator::D,
-                                                        ast::generated::XBWDL::Token_L(_) => SizeOperator::L,
-                                                    }),
-                                                    offset: d.offset.iter().map(|o| Ident::from_node(db, file, o.deref())).collect::<anyhow::Result<Vec<_>>>()?,
-                                                }
-                                            }
-                                            ast::generated::DirectVariable_SymbolicVariable::SymbolicVariable(s) => {
-                                                let kind = match s.children.deref() {
-                                                    ast::generated::MultiElemVar_VarAccess::VarAccess(v) => {
-                                                        match v.children.deref() {
-                                                            ast::generated::Identifier_RefDeref::Identifier(i) => {
-                                                                SymbolicVariableKind::VarAccess { access: VarAccess::Simple(Ident::from_node(db, file, i.deref())?) }
-                                                            }
-                                                            ast::generated::Identifier_RefDeref::RefDeref(r) => {
-                                                                SymbolicVariableKind::VarAccess { access: VarAccess::Deref(Ident::from_node(db, file, r.children.deref())?) }
-                                                            }
-                                                        }
-                                                    }
-                                                    ast::generated::MultiElemVar_VarAccess::MultiElemVar(m) => {
-                                                        let base = match m.access.children.deref() {
-                                                            ast::generated::Identifier_RefDeref::Identifier(i) => {
-                                                                VarAccess::Simple(Ident::from_node(db, file, i)?)
-                                                            }
-                                                            ast::generated::Identifier_RefDeref::RefDeref(r) => {
-                                                                VarAccess::Deref(Ident::from_node(db, file, r.children.deref())?)
-                                                            }
-                                                        };
-
-                                                        let mut elements = vec![];
-                                                        for child in m.children.deref() {
-                                                            match child.deref() {
-                                                                ast::generated::StructVariable_SubscriptList::SubscriptList(s) => {
-                                                                    let mut list = vec![];
-                                                                    for child in s.children.deref() {
-                                                                        list.push(child.to_expr(db, file)?)
-                                                                    }
-                                                                    
-                                                                    elements.push(
-                                                                        MultiElemVarElement::Subscript {
-                                                                            expr: list,
-                                                                        },
-                                                                    )
-                                                                }
-                                                                ast::generated::StructVariable_SubscriptList::StructVariable(s) => {
-                                                                    elements.push(
-                                                                        MultiElemVarElement::StructVariable {
-                                                                            access: VarAccess::Simple(Ident::from_node(db, file, s)?),
-                                                                        },
-                                                                    )
-                                                                }
-                                                            }
-                                                        }
-                                                        SymbolicVariableKind::MultiElemVar { base, elements } 
-
-                                                    }
-                                                };
-
-                                                Variable::Symbolic {
-                                                    // fixme: could be a simple is_some()
-                                                    this: !s.this.is_empty(),
-                                                    kind
-                                                }
-                                            }
-                                        };
-                                        
+                                        let variable = p.variable.to_access(db, file)?;
                                         
                                         parameters.push(ParamAssign::ParamAssignOutput {
                                             not: p.not.is_some(),
@@ -492,5 +416,121 @@ impl<'db> ParseExpression<'db> for ast::generated::Constant {
                 },
             },
         ))
+    }
+}
+
+
+
+pub trait ParseVariableAccess<'db> {
+    fn to_access(
+        &'db self,
+        db: &'db dyn auto_lsp::default::db::BaseDatabase,
+        file: File,
+    ) -> anyhow::Result<Variable<'db>>;
+}
+
+impl<'db> ParseVariableAccess<'db> for ast::generated::Variable {
+    fn to_access(
+        &'db self,
+        db: &'db dyn auto_lsp::default::db::BaseDatabase,
+        file: File,
+    ) -> anyhow::Result<Variable<'db>> {
+        match self.children.deref() {
+            ast::generated::DirectVariable_SymbolicVariable::DirectVariable(v) => {
+                v.to_access(db, file)
+            }
+            ast::generated::DirectVariable_SymbolicVariable::SymbolicVariable(v) => {
+                v.to_access(db, file)
+            }
+        }
+    }
+}
+
+impl<'db> ParseVariableAccess<'db> for ast::generated::DirectVariable {
+    fn to_access(
+        &'db self,
+        db: &'db dyn auto_lsp::default::db::BaseDatabase,
+        file: File,
+    ) -> anyhow::Result<Variable<'db>> {
+        let kind = match self.kind.deref() {
+            ast::generated::IQM::Token_I(_) => AccessOperator::I,
+            ast::generated::IQM::Token_Q(_) => AccessOperator::Q,
+            ast::generated::IQM::Token_M(_) => AccessOperator::M,
+        };
+
+        let size = self.size.as_deref().map(|size| match size {
+            ast::generated::XBWDL::Token_X(_) => SizeOperator::X,
+            ast::generated::XBWDL::Token_B(_) => SizeOperator::B,
+            ast::generated::XBWDL::Token_W(_) => SizeOperator::W,
+            ast::generated::XBWDL::Token_D(_) => SizeOperator::D,
+            ast::generated::XBWDL::Token_L(_) => SizeOperator::L,
+        });
+
+        let offset = self
+            .offset
+            .children
+            .iter()
+            .map(|o| Ident::from_node(db, file, o.deref()))
+            .collect::<anyhow::Result<Vec<_>>>()?;
+
+        Ok(Variable::Direct { kind, size, offset })
+    }
+}
+
+impl<'db> ParseVariableAccess<'db> for ast::generated::SymbolicVariable {
+    fn to_access(
+        &'db self,
+        db: &'db dyn auto_lsp::default::db::BaseDatabase,
+        file: File,
+    ) -> anyhow::Result<Variable<'db>> {
+        let kind = match self.children.deref() {
+            ast::generated::MultiElemVar_VarAccess::VarAccess(v) => match v.children.deref() {
+                ast::generated::Identifier_RefDeref::Identifier(i) => {
+                    SymbolicVariableKind::VarAccess {
+                        access: VarAccess::Simple(Ident::from_node(db, file, i)?),
+                    }
+                }
+                ast::generated::Identifier_RefDeref::RefDeref(r) => {
+                    SymbolicVariableKind::VarAccess {
+                        access: VarAccess::Deref(Ident::from_node(db, file, r.children.deref())?),
+                    }
+                }
+            },
+            ast::generated::MultiElemVar_VarAccess::MultiElemVar(m) => {
+                let base = match m.access.children.deref() {
+                    ast::generated::Identifier_RefDeref::Identifier(i) => {
+                        VarAccess::Simple(Ident::from_node(db, file, i)?)
+                    }
+                    ast::generated::Identifier_RefDeref::RefDeref(r) => {
+                        VarAccess::Deref(Ident::from_node(db, file, r.children.deref())?)
+                    }
+                };
+
+                let mut elements = vec![];
+                for child in m.children.deref() {
+                    match child.deref() {
+                        ast::generated::StructVariable_SubscriptList::SubscriptList(s) => {
+                            let mut list = vec![];
+                            for child in s.children.deref() {
+                                list.push(child.to_expr(db, file)?)
+                            }
+
+                            elements.push(MultiElemVarElement::Subscript { expr: list })
+                        }
+                        ast::generated::StructVariable_SubscriptList::StructVariable(s) => elements
+                            .push(MultiElemVarElement::StructVariable {
+                                access: VarAccess::Simple(Ident::from_node(db, file, s)?),
+                            }),
+                    }
+                }
+                SymbolicVariableKind::MultiElemVar { base, elements }
+            }
+        };
+
+        Ok(Variable::Symbolic {
+            // fixme: could be a simple is_some()
+            this: !self.this.is_empty(),
+            kind,
+        })
     }
 }

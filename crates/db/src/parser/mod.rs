@@ -12,6 +12,7 @@ pub mod types;
 pub mod data_type;
 pub mod interface;
 pub mod expression;
+pub mod statement;
 
 trait Parse<'db>: Sized {
     type Output: Update;

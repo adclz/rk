@@ -5,7 +5,8 @@ use auto_lsp::lsp_types::CompletionItem;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::completions;
-use crate::solver::namespace::{namespace_path, starts, starts_with};
+use crate::hir::COMPLETION_MARKER;
+use crate::solver::namespace::{starts, starts_with};
 use crate::{
     hir::{
         class::Class, data_type::DataType, function::Function, function_block::FunctionBlock,
@@ -25,26 +26,65 @@ pub struct FileNamespaces<'db> {
     pub namespaces: FxHashMap<NamespacePath, Namespace<'db>>,
 }
 
+#[derive(Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum NamespaceResult<'db> {
+    NotFound,
+    Hidden(Namespace<'db>),
+    Found(Namespace<'db>),
+}
+
+#[derive(Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum PouResult<'db> {
+    NotFound,
+    Hidden((Namespace<'db>, PouDecl<'db>)),
+    Found(PouDecl<'db>)
+    
+}
+
 #[salsa::tracked]
 impl<'db> FileNamespaces<'db> {
-    #[salsa::tracked(returns(as_ref))]
+    #[salsa::tracked]
+    pub fn get_namespace(
+        self,
+        db: &'db dyn BaseDatabase,
+        from: NamespacePath,
+        to: NamespacePath,
+    ) -> NamespaceResult<'db> {
+        match self.namespaces(db).get(&to) {
+            None => NamespaceResult::NotFound,
+            Some(ns) => {
+                if ns.internal(db) && from != to {
+                    NamespaceResult::Hidden(*ns)
+                } else {
+                    NamespaceResult::Found(*ns)
+                }
+            }
+        }
+    }
+
+    #[salsa::tracked]
     pub fn get_pou(
         self,
         db: &'db dyn BaseDatabase,
-        path: NamespacePath,
+        from: NamespacePath,
+        to: NamespacePath,
         key: Ident,
-    ) -> Option<PouDecl<'db>> {
-        self.namespaces(db)
-            .get(&path)?
-            .pous(db)
-            .iter()
-            .find_map(|pou| {
-                if pou.name(db) == &key {
-                    Some(*pou)
-                } else {
-                    None
+    ) -> PouResult<'db> {
+        match self.get_namespace(db, from, to) {
+            NamespaceResult::NotFound => PouResult::NotFound,
+            NamespaceResult::Hidden(ns) => {
+                match ns.get_pou(db, key) {
+                    None => PouResult::NotFound,
+                    Some(pou) => PouResult::Hidden((ns, *pou)),
                 }
-            })
+            }
+            NamespaceResult::Found(ns) => {
+                match ns.get_pou(db, key) {
+                    None => PouResult::NotFound,
+                    Some(pou) => PouResult::Found(*pou),
+                }
+            }
+        }
     }
 }
 
@@ -74,11 +114,16 @@ impl<'db> FileNamespaces<'db> {
 }
 
 /// Represents a view of a namespace
-#[salsa::tracked(debug)]
+#[salsa::tracked]
 pub struct Namespace<'db> {
     pub internal: bool,
     #[tracked]
     #[returns(ref)]
+
+    // from the standard: "A USING namespace directive enables the types contained in the given namespace, 
+    // but specifically does not enable types contained in nested namespaces."
+
+    // TLDR: Using directives are not recursive
     pub in_scopes: Vec<Using<'db>>,
 
     #[tracked]
@@ -115,13 +160,13 @@ impl<'db> ToProto<'db> for Using<'db> {
     fn completion_ctx(
         &'db self,
         db: &'db dyn BaseDatabase,
-        offset: usize,
+        _offset: usize,
     ) -> Option<Vec<CompletionItem>> {
         let fragments = self.path(db).fragments(db);
         let mut marker_index = None;
 
         for (i, fragment) in fragments.iter().enumerate() {
-            if fragment.text(db).contains("cmpMarker") {
+            if fragment.text(db).contains(COMPLETION_MARKER) {
                 marker_index = Some(i);
                 break;
             }
@@ -133,7 +178,7 @@ impl<'db> ToProto<'db> for Using<'db> {
 
         // Case 1: marker is in the first fragment -> we can only prefix-match from root
         if marker_index == 0 {
-            let prefix = fragments[0].text(db).replace("cmpMarker", "");
+            let prefix = fragments[0].text(db).replace(COMPLETION_MARKER, "");
             return Some(
                 starts_with(db, Ident::new(db, prefix))
                     .iter()
@@ -219,7 +264,7 @@ impl<'db> ToProto<'db> for Namespace<'db> {
         offset: usize,
     ) -> Option<Vec<CompletionItem>> {
         // Don't provide completions between the namespace keyword and the namespace name
-        if self.name_span(db).end_byte >= offset {
+        if self.name_span(db).end_byte > offset {
             if !self.internal(db) {
                 return Some(vec![CompletionItem::new_simple(
                     "INTERNAL".into(),
@@ -229,6 +274,7 @@ impl<'db> ToProto<'db> for Namespace<'db> {
                 return None;
             }
         }
+
         let mut completions = vec![
             completions::snippets::namespace(),
             completions::snippets::function(),
@@ -257,8 +303,10 @@ impl<'db> IterToProto<'db> for Namespace<'db> {
     }
 }
 
-#[salsa::tracked(debug)]
+#[salsa::tracked]
 pub struct PouDecl<'db> {
+    pub file: File,
+    
     #[tracked]
     #[returns(ref)]
     pub pou: Pou<'db>,
@@ -347,7 +395,7 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+#[derive(Clone, PartialEq, Eq, salsa::Update)]
 pub enum Pou<'db> {
     Function(Function<'db>),
     FunctionBlock(FunctionBlock<'db>),

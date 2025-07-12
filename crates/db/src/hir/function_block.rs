@@ -3,7 +3,7 @@ use auto_lsp::default::db::BaseDatabase;
 use crate::{hir::{expression::Expr, variable::Variable, visibility::Modifiers}, to_proto::{IterToProto, ToProto}};
 
 
-#[salsa::tracked(debug)]
+#[salsa::tracked]
 pub struct FunctionBlock<'db> {
     pub extends: Option<Expr<'db>>,
 

@@ -88,7 +88,7 @@ mod tests {
     use auto_lsp::{default::db::FileManager, lsp_types, texter::core::text::Text};
 
     use super::*;
-    use crate::{hir::namespace::Pou, ident::Ident, solver::namespace::{namespaces_in_file, NamespacePath}, RootDatabase};
+    use crate::{hir::namespace::{Pou, PouDecl, PouResult}, ident::Ident, solver::namespace::{namespaces_in_file, NamespacePath}, RootDatabase};
 
     #[test]
     fn variables_in_function_block() {
@@ -153,12 +153,17 @@ END_NAMESPACE
         let fn_name = Ident::new(&db, "f".to_string());
         let ns = Ident::new(&db, "nss".to_string());
 
-        let function = namespaces.get_pou(&db as _, NamespacePath::from((&db as _, vec![ns])), fn_name).unwrap().pou(&db);
+        let ns = NamespacePath::from((&db as _, vec![ns]));
+        let function = namespaces.get_pou(&db as _, ns,  ns, fn_name);
         
-        if let Pou::FunctionBlock(f) = function {
+        let PouResult::Found(pou) = function else {
+            panic!("Not a function block");
+        };
+
+        if let Pou::FunctionBlock(f) = pou.pou(&db) {
             assert_eq!(f.variables(&db).len(), 12);
         } else {
-            panic!("Not a function");
+            panic!("Not a function block");
         }
     }
 }

@@ -14,7 +14,7 @@ pub struct FqName {
     pub target: Ident,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+#[derive(Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum FqSolverResult<'db> {
     Hidden(Namespace<'db>),
     Ok(PouDecl<'db>),

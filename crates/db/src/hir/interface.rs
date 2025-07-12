@@ -9,7 +9,7 @@ use crate::{
     to_proto::{IterToProto, SymbolInfo, ToProto},
 };
 
-#[salsa::tracked(debug)]
+#[salsa::tracked]
 pub struct Interface<'db> {
     #[returns(as_ref)]
     pub extends: Option<Vec<Expr<'db>>>,
@@ -27,7 +27,7 @@ impl<'db> IterToProto<'db> for Interface<'db> {
     }
 }
 
-#[salsa::tracked(debug)]
+#[salsa::tracked]
 pub struct Method<'db> {
     #[returns(ref)]
     pub range: Span,

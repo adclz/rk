@@ -1,7 +1,9 @@
 use std::ops::Deref;
+use std::vec;
 
 use crate::hir;
 use crate::hir::variable::Variable;
+use crate::parser::statement::ParseStatement;
 use crate::parser::{Parse, ParseVarSection};
 use ast::generated::FuncVariables;
 use auto_lsp::anyhow::{self};
@@ -12,9 +14,19 @@ impl<'db> Parse<'db> for ast::generated::FuncDecl {
 
     fn parse(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output> {
         let variables = self.parse_variables(db, file)?;
+        let statements = self.body
+            .as_ref()
+            .map_or(vec![], |body| match body.children.deref() {
+                ast::generated::FbDiagram_LadderDiagram_StmtList::StmtList(ref stmts) => {
+                    stmts.children.iter().map(|stmt| stmt.to_statement(db, file)).collect::<anyhow::Result<Vec<_>>>().unwrap_or_default()
+                }
+                _ => vec![],
+            });
         Ok(hir::function::Function::new(
             db,
-            variables))
+            variables,
+            statements
+        ))
     }
 }
 
@@ -59,7 +71,7 @@ mod tests {
     use auto_lsp::{default::db::FileManager, lsp_types, texter::core::text::Text};
 
     use super::*;
-    use crate::{hir::namespace::Pou, ident::Ident, solver::namespace::{namespaces_in_file, NamespacePath}, RootDatabase};
+    use crate::{hir::namespace::{Pou, PouResult}, ident::Ident, solver::namespace::{namespaces_in_file, NamespacePath}, RootDatabase};
 
     #[test]
     fn variables_in_function() {
@@ -112,9 +124,14 @@ END_NAMESPACE
         let fn_name = Ident::new(&db, "f".to_string());
         let ns = Ident::new(&db, "nss".to_string());
 
-        let function = namespaces.get_pou(&db as _, NamespacePath::from((&db as _, vec![ns])), fn_name).unwrap().pou(&db);
+        let ns = NamespacePath::from((&db as _, vec![ns]));
+        let function = namespaces.get_pou(&db as _, ns,  ns, fn_name);
         
-        if let Pou::Function(f) = function {
+        let PouResult::Found(pou) = function else {
+            panic!("Not a function");
+        };
+
+        if let Pou::Function(f) = pou.pou(&db) {
             assert_eq!(f.variables(&db).len(), 8);
         } else {
             panic!("Not a function");

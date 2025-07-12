@@ -31,6 +31,7 @@ macro_rules! parse_multi_variable_sections {
                         let result = var_decl.to_spec_init(db, file)?;
                         section.push(
                             Variable::new(db,
+                                file,
                                 name,
                                 variable.get_span(),
                                 variable.get_span(),
@@ -92,6 +93,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
                     let result = var_decl.to_spec_init(db, file)?;
                     section.push(Variable::new(
                         db,
+                        file,
                         name,
                         child.get_span(),
                         child.name.get_span(),
@@ -105,6 +107,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
                     let result = var_decl.to_spec_init(db, file)?;
                     section.push(Variable::new(
                         db,
+                        file,
                         name,
                         child.get_span(),
                         child.name.get_span(),
@@ -132,6 +135,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
                 let result = child.Type.to_spec_init(db, file)?;
                 section.push(Variable::new(
                     db,
+                    file,
                     name,
                     child.get_span(),
                     variable.get_span(),
@@ -158,6 +162,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::RetainVarDecls {
                 let result = child.Type.to_spec_init(db, file)?;
                 section.push(Variable::new(
                     db,
+                    file,
                     name,
                     child.get_span(),
                     variable.get_span(),
@@ -184,6 +189,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::NoRetainVarDecls {
                 let result = child.Type.to_spec_init(db, file)?;
                 section.push(Variable::new(
                     db,
+                    file,
                     name,
                     child.get_span(),
                     variable.get_span(),
@@ -209,6 +215,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::LocPartlyVarDecl {
             let result = child.to_spec_init(db, file)?;
             section.push(Variable::new(
                 db,
+                file,
                 name,
                 child.get_span(),
                 child.variable_name.get_span(),
@@ -235,6 +242,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
                     let result = var_decl.to_spec_init(db, file)?;
                     section.push(Variable::new(
                         db,
+                        file,
                         name,
                         child.get_span(),
                         child.spec.get_span(),
@@ -248,6 +256,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
                     let result = var_decl.to_spec_init(db, file)?;
                     section.push(Variable::new(
                         db,
+                        file,
                         name,
                         child.get_span(),
                         child.spec.get_span(),

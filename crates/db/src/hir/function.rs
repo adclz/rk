@@ -1,12 +1,16 @@
 
 use auto_lsp::{default::db::BaseDatabase, lsp_types::CompletionItem};
 
-use crate::{completions, hir::variable::Variable, to_proto::{IterToProto, ToProto}};
+use crate::{completions, hir::{statement::Stmt, variable::Variable}, to_proto::{IterToProto, ToProto}};
 
-#[salsa::tracked(debug)]
+#[salsa::tracked]
 pub struct Function<'db> {
     #[returns(ref)]
     pub variables: Vec<Variable<'db>>,
+
+    #[tracked]
+    #[no_eq]
+    pub statements: Vec<Stmt<'db>>,
 }
 
 impl<'db> Function<'db> {
