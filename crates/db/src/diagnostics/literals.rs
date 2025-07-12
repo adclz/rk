@@ -10,6 +10,34 @@ pub enum DateAndTimeError {
     InvalidDay(ErrorKind),
 }
 
+impl DateAndTimeError {
+    pub fn to_diag(&self) -> auto_lsp::lsp_types::Diagnostic {
+        let (message, range) = match self {
+            DateAndTimeError::InvalidYear(kind) => (
+                "Invalid year".to_string(),
+                0..0
+            ),
+            DateAndTimeError::InvalidMonth(kind) => (
+                "Invalid month".to_string(),
+                0..0,
+            ),
+            DateAndTimeError::InvalidDay(kind) => (
+                "Invalid day".to_string(),
+                0..0,
+            ),
+        };
+        auto_lsp::lsp_types::Diagnostic {
+            range: auto_lsp::lsp_types::Range {
+                start: auto_lsp::lsp_types::Position { line: 0, character: range.start },
+                end: auto_lsp::lsp_types::Position { line: 0, character: range.end },
+            },
+            message,
+            severity: Some(auto_lsp::lsp_types::DiagnosticSeverity::ERROR),
+            ..Default::default()
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ErrorKind {
     RangeError(Range<usize>),
