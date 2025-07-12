@@ -275,17 +275,17 @@ module.exports = grammar({
 
         binary_int: $ => seq(
             '2#',
-            field("value", $._bit, repeat1(seq(optional('_'), $._bit)))
+            field("value", $._bit_value)
         ),
 
         octal_int: $ => seq(
             '8#',
-            field("value", seq($._octal_digit, repeat1(seq(optional('_'), $._octal_digit)))),
+            field("value", $._octal_value),
         ),
 
         hex_int: $ => seq(
             '16#',
-            field("value", seq($._hex_digit, repeat1(seq(optional('_'), $._hex_digit))))
+            field("value", $._hex_value)
         ),
 
         real_literal: $ => choice(
@@ -1838,8 +1838,11 @@ module.exports = grammar({
         // Table 2 - Identifiers
 
         _bit: $ => /[01]/,
+        _bit_value: $ => /[01]+/,
         _octal_digit: $ => /[0-7]/,
+        _octal_value: $ => /[0-7]+/,
         _hex_digit: $ => /[0-9a-fA-F]/,
+        _hex_value: $ => /[0-9a-fA-F]+/,
         identifier: _ => /[_\p{XID_Start}][_\p{XID_Continue}]*/,
 
         // Other
