@@ -44,7 +44,7 @@ pub fn workspace_diagnostics(
                 .collect();
 
             WorkspaceDocumentDiagnosticReport::Full(WorkspaceFullDocumentDiagnosticReport {
-                version: None,
+                version: file.version(db).map(|i| i.into()),
                 full_document_diagnostic_report: FullDocumentDiagnosticReport {
                     result_id: None,
                     items: errors,
