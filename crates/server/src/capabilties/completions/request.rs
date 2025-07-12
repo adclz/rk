@@ -8,7 +8,7 @@ use auto_lsp::{
     default::db::{file::File, tracked::ParsedAst, BaseDatabase},
     lsp_types::{self, CompletionItem, CompletionParams, CompletionResponse, TextDocumentContentChangeEvent},
 };
-use db::{solver::namespace::namespaces_in_file, to_proto::IterToProto};
+use db::{hir::COMPLETION_MARKER, solver::namespace::namespaces_in_file, to_proto::IterToProto};
 
 pub fn completions(
     db: &impl BaseDatabase,
@@ -40,18 +40,6 @@ pub fn completions(
     }
 }
 
-pub fn use_completion_ctx(db: &impl BaseDatabase, file: File, offset: usize, marker: bool) -> anyhow::Result<Option<CompletionResponse>> {
-    let ns = namespaces_in_file(db, file).unwrap();
-    if let Some(symbol) = ns.descendant_at(db, offset) {
-        if let Some(ctx) = symbol.completion_ctx(db, offset) {
-            return Ok(Some(CompletionResponse::Array(ctx)));
-        }
-    }
-    Ok(Some(CompletionResponse::Array(vec![])))
-}
-
-const COMPLETION_MARKER: &str = "cmpMarker";
-
 pub fn use_completion_marker(db: &impl BaseDatabase, file: File, position: lsp_types::Position, offset: usize) -> anyhow::Result<Option<CompletionResponse>> {
     let mut doc = (*file.document(db)).clone();
 
@@ -68,5 +56,16 @@ pub fn use_completion_marker(db: &impl BaseDatabase, file: File, position: lsp_t
 
     let file = File::new(db, file.url(db), file.parsers(db), Arc::new(doc), None);
 
-    use_completion_ctx(db, file, offset, true)
+    use_completion_ctx(db, file, offset)
+}
+
+pub fn use_completion_ctx(db: &impl BaseDatabase, file: File, offset: usize) -> anyhow::Result<Option<CompletionResponse>> {
+    let ns = namespaces_in_file(db, file).unwrap();
+    if let Some(symbol) = ns.descendant_at(db, offset) {
+        eprintln!("Found symbol: {:?}", symbol.symbol_info(db));
+        if let Some(ctx) = symbol.completion_ctx(db, offset) {
+            return Ok(Some(CompletionResponse::Array(ctx)));
+        }
+    }
+    Ok(Some(CompletionResponse::Array(vec![])))
 }

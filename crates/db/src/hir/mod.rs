@@ -8,3 +8,5 @@ pub mod variable;
 pub mod visibility;
 pub mod expression;
 pub mod statement;
+
+pub static COMPLETION_MARKER: &str = "い";
