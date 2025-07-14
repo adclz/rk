@@ -12,7 +12,10 @@ use crate::{
         namespace::{NamespaceResult, PouDecl, PouResult, Using},
         variable::Spec,
     },
-    solver::namespace::{namespace_path, namespaces_in_file, NamespacePath},
+    solver::{
+        fq_name::{self, NamespaceAccess, SpannedNamespaceAccess},
+        namespace::{namespace_path, namespaces_in_file, NamespacePath},
+    },
 };
 
 trait Check<'db> {
@@ -32,7 +35,7 @@ pub fn duplicate_declarations<'db>(db: &'db dyn BaseDatabase, file: File) {
             }
 
             for pou in namespace.pous(db).iter() {
-                pou.check(db);
+                pou.check_with_visibility(db, *path);
 
                 for other_decl in namespace_path(db, *path) {
                     if other_decl.file(db) == file {
@@ -74,7 +77,7 @@ impl<'db> CheckWithVisibility<'db> for Using<'db> {
     fn check_with_visibility(&'db self, db: &'db dyn BaseDatabase, from: NamespacePath) {
         let to = self.path(db);
         let results = namespace_path(db, to);
-        
+
         if results.is_empty() {
             let message = format!("unknown namespace: '{}'", to.to_string(db));
             let diagnostic = diag()
@@ -85,13 +88,17 @@ impl<'db> CheckWithVisibility<'db> for Using<'db> {
                 .call();
             DiagnosticAccumulator::accumulate(diagnostic.into(), db);
         } else {
-            if results.iter().all(|ns| {
-                match ns.get_namespace(db, from, to) {
+            if results
+                .iter()
+                .all(|ns| match ns.get_namespace(db, from, to) {
                     NamespaceResult::Hidden(_) => true,
-                    _ => false
-                }
-            }) {
-                let message = format!("All declarations of namespace '{}' are hidden.", to.to_string(db));
+                    _ => false,
+                })
+            {
+                let message = format!(
+                    "All declarations of namespace '{}' are hidden.",
+                    to.to_string(db)
+                );
                 let diagnostic = diag()
                     .range(self.span(db).clone())
                     .message(message)
@@ -104,18 +111,96 @@ impl<'db> CheckWithVisibility<'db> for Using<'db> {
     }
 }
 
-impl<'db> Check<'db> for PouDecl<'db> {
-    fn check(&'db self, db: &'db dyn BaseDatabase) {
+impl<'db> CheckWithVisibility<'db> for PouDecl<'db> {
+    fn check_with_visibility(&'db self, db: &'db dyn BaseDatabase, ns: NamespacePath) {
         match self.pou(db) {
             crate::hir::namespace::Pou::Function(func) => {
                 func.variables(db).check(db);
             }
             crate::hir::namespace::Pou::FunctionBlock(func) => {
                 func.variables(db).check(db);
+                func.extends(db)
+                    .map(|extend| extend.check_with_visibility(db, ns));
+                func.implements(db).map(|implements| {
+                    implements.iter().for_each(|implement| {
+                        implement.check_with_visibility(db, ns);
+                    });
+                });
             }
             crate::hir::namespace::Pou::DataType(_) => {}
-            crate::hir::namespace::Pou::Class(_) => {}
-            crate::hir::namespace::Pou::Interface(_) => {}
+            crate::hir::namespace::Pou::Class(class) => {
+                class
+                    .extends(db)
+                    .map(|extend| extend.check_with_visibility(db, ns));
+            }
+            crate::hir::namespace::Pou::Interface(interface) => {
+                interface.extends(db).map(|extend| {
+                    extend.iter().for_each(|extend| {
+                        extend.check_with_visibility(db, ns);
+                    });
+                });
+            }
+        }
+    }
+}
+
+impl<'db> CheckWithVisibility<'db> for SpannedNamespaceAccess {
+    fn check_with_visibility(&'db self, db: &'db dyn BaseDatabase, from: NamespacePath) {
+        let to = if let Some(to) = self.fq_name.namespace(db) {
+            to
+        } else {
+            return;
+        };
+        let pou = self.fq_name.target(db);
+        let results = namespace_path(db, to);
+
+        eprintln!("results: {:?} -> {:?}", to.to_string(db), pou.text(db));
+
+        if results.is_empty() {
+            let message = format!("unknown namespace: '{}'", to.to_string(db));
+            let diagnostic = diag()
+                .range(self.span.clone())
+                .message(message)
+                .source("IEC".into())
+                .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+                .call();
+            DiagnosticAccumulator::accumulate(diagnostic.into(), db);
+        } else {
+            if let None = results
+                .iter()
+                .find_map(|ns| match ns.get_pou(db, from, to, pou) {
+                    PouResult::Hidden(_) => {
+                        let message = format!(
+                            "POU '{}' is hidden in namespace '{}'",
+                            pou.text(db),
+                            to.to_string(db)
+                        );
+                        let diagnostic = diag()
+                            .range(self.span.clone())
+                            .message(message)
+                            .source("IEC".into())
+                            .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+                            .call();
+                        DiagnosticAccumulator::accumulate(diagnostic.into(), db);
+                        None
+                    }
+                    PouResult::NotFound => None,
+                    PouResult::Found(found) => Some(found),
+                })
+            {
+                let message = format!(
+                    "POU '{}' not found in namespace '{}'",
+                    pou.text(db),
+                    to.to_string(db)
+                );
+                let diagnostic = diag()
+                    .range(self.span.clone())
+                    .message(message)
+                    .source("IEC".into())
+                    .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+                    .call();
+                DiagnosticAccumulator::accumulate(diagnostic.into(), db);
+            };
         }
     }
 }

@@ -8,6 +8,7 @@ use crate::hir::variable::Variable;
 use crate::hir::visibility::Modifiers;
 use crate::parser::{Parse, ParseVarSection};
 use crate::hir;
+use crate::solver::fq_name::{NamespaceAccess, SpannedNamespaceAccess};
 
 impl<'db> Parse<'db> for ast::generated::FbDecl {
     type Output = hir::function_block::FunctionBlock<'db>;
@@ -18,13 +19,13 @@ impl<'db> Parse<'db> for ast::generated::FbDecl {
         let extends = self
             .extends
             .as_ref()
-            .map(|e| Expr::new_target(db, file, e))
+            .map(|e| SpannedNamespaceAccess::new(db, file, e))
             .transpose()?;
 
         let implements = self
             .implements
             .as_ref()
-            .map(|i| i.children.iter().map(|i| Expr::new_target(db, file, i)).collect())
+            .map(|i| i.children.iter().map(|i| SpannedNamespaceAccess::new(db, file, i)).collect())
             .transpose()?;
 
         let mut modifiers = Modifiers::empty();

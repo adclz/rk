@@ -1,12 +1,12 @@
 use auto_lsp::default::db::BaseDatabase;
 
-use crate::{hir::{expression::{Expr}, visibility::Modifiers}, to_proto::{IterToProto, ToProto}};
+use crate::{hir::{expression::Expr, visibility::Modifiers}, solver::fq_name::{NamespaceAccess, SpannedNamespaceAccess}, to_proto::{IterToProto, ToProto}};
 
 #[salsa::tracked(debug)]
 pub struct Class<'db> {
-    pub extends: Option<Expr<'db>>,
+    pub extends: Option<SpannedNamespaceAccess>,
 
-    pub implements: Option<Vec<Expr<'db>>>,
+    pub implements: Option<Vec<SpannedNamespaceAccess>>,
 
     pub modifiers: Modifiers,
 }

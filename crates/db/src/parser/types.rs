@@ -8,12 +8,12 @@ use auto_lsp::{
 use crate::{
     hir::{expression::Expr, variable::{Spec, Subrange}},
     ident::Ident,
-    parser::{expression::ParseExpression, ParseInit, ParseSpec, ParseSpecInit, SpecInitResult},
+    parser::{expression::ParseExpression, ParseInit, ParseSpec, ParseSpecInit, SpecInitResult}, solver::fq_name::NamespaceAccess,
 };
 
 // Target
 
-impl<'db> ParseSpecInit<'db> for ast::generated::FqName {
+impl<'db> ParseSpecInit<'db> for ast::generated::NamespaceAccess {
     fn to_spec_init(
         &'db self,
         db: &'db dyn BaseDatabase,
@@ -23,9 +23,9 @@ impl<'db> ParseSpecInit<'db> for ast::generated::FqName {
     }
 }
 
-impl<'db> ParseSpec<'db> for ast::generated::FqName {
+impl<'db> ParseSpec<'db> for ast::generated::NamespaceAccess {
     fn to_spec(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
-        Ok(Spec::Target(Ident::from_node(db, file, self.target.deref())?))
+        Ok(Spec::Target(NamespaceAccess::from_ast(db, file, self)?))
     }
 }
 
@@ -36,6 +36,18 @@ impl<'db> ParseSpec<'db> for ast::generated::SimpleTypeSpec {
         // forwarded to ElemTypeName
         self.children.deref().to_spec(db, file)
     }
+}
+
+impl<'db> ParseSpec<'db> for ast::generated::DataTypeAccess {
+    fn to_spec(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
+        match self {
+            ast::generated::DataTypeAccess::ElemTypeName(elem_type_name) => {
+                elem_type_name.to_spec(db, file)
+            }
+            ast::generated::DataTypeAccess::NamespaceAccess(target) => target.to_spec(db, file),
+        }
+    }
+    
 }
 
 impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
@@ -153,7 +165,7 @@ impl<'db> ParseSpec<'db> for ast::generated::ArrayTypeSpec {
             ast::generated::DataTypeAccess::ElemTypeName(elem_type_name) => {
                 elem_type_name.to_spec(db, file)
             }
-            ast::generated::DataTypeAccess::FqName(target) => {
+            ast::generated::DataTypeAccess::NamespaceAccess(target) => {
                 target.to_spec(db, file)
             }
         }

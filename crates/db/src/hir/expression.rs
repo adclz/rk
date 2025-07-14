@@ -1,14 +1,14 @@
 use std::ops::Deref;
 use std::path::Display;
 
-use crate::solver::fq_name::FqName;
+use crate::solver::fq_name::NamespaceAccess;
 use crate::to_proto::{IterToProto, ToProto};
 use crate::{ident::Ident, solver::namespace::NamespacePath};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::core::span::Span;
-use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::default::db::file::File;
+use auto_lsp::default::db::BaseDatabase;
 use bitflags::bitflags;
 
 #[salsa::tracked(debug)]
@@ -30,7 +30,10 @@ impl<'db> ToProto<'db> for Expr<'db> {
     }
 }
 
-fn self_iter<'db>(s: &'db impl ToProto<'db>, db: &dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+fn self_iter<'db>(
+    s: &'db impl ToProto<'db>,
+    db: &dyn BaseDatabase,
+) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
     std::iter::once::<&'db dyn ToProto<'db>>(s)
 }
 
@@ -52,42 +55,15 @@ impl<'db> Expr<'db> {
     pub fn new_target(
         db: &'db dyn BaseDatabase,
         file: File,
-        fq_name: &'db ast::generated::FqName,
+        fq_name: &'db ast::generated::NamespaceAccess,
     ) -> anyhow::Result<Expr<'db>> {
         Ok(Expr::new(
             db,
             fq_name.get_span().into(),
             ExprKind::PrimaryExpr {
-                expr: PrimaryExpr::Target(
-                    FqName::new(
-                        db,
-                        NamespacePath::from((
-                            db,
-                            fq_name
-                                .fragment
-                                .iter()
-                                .map(|f| Ident::from_node(db, file, f.deref()))
-                                .collect::<anyhow::Result<Vec<_>>>()?,
-                        )),
-                        Ident::from_node(db, file, fq_name.target.deref())?,
-                    ),
-                ),
+                expr: PrimaryExpr::Target(NamespaceAccess::from_ast(db, file, fq_name)?),
             },
         ))
-    }
-
-    pub fn new_enum_value(
-        db: &'db dyn BaseDatabase,
-        span: auto_lsp::tree_sitter::Range,
-        value: Ident,
-    ) -> Expr<'db> {
-        Expr::new(
-            db,
-            span.into(),
-            ExprKind::PrimaryExpr {
-                expr: PrimaryExpr::EnumValue { value },
-            },
-        )
     }
 }
 
@@ -155,14 +131,11 @@ pub enum ExprKind<'db> {
 pub enum PrimaryExpr<'db> {
     Literal(Literal),
     // Path --> Target
-    Target(FqName),
-    EnumValue {
-        value: Ident,
-    },
+    Target(NamespaceAccess),
     VariableAccess {
         variable: Variable<'db>,
         multibits: MultibitsPart,
-    }, 
+    },
     FuncCall {
         expr: Expr<'db>,
         params: Vec<ParamAssign<'db>>,
@@ -230,9 +203,9 @@ pub enum SizeOperator {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum Variable<'db> {
     Direct {
-        kind: AccessOperator,
-        size: Option<SizeOperator>,
-        offset: Vec<Ident>,
+        adress: Ident,
+        partly: bool,
+        offset: Option<Ident>,
     },
     Symbolic {
         this: bool,
@@ -253,8 +226,8 @@ pub enum SymbolicVariableKind<'db> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum MultiElemVarElement<'db> {
-    Subscript { expr: Vec<Expr<'db>> },        // []
-    StructVariable { access: VarAccess },      // .
+    Subscript { expr: Vec<Expr<'db>> },   // []
+    StructVariable { access: VarAccess }, // .
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -326,12 +299,15 @@ impl Numeric {
 impl Literal {
     pub fn to_string<'db>(&self, db: &'db dyn BaseDatabase) -> String {
         match self {
-            Literal::AnyNumeric(n) => format!("Number {}", match n {
-                Numeric::Binary(ident) => ident.text(db),
-                Numeric::Hex(ident) => ident.text(db),
-                Numeric::Octal(ident) => ident.text(db),
-                Numeric::Signed(ident) => ident.text(db),
-            }),
+            Literal::AnyNumeric(n) => format!(
+                "Number {}",
+                match n {
+                    Numeric::Binary(ident) => ident.text(db),
+                    Numeric::Hex(ident) => ident.text(db),
+                    Numeric::Octal(ident) => ident.text(db),
+                    Numeric::Signed(ident) => ident.text(db),
+                }
+            ),
             Literal::SInt(ident) => format!("SInt {}", ident.to_string(db)),
             Literal::Int(ident) => format!("Int {}", ident.to_string(db)),
             Literal::DInt(ident) => format!("DInt {}", ident.to_string(db)),

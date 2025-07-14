@@ -2,11 +2,11 @@ use auto_lsp::core::ast::AstNode;
 use auto_lsp::{
     anyhow,
     core::{dispatch_once, document::Document},
-    default::db::{tracked::get_ast, BaseDatabase, file::File},
+    default::db::{file::File, tracked::get_ast, BaseDatabase},
     lsp_types::{Hover, HoverContents, HoverParams, MarkupContent, MarkupKind},
 };
 use db::hir::expression::{Expr, ExprKind, PrimaryExpr};
-use db::solver::namespace::{namespaces_in_file};
+use db::solver::namespace::namespaces_in_file;
 use db::to_proto::{Extends, IterToProto};
 
 pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Option<Hover>> {
@@ -39,7 +39,7 @@ pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Opti
             String::default()
         } else {
             format!("namespace {}\n", ns.path(db).to_string(db))
-        }; 
+        };
 
         let kind = symbol.kind_to_string();
 
@@ -49,36 +49,38 @@ pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Opti
             symbol.name
         };
 
-        let comment = get_comment(
-            &file.document(db),
-            symbol.range.lsp().start.line as usize,
-        )
-        .unwrap_or_default();
+        let comment = get_comment(&file.document(db), symbol.range.lsp().start.line as usize)
+            .unwrap_or_default();
 
         let implements = if let Some(implements) = symbol.implements {
-            format!(" implements {}", implements.iter().map(|i| match i.expr(db) {
-                ExprKind::PrimaryExpr{ expr: PrimaryExpr::Target(target) } => target.namespace(db).to_string(db),
-                _ => "unknown".into(), 
-            }).collect::<Vec<_>>().join(", "))
+            format!(
+                " implements {}",
+                implements
+                    .iter()
+                    .map(|i| i.to_string(db))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
         } else {
             String::default()
         };
 
         let extends = if let Some(extends) = symbol.extends {
             match extends {
-                Extends::Single(extends) => format!(" extends {}", match extends.expr(db) {
-                    ExprKind::PrimaryExpr{ expr: PrimaryExpr::Target(target) } => target.namespace(db).to_string(db),
-                    _ => "unknown".into(),
-                }),
-                Extends::Multiple(extends) => format!(" extends {}", extends.iter().map(|i| match i.expr(db) {
-                    ExprKind::PrimaryExpr{ expr: PrimaryExpr::Target(target) } => target.namespace(db).to_string(db),
-                    _ => "unknown".into(),
-                }).collect::<Vec<_>>().join(", ")),
+                Extends::Single(extends) => format!(" extends {}", extends.to_string(db)),
+                Extends::Multiple(extends) => format!(
+                    " extends {}",
+                    extends
+                        .iter()
+                        .map(|i| i.to_string(db))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
             }
         } else {
             String::default()
         };
-         
+
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,

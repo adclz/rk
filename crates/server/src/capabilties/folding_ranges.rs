@@ -29,7 +29,7 @@ static FOLD: &str = r#"
   (loc_var_decls)
 ] @fold
 
-(comment) @comment
+[ (c_style_comment) (pascal_style_comment) ] @comment
 (using_directive) @import
 "#;
 

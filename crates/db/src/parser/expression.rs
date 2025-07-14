@@ -178,19 +178,13 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
     fn to_expr(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>> {
         match self {
                 ast::generated::PrimaryExpression::Constant(c) => c.to_expr(db, file),
-                ast::generated::PrimaryExpression::FqName(path) => Expr::new_target(db, file, path),
-                ast::generated::PrimaryExpression::EnumValue(enum_value) => {
-                    Ok(Expr::new_enum_value(
-                        db,
-                        *enum_value.get_span(),
-                        Ident::from_node(db, file, enum_value.children.deref())?,
-                    ))
-                },
+                ast::generated::PrimaryExpression::NamespaceAccess(path) => Expr::new_target(db, file, path),
                 ast::generated::PrimaryExpression::VariableAccess(v) => {
                     todo!()
                 },
+                ast::generated::PrimaryExpression::FieldExpression(field) => {todo!()},
                 ast::generated::PrimaryExpression::FuncCall(c) => {
-                    let target = Expr::new_target(db, file, &c.target)?;
+                    let target = Expr::new_target(db, file, &c.function)?;
 
                     let mut parameters = vec![];
                     for params in c.params.iter() {
@@ -353,13 +347,20 @@ impl<'db> ParseExpression<'db> for ast::generated::Constant {
                         }
                     },
                     ast::generated::IntLiteral_RealLiteral::RealLiteral(real_literal) => {
-                        match real_literal.children.deref() {
-                            ast::generated::LReal_Real::Real(real) => {
-                                Literal::Real(Ident::from_node(db, file, real.value.deref())?)
-                            },
-                            ast::generated::LReal_Real::LReal(l_real) => {
-                                Literal::LReal(Ident::from_node(db, file, l_real.value.deref())?)
-                            },
+                        let j = real_literal.Type.as_deref();
+
+                        match real_literal.Type.as_deref() {
+                            Some(kind) => {
+                                match kind.children.deref() {
+                                    ast::generated::LrealName_RealName::RealName(_) => {
+                                        Literal::Real(Ident::from_node(db, file, real_literal.value.deref())?)
+                                    }
+                                    ast::generated::LrealName_RealName::LrealName(_) => {
+                                        Literal::LReal(Ident::from_node(db, file, real_literal.value.deref())?)
+                                    }
+                                }
+                            }
+                            None => Literal::LReal(Ident::from_node(db, file, real_literal.value.deref())?),
                         }
                     },
                 }
@@ -452,30 +453,16 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::DirectVariable {
         db: &'db dyn auto_lsp::default::db::BaseDatabase,
         file: File,
     ) -> anyhow::Result<Variable<'db>> {
-        let kind = match self.kind.deref() {
-            ast::generated::IQM::Token_I(_) => AccessOperator::I,
-            ast::generated::IQM::Token_Q(_) => AccessOperator::Q,
-            ast::generated::IQM::Token_M(_) => AccessOperator::M,
+        let adress = Ident::from_node(db, file, self.adress.deref())?;
+
+        let (offset, partly) = match self.offset.deref() {
+            ast::generated::Offset_Partly::Offset(offset) => (Some(Ident::from_node(db, file, offset)?), false),
+            ast::generated::Offset_Partly::Partly(partly) => (None, true),
         };
 
-        let size = self.size.as_deref().map(|size| match size {
-            ast::generated::XBWDL::Token_X(_) => SizeOperator::X,
-            ast::generated::XBWDL::Token_B(_) => SizeOperator::B,
-            ast::generated::XBWDL::Token_W(_) => SizeOperator::W,
-            ast::generated::XBWDL::Token_D(_) => SizeOperator::D,
-            ast::generated::XBWDL::Token_L(_) => SizeOperator::L,
-        });
-
-        let offset = self
-            .offset
-            .children
-            .iter()
-            .map(|o| Ident::from_node(db, file, o.deref()))
-            .collect::<anyhow::Result<Vec<_>>>()?;
-
-        Ok(Variable::Direct { kind, size, offset })
+        Ok(Variable::Direct { adress, partly, offset })
     }
-}
+} 
 
 impl<'db> ParseVariableAccess<'db> for ast::generated::SymbolicVariable {
     fn to_access(

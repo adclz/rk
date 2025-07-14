@@ -237,7 +237,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
             match child.Type.deref() {
-                GlobalVarKind::FqName(var_decl) => {
+                GlobalVarKind::NamespaceAccess(var_decl) => {
                     let name = Ident::from_node(db, file, child.spec.deref())?;
                     let result = var_decl.to_spec_init(db, file)?;
                     section.push(Variable::new(
@@ -336,13 +336,16 @@ impl<'db> ParseSpecInit<'db> for ast::generated::VarDeclInit {
         db: &'db dyn BaseDatabase,
         file: File,
     ) -> anyhow::Result<SpecInitResult<'db>> {
-        type Spec = ast::generated::ArrayTypeSpec_SimpleTypeSpec_StrTypeSpec_StructTypeSpec;
+        type Spec = ast::generated::ArrayTypeSpec_RefTypeSpec_SimpleTypeSpec_StrTypeSpec_StructTypeSpec;
 
         let spec = match self.spec.deref() {
             Spec::ArrayTypeSpec(a) => a.to_spec(db, file),
             Spec::SimpleTypeSpec(a) => a.to_spec(db, file),
             Spec::StrTypeSpec(a) => a.to_spec(db, file),
             Spec::StructTypeSpec(a) => a.to_spec(db, file),
+            Spec::RefTypeSpec(target) => {
+                target.to_spec(db, file)
+            }
         };
 
         type Init = ast::generated::ArrayTypeInit_SimpleTypeInit_StructTypeInit;

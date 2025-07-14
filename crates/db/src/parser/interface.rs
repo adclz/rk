@@ -4,6 +4,7 @@ use crate::hir;
 use crate::hir::expression::Expr;
 use crate::ident::Ident;
 use crate::parser::{Parse, ParseSpec, ParseVarSection};
+use crate::solver::fq_name::{NamespaceAccess, SpannedNamespaceAccess};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::default::db::{file::File, BaseDatabase};
@@ -18,7 +19,7 @@ impl<'db> Parse<'db> for ast::generated::InterfaceDecl {
             .map(|i| {
                 i.children
                     .iter()
-                    .map(|i| Expr::new_target(db, file, i))
+                    .map(|i| SpannedNamespaceAccess::new(db, file, i))
                     .collect()
             })
             .transpose()?;
@@ -45,7 +46,7 @@ impl<'db> Parse<'db> for ast::generated::MethodPrototype {
                 ast::generated::DataTypeAccess::ElemTypeName(elem_type_name) => {
                     elem_type_name.to_spec(db, file)
                 }
-                ast::generated::DataTypeAccess::FqName(target) => target.to_spec(db, file),
+                ast::generated::DataTypeAccess::NamespaceAccess(target) => target.to_spec(db, file),
             })
             .transpose()?;
 

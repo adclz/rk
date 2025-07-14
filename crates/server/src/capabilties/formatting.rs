@@ -12,7 +12,9 @@ use topiary_core::{formatter, Language, Operation, TopiaryQuery};
 
 static QUERY: &str = r#"
 [
-  (comment)
+      (line_comment) 
+    (c_style_comment)
+    (pascal_style_comment)
 ] @leaf
 
 ; Surround spaces
@@ -69,16 +71,6 @@ static QUERY: &str = r#"
   (namespace_decl)
 ] @allow_blank_line_before
 
-[
-  (comment)
-] @prepend_input_softline
-
-(
-  (comment) @append_input_softline
-  .
-  ["," ";"]* @do_nothing
-) 
-
 ; Line breaks
 (
   [
@@ -92,7 +84,9 @@ static QUERY: &str = r#"
   ] @append_spaced_softline
   .
   [
-    (comment)
+    (line_comment) 
+    (c_style_comment)
+    (pascal_style_comment)
   ]* @do_nothing
 )
 

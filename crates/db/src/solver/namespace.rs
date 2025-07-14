@@ -142,7 +142,7 @@ mod tests {
 
     use super::*;
 
-        #[test]
+    #[test]
     fn interned_namespace_paths() {
         let db = RootDatabase::default();
         let first_id = Ident::new(&db, "first".to_string());

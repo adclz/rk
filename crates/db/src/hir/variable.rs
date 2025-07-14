@@ -1,6 +1,6 @@
 use auto_lsp::{core::span::Span, default::db::{file::File, BaseDatabase}};
 
-use crate::{hir::expression::Expr, ident::Ident, to_proto::{SymbolInfo, ToProto}};
+use crate::{hir::expression::Expr, ident::Ident, solver::fq_name::NamespaceAccess, to_proto::{SymbolInfo, ToProto}};
 
 
 #[salsa::tracked]
@@ -63,7 +63,7 @@ impl<'db> ToProto<'db> for Variable<'db> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum Spec<'db> {
-    Target(Ident),
+    Target(NamespaceAccess),
     Array(Array),
     Subrange(Subrange<'db>),
     Expr(Expr<'db>),

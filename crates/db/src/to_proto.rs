@@ -4,7 +4,7 @@ use auto_lsp::{
     lsp_types::{CompletionItem, SymbolKind},
 };
 
-use crate::hir::{expression::Expr, variable::Spec};
+use crate::{hir::{expression::Expr, variable::Spec}, solver::fq_name::{NamespaceAccess, SpannedNamespaceAccess}};
 
 #[derive(bon::Builder, Debug, Clone)]
 pub struct SymbolInfo<'a> {
@@ -14,14 +14,14 @@ pub struct SymbolInfo<'a> {
     pub kind: Option<SymbolKind>,
     pub spec: Option<Spec<'a>>,
     pub init: Option<Expr<'a>>,
-    pub implements: Option<Vec<Expr<'a>>>,
+    pub implements: Option<Vec<SpannedNamespaceAccess>>,
     pub extends: Option<Extends<'a>>,
 }
 
 #[derive(Debug, Clone)]
 pub enum Extends<'a> {
-    Single(Expr<'a>),
-    Multiple(&'a Vec<Expr<'a>>),
+    Single(SpannedNamespaceAccess),
+    Multiple(&'a Vec<SpannedNamespaceAccess>),
 }
 
 impl SymbolInfo<'_> {
@@ -40,7 +40,7 @@ impl SymbolInfo<'_> {
 
     pub fn spec_to_string(&self, db: &dyn BaseDatabase) -> String {
         match self.spec {
-            Some(Spec::Target(target)) => target.text(db),
+            Some(Spec::Target(target)) => target.to_string(db),
             Some(Spec::Array(_)) => "ARRAY".into(),
             Some(Spec::Subrange(_)) => "SUBRANGE".into(),
             Some(Spec::Enum) => "ENUM".into(),
