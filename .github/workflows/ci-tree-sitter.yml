@@ -30,3 +30,7 @@ jobs:
       - name: Test parser
         working-directory: crates/tree-sitter
         run: tree-sitter test
+
+      - name: Fuzz parser
+        working-directory: crates/tree-sitter
+        run: tree-sitter fuzz  
