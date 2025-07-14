@@ -68,7 +68,7 @@ impl<'db> ParseVariable<'db> for ast::generated::FuncDecl {
 
 #[cfg(test)]
 mod tests {
-    use auto_lsp::{default::db::FileManager, lsp_types, texter::core::text::Text};
+    use auto_lsp::{default::db::FileManager, lsp_types};
 
     use super::*;
     use crate::{hir::namespace::{Pou, PouResult}, ident::Ident, solver::namespace::{namespaces_in_file, NamespacePath}, RootDatabase};

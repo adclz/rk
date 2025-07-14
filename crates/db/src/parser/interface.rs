@@ -1,10 +1,9 @@
 use std::ops::Deref;
 
 use crate::hir;
-use crate::hir::expression::Expr;
 use crate::ident::Ident;
 use crate::parser::{Parse, ParseSpec, ParseVarSection};
-use crate::solver::fq_name::{NamespaceAccess, SpannedNamespaceAccess};
+use crate::solver::fq_name::SpannedNamespaceAccess;
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::default::db::{file::File, BaseDatabase};

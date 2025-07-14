@@ -1,8 +1,7 @@
 use auto_lsp::{
     anyhow,
-    core::dispatch,
-    default::db::{tracked::get_ast, BaseDatabase, file::File},
-    lsp_types::{CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams, SymbolKind},
+    default::db::BaseDatabase,
+    lsp_types::{CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams},
 };
 use db::{diagnostics::cached_diagnostics, solver::namespace::namespaces_in_file, to_proto::IterToProto};
 

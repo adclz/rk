@@ -154,7 +154,7 @@ pub fn add_fixes_to_parse_errors(
 
 #[cfg(test)]
 mod tests {
-    use auto_lsp::{core::errors::ParseErrorAccumulator, default::db::{file::File, tracked::get_ast, BaseDatabase, FileManager}, lsp_types, texter::core::text::Text};
+    use auto_lsp::{core::errors::ParseErrorAccumulator, default::db::{file::File, tracked::get_ast, BaseDatabase, FileManager}, lsp_types};
     use super::*;
     use crate::RootDatabase;
 

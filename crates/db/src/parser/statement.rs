@@ -1,12 +1,6 @@
 use std::ops::Deref;
 
-use crate::hir::expression::Variable;
-use crate::hir::expression::{
-    AccessOperator, MultiElemVarElement, SizeOperator,
-    SymbolicVariableKind, VarAccess,
-};
 use crate::hir::statement::{Stmt, StmtKind};
-use crate::ident::Ident;
 use crate::parser::expression::{ParseExpression, ParseVariableAccess};
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::{anyhow, default::db::file::File};

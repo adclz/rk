@@ -6,14 +6,14 @@ use rustc_hash::FxHashMap;
 use salsa::Accumulator;
 
 use crate::{
-    diagnostics::{diagnostic_builder::diag, literals::check_date, DiagnosticAccumulator},
+    diagnostics::{diagnostic_builder::diag, DiagnosticAccumulator},
     hir::{
         expression::{Expr, ExprKind, Literal, PrimaryExpr},
         namespace::{NamespaceResult, PouDecl, PouResult, Using},
         variable::Spec,
     },
     solver::{
-        fq_name::{self, NamespaceAccess, SpannedNamespaceAccess},
+        fq_name::SpannedNamespaceAccess,
         namespace::{namespace_path, namespaces_in_file, NamespacePath},
     },
 };
@@ -312,7 +312,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
 }
 
 impl Literal {
-    fn self_check(&self, db: &dyn BaseDatabase) {
+    /*fn self_check(&self, db: &dyn BaseDatabase) {
         match self {
             Literal::Date(ident) => {
                 if let Err(err) = check_date(db, &ident.text(db)) {
@@ -322,5 +322,5 @@ impl Literal {
             }
             _ => {}
         }
-    }
+    }*/
 }

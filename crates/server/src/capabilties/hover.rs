@@ -1,11 +1,9 @@
-use auto_lsp::core::ast::AstNode;
 use auto_lsp::{
     anyhow,
-    core::{dispatch_once, document::Document},
-    default::db::{file::File, tracked::get_ast, BaseDatabase},
+    core::document::Document,
+    default::db::BaseDatabase,
     lsp_types::{Hover, HoverContents, HoverParams, MarkupContent, MarkupKind},
 };
-use db::hir::expression::{Expr, ExprKind, PrimaryExpr};
 use db::solver::namespace::namespaces_in_file;
 use db::to_proto::{Extends, IterToProto};
 
@@ -182,7 +180,7 @@ fn get_comment(doc: &Document, line: usize) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use auto_lsp::{lsp_types::PositionEncodingKind, texter::core::text::Text, tree_sitter};
+    use auto_lsp::tree_sitter;
 
     use super::*;
 

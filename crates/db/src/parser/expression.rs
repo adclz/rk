@@ -5,7 +5,7 @@ use auto_lsp::core::ast::AstNode;
 
 use crate::{
     hir::expression::{
-        AccessOperator, Expr, ExprKind, Literal, MultiElemVarElement, Numeric, Operator, ParamAssign, PrimaryExpr, RefAdress, RefValue, SizeOperator, SymbolicVariableKind, VarAccess, Variable
+        Expr, ExprKind, Literal, MultiElemVarElement, Numeric, Operator, ParamAssign, PrimaryExpr, RefAdress, RefValue, SymbolicVariableKind, VarAccess, Variable
     },
     ident::Ident,
 };

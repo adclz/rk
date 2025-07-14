@@ -1,6 +1,6 @@
 use auto_lsp::core::span::Span;
 
-use crate::hir::{expression::{Expr, Variable}, variable};
+use crate::hir::expression::{Expr, Variable};
 
 #[salsa::tracked(debug)]
 pub struct Stmt<'db> {

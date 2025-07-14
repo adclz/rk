@@ -3,12 +3,11 @@ use std::ops::Deref;
 use ast::generated::FbVariables;
 use auto_lsp::anyhow;
 use auto_lsp::default::db::{BaseDatabase, file::File};
-use crate::hir::expression::Expr;
 use crate::hir::variable::Variable;
 use crate::hir::visibility::Modifiers;
 use crate::parser::{Parse, ParseVarSection};
 use crate::hir;
-use crate::solver::fq_name::{NamespaceAccess, SpannedNamespaceAccess};
+use crate::solver::fq_name::SpannedNamespaceAccess;
 
 impl<'db> Parse<'db> for ast::generated::FbDecl {
     type Output = hir::function_block::FunctionBlock<'db>;
@@ -86,10 +85,10 @@ impl<'db> ParseVariable<'db> for ast::generated::FbDecl {
 
 #[cfg(test)]
 mod tests {
-    use auto_lsp::{default::db::FileManager, lsp_types, texter::core::text::Text};
+    use auto_lsp::{default::db::FileManager, lsp_types};
 
     use super::*;
-    use crate::{hir::namespace::{Pou, PouDecl, PouResult}, ident::Ident, solver::namespace::{namespaces_in_file, NamespacePath}, RootDatabase};
+    use crate::{hir::namespace::{Pou, PouResult}, ident::Ident, solver::namespace::{namespaces_in_file, NamespacePath}, RootDatabase};
 
     #[test]
     fn variables_in_function_block() {

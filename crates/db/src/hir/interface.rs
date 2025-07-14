@@ -1,7 +1,7 @@
 use auto_lsp::{core::span::Span, default::db::BaseDatabase};
 
 use crate::{
-    hir::variable::{Spec, Variable}, ident::Ident, solver::fq_name::{NamespaceAccess, SpannedNamespaceAccess}, to_proto::{IterToProto, SymbolInfo, ToProto}
+    hir::variable::{Spec, Variable}, ident::Ident, solver::fq_name::SpannedNamespaceAccess, to_proto::{IterToProto, SymbolInfo, ToProto}
 };
 
 #[salsa::tracked]

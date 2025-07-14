@@ -1,4 +1,4 @@
-use std::{ops::Deref, sync::Arc};
+use std::ops::Deref;
 
 use auto_lsp::{
     anyhow::{self},
@@ -7,7 +7,6 @@ use auto_lsp::{
 
 use crate::{
     hir::{expression::Expr, variable::{Spec, Subrange}},
-    ident::Ident,
     parser::{expression::ParseExpression, ParseInit, ParseSpec, ParseSpecInit, SpecInitResult}, solver::fq_name::NamespaceAccess,
 };
 

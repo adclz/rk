@@ -4,9 +4,8 @@ use std::sync::Arc;
 
 use auto_lsp::{
     anyhow,
-    core::ast::AstNode,
-    default::db::{file::File, tracked::ParsedAst, BaseDatabase},
-    lsp_types::{self, CompletionItem, CompletionParams, CompletionResponse, TextDocumentContentChangeEvent},
+    default::db::{file::File, BaseDatabase},
+    lsp_types::{self, CompletionParams, CompletionResponse},
 };
 use db::{hir::COMPLETION_MARKER, solver::namespace::namespaces_in_file, to_proto::IterToProto};
 

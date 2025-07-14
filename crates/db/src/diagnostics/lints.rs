@@ -1,12 +1,10 @@
-use std::{collections::HashMap, sync::LazyLock};
+use std::sync::LazyLock;
 use salsa::Accumulator;
 use auto_lsp::{
-    core::span::Span, default::db::{file::File, BaseDatabase}, lsp_types::{
-        DiagnosticRelatedInformation, WorkspaceEdit
-    }, tree_sitter::{self, StreamingIterator}
+    core::span::Span, default::db::{file::File, BaseDatabase}, lsp_types::DiagnosticRelatedInformation, tree_sitter::{self, StreamingIterator}
 };
 
-use crate::diagnostics::{diagnostic_builder::{action, diag, edit}, DiagnosticAccumulator};
+use crate::diagnostics::{diagnostic_builder::diag, DiagnosticAccumulator};
 
 // Combined query for all linting rules
 static LINTS_QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
@@ -135,7 +133,7 @@ fn handle_duplicate_declaration(
 #[cfg(test)]
 mod tests {
     use crate::{diagnostics::{cached_diagnostics}, RootDatabase};
-    use auto_lsp::{default::db::{file::File, BaseDatabase, FileManager}, lsp_types::{self, DiagnosticSeverity}, texter::core::text::Text};
+    use auto_lsp::{default::db::{file::File, BaseDatabase, FileManager}, lsp_types::{self, DiagnosticSeverity}};
 
     #[test]
     fn duplicate_namespace() {

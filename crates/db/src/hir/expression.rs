@@ -1,9 +1,7 @@
-use std::ops::Deref;
-use std::path::Display;
 
 use crate::solver::fq_name::NamespaceAccess;
-use crate::to_proto::{IterToProto, ToProto};
-use crate::{ident::Ident, solver::namespace::NamespacePath};
+use crate::to_proto::{ToProto};
+use crate::ident::Ident;
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::core::span::Span;
@@ -30,12 +28,12 @@ impl<'db> ToProto<'db> for Expr<'db> {
     }
 }
 
-fn self_iter<'db>(
+/*fn self_iter<'db>(
     s: &'db impl ToProto<'db>,
     db: &dyn BaseDatabase,
 ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
     std::iter::once::<&'db dyn ToProto<'db>>(s)
-}
+}*/
 
 impl<'db> Expr<'db> {
     pub fn new_literal(

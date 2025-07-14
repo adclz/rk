@@ -5,7 +5,7 @@ use ast::generated::ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_Namespa
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::default::db::{BaseDatabase, file::File};
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 
 use crate::hir::namespace::{FileNamespaces, Namespace, Pou, PouDecl, Using};
 use crate::ident::Ident;

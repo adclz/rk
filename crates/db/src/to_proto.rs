@@ -4,7 +4,7 @@ use auto_lsp::{
     lsp_types::{CompletionItem, SymbolKind},
 };
 
-use crate::{hir::{expression::Expr, variable::Spec}, solver::fq_name::{NamespaceAccess, SpannedNamespaceAccess}};
+use crate::{hir::{expression::Expr, variable::Spec}, solver::fq_name::SpannedNamespaceAccess};
 
 #[derive(bon::Builder, Debug, Clone)]
 pub struct SymbolInfo<'a> {

@@ -1,3 +1,4 @@
+#![allow(unused_variables)]
 #![recursion_limit = "256"]
 mod capabilties;
 

@@ -1,6 +1,6 @@
 use auto_lsp::default::db::BaseDatabase;
 
-use crate::{hir::{expression::Expr, visibility::Modifiers}, solver::fq_name::{NamespaceAccess, SpannedNamespaceAccess}, to_proto::{IterToProto, ToProto}};
+use crate::{hir::visibility::Modifiers, solver::fq_name::SpannedNamespaceAccess, to_proto::{IterToProto, ToProto}};
 
 #[salsa::tracked(debug)]
 pub struct Class<'db> {

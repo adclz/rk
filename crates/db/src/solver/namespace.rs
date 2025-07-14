@@ -1,7 +1,4 @@
-use auto_lsp::{
-    core::{ast::AstNode, document::Document},
-    default::db::{file::File, tracked::get_ast, BaseDatabase},
-};
+use auto_lsp::default::db::{file::File, tracked::get_ast, BaseDatabase};
 
 use crate::{
     hir::namespace::{FileNamespaces, Namespace},
