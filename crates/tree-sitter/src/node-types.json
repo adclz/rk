@@ -1,49 +1,5 @@
 [
   {
-    "type": "IQM",
-    "named": true,
-    "subtypes": [
-      {
-        "type": "I",
-        "named": false
-      },
-      {
-        "type": "M",
-        "named": false
-      },
-      {
-        "type": "Q",
-        "named": false
-      }
-    ]
-  },
-  {
-    "type": "XBWDL",
-    "named": true,
-    "subtypes": [
-      {
-        "type": "B",
-        "named": false
-      },
-      {
-        "type": "D",
-        "named": false
-      },
-      {
-        "type": "L",
-        "named": false
-      },
-      {
-        "type": "W",
-        "named": false
-      },
-      {
-        "type": "X",
-        "named": false
-      }
-    ]
-  },
-  {
     "type": "_class_variables",
     "named": true,
     "subtypes": [
@@ -65,20 +21,6 @@
       },
       {
         "type": "var_decls",
-        "named": true
-      }
-    ]
-  },
-  {
-    "type": "_data_type_access",
-    "named": true,
-    "subtypes": [
-      {
-        "type": "_elem_type_name",
-        "named": true
-      },
-      {
-        "type": "fq_name",
         "named": true
       }
     ]
@@ -270,11 +212,11 @@
     "named": true,
     "subtypes": [
       {
-        "type": "fq_name",
+        "type": "loc_var_spec_init",
         "named": true
       },
       {
-        "type": "loc_var_spec_init",
+        "type": "namespace_access",
         "named": true
       }
     ]
@@ -338,15 +280,15 @@
         "named": true
       },
       {
-        "type": "enum_value",
-        "named": true
-      },
-      {
-        "type": "fq_name",
+        "type": "field_expression",
         "named": true
       },
       {
         "type": "func_call",
+        "named": true
+      },
+      {
+        "type": "namespace_access",
         "named": true
       },
       {
@@ -446,6 +388,20 @@
     ]
   },
   {
+    "type": "data_type_access",
+    "named": true,
+    "subtypes": [
+      {
+        "type": "_elem_type_name",
+        "named": true
+      },
+      {
+        "type": "namespace_access",
+        "named": true
+      }
+    ]
+  },
+  {
     "type": "eq",
     "named": true,
     "subtypes": [
@@ -518,6 +474,11 @@
     ]
   },
   {
+    "type": "IQM",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "SFC",
     "named": true,
     "fields": {},
@@ -558,6 +519,11 @@
         }
       ]
     }
+  },
+  {
+    "type": "XBWDL",
+    "named": true,
+    "fields": {}
   },
   {
     "type": "access_direction",
@@ -760,7 +726,7 @@
       "required": true,
       "types": [
         {
-          "type": "_data_type_access",
+          "type": "data_type_access",
           "named": true
         }
       ]
@@ -846,7 +812,7 @@
         "required": true,
         "types": [
           {
-            "type": "_data_type_access",
+            "type": "data_type_access",
             "named": true
           }
         ]
@@ -1004,6 +970,21 @@
     }
   },
   {
+    "type": "c_style_comment",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "comment_text",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "case_list",
     "named": true,
     "fields": {},
@@ -1129,7 +1110,7 @@
         "required": false,
         "types": [
           {
-            "type": "fq_name",
+            "type": "namespace_access",
             "named": true
           }
         ]
@@ -1196,7 +1177,7 @@
     }
   },
   {
-    "type": "comment",
+    "type": "comment_text",
     "named": true,
     "fields": {}
   },
@@ -1469,12 +1450,12 @@
     "type": "direct_variable",
     "named": true,
     "fields": {
-      "kind": {
+      "adress": {
         "multiple": false,
         "required": true,
         "types": [
           {
-            "type": "IQM",
+            "type": "direct_variable_identifier",
             "named": true
           }
         ]
@@ -1486,15 +1467,9 @@
           {
             "type": "offset",
             "named": true
-          }
-        ]
-      },
-      "size": {
-        "multiple": false,
-        "required": false,
-        "types": [
+          },
           {
-            "type": "XBWDL",
+            "type": "partly",
             "named": true
           }
         ]
@@ -1545,7 +1520,7 @@
     "fields": {
       "edge": {
         "multiple": false,
-        "required": false,
+        "required": true,
         "types": [
           {
             "type": "F_EDGE",
@@ -1554,16 +1529,6 @@
           {
             "type": "R_EDGE",
             "named": false
-          }
-        ]
-      },
-      "variables": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "variable_list",
-            "named": true
           }
         ]
       }
@@ -1577,10 +1542,6 @@
       "multiple": true,
       "required": false,
       "types": [
-        {
-          "type": "fq_name",
-          "named": true
-        },
         {
           "type": "identifier",
           "named": true
@@ -1606,21 +1567,6 @@
         },
         {
           "type": "named_spec",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "enum_value",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "identifier",
           "named": true
         }
       ]
@@ -1793,7 +1739,7 @@
         "required": false,
         "types": [
           {
-            "type": "fq_name",
+            "type": "namespace_access",
             "named": true
           }
         ]
@@ -1867,7 +1813,7 @@
           "named": true
         },
         {
-          "type": "fq_name",
+          "type": "namespace_access",
           "named": true
         }
       ]
@@ -2012,6 +1958,32 @@
     }
   },
   {
+    "type": "field_expression",
+    "named": true,
+    "fields": {
+      "path": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "namespace_access",
+            "named": true
+          }
+        ]
+      },
+      "target": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "target",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "for_list",
     "named": true,
     "fields": {},
@@ -2050,32 +2022,6 @@
     }
   },
   {
-    "type": "fq_name",
-    "named": true,
-    "fields": {
-      "fragment": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "identifier",
-            "named": true
-          }
-        ]
-      },
-      "target": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "identifier",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
     "type": "func_body",
     "named": true,
     "fields": {},
@@ -2102,6 +2048,16 @@
     "type": "func_call",
     "named": true,
     "fields": {
+      "function": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "namespace_access",
+            "named": true
+          }
+        ]
+      },
       "params": {
         "multiple": true,
         "required": false,
@@ -2112,16 +2068,6 @@
           },
           {
             "type": "param_assign",
-            "named": true
-          }
-        ]
-      },
-      "target": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "fq_name",
             "named": true
           }
         ]
@@ -2141,7 +2087,7 @@
             "named": false
           },
           {
-            "type": "_data_type_access",
+            "type": "data_type_access",
             "named": true
           }
         ]
@@ -2172,6 +2118,16 @@
         "types": [
           {
             "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "spec": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "access_spec",
             "named": true
           }
         ]
@@ -2586,7 +2542,7 @@
       "required": true,
       "types": [
         {
-          "type": "fq_name",
+          "type": "namespace_access",
           "named": true
         }
       ]
@@ -2617,22 +2573,6 @@
           "named": true
         }
       ]
-    }
-  },
-  {
-    "type": "l_real",
-    "named": true,
-    "fields": {
-      "value": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "real_value",
-            "named": true
-          }
-        ]
-      }
     }
   },
   {
@@ -2933,11 +2873,11 @@
       "required": true,
       "types": [
         {
-          "type": "_data_type_access",
+          "type": "access_spec",
           "named": true
         },
         {
-          "type": "access_spec",
+          "type": "data_type_access",
           "named": true
         },
         {
@@ -2980,7 +2920,7 @@
         "required": false,
         "types": [
           {
-            "type": "_data_type_access",
+            "type": "data_type_access",
             "named": true
           }
         ]
@@ -3144,6 +3084,25 @@
       "types": [
         {
           "type": "enum_value_spec",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "namespace_access",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "identifier",
+          "named": true
+        },
+        {
+          "type": "scoped_identifier",
           "named": true
         }
       ]
@@ -3529,6 +3488,21 @@
     }
   },
   {
+    "type": "pascal_style_comment",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "comment_text",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "power_operator",
     "named": true,
     "fields": {
@@ -3555,6 +3529,11 @@
     }
   },
   {
+    "type": "pragma",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "prog_access_decl",
     "named": true,
     "fields": {},
@@ -3563,15 +3542,15 @@
       "required": true,
       "types": [
         {
-          "type": "_data_type_access",
-          "named": true
-        },
-        {
           "type": "access_direction",
           "named": true
         },
         {
           "type": "access_name",
+          "named": true
+        },
+        {
+          "type": "data_type_access",
           "named": true
         },
         {
@@ -3731,11 +3710,11 @@
           "named": true
         },
         {
-          "type": "enum_value",
+          "type": "global_ref_deref",
           "named": true
         },
         {
-          "type": "global_ref_deref",
+          "type": "namespace_access",
           "named": true
         }
       ]
@@ -3852,16 +3831,26 @@
       "required": true,
       "types": [
         {
-          "type": "fq_name",
+          "type": "namespace_access",
           "named": true
         }
       ]
     }
   },
   {
-    "type": "real",
+    "type": "real_literal",
     "named": true,
     "fields": {
+      "type": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "real_type_name",
+            "named": true
+          }
+        ]
+      },
       "value": {
         "multiple": false,
         "required": true,
@@ -3872,25 +3861,6 @@
           }
         ]
       }
-    }
-  },
-  {
-    "type": "real_literal",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "l_real",
-          "named": true
-        },
-        {
-          "type": "real",
-          "named": true
-        }
-      ]
     }
   },
   {
@@ -3915,7 +3885,32 @@
   {
     "type": "real_value",
     "named": true,
-    "fields": {}
+    "fields": {
+      "exp": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "signed_int",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "signed_int",
+          "named": true
+        },
+        {
+          "type": "unsigned_int",
+          "named": true
+        }
+      ]
+    }
   },
   {
     "type": "ref_addr",
@@ -3975,7 +3970,7 @@
       "required": true,
       "types": [
         {
-          "type": "_data_type_access",
+          "type": "data_type_access",
           "named": true
         }
       ]
@@ -3990,7 +3985,7 @@
       "required": true,
       "types": [
         {
-          "type": "_data_type_access",
+          "type": "data_type_access",
           "named": true
         }
       ]
@@ -4148,6 +4143,36 @@
     }
   },
   {
+    "type": "scoped_identifier",
+    "named": true,
+    "fields": {
+      "path": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "scoped_identifier",
+            "named": true
+          }
+        ]
+      },
+      "target": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "target",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "short_date",
     "named": true,
     "fields": {
@@ -4245,7 +4270,7 @@
       "required": true,
       "types": [
         {
-          "type": "_elem_type_name",
+          "type": "data_type_access",
           "named": true
         }
       ]
@@ -4309,6 +4334,10 @@
         },
         {
           "type": "prog_decl",
+          "named": true
+        },
+        {
+          "type": "using_directive",
           "named": true
         }
       ]
@@ -4546,7 +4575,18 @@
   {
     "type": "struct_type_spec",
     "named": true,
-    "fields": {},
+    "fields": {
+      "overlap": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "OVERLAP",
+            "named": false
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": true,
       "required": true,
@@ -5129,11 +5169,6 @@
     }
   },
   {
-    "type": "unsigned_int",
-    "named": true,
-    "fields": {}
-  },
-  {
     "type": "using_directive",
     "named": true,
     "fields": {},
@@ -5244,6 +5279,10 @@
             "named": true
           },
           {
+            "type": "ref_type_spec",
+            "named": true
+          },
+          {
             "type": "simple_type_spec",
             "named": true
           },
@@ -5268,7 +5307,7 @@
         "required": true,
         "types": [
           {
-            "type": "var_decl",
+            "type": "var_decl_init",
             "named": true
           }
         ]
@@ -5327,18 +5366,10 @@
     "fields": {},
     "children": {
       "multiple": false,
-      "required": false,
+      "required": true,
       "types": [
         {
-          "type": "array_type_spec",
-          "named": true
-        },
-        {
-          "type": "fq_name",
-          "named": true
-        },
-        {
-          "type": "unsigned_int",
+          "type": "data_type_access",
           "named": true
         }
       ]
@@ -5450,14 +5481,6 @@
     }
   },
   {
-    "type": " ",
-    "named": false
-  },
-  {
-    "type": "!",
-    "named": false
-  },
-  {
     "type": "\"",
     "named": false
   },
@@ -5474,31 +5497,7 @@
     "named": false
   },
   {
-    "type": "$$",
-    "named": false
-  },
-  {
     "type": "$'",
-    "named": false
-  },
-  {
-    "type": "$L",
-    "named": false
-  },
-  {
-    "type": "$N",
-    "named": false
-  },
-  {
-    "type": "$P",
-    "named": false
-  },
-  {
-    "type": "$R",
-    "named": false
-  },
-  {
-    "type": "$T",
     "named": false
   },
   {
@@ -5570,23 +5569,7 @@
     "named": false
   },
   {
-    "type": "//",
-    "named": false
-  },
-  {
-    "type": "0",
-    "named": false
-  },
-  {
-    "type": "1",
-    "named": false
-  },
-  {
     "type": "16#",
-    "named": false
-  },
-  {
-    "type": "2",
     "named": false
   },
   {
@@ -5594,35 +5577,7 @@
     "named": false
   },
   {
-    "type": "3",
-    "named": false
-  },
-  {
-    "type": "4",
-    "named": false
-  },
-  {
-    "type": "5",
-    "named": false
-  },
-  {
-    "type": "6",
-    "named": false
-  },
-  {
-    "type": "7",
-    "named": false
-  },
-  {
-    "type": "8",
-    "named": false
-  },
-  {
     "type": "8#",
-    "named": false
-  },
-  {
-    "type": "9",
     "named": false
   },
   {
@@ -5670,19 +5625,7 @@
     "named": false
   },
   {
-    "type": "?",
-    "named": false
-  },
-  {
     "type": "?=",
-    "named": false
-  },
-  {
-    "type": "@",
-    "named": false
-  },
-  {
-    "type": "A",
     "named": false
   },
   {
@@ -5719,10 +5662,6 @@
   },
   {
     "type": "BY",
-    "named": false
-  },
-  {
-    "type": "C",
     "named": false
   },
   {
@@ -5870,10 +5809,6 @@
     "named": false
   },
   {
-    "type": "F",
-    "named": false
-  },
-  {
     "type": "FALSE",
     "named": false
   },
@@ -5899,14 +5834,6 @@
   },
   {
     "type": "F_EDGE",
-    "named": false
-  },
-  {
-    "type": "G",
-    "named": false
-  },
-  {
-    "type": "H",
     "named": false
   },
   {
@@ -5938,14 +5865,6 @@
     "named": false
   },
   {
-    "type": "J",
-    "named": false
-  },
-  {
-    "type": "K",
-    "named": false
-  },
-  {
     "type": "L",
     "named": false
   },
@@ -5963,10 +5882,6 @@
   },
   {
     "type": "LDT",
-    "named": false
-  },
-  {
-    "type": "LREAL",
     "named": false
   },
   {
@@ -6011,10 +5926,6 @@
   },
   {
     "type": "NOT",
-    "named": false
-  },
-  {
-    "type": "O",
     "named": false
   },
   {
@@ -6075,10 +5986,6 @@
   },
   {
     "type": "READ_WRITE",
-    "named": false
-  },
-  {
-    "type": "REAL",
     "named": false
   },
   {
@@ -6190,19 +6097,11 @@
     "named": false
   },
   {
-    "type": "U",
-    "named": false
-  },
-  {
     "type": "UNTIL",
     "named": false
   },
   {
     "type": "USING",
-    "named": false
-  },
-  {
-    "type": "V",
     "named": false
   },
   {
@@ -6226,7 +6125,15 @@
     "named": false
   },
   {
+    "type": "VAR_LOCATED",
+    "named": false
+  },
+  {
     "type": "VAR_OUTPUT",
+    "named": false
+  },
+  {
+    "type": "VAR_PARTLY",
     "named": false
   },
   {
@@ -6258,19 +6165,7 @@
     "named": false
   },
   {
-    "type": "Y",
-    "named": false
-  },
-  {
-    "type": "Z",
-    "named": false
-  },
-  {
     "type": "[",
-    "named": false
-  },
-  {
-    "type": "\\",
     "named": false
   },
   {
@@ -6282,36 +6177,12 @@
     "named": false
   },
   {
-    "type": "_",
-    "named": false
-  },
-  {
-    "type": "`",
-    "named": false
-  },
-  {
-    "type": "a",
-    "named": false
-  },
-  {
-    "type": "b",
-    "named": false
-  },
-  {
     "type": "bool_name",
     "named": true
   },
   {
     "type": "byte_name",
     "named": true
-  },
-  {
-    "type": "c",
-    "named": false
-  },
-  {
-    "type": "d",
-    "named": false
   },
   {
     "type": "d_char",
@@ -6338,6 +6209,10 @@
     "named": true
   },
   {
+    "type": "direct_variable_identifier",
+    "named": true
+  },
+  {
     "type": "dt_name",
     "named": true
   },
@@ -6350,24 +6225,8 @@
     "named": false
   },
   {
-    "type": "f",
-    "named": false
-  },
-  {
     "type": "fbd_network",
     "named": true
-  },
-  {
-    "type": "g",
-    "named": false
-  },
-  {
-    "type": "h",
-    "named": false
-  },
-  {
-    "type": "i",
-    "named": false
   },
   {
     "type": "identifier",
@@ -6376,18 +6235,6 @@
   {
     "type": "int_name",
     "named": true
-  },
-  {
-    "type": "j",
-    "named": false
-  },
-  {
-    "type": "k",
-    "named": false
-  },
-  {
-    "type": "l",
-    "named": false
   },
   {
     "type": "ld_rung",
@@ -6400,6 +6247,11 @@
   {
     "type": "ldt_name",
     "named": true
+  },
+  {
+    "type": "line_comment",
+    "named": true,
+    "extra": true
   },
   {
     "type": "lint_name",
@@ -6422,44 +6274,20 @@
     "named": true
   },
   {
-    "type": "m",
-    "named": false
-  },
-  {
     "type": "method_name",
     "named": true
-  },
-  {
-    "type": "n",
-    "named": false
   },
   {
     "type": "null",
     "named": true
   },
   {
-    "type": "o",
-    "named": false
-  },
-  {
-    "type": "p",
-    "named": false
-  },
-  {
-    "type": "q",
-    "named": false
-  },
-  {
-    "type": "r",
-    "named": false
+    "type": "partly",
+    "named": true
   },
   {
     "type": "real_name",
     "named": true
-  },
-  {
-    "type": "s",
-    "named": false
   },
   {
     "type": "s_char",
@@ -6470,8 +6298,8 @@
     "named": true
   },
   {
-    "type": "t",
-    "named": false
+    "type": "target",
+    "named": true
   },
   {
     "type": "this",
@@ -6490,10 +6318,6 @@
     "named": true
   },
   {
-    "type": "u",
-    "named": false
-  },
-  {
     "type": "udint_name",
     "named": true
   },
@@ -6506,47 +6330,23 @@
     "named": true
   },
   {
-    "type": "usint_name",
+    "type": "unsigned_int",
     "named": true
   },
   {
-    "type": "v",
-    "named": false
-  },
-  {
-    "type": "w",
-    "named": false
+    "type": "usint_name",
+    "named": true
   },
   {
     "type": "word_name",
     "named": true
   },
   {
-    "type": "x",
-    "named": false
-  },
-  {
-    "type": "y",
-    "named": false
-  },
-  {
-    "type": "z",
-    "named": false
-  },
-  {
     "type": "{",
     "named": false
   },
   {
-    "type": "|",
-    "named": false
-  },
-  {
     "type": "}",
-    "named": false
-  },
-  {
-    "type": "~",
     "named": false
   }
 ]
