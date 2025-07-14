@@ -1,0 +1,212 @@
+================================================================================
+Initialization of a variable with elementary data type 
+================================================================================
+
+PROGRAM pgm
+
+VAR
+  MYBIT: BOOL;
+  OKAY: STRING[10];
+END_VAR
+
+VAR_LOCATED
+  VALVE_POS AT %QW28: INT;
+END_VAR
+
+END_PROGRAM
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (prog_decl
+        (identifier)
+        (var_decls
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (bit_str_type_name
+                  (bool_name)))))
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (str_type_spec
+                (s_byte_str_spec
+                  (unsigned_int))))))
+        (loc_var_decls
+          (loc_var_decl
+            (identifier)
+            (located_at
+              (direct_variable
+                (direct_variable_identifier)
+                (offset
+                  (unsigned_int))))
+            (loc_var_spec_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name))))))))))
+
+
+================================================================================
+Variable with user-defined data type 
+================================================================================
+
+PROGRAM pgm
+
+VAR
+  myVAR: myType;
+END_VAR
+
+END_PROGRAM
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (prog_decl
+        (identifier)
+        (var_decls
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (namespace_access
+                  (identifier))))))))
+
+================================================================================
+Array
+================================================================================
+
+PROGRAM pgm
+
+VAR
+  BITS: ARRAY[0..7] OF BOOL;
+  TBT: ARRAY [1..2, 1..3] OF INT;
+END_VAR
+
+VAR_LOCATED
+    OUTA AT %QW6: ARRAY[0..9] OF INT;
+END_VAR
+
+END_PROGRAM
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (prog_decl
+        (identifier)
+        (var_decls
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (array_type_spec
+                (subrange
+                  (constant_expr
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int))))))
+                  (constant_expr
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int)))))))
+                (bit_str_type_name
+                  (bool_name)))))
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (array_type_spec
+                (subrange
+                  (constant_expr
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int))))))
+                  (constant_expr
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int)))))))
+                (subrange
+                  (constant_expr
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int))))))
+                  (constant_expr
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int)))))))
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name))))))))
+        (loc_var_decls
+          (loc_var_decl
+            (identifier)
+            (located_at
+              (direct_variable
+                (direct_variable_identifier)
+                (offset
+                  (unsigned_int))))
+            (loc_var_spec_init
+              (array_type_spec
+                (subrange
+                  (constant_expr
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int))))))
+                  (constant_expr
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int)))))))
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name))))))))))
+
+================================================================================
+Reference
+================================================================================
+
+PROGRAM pgm
+
+VAR
+  myRefInt: REF_TO INT;
+END_VAR
+
+END_PROGRAM
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (prog_decl
+        (identifier)
+        (var_decls
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (ref_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name))))))))))

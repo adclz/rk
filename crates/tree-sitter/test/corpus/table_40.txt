@@ -1,0 +1,261 @@
+================================================================================
+Declaration of function block type
+================================================================================
+
+FUNCTION_BLOCK myFB  END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (fb_decl
+        (identifier)))
+
+================================================================================
+Declaration of variables
+================================================================================
+
+FUNCTION_BLOCK myFB
+    VAR_INPUT IN: BOOL;  T1: TIME; END_VAR
+    VAR_OUTPUT OUT: BOOL; ET_OFF: TIME; END_VAR
+    VAR_IN_OUT A: INT; END_VAR
+    VAR_TEMP I: INT; END_VAR
+    VAR B: REAL; END_VAR 
+    VAR_EXTERNAL B: REAL; END_VAR  
+    VAR_EXTERNAL CONSTANT B: REAL; END_VAR
+
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------        
+
+================================================================================
+Initialization of variables
+================================================================================
+
+FUNCTION_BLOCK myFB
+    VAR_INPUT MN: INT:= 0; END_VAR
+    VAR_OUTPUT RES: INT:= 1; END_VAR
+    VAR B: REAL:= 12.1; END_VAR
+    VAR_TEMP I: INT:= 1; END_VAR
+
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+   (source_file
+      (fb_decl
+        (identifier)
+        (fb_input_decls
+          (fb_input_var
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name)))))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))))
+        (fb_output_decls
+          (fb_output_var
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name)))))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))))
+        (var_decls
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (real_type_name
+                    (real_name))))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (real_literal
+                        (real_value
+                          (signed_int
+                            (unsigned_int))
+                          (unsigned_int))))))))))
+        (temp_var_decls
+          (temp_var
+            (variable_list
+              (identifier))
+            (var_decl
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name)))))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))))))
+
+================================================================================
+Initialization of RETAIN qualifier
+================================================================================
+
+FUNCTION_BLOCK myFB
+    VAR_INPUT RETAIN X: REAL; END_VAR
+    VAR_OUTPUT RETAIN X: REAL; END_VAR
+    VAR_INPUT NON_RETAIN X: REAL; END_VAR
+    VAR_OUTPUT NON_RETAIN X: REAL; END_VAR
+    VAR RETAIN X: REAL; END_VAR
+    VAR NON_RETAIN X: REAL; END_VAR
+    VAR RETAIN TMR1: TON; END_VAR
+    VAR NON_RETAIN TMR1: TON; END_VAR
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+    
+     (source_file
+      (fb_decl
+        (identifier)
+        (fb_input_decls
+          (fb_input_var
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (real_type_name
+                    (real_name)))))))
+        (fb_output_decls
+          (fb_output_var
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (real_type_name
+                    (real_name)))))))
+        (fb_input_decls
+          (fb_input_var
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (real_type_name
+                    (real_name)))))))
+        (fb_output_decls
+          (fb_output_var
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (real_type_name
+                    (real_name)))))))
+        (retain_var_decls
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (real_type_name
+                    (real_name)))))))
+        (no_retain_var_decls
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (real_type_name
+                    (real_name)))))))
+        (retain_var_decls
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (namespace_access
+                  (identifier))))))
+        (no_retain_var_decls
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (namespace_access
+                  (identifier))))))))
+                  
+================================================================================
+Textual declaration of - rising edge inputs
+================================================================================
+
+FUNCTION_BLOCK AND_EDGE
+    VAR_INPUT 
+        X: BOOL R_EDGE;
+        Y: BOOL F_EDGE;
+    END_VAR
+    VAR_OUTPUT 
+        Z: BOOL; 
+    END_VAR
+        
+    Z:= X AND Y; (* ST language example *)
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+    
+     (source_file
+      (fb_decl
+        (identifier)
+        (fb_input_decls
+          (fb_input_var
+            (variable_list
+              (identifier))
+            (edge_decl))
+          (fb_input_var
+            (variable_list
+              (identifier))
+            (edge_decl)))
+        (fb_output_decls
+          (fb_output_var
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (bit_str_type_name
+                  (bool_name))))))
+        (fb_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (var_access
+                    (identifier))))
+              (assignment
+                (boolean_operator
+                  (and_operator
+                    (namespace_access
+                      (identifier))
+                    (namespace_access
+                      (identifier))))))))
+        (pascal_style_comment
+          (comment_text))))

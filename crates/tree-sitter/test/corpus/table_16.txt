@@ -1,0 +1,223 @@
+================================================================================
+Location
+================================================================================
+
+PROGRAM prg
+   VAR_LOCATED
+      head AT %IW215: INT;
+      head AT %QB7: INT;
+      head AT %MD48: INT;
+   END_VAR
+
+END_PROGRAM
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (prog_decl
+        (identifier)
+        (loc_var_decls
+          (loc_var_decl
+            (identifier)
+            (located_at
+              (direct_variable
+                (direct_variable_identifier)
+                (offset
+                  (unsigned_int))))
+            (loc_var_spec_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name)))))))
+          (loc_var_decl
+            (identifier)
+            (located_at
+              (direct_variable
+                (direct_variable_identifier)
+                (offset
+                  (unsigned_int))))
+            (loc_var_spec_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name)))))))
+          (loc_var_decl
+            (identifier)
+            (located_at
+              (direct_variable
+                (direct_variable_identifier)
+                (offset
+                  (unsigned_int))))
+            (loc_var_spec_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name))))))))))
+
+================================================================================
+Size
+================================================================================
+
+PROGRAM prg
+   VAR_LOCATED
+      head AT %IX1: INT;
+      head AT %I1: INT;
+      head AT %IB2: INT;
+      head AT %IW3: INT;
+      head AT %ID4: INT;
+      head AT %IL5: INT;
+
+   END_VAR
+
+END_PROGRAM
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (prog_decl
+        (identifier)
+        (loc_var_decls
+          (loc_var_decl
+            (identifier)
+            (located_at
+              (direct_variable
+                (direct_variable_identifier)
+                (offset
+                  (unsigned_int))))
+            (loc_var_spec_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name)))))))
+          (loc_var_decl
+            (identifier)
+            (located_at
+              (direct_variable
+                (direct_variable_identifier)
+                (offset
+                  (unsigned_int))))
+            (loc_var_spec_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name)))))))
+          (loc_var_decl
+            (identifier)
+            (located_at
+              (direct_variable
+                (direct_variable_identifier)
+                (offset
+                  (unsigned_int))))
+            (loc_var_spec_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name)))))))
+          (loc_var_decl
+            (identifier)
+            (located_at
+              (direct_variable
+                (direct_variable_identifier)
+                (offset
+                  (unsigned_int))))
+            (loc_var_spec_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name)))))))
+          (loc_var_decl
+            (identifier)
+            (located_at
+              (direct_variable
+                (direct_variable_identifier)
+                (offset
+                  (unsigned_int))))
+            (loc_var_spec_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name)))))))
+          (loc_var_decl
+            (identifier)
+            (located_at
+              (direct_variable
+                (direct_variable_identifier)
+                (offset
+                  (unsigned_int))))
+            (loc_var_spec_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name))))))))))
+
+================================================================================
+Adressing
+================================================================================
+
+PROGRAM prg
+   VAR_LOCATED
+      head AT %IB0: INT;
+      head AT %QX7.5: INT;
+      head AT %MW1.7.9: INT;
+
+   END_VAR
+
+END_PROGRAM
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (prog_decl
+        (identifier)
+        (loc_var_decls
+          (loc_var_decl
+            (identifier)
+            (located_at
+              (direct_variable
+                (direct_variable_identifier)
+                (offset
+                  (unsigned_int))))
+            (loc_var_spec_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name)))))))
+          (loc_var_decl
+            (identifier)
+            (located_at
+              (direct_variable
+                (direct_variable_identifier)
+                (offset
+                  (unsigned_int)
+                  (unsigned_int))))
+            (loc_var_spec_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name)))))))
+          (loc_var_decl
+            (identifier)
+            (located_at
+              (direct_variable
+                (direct_variable_identifier)
+                (offset
+                  (unsigned_int)
+                  (unsigned_int)
+                  (unsigned_int))))
+            (loc_var_spec_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name))))))))))

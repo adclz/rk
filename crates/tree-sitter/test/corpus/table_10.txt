@@ -1,0 +1,441 @@
+================================================================================
+Elementary data types - Numbers
+================================================================================
+
+FUNCTION fn
+   VAR
+      b: BOOL := TRUE;
+      sint: SINT := 0;
+      int: INT := 0;
+      dint: DINT := 0;
+      lint: LINT := 0;
+      usint: USINT := 0;
+      uint: UINT := 0;
+      udint: UDINT := 0;
+      ulint: ULINT := 0;
+      real: REAL := 0.0;
+      lreal: LREAL := 0.0;
+
+      byte: BYTE := 16#00;
+      word: WORD := 16#00;
+      dword: DWORD := 16#00;
+      lword: LWORD := 16#00;
+
+   END_VAR
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (var_decls
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (bit_str_type_name
+                  (bool_name)))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (bool_literal))))))
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (sint_name)))))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int)))))))))
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name)))))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int)))))))))
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (dint_name)))))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int)))))))))
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (lint_name)))))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int)))))))))
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (unsign_int_type_name
+                      (usint_name)))))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int)))))))))
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (unsign_int_type_name
+                      (uint_name)))))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int)))))))))
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (unsign_int_type_name
+                      (udint_name)))))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int)))))))))
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (unsign_int_type_name
+                      (ulint_name)))))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int)))))))))
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (real_type_name
+                    (real_name))))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (real_literal
+                        (real_value
+                          (signed_int
+                            (unsigned_int))
+                          (unsigned_int)))))))))
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (real_type_name
+                    (lreal_name))))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (real_literal
+                        (real_value
+                          (signed_int
+                            (unsigned_int))
+                          (unsigned_int)))))))))
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (bit_str_type_name
+                  (multibits_type_name
+                    (byte_name))))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (hex_int))))))))
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (bit_str_type_name
+                  (multibits_type_name
+                    (word_name))))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (hex_int))))))))
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (bit_str_type_name
+                  (multibits_type_name
+                    (dword_name))))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (hex_int))))))))
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (bit_str_type_name
+                  (multibits_type_name
+                    (lword_name))))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (hex_int)))))))))))
+
+================================================================================
+Elementary data types - strings
+================================================================================
+
+FUNCTION fn
+   VAR
+
+      string: CHAR := '';
+      wstring: WCHAR := "";
+
+      char: CHAR := '$00';
+      wchar: WCHAR := "$0000";
+
+   END_VAR
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (var_decls
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (str_type_spec
+                (s_char))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (char_literal
+                      (char_str)))))))
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (str_type_spec
+                (d_char))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (char_literal
+                      (char_str)))))))
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (str_type_spec
+                (s_char))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (char_literal
+                      (char_str)))))))
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (str_type_spec
+                (d_char))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (char_literal
+                      (char_str))))))))))
+
+================================================================================
+Elementary data types - time and tod
+================================================================================
+
+FUNCTION fn
+   VAR
+
+      time: TIME := T#0s;
+      ltime: LTIME := T#0s;
+
+      tod: TOD := TOD#00:00:00;
+      tod: TIME_OF_DAY := TOD#00:00:00;
+
+      ltod: LTOD := LTOD#00:00:00;
+      ltod: LTIME_OF_DAY := LTOD#00:00:00;
+
+   END_VAR
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (var_decls
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (time_type_name
+                  (time_name)))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (time_literal
+                      (duration
+                        (time
+                          (time_value)))))))))
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (time_type_name
+                  (ltime_name)))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (time_literal
+                      (duration
+                        (time
+                          (time_value)))))))))
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (tod_type_name
+                  (tod_name)))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (time_literal
+                      (time_of_day
+                        (tod
+                          (daytime)))))))))
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (tod_type_name
+                  (tod_name)))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (time_literal
+                      (time_of_day
+                        (tod
+                          (daytime)))))))))
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (tod_type_name
+                  (ltod_name)))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (time_literal
+                      (time_of_day
+                        (ltod
+                          (daytime)))))))))
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (tod_type_name
+                  (ltod_name)))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (time_literal
+                      (time_of_day
+                        (ltod
+                          (daytime))))))))))))

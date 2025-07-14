@@ -1,0 +1,250 @@
+================================================================================
+Binary math operator expressions
+================================================================================
+
+FUNCTION fn
+
+v := a * b;
+v := a / b;
+v := a MOD b;
+v := a + b;
+v := a - b;
+
+v := a = b;
+v := a <> b;
+v := a > b;
+v := a < b;
+v := a >= b;
+v := a <= b;
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (var_access
+                    (identifier))))
+              (assignment
+                (mult_operator
+                  (namespace_access
+                    (identifier))
+                  (namespace_access
+                    (identifier)))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (var_access
+                    (identifier))))
+              (assignment
+                (mult_operator
+                  (namespace_access
+                    (identifier))
+                  (namespace_access
+                    (identifier)))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (var_access
+                    (identifier))))
+              (assignment
+                (mult_operator
+                  (namespace_access
+                    (identifier))
+                  (namespace_access
+                    (identifier)))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (var_access
+                    (identifier))))
+              (assignment
+                (add_operator
+                  (namespace_access
+                    (identifier))
+                  (namespace_access
+                    (identifier)))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (var_access
+                    (identifier))))
+              (assignment
+                (add_operator
+                  (namespace_access
+                    (identifier))
+                  (namespace_access
+                    (identifier)))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (var_access
+                    (identifier))))
+              (assignment
+                (comparison_operator
+                  (eq_operator
+                    (namespace_access
+                      (identifier))
+                    (namespace_access
+                      (identifier))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (var_access
+                    (identifier))))
+              (assignment
+                (comparison_operator
+                  (eq_operator
+                    (namespace_access
+                      (identifier))
+                    (namespace_access
+                      (identifier))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (var_access
+                    (identifier))))
+              (assignment
+                (comparison_operator
+                  (ord_operator
+                    (namespace_access
+                      (identifier))
+                    (namespace_access
+                      (identifier))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (var_access
+                    (identifier))))
+              (assignment
+                (comparison_operator
+                  (ord_operator
+                    (namespace_access
+                      (identifier))
+                    (namespace_access
+                      (identifier))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (var_access
+                    (identifier))))
+              (assignment
+                (comparison_operator
+                  (ord_operator
+                    (namespace_access
+                      (identifier))
+                    (namespace_access
+                      (identifier))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (var_access
+                    (identifier))))
+              (assignment
+                (comparison_operator
+                  (ord_operator
+                    (namespace_access
+                      (identifier))
+                    (namespace_access
+                      (identifier))))))))))
+
+================================================================================
+Binary cmp operator expressions
+================================================================================
+
+FUNCTION fn
+
+v := a = b;
+v := a <> b;
+v := a > b;
+v := a < b;
+v := a >= b;
+v := a <= b;
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+ (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (var_access
+                    (identifier))))
+              (assignment
+                (comparison_operator
+                  (eq_operator
+                    (namespace_access
+                      (identifier))
+                    (namespace_access
+                      (identifier))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (var_access
+                    (identifier))))
+              (assignment
+                (comparison_operator
+                  (eq_operator
+                    (namespace_access
+                      (identifier))
+                    (namespace_access
+                      (identifier))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (var_access
+                    (identifier))))
+              (assignment
+                (comparison_operator
+                  (ord_operator
+                    (namespace_access
+                      (identifier))
+                    (namespace_access
+                      (identifier))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (var_access
+                    (identifier))))
+              (assignment
+                (comparison_operator
+                  (ord_operator
+                    (namespace_access
+                      (identifier))
+                    (namespace_access
+                      (identifier))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (var_access
+                    (identifier))))
+              (assignment
+                (comparison_operator
+                  (ord_operator
+                    (namespace_access
+                      (identifier))
+                    (namespace_access
+                      (identifier))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (var_access
+                    (identifier))))
+              (assignment
+                (comparison_operator
+                  (ord_operator
+                    (namespace_access
+                      (identifier))
+                    (namespace_access
+                      (identifier))))))))))

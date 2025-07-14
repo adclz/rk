@@ -1,0 +1,126 @@
+================================================================================
+Integer literal 
+================================================================================
+
+FUNCTION fn
+
+a := -12
+a := 0
+a := 123_4 
+a := +986
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+      (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (var_access
+                    (identifier))))
+              (assignment
+                (unary_operator
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (var_access
+                    (identifier))))
+              (assignment
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int)))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (var_access
+                    (identifier))))
+              (assignment
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int)))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (var_access
+                    (identifier))))
+              (assignment
+                (unary_operator
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))))))
+
+================================================================================
+Real literal 
+================================================================================
+
+FUNCTION fn
+
+a := 0.0
+a :=  0.4560
+a := 3.14159_26
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (var_access
+                    (identifier))))
+              (assignment
+                (constant
+                  (numeric_literal
+                    (real_literal
+                      (real_value
+                        (signed_int
+                          (unsigned_int))
+                        (unsigned_int)))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (var_access
+                    (identifier))))
+              (assignment
+                (constant
+                  (numeric_literal
+                    (real_literal
+                      (real_value
+                        (signed_int
+                          (unsigned_int))
+                        (unsigned_int)))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (var_access
+                    (identifier))))
+              (assignment
+                (constant
+                  (numeric_literal
+                    (real_literal
+                      (real_value
+                        (signed_int
+                          (unsigned_int))
+                        (unsigned_int)))))))))))
+

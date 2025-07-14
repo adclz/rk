@@ -1,0 +1,161 @@
+================================================================================
+Nested Namespaces
+================================================================================
+
+NAMESPACE ns
+    NAMESPACE ns2_1
+
+    END_NAMESPACE
+
+    NAMESPACE ns2_2
+
+    END_NAMESPACE
+
+    NAMESPACE ns2_2
+            NAMESPACE ns3_1
+
+            END_NAMESPACE
+    END_NAMESPACE
+END_NAMESPACE    
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (namespace_decl
+        (namespace_h_name
+          (identifier))
+        (namespace_elements
+          (namespace_decl
+            (namespace_h_name
+              (identifier)))
+          (namespace_decl
+            (namespace_h_name
+              (identifier)))
+          (namespace_decl
+            (namespace_h_name
+              (identifier))
+            (namespace_elements
+              (namespace_decl
+                (namespace_h_name
+                  (identifier))))))))
+
+================================================================================
+Function blocks with extends
+================================================================================
+
+FUNCTION_BLOCK fn EXTENDS access::something::great
+
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (fb_decl
+        (identifier)
+        (namespace_access
+          (scoped_identifier
+            (scoped_identifier
+              (identifier)
+              (target))
+            (target)))))
+
+================================================================================
+Function blocks with multiple implements
+================================================================================
+
+FUNCTION_BLOCK fn IMPLEMENTS access::something::great, in_scope, access::something::else
+
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+   (source_file
+      (fb_decl
+        (identifier)
+        (interface_name_list
+          (namespace_access
+            (scoped_identifier
+              (scoped_identifier
+                (identifier)
+                (target))
+              (target)))
+          (namespace_access
+            (identifier))
+          (namespace_access
+            (scoped_identifier
+              (scoped_identifier
+                (identifier)
+                (target))
+              (target))))))
+
+================================================================================
+Interface with methods
+================================================================================
+
+INTERFACE ROOM
+    METHOD DAYTIME END_METHOD // Called in day-time
+    METHOD NIGHTTIME END_METHOD // in night-time
+END_INTERFACE 
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (interface_decl
+        (identifier)
+        (method_prototype
+          (identifier))
+        (line_comment)
+        (method_prototype
+          (identifier))
+        (line_comment)))
+
+
+================================================================================
+Class with methods
+================================================================================
+
+CLASS LIGHTROOM IMPLEMENTS ROOM
+	METHOD PUBLIC DAYTIME
+		LIGHT:= FALSE;
+	END_METHOD
+
+	METHOD PUBLIC NIGHTTIME
+		LIGHT:= TRUE;
+	END_METHOD
+END_CLASS 
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (class_decl
+        (class_type_name
+          (identifier))
+        (interface_name_list
+          (namespace_access
+            (identifier)))
+        (method_decl
+          (access_spec)
+          (identifier)
+          (func_body
+            (stmt_list
+              (assign
+                (variable
+                  (symbolic_variable
+                    (var_access
+                      (identifier))))
+                (assignment
+                  (constant
+                    (bool_literal)))))))
+        (method_decl
+          (access_spec)
+          (identifier)
+          (func_body
+            (stmt_list
+              (assign
+                (variable
+                  (symbolic_variable
+                    (var_access
+                      (identifier))))
+                (assignment
+                  (constant
+                    (bool_literal)))))))))

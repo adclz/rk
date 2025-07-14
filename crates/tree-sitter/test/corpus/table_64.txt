@@ -1,0 +1,97 @@
+================================================================================
+Public namespace (without access specifier)  
+================================================================================
+
+NAMESPACE name 
+
+END_NAMESPACE
+
+--------------------------------------------------------------------------------
+
+   (source_file
+      (namespace_decl
+        (namespace_h_name
+          (identifier))))
+
+================================================================================
+Internal namespace (with INTERNAL specifier)  
+================================================================================
+
+NAMESPACE INTERNAL name
+
+END_NAMESPACE
+
+--------------------------------------------------------------------------------
+
+   (source_file
+      (namespace_decl
+        (namespace_h_name
+          (identifier))))
+
+================================================================================
+Variable access specifier INTERNAL 
+================================================================================
+
+CLASS C1
+   VAR INTERNAL myInternalVar: INT; END_VAR
+   VAR PUBLIC myPublicVar: INT; END_VAR
+END_CLASS
+
+--------------------------------------------------------------------------------
+
+   (source_file
+      (class_decl
+        (class_type_name
+          (identifier))
+        (var_decls
+          (access_spec)
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name))))))))
+        (var_decls
+          (access_spec)
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name))))))))))                             
+
+================================================================================
+Method access specifier INTERNAL
+================================================================================
+
+CLASS C2
+   METHOD INTERNAL myInternalMethod: INT  END_METHOD
+   METHOD PUBLIC myPublicMethod: INT  END_METHOD
+END_CLASS
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (class_decl
+        (class_type_name
+          (identifier))
+        (method_decl
+          (access_spec)
+          (identifier)
+          (numeric_type_name
+            (int_type_name
+              (sign_int_type_name
+                (int_name)))))
+        (method_decl
+          (access_spec)
+          (identifier)
+          (numeric_type_name
+            (int_type_name
+              (sign_int_type_name
+                (int_name)))))))

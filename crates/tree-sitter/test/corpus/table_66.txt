@@ -1,0 +1,156 @@
+================================================================================
+USING in global namespace 
+================================================================================
+
+USING Standard.Timers;
+FUNCTION PUBLIC TimeTick: DWORD
+    VAR
+      Ton1: TON;
+    END_VAR
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (using_directive
+        (namespace_h_name
+          (identifier)
+          (identifier)))
+      (func_decl
+        (access_spec)
+        (identifier)
+        (bit_str_type_name
+          (multibits_type_name
+            (dword_name)))
+        (var_decls
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (namespace_access
+                  (identifier))))))))
+
+================================================================================
+USING in other namespace 
+================================================================================
+
+NAMESPACE Standard.Timers.HighResolution
+  USING Counters;
+  FUNCTION PUBLIC TimeResolution: DWORD
+    // ...declaration and operations here
+  END_FUNCTION
+END_NAMESPACE (*Standard.Timers.HighResolution*)
+
+--------------------------------------------------------------------------------
+
+   (source_file
+      (namespace_decl
+        (namespace_h_name
+          (identifier)
+          (identifier)
+          (identifier))
+        (using_directive
+          (namespace_h_name
+            (identifier)))
+        (namespace_elements
+          (func_decl
+            (access_spec)
+            (identifier)
+            (bit_str_type_name
+              (multibits_type_name
+                (dword_name)))
+              (line_comment))))
+      (pascal_style_comment
+        (comment_text)))
+
+================================================================================
+USING in POUs
+================================================================================
+
+FUNCTION_BLOCK Uses_Std
+  USING Standard.Timers, Counters;
+    VAR
+      Ton1: TON;
+      (* starts timer with rising edge, resets timer with falling edge *)
+      Cnt1: CUP;
+      bTest: BOOL;
+    END_VAR
+
+    Ton1(In:= bTest, PT:= TIME#5s);
+
+END_FUNCTION_BLOCK
+
+FUNCTION myFun: INT
+  USING Lib1, Lib2;
+  USING Lib3;
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+   (source_file
+      (fb_decl
+        (identifier)
+        (using_directive
+          (namespace_h_name
+            (identifier)
+            (identifier))
+          (namespace_h_name
+            (identifier)))
+        (var_decls
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (namespace_access
+                  (identifier)))))
+          (pascal_style_comment
+            (comment_text))
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (namespace_access
+                  (identifier)))))
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (bit_str_type_name
+                  (bool_name))))))
+        (fb_body
+          (stmt_list
+            (func_call
+              (namespace_access
+                (identifier))
+              (param_assign
+                (param_assign_input
+                  (identifier)
+                  (namespace_access
+                    (identifier))))
+              (param_assign
+                (param_assign_input
+                  (identifier)
+                  (constant
+                    (time_literal
+                      (duration
+                        (time
+                          (time_value)))))))))))
+      (func_decl
+        (identifier)
+        (numeric_type_name
+          (int_type_name
+            (sign_int_type_name
+              (int_name))))
+        (using_directive
+          (namespace_h_name
+            (identifier))
+          (namespace_h_name
+            (identifier)))
+        (using_directive
+          (namespace_h_name
+            (identifier)))))
