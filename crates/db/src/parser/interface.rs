@@ -1,5 +1,7 @@
 use std::ops::Deref;
 
+use crate::diagnostics::diagnostic_builder::diag;
+use crate::diagnostics::DiagnosticAccumulator;
 use crate::hir;
 use crate::ident::Ident;
 use crate::parser::namespace::ParseUsing;
@@ -8,6 +10,7 @@ use crate::solver::fq_name::SpannedNamespaceAccess;
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::default::db::{file::File, BaseDatabase};
+use salsa::Accumulator;
 
 impl<'db> Parse<'db> for ast::generated::InterfaceDecl {
     type Output = hir::interface::Interface<'db>;
@@ -29,6 +32,15 @@ impl<'db> Parse<'db> for ast::generated::InterfaceDecl {
             .iter()
             .map(|m| m.parse(db, file))
             .collect::<anyhow::Result<Vec<_>>>()?;
+
+        self.children.iter().for_each(|f| {
+            let diag = diag()
+                .message("EXTENDS can only be defined once".into())
+                .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+                .range(f.get_span())
+                .call();
+            DiagnosticAccumulator::accumulate(diag.into(), db);
+        });
 
         let using = self.directives.parse_using(db, file)?;
 

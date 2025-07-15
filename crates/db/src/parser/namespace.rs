@@ -2,17 +2,22 @@ use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::Arc;
 
-use ast::generated::ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl;
+use ast::generated::{
+    ERRInvalidPouKeyword_ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl
+};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
-use auto_lsp::default::db::{BaseDatabase, file::File};
+use auto_lsp::default::db::{file::File, BaseDatabase};
 use rustc_hash::FxHashMap;
+use salsa::Accumulator;
 
+use crate::diagnostics::diagnostic_builder::diag;
+use crate::diagnostics::DiagnosticAccumulator;
 use crate::hir::namespace::{FileNamespaces, Namespace, Pou, PouDecl, Using};
 use crate::ident::Ident;
+use crate::parser::data_type::ParseDataType;
 use crate::parser::Parse;
 use crate::solver::namespace::NamespacePath;
-use crate::parser::data_type::ParseDataType;
 
 pub struct FileNamespacesBuilder<'db> {
     db: &'db dyn BaseDatabase,
@@ -42,9 +47,8 @@ impl<'db> ParseUsing<'db> for Vec<Arc<ast::generated::UsingDirective>> {
                 for child in child.children.iter() {
                     path.push(Ident::from_node(db, file, child.deref())?);
                 }
-                using.push(
-                    Using::new(
-                        db,
+                using.push(Using::new(
+                    db,
                     NamespacePath::from((db, &path)),
                     child.get_span(),
                 ));
@@ -84,26 +88,36 @@ impl<'db> FileNamespacesBuilder<'db> {
         // Top level namespaces
         // Since namespaces can be nested, we check
         for child in self.source.children.iter() {
-            if let ast::generated::ClassDecl_ConfigDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl_ProgDecl_UsingDirective::NamespaceDecl(namespace) =
-                child.as_ref()
-            {
-                let path = match self.get_namespace_path(namespace) {
-                    Ok(path) => path,
-                    Err(_err) => {
-                        // todo: report error
-                        continue;
-                    }
-                };
-                let namespace_path = NamespacePath::from((self.db, &path));
-                let namespace = match self.handle_namespace_elements(&path, namespace) {
-                    Ok(namespace) => namespace,
-                    Err(_err) => {
-                        // todo: report error
-                        continue;
-                    }
-                };
+            type SourceFileDecl = ast::generated::ERRInvalidPouKeyword_ClassDecl_ConfigDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl_ProgDecl_UsingDirective;
 
-                self.paths.entry(namespace_path).or_insert(namespace);
+            match child.as_ref() {
+                SourceFileDecl::NamespaceDecl(namespace) => {
+                    let path = match self.get_namespace_path(namespace) {
+                        Ok(path) => path,
+                        Err(_err) => {
+                            // todo: report error
+                            continue;
+                        }
+                    };
+                    let namespace_path = NamespacePath::from((self.db, &path));
+                    let namespace = match self.handle_namespace_elements(&path, namespace) {
+                        Ok(namespace) => namespace,
+                        Err(_err) => {
+                            // todo: report error
+                            continue;
+                        }
+                    };
+
+                    self.paths.entry(namespace_path).or_insert(namespace);
+                }
+                SourceFileDecl::ERRInvalidPouKeyword(err) => {
+                    let diag = diag()
+                        .message("Expected a POU keyword".into())
+                        .range(err.get_span())
+                        .call();
+                    DiagnosticAccumulator::accumulate(diag.into(), self.db);
+                }
+                _ => {}
             }
         }
         FileNamespaces::new(self.db, self.file, self.paths)
@@ -114,7 +128,8 @@ impl<'db> FileNamespacesBuilder<'db> {
         parent_path: &[Ident],
         nested: &'db ast::generated::NamespaceDecl,
     ) -> anyhow::Result<Namespace<'db>> {
-        type Decl = ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl;
+        type Decl =
+            ERRInvalidPouKeyword_ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl;
 
         let using = nested.directives.parse_using(self.db, self.file)?;
 
@@ -132,59 +147,58 @@ impl<'db> FileNamespacesBuilder<'db> {
                     }
                     Decl::FuncDecl(func) => {
                         let name = Ident::from_node(self.db, self.file, &*func.name)?;
-                        pous.push(
-                            PouDecl::new(
-                                self.db,
-                                self.file,
-                                Pou::Function(func.parse(self.db, self.file)?),
-                                func.get_span(),
-                                name,
-                                func.name.get_span(),
-                            ),
-                        );
+                        pous.push(PouDecl::new(
+                            self.db,
+                            self.file,
+                            Pou::Function(func.parse(self.db, self.file)?),
+                            func.get_span(),
+                            name,
+                            func.name.get_span(),
+                        ));
                     }
                     Decl::FbDecl(fb) => {
                         let name = Ident::from_node(self.db, self.file, &*fb.name)?;
-                        pous.push(
-                            PouDecl::new(
-                                self.db,
-                                self.file,
-                                Pou::FunctionBlock(fb.parse(self.db, self.file)?),
-                                fb.get_span(),
-                                name,
-                                fb.name.get_span(),
-                            ),
-                        );
+                        pous.push(PouDecl::new(
+                            self.db,
+                            self.file,
+                            Pou::FunctionBlock(fb.parse(self.db, self.file)?),
+                            fb.get_span(),
+                            name,
+                            fb.name.get_span(),
+                        ));
                     }
                     Decl::ClassDecl(class) => {
                         let name = Ident::from_node(self.db, self.file, &*class.name)?;
-                        pous.push(
-                            PouDecl::new(
-                                self.db,
-                                self.file,
-                                Pou::Class(class.parse(self.db, self.file)?),
-                                class.get_span(),
-                                name,
-                                class.name.get_span(),
-                            ),
-                        );
-                    },
+                        pous.push(PouDecl::new(
+                            self.db,
+                            self.file,
+                            Pou::Class(class.parse(self.db, self.file)?),
+                            class.get_span(),
+                            name,
+                            class.name.get_span(),
+                        ));
+                    }
                     Decl::DataTypeDecl(data_type) => {
                         data_type.parse(self.db, self.file, &mut pous)?;
-                    },
+                    }
                     Decl::InterfaceDecl(interface) => {
                         let name = Ident::from_node(self.db, self.file, &*interface.name)?;
-                        pous.push(
-                            PouDecl::new(
-                                self.db,
-                                self.file,
-                                Pou::Interface(interface.parse(self.db, self.file)?),
-                                interface.get_span(),
-                                name,
-                                interface.name.get_span(),
-                            ),
-                        );
-                    },
+                        pous.push(PouDecl::new(
+                            self.db,
+                            self.file,
+                            Pou::Interface(interface.parse(self.db, self.file)?),
+                            interface.get_span(),
+                            name,
+                            interface.name.get_span(),
+                        ));
+                    }
+                    Decl::ERRInvalidPouKeyword(err) => {
+                        let diag = diag()
+                            .message("Expected a POU keyword".into())
+                            .range(err.get_span())
+                            .call();
+                        DiagnosticAccumulator::accumulate(diag.into(), self.db);
+                    }
                 }
             }
         }

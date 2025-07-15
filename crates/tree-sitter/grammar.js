@@ -108,6 +108,7 @@ const RESERVED_NAMES = [
     "FUNCTION", "END_FUNCTION",
     "FUNCTION_BLOCK", "END_FUNCTION_BLOCK",
     "TYPE", "END_TYPE",
+    "IMPLEMENTS", "EXTENDS",
     "STRUCT", "END_STRUCT",
     "VAR", "END_VAR",
     "VAR_INPUT",
@@ -213,8 +214,23 @@ module.exports = grammar({
                 $.interface_decl,
                 // Global using
                 $.using_directive,
+                $.ERR_invalid_pou_keyword,
             )
         ),
+
+        // Other - Errors
+
+        // Pou declaration errors
+        ERR_invalid_pou_keyword: $ => $.identifier,
+
+        // Qualifier errors
+        ERR_implements_before_extends: $ => prec(-1, seq("IMPLEMENTS", $.interface_name_list)),
+        ERR_implements_multiple_times: $ => prec(-1, seq("IMPLEMENTS", $.interface_name_list)),
+        ERR_extends_multiple_times: $ => prec(-1, seq("EXTENDS", $.namespace_access)),
+
+        // Variable declaration errors
+        ERR_variable_with_no_spec: $ => prec(-1, $.identifier),
+        ERR_invalid_edge_qualifier: $ => prec(-1, /[FR](_(E(D(G)?)?)?)?/),
 
         // Table 3 - Comments 
 
@@ -793,7 +809,7 @@ module.exports = grammar({
         input_decls: $ => seq(
             'VAR_INPUT',
             field("retain", optional(choice('RETAIN', 'NON_RETAIN'))),
-            repeat(seq($.input_var, optional(';'))),
+            repeat(seq(choice($.input_var, $.ERR_variable_with_no_spec), optional(";"))),
             'END_VAR',
             optional(';')
         ),
@@ -808,7 +824,7 @@ module.exports = grammar({
         edge_decl: $ => seq(
             ':',
             'BOOL',
-            field("edge", choice('R_EDGE', 'F_EDGE'))
+            field("edge", choice('R_EDGE', 'F_EDGE', $.ERR_invalid_edge_qualifier))
         ),
 
         // : Variable_List ':' ( Simple_Spec_Init | Str_Var_Decl | Ref_Spec_Init )
@@ -861,12 +877,6 @@ module.exports = grammar({
             $.data_type_access
         ),
 
-        fb_decl_no_init: $ => seq(
-            commaSep1($.fb_name),
-            ':',
-            $.namespace_access
-        ),
-
         fb_decl_init: $ => seq(':=', $.struct_init),
 
         fb_name: $ => $.identifier,
@@ -874,7 +884,7 @@ module.exports = grammar({
         output_decls: $ => seq(
             'VAR_OUTPUT',
             optional(choice('RETAIN', 'NON_RETAIN')),
-            repeat(seq($.output_var, optional(';'))),
+            repeat(seq(choice($.output_var, $.ERR_variable_with_no_spec), optional(';'))),
             'END_VAR',
             optional(';')
         ),
@@ -888,7 +898,7 @@ module.exports = grammar({
 
         in_out_decls: $ => seq(
             'VAR_IN_OUT',
-            repeat(seq($.in_out_var, optional(';'))),
+            repeat(seq(choice($.in_out_var, $.ERR_variable_with_no_spec), optional(';'))),
             'END_VAR',
             optional(';')
         ),
@@ -898,13 +908,13 @@ module.exports = grammar({
             field("type", $._in_out_var_kind)
         ),
 
-        _in_out_var_kind: $ => choice($.var_decl, $.array_conformand, $.fb_decl_no_init),
+        _in_out_var_kind: $ => choice($.var_decl, $.array_conformand),
 
         var_decls: $ => seq(
             'VAR',
             field("constant", optional('CONSTANT')),
             field("access", optional($.access_spec)),
-            repeat(seq($.var_decl_init_list, optional(';'))),
+            repeat(seq(choice($.var_decl_init_list, $.ERR_variable_with_no_spec), optional(';'))),
             'END_VAR',
             optional(';')
         ),
@@ -913,7 +923,7 @@ module.exports = grammar({
             'VAR',
             field("retain", 'RETAIN'),
             field("access", optional($.access_spec)),
-            repeat(seq($.var_decl_init_list, optional(';'))),
+            repeat(seq(choice($.var_decl_init_list, $.ERR_variable_with_no_spec), optional(';'))),
             'END_VAR',
             optional(';')
         ),
@@ -939,7 +949,7 @@ module.exports = grammar({
 
         temp_var_decls: $ => seq(
             'VAR_TEMP',
-            repeat(seq($.temp_var, optional(';'))),
+            repeat(seq(choice($.temp_var, $.ERR_variable_with_no_spec), optional(';'))),
             'END_VAR',
             optional(';')
         ),
@@ -954,7 +964,7 @@ module.exports = grammar({
         external_var_decls: $ => seq(
             'VAR_EXTERNAL',
             field("constant", optional('CONSTANT')),
-            repeat(seq($.external_decl, optional(';'))),
+            repeat(seq(choice($.external_decl, $.ERR_variable_with_no_spec), optional(';'))),
             'END_VAR',
             optional(';')
         ),
@@ -962,7 +972,7 @@ module.exports = grammar({
         external_decl: $ => seq(
             field("name", $.identifier),
             field("type", $._external_var_kind)
-        ),
+        ), 
 
         _external_var_kind: $ => choice($.var_decl, $.array_conformand),
 
@@ -1062,15 +1072,17 @@ module.exports = grammar({
             'FUNCTION_BLOCK',
             field("qualifier", optional(choice('FINAL', 'ABSTRACT'))),
             field("name", $.identifier),
+            optional($.ERR_implements_before_extends),
             optional(seq("EXTENDS", field("extends", $.namespace_access))),
+            optional(repeat($.ERR_extends_multiple_times)),
             optional(seq("IMPLEMENTS", field("implements", $.interface_name_list))),
+            optional(repeat($.ERR_implements_multiple_times)),
             field("directives", repeat($.using_directive)),
             field("variables", repeat($._fb_variables)),
             field("method", repeat($.method_decl)),
             field("body", optional($.fb_body)),
             "END_FUNCTION_BLOCK"
         ),
-
 
         _fb_variables: $ => choice(
             $.fb_input_decls,
@@ -1084,7 +1096,7 @@ module.exports = grammar({
         fb_input_decls: $ => seq(
             'VAR_INPUT',
             optional(choice('RETAIN', 'NON_RETAIN')),
-            repeat(seq($.fb_input_var, optional(';'))),
+            repeat(seq(choice($.fb_input_var, $.ERR_variable_with_no_spec), optional(';'))),
             'END_VAR',
             optional(';')
         ),
@@ -1103,7 +1115,7 @@ module.exports = grammar({
         fb_output_decls: $ => seq(
             'VAR_OUTPUT',
             optional(choice('RETAIN', 'NON_RETAIN')),
-            repeat(seq($.fb_output_var, optional(';'))),
+            repeat(seq(choice($.fb_output_var, $.ERR_variable_with_no_spec), optional(';'))),
             'END_VAR',
             optional(';')
         ),
@@ -1121,7 +1133,7 @@ module.exports = grammar({
         no_retain_var_decls: $ => seq(
             'VAR', 'NON_RETAIN',
             field("spec", optional($.access_spec)),
-            repeat(seq($.var_decl_init_list, optional(';'))),
+            repeat(seq(choice($.var_decl_init_list, $.ERR_variable_with_no_spec), optional(';'))),
             'END_VAR',
             optional(';')
         ),
@@ -1153,8 +1165,11 @@ module.exports = grammar({
             field("qualifier", optional(choice('FINAL', 'ABSTRACT'))),
             field("name", $.class_type_name),
             field("directives", repeat($.using_directive)),
+            optional($.ERR_implements_before_extends),
             optional(seq("EXTENDS", field("extends", $.namespace_access))),
+            optional(repeat($.ERR_extends_multiple_times)),
             optional(seq("IMPLEMENTS", field("implements", $.interface_name_list))),
+            optional(repeat($.ERR_implements_multiple_times)),
             field("declarations", repeat($._class_variables)),
             field("methods", repeat($.method_decl)),
             'END_CLASS'
@@ -1177,6 +1192,7 @@ module.exports = grammar({
             field("name", $.identifier),
             field("directives", repeat($.using_directive)),
             optional(seq('EXTENDS', field("extends", $.interface_name_list))),
+            optional(repeat($.ERR_extends_multiple_times)),
             field("prototype", repeat($.method_prototype)),
             'END_INTERFACE'
         ),
@@ -1500,13 +1516,9 @@ module.exports = grammar({
                 $.class_decl,
                 $.interface_decl,
                 $.namespace_decl,
-                //$.ERR_invalid_pou_keyword,
-                //$.ERR_incomplete_pou_decl,
+                $.ERR_invalid_pou_keyword,
             )
         ),
-
-        //ERR_invalid_pou_keyword: $ => $.identifier,
-        //ERR_incomplete_pou_decl: $ =>  prec(-1, seq(choice("FUNCTION"), alias($.identifier, $.pou_name))),
 
         namespace_h_name: $ => dotSep1($.identifier),
 

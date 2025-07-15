@@ -3,80 +3,482 @@ use std::ops::Deref;
 
 use ast::generated::{ExternalVarKind, GlobalVarKind};
 use auto_lsp::core::ast::AstNode;
+use auto_lsp::lsp_types::{self, Position};
+use auto_lsp::tree_sitter::{self, Point};
 use auto_lsp::{
     anyhow,
-    default::db::{BaseDatabase, file::File},
+    default::db::{file::File, BaseDatabase},
 };
+use salsa::Accumulator;
 
+use crate::diagnostics::diagnostic_builder::diag;
+use crate::diagnostics::DiagnosticAccumulator;
 use crate::parser::{ParseInit, ParseSpec, ParseSpecInit, ParseVarSection, SpecInitResult};
 use crate::{
     hir::variable::{Spec, Variable, VariableKind},
     ident::Ident,
 };
 
-macro_rules! parse_multi_variable_sections {
-    ($($section: ident, $kind: ident, [$( $section_kind: path ),*]), *) => {
-    $(impl<'db> ParseVarSection<'db> for ast::generated::$section {
-        fn parse(
-            &'db self,
-            db: &'db dyn BaseDatabase,
-            file: File,
-            section: &mut Vec<Variable<'db>>,
+trait ToVariable<'db> {
+    fn to_variable(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        file: File,
+        name: &impl AstNode,
+        kind: VariableKind,
+    ) -> anyhow::Result<Variable<'db>>;
+}
+
+impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
+    fn parse(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        file: File,
+        section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
-            match child.Type.deref() {
-                $($section_kind(var_decl) => {
-                    for variable in child.variables.children.iter() {
-                        let name = Ident::from_node(db, file, variable.deref())?;
-                        let result = var_decl.to_spec_init(db, file)?;
-                        section.push(
-                            Variable::new(db,
-                                file,
-                                name,
-                                variable.get_span(),
-                                variable.get_span(),
-                                VariableKind::$kind,
-                                result.spec,
-                                result.init,
-                            ));
+            match child.deref() {
+                ast::generated::ERRVariableWithNoSpec_InputVar::ERRVariableWithNoSpec(child) => {
+                    let diag = diag()
+                        .message("variable with no type specified".to_string())
+                        .range(child.get_span())
+                        .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+                        .call();
+                    DiagnosticAccumulator::accumulate(diag.into(), db);
+                    continue;
+                }
+                ast::generated::ERRVariableWithNoSpec_InputVar::InputVar(child) => {
+                    match child.Type.deref() {
+                        ast::generated::InputVarKind::VarDeclInit(var_decl) => {
+                            for variable in child.variables.children.iter() {
+                                section.push(var_decl.to_variable(
+                                    db,
+                                    file,
+                                    variable.deref(),
+                                    VariableKind::Input,
+                                )?);
+                            }
+                        }
+                        ast::generated::InputVarKind::ArrayConformand(var_decl) => {
+                            for variable in child.variables.children.iter() {
+                                section.push(var_decl.to_variable(
+                                    db,
+                                    file,
+                                    variable.deref(),
+                                    VariableKind::Input,
+                                )?);
+                            }
+                        }
+                        ast::generated::InputVarKind::EdgeDecl(edge_decl) => {
+                            for variable in child.variables.children.iter() {
+                                section.push(edge_decl.to_variable(
+                                    db,
+                                    file,
+                                    variable.deref(),
+                                    VariableKind::Input,
+                                )?);
+                            }
+                        }
                     }
-                }),*
+                }
             }
         }
         Ok(())
     }
-    })*
-    };
 }
 
-parse_multi_variable_sections! {
-    InputDecls, Input, [
-        ast::generated::InputVarKind::VarDeclInit,
-        ast::generated::InputVarKind::ArrayConformand,
-        ast::generated::InputVarKind::EdgeDecl
-    ],
-    FbInputDecls, Input, [
-        ast::generated::FbInputVarKind::VarDeclInit,
-        ast::generated::FbInputVarKind::ArrayConformand,
-        ast::generated::FbInputVarKind::EdgeDecl
-    ],
-    OutputDecls, Output, [
-        ast::generated::OutputVarKind::VarDeclInit,
-        ast::generated::OutputVarKind::ArrayConformand
-    ],
-    FbOutputDecls, Output, [
-        ast::generated::FbOutputVarKind::VarDeclInit,
-        ast::generated::FbOutputVarKind::ArrayConformand
-    ],
-    TempVarDecls, Temp, [
-        ast::generated::TempVarKind::VarDecl,
-        ast::generated::TempVarKind::RefSpec
-    ],
-    InOutDecls, InOut, [
-        ast::generated::InOutVarKind::VarDecl,
-        ast::generated::InOutVarKind::ArrayConformand,
-        ast::generated::InOutVarKind::FbDeclNoInit
-    ]
+impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
+    fn parse(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        file: File,
+        section: &mut Vec<Variable<'db>>,
+    ) -> anyhow::Result<()> {
+        for child in self.children.iter() {
+            match child.deref() {
+                ast::generated::ERRVariableWithNoSpec_FbInputVar::ERRVariableWithNoSpec(child) => {
+                    let diag = diag()
+                        .message("variable with no type specified".to_string())
+                        .range(child.get_span())
+                        .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+                        .call();
+                    DiagnosticAccumulator::accumulate(diag.into(), db);
+                    continue;
+                }
+                ast::generated::ERRVariableWithNoSpec_FbInputVar::FbInputVar(child) => {
+                    match child.Type.deref() {
+                        ast::generated::FbInputVarKind::VarDeclInit(var_decl) => {
+                            for variable in child.variables.children.iter() {
+                                section.push(var_decl.to_variable(
+                                    db,
+                                    file,
+                                    variable.deref(),
+                                    VariableKind::Input,
+                                )?);
+                            }
+                        }
+                        ast::generated::FbInputVarKind::ArrayConformand(var_decl) => {
+                            for variable in child.variables.children.iter() {
+                                section.push(var_decl.to_variable(
+                                    db,
+                                    file,
+                                    variable.deref(),
+                                    VariableKind::Input,
+                                )?);
+                            }
+                        }
+                        ast::generated::FbInputVarKind::EdgeDecl(edge_decl) => {
+                            for variable in child.variables.children.iter() {
+                                section.push(edge_decl.to_variable(
+                                    db,
+                                    file,
+                                    variable.deref(),
+                                    VariableKind::Input,
+                                )?);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<'db> ParseVarSection<'db> for ast::generated::OutputDecls {
+    fn parse(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        file: File,
+        section: &mut Vec<Variable<'db>>,
+    ) -> anyhow::Result<()> {
+        for child in self.children.iter() {
+            match child.deref() {
+                ast::generated::ERRVariableWithNoSpec_OutputVar::ERRVariableWithNoSpec(child) => {
+                    let diag = diag()
+                        .message("variable with no type specified".to_string())
+                        .range(child.get_span())
+                        .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+                        .call();
+                    DiagnosticAccumulator::accumulate(diag.into(), db);
+                    continue;
+                }
+                ast::generated::ERRVariableWithNoSpec_OutputVar::OutputVar(child) => {
+                    match child.Type.deref() {
+                        ast::generated::OutputVarKind::VarDeclInit(var_decl) => {
+                            for variable in child.variables.children.iter() {
+                                section.push(var_decl.to_variable(
+                                    db,
+                                    file,
+                                    variable.deref(),
+                                    VariableKind::Output,
+                                )?);
+                            }
+                        }
+                        ast::generated::OutputVarKind::ArrayConformand(var_decl) => {
+                            for variable in child.variables.children.iter() {
+                                section.push(var_decl.to_variable(
+                                    db,
+                                    file,
+                                    variable.deref(),
+                                    VariableKind::Output,
+                                )?);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<'db> ParseVarSection<'db> for ast::generated::FbOutputDecls {
+    fn parse(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        file: File,
+        section: &mut Vec<Variable<'db>>,
+    ) -> anyhow::Result<()> {
+        for child in self.children.iter() {
+            match child.deref() {
+                ast::generated::ERRVariableWithNoSpec_FbOutputVar::ERRVariableWithNoSpec(child) => {
+                    let diag = diag()
+                        .message("variable with no type specified".to_string())
+                        .range(child.get_span())
+                        .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+                        .call();
+                    DiagnosticAccumulator::accumulate(diag.into(), db);
+                    continue;
+                }
+                ast::generated::ERRVariableWithNoSpec_FbOutputVar::FbOutputVar(child) => {
+                    match child.Type.deref() {
+                        ast::generated::FbOutputVarKind::VarDeclInit(var_decl) => {
+                            for variable in child.variables.children.iter() {
+                                section.push(var_decl.to_variable(
+                                    db,
+                                    file,
+                                    variable.deref(),
+                                    VariableKind::Output,
+                                )?);
+                            }
+                        }
+                        ast::generated::FbOutputVarKind::ArrayConformand(var_decl) => {
+                            for variable in child.variables.children.iter() {
+                                section.push(var_decl.to_variable(
+                                    db,
+                                    file,
+                                    variable.deref(),
+                                    VariableKind::Output,
+                                )?);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<'db> ParseVarSection<'db> for ast::generated::TempVarDecls {
+    fn parse(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        file: File,
+        section: &mut Vec<Variable<'db>>,
+    ) -> anyhow::Result<()> {
+        for child in self.children.iter() {
+            match child.deref() {
+                ast::generated::ERRVariableWithNoSpec_TempVar::ERRVariableWithNoSpec(child) => {
+                    let diag = diag()
+                        .message("variable with no type specified".to_string())
+                        .range(child.get_span())
+                        .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+                        .call();
+                    DiagnosticAccumulator::accumulate(diag.into(), db);
+                    continue;
+                }
+                ast::generated::ERRVariableWithNoSpec_TempVar::TempVar(child) => {
+                    match child.Type.deref() {
+                        ast::generated::TempVarKind::VarDecl(var_decl) => {
+                            for variable in child.variables.children.iter() {
+                                section.push(var_decl.to_variable(
+                                    db,
+                                    file,
+                                    variable.deref(),
+                                    VariableKind::Input,
+                                )?);
+                            }
+                        }
+                        ast::generated::TempVarKind::RefSpec(var_decl) => {
+                            for variable in child.variables.children.iter() {
+                                section.push(var_decl.to_variable(
+                                    db,
+                                    file,
+                                    variable.deref(),
+                                    VariableKind::Input,
+                                )?);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
+    fn parse(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        file: File,
+        section: &mut Vec<Variable<'db>>,
+    ) -> anyhow::Result<()> {
+        for child in self.children.iter() {
+            match child.deref() {
+                ast::generated::ERRVariableWithNoSpec_InOutVar::ERRVariableWithNoSpec(child) => {
+                    let diag = diag()
+                        .message("variable with no type specified".to_string())
+                        .range(child.get_span())
+                        .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+                        .call();
+                    DiagnosticAccumulator::accumulate(diag.into(), db);
+                    continue;
+                }
+                ast::generated::ERRVariableWithNoSpec_InOutVar::InOutVar(child) => {
+                    match child.Type.deref() {
+                        ast::generated::InOutVarKind::ArrayConformand(var_decl) => {
+                            for variable in child.variables.children.iter() {
+                                section.push(var_decl.to_variable(
+                                    db,
+                                    file,
+                                    variable.deref(),
+                                    VariableKind::InOut,
+                                )?);
+                            }
+                        }
+                        ast::generated::InOutVarKind::VarDecl(var_decl) => {
+                            for variable in child.variables.children.iter() {
+                                section.push(var_decl.to_variable(
+                                    db,
+                                    file,
+                                    variable.deref(),
+                                    VariableKind::Input,
+                                )?);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<'db> ToVariable<'db> for ast::generated::EdgeDecl {
+    fn to_variable(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        file: File,
+        name: &impl AstNode,
+        kind: VariableKind,
+    ) -> anyhow::Result<Variable<'db>> {
+        let var_name = Ident::from_node(db, file, name)?;
+        let result = self.to_spec_init(db, file)?;
+        let self_span = self.get_span();
+        let name_span = name.get_span();
+        Ok(Variable::new(
+            db,
+            file,
+            var_name,
+            name.get_span(),
+            name.get_span(),
+            kind,
+            result.spec,
+            result.init,
+        ))
+    }
+}
+
+impl<'db> ToVariable<'db> for ast::generated::VarDecl {
+    fn to_variable(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        file: File,
+        name: &impl AstNode,
+        kind: VariableKind,
+    ) -> anyhow::Result<Variable<'db>> {
+        let var_name = Ident::from_node(db, file, name)?;
+        let result = self.to_spec_init(db, file)?;
+        Ok(Variable::new(
+            db,
+            file,
+            var_name,
+            name.get_span(),
+            name.get_span(),
+            VariableKind::Input,
+            result.spec,
+            result.init,
+        ))
+    }
+}
+
+impl<'db> ToVariable<'db> for ast::generated::VarDeclInit {
+    fn to_variable(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        file: File,
+        name: &impl AstNode,
+        kind: VariableKind,
+    ) -> anyhow::Result<Variable<'db>> {
+        let var_name = Ident::from_node(db, file, name)?;
+        let result = self.to_spec_init(db, file)?;
+
+        Ok(Variable::new(
+            db,
+            file,
+            var_name,
+            name.get_span(),
+            name.get_span(),
+            VariableKind::Input,
+            result.spec,
+            result.init,
+        ))
+    }
+}
+
+impl<'db> ToVariable<'db> for ast::generated::ArrayConformand {
+    fn to_variable(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        file: File,
+        name: &impl AstNode,
+        kind: VariableKind,
+    ) -> anyhow::Result<Variable<'db>> {
+        let var_name = Ident::from_node(db, file, name)?;
+        let result = self.to_spec_init(db, file)?;
+
+        Ok(Variable::new(
+            db,
+            file,
+            var_name,
+            name.get_span(),
+            name.get_span(),
+            VariableKind::Input,
+            result.spec,
+            result.init,
+        ))
+    }
+}
+
+impl<'db> ToVariable<'db> for ast::generated::LocPartlyVar {
+    fn to_variable(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        file: File,
+        name: &impl AstNode,
+        kind: VariableKind,
+    ) -> anyhow::Result<Variable<'db>> {
+        let var_name = Ident::from_node(db, file, name)?;
+        let result = self.to_spec_init(db, file)?;
+
+        Ok(Variable::new(
+            db,
+            file,
+            var_name,
+            name.get_span(),
+            name.get_span(),
+            VariableKind::Input,
+            result.spec,
+            result.init,
+        ))
+    }
+}
+
+impl<'db> ToVariable<'db> for ast::generated::RefSpec {
+    fn to_variable(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        file: File,
+        name: &impl AstNode,
+        kind: VariableKind,
+    ) -> anyhow::Result<Variable<'db>> {
+        let var_name = Ident::from_node(db, file, name)?;
+        let result = self.to_spec_init(db, file)?;
+
+        Ok(Variable::new(
+            db,
+            file,
+            var_name,
+            name.get_span(),
+            name.get_span(),
+            VariableKind::Input,
+            result.spec,
+            result.init,
+        ))
+    }
 }
 
 impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
@@ -87,34 +489,37 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
         section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
-            match child.Type.deref() {
-                ExternalVarKind::VarDecl(var_decl) => {
-                    let name = Ident::from_node(db, file, child.name.deref())?;
-                    let result = var_decl.to_spec_init(db, file)?;
-                    section.push(Variable::new(
-                        db,
-                        file,
-                        name,
-                        child.get_span(),
-                        child.name.get_span(),
-                        VariableKind::External,
-                        result.spec,
-                        result.init,
-                    ))
+            match child.deref() {
+                ast::generated::ERRVariableWithNoSpec_ExternalDecl::ExternalDecl(child) => {
+                    match child.Type.deref() {
+                        ExternalVarKind::VarDecl(var_decl) => {
+                            section.push(var_decl.to_variable(
+                                db,
+                                file,
+                                child.name.deref(),
+                                VariableKind::Local,
+                            )?);
+                        }
+                        ExternalVarKind::ArrayConformand(var_decl) => {
+                            section.push(var_decl.to_variable(
+                                db,
+                                file,
+                                child.name.deref(),
+                                VariableKind::Local,
+                            )?);
+                        }
+                    }
                 }
-                ExternalVarKind::ArrayConformand(var_decl) => {
-                    let name = Ident::from_node(db, file, child.name.deref())?;
-                    let result = var_decl.to_spec_init(db, file)?;
-                    section.push(Variable::new(
-                        db,
-                        file,
-                        name,
-                        child.get_span(),
-                        child.name.get_span(),
-                        VariableKind::External,
-                        result.spec,
-                        result.init,
-                    ))
+                ast::generated::ERRVariableWithNoSpec_ExternalDecl::ERRVariableWithNoSpec(
+                    child,
+                ) => {
+                    let diag = diag()
+                        .message("variable with no type specified".to_string())
+                        .range(child.get_span())
+                        .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+                        .call();
+                    DiagnosticAccumulator::accumulate(diag.into(), db);
+                    continue;
                 }
             }
         }
@@ -130,19 +535,30 @@ impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
         section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
-            for variable in child.variables.children.iter() {
-                let name = Ident::from_node(db, file, variable.deref())?;
-                let result = child.Type.to_spec_init(db, file)?;
-                section.push(Variable::new(
-                    db,
-                    file,
-                    name,
-                    child.get_span(),
-                    variable.get_span(),
-                    VariableKind::Local,
-                    result.spec,
-                    result.init,
-                ))
+            match child.deref() {
+                ast::generated::ERRVariableWithNoSpec_VarDeclInitList::ERRVariableWithNoSpec(
+                    var_decl,
+                ) => {
+                    let diag = diag()
+                        .message("variable with no type specified".to_string())
+                        .range(var_decl.get_span())
+                        .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+                        .call();
+                    DiagnosticAccumulator::accumulate(diag.into(), db);
+                    continue;
+                }
+                ast::generated::ERRVariableWithNoSpec_VarDeclInitList::VarDeclInitList(
+                    var_decl,
+                ) => {
+                    for variable in var_decl.variables.children.iter() {
+                        section.push(var_decl.Type.to_variable(
+                            db,
+                            file,
+                            variable.deref(),
+                            VariableKind::Local,
+                        )?);
+                    }
+                }
             }
         }
         Ok(())
@@ -157,19 +573,30 @@ impl<'db> ParseVarSection<'db> for ast::generated::RetainVarDecls {
         section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
-            for variable in child.variables.children.iter() {
-                let name = Ident::from_node(db, file, variable.deref())?;
-                let result = child.Type.to_spec_init(db, file)?;
-                section.push(Variable::new(
-                    db,
-                    file,
-                    name,
-                    child.get_span(),
-                    variable.get_span(),
-                    VariableKind::Retain,
-                    result.spec,
-                    result.init,
-                ))
+            match child.deref() {
+                ast::generated::ERRVariableWithNoSpec_VarDeclInitList::ERRVariableWithNoSpec(
+                    var_decl,
+                ) => {
+                    let diag = diag()
+                        .message("variable with no type specified".to_string())
+                        .range(var_decl.get_span())
+                        .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+                        .call();
+                    DiagnosticAccumulator::accumulate(diag.into(), db);
+                    continue;
+                }
+                ast::generated::ERRVariableWithNoSpec_VarDeclInitList::VarDeclInitList(
+                    var_decl,
+                ) => {
+                    for variable in var_decl.variables.children.iter() {
+                        section.push(var_decl.Type.to_variable(
+                            db,
+                            file,
+                            variable.deref(),
+                            VariableKind::Local,
+                        )?);
+                    }
+                }
             }
         }
         Ok(())
@@ -184,19 +611,30 @@ impl<'db> ParseVarSection<'db> for ast::generated::NoRetainVarDecls {
         section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
-            for variable in child.variables.children.iter() {
-                let name = Ident::from_node(db, file, variable.deref())?;
-                let result = child.Type.to_spec_init(db, file)?;
-                section.push(Variable::new(
-                    db,
-                    file,
-                    name,
-                    child.get_span(),
-                    variable.get_span(),
-                    VariableKind::NoRetain,
-                    result.spec,
-                    result.init,
-                ))
+            match child.deref() {
+                ast::generated::ERRVariableWithNoSpec_VarDeclInitList::ERRVariableWithNoSpec(
+                    var_decl,
+                ) => {
+                    let diag = diag()
+                        .message("variable with no type specified".to_string())
+                        .range(var_decl.get_span())
+                        .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+                        .call();
+                    DiagnosticAccumulator::accumulate(diag.into(), db);
+                    continue;
+                }
+                ast::generated::ERRVariableWithNoSpec_VarDeclInitList::VarDeclInitList(
+                    var_decl,
+                ) => {
+                    for variable in var_decl.variables.children.iter() {
+                        section.push(var_decl.Type.to_variable(
+                            db,
+                            file,
+                            variable.deref(),
+                            VariableKind::Local,
+                        )?);
+                    }
+                }
             }
         }
         Ok(())
@@ -211,18 +649,12 @@ impl<'db> ParseVarSection<'db> for ast::generated::LocPartlyVarDecl {
         section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
-            let name = Ident::from_node(db, file, child.variable_name.deref())?;
-            let result = child.to_spec_init(db, file)?;
-            section.push(Variable::new(
+            section.push(child.to_variable(
                 db,
                 file,
-                name,
-                child.get_span(),
-                child.variable_name.get_span(),
-                VariableKind::LocPartly,
-                result.spec,
-                result.init,
-            ))
+                child.variable_name.deref(),
+                VariableKind::Local,
+            )?);
         }
         Ok(())
     }
@@ -277,7 +709,21 @@ impl<'db> ParseSpecInit<'db> for ast::generated::EdgeDecl {
         db: &'db dyn BaseDatabase,
         file: File,
     ) -> anyhow::Result<SpecInitResult> {
-        todo!()
+        let spec = match self.edge.deref() {
+            ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::ERRInvalidEdgeQualifier(err) => {
+                let diag = diag()
+                    .message("incomplete edge qualifier, try 'R_EDGE' or 'F_EDGE'".into())
+                    .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+                    .range(err.get_span())
+                    .call();
+                DiagnosticAccumulator::accumulate(diag.into(), db);
+                Spec::Bool
+            }
+            ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::Token_F_EDGE(fedge) => Spec::Bool,
+            ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::Token_R_EDGE(redge) => Spec::Bool,
+        };
+
+        Ok(SpecInitResult::new(spec, None))
     }
 }
 
@@ -291,17 +737,6 @@ impl<'db> ParseSpecInit<'db> for ast::generated::LocPartlyVar {
     }
 }
 
-impl<'db> ParseSpecInit<'db> for ast::generated::FbDeclNoInit {
-    fn to_spec_init(
-        &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
-    ) -> anyhow::Result<SpecInitResult> {
-        todo!()
-    }
-}
-
-// todo: VarDecl should contain no init
 impl<'db> ParseSpecInit<'db> for ast::generated::VarDecl {
     fn to_spec_init(
         &'db self,
@@ -326,7 +761,18 @@ impl<'db> ParseSpecInit<'db> for ast::generated::VarDecl {
             None => None,
         };
 
-        Ok(SpecInitResult::new(spec?, init))
+        if let Some(init) = init {
+            let diag = diag()
+                .message(
+                    "variables declared in TEMP or IN_OUT can not have a default value".to_string(),
+                )
+                .range(init.span(db).clone())
+                .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+                .call();
+            DiagnosticAccumulator::accumulate(diag.into(), db);
+        }
+
+        Ok(SpecInitResult::new(spec?, None))
     }
 }
 
@@ -336,16 +782,15 @@ impl<'db> ParseSpecInit<'db> for ast::generated::VarDeclInit {
         db: &'db dyn BaseDatabase,
         file: File,
     ) -> anyhow::Result<SpecInitResult<'db>> {
-        type Spec = ast::generated::ArrayTypeSpec_RefTypeSpec_SimpleTypeSpec_StrTypeSpec_StructTypeSpec;
+        type Spec =
+            ast::generated::ArrayTypeSpec_RefTypeSpec_SimpleTypeSpec_StrTypeSpec_StructTypeSpec;
 
         let spec = match self.spec.deref() {
             Spec::ArrayTypeSpec(a) => a.to_spec(db, file),
             Spec::SimpleTypeSpec(a) => a.to_spec(db, file),
             Spec::StrTypeSpec(a) => a.to_spec(db, file),
             Spec::StructTypeSpec(a) => a.to_spec(db, file),
-            Spec::RefTypeSpec(target) => {
-                target.to_spec(db, file)
-            }
+            Spec::RefTypeSpec(target) => target.to_spec(db, file),
         };
 
         type Init = ast::generated::ArrayTypeInit_SimpleTypeInit_StructTypeInit;

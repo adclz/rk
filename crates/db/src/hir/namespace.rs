@@ -395,11 +395,11 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, salsa::Update)]
+#[derive(Clone, PartialEq, Eq, salsa::Update, salsa::Supertype)]
 pub enum Pou<'db> {
     Function(Function<'db>),
     FunctionBlock(FunctionBlock<'db>),
     Class(Class<'db>),
     Interface(Interface<'db>),
-    DataType(DataType<'db>),
+    DataType(DataType<'db>), 
 }

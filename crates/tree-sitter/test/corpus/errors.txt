@@ -1,0 +1,181 @@
+================================================================================
+Invalid POU keyword
+================================================================================
+
+NAMESPACE ns
+    blah
+END_NAMESPACE
+
+--------------------------------------------------------------------------------
+
+   (source_file
+      (namespace_decl
+        (namespace_h_name
+          (identifier))
+        (namespace_elements
+          (ERR_invalid_pou_keyword
+            (identifier)))))
+
+================================================================================
+Implements before extends
+================================================================================
+
+FUNCTION_BLOCK fn IMPLEMENTS a EXTENDS b
+    
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (fb_decl
+        (identifier)
+        (ERR_implements_before_extends
+          (interface_name_list
+            (namespace_access
+              (identifier))))
+        (namespace_access
+          (identifier)))) 
+
+================================================================================
+Implements multiple times
+================================================================================
+
+FUNCTION_BLOCK fn IMPLEMENTS a IMPLEMENTS b
+    
+END_FUNCTION_BLOCK
+
+CLASS cl IMPLEMENTS a IMPLEMENTS b
+    
+END_CLASS
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (fb_decl
+        (identifier)
+        (interface_name_list
+          (namespace_access
+            (identifier)))
+        (ERR_implements_multiple_times
+          (interface_name_list
+            (namespace_access
+              (identifier)))))
+      (class_decl
+        (class_type_name
+          (identifier))
+        (interface_name_list
+          (namespace_access
+            (identifier)))
+        (ERR_implements_multiple_times
+          (interface_name_list
+            (namespace_access
+              (identifier))))))
+
+================================================================================
+Extends multiple times
+================================================================================
+
+FUNCTION_BLOCK fn EXTENDS a EXTENDS b
+    
+END_FUNCTION_BLOCK
+
+INTERFACE in EXTENDS a EXTENDS b
+    
+END_INTERFACE
+
+--------------------------------------------------------------------------------
+
+   (source_file
+      (fb_decl
+        (identifier)
+        (namespace_access
+          (identifier))
+        (ERR_extends_multiple_times
+          (namespace_access
+            (identifier))))
+      (interface_decl
+        (identifier)
+        (interface_name_list
+          (namespace_access
+            (identifier)))
+        (ERR_extends_multiple_times
+          (namespace_access
+            (identifier)))))
+
+================================================================================
+Variable with no spec
+================================================================================
+
+FUNCTION_BLOCK fn
+    VAR_INPUT
+        empty
+    END_VAR
+
+    VAR
+        empty
+    END_VAR
+
+    VAR_TEMP
+        empty
+    END_VAR
+
+    VAR_IN_OUT
+        empty
+    END_VAR
+
+    VAR_OUTPUT
+        empty
+    END_VAR
+    
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (fb_decl
+        (identifier)
+        (fb_input_decls
+          (ERR_variable_with_no_spec
+            (identifier)))
+        (var_decls
+          (ERR_variable_with_no_spec
+            (identifier)))
+        (temp_var_decls
+          (ERR_variable_with_no_spec
+            (identifier)))
+        (in_out_decls
+          (ERR_variable_with_no_spec
+            (identifier)))
+        (fb_output_decls
+          (ERR_variable_with_no_spec
+            (identifier)))))
+
+================================================================================
+Invalid edge qualifier
+================================================================================
+
+FUNCTION_BLOCK fn
+    VAR_INPUT
+        in1: BOOL R_ED
+        in2: BOOL F_ED
+    END_VAR
+
+    
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (fb_decl
+        (identifier)
+        (fb_input_decls
+          (fb_input_var
+            (variable_list
+              (identifier))
+            (edge_decl
+              (ERR_invalid_edge_qualifier)))
+          (fb_input_var
+            (variable_list
+              (identifier))
+            (edge_decl
+              (ERR_invalid_edge_qualifier))))))
