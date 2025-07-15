@@ -1,6 +1,6 @@
 use auto_lsp::default::db::BaseDatabase;
 
-use crate::{hir::{variable::Variable, visibility::Modifiers}, solver::fq_name::SpannedNamespaceAccess, to_proto::{IterToProto, ToProto}};
+use crate::{hir::{namespace::Using, variable::Variable, visibility::Modifiers}, solver::fq_name::SpannedNamespaceAccess, to_proto::{IterToProto, ToProto}};
 
 
 #[salsa::tracked]
@@ -8,6 +8,10 @@ pub struct FunctionBlock<'db> {
     pub extends: Option<SpannedNamespaceAccess>,
 
     pub implements: Option<Vec<SpannedNamespaceAccess>>,
+    
+    #[tracked]
+    #[returns(ref)]
+    pub using: Vec<Using<'db>>,
 
     #[returns(ref)]
     pub variables: Vec<Variable<'db>>,

@@ -117,14 +117,14 @@ impl<'db> FileNamespaces<'db> {
 #[salsa::tracked]
 pub struct Namespace<'db> {
     pub internal: bool,
-    #[tracked]
-    #[returns(ref)]
 
     // from the standard: "A USING namespace directive enables the types contained in the given namespace, 
     // but specifically does not enable types contained in nested namespaces."
 
     // TLDR: Using directives are not recursive
-    pub in_scopes: Vec<Using<'db>>,
+    #[tracked]
+    #[returns(ref)]
+    pub using: Vec<Using<'db>>,
 
     #[tracked]
     #[returns(ref)]
@@ -298,7 +298,7 @@ impl<'db> ToProto<'db> for Namespace<'db> {
 impl<'db> IterToProto<'db> for Namespace<'db> {
     fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
         std::iter::once::<&'db dyn ToProto<'db>>(self)
-            .chain(self.in_scopes(db).iter().map(|using| using as _))
+            .chain(self.using(db).iter().map(|using| using as _))
             .chain(self.pous(db).iter().flat_map(|pou| pou.iter(db)))
     }
 }

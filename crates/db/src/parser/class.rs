@@ -2,6 +2,7 @@ use std::ops::Deref;
 
 use crate::hir;
 use crate::hir::visibility::Modifiers;
+use crate::parser::namespace::ParseUsing;
 use crate::parser::Parse;
 use crate::solver::fq_name::SpannedNamespaceAccess;
 use auto_lsp::anyhow;
@@ -29,6 +30,8 @@ impl<'db> Parse<'db> for ast::generated::ClassDecl {
             ast::generated::Operators_1::Token_FINAL(_) =>  modifiers.insert(Modifiers::FINAL),
         }); 
 
-        Ok(hir::class::Class::new(db, extends, implements, modifiers))
+        let using = self.directives.parse_using(db, file)?;
+
+        Ok(hir::class::Class::new(db, extends, using, implements, modifiers))
     }
 }

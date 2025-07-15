@@ -3,6 +3,7 @@ use std::vec;
 
 use crate::hir;
 use crate::hir::variable::Variable;
+use crate::parser::namespace::ParseUsing;
 use crate::parser::statement::ParseStatement;
 use crate::parser::{Parse, ParseVarSection};
 use ast::generated::FuncVariables;
@@ -22,8 +23,12 @@ impl<'db> Parse<'db> for ast::generated::FuncDecl {
                 }
                 _ => vec![],
             });
+
+        let using = self.directives.parse_using(db, file)?;
+    
         Ok(hir::function::Function::new(
             db,
+            using,
             variables,
             statements
         ))

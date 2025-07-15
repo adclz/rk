@@ -5,6 +5,7 @@ use auto_lsp::anyhow;
 use auto_lsp::default::db::{BaseDatabase, file::File};
 use crate::hir::variable::Variable;
 use crate::hir::visibility::Modifiers;
+use crate::parser::namespace::ParseUsing;
 use crate::parser::{Parse, ParseVarSection};
 use crate::hir;
 use crate::solver::fq_name::SpannedNamespaceAccess;
@@ -33,10 +34,13 @@ impl<'db> Parse<'db> for ast::generated::FbDecl {
             ast::generated::Operators_1::Token_FINAL(_) =>  modifiers.insert(Modifiers::FINAL),
         });
 
+        let using = self.directives.parse_using(db, file)?;
+
         Ok(hir::function_block::FunctionBlock::new(
             db,
             extends,
             implements,
+            using,
             variables,
             modifiers,
         ))

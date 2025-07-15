@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::ops::Deref;
+use std::sync::Arc;
 
 use ast::generated::ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl;
 use auto_lsp::anyhow;
@@ -18,6 +19,39 @@ pub struct FileNamespacesBuilder<'db> {
     source: &'db ast::generated::SourceFile,
     pub(crate) file: File,
     pub(crate) paths: FxHashMap<NamespacePath, Namespace<'db>>,
+}
+
+pub trait ParseUsing<'db> {
+    fn parse_using(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        file: File,
+    ) -> anyhow::Result<Vec<Using<'db>>>;
+}
+
+impl<'db> ParseUsing<'db> for Vec<Arc<ast::generated::UsingDirective>> {
+    fn parse_using(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        file: File,
+    ) -> anyhow::Result<Vec<Using<'db>>> {
+        let mut using = vec![];
+        for directive in self.iter() {
+            for child in directive.children.iter() {
+                let mut path = vec![];
+                for child in child.children.iter() {
+                    path.push(Ident::from_node(db, file, child.deref())?);
+                }
+                using.push(
+                    Using::new(
+                        db,
+                    NamespacePath::from((db, &path)),
+                    child.get_span(),
+                ));
+            }
+        }
+        Ok(using)
+    }
 }
 
 impl<'db> FileNamespacesBuilder<'db> {
@@ -82,21 +116,7 @@ impl<'db> FileNamespacesBuilder<'db> {
     ) -> anyhow::Result<Namespace<'db>> {
         type Decl = ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl;
 
-        let mut in_scopes = Vec::default();
-        for directive in nested.directives.iter() {
-            for child in directive.children.iter() {
-                let mut path = vec![];
-                for child in child.children.iter() {
-                    path.push(Ident::from_node(self.db, self.file, child.deref())?);
-                }
-                in_scopes.push(
-                    Using::new(
-                        self.db,
-                    NamespacePath::from((self.db, &path)),
-                    child.get_span(),
-                ));
-            }
-        }
+        let using = nested.directives.parse_using(self.db, self.file)?;
 
         let mut pous = vec![];
         if let Some(elements) = nested.elements.as_ref() {
@@ -171,7 +191,7 @@ impl<'db> FileNamespacesBuilder<'db> {
         Ok(Namespace::new(
             self.db,
             nested.internal.is_some(),
-            in_scopes,
+            using,
             nested.get_span(),
             NamespacePath::from((self.db, parent_path)),
             nested.name.get_span(),

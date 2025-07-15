@@ -6,7 +6,7 @@ use rustc_hash::FxHashMap;
 use salsa::Accumulator;
 
 use crate::{
-    diagnostics::{diagnostic_builder::diag, DiagnosticAccumulator},
+    diagnostics::{diagnostic_builder::diag, literals::check_date, DiagnosticAccumulator},
     hir::{
         expression::{Expr, ExprKind, Literal, PrimaryExpr},
         namespace::{NamespaceResult, PouDecl, PouResult, Using},
@@ -30,7 +30,7 @@ trait CheckWithVisibility<'db> {
 pub fn duplicate_declarations<'db>(db: &'db dyn BaseDatabase, file: File) {
     if let Some(namespaces) = namespaces_in_file(db, file) {
         for (path, namespace) in namespaces.namespaces(db).iter() {
-            for using in namespace.in_scopes(db).iter() {
+            for using in namespace.using(db).iter() {
                 using.check_with_visibility(db, *path);
             }
 
@@ -116,11 +116,17 @@ impl<'db> CheckWithVisibility<'db> for PouDecl<'db> {
         match self.pou(db) {
             crate::hir::namespace::Pou::Function(func) => {
                 func.variables(db).check(db);
+                func.using(db)
+                    .iter()
+                    .for_each(|using| using.check_with_visibility(db, ns));
             }
             crate::hir::namespace::Pou::FunctionBlock(func) => {
                 func.variables(db).check(db);
                 func.extends(db)
                     .map(|extend| extend.check_with_visibility(db, ns));
+                func.using(db)
+                    .iter()
+                    .for_each(|using| using.check_with_visibility(db, ns));
                 func.implements(db).map(|implements| {
                     implements.iter().for_each(|implement| {
                         implement.check_with_visibility(db, ns);
@@ -132,13 +138,19 @@ impl<'db> CheckWithVisibility<'db> for PouDecl<'db> {
                 class
                     .extends(db)
                     .map(|extend| extend.check_with_visibility(db, ns));
-            }
+                class.using(db)
+                    .iter()
+                    .for_each(|using| using.check_with_visibility(db, ns));
+            } 
             crate::hir::namespace::Pou::Interface(interface) => {
                 interface.extends(db).map(|extend| {
                     extend.iter().for_each(|extend| {
                         extend.check_with_visibility(db, ns);
                     });
                 });
+                interface.using(db)
+                    .iter()
+                    .for_each(|using| using.check_with_visibility(db, ns));
             }
         }
     }
@@ -291,6 +303,9 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                     _ => false,
                 };
 
+                lit.self_check(db);
+                
+
                 if !result {
                     let message = format!(
                         "invalid literal for spec '{:?}': {}",
@@ -312,7 +327,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
 }
 
 impl Literal {
-    /*fn self_check(&self, db: &dyn BaseDatabase) {
+    fn self_check(&self, db: &dyn BaseDatabase) {
         match self {
             Literal::Date(ident) => {
                 if let Err(err) = check_date(db, &ident.text(db)) {
@@ -322,5 +337,5 @@ impl Literal {
             }
             _ => {}
         }
-    }*/
+    }
 }

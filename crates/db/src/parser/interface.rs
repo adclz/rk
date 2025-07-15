@@ -2,6 +2,7 @@ use std::ops::Deref;
 
 use crate::hir;
 use crate::ident::Ident;
+use crate::parser::namespace::ParseUsing;
 use crate::parser::{Parse, ParseSpec, ParseVarSection};
 use crate::solver::fq_name::SpannedNamespaceAccess;
 use auto_lsp::anyhow;
@@ -29,7 +30,9 @@ impl<'db> Parse<'db> for ast::generated::InterfaceDecl {
             .map(|m| m.parse(db, file))
             .collect::<anyhow::Result<Vec<_>>>()?;
 
-        Ok(hir::interface::Interface::new(db, extends, methods))
+        let using = self.directives.parse_using(db, file)?;
+
+        Ok(hir::interface::Interface::new(db, extends, using, methods))
     }
 }
 

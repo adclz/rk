@@ -1,13 +1,17 @@
 use auto_lsp::{core::span::Span, default::db::BaseDatabase};
 
 use crate::{
-    hir::variable::{Spec, Variable}, ident::Ident, solver::fq_name::SpannedNamespaceAccess, to_proto::{IterToProto, SymbolInfo, ToProto}
+    hir::{namespace::Using, variable::{Spec, Variable}}, ident::Ident, solver::fq_name::SpannedNamespaceAccess, to_proto::{IterToProto, SymbolInfo, ToProto}
 };
 
 #[salsa::tracked]
 pub struct Interface<'db> {
     #[returns(as_ref)]
     pub extends: Option<Vec<SpannedNamespaceAccess>>,
+
+    #[tracked]
+    #[returns(ref)]
+    pub using: Vec<Using<'db>>,
 
     #[returns(ref)]
     pub methods: Vec<Method<'db>>,

@@ -212,7 +212,7 @@ END_NAMESPACE"#;
 
         let test = namespaces.namespaces(&db).values().next().unwrap();
 
-        let using = test.in_scopes(&db).first().unwrap();
+        let using = test.using(&db).first().unwrap();
         assert_eq!(using.path(&db).fragments(&db).len(), 4);
     }
 
