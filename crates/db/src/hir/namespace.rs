@@ -21,6 +21,11 @@ use crate::{
 #[salsa::tracked]
 pub struct FileNamespaces<'db> {
     pub file: File,
+    
+    #[tracked]
+    #[returns(ref)]
+    pub globals: Vec<PouDecl<'db>>,
+
     #[tracked]
     #[returns(ref)]
     pub namespaces: FxHashMap<NamespacePath, Namespace<'db>>,
@@ -90,10 +95,10 @@ impl<'db> FileNamespaces<'db> {
 
 impl<'db> IterToProto<'db> for FileNamespaces<'db> {
     fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        self.namespaces(db)
+        self.globals(db)
             .iter()
-            .map(|(_, ns)| ns.iter(db))
-            .flatten()
+            .flat_map(|pou| pou.iter(db))
+            .chain(self.namespaces(db).values().flat_map(|ns| ns.iter(db)))
     }
 }
 

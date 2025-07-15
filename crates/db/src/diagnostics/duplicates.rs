@@ -138,17 +138,19 @@ impl<'db> CheckWithVisibility<'db> for PouDecl<'db> {
                 class
                     .extends(db)
                     .map(|extend| extend.check_with_visibility(db, ns));
-                class.using(db)
+                class
+                    .using(db)
                     .iter()
                     .for_each(|using| using.check_with_visibility(db, ns));
-            } 
+            }
             crate::hir::namespace::Pou::Interface(interface) => {
                 interface.extends(db).map(|extend| {
                     extend.iter().for_each(|extend| {
                         extend.check_with_visibility(db, ns);
                     });
                 });
-                interface.using(db)
+                interface
+                    .using(db)
                     .iter()
                     .for_each(|using| using.check_with_visibility(db, ns));
             }
@@ -304,7 +306,6 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                 };
 
                 lit.self_check(db);
-                
 
                 if !result {
                     let message = format!(

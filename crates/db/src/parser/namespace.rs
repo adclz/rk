@@ -1,10 +1,9 @@
 use std::collections::HashMap;
 use std::ops::Deref;
+use std::panic;
 use std::sync::Arc;
 
-use ast::generated::{
-    ERRInvalidPouKeyword_ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl
-};
+use ast::generated::ERRInvalidPouKeyword_ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl;
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::default::db::{file::File, BaseDatabase};
@@ -23,23 +22,52 @@ pub struct FileNamespacesBuilder<'db> {
     db: &'db dyn BaseDatabase,
     source: &'db ast::generated::SourceFile,
     pub(crate) file: File,
+    pub(crate) directives: Vec<Using<'db>>,
+    pub(crate) globals: Vec<PouDecl<'db>>,
     pub(crate) paths: FxHashMap<NamespacePath, Namespace<'db>>,
 }
 
 pub trait ParseUsing<'db> {
+    type Output;
+
     fn parse_using(
         &'db self,
         db: &'db dyn BaseDatabase,
         file: File,
-    ) -> anyhow::Result<Vec<Using<'db>>>;
+    ) -> anyhow::Result<Self::Output>;
+}
+
+impl<'db> ParseUsing<'db> for ast::generated::UsingDirective {
+    type Output = Vec<Using<'db>>;
+
+    fn parse_using(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        file: File,
+    ) -> anyhow::Result<Self::Output> {
+        let mut using = vec![];
+        for child in self.children.iter() {
+            let mut path = vec![];
+            for child in child.children.iter() {
+                path.push(Ident::from_node(db, file, child.deref())?);
+            }
+            using.push(Using::new(
+                db,
+                NamespacePath::from((db, &path)),
+                child.get_span(),
+            ));
+        }
+        Ok(using)
+    }
 }
 
 impl<'db> ParseUsing<'db> for Vec<Arc<ast::generated::UsingDirective>> {
+    type Output = Vec<Using<'db>>;
     fn parse_using(
         &'db self,
         db: &'db dyn BaseDatabase,
         file: File,
-    ) -> anyhow::Result<Vec<Using<'db>>> {
+    ) -> anyhow::Result<Self::Output> {
         let mut using = vec![];
         for directive in self.iter() {
             for child in directive.children.iter() {
@@ -68,6 +96,8 @@ impl<'db> FileNamespacesBuilder<'db> {
             db,
             file,
             source,
+            directives: vec![],
+            globals: vec![],
             paths: HashMap::default(),
         }
     }
@@ -84,32 +114,12 @@ impl<'db> FileNamespacesBuilder<'db> {
             .collect::<anyhow::Result<Vec<_>>>()
     }
 
+    // Fix me: This function should not panic, but handle errors gracefully.
     pub fn build(mut self) -> FileNamespaces<'db> {
-        // Top level namespaces
-        // Since namespaces can be nested, we check
         for child in self.source.children.iter() {
             type SourceFileDecl = ast::generated::ERRInvalidPouKeyword_ClassDecl_ConfigDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl_ProgDecl_UsingDirective;
 
             match child.as_ref() {
-                SourceFileDecl::NamespaceDecl(namespace) => {
-                    let path = match self.get_namespace_path(namespace) {
-                        Ok(path) => path,
-                        Err(_err) => {
-                            // todo: report error
-                            continue;
-                        }
-                    };
-                    let namespace_path = NamespacePath::from((self.db, &path));
-                    let namespace = match self.handle_namespace_elements(&path, namespace) {
-                        Ok(namespace) => namespace,
-                        Err(_err) => {
-                            // todo: report error
-                            continue;
-                        }
-                    };
-
-                    self.paths.entry(namespace_path).or_insert(namespace);
-                }
                 SourceFileDecl::ERRInvalidPouKeyword(err) => {
                     let diag = diag()
                         .message("Expected a POU keyword".into())
@@ -117,10 +127,84 @@ impl<'db> FileNamespacesBuilder<'db> {
                         .call();
                     DiagnosticAccumulator::accumulate(diag.into(), self.db);
                 }
-                _ => {}
+                SourceFileDecl::NamespaceDecl(namespace) => {
+                    let path = match self.get_namespace_path(namespace) {
+                        Ok(path) => path,
+                        Err(_err) => {
+                            panic!("Failed to build namespace: {:?}", _err);
+                            continue;
+                        }
+                    };
+                    let namespace_path = NamespacePath::from((self.db, &path));
+                    let namespace = match self.handle_namespace_elements(&path, namespace) {
+                        Ok(namespace) => namespace,
+                        Err(_err) => {
+                            panic!("Failed to build namespace: {:?}", _err);
+                            continue;
+                        }
+                    };
+
+                    self.paths.entry(namespace_path).or_insert(namespace);
+                }
+                SourceFileDecl::UsingDirective(directive) => {
+                    let using = directive.parse_using(self.db, self.file).unwrap();
+                    self.directives.extend(using);
+                }
+                SourceFileDecl::FuncDecl(func) => {
+                    let name = Ident::from_node(self.db, self.file, &*func.name).unwrap();
+                    self.globals.push(PouDecl::new(
+                        self.db,
+                        self.file,
+                        Pou::Function(func.parse(self.db, self.file).unwrap()),
+                        func.get_span(),
+                        name,
+                        func.name.get_span(),
+                    ));
+                }
+                SourceFileDecl::FbDecl(fb) => {
+                    let name = Ident::from_node(self.db, self.file, &*fb.name).unwrap();
+                    self.globals.push(PouDecl::new(
+                        self.db,
+                        self.file,
+                        Pou::FunctionBlock(fb.parse(self.db, self.file).unwrap()),
+                        fb.get_span(),
+                        name,
+                        fb.name.get_span(),
+                    ));
+                }
+                SourceFileDecl::ClassDecl(class) => {
+                    let name = Ident::from_node(self.db, self.file, &*class.name).unwrap();
+                    self.globals.push(PouDecl::new(
+                        self.db,
+                        self.file,
+                        Pou::Class(class.parse(self.db, self.file).unwrap()),
+                        class.get_span(),
+                        name,
+                        class.name.get_span(),
+                    ));
+                }
+                SourceFileDecl::DataTypeDecl(data_type) => {
+                    data_type
+                        .parse(self.db, self.file, &mut self.globals)
+                        .unwrap();
+                }
+                SourceFileDecl::InterfaceDecl(interface) => {
+                    let name = Ident::from_node(self.db, self.file, &*interface.name).unwrap();
+                    self.globals.push(PouDecl::new(
+                        self.db,
+                        self.file,
+                        Pou::Interface(interface.parse(self.db, self.file).unwrap()),
+                        interface.get_span(),
+                        name,
+                        interface.name.get_span(),
+                    ));
+                }
+                _ => {
+                    //todo: add config and program declarations
+                }
             }
         }
-        FileNamespaces::new(self.db, self.file, self.paths)
+        FileNamespaces::new(self.db, self.file, self.globals, self.paths)
     }
 
     pub fn handle_namespace_elements(
