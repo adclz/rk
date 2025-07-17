@@ -223,7 +223,7 @@ END_FUNCTION_BLOCK
 
 --------------------------------------------------------------------------------
     
-     (source_file
+    (source_file
       (fb_decl
         (identifier)
         (fb_input_decls
@@ -248,14 +248,23 @@ END_FUNCTION_BLOCK
             (assign
               (variable
                 (symbolic_variable
-                  (var_access
-                    (identifier))))
+                  (path_expression
+                    (var_access
+                      (field)))))
               (assignment
                 (boolean_operator
                   (and_operator
-                    (namespace_access
-                      (identifier))
-                    (namespace_access
-                      (identifier))))))))
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field))))))
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field))))))))))))
         (pascal_style_comment
           (comment_text))))

@@ -50,53 +50,25 @@ END_PROGRAM
                     (sign_int_type_name
                       (int_name))))))))))
 
-
-================================================================================
-Variable with user-defined data type 
-================================================================================
-
-PROGRAM pgm
-
-VAR
-  myVAR: myType;
-END_VAR
-
-END_PROGRAM
-
---------------------------------------------------------------------------------
-
-    (source_file
-      (prog_decl
-        (identifier)
-        (var_decls
-          (var_decl_init_list
-            (variable_list
-              (identifier))
-            (var_decl_init
-              (simple_type_spec
-                (namespace_access
-                  (identifier))))))))
-
 ================================================================================
 Array
 ================================================================================
 
-PROGRAM pgm
-
-VAR
-  BITS: ARRAY[0..7] OF BOOL;
-  TBT: ARRAY [1..2, 1..3] OF INT;
-END_VAR
-
-VAR_LOCATED
-    OUTA AT %QW6: ARRAY[0..9] OF INT;
-END_VAR
-
+PROGRAM m
+	VAR
+		BITS: ARRAY[0..7] OF BOOL :=[1,1,0,0,0,1,0,0];
+		TBT: ARRAY [1..2, 1..3] OF INT := [9,8,3(10),6];
+	END_VAR
+	
+    VAR_LOCATED
+		OUTARY AT %QW6: ARRAY[0..9] OF
+		INT := [10(1)];
+	END_VAR
 END_PROGRAM
 
 --------------------------------------------------------------------------------
 
-    (source_file
+   (source_file
       (prog_decl
         (identifier)
         (var_decls
@@ -119,7 +91,72 @@ END_PROGRAM
                           (signed_int
                             (unsigned_int)))))))
                 (bit_str_type_name
-                  (bool_name)))))
+                  (bool_name)))
+              (array_type_init
+                (array_elem_init
+                  (array_elem_init_value
+                    (constant_expr
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int))))))))
+                (array_elem_init
+                  (array_elem_init_value
+                    (constant_expr
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int))))))))
+                (array_elem_init
+                  (array_elem_init_value
+                    (constant_expr
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int))))))))
+                (array_elem_init
+                  (array_elem_init_value
+                    (constant_expr
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int))))))))
+                (array_elem_init
+                  (array_elem_init_value
+                    (constant_expr
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int))))))))
+                (array_elem_init
+                  (array_elem_init_value
+                    (constant_expr
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int))))))))
+                (array_elem_init
+                  (array_elem_init_value
+                    (constant_expr
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int))))))))
+                (array_elem_init
+                  (array_elem_init_value
+                    (constant_expr
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int)))))))))))
           (var_decl_init_list
             (variable_list
               (identifier))
@@ -154,7 +191,41 @@ END_PROGRAM
                 (numeric_type_name
                   (int_type_name
                     (sign_int_type_name
-                      (int_name))))))))
+                      (int_name)))))
+              (array_type_init
+                (array_elem_init
+                  (array_elem_init_value
+                    (constant_expr
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int))))))))
+                (array_elem_init
+                  (array_elem_init_value
+                    (constant_expr
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int))))))))
+                (array_elem_init
+                  (unsigned_int)
+                  (array_elem_init_value
+                    (constant_expr
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int))))))))
+                (array_elem_init
+                  (array_elem_init_value
+                    (constant_expr
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int))))))))))))
         (loc_var_decls
           (loc_var_decl
             (identifier)
@@ -181,17 +252,132 @@ END_PROGRAM
                 (numeric_type_name
                   (int_type_name
                     (sign_int_type_name
-                      (int_name))))))))))
+                      (int_name)))))
+              (array_type_init
+                (array_elem_init
+                  (unsigned_int)
+                  (array_elem_init_value
+                    (constant_expr
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int))))))))))))))
 
 ================================================================================
-Reference
+Declaration and initialization of constants
+================================================================================
+
+PROGRAM pgm
+
+VAR CONSTANT
+  PI: REAL:= 3.141592;
+  PI2: REAL:= 2.0*PI;
+END_VAR 
+
+END_PROGRAM
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (prog_decl
+        (identifier)
+        (var_decls
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (real_type_name
+                    (real_name))))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (real_literal
+                        (real_value
+                          (signed_int
+                            (unsigned_int))
+                          (unsigned_int)))))))))
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (real_type_name
+                    (real_name))))
+              (simple_type_init
+                (constant_expr
+                  (mult_operator
+                    (constant
+                      (numeric_literal
+                        (real_literal
+                          (real_value
+                            (signed_int
+                              (unsigned_int))
+                            (unsigned_int)))))
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field))))))))))))))
+
+================================================================================
+Initialization using constant expressions
 ================================================================================
 
 PROGRAM pgm
 
 VAR
-  myRefInt: REF_TO INT;
-END_VAR
+  PIx2: REAL:= 2.0 * 3.1416;
+END_VAR 
+
+END_PROGRAM
+
+--------------------------------------------------------------------------------
+
+   (source_file
+      (prog_decl
+        (identifier)
+        (var_decls
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (real_type_name
+                    (real_name))))
+              (simple_type_init
+                (constant_expr
+                  (mult_operator
+                    (constant
+                      (numeric_literal
+                        (real_literal
+                          (real_value
+                            (signed_int
+                              (unsigned_int))
+                            (unsigned_int)))))
+                    (constant
+                      (numeric_literal
+                        (real_literal
+                          (real_value
+                            (signed_int
+                              (unsigned_int))
+                            (unsigned_int)))))))))))))
+
+================================================================================
+Initialization of a reference
+================================================================================
+
+PROGRAM pgm
+
+VAR
+  myRefInt: REF_TO INT := REF(myINT); 
+END_VAR 
 
 END_PROGRAM
 
@@ -209,4 +395,12 @@ END_PROGRAM
                 (numeric_type_name
                   (int_type_name
                     (sign_int_type_name
-                      (int_name))))))))))
+                      (int_name)))))
+              (simple_type_init
+                (constant_expr
+                  (ref_value
+                    (ref_addr
+                      (symbolic_variable
+                        (path_expression
+                          (var_access
+                            (field)))))))))))))

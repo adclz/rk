@@ -1,0 +1,385 @@
+================================================================================
+Date literal (long prefix) 
+================================================================================
+
+FUNCTION fn
+
+a := DATE#1984-06-25
+a := date#2010-09-22
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (time_literal
+                    (date
+                      (short_date
+                        (date_type_name)
+                        (date_literal)))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (time_literal
+                    (date
+                      (short_date
+                        (date_type_name)
+                        (date_literal)))))))))))
+
+================================================================================
+Date literal (short prefix) 
+================================================================================
+
+FUNCTION fn
+
+a := D#1984-06-25
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+   (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (time_literal
+                    (date
+                      (short_date
+                        (date_type_name)
+                        (date_literal)))))))))))
+
+================================================================================
+Long date literal (long prefix)
+================================================================================
+
+FUNCTION fn
+
+a := LDATE#2012-02-29
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (time_literal
+                    (date
+                      (long_date
+                        (date_type_name)
+                        (date_literal)))))))))))
+
+================================================================================
+Long date literal (short prefix)
+================================================================================
+
+FUNCTION fn
+
+a := LD#1984-06-25
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (time_literal
+                    (date
+                      (long_date
+                        (date_type_name)
+                        (date_literal)))))))))))              
+
+================================================================================
+Time of day literal (long prefix)
+================================================================================
+
+FUNCTION fn
+
+a := TIME_OF_DAY#15:36:55.36
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (time_literal
+                    (time_of_day
+                      (tod
+                        (tod_type_name)
+                        (daytime)))))))))))
+
+================================================================================
+Time of day literal (short prefix)
+================================================================================
+
+FUNCTION fn
+
+a := TOD#15:36:55.36
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (time_literal
+                    (time_of_day
+                      (tod
+                        (tod_type_name)
+                        (daytime)))))))))))   
+
+================================================================================
+Long time of day literal (short prefix)
+================================================================================
+
+FUNCTION fn
+
+a := LTOD#15:36:55.36
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (time_literal
+                    (time_of_day
+                      (ltod
+                        (ltod_type_name)
+                        (daytime))))))))))) 
+
+================================================================================
+Long time of day literal (long prefix)
+================================================================================
+
+FUNCTION fn
+
+a := LTIME_OF_DAY#15:36:55.36
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (time_literal
+                    (time_of_day
+                      (ltod
+                        (ltod_type_name)
+                        (daytime)))))))))))                         
+
+================================================================================
+Date and time literal (long prefix)
+================================================================================
+
+FUNCTION fn
+
+a := DATE_AND_TIME#1984-06-25-15:36:55.360227400
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (time_literal
+                    (date_and_time
+                      (short_date_and_time
+                        (date_and_time_type_name)
+                        (date_and_daytime)))))))))))
+
+================================================================================
+Date and time literal (short prefix)
+================================================================================
+
+FUNCTION fn
+
+a := DT#1984-06-25-15:36:55.360_227_400
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (time_literal
+                    (date_and_time
+                      (short_date_and_time
+                        (date_and_time_type_name)
+                        (date_and_daytime))))))))))) 
+
+================================================================================
+Long date and time literal (long prefix)
+================================================================================
+
+FUNCTION fn
+
+a := LDATE_AND_TIME#1984-06-25-15:36:55.360_227_400
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (time_literal
+                    (date_and_time
+                      (long_date_and_time
+                        (l_date_and_time_type_name)
+                        (date_and_daytime)))))))))))   
+
+================================================================================
+Long date and time literal (short prefix)
+================================================================================
+
+FUNCTION fn
+
+a := LDT#1984-06-25-15:36:55.360_227_400
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (time_literal
+                    (date_and_time
+                      (long_date_and_time
+                        (l_date_and_time_type_name)
+                        (date_and_daytime)))))))))))                                                                                                                                                                   

@@ -35,8 +35,12 @@ END_NAMESPACE
                   (identifier)))
               (simple_type_init
                 (constant_expr
-                  (namespace_access
-                    (identifier)))))))))
+                  (variable_access
+                    (variable
+                      (symbolic_variable
+                        (path_expression
+                          (var_access
+                            (field)))))))))))))
 
 ================================================================================
 Data types with named values
@@ -81,28 +85,56 @@ END_TYPE
                   (or_operator
                     (boolean_operator
                       (or_operator
-                        (namespace_access
-                          (identifier))
-                        (namespace_access
-                          (identifier))))
-                    (namespace_access
-                      (identifier)))))
+                        (variable_access
+                          (variable
+                            (symbolic_variable
+                              (path_expression
+                                (var_access
+                                  (field))))))
+                        (variable_access
+                          (variable
+                            (symbolic_variable
+                              (path_expression
+                                (var_access
+                                  (field))))))))
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field)))))))))
               (enum_value_spec
                 (identifier)
                 (boolean_operator
                   (and_operator
                     (boolean_operator
                       (and_operator
-                        (namespace_access
-                          (identifier))
-                        (namespace_access
-                          (identifier))))
-                    (namespace_access
-                      (identifier)))))))
+                        (variable_access
+                          (variable
+                            (symbolic_variable
+                              (path_expression
+                                (var_access
+                                  (field))))))
+                        (variable_access
+                          (variable
+                            (symbolic_variable
+                              (path_expression
+                                (var_access
+                                  (field))))))))
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field)))))))))))
           (simple_type_init
             (constant_expr
-              (namespace_access
-                (identifier)))))))
+              (variable_access
+                (variable
+                  (symbolic_variable
+                    (path_expression
+                      (var_access
+                        (field)))))))))))
 
 ================================================================================
 Subrange data types
@@ -152,7 +184,48 @@ TYPE
     ANALOG_16_INPUT_DATA: ARRAY [1..16] OF ANALOG_DATA := [8(-4095), 8(4095)];
 END_TYPE   
 
---------------------------------------------------------------------------------                         
+--------------------------------------------------------------------------------
+
+    (source_file
+      (data_type_decl
+        (type_decl
+          (identifier)
+          (array_type_spec
+            (subrange
+              (constant_expr
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int))))))
+              (constant_expr
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int)))))))
+            (namespace_access
+              (identifier)))
+          (array_type_init
+            (array_elem_init
+              (unsigned_int)
+              (array_elem_init_value
+                (constant_expr
+                  (unary_operator
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int)))))))))
+            (array_elem_init
+              (unsigned_int)
+              (array_elem_init_value
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))))))
 
 ================================================================================
 FB types and classes as array elements
@@ -195,6 +268,7 @@ END_TYPE
                       (time_literal
                         (duration
                           (time
+                            (time_type_name)
                             (time_value)))))))))))))
 
 ================================================================================
@@ -234,8 +308,12 @@ END_NAMESPACE
                   (identifier)))
               (simple_type_init
                 (constant_expr
-                  (namespace_access
-                    (identifier)))))))))                            
+                  (variable_access
+                    (variable
+                      (symbolic_variable
+                        (path_expression
+                          (var_access
+                            (field)))))))))))))                          
 
 ================================================================================
 Structured data type
@@ -326,6 +404,7 @@ END_TYPE
                       (time_literal
                         (duration
                           (time
+                            (time_type_name)
                             (time_value)))))))))))))
 
 ================================================================================
@@ -366,7 +445,8 @@ END_TYPE
                       (time_literal
                         (duration
                           (time
-                            (time_value)))))))))))))                            
+                            (time_type_name)
+                            (time_value)))))))))))))
 
 ================================================================================
 Structured data type with relative addressing AT

@@ -179,3 +179,120 @@ END_FUNCTION_BLOCK
               (identifier))
             (edge_decl
               (ERR_invalid_edge_qualifier))))))
+
+================================================================================
+Function call as assignment
+================================================================================
+
+FUNCTION_BLOCK fn
+    fn() := 0;   
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (fb_decl
+        (identifier)
+        (fb_body
+          (stmt_list
+            (assign
+              (ERR_assign_func_call
+                (func_call
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int)))))))))))
+
+================================================================================
+Invocation in expression context
+================================================================================
+
+FUNCTION_BLOCK fn
+    fn.m.p := THIS.m^()   
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (fb_decl
+        (identifier)
+        (fb_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (field_expression
+                      (path_expression
+                        (field_expression
+                          (path_expression
+                            (var_access
+                              (field)))
+                          (var_access
+                            (field))))
+                      (var_access
+                        (field))))))
+              (assignment
+                (ERR_invocation_in_expr_context
+                  (invocation
+                    (symbolic_variable
+                      (this)
+                      (path_expression
+                        (var_access
+                          (ref_deref
+                            (identifier)))))))))))))
+
+================================================================================
+Unexpected THIS in path
+================================================================================
+
+FUNCTION_BLOCK fn
+    THIS.a := 0
+    fn.THIS.p := 5
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (fb_decl
+        (identifier)
+        (fb_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (this)
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int)))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (field_expression
+                      (path_expression
+                        (field_expression
+                          (path_expression
+                            (var_access
+                              (field)))
+                          (var_access
+                            (ERR_unexpected_this_in_path))))
+                      (var_access
+                        (field))))))
+              (assignment
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int)))))))))))

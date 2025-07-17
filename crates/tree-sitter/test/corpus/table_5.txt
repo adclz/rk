@@ -13,7 +13,7 @@ END_FUNCTION
 
 --------------------------------------------------------------------------------
 
-      (source_file
+    (source_file
       (func_decl
         (identifier)
         (func_body
@@ -21,8 +21,9 @@ END_FUNCTION
             (assign
               (variable
                 (symbolic_variable
-                  (var_access
-                    (identifier))))
+                  (path_expression
+                    (var_access
+                      (field)))))
               (assignment
                 (unary_operator
                   (constant
@@ -33,8 +34,9 @@ END_FUNCTION
             (assign
               (variable
                 (symbolic_variable
-                  (var_access
-                    (identifier))))
+                  (path_expression
+                    (var_access
+                      (field)))))
               (assignment
                 (constant
                   (numeric_literal
@@ -44,8 +46,9 @@ END_FUNCTION
             (assign
               (variable
                 (symbolic_variable
-                  (var_access
-                    (identifier))))
+                  (path_expression
+                    (var_access
+                      (field)))))
               (assignment
                 (constant
                   (numeric_literal
@@ -55,8 +58,9 @@ END_FUNCTION
             (assign
               (variable
                 (symbolic_variable
-                  (var_access
-                    (identifier))))
+                  (path_expression
+                    (var_access
+                      (field)))))
               (assignment
                 (unary_operator
                   (constant
@@ -87,8 +91,9 @@ END_FUNCTION
             (assign
               (variable
                 (symbolic_variable
-                  (var_access
-                    (identifier))))
+                  (path_expression
+                    (var_access
+                      (field)))))
               (assignment
                 (constant
                   (numeric_literal
@@ -100,8 +105,9 @@ END_FUNCTION
             (assign
               (variable
                 (symbolic_variable
-                  (var_access
-                    (identifier))))
+                  (path_expression
+                    (var_access
+                      (field)))))
               (assignment
                 (constant
                   (numeric_literal
@@ -113,8 +119,9 @@ END_FUNCTION
             (assign
               (variable
                 (symbolic_variable
-                  (var_access
-                    (identifier))))
+                  (path_expression
+                    (var_access
+                      (field)))))
               (assignment
                 (constant
                   (numeric_literal
@@ -124,3 +131,317 @@ END_FUNCTION
                           (unsigned_int))
                         (unsigned_int)))))))))))
 
+================================================================================
+Binary literal 
+================================================================================
+
+FUNCTION fn
+
+a := 2#1111_1111 
+a := 2#1110_0000
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (binary_int))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (binary_int))))))))))
+
+================================================================================
+Octal literal 
+================================================================================
+
+FUNCTION fn
+
+a := 8#377
+a := 8#340
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+              
+   (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (octal_int))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (octal_int))))))))))              
+
+================================================================================
+Hexadecimal literal 
+================================================================================
+
+FUNCTION fn
+
+a := 16#FF
+a := 16#ff
+
+a := 16#E0
+a := 16#e0
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+     
+    (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (hex_int))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (hex_int))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (hex_int))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (hex_int))))))))))
+
+================================================================================
+Booleans
+================================================================================
+
+FUNCTION fn
+
+a := TRUE
+a := FALSE
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------   
+
+================================================================================
+Typed literals
+================================================================================
+
+FUNCTION fn
+
+a := INT#-123
+a := INT#16#7FFF
+a := WORD#16#AFF
+a := WORD#1234
+a := UINT#16#89AF
+a := CHAR#16#41
+a := BOOL#0
+a := BOOL#1
+a := BOOL#FALSE
+a := BOOL#TRUE
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+ (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (int_kind
+                        (int_type_name
+                          (sign_int_type_name
+                            (int_name))))
+                      (signed_int
+                        (unsigned_int)))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (int_kind
+                        (int_type_name
+                          (sign_int_type_name
+                            (int_name))))
+                      (hex_int))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (int_kind
+                        (multibits_type_name
+                          (word_name)))
+                      (hex_int))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (int_kind
+                        (multibits_type_name
+                          (word_name)))
+                      (signed_int
+                        (unsigned_int)))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (int_kind
+                        (int_type_name
+                          (unsign_int_type_name
+                            (uint_name))))
+                      (hex_int))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (char_literal
+                    (string_type_name)
+                    (char_str
+                      (hex_int))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (bool_literal
+                    (bool_literal_with_numeric)))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (bool_literal
+                    (bool_literal_with_numeric)))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (bool_literal
+                    (bool_literal_with_string)))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (bool_literal
+                    (bool_literal_with_string)))))))))

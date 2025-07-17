@@ -1,0 +1,45 @@
+================================================================================
+Upper case letters and numbers
+================================================================================
+
+USING IW215.IW215Z.QX75.IDENT
+
+--------------------------------------------------------------------------------
+
+   (source_file
+      (using_directive
+        (namespace_h_name
+          (identifier)
+          (identifier)
+          (identifier)
+          (identifier))))
+
+================================================================================
+Upper and lower case letters, numbers, embedded underscore
+================================================================================
+
+USING LIM_SW_5.LimSw5.abcd.ab_Cd
+
+--------------------------------------------------------------------------------
+
+   (source_file
+      (using_directive
+        (namespace_h_name
+          (identifier)
+          (identifier)
+          (identifier)
+          (identifier))))   
+
+================================================================================
+Upper and lower case, numbers, leading or embedded underscore
+================================================================================
+
+USING _MAIN._12V7
+
+--------------------------------------------------------------------------------
+
+   (source_file
+      (using_directive
+        (namespace_h_name
+          (identifier)
+          (identifier))))                 

@@ -10,7 +10,7 @@ END_FUNCTION
 
 --------------------------------------------------------------------------------
 
-(source_file
+    (source_file
       (func_decl
         (identifier)
         (func_body
@@ -18,15 +18,16 @@ END_FUNCTION
             (assign
               (variable
                 (symbolic_variable
-                  (var_access
-                    (identifier))))
+                  (path_expression
+                    (var_access
+                      (field)))))
               (assignment
                 (constant
                   (numeric_literal
                     (int_literal
                       (signed_int
                         (unsigned_int)))))))))
-      (line_comment)
+        (line_comment)
         (line_comment)
         (line_comment)))
 

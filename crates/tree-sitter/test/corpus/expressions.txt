@@ -21,7 +21,7 @@ END_FUNCTION
 
 --------------------------------------------------------------------------------
 
-(source_file
+    (source_file
       (func_decl
         (identifier)
         (func_body
@@ -29,131 +29,230 @@ END_FUNCTION
             (assign
               (variable
                 (symbolic_variable
-                  (var_access
-                    (identifier))))
+                  (path_expression
+                    (var_access
+                      (field)))))
               (assignment
                 (mult_operator
-                  (namespace_access
-                    (identifier))
-                  (namespace_access
-                    (identifier)))))
+                  (variable_access
+                    (variable
+                      (symbolic_variable
+                        (path_expression
+                          (var_access
+                            (field))))))
+                  (variable_access
+                    (variable
+                      (symbolic_variable
+                        (path_expression
+                          (var_access
+                            (field)))))))))
             (assign
               (variable
                 (symbolic_variable
-                  (var_access
-                    (identifier))))
+                  (path_expression
+                    (var_access
+                      (field)))))
               (assignment
                 (mult_operator
-                  (namespace_access
-                    (identifier))
-                  (namespace_access
-                    (identifier)))))
+                  (variable_access
+                    (variable
+                      (symbolic_variable
+                        (path_expression
+                          (var_access
+                            (field))))))
+                  (variable_access
+                    (variable
+                      (symbolic_variable
+                        (path_expression
+                          (var_access
+                            (field)))))))))
             (assign
               (variable
                 (symbolic_variable
-                  (var_access
-                    (identifier))))
+                  (path_expression
+                    (var_access
+                      (field)))))
               (assignment
                 (mult_operator
-                  (namespace_access
-                    (identifier))
-                  (namespace_access
-                    (identifier)))))
+                  (variable_access
+                    (variable
+                      (symbolic_variable
+                        (path_expression
+                          (var_access
+                            (field))))))
+                  (variable_access
+                    (variable
+                      (symbolic_variable
+                        (path_expression
+                          (var_access
+                            (field)))))))))
             (assign
               (variable
                 (symbolic_variable
-                  (var_access
-                    (identifier))))
+                  (path_expression
+                    (var_access
+                      (field)))))
               (assignment
                 (add_operator
-                  (namespace_access
-                    (identifier))
-                  (namespace_access
-                    (identifier)))))
+                  (variable_access
+                    (variable
+                      (symbolic_variable
+                        (path_expression
+                          (var_access
+                            (field))))))
+                  (variable_access
+                    (variable
+                      (symbolic_variable
+                        (path_expression
+                          (var_access
+                            (field)))))))))
             (assign
               (variable
                 (symbolic_variable
-                  (var_access
-                    (identifier))))
+                  (path_expression
+                    (var_access
+                      (field)))))
               (assignment
                 (add_operator
-                  (namespace_access
-                    (identifier))
-                  (namespace_access
-                    (identifier)))))
+                  (variable_access
+                    (variable
+                      (symbolic_variable
+                        (path_expression
+                          (var_access
+                            (field))))))
+                  (variable_access
+                    (variable
+                      (symbolic_variable
+                        (path_expression
+                          (var_access
+                            (field)))))))))
             (assign
               (variable
                 (symbolic_variable
-                  (var_access
-                    (identifier))))
+                  (path_expression
+                    (var_access
+                      (field)))))
               (assignment
                 (comparison_operator
                   (eq_operator
-                    (namespace_access
-                      (identifier))
-                    (namespace_access
-                      (identifier))))))
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field))))))
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field))))))))))
             (assign
               (variable
                 (symbolic_variable
-                  (var_access
-                    (identifier))))
+                  (path_expression
+                    (var_access
+                      (field)))))
               (assignment
                 (comparison_operator
                   (eq_operator
-                    (namespace_access
-                      (identifier))
-                    (namespace_access
-                      (identifier))))))
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field))))))
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field))))))))))
             (assign
               (variable
                 (symbolic_variable
-                  (var_access
-                    (identifier))))
+                  (path_expression
+                    (var_access
+                      (field)))))
               (assignment
                 (comparison_operator
                   (ord_operator
-                    (namespace_access
-                      (identifier))
-                    (namespace_access
-                      (identifier))))))
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field))))))
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field))))))))))
             (assign
               (variable
                 (symbolic_variable
-                  (var_access
-                    (identifier))))
+                  (path_expression
+                    (var_access
+                      (field)))))
               (assignment
                 (comparison_operator
                   (ord_operator
-                    (namespace_access
-                      (identifier))
-                    (namespace_access
-                      (identifier))))))
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field))))))
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field))))))))))
             (assign
               (variable
                 (symbolic_variable
-                  (var_access
-                    (identifier))))
+                  (path_expression
+                    (var_access
+                      (field)))))
               (assignment
                 (comparison_operator
                   (ord_operator
-                    (namespace_access
-                      (identifier))
-                    (namespace_access
-                      (identifier))))))
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field))))))
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field))))))))))
             (assign
               (variable
                 (symbolic_variable
-                  (var_access
-                    (identifier))))
+                  (path_expression
+                    (var_access
+                      (field)))))
               (assignment
                 (comparison_operator
                   (ord_operator
-                    (namespace_access
-                      (identifier))
-                    (namespace_access
-                      (identifier))))))))))
-
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field))))))
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field))))))))))))))
+                              
 ================================================================================
 Binary cmp operator expressions
 ================================================================================
@@ -171,7 +270,7 @@ END_FUNCTION
 
 --------------------------------------------------------------------------------
 
- (source_file
+    (source_file
       (func_decl
         (identifier)
         (func_body
@@ -179,72 +278,126 @@ END_FUNCTION
             (assign
               (variable
                 (symbolic_variable
-                  (var_access
-                    (identifier))))
+                  (path_expression
+                    (var_access
+                      (field)))))
               (assignment
                 (comparison_operator
                   (eq_operator
-                    (namespace_access
-                      (identifier))
-                    (namespace_access
-                      (identifier))))))
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field))))))
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field))))))))))
             (assign
               (variable
                 (symbolic_variable
-                  (var_access
-                    (identifier))))
+                  (path_expression
+                    (var_access
+                      (field)))))
               (assignment
                 (comparison_operator
                   (eq_operator
-                    (namespace_access
-                      (identifier))
-                    (namespace_access
-                      (identifier))))))
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field))))))
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field))))))))))
             (assign
               (variable
                 (symbolic_variable
-                  (var_access
-                    (identifier))))
+                  (path_expression
+                    (var_access
+                      (field)))))
               (assignment
                 (comparison_operator
                   (ord_operator
-                    (namespace_access
-                      (identifier))
-                    (namespace_access
-                      (identifier))))))
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field))))))
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field))))))))))
             (assign
               (variable
                 (symbolic_variable
-                  (var_access
-                    (identifier))))
+                  (path_expression
+                    (var_access
+                      (field)))))
               (assignment
                 (comparison_operator
                   (ord_operator
-                    (namespace_access
-                      (identifier))
-                    (namespace_access
-                      (identifier))))))
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field))))))
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field))))))))))
             (assign
               (variable
                 (symbolic_variable
-                  (var_access
-                    (identifier))))
+                  (path_expression
+                    (var_access
+                      (field)))))
               (assignment
                 (comparison_operator
                   (ord_operator
-                    (namespace_access
-                      (identifier))
-                    (namespace_access
-                      (identifier))))))
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field))))))
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field))))))))))
             (assign
               (variable
                 (symbolic_variable
-                  (var_access
-                    (identifier))))
+                  (path_expression
+                    (var_access
+                      (field)))))
               (assignment
                 (comparison_operator
                   (ord_operator
-                    (namespace_access
-                      (identifier))
-                    (namespace_access
-                      (identifier))))))))))
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field))))))
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field))))))))))))))

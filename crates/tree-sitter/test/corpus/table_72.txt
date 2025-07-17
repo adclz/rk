@@ -1,0 +1,899 @@
+================================================================================
+Variable and expression of elementary data type 
+================================================================================
+
+FUNCTION fn
+    A:= B; 
+    CV:= CV+1; 
+    C:= SIN(X);
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (variable_access
+                  (variable
+                    (symbolic_variable
+                      (path_expression
+                        (var_access
+                          (field))))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (add_operator
+                  (variable_access
+                    (variable
+                      (symbolic_variable
+                        (path_expression
+                          (var_access
+                            (field))))))
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (func_call
+                  (path_expression
+                    (var_access
+                      (field)))
+                  (param_assign
+                    (param_assign_input
+                      (variable_access
+                        (variable
+                          (symbolic_variable
+                            (path_expression
+                              (var_access
+                                (field)))))))))))))))
+
+================================================================================
+Function call 
+================================================================================
+
+FUNCTION fn
+    FCT(17);
+    CMD_TMR(IN:= bIn1, PT:= T#300ms);
+    A:= CMD_TMR.Q;
+    FB_INST.M1(17);
+    RETURN;
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (func_call
+              (path_expression
+                (var_access
+                  (field)))
+              (param_assign
+                (param_assign_input
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))
+            (func_call
+              (path_expression
+                (var_access
+                  (field)))
+              (param_assign
+                (param_assign_input
+                  (identifier)
+                  (variable_access
+                    (variable
+                      (symbolic_variable
+                        (path_expression
+                          (var_access
+                            (field))))))))
+              (param_assign
+                (param_assign_input
+                  (identifier)
+                  (constant
+                    (time_literal
+                      (duration
+                        (time
+                          (time_type_name)
+                          (time_value))))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (variable_access
+                  (variable
+                    (symbolic_variable
+                      (path_expression
+                        (field_expression
+                          (path_expression
+                            (var_access
+                              (field)))
+                          (var_access
+                            (field)))))))))
+            (func_call
+              (path_expression
+                (field_expression
+                  (path_expression
+                    (var_access
+                      (field)))
+                  (var_access
+                    (field))))
+              (param_assign
+                (param_assign_input
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))))))
+
+================================================================================
+IF ... THEN ... ELSIF ... THEN ... ELSE ... END_IF 
+================================================================================
+
+FUNCTION fn
+	D:= B*B - 4.0*A*C; 
+	IF D < 0.0
+	THEN NROOTS:= 0;
+		ELSIF D = 0.0
+		THEN
+			NROOTS:= 1;
+			X1:= - B/(2.0*A);
+		ELSE
+			NROOTS:= 2;
+			X1:= (- B + SQRT(D))/(2.0*A);
+			X2:= (- B - SQRT(D))/(2.0*A);
+	END_IF;
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (add_operator
+                  (mult_operator
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field))))))
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field)))))))
+                  (mult_operator
+                    (mult_operator
+                      (constant
+                        (numeric_literal
+                          (real_literal
+                            (real_value
+                              (signed_int
+                                (unsigned_int))
+                              (unsigned_int)))))
+                      (variable_access
+                        (variable
+                          (symbolic_variable
+                            (path_expression
+                              (var_access
+                                (field)))))))
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field))))))))))
+            (if_stmt
+              (comparison_operator
+                (ord_operator
+                  (variable_access
+                    (variable
+                      (symbolic_variable
+                        (path_expression
+                          (var_access
+                            (field))))))
+                  (constant
+                    (numeric_literal
+                      (real_literal
+                        (real_value
+                          (signed_int
+                            (unsigned_int))
+                          (unsigned_int)))))))
+              (stmt_list
+                (assign
+                  (variable
+                    (symbolic_variable
+                      (path_expression
+                        (var_access
+                          (field)))))
+                  (assignment
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int))))))))
+              (comparison_operator
+                (eq_operator
+                  (variable_access
+                    (variable
+                      (symbolic_variable
+                        (path_expression
+                          (var_access
+                            (field))))))
+                  (constant
+                    (numeric_literal
+                      (real_literal
+                        (real_value
+                          (signed_int
+                            (unsigned_int))
+                          (unsigned_int)))))))
+              (stmt_list
+                (assign
+                  (variable
+                    (symbolic_variable
+                      (path_expression
+                        (var_access
+                          (field)))))
+                  (assignment
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int)))))))
+                (assign
+                  (variable
+                    (symbolic_variable
+                      (path_expression
+                        (var_access
+                          (field)))))
+                  (assignment
+                    (unary_operator
+                      (mult_operator
+                        (variable_access
+                          (variable
+                            (symbolic_variable
+                              (path_expression
+                                (var_access
+                                  (field))))))
+                        (parenthesized_expression
+                          (mult_operator
+                            (constant
+                              (numeric_literal
+                                (real_literal
+                                  (real_value
+                                    (signed_int
+                                      (unsigned_int))
+                                    (unsigned_int)))))
+                            (variable_access
+                              (variable
+                                (symbolic_variable
+                                  (path_expression
+                                    (var_access
+                                      (field)))))))))))))
+              (stmt_list
+                (assign
+                  (variable
+                    (symbolic_variable
+                      (path_expression
+                        (var_access
+                          (field)))))
+                  (assignment
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int)))))))
+                (assign
+                  (variable
+                    (symbolic_variable
+                      (path_expression
+                        (var_access
+                          (field)))))
+                  (assignment
+                    (mult_operator
+                      (parenthesized_expression
+                        (unary_operator
+                          (add_operator
+                            (variable_access
+                              (variable
+                                (symbolic_variable
+                                  (path_expression
+                                    (var_access
+                                      (field))))))
+                            (func_call
+                              (path_expression
+                                (var_access
+                                  (field)))
+                              (param_assign
+                                (param_assign_input
+                                  (variable_access
+                                    (variable
+                                      (symbolic_variable
+                                        (path_expression
+                                          (var_access
+                                            (field))))))))))))
+                      (parenthesized_expression
+                        (mult_operator
+                          (constant
+                            (numeric_literal
+                              (real_literal
+                                (real_value
+                                  (signed_int
+                                    (unsigned_int))
+                                  (unsigned_int)))))
+                          (variable_access
+                            (variable
+                              (symbolic_variable
+                                (path_expression
+                                  (var_access
+                                    (field)))))))))))
+                (assign
+                  (variable
+                    (symbolic_variable
+                      (path_expression
+                        (var_access
+                          (field)))))
+                  (assignment
+                    (mult_operator
+                      (parenthesized_expression
+                        (unary_operator
+                          (add_operator
+                            (variable_access
+                              (variable
+                                (symbolic_variable
+                                  (path_expression
+                                    (var_access
+                                      (field))))))
+                            (func_call
+                              (path_expression
+                                (var_access
+                                  (field)))
+                              (param_assign
+                                (param_assign_input
+                                  (variable_access
+                                    (variable
+                                      (symbolic_variable
+                                        (path_expression
+                                          (var_access
+                                            (field))))))))))))
+                      (parenthesized_expression
+                        (mult_operator
+                          (constant
+                            (numeric_literal
+                              (real_literal
+                                (real_value
+                                  (signed_int
+                                    (unsigned_int))
+                                  (unsigned_int)))))
+                          (variable_access
+                            (variable
+                              (symbolic_variable
+                                (path_expression
+                                  (var_access
+                                    (field)))))))))))))))))
+
+================================================================================
+CASE ... OF ... ELSE ...END_CASE
+================================================================================
+
+FUNCTION fn
+	TW:= WORD_BCD_TO_INT(THUMBWHEEL);
+    
+	TW_ERROR:= 0;
+    
+	CASE TW OF 
+    	1,5: DISPLAY:= OVEN_TEMP;
+		2: DISPLAY:= MOTOR_SPEED;
+		3: DISPLAY:= GROSS - TARE;
+		4,6..10: DISPLAY:= STATUS(TW - 4);
+		ELSE DISPLAY := 0;
+			TW_ERROR:= 1;
+	END_CASE;
+	QW100:= INT_TO_BCD(DISPLAY);
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (func_call
+                  (path_expression
+                    (var_access
+                      (field)))
+                  (param_assign
+                    (param_assign_input
+                      (variable_access
+                        (variable
+                          (symbolic_variable
+                            (path_expression
+                              (var_access
+                                (field)))))))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int)))))))
+            (case_stmt
+              (variable_access
+                (variable
+                  (symbolic_variable
+                    (path_expression
+                      (var_access
+                        (field))))))
+              (case_selection
+                (case_list
+                  (case_list_elem
+                    (constant_expr
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int)))))))
+                  (case_list_elem
+                    (constant_expr
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int))))))))
+                (stmt_list
+                  (assign
+                    (variable
+                      (symbolic_variable
+                        (path_expression
+                          (var_access
+                            (field)))))
+                    (assignment
+                      (variable_access
+                        (variable
+                          (symbolic_variable
+                            (path_expression
+                              (var_access
+                                (field))))))))))
+              (case_selection
+                (case_list
+                  (case_list_elem
+                    (constant_expr
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int))))))))
+                (stmt_list
+                  (assign
+                    (variable
+                      (symbolic_variable
+                        (path_expression
+                          (var_access
+                            (field)))))
+                    (assignment
+                      (variable_access
+                        (variable
+                          (symbolic_variable
+                            (path_expression
+                              (var_access
+                                (field))))))))))
+              (case_selection
+                (case_list
+                  (case_list_elem
+                    (constant_expr
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int))))))))
+                (stmt_list
+                  (assign
+                    (variable
+                      (symbolic_variable
+                        (path_expression
+                          (var_access
+                            (field)))))
+                    (assignment
+                      (add_operator
+                        (variable_access
+                          (variable
+                            (symbolic_variable
+                              (path_expression
+                                (var_access
+                                  (field))))))
+                        (variable_access
+                          (variable
+                            (symbolic_variable
+                              (path_expression
+                                (var_access
+                                  (field)))))))))))
+              (case_selection
+                (case_list
+                  (case_list_elem
+                    (constant_expr
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int)))))))
+                  (case_list_elem
+                    (subrange
+                      (constant_expr
+                        (constant
+                          (numeric_literal
+                            (int_literal
+                              (signed_int
+                                (unsigned_int))))))
+                      (constant_expr
+                        (constant
+                          (numeric_literal
+                            (int_literal
+                              (signed_int
+                                (unsigned_int)))))))))
+                (stmt_list
+                  (assign
+                    (variable
+                      (symbolic_variable
+                        (path_expression
+                          (var_access
+                            (field)))))
+                    (assignment
+                      (func_call
+                        (path_expression
+                          (var_access
+                            (field)))
+                        (param_assign
+                          (param_assign_input
+                            (add_operator
+                              (variable_access
+                                (variable
+                                  (symbolic_variable
+                                    (path_expression
+                                      (var_access
+                                        (field))))))
+                              (constant
+                                (numeric_literal
+                                  (int_literal
+                                    (signed_int
+                                      (unsigned_int)))))))))))))
+              (stmt_list
+                (assign
+                  (variable
+                    (symbolic_variable
+                      (path_expression
+                        (var_access
+                          (field)))))
+                  (assignment
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int)))))))
+                (assign
+                  (variable
+                    (symbolic_variable
+                      (path_expression
+                        (var_access
+                          (field)))))
+                  (assignment
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int)))))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (func_call
+                  (path_expression
+                    (var_access
+                      (field)))
+                  (param_assign
+                    (param_assign_input
+                      (variable_access
+                        (variable
+                          (symbolic_variable
+                            (path_expression
+                              (var_access
+                                (field)))))))))))))))
+
+================================================================================
+FOR ... TO ... BY ... DO ... END_FOR
+================================================================================
+
+FUNCTION fn
+	J:= 101;
+	FOR I:= 1 TO 100 BY 2 DO
+		IF WORDS[I] = 'KEY' THEN
+			J:= I;
+			EXIT;
+		END_IF;
+        
+	END_FOR;
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int)))))))
+            (for_stmt
+              (control_variable
+                (identifier))
+              (for_list
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int)))))
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int)))))
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int))))))
+              (stmt_list
+                (if_stmt
+                  (comparison_operator
+                    (eq_operator
+                      (variable_access
+                        (variable
+                          (symbolic_variable
+                            (path_expression
+                              (index_expression
+                                (path_expression
+                                  (var_access
+                                    (field)))
+                                (index_value
+                                  (constant_expr
+                                    (variable_access
+                                      (variable
+                                        (symbolic_variable
+                                          (path_expression
+                                            (var_access
+                                              (field)))))))))))))
+                      (constant
+                        (char_literal
+                          (char_str)))))
+                  (stmt_list
+                    (assign
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field)))))
+                      (assignment
+                        (variable_access
+                          (variable
+                            (symbolic_variable
+                              (path_expression
+                                (var_access
+                                  (field))))))))))))))))
+
+================================================================================
+WHILE ... DO ... END_WHILE
+================================================================================
+
+FUNCTION fn
+	J:= 1;
+	WHILE J <= 100 DO
+		J:= J+2;
+	END_WHILE
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int)))))))
+            (while_stmt
+              (comparison_operator
+                (ord_operator
+                  (variable_access
+                    (variable
+                      (symbolic_variable
+                        (path_expression
+                          (var_access
+                            (field))))))
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int)))))))
+              (stmt_list
+                (assign
+                  (variable
+                    (symbolic_variable
+                      (path_expression
+                        (var_access
+                          (field)))))
+                  (assignment
+                    (add_operator
+                      (variable_access
+                        (variable
+                          (symbolic_variable
+                            (path_expression
+                              (var_access
+                                (field))))))
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int))))))))))))))
+
+
+================================================================================
+REPEAT ... UNTIL ... END_REPEAT
+================================================================================
+
+FUNCTION fn
+	J:= -1;
+	REPEAT
+		J:= J+2;
+		UNTIL J = 101 OR WORDS[J] = 'KEY'
+	END_REPEAT;
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (unary_operator
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))
+            (repeat_stmt
+              (stmt_list
+                (assign
+                  (variable
+                    (symbolic_variable
+                      (path_expression
+                        (var_access
+                          (field)))))
+                  (assignment
+                    (add_operator
+                      (variable_access
+                        (variable
+                          (symbolic_variable
+                            (path_expression
+                              (var_access
+                                (field))))))
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int)))))))))
+              (boolean_operator
+                (or_operator
+                  (comparison_operator
+                    (eq_operator
+                      (variable_access
+                        (variable
+                          (symbolic_variable
+                            (path_expression
+                              (var_access
+                                (field))))))
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int)))))))
+                  (comparison_operator
+                    (eq_operator
+                      (variable_access
+                        (variable
+                          (symbolic_variable
+                            (path_expression
+                              (index_expression
+                                (path_expression
+                                  (var_access
+                                    (field)))
+                                (index_value
+                                  (constant_expr
+                                    (variable_access
+                                      (variable
+                                        (symbolic_variable
+                                          (path_expression
+                                            (var_access
+                                              (field)))))))))))))
+                      (constant
+                        (char_literal
+                          (char_str))))))))))))

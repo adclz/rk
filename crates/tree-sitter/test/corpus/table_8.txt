@@ -1,0 +1,319 @@
+================================================================================
+Duration literals without underscore - short prefix
+================================================================================
+
+FUNCTION fn
+
+a := T#14ms
+a := T#-14ms
+a := LT#14.7s
+a := T#14.7m
+a := T#14.7h
+a := t#14.7d
+a := t#25h15m
+a := lt#5d14h12m18s3.5ms
+a := t#12h4m34ms230us400ns
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (time_literal
+                    (duration
+                      (time
+                        (time_type_name)
+                        (time_value)))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (time_literal
+                    (duration
+                      (time
+                        (time_type_name)
+                        (time_value)))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (time_literal
+                    (duration
+                      (ltime
+                        (l_time_type_name)
+                        (time_value)))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (time_literal
+                    (duration
+                      (time
+                        (time_type_name)
+                        (time_value)))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (time_literal
+                    (duration
+                      (time
+                        (time_type_name)
+                        (time_value)))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (time_literal
+                    (duration
+                      (time
+                        (time_type_name)
+                        (time_value)))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (time_literal
+                    (duration
+                      (time
+                        (time_type_name)
+                        (time_value)))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (time_literal
+                    (duration
+                      (ltime
+                        (l_time_type_name)
+                        (time_value)))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (time_literal
+                    (duration
+                      (time
+                        (time_type_name)
+                        (time_value)))))))))))
+
+================================================================================
+Duration literals without underscore - long prefix
+================================================================================
+
+FUNCTION fn
+
+a := TIME#14ms 
+a := TIME#-14ms 
+a := time#14.7s
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (time_literal
+                    (duration
+                      (time
+                        (time_type_name)
+                        (time_value)))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (time_literal
+                    (duration
+                      (time
+                        (time_type_name)
+                        (time_value)))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (time_literal
+                    (duration
+                      (time
+                        (time_type_name)
+                        (time_value)))))))))))
+
+================================================================================
+Duration literals with underscore - short prefix
+================================================================================
+
+FUNCTION fn
+
+a := t#25h_15m
+a := t#5d_14h_12m_18s_3.5ms
+a := LTIME#5m_30s_500ms_100.1us
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (time_literal
+                    (duration
+                      (time
+                        (time_type_name)
+                        (time_value)))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (time_literal
+                    (duration
+                      (time
+                        (time_type_name)
+                        (time_value)))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (time_literal
+                    (duration
+                      (ltime
+                        (l_time_type_name)
+                        (time_value)))))))))))
+
+================================================================================
+Duration literals with underscore - long prefix
+================================================================================
+
+FUNCTION fn
+
+a := TIME#25h_15m
+a := ltime#5d_14h_12m_18s_3.5ms
+a := LTIME#34s_345ns
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (time_literal
+                    (duration
+                      (time
+                        (time_type_name)
+                        (time_value)))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (time_literal
+                    (duration
+                      (ltime
+                        (l_time_type_name)
+                        (time_value)))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (time_literal
+                    (duration
+                      (ltime
+                        (l_time_type_name)
+                        (time_value)))))))))))

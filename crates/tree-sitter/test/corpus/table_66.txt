@@ -89,7 +89,7 @@ END_FUNCTION
 
 --------------------------------------------------------------------------------
 
-   (source_file
+    (source_file
       (fb_decl
         (identifier)
         (using_directive
@@ -125,13 +125,18 @@ END_FUNCTION
         (fb_body
           (stmt_list
             (func_call
-              (namespace_access
-                (identifier))
+              (path_expression
+                (var_access
+                  (field)))
               (param_assign
                 (param_assign_input
                   (identifier)
-                  (namespace_access
-                    (identifier))))
+                  (variable_access
+                    (variable
+                      (symbolic_variable
+                        (path_expression
+                          (var_access
+                            (field))))))))
               (param_assign
                 (param_assign_input
                   (identifier)
@@ -139,6 +144,7 @@ END_FUNCTION
                     (time_literal
                       (duration
                         (time
+                          (time_type_name)
                           (time_value)))))))))))
       (func_decl
         (identifier)

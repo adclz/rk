@@ -43,7 +43,7 @@ END_NAMESPACE
 Function blocks with extends
 ================================================================================
 
-FUNCTION_BLOCK fn EXTENDS access::something::great
+FUNCTION_BLOCK fn EXTENDS access.something.great
 
 END_FUNCTION_BLOCK
 
@@ -63,7 +63,7 @@ END_FUNCTION_BLOCK
 Function blocks with multiple implements
 ================================================================================
 
-FUNCTION_BLOCK fn IMPLEMENTS access::something::great, in_scope, access::something::else
+FUNCTION_BLOCK fn IMPLEMENTS access.something.great, in_scope, access.something.else
 
 END_FUNCTION_BLOCK
 
@@ -141,11 +141,13 @@ END_CLASS
               (assign
                 (variable
                   (symbolic_variable
-                    (var_access
-                      (identifier))))
+                    (path_expression
+                      (var_access
+                        (field)))))
                 (assignment
                   (constant
-                    (bool_literal)))))))
+                    (bool_literal
+                      (bool_literal_with_string))))))))
         (method_decl
           (access_spec)
           (identifier)
@@ -154,8 +156,10 @@ END_CLASS
               (assign
                 (variable
                   (symbolic_variable
-                    (var_access
-                      (identifier))))
+                    (path_expression
+                      (var_access
+                        (field)))))
                 (assignment
                   (constant
-                    (bool_literal)))))))))
+                    (bool_literal
+                      (bool_literal_with_string))))))))))
