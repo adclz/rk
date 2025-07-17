@@ -8,7 +8,7 @@ use crate::{
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::{
     anyhow,
-    default::db::{BaseDatabase, file::File},
+    default::db::{file::File, BaseDatabase},
 };
 
 pub trait ParseDataType<'db> {

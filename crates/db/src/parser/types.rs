@@ -2,12 +2,16 @@ use std::ops::Deref;
 
 use auto_lsp::{
     anyhow::{self},
-    default::db::{BaseDatabase, file::File},
+    default::db::{file::File, BaseDatabase},
 };
 
 use crate::{
-    hir::{expression::Expr, variable::{Spec, Subrange}},
-    parser::{expression::ParseExpression, ParseInit, ParseSpec, ParseSpecInit, SpecInitResult}, solver::fq_name::NamespaceAccess,
+    hir::{
+        expression::Expr,
+        variable::{Spec, Subrange},
+    },
+    parser::{expression::ParseExpression, ParseInit, ParseSpec, ParseSpecInit, SpecInitResult},
+    solver::fq_name::NamespaceAccess,
 };
 
 // Target
@@ -46,7 +50,6 @@ impl<'db> ParseSpec<'db> for ast::generated::DataTypeAccess {
             ast::generated::DataTypeAccess::NamespaceAccess(target) => target.to_spec(db, file),
         }
     }
-    
 }
 
 impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
@@ -85,21 +88,21 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
                     }
                 }
             }
-            AstSpec::DateTypeName(date_type_name) => match date_type_name.children.deref() {
-                ast::generated::DateName_LdateName::DateName(_) => Spec::Date,
-                ast::generated::DateName_LdateName::LdateName(_) => Spec::LDate,
+            AstSpec::AnyDateTypeName(date_type_name) => match date_type_name {
+                ast::generated::AnyDateTypeName::DateTypeName(_) => Spec::Date,
+                ast::generated::AnyDateTypeName::LDateTypeName(_) => Spec::LDate,
+            }, 
+            AstSpec::AnyTimeTypeName(time_type_name) => match time_type_name {
+                ast::generated::AnyTimeTypeName::TimeTypeName(_) => Spec::Time,
+                ast::generated::AnyTimeTypeName::LTimeTypeName(_) => Spec::LTime,
             },
-            AstSpec::TimeTypeName(time_type_name) => match time_type_name.children.deref() {
-                ast::generated::LtimeName_TimeName::TimeName(_) => Spec::Time,
-                ast::generated::LtimeName_TimeName::LtimeName(_) => Spec::LTime,
+            AstSpec::AnyTodTypeName(tod_type_name) => match tod_type_name {
+                ast::generated::AnyTodTypeName::TodTypeName(_) => Spec::Tod,
+                ast::generated::AnyTodTypeName::LtodTypeName(_) => Spec::LTod,
             },
-            AstSpec::TodTypeName(tod_type_name) => match tod_type_name.children.deref() {
-                ast::generated::LtodName_TodName::TodName(_) => Spec::Tod,
-                ast::generated::LtodName_TodName::LtodName(_) => Spec::LTod,
-            },
-            AstSpec::DtTypeName(dt_type_name) => match dt_type_name.children.deref() {
-                ast::generated::DtName_LdtName::DtName(_) => Spec::Dt,
-                ast::generated::DtName_LdtName::LdtName(_) => Spec::Ldt,
+            AstSpec::AnyDtTypeName(dt_type_name) => match dt_type_name {
+                ast::generated::AnyDtTypeName::DtTypeName(_) => Spec::Dt,
+                ast::generated::AnyDtTypeName::LDtTypeName(_) => Spec::Ldt,
             },
         })
     }
@@ -164,9 +167,7 @@ impl<'db> ParseSpec<'db> for ast::generated::ArrayTypeSpec {
             ast::generated::DataTypeAccess::ElemTypeName(elem_type_name) => {
                 elem_type_name.to_spec(db, file)
             }
-            ast::generated::DataTypeAccess::NamespaceAccess(target) => {
-                target.to_spec(db, file)
-            }
+            ast::generated::DataTypeAccess::NamespaceAccess(target) => target.to_spec(db, file),
         }
     }
 }

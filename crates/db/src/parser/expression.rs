@@ -1,15 +1,22 @@
 use std::ops::Deref;
 
-use auto_lsp::{anyhow, default::db::{BaseDatabase, file::File}};
 use auto_lsp::core::ast::AstNode;
+use auto_lsp::{
+    anyhow,
+    default::db::{file::File, BaseDatabase},
+};
+use salsa::Accumulator;
 
+use crate::hir::expression::{FieldExpr, IndexExpr};
 use crate::{
+    diagnostics::{diagnostic_builder::diag, DiagnosticAccumulator},
     hir::expression::{
-        Expr, ExprKind, Literal, MultiElemVarElement, Numeric, Operator, ParamAssign, PrimaryExpr, RefAdress, RefValue, SymbolicVariableKind, VarAccess, Variable
+        Expr, ExprKind, Literal, Numeric, Operator, ParamAssign, PathExpr, PrimaryExpr, RefAdress,
+        RefValue, SymbolicVariable, VarAccess, Variable,
     },
     ident::Ident,
 };
-pub trait ParseExpression<'db> { 
+pub trait ParseExpression<'db> {
     fn to_expr(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>>;
 }
 
@@ -177,21 +184,30 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
 impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
     fn to_expr(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>> {
         match self {
-                ast::generated::PrimaryExpression::Constant(c) => c.to_expr(db, file),
-                ast::generated::PrimaryExpression::NamespaceAccess(path) => Expr::new_target(db, file, path),
-                ast::generated::PrimaryExpression::VariableAccess(v) => {
-                    todo!()
-                },
-                ast::generated::PrimaryExpression::FieldExpression(field) => {todo!()},
-                ast::generated::PrimaryExpression::FuncCall(c) => {
-                    let target = Expr::new_target(db, file, &c.function)?;
+            ast::generated::PrimaryExpression::ERRInvocationInExprContext(err) => {
+                let diag = diag()
+                    .message("Invocation in expression context is not allowed".into())
+                    .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+                    .range(err.get_span())
+                    .call();
+                DiagnosticAccumulator::accumulate(diag.into(), db);
+                Err(anyhow::anyhow!(
+                    "Invocation in expression context is not allowed"
+                ))
+            }
+            ast::generated::PrimaryExpression::Constant(c) => c.to_expr(db, file),
+            ast::generated::PrimaryExpression::VariableAccess(v) => {
+                todo!()
+            }
+            ast::generated::PrimaryExpression::FuncCall(func) => {
+                let target = func.function.parse(db, file)?;
 
-                    let mut parameters = vec![];
-                    for params in c.params.iter() {
-                        match params.deref() {
-                            ast::generated::Comma_ParamAssign::Token_Comma(_) => {}
-                            ast::generated::Comma_ParamAssign::ParamAssign(p) => {
-                                match p.children.deref() {
+                let mut parameters = vec![];
+                for params in func.params.iter() {
+                    match params.deref() {
+                        ast::generated::Comma_ParamAssign::Token_Comma(_) => {}
+                        ast::generated::Comma_ParamAssign::ParamAssign(p) => {
+                            match p.children.deref() {
                                     ast::generated::ParamAssignInput_ParamAssignOutput::ParamAssignInput(p) => {
                                         parameters.push(ParamAssign::ParamAssignInput {
                                             param: p.param.as_ref().map(|p| Ident::from_node(db, file, p.deref())).transpose()?,
@@ -208,65 +224,51 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                                         })
                                     }
                                 }
-                            }
                         }
                     }
-                    Ok(Expr::new(
-                        db,
-                        c.get_span(),
-                        ExprKind::PrimaryExpr {
-                            expr: PrimaryExpr::FuncCall {
-                                expr: target,
-                                params: parameters,
-                            },
-                        },
-                    ))
                 }
-                ast::generated::PrimaryExpression::ParenthesizedExpression(p) => Ok(Expr::new(
+                Ok(Expr::new(
                     db,
-                    p.get_span(),
-                    ExprKind::PrimaryExpr {
-                        expr: PrimaryExpr::ParenthesizedExpr {
-                            expr: p.children.to_expr(db, file)?,
-                        },
-                    },
+                    func.get_span(),
+                    ExprKind::PrimaryExpr(PrimaryExpr::FuncCall {
+                        path: target,
+                        params: parameters,
+                    }),
+                ))
+            }
+            ast::generated::PrimaryExpression::ParenthesizedExpression(p) => Ok(Expr::new(
+                db,
+                p.get_span(),
+                ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr {
+                    expr: p.children.to_expr(db, file)?,
+                }),
+            )),
+            ast::generated::PrimaryExpression::RefValue(r) => match r.children.deref() {
+                ast::generated::Null_RefAddr::Null(_) => Ok(Expr::new(
+                    db,
+                    r.get_span(),
+                    ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
+                        value: RefValue::Null,
+                    }),
                 )),
-                ast::generated::PrimaryExpression::RefValue(r) => {
-                    match r.children.deref() {
-                        ast::generated::Null_RefAddr::Null(_) => Ok(Expr::new(
+                ast::generated::Null_RefAddr::RefAddr(a) => match a.children.deref() {
+                    ast::generated::InstanceName_SymbolicVariable::SymbolicVariable(s) => {
+                        todo!()
+                    }
+                    ast::generated::InstanceName_SymbolicVariable::InstanceName(i) => {
+                        Ok(Expr::new(
                             db,
                             r.get_span(),
-                            ExprKind::PrimaryExpr {
-                                expr: PrimaryExpr::RefValue {
-                                    value: RefValue::Null,
-                                },
-                            },
-                        )),
-                        ast::generated::Null_RefAddr::RefAddr(a) => {
-                            match a.children.deref() {
-                                ast::generated::InstanceName_SymbolicVariable::SymbolicVariable(s) => {
-                                    todo!()
-                                }
-                                ast::generated::InstanceName_SymbolicVariable::InstanceName(i) => {
-                                    Ok(Expr::new(
-                                        db,
-                                    r.get_span(),
-                                    ExprKind::PrimaryExpr {
-                                                expr: PrimaryExpr::RefValue {
-                                                value: RefValue::Address {
-                                                    adress: RefAdress::Instance {
-                                                        instance: Ident::from_node(db, file, i)?,
-                                                    },
-                                                },
-                                        },
-                                    },
-                                ))
-                                }
-                            }
-                        },
+                            ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
+                                value: RefValue::Address(RefAdress::Instance(Ident::from_node(
+                                    db, file, i,
+                                )?)),
+                            }),
+                        ))
                     }
-                }
-        }   
+                },
+            },
+        }
     }
 }
 
@@ -293,7 +295,6 @@ impl<'db> ParseNumeric<'db> for ast::generated::BinaryInt_HexInt_OctalInt_Signed
     }
 }
 
-
 impl<'db> ParseExpression<'db> for ast::generated::Constant {
     fn to_expr(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>> {
         type Constant = ast::generated::BoolLiteral_CharLiteral_NumericLiteral_TimeLiteral;
@@ -302,11 +303,18 @@ impl<'db> ParseExpression<'db> for ast::generated::Constant {
             *self.children.get_span(),
             match self.children.deref() {
                 Constant::BoolLiteral(bool_literal) => {
-                    Literal::Bool(Ident::from_node(db, file, bool_literal.value.deref())?)
+                    match bool_literal.children.deref() {
+                        ast::generated::BoolLiteralWithNumeric_BoolLiteralWithString::BoolLiteralWithNumeric(bool_literal) => {
+                            Literal::Bool(Ident::from_node(db, file, bool_literal.value.deref())?)
+                        }
+                        ast::generated::BoolLiteralWithNumeric_BoolLiteralWithString::BoolLiteralWithString(bool_literal) => {
+                            Literal::Bool(Ident::from_node(db, file, bool_literal.value.deref())?)
+                        }
+                    }
+                } 
+                Constant::CharLiteral(char_literal) => { 
+                    Literal::Char(Ident::from_node(db, file, char_literal.value.deref())?)
                 }
-                Constant::CharLiteral(char_literal) => {
-                    Literal::Char(Ident::from_node(db, file, char_literal.char.deref())?)
-                },
                 Constant::NumericLiteral(numeric_literal) => {
                     match numeric_literal.children.deref() {
                     ast::generated::IntLiteral_RealLiteral::IntLiteral(int_literal) => {
@@ -344,9 +352,9 @@ impl<'db> ParseExpression<'db> for ast::generated::Constant {
                                     },
                                 }
                             }
-                        }
+                        } 
                     },
-                    ast::generated::IntLiteral_RealLiteral::RealLiteral(real_literal) => {
+                    ast::generated::IntLiteral_RealLiteral::RealLiteral(real_literal) => { 
                         let j = real_literal.Type.as_deref();
 
                         match real_literal.Type.as_deref() {
@@ -363,7 +371,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Constant {
                             None => Literal::LReal(Ident::from_node(db, file, real_literal.value.deref())?),
                         }
                     },
-                }
+                } 
                 }
                 Constant::TimeLiteral(time_literal) => match time_literal.children.deref() {
                     ast::generated::Date_DateAndTime_Duration_TimeOfDay::Date(date) => {
@@ -420,8 +428,6 @@ impl<'db> ParseExpression<'db> for ast::generated::Constant {
     }
 }
 
-
-
 pub trait ParseVariableAccess<'db> {
     fn to_access(
         &'db self,
@@ -456,13 +462,19 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::DirectVariable {
         let adress = Ident::from_node(db, file, self.adress.deref())?;
 
         let (offset, partly) = match self.offset.deref() {
-            ast::generated::Offset_Partly::Offset(offset) => (Some(Ident::from_node(db, file, offset)?), false),
+            ast::generated::Offset_Partly::Offset(offset) => {
+                (Some(Ident::from_node(db, file, offset)?), false)
+            }
             ast::generated::Offset_Partly::Partly(partly) => (None, true),
         };
 
-        Ok(Variable::Direct { adress, partly, offset })
+        Ok(Variable::Direct {
+            adress,
+            partly,
+            offset,
+        })
     }
-} 
+}
 
 impl<'db> ParseVariableAccess<'db> for ast::generated::SymbolicVariable {
     fn to_access(
@@ -470,54 +482,81 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::SymbolicVariable {
         db: &'db dyn auto_lsp::default::db::BaseDatabase,
         file: File,
     ) -> anyhow::Result<Variable<'db>> {
-        let kind = match self.children.deref() {
-            ast::generated::MultiElemVar_VarAccess::VarAccess(v) => match v.children.deref() {
-                ast::generated::Identifier_RefDeref::Identifier(i) => {
-                    SymbolicVariableKind::VarAccess {
-                        access: VarAccess::Simple(Ident::from_node(db, file, i)?),
-                    }
-                }
-                ast::generated::Identifier_RefDeref::RefDeref(r) => {
-                    SymbolicVariableKind::VarAccess {
-                        access: VarAccess::Deref(Ident::from_node(db, file, r.children.deref())?),
-                    }
-                }
-            },
-            ast::generated::MultiElemVar_VarAccess::MultiElemVar(m) => {
-                let base = match m.access.children.deref() {
-                    ast::generated::Identifier_RefDeref::Identifier(i) => {
-                        VarAccess::Simple(Ident::from_node(db, file, i)?)
-                    }
-                    ast::generated::Identifier_RefDeref::RefDeref(r) => {
-                        VarAccess::Deref(Ident::from_node(db, file, r.children.deref())?)
-                    }
-                };
+        Ok(Variable::Symbolic(SymbolicVariable {
+            this: self.this.is_some(),
+            kind: self.children.parse(db, file)?,
+        }))
+    }
+}
 
-                let mut elements = vec![];
-                for child in m.children.deref() {
-                    match child.deref() {
-                        ast::generated::StructVariable_SubscriptList::SubscriptList(s) => {
-                            let mut list = vec![];
-                            for child in s.children.deref() {
-                                list.push(child.to_expr(db, file)?)
-                            }
+trait ParseExpr<'db> {
+    type Output;
 
-                            elements.push(MultiElemVarElement::Subscript { expr: list })
-                        }
-                        ast::generated::StructVariable_SubscriptList::StructVariable(s) => elements
-                            .push(MultiElemVarElement::StructVariable {
-                                access: VarAccess::Simple(Ident::from_node(db, file, s)?),
-                            }),
-                    }
-                }
-                SymbolicVariableKind::MultiElemVar { base, elements }
+    fn parse(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output>;
+}
+
+impl<'db> ParseExpr<'db> for ast::generated::PathExpression {
+    type Output = PathExpr<'db>;
+
+    fn parse(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output> {
+        Ok(match self.children.deref() {
+            ast::generated::FieldExpression_IndexExpression_VarAccess::FieldExpression(field_expr) => {
+                PathExpr::Field(field_expr.parse(db, file)?) 
             }
-        };
-
-        Ok(Variable::Symbolic {
-            // fixme: could be a simple is_some()
-            this: !self.this.is_empty(),
-            kind,
+            ast::generated::FieldExpression_IndexExpression_VarAccess::IndexExpression(index_expr) => {
+                PathExpr::Index(index_expr.parse(db, file)?) 
+            }
+            ast::generated::FieldExpression_IndexExpression_VarAccess::VarAccess(var_access) => {
+                PathExpr::VarAccess(var_access.parse(db, file)?)
+            }
         })
+    }
+}
+
+impl<'db> ParseExpr<'db> for ast::generated::FieldExpression {
+    type Output = FieldExpr<'db>;
+
+    fn parse(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output> {
+        Ok(FieldExpr::new(db, self.path.parse(db, file)?, self.target.parse(db, file)?))
+    }
+}
+
+impl<'db> ParseExpr<'db> for ast::generated::IndexExpression {
+    type Output = IndexExpr<'db>;
+
+    fn parse(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output> {
+        Ok(IndexExpr::new(
+            db,
+            self.children.parse(db, file)?,
+            self.index.children
+                .iter()
+                .map(|i| i.children.to_expr(db, file))
+                .collect::<anyhow::Result<Vec<_>>>()?,
+        ))
+    }
+}
+
+impl<'db> ParseExpr<'db> for ast::generated::VarAccess {
+    type Output = VarAccess;
+
+    fn parse(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output> {
+        match self.children.deref() {
+            ast::generated::ERRUnexpectedThisInPath_Field_RefDeref::ERRUnexpectedThisInPath(direct_variable) => {
+                    let diag = diag()
+                        .message("Unexpected 'this' in path".into())
+                        .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+                        .range(direct_variable.get_span())
+                        .call();
+                    DiagnosticAccumulator::accumulate(diag.into(), db);
+                
+                Err(anyhow::anyhow!("Unexpected 'this' in path"))
+            }
+            ast::generated::ERRUnexpectedThisInPath_Field_RefDeref::Field(field) => {
+                Ok(VarAccess::Simple(Ident::from_node(db, file, field)?))
+            }
+            ast::generated::ERRUnexpectedThisInPath_Field_RefDeref::RefDeref(ref_deref) => {
+                Ok(VarAccess::Deref(Ident::from_node(db, file, ref_deref.Ref.deref())?))
+            }
+        }
     }
 }

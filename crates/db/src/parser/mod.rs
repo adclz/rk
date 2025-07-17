@@ -1,18 +1,24 @@
 use auto_lsp::{anyhow, default::db::file::File};
 use salsa::Update;
 
-use crate::{hir::{expression::Expr, variable::{Spec, Variable}}, BaseDatabase};
+use crate::{
+    hir::{
+        expression::Expr,
+        variable::{Spec, Variable},
+    },
+    BaseDatabase,
+};
 
-pub mod namespace;
+pub mod class;
+pub mod data_type;
+pub mod expression;
 pub mod function;
 pub mod function_block;
-pub mod class;
-pub mod variables;
-pub mod types;
-pub mod data_type;
 pub mod interface;
-pub mod expression;
+pub mod namespace;
 pub mod statement;
+pub mod types;
+pub mod variables;
 
 trait Parse<'db>: Sized {
     type Output: Update;
@@ -62,6 +68,9 @@ impl<'db, T: ParseSpec<'db> + ParseInit<'db>> ParseSpecInit<'db> for T {
         db: &'db dyn BaseDatabase,
         file: File,
     ) -> anyhow::Result<SpecInitResult<'db>> {
-        Ok(SpecInitResult::new(self.to_spec(db, file)?, Some(self.to_init(db, file)?)))
+        Ok(SpecInitResult::new(
+            self.to_spec(db, file)?,
+            Some(self.to_init(db, file)?),
+        ))
     }
 }

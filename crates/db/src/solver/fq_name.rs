@@ -6,8 +6,12 @@ use crate::{
     ident::Ident,
     solver::namespace::namespace_path,
 };
-use auto_lsp::{anyhow, {core::span::Span}, default::db::{file::File, BaseDatabase}};
 use auto_lsp::core::ast::AstNode;
+use auto_lsp::{
+    anyhow,
+    core::span::Span,
+    default::db::{file::File, BaseDatabase},
+};
 
 #[derive(Clone, Hash, salsa::Update, Debug)]
 pub struct SpannedNamespaceAccess {
@@ -16,8 +20,15 @@ pub struct SpannedNamespaceAccess {
 }
 
 impl SpannedNamespaceAccess {
-    pub fn new(db: &dyn BaseDatabase, file: File, fq_name: &ast::generated::NamespaceAccess) -> anyhow::Result<Self> {
-        Ok(SpannedNamespaceAccess { span: fq_name.get_span(), fq_name: NamespaceAccess::from_ast(db, file, &fq_name)? })
+    pub fn new(
+        db: &dyn BaseDatabase,
+        file: File,
+        fq_name: &ast::generated::NamespaceAccess,
+    ) -> anyhow::Result<Self> {
+        Ok(SpannedNamespaceAccess {
+            span: fq_name.get_span(),
+            fq_name: NamespaceAccess::from_ast(db, file, &fq_name)?,
+        })
     }
 
     pub fn to_string(&self, db: &dyn BaseDatabase) -> String {
@@ -33,48 +44,55 @@ pub struct NamespaceAccess {
 }
 
 impl NamespaceAccess {
-    pub fn from_ast(db: &dyn BaseDatabase, file: File, fq_name: &ast::generated::NamespaceAccess) -> anyhow::Result<Self> {
-    let mut fragments = Vec::new();
+    pub fn from_ast(
+        db: &dyn BaseDatabase,
+        file: File,
+        fq_name: &ast::generated::NamespaceAccess,
+    ) -> anyhow::Result<Self> {
+        let mut fragments = Vec::new();
 
-    // Walk the tree from root down `.path` fields
-    let mut current = match fq_name.children.deref() {
-        ast::generated::Identifier_ScopedIdentifier::ScopedIdentifier(scoped) => scoped,
-        ast::generated::Identifier_ScopedIdentifier::Identifier(ident) => {
-            let target = Ident::from_node(db, file, ident)?;
-            return Ok(NamespaceAccess::new(db, None, target));
-        }
-    };
-
-    loop {
-        // Extract the target of the current scoped_identifier (e.g. m1, m2, m3...)
-        fragments.push(Ident::from_node(db, file, current.target.deref())?);
-
-        match current.path.deref() {
-            ast::generated::Identifier_ScopedIdentifier::ScopedIdentifier(next) => {
-                current = next;
+        // Walk the tree from root down `.path` fields
+        let mut current = match fq_name.children.deref() {
+            ast::generated::Identifier_ScopedIdentifier::ScopedIdentifier(scoped) => scoped,
+            ast::generated::Identifier_ScopedIdentifier::Identifier(ident) => {
+                let target = Ident::from_node(db, file, ident)?;
+                return Ok(NamespaceAccess::new(db, None, target));
             }
-            ast::generated::Identifier_ScopedIdentifier::Identifier(base) => {
-                // Reached the bottom-most path (e.g. "system")
-                fragments.push(Ident::from_node(db, file, base)?);
-                break;
+        };
+
+        loop {
+            // Extract the target of the current scoped_identifier (e.g. m1, m2, m3...)
+            fragments.push(Ident::from_node(db, file, current.target.deref())?);
+
+            match current.path.deref() {
+                ast::generated::Identifier_ScopedIdentifier::ScopedIdentifier(next) => {
+                    current = next;
+                }
+                ast::generated::Identifier_ScopedIdentifier::Identifier(base) => {
+                    // Reached the bottom-most path (e.g. "system")
+                    fragments.push(Ident::from_node(db, file, base)?);
+                    break;
+                }
             }
         }
-    }
 
-    fragments.reverse(); // Because we walked right-to-left
+        fragments.reverse(); // Because we walked right-to-left
 
-    // The last identifier pushed is the *rightmost*, so pop it off to become the target
-    let target = fragments.pop().expect("There must be at least one identifier");
+        // The last identifier pushed is the *rightmost*, so pop it off to become the target
+        let target = fragments
+            .pop()
+            .expect("There must be at least one identifier");
 
-    Ok(NamespaceAccess::new(
-        db,
-        Some(NamespacePath::from((db, fragments))),
-        target,
-    ))
+        Ok(NamespaceAccess::new(
+            db,
+            Some(NamespacePath::from((db, fragments))),
+            target,
+        ))
     }
 
     pub fn to_string(&self, db: &dyn BaseDatabase) -> String {
-        let mut path = self.namespace(db)
+        let mut path = self
+            .namespace(db)
             .map(|ns| ns.to_string(db))
             .unwrap_or_else(String::default);
         if !path.is_empty() {
@@ -113,7 +131,7 @@ pub fn fq_name_solver<'db>(
         return FqSolverResult::None;
     };
     let target = fq.target(db);
-    
+
     for n in namespace_path(db, path) {
         let Some(ns) = n.namespaces(db).get(&path) else {
             continue;
@@ -142,7 +160,12 @@ mod tests {
     use auto_lsp::{default::db::FileManager, lsp_types};
 
     use super::*;
-    use crate::{hir::namespace::{Pou, PouResult}, ident::Ident, solver::namespace::{namespaces_in_file, NamespacePath}, RootDatabase};
+    use crate::{
+        hir::namespace::{Pou, PouResult},
+        ident::Ident,
+        solver::namespace::{namespaces_in_file, NamespacePath},
+        RootDatabase,
+    };
 
     #[test]
     fn parse_fq_name() {
@@ -150,7 +173,7 @@ mod tests {
         let url = lsp_types::Url::parse("file:///test.st").unwrap();
         let source = r#"
 NAMESPACE ns
-    FUNCTION_BLOCK f IMPLEMENTS System::Subsystem::Target
+    FUNCTION_BLOCK f IMPLEMENTS System.Subsystem.Target
     END_FUNCTION_BLOCK
 END_NAMESPACE
 "#;
@@ -168,12 +191,7 @@ END_NAMESPACE
         let namespaces = namespaces_in_file(&db, file).unwrap();
 
         let ns = NamespacePath::from((&db as _, vec![Ident::new(&db, "ns".to_string())]));
-        let function = namespaces.get_pou(
-            &db,
-            ns,
-            ns,
-            Ident::new(&db, "f".to_string()),
-        );
+        let function = namespaces.get_pou(&db, ns, ns, Ident::new(&db, "f".to_string()));
 
         let PouResult::Found(pou) = function else {
             panic!("Not a function block");
@@ -183,13 +201,19 @@ END_NAMESPACE
             assert!(f.implements(&db).is_some());
 
             let implements = &f.implements(&db).unwrap()[0];
-            assert_eq!(implements.fq_name.namespace(&db).unwrap().fragments(&db).len(), 2);
+            assert_eq!(
+                implements
+                    .fq_name
+                    .namespace(&db)
+                    .unwrap()
+                    .fragments(&db)
+                    .len(),
+                2
+            );
             assert_eq!(implements.fq_name.target(&db).text(&db), "Target");
-
         } else {
             panic!("Not a function block");
         }
-
     }
 
     #[test]
@@ -217,7 +241,10 @@ END_NAMESPACE"#;
 
         let fq = NamespaceAccess::new(
             &db,
-            Some(NamespacePath::from((&db as _, vec![Ident::new(&db, "ns".to_string())]))),
+            Some(NamespacePath::from((
+                &db as _,
+                vec![Ident::new(&db, "ns".to_string())],
+            ))),
             Ident::new(&db, "f".to_string()),
         );
         let pou = fq_name_solver(&db, fq, file);
@@ -271,7 +298,10 @@ END_NAMESPACE"#;
 
         let fq = NamespaceAccess::new(
             &db,
-            Some(NamespacePath::from((&db as _, vec![Ident::new(&db, "ns".to_string())]))),
+            Some(NamespacePath::from((
+                &db as _,
+                vec![Ident::new(&db, "ns".to_string())],
+            ))),
             Ident::new(&db, "f".to_string()),
         );
         let pou = fq_name_solver(&db, fq, file);

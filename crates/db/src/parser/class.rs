@@ -8,8 +8,8 @@ use crate::parser::namespace::ParseUsing;
 use crate::parser::Parse;
 use crate::solver::fq_name::SpannedNamespaceAccess;
 use auto_lsp::anyhow;
-use auto_lsp::default::db::{BaseDatabase, file::File};
 use auto_lsp::core::ast::AstNode;
+use auto_lsp::default::db::{file::File, BaseDatabase};
 use salsa::Accumulator;
 
 impl<'db> Parse<'db> for ast::generated::ClassDecl {
@@ -25,14 +25,19 @@ impl<'db> Parse<'db> for ast::generated::ClassDecl {
         let implements = self
             .implements
             .as_ref()
-            .map(|i| i.children.iter().map(|i| SpannedNamespaceAccess::new(db, file, &i)).collect())
+            .map(|i| {
+                i.children
+                    .iter()
+                    .map(|i| SpannedNamespaceAccess::new(db, file, &i))
+                    .collect()
+            })
             .transpose()?;
 
         let mut modifiers = Modifiers::empty();
         self.qualifier.as_ref().map(|q| match q.deref() {
-            ast::generated::Operators_1::Token_ABSTRACT(_) => modifiers.insert(Modifiers::ABSTRACT),
-            ast::generated::Operators_1::Token_FINAL(_) =>  modifiers.insert(Modifiers::FINAL),
-        }); 
+            ast::generated::Operators_2::Token_ABSTRACT(_) => modifiers.insert(Modifiers::ABSTRACT),
+            ast::generated::Operators_2::Token_FINAL(_) => modifiers.insert(Modifiers::FINAL),
+        });
 
         self.children.iter().for_each(|f| {
             type Error = ast::generated::ERRExtendsMultipleTimes_ERRImplementsBeforeExtends_ERRImplementsMultipleTimes;
@@ -66,6 +71,8 @@ impl<'db> Parse<'db> for ast::generated::ClassDecl {
 
         let using = self.directives.parse_using(db, file)?;
 
-        Ok(hir::class::Class::new(db, extends, using, implements, modifiers))
+        Ok(hir::class::Class::new(
+            db, extends, using, implements, modifiers,
+        ))
     }
 }
