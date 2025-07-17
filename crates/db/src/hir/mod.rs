@@ -1,12 +1,12 @@
-pub mod namespace;
-pub mod function;
 pub mod class;
-pub mod interface;
 pub mod data_type;
+pub mod expression;
+pub mod function;
 pub mod function_block;
+pub mod interface;
+pub mod namespace;
+pub mod statement;
 pub mod variable;
 pub mod visibility;
-pub mod expression;
-pub mod statement;
 
 pub static COMPLETION_MARKER: &str = "い";

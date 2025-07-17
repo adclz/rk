@@ -4,7 +4,10 @@ use auto_lsp::{
     lsp_types::{CompletionItem, SymbolKind},
 };
 
-use crate::{hir::{expression::Expr, variable::Spec}, solver::fq_name::SpannedNamespaceAccess};
+use crate::{
+    hir::{expression::Expr, variable::Spec},
+    solver::fq_name::SpannedNamespaceAccess,
+};
 
 #[derive(bon::Builder, Debug, Clone)]
 pub struct SymbolInfo<'a> {
@@ -84,7 +87,11 @@ pub trait ToProto<'db> {
     fn symbol_info(&'db self, _db: &'db dyn crate::BaseDatabase) -> Option<SymbolInfo<'db>> {
         None
     }
-    fn completion_ctx(&'db self, _db: &'db dyn crate::BaseDatabase, _offset: usize) -> Option<Vec<CompletionItem>> {
+    fn completion_ctx(
+        &'db self,
+        _db: &'db dyn crate::BaseDatabase,
+        _offset: usize,
+    ) -> Option<Vec<CompletionItem>> {
         None
     }
 }

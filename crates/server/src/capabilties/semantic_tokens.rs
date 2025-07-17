@@ -67,7 +67,7 @@ static QUERY: &str = r#"
         (type_decl name: (identifier) @declaration.type)
 
         ["PUBLIC" "PROTECTED" "PRIVATE" "INTERNAL"
-            (assignment) (ref_assign) (assignment_attempt)
+            (assignment) (assignment_attempt)
         ] @keyword.modifiers
         
         [

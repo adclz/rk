@@ -1,4 +1,3 @@
-
 use std::collections::HashMap;
 
 use auto_lsp::core::errors::{LexerError, ParseError, ParseErrorAccumulator};
@@ -123,7 +122,10 @@ pub fn add_fixes_to_parse_errors(
                             .is_preferred(true)
                             .edit(WorkspaceEdit::new(HashMap::from([(
                                 file.url(db).clone(),
-                                vec![edit().new_text("".to_string()).range(span.clone().into()).call()],
+                                vec![edit()
+                                    .new_text("".to_string())
+                                    .range(span.clone().into())
+                                    .call()],
                             )])))
                             .call(),
                     );
@@ -131,7 +133,10 @@ pub fn add_fixes_to_parse_errors(
                 } else if KEYWORDS.contains(affected.split_whitespace().next().unwrap_or("")) {
                     diag()
                         .range(span.clone().into())
-                        .message(format!("{} is a reserved keyword that is not valid in this context", affected.split_whitespace().next().unwrap_or("")))
+                        .message(format!(
+                            "{} is a reserved keyword that is not valid in this context",
+                            affected.split_whitespace().next().unwrap_or("")
+                        ))
                         .source("IEC".into())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                         .related_information(vec![DiagnosticRelatedInformation {
@@ -139,7 +144,10 @@ pub fn add_fixes_to_parse_errors(
                                 uri: file.url(db).clone(),
                                 range: span.clone().into(),
                             },
-                            message: format!("help: remove or replace '{}'", affected.split_whitespace().next().unwrap_or("")),
+                            message: format!(
+                                "help: remove or replace '{}'",
+                                affected.split_whitespace().next().unwrap_or("")
+                            ),
                         }])
                         .call()
                 } else {
@@ -151,20 +159,21 @@ pub fn add_fixes_to_parse_errors(
         .collect()
 }
 
-
 #[cfg(test)]
 mod tests {
-    use auto_lsp::{core::errors::ParseErrorAccumulator, default::db::{file::File, tracked::get_ast, BaseDatabase, FileManager}, lsp_types};
     use super::*;
     use crate::RootDatabase;
+    use auto_lsp::{
+        core::errors::ParseErrorAccumulator,
+        default::db::{file::File, tracked::get_ast, BaseDatabase, FileManager},
+        lsp_types,
+    };
 
     #[test]
     fn missing_identifier() {
-        
         let mut db = RootDatabase::default();
         let url = lsp_types::Url::parse("file:///test.st").unwrap();
-        let source = 
-            r#"
+        let source = r#"
 NAMESPACE 
 END_NAMESPACE"#;
 
@@ -173,26 +182,27 @@ END_NAMESPACE"#;
             .parsers(ast::RK_PARSER.get("structured_text").unwrap())
             .url(&url)
             .source(source.to_string())
-            .call().unwrap();
+            .call()
+            .unwrap();
 
         db.add_file(file).unwrap();
-
 
         let file = db.get_file(&url).unwrap();
         let mut diagnostics = get_ast::accumulated::<ParseErrorAccumulator>(&db, file);
         let lexer_errors = add_fixes_to_parse_errors(&db, &file, &mut diagnostics);
 
         assert_eq!(lexer_errors.len(), 1);
-        assert_eq!(lexer_errors[0].diagnostic.message, "Syntax error: Missing 'identifier'");
+        assert_eq!(
+            lexer_errors[0].diagnostic.message,
+            "Syntax error: Missing 'identifier'"
+        );
     }
 
-        #[test]
+    #[test]
     fn unexpected_token() {
-        
         let mut db = RootDatabase::default();
         let url = lsp_types::Url::parse("file:///test.st").unwrap();
-        let source = 
-            r#"
+        let source = r#"
 NAMESPACE ns :
 END_NAMESPACE"#;
 
@@ -201,27 +211,27 @@ END_NAMESPACE"#;
             .parsers(ast::RK_PARSER.get("structured_text").unwrap())
             .url(&url)
             .source(source.to_string())
-            .call().unwrap();
+            .call()
+            .unwrap();
 
         db.add_file(file).unwrap();
-
 
         let file = db.get_file(&url).unwrap();
         let mut diagnostics = get_ast::accumulated::<ParseErrorAccumulator>(&db, file);
         let lexer_errors = add_fixes_to_parse_errors(&db, &file, &mut diagnostics);
 
         assert_eq!(lexer_errors.len(), 1);
-        assert_eq!(lexer_errors[0].diagnostic.message, "Unexpected token(s): ':'");
+        assert_eq!(
+            lexer_errors[0].diagnostic.message,
+            "Unexpected token(s): ':'"
+        );
     }
-
 
     #[test]
     fn reserved_keyword() {
-        
         let mut db = RootDatabase::default();
         let url = lsp_types::Url::parse("file:///test.st").unwrap();
-        let source = 
-            r#"
+        let source = r#"
 NAMESPACE first
     FUNCTION
 
@@ -235,26 +245,27 @@ END_NAMESPACE"#;
             .parsers(ast::RK_PARSER.get("structured_text").unwrap())
             .url(&url)
             .source(source.to_string())
-            .call().unwrap();
+            .call()
+            .unwrap();
 
         db.add_file(file).unwrap();
-
 
         let file = db.get_file(&url).unwrap();
         let mut diagnostics = get_ast::accumulated::<ParseErrorAccumulator>(&db, file);
         let lexer_errors = add_fixes_to_parse_errors(&db, &file, &mut diagnostics);
 
         assert_eq!(lexer_errors.len(), 1);
-        assert_eq!(lexer_errors[0].diagnostic.message, "FUNCTION is a reserved keyword that is not valid in this context");
+        assert_eq!(
+            lexer_errors[0].diagnostic.message,
+            "FUNCTION is a reserved keyword that is not valid in this context"
+        );
     }
 
-       #[test]
+    #[test]
     fn reserved_keyword_in_expression() {
-        
         let mut db = RootDatabase::default();
         let url = lsp_types::Url::parse("file:///test.st").unwrap();
-        let source = 
-            r#"
+        let source = r#"
 NAMESPACE first
     FUNCTION
 
@@ -268,17 +279,19 @@ END_NAMESPACE"#;
             .parsers(ast::RK_PARSER.get("structured_text").unwrap())
             .url(&url)
             .source(source.to_string())
-            .call().unwrap();
+            .call()
+            .unwrap();
 
         db.add_file(file).unwrap();
-
 
         let file = db.get_file(&url).unwrap();
         let mut diagnostics = get_ast::accumulated::<ParseErrorAccumulator>(&db, file);
         let lexer_errors = add_fixes_to_parse_errors(&db, &file, &mut diagnostics);
 
         assert_eq!(lexer_errors.len(), 1);
-        assert_eq!(lexer_errors[0].diagnostic.message, "FUNCTION is a reserved keyword that is not valid in this context");
+        assert_eq!(
+            lexer_errors[0].diagnostic.message,
+            "FUNCTION is a reserved keyword that is not valid in this context"
+        );
     }
-
 }

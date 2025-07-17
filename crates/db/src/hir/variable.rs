@@ -1,7 +1,14 @@
-use auto_lsp::{core::span::Span, default::db::{file::File, BaseDatabase}};
+use auto_lsp::{
+    core::span::Span,
+    default::db::{file::File, BaseDatabase},
+};
 
-use crate::{hir::expression::Expr, ident::Ident, solver::fq_name::NamespaceAccess, to_proto::{SymbolInfo, ToProto}};
-
+use crate::{
+    hir::expression::Expr,
+    ident::Ident,
+    solver::fq_name::NamespaceAccess,
+    to_proto::{SymbolInfo, ToProto},
+};
 
 #[salsa::tracked]
 pub struct Variable<'db> {
@@ -39,7 +46,6 @@ pub enum VariableKind {
     LocPartly,
 }
 
-
 impl<'db> ToProto<'db> for Variable<'db> {
     fn spanned(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         self.range(db).into()
@@ -50,14 +56,16 @@ impl<'db> ToProto<'db> for Variable<'db> {
     }
 
     fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> Option<SymbolInfo<'db>> {
-        Some(SymbolInfo::builder()
-        .kind(auto_lsp::lsp_types::SymbolKind::VARIABLE)
-        .name(self.name(db).text(db))
-        .range(self.range(db).clone())
-        .name_range(self.name_span(db).clone())
-        .spec(self.spec(db))
-        .maybe_init(self.init(db))
-        .build())
+        Some(
+            SymbolInfo::builder()
+                .kind(auto_lsp::lsp_types::SymbolKind::VARIABLE)
+                .name(self.name(db).text(db))
+                .range(self.range(db).clone())
+                .name_range(self.name_span(db).clone())
+                .spec(self.spec(db))
+                .maybe_init(self.init(db))
+                .build(),
+        )
     }
 }
 
@@ -101,7 +109,7 @@ pub enum Spec<'db> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Array {
-    subrange: Vec<[Ident; 2]>
+    subrange: Vec<[Ident; 2]>,
 }
 
 #[salsa::tracked(debug)]

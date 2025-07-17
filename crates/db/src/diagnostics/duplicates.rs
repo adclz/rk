@@ -270,9 +270,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
         use Literal::AnyNumeric;
 
         match self.expr(db) {
-            ExprKind::PrimaryExpr {
-                expr: PrimaryExpr::Literal(lit),
-            } => {
+            ExprKind::PrimaryExpr(PrimaryExpr::Literal(lit))=> {
                 let result = match spec {
                     Spec::Bool => matches!(lit, Literal::Bool(_)),
                     Spec::Byte => matches!(lit, Literal::Byte(_) | AnyNumeric(_)),

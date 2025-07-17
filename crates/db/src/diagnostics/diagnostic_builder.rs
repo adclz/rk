@@ -1,8 +1,9 @@
 use auto_lsp::{
-    core::span::Span, lsp_types::{
+    core::span::Span,
+    lsp_types::{
         self, CodeAction, CodeActionKind, DiagnosticRelatedInformation, DiagnosticSeverity,
         DiagnosticTag, NumberOrString, TextEdit,
-    }
+    },
 };
 
 use crate::diagnostics::IdeDiagnostic;

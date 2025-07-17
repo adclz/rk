@@ -1,6 +1,10 @@
 #![allow(non_snake_case)]
 
-use auto_lsp::{anyhow, core::ast::AstNode, default::db::{BaseDatabase, file::File}};
+use auto_lsp::{
+    anyhow,
+    core::ast::AstNode,
+    default::db::{file::File, BaseDatabase},
+};
 
 /// Interned identifier
 #[salsa::interned(debug, no_lifetime)]
@@ -9,10 +13,13 @@ pub struct Ident {
     pub text: String,
 }
 
-
 #[salsa::tracked]
 impl<'db> Ident {
-    pub fn from_node(db: &dyn BaseDatabase, file: File, node: &impl AstNode) -> anyhow::Result<Self> {
+    pub fn from_node(
+        db: &dyn BaseDatabase,
+        file: File,
+        node: &impl AstNode,
+    ) -> anyhow::Result<Self> {
         Ok(Ident::new(db, node.get_text(file.document(db).as_bytes())?))
     }
 
@@ -83,7 +90,6 @@ impl<'db> Ident {
         self.text(db).as_str().parse::<f64>().ok()
     }
 }
-
 
 #[salsa::tracked]
 impl Ident {
@@ -318,7 +324,7 @@ mod tests {
         assert!(Ident::new(&db, "18446744073709551615".to_string()).is_ULINT(&db));
         assert!(!Ident::new(&db, "18446744073709551616".to_string()).is_ULINT(&db));
         assert!(!Ident::new(&db, "-1".to_string()).is_ULINT(&db));
-    }       
+    }
 
     #[test]
     fn is_REAL() {
@@ -343,4 +349,4 @@ mod tests {
         assert!(Ident::new(&db, "1.1e+1".to_string()).is_LREAL(&db));
         assert!(!Ident::new(&db, "1.1e1.1".to_string()).is_LREAL(&db));
     }
-} 
+}

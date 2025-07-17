@@ -1,11 +1,6 @@
-
-use crate::solver::fq_name::NamespaceAccess;
-use crate::to_proto::{ToProto};
 use crate::ident::Ident;
-use auto_lsp::anyhow;
-use auto_lsp::core::ast::AstNode;
+use crate::to_proto::ToProto;
 use auto_lsp::core::span::Span;
-use auto_lsp::default::db::file::File;
 use auto_lsp::default::db::BaseDatabase;
 use bitflags::bitflags;
 
@@ -16,53 +11,6 @@ pub struct Expr<'db> {
 
     #[returns(ref)]
     pub expr: ExprKind<'db>,
-}
-
-impl<'db> ToProto<'db> for Expr<'db> {
-    fn spanned(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
-        self.span(db)
-    }
-
-    fn named_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
-        self.span(db)
-    }
-}
-
-/*fn self_iter<'db>(
-    s: &'db impl ToProto<'db>,
-    db: &dyn BaseDatabase,
-) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-    std::iter::once::<&'db dyn ToProto<'db>>(s)
-}*/
-
-impl<'db> Expr<'db> {
-    pub fn new_literal(
-        db: &'db dyn BaseDatabase,
-        span: auto_lsp::tree_sitter::Range,
-        literal: Literal,
-    ) -> Expr<'db> {
-        Expr::new(
-            db,
-            span.into(),
-            ExprKind::PrimaryExpr {
-                expr: PrimaryExpr::Literal(literal),
-            },
-        )
-    }
-
-    pub fn new_target(
-        db: &'db dyn BaseDatabase,
-        file: File,
-        fq_name: &'db ast::generated::NamespaceAccess,
-    ) -> anyhow::Result<Expr<'db>> {
-        Ok(Expr::new(
-            db,
-            fq_name.get_span().into(),
-            ExprKind::PrimaryExpr {
-                expr: PrimaryExpr::Target(NamespaceAccess::from_ast(db, file, fq_name)?),
-            },
-        ))
-    }
 }
 
 bitflags! {
@@ -92,9 +40,7 @@ bitflags! {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ExprKind<'db> {
-    PrimaryExpr {
-        expr: PrimaryExpr<'db>,
-    },
+    PrimaryExpr(PrimaryExpr<'db>),
     BooleanOperator {
         left: Expr<'db>,
         operator: Operator,
@@ -127,15 +73,14 @@ pub enum ExprKind<'db> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum PrimaryExpr<'db> {
-    Literal(Literal),
+    Literal(Literal), // constant
     // Path --> Target
-    Target(NamespaceAccess),
     VariableAccess {
         variable: Variable<'db>,
         multibits: MultibitsPart,
     },
     FuncCall {
-        expr: Expr<'db>,
+        path: PathExpr<'db>,
         params: Vec<ParamAssign<'db>>,
     },
     RefValue {
@@ -146,27 +91,41 @@ pub enum PrimaryExpr<'db> {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update, salsa::Supertype)]
+pub enum PathExpr<'db> {
+    Field(FieldExpr<'db>), // .
+    Index(IndexExpr<'db>), // []
+    VarAccess(VarAccess),  // Variable access (e.g. "var" or "var^")
+}
+
+#[salsa::tracked(debug)]
+pub struct FieldExpr<'db> {
+    path: PathExpr<'db>,
+    var: VarAccess,
+}
+
+#[salsa::tracked(debug)]
+pub struct IndexExpr<'db> {
+    path: PathExpr<'db>,
+    index: Vec<Expr<'db>>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum MultibitsPart {
-    Offset { offset: Ident },
+    Offset(Ident),
     SizedOffset { size: SizeOperator, offset: Ident },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum RefValue<'db> {
-    Address { adress: RefAdress<'db> },
+    Address(RefAdress<'db>),
     Null,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum RefAdress<'db> {
-    Symbolic {
-        this: bool,
-        kind: SymbolicVariableKind<'db>,
-    },
-    Instance {
-        instance: Ident,
-    },
+    Symbolic(SymbolicVariable<'db>),
+    Instance(Ident),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -205,30 +164,16 @@ pub enum Variable<'db> {
         partly: bool,
         offset: Option<Ident>,
     },
-    Symbolic {
-        this: bool,
-        kind: SymbolicVariableKind<'db>,
-    },
+    Symbolic(SymbolicVariable<'db>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum SymbolicVariableKind<'db> {
-    VarAccess {
-        access: VarAccess,
-    },
-    MultiElemVar {
-        base: VarAccess,
-        elements: Vec<MultiElemVarElement<'db>>,
-    },
+pub struct SymbolicVariable<'db> {
+    pub this: bool,
+    pub kind: PathExpr<'db>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum MultiElemVarElement<'db> {
-    Subscript { expr: Vec<Expr<'db>> },   // []
-    StructVariable { access: VarAccess }, // .
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update, salsa::Supertype)]
 pub enum VarAccess {
     Simple(Ident),
     Deref(Ident), // ^
@@ -332,5 +277,36 @@ impl Literal {
             Literal::DateTime(ident) => format!("DateTime {}", ident.text(db)),
             Literal::LDateTime(ident) => format!("LDateTime {}", ident.text(db)),
         }
+    }
+}
+
+impl<'db> ToProto<'db> for Expr<'db> {
+    fn spanned(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
+        self.span(db)
+    }
+
+    fn named_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
+        self.span(db)
+    }
+}
+
+/*fn self_iter<'db>(
+    s: &'db impl ToProto<'db>,
+    db: &dyn BaseDatabase,
+) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+    std::iter::once::<&'db dyn ToProto<'db>>(s)
+}*/
+
+impl<'db> Expr<'db> {
+    pub fn new_literal(
+        db: &'db dyn BaseDatabase,
+        span: auto_lsp::tree_sitter::Range,
+        literal: Literal,
+    ) -> Expr<'db> {
+        Expr::new(
+            db,
+            span.into(),
+            ExprKind::PrimaryExpr(PrimaryExpr::Literal(literal)),
+        )
     }
 }

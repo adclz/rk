@@ -1,6 +1,6 @@
 use auto_lsp::core::span::Span;
 
-use crate::hir::expression::{Expr, Variable};
+use crate::hir::expression::{Expr, ParamAssign, PathExpr, SymbolicVariable, Variable};
 
 #[salsa::tracked(debug)]
 pub struct Stmt<'db> {
@@ -16,19 +16,18 @@ pub enum StmtKind<'db> {
         var: Variable<'db>,
         target: Expr<'db>,
     },
-    RefAssign{
-        var: Variable<'db>,
-        target: Expr<'db>,
-    },
     AssignmentAttempt {
         var: Variable<'db>,
-        target: Expr<'db>,
+        target: Expr<'db>, // todo: replace with ref or identifier
     },
-    FuncCall{
-        target: Expr<'db>, // fq_path
-        params: Vec<ParamAssign>, // parameter_list
+    FuncCall {
+        target: PathExpr<'db>,
+        params: Vec<ParamAssign<'db>>, // parameter_list
     },
-    // Invocation(Invocation<'db>), // todo: must be fixed in the grammar
+    Invocation {
+        target: SymbolicVariable<'db>,
+        params: Vec<ParamAssign<'db>>, // parameter_list
+    },
     Super,
     Return,
     If {
@@ -37,33 +36,26 @@ pub enum StmtKind<'db> {
         else_if: Vec<(Expr<'db>, Vec<Stmt<'db>>)>,
         else_: Option<Vec<Stmt<'db>>>,
     },
-    Case{
+    Case {
         condition: Expr<'db>,
         cases: Vec<(Vec<Expr<'db>>, Vec<Stmt<'db>>)>,
         else_: Option<Vec<Stmt<'db>>>,
     },
-    For{
+    For {
         control_variable: Expr<'db>,
         start: Expr<'db>,
         end: Expr<'db>,
         step: Option<Expr<'db>>,
         body: Vec<Stmt<'db>>,
     },
-    While{
+    While {
         condition: Expr<'db>,
         body: Vec<Stmt<'db>>,
     },
-    Repeat{
+    Repeat {
         body: Vec<Stmt<'db>>,
         condition: Expr<'db>,
     },
     Exit,
-    Continue
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum ParamAssign {
-    ParamAssignInput,
-    RefAssign,
-    ParamAssignOutput,
+    Continue,
 }

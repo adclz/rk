@@ -2,17 +2,18 @@ use std::{ops::Deref, sync::Arc};
 
 use auto_lsp::{
     core::errors::ParseErrorAccumulator,
-    default::db::{tracked::get_ast, BaseDatabase, file::File},
+    default::db::{file::File, tracked::get_ast, BaseDatabase},
 };
 
 use crate::diagnostics::{
-    duplicates::duplicate_declarations, lexer::add_fixes_to_parse_errors, lints::get_duplicates_by_query,
+    duplicates::duplicate_declarations, lexer::add_fixes_to_parse_errors,
+    lints::get_duplicates_by_query,
 };
 
+pub mod diagnostic_builder;
 pub mod duplicates;
 pub mod lexer;
 pub mod lints;
-pub mod diagnostic_builder;
 pub mod literals;
 
 #[derive(Debug, Clone)]

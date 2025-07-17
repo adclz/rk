@@ -1,7 +1,13 @@
 use auto_lsp::{core::span::Span, default::db::BaseDatabase};
 
 use crate::{
-    hir::{namespace::Using, variable::{Spec, Variable}}, ident::Ident, solver::fq_name::SpannedNamespaceAccess, to_proto::{IterToProto, SymbolInfo, ToProto}
+    hir::{
+        namespace::Using,
+        variable::{Spec, Variable},
+    },
+    ident::Ident,
+    solver::fq_name::SpannedNamespaceAccess,
+    to_proto::{IterToProto, SymbolInfo, ToProto},
 };
 
 #[salsa::tracked]
@@ -49,13 +55,15 @@ impl<'db> ToProto<'db> for Method<'db> {
     }
 
     fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> Option<SymbolInfo<'db>> {
-        Some(SymbolInfo::builder()
-            .kind(auto_lsp::lsp_types::SymbolKind::METHOD)
-            .name(self.name(db).text(db))
-            .range(self.range(db).clone())
-            .name_range(self.name_span(db).clone())
-            .maybe_spec(self.return_type(db).cloned())
-            .build())
+        Some(
+            SymbolInfo::builder()
+                .kind(auto_lsp::lsp_types::SymbolKind::METHOD)
+                .name(self.name(db).text(db))
+                .range(self.range(db).clone())
+                .name_range(self.name_span(db).clone())
+                .maybe_spec(self.return_type(db).cloned())
+                .build(),
+        )
     }
 }
 
