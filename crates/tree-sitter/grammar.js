@@ -18,8 +18,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>
 
 
 /**
- * @file Structured Text grammar for tree-sitter
- * @author CLAUZEL Adrien <clauzeladrien@mail.com>
+ * @file Iec61131-3 grammar for tree-sitter
+ * @author CLAUZEL Adrien <clauzeladrien@gmail.com>
  * @license AGPL-3.0-only
  */
 
@@ -77,7 +77,7 @@ const other_var_decls = $ => [
 ]
 
 // Precedences from the standard
-const PREC = {
+const RK_PREC = {
     expression: 11,
     parameter_list: 10, // _ (parameter_list)
     dereference: 9, // ^
@@ -127,16 +127,12 @@ const RESERVED_NAMES = [
     "WHILE", "END_WHILE",
     "DO",
     "EXIT", "RETURN",
-    // Types
-    "BOOL", "BYTE", "WORD", "DWORD", "LWORD",
-    "SINT", "INT", "DINT", "LINT",
-    "USINT", "UINT", "UDINT", "ULINT",
-    "REAL", "LREAL",
-    "CHAR", "WCHAR",
-    "STRING", "WSTRING",
-    "DATE", "TIME", "DT", "TOD", "LDATE", "LTIME", "LDT", "LTOD",
     // References
     "AT", "%", "REF_TO", "REF",
+    // Statements
+    "IF", "THEN", "ELSE", "ELSIF", "END_IF",
+    "CASE", "OF", "END_CASE",
+    "FOR", "TO", "BY", "END_FOR"
 ];
 
 /// <reference types="tree-sitter-cli/dsl" />
@@ -183,18 +179,23 @@ module.exports = grammar({
         $.eq,
         $.ord,
 
-        $._stmt
+        $._stmt,
+
+        // literals
+        $.any_time_type_name,
+        $.any_date_type_name,
+        $.any_tod_type_name,
+        $.any_dt_type_name,
     ],
 
     conflicts: $ => [
-        // conflicts in type declarations
+        // Enum and subrange declarations always start with a number,
+        // but the initialization will always be tightly bound to the type
         [$.numeric_literal, $.enum_value_spec],
         [$.subrange_type_spec, $.numeric_type_name],
-
-        [$.symbolic_variable, $.multi_elem_var],
-        [$.global_ref_deref, $.var_access],
-
-        [$.var_access, $.namespace_access],
+        
+        [$.symbolic_variable, $.field_expression],
+        [$.symbolic_variable, $.func_call]
     ],
 
     word: $ => $.identifier,
@@ -232,6 +233,11 @@ module.exports = grammar({
         ERR_variable_with_no_spec: $ => prec(-1, $.identifier),
         ERR_invalid_edge_qualifier: $ => prec(-1, /[FR](_(E(D(G)?)?)?)?/),
 
+        // Expressions
+        ERR_assign_func_call: $ => prec(-1, $.func_call),
+        ERR_invocation_in_expr_context: $ => prec(-1, $.invocation),
+        ERR_unexpected_this_in_path: $ => prec(-1, "THIS"),
+
         // Table 3 - Comments 
 
         line_comment: $ => token(seq('//', /.*/)),
@@ -256,7 +262,7 @@ module.exports = grammar({
 
         // Table 5 - Numeric literal
 
-        constant: $ => choice(
+        constant: $ =>choice(
             $.numeric_literal,
             $.char_literal,
             $.time_literal,
@@ -306,7 +312,7 @@ module.exports = grammar({
         ),
 
         real_literal: $ => seq(
-            field("type", optional($.real_type_name)),
+            optional(seq(field("type", $.real_type_name), "#")),
             field("value", $.real_value)
         ),
 
@@ -315,26 +321,32 @@ module.exports = grammar({
             ".",
             $.unsigned_int,
             optional(seq(
-                choice("e", "E"),
+                /[eE]/,
                 field("exp", $.signed_int)
             ))
         ),
 
-        bool_literal: $ => seq(
-            field("type", optional('BOOL#')),
-            // fixme! Add support for numbers in auto-lsp
-            field("value", choice('TRUE', 'FALSE'))
+        bool_literal: $ => choice(
+            $.bool_literal_with_string,
+            $.bool_literal_with_numeric
         ),
+
+        bool_literal_with_string: $ => seq(
+                optional("BOOL#"),
+                field("value", choice('TRUE', 'FALSE'))
+            ),
+        bool_literal_with_numeric: $ => seq('BOOL#', field("value", choice('0', '1'))),
 
         // Table 6 - Character String literals
         // Table 7 - Two-character combinations in character strings
 
         char_literal: $ => seq(
-            optional('STRING#'),
-            field("char", $.char_str)
+            optional(seq(field("kind", $.string_type_name), "#")),
+            field("value", $.char_str)
         ),
 
         char_str: $ => choice(
+            prec(-1, $.hex_int),
             $._s_byte_char_str,
             $._d_byte_char_str
         ),
@@ -365,7 +377,7 @@ module.exports = grammar({
             seq("$", repeat1($._hex_digit))
         ),
 
-        _common_char_value: $ => token(choice(
+        _common_char_value: $ => choice(
             /[ !#%&]/,
             /[\(\)\*\+,\-\.\/]/,
             /[0-9]/,
@@ -380,7 +392,7 @@ module.exports = grammar({
             "$P",
             "$R",
             "$T"
-        )),
+        ),
 
         // Table 8 - Duration literals
         // Table 9 – Date and time of day literals 
@@ -398,20 +410,18 @@ module.exports = grammar({
         ),
 
         time: $ => seq(
-            choice('T', 'TIME'),
-            '#',
+            alias(/(TIME|T|time|t)#/, $.time_type_name),
             field("sign", optional(choice('+', '-'))),
             field("value", $.time_value)
         ),
 
         ltime: $ => seq(
-            choice('LT', 'LTIME'),
-            '#',
+            alias(/(LTIME|LT|ltime|lt)#/, $.l_time_type_name),
             field("sign", optional(choice('+', '-'))),
             field("value", $.time_value)
         ),
 
-        time_value: $ => /([0-9._]+(d|h|ms|ns|m|s))+/,
+        time_value: $ => /([0-9._]+(d|h|ms|ns|m|s|us|ns))+/,
 
         fix_point: $ => seq(
             field("real", $.unsigned_int),
@@ -425,14 +435,12 @@ module.exports = grammar({
         ),
 
         tod: $ => seq(
-            choice('TOD', 'TIME_OF_DAY'),
-            '#',
+            alias(/(TOD|TIME_OF_DAY|tod)#/, $.tod_type_name),
             field("value", $.daytime)
         ),
 
         ltod: $ => seq(
-            choice('LTOD', 'LTIME_OF_DAY'),
-            '#',
+            alias(/(LTOD|LTIME_OF_DAY|ltod)#/, $.ltod_type_name),
             field("value", $.daytime)
         ),
 
@@ -444,14 +452,12 @@ module.exports = grammar({
         ),
 
         short_date: $ => seq(
-            choice('D', 'DATE'),
-            '#',
+            alias(/(DATE|D|date|d)#/, $.date_type_name),
             field("value", $.date_literal)
         ),
 
         long_date: $ => seq(
-            choice('LD', 'LDATE'),
-            '#',
+            alias(/(LDATE|LD|ldate|ld)#/, $.date_type_name),
             field("value", $.date_literal)
         ),
 
@@ -463,18 +469,24 @@ module.exports = grammar({
         ),
 
         short_date_and_time: $ => seq(
-            choice('DT', 'DATE_AND_TIME'),
-            '#',
+            alias(/(DATE_AND_TIME|DT)#/, $.date_and_time_type_name),
             field("value", $.date_and_daytime)
         ),
 
         long_date_and_time: $ => seq(
-            choice('LDT', 'LDATE_AND_TIME'),
-            '#',
+            alias(/(LDATE_AND_TIME|LDT)#/, $.l_date_and_time_type_name),
             field("value", $.date_and_daytime)
         ),
 
-        date_and_daytime: $ => /[0-9dhmsDHMS_.]+/,
+        any_date_and_time_type_name: $ => choice(
+            $.date_and_time_type_name,
+            $.l_date_and_time_type_name,
+        ),
+
+        date_and_time_type_name: $ => /DATE_AND_TIME|DT/,
+        l_date_and_time_type_name: $ => /LDATE_AND_TIME|LDT/,
+
+        date_and_daytime: $ => /[0-9dhmsDHMS_.:-]+/,
 
         // Table 10 - Elementary data types
 
@@ -486,10 +498,10 @@ module.exports = grammar({
         _elem_type_name: $ => choice(
             $.numeric_type_name,
             $.bit_str_type_name,
-            $.date_type_name,
-            $.time_type_name,
-            $.tod_type_name,
-            $.dt_type_name
+            $.any_date_type_name,
+            $.any_time_type_name,
+            $.any_tod_type_name,
+            $.any_dt_type_name
         ),
 
         numeric_type_name: $ => choice(
@@ -528,25 +540,37 @@ module.exports = grammar({
             'WCHAR'
         ),
 
-        time_type_name: $ => choice(
-            alias('TIME', $.time_name),
-            alias('LTIME', $.ltime_name)
+        any_time_type_name: $ => choice(
+            $.time_type_name,
+            $.l_time_type_name
         ),
 
-        date_type_name: $ => choice(
-            alias('DATE', $.date_name),
-            alias('LDATE', $.ldate_name),
+        time_type_name: $ => /TIME|T|time|t/,
+        l_time_type_name: $ => /LTIME|LT|ltime|lt/,
+
+        any_date_type_name: $ => choice(
+            $.date_type_name,
+            $.l_date_type_name,
         ),
 
-        tod_type_name: $ => choice(
-            alias(choice('TOD', 'TIME_OF_DAY'), $.tod_name),
-            alias(choice('LTOD', 'LTIME_OF_DAY'), $.ltod_name),
+        date_type_name: $ => /DATE|D|date|d/,
+        l_date_type_name: $ => /LDATE|LD|ldate|ld/,
+
+        any_tod_type_name: $ => choice(
+            $.tod_type_name,
+            $.ltod_type_name
+        ),
+        
+        tod_type_name: $ => /TOD|TIME_OF_DAY|tod/,
+        ltod_type_name: $ => /LTOD|LTIME_OF_DAY|ltod/,
+
+        any_dt_type_name: $ => choice(
+            $.dt_type_name,
+            $.l_dt_type_name
         ),
 
-        dt_type_name: $ => choice(
-            alias(choice('DT', 'DATE_AND_TIME'), $.dt_name),
-            alias('LDT', $.ldt_name)
-        ),
+        dt_type_name: $ => /DATE_AND_TIME|DT/,
+        l_dt_type_name: $ => /LDATE_AND_TIME|LDT/,
 
         bit_str_type_name: $ => choice(
             alias('BOOL', $.bool_name),
@@ -770,40 +794,27 @@ module.exports = grammar({
             ')'
         ),
 
-        ref_assign: $ => seq(
-            ':=',
-            choice($.ref_deref)
-        ),
-
-        ref_deref: $ => prec(PREC.dereference, seq(
-            $.identifier,
+        ref_deref: $ => prec(RK_PREC.dereference, seq(
+            field("ref", $.identifier),
             '^'
         )),
 
         // Table 13 - Declaration of variables/Table 14 – Initialization of variables 
 
-        variable: $ => choice($.direct_variable, $.symbolic_variable),
+        variable: $ => choice($.symbolic_variable, $.direct_variable),
 
         symbolic_variable: $ => seq(
-            field("this", alias(optional(seq('THIS', '.')), $.this)),
-            choice(
-                $.var_access,
-                $.multi_elem_var,
-            )),
-
-        // Var_Access : Variable_Name | Ref_Deref; 
-        var_access: $ => choice($.identifier, $.ref_deref),
-
-        multi_elem_var: $ => seq(
-            field("access", $.var_access),
-            prec.left(repeat1(choice($.subscript_list, $.struct_variable)))
+            field("this", optional($.this)),
+            $.path_expression
         ),
 
-        subscript_list: $ => seq('[', commaSep($._expression), ']'),
+        this: $ => seq("THIS", "."),
 
-        struct_variable: $ => seq(
-            '.',
-            $.var_access
+        // Var_Access : Variable_Name | Ref_Deref; 
+        var_access: $ => choice(
+            $.ERR_unexpected_this_in_path,
+            alias($.identifier, $.field),
+            $.ref_deref,
         ),
 
         input_decls: $ => seq(
@@ -1182,7 +1193,7 @@ module.exports = grammar({
 
         class_type_name: $ => $.identifier,
 
-        instance_name: $ => prec(PREC.dereference, seq(
+        instance_name: $ => prec(RK_PREC.dereference, seq(
             field("name", $.identifier),
             repeat1('^')
         )),
@@ -1352,7 +1363,9 @@ module.exports = grammar({
             'CONFIGURATION',
             field("name", $.config_name),
             field("global_variables", optional($.global_var_decls)),
-            field("ressources", choice($.single_resource_decl, repeat1($.resource_decl))),
+            field("resources", repeat1(choice($.single_resource_decl, $.resource_decl))),
+            //field("access_decls", optional($.access_decls)),
+            field("config_init", optional($.config_init)),
             'END_CONFIGURATION'
         ),
 
@@ -1362,17 +1375,17 @@ module.exports = grammar({
             'ON',
             field("resource_type_name", $.resource_type_name),
             field("global_variables", optional($.global_var_decls)),
-            field("ressource", $.single_resource_decl),
+            field("resource", $.single_resource_decl),
             'END_RESOURCE'
         ),
 
-        single_resource_decl: $ => seq(
+        single_resource_decl: $ => prec.left(seq(
             repeat(seq($.task_config, ';')),
             repeat1(seq($.prog_config, ';'))
-        ),
+        )),
 
         access_decls: $ => seq(
-            'ref_deref',
+            'VAR_ACCESS',
             repeat(seq($.access_decl, optional(';'))),
             'END_VAR',
             optional(';')
@@ -1394,12 +1407,6 @@ module.exports = grammar({
                 $.symbolic_variable
             )
         ),
-
-        global_ref_deref: $ => prec.left(seq(
-            seq(field("ressource", $.identifier), '.'),
-            field("name", $.identifier),
-            optional(seq('.', field("struct", $.identifier)))
-        )),
 
         access_name: $ => $.identifier,
 
@@ -1427,7 +1434,6 @@ module.exports = grammar({
 
         data_source: $ => choice(
             $.constant,
-            $.global_ref_deref,
             $.prog_output_access,
             $.direct_variable
         ),
@@ -1462,13 +1468,12 @@ module.exports = grammar({
 
         prog_data_source: $ => choice(
             $.constant,
-            $.namespace_access,
-            $.global_ref_deref,
+            $.field_expression,
             $.direct_variable
         ),
 
         data_sink: $ => choice(
-            $.global_ref_deref,
+            $.field_expression,
             $.direct_variable
         ),
 
@@ -1530,6 +1535,8 @@ module.exports = grammar({
 
         // Table 71 - 72 - Language Structured Text (ST) 
 
+        // Expressions are merged into a single _expression rule
+        // to allow for better precedence handling and operator overloading.
         _expression: $ => choice(
             $.boolean_operator,
             $.comparison_operator,
@@ -1538,18 +1545,17 @@ module.exports = grammar({
             $.power_operator,
             $.unary_operator,
             $._primary_expression,
-
         ),
 
-        _primary_expression: $ => prec.left(choice(
+        // Primary_Expr : Constant | Enum_Value | Variable_Access | Func_Call | Ref_Value| '(' Expression ')'; 
+        _primary_expression: $ => choice(
             $.constant,
-            $.namespace_access,
-            $.field_expression,
             $.variable_access,
             $.func_call,
             $.ref_value,
-            $.parenthesized_expression
-        )),
+            $.parenthesized_expression,
+            $.ERR_invocation_in_expr_context
+        ),
 
         parenthesized_expression: $ => seq('(', $._expression, ')'),
 
@@ -1559,23 +1565,23 @@ module.exports = grammar({
             $.and_operator
         ),
 
-        or_operator: $ => prec.left(PREC.boolean_or, seq(field("left", $._expression), 'OR', field("right", $._expression))),
-        xor_operator: $ => prec.left(PREC.boolean_xor, seq(field("left", $._expression), 'XOR', field("right", $._expression))),
-        and_operator: $ => prec.left(PREC.boolean_and, seq(field("left", $._expression), choice('&', 'AND'), field("right", $._expression))),
+        or_operator: $ => prec.left(RK_PREC.boolean_or, seq(field("left", $._expression), 'OR', field("right", $._expression))),
+        xor_operator: $ => prec.left(RK_PREC.boolean_xor, seq(field("left", $._expression), 'XOR', field("right", $._expression))),
+        and_operator: $ => prec.left(RK_PREC.boolean_and, seq(field("left", $._expression), choice('&', 'AND'), field("right", $._expression))),
 
         comparison_operator: $ => choice(
             $.eq_operator,
             $.ord_operator
         ),
 
-        eq_operator: $ => prec.left(PREC.equality, seq(field("left", $._expression), field("operator", $.eq), field("right", $._expression))),
-        ord_operator: $ => prec.left(PREC.comparison, seq(field("left", $._expression), field("operator", $.ord), field("right", $._expression))),
+        eq_operator: $ => prec.left(RK_PREC.equality, seq(field("left", $._expression), field("operator", $.eq), field("right", $._expression))),
+        ord_operator: $ => prec.left(RK_PREC.comparison, seq(field("left", $._expression), field("operator", $.ord), field("right", $._expression))),
 
-        eq: $ => prec(PREC.equality, choice('=', '<>')),
-        ord: $ => prec(PREC.comparison, choice('<', '>', '<=', '>=')),
+        eq: $ => prec(RK_PREC.equality, choice('=', '<>')),
+        ord: $ => prec(RK_PREC.comparison, choice('<', '>', '<=', '>=')),
 
 
-        add_operator: $ => prec.left(PREC.add,
+        add_operator: $ => prec.left(RK_PREC.add,
             seq(
                 field("left", $._expression),
                 field("operator", $.add),
@@ -1583,9 +1589,9 @@ module.exports = grammar({
             )
         ),
 
-        add: $ => prec(PREC.add, choice('+', '-')),
+        add: $ => prec(RK_PREC.add, choice('+', '-')),
 
-        mult_operator: $ => prec.left(PREC.modulo,
+        mult_operator: $ => prec.left(RK_PREC.modulo,
             seq(
                 field("left", $._expression),
                 field("operator", $.mult),
@@ -1593,9 +1599,9 @@ module.exports = grammar({
             )
         ),
 
-        mult: $ => prec(PREC.modulo, choice('*', '/', 'MOD')),
+        mult: $ => prec(RK_PREC.modulo, choice('*', '/', 'MOD')),
 
-        power_operator: $ => prec.left(PREC.exponentiation,
+        power_operator: $ => prec.left(RK_PREC.exponentiation,
             seq(
                 field("left", $._expression),
                 '**',
@@ -1605,14 +1611,14 @@ module.exports = grammar({
 
         unary_operator: $ => seq(field("operator", $.unary), field("expr", $._expression)),
 
-        unary: $ => prec(PREC.unary, choice('-', '+', 'NOT')),
+        unary: $ => prec(RK_PREC.unary, choice('-', '+', 'NOT')),
 
         // A constant expression must evaluate to a constant value at compile time 
         constant_expr: $ => $._expression,
 
         variable_access: $ => seq(
             field("variable", $.variable),
-            field("access", $.multibit_part_access)
+            field("access", optional($.multibit_part_access))
         ),
 
         multibit_part_access: $ => seq(
@@ -1623,28 +1629,35 @@ module.exports = grammar({
             )
         ),
 
+        invocation: $ => seq(
+            field("invocation", $.symbolic_variable),
+            '(', prec(RK_PREC.parameter_list, field("params", commaSep($.param_assign))), ')'
+        ),
+
         func_call: $ => seq(
-            field("function", $.namespace_access),
-            '(', prec(PREC.parameter_list, field("params", commaSep($.param_assign))), ')'
+            field("function", $.path_expression),
+            '(', prec(RK_PREC.parameter_list, field("params", commaSep($.param_assign))), ')'
         ),
 
         stmt_list: $ => prec.left(repeat1(seq($._stmt, optional(";")))),
 
+        // Stmt : Assign_Stmt | Subprog_Ctrl_Stmt | Selection_Stmt | Iteration_Stmt; 
         _stmt: $ => choice(
             // assignments
             $.assign,
             // subprog
             $.func_call,
+            // invocation can only be used in a statement context
             $.invocation,
             $.super_stmt,
             'RETURN',
-            // iteration
+            // selection
             $.if_stmt,
             $.case_stmt,
+            // iteration
             $.for_stmt,
             $.while_stmt,
             $.repeat_stmt,
-            // control flow
             'EXIT',
             'CONTINUE'
         ),
@@ -1666,13 +1679,12 @@ module.exports = grammar({
         //    field("target", choice($.identifier, $.ref_deref, $.ref_value))
         //),
         assign: $ => seq(
-            field("variable", $.variable),
+            field("variable", choice($.variable, $.ERR_assign_func_call)),
             field("target", choice(
                 $.assignment_attempt,
                 $.assignment,
-                $.ref_assign,
             )
-            )),
+        )),
 
         assignment: $ => seq(
             ':=',
@@ -1682,22 +1694,6 @@ module.exports = grammar({
         assignment_attempt: $ => seq(
             '?=',
             field("target", choice($.identifier, $.ref_deref, $.ref_value))
-        ),
-
-        invocation: $ => seq(
-            choice(
-                $.instance_name,
-                alias('THIS', $.this),
-                $.this_invocation
-            ),
-            '(', commaSep($.param_assign), ')'
-        ),
-
-        this_invocation: $ => seq(
-            seq('THIS', '.'),
-            repeat1(seq($.instance_name, '.')),
-            alias($.identifier, $.method_name),
-            '(', prec(PREC.parameter_list, field("params", commaSep($.param_assign))), ')'
         ),
 
         param_assign: $ => choice(
@@ -1726,7 +1722,7 @@ module.exports = grammar({
             $._expression,
             'THEN',
             optional($.stmt_list),
-            repeat(seq('ELSE IF', $._expression, 'THEN', $.stmt_list)),
+            repeat(seq('ELSIF', $._expression, 'THEN', $.stmt_list)),
             optional(seq('ELSE', $.stmt_list)),
             'END_IF'
         ),
@@ -1742,10 +1738,12 @@ module.exports = grammar({
 
         case_selection: $ => seq(
             $.case_list,
-            ':',
-            $.stmt_list
+            ":",
+            optional($.stmt_list),
+            ";"
         ),
 
+        //Case_List : Case_List_Elem ( ',' Case_List_Elem )*; 
         case_list: $ => commaSep1($.case_list_elem),
 
         case_list_elem: $ => choice(
@@ -1774,7 +1772,7 @@ module.exports = grammar({
 
         while_stmt: $ => seq(
             'WHILE',
-            $._primary_expression,
+            $._expression,
             'DO',
             $.stmt_list,
             'END_WHILE'
@@ -1790,27 +1788,38 @@ module.exports = grammar({
 
         // Other
 
-        scoped_identifier: $ => prec.right(seq(
+        // Accessing a namespace
+        namespace_access: $ => choice(
+            $.identifier,
+            $.scoped_identifier,
+        ),
+
+        scoped_identifier: $ => seq(
             field("path", $._path),
-            "::",
+            ".",
             field("target", alias($.identifier, $.target))
-        )),
+        ),
 
         _path: $ => choice(
             $.identifier,
             $.scoped_identifier
         ),
 
-        field_expression: $ => prec.right(seq(
-            field("path", $.namespace_access),
-            ".",
-            field("target", alias($.identifier, $.target))
-        )),
-
-        namespace_access: $ => choice(
-            $.scoped_identifier,
-            $.identifier,
+        // St field access
+        path_expression: $ => choice(
+            $.var_access,
+            $.field_expression,
+            $.index_expression,
         ),
+
+        field_expression: $ => seq(
+            field("path", $.path_expression),
+            ".",
+            field("target", $.var_access)
+        ),
+
+        index_expression: $ => seq($.path_expression, '[', field("index", $.index_value), ']'),
+        index_value : $ => commaSep1($.constant_expr),
 
         IQM: $ => choice('I', 'Q', 'M'),
         XBWDL: $ => choice('X', 'B', 'W', 'D', 'L'),
@@ -1833,12 +1842,10 @@ module.exports = grammar({
         // Table 1 - Character sets
         // Table 2 - Identifiers
 
-        _bit: $ => /[01]/,
-        _bit_value: $ => /[01]+/,
-        _octal_digit: $ => /[0-7]/,
-        _octal_value: $ => /[0-7]+/,
-        _hex_digit: $ => /[0-9a-fA-F]/,
-        _hex_value: $ => /[0-9a-fA-F]+/,
+        _bit_value: $ => /[?:_01]*/,
+        _octal_value: $ => /[?:_0-7]*/,
+        _hex_digit: $ => /[?:_0-9a-fA-F]/,
+        _hex_value: $ => /[?:_0-9a-fA-F]*/,
         identifier: _ => /[_\p{XID_Start}][_\p{XID_Continue}]*/,
         direct_variable_identifier: _ => /[A-Za-z]*/,
     }
