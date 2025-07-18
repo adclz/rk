@@ -358,6 +358,7 @@ impl<'db> ToVariable<'db> for ast::generated::EdgeDecl {
             kind,
             result.spec,
             result.init,
+            self.get_id()
         ))
     }
 }
@@ -381,6 +382,7 @@ impl<'db> ToVariable<'db> for ast::generated::VarDecl {
             VariableKind::Input,
             result.spec,
             result.init,
+            self.get_id()
         ))
     }
 }
@@ -405,6 +407,7 @@ impl<'db> ToVariable<'db> for ast::generated::VarDeclInit {
             VariableKind::Input,
             result.spec,
             result.init,
+            self.get_id()
         ))
     }
 }
@@ -429,6 +432,7 @@ impl<'db> ToVariable<'db> for ast::generated::ArrayConformand {
             VariableKind::Input,
             result.spec,
             result.init,
+            self.get_id()
         ))
     }
 }
@@ -453,6 +457,7 @@ impl<'db> ToVariable<'db> for ast::generated::LocPartlyVar {
             VariableKind::Input,
             result.spec,
             result.init,
+            self.get_id()
         ))
     }
 }
@@ -477,6 +482,7 @@ impl<'db> ToVariable<'db> for ast::generated::RefSpec {
             VariableKind::Input,
             result.spec,
             result.init,
+            self.get_id()
         ))
     }
 }
@@ -681,6 +687,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
                         VariableKind::Global,
                         result.spec,
                         result.init,
+                        child.get_id()
                     ))
                 }
                 GlobalVarKind::LocVarSpecInit(var_decl) => {
@@ -695,6 +702,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
                         VariableKind::Global,
                         result.spec,
                         result.init,
+                        child.get_id()
                     ))
                 }
             }

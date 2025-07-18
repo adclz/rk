@@ -82,6 +82,7 @@ impl SymbolInfo<'_> {
 }
 
 pub trait ToProto<'db> {
+    fn get_id(&'db self, db: &'db dyn crate::BaseDatabase) -> usize;
     fn spanned(&'db self, db: &'db dyn crate::BaseDatabase) -> &'db Span;
     fn named_span(&'db self, db: &'db dyn crate::BaseDatabase) -> &'db Span;
     fn symbol_info(&'db self, _db: &'db dyn crate::BaseDatabase) -> Option<SymbolInfo<'db>> {
@@ -122,12 +123,8 @@ pub trait IterToProto<'db> {
             if range.start_byte <= offset && offset <= range.end_byte {
                 // Compare old best match with new node
                 if let Some(a) = best_match {
-                    let a = a.spanned(db);
-
-                    if a.start_byte >= range.start_byte {
-                        continue;
-                    } else {
-                        best_match = Some(node);
+                    if a.get_id(db) >= node.get_id(db) {
+                        continue; // Keep the old best match
                     }
                 } else {
                     best_match = Some(node);
@@ -142,16 +139,23 @@ pub trait IterToProto<'db> {
         db: &'db dyn crate::BaseDatabase,
         offset: usize,
     ) -> Option<&'db dyn ToProto<'db>> {
-        let mut result = None;
+        let mut best_match: Option<&'db dyn ToProto<'db>> = None;
+
         for node in self.iter(db) {
             let range = node.named_span(db);
 
+            // Only consider nodes that contain the offset
             if range.start_byte <= offset && offset <= range.end_byte {
-                result = Some(node);
-            } else {
-                continue;
+                // Compare old best match with new node
+                if let Some(a) = best_match {
+                    if a.get_id(db) >= node.get_id(db) {
+                        continue; // Keep the old best match
+                    }
+                } else {
+                    best_match = Some(node);
+                }
             }
         }
-        result
+        best_match
     }
 }

@@ -58,6 +58,7 @@ impl<'db> ParseDataType<'db> for ast::generated::DataTypeDecl {
                 child.get_span(),
                 name,
                 child.name.get_span(),
+                self.get_id()
             ))
         }
 

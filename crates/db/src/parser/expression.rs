@@ -40,6 +40,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                             operator: Operator::Or,
                             right,
                         },
+                        or_operator.get_id()
                     ))
                 }
                 ast::generated::AndOperator_OrOperator_XorOperator::XorOperator(xor_operator) => {
@@ -54,6 +55,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                             operator: Operator::Xor,
                             right,
                         },
+                        xor_operator.get_id()
                     ))
                 }
                 ast::generated::AndOperator_OrOperator_XorOperator::AndOperator(and_operator) => {
@@ -68,6 +70,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                             operator: Operator::And,
                             right,
                         },
+                        and_operator.get_id()
                     ))
                 }
             },
@@ -90,6 +93,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                                 operator,
                                 right,
                             },
+                            eq_operator.get_id()
                         ))
                     }
                     ast::generated::EqOperator_OrdOperator::OrdOperator(ord_operator) => {
@@ -111,6 +115,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                                 operator,
                                 right,
                             },
+                            ord_operator.get_id()
                         ))
                     }
                 }
@@ -131,6 +136,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                         operator,
                         right,
                     },
+                    add_operator.get_id()
                 ))
             }
             ast::generated::Expression::MultOperator(mult_operator) => {
@@ -150,6 +156,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                         operator,
                         right,
                     },
+                    mult_operator.get_id()
                 ))
             }
             ast::generated::Expression::PowerOperator(power_operator) => {
@@ -160,6 +167,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                     db,
                     power_operator.get_span(),
                     ExprKind::PowerOperator { left, right },
+                    power_operator.get_id()
                 ))
             }
             ast::generated::Expression::UnaryOperator(unary_operator) => {
@@ -175,6 +183,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                     db,
                     unary_operator.get_span(),
                     ExprKind::UnaryOperator { expr, operator },
+                    unary_operator.get_id()
                 ))
             }
         }
@@ -231,9 +240,10 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                     db,
                     func.get_span(),
                     ExprKind::PrimaryExpr(PrimaryExpr::FuncCall {
-                        path: PathExpr::new(db, func.get_span(), target),
+                        path: PathExpr::new(db, func.get_span(), target, func.function.get_id()),
                         params: parameters,
                     }),
+                    func.get_id()
                 ))
             }
             ast::generated::PrimaryExpression::ParenthesizedExpression(p) => Ok(Expr::new(
@@ -242,6 +252,7 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                 ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr {
                     expr: p.children.to_expr(db, file)?,
                 }),
+                p.get_id()
             )),
             ast::generated::PrimaryExpression::RefValue(r) => match r.children.deref() {
                 ast::generated::Null_RefAddr::Null(_) => Ok(Expr::new(
@@ -250,6 +261,7 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                     ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
                         value: RefValue::Null,
                     }),
+                    r.get_id()
                 )),
                 ast::generated::Null_RefAddr::RefAddr(a) => match a.children.deref() {
                     ast::generated::InstanceName_SymbolicVariable::SymbolicVariable(s) => {
@@ -264,6 +276,7 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                                     db, file, i,
                                 )?)),
                             }),
+                            r.get_id()
                         ))
                     }
                 },
@@ -298,10 +311,8 @@ impl<'db> ParseNumeric<'db> for ast::generated::BinaryInt_HexInt_OctalInt_Signed
 impl<'db> ParseExpression<'db> for ast::generated::Constant {
     fn to_expr(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>> {
         type Constant = ast::generated::BoolLiteral_CharLiteral_NumericLiteral_TimeLiteral;
-        Ok(Expr::new_literal(
-            db,
-            *self.children.get_span(),
-            match self.children.deref() {
+
+        let lit =             match self.children.deref() {
                 Constant::BoolLiteral(bool_literal) => {
                     match bool_literal.children.deref() {
                         ast::generated::BoolLiteralWithNumeric_BoolLiteralWithString::BoolLiteralWithNumeric(bool_literal) => {
@@ -423,7 +434,11 @@ impl<'db> ParseExpression<'db> for ast::generated::Constant {
                         }
                     }
                 },
-            },
+            };
+
+        Ok(Expr::new(db, self.get_span(),
+        ExprKind::PrimaryExpr(PrimaryExpr::Literal(lit)),
+            self.get_id()
         ))
     }
 }

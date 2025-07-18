@@ -86,6 +86,7 @@ impl<'db> Parse<'db> for ast::generated::MethodPrototype {
             self.name.get_span(),
             return_type,
             variables,
+            self.get_id(),
         ))
     }
 }

@@ -141,16 +141,27 @@ pub struct Namespace<'db> {
     #[tracked]
     #[returns(ref)]
     pub pous: Vec<PouDecl<'db>>,
+
+    #[no_eq]
+    pub id: usize,
 }
 
 #[salsa::tracked(debug)]
 pub struct Using<'db> {
     pub path: NamespacePath,
+
     #[returns(ref)]
     pub span: Span,
+
+    #[no_eq]
+    pub id: usize
 }
 
 impl<'db> ToProto<'db> for Using<'db> {
+    fn get_id(&'db self, db: &'db dyn crate::BaseDatabase) -> usize {
+        self.id(db)
+    }
+
     fn spanned(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         self.span(db)
     }
@@ -225,6 +236,10 @@ impl<'db> IterToProto<'db> for Using<'db> {
 }
 
 impl<'db> ToProto<'db> for SpannedIdent  {
+    fn get_id(&'db self, db: &'db dyn crate::BaseDatabase) -> usize {
+        self.id
+    }
+
     fn named_span(&'db self, db: &'db dyn crate::BaseDatabase) -> &'db Span {
         &self.span
     }
@@ -268,6 +283,10 @@ impl<'db> Namespace<'db> {
 }
 
 impl<'db> ToProto<'db> for Namespace<'db> {
+    fn get_id(&'db self, db: &'db dyn crate::BaseDatabase) -> usize {
+        self.id(db)
+    }
+
     fn spanned(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         self.span(db)
     }
@@ -349,6 +368,9 @@ pub struct PouDecl<'db> {
     #[tracked]
     #[returns(ref)]
     pub name_span: Span,
+
+    #[no_eq]
+    pub id: usize
 }
  
 impl<'db> IterToProto<'db> for PouDecl<'db> {
@@ -367,6 +389,9 @@ impl<'db> IterToProto<'db> for PouDecl<'db> {
 }
 
 impl<'db> ToProto<'db> for PouDecl<'db> {
+    fn get_id(&'db self, db: &'db dyn crate::BaseDatabase) -> usize {
+        self.id(db)
+    }
     fn spanned(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         self.span(db).into()
     }

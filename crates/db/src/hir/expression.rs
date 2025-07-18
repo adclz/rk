@@ -14,6 +14,9 @@ pub struct Expr<'db> {
 
     #[returns(ref)]
     pub expr: ExprKind<'db>,
+
+    #[no_eq]
+    pub id: usize
 }
 
 bitflags! {
@@ -101,9 +104,16 @@ pub struct PathExpr<'db> {
 
     #[returns(ref)]
     pub expr: PathExprKind<'db>,
+
+    #[no_eq]
+    pub id: usize
 }
 
 impl<'db> ToProto<'db> for PathExpr<'db> {
+    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> usize {
+        self.id(db)
+    }
+
     fn spanned(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         self.span(db)
     }
@@ -212,6 +222,10 @@ pub enum Variable<'db> {
 }
 
 impl<'db> ToProto<'db> for Variable<'db> {
+    fn get_id(&'db self, db: &'db dyn crate::BaseDatabase) -> usize {
+        todo!()    
+    }
+
     fn spanned(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         todo!()
     }
@@ -347,6 +361,10 @@ impl Literal {
 }
 
 impl<'db> ToProto<'db> for Expr<'db> {
+    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> usize {
+        self.id(db)
+    }
+
     fn spanned(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         self.span(db)
     }
@@ -406,19 +424,5 @@ impl<'db> IterToProto<'db> for PrimaryExpr<'db> {
             PrimaryExpr::Literal(lit) => std::iter::empty(),
             PrimaryExpr::RefValue { value } => std::iter::empty(),
         }
-    }
-}
-
-impl<'db> Expr<'db> {
-    pub fn new_literal(
-        db: &'db dyn BaseDatabase,
-        span: auto_lsp::tree_sitter::Range,
-        literal: Literal,
-    ) -> Expr<'db> {
-        Expr::new(
-            db,
-            span.into(),
-            ExprKind::PrimaryExpr(PrimaryExpr::Literal(literal)),
-        )
     }
 }
