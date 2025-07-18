@@ -296,3 +296,26 @@ END_FUNCTION_BLOCK
                     (int_literal
                       (signed_int
                         (unsigned_int)))))))))))
+
+================================================================================
+Empty right hand assignment
+================================================================================
+
+FUNCTION_BLOCK fn
+    a := 
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (fb_decl
+        (identifier)
+        (fb_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (ERR_empty_right_hand_assignment))))))

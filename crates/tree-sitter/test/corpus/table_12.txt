@@ -1,0 +1,116 @@
+================================================================================
+Declaration of a reference type
+================================================================================
+
+TYPE
+  myRefType: REF_TO INT;
+END_TYPE
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (data_type_decl
+        (type_decl
+          (identifier)
+          (ref_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))))))
+
+================================================================================
+Comparison with NULL
+================================================================================
+
+FUNCTION fn
+  IF myInt = NULL THEN
+
+  END_IF;
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (if_stmt
+              (comparison_operator
+                (eq_operator
+                  (variable_access
+                    (variable
+                      (symbolic_variable
+                        (path_expression
+                          (var_access
+                            (field))))))
+                  (ref_value
+                    (null)))))))))
+
+================================================================================
+Referencing
+================================================================================
+
+FUNCTION fn
+  myRefA1:= REF (A1);
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (ref_value
+                  (ref_addr
+                    (symbolic_variable
+                      (path_expression
+                        (var_access
+                          (field))))))))))))
+
+================================================================================
+Dereferencing
+================================================================================
+
+FUNCTION fn
+  myInt:= myA1Ref^[12];
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (variable_access
+                  (variable
+                    (symbolic_variable
+                      (path_expression
+                        (index_expression
+                          (path_expression
+                            (var_access
+                              (ref_deref
+                                (identifier))))
+                          (index_value
+                            (constant_expr
+                              (constant
+                                (numeric_literal
+                                  (int_literal
+                                    (signed_int
+                                      (unsigned_int))))))))))))))))))

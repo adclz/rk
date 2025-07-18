@@ -1,0 +1,132 @@
+================================================================================
+Complete formal call (textual only) 
+================================================================================
+
+FUNCTION fn
+
+    A := COUNTER.UP(
+        EN:= TRUE, 
+        INC:= B,
+        START:= 1, 
+        ENO=> %MX1,
+        QU => C); 
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (func_call
+                  (path_expression
+                    (field_expression
+                      (path_expression
+                        (var_access
+                          (field)))
+                      (var_access
+                        (field))))
+                  (param_assign
+                    (param_assign_input
+                      (identifier)
+                      (constant
+                        (bool_literal
+                          (bool_literal_with_string)))))
+                  (param_assign
+                    (param_assign_input
+                      (identifier)
+                      (variable_access
+                        (variable
+                          (symbolic_variable
+                            (path_expression
+                              (var_access
+                                (field))))))))
+                  (param_assign
+                    (param_assign_input
+                      (identifier)
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int)))))))
+                  (param_assign
+                    (param_assign_output
+                      (identifier)
+                      (variable
+                        (direct_variable
+                          (direct_variable_identifier)
+                          (offset
+                            (unsigned_int))))))
+                  (param_assign
+                    (param_assign_output
+                      (identifier)
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field))))))))))))))
+
+================================================================================
+Non-formal call (textual only)
+================================================================================
+
+FUNCTION fn
+
+    A := COUNTER.UP(B, 1, C); 
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (func_call
+                  (path_expression
+                    (field_expression
+                      (path_expression
+                        (var_access
+                          (field)))
+                      (var_access
+                        (field))))
+                  (param_assign
+                    (param_assign_input
+                      (variable_access
+                        (variable
+                          (symbolic_variable
+                            (path_expression
+                              (var_access
+                                (field))))))))
+                  (param_assign
+                    (param_assign_input
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int)))))))
+                  (param_assign
+                    (param_assign_input
+                      (variable_access
+                        (variable
+                          (symbolic_variable
+                            (path_expression
+                              (var_access
+                                (field)))))))))))))))
