@@ -222,6 +222,7 @@ module.exports = grammar({
         // Other - Errors
 
         // Pou declaration errors
+        // Note that this error is rather consuming and i'm unsure if it should be kept
         ERR_invalid_pou_keyword: $ => $.identifier,
 
         // Qualifier errors
@@ -233,8 +234,11 @@ module.exports = grammar({
         ERR_variable_with_no_spec: $ => prec(-1, $.identifier),
         ERR_invalid_edge_qualifier: $ => prec(-1, /[FR](_(E(D(G)?)?)?)?/),
 
+        // Statements
+        ERR_empty_right_hand_assignment: $ => prec(-1, ":="), // a := ?
+
         // Expressions
-        ERR_assign_func_call: $ => prec(-1, $.func_call),
+        ERR_assign_func_call: $ => prec(-1, $.func_call), // A function call cannot be assigned
         ERR_invocation_in_expr_context: $ => prec(-1, $.invocation),
         ERR_unexpected_this_in_path: $ => prec(-1, "THIS"),
 
@@ -1158,7 +1162,7 @@ module.exports = grammar({
 
         method_decl: $ => seq(
             'METHOD',
-            $.access_spec,
+            optional($.access_spec),
             optional(choice('FINAL', 'ABSTRACT')),
             optional('OVERRIDE'),
             $.identifier,
@@ -1635,8 +1639,8 @@ module.exports = grammar({
         ),
 
         func_call: $ => seq(
-            field("function", $.path_expression),
-            '(', prec(RK_PREC.parameter_list, field("params", commaSep($.param_assign))), ')'
+                field("function", $.path_expression),
+                '(', prec(RK_PREC.parameter_list, field("params", commaSep($.param_assign))), ')'
         ),
 
         stmt_list: $ => prec.left(repeat1(seq($._stmt, optional(";")))),
@@ -1659,7 +1663,7 @@ module.exports = grammar({
             $.while_stmt,
             $.repeat_stmt,
             'EXIT',
-            'CONTINUE'
+            'CONTINUE',
         ),
 
         super_stmt: $ => seq('SUPER', '(', ')'),
@@ -1683,6 +1687,7 @@ module.exports = grammar({
             field("target", choice(
                 $.assignment_attempt,
                 $.assignment,
+                $.ERR_empty_right_hand_assignment,
             )
         )),
 
@@ -1703,9 +1708,7 @@ module.exports = grammar({
 
         param_assign_input: $ => seq(
             optional(
-                seq(
-                    field("param", $.identifier),
-                    ':=')
+                seq(field("param", $.identifier),':=')
             ),
             field("value", $._expression)
         ),
