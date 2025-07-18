@@ -117,10 +117,6 @@ impl<'db> ToProto<'db> for PathExpr<'db> {
     fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         self.span(db)
     }
-
-    fn get_named_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
-        self.span(db)
-    }
 }
 
 impl<'db> IterToProto<'db> for PathExpr<'db> {
@@ -228,10 +224,6 @@ impl<'db> ToProto<'db> for Variable<'db> {
 
     fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         todo!()
-    }
-
-    fn get_named_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
-        self.get_span(db)
     }
 }
 
@@ -366,10 +358,6 @@ impl<'db> ToProto<'db> for Expr<'db> {
     }
 
     fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
-        self.span(db)
-    }
-
-    fn get_named_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         self.span(db)
     }
 }

@@ -166,10 +166,6 @@ impl<'db> ToProto<'db> for Using<'db> {
         self.span(db)
     }
 
-    fn get_named_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
-        self.span(db)
-    }
-
     fn completion_ctx(
         &'db self,
         db: &'db dyn BaseDatabase,
@@ -240,10 +236,6 @@ impl<'db> ToProto<'db> for SpannedIdent  {
         self.id
     }
 
-    fn get_named_span(&'db self, db: &'db dyn crate::BaseDatabase) -> &'db Span {
-        &self.span
-    }
-
     fn get_span(&'db self, db: &'db dyn crate::BaseDatabase) -> &'db Span {
         &self.span
     }
@@ -291,8 +283,8 @@ impl<'db> ToProto<'db> for Namespace<'db> {
         self.span(db)
     }
 
-    fn get_named_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
-        self.name_span(db)
+    fn get_named_span(&'db self, db: &'db dyn BaseDatabase) -> Option<&'db Span> {
+        Some(self.name_span(db))
     }
 
     fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> Option<SymbolInfo<'db>> {
@@ -396,8 +388,8 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
         self.span(db).into()
     }
 
-    fn get_named_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
-        self.name_span(db).into()
+    fn get_named_span(&'db self, db: &'db dyn BaseDatabase) -> Option<&'db Span> {
+        Some(self.name_span(db).into())
     }
 
     fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> Option<SymbolInfo<'db>> {

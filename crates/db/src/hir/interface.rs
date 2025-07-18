@@ -61,8 +61,8 @@ impl<'db> ToProto<'db> for Method<'db> {
         self.range(db)
     }
 
-    fn get_named_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
-        self.name_span(db)
+    fn get_named_span(&'db self, db: &'db dyn BaseDatabase) -> Option<&'db Span> {
+        Some(self.name_span(db))
     }
 
     fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> Option<SymbolInfo<'db>> {

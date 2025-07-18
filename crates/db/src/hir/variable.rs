@@ -58,10 +58,6 @@ impl<'db> ToProto<'db> for Variable<'db> {
         self.range(db).into()
     }
 
-    fn get_named_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
-        self.name_span(db).into()
-    }
-
     fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> Option<SymbolInfo<'db>> {
         Some(
             SymbolInfo::builder()
