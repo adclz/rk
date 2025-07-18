@@ -114,11 +114,11 @@ impl<'db> ToProto<'db> for PathExpr<'db> {
         self.id(db)
     }
 
-    fn spanned(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
+    fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         self.span(db)
     }
 
-    fn named_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
+    fn get_named_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         self.span(db)
     }
 }
@@ -226,12 +226,12 @@ impl<'db> ToProto<'db> for Variable<'db> {
         todo!()    
     }
 
-    fn spanned(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
+    fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         todo!()
     }
 
-    fn named_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
-        self.spanned(db)
+    fn get_named_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
+        self.get_span(db)
     }
 }
 
@@ -365,11 +365,11 @@ impl<'db> ToProto<'db> for Expr<'db> {
         self.id(db)
     }
 
-    fn spanned(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
+    fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         self.span(db)
     }
 
-    fn named_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
+    fn get_named_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         self.span(db)
     }
 }

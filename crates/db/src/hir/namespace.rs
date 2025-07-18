@@ -106,7 +106,7 @@ impl<'db> FileNamespaces<'db> {
         offset: usize,
     ) -> Option<Namespace<'db>> {
         self.namespaces(db).iter().find_map(|(_path, ns)| {
-            if ns.spanned(db).start_byte <= offset && offset <= ns.spanned(db).end_byte {
+            if ns.get_span(db).start_byte <= offset && offset <= ns.get_span(db).end_byte {
                 Some(*ns)
             } else {
                 None
@@ -162,11 +162,11 @@ impl<'db> ToProto<'db> for Using<'db> {
         self.id(db)
     }
 
-    fn spanned(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
+    fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         self.span(db)
     }
 
-    fn named_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
+    fn get_named_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         self.span(db)
     }
 
@@ -240,11 +240,11 @@ impl<'db> ToProto<'db> for SpannedIdent  {
         self.id
     }
 
-    fn named_span(&'db self, db: &'db dyn crate::BaseDatabase) -> &'db Span {
+    fn get_named_span(&'db self, db: &'db dyn crate::BaseDatabase) -> &'db Span {
         &self.span
     }
 
-    fn spanned(&'db self, db: &'db dyn crate::BaseDatabase) -> &'db Span {
+    fn get_span(&'db self, db: &'db dyn crate::BaseDatabase) -> &'db Span {
         &self.span
     }
 
@@ -262,7 +262,7 @@ impl<'db> ToProto<'db> for SpannedIdent  {
 impl<'db> Namespace<'db> {
     pub fn pou_at(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<PouDecl<'db>> {
         self.pous(db).iter().find_map(|pou| {
-            if pou.spanned(db).start_byte <= offset && offset <= pou.spanned(db).end_byte {
+            if pou.get_span(db).start_byte <= offset && offset <= pou.get_span(db).end_byte {
                 Some(*pou)
             } else {
                 None
@@ -287,11 +287,11 @@ impl<'db> ToProto<'db> for Namespace<'db> {
         self.id(db)
     }
 
-    fn spanned(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
+    fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         self.span(db)
     }
 
-    fn named_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
+    fn get_named_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         self.name_span(db)
     }
 
@@ -300,7 +300,7 @@ impl<'db> ToProto<'db> for Namespace<'db> {
             SymbolInfo::builder()
                 .kind(auto_lsp::lsp_types::SymbolKind::NAMESPACE)
                 .name(self.path(db).to_string(db))
-                .range(self.spanned(db).clone())
+                .range(self.get_span(db).clone())
                 .name_range(self.name_span(db).clone())
                 .build(),
         )
@@ -333,7 +333,7 @@ impl<'db> ToProto<'db> for Namespace<'db> {
         ];
         // Using directives can only be added before any POU declarations
         if let Some(pou) = self.pous(db).first() {
-            if pou.spanned(db).end_byte >= offset {
+            if pou.get_span(db).end_byte >= offset {
                 completions.push(completions::snippets::using());
             }
         } else {
@@ -392,11 +392,11 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
     fn get_id(&'db self, db: &'db dyn crate::BaseDatabase) -> usize {
         self.id(db)
     }
-    fn spanned(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
+    fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         self.span(db).into()
     }
 
-    fn named_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
+    fn get_named_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         self.name_span(db).into()
     }
 
@@ -411,7 +411,7 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
                     Pou::DataType(_) => auto_lsp::lsp_types::SymbolKind::TYPE_PARAMETER,
                 })
                 .name(self.name(db).text(db))
-                .range(self.spanned(db).clone())
+                .range(self.get_span(db).clone())
                 .maybe_spec(match self.pou(db) {
                     Pou::DataType(d) => Some(d.spec(db)),
                     _ => None,

@@ -53,12 +53,12 @@ impl<'db> ToProto<'db> for Variable<'db> {
     fn get_id(&'db self, db: &'db dyn crate::BaseDatabase) -> usize {
         self.id(db)
     }
-    
-    fn spanned(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
+
+    fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         self.range(db).into()
     }
 
-    fn named_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
+    fn get_named_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         self.name_span(db).into()
     }
 

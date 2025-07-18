@@ -83,11 +83,15 @@ impl SymbolInfo<'_> {
 
 pub trait ToProto<'db> {
     fn get_id(&'db self, db: &'db dyn crate::BaseDatabase) -> usize;
-    fn spanned(&'db self, db: &'db dyn crate::BaseDatabase) -> &'db Span;
-    fn named_span(&'db self, db: &'db dyn crate::BaseDatabase) -> &'db Span;
+
+    fn get_span(&'db self, db: &'db dyn crate::BaseDatabase) -> &'db Span;
+
+    fn get_named_span(&'db self, db: &'db dyn crate::BaseDatabase) -> &'db Span;
+
     fn symbol_info(&'db self, _db: &'db dyn crate::BaseDatabase) -> Option<SymbolInfo<'db>> {
         None
     }
+    
     fn completion_ctx(
         &'db self,
         _db: &'db dyn crate::BaseDatabase,
@@ -117,7 +121,7 @@ pub trait IterToProto<'db> {
         let mut best_match: Option<&'db dyn ToProto<'db>> = None;
 
         for node in self.iter(db) {
-            let range = node.spanned(db);
+            let range = node.get_span(db);
 
             // Only consider nodes that contain the offset
             if range.start_byte <= offset && offset <= range.end_byte {
@@ -142,7 +146,7 @@ pub trait IterToProto<'db> {
         let mut best_match: Option<&'db dyn ToProto<'db>> = None;
 
         for node in self.iter(db) {
-            let range = node.named_span(db);
+            let range = node.get_named_span(db);
 
             // Only consider nodes that contain the offset
             if range.start_byte <= offset && offset <= range.end_byte {

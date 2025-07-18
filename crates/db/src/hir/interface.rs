@@ -36,7 +36,7 @@ impl<'db> IterToProto<'db> for Interface<'db> {
 pub struct Method<'db> {
     #[returns(ref)]
     pub range: Span,
-    
+
     pub name: Ident,
 
     #[returns(ref)]
@@ -57,11 +57,11 @@ impl<'db> ToProto<'db> for Method<'db> {
         self.id(db)
     }
 
-    fn spanned(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
+    fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         self.range(db)
     }
 
-    fn named_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
+    fn get_named_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         self.name_span(db)
     }
 
