@@ -2,15 +2,15 @@ use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     hir::{namespace::Using, variable::Variable, visibility::Modifiers},
-    solver::fq_name::SpannedNamespaceAccess,
+    solver::fq_name::SpannedPath,
     to_proto::{IterToProto, ToProto},
 };
 
 #[salsa::tracked]
 pub struct FunctionBlock<'db> {
-    pub extends: Option<SpannedNamespaceAccess>,
+    pub extends: Option<SpannedPath>,
 
-    pub implements: Option<Vec<SpannedNamespaceAccess>>,
+    pub implements: Option<Vec<SpannedPath>>,
 
     #[tracked]
     #[returns(ref)]
@@ -23,7 +23,7 @@ pub struct FunctionBlock<'db> {
 }
 
 impl<'db> IterToProto<'db> for FunctionBlock<'db> {
-    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        self.variables(db).iter().map(|v| v as _)
+    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db (dyn ToProto<'db> + 'db)> {
+        Box::new(self.variables(db).iter().map(|v| v as _))
     }
 }

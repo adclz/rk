@@ -6,7 +6,7 @@ use crate::hir;
 use crate::hir::visibility::Modifiers;
 use crate::parser::namespace::ParseUsing;
 use crate::parser::Parse;
-use crate::solver::fq_name::SpannedNamespaceAccess;
+use crate::solver::fq_name::SpannedPath;
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::default::db::{file::File, BaseDatabase};
@@ -19,7 +19,7 @@ impl<'db> Parse<'db> for ast::generated::ClassDecl {
         let extends = self
             .extends
             .as_ref()
-            .map(|e| SpannedNamespaceAccess::new(db, file, e))
+            .map(|e| SpannedPath::new(db, file, e))
             .transpose()?;
 
         let implements = self
@@ -28,7 +28,7 @@ impl<'db> Parse<'db> for ast::generated::ClassDecl {
             .map(|i| {
                 i.children
                     .iter()
-                    .map(|i| SpannedNamespaceAccess::new(db, file, &i))
+                    .map(|i| SpannedPath::new(db, file, &i))
                     .collect()
             })
             .transpose()?;

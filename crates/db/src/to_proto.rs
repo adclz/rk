@@ -6,7 +6,7 @@ use auto_lsp::{
 
 use crate::{
     hir::{expression::Expr, variable::Spec},
-    solver::fq_name::SpannedNamespaceAccess,
+    solver::fq_name::SpannedPath,
 };
 
 #[derive(bon::Builder, Debug, Clone)]
@@ -17,14 +17,14 @@ pub struct SymbolInfo<'a> {
     pub kind: Option<SymbolKind>,
     pub spec: Option<Spec<'a>>,
     pub init: Option<Expr<'a>>,
-    pub implements: Option<Vec<SpannedNamespaceAccess>>,
+    pub implements: Option<Vec<SpannedPath>>,
     pub extends: Option<Extends<'a>>,
 }
 
 #[derive(Debug, Clone)]
 pub enum Extends<'a> {
-    Single(SpannedNamespaceAccess),
-    Multiple(&'a Vec<SpannedNamespaceAccess>),
+    Single(SpannedPath),
+    Multiple(&'a Vec<SpannedPath>),
 }
 
 impl SymbolInfo<'_> {
@@ -94,6 +94,12 @@ pub trait ToProto<'db> {
     ) -> Option<Vec<CompletionItem>> {
         None
     }
+}
+
+pub fn self_iter<'db>(
+    s: &'db impl ToProto<'db>,
+) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+    std::iter::once::<&'db dyn ToProto<'db>>(s)
 }
 
 pub trait IterToProto<'db> {

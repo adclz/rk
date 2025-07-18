@@ -13,7 +13,7 @@ use salsa::Accumulator;
 use crate::diagnostics::diagnostic_builder::diag;
 use crate::diagnostics::DiagnosticAccumulator;
 use crate::hir::namespace::{FileNamespaces, Namespace, Pou, PouDecl, Using};
-use crate::ident::Ident;
+use crate::ident::{Ident, SpannedIdent};
 use crate::parser::data_type::ParseDataType;
 use crate::parser::Parse;
 use crate::solver::namespace::NamespacePath;
@@ -49,7 +49,7 @@ impl<'db> ParseUsing<'db> for ast::generated::UsingDirective {
         for child in self.children.iter() {
             let mut path = vec![];
             for child in child.children.iter() {
-                path.push(Ident::from_node(db, file, child.deref())?);
+                path.push(SpannedIdent::new(db, file, child.deref())?);
             }
             using.push(Using::new(
                 db,
@@ -73,7 +73,7 @@ impl<'db> ParseUsing<'db> for Vec<Arc<ast::generated::UsingDirective>> {
             for child in directive.children.iter() {
                 let mut path = vec![];
                 for child in child.children.iter() {
-                    path.push(Ident::from_node(db, file, child.deref())?);
+                    path.push(SpannedIdent::new(db, file, child.deref())?);
                 }
                 using.push(Using::new(
                     db,
@@ -105,12 +105,12 @@ impl<'db> FileNamespacesBuilder<'db> {
     pub fn get_namespace_path(
         &mut self,
         namespace: &ast::generated::NamespaceDecl,
-    ) -> anyhow::Result<Vec<Ident>> {
+    ) -> anyhow::Result<Vec<SpannedIdent>> {
         namespace
             .name
             .children
             .iter()
-            .map(|n| Ident::from_node(self.db, self.file, n.deref()))
+            .map(|n| SpannedIdent::new(self.db, self.file, n.deref()))
             .collect::<anyhow::Result<Vec<_>>>()
     }
 
@@ -209,7 +209,7 @@ impl<'db> FileNamespacesBuilder<'db> {
 
     pub fn handle_namespace_elements(
         &mut self,
-        parent_path: &[Ident],
+        parent_path: &[SpannedIdent],
         nested: &'db ast::generated::NamespaceDecl,
     ) -> anyhow::Result<Namespace<'db>> {
         type Decl =

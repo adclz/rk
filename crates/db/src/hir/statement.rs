@@ -1,6 +1,6 @@
 use auto_lsp::core::span::Span;
 
-use crate::hir::expression::{Expr, ParamAssign, PathExpr, SymbolicVariable, Variable};
+use crate::hir::expression::{Expr, ParamAssign, PathExprKind, SymbolicVariable, Variable};
 
 #[salsa::tracked(debug)]
 pub struct Stmt<'db> {
@@ -21,7 +21,7 @@ pub enum StmtKind<'db> {
         target: Expr<'db>, // todo: replace with ref or identifier
     },
     FuncCall {
-        target: PathExpr<'db>,
+        target: PathExprKind<'db>,
         params: Vec<ParamAssign<'db>>, // parameter_list
     },
     Invocation {

@@ -6,14 +6,14 @@ use crate::{
         variable::{Spec, Variable},
     },
     ident::Ident,
-    solver::fq_name::SpannedNamespaceAccess,
+    solver::fq_name::SpannedPath,
     to_proto::{IterToProto, SymbolInfo, ToProto},
 };
 
 #[salsa::tracked]
 pub struct Interface<'db> {
     #[returns(as_ref)]
-    pub extends: Option<Vec<SpannedNamespaceAccess>>,
+    pub extends: Option<Vec<SpannedPath>>,
 
     #[tracked]
     #[returns(ref)]
@@ -24,11 +24,11 @@ pub struct Interface<'db> {
 }
 
 impl<'db> IterToProto<'db> for Interface<'db> {
-    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        self.methods(db)
+    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db (dyn ToProto<'db> + 'db)> {
+        Box::new(self.methods(db)
             .iter()
             .map(|m| m.iter(db).map(|n| n as _))
-            .flatten()
+            .flatten())
     }
 }
 
@@ -68,7 +68,7 @@ impl<'db> ToProto<'db> for Method<'db> {
 }
 
 impl<'db> IterToProto<'db> for Method<'db> {
-    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        self.variables(db).iter().map(|v| v as _)
+    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db (dyn ToProto<'db> + 'db)> {
+        Box::new(self.variables(db).iter().map(|v| v as _))
     }
 }

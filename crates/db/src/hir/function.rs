@@ -36,7 +36,7 @@ impl<'db> Function<'db> {
 }
 
 impl<'db> IterToProto<'db> for Function<'db> {
-    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        self.variables(db).iter().map(|v| v as _)
+    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db (dyn ToProto<'db> + 'db)> {
+        Box::new(self.variables(db).iter().map(|v| v as _))
     }
 }

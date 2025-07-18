@@ -6,7 +6,7 @@ use crate::hir;
 use crate::ident::Ident;
 use crate::parser::namespace::ParseUsing;
 use crate::parser::{Parse, ParseSpec, ParseVarSection};
-use crate::solver::fq_name::SpannedNamespaceAccess;
+use crate::solver::fq_name::SpannedPath;
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::default::db::{file::File, BaseDatabase};
@@ -22,7 +22,7 @@ impl<'db> Parse<'db> for ast::generated::InterfaceDecl {
             .map(|i| {
                 i.children
                     .iter()
-                    .map(|i| SpannedNamespaceAccess::new(db, file, i))
+                    .map(|i| SpannedPath::new(db, file, i))
                     .collect()
             })
             .transpose()?;

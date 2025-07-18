@@ -15,7 +15,7 @@ pub struct DataType<'db> {
 }
 
 impl<'db> IterToProto<'db> for DataType<'db> {
-    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        std::iter::empty()
+    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db (dyn ToProto<'db> + 'db)> {
+        Box::new(std::iter::empty())
     }
 }

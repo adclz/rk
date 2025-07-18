@@ -1,10 +1,66 @@
 #![allow(non_snake_case)]
 
+use std::hash::Hash;
+
 use auto_lsp::{
     anyhow,
-    core::ast::AstNode,
+    core::{ast::AstNode, span::Span},
     default::db::{file::File, BaseDatabase},
 };
+
+#[derive(Clone, Eq, salsa::Update, Debug)]
+pub struct SpannedIdent {
+    pub span: Span,
+    pub ident: Ident,
+}
+
+impl PartialEq for SpannedIdent {
+    fn eq(&self, other: &Self) -> bool {
+        self.ident == other.ident
+    }
+}
+
+impl PartialEq<Ident> for SpannedIdent {
+    fn eq(&self, other: &Ident) -> bool {
+        self.ident == *other
+    }
+}
+
+impl Hash for SpannedIdent {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.ident.hash(state);
+    }
+}
+
+impl SpannedIdent {
+    pub fn new(db: &dyn BaseDatabase, file: File, ident: &impl AstNode) -> anyhow::Result<Self> {
+        Ok(SpannedIdent {
+            span: ident.get_span(),
+            ident: Ident::from_node(db, file, ident)?,
+        })
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn from_blank(db: &dyn BaseDatabase, text: &str) -> Self {
+        use auto_lsp::tree_sitter::Range;
+        use auto_lsp::tree_sitter::Point;
+        
+        let range = Range {
+            start_byte: 0,
+            end_byte: 0,
+            start_point: Point { row: 0, column: 0 },
+            end_point: Point { row: 0, column: 0 },
+        };
+        SpannedIdent {
+            span: Span::from(range),
+            ident: Ident::new(db, text.to_string()),
+        }
+    }
+
+    pub fn to_string(&self, db: &dyn BaseDatabase) -> String {
+        self.ident.text(db)
+    }
+}
 
 /// Interned identifier
 #[salsa::interned(debug, no_lifetime)]

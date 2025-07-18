@@ -6,7 +6,9 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::completions;
 use crate::hir::COMPLETION_MARKER;
+use crate::ident::SpannedIdent;
 use crate::solver::namespace::{starts, starts_with};
+use crate::to_proto::self_iter;
 use crate::{
     hir::{
         class::Class, data_type::DataType, function::Function, function_block::FunctionBlock,
@@ -166,7 +168,7 @@ impl<'db> ToProto<'db> for Using<'db> {
         let mut marker_index = None;
 
         for (i, fragment) in fragments.iter().enumerate() {
-            if fragment.text(db).contains(COMPLETION_MARKER) {
+            if fragment.ident.text(db).contains(COMPLETION_MARKER) {
                 marker_index = Some(i);
                 break;
             }
@@ -178,19 +180,19 @@ impl<'db> ToProto<'db> for Using<'db> {
 
         // Case 1: marker is in the first fragment -> we can only prefix-match from root
         if marker_index == 0 {
-            let prefix = fragments[0].text(db).replace(COMPLETION_MARKER, "");
+            let prefix = fragments[0].ident.text(db).replace(COMPLETION_MARKER, "");
             return Some(
                 starts_with(db, Ident::new(db, prefix))
                     .iter()
                     .filter_map(|ns| ns.path(db).fragments(db).get(0))
                     .filter(|ident| seen.insert(*ident))
-                    .map(|ident| CompletionItem::new_simple(ident.text(db), ident.text(db)))
+                    .map(|ident| CompletionItem::new_simple(ident.ident.text(db), ident.ident.text(db)))
                     .collect(),
             );
         }
 
         // Case 2: marker is in a deeper fragment -> walk through layers with exact match
-        let mut matching = starts(db, fragments[0]).to_vec();
+        let mut matching = starts(db, fragments[0].ident).to_vec();
 
         for i in 1..marker_index {
             matching = matching
@@ -209,10 +211,35 @@ impl<'db> ToProto<'db> for Using<'db> {
             .iter()
             .filter_map(|ns| ns.path(db).fragments(db).get(marker_index))
             .filter(|ident| seen.insert(*ident))
-            .map(|ident| CompletionItem::new_simple(ident.text(db), ident.text(db)))
+            .map(|ident| CompletionItem::new_simple(ident.ident.text(db), ident.ident.text(db)))
             .collect();
 
         Some(completions)
+    }
+}
+
+impl<'db> IterToProto<'db> for Using<'db> {
+    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+        self.path(db).fragments(db).iter().map(|f| f as _)
+    }
+}
+
+impl<'db> ToProto<'db> for SpannedIdent  {
+    fn named_span(&'db self, db: &'db dyn crate::BaseDatabase) -> &'db Span {
+        &self.span
+    }
+
+    fn spanned(&'db self, db: &'db dyn crate::BaseDatabase) -> &'db Span {
+        &self.span
+    }
+
+    fn symbol_info(&'db self, _db: &'db dyn crate::BaseDatabase) -> Option<SymbolInfo<'db>> {
+        Some(SymbolInfo::builder()
+            .kind(auto_lsp::lsp_types::SymbolKind::INTERFACE)
+            .name(self.ident.text(_db))
+            .range(self.span.clone())
+            .name_range(self.span.clone())
+            .build())
     }
 }
 
@@ -299,7 +326,7 @@ impl<'db> ToProto<'db> for Namespace<'db> {
 
 impl<'db> IterToProto<'db> for Namespace<'db> {
     fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        std::iter::once::<&'db dyn ToProto<'db>>(self)
+        self_iter(self)
             .chain(self.using(db).iter().map(|using| using as _))
             .chain(self.pous(db).iter().flat_map(|pou| pou.iter(db)))
     }
@@ -323,18 +350,18 @@ pub struct PouDecl<'db> {
     #[returns(ref)]
     pub name_span: Span,
 }
-
+ 
 impl<'db> IterToProto<'db> for PouDecl<'db> {
     #[auto_enum(Iterator)]
     fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
         match self.pou(db) {
-            Pou::Function(f) => std::iter::once::<&'db dyn ToProto<'db>>(self).chain(f.iter(db)),
+            Pou::Function(f) => self_iter(self).chain(f.iter(db)),
             Pou::FunctionBlock(fb) => {
-                std::iter::once::<&'db dyn ToProto<'db>>(self).chain(fb.iter(db))
+                self_iter(self).chain(fb.iter(db))
             }
-            Pou::Class(c) => std::iter::once::<&'db dyn ToProto<'db>>(self).chain(c.iter(db)),
-            Pou::DataType(d) => std::iter::once::<&'db dyn ToProto<'db>>(self).chain(d.iter(db)),
-            Pou::Interface(i) => std::iter::once::<&'db dyn ToProto<'db>>(self).chain(i.iter(db)),
+            Pou::Class(c) => self_iter(self).chain(c.iter(db)),
+            Pou::DataType(d) => self_iter(self).chain(d.iter(db)),
+            Pou::Interface(i) => self_iter(self).chain(i.iter(db)),
         }
     }
 }

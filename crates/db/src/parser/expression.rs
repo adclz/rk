@@ -7,11 +7,11 @@ use auto_lsp::{
 };
 use salsa::Accumulator;
 
-use crate::hir::expression::{FieldExpr, IndexExpr};
+use crate::hir::expression::{FieldExpr, IndexExpr, PathExpr};
 use crate::{
     diagnostics::{diagnostic_builder::diag, DiagnosticAccumulator},
     hir::expression::{
-        Expr, ExprKind, Literal, Numeric, Operator, ParamAssign, PathExpr, PrimaryExpr, RefAdress,
+        Expr, ExprKind, Literal, Numeric, Operator, ParamAssign, PathExprKind, PrimaryExpr, RefAdress,
         RefValue, SymbolicVariable, VarAccess, Variable,
     },
     ident::Ident,
@@ -231,7 +231,7 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                     db,
                     func.get_span(),
                     ExprKind::PrimaryExpr(PrimaryExpr::FuncCall {
-                        path: target,
+                        path: PathExpr::new(db, func.get_span(), target),
                         params: parameters,
                     }),
                 ))
@@ -496,22 +496,22 @@ trait ParseExpr<'db> {
 }
 
 impl<'db> ParseExpr<'db> for ast::generated::PathExpression {
-    type Output = PathExpr<'db>;
+    type Output = PathExprKind<'db>;
 
     fn parse(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output> {
         Ok(match self.children.deref() {
             ast::generated::FieldExpression_IndexExpression_VarAccess::FieldExpression(field_expr) => {
-                PathExpr::Field(field_expr.parse(db, file)?) 
+                PathExprKind::Field(field_expr.parse(db, file)?) 
             }
             ast::generated::FieldExpression_IndexExpression_VarAccess::IndexExpression(index_expr) => {
-                PathExpr::Index(index_expr.parse(db, file)?) 
+                PathExprKind::Index(index_expr.parse(db, file)?) 
             }
             ast::generated::FieldExpression_IndexExpression_VarAccess::VarAccess(var_access) => {
-                PathExpr::VarAccess(var_access.parse(db, file)?)
+                PathExprKind::VarAccess(var_access.parse(db, file)?)
             }
         })
     }
-}
+} 
 
 impl<'db> ParseExpr<'db> for ast::generated::FieldExpression {
     type Output = FieldExpr<'db>;

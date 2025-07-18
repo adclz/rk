@@ -13,8 +13,8 @@ use crate::{
         variable::Spec,
     },
     solver::{
-        fq_name::SpannedNamespaceAccess,
-        namespace::{namespace_path, namespaces_in_file, NamespacePath},
+        fq_name::SpannedPath,
+        namespace::{namespace_path, namespaces_in_file, starts, starts_with, NamespacePath},
     },
 };
 
@@ -158,7 +158,7 @@ impl<'db> CheckWithVisibility<'db> for PouDecl<'db> {
     }
 }
 
-impl<'db> CheckWithVisibility<'db> for SpannedNamespaceAccess {
+impl<'db> CheckWithVisibility<'db> for SpannedPath {
     fn check_with_visibility(&'db self, db: &'db dyn BaseDatabase, from: NamespacePath) {
         let to = if let Some(to) = self.fq_name.namespace(db) {
             to
@@ -168,7 +168,7 @@ impl<'db> CheckWithVisibility<'db> for SpannedNamespaceAccess {
         let pou = self.fq_name.target(db);
         let results = namespace_path(db, to);
 
-        eprintln!("results: {:?} -> {:?}", to.to_string(db), pou.text(db));
+        eprintln!("results: {:?} -> {:?}", to.to_string(db), pou.ident.text(db));
 
         if results.is_empty() {
             let message = format!("unknown namespace: '{}'", to.to_string(db));
@@ -182,11 +182,11 @@ impl<'db> CheckWithVisibility<'db> for SpannedNamespaceAccess {
         } else {
             if let None = results
                 .iter()
-                .find_map(|ns| match ns.get_pou(db, from, to, pou) {
+                .find_map(|ns| match ns.get_pou(db, from, to, pou.ident) {
                     PouResult::Hidden(_) => {
                         let message = format!(
                             "POU '{}' is hidden in namespace '{}'",
-                            pou.text(db),
+                            pou.ident.text(db),
                             to.to_string(db)
                         );
                         let diagnostic = diag()
@@ -204,7 +204,7 @@ impl<'db> CheckWithVisibility<'db> for SpannedNamespaceAccess {
             {
                 let message = format!(
                     "POU '{}' not found in namespace '{}'",
-                    pou.text(db),
+                    pou.ident.text(db),
                     to.to_string(db)
                 );
                 let diagnostic = diag()

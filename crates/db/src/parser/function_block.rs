@@ -7,7 +7,7 @@ use crate::hir::variable::Variable;
 use crate::hir::visibility::Modifiers;
 use crate::parser::namespace::ParseUsing;
 use crate::parser::{Parse, ParseVarSection};
-use crate::solver::fq_name::SpannedNamespaceAccess;
+use crate::solver::fq_name::SpannedPath;
 use ast::generated::FbVariables;
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
@@ -23,7 +23,7 @@ impl<'db> Parse<'db> for ast::generated::FbDecl {
         let extends = self
             .extends
             .as_ref()
-            .map(|e| SpannedNamespaceAccess::new(db, file, e))
+            .map(|e| SpannedPath::new(db, file, e))
             .transpose()?;
 
         let implements = self
@@ -32,7 +32,7 @@ impl<'db> Parse<'db> for ast::generated::FbDecl {
             .map(|i| {
                 i.children
                     .iter()
-                    .map(|i| SpannedNamespaceAccess::new(db, file, i))
+                    .map(|i| SpannedPath::new(db, file, i))
                     .collect()
             })
             .transpose()?; 
@@ -123,12 +123,12 @@ impl<'db> ParseVariable<'db> for ast::generated::FbDecl {
 
 #[cfg(test)]
 mod tests {
-    use auto_lsp::{default::db::FileManager, lsp_types};
+    use auto_lsp::{core::span::Span, default::db::FileManager, lsp_types, tree_sitter::{Point, Range}};
 
     use super::*;
     use crate::{
         hir::namespace::{Pou, PouResult},
-        ident::Ident,
+        ident::{Ident, SpannedIdent},
         solver::namespace::{namespaces_in_file, NamespacePath},
         RootDatabase,
     };
@@ -193,11 +193,11 @@ END_NAMESPACE
         let file = db.get_file(&url).unwrap();
         let namespaces = namespaces_in_file(&db, file).unwrap();
 
-        let fn_name = Ident::new(&db, "f".to_string());
-        let ns = Ident::new(&db, "nss".to_string());
+        let fn_name = SpannedIdent::from_blank(&db, "f");
+        let ns = SpannedIdent::from_blank(&db, "nss");
 
         let ns = NamespacePath::from((&db as _, vec![ns]));
-        let function = namespaces.get_pou(&db as _, ns, ns, fn_name);
+        let function = namespaces.get_pou(&db as _, ns, ns, fn_name.ident);
 
         let PouResult::Found(pou) = function else {
             panic!("Not a function block");

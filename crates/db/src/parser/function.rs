@@ -69,12 +69,12 @@ impl<'db> ParseVariable<'db> for ast::generated::FuncDecl {
 
 #[cfg(test)]
 mod tests {
-    use auto_lsp::{default::db::FileManager, lsp_types};
+    use auto_lsp::{default::db::FileManager, lsp_types, tree_sitter::{Point, Range}};
 
     use super::*;
     use crate::{
         hir::namespace::{Pou, PouResult},
-        ident::Ident,
+        ident::{SpannedIdent},
         solver::namespace::{namespaces_in_file, NamespacePath},
         RootDatabase,
     };
@@ -127,11 +127,11 @@ END_NAMESPACE
         let file = db.get_file(&url).unwrap();
         let namespaces = namespaces_in_file(&db, file).unwrap();
 
-        let fn_name = Ident::new(&db, "f".to_string());
-        let ns = Ident::new(&db, "nss".to_string());
+        let fn_name = SpannedIdent::from_blank(&db, "f");
+        let ns = SpannedIdent::from_blank(&db, "nss");
 
         let ns = NamespacePath::from((&db as _, vec![ns]));
-        let function = namespaces.get_pou(&db as _, ns, ns, fn_name);
+        let function = namespaces.get_pou(&db as _, ns, ns, fn_name.ident);
 
         let PouResult::Found(pou) = function else {
             panic!("Not a function");

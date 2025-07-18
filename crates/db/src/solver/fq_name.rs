@@ -3,7 +3,7 @@ use std::ops::Deref;
 use super::namespace::NamespacePath;
 use crate::{
     hir::namespace::{Namespace, PouDecl},
-    ident::Ident,
+    ident::{Ident, SpannedIdent},
     solver::namespace::namespace_path,
 };
 use auto_lsp::core::ast::AstNode;
@@ -14,18 +14,26 @@ use auto_lsp::{
 };
 
 #[derive(Clone, Hash, salsa::Update, Debug)]
-pub struct SpannedNamespaceAccess {
+pub struct SpannedPath {
     pub span: Span,
     pub fq_name: NamespaceAccess,
 }
 
-impl SpannedNamespaceAccess {
+impl PartialEq for SpannedPath {
+    fn eq(&self, other: &Self) -> bool {
+        self.fq_name == other.fq_name
+    }
+}
+
+impl Eq for SpannedPath {}
+
+impl SpannedPath {
     pub fn new(
         db: &dyn BaseDatabase,
         file: File,
         fq_name: &ast::generated::NamespaceAccess,
     ) -> anyhow::Result<Self> {
-        Ok(SpannedNamespaceAccess {
+        Ok(SpannedPath {
             span: fq_name.get_span(),
             fq_name: NamespaceAccess::from_ast(db, file, &fq_name)?,
         })
@@ -40,7 +48,7 @@ impl SpannedNamespaceAccess {
 #[salsa::interned(debug, no_lifetime)]
 pub struct NamespaceAccess {
     pub namespace: Option<NamespacePath>,
-    pub target: Ident,
+    pub target: SpannedIdent,
 }
 
 impl NamespaceAccess {
@@ -55,14 +63,14 @@ impl NamespaceAccess {
         let mut current = match fq_name.children.deref() {
             ast::generated::Identifier_ScopedIdentifier::ScopedIdentifier(scoped) => scoped,
             ast::generated::Identifier_ScopedIdentifier::Identifier(ident) => {
-                let target = Ident::from_node(db, file, ident)?;
+                let target = SpannedIdent::new(db, file, ident)?;
                 return Ok(NamespaceAccess::new(db, None, target));
             }
         };
 
         loop {
             // Extract the target of the current scoped_identifier (e.g. m1, m2, m3...)
-            fragments.push(Ident::from_node(db, file, current.target.deref())?);
+            fragments.push(SpannedIdent::new(db, file, current.target.deref())?);
 
             match current.path.deref() {
                 ast::generated::Identifier_ScopedIdentifier::ScopedIdentifier(next) => {
@@ -70,7 +78,7 @@ impl NamespaceAccess {
                 }
                 ast::generated::Identifier_ScopedIdentifier::Identifier(base) => {
                     // Reached the bottom-most path (e.g. "system")
-                    fragments.push(Ident::from_node(db, file, base)?);
+                    fragments.push(SpannedIdent::new(db, file, base)?);
                     break;
                 }
             }
@@ -98,7 +106,7 @@ impl NamespaceAccess {
         if !path.is_empty() {
             path.push('.');
         }
-        path.push_str(self.target(db).text(db).as_str());
+        path.push_str(self.target(db).ident.text(db).as_str());
         path
     }
 }
@@ -137,7 +145,7 @@ pub fn fq_name_solver<'db>(
             continue;
         };
 
-        let Some(pou) = ns.get_pou(db, target) else {
+        let Some(pou) = ns.get_pou(db, target.ident) else {
             continue;
         };
 
@@ -157,7 +165,7 @@ pub fn fq_name_solver<'db>(
 
 #[cfg(test)]
 mod tests {
-    use auto_lsp::{default::db::FileManager, lsp_types};
+    use auto_lsp::{default::db::FileManager, lsp_types, tree_sitter::{Point, Range}};
 
     use super::*;
     use crate::{
@@ -190,7 +198,7 @@ END_NAMESPACE
         let file = db.get_file(&url).unwrap();
         let namespaces = namespaces_in_file(&db, file).unwrap();
 
-        let ns = NamespacePath::from((&db as _, vec![Ident::new(&db, "ns".to_string())]));
+        let ns = NamespacePath::from((&db as _, vec![SpannedIdent::from_blank(&db, "ns")]));
         let function = namespaces.get_pou(&db, ns, ns, Ident::new(&db, "f".to_string()));
 
         let PouResult::Found(pou) = function else {
@@ -210,7 +218,7 @@ END_NAMESPACE
                     .len(),
                 2
             );
-            assert_eq!(implements.fq_name.target(&db).text(&db), "Target");
+            assert_eq!(implements.fq_name.target(&db).ident.text(&db), "Target");
         } else {
             panic!("Not a function block");
         }
@@ -243,9 +251,9 @@ END_NAMESPACE"#;
             &db,
             Some(NamespacePath::from((
                 &db as _,
-                vec![Ident::new(&db, "ns".to_string())],
+                vec![SpannedIdent::from_blank(&db, "ns")],
             ))),
-            Ident::new(&db, "f".to_string()),
+            SpannedIdent::from_blank(&db, "f"),
         );
         let pou = fq_name_solver(&db, fq, file);
         if let FqSolverResult::Ok(pou) = pou {
@@ -300,15 +308,15 @@ END_NAMESPACE"#;
             &db,
             Some(NamespacePath::from((
                 &db as _,
-                vec![Ident::new(&db, "ns".to_string())],
+                vec![SpannedIdent::from_blank(&db, "ns")],
             ))),
-            Ident::new(&db, "f".to_string()),
+            SpannedIdent::from_blank(&db, "f"),
         );
         let pou = fq_name_solver(&db, fq, file);
         if let FqSolverResult::Hidden(ns) = pou {
             assert_eq!(
                 *ns.path(&db),
-                NamespacePath::from((&db as _, vec![Ident::new(&db, "ns".to_string())]))
+                NamespacePath::from((&db as _, vec![SpannedIdent::from_blank(&db, "ns")]))
             );
         } else {
             panic!("Not a hidden pou");

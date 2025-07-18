@@ -60,7 +60,16 @@ impl<'db> ParseStatement<'db> for ast::generated::Assign {
         }?;
 
         match self.target.deref() {
-            ast::generated::Assignment_AssignmentAttempt::Assignment(assign) => Ok(Stmt::new(
+            ast::generated::ERREmptyRightHandAssignment_Assignment_AssignmentAttempt::ERREmptyRightHandAssignment(err) => {
+                let diag = diag()
+                    .message("Empty right-hand side in assignment".into())
+                    .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+                    .range(err.get_span())
+                    .call();
+                DiagnosticAccumulator::accumulate(diag.into(), db);
+                Err(anyhow::anyhow!("Empty right-hand side in assignment"))
+            },
+            ast::generated::ERREmptyRightHandAssignment_Assignment_AssignmentAttempt::Assignment(assign) => Ok(Stmt::new(
                 db,
                 assign.get_span(),
                 StmtKind::Assignment {
@@ -68,7 +77,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Assign {
                     target: assign.children.to_expr(db, file)?,
                 },
             )),
-            ast::generated::Assignment_AssignmentAttempt::AssignmentAttempt(attempt) => {
+            ast::generated::ERREmptyRightHandAssignment_Assignment_AssignmentAttempt::AssignmentAttempt(attempt) => {
                 unreachable!()
             }
         }

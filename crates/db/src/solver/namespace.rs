@@ -2,7 +2,7 @@ use auto_lsp::default::db::{file::File, tracked::get_ast, BaseDatabase};
 
 use crate::{
     hir::namespace::{FileNamespaces, Namespace},
-    ident::Ident,
+    ident::{Ident, SpannedIdent},
     parser::namespace::FileNamespacesBuilder,
 };
 
@@ -10,7 +10,7 @@ use crate::{
 #[salsa::interned(debug, no_lifetime)]
 pub struct NamespacePath {
     #[returns(ref)]
-    pub fragments: Vec<Ident>,
+    pub fragments: Vec<SpannedIdent>,
 }
 
 impl<'db> NamespacePath {
@@ -20,7 +20,7 @@ impl<'db> NamespacePath {
         NamespacePath::new(db, path)
     }
 
-    pub fn extend(&self, db: &dyn BaseDatabase, ident: Ident) -> NamespacePath {
+    pub fn extend(&self, db: &dyn BaseDatabase, ident: SpannedIdent) -> NamespacePath {
         let mut path = self.fragments(db).to_owned();
         path.push(ident);
         NamespacePath::new(db, path)
@@ -29,32 +29,32 @@ impl<'db> NamespacePath {
     pub fn to_string(&self, db: &dyn BaseDatabase) -> String {
         self.fragments(db)
             .iter()
-            .map(|i| i.text(db))
+            .map(|i| i.ident.text(db))
             .collect::<Vec<_>>()
             .join(".")
     }
 }
 
-impl From<(&dyn BaseDatabase, &Ident)> for NamespacePath {
-    fn from(from: (&dyn BaseDatabase, &Ident)) -> Self {
+impl From<(&dyn BaseDatabase, &SpannedIdent)> for NamespacePath {
+    fn from(from: (&dyn BaseDatabase, &SpannedIdent)) -> Self {
         NamespacePath::new(from.0, vec![from.1.clone()])
     }
 }
 
-impl From<(&dyn BaseDatabase, &[Ident])> for NamespacePath {
-    fn from(from: (&dyn BaseDatabase, &[Ident])) -> Self {
+impl From<(&dyn BaseDatabase, &[SpannedIdent])> for NamespacePath {
+    fn from(from: (&dyn BaseDatabase, &[SpannedIdent])) -> Self {
         NamespacePath::new(from.0, from.1.to_vec())
     }
 }
 
-impl From<(&dyn BaseDatabase, Vec<Ident>)> for NamespacePath {
-    fn from(from: (&dyn BaseDatabase, Vec<Ident>)) -> Self {
+impl From<(&dyn BaseDatabase, Vec<SpannedIdent>)> for NamespacePath {
+    fn from(from: (&dyn BaseDatabase, Vec<SpannedIdent>)) -> Self {
         NamespacePath::new(from.0, from.1)
     }
 }
 
-impl From<(&dyn BaseDatabase, &Vec<Ident>)> for NamespacePath {
-    fn from(from: (&dyn BaseDatabase, &Vec<Ident>)) -> Self {
+impl From<(&dyn BaseDatabase, &Vec<SpannedIdent>)> for NamespacePath {
+    fn from(from: (&dyn BaseDatabase, &Vec<SpannedIdent>)) -> Self {
         NamespacePath::new(from.0, from.1.clone())
     }
 }
@@ -99,7 +99,7 @@ pub fn starts_with<'db>(db: &'db dyn BaseDatabase, ident: Ident) -> Vec<Namespac
         .filter_map(|file| namespaces_in_file(db, *file))
         .flat_map(|ns| {
             ns.namespaces(db).iter().find_map(|(path, ns)| {
-                if path.fragments(db)[0].text(db).starts_with(&ident.text(db)) {
+                if path.fragments(db)[0].ident.text(db).starts_with(&ident.text(db)) {
                     Some(*ns)
                 } else {
                     None
@@ -140,25 +140,51 @@ mod tests {
     use super::*;
 
     #[test]
+    fn intern_namespace() {
+        let db = RootDatabase::default();
+
+        let first = NamespacePath::from((&db as _, &vec![SpannedIdent::from_blank(&db, "first")]));
+        let second = NamespacePath::from((
+            &db as _,
+            &vec![
+                SpannedIdent::from_blank(&db, "first"),
+                SpannedIdent::from_blank(&db, "second"),
+            ],
+        ));
+        let third = NamespacePath::from((
+            &db as _,
+            &vec![
+                SpannedIdent::from_blank(&db, "first"),
+                SpannedIdent::from_blank(&db, "second"),
+                SpannedIdent::from_blank(&db, "third"),
+            ],
+        ));
+
+        assert!(first.fragments(&db).len() == 1);
+        assert!(second.fragments(&db).len() == 2);
+        assert!(third.fragments(&db).len() == 3);
+    }
+
+    #[test]
     fn interned_namespace_paths() {
         let db = RootDatabase::default();
-        let first_id = Ident::new(&db, "first".to_string());
-        let second_id = Ident::new(&db, "second".to_string());
+        let first_id = SpannedIdent::from_blank(&db, "first");
+        let second_id = SpannedIdent::from_blank(&db, "second");
 
         assert_ne!(first_id, second_id);
 
         let first_path = NamespacePath::from((
             &db as _,
             vec![
-                Ident::new(&db, "first".to_string()),
-                Ident::new(&db, "second".to_string()),
+                SpannedIdent::from_blank(&db, "first"),
+                SpannedIdent::from_blank(&db, "second"),
             ],
         ));
         let second_path = NamespacePath::from((
             &db as _,
             vec![
-                Ident::new(&db, "first".to_string()),
-                Ident::new(&db, "second".to_string()),
+                SpannedIdent::from_blank(&db, "first"),
+                SpannedIdent::from_blank(&db, "second"),
             ],
         ));
 
@@ -251,7 +277,7 @@ END_NAMESPACE"#;
             .map(|n| {
                 n.0.fragments(&db)
                     .iter()
-                    .map(|i| i.text(&db))
+                    .map(|i| i.ident.text(&db))
                     .collect::<Vec<_>>()
                     .join(".")
             })
@@ -296,20 +322,20 @@ END_NAMESPACE"#;
 
         db.add_file(file).unwrap();
 
-        let first = NamespacePath::from((&db as _, &vec![Ident::new(&db, "first".to_string())]));
+        let first = NamespacePath::from((&db as _, &vec![SpannedIdent::from_blank(&db, "first")]));
         let second = NamespacePath::from((
             &db as _,
             &vec![
-                Ident::new(&db, "first".to_string()),
-                Ident::new(&db, "second".to_string()),
+                SpannedIdent::from_blank(&db, "first"),
+                SpannedIdent::from_blank(&db, "second"),
             ],
         ));
         let third = NamespacePath::from((
             &db as _,
             &vec![
-                Ident::new(&db, "first".to_string()),
-                Ident::new(&db, "second".to_string()),
-                Ident::new(&db, "third".to_string()),
+                SpannedIdent::from_blank(&db, "first"),
+                SpannedIdent::from_blank(&db, "second"),
+                SpannedIdent::from_blank(&db, "third"),
             ],
         ));
 
@@ -356,7 +382,7 @@ END_NAMESPACE"#;
 
         let all_namespaces = namespace_path(
             &db,
-            NamespacePath::from((&db as _, &vec![Ident::new(&db, "first".to_string())])),
+            NamespacePath::from((&db as _, &vec![SpannedIdent::from_blank(&db, "first")])),
         );
 
         assert_eq!(all_namespaces.len(), 1);
@@ -368,7 +394,7 @@ END_NAMESPACE"#;
 
         let all_namespaces = namespace_path(
             &db,
-            NamespacePath::from((&db as _, &vec![Ident::new(&db, "first".to_string())])),
+            NamespacePath::from((&db as _, &vec![SpannedIdent::from_blank(&db, "first")])),
         );
         assert_eq!(all_namespaces.len(), 1);
         assert_eq!(logs.lock().unwrap().len(), 0);
