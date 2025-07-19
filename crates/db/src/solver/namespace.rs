@@ -1,7 +1,7 @@
 use auto_lsp::default::db::{file::File, tracked::get_ast, BaseDatabase};
 
 use crate::{
-    hir::namespace::{FileNamespaces, Namespace},
+    hir::namespace::{FileNamespaces, Namespace, NamespaceResult},
     ident::{Ident, SpannedIdent},
     parser::namespace::FileNamespacesBuilder,
 };
@@ -84,7 +84,7 @@ pub fn namespace_path<'db>(
                 Some(namespaces) => namespaces,
                 None => return None,
             };
-            if namespaces.namespaces(db).contains_key(&path) {
+            if namespaces.namespaces(db).iter().find(|ns| ns.path(db) == &path).is_some() {
                 Some(namespaces)
             } else {
                 None
@@ -93,13 +93,32 @@ pub fn namespace_path<'db>(
         .collect()
 }
 
+/// Namespaces accessible in a given file and namespace path
+pub fn namespaces_in_scope<'db>(
+    db: &'db dyn BaseDatabase,
+    file: File,
+    namespace: NamespacePath) -> Vec<Namespace<'db>> {
+    let fragments = namespace.fragments(db);
+    let mut namespaces= vec![];
+    fragments.iter().enumerate().for_each(|(ni, n)| {
+        let path = NamespacePath::from((db, &fragments[..=ni]));
+
+        namespaces_in_file(db, file).into_iter().for_each(|ns| {
+            if let NamespaceResult::Found(ns) = ns.get_namespace(db, namespace, path) {
+                namespaces.push(ns);
+            }
+        });
+    });
+    namespaces
+}
+
 pub fn starts_with<'db>(db: &'db dyn BaseDatabase, ident: Ident) -> Vec<Namespace<'db>> {
     db.get_files()
         .iter()
         .filter_map(|file| namespaces_in_file(db, *file))
         .flat_map(|ns| {
-            ns.namespaces(db).iter().find_map(|(path, ns)| {
-                if path.fragments(db)[0].ident.text(db).starts_with(&ident.text(db)) {
+            ns.namespaces(db).iter().find_map(|ns| {
+                if ns.path(db).fragments(db)[0].ident.text(db).starts_with(&ident.text(db)) {
                     Some(*ns)
                 } else {
                     None
@@ -114,8 +133,8 @@ pub fn starts<'db>(db: &'db dyn BaseDatabase, ident: Ident) -> Vec<Namespace<'db
         .iter()
         .filter_map(|file| namespaces_in_file(db, *file))
         .flat_map(|ns| {
-            ns.namespaces(db).iter().filter_map(|(path, ns)| {
-                if path.fragments(db)[0] == ident {
+            ns.namespaces(db).iter().filter_map(|ns| {
+                if ns.path(db).fragments(db)[0] == ident {
                     Some(*ns)
                 } else {
                     None
@@ -212,7 +231,7 @@ END_NAMESPACE"#;
         let file = db.get_file(&url).unwrap();
         let namespaces = namespaces_in_file(&db, file).unwrap();
 
-        let test = namespaces.namespaces(&db).values().next().unwrap();
+        let test = namespaces.namespaces(&db).iter().next().unwrap();
         assert!(test.path(&db).fragments(&db).len() == 4);
     }
 
@@ -236,7 +255,7 @@ END_NAMESPACE"#;
         let file = db.get_file(&url).unwrap();
         let namespaces = namespaces_in_file(&db, file).unwrap();
 
-        let test = namespaces.namespaces(&db).values().next().unwrap();
+        let test = namespaces.namespaces(&db).iter().next().unwrap();
 
         let using = test.using(&db).first().unwrap();
         assert_eq!(using.path(&db).fragments(&db).len(), 4);
@@ -275,7 +294,7 @@ END_NAMESPACE"#;
             .namespaces(&db)
             .iter()
             .map(|n| {
-                n.0.fragments(&db)
+                n.path(&db).fragments(&db)
                     .iter()
                     .map(|i| i.ident.text(&db))
                     .collect::<Vec<_>>()
@@ -398,5 +417,38 @@ END_NAMESPACE"#;
         );
         assert_eq!(all_namespaces.len(), 1);
         assert_eq!(logs.lock().unwrap().len(), 0);
+    }
+
+
+    #[test]
+    fn in_scope() {
+        let mut db = RootDatabase::default();
+        let url = lsp_types::Url::parse("file:///test.st").unwrap();
+        let source = r#"
+NAMESPACE ns
+    NAMESPACE ns2
+        FUNCTION f  
+        END_FUNCTION
+    END_NAMESPACE
+END_NAMESPACE"#;
+
+        let file = File::from_string()
+            .db(&db)
+            .parsers(ast::RK_PARSER.get("structured_text").unwrap())
+            .url(&url)
+            .source(source.to_string())
+            .call()
+            .unwrap();
+
+        db.add_file(file).unwrap();
+
+        let file = db.get_file(&url).unwrap();
+        let scopes = namespaces_in_scope(&db, file, 
+            NamespacePath::from((&db as _, &vec![
+                SpannedIdent::from_blank(&db, "ns"),
+                SpannedIdent::from_blank(&db, "ns2")
+            ]))
+        );
+        assert_eq!(scopes.len(), 2);
     }
 }

@@ -25,7 +25,7 @@ pub fn code_actions(
 
     let ctx = HirCtx::new(db, file);
     for symbol in ns.iter(ctx) {
-        let symbol = match symbol.symbol_info(db) {
+        let symbol = match symbol.1.symbol_info(db) {
             Some(symbol) => symbol,
             None => continue,
         };

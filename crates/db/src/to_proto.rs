@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use auto_lsp::{
     core::span::Span,
     default::db::{file::File, BaseDatabase},
@@ -126,7 +128,7 @@ impl<'db> HirCtx<'db> {
 
 pub trait ToProto<'db> {
     fn get_id(&'db self, db: &'db dyn crate::BaseDatabase) -> usize;
-
+ 
     fn get_span(&'db self, db: &'db dyn crate::BaseDatabase) -> &'db Span;
 
     fn get_named_span(&'db self, db: &'db dyn crate::BaseDatabase) -> Option<&'db Span> {
@@ -139,7 +141,7 @@ pub trait ToProto<'db> {
 
     fn completion_ctx(
         &'db self,
-        _db: &'db dyn crate::BaseDatabase,
+        _ctx: HirCtx<'db>,
         _offset: usize,
     ) -> Option<Vec<CompletionItem>> {
         None
@@ -148,31 +150,34 @@ pub trait ToProto<'db> {
 
 pub fn self_iter<'db>(
     s: &'db impl ToProto<'db>,
-) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-    std::iter::once::<&'db dyn ToProto<'db>>(s)
+    ctx: HirCtx<'db>,
+) -> impl Iterator<Item = ProtoAndCtx<'db>> {
+    std::iter::once::<ProtoAndCtx<'db>>((ctx, s))
 }
+
+pub type ProtoAndCtx<'db> = (HirCtx<'db>, &'db dyn ToProto<'db>);
 
 pub trait IterToProto<'db> {
     fn iter(
         &'db self,
         ctx: HirCtx<'db>,
-    ) -> impl Iterator<Item = &'db dyn ToProto<'db>>;
+    ) -> impl Iterator<Item = ProtoAndCtx<'db>>;
 
     fn descendant_at(
         &'db self,
         ctx: HirCtx<'db>,
         offset: usize,
-    ) -> Option<&'db dyn ToProto<'db>> {
-        let mut best_match: Option<&'db dyn ToProto<'db>> = None;
+    ) -> Option<ProtoAndCtx<'db>> {
+        let mut best_match: Option<ProtoAndCtx<'db>> = None;
 
         for node in self.iter(ctx) {
-            let range = node.get_span(ctx.db);
+            let range = node.1.get_span(ctx.db).clone();
 
             // Only consider nodes that contain the offset
             if range.start_byte <= offset && offset <= range.end_byte {
                 // Compare old best match with new node
                 if let Some(a) = best_match {
-                    let a = a.get_span(ctx.db);
+                    let a = a.1.get_span(ctx.db);
 
                     if a.start_byte >= range.start_byte {
                         continue;
@@ -191,11 +196,11 @@ pub trait IterToProto<'db> {
         &'db self,
         ctx: HirCtx<'db>,
         offset: usize,
-    ) -> Option<&'db dyn ToProto<'db>> {
-        let mut best_match: Option<&'db dyn ToProto<'db>> = None;
+    ) -> Option<ProtoAndCtx<'db>> {
+        let mut best_match: Option<ProtoAndCtx<'db>> = None;
 
         for node in self.iter(ctx) {
-            let range = match node.get_named_span(ctx.db) {
+            let range = match node.1.get_named_span(ctx.db) {
                 Some(span) => span,
                 None => continue,
             };
@@ -204,7 +209,7 @@ pub trait IterToProto<'db> {
             if range.start_byte <= offset && offset <= range.end_byte {
                 // Compare old best match with new node
                 if let Some(a) = best_match {
-                    let a = match a.get_named_span(ctx.db) {
+                    let a = match a.1.get_named_span(ctx.db) {
                         Some(span) => span,
                         None => continue,
                     };

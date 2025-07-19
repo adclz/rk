@@ -3,7 +3,7 @@ use auto_lsp::{default::db::BaseDatabase, lsp_types::CompletionItem};
 use crate::{
     completions,
     hir::{namespace::Using, statement::Stmt, variable::Variable},
-    to_proto::{HirCtx, IterToProto, ToProto},
+    to_proto::{HirCtx, IterToProto, ProtoAndCtx},
 };
 
 #[salsa::tracked]
@@ -36,8 +36,8 @@ impl<'db> Function<'db> {
 }
 
 impl<'db> IterToProto<'db> for Function<'db> {
-    fn iter(&'db self, ctx: HirCtx<'db>) -> impl Iterator<Item = &'db (dyn ToProto<'db> + 'db)> {
-        self.using(ctx.db).iter().map(|u| u as _)
-            .chain(self.variables(ctx.db).iter().map(|v| v as _))
+    fn iter(&'db self, ctx: HirCtx<'db>) -> impl Iterator<Item = ProtoAndCtx<'db>> {
+        self.using(ctx.db).iter().map(move |u| (ctx, u as _))
+            .chain(self.variables(ctx.db).iter().map(move |v| (ctx, v as _)))
     }
 }

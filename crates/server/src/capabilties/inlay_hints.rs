@@ -17,7 +17,7 @@ pub fn inlay_hints(db: &impl BaseDatabase, params: InlayHintParams) -> anyhow::R
     };
     let ctx = HirCtx::new(db, file);
     ns.iter(ctx).for_each(|symbol| {
-        let symbol = match symbol.symbol_info(db) {
+        let symbol = match symbol.1.symbol_info(db) {
             Some(symbol) => symbol,
             None => return,
         };

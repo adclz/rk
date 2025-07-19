@@ -25,7 +25,7 @@ impl PartialEq for SpannedPath {
         self.fq_name == other.fq_name
     }
 }
-
+ 
 impl<'db> ToProto<'db> for SpannedPath {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> usize {
         self.id
@@ -153,7 +153,7 @@ pub fn fq_name_solver<'db>(
     let target = fq.target(db);
 
     for n in namespace_path(db, path) {
-        let Some(ns) = n.namespaces(db).get(&path) else {
+        let Some(ns) = n.namespaces(db).iter().find(|ns| ns.path(db) == &path) else {
             continue;
         };
 

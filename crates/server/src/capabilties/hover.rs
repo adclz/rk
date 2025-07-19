@@ -30,17 +30,10 @@ pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Opti
         None => return Ok(None),
     };
     let ctx = HirCtx::new(db, file);
-    Ok(ns.named_descendant_at(ctx, position).and_then(|symbol| {
-        let ns = ns.namespace_at(db, position)?;
+    Ok(ns.named_descendant_at(ctx, position).and_then(|(ctx, symbol)| {
         let symbol = match symbol.symbol_info(db) {
             Some(symbol) => symbol,
             None => return None,
-        };
-
-        let namespace = if symbol.kind == Some(auto_lsp::lsp_types::SymbolKind::NAMESPACE) {
-            String::default()
-        } else {
-            format!("namespace {}\n", ns.path(db).to_string(db))
         };
 
         let kind = symbol.kind_to_string();
@@ -88,7 +81,7 @@ pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Opti
                 kind: MarkupKind::Markdown,
                 value: format!(
                     r#"```typescript
-{namespace}{kind} {spec}{implements}{extends}
+{kind} {spec}{implements}{extends}
 ```
 {comment}
 "#,

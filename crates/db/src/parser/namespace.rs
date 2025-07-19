@@ -24,7 +24,7 @@ pub struct FileNamespacesBuilder<'db> {
     pub(crate) file: File,
     pub(crate) directives: Vec<Using<'db>>,
     pub(crate) globals: Vec<PouDecl<'db>>,
-    pub(crate) paths: FxHashMap<NamespacePath, Namespace<'db>>,
+    pub(crate) paths: Vec<Namespace<'db>>,
 }
 
 pub trait ParseUsing<'db> {
@@ -100,7 +100,7 @@ impl<'db> FileNamespacesBuilder<'db> {
             source,
             directives: vec![],
             globals: vec![],
-            paths: HashMap::default(),
+            paths: vec![],
         }
     }
 
@@ -147,7 +147,7 @@ impl<'db> FileNamespacesBuilder<'db> {
                         }
                     };
 
-                    self.paths.entry(namespace_path).or_insert(namespace);
+                    self.paths.push(namespace);
                 }
                 SourceFileDecl::UsingDirective(directive) => {
                     let using = directive.parse_using(self.db, self.file).unwrap();
@@ -234,7 +234,7 @@ impl<'db> FileNamespacesBuilder<'db> {
 
                         let namespace_path: NamespacePath = NamespacePath::from((self.db, &path));
                         let namespace = self.handle_namespace_elements(&path, namespace)?;
-                        self.paths.entry(namespace_path).or_insert(namespace);
+                        self.paths.push(namespace);
                     }
                     Decl::FuncDecl(func) => {
                         let name = Ident::from_node(self.db, self.file, &*func.name)?;

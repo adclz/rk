@@ -64,9 +64,8 @@ pub fn use_completion_ctx(db: &impl BaseDatabase, file: File, offset: usize) -> 
         None => return Ok(None),
     };
     let ctx = HirCtx::new(db, file);
-    if let Some(symbol) = ns.descendant_at(ctx, offset) {
-        eprintln!("Found symbol: {:?}", symbol.symbol_info(db));
-        if let Some(ctx) = symbol.completion_ctx(db, offset) {
+    if let Some((ctx,symbol)) = ns.descendant_at(ctx, offset) {
+        if let Some(ctx) = symbol.completion_ctx(ctx, offset) {
             return Ok(Some(CompletionResponse::Array(ctx)));
         }
     }
