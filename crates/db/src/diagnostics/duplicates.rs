@@ -1,3 +1,5 @@
+use std::fmt::format;
+
 use auto_lsp::{
     default::db::{file::File, BaseDatabase},
     lsp_types::DiagnosticRelatedInformation,
@@ -14,7 +16,7 @@ use crate::{
     },
     solver::{
         fq_name::SpannedPath,
-        namespace::{namespace_path, namespaces_in_file, starts, starts_with, NamespacePath},
+        namespace::{namespace_path, namespaces_in_file, namespaces_in_scope, NamespacePath},
     },
 };
 
@@ -29,7 +31,8 @@ trait CheckWithVisibility<'db> {
 #[salsa::tracked(no_eq)]
 pub fn duplicate_declarations<'db>(db: &'db dyn BaseDatabase, file: File) {
     if let Some(namespaces) = namespaces_in_file(db, file) {
-        for (path, namespace) in namespaces.namespaces(db).iter() {
+        for namespace in namespaces.namespaces(db).iter() {
+            let path = namespace.path(db);
             for using in namespace.using(db).iter() {
                 using.check_with_visibility(db, file, *path);
             }
@@ -78,6 +81,30 @@ impl<'db> CheckWithVisibility<'db> for Using<'db> {
     fn check_with_visibility(&'db self, db: &'db dyn BaseDatabase, file: File, from: NamespacePath) {
         let to = self.path(db);
         let results = namespace_path(db, to);
+
+        namespaces_in_scope(db, file, to)
+            .iter()
+            .for_each(|ns| {
+                let message = format!("namespace '{}' is already in scope", to.to_string(db));
+                let diagnostic = diag()
+                    .file(file)
+                    .range(self.span(db).clone())
+                    .message(message)
+                    .source("IEC".into())
+                    .related_information(
+                        vec![DiagnosticRelatedInformation {
+                            location: auto_lsp::lsp_types::Location {
+                                uri: file.url(db).clone(),
+                                range: ns.name_span(db).into(),
+                            },
+                            message: format!("namespace '{}' is already declared here", to.to_string(db)),
+                        }],
+                    )
+                    .severity(auto_lsp::lsp_types::DiagnosticSeverity::WARNING)
+                    .tags(vec![auto_lsp::lsp_types::DiagnosticTag::UNNECESSARY])
+                    .call();
+                DiagnosticAccumulator::accumulate(diagnostic.into(), db);
+            });
 
         if results.is_empty() {
             let message = format!("unknown namespace: '{}'", to.to_string(db));
