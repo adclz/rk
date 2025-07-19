@@ -11,7 +11,10 @@ pub fn inlay_hints(db: &impl BaseDatabase, params: InlayHintParams) -> anyhow::R
 
     let mut results = vec![];
 
-    let ns = namespaces_in_file(db, file).unwrap();
+    let ns = match namespaces_in_file(db, file) {
+        Some(ns) => ns,
+        None => return Ok(None),
+    };
     ns.iter(db).for_each(|symbol| {
         let symbol = match symbol.symbol_info(db) {
             Some(symbol) => symbol,

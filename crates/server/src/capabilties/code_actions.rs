@@ -18,7 +18,10 @@ pub fn code_actions(
 
     let mut results = vec![];
 
-    let ns = namespaces_in_file(db, file).unwrap();
+    let ns = match namespaces_in_file(db, file) {
+        Some(ns) => ns,
+        None => return Ok(None),
+    };
     for symbol in ns.iter(db) {
         let symbol = match symbol.symbol_info(db) {
             Some(symbol) => symbol,

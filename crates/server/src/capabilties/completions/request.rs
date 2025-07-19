@@ -59,7 +59,10 @@ pub fn use_completion_marker(db: &impl BaseDatabase, file: File, position: lsp_t
 }
 
 pub fn use_completion_ctx(db: &impl BaseDatabase, file: File, offset: usize) -> anyhow::Result<Option<CompletionResponse>> {
-    let ns = namespaces_in_file(db, file).unwrap();
+    let ns = match namespaces_in_file(db, file) {
+        Some(ns) => ns,
+        None => return Ok(None),
+    };
     if let Some(symbol) = ns.descendant_at(db, offset) {
         eprintln!("Found symbol: {:?}", symbol.symbol_info(db));
         if let Some(ctx) = symbol.completion_ctx(db, offset) {

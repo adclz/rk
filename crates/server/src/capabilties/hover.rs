@@ -25,7 +25,10 @@ pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Opti
             )
         })?;
 
-    let ns = namespaces_in_file(db, file).unwrap();
+    let ns = match namespaces_in_file(db, file) {
+        Some(ns) => ns,
+        None => return Ok(None),
+    };
     Ok(ns.named_descendant_at(db, position).and_then(|symbol| {
         let ns = ns.namespace_at(db, position)?;
         let symbol = match symbol.symbol_info(db) {
