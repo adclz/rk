@@ -49,6 +49,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Assign {
         let var = match self.variable.deref() {
             ast::generated::ERRAssignFuncCall_Variable::ERRAssignFuncCall(err) => {
                 let diag = diag()
+                    .file(file)
                     .message("Cannot assign to a function call".into())
                     .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                     .range(err.get_span())
@@ -62,6 +63,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Assign {
         match self.target.deref() {
             ast::generated::ERREmptyRightHandAssignment_Assignment_AssignmentAttempt::ERREmptyRightHandAssignment(err) => {
                 let diag = diag()
+                    .file(file)
                     .message("Empty right-hand side in assignment".into())
                     .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                     .range(err.get_span())

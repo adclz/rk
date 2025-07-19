@@ -40,6 +40,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
             match child.deref() {
                 ast::generated::ERRVariableWithNoSpec_InputVar::ERRVariableWithNoSpec(child) => {
                     let diag = diag()
+                        .file(file)
                         .message("variable with no type specified".to_string())
                         .range(child.get_span())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
@@ -98,6 +99,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
             match child.deref() {
                 ast::generated::ERRVariableWithNoSpec_FbInputVar::ERRVariableWithNoSpec(child) => {
                     let diag = diag()
+                        .file(file)
                         .message("variable with no type specified".to_string())
                         .range(child.get_span())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
@@ -156,6 +158,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::OutputDecls {
             match child.deref() {
                 ast::generated::ERRVariableWithNoSpec_OutputVar::ERRVariableWithNoSpec(child) => {
                     let diag = diag()
+                        .file(file)
                         .message("variable with no type specified".to_string())
                         .range(child.get_span())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
@@ -204,6 +207,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbOutputDecls {
             match child.deref() {
                 ast::generated::ERRVariableWithNoSpec_FbOutputVar::ERRVariableWithNoSpec(child) => {
                     let diag = diag()
+                        .file(file)
                         .message("variable with no type specified".to_string())
                         .range(child.get_span())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
@@ -252,6 +256,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::TempVarDecls {
             match child.deref() {
                 ast::generated::ERRVariableWithNoSpec_TempVar::ERRVariableWithNoSpec(child) => {
                     let diag = diag()
+                        .file(file)
                         .message("variable with no type specified".to_string())
                         .range(child.get_span())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
@@ -300,6 +305,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
             match child.deref() {
                 ast::generated::ERRVariableWithNoSpec_InOutVar::ERRVariableWithNoSpec(child) => {
                     let diag = diag()
+                        .file(file)
                         .message("variable with no type specified".to_string())
                         .range(child.get_span())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
@@ -520,6 +526,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
                     child,
                 ) => {
                     let diag = diag()
+                        .file(file)
                         .message("variable with no type specified".to_string())
                         .range(child.get_span())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
@@ -546,6 +553,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
                     var_decl,
                 ) => {
                     let diag = diag()
+                        .file(file)
                         .message("variable with no type specified".to_string())
                         .range(var_decl.get_span())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
@@ -584,6 +592,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::RetainVarDecls {
                     var_decl,
                 ) => {
                     let diag = diag()
+                        .file(file)
                         .message("variable with no type specified".to_string())
                         .range(var_decl.get_span())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
@@ -622,6 +631,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::NoRetainVarDecls {
                     var_decl,
                 ) => {
                     let diag = diag()
+                        .file(file)
                         .message("variable with no type specified".to_string())
                         .range(var_decl.get_span())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
@@ -720,6 +730,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::EdgeDecl {
         let spec = match self.edge.deref() {
             ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::ERRInvalidEdgeQualifier(err) => {
                 let diag = diag()
+                    .file(file)
                     .message("incomplete edge qualifier, try 'R_EDGE' or 'F_EDGE'".into())
                     .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                     .range(err.get_span())
@@ -771,6 +782,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::VarDecl {
 
         if let Some(init) = init {
             let diag = diag()
+                .file(file)
                 .message(
                     "variables declared in TEMP or IN_OUT can not have a default value".to_string(),
                 )

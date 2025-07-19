@@ -16,17 +16,19 @@ pub mod lexer;
 pub mod lints;
 pub mod literals;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct IdeDiagnostic {
     pub diagnostic: auto_lsp::lsp_types::Diagnostic,
     pub fixes: Vec<auto_lsp::lsp_types::CodeAction>,
+    pub file: File,
 }
 
 impl IdeDiagnostic {
-    pub fn new(diagnostic: auto_lsp::lsp_types::Diagnostic) -> Self {
+    pub fn new(diagnostic: auto_lsp::lsp_types::Diagnostic, file: File) -> Self {
         Self {
             diagnostic,
             fixes: vec![],
+            file
         }
     }
 
@@ -47,24 +49,24 @@ impl From<&IdeDiagnostic> for auto_lsp::lsp_types::Diagnostic {
     }
 }
 
-impl From<auto_lsp::lsp_types::Diagnostic> for IdeDiagnostic {
-    fn from(d: auto_lsp::lsp_types::Diagnostic) -> Self {
-        IdeDiagnostic::new(d)
+impl From<(File, auto_lsp::lsp_types::Diagnostic)> for IdeDiagnostic {
+    fn from((f, d): (File, auto_lsp::lsp_types::Diagnostic)) -> Self {
+        IdeDiagnostic::new(d, f)
     }
 }
 
-impl From<&ParseErrorAccumulator> for IdeDiagnostic {
-    fn from(e: &ParseErrorAccumulator) -> Self {
-        IdeDiagnostic::new(e.0.clone().into())
+impl From<(File, &ParseErrorAccumulator)> for IdeDiagnostic {
+    fn from((f, e): (File, &ParseErrorAccumulator)) -> Self {
+        IdeDiagnostic::new(e.0.clone().into(), f)
     }
 }
 
 #[salsa::accumulator]
 pub struct DiagnosticAccumulator(pub IdeDiagnostic);
 
-impl From<auto_lsp::lsp_types::Diagnostic> for DiagnosticAccumulator {
-    fn from(d: auto_lsp::lsp_types::Diagnostic) -> Self {
-        DiagnosticAccumulator(d.into())
+impl From<(File, auto_lsp::lsp_types::Diagnostic)> for DiagnosticAccumulator {
+    fn from((f, d): (File, auto_lsp::lsp_types::Diagnostic)) -> Self {
+        DiagnosticAccumulator((f, d).into())
     }
 }
 
@@ -79,6 +81,7 @@ impl From<&DiagnosticAccumulator> for IdeDiagnostic {
         IdeDiagnostic {
             diagnostic: error.0.diagnostic.clone(),
             fixes: error.0.fixes.clone(),
+            file: error.0.file.clone(),
         }
     }
 }

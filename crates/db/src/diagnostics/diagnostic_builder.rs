@@ -1,15 +1,15 @@
 use auto_lsp::{
-    core::span::Span,
-    lsp_types::{
+    core::span::Span, default::db::file::File, lsp_types::{
         self, CodeAction, CodeActionKind, DiagnosticRelatedInformation, DiagnosticSeverity,
         DiagnosticTag, NumberOrString, TextEdit,
-    },
+    }
 };
 
 use crate::diagnostics::IdeDiagnostic;
 
 #[bon::builder]
 pub fn diag<'a>(
+    file: File,
     range: Span,
     message: String,
     source: Option<String>,
@@ -21,6 +21,7 @@ pub fn diag<'a>(
     fixes: Option<Vec<CodeAction>>,
 ) -> IdeDiagnostic {
     IdeDiagnostic {
+        file,
         diagnostic: auto_lsp::lsp_types::Diagnostic {
             range: range.into(),
             severity,

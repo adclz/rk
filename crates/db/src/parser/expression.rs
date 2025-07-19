@@ -195,6 +195,7 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
         match self {
             ast::generated::PrimaryExpression::ERRInvocationInExprContext(err) => {
                 let diag = diag()
+                    .file(file)
                     .message("Invocation in expression context is not allowed".into())
                     .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                     .range(err.get_span())
@@ -558,6 +559,7 @@ impl<'db> ParseExpr<'db> for ast::generated::VarAccess {
         match self.children.deref() {
             ast::generated::ERRUnexpectedThisInPath_Field_RefDeref::ERRUnexpectedThisInPath(direct_variable) => {
                     let diag = diag()
+                        .file(file)
                         .message("Unexpected 'this' in path".into())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                         .range(direct_variable.get_span())

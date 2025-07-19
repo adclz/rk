@@ -124,6 +124,7 @@ impl<'db> FileNamespacesBuilder<'db> {
             match child.as_ref() {
                 SourceFileDecl::ERRInvalidPouKeyword(err) => {
                     let diag = diag()
+                        .file(self.file)
                         .message("Expected a POU keyword".into())
                         .range(err.get_span())
                         .call();
@@ -288,6 +289,7 @@ impl<'db> FileNamespacesBuilder<'db> {
                     }
                     Decl::ERRInvalidPouKeyword(err) => {
                         let diag = diag()
+                            .file(self.file)
                             .message("Expected a POU keyword".into())
                             .range(err.get_span())
                             .call();

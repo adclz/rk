@@ -44,6 +44,7 @@ impl<'db> Parse<'db> for ast::generated::ClassDecl {
             match f.deref() {
                 Error::ERRExtendsMultipleTimes(err) => {
                     let diag = diag()
+                        .file(file)
                         .message("EXTENDS can only be defined once".into())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                         .range(err.get_span())
@@ -52,6 +53,7 @@ impl<'db> Parse<'db> for ast::generated::ClassDecl {
                 },
                 Error::ERRImplementsBeforeExtends(err) => {
                     let diag = diag()
+                        .file(file)
                         .message("IMPLEMENTS can only be defined after EXTENDS".into())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                         .range(err.get_span())
@@ -60,6 +62,7 @@ impl<'db> Parse<'db> for ast::generated::ClassDecl {
                 },
                 Error::ERRImplementsMultipleTimes(err) => {
                     let diag = diag()
+                        .file(file)
                         .message("IMPLEMENTS can only be defined once".into())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                         .range(err.get_span())

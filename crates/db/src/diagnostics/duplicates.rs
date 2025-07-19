@@ -19,11 +19,11 @@ use crate::{
 };
 
 trait Check<'db> {
-    fn check(&'db self, db: &'db dyn BaseDatabase);
+    fn check(&'db self, db: &'db dyn BaseDatabase, file: File);
 }
 
 trait CheckWithVisibility<'db> {
-    fn check_with_visibility(&'db self, db: &'db dyn BaseDatabase, ns: NamespacePath);
+    fn check_with_visibility(&'db self, db: &'db dyn BaseDatabase, file: File, ns: NamespacePath);
 }
 
 #[salsa::tracked(no_eq)]
@@ -31,11 +31,11 @@ pub fn duplicate_declarations<'db>(db: &'db dyn BaseDatabase, file: File) {
     if let Some(namespaces) = namespaces_in_file(db, file) {
         for (path, namespace) in namespaces.namespaces(db).iter() {
             for using in namespace.using(db).iter() {
-                using.check_with_visibility(db, *path);
+                using.check_with_visibility(db, file, *path);
             }
 
             for pou in namespace.pous(db).iter() {
-                pou.check_with_visibility(db, *path);
+                pou.check_with_visibility(db, file, *path);
 
                 for other_decl in namespace_path(db, *path) {
                     if other_decl.file(db) == file {
@@ -47,6 +47,7 @@ pub fn duplicate_declarations<'db>(db: &'db dyn BaseDatabase, file: File) {
                             let duplicate = pou.name(db).text(db);
                             DiagnosticAccumulator::accumulate(
                                 diag()
+                                    .file(file)
                                     .range(pou.name_span(db).clone())
                                     .message(format!("duplicate declaration of {duplicate} POU"))
                                     .source("IEC".into())
@@ -74,13 +75,14 @@ pub fn duplicate_declarations<'db>(db: &'db dyn BaseDatabase, file: File) {
 }
 
 impl<'db> CheckWithVisibility<'db> for Using<'db> {
-    fn check_with_visibility(&'db self, db: &'db dyn BaseDatabase, from: NamespacePath) {
+    fn check_with_visibility(&'db self, db: &'db dyn BaseDatabase, file: File, from: NamespacePath) {
         let to = self.path(db);
         let results = namespace_path(db, to);
 
         if results.is_empty() {
             let message = format!("unknown namespace: '{}'", to.to_string(db));
             let diagnostic = diag()
+                .file(file)
                 .range(self.span(db).clone())
                 .message(message)
                 .source("IEC".into())
@@ -100,6 +102,7 @@ impl<'db> CheckWithVisibility<'db> for Using<'db> {
                     to.to_string(db)
                 );
                 let diagnostic = diag()
+                    .file(file)
                     .range(self.span(db).clone())
                     .message(message)
                     .source("IEC".into())
@@ -112,24 +115,24 @@ impl<'db> CheckWithVisibility<'db> for Using<'db> {
 }
 
 impl<'db> CheckWithVisibility<'db> for PouDecl<'db> {
-    fn check_with_visibility(&'db self, db: &'db dyn BaseDatabase, ns: NamespacePath) {
+    fn check_with_visibility(&'db self, db: &'db dyn BaseDatabase, file: File, ns: NamespacePath) {
         match self.pou(db) {
             crate::hir::namespace::Pou::Function(func) => {
-                func.variables(db).check(db);
+                func.variables(db).check(db, file);
                 func.using(db)
                     .iter()
-                    .for_each(|using| using.check_with_visibility(db, ns));
+                    .for_each(|using| using.check_with_visibility(db, file, ns));
             }
             crate::hir::namespace::Pou::FunctionBlock(func) => {
-                func.variables(db).check(db);
+                func.variables(db).check(db, file);
                 func.extends(db)
-                    .map(|extend| extend.check_with_visibility(db, ns));
+                    .map(|extend| extend.check_with_visibility(db, file, ns));
                 func.using(db)
                     .iter()
-                    .for_each(|using| using.check_with_visibility(db, ns));
+                    .for_each(|using| using.check_with_visibility(db, file,  ns));
                 func.implements(db).map(|implements| {
                     implements.iter().for_each(|implement| {
-                        implement.check_with_visibility(db, ns);
+                        implement.check_with_visibility(db, file, ns);
                     });
                 });
             }
@@ -137,29 +140,29 @@ impl<'db> CheckWithVisibility<'db> for PouDecl<'db> {
             crate::hir::namespace::Pou::Class(class) => {
                 class
                     .extends(db)
-                    .map(|extend| extend.check_with_visibility(db, ns));
+                    .map(|extend| extend.check_with_visibility(db,  file, ns));
                 class
                     .using(db)
                     .iter()
-                    .for_each(|using| using.check_with_visibility(db, ns));
+                    .for_each(|using| using.check_with_visibility(db, file, ns));
             }
             crate::hir::namespace::Pou::Interface(interface) => {
                 interface.extends(db).map(|extend| {
                     extend.iter().for_each(|extend| {
-                        extend.check_with_visibility(db, ns);
+                        extend.check_with_visibility(db, file,  ns);
                     });
                 });
                 interface
                     .using(db)
                     .iter()
-                    .for_each(|using| using.check_with_visibility(db, ns));
+                    .for_each(|using| using.check_with_visibility(db, file, ns));
             }
         }
     }
 }
 
 impl<'db> CheckWithVisibility<'db> for SpannedPath {
-    fn check_with_visibility(&'db self, db: &'db dyn BaseDatabase, from: NamespacePath) {
+    fn check_with_visibility(&'db self, db: &'db dyn BaseDatabase, file: File, from: NamespacePath) {
         let to = if let Some(to) = self.fq_name.namespace(db) {
             to
         } else {
@@ -173,6 +176,7 @@ impl<'db> CheckWithVisibility<'db> for SpannedPath {
         if results.is_empty() {
             let message = format!("unknown namespace: '{}'", to.to_string(db));
             let diagnostic = diag()
+                .file(file)
                 .range(self.span.clone())
                 .message(message)
                 .source("IEC".into())
@@ -190,6 +194,7 @@ impl<'db> CheckWithVisibility<'db> for SpannedPath {
                             to.to_string(db)
                         );
                         let diagnostic = diag()
+                            .file(file)
                             .range(self.span.clone())
                             .message(message)
                             .source("IEC".into())
@@ -208,6 +213,7 @@ impl<'db> CheckWithVisibility<'db> for SpannedPath {
                     to.to_string(db)
                 );
                 let diagnostic = diag()
+                    .file(file)
                     .range(self.span.clone())
                     .message(message)
                     .source("IEC".into())
@@ -220,7 +226,7 @@ impl<'db> CheckWithVisibility<'db> for SpannedPath {
 }
 
 impl<'db> Check<'db> for &'db Vec<crate::hir::variable::Variable<'db>> {
-    fn check(&'db self, db: &'db dyn BaseDatabase) {
+    fn check(&'db self, db: &'db dyn BaseDatabase, file: File) {
         let mut seen = FxHashMap::default();
 
         for variable in self.iter() {
@@ -230,6 +236,7 @@ impl<'db> Check<'db> for &'db Vec<crate::hir::variable::Variable<'db>> {
                     variable.name(db).text(db)
                 );
                 let diagnostic = diag()
+                    .file(file)
                     .range(variable.name_span(db).clone())
                     .message(message)
                     .source("IEC".into())
@@ -247,26 +254,26 @@ impl<'db> Check<'db> for &'db Vec<crate::hir::variable::Variable<'db>> {
                     .call();
                 DiagnosticAccumulator::accumulate(diagnostic.into(), db);
             }
-            variable.check(db);
+            variable.check(db, file);
         }
     }
 }
 
 impl<'db> Check<'db> for crate::hir::variable::Variable<'db> {
-    fn check(&'db self, db: &'db dyn BaseDatabase) {
+    fn check(&'db self, db: &'db dyn BaseDatabase, file: File) {
         match self.init(db) {
-            Some(init) => init.check(db, &self.spec(db)),
+            Some(init) => init.check(db, file, &self.spec(db)),
             None => {}
         }
     }
 }
 
 trait SpecCheck<'db> {
-    fn check(&self, db: &'db dyn BaseDatabase, spec: &Spec<'db>);
+    fn check(&self, db: &'db dyn BaseDatabase, file: File, spec: &Spec<'db>);
 }
 
 impl<'db> SpecCheck<'db> for Expr<'db> {
-    fn check(&self, db: &'db dyn BaseDatabase, spec: &Spec<'db>) {
+    fn check(&self, db: &'db dyn BaseDatabase, file: File, spec: &Spec<'db>) {
         use Literal::AnyNumeric;
 
         match self.expr(db) {
@@ -303,7 +310,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                     _ => false,
                 };
 
-                lit.self_check(db);
+                lit.self_check(db, file);
 
                 if !result {
                     let message = format!(
@@ -312,6 +319,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         lit.to_string(db)
                     );
                     let diagnostic = diag()
+                        .file(file)
                         .range(self.span(db).clone())
                         .message(message)
                         .source("IEC".into())
@@ -326,12 +334,12 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
 }
 
 impl Literal {
-    fn self_check(&self, db: &dyn BaseDatabase) {
+    fn self_check(&self, db: &dyn BaseDatabase, file: File) {
         match self {
             Literal::Date(ident) => {
                 if let Err(err) = check_date(db, &ident.text(db)) {
                     let diagnostic = err.to_diag();
-                    DiagnosticAccumulator::accumulate(diagnostic.into(), db);
+                    DiagnosticAccumulator::accumulate((file, diagnostic).into(), db);
                 };
             }
             _ => {}

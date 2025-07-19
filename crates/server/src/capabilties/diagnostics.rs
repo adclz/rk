@@ -1,9 +1,12 @@
 use auto_lsp::anyhow;
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::{
-    DocumentDiagnosticParams, DocumentDiagnosticReport,  WorkspaceFullDocumentDiagnosticReport, DocumentDiagnosticReportResult, FullDocumentDiagnosticReport, RelatedFullDocumentDiagnosticReport, WorkspaceDiagnosticParams, WorkspaceDiagnosticReport, WorkspaceDiagnosticReportResult, WorkspaceDocumentDiagnosticReport
+    DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
+    FullDocumentDiagnosticReport, RelatedFullDocumentDiagnosticReport, WorkspaceDiagnosticParams,
+    WorkspaceDiagnosticReport, WorkspaceDiagnosticReportResult, WorkspaceDocumentDiagnosticReport,
+    WorkspaceFullDocumentDiagnosticReport,
 };
-use db::diagnostics::{cached_diagnostics};
+use db::diagnostics::cached_diagnostics;
 
 pub fn diagnostics(
     db: &impl BaseDatabase,
@@ -20,28 +23,30 @@ pub fn diagnostics(
             related_documents: None,
             full_document_diagnostic_report: FullDocumentDiagnosticReport {
                 result_id: None,
-                items: cached_diagnostics(db, file).iter().map(|d| d.diagnostic.clone()).collect(),
+                items: cached_diagnostics(db, file)
+                    .iter()
+                    .filter(|d| d.file.url(db) == uri)
+                    .map(|d| d.diagnostic.clone())
+                    .collect::<Vec<_>>(),
             },
         }),
     ))
 }
 
-
-
 pub fn workspace_diagnostics(
     db: &impl BaseDatabase,
     _params: WorkspaceDiagnosticParams,
 ) -> anyhow::Result<WorkspaceDiagnosticReportResult> {
-
     let result: Vec<WorkspaceDocumentDiagnosticReport> = db
         .get_files()
         .iter()
-        .map(|file| {   
+        .map(|file| {
             let file = *file;
             let errors: Vec<auto_lsp::lsp_types::Diagnostic> = cached_diagnostics(db, file)
                 .iter()
-                .map(|d| d.into())
-                .collect();
+                .filter(|d| d.file.url(db) == file.url(db))
+                .map(|d| d.diagnostic.clone())
+                .collect::<Vec<_>>();
 
             WorkspaceDocumentDiagnosticReport::Full(WorkspaceFullDocumentDiagnosticReport {
                 version: file.version(db).map(|i| i.into()),
@@ -53,7 +58,7 @@ pub fn workspace_diagnostics(
             })
         })
         .collect();
-    
+
     Ok(WorkspaceDiagnosticReportResult::Report(
         WorkspaceDiagnosticReport { items: result },
     ))

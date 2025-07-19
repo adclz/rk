@@ -35,6 +35,7 @@ impl<'db> Parse<'db> for ast::generated::InterfaceDecl {
 
         self.children.iter().for_each(|f| {
             let diag = diag()
+                .file(file)
                 .message("EXTENDS can only be defined once".into())
                 .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                 .range(f.get_span())
