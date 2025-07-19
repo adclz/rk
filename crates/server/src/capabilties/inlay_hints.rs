@@ -1,5 +1,5 @@
 use auto_lsp::{anyhow, default::db::{BaseDatabase}, lsp_types::{InlayHint, InlayHintKind, InlayHintLabel, InlayHintParams}};
-use db::{solver::namespace::{namespaces_in_file}, to_proto::IterToProto};
+use db::{solver::namespace::namespaces_in_file, to_proto::{HirCtx, IterToProto}};
 
 pub fn inlay_hints(db: &impl BaseDatabase, params: InlayHintParams) -> anyhow::Result<Option<Vec<InlayHint>>> {
     let uri = &params.text_document.uri;
@@ -15,7 +15,8 @@ pub fn inlay_hints(db: &impl BaseDatabase, params: InlayHintParams) -> anyhow::R
         Some(ns) => ns,
         None => return Ok(None),
     };
-    ns.iter(db).for_each(|symbol| {
+    let ctx = HirCtx::new(db, file);
+    ns.iter(ctx).for_each(|symbol| {
         let symbol = match symbol.symbol_info(db) {
             Some(symbol) => symbol,
             None => return,

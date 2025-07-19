@@ -4,7 +4,7 @@ use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{Hover, HoverContents, HoverParams, MarkupContent, MarkupKind},
 };
-use db::solver::namespace::namespaces_in_file;
+use db::{solver::namespace::namespaces_in_file, to_proto::HirCtx};
 use db::to_proto::{Extends, IterToProto};
 
 pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Option<Hover>> {
@@ -29,7 +29,8 @@ pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Opti
         Some(ns) => ns,
         None => return Ok(None),
     };
-    Ok(ns.named_descendant_at(db, position).and_then(|symbol| {
+    let ctx = HirCtx::new(db, file);
+    Ok(ns.named_descendant_at(ctx, position).and_then(|symbol| {
         let ns = ns.namespace_at(db, position)?;
         let symbol = match symbol.symbol_info(db) {
             Some(symbol) => symbol,

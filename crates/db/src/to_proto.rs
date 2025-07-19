@@ -1,12 +1,12 @@
 use auto_lsp::{
     core::span::Span,
-    default::db::BaseDatabase,
+    default::db::{file::File, BaseDatabase},
     lsp_types::{CompletionItem, SymbolKind},
 };
 
 use crate::{
-    hir::{expression::Expr, variable::Spec},
-    solver::fq_name::SpannedPath,
+    hir::{expression::Expr, namespace::{Namespace, PouDecl}, variable::Spec},
+    solver::{fq_name::SpannedPath, namespace::NamespacePath},
 };
 
 #[derive(bon::Builder, Debug, Clone)]
@@ -81,6 +81,49 @@ impl SymbolInfo<'_> {
     }
 }
 
+#[derive(Clone, Copy)]
+pub struct HirCtx<'db> {
+    pub db: &'db dyn BaseDatabase,
+    pub file: File,
+    pub namespace: Option<Namespace<'db>>,
+    pub pou: Option<PouDecl<'db>>,
+    pub path: Option<NamespacePath>,
+    pub path2: Option<&'db SpannedPath>,
+}
+
+impl<'db> HirCtx<'db> {
+    pub fn new(db: &'db dyn BaseDatabase, file: File) -> Self {
+        Self {
+            db,
+            file,
+            namespace: None,
+            pou: None,
+            path: None,
+            path2: None,
+        }
+    }
+
+    pub fn with_namespace(mut self, namespace: Namespace<'db>) -> Self {
+        self.namespace = Some(namespace);
+        self
+    }
+
+    pub fn with_pou(mut self, pou: PouDecl<'db>) -> Self {
+        self.pou = Some(pou);
+        self
+    }
+
+    pub fn with_path(mut self, path: NamespacePath) -> Self {
+        self.path = Some(path);
+        self
+    }
+
+    pub fn with_path2(mut self, path: &'db SpannedPath) -> Self {
+        self.path2 = Some(path);
+        self
+    }
+}
+
 pub trait ToProto<'db> {
     fn get_id(&'db self, db: &'db dyn crate::BaseDatabase) -> usize;
 
@@ -112,25 +155,29 @@ pub fn self_iter<'db>(
 pub trait IterToProto<'db> {
     fn iter(
         &'db self,
-        db: &'db dyn crate::BaseDatabase,
+        ctx: HirCtx<'db>,
     ) -> impl Iterator<Item = &'db dyn ToProto<'db>>;
 
     fn descendant_at(
         &'db self,
-        db: &'db dyn crate::BaseDatabase,
+        ctx: HirCtx<'db>,
         offset: usize,
     ) -> Option<&'db dyn ToProto<'db>> {
         let mut best_match: Option<&'db dyn ToProto<'db>> = None;
 
-        for node in self.iter(db) {
-            let range = node.get_span(db);
+        for node in self.iter(ctx) {
+            let range = node.get_span(ctx.db);
 
             // Only consider nodes that contain the offset
             if range.start_byte <= offset && offset <= range.end_byte {
                 // Compare old best match with new node
                 if let Some(a) = best_match {
-                    if a.get_id(db) >= node.get_id(db) {
-                        continue; // Keep the old best match
+                    let a = a.get_span(ctx.db);
+
+                    if a.start_byte >= range.start_byte {
+                        continue;
+                    } else {
+                        best_match = Some(node);
                     }
                 } else {
                     best_match = Some(node);
@@ -142,23 +189,30 @@ pub trait IterToProto<'db> {
 
     fn named_descendant_at(
         &'db self,
-        db: &'db dyn crate::BaseDatabase,
+        ctx: HirCtx<'db>,
         offset: usize,
     ) -> Option<&'db dyn ToProto<'db>> {
         let mut best_match: Option<&'db dyn ToProto<'db>> = None;
 
-        for node in self.iter(db) {
-            let range = match node.get_named_span(db) {
+        for node in self.iter(ctx) {
+            let range = match node.get_named_span(ctx.db) {
                 Some(span) => span,
-                None => continue, // Skip nodes without a named span
+                None => continue,
             };
 
             // Only consider nodes that contain the offset
             if range.start_byte <= offset && offset <= range.end_byte {
                 // Compare old best match with new node
                 if let Some(a) = best_match {
-                    if a.get_id(db) >= node.get_id(db) {
-                        continue; // Keep the old best match
+                    let a = match a.get_named_span(ctx.db) {
+                        Some(span) => span,
+                        None => continue,
+                    };
+
+                    if a.start_byte >= range.start_byte {
+                        continue;
+                    } else {
+                        best_match = Some(node);
                     }
                 } else {
                     best_match = Some(node);

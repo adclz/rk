@@ -3,7 +3,7 @@ use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams},
 };
-use db::{diagnostics::cached_diagnostics, solver::namespace::namespaces_in_file, to_proto::IterToProto};
+use db::{diagnostics::cached_diagnostics, solver::namespace::namespaces_in_file, to_proto::{IterToProto, HirCtx}};
 
 pub fn code_actions(
     db: &impl BaseDatabase,
@@ -22,7 +22,9 @@ pub fn code_actions(
         Some(ns) => ns,
         None => return Ok(None),
     };
-    for symbol in ns.iter(db) {
+
+    let ctx = HirCtx::new(db, file);
+    for symbol in ns.iter(ctx) {
         let symbol = match symbol.symbol_info(db) {
             Some(symbol) => symbol,
             None => continue,

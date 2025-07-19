@@ -8,7 +8,7 @@ use crate::completions;
 use crate::hir::COMPLETION_MARKER;
 use crate::ident::SpannedIdent;
 use crate::solver::namespace::{starts, starts_with};
-use crate::to_proto::self_iter;
+use crate::to_proto::{self_iter, HirCtx};
 use crate::{
     hir::{
         class::Class, data_type::DataType, function::Function, function_block::FunctionBlock,
@@ -91,11 +91,12 @@ impl<'db> FileNamespaces<'db> {
 }
 
 impl<'db> IterToProto<'db> for FileNamespaces<'db> {
-    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+    fn iter(&'db self, ctx: HirCtx<'db>) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+        let db = ctx.db;
         self.globals(db)
             .iter()
-            .flat_map(|pou| pou.iter(db))
-            .chain(self.namespaces(db).values().flat_map(|ns| ns.iter(db)))
+            .flat_map(move |pou| pou.iter(ctx.with_pou(*pou)))
+            .chain(self.namespaces(db).values().flat_map(move |ns| ns.iter(ctx)))
     }
 }
 
@@ -226,8 +227,8 @@ impl<'db> ToProto<'db> for Using<'db> {
 }
 
 impl<'db> IterToProto<'db> for Using<'db> {
-    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        self.path(db).fragments(db).iter().map(|f| f as _)
+    fn iter(&'db self, ctx: HirCtx<'db>) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+        self_iter(self).chain(self.path(ctx.db).fragments(ctx.db).iter().map(|f| f as _))
     }
 }
 
@@ -336,10 +337,11 @@ impl<'db> ToProto<'db> for Namespace<'db> {
 }
 
 impl<'db> IterToProto<'db> for Namespace<'db> {
-    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+    fn iter(&'db self, ctx: HirCtx<'db>) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
         self_iter(self)
-            .chain(self.using(db).iter().map(|using| using as _))
-            .chain(self.pous(db).iter().flat_map(|pou| pou.iter(db)))
+            // todo: Iter inside using
+            .chain(self.using(ctx.db).iter().map(|using| using as _))
+            .chain(self.pous(ctx.db).iter().flat_map(move |pou| pou.iter(ctx.with_namespace(*self))))
     }
 }
 
@@ -367,15 +369,15 @@ pub struct PouDecl<'db> {
  
 impl<'db> IterToProto<'db> for PouDecl<'db> {
     #[auto_enum(Iterator)]
-    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        match self.pou(db) {
-            Pou::Function(f) => self_iter(self).chain(f.iter(db)),
+    fn iter(&'db self, ctx: HirCtx<'db>) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+        match self.pou(ctx.db) {
+            Pou::Function(f) => self_iter(self).chain(f.iter(ctx.with_pou(*self))),
             Pou::FunctionBlock(fb) => {
-                self_iter(self).chain(fb.iter(db))
+                self_iter(self).chain(fb.iter(ctx.with_pou(*self)))
             }
-            Pou::Class(c) => self_iter(self).chain(c.iter(db)),
-            Pou::DataType(d) => self_iter(self).chain(d.iter(db)),
-            Pou::Interface(i) => self_iter(self).chain(i.iter(db)),
+            Pou::Class(c) => self_iter(self).chain(c.iter(ctx.with_pou(*self))),
+            Pou::DataType(d) => self_iter(self).chain(d.iter(ctx.with_pou(*self))),
+            Pou::Interface(i) => self_iter(self).chain(i.iter(ctx.with_pou(*self))),
         }
     }
 }

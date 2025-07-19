@@ -4,7 +4,7 @@ use super::namespace::NamespacePath;
 use crate::{
     hir::namespace::{Namespace, PouDecl},
     ident::{Ident, SpannedIdent},
-    solver::namespace::namespace_path,
+    solver::namespace::namespace_path, to_proto::ToProto,
 };
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::{
@@ -16,12 +16,23 @@ use auto_lsp::{
 #[derive(Clone, Hash, salsa::Update, Debug)]
 pub struct SpannedPath {
     pub span: Span,
+    pub id: usize,
     pub fq_name: NamespaceAccess,
 }
 
 impl PartialEq for SpannedPath {
     fn eq(&self, other: &Self) -> bool {
         self.fq_name == other.fq_name
+    }
+}
+
+impl<'db> ToProto<'db> for SpannedPath {
+    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> usize {
+        self.id
+    }
+
+    fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
+        &self.span
     }
 }
 
@@ -35,6 +46,7 @@ impl SpannedPath {
     ) -> anyhow::Result<Self> {
         Ok(SpannedPath {
             span: fq_name.get_span(),
+            id: fq_name.get_id(),
             fq_name: NamespaceAccess::from_ast(db, file, &fq_name)?,
         })
     }
