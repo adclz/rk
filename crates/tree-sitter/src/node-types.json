@@ -537,6 +537,11 @@
     }
   },
   {
+    "type": "ERR_empty_right_hand_assignment",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "ERR_extends_multiple_times",
     "named": true,
     "fields": {},
@@ -990,6 +995,10 @@
         "multiple": false,
         "required": true,
         "types": [
+          {
+            "type": "ERR_empty_right_hand_assignment",
+            "named": true
+          },
           {
             "type": "assignment",
             "named": true

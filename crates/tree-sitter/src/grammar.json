@@ -122,6 +122,14 @@
         "value": "[FR](_(E(D(G)?)?)?)?"
       }
     },
+    "ERR_empty_right_hand_assignment": {
+      "type": "PREC",
+      "value": -1,
+      "content": {
+        "type": "STRING",
+        "value": ":="
+      }
+    },
     "ERR_assign_func_call": {
       "type": "PREC",
       "value": -1,
@@ -144,6 +152,28 @@
       "content": {
         "type": "STRING",
         "value": "THIS"
+      }
+    },
+    "_ERR_empty_brackets": {
+      "type": "PREC",
+      "value": -1,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "SYMBOL",
+            "name": "path_expression"
+          },
+          {
+            "type": "ALIAS",
+            "content": {
+              "type": "STRING",
+              "value": "[]"
+            },
+            "named": true,
+            "value": "ERR_empty_index"
+          }
+        ]
       }
     },
     "line_comment": {
@@ -5024,8 +5054,16 @@
           "value": "METHOD"
         },
         {
-          "type": "SYMBOL",
-          "name": "access_spec"
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "access_spec"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
         },
         {
           "type": "CHOICE",
@@ -8122,6 +8160,10 @@
               {
                 "type": "SYMBOL",
                 "name": "assignment"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "ERR_empty_right_hand_assignment"
               }
             ]
           }
