@@ -29,7 +29,7 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
         .init()
         .unwrap();
 
-    fastrace::set_reporter(ConsoleReporter, Config::default());
+    //fastrace::set_reporter(ConsoleReporter, Config::default());
 
     boot()
 }

@@ -2,23 +2,13 @@
 #![recursion_limit = "256"]
 mod capabilties;
 
-use auto_lsp::anyhow;
-use auto_lsp::core::errors::FileSystemError;
-use auto_lsp::core::errors::RuntimeError;
-use auto_lsp::default::db::file::File;
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::default::server::capabilities::TEXT_DOCUMENT_SYNC;
 use auto_lsp::default::server::capabilities::WORKSPACE_PROVIDER;
-use auto_lsp::lsp_types;
-use auto_lsp::lsp_types::DidChangeWatchedFilesParams;
-use auto_lsp::lsp_types::DidOpenTextDocumentParams;
-use auto_lsp::lsp_types::FileChangeType;
-use auto_lsp::salsa::Setter;
-use db::solver::namespace::namespaces_in_file;
+use auto_lsp::default::server::file_events::change_text_document;
+use auto_lsp::default::server::file_events::changed_watched_files;
+use auto_lsp::default::server::file_events::open_text_document;
 use db::RK_PARSER;
-//use auto_lsp::default::server::file_events::changed_watched_files;
-use auto_lsp::default::db::FileManager;
-//use auto_lsp::default::server::file_events::open_text_document;
 use auto_lsp::default::server::workspace_init::WorkspaceInit;
 use auto_lsp::lsp_server;
 use auto_lsp::lsp_server::Connection;
@@ -171,51 +161,8 @@ fn on_notifications<Db: BaseDatabase + Clone + RefUnwindSafe>(
 ) -> &mut NotificationRegistry<Db> {
     registry
         .on_mut::<DidOpenTextDocument, _>(|s, p| Ok(open_text_document(s, p)?))
-        .on_mut::<DidChangeTextDocument, _>(|s, p| -> Result<(), auto_lsp::anyhow::Error> {
-            let file =
-                s.db.get_file(&p.text_document.uri)
-                    .ok_or_else(|| anyhow::format_err!("File not found in workspace"))?;
-            file.update_edit(&mut s.db, &p)?;
-            Ok(())
-        })
-        .on_mut::<DidChangeWatchedFiles, _>(|s, p| {
-            eprintln!(
-                "Files changed: {:?}",
-                p.changes.iter().map(|c| c.typ).collect::<Vec<_>>()
-            );
-            eprintln!(
-                "< db: {:?}",
-                s.db.get_files()
-                    .iter()
-                    .map(|file| file.url(&s.db).to_string())
-                    .collect::<Vec<_>>()
-            );
-            eprintln!(
-                "< namespaces: {:?}",
-                s.db.get_files()
-                    .iter()
-                    .map(|file| namespaces_in_file(&s.db, *file))
-                    .count()
-            );
-
-            let r = Ok(changed_watched_files(s, p)?);
-
-            eprintln!(
-                "> db: {:?}",
-                s.db.get_files()
-                    .iter()
-                    .map(|file| file.url(&s.db).to_string())
-                    .collect::<Vec<_>>()
-            );
-            eprintln!(
-                "> namespaces: {:?}",
-                s.db.get_files()
-                    .iter()
-                    .map(|file| namespaces_in_file(&s.db, *file))
-                    .count()
-            );
-            r
-        })
+        .on_mut::<DidChangeTextDocument, _>(|s, p| Ok(change_text_document(s, p)?))
+        .on_mut::<DidChangeWatchedFiles, _>(|s, p|  Ok(changed_watched_files(s, p)?))
         .on_mut::<Cancel, _>(|s, p| {
             let id: lsp_server::RequestId = match p.id {
                 auto_lsp::lsp_types::NumberOrString::Number(id) => id.into(),
@@ -230,83 +177,4 @@ fn on_notifications<Db: BaseDatabase + Clone + RefUnwindSafe>(
         .on::<DidCloseTextDocument, _>(|_s, _p| Ok(()))
         .on::<SetTrace, _>(|_s, _p| Ok(()))
         .on::<LogTrace, _>(|_s, _p| Ok(()))
-}
-
-pub fn open_text_document<Db: BaseDatabase>(
-    session: &mut Session<Db>,
-    params: DidOpenTextDocumentParams,
-) -> Result<(), RuntimeError> {
-    let url = &params.text_document.uri;
-
-    match session.db.get_file(url) {
-        Some(file) => {
-            log::info!("Did Open Text Document: Already exists - {url}");
-            file.set_version(&mut session.db)
-                .to(Some(params.text_document.version));
-            Ok(())
-        }
-        None => {
-            let file = File::from_text_doc()
-                .doc(&params.text_document)
-                .session(session)
-                .call()?;
-
-            log::info!("Did Open Text Document: Created - {url}");
-            session.db.add_file(file).map_err(|e| e.into())
-        }
-    }
-}
-
-/// Handle the watched files change notification.
-///
-/// The differences between this and the document requests is that the watched files are not necessarily modified by the client.
-///
-/// Some changes can be made by external tools, github, someone editing the project with NotePad while the IDE is active, etc ...
-pub fn changed_watched_files<Db: BaseDatabase>(
-    session: &mut Session<Db>,
-    params: DidChangeWatchedFilesParams,
-) -> Result<(), RuntimeError> {
-    params.changes.iter().try_for_each(|file| {
-        if file.uri.scheme() != "file" {
-            return Ok(());
-        }
-        match file.typ {
-            FileChangeType::CREATED => {
-                let url = &file.uri;
-                if session.db.get_file(url).is_some() {
-                    // The file is already in db
-                    // We can ignore this change
-                    return Ok(());
-                }
-                let file = File::from_fs().session(session).url(&url).call()?;
-
-                log::info!("Watched Files: Created - {url}");
-                session.db.add_file(file).map_err(RuntimeError::from)
-            }
-            FileChangeType::CHANGED => {
-                let url: &lsp_types::Url = &file.uri;
-                let file = session.db.get_file(&url).ok_or_else(|| {
-                    RuntimeError::from(FileSystemError::FileUrlToFilePath { path: url.clone() })
-                })?;
-
-                log::info!("Watched Files: Changed - {url}");
-                file.update_full_fs(session).map_err(RuntimeError::from)
-            }
-            FileChangeType::DELETED => {
-                let url = &file.uri;
-                if session.db.get_file(&url).is_none() {
-                    // The file is not in db, we can ignore this change
-                    return Ok(());
-                }
-
-                let file = session.db.get_file(&url).unwrap();
-                file.reset(&mut session.db).map_err(RuntimeError::from)?;
-
-                log::info!("Watched Files: Deleted - {}", &url);
-                session.db.remove_file(&url).map_err(RuntimeError::from)
-            }
-            // Should never happen
-            _ => Ok(()),
-        }
-    })
 }
