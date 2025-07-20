@@ -12,9 +12,6 @@ pub struct Expr<'db> {
 
     #[returns(ref)]
     pub expr: ExprKind<'db>,
-
-    #[no_eq]
-    pub id: usize
 }
 
 bitflags! {
@@ -101,17 +98,10 @@ pub struct PathExpr<'db> {
     pub span: Span,
 
     #[returns(ref)]
-    pub expr: PathExprKind<'db>,
-
-    #[no_eq]
-    pub id: usize
+    pub expr: PathExprKind<'db>
 }
 
 impl<'db> ToProto<'db> for PathExpr<'db> {
-    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> usize {
-        self.id(db)
-    }
-
     fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         self.span(db)
     }
@@ -216,10 +206,6 @@ pub enum Variable<'db> {
 }
 
 impl<'db> ToProto<'db> for Variable<'db> {
-    fn get_id(&'db self, db: &'db dyn crate::BaseDatabase) -> usize {
-        todo!()    
-    }
-
     fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         todo!()
     }
@@ -351,10 +337,6 @@ impl Literal {
 }
 
 impl<'db> ToProto<'db> for Expr<'db> {
-    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> usize {
-        self.id(db)
-    }
-
     fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         self.span(db)
     }

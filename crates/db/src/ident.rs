@@ -11,7 +11,6 @@ use auto_lsp::{
 #[derive(Clone, Eq, salsa::Update, Debug)]
 pub struct SpannedIdent {
     pub span: Span,
-    pub id: usize,
     pub ident: Ident,
 }
 
@@ -36,7 +35,6 @@ impl Hash for SpannedIdent {
 impl SpannedIdent {
     pub fn new(db: &dyn BaseDatabase, file: File, ident: &impl AstNode) -> anyhow::Result<Self> {
         Ok(SpannedIdent {
-            id: ident.get_id(),
             span: ident.get_span(),
             ident: Ident::from_node(db, file, ident)?,
         })
@@ -54,7 +52,6 @@ impl SpannedIdent {
             end_point: Point { row: 0, column: 0 },
         };
         SpannedIdent {
-            id: 0,
             span: Span::from(range),
             ident: Ident::new(db, text.to_string()),
         }

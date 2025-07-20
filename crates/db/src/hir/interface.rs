@@ -47,16 +47,9 @@ pub struct Method<'db> {
 
     #[returns(ref)]
     pub variables: Vec<Variable<'db>>,
-
-    #[no_eq]
-    pub id: usize,
 }
 
 impl<'db> ToProto<'db> for Method<'db> {
-    fn get_id(&'db self, db: &'db dyn crate::BaseDatabase) -> usize {
-        self.id(db)
-    }
-
     fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         self.range(db)
     }

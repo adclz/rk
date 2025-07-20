@@ -57,8 +57,7 @@ impl<'db> ParseDataType<'db> for ast::generated::DataTypeDecl {
                 crate::hir::namespace::Pou::DataType(DataType::new(db, spec, init)),
                 child.get_span(),
                 name,
-                child.name.get_span(),
-                self.get_id()
+                child.name.get_span()
             ))
         }
 

@@ -29,10 +29,7 @@ pub struct Variable<'db> {
     pub spec: Spec<'db>,
 
     #[tracked]
-    pub init: Option<Expr<'db>>,
-
-    #[no_eq]
-    pub id: usize,
+    pub init: Option<Expr<'db>>
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -50,10 +47,6 @@ pub enum VariableKind {
 }
 
 impl<'db> ToProto<'db> for Variable<'db> {
-    fn get_id(&'db self, db: &'db dyn crate::BaseDatabase) -> usize {
-        self.id(db)
-    }
-
     fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         self.range(db).into()
     }

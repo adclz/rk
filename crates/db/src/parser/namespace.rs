@@ -55,7 +55,6 @@ impl<'db> ParseUsing<'db> for ast::generated::UsingDirective {
                 db,
                 NamespacePath::from((db, &path)),
                 child.get_span(),
-                child.get_id()
             ));
         }
         Ok(using)
@@ -80,7 +79,6 @@ impl<'db> ParseUsing<'db> for Vec<Arc<ast::generated::UsingDirective>> {
                     db,
                     NamespacePath::from((db, &path)),
                     child.get_span(),
-                    child.get_id()
                 ));
             }
         }
@@ -162,7 +160,6 @@ impl<'db> FileNamespacesBuilder<'db> {
                         func.get_span(),
                         name,
                         func.name.get_span(),
-                        func.get_id()
                     ));
                 }
                 SourceFileDecl::FbDecl(fb) => {
@@ -174,7 +171,6 @@ impl<'db> FileNamespacesBuilder<'db> {
                         fb.get_span(),
                         name,
                         fb.name.get_span(),
-                        fb.get_id()
                     ));
                 }
                 SourceFileDecl::ClassDecl(class) => {
@@ -186,7 +182,6 @@ impl<'db> FileNamespacesBuilder<'db> {
                         class.get_span(),
                         name,
                         class.name.get_span(),
-                        class.get_id()
                     ));
                 }
                 SourceFileDecl::DataTypeDecl(data_type) => {
@@ -203,7 +198,6 @@ impl<'db> FileNamespacesBuilder<'db> {
                         interface.get_span(),
                         name,
                         interface.name.get_span(),
-                        interface.get_id()
                     ));
                 }
                 _ => {
@@ -245,7 +239,6 @@ impl<'db> FileNamespacesBuilder<'db> {
                             func.get_span(),
                             name,
                             func.name.get_span(),
-                            func.get_id()
                         ));
                     }
                     Decl::FbDecl(fb) => {
@@ -257,7 +250,6 @@ impl<'db> FileNamespacesBuilder<'db> {
                             fb.get_span(),
                             name,
                             fb.name.get_span(),
-                            fb.get_id()
                         ));
                     }
                     Decl::ClassDecl(class) => {
@@ -269,7 +261,6 @@ impl<'db> FileNamespacesBuilder<'db> {
                             class.get_span(),
                             name,
                             class.name.get_span(),
-                            class.get_id()
                         ));
                     }
                     Decl::DataTypeDecl(data_type) => {
@@ -284,7 +275,6 @@ impl<'db> FileNamespacesBuilder<'db> {
                             interface.get_span(),
                             name,
                             interface.name.get_span(),
-                            interface.get_id()
                         ));
                     }
                     Decl::ERRInvalidPouKeyword(err) => {
@@ -306,7 +296,6 @@ impl<'db> FileNamespacesBuilder<'db> {
             NamespacePath::from((self.db, parent_path)),
             nested.name.get_span(),
             pous,
-            nested.get_id()
         ))
     }
 }

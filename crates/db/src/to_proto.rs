@@ -126,9 +126,7 @@ impl<'db> HirCtx<'db> {
     }
 }
 
-pub trait ToProto<'db> {
-    fn get_id(&'db self, db: &'db dyn crate::BaseDatabase) -> usize;
- 
+pub trait ToProto<'db> { 
     fn get_span(&'db self, db: &'db dyn crate::BaseDatabase) -> &'db Span;
 
     fn get_named_span(&'db self, db: &'db dyn crate::BaseDatabase) -> Option<&'db Span> {

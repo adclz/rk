@@ -16,7 +16,6 @@ use auto_lsp::{
 #[derive(Clone, Hash, salsa::Update, Debug)]
 pub struct SpannedPath {
     pub span: Span,
-    pub id: usize,
     pub fq_name: NamespaceAccess,
 }
 
@@ -27,10 +26,6 @@ impl PartialEq for SpannedPath {
 }
  
 impl<'db> ToProto<'db> for SpannedPath {
-    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> usize {
-        self.id
-    }
-
     fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         &self.span
     }
@@ -46,7 +41,6 @@ impl SpannedPath {
     ) -> anyhow::Result<Self> {
         Ok(SpannedPath {
             span: fq_name.get_span(),
-            id: fq_name.get_id(),
             fq_name: NamespaceAccess::from_ast(db, file, &fq_name)?,
         })
     }
