@@ -2,12 +2,16 @@
 #![recursion_limit = "256"]
 mod capabilties;
 
+use auto_lsp::anyhow;
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::default::server::capabilities::TEXT_DOCUMENT_SYNC;
 use auto_lsp::default::server::capabilities::WORKSPACE_PROVIDER;
 use auto_lsp::default::server::file_events::change_text_document;
 use auto_lsp::default::server::file_events::changed_watched_files;
 use auto_lsp::default::server::file_events::open_text_document;
+use auto_lsp::lsp_server::Message;
+use auto_lsp::lsp_types;
+use auto_lsp::salsa;
 use db::RK_PARSER;
 use auto_lsp::default::server::workspace_init::WorkspaceInit;
 use auto_lsp::lsp_server;
@@ -162,7 +166,10 @@ fn on_notifications<Db: BaseDatabase + Clone + RefUnwindSafe>(
     registry
         .on_mut::<DidOpenTextDocument, _>(|s, p| Ok(open_text_document(s, p)?))
         .on_mut::<DidChangeTextDocument, _>(|s, p| Ok(change_text_document(s, p)?))
-        .on_mut::<DidChangeWatchedFiles, _>(|s, p|  Ok(changed_watched_files(s, p)?))
+        .on_mut::<DidChangeWatchedFiles, _>(|s, p|  {
+            changed_watched_files(s, p)?;
+            send_request::<lsp_types::request::WorkspaceDiagnosticRefresh>(s, ())
+        })
         .on_mut::<Cancel, _>(|s, p| {
             let id: lsp_server::RequestId = match p.id {
                 auto_lsp::lsp_types::NumberOrString::Number(id) => id.into(),
@@ -178,3 +185,17 @@ fn on_notifications<Db: BaseDatabase + Clone + RefUnwindSafe>(
         .on::<SetTrace, _>(|_s, _p| Ok(()))
         .on::<LogTrace, _>(|_s, _p| Ok(()))
 }
+
+pub fn send_request<N: lsp_types::request::Request>(
+        session: &Session<impl salsa::Database>,
+        params: N::Params,
+    ) -> anyhow::Result<()> {
+        let params = serde_json::to_value(&params)?;
+        let n = lsp_server::Request {
+            method: N::METHOD.into(),
+            id: lsp_server::RequestId::from(0),
+            params,
+        };
+        session.connection.sender.send(Message::Request(n))?;
+        Ok(())
+    }

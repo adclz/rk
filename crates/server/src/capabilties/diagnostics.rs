@@ -1,4 +1,5 @@
-use auto_lsp::anyhow;
+use auto_lsp::lsp_server::Message;
+use auto_lsp::{anyhow, lsp_server, lsp_types, salsa};
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::{
     DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
@@ -6,6 +7,7 @@ use auto_lsp::lsp_types::{
     WorkspaceDiagnosticReport, WorkspaceDiagnosticReportResult, WorkspaceDocumentDiagnosticReport,
     WorkspaceFullDocumentDiagnosticReport,
 };
+use auto_lsp::server::Session;
 use db::diagnostics::cached_diagnostics;
 
 pub fn diagnostics(
