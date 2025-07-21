@@ -7,11 +7,11 @@ use auto_lsp::{
 };
 use salsa::Accumulator;
 
-use crate::hir::expression::{FieldExpr, IndexExpr, PathExpr, VariableAccessKind};
+use crate::hir::expression::{AnyBit, AnyChars, AnyDate, AnyDuration, AnyInt, AnyMagnitude, AnyNum, AnyReal, AnySigned, AnyUnsigned, FieldExpr, IndexExpr, Numeric, PathExpr, VariableAccessKind};
 use crate::{
     diagnostics::{diagnostic_builder::diag, DiagnosticAccumulator},
     hir::expression::{
-        Expr, ExprKind, Literal, Numeric, AddOperatorKind, BooleanOperatorKind, ComparisonOperatorKind, MultOperatorKind, UnaryOperatorKind, ParamAssign, PathExprKind, PrimaryExpr, RefAdress,
+        Expr, ExprKind, AnyElementary, AddOperatorKind, BooleanOperatorKind, ComparisonOperatorKind, MultOperatorKind, UnaryOperatorKind, ParamAssign, PathExprKind, PrimaryExpr, RefAdress,
         RefValue, SymbolicVariable, VarAccess, VariableAccess,
     },
     ident::Ident,
@@ -304,49 +304,49 @@ impl<'db> ParseExpression<'db> for ast::generated::Constant {
                 Constant::BoolLiteral(bool_literal) => {
                     match bool_literal.children.deref() {
                         ast::generated::BoolLiteralWithNumeric_BoolLiteralWithString::BoolLiteralWithNumeric(bool_literal) => {
-                            Literal::Bool(Ident::from_node(db, file, bool_literal.value.deref())?)
+                            AnyElementary::AnyBit(AnyBit::Bool(Ident::from_node(db, file, bool_literal.value.deref())?))
                         }
                         ast::generated::BoolLiteralWithNumeric_BoolLiteralWithString::BoolLiteralWithString(bool_literal) => {
-                            Literal::Bool(Ident::from_node(db, file, bool_literal.value.deref())?)
+                           AnyElementary::AnyBit(AnyBit::Bool(Ident::from_node(db, file, bool_literal.value.deref())?))
                         }
                     }
                 } 
                 Constant::CharLiteral(char_literal) => { 
-                    Literal::Char(Ident::from_node(db, file, char_literal.value.deref())?)
+                    AnyElementary::AnyChars(AnyChars::AnyString(Ident::from_node(db, file, char_literal.value.deref())?))
                 }
                 Constant::NumericLiteral(numeric_literal) => {
                     match numeric_literal.children.deref() {
                     ast::generated::IntLiteral_RealLiteral::IntLiteral(int_literal) => {
                         match &int_literal.kind {
-                            None => Literal::AnyNumeric(int_literal.int.parse(db, file)?),
+                            None => AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::Infer(int_literal.int.parse(db, file)?)))),
                             Some(kind) => {
                                 match kind.children.deref() {
                                     ast::generated::IntTypeName_MultibitsTypeName::IntTypeName(int_type_name) => {
-                                        match int_type_name.children.deref() {
+                                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(match int_type_name.children.deref() {
                                             ast::generated::SignIntTypeName_UnsignIntTypeName::SignIntTypeName(sign_int_type_name) => {
                                                 match sign_int_type_name.children.deref() {
-                                                    ast::generated::DintName_IntName_LintName_SintName::SintName(_) => Literal::SInt(int_literal.int.parse(db, file)?),
-                                                    ast::generated::DintName_IntName_LintName_SintName::IntName(_) => Literal::Int(int_literal.int.parse(db, file)?),
-                                                    ast::generated::DintName_IntName_LintName_SintName::DintName(_) => Literal::DInt(int_literal.int.parse(db, file)?),
-                                                    ast::generated::DintName_IntName_LintName_SintName::LintName(_) => Literal::LInt(int_literal.int.parse(db, file)?),
+                                                    ast::generated::DintName_IntName_LintName_SintName::SintName(_) => AnyInt::AnySigned(AnySigned::SInt(int_literal.int.parse(db, file)?)),
+                                                    ast::generated::DintName_IntName_LintName_SintName::IntName(_) => AnyInt::AnySigned(AnySigned::Int(int_literal.int.parse(db, file)?)),
+                                                    ast::generated::DintName_IntName_LintName_SintName::DintName(_) => AnyInt::AnySigned(AnySigned::DInt(int_literal.int.parse(db, file)?)),
+                                                    ast::generated::DintName_IntName_LintName_SintName::LintName(_) => AnyInt::AnySigned(AnySigned::LInt(int_literal.int.parse(db, file)?)),
                                                 }
                                             },
                                             ast::generated::SignIntTypeName_UnsignIntTypeName::UnsignIntTypeName(unsign_int_type_name) => {
                                                 match unsign_int_type_name.children.deref() {
-                                                    ast::generated::UdintName_UintName_UlintName_UsintName::UsintName(_) => Literal::USInt(int_literal.int.parse(db, file)?),
-                                                    ast::generated::UdintName_UintName_UlintName_UsintName::UintName(_) => Literal::UInt(int_literal.int.parse(db, file)?),
-                                                    ast::generated::UdintName_UintName_UlintName_UsintName::UdintName(_) => Literal::UDInt(int_literal.int.parse(db, file)?),
-                                                    ast::generated::UdintName_UintName_UlintName_UsintName::UlintName(_) => Literal::ULInt(int_literal.int.parse(db, file)?),
+                                                    ast::generated::UdintName_UintName_UlintName_UsintName::UsintName(_) => AnyInt::AnyUnsigned(AnyUnsigned::USInt(int_literal.int.parse(db, file)?)),
+                                                    ast::generated::UdintName_UintName_UlintName_UsintName::UintName(_) => AnyInt::AnyUnsigned(AnyUnsigned::UInt(int_literal.int.parse(db, file)?)),
+                                                    ast::generated::UdintName_UintName_UlintName_UsintName::UdintName(_) => AnyInt::AnyUnsigned(AnyUnsigned::UDInt(int_literal.int.parse(db, file)?)),
+                                                    ast::generated::UdintName_UintName_UlintName_UsintName::UlintName(_) => AnyInt::AnyUnsigned(AnyUnsigned::ULInt(int_literal.int.parse(db, file)?)),
                                                 }
                                             },
-                                        }
+                                        })))
                                     },
                                     ast::generated::IntTypeName_MultibitsTypeName::MultibitsTypeName(multibits_type_name) => {
                                         match multibits_type_name.children.deref() {
-                                            ast::generated::ByteName_DwordName_LwordName_WordName::ByteName(_) => Literal::Byte(int_literal.int.parse(db, file)?),
-                                            ast::generated::ByteName_DwordName_LwordName_WordName::WordName(_) => Literal::Word(int_literal.int.parse(db, file)?),
-                                            ast::generated::ByteName_DwordName_LwordName_WordName::DwordName(_) => Literal::DWord(int_literal.int.parse(db, file)?),
-                                            ast::generated::ByteName_DwordName_LwordName_WordName::LwordName(_) => Literal::LWord(int_literal.int.parse(db, file)?),
+                                            ast::generated::ByteName_DwordName_LwordName_WordName::ByteName(_) => AnyElementary::AnyBit(AnyBit::Byte(int_literal.int.parse(db, file)?)),
+                                            ast::generated::ByteName_DwordName_LwordName_WordName::WordName(_) => AnyElementary::AnyBit(AnyBit::Word(int_literal.int.parse(db, file)?)),
+                                            ast::generated::ByteName_DwordName_LwordName_WordName::DwordName(_) => AnyElementary::AnyBit(AnyBit::DWord(int_literal.int.parse(db, file)?)),
+                                            ast::generated::ByteName_DwordName_LwordName_WordName::LwordName(_) => AnyElementary::AnyBit(AnyBit::LWord(int_literal.int.parse(db, file)?)),
                                         }
                                     },
                                 }
@@ -356,30 +356,30 @@ impl<'db> ParseExpression<'db> for ast::generated::Constant {
                     ast::generated::IntLiteral_RealLiteral::RealLiteral(real_literal) => { 
                         let j = real_literal.Type.as_deref();
 
-                        match real_literal.Type.as_deref() {
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(match real_literal.Type.as_deref() {
                             Some(kind) => {
                                 match kind.children.deref() {
                                     ast::generated::LrealName_RealName::RealName(_) => {
-                                        Literal::Real(Ident::from_node(db, file, real_literal.value.deref())?)
+                                        AnyNum::AnyReal(AnyReal::Real(Ident::from_node(db, file, real_literal.value.deref())?))
                                     }
                                     ast::generated::LrealName_RealName::LrealName(_) => {
-                                        Literal::LReal(Ident::from_node(db, file, real_literal.value.deref())?)
+                                        AnyNum::AnyReal(AnyReal::LReal(Ident::from_node(db, file, real_literal.value.deref())?))
                                     }
                                 }
                             }
-                            None => Literal::LReal(Ident::from_node(db, file, real_literal.value.deref())?),
-                        }
+                            None => AnyNum::AnyReal(AnyReal::Infer(Ident::from_node(db, file, real_literal.value.deref())?))
+                        }))
                     },
                 } 
                 }
                 Constant::TimeLiteral(time_literal) => match time_literal.children.deref() {
                     ast::generated::Date_DateAndTime_Duration_TimeOfDay::Date(date) => {
                         match date.children.deref() {
-                            ast::generated::LongDate_ShortDate::LongDate(long_date) => {
-                                Literal::LDate(Ident::from_node(db, file, long_date.value.deref())?)
+                            ast::generated::LongDate_ShortDate::LongDate(date) => {
+                                AnyElementary::AnyDate(AnyDate::LDate(Ident::from_node(db, file, date.value.deref())?))
                             }
-                            ast::generated::LongDate_ShortDate::ShortDate(short_date) => {
-                                Literal::Date(Ident::from_node(db, file, short_date.value.deref())?)
+                            ast::generated::LongDate_ShortDate::ShortDate(date) => {
+                                AnyElementary::AnyDate(AnyDate::Date(Ident::from_node(db, file, date.value.deref())?))
                             }
                         }
                     }
@@ -387,37 +387,29 @@ impl<'db> ParseExpression<'db> for ast::generated::Constant {
                         date_and_time,
                     ) => match date_and_time.children.deref() {
                         ast::generated::LongDateAndTime_ShortDateAndTime::LongDateAndTime(
-                            long_date_and_time,
-                        ) => Literal::LDateTime(Ident::from_node(
-                            db,
-                            file,
-                            long_date_and_time.value.deref(),
-                        )?),
+                            dt,
+                        ) => AnyElementary::AnyDate(AnyDate::LDateTime(Ident::from_node(db, file, dt.value.deref())?)),
                         ast::generated::LongDateAndTime_ShortDateAndTime::ShortDateAndTime(
-                            short_date_and_time,
-                        ) => Literal::DateTime(Ident::from_node(
-                            db,
-                            file,
-                            short_date_and_time.value.deref(),
-                        )?),
+                            dt,
+                        ) => AnyElementary::AnyDate(AnyDate::DateAndTime(Ident::from_node(db, file, dt.value.deref())?)),
                     },
                     ast::generated::Date_DateAndTime_Duration_TimeOfDay::Duration(duration) => {
-                        match duration.children.deref() {
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyDuration(match duration.children.deref() {
                             ast::generated::Ltime_Time::Ltime(ltime) => {
-                                Literal::LTime(Ident::from_node(db, file, ltime.value.deref())?)
+                                AnyDuration::LTime(Ident::from_node(db, file, ltime.value.deref())?)
                             }
                             ast::generated::Ltime_Time::Time(time) => {
-                                Literal::Time(Ident::from_node(db, file, time.value.deref())?)
+                                AnyDuration::Time(Ident::from_node(db, file, time.value.deref())?)
                             }
-                        }
+                        }))
                     }
                     ast::generated::Date_DateAndTime_Duration_TimeOfDay::TimeOfDay(time_of_day) => {
                         match time_of_day.children.deref() {
                             ast::generated::Ltod_Tod::Ltod(ltod) => {
-                                Literal::LTod(Ident::from_node(db, file, ltod.value.deref())?)
+                                AnyElementary::AnyDate(AnyDate::LTod(Ident::from_node(db, file, ltod.value.deref())?))
                             }
                             ast::generated::Ltod_Tod::Tod(tod) => {
-                                Literal::Tod(Ident::from_node(db, file, tod.value.deref())?)
+                                AnyElementary::AnyDate(AnyDate::TimeOfDay(Ident::from_node(db, file, tod.value.deref())?))
                             }
                         }
                     }

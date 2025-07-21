@@ -10,13 +10,13 @@ use salsa::Accumulator;
 use crate::{
     diagnostics::{diagnostic_builder::diag, literals::check_date, DiagnosticAccumulator},
     hir::{
-        expression::{Expr, ExprKind, Literal, PrimaryExpr},
+        expression::{AnyBit, AnyChars, AnyDate, AnyDuration, AnyElementary, AnyInt, AnyMagnitude, AnyNum, AnyReal, AnySigned, AnyUnsigned, Expr, ExprKind, PrimaryExpr},
         namespace::{NamespaceResult, PouDecl, PouResult, Using},
         variable::Spec,
     },
     solver::{
         fq_name::SpannedPath,
-        namespace::{namespace_path, namespaces_in_file, namespaces_in_scope, using_namespaces_in_scope, NamespacePath},
+        namespace::{namespace_path, namespaces_in_file, using_namespaces_in_scope, NamespacePath},
     },
 };
 
@@ -301,43 +301,37 @@ trait SpecCheck<'db> {
 
 impl<'db> SpecCheck<'db> for Expr<'db> {
     fn check(&self, db: &'db dyn BaseDatabase, file: File, spec: &Spec<'db>) {
-        use Literal::AnyNumeric;
-
         match self.expr(db) {
             ExprKind::PrimaryExpr(PrimaryExpr::Literal(lit))=> {
                 let result = match spec {
-                    Spec::Bool => matches!(lit, Literal::Bool(_)),
-                    Spec::Byte => matches!(lit, Literal::Byte(_) | AnyNumeric(_)),
-                    Spec::Word => matches!(lit, Literal::Word(_) | AnyNumeric(_)),
-                    Spec::DWord => matches!(lit, Literal::DWord(_) | AnyNumeric(_)),
-                    Spec::LWord => matches!(lit, Literal::LWord(_) | AnyNumeric(_)),
-                    Spec::SInt => matches!(lit, Literal::SInt(_) | AnyNumeric(_)),
-                    Spec::USInt => matches!(lit, Literal::USInt(_) | AnyNumeric(_)),
-                    Spec::Int => matches!(lit, Literal::Int(_) | AnyNumeric(_)),
-                    Spec::DInt => matches!(lit, Literal::DInt(_) | AnyNumeric(_)),
-                    Spec::LInt => matches!(lit, Literal::LInt(_) | AnyNumeric(_)),
-                    Spec::ULInt => matches!(lit, Literal::ULInt(_) | AnyNumeric(_)),
-                    Spec::Real => matches!(lit, Literal::Real(_) | AnyNumeric(_)),
-                    Spec::LReal => matches!(lit, Literal::LReal(_) | AnyNumeric(_)),
-                    Spec::Time => matches!(lit, Literal::Time(_) | AnyNumeric(_)),
-                    Spec::Date => matches!(lit, Literal::Date(_) | AnyNumeric(_)),
-                    Spec::LDate => matches!(lit, Literal::LDate(_) | AnyNumeric(_)),
-                    Spec::Tod => matches!(lit, Literal::Tod(_) | AnyNumeric(_)),
-                    Spec::LTod => matches!(lit, Literal::LTod(_) | AnyNumeric(_)),
-                    Spec::Dt => matches!(lit, Literal::DateTime(_)),
-                    Spec::Ldt => matches!(lit, Literal::LDateTime(_)),
-                    Spec::Char => matches!(lit, Literal::Char(_)),
-                    Spec::WChar => matches!(lit, Literal::DChar(_)),
-                    // Complex types
-                    Spec::Enum => matches!(lit, AnyNumeric(_)),
-                    Spec::Struct => matches!(lit, AnyNumeric(_)),
-                    Spec::Array(_) => matches!(lit, AnyNumeric(_)),
-                    Spec::String => matches!(lit, Literal::Char(_)),
-                    Spec::WString => matches!(lit, Literal::Char(_)),
+                    Spec::Bool => matches!(lit, AnyElementary::AnyBit(AnyBit::Bool(_))),
+                    Spec::Byte => matches!(lit, AnyElementary::AnyBit(AnyBit::Byte(_))),
+                    Spec::Word => matches!(lit, AnyElementary::AnyBit(AnyBit::Word(_))),
+                    Spec::DWord => matches!(lit, AnyElementary::AnyBit(AnyBit::DWord(_))),
+                    Spec::LWord => matches!(lit, AnyElementary::AnyBit(AnyBit::LWord(_))),
+                    Spec::SInt => matches!(lit, AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnySigned(AnySigned::SInt(_)))))),
+                    Spec::USInt => matches!(lit, AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnyUnsigned(AnyUnsigned::USInt(_)))))),
+                    Spec::Int => matches!(lit, AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnySigned(AnySigned::Int(_)))))),
+                    Spec::DInt => matches!(lit, AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnySigned(AnySigned::DInt(_)))))),
+                    Spec::LInt => matches!(lit, AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnySigned(AnySigned::LInt(_)))))),
+                    Spec::ULInt => matches!(lit, AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnyUnsigned(AnyUnsigned::ULInt(_)))))),
+                    Spec::Real => matches!(lit, AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyReal(AnyReal::Real(_))))),
+                    Spec::LReal => matches!(lit, AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyReal(AnyReal::LReal(_))))),
+                    Spec::Time => matches!(lit, AnyElementary::AnyMagnitude(AnyMagnitude::AnyDuration(AnyDuration::Time(_)))),
+                    Spec::Date => matches!(lit, AnyElementary::AnyDate(AnyDate::Date(_))),
+                    Spec::LDate => matches!(lit, AnyElementary::AnyDate(AnyDate::LDate(_))),
+                    Spec::Tod => matches!(lit, AnyElementary::AnyDate(AnyDate::TimeOfDay(_))),
+                    Spec::LTod => matches!(lit, AnyElementary::AnyDate(AnyDate::LTod(_))),
+                    Spec::Dt => matches!(lit, AnyElementary::AnyDate(AnyDate::DateAndTime(_))),
+                    Spec::Ldt => matches!(lit, AnyElementary::AnyDate(AnyDate::LDateTime(_))),
+                    Spec::Char => matches!(lit, AnyElementary::AnyChars(AnyChars::AnyString(_))),
+                    Spec::WChar => matches!(lit, AnyElementary::AnyChars(AnyChars::AnyString(_))),
+                    Spec::String => matches!(lit, AnyElementary::AnyChars(AnyChars::AnyString(_))),
+                    Spec::WString => matches!(lit, AnyElementary::AnyChars(AnyChars::AnyString(_))),
                     _ => false,
                 };
 
-                lit.self_check(db, file);
+                //lit.self_check(db, file);
 
                 if !result {
                     let message = format!(
@@ -354,20 +348,6 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         .call();
                     DiagnosticAccumulator::accumulate(diagnostic.into(), db);
                 }
-            }
-            _ => {}
-        }
-    }
-}
-
-impl Literal {
-    fn self_check(&self, db: &dyn BaseDatabase, file: File) {
-        match self {
-            Literal::Date(ident) => {
-                if let Err(err) = check_date(db, &ident.text(db)) {
-                    let diagnostic = err.to_diag();
-                    DiagnosticAccumulator::accumulate((file, diagnostic).into(), db);
-                };
             }
             _ => {}
         }

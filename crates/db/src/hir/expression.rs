@@ -45,9 +45,9 @@ pub enum MultOperatorKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum UnaryOperatorKind {
-    Plus, // +
+    Plus,  // +
     Minus, // -
-    Not, // NOT
+    Not,   // NOT
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -85,7 +85,7 @@ pub enum ExprKind<'db> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum PrimaryExpr<'db> {
-    Literal(Literal), // constant
+    Literal(AnyElementary), // constant
     // Path --> Target
     VariableAccess {
         variable: VariableAccess<'db>,
@@ -109,7 +109,7 @@ pub struct PathExpr<'db> {
     pub span: Span,
 
     #[returns(ref)]
-    pub expr: PathExprKind<'db>
+    pub expr: PathExprKind<'db>,
 }
 
 impl<'db> ToProto<'db> for PathExpr<'db> {
@@ -119,14 +119,11 @@ impl<'db> ToProto<'db> for PathExpr<'db> {
 }
 
 impl<'db> IterToProto<'db> for PathExpr<'db> {
-    fn iter(
-        &'db self,
-        ctx: HirCtx<'db>,
-    ) -> impl Iterator<Item = ProtoAndCtx<'db>> {
+    fn iter(&'db self, ctx: HirCtx<'db>) -> impl Iterator<Item = ProtoAndCtx<'db>> {
         match &self.expr(ctx.db) {
             PathExprKind::Field(field) => self_iter(self, ctx),
             PathExprKind::Index(index) => self_iter(self, ctx),
-            PathExprKind::VarAccess(var_access) => self_iter(self, ctx)
+            PathExprKind::VarAccess(var_access) => self_iter(self, ctx),
         }
     }
 }
@@ -182,10 +179,7 @@ pub enum ParamAssign<'db> {
 }
 
 impl<'db> IterToProto<'db> for ParamAssign<'db> {
-    fn iter(
-        &'db self,
-        ctx: HirCtx<'db>,
-    ) -> impl Iterator<Item = ProtoAndCtx<'db>> {
+    fn iter(&'db self, ctx: HirCtx<'db>) -> impl Iterator<Item = ProtoAndCtx<'db>> {
         std::iter::empty()
     }
 }
@@ -218,7 +212,6 @@ impl<'db> ToProto<'db> for VariableAccess<'db> {
     }
 }
 
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum VariableAccessKind<'db> {
     Direct {
@@ -230,10 +223,7 @@ pub enum VariableAccessKind<'db> {
 }
 
 impl<'db> IterToProto<'db> for VariableAccess<'db> {
-    fn iter(
-        &'db self,
-        ctx: HirCtx<'db>,
-    ) -> impl Iterator<Item = ProtoAndCtx<'db>> {
+    fn iter(&'db self, ctx: HirCtx<'db>) -> impl Iterator<Item = ProtoAndCtx<'db>> {
         match &self.kind {
             VariableAccessKind::Direct { adress, .. } => self_iter(self, ctx),
             VariableAccessKind::Symbolic(symbolic) => self_iter(self, ctx),
@@ -253,48 +243,95 @@ pub enum VarAccess {
     Deref(Ident), // ^
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum Literal {
-    // Any numeric type (non floating point)
-    AnyNumeric(Numeric),
+// Generic data types Generic data types
+// Groups of elementary data types
+// ANY
+// |_ ANY_DERIVED
+// |_ ANY_ELEMENTARY
+//    |_ ANY_MAGNITUDE
+//       |_ ANY_NUM
+//          |_ ANY_REAL -  REAL, LREAL
+//          |_ ANY_INT
+//              |_ ANY_UNSIGNED - USINT, UINT, UDINT, ULINT
+//              |_ ANY_SIGNED - SINT, INT, DINT, LINT
+//       |_ ANY_DURATION - TIME, LTIME
+//    |_ ANY_BIT - BOOL, BYTE, WORD, DWORD, LWORD
+//    |_ ANY_CHARS
+//       |_ ANY_STRING - STRING, WSTRING
+//       |_ ANY_CHAR - CHAR, WCHAR
+//    |_ ANY_DATE - DATE_AND_TIME, LDT, DATE, TIME_OF_DAY, LTOD, LDATE*
+//
+// Notes:
+//
+// All ANY_UNSIGNED, ANY_INT and ANY_BIT (except for bool) can be represented as octal, decimal or hexadecimal - hence the Numeric enum.
+//
+// * (LDATE is not present in the spec ?)
 
-    // Signed
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum AnyElementary {
+    AnyMagnitude(AnyMagnitude),
+    AnyBit(AnyBit),
+    AnyChars(AnyChars),
+    AnyDate(AnyDate),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum AnyMagnitude {
+    AnyNum(AnyNum),
+    AnyDuration(AnyDuration),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum AnyNum {
+    AnyReal(AnyReal),
+    AnyInt(AnyInt),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum AnyReal {
+    Real(Ident),
+    LReal(Ident),
+    Infer(Ident), // Represents an unspecified real type
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum AnyInt {
+    AnySigned(AnySigned),
+    AnyUnsigned(AnyUnsigned),
+    Infer(Numeric), // Represents an unspecified numeric type
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum AnySigned {
     SInt(Numeric),
     Int(Numeric),
     DInt(Numeric),
     LInt(Numeric),
+}
 
-    // Unsigned
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum AnyUnsigned {
     USInt(Numeric),
     UInt(Numeric),
     UDInt(Numeric),
     ULInt(Numeric),
+}
 
-    // Bit string
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum AnyDuration {
+    Time(Ident),
+    LTime(Ident),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum AnyBit {
+    Bool(Ident),
     Byte(Numeric),
     Word(Numeric),
     DWord(Numeric),
     LWord(Numeric),
-
-    Real(Ident),
-    LReal(Ident),
-
-    Bool(Ident),
-
-    Char(Ident),
-    DChar(Ident),
-
-    Date(Ident),
-    LDate(Ident),
-    Tod(Ident),
-    LTod(Ident),
-    Time(Ident),
-    LTime(Ident),
-    DateTime(Ident),
-    LDateTime(Ident),
 }
 
-// todo: Should use ANY_* from the standard instead
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum Numeric {
     Binary(Ident),
@@ -314,43 +351,73 @@ impl Numeric {
     }
 }
 
-impl Literal {
+// todo: improve support for string and char
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum AnyChars {
+    AnyString(Ident),
+    AnyChar(Ident),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum AnyDate {
+    DateAndTime(Ident),
+    LDateTime(Ident),
+    LDate(Ident),
+    Date(Ident),
+    TimeOfDay(Ident),
+    LTod(Ident),
+}
+
+impl AnyElementary {
     pub fn to_string<'db>(&self, db: &'db dyn BaseDatabase) -> String {
         match self {
-            Literal::AnyNumeric(n) => format!(
-                "Number {}",
-                match n {
-                    Numeric::Binary(ident) => ident.text(db),
-                    Numeric::Hex(ident) => ident.text(db),
-                    Numeric::Octal(ident) => ident.text(db),
-                    Numeric::Signed(ident) => ident.text(db),
-                }
-            ),
-            Literal::SInt(ident) => format!("SInt {}", ident.to_string(db)),
-            Literal::Int(ident) => format!("Int {}", ident.to_string(db)),
-            Literal::DInt(ident) => format!("DInt {}", ident.to_string(db)),
-            Literal::LInt(ident) => format!("LInt {}", ident.to_string(db)),
-            Literal::USInt(ident) => format!("USInt {}", ident.to_string(db)),
-            Literal::UInt(ident) => format!("UInt {}", ident.to_string(db)),
-            Literal::UDInt(ident) => format!("UDInt {}", ident.to_string(db)),
-            Literal::ULInt(ident) => format!("ULInt {}", ident.to_string(db)),
-            Literal::Byte(ident) => format!("Byte {}", ident.to_string(db)),
-            Literal::Word(ident) => format!("Word {}", ident.to_string(db)),
-            Literal::DWord(ident) => format!("DWord {}", ident.to_string(db)),
-            Literal::LWord(ident) => format!("LWord {}", ident.to_string(db)),
-            Literal::Real(ident) => format!("Real {}", ident.text(db)),
-            Literal::LReal(ident) => format!("LReal {}", ident.text(db)),
-            Literal::Bool(ident) => format!("Bool {}", ident.text(db)),
-            Literal::Char(ident) => format!("Char {}", ident.text(db)),
-            Literal::DChar(ident) => format!("DChar {}", ident.text(db)),
-            Literal::Date(ident) => format!("Date {}", ident.text(db)),
-            Literal::LDate(ident) => format!("LDate {}", ident.text(db)),
-            Literal::Tod(ident) => format!("Tod {}", ident.text(db)),
-            Literal::LTod(ident) => format!("LTod {}", ident.text(db)),
-            Literal::Time(ident) => format!("Time {}", ident.text(db)),
-            Literal::LTime(ident) => format!("LTime {}", ident.text(db)),
-            Literal::DateTime(ident) => format!("DateTime {}", ident.text(db)),
-            Literal::LDateTime(ident) => format!("LDateTime {}", ident.text(db)),
+            Self::AnyBit(n) => match n {
+                AnyBit::Bool(ident) => format!("Bool: {}", ident.text(db)),
+                AnyBit::Byte(ident) => format!("Byte: {}", ident.to_string(db)),
+                AnyBit::Word(ident) => format!("Word: {}", ident.to_string(db)),
+                AnyBit::DWord(ident) => format!("DWord: {}", ident.to_string(db)),
+                AnyBit::LWord(ident) => format!("Lword: {}", ident.to_string(db)),
+            },
+            Self::AnyMagnitude(n) => match n {
+                AnyMagnitude::AnyNum(n) => match n {
+                    AnyNum::AnyReal(n) => match n {
+                        AnyReal::Real(ident) => format!("Real: {}", ident.text(db)),
+                        AnyReal::LReal(ident) => format!("LReal: {}", ident.text(db)),
+                        AnyReal::Infer(ident) => format!("Any Real: {}", ident.text(db)),
+                    },
+                    AnyNum::AnyInt(n) => match n {
+                        AnyInt::AnySigned(n) => match n {
+                            AnySigned::SInt(ident) => format!("SInt: {}", ident.to_string(db)),
+                            AnySigned::Int(ident) => format!("Int: {}", ident.to_string(db)),
+                            AnySigned::DInt(ident) => format!("DInt: {}", ident.to_string(db)),
+                            AnySigned::LInt(ident) => format!("LInt: {}", ident.to_string(db)),
+                        },
+                        AnyInt::AnyUnsigned(ident) => match ident {
+                            AnyUnsigned::USInt(ident) => format!("USInt: {}", ident.to_string(db)),
+                            AnyUnsigned::UInt(ident) => format!("UInt: {}", ident.to_string(db)),
+                            AnyUnsigned::UDInt(ident) => format!("UDInt: {}", ident.to_string(db)),
+                            AnyUnsigned::ULInt(ident) => format!("ULInt: {}", ident.to_string(db)),
+                        },
+                        AnyInt::Infer(ident) => format!("Any Int: {}", ident.to_string(db)),
+                    },
+                },
+                AnyMagnitude::AnyDuration(n) => match n {
+                    AnyDuration::Time(ident) => format!("Time: {}", ident.text(db)),
+                    AnyDuration::LTime(ident) => format!("LTime: {}", ident.text(db)),
+                },
+            },
+            Self::AnyChars(n) => match n {
+                AnyChars::AnyString(ident) => format!("String: {}", ident.text(db)),
+                AnyChars::AnyChar(ident) => format!("Char: {}", ident.text(db)),
+            },
+            Self::AnyDate(n) => match n {
+                AnyDate::DateAndTime(ident) => format!("Date and Time: {}", ident.text(db)),
+                AnyDate::LDateTime(ident) => format!("Long Date and Time: {}", ident.text(db)),
+                AnyDate::Date(ident) => format!("Date: {}", ident.text(db)),
+                AnyDate::LDate(ident) => format!("Long Date: {}", ident.text(db)),
+                AnyDate::TimeOfDay(ident) => format!("Time of Day: {}", ident.text(db)),
+                AnyDate::LTod(ident) => format!("Long Time of Day: {}", ident.text(db)),
+            },
         }
     }
 }
@@ -367,41 +434,61 @@ impl<'db> IterToProto<'db> for Expr<'db> {
         match self.expr(ctx.db) {
             ExprKind::AddOperator {
                 left,
-                operator, 
+                operator,
                 right,
-            } => Box::new(self_iter(self, ctx).chain(left.iter(ctx)).chain(right.iter(ctx))) as Box<dyn Iterator<Item = _>>,
+            } => Box::new(
+                self_iter(self, ctx)
+                    .chain(left.iter(ctx))
+                    .chain(right.iter(ctx)),
+            ) as Box<dyn Iterator<Item = _>>,
             ExprKind::BooleanOperator {
                 left,
                 operator,
                 right,
-            } => Box::new(self_iter(self, ctx).chain(left.iter(ctx)).chain(right.iter(ctx))) as Box<dyn Iterator<Item = _>>,
+            } => Box::new(
+                self_iter(self, ctx)
+                    .chain(left.iter(ctx))
+                    .chain(right.iter(ctx)),
+            ) as Box<dyn Iterator<Item = _>>,
             ExprKind::ComparisonOperator {
                 left,
                 operator,
                 right,
-            } => Box::new(self_iter(self, ctx).chain(left.iter(ctx)).chain(right.iter(ctx))) as Box<dyn Iterator<Item = _>>,
+            } => Box::new(
+                self_iter(self, ctx)
+                    .chain(left.iter(ctx))
+                    .chain(right.iter(ctx)),
+            ) as Box<dyn Iterator<Item = _>>,
             ExprKind::MultOperator {
                 left,
                 operator,
                 right,
-            } => Box::new(self_iter(self, ctx).chain(left.iter(ctx)).chain(right.iter(ctx))) as Box<dyn Iterator<Item = _>>,
-            ExprKind::PowerOperator { left, right } => {
-                Box::new(self_iter(self, ctx).chain(left.iter(ctx)).chain(right.iter(ctx))) as Box<dyn Iterator<Item = _>>
+            } => Box::new(
+                self_iter(self, ctx)
+                    .chain(left.iter(ctx))
+                    .chain(right.iter(ctx)),
+            ) as Box<dyn Iterator<Item = _>>,
+            ExprKind::PowerOperator { left, right } => Box::new(
+                self_iter(self, ctx)
+                    .chain(left.iter(ctx))
+                    .chain(right.iter(ctx)),
+            ) as Box<dyn Iterator<Item = _>>,
+            ExprKind::UnaryOperator { expr, operator } => {
+                Box::new(expr.iter(ctx)) as Box<dyn Iterator<Item = _>>
             }
-            ExprKind::UnaryOperator { expr, operator } => Box::new(expr.iter(ctx)) as Box<dyn Iterator<Item = _>>,
-            ExprKind::PrimaryExpr(primary) => Box::new(primary.iter(ctx)) as Box<dyn Iterator<Item = _>>,
+            ExprKind::PrimaryExpr(primary) => {
+                Box::new(primary.iter(ctx)) as Box<dyn Iterator<Item = _>>
+            }
         }
     }
 }
 
 impl<'db> IterToProto<'db> for PrimaryExpr<'db> {
     #[auto_enum(Iterator)]
-    fn iter(
-        &'db self,
-        ctx: HirCtx<'db>,
-    ) -> impl Iterator<Item = ProtoAndCtx<'db>> {
+    fn iter(&'db self, ctx: HirCtx<'db>) -> impl Iterator<Item = ProtoAndCtx<'db>> {
         match self {
-            PrimaryExpr::FuncCall { path, params } => path.iter(ctx)
+            PrimaryExpr::FuncCall { path, params } => path
+                .iter(ctx)
                 .chain(params.iter().flat_map(move |p| p.iter(ctx))),
             PrimaryExpr::VariableAccess {
                 variable,
