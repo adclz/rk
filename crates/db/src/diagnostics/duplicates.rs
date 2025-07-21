@@ -1,8 +1,7 @@
-use std::fmt::format;
+use std::{fmt::format, num::ParseIntError};
 
 use auto_lsp::{
-    default::db::{file::File, BaseDatabase},
-    lsp_types::DiagnosticRelatedInformation,
+    core::span::Span, default::db::{file::File, BaseDatabase}, lsp_types::DiagnosticRelatedInformation
 };
 use rustc_hash::FxHashMap;
 use salsa::Accumulator;
@@ -10,7 +9,7 @@ use salsa::Accumulator;
 use crate::{
     diagnostics::{diagnostic_builder::diag, literals::check_date, DiagnosticAccumulator},
     hir::{
-        expression::{AnyBit, AnyChars, AnyDate, AnyDuration, AnyElementary, AnyInt, AnyMagnitude, AnyNum, AnyReal, AnySigned, AnyUnsigned, Expr, ExprKind, PrimaryExpr},
+        expression::{AnyBit, AnyChars, AnyDate, AnyDuration, AnyElementary, AnyInt, AnyMagnitude, AnyNum, AnyReal, AnySigned, AnyUnsigned, Expr, ExprKind, Numeric, NumericKind, PrimaryExpr},
         namespace::{NamespaceResult, PouDecl, PouResult, Using},
         variable::Spec,
     },
@@ -299,45 +298,137 @@ trait SpecCheck<'db> {
     fn check(&self, db: &'db dyn BaseDatabase, file: File, spec: &Spec<'db>);
 }
 
+fn create_type_error<'db>(db: &'db dyn BaseDatabase, file: File, span: Span, spec: &'db Spec<'db>, err: ParseIntError) {
+    let diagnostic = diag()
+        .file(file)
+        .range(span.clone().into())
+        .message(err.to_string())
+        .source("IEC".into())
+        .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+        .related_information(vec![DiagnosticRelatedInformation {
+            location: auto_lsp::lsp_types::Location {
+                uri: file.url(db).clone(),
+                range: span.clone().into(),
+            },
+            message: format!("because of type: '{:?}' declared here", spec),
+        }])
+        .call();
+    DiagnosticAccumulator::accumulate(diagnostic.into(), db);
+}
+
 impl<'db> SpecCheck<'db> for Expr<'db> {
     fn check(&self, db: &'db dyn BaseDatabase, file: File, spec: &Spec<'db>) {
         match self.expr(db) {
             ExprKind::PrimaryExpr(PrimaryExpr::Literal(lit))=> {
                 let result = match spec {
-                    Spec::Bool => matches!(lit, AnyElementary::AnyBit(AnyBit::Bool(_))),
-                    Spec::Byte => matches!(lit, AnyElementary::AnyBit(AnyBit::Byte(_))),
-                    Spec::Word => matches!(lit, AnyElementary::AnyBit(AnyBit::Word(_))),
-                    Spec::DWord => matches!(lit, AnyElementary::AnyBit(AnyBit::DWord(_))),
-                    Spec::LWord => matches!(lit, AnyElementary::AnyBit(AnyBit::LWord(_))),
-                    Spec::SInt => matches!(lit, AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnySigned(AnySigned::SInt(_)))))),
-                    Spec::USInt => matches!(lit, AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnyUnsigned(AnyUnsigned::USInt(_)))))),
-                    Spec::Int => matches!(lit, AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnySigned(AnySigned::Int(_)))))),
-                    Spec::DInt => matches!(lit, AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnySigned(AnySigned::DInt(_)))))),
-                    Spec::LInt => matches!(lit, AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnySigned(AnySigned::LInt(_)))))),
-                    Spec::ULInt => matches!(lit, AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnyUnsigned(AnyUnsigned::ULInt(_)))))),
-                    Spec::Real => matches!(lit, AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyReal(AnyReal::Real(_))))),
-                    Spec::LReal => matches!(lit, AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyReal(AnyReal::LReal(_))))),
-                    Spec::Time => matches!(lit, AnyElementary::AnyMagnitude(AnyMagnitude::AnyDuration(AnyDuration::Time(_)))),
-                    Spec::Date => matches!(lit, AnyElementary::AnyDate(AnyDate::Date(_))),
-                    Spec::LDate => matches!(lit, AnyElementary::AnyDate(AnyDate::LDate(_))),
-                    Spec::Tod => matches!(lit, AnyElementary::AnyDate(AnyDate::TimeOfDay(_))),
-                    Spec::LTod => matches!(lit, AnyElementary::AnyDate(AnyDate::LTod(_))),
-                    Spec::Dt => matches!(lit, AnyElementary::AnyDate(AnyDate::DateAndTime(_))),
-                    Spec::Ldt => matches!(lit, AnyElementary::AnyDate(AnyDate::LDateTime(_))),
-                    Spec::Char => matches!(lit, AnyElementary::AnyChars(AnyChars::AnyString(_))),
-                    Spec::WChar => matches!(lit, AnyElementary::AnyChars(AnyChars::AnyString(_))),
-                    Spec::String => matches!(lit, AnyElementary::AnyChars(AnyChars::AnyString(_))),
-                    Spec::WString => matches!(lit, AnyElementary::AnyChars(AnyChars::AnyString(_))),
+                    Spec::Bool => match lit {
+                        AnyElementary::AnyBit(AnyBit::Bool(_)) => true,
+                        _ => false,
+                    },
+                    // bit string types
+                    Spec::Byte => match lit {
+                        AnyElementary::AnyBit(AnyBit::Byte(_)) => true,
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::Infer(infer)))) => {
+                            match infer.as_u8(db) {
+                                Ok(_) => true,
+                                Err(err) => {
+                                    create_type_error(db, file, self.span(db).clone(), spec, err);
+                                    return;
+                                }
+                            }
+                        },
+                        _ => false,
+                    },
+                    Spec::Word => match lit {
+                        AnyElementary::AnyBit(AnyBit::Byte(_)) => true,
+                        AnyElementary::AnyBit(AnyBit::Word(_)) => true,
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::Infer(infer)))) => {
+                            infer.as_u16(db).is_some()
+                        },
+                        _ => false,
+                    },
+                    Spec::DWord => match lit {
+                        AnyElementary::AnyBit(AnyBit::Byte(_)) => true,
+                        AnyElementary::AnyBit(AnyBit::Word(_)) => true,
+                        AnyElementary::AnyBit(AnyBit::DWord(_)) => true,
+                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::Infer(infer)))) => {
+                            infer.as_u32(db).is_some()
+                        },
+                        _ => false,
+                    },
+                    Spec::LWord => match lit {
+                        AnyElementary::AnyBit(AnyBit::Byte(_)) => true,
+                        AnyElementary::AnyBit(AnyBit::Word(_)) => true,
+                        AnyElementary::AnyBit(AnyBit::DWord(_)) => true,
+                        AnyElementary::AnyBit(AnyBit::LWord(_)) => true,
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::Infer(infer)))) => {
+                            infer.as_u64(db).is_some()
+                        },
+                        _ => false,
+                    },
+                    // signed integers
+                    Spec::SInt =>  match lit {
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnySigned(AnySigned::SInt(_))))) => true,
+                        _ => false,
+                    },
+                    Spec::Int =>  match lit {
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnySigned(AnySigned::SInt(_))))) => true,
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnySigned(AnySigned::Int(_))))) => true,
+                        _ => false,
+                    },
+                    Spec::DInt =>  match lit {
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnySigned(AnySigned::SInt(_))))) => true,
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnySigned(AnySigned::Int(_))))) => true,
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnySigned(AnySigned::DInt(_))))) => true,
+                        _ => false,
+                    }, 
+                    Spec::LInt =>  match lit {
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnySigned(AnySigned::SInt(_))))) => true,
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnySigned(AnySigned::Int(_))))) => true,
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnySigned(AnySigned::DInt(_))))) => true,
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnySigned(AnySigned::LInt(_))))) => true,
+                        _ => false,
+                    },
+                    // unsigned integers
+                    Spec::USInt =>  match lit {
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnyUnsigned(AnyUnsigned::USInt(_))))) => true,
+                        _ => false,
+                    },
+                    Spec::UInt =>  match lit {
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnyUnsigned(AnyUnsigned::USInt(_))))) => true,
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnyUnsigned(AnyUnsigned::UInt(_))))) => true,
+                        _ => false,
+                    },
+                    Spec::UDInt =>  match lit {
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnyUnsigned(AnyUnsigned::USInt(_))))) => true,
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnyUnsigned(AnyUnsigned::UInt(_))))) => true,
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnyUnsigned(AnyUnsigned::UDInt(_))))) => true,
+                        _ => false,
+                    }, 
+                    Spec::ULInt =>  match lit {
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnyUnsigned(AnyUnsigned::USInt(_))))) => true,
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnyUnsigned(AnyUnsigned::UInt(_))))) => true,
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnyUnsigned(AnyUnsigned::UDInt(_))))) => true,
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnyUnsigned(AnyUnsigned::ULInt(_))))) => true,
+                        _ => false,
+                    },
+                    Spec::Real => match lit {
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyReal(AnyReal::Real(_)))) => true,
+                        _ => false,
+                    },
+                    Spec::LReal => match lit {
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyReal(AnyReal::Real(_)))) => true,
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyReal(AnyReal::LReal(_)))) => true,
+                        _ => false,
+                    },
                     _ => false,
                 };
 
-                //lit.self_check(db, file);
-
                 if !result {
                     let message = format!(
-                        "invalid literal for spec '{:?}': {}",
+                        "value '{}' is not assignable to '{:?}'",
+                        lit.to_string(db),
                         spec,
-                        lit.to_string(db)
                     );
                     let diagnostic = diag()
                         .file(file)

@@ -7,7 +7,7 @@ use auto_lsp::{
 };
 use salsa::Accumulator;
 
-use crate::hir::expression::{AnyBit, AnyChars, AnyDate, AnyDuration, AnyInt, AnyMagnitude, AnyNum, AnyReal, AnySigned, AnyUnsigned, FieldExpr, IndexExpr, Numeric, PathExpr, VariableAccessKind};
+use crate::hir::expression::{AnyBit, AnyChars, AnyDate, AnyDuration, AnyInt, AnyMagnitude, AnyNum, AnyReal, AnySigned, AnyUnsigned, FieldExpr, IndexExpr, Numeric, NumericKind, PathExpr, VariableAccessKind};
 use crate::{
     diagnostics::{diagnostic_builder::diag, DiagnosticAccumulator},
     hir::expression::{
@@ -198,7 +198,17 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
             }
             ast::generated::PrimaryExpression::Constant(c) => c.to_expr(db, file),
             ast::generated::PrimaryExpression::VariableAccess(v) => {
-                todo!()
+                let variable = v.variable.to_access(db, file)?;
+                // todo: add multibits support
+
+                Ok(Expr::new(
+                    db, 
+                    v.get_span(),
+                    ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess { 
+                        variable, 
+                        multibits: None
+                    })
+                ))
             }
             ast::generated::PrimaryExpression::FuncCall(func) => {
                 let target = func.function.parse(db, file)?;
@@ -254,7 +264,15 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                 )),
                 ast::generated::Null_RefAddr::RefAddr(a) => match a.children.deref() {
                     ast::generated::InstanceName_SymbolicVariable::SymbolicVariable(s) => {
-                        todo!()
+                        Ok(Expr::new(
+                            db,
+                            s.get_span(),
+                            ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
+                                value: RefValue::Address(RefAdress::Symbolic(
+                                    SymbolicVariable { this: s.this.is_some(), kind: s.children.parse(db, file)? }
+                                )),
+                            }),
+                        ))
                     }
                     ast::generated::InstanceName_SymbolicVariable::InstanceName(i) => {
                         Ok(Expr::new(
@@ -281,16 +299,17 @@ impl<'db> ParseNumeric<'db> for ast::generated::BinaryInt_HexInt_OctalInt_Signed
     fn parse(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Numeric> {
         Ok(match self {
             ast::generated::BinaryInt_HexInt_OctalInt_SignedInt::BinaryInt(binary_int) => {
-                Numeric::Binary(Ident::from_node(db, file, binary_int)?)
+                Numeric::new(db, Ident::from_node(db, file, binary_int)?, NumericKind::Binary)
             }
             ast::generated::BinaryInt_HexInt_OctalInt_SignedInt::HexInt(hex_int) => {
-                Numeric::Hex(Ident::from_node(db, file, hex_int)?)
+                Numeric::new(db, Ident::from_node(db, file, hex_int)?, NumericKind::Hex)
             }
             ast::generated::BinaryInt_HexInt_OctalInt_SignedInt::OctalInt(octal_int) => {
-                Numeric::Octal(Ident::from_node(db, file, octal_int)?)
+                Numeric::new(db, Ident::from_node(db, file, octal_int)?, NumericKind::Octal)
             }
             ast::generated::BinaryInt_HexInt_OctalInt_SignedInt::SignedInt(signed_int) => {
-                Numeric::Signed(Ident::from_node(db, file, signed_int)?)
+                Numeric::new(db, Ident::from_node(db, file, signed_int)?, NumericKind::Signed)
+
             }
         })
     }

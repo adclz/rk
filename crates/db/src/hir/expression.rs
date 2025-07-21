@@ -89,7 +89,7 @@ pub enum PrimaryExpr<'db> {
     // Path --> Target
     VariableAccess {
         variable: VariableAccess<'db>,
-        multibits: MultibitsPart,
+        multibits: Option<MultibitsPart>,
     },
     FuncCall {
         path: PathExpr<'db>,
@@ -263,8 +263,8 @@ pub enum VarAccess {
 //
 // Notes:
 //
-// All ANY_UNSIGNED, ANY_INT and ANY_BIT (except for bool) can be represented as octal, decimal or hexadecimal - hence the Numeric enum.
-//
+// - All ANY_UNSIGNED, ANY_INT and ANY_BIT (except for bool) can be represented as octal, decimal or hexadecimal - hence the Numeric enum.
+// - ANY_INT and ANY_REAL have an "Infer" variant to represent unspecified types which have to be inferred later.
 // * (LDATE is not present in the spec ?)
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -332,21 +332,108 @@ pub enum AnyBit {
     LWord(Numeric),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum Numeric {
-    Binary(Ident),
-    Hex(Ident),
-    Octal(Ident),
-    Signed(Ident),
+#[salsa::interned(debug, no_lifetime)]
+pub struct Numeric {
+    pub ident: Ident,
+    pub kind: NumericKind,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum NumericKind {
+    Binary,
+    Hex,
+    Octal,
+    Signed,
+}
+
+#[salsa::tracked]
 impl Numeric {
+    #[salsa::tracked]
+   pub fn as_u8(self, db: &dyn BaseDatabase) -> Result<u8, std::num::ParseIntError> {
+        match self.kind(db) {
+            NumericKind::Binary => u8::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2),
+            NumericKind::Octal => u8::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8),
+            NumericKind::Hex => u8::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16),
+            NumericKind::Signed => self.ident(db).text(db).parse(),
+        }
+    }
+
+    #[salsa::tracked]
+   pub fn as_u16(self, db: &dyn BaseDatabase) -> Option<u16> {
+        match self.kind(db) {
+            NumericKind::Binary => u16::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2).ok(),
+            NumericKind::Octal => u16::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8).ok(),
+            NumericKind::Hex => u16::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16).ok(),
+            NumericKind::Signed => self.ident(db).text(db).parse().ok(),
+        }
+    }
+
+    #[salsa::tracked]
+   pub fn as_u32(self, db: &dyn BaseDatabase) -> Option<u32> {
+        match self.kind(db) {
+            NumericKind::Binary => u32::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2).ok(),
+            NumericKind::Octal => u32::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8).ok(),
+            NumericKind::Hex => u32::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16).ok(),
+            NumericKind::Signed => self.ident(db).text(db).parse().ok(),
+        }
+    }
+
+    #[salsa::tracked]
+   pub fn as_u64(self, db: &dyn BaseDatabase) -> Option<u64> {
+        match self.kind(db) {
+            NumericKind::Binary => u64::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2).ok(),
+            NumericKind::Octal => u64::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8).ok(),
+            NumericKind::Hex => u64::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16).ok(),
+            NumericKind::Signed => self.ident(db).text(db).parse().ok(),
+        }
+    }
+
+    #[salsa::tracked]
+   pub fn as_i8(self, db: &dyn BaseDatabase) -> Option<i8> {
+        match self.kind(db) {
+            NumericKind::Binary => i8::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2).ok(),
+            NumericKind::Octal => i8::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8).ok(),
+            NumericKind::Hex => i8::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16).ok(),
+            NumericKind::Signed => self.ident(db).text(db).parse().ok(),
+        }
+    }
+
+    #[salsa::tracked]
+   pub fn as_i16(self, db: &dyn BaseDatabase) -> Option<i16> {
+        match self.kind(db) {
+            NumericKind::Binary => i16::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2).ok(),
+            NumericKind::Octal => i16::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8).ok(),
+            NumericKind::Hex => i16::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16).ok(),
+            NumericKind::Signed => self.ident(db).text(db).parse().ok(),
+        }
+    }
+
+    #[salsa::tracked]
+   pub fn as_i32(self, db: &dyn BaseDatabase) -> Option<i32> {
+        match self.kind(db) {
+            NumericKind::Binary => i32::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2).ok(),
+            NumericKind::Octal => i32::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8).ok(),
+            NumericKind::Hex => i32::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16).ok(),
+            NumericKind::Signed => self.ident(db).text(db).parse().ok(),
+        }
+    }
+
+   #[salsa::tracked]
+   pub fn as_i64(self, db: &dyn BaseDatabase) -> Option<i64> {
+        match self.kind(db) {
+            NumericKind::Binary => i64::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2).ok(),
+            NumericKind::Octal => i64::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8).ok(),
+            NumericKind::Hex => i64::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16).ok(),
+            NumericKind::Signed => self.ident(db).text(db).parse().ok(),
+        }
+    }
+
     pub fn to_string<'db>(&self, db: &'db dyn BaseDatabase) -> String {
-        match self {
-            Numeric::Binary(ident) => format!("Binary {}", ident.text(db)),
-            Numeric::Hex(ident) => format!("Hex {}", ident.text(db)),
-            Numeric::Octal(ident) => format!("Octal {}", ident.text(db)),
-            Numeric::Signed(ident) => format!("Signed {}", ident.text(db)),
+        match self.kind(db) {
+            NumericKind::Binary => format!("[Binary] {}", self.ident(db).text(db)),
+            NumericKind::Hex => format!("[Hexa] {}", self.ident(db).text(db)),
+            NumericKind::Octal => format!("[Octal] {}", self.ident(db).text(db)),
+            NumericKind::Signed => self.ident(db).text(db),
         }
     }
 }
@@ -383,7 +470,7 @@ impl AnyElementary {
                     AnyNum::AnyReal(n) => match n {
                         AnyReal::Real(ident) => format!("Real: {}", ident.text(db)),
                         AnyReal::LReal(ident) => format!("LReal: {}", ident.text(db)),
-                        AnyReal::Infer(ident) => format!("Any Real: {}", ident.text(db)),
+                        AnyReal::Infer(ident) => format!("{}", ident.text(db)),
                     },
                     AnyNum::AnyInt(n) => match n {
                         AnyInt::AnySigned(n) => match n {
@@ -398,7 +485,7 @@ impl AnyElementary {
                             AnyUnsigned::UDInt(ident) => format!("UDInt: {}", ident.to_string(db)),
                             AnyUnsigned::ULInt(ident) => format!("ULInt: {}", ident.to_string(db)),
                         },
-                        AnyInt::Infer(ident) => format!("Any Int: {}", ident.to_string(db)),
+                        AnyInt::Infer(ident) => format!("{}", ident.to_string(db)),
                     },
                 },
                 AnyMagnitude::AnyDuration(n) => match n {
