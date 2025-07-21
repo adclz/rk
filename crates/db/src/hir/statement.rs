@@ -1,6 +1,6 @@
 use auto_lsp::core::span::Span;
 
-use crate::hir::expression::{Expr, ParamAssign, PathExprKind, SymbolicVariable, Variable};
+use crate::hir::expression::{Expr, ParamAssign, PathExprKind, SymbolicVariable, VariableAccess};
 
 #[salsa::tracked(debug)]
 pub struct Stmt<'db> {
@@ -13,11 +13,11 @@ pub struct Stmt<'db> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum StmtKind<'db> {
     Assignment {
-        var: Variable<'db>,
+        var: VariableAccess<'db>,
         target: Expr<'db>,
     },
     AssignmentAttempt {
-        var: Variable<'db>,
+        var: VariableAccess<'db>,
         target: Expr<'db>, // todo: replace with ref or identifier
     },
     FuncCall {

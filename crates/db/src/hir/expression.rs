@@ -3,7 +3,6 @@ use crate::to_proto::{self_iter, HirCtx, IterToProto, ProtoAndCtx, ToProto};
 use auto_enums::auto_enum;
 use auto_lsp::core::span::Span;
 use auto_lsp::default::db::BaseDatabase;
-use bitflags::bitflags;
 
 #[salsa::tracked(debug)]
 pub struct Expr<'db> {
@@ -14,52 +13,64 @@ pub struct Expr<'db> {
     pub expr: ExprKind<'db>,
 }
 
-bitflags! {
-    #[repr(transparent)]
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub struct Operator: u16 {
-        const Plus = 1 << 0;
-        const Minus = 1 << 1;
-        const Div = 1 << 2;
-        const Mul = 1 << 3;
-        const Mod = 1 << 4;
-        const Power = 1 << 5;
-        const Not = 1 << 6;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AddOperatorKind {
+    Plus,
+    Minus,
+}
 
-        const And = 1 << 7;
-        const Or = 1 << 8;
-        const Xor = 1 << 9;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum BooleanOperatorKind {
+    And,
+    Or,
+    Xor,
+}
 
-        const Eq = 1 << 10;
-        const Ne = 1 << 11;
-        const Lt = 1 << 12;
-        const Gt = 1 << 13;
-        const Le = 1 << 14;
-        const Ge = 1 << 15;
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ComparisonOperatorKind {
+    Eq, // ==
+    Ne, // !=
+    Lt, // <
+    Gt, // >
+    Le, // <=
+    Ge, // >=
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MultOperatorKind {
+    Mul, // *
+    Div, // /
+    Mod, // %
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum UnaryOperatorKind {
+    Plus, // +
+    Minus, // -
+    Not, // NOT
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ExprKind<'db> {
     PrimaryExpr(PrimaryExpr<'db>),
+    AddOperator {
+        left: Expr<'db>,
+        operator: AddOperatorKind,
+        right: Expr<'db>,
+    },
     BooleanOperator {
         left: Expr<'db>,
-        operator: Operator,
+        operator: BooleanOperatorKind,
         right: Expr<'db>,
     },
     ComparisonOperator {
         left: Expr<'db>,
-        operator: Operator,
-        right: Expr<'db>,
-    },
-    AddOperator {
-        left: Expr<'db>,
-        operator: Operator,
+        operator: ComparisonOperatorKind,
         right: Expr<'db>,
     },
     MultOperator {
         left: Expr<'db>,
-        operator: Operator,
+        operator: MultOperatorKind,
         right: Expr<'db>,
     },
     PowerOperator {
@@ -68,7 +79,7 @@ pub enum ExprKind<'db> {
     },
     UnaryOperator {
         expr: Expr<'db>,
-        operator: Operator,
+        operator: UnaryOperatorKind,
     },
 }
 
@@ -77,7 +88,7 @@ pub enum PrimaryExpr<'db> {
     Literal(Literal), // constant
     // Path --> Target
     VariableAccess {
-        variable: Variable<'db>,
+        variable: VariableAccess<'db>,
         multibits: MultibitsPart,
     },
     FuncCall {
@@ -166,7 +177,7 @@ pub enum ParamAssign<'db> {
     ParamAssignOutput {
         not: bool,
         param: Ident,
-        variable: Variable<'db>,
+        variable: VariableAccess<'db>,
     },
 }
 
@@ -194,9 +205,22 @@ pub enum SizeOperator {
     D,
     L,
 }
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub struct VariableAccess<'db> {
+    pub span: Span,
+
+    pub kind: VariableAccessKind<'db>,
+}
+
+impl<'db> ToProto<'db> for VariableAccess<'db> {
+    fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
+        &self.span
+    }
+}
+
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum Variable<'db> {
+pub enum VariableAccessKind<'db> {
     Direct {
         adress: Ident,
         partly: bool,
@@ -205,20 +229,14 @@ pub enum Variable<'db> {
     Symbolic(SymbolicVariable<'db>),
 }
 
-impl<'db> ToProto<'db> for Variable<'db> {
-    fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
-        todo!()
-    }
-}
-
-impl<'db> IterToProto<'db> for Variable<'db> {
+impl<'db> IterToProto<'db> for VariableAccess<'db> {
     fn iter(
         &'db self,
         ctx: HirCtx<'db>,
     ) -> impl Iterator<Item = ProtoAndCtx<'db>> {
-        match self {
-            Variable::Direct { adress, .. } => self_iter(self, ctx),
-            Variable::Symbolic(symbolic) => self_iter(self, ctx),
+        match &self.kind {
+            VariableAccessKind::Direct { adress, .. } => self_iter(self, ctx),
+            VariableAccessKind::Symbolic(symbolic) => self_iter(self, ctx),
         }
     }
 }
@@ -276,6 +294,7 @@ pub enum Literal {
     LDateTime(Ident),
 }
 
+// todo: Should use ANY_* from the standard instead
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum Numeric {
     Binary(Ident),
@@ -389,6 +408,7 @@ impl<'db> IterToProto<'db> for PrimaryExpr<'db> {
                 multibits,
             } => variable.iter(ctx),
             PrimaryExpr::ParenthesizedExpr { expr } => expr.iter(ctx),
+            // todo: Unsure if literal and ref_value should be iterable
             PrimaryExpr::Literal(lit) => std::iter::empty(),
             PrimaryExpr::RefValue { value } => std::iter::empty(),
         }

@@ -7,12 +7,12 @@ use auto_lsp::{
 };
 use salsa::Accumulator;
 
-use crate::hir::expression::{FieldExpr, IndexExpr, PathExpr};
+use crate::hir::expression::{FieldExpr, IndexExpr, PathExpr, VariableAccessKind};
 use crate::{
     diagnostics::{diagnostic_builder::diag, DiagnosticAccumulator},
     hir::expression::{
-        Expr, ExprKind, Literal, Numeric, Operator, ParamAssign, PathExprKind, PrimaryExpr, RefAdress,
-        RefValue, SymbolicVariable, VarAccess, Variable,
+        Expr, ExprKind, Literal, Numeric, AddOperatorKind, BooleanOperatorKind, ComparisonOperatorKind, MultOperatorKind, UnaryOperatorKind, ParamAssign, PathExprKind, PrimaryExpr, RefAdress,
+        RefValue, SymbolicVariable, VarAccess, VariableAccess,
     },
     ident::Ident,
 };
@@ -37,7 +37,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                         or_operator.get_span(),
                         ExprKind::BooleanOperator {
                             left,
-                            operator: Operator::Or,
+                            operator: BooleanOperatorKind::Or,
                             right,
                         }
                     ))
@@ -51,7 +51,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                         xor_operator.get_span(),
                         ExprKind::BooleanOperator {
                             left,
-                            operator: Operator::Xor,
+                            operator: BooleanOperatorKind::Xor,
                             right,
                         }
                     ))
@@ -65,7 +65,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                         and_operator.get_span(),
                         ExprKind::BooleanOperator {
                             left,
-                            operator: Operator::And,
+                            operator: BooleanOperatorKind::And,
                             right,
                         }
                     ))
@@ -78,8 +78,8 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                         let right = eq_operator.right.to_expr(db, file)?;
 
                         let operator = match eq_operator.operator.deref() {
-                            ast::generated::Eq::Token_Equal(_) => Operator::Eq,
-                            ast::generated::Eq::Token_LessGreater(_) => Operator::Ne,
+                            ast::generated::Eq::Token_Equal(_) => ComparisonOperatorKind::Eq,
+                            ast::generated::Eq::Token_LessGreater(_) => ComparisonOperatorKind::Ne,
                         };
 
                         Ok(Expr::new(
@@ -97,10 +97,10 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                         let right = ord_operator.right.to_expr(db, file)?;
 
                         let operator = match ord_operator.operator.deref() {
-                            ast::generated::Ord::Token_Less(_) => Operator::Lt,
-                            ast::generated::Ord::Token_Greater(_) => Operator::Gt,
-                            ast::generated::Ord::Token_LessEqual(_) => Operator::Le,
-                            ast::generated::Ord::Token_GreaterEqual(_) => Operator::Ge,
+                            ast::generated::Ord::Token_Less(_) => ComparisonOperatorKind::Lt,
+                            ast::generated::Ord::Token_Greater(_) => ComparisonOperatorKind::Gt,
+                            ast::generated::Ord::Token_LessEqual(_) => ComparisonOperatorKind::Le,
+                            ast::generated::Ord::Token_GreaterEqual(_) => ComparisonOperatorKind::Ge,
                         };
 
                         Ok(Expr::new(
@@ -119,8 +119,8 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                 let left = add_operator.left.to_expr(db, file)?;
                 let right = add_operator.right.to_expr(db, file)?;
                 let operator = match add_operator.operator.deref() {
-                    ast::generated::Add::Token_Plus(_) => Operator::Plus,
-                    ast::generated::Add::Token_Minus(_) => Operator::Minus,
+                    ast::generated::Add::Token_Plus(_) => AddOperatorKind::Plus,
+                    ast::generated::Add::Token_Minus(_) => AddOperatorKind::Minus,
                 };
 
                 Ok(Expr::new(
@@ -137,9 +137,9 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                 let left = mult_operator.left.to_expr(db, file)?;
                 let right = mult_operator.right.to_expr(db, file)?;
                 let operator = match mult_operator.operator.deref() {
-                    ast::generated::Mult::Token_Star(_) => Operator::Mul,
-                    ast::generated::Mult::Token_Slash(_) => Operator::Div,
-                    ast::generated::Mult::Token_MOD(_) => Operator::Mod,
+                    ast::generated::Mult::Token_Star(_) => MultOperatorKind::Mul,
+                    ast::generated::Mult::Token_Slash(_) => MultOperatorKind::Div,
+                    ast::generated::Mult::Token_MOD(_) => MultOperatorKind::Mod,
                 };
 
                 Ok(Expr::new(
@@ -166,9 +166,9 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                 let expr = unary_operator.expr.to_expr(db, file)?;
 
                 let operator = match unary_operator.operator.deref() {
-                    ast::generated::Unary::Token_Plus(_) => Operator::Plus,
-                    ast::generated::Unary::Token_Minus(_) => Operator::Minus,
-                    ast::generated::Unary::Token_NOT(_) => Operator::Not,
+                    ast::generated::Unary::Token_Plus(_) => UnaryOperatorKind::Plus,
+                    ast::generated::Unary::Token_Minus(_) => UnaryOperatorKind::Minus,
+                    ast::generated::Unary::Token_NOT(_) => UnaryOperatorKind::Not,
                 };
 
                 Ok(Expr::new(
@@ -435,7 +435,7 @@ pub trait ParseVariableAccess<'db> {
         &'db self,
         db: &'db dyn auto_lsp::default::db::BaseDatabase,
         file: File,
-    ) -> anyhow::Result<Variable<'db>>;
+    ) -> anyhow::Result<VariableAccess<'db>>;
 }
 
 impl<'db> ParseVariableAccess<'db> for ast::generated::Variable {
@@ -443,7 +443,7 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::Variable {
         &'db self,
         db: &'db dyn auto_lsp::default::db::BaseDatabase,
         file: File,
-    ) -> anyhow::Result<Variable<'db>> {
+    ) -> anyhow::Result<VariableAccess<'db>> {
         match self.children.deref() {
             ast::generated::DirectVariable_SymbolicVariable::DirectVariable(v) => {
                 v.to_access(db, file)
@@ -460,7 +460,7 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::DirectVariable {
         &'db self,
         db: &'db dyn auto_lsp::default::db::BaseDatabase,
         file: File,
-    ) -> anyhow::Result<Variable<'db>> {
+    ) -> anyhow::Result<VariableAccess<'db>> {
         let adress = Ident::from_node(db, file, self.adress.deref())?;
 
         let (offset, partly) = match self.offset.deref() {
@@ -470,11 +470,13 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::DirectVariable {
             ast::generated::Offset_Partly::Partly(partly) => (None, true),
         };
 
-        Ok(Variable::Direct {
-            adress,
+                Ok(VariableAccess {
+            span: self.get_span(),
+            kind: VariableAccessKind::Direct{
+                adress,
             partly,
             offset,
-        })
+            }})
     }
 }
 
@@ -483,11 +485,13 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::SymbolicVariable {
         &'db self,
         db: &'db dyn auto_lsp::default::db::BaseDatabase,
         file: File,
-    ) -> anyhow::Result<Variable<'db>> {
-        Ok(Variable::Symbolic(SymbolicVariable {
+    ) -> anyhow::Result<VariableAccess<'db>> {
+        Ok(VariableAccess {
+            span: self.get_span(),
+            kind: VariableAccessKind::Symbolic(SymbolicVariable {
             this: self.this.is_some(),
             kind: self.children.parse(db, file)?,
-        }))
+        })})
     }
 }
 
