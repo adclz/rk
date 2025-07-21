@@ -17,7 +17,7 @@ use salsa::Accumulator;
 impl<'db> Parse<'db> for ast::generated::FbDecl {
     type Output = hir::function_block::FunctionBlock<'db>;
 
-    fn parse(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output> {
+    fn parse(&'db self, db: &'db dyn BaseDatabase, file: File, id: Option<usize>) -> anyhow::Result<Self::Output> {
         let variables = self.parse_variables(db, file)?;
 
         let extends = self
@@ -76,7 +76,7 @@ impl<'db> Parse<'db> for ast::generated::FbDecl {
             ast::generated::Operators_2::Token_FINAL(_) => modifiers.insert(Modifiers::FINAL),
         });
 
-        let using = self.directives.parse_using(db, file)?;
+        let using = self.directives.parse_using(db, file, id)?;
 
         Ok(hir::function_block::FunctionBlock::new(
             db, extends, implements, using, variables, modifiers,

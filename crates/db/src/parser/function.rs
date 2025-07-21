@@ -13,7 +13,7 @@ use auto_lsp::default::db::{file::File, BaseDatabase};
 impl<'db> Parse<'db> for ast::generated::FuncDecl {
     type Output = hir::function::Function<'db>;
 
-    fn parse(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output> {
+    fn parse(&'db self, db: &'db dyn BaseDatabase, file: File, id: Option<usize>) -> anyhow::Result<Self::Output> {
         let variables = self.parse_variables(db, file)?;
         let statements = self
             .body
@@ -28,7 +28,7 @@ impl<'db> Parse<'db> for ast::generated::FuncDecl {
                 _ => vec![],
             });
 
-        let using = self.directives.parse_using(db, file)?;
+        let using = self.directives.parse_using(db, file, id)?;
 
         Ok(hir::function::Function::new(
             db, using, variables, statements,
@@ -69,7 +69,7 @@ impl<'db> ParseVariable<'db> for ast::generated::FuncDecl {
 
 #[cfg(test)]
 mod tests {
-    use auto_lsp::{default::db::FileManager, lsp_types, tree_sitter::{Point, Range}};
+    use auto_lsp::{default::db::FileManager, lsp_types};
 
     use super::*;
     use crate::{

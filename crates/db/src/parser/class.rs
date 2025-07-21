@@ -15,7 +15,7 @@ use salsa::Accumulator;
 impl<'db> Parse<'db> for ast::generated::ClassDecl {
     type Output = hir::class::Class<'db>;
 
-    fn parse(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output> {
+    fn parse(&'db self, db: &'db dyn BaseDatabase, file: File, id: Option<usize>) -> anyhow::Result<Self::Output> {
         let extends = self
             .extends
             .as_ref()
@@ -72,7 +72,7 @@ impl<'db> Parse<'db> for ast::generated::ClassDecl {
             } 
         });
 
-        let using = self.directives.parse_using(db, file)?;
+        let using = self.directives.parse_using(db, file, id)?;
 
         Ok(hir::class::Class::new(
             db, extends, using, implements, modifiers,

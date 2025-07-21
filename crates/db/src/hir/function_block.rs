@@ -4,7 +4,7 @@ use crate::{
     to_proto::{HirCtx, IterToProto, ProtoAndCtx},
 };
 
-#[salsa::tracked]
+#[salsa::tracked(debug)]
 pub struct FunctionBlock<'db> {
     pub extends: Option<SpannedPath>,
 

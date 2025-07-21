@@ -16,18 +16,15 @@ pub fn inlay_hints(db: &impl BaseDatabase, params: InlayHintParams) -> anyhow::R
         None => return Ok(None),
     };
     let ctx = HirCtx::new(db, file);
-    ns.iter(ctx).for_each(|symbol| {
-        let symbol = match symbol.1.symbol_info(db) {
-            Some(symbol) => symbol,
-            None => return,
-        };
-        if symbol.range.lsp().start.line < range.start.line ||
-           symbol.range.lsp().end.line > range.end.line {
+    ns.namespaces(db).iter().for_each(|symbol| {
+        let span = symbol.span(db);
+        if span.lsp().start.line < range.start.line ||
+           span.lsp().end.line > range.end.line {
             return;
         }
         results.push(InlayHint {
-            label: InlayHintLabel::String(format!("{} {}", symbol.kind_to_string(), symbol.name)),
-            position: symbol.range.lsp().end,
+            label: InlayHintLabel::String(format!("{:?}", symbol.parent(db))),
+            position: span.lsp().end,
             kind: Some(InlayHintKind::TYPE),   
             text_edits: None,
             padding_left: Some(true),

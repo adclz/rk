@@ -16,7 +16,7 @@ use crate::{
     },
     solver::{
         fq_name::SpannedPath,
-        namespace::{namespace_path, namespaces_in_file, namespaces_in_scope, NamespacePath},
+        namespace::{namespace_path, namespaces_in_file, namespaces_in_scope, using_namespaces_in_scope, NamespacePath},
     },
 };
 
@@ -82,9 +82,9 @@ impl<'db> CheckWithVisibility<'db> for Using<'db> {
         let to = self.path(db);
         let results = namespace_path(db, to);
 
-        namespaces_in_scope(db, file, to)
+        using_namespaces_in_scope(db, file, *self)
             .iter()
-            .for_each(|ns| {
+            .for_each(|(span, ns)| {
                 let message = format!("namespace '{}' is already in scope", to.to_string(db));
                 let diagnostic = diag()
                     .file(file)
@@ -95,7 +95,7 @@ impl<'db> CheckWithVisibility<'db> for Using<'db> {
                         vec![DiagnosticRelatedInformation {
                             location: auto_lsp::lsp_types::Location {
                                 uri: file.url(db).clone(),
-                                range: ns.name_span(db).into(),
+                                range: (*span).into(),
                             },
                             message: format!("namespace '{}' is already declared here", to.to_string(db)),
                         }],
@@ -294,7 +294,7 @@ impl<'db> Check<'db> for crate::hir::variable::Variable<'db> {
         }
     }
 }
-
+ 
 trait SpecCheck<'db> {
     fn check(&self, db: &'db dyn BaseDatabase, file: File, spec: &Spec<'db>);
 }

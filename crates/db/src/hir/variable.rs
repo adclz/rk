@@ -10,7 +10,7 @@ use crate::{
     to_proto::{SymbolInfo, ToProto},
 };
 
-#[salsa::tracked]
+#[salsa::tracked(debug)]
 pub struct Variable<'db> {
     pub file: File,
 

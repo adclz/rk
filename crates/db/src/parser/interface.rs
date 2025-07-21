@@ -15,7 +15,7 @@ use salsa::Accumulator;
 impl<'db> Parse<'db> for ast::generated::InterfaceDecl {
     type Output = hir::interface::Interface<'db>;
 
-    fn parse(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output> {
+    fn parse(&'db self, db: &'db dyn BaseDatabase, file: File, id: Option<usize>) -> anyhow::Result<Self::Output> {
         let extends = self
             .extends
             .as_ref()
@@ -30,7 +30,7 @@ impl<'db> Parse<'db> for ast::generated::InterfaceDecl {
         let methods = self
             .prototype
             .iter()
-            .map(|m| m.parse(db, file))
+            .map(|m| m.parse(db, file, id))
             .collect::<anyhow::Result<Vec<_>>>()?;
 
         self.children.iter().for_each(|f| {
@@ -43,7 +43,7 @@ impl<'db> Parse<'db> for ast::generated::InterfaceDecl {
             DiagnosticAccumulator::accumulate(diag.into(), db);
         });
 
-        let using = self.directives.parse_using(db, file)?;
+        let using = self.directives.parse_using(db, file, id)?;
 
         Ok(hir::interface::Interface::new(db, extends, using, methods))
     }
@@ -52,7 +52,7 @@ impl<'db> Parse<'db> for ast::generated::InterfaceDecl {
 impl<'db> Parse<'db> for ast::generated::MethodPrototype {
     type Output = hir::interface::Method<'db>;
 
-    fn parse(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output> {
+    fn parse(&'db self, db: &'db dyn BaseDatabase, file: File, id : Option<usize>) -> anyhow::Result<Self::Output> {
         let name = Ident::from_node(db, file, &*self.name)?;
         let return_type = self
             .data_type

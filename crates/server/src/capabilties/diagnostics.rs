@@ -27,7 +27,7 @@ pub fn diagnostics(
                 result_id: None,
                 items: cached_diagnostics(db, file)
                     .iter()
-                    .filter(|d| d.file.url(db) == uri)
+                    .filter(|d| d.file.url(db) == &uri)
                     .map(|d| d.diagnostic.clone())
                     .collect::<Vec<_>>(),
             },

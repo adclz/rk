@@ -31,6 +31,10 @@ pub struct FileNamespaces<'db> {
     #[tracked]
     #[returns(ref)]
     pub namespaces: Vec<Namespace<'db>>,
+
+    #[tracked]
+    #[returns(ref)]
+    pub namespace_keys: FxHashMap<usize, Namespace<'db>>,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -101,7 +105,7 @@ impl<'db> IterToProto<'db> for FileNamespaces<'db> {
 }
 
 /// Represents a view of a namespace
-#[salsa::tracked]
+#[salsa::tracked(debug)]
 pub struct Namespace<'db> {
     pub internal: bool,
 
@@ -126,6 +130,12 @@ pub struct Namespace<'db> {
     #[tracked]
     #[returns(ref)]
     pub pous: Vec<PouDecl<'db>>,
+
+    pub parent: Option<usize>,
+
+    #[tracked]
+    #[returns(ref)]
+    pub child_namespaces_keys: FxHashSet<usize>
 }
 
 #[salsa::tracked(debug)]
@@ -134,6 +144,8 @@ pub struct Using<'db> {
 
     #[returns(ref)]
     pub span: Span,
+
+    pub parent_id: Option<usize>,
 }
 
 impl<'db> ToProto<'db> for Using<'db> {
@@ -317,10 +329,8 @@ impl<'db> IterToProto<'db> for Namespace<'db> {
     }
 }
 
-#[salsa::tracked]
+#[salsa::tracked(debug)]
 pub struct PouDecl<'db> {
-    pub file: File,
-
     #[tracked]
     #[returns(ref)]
     pub pou: Pou<'db>,
@@ -411,7 +421,7 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, salsa::Update, salsa::Supertype)]
+#[derive(Debug, Clone, PartialEq, Eq, salsa::Update, salsa::Supertype)]
 pub enum Pou<'db> {
     Function(Function<'db>),
     FunctionBlock(FunctionBlock<'db>),

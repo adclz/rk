@@ -10,7 +10,7 @@ use crate::{
     to_proto::{HirCtx, IterToProto, ProtoAndCtx, SymbolInfo, ToProto},
 };
 
-#[salsa::tracked]
+#[salsa::tracked(debug)]
 pub struct Interface<'db> {
     #[returns(as_ref)]
     pub extends: Option<Vec<SpannedPath>>,
@@ -32,7 +32,7 @@ impl<'db> IterToProto<'db> for Interface<'db> {
     }
 }
 
-#[salsa::tracked]
+#[salsa::tracked(debug)]
 pub struct Method<'db> {
     #[returns(ref)]
     pub range: Span,

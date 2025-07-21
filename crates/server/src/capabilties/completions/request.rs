@@ -40,7 +40,7 @@ pub fn completions(
 }
 
 pub fn use_completion_marker(db: &impl BaseDatabase, file: File, position: lsp_types::Position, offset: usize) -> anyhow::Result<Option<CompletionResponse>> {
-    let mut doc = (*file.document(db)).clone();
+    let mut doc = (**file.document(db)).clone();
 
     let changes = vec![lsp_types::TextDocumentContentChangeEvent {
         range: Some(lsp_types::Range {
@@ -53,7 +53,7 @@ pub fn use_completion_marker(db: &impl BaseDatabase, file: File, position: lsp_t
 
     doc.update(&mut file.parsers(db).parser.write(), &changes)?;
 
-    let file = File::new(db, file.url(db), file.parsers(db), Arc::new(doc), None);
+    let file = File::new(db, file.url(db).clone(), file.parsers(db), Arc::new(doc), None);
 
     use_completion_ctx(db, file, offset)
 }

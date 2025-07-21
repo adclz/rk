@@ -23,7 +23,7 @@ pub mod variables;
 trait Parse<'db>: Sized {
     type Output: Update;
 
-    fn parse(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output>;
+    fn parse(&'db self, db: &'db dyn BaseDatabase, file: File, id: Option<usize>) -> anyhow::Result<Self::Output>;
 }
 
 pub trait ParseVarSection<'db> {
