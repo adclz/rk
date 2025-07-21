@@ -519,7 +519,10 @@ impl<'db> ParseExpr<'db> for ast::generated::FieldExpression {
     type Output = FieldExpr<'db>;
 
     fn parse(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output> {
-        Ok(FieldExpr::new(db, self.path.parse(db, file)?, self.target.parse(db, file)?))
+        Ok(FieldExpr {
+            path: Box::new(self.path.parse(db, file)?),
+            var: self.target.parse(db, file)?
+        })
     }
 }
 
@@ -527,14 +530,14 @@ impl<'db> ParseExpr<'db> for ast::generated::IndexExpression {
     type Output = IndexExpr<'db>;
 
     fn parse(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output> {
-        Ok(IndexExpr::new(
-            db,
-            self.children.parse(db, file)?,
-            self.index.children
+
+        Ok(IndexExpr {
+            path: Box::new(self.children.parse(db, file)?),
+            index: self.index.children
                 .iter()
                 .map(|i| i.children.to_expr(db, file))
                 .collect::<anyhow::Result<Vec<_>>>()?,
-        ))
+        })
     }
 }
 

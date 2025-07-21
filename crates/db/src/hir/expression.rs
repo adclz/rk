@@ -120,23 +120,23 @@ impl<'db> IterToProto<'db> for PathExpr<'db> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update, salsa::Supertype)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum PathExprKind<'db> {
     Field(FieldExpr<'db>), // .
     Index(IndexExpr<'db>), // []
     VarAccess(VarAccess),  // Variable access (e.g. "var" or "var^")
 }
 
-#[salsa::tracked(debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct FieldExpr<'db> {
-    path: PathExprKind<'db>,
-    var: VarAccess,
+    pub path: Box<PathExprKind<'db>>,
+    pub var: VarAccess,
 }
 
-#[salsa::tracked(debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct IndexExpr<'db> {
-    path: PathExprKind<'db>,
-    index: Vec<Expr<'db>>,
+    pub path: Box<PathExprKind<'db>>,
+    pub index: Vec<Expr<'db>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
