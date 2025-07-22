@@ -84,15 +84,6 @@ impl<'db> Ident {
     }
 
     #[salsa::tracked]
-    pub fn as_bool(self, db: &'db dyn BaseDatabase) -> Option<bool> {
-        match self.text(db).as_str() {
-            "TRUE" | "1" => Some(true),
-            "FALSE" | "0" => Some(false),
-            _ => None,
-        }
-    }
-
-    #[salsa::tracked]
     pub fn as_u8(self, db: &'db dyn BaseDatabase) -> Option<u8> {
         self.text(db).as_str().parse::<u8>().ok()
     }
@@ -135,26 +126,11 @@ impl<'db> Ident {
     pub fn as_i64(self, db: &'db dyn BaseDatabase) -> Option<i64> {
         self.text(db).as_str().parse::<i64>().ok()
     }
-
-    #[salsa::tracked]
-    pub fn as_f32(self, db: &'db dyn BaseDatabase) -> Option<f32> {
-        self.text(db).as_str().parse::<f32>().ok()
-    }
-
-    #[salsa::tracked]
-    pub fn as_f64(self, db: &'db dyn BaseDatabase) -> Option<f64> {
-        self.text(db).as_str().parse::<f64>().ok()
-    }
 }
 
 #[salsa::tracked]
 impl Ident {
     // Bit string data types
-
-    #[salsa::tracked]
-    pub fn is_BOOL(self, db: &dyn BaseDatabase) -> bool {
-        self.as_bool(db).is_some()
-    }
 
     #[salsa::tracked]
     pub fn is_BYTE(self, db: &dyn BaseDatabase) -> bool {
@@ -220,18 +196,6 @@ impl Ident {
         self.as_u64(db).is_some()
     }
 
-    // Real (floating-point) data types
-
-    #[salsa::tracked]
-    pub fn is_REAL(self, db: &dyn BaseDatabase) -> bool {
-        self.as_f32(db).is_some()
-    }
-
-    #[salsa::tracked]
-    pub fn is_LREAL(self, db: &dyn BaseDatabase) -> bool {
-        self.as_f64(db).is_some()
-    }
-
     // String data types
 
     #[salsa::tracked]
@@ -260,16 +224,6 @@ mod tests {
     use super::*;
 
     use crate::RootDatabase;
-
-    #[test]
-    fn is_BOOL() {
-        let db = RootDatabase::default();
-        assert!(Ident::new(&db, "TRUE".to_string()).is_BOOL(&db));
-        assert!(Ident::new(&db, "FALSE".to_string()).is_BOOL(&db));
-        assert!(Ident::new(&db, "1".to_string()).is_BOOL(&db));
-        assert!(Ident::new(&db, "0".to_string()).is_BOOL(&db));
-        assert!(!Ident::new(&db, "2".to_string()).is_BOOL(&db));
-    }
 
     #[test]
     fn is_BYTE() {
@@ -380,29 +334,5 @@ mod tests {
         assert!(Ident::new(&db, "18446744073709551615".to_string()).is_ULINT(&db));
         assert!(!Ident::new(&db, "18446744073709551616".to_string()).is_ULINT(&db));
         assert!(!Ident::new(&db, "-1".to_string()).is_ULINT(&db));
-    }
-
-    #[test]
-    fn is_REAL() {
-        let db = RootDatabase::default();
-        assert!(Ident::new(&db, "0.0".to_string()).is_REAL(&db));
-        assert!(Ident::new(&db, "1.0".to_string()).is_REAL(&db));
-        assert!(Ident::new(&db, "1.1".to_string()).is_REAL(&db));
-        assert!(Ident::new(&db, "1.1e1".to_string()).is_REAL(&db));
-        assert!(Ident::new(&db, "1.1e-1".to_string()).is_REAL(&db));
-        assert!(Ident::new(&db, "1.1e+1".to_string()).is_REAL(&db));
-        assert!(!Ident::new(&db, "1.1e1.1".to_string()).is_REAL(&db));
-    }
-
-    #[test]
-    fn is_LREAL() {
-        let db = RootDatabase::default();
-        assert!(Ident::new(&db, "0.0".to_string()).is_LREAL(&db));
-        assert!(Ident::new(&db, "1.0".to_string()).is_LREAL(&db));
-        assert!(Ident::new(&db, "1.1".to_string()).is_LREAL(&db));
-        assert!(Ident::new(&db, "1.1e1".to_string()).is_LREAL(&db));
-        assert!(Ident::new(&db, "1.1e-1".to_string()).is_LREAL(&db));
-        assert!(Ident::new(&db, "1.1e+1".to_string()).is_LREAL(&db));
-        assert!(!Ident::new(&db, "1.1e1.1".to_string()).is_LREAL(&db));
     }
 }

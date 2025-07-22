@@ -3,12 +3,13 @@ use std::ops::Deref;
 use auto_lsp::{
     anyhow::{self},
     default::db::{file::File, BaseDatabase},
+    core::ast::AstNode,
 };
 
 use crate::{
     hir::{
         expression::Expr,
-        variable::{Spec, Subrange},
+        variable::{Spec, SpecKind, Subrange},
     },
     parser::{expression::ParseExpression, ParseInit, ParseSpec, ParseSpecInit, SpecInitResult},
     solver::fq_name::NamespaceAccess,
@@ -28,7 +29,10 @@ impl<'db> ParseSpecInit<'db> for ast::generated::NamespaceAccess {
 
 impl<'db> ParseSpec<'db> for ast::generated::NamespaceAccess {
     fn to_spec(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
-        Ok(Spec::Target(NamespaceAccess::from_ast(db, file, self)?))
+        Ok(Spec {
+            span: self.get_span(),
+            kind: SpecKind::Target(NamespaceAccess::from_ast(db, file, self)?)
+        })
     }
 }
 
@@ -57,20 +61,20 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
         type AstSpec = ast::generated::ElemTypeName;
         Ok(match self {
             AstSpec::BitStrTypeName(str) => match str.children.deref() {
-                ast::generated::BoolName_MultibitsTypeName::BoolName(_) => Spec::Bool,
+                ast::generated::BoolName_MultibitsTypeName::BoolName(_) => Spec { span: self.get_span(), kind: SpecKind::Bool },
                 ast::generated::BoolName_MultibitsTypeName::MultibitsTypeName(a) => {
                     match a.children.deref() {
                         ast::generated::ByteName_DwordName_LwordName_WordName::ByteName(_) => {
-                            Spec::Byte
+                            Spec { span: self.get_span(), kind: SpecKind::Byte }
                         }
                         ast::generated::ByteName_DwordName_LwordName_WordName::WordName(_) => {
-                            Spec::Word
+                            Spec { span: self.get_span(), kind: SpecKind::Word }
                         }
                         ast::generated::ByteName_DwordName_LwordName_WordName::DwordName(_) => {
-                            Spec::DWord
+                            Spec { span: self.get_span(), kind: SpecKind::DWord }
                         }
                         ast::generated::ByteName_DwordName_LwordName_WordName::LwordName(_) => {
-                            Spec::LWord
+                            Spec { span: self.get_span(), kind: SpecKind::LWord }
                         }
                     }
                 }
@@ -82,27 +86,27 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
                     }
                     ast::generated::IntTypeName_RealTypeName::RealTypeName(real) => {
                         match real.children.deref() {
-                            ast::generated::LrealName_RealName::RealName(_) => Spec::Real,
-                            ast::generated::LrealName_RealName::LrealName(_) => Spec::LReal,
+                            ast::generated::LrealName_RealName::RealName(_) => Spec { span: self.get_span(), kind: SpecKind::Real },
+                            ast::generated::LrealName_RealName::LrealName(_) => Spec { span: self.get_span(), kind: SpecKind::LReal },
                         }
                     }
                 }
             }
             AstSpec::AnyDateTypeName(date_type_name) => match date_type_name {
-                ast::generated::AnyDateTypeName::DateTypeName(_) => Spec::Date,
-                ast::generated::AnyDateTypeName::LDateTypeName(_) => Spec::LDate,
+                ast::generated::AnyDateTypeName::DateTypeName(_) => Spec { span: self.get_span(), kind: SpecKind::Date },
+                ast::generated::AnyDateTypeName::LDateTypeName(_) => Spec { span: self.get_span(), kind: SpecKind::LDate },
             }, 
             AstSpec::AnyTimeTypeName(time_type_name) => match time_type_name {
-                ast::generated::AnyTimeTypeName::TimeTypeName(_) => Spec::Time,
-                ast::generated::AnyTimeTypeName::LTimeTypeName(_) => Spec::LTime,
+                ast::generated::AnyTimeTypeName::TimeTypeName(_) => Spec { span: self.get_span(), kind: SpecKind::Time },
+                ast::generated::AnyTimeTypeName::LTimeTypeName(_) => Spec { span: self.get_span(), kind: SpecKind::LTime },
             },
             AstSpec::AnyTodTypeName(tod_type_name) => match tod_type_name {
-                ast::generated::AnyTodTypeName::TodTypeName(_) => Spec::Tod,
-                ast::generated::AnyTodTypeName::LtodTypeName(_) => Spec::LTod,
+                ast::generated::AnyTodTypeName::TodTypeName(_) => Spec { span: self.get_span(), kind: SpecKind::Tod },
+                ast::generated::AnyTodTypeName::LtodTypeName(_) => Spec { span: self.get_span(), kind: SpecKind::LTod },
             },
             AstSpec::AnyDtTypeName(dt_type_name) => match dt_type_name {
-                ast::generated::AnyDtTypeName::DtTypeName(_) => Spec::Dt,
-                ast::generated::AnyDtTypeName::LDtTypeName(_) => Spec::Ldt,
+                ast::generated::AnyDtTypeName::DtTypeName(_) => Spec { span: self.get_span(), kind: SpecKind::Dt },
+                ast::generated::AnyDtTypeName::LDtTypeName(_) =>  Spec { span: self.get_span(), kind: SpecKind::Ldt }
             },
         })
     }
@@ -113,25 +117,25 @@ impl<'db> ParseSpec<'db> for ast::generated::IntTypeName {
         Ok(match self.children.deref() {
             ast::generated::SignIntTypeName_UnsignIntTypeName::SignIntTypeName(int) => {
                 match int.children.deref() {
-                    ast::generated::DintName_IntName_LintName_SintName::SintName(_) => Spec::SInt,
-                    ast::generated::DintName_IntName_LintName_SintName::IntName(_) => Spec::Int,
-                    ast::generated::DintName_IntName_LintName_SintName::DintName(_) => Spec::DInt,
-                    ast::generated::DintName_IntName_LintName_SintName::LintName(_) => Spec::LInt,
+                    ast::generated::DintName_IntName_LintName_SintName::SintName(_) => Spec { span: self.get_span(), kind: SpecKind::SInt },
+                    ast::generated::DintName_IntName_LintName_SintName::IntName(_) => Spec { span: self.get_span(), kind: SpecKind::Int },
+                    ast::generated::DintName_IntName_LintName_SintName::DintName(_) => Spec { span: self.get_span(), kind: SpecKind::DInt },
+                    ast::generated::DintName_IntName_LintName_SintName::LintName(_) => Spec { span: self.get_span(), kind: SpecKind::LInt }
                 }
             }
             ast::generated::SignIntTypeName_UnsignIntTypeName::UnsignIntTypeName(uint) => {
                 match uint.children.deref() {
                     ast::generated::UdintName_UintName_UlintName_UsintName::UsintName(_) => {
-                        Spec::USInt
+                        Spec { span: self.get_span(), kind: SpecKind::USInt }
                     }
                     ast::generated::UdintName_UintName_UlintName_UsintName::UintName(_) => {
-                        Spec::UInt
+                        Spec { span: self.get_span(), kind: SpecKind::UInt }
                     }
                     ast::generated::UdintName_UintName_UlintName_UsintName::UdintName(_) => {
-                        Spec::UDInt
+                        Spec { span: self.get_span(), kind: SpecKind::UDInt }
                     }
                     ast::generated::UdintName_UintName_UlintName_UsintName::UlintName(_) => {
-                        Spec::ULInt
+                        Spec { span: self.get_span(), kind: SpecKind::ULInt }
                     }
                 }
             }
@@ -151,10 +155,14 @@ impl<'db> ParseSpec<'db> for ast::generated::StrTypeSpec {
     fn to_spec(&'db self, _: &'db dyn BaseDatabase, _: File) -> anyhow::Result<Spec<'db>> {
         type AstSpec = ast::generated::DByteStrSpec_DChar_SByteStrSpec_SChar;
         Ok(match self.children.deref() {
-            AstSpec::DByteStrSpec(_) => Spec::String,
-            AstSpec::SByteStrSpec(_) => Spec::WString,
-            AstSpec::DChar(_) => Spec::Char,
-            AstSpec::SChar(_) => Spec::WChar,
+            AstSpec::DByteStrSpec(_) =>                         Spec { span: self.get_span(), kind: SpecKind::String },
+
+            AstSpec::SByteStrSpec(_) =>                         Spec { span: self.get_span(), kind: SpecKind::WString },
+
+            AstSpec::DChar(_) =>                         Spec { span: self.get_span(), kind: SpecKind::Char },
+
+            AstSpec::SChar(_) =>                          Spec { span: self.get_span(), kind: SpecKind::WChar }
+
         })
     }
 }
@@ -240,6 +248,9 @@ impl<'db> ParseSpec<'db> for ast::generated::SubrangeTypeSpec {
         let range = self.range.deref();
         let lower = range.lower.children.to_expr(db, file)?;
         let upper = range.upper.children.to_expr(db, file)?;
-        Ok(Spec::Subrange(Subrange::new(db, spec, lower, upper)))
+        Ok(Spec {
+            span: self.get_span(),
+            kind: SpecKind::Subrange(Subrange::new(db, spec, lower, upper)),
+        })
     }
 }

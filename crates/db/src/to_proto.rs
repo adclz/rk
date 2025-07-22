@@ -7,7 +7,11 @@ use auto_lsp::{
 };
 
 use crate::{
-    hir::{expression::Expr, namespace::{Namespace, PouDecl}, variable::Spec},
+    hir::{
+        expression::Expr,
+        namespace::{Namespace, PouDecl},
+        variable::{Spec, SpecKind},
+    },
     solver::{fq_name::SpannedPath, namespace::NamespacePath},
 };
 
@@ -44,41 +48,41 @@ impl SymbolInfo<'_> {
     }
 
     pub fn spec_to_string(&self, db: &dyn BaseDatabase) -> String {
-        match self.spec {
-            Some(Spec::Target(target)) => target.to_string(db),
-            Some(Spec::Array(_)) => "ARRAY".into(),
-            Some(Spec::Subrange(_)) => "SUBRANGE".into(),
-            Some(Spec::Enum) => "ENUM".into(),
-            Some(Spec::Struct) => "STRUCT".into(),
-            Some(Spec::Edge) => "EDGE".into(),
-            Some(Spec::Bool) => "BOOL".into(),
-            Some(Spec::Byte) => "BYTE (8 bits)".into(),
-            Some(Spec::Word) => "WORD (16 bits)".into(),
-            Some(Spec::DWord) => "DWORD (32 bits)".into(),
-            Some(Spec::LWord) => "LWORD (64 bits)".into(),
-            Some(Spec::SInt) => "SINT (8 bits)".into(),
-            Some(Spec::USInt) => "USINT (8 bits)".into(),
-            Some(Spec::UInt) => "UINT (16 bits)".into(),
-            Some(Spec::Int) => "INT (16 bits)".into(),
-            Some(Spec::DInt) => "DINT (32 bits)".into(),
-            Some(Spec::UDInt) => "UDINT (32 bits)".into(),
-            Some(Spec::LInt) => "LINT (64 bits)".into(),
-            Some(Spec::ULInt) => "ULINT (64 bits)".into(),
-            Some(Spec::Real) => "REAL (64 bits)".into(),
-            Some(Spec::LReal) => "LREAL (128 bits)".into(),
-            Some(Spec::String) => "STRING".into(),
-            Some(Spec::WString) => "WSTRING".into(),
-            Some(Spec::Char) => "CHAR".into(),
-            Some(Spec::WChar) => "WCHAR".into(),
-            Some(Spec::Date) => "DATE".into(),
-            Some(Spec::LDate) => "LONG DATE".into(),
-            Some(Spec::Dt) => "DATE AND TIME D".into(),
-            Some(Spec::Ldt) => "LONG DATE AND TIME".into(),
-            Some(Spec::Time) => "TIME".into(),
-            Some(Spec::LTime) => "LONG TIME".into(),
-            Some(Spec::Tod) => "TIME OF DAY".into(),
-            Some(Spec::LTod) => "LONG TIME OF DAY".into(),
-            _ => "unknown".into(),
+        match &self.spec {
+            Some(spec) => match spec.kind {
+                SpecKind::Enum => "ENUM".into(),
+                SpecKind::Struct => "STRUCT".into(),
+                SpecKind::Edge => "EDGE".into(),
+                SpecKind::Bool => "BOOL".into(),
+                SpecKind::Byte => "BYTE (8 bits)".into(),
+                SpecKind::Word => "WORD (16 bits)".into(),
+                SpecKind::DWord => "DWORD (32 bits)".into(),
+                SpecKind::LWord => "LWORD (64 bits)".into(),
+                SpecKind::SInt => "SINT (8 bits)".into(),
+                SpecKind::USInt => "USINT (8 bits)".into(),
+                SpecKind::UInt => "UINT (16 bits)".into(),
+                SpecKind::Int => "INT (16 bits)".into(),
+                SpecKind::DInt => "DINT (32 bits)".into(),
+                SpecKind::UDInt => "UDINT (32 bits)".into(),
+                SpecKind::LInt => "LINT (64 bits)".into(),
+                SpecKind::ULInt => "ULINT (64 bits)".into(),
+                SpecKind::Real => "REAL (64 bits)".into(),
+                SpecKind::LReal => "LREAL (128 bits)".into(),
+                SpecKind::String => "STRING".into(),
+                SpecKind::WString => "WSTRING".into(),
+                SpecKind::Char => "CHAR".into(),
+                SpecKind::WChar => "WCHAR".into(),
+                SpecKind::Date => "DATE".into(),
+                SpecKind::LDate => "LONG DATE".into(),
+                SpecKind::Dt => "DATE AND TIME D".into(),
+                SpecKind::Ldt => "LONG DATE AND TIME".into(),
+                SpecKind::Time => "TIME".into(),
+                SpecKind::LTime => "LONG TIME".into(),
+                SpecKind::Tod => "TIME OF DAY".into(),
+                SpecKind::LTod => "LONG TIME OF DAY".into(),
+                _ => "?".into(),
+            },
+            None => "?".into(),
         }
     }
 }
@@ -126,7 +130,7 @@ impl<'db> HirCtx<'db> {
     }
 }
 
-pub trait ToProto<'db> { 
+pub trait ToProto<'db> {
     fn get_span(&'db self, db: &'db dyn crate::BaseDatabase) -> &'db Span;
 
     fn get_named_span(&'db self, db: &'db dyn crate::BaseDatabase) -> Option<&'db Span> {
@@ -137,11 +141,7 @@ pub trait ToProto<'db> {
         None
     }
 
-    fn completion_ctx(
-        &'db self,
-        _ctx: HirCtx<'db>,
-        _offset: usize,
-    ) -> Option<Vec<CompletionItem>> {
+    fn completion_ctx(&'db self, _ctx: HirCtx<'db>, _offset: usize) -> Option<Vec<CompletionItem>> {
         None
     }
 }
@@ -156,16 +156,9 @@ pub fn self_iter<'db>(
 pub type ProtoAndCtx<'db> = (HirCtx<'db>, &'db dyn ToProto<'db>);
 
 pub trait IterToProto<'db> {
-    fn iter(
-        &'db self,
-        ctx: HirCtx<'db>,
-    ) -> impl Iterator<Item = ProtoAndCtx<'db>>;
+    fn iter(&'db self, ctx: HirCtx<'db>) -> impl Iterator<Item = ProtoAndCtx<'db>>;
 
-    fn descendant_at(
-        &'db self,
-        ctx: HirCtx<'db>,
-        offset: usize,
-    ) -> Option<ProtoAndCtx<'db>> {
+    fn descendant_at(&'db self, ctx: HirCtx<'db>, offset: usize) -> Option<ProtoAndCtx<'db>> {
         let mut best_match: Option<ProtoAndCtx<'db>> = None;
 
         for node in self.iter(ctx) {
@@ -190,11 +183,7 @@ pub trait IterToProto<'db> {
         best_match
     }
 
-    fn named_descendant_at(
-        &'db self,
-        ctx: HirCtx<'db>,
-        offset: usize,
-    ) -> Option<ProtoAndCtx<'db>> {
+    fn named_descendant_at(&'db self, ctx: HirCtx<'db>, offset: usize) -> Option<ProtoAndCtx<'db>> {
         let mut best_match: Option<ProtoAndCtx<'db>> = None;
 
         for node in self.iter(ctx) {

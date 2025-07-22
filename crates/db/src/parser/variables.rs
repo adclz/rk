@@ -13,6 +13,7 @@ use salsa::Accumulator;
 
 use crate::diagnostics::diagnostic_builder::diag;
 use crate::diagnostics::DiagnosticAccumulator;
+use crate::hir::variable::SpecKind;
 use crate::parser::{ParseInit, ParseSpec, ParseSpecInit, ParseVarSection, SpecInitResult};
 use crate::{
     hir::variable::{Spec, Variable, VariableKind},
@@ -728,10 +729,10 @@ impl<'db> ParseSpecInit<'db> for ast::generated::EdgeDecl {
                     .range(err.get_span())
                     .call();
                 DiagnosticAccumulator::accumulate(diag.into(), db);
-                Spec::Bool
+                Spec { span: self.get_span(), kind: SpecKind::Bool }
             }
-            ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::Token_F_EDGE(fedge) => Spec::Bool,
-            ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::Token_R_EDGE(redge) => Spec::Bool,
+            ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::Token_F_EDGE(fedge) => Spec { span: self.get_span(), kind: SpecKind::Bool },
+            ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::Token_R_EDGE(redge) => Spec { span: self.get_span(), kind: SpecKind::Bool },
         };
 
         Ok(SpecInitResult::new(spec, None))

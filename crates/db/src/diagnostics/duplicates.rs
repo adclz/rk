@@ -1,9 +1,9 @@
-use std::{fmt::format, num::ParseIntError};
+use std::{error::Error, fmt::format, num::ParseIntError};
 
 use auto_lsp::{
     core::span::Span, default::db::{file::File, BaseDatabase}, lsp_types::DiagnosticRelatedInformation
 };
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use salsa::Accumulator;
 
 use crate::{
@@ -11,7 +11,7 @@ use crate::{
     hir::{
         expression::{AnyBit, AnyChars, AnyDate, AnyDuration, AnyElementary, AnyInt, AnyMagnitude, AnyNum, AnyReal, AnySigned, AnyUnsigned, Expr, ExprKind, Numeric, NumericKind, PrimaryExpr},
         namespace::{NamespaceResult, PouDecl, PouResult, Using},
-        variable::Spec,
+        variable::{Spec, SpecKind},
     },
     solver::{
         fq_name::SpannedPath,
@@ -253,10 +253,11 @@ impl<'db> CheckWithVisibility<'db> for SpannedPath {
 
 impl<'db> Check<'db> for &'db Vec<crate::hir::variable::Variable<'db>> {
     fn check(&'db self, db: &'db dyn BaseDatabase, file: File) {
-        let mut seen = FxHashMap::default();
+        let mut seen_variable = FxHashMap::default();
+        let mut seen_spec = FxHashSet::default();
 
         for variable in self.iter() {
-            if let Some(other) = seen.insert(variable.name(db), variable) {
+            if let Some(other) = seen_variable.insert(variable.name(db), variable) {
                 let message = format!(
                     "duplicate variable declaration: '{}'",
                     variable.name(db).text(db)
@@ -280,7 +281,11 @@ impl<'db> Check<'db> for &'db Vec<crate::hir::variable::Variable<'db>> {
                     .call();
                 DiagnosticAccumulator::accumulate(diagnostic.into(), db);
             }
-            variable.check(db, file);
+
+            // Avoid checking the same spec multiple times
+            if !seen_spec.insert(variable.spec(db)) {
+                variable.check(db, file);
+            }
         }
     }
 }
@@ -298,7 +303,7 @@ trait SpecCheck<'db> {
     fn check(&self, db: &'db dyn BaseDatabase, file: File, spec: &Spec<'db>);
 }
 
-fn create_type_error<'db>(db: &'db dyn BaseDatabase, file: File, span: Span, spec: &'db Spec<'db>, err: ParseIntError) {
+fn create_type_error<'db>(db: &'db dyn BaseDatabase, file: File, span: Span, spec: &'db Spec<'db>, err: impl Error) {
     let diagnostic = diag()
         .file(file)
         .range(span.clone().into())
@@ -308,9 +313,9 @@ fn create_type_error<'db>(db: &'db dyn BaseDatabase, file: File, span: Span, spe
         .related_information(vec![DiagnosticRelatedInformation {
             location: auto_lsp::lsp_types::Location {
                 uri: file.url(db).clone(),
-                range: span.clone().into(),
+                range: spec.span.clone().into(),
             },
-            message: format!("because of type: '{:?}' declared here", spec),
+            message: format!("because of type: '{:?}' declared here", spec.kind),
         }])
         .call();
     DiagnosticAccumulator::accumulate(diagnostic.into(), db);
@@ -320,13 +325,22 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
     fn check(&self, db: &'db dyn BaseDatabase, file: File, spec: &Spec<'db>) {
         match self.expr(db) {
             ExprKind::PrimaryExpr(PrimaryExpr::Literal(lit))=> {
-                let result = match spec {
-                    Spec::Bool => match lit {
+                let result = match spec.kind {
+                    SpecKind::Bool => match lit {
                         AnyElementary::AnyBit(AnyBit::Bool(_)) => true,
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::Infer(infer)))) => {
+                            match infer.as_bool(db) {
+                                Ok(_) => true,
+                                Err(err) => {
+                                    create_type_error(db, file, self.span(db).clone(), spec, err);
+                                    return;
+                                }
+                            }
+                        }
                         _ => false,
                     },
                     // bit string types
-                    Spec::Byte => match lit {
+                    SpecKind::Byte => match lit {
                         AnyElementary::AnyBit(AnyBit::Byte(_)) => true,
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::Infer(infer)))) => {
                             match infer.as_u8(db) {
@@ -339,86 +353,194 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         },
                         _ => false,
                     },
-                    Spec::Word => match lit {
+                    SpecKind::Word => match lit {
                         AnyElementary::AnyBit(AnyBit::Byte(_)) => true,
                         AnyElementary::AnyBit(AnyBit::Word(_)) => true,
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::Infer(infer)))) => {
-                            infer.as_u16(db).is_some()
+                            match infer.as_u16(db) {
+                                Ok(_) => true,
+                                Err(err) => {
+                                    create_type_error(db, file, self.span(db).clone(), spec, err);
+                                    return;
+                                }
+                            }
                         },
                         _ => false,
                     },
-                    Spec::DWord => match lit {
+                    SpecKind::DWord => match lit {
                         AnyElementary::AnyBit(AnyBit::Byte(_)) => true,
                         AnyElementary::AnyBit(AnyBit::Word(_)) => true,
                         AnyElementary::AnyBit(AnyBit::DWord(_)) => true,
                          AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::Infer(infer)))) => {
-                            infer.as_u32(db).is_some()
+                            match infer.as_u32(db) {
+                                Ok(_) => true,
+                                Err(err) => {
+                                    create_type_error(db, file, self.span(db).clone(), spec, err);
+                                    return;
+                                }
+                            }
                         },
                         _ => false,
                     },
-                    Spec::LWord => match lit {
+                    SpecKind::LWord => match lit {
                         AnyElementary::AnyBit(AnyBit::Byte(_)) => true,
                         AnyElementary::AnyBit(AnyBit::Word(_)) => true,
                         AnyElementary::AnyBit(AnyBit::DWord(_)) => true,
                         AnyElementary::AnyBit(AnyBit::LWord(_)) => true,
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::Infer(infer)))) => {
-                            infer.as_u64(db).is_some()
+                            match infer.as_u64(db) {
+                                Ok(_) => true,
+                                Err(err) => {
+                                    create_type_error(db, file, self.span(db).clone(), spec, err);
+                                    return;
+                                }
+                            }
                         },
                         _ => false,
                     },
                     // signed integers
-                    Spec::SInt =>  match lit {
+                    SpecKind::SInt =>  match lit {
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnySigned(AnySigned::SInt(_))))) => true,
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::Infer(infer)))) => {
+                            match infer.as_u8(db) {
+                                Ok(_) => true,
+                                Err(err) => {
+                                    create_type_error(db, file, self.span(db).clone(), spec, err);
+                                    return;
+                                }
+                            }
+                        },
                         _ => false,
                     },
-                    Spec::Int =>  match lit {
+                    SpecKind::Int =>  match lit {
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnySigned(AnySigned::SInt(_))))) => true,
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnySigned(AnySigned::Int(_))))) => true,
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::Infer(infer)))) => {
+                            match infer.as_u16(db) {
+                                Ok(_) => true,
+                                Err(err) => {
+                                    create_type_error(db, file, self.span(db).clone(), spec, err);
+                                    return;
+                                }
+                            }
+                        },
                         _ => false,
                     },
-                    Spec::DInt =>  match lit {
+                    SpecKind::DInt =>  match lit {
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnySigned(AnySigned::SInt(_))))) => true,
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnySigned(AnySigned::Int(_))))) => true,
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnySigned(AnySigned::DInt(_))))) => true,
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::Infer(infer)))) => {
+                            match infer.as_u32(db) {
+                                Ok(_) => true,
+                                Err(err) => {
+                                    create_type_error(db, file, self.span(db).clone(), spec, err);
+                                    return;
+                                }
+                            }
+                        },
                         _ => false,
                     }, 
-                    Spec::LInt =>  match lit {
+                    SpecKind::LInt =>  match lit {
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnySigned(AnySigned::SInt(_))))) => true,
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnySigned(AnySigned::Int(_))))) => true,
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnySigned(AnySigned::DInt(_))))) => true,
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnySigned(AnySigned::LInt(_))))) => true,
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::Infer(infer)))) => {
+                            match infer.as_u64(db) {
+                                Ok(_) => true,
+                                Err(err) => {
+                                    create_type_error(db, file, self.span(db).clone(), spec, err);
+                                    return;
+                                }
+                            }
+                        },
                         _ => false,
                     },
                     // unsigned integers
-                    Spec::USInt =>  match lit {
+                    SpecKind::USInt =>  match lit {
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnyUnsigned(AnyUnsigned::USInt(_))))) => true,
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::Infer(infer)))) => {
+                            match infer.as_u8(db) {
+                                Ok(_) => true,
+                                Err(err) => {
+                                    create_type_error(db, file, self.span(db).clone(), spec, err);
+                                    return;
+                                }
+                            }
+                        },
                         _ => false,
                     },
-                    Spec::UInt =>  match lit {
+                    SpecKind::UInt =>  match lit {
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnyUnsigned(AnyUnsigned::USInt(_))))) => true,
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnyUnsigned(AnyUnsigned::UInt(_))))) => true,
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::Infer(infer)))) => {
+                            match infer.as_u16(db) {
+                                Ok(_) => true,
+                                Err(err) => {
+                                    create_type_error(db, file, self.span(db).clone(), spec, err);
+                                    return;
+                                }
+                            }
+                        },
                         _ => false,
                     },
-                    Spec::UDInt =>  match lit {
+                    SpecKind::UDInt =>  match lit {
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnyUnsigned(AnyUnsigned::USInt(_))))) => true,
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnyUnsigned(AnyUnsigned::UInt(_))))) => true,
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnyUnsigned(AnyUnsigned::UDInt(_))))) => true,
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::Infer(infer)))) => {
+                            match infer.as_u32(db) {
+                                Ok(_) => true,
+                                Err(err) => {
+                                    create_type_error(db, file, self.span(db).clone(), spec, err);
+                                    return;
+                                }
+                            }
+                        },
                         _ => false,
                     }, 
-                    Spec::ULInt =>  match lit {
+                    SpecKind::ULInt =>  match lit {
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnyUnsigned(AnyUnsigned::USInt(_))))) => true,
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnyUnsigned(AnyUnsigned::UInt(_))))) => true,
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnyUnsigned(AnyUnsigned::UDInt(_))))) => true,
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::AnyUnsigned(AnyUnsigned::ULInt(_))))) => true,
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::Infer(infer)))) => {
+                            match infer.as_u64(db) {
+                                Ok(_) => true,
+                                Err(err) => {
+                                    create_type_error(db, file, self.span(db).clone(), spec, err);
+                                    return;
+                                }
+                            }
+                        },
                         _ => false,
                     },
-                    Spec::Real => match lit {
+                    SpecKind::Real => match lit {
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyReal(AnyReal::Real(_)))) => true,
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyReal(AnyReal::Infer(identifier)))) => {
+                            match identifier.as_f32(db) {
+                                Ok(_) => true,
+                                Err(err) => {
+                                    create_type_error(db, file, self.span(db).clone(), spec, err);
+                                    return;
+                                }
+                            }
+                        },
                         _ => false,
                     },
-                    Spec::LReal => match lit {
+                    SpecKind::LReal => match lit {
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyReal(AnyReal::Real(_)))) => true,
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyReal(AnyReal::LReal(_)))) => true,
+                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyReal(AnyReal::Infer(identifier)))) => {
+                            match identifier.as_f64(db) {
+                                Ok(_) => true,
+                                Err(err) => {
+                                    create_type_error(db, file, self.span(db).clone(), spec, err);
+                                    return;
+                                }
+                            }
+                        },
                         _ => false,
                     },
                     _ => false,
@@ -428,7 +550,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                     let message = format!(
                         "value '{}' is not assignable to '{:?}'",
                         lit.to_string(db),
-                        spec,
+                        spec.kind,
                     );
                     let diagnostic = diag()
                         .file(file)
@@ -436,6 +558,13 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         .message(message)
                         .source("IEC".into())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+                        .related_information(vec![DiagnosticRelatedInformation {
+                            location: auto_lsp::lsp_types::Location {
+                                uri: file.url(db).clone(),
+                                range: spec.span.clone().into(),
+                            },
+                            message: format!("because of type '{:?}' declared here", spec.kind),
+                        }])
                         .call();
                     DiagnosticAccumulator::accumulate(diagnostic.into(), db);
                 }

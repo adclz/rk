@@ -70,7 +70,13 @@ impl<'db> ToProto<'db> for Variable<'db> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum Spec<'db> {
+pub struct Spec<'db> {
+    pub span: Span,
+    pub kind: SpecKind<'db>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum SpecKind<'db> {
     Target(NamespaceAccess),
     Array(Array),
     Subrange(Subrange<'db>),

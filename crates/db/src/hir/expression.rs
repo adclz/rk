@@ -346,8 +346,28 @@ pub enum NumericKind {
     Signed,
 }
 
+
+#[salsa::tracked]
+impl Ident {
+    #[salsa::tracked]
+    pub fn as_f32(self, db: &dyn BaseDatabase) -> Result<f32, std::num::ParseFloatError> {
+        self.text(db).parse()
+    }
+
+    #[salsa::tracked]
+    pub fn as_f64(self, db: &dyn BaseDatabase) -> Result<f64, std::num::ParseFloatError> {
+        self.text(db).parse()
+    }
+}
+
 #[salsa::tracked]
 impl Numeric {
+
+    #[salsa::tracked]
+    pub fn as_bool(self, db: &dyn BaseDatabase) -> Result<bool, std::str::ParseBoolError> {
+        self.ident(db).text(db).parse()
+    }
+
     #[salsa::tracked]
    pub fn as_u8(self, db: &dyn BaseDatabase) -> Result<u8, std::num::ParseIntError> {
         match self.kind(db) {
@@ -359,72 +379,72 @@ impl Numeric {
     }
 
     #[salsa::tracked]
-   pub fn as_u16(self, db: &dyn BaseDatabase) -> Option<u16> {
+   pub fn as_u16(self, db: &dyn BaseDatabase) -> Result<u16, std::num::ParseIntError> {
         match self.kind(db) {
-            NumericKind::Binary => u16::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2).ok(),
-            NumericKind::Octal => u16::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8).ok(),
-            NumericKind::Hex => u16::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16).ok(),
-            NumericKind::Signed => self.ident(db).text(db).parse().ok(),
+            NumericKind::Binary => u16::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2),
+            NumericKind::Octal => u16::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8),
+            NumericKind::Hex => u16::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16),
+            NumericKind::Signed => self.ident(db).text(db).parse(),
         }
     }
 
     #[salsa::tracked]
-   pub fn as_u32(self, db: &dyn BaseDatabase) -> Option<u32> {
+   pub fn as_u32(self, db: &dyn BaseDatabase) -> Result<u32, std::num::ParseIntError> {
         match self.kind(db) {
-            NumericKind::Binary => u32::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2).ok(),
-            NumericKind::Octal => u32::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8).ok(),
-            NumericKind::Hex => u32::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16).ok(),
-            NumericKind::Signed => self.ident(db).text(db).parse().ok(),
+            NumericKind::Binary => u32::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2),
+            NumericKind::Octal => u32::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8),
+            NumericKind::Hex => u32::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16),
+            NumericKind::Signed => self.ident(db).text(db).parse(),
         }
     }
 
     #[salsa::tracked]
-   pub fn as_u64(self, db: &dyn BaseDatabase) -> Option<u64> {
+   pub fn as_u64(self, db: &dyn BaseDatabase) -> Result<u64, std::num::ParseIntError> {
         match self.kind(db) {
-            NumericKind::Binary => u64::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2).ok(),
-            NumericKind::Octal => u64::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8).ok(),
-            NumericKind::Hex => u64::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16).ok(),
-            NumericKind::Signed => self.ident(db).text(db).parse().ok(),
+            NumericKind::Binary => u64::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2),
+            NumericKind::Octal => u64::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8),
+            NumericKind::Hex => u64::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16),
+            NumericKind::Signed => self.ident(db).text(db).parse(),
         }
     }
 
     #[salsa::tracked]
-   pub fn as_i8(self, db: &dyn BaseDatabase) -> Option<i8> {
+   pub fn as_i8(self, db: &dyn BaseDatabase) -> Result<i8, std::num::ParseIntError> {
         match self.kind(db) {
-            NumericKind::Binary => i8::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2).ok(),
-            NumericKind::Octal => i8::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8).ok(),
-            NumericKind::Hex => i8::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16).ok(),
-            NumericKind::Signed => self.ident(db).text(db).parse().ok(),
+            NumericKind::Binary => i8::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2),
+            NumericKind::Octal => i8::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8),
+            NumericKind::Hex => i8::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16),
+            NumericKind::Signed => self.ident(db).text(db).parse(),
         }
     }
 
     #[salsa::tracked]
-   pub fn as_i16(self, db: &dyn BaseDatabase) -> Option<i16> {
+   pub fn as_i16(self, db: &dyn BaseDatabase) -> Result<i16, std::num::ParseIntError> {
         match self.kind(db) {
-            NumericKind::Binary => i16::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2).ok(),
-            NumericKind::Octal => i16::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8).ok(),
-            NumericKind::Hex => i16::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16).ok(),
-            NumericKind::Signed => self.ident(db).text(db).parse().ok(),
+            NumericKind::Binary => i16::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2),
+            NumericKind::Octal => i16::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8),
+            NumericKind::Hex => i16::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16),
+            NumericKind::Signed => self.ident(db).text(db).parse(),
         }
     }
 
     #[salsa::tracked]
-   pub fn as_i32(self, db: &dyn BaseDatabase) -> Option<i32> {
+   pub fn as_i32(self, db: &dyn BaseDatabase) -> Result<i32, std::num::ParseIntError> {
         match self.kind(db) {
-            NumericKind::Binary => i32::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2).ok(),
-            NumericKind::Octal => i32::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8).ok(),
-            NumericKind::Hex => i32::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16).ok(),
-            NumericKind::Signed => self.ident(db).text(db).parse().ok(),
+            NumericKind::Binary => i32::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2),
+            NumericKind::Octal => i32::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8),
+            NumericKind::Hex => i32::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16),
+            NumericKind::Signed => self.ident(db).text(db).parse(),
         }
     }
 
    #[salsa::tracked]
-   pub fn as_i64(self, db: &dyn BaseDatabase) -> Option<i64> {
+   pub fn as_i64(self, db: &dyn BaseDatabase) -> Result<i64, std::num::ParseIntError> {
         match self.kind(db) {
-            NumericKind::Binary => i64::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2).ok(),
-            NumericKind::Octal => i64::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8).ok(),
-            NumericKind::Hex => i64::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16).ok(),
-            NumericKind::Signed => self.ident(db).text(db).parse().ok(),
+            NumericKind::Binary => i64::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2),
+            NumericKind::Octal => i64::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8),
+            NumericKind::Hex => i64::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16),
+            NumericKind::Signed => self.ident(db).text(db).parse(),
         }
     }
 

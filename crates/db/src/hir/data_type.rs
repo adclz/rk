@@ -2,7 +2,7 @@ use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     hir::{expression::Expr, variable::Spec},
-    to_proto::{HirCtx, IterToProto, ProtoAndCtx, ToProto},
+    to_proto::{HirCtx, IterToProto, ProtoAndCtx},
 };
 
 #[salsa::tracked(debug)]
