@@ -242,7 +242,7 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                     db,
                     func.get_span(),
                     ExprKind::PrimaryExpr(PrimaryExpr::FuncCall {
-                        path: PathExpr::new(db, func.get_span(), target),
+                        path: PathExpr { span: func.get_span(), expr: target },
                         params: parameters,
                     }),
                 ))

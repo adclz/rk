@@ -13,7 +13,7 @@ use crate::{
         namespace::{Namespace, PouDecl},
         variable::{Spec, SpecKind},
     },
-    solver::{fq_name::SpannedPath, namespace::NamespacePath},
+    solver::{fq_name::SpannedNamespaceAccess, namespace::NamespacePath},
 };
 
 #[derive(bon::Builder, Debug, Clone)]
@@ -24,14 +24,14 @@ pub struct SymbolInfo<'a> {
     pub kind: Option<SymbolKind>,
     pub spec: Option<Spec<'a>>,
     pub init: Option<Expr<'a>>,
-    pub implements: Option<Vec<SpannedPath>>,
+    pub implements: Option<Vec<SpannedNamespaceAccess>>,
     pub extends: Option<Extends<'a>>,
 }
 
 #[derive(Debug, Clone)]
 pub enum Extends<'a> {
-    Single(SpannedPath),
-    Multiple(&'a Vec<SpannedPath>),
+    Single(SpannedNamespaceAccess),
+    Multiple(&'a Vec<SpannedNamespaceAccess>),
 }
 
 impl SymbolInfo<'_> {

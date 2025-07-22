@@ -103,24 +103,22 @@ pub enum PrimaryExpr<'db> {
     },
 }
 
-#[salsa::tracked(debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct PathExpr<'db> {
-    #[returns(ref)]
     pub span: Span,
 
-    #[returns(ref)]
     pub expr: PathExprKind<'db>,
 }
 
 impl<'db> ToProto<'db> for PathExpr<'db> {
     fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
-        self.span(db)
+        &self.span
     }
 }
 
 impl<'db> IterToProto<'db> for PathExpr<'db> {
     fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        match &self.expr(db) {
+        match &self.expr {
             PathExprKind::Field(field) => self_iter(self),
             PathExprKind::Index(index) => self_iter(self),
             PathExprKind::VarAccess(var_access) => self_iter(self),

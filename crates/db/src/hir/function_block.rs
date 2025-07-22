@@ -2,15 +2,15 @@ use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     hir::{namespace::Using, variable::Variable, visibility::Modifiers},
-    solver::fq_name::SpannedPath,
+    solver::fq_name::SpannedNamespaceAccess,
     to_proto::{ToProto, IterToProto},
 };
 
 #[salsa::tracked(debug)]
 pub struct FunctionBlock<'db> {
-    pub extends: Option<SpannedPath>,
+    pub extends: Option<SpannedNamespaceAccess>,
 
-    pub implements: Option<Vec<SpannedPath>>,
+    pub implements: Option<Vec<SpannedNamespaceAccess>>,
 
     #[tracked]
     #[returns(ref)]

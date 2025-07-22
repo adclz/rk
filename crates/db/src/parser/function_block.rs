@@ -7,7 +7,7 @@ use crate::hir::variable::Variable;
 use crate::hir::visibility::Modifiers;
 use crate::parser::namespace::ParseUsing;
 use crate::parser::{Parse, ParseVarSection};
-use crate::solver::fq_name::SpannedPath;
+use crate::solver::fq_name::SpannedNamespaceAccess;
 use ast::generated::FbVariables;
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
@@ -23,7 +23,7 @@ impl<'db> Parse<'db> for ast::generated::FbDecl {
         let extends = self
             .extends
             .as_ref()
-            .map(|e| SpannedPath::new(db, file, e))
+            .map(|e| SpannedNamespaceAccess::from_ast(db, file, e))
             .transpose()?;
 
         let implements = self
@@ -32,7 +32,7 @@ impl<'db> Parse<'db> for ast::generated::FbDecl {
             .map(|i| {
                 i.children
                     .iter()
-                    .map(|i| SpannedPath::new(db, file, i))
+                    .map(|i| SpannedNamespaceAccess::from_ast(db, file, i))
                     .collect()
             })
             .transpose()?; 

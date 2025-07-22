@@ -14,7 +14,7 @@ use crate::{
         variable::{Spec, SpecKind},
     },
     solver::{
-        fq_name::SpannedPath,
+        fq_name::SpannedNamespaceAccess,
         namespace::{namespace_path, namespaces_in_file, using_namespaces_in_scope, NamespacePath},
     },
 };
@@ -187,14 +187,14 @@ impl<'db> CheckWithVisibility<'db> for PouDecl<'db> {
     }
 }
 
-impl<'db> CheckWithVisibility<'db> for SpannedPath {
+impl<'db> CheckWithVisibility<'db> for SpannedNamespaceAccess {
     fn check_with_visibility(&'db self, db: &'db dyn BaseDatabase, file: File, from: NamespacePath) {
-        let to = if let Some(to) = self.fq_name.namespace(db) {
+        let to = if let Some(to) = self.path.namespace(db) {
             to
         } else {
             return;
         };
-        let pou = self.fq_name.target(db);
+        let pou = self.path.target(db);
         let results = namespace_path(db, to);
 
         eprintln!("results: {:?} -> {:?}", to.to_string(db), pou.ident.text(db));

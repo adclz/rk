@@ -6,14 +6,14 @@ use crate::{
         variable::{Spec, Variable},
     },
     ident::Ident,
-    solver::fq_name::SpannedPath,
+    solver::fq_name::SpannedNamespaceAccess,
     to_proto::{ToProto, IterToProto, SymbolInfo},
 };
 
 #[salsa::tracked(debug)]
 pub struct Interface<'db> {
     #[returns(as_ref)]
-    pub extends: Option<Vec<SpannedPath>>,
+    pub extends: Option<Vec<SpannedNamespaceAccess>>,
 
     #[tracked]
     #[returns(ref)]

@@ -3,7 +3,7 @@ use std::ops::Deref;
 use super::namespace::NamespacePath;
 use crate::{
     hir::namespace::{Namespace, PouDecl},
-    ident::{Ident, SpannedIdent},
+    ident::{SpannedIdent},
     solver::namespace::namespace_path, to_proto::ToProto,
 };
 use auto_lsp::core::ast::AstNode;
@@ -13,44 +13,47 @@ use auto_lsp::{
     default::db::{file::File, BaseDatabase},
 };
 
+/// A [`SpannedPath`] is a wrapper around a [`NamespaceAccess`] that includes a span
 #[derive(Clone, Hash, salsa::Update, Debug)]
-pub struct SpannedPath {
+pub struct SpannedNamespaceAccess {
     pub span: Span,
-    pub fq_name: NamespaceAccess,
+    pub path: NamespaceAccess,
 }
 
-impl PartialEq for SpannedPath {
+impl PartialEq for SpannedNamespaceAccess {
     fn eq(&self, other: &Self) -> bool {
-        self.fq_name == other.fq_name
+        self.path == other.path
     }
 }
  
-impl<'db> ToProto<'db> for SpannedPath {
+impl<'db> ToProto<'db> for SpannedNamespaceAccess {
     fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         &self.span
     }
 }
 
-impl Eq for SpannedPath {}
+impl Eq for SpannedNamespaceAccess {}
 
-impl SpannedPath {
-    pub fn new(
+impl SpannedNamespaceAccess {
+    pub fn from_ast(
         db: &dyn BaseDatabase,
         file: File,
         fq_name: &ast::generated::NamespaceAccess,
     ) -> anyhow::Result<Self> {
-        Ok(SpannedPath {
+        Ok(SpannedNamespaceAccess {
             span: fq_name.get_span(),
-            fq_name: NamespaceAccess::from_ast(db, file, &fq_name)?,
+            path: NamespaceAccess::from_ast(db, file, &fq_name)?,
         })
     }
 
     pub fn to_string(&self, db: &dyn BaseDatabase) -> String {
-        self.fq_name.to_string(db)
+        self.path.to_string(db)
     }
 }
 
-/// Interned Fully Qualified Name
+/// A [`PathTarget`] represents a fully qualified path to something
+/// 
+/// If no namespace is present, it is a simple identifier
 #[salsa::interned(debug, no_lifetime)]
 pub struct NamespaceAccess {
     pub namespace: Option<NamespacePath>,
@@ -130,11 +133,11 @@ impl Default for FqSolverResult<'_> {
     }
 }
 
-/// Returns the pou declaration for the given fq name
+/// Returns the pou declaration for a given [`NamespaceAccess`]
 ///
 /// If there are multiple declarations, returns the first one
 #[salsa::tracked(returns(ref))]
-pub fn fq_name_solver<'db>(
+pub fn namespace_solver<'db>(
     db: &'db dyn BaseDatabase,
     fq: NamespaceAccess,
     file: File,
@@ -171,7 +174,7 @@ pub fn fq_name_solver<'db>(
 
 #[cfg(test)]
 mod tests {
-    use auto_lsp::{default::db::FileManager, lsp_types, tree_sitter::{Point, Range}};
+    use auto_lsp::{default::db::FileManager, lsp_types};
 
     use super::*;
     use crate::{
@@ -217,14 +220,14 @@ END_NAMESPACE
             let implements = &f.implements(&db).unwrap()[0];
             assert_eq!(
                 implements
-                    .fq_name
+                    .path
                     .namespace(&db)
                     .unwrap()
                     .fragments(&db)
                     .len(),
                 2
             );
-            assert_eq!(implements.fq_name.target(&db).ident.text(&db), "Target");
+            assert_eq!(implements.path.target(&db).ident.text(&db), "Target");
         } else {
             panic!("Not a function block");
         }
@@ -261,7 +264,7 @@ END_NAMESPACE"#;
             ))),
             SpannedIdent::from_blank(&db, "f"),
         );
-        let pou = fq_name_solver(&db, fq, file);
+        let pou = namespace_solver(&db, fq, file);
         if let FqSolverResult::Ok(pou) = pou {
             assert_eq!(*pou.name(&db), Ident::new(&db, "f".to_string()));
         } else {
@@ -318,7 +321,7 @@ END_NAMESPACE"#;
             ))),
             SpannedIdent::from_blank(&db, "f"),
         );
-        let pou = fq_name_solver(&db, fq, file);
+        let pou = namespace_solver(&db, fq, file);
         if let FqSolverResult::Hidden(ns) = pou {
             assert_eq!(
                 *ns.path(&db),
