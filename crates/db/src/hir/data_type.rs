@@ -2,7 +2,7 @@ use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     hir::{expression::Expr, variable::Spec},
-    to_proto::{HirCtx, IterToProto, ProtoAndCtx},
+    to_proto::{IterToProto, ToProto},
 };
 
 #[salsa::tracked(debug)]
@@ -15,7 +15,7 @@ pub struct DataType<'db> {
 }
 
 impl<'db> IterToProto<'db> for DataType<'db> {
-    fn iter(&'db self, ctx: HirCtx<'db>) -> impl Iterator<Item = ProtoAndCtx<'db>> {
+    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
         Box::new(std::iter::empty())
     }
 }

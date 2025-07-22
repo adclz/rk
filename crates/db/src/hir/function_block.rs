@@ -1,7 +1,9 @@
+use auto_lsp::default::db::BaseDatabase;
+
 use crate::{
     hir::{namespace::Using, variable::Variable, visibility::Modifiers},
     solver::fq_name::SpannedPath,
-    to_proto::{HirCtx, IterToProto, ProtoAndCtx},
+    to_proto::{ToProto, IterToProto},
 };
 
 #[salsa::tracked(debug)]
@@ -21,8 +23,8 @@ pub struct FunctionBlock<'db> {
 }
 
 impl<'db> IterToProto<'db> for FunctionBlock<'db> {
-    fn iter(&'db self, ctx: HirCtx<'db>) -> impl Iterator<Item = ProtoAndCtx<'db>> {
-        self.using(ctx.db).iter().map(move |u| (ctx, u as _))
-            .chain(self.variables(ctx.db).iter().map(move |v| (ctx, v as _)))
+    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+        self.using(db).iter().map(move |u| u as _)
+            .chain(self.variables(db).iter().map(move |v| v as _))
     }
 }

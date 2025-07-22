@@ -7,7 +7,7 @@ use crate::{
     },
     ident::Ident,
     solver::fq_name::SpannedPath,
-    to_proto::{HirCtx, IterToProto, ProtoAndCtx, SymbolInfo, ToProto},
+    to_proto::{ToProto, IterToProto, SymbolInfo},
 };
 
 #[salsa::tracked(debug)]
@@ -24,10 +24,10 @@ pub struct Interface<'db> {
 }
 
 impl<'db> IterToProto<'db> for Interface<'db> {
-    fn iter(&'db self, ctx: HirCtx<'db>) -> impl Iterator<Item = ProtoAndCtx<'db>> {
-        self.methods(ctx.db)
+    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+        self.methods(db)
             .iter()
-            .map(move |m| m.iter(ctx).map(|n| n))
+            .map(move |m| m.iter(db).map(|n| n))
             .flatten()
     }
 }
@@ -72,7 +72,7 @@ impl<'db> ToProto<'db> for Method<'db> {
 }
 
 impl<'db> IterToProto<'db> for Method<'db> {
-    fn iter(&'db self, ctx: HirCtx<'db>) -> impl Iterator<Item = ProtoAndCtx<'db>> {
-        Box::new(self.variables(ctx.db).iter().map(move |v| (ctx, v as _)))
+    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+        Box::new(self.variables(db).iter().map(move |v| v as _))
     }
 }

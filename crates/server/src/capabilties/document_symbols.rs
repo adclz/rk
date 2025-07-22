@@ -8,7 +8,7 @@ use auto_lsp::{
 };
 use db::{
     solver::namespace::namespaces_in_file,
-    to_proto::{HirCtx, IterToProto, SymbolInfo},
+    to_proto::{IterToProto, SymbolInfo},
 };
 
 /// Helper function to check if one range is inside another
@@ -84,11 +84,10 @@ pub fn document_symbols(
         None => return Ok(None),
     };
 
-    let ctx = HirCtx::new(db, file);
     // Collect all symbols first
     let symbols: Vec<_> = ns
-        .iter(ctx)
-        .filter_map(|symbol| symbol.1.symbol_info(db))
+        .iter(db)
+        .filter_map(|symbol| symbol.symbol_info(db))
         .filter(|symbol| !symbol.name.is_empty())
         .filter_map(|symbol| symbol.kind.map(|kind| (symbol, kind)))
         .collect();

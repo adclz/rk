@@ -7,7 +7,7 @@ use auto_lsp::{
     default::db::{file::File, BaseDatabase},
     lsp_types::{self, CompletionParams, CompletionResponse},
 };
-use db::{hir::COMPLETION_MARKER, solver::namespace::namespaces_in_file, to_proto::{HirCtx, IterToProto}};
+use db::{hir::COMPLETION_MARKER, solver::namespace::namespaces_in_file, to_proto::{IterToProto}};
 
 pub fn completions(
     db: &impl BaseDatabase,
@@ -63,9 +63,8 @@ pub fn use_completion_ctx(db: &impl BaseDatabase, file: File, offset: usize) -> 
         Some(ns) => ns,
         None => return Ok(None),
     };
-    let ctx = HirCtx::new(db, file);
-    if let Some((ctx,symbol)) = ns.descendant_at(ctx, offset) {
-        if let Some(ctx) = symbol.completion_ctx(ctx, offset) {
+    if let Some(symbol) = ns.descendant_at(db, offset) {
+        if let Some(ctx) = symbol.completion_ctx(db, offset) {
             return Ok(Some(CompletionResponse::Array(ctx)));
         }
     }

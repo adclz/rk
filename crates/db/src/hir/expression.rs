@@ -1,5 +1,5 @@
 use crate::ident::Ident;
-use crate::to_proto::{self_iter, HirCtx, IterToProto, ProtoAndCtx, ToProto};
+use crate::to_proto::{self_iter, IterToProto, ToProto};
 use auto_enums::auto_enum;
 use auto_lsp::core::span::Span;
 use auto_lsp::default::db::BaseDatabase;
@@ -119,11 +119,11 @@ impl<'db> ToProto<'db> for PathExpr<'db> {
 }
 
 impl<'db> IterToProto<'db> for PathExpr<'db> {
-    fn iter(&'db self, ctx: HirCtx<'db>) -> impl Iterator<Item = ProtoAndCtx<'db>> {
-        match &self.expr(ctx.db) {
-            PathExprKind::Field(field) => self_iter(self, ctx),
-            PathExprKind::Index(index) => self_iter(self, ctx),
-            PathExprKind::VarAccess(var_access) => self_iter(self, ctx),
+    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+        match &self.expr(db) {
+            PathExprKind::Field(field) => self_iter(self),
+            PathExprKind::Index(index) => self_iter(self),
+            PathExprKind::VarAccess(var_access) => self_iter(self),
         }
     }
 }
@@ -179,7 +179,7 @@ pub enum ParamAssign<'db> {
 }
 
 impl<'db> IterToProto<'db> for ParamAssign<'db> {
-    fn iter(&'db self, ctx: HirCtx<'db>) -> impl Iterator<Item = ProtoAndCtx<'db>> {
+    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
         std::iter::empty()
     }
 }
@@ -223,10 +223,10 @@ pub enum VariableAccessKind<'db> {
 }
 
 impl<'db> IterToProto<'db> for VariableAccess<'db> {
-    fn iter(&'db self, ctx: HirCtx<'db>) -> impl Iterator<Item = ProtoAndCtx<'db>> {
+    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
         match &self.kind {
-            VariableAccessKind::Direct { adress, .. } => self_iter(self, ctx),
-            VariableAccessKind::Symbolic(symbolic) => self_iter(self, ctx),
+            VariableAccessKind::Direct { adress, .. } => self_iter(self),
+            VariableAccessKind::Symbolic(symbolic) => self_iter(self),
         }
     }
 }
@@ -537,54 +537,54 @@ impl<'db> ToProto<'db> for Expr<'db> {
 
 impl<'db> IterToProto<'db> for Expr<'db> {
     #[auto_enum(Iterator)]
-    fn iter(&'db self, ctx: HirCtx<'db>) -> impl Iterator<Item = ProtoAndCtx<'db>> {
-        match self.expr(ctx.db) {
+    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+        match self.expr(db) {
             ExprKind::AddOperator {
                 left,
                 operator,
                 right,
             } => Box::new(
-                self_iter(self, ctx)
-                    .chain(left.iter(ctx))
-                    .chain(right.iter(ctx)),
+                self_iter(self)
+                    .chain(left.iter(db))
+                    .chain(right.iter(db)),
             ) as Box<dyn Iterator<Item = _>>,
             ExprKind::BooleanOperator {
                 left,
                 operator,
                 right,
             } => Box::new(
-                self_iter(self, ctx)
-                    .chain(left.iter(ctx))
-                    .chain(right.iter(ctx)),
+                self_iter(self)
+                    .chain(left.iter(db))
+                    .chain(right.iter(db)),
             ) as Box<dyn Iterator<Item = _>>,
             ExprKind::ComparisonOperator {
                 left,
                 operator,
                 right,
             } => Box::new(
-                self_iter(self, ctx)
-                    .chain(left.iter(ctx))
-                    .chain(right.iter(ctx)),
+                self_iter(self)
+                    .chain(left.iter(db))
+                    .chain(right.iter(db)),
             ) as Box<dyn Iterator<Item = _>>,
             ExprKind::MultOperator {
                 left,
                 operator,
                 right,
             } => Box::new(
-                self_iter(self, ctx)
-                    .chain(left.iter(ctx))
-                    .chain(right.iter(ctx)),
+                self_iter(self)
+                    .chain(left.iter(db))
+                    .chain(right.iter(db)),
             ) as Box<dyn Iterator<Item = _>>,
             ExprKind::PowerOperator { left, right } => Box::new(
-                self_iter(self, ctx)
-                    .chain(left.iter(ctx))
-                    .chain(right.iter(ctx)),
+                self_iter(self)
+                    .chain(left.iter(db))
+                    .chain(right.iter(db)),
             ) as Box<dyn Iterator<Item = _>>,
             ExprKind::UnaryOperator { expr, operator } => {
-                Box::new(expr.iter(ctx)) as Box<dyn Iterator<Item = _>>
+                Box::new(expr.iter(db)) as Box<dyn Iterator<Item = _>>
             }
             ExprKind::PrimaryExpr(primary) => {
-                Box::new(primary.iter(ctx)) as Box<dyn Iterator<Item = _>>
+                Box::new(primary.iter(db)) as Box<dyn Iterator<Item = _>>
             }
         }
     }
@@ -592,16 +592,16 @@ impl<'db> IterToProto<'db> for Expr<'db> {
 
 impl<'db> IterToProto<'db> for PrimaryExpr<'db> {
     #[auto_enum(Iterator)]
-    fn iter(&'db self, ctx: HirCtx<'db>) -> impl Iterator<Item = ProtoAndCtx<'db>> {
+    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
         match self {
             PrimaryExpr::FuncCall { path, params } => path
-                .iter(ctx)
-                .chain(params.iter().flat_map(move |p| p.iter(ctx))),
+                .iter(db)
+                .chain(params.iter().flat_map(move |p| p.iter(db))),
             PrimaryExpr::VariableAccess {
                 variable,
                 multibits,
-            } => variable.iter(ctx),
-            PrimaryExpr::ParenthesizedExpr { expr } => expr.iter(ctx),
+            } => variable.iter(db),
+            PrimaryExpr::ParenthesizedExpr { expr } => expr.iter(db),
             // todo: Unsure if literal and ref_value should be iterable
             PrimaryExpr::Literal(lit) => std::iter::empty(),
             PrimaryExpr::RefValue { value } => std::iter::empty(),

@@ -1,5 +1,5 @@
 use auto_lsp::{anyhow, default::db::{BaseDatabase}, lsp_types::{InlayHint, InlayHintKind, InlayHintLabel, InlayHintParams}};
-use db::{solver::namespace::namespaces_in_file, to_proto::{HirCtx, IterToProto}};
+use db::{solver::namespace::namespaces_in_file, to_proto::{IterToProto}};
 
 pub fn inlay_hints(db: &impl BaseDatabase, params: InlayHintParams) -> anyhow::Result<Option<Vec<InlayHint>>> {
     let uri = &params.text_document.uri;
@@ -15,7 +15,6 @@ pub fn inlay_hints(db: &impl BaseDatabase, params: InlayHintParams) -> anyhow::R
         Some(ns) => ns,
         None => return Ok(None),
     };
-    let ctx = HirCtx::new(db, file);
     ns.namespaces(db).iter().for_each(|symbol| {
         let span = symbol.span(db);
         if span.lsp().start.line < range.start.line ||

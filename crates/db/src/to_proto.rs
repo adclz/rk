@@ -5,6 +5,7 @@ use auto_lsp::{
     default::db::{file::File, BaseDatabase},
     lsp_types::{CompletionItem, SymbolKind},
 };
+use salsa::Database;
 
 use crate::{
     hir::{
@@ -87,49 +88,6 @@ impl SymbolInfo<'_> {
     }
 }
 
-#[derive(Clone, Copy)]
-pub struct HirCtx<'db> {
-    pub db: &'db dyn BaseDatabase,
-    pub file: File,
-    pub namespace: Option<Namespace<'db>>,
-    pub pou: Option<PouDecl<'db>>,
-    pub path: Option<NamespacePath>,
-    pub path2: Option<&'db SpannedPath>,
-}
-
-impl<'db> HirCtx<'db> {
-    pub fn new(db: &'db dyn BaseDatabase, file: File) -> Self {
-        Self {
-            db,
-            file,
-            namespace: None,
-            pou: None,
-            path: None,
-            path2: None,
-        }
-    }
-
-    pub fn with_namespace(mut self, namespace: Namespace<'db>) -> Self {
-        self.namespace = Some(namespace);
-        self
-    }
-
-    pub fn with_pou(mut self, pou: PouDecl<'db>) -> Self {
-        self.pou = Some(pou);
-        self
-    }
-
-    pub fn with_path(mut self, path: NamespacePath) -> Self {
-        self.path = Some(path);
-        self
-    }
-
-    pub fn with_path2(mut self, path: &'db SpannedPath) -> Self {
-        self.path2 = Some(path);
-        self
-    }
-}
-
 pub trait ToProto<'db> {
     fn get_span(&'db self, db: &'db dyn crate::BaseDatabase) -> &'db Span;
 
@@ -141,34 +99,31 @@ pub trait ToProto<'db> {
         None
     }
 
-    fn completion_ctx(&'db self, _ctx: HirCtx<'db>, _offset: usize) -> Option<Vec<CompletionItem>> {
+    fn completion_ctx(&'db self, _db: &'db dyn crate::BaseDatabase,  _offset: usize) -> Option<Vec<CompletionItem>> {
         None
     }
 }
 
 pub fn self_iter<'db>(
     s: &'db impl ToProto<'db>,
-    ctx: HirCtx<'db>,
-) -> impl Iterator<Item = ProtoAndCtx<'db>> {
-    std::iter::once::<ProtoAndCtx<'db>>((ctx, s))
+) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+    std::iter::once::<&'db dyn ToProto<'db>>(s)
 }
 
-pub type ProtoAndCtx<'db> = (HirCtx<'db>, &'db dyn ToProto<'db>);
-
 pub trait IterToProto<'db> {
-    fn iter(&'db self, ctx: HirCtx<'db>) -> impl Iterator<Item = ProtoAndCtx<'db>>;
+    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>>;
 
-    fn descendant_at(&'db self, ctx: HirCtx<'db>, offset: usize) -> Option<ProtoAndCtx<'db>> {
-        let mut best_match: Option<ProtoAndCtx<'db>> = None;
+    fn descendant_at(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<&'db dyn ToProto<'db>> {
+        let mut best_match: Option<&'db dyn ToProto<'db>> = None;
 
-        for node in self.iter(ctx) {
-            let range = node.1.get_span(ctx.db).clone();
+        for node in self.iter(db) {
+            let range = node.get_span(db).clone();
 
             // Only consider nodes that contain the offset
             if range.start_byte <= offset && offset <= range.end_byte {
                 // Compare old best match with new node
                 if let Some(a) = best_match {
-                    let a = a.1.get_span(ctx.db);
+                    let a = a.get_span(db);
 
                     if a.start_byte >= range.start_byte {
                         continue;
@@ -183,11 +138,11 @@ pub trait IterToProto<'db> {
         best_match
     }
 
-    fn named_descendant_at(&'db self, ctx: HirCtx<'db>, offset: usize) -> Option<ProtoAndCtx<'db>> {
-        let mut best_match: Option<ProtoAndCtx<'db>> = None;
+    fn named_descendant_at(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<&'db dyn ToProto<'db>>  {
+        let mut best_match: Option<&'db dyn ToProto<'db>> = None;
 
-        for node in self.iter(ctx) {
-            let range = match node.1.get_named_span(ctx.db) {
+        for node in self.iter(db) {
+            let range = match node.get_named_span(db) {
                 Some(span) => span,
                 None => continue,
             };
@@ -196,7 +151,7 @@ pub trait IterToProto<'db> {
             if range.start_byte <= offset && offset <= range.end_byte {
                 // Compare old best match with new node
                 if let Some(a) = best_match {
-                    let a = match a.1.get_named_span(ctx.db) {
+                    let a = match a.get_named_span(db) {
                         Some(span) => span,
                         None => continue,
                     };
