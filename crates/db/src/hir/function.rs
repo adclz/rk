@@ -26,18 +26,27 @@ impl<'db> Function<'db> {
         db: &'db dyn BaseDatabase,
         offset: usize,
     ) -> Option<Vec<CompletionItem>> {
-        Some(vec![
+        let var_completions = vec![
             completions::snippets::var_input(),
             completions::snippets::var_output(),
             completions::snippets::var_temp(),
             completions::snippets::var(),
-        ])
+        ];
+        if self.statements(db).is_empty() {
+            return Some(var_completions);
+        }
+
+        if self.statements(db).first().unwrap().span(db).start_byte > offset {
+            return Some(var_completions);
+        }
+        None
+        
     }
 }
 
 impl<'db> IterToProto<'db> for Function<'db> {
     fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        self.using(db).iter().map(move |u| u as _)
-            .chain(self.variables(db).iter().map(move |v| v as _))
+        self.using(db).iter().flat_map(move |u| u.iter(db))
+            .chain(self.variables(db).iter().flat_map(move |v| v.iter(db)))
     }
 }

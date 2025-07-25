@@ -283,7 +283,7 @@ impl<'db> Check<'db> for &'db Vec<crate::hir::variable::Variable<'db>> {
             }
 
             // Avoid checking the same spec multiple times
-            if !seen_spec.insert(variable.spec(db)) {
+            if seen_spec.insert(variable.spec(db)) {
                 variable.check(db, file);
             }
         }
@@ -303,7 +303,7 @@ trait SpecCheck<'db> {
     fn check(&self, db: &'db dyn BaseDatabase, file: File, spec: &Spec<'db>);
 }
 
-fn create_type_error<'db>(db: &'db dyn BaseDatabase, file: File, span: Span, spec: &'db Spec<'db>, err: impl Error) {
+fn create_type_inference_error<'db>(db: &'db dyn BaseDatabase, file: File, span: Span, spec: &'db Spec<'db>, err: impl Error) {
     let diagnostic = diag()
         .file(file)
         .range(span.clone().into())
@@ -321,9 +321,61 @@ fn create_type_error<'db>(db: &'db dyn BaseDatabase, file: File, span: Span, spe
     DiagnosticAccumulator::accumulate(diagnostic.into(), db);
 }
 
+fn create_mismatch_type_error<'db>(db: &'db dyn BaseDatabase, file: File, span: Span, spec: &'db Spec<'db>, message: String) {
+    let diagnostic = diag()
+        .file(file)
+        .range(span.clone().into())
+        .message(message)
+        .source("IEC".into())
+        .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+        .related_information(vec![DiagnosticRelatedInformation {
+            location: auto_lsp::lsp_types::Location {
+                uri: file.url(db).clone(),
+                range: spec.span.clone().into(),
+            },
+            message: format!("because of type: '{}' declared here", spec.to_string(db)),
+        }])
+        .call();
+    DiagnosticAccumulator::accumulate(diagnostic.into(), db);
+}
+
 impl<'db> SpecCheck<'db> for Expr<'db> {
     fn check(&self, db: &'db dyn BaseDatabase, file: File, spec: &Spec<'db>) {
         match self.expr(db) {
+            ExprKind::AddOperator { left, operator, right } => {
+                left.check(db, file, spec);
+                right.check(db, file, spec);
+            },
+            ExprKind::BooleanOperator { left, operator, right } => {
+                if !matches!(spec.kind, SpecKind::Bool) {
+                        create_mismatch_type_error(db, file, self.span(db).clone(), spec, 
+                        format!("A boolean operator always returns a 'BOOL' but the expected type is '{}'", spec.to_string(db))
+                    );
+                }
+                left.check(db, file, spec);
+                right.check(db, file, spec);
+
+            },
+            ExprKind::ComparisonOperator { left, operator, right } => {
+                if !matches!(spec.kind, SpecKind::Bool) {
+                        create_mismatch_type_error(db, file, self.span(db).clone(), spec, 
+                        format!("A comparison operator always returns a 'BOOL' but the expected type is '{}'", spec.to_string(db))
+                    );
+                }
+                left.check(db, file, spec);
+                right.check(db, file, spec);
+            },
+            ExprKind::MultOperator { left, operator, right } => {
+                left.check(db, file, spec);
+                right.check(db, file, spec);
+            },
+            ExprKind::PowerOperator { left, right } => {
+                left.check(db, file, spec);
+                right.check(db, file, spec);
+            },
+            ExprKind::UnaryOperator { expr, operator } => {
+                expr.check(db, file, spec);
+            },
             ExprKind::PrimaryExpr(PrimaryExpr::Literal(lit))=> {
                 let result = match spec.kind {
                     SpecKind::Bool => match lit {
@@ -332,7 +384,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                             match infer.as_bool(db) {
                                 Ok(_) => true,
                                 Err(err) => {
-                                    create_type_error(db, file, self.span(db).clone(), spec, err);
+                                    create_type_inference_error(db, file, self.span(db).clone(), spec, err);
                                     return;
                                 }
                             }
@@ -346,7 +398,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                             match infer.as_u8(db) {
                                 Ok(_) => true,
                                 Err(err) => {
-                                    create_type_error(db, file, self.span(db).clone(), spec, err);
+                                    create_type_inference_error(db, file, self.span(db).clone(), spec, err);
                                     return;
                                 }
                             }
@@ -360,7 +412,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                             match infer.as_u16(db) {
                                 Ok(_) => true,
                                 Err(err) => {
-                                    create_type_error(db, file, self.span(db).clone(), spec, err);
+                                    create_type_inference_error(db, file, self.span(db).clone(), spec, err);
                                     return;
                                 }
                             }
@@ -375,7 +427,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                             match infer.as_u32(db) {
                                 Ok(_) => true,
                                 Err(err) => {
-                                    create_type_error(db, file, self.span(db).clone(), spec, err);
+                                    create_type_inference_error(db, file, self.span(db).clone(), spec, err);
                                     return;
                                 }
                             }
@@ -391,7 +443,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                             match infer.as_u64(db) {
                                 Ok(_) => true,
                                 Err(err) => {
-                                    create_type_error(db, file, self.span(db).clone(), spec, err);
+                                    create_type_inference_error(db, file, self.span(db).clone(), spec, err);
                                     return;
                                 }
                             }
@@ -405,7 +457,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                             match infer.as_u8(db) {
                                 Ok(_) => true,
                                 Err(err) => {
-                                    create_type_error(db, file, self.span(db).clone(), spec, err);
+                                    create_type_inference_error(db, file, self.span(db).clone(), spec, err);
                                     return;
                                 }
                             }
@@ -419,7 +471,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                             match infer.as_u16(db) {
                                 Ok(_) => true,
                                 Err(err) => {
-                                    create_type_error(db, file, self.span(db).clone(), spec, err);
+                                    create_type_inference_error(db, file, self.span(db).clone(), spec, err);
                                     return;
                                 }
                             }
@@ -434,7 +486,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                             match infer.as_u32(db) {
                                 Ok(_) => true,
                                 Err(err) => {
-                                    create_type_error(db, file, self.span(db).clone(), spec, err);
+                                    create_type_inference_error(db, file, self.span(db).clone(), spec, err);
                                     return;
                                 }
                             }
@@ -450,7 +502,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                             match infer.as_u64(db) {
                                 Ok(_) => true,
                                 Err(err) => {
-                                    create_type_error(db, file, self.span(db).clone(), spec, err);
+                                    create_type_inference_error(db, file, self.span(db).clone(), spec, err);
                                     return;
                                 }
                             }
@@ -464,7 +516,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                             match infer.as_u8(db) {
                                 Ok(_) => true,
                                 Err(err) => {
-                                    create_type_error(db, file, self.span(db).clone(), spec, err);
+                                    create_type_inference_error(db, file, self.span(db).clone(), spec, err);
                                     return;
                                 }
                             }
@@ -478,7 +530,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                             match infer.as_u16(db) {
                                 Ok(_) => true,
                                 Err(err) => {
-                                    create_type_error(db, file, self.span(db).clone(), spec, err);
+                                    create_type_inference_error(db, file, self.span(db).clone(), spec, err);
                                     return;
                                 }
                             }
@@ -493,7 +545,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                             match infer.as_u32(db) {
                                 Ok(_) => true,
                                 Err(err) => {
-                                    create_type_error(db, file, self.span(db).clone(), spec, err);
+                                    create_type_inference_error(db, file, self.span(db).clone(), spec, err);
                                     return;
                                 }
                             }
@@ -509,7 +561,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                             match infer.as_u64(db) {
                                 Ok(_) => true,
                                 Err(err) => {
-                                    create_type_error(db, file, self.span(db).clone(), spec, err);
+                                    create_type_inference_error(db, file, self.span(db).clone(), spec, err);
                                     return;
                                 }
                             }
@@ -522,7 +574,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                             match identifier.as_f32(db) {
                                 Ok(_) => true,
                                 Err(err) => {
-                                    create_type_error(db, file, self.span(db).clone(), spec, err);
+                                    create_type_inference_error(db, file, self.span(db).clone(), spec, err);
                                     return;
                                 }
                             }
@@ -536,7 +588,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                             match identifier.as_f64(db) {
                                 Ok(_) => true,
                                 Err(err) => {
-                                    create_type_error(db, file, self.span(db).clone(), spec, err);
+                                    create_type_inference_error(db, file, self.span(db).clone(), spec, err);
                                     return;
                                 }
                             }
@@ -548,9 +600,9 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
 
                 if !result {
                     let message = format!(
-                        "value '{}' is not assignable to '{:?}'",
+                        "value '{}' is not assignable to '{}'",
                         lit.to_string(db),
-                        spec.kind,
+                        spec.to_string(db),
                     );
                     let diagnostic = diag()
                         .file(file)
@@ -563,7 +615,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                                 uri: file.url(db).clone(),
                                 range: spec.span.clone().into(),
                             },
-                            message: format!("because of type '{:?}' declared here", spec.kind),
+                            message: format!("because of type '{}' declared here", spec.to_string(db)),
                         }])
                         .call();
                     DiagnosticAccumulator::accumulate(diagnostic.into(), db);

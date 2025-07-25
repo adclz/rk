@@ -64,7 +64,7 @@ pub fn use_completion_ctx(db: &impl BaseDatabase, file: File, offset: usize) -> 
         None => return Ok(None),
     };
     if let Some(symbol) = ns.descendant_at(db, offset) {
-        if let Some(ctx) = symbol.completion_ctx(db, offset) {
+        if let Some(ctx) = symbol.completion(db, offset) {
             return Ok(Some(CompletionResponse::Array(ctx)));
         }
     }

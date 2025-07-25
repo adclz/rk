@@ -30,66 +30,13 @@ pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Opti
         None => return Ok(None),
     };
     
-    Ok(ns.named_descendant_at(db, position).and_then(|symbol| {
-        let symbol = match symbol.symbol_info(db) {
-            Some(symbol) => symbol,
-            None => return None,
-        };
-
-        let kind = symbol.kind_to_string();
-
-        let spec = if symbol.spec.is_some() {
-            format!("{}: {}", symbol.name, symbol.spec_to_string(db))
-        } else {
-            symbol.name
-        };
-
-        let comment = get_comment(&file.document(db), symbol.range.lsp().start.line as usize)
-            .unwrap_or_default();
-
-        let implements = if let Some(implements) = symbol.implements {
-            format!(
-                " implements {}",
-                implements
-                    .iter()
-                    .map(|i| i.to_string(db))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )
-        } else {
-            String::default()
-        };
-
-        let extends = if let Some(extends) = symbol.extends {
-            match extends {
-                Extends::Single(extends) => format!(" extends {}", extends.to_string(db)),
-                Extends::Multiple(extends) => format!(
-                    " extends {}",
-                    extends
-                        .iter()
-                        .map(|i| i.to_string(db))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                ),
-            }
-        } else {
-            String::default()
-        };
-
-        Some(Hover {
-            contents: HoverContents::Markup(MarkupContent {
-                kind: MarkupKind::Markdown,
-                value: format!(
-                    r#"```typescript
-{kind} {spec}{implements}{extends}
-```
-{comment}
-"#,
-                ),
-            }),
-            range: Some(symbol.range.into()),
-        })
-    }))
+    let symbol = ns.named_descendant_at(db, position)
+        .or_else(|| ns.descendant_at(db, position));
+        
+    match symbol.and_then(|s| s.hover(db)) {
+        Some(hover) => Ok(Some(hover)),
+        None => Ok(None),
+    }
 }
 
 fn get_comment(doc: &Document, line: usize) -> Option<String> {

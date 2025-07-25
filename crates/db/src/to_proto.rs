@@ -3,7 +3,7 @@ use std::ops::Deref;
 use auto_lsp::{
     core::span::Span,
     default::db::{file::File, BaseDatabase},
-    lsp_types::{CompletionItem, SymbolKind},
+    lsp_types::{CompletionItem, Hover, InlayHint, SymbolKind},
 };
 use salsa::Database;
 
@@ -99,7 +99,17 @@ pub trait ToProto<'db> {
         None
     }
 
-    fn completion_ctx(&'db self, _db: &'db dyn crate::BaseDatabase,  _offset: usize) -> Option<Vec<CompletionItem>> {
+    // LSP
+
+    fn completion(&'db self, _db: &'db dyn crate::BaseDatabase,  _offset: usize) -> Option<Vec<CompletionItem>> {
+        None
+    }
+
+    fn inlay_hint(&'db self, _db: &'db dyn crate::BaseDatabase) -> Option<InlayHint> {
+        None
+    }
+
+    fn hover(&'db self, _db: &'db dyn crate::BaseDatabase) -> Option<Hover> {
         None
     }
 }
@@ -117,14 +127,12 @@ pub trait IterToProto<'db> {
         let mut best_match: Option<&'db dyn ToProto<'db>> = None;
 
         for node in self.iter(db) {
-            let range = node.get_span(db).clone();
-
+            let range = node.get_span(db);
             // Only consider nodes that contain the offset
             if range.start_byte <= offset && offset <= range.end_byte {
                 // Compare old best match with new node
                 if let Some(a) = best_match {
                     let a = a.get_span(db);
-
                     if a.start_byte >= range.start_byte {
                         continue;
                     } else {

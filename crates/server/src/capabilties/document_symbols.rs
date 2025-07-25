@@ -7,8 +7,7 @@ use auto_lsp::{
     lsp_types::{DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse},
 };
 use db::{
-    solver::namespace::namespaces_in_file,
-    to_proto::{IterToProto, SymbolInfo},
+    hir::namespace::FileNamespaces, solver::namespace::namespaces_in_file, to_proto::{IterToProto, SymbolInfo}
 };
 
 /// Helper function to check if one range is inside another

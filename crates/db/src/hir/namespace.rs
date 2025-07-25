@@ -1,7 +1,9 @@
 use auto_enums::auto_enum;
 use auto_lsp::core::span::Span;
 use auto_lsp::default::db::{file::File, BaseDatabase};
-use auto_lsp::lsp_types::CompletionItem;
+use auto_lsp::lsp_types::{
+    CompletionItem, InlayHint, InlayHintKind, InlayHintLabel, InlayHintTooltip, MarkupContent, MarkupKind,
+};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::completions;
@@ -134,7 +136,7 @@ pub struct Namespace<'db> {
 
     #[tracked]
     #[returns(ref)]
-    pub child_namespaces_keys: FxHashSet<usize>
+    pub child_namespaces_keys: FxHashSet<usize>,
 }
 
 #[salsa::tracked(debug)]
@@ -152,7 +154,7 @@ impl<'db> ToProto<'db> for Using<'db> {
         self.span(db)
     }
 
-    fn completion_ctx(
+    fn completion(
         &'db self,
         db: &'db dyn crate::BaseDatabase,
         _offset: usize,
@@ -179,7 +181,9 @@ impl<'db> ToProto<'db> for Using<'db> {
                     .iter()
                     .filter_map(|ns| ns.path(db).fragments(db).get(0))
                     .filter(|ident| seen.insert(*ident))
-                    .map(|ident| CompletionItem::new_simple(ident.ident.text(db), ident.ident.text(db)))
+                    .map(|ident| {
+                        CompletionItem::new_simple(ident.ident.text(db), ident.ident.text(db))
+                    })
                     .collect(),
             );
         }
@@ -212,27 +216,17 @@ impl<'db> ToProto<'db> for Using<'db> {
 }
 
 impl<'db> IterToProto<'db> for Using<'db> {
-    fn iter(&'db self, db: &'db dyn crate::BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        self_iter(self)
-            .chain(self.path(db)
-            .fragments(db)
-            .iter()
-            .map(move |f| f as _))
+    fn iter(
+        &'db self,
+        db: &'db dyn crate::BaseDatabase,
+    ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+        self_iter(self).chain(self.path(db).fragments(db).iter().map(move |f| f as _))
     }
 }
 
-impl<'db> ToProto<'db> for SpannedIdent  {
+impl<'db> ToProto<'db> for SpannedIdent {
     fn get_span(&'db self, db: &'db dyn crate::BaseDatabase) -> &'db Span {
         &self.span
-    }
-
-    fn symbol_info(&'db self, _db: &'db dyn crate::BaseDatabase) -> Option<SymbolInfo<'db>> {
-        Some(SymbolInfo::builder()
-            .kind(auto_lsp::lsp_types::SymbolKind::INTERFACE)
-            .name(self.ident.text(_db))
-            .range(self.span.clone())
-            .name_range(self.span.clone())
-            .build())
     }
 }
 
@@ -280,7 +274,7 @@ impl<'db> ToProto<'db> for Namespace<'db> {
         )
     }
 
-    fn completion_ctx(
+    fn completion(
         &'db self,
         db: &'db dyn crate::BaseDatabase,
         offset: usize,
@@ -315,14 +309,46 @@ impl<'db> ToProto<'db> for Namespace<'db> {
         }
         Some(completions)
     }
+
+    fn inlay_hint(
+        &'db self,
+        db: &'db dyn crate::BaseDatabase,
+    ) -> Option<auto_lsp::lsp_types::InlayHint> {
+        Some(InlayHint {
+            label: InlayHintLabel::String(format!("namespace {}", self.path(db).to_string(db))),
+            position: self.span(db).lsp().end,
+            kind: Some(InlayHintKind::TYPE),
+            text_edits: None,
+            padding_left: Some(true),
+            padding_right: None,
+            data: None,
+            tooltip: None,
+        })
+    }
+
+    fn hover(&'db self, _db: &'db dyn crate::BaseDatabase) -> Option<auto_lsp::lsp_types::Hover> {
+        Some(auto_lsp::lsp_types::Hover {
+            contents: auto_lsp::lsp_types::HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: format!(
+                    "Namespace `{}`",
+                    self.path(_db).to_string(_db)
+                ),
+            }),
+            range: Some(self.get_span(_db).lsp()),
+        })
+    }
 }
 
 impl<'db> IterToProto<'db> for Namespace<'db> {
-    fn iter(&'db self, db: &'db dyn crate::BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+    fn iter(
+        &'db self,
+        db: &'db dyn crate::BaseDatabase,
+    ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
         self_iter(self)
             // todo: Iter inside using
             .chain(self.using(db).iter().map(move |using| using as _))
-            .chain(self.pous(db).iter().flat_map(move |pou| pou.iter(db)))
+            .chain(self.pous(db).iter().map(move |pou| pou.iter(db)).flatten())
     }
 }
 
@@ -342,15 +368,16 @@ pub struct PouDecl<'db> {
     #[returns(ref)]
     pub name_span: Span,
 }
- 
+
 impl<'db> IterToProto<'db> for PouDecl<'db> {
     #[auto_enum(Iterator)]
-    fn iter(&'db self, db: &'db dyn crate::BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+    fn iter(
+        &'db self,
+        db: &'db dyn crate::BaseDatabase,
+    ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
         match self.pou(db) {
             Pou::Function(f) => self_iter(self).chain(f.iter(db)),
-            Pou::FunctionBlock(fb) => {
-                self_iter(self).chain(fb.iter(db))
-            }
+            Pou::FunctionBlock(fb) => self_iter(self).chain(fb.iter(db)),
             Pou::Class(c) => self_iter(self).chain(c.iter(db)),
             Pou::DataType(d) => self_iter(self).chain(d.iter(db)),
             Pou::Interface(i) => self_iter(self).chain(i.iter(db)),
@@ -403,7 +430,7 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
         )
     }
 
-    fn completion_ctx(
+    fn completion(
         &'db self,
         db: &'db dyn crate::BaseDatabase,
         offset: usize,
@@ -415,6 +442,49 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
             Pou::Interface(_) => Some(vec![completions::snippets::var_input()]),
             Pou::DataType(_) => None,
         }
+    }
+
+    fn inlay_hint(&'db self, db: &'db dyn crate::BaseDatabase) -> Option<InlayHint> {
+        Some(InlayHint {
+            label: InlayHintLabel::String(format!(
+                "{} {}",
+                match self.pou(db) {
+                    Pou::Function(_) => "function",
+                    Pou::FunctionBlock(_) => "function block",
+                    Pou::Class(_) => "class",
+                    Pou::Interface(_) => "interface",
+                    Pou::DataType(_) => "data type",
+                },
+                self.name(db).text(db)
+            )),
+            position: self.span(db).lsp().end,
+            kind: Some(InlayHintKind::TYPE),
+            text_edits: None,
+            padding_left: Some(true),
+            padding_right: None,
+            data: None,
+            tooltip: None,
+        })
+    }
+
+    fn hover(&'db self, _db: &'db dyn crate::BaseDatabase) -> Option<auto_lsp::lsp_types::Hover> {
+        Some(auto_lsp::lsp_types::Hover {
+            contents: auto_lsp::lsp_types::HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: format!(
+                    "{} `{}`",
+                    match self.pou(_db) {
+                        Pou::Function(_) => "Function",
+                        Pou::FunctionBlock(_) => "Function Block",
+                        Pou::Class(_) => "Class",
+                        Pou::Interface(_) => "Interface",
+                        Pou::DataType(_) => "Data Type",
+                    },
+                    self.name(_db).text(_db)
+                ),
+            }),
+            range: Some(self.get_span(_db).lsp()),
+        })
     }
 }
 

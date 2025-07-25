@@ -1,13 +1,13 @@
 use auto_lsp::{
     core::span::Span,
-    default::db::{file::File, BaseDatabase},
+    default::db::{file::File, BaseDatabase}, lsp_types::{MarkupContent, MarkupKind},
 };
 
 use crate::{
     hir::expression::Expr,
     ident::Ident,
     solver::fq_name::NamespaceAccess,
-    to_proto::{SymbolInfo, ToProto},
+    to_proto::{self_iter, IterToProto, SymbolInfo, ToProto},
 };
 
 #[salsa::tracked(debug)]
@@ -26,9 +26,11 @@ pub struct Variable<'db> {
     pub kind: VariableKind,
 
     #[tracked]
+    #[returns(ref)]
     pub spec: Spec<'db>,
 
     #[tracked]
+    #[returns(as_ref)]
     pub init: Option<Expr<'db>>
 }
 
@@ -62,13 +64,32 @@ impl<'db> ToProto<'db> for Variable<'db> {
                 .name(self.name(db).text(db))
                 .range(self.range(db).clone())
                 .name_range(self.name_span(db).clone())
-                .spec(self.spec(db))
-                .maybe_init(self.init(db))
+                .spec(self.spec(db).clone())
+                .maybe_init(self.init(db).cloned())
                 .build(),
         )
     }
+
+    fn hover(&'db self, db: &'db dyn crate::BaseDatabase) -> Option<auto_lsp::lsp_types::Hover> {
+        Some(auto_lsp::lsp_types::Hover {
+            contents: auto_lsp::lsp_types::HoverContents::Markup(
+                MarkupContent {
+                    kind: MarkupKind::Markdown,
+                    value: format!("Variable {}", self.name(db).text(db)).to_string()
+                }
+            ),
+            range: Some(self.name_span(db).into())
+        })
+    }
 }
 
+impl<'db> IterToProto<'db> for Variable<'db> {
+    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+        self_iter(self)
+            .chain(self.spec(db).iter(db))
+            .chain(self.init(db).into_iter().map(|i| i as _))
+    }
+}
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct Spec<'db> {
     pub span: Span,
@@ -111,6 +132,58 @@ pub enum SpecKind<'db> {
     LTime,
     Tod,
     LTod,
+}
+impl<'db> Spec<'db> {
+    pub fn to_string(&self, db: &'db dyn BaseDatabase) -> &str {
+        match self.kind {
+            SpecKind::SInt => "SINT",
+            SpecKind::Int => "INT",
+            SpecKind::DInt => "DINT",
+            SpecKind::LInt => "LINT",
+            SpecKind::USInt => "USINT",
+            SpecKind::UInt => "UINT",
+            SpecKind::UDInt => "UDINT",
+            SpecKind::ULInt => "ULINT",
+            SpecKind::Byte => "BYTE",
+            SpecKind::Word => "WORD",
+            SpecKind::DWord => "DWORD",
+            SpecKind::LWord => "LWORD",
+            SpecKind::Date => "DATE",
+            SpecKind::LDate => "LDATE",
+            SpecKind::Dt => "DATE_AND_TIME",
+            SpecKind::Ldt => "LDATE_AND_TIME",
+            SpecKind::Tod => "TIME_OF_DAY",
+            SpecKind::LTod => "LTIME_OF_DAY",
+            SpecKind::Time => "TIME",
+            SpecKind::LTime => "LTIME",
+            _ => "?"
+        }
+    }
+}
+
+impl<'db> ToProto<'db> for Spec<'db> {
+    fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
+        &self.span
+    }
+
+    fn hover(&'db self, db: &'db dyn crate::BaseDatabase) -> Option<auto_lsp::lsp_types::Hover> {
+        Some(auto_lsp::lsp_types::Hover {
+            contents: auto_lsp::lsp_types::HoverContents::Scalar(
+                auto_lsp::lsp_types::MarkedString::String(self.to_string(db).to_string()),
+            ),
+            range: None,
+        })
+    }
+}
+
+impl<'db> IterToProto<'db> for Spec<'db> {
+    #[auto_enums::auto_enum(Iterator)]
+    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+        match &self.kind {
+            SpecKind::Expr(expr) => self_iter(self).chain(expr.iter(db)),
+            _ => self_iter(self),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

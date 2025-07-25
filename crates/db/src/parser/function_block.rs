@@ -7,7 +7,7 @@ use crate::hir::variable::Variable;
 use crate::hir::visibility::Modifiers;
 use crate::parser::namespace::ParseUsing;
 use crate::parser::{Parse, ParseVarSection};
-use crate::solver::fq_name::SpannedNamespaceAccess;
+use crate::solver::fq_name::{NamespaceAccess, SpannedNamespaceAccess};
 use ast::generated::FbVariables;
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;

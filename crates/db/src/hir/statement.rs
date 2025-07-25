@@ -4,7 +4,8 @@ use crate::hir::expression::{Expr, ParamAssign, PathExprKind, SymbolicVariable, 
 
 #[salsa::tracked(debug)]
 pub struct Stmt<'db> {
-    span: Span,
+    #[returns(ref)]
+    pub span: Span,
 
     #[return_ref]
     pub stmt: StmtKind<'db>,

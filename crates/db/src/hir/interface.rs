@@ -57,18 +57,6 @@ impl<'db> ToProto<'db> for Method<'db> {
     fn get_named_span(&'db self, db: &'db dyn BaseDatabase) -> Option<&'db Span> {
         Some(self.name_span(db))
     }
-
-    fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> Option<SymbolInfo<'db>> {
-        Some(
-            SymbolInfo::builder()
-                .kind(auto_lsp::lsp_types::SymbolKind::METHOD)
-                .name(self.name(db).text(db))
-                .range(self.range(db).clone())
-                .name_range(self.name_span(db).clone())
-                .maybe_spec(self.return_type(db).cloned())
-                .build(),
-        )
-    }
 }
 
 impl<'db> IterToProto<'db> for Method<'db> {

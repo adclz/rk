@@ -579,10 +579,10 @@ impl<'db> IterToProto<'db> for Expr<'db> {
                     .chain(right.iter(db)),
             ) as Box<dyn Iterator<Item = _>>,
             ExprKind::UnaryOperator { expr, operator } => {
-                Box::new(expr.iter(db)) as Box<dyn Iterator<Item = _>>
+                Box::new(self_iter(self).chain(expr.iter(db))) as Box<dyn Iterator<Item = _>>
             }
             ExprKind::PrimaryExpr(primary) => {
-                Box::new(primary.iter(db)) as Box<dyn Iterator<Item = _>>
+                Box::new(self_iter(self).chain(primary.iter(db))) as Box<dyn Iterator<Item = _>>
             }
         }
     }

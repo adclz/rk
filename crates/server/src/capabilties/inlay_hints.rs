@@ -1,4 +1,4 @@
-use auto_lsp::{anyhow, default::db::{BaseDatabase}, lsp_types::{InlayHint, InlayHintKind, InlayHintLabel, InlayHintParams}};
+use auto_lsp::{anyhow, default::db::{BaseDatabase}, lsp_types::{InlayHint, InlayHintParams}};
 use db::{solver::namespace::namespaces_in_file, to_proto::{IterToProto}};
 
 pub fn inlay_hints(db: &impl BaseDatabase, params: InlayHintParams) -> anyhow::Result<Option<Vec<InlayHint>>> {
@@ -15,22 +15,16 @@ pub fn inlay_hints(db: &impl BaseDatabase, params: InlayHintParams) -> anyhow::R
         Some(ns) => ns,
         None => return Ok(None),
     };
-    ns.namespaces(db).iter().for_each(|symbol| {
-        let span = symbol.span(db);
+    ns.iter(db).for_each(|symbol| {
+        let span = symbol.get_span(db);
         if span.lsp().start.line < range.start.line ||
            span.lsp().end.line > range.end.line {
             return;
         }
-        results.push(InlayHint {
-            label: InlayHintLabel::String(format!("{:?}", symbol.parent(db))),
-            position: span.lsp().end,
-            kind: Some(InlayHintKind::TYPE),   
-            text_edits: None,
-            padding_left: Some(true),
-            padding_right: None, 
-            data: None,
-            tooltip: None,
-         });
+
+        if let Some(inlay_hint) = symbol.inlay_hint(db) {
+            results.push(inlay_hint);
+        }
     });
 
     Ok(Some(results))
