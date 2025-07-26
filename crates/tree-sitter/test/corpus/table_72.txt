@@ -204,10 +204,7 @@ END_FUNCTION
                       (constant
                         (numeric_literal
                           (real_literal
-                            (real_value
-                              (signed_int
-                                (unsigned_int))
-                              (unsigned_int)))))
+                            (real_value))))
                       (variable_access
                         (variable
                           (symbolic_variable
@@ -232,10 +229,7 @@ END_FUNCTION
                   (constant
                     (numeric_literal
                       (real_literal
-                        (real_value
-                          (signed_int
-                            (unsigned_int))
-                          (unsigned_int)))))))
+                        (real_value))))))
               (stmt_list
                 (assign
                   (variable
@@ -260,10 +254,7 @@ END_FUNCTION
                   (constant
                     (numeric_literal
                       (real_literal
-                        (real_value
-                          (signed_int
-                            (unsigned_int))
-                          (unsigned_int)))))))
+                        (real_value))))))
               (stmt_list
                 (assign
                   (variable
@@ -297,10 +288,7 @@ END_FUNCTION
                             (constant
                               (numeric_literal
                                 (real_literal
-                                  (real_value
-                                    (signed_int
-                                      (unsigned_int))
-                                    (unsigned_int)))))
+                                  (real_value))))
                             (variable_access
                               (variable
                                 (symbolic_variable
@@ -354,10 +342,7 @@ END_FUNCTION
                           (constant
                             (numeric_literal
                               (real_literal
-                                (real_value
-                                  (signed_int
-                                    (unsigned_int))
-                                  (unsigned_int)))))
+                                (real_value))))
                           (variable_access
                             (variable
                               (symbolic_variable
@@ -398,10 +383,7 @@ END_FUNCTION
                           (constant
                             (numeric_literal
                               (real_literal
-                                (real_value
-                                  (signed_int
-                                    (unsigned_int))
-                                  (unsigned_int)))))
+                                (real_value))))
                           (variable_access
                             (variable
                               (symbolic_variable

@@ -296,10 +296,7 @@ END_PROGRAM
                   (constant
                     (numeric_literal
                       (real_literal
-                        (real_value
-                          (signed_int
-                            (unsigned_int))
-                          (unsigned_int)))))))))
+                        (real_value))))))))
           (var_decl_init_list
             (variable_list
               (identifier))
@@ -314,10 +311,7 @@ END_PROGRAM
                     (constant
                       (numeric_literal
                         (real_literal
-                          (real_value
-                            (signed_int
-                              (unsigned_int))
-                            (unsigned_int)))))
+                          (real_value))))
                     (variable_access
                       (variable
                         (symbolic_variable
@@ -339,7 +333,7 @@ END_PROGRAM
 
 --------------------------------------------------------------------------------
 
-   (source_file
+    (source_file
       (prog_decl
         (identifier)
         (var_decls
@@ -357,17 +351,11 @@ END_PROGRAM
                     (constant
                       (numeric_literal
                         (real_literal
-                          (real_value
-                            (signed_int
-                              (unsigned_int))
-                            (unsigned_int)))))
+                          (real_value))))
                     (constant
                       (numeric_literal
                         (real_literal
-                          (real_value
-                            (signed_int
-                              (unsigned_int))
-                            (unsigned_int)))))))))))))
+                          (real_value))))))))))))
 
 ================================================================================
 Initialization of a reference

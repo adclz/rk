@@ -41,7 +41,7 @@ END_FUNCTION_BLOCK
 
 --------------------------------------------------------------------------------
 
-   (source_file
+    (source_file
       (fb_decl
         (identifier)
         (fb_input_decls
@@ -92,10 +92,7 @@ END_FUNCTION_BLOCK
                   (constant
                     (numeric_literal
                       (real_literal
-                        (real_value
-                          (signed_int
-                            (unsigned_int))
-                          (unsigned_int))))))))))
+                        (real_value)))))))))
         (temp_var_decls
           (temp_var
             (variable_list

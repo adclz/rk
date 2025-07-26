@@ -507,7 +507,8 @@ END_TYPE
                   (offset
                     (unsigned_int))))
               (multibit_part_access
-                (unsigned_int))
+                (multibit
+                  (unsigned_int)))
               (simple_type_spec
                 (bit_str_type_name
                   (bool_name))))
@@ -577,7 +578,8 @@ END_TYPE
                   (offset
                     (unsigned_int))))
               (multibit_part_access
-                (unsigned_int))
+                (multibit
+                  (unsigned_int)))
               (simple_type_spec
                 (bit_str_type_name
                   (bool_name))))
@@ -629,7 +631,7 @@ END_TYPE
 
 --------------------------------------------------------------------------------
 
- (source_file
+    (source_file
       (data_type_decl
         (type_decl
           (identifier)
@@ -671,10 +673,7 @@ END_TYPE
                   (constant
                     (numeric_literal
                       (real_literal
-                        (real_value
-                          (signed_int
-                            (unsigned_int))
-                          (unsigned_int))))))))
+                        (real_value)))))))
             (line_comment)))))
 
 ================================================================================
@@ -690,7 +689,7 @@ END_TYPE
 
 --------------------------------------------------------------------------------
 
-  (source_file
+    (source_file
       (data_type_decl
         (type_decl
           (identifier)
@@ -710,10 +709,7 @@ END_TYPE
               (constant
                 (numeric_literal
                   (real_literal
-                    (real_value
-                      (signed_int
-                        (unsigned_int))
-                      (unsigned_int))))))))
+                    (real_value)))))))
         (type_decl
           (identifier)
           (simple_type_spec
@@ -766,7 +762,4 @@ END_TYPE
                 (constant
                   (numeric_literal
                     (real_literal
-                      (real_value
-                        (signed_int
-                          (unsigned_int))
-                        (unsigned_int)))))))))))
+                      (real_value))))))))))
