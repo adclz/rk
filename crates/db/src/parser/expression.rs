@@ -7,12 +7,16 @@ use auto_lsp::{
 };
 use salsa::Accumulator;
 
-use crate::hir::expressions::expression::{AnyBit, AnyChars, AnyDate, AnyDuration, AnyInt, AnyMagnitude, AnyNum, AnyReal, AnySigned, AnyUnsigned, FieldExpr, IndexExpr, Numeric, NumericKind, PathExpr, VariableAccessKind};
+use crate::hir::expressions::expression::{
+    AnyBit, AnyChars, AnyDate, AnyDuration, AnyInt, AnyMagnitude, AnyNum, AnyReal, AnySigned,
+    AnyUnsigned, FieldExpr, IndexExpr, Numeric, NumericKind, PathExpr, VariableAccessKind,
+};
 use crate::{
     diagnostics::{diagnostic_builder::diag, DiagnosticAccumulator},
     hir::expressions::expression::{
-        Expr, ExprKind, AnyElementary, AddOperatorKind, BooleanOperatorKind, ComparisonOperatorKind, MultOperatorKind, UnaryOperatorKind, ParamAssign, PathExprKind, PrimaryExpr, RefAdress,
-        RefValue, SymbolicVariable, VarAccess, VariableAccess,
+        AddOperatorKind, AnyElementary, BooleanOperatorKind, ComparisonOperatorKind, Expr,
+        ExprKind, MultOperatorKind, ParamAssign, PathExprKind, PrimaryExpr, RefAdress, RefValue,
+        SymbolicVariable, UnaryOperatorKind, VarAccess, VariableAccess,
     },
     hir::interned::identifier::Ident,
 };
@@ -39,7 +43,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                             left,
                             operator: BooleanOperatorKind::Or,
                             right,
-                        }
+                        },
                     ))
                 }
                 ast::generated::AndOperator_OrOperator_XorOperator::XorOperator(xor_operator) => {
@@ -53,7 +57,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                             left,
                             operator: BooleanOperatorKind::Xor,
                             right,
-                        }
+                        },
                     ))
                 }
                 ast::generated::AndOperator_OrOperator_XorOperator::AndOperator(and_operator) => {
@@ -67,7 +71,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                             left,
                             operator: BooleanOperatorKind::And,
                             right,
-                        }
+                        },
                     ))
                 }
             },
@@ -89,7 +93,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                                 left,
                                 operator,
                                 right,
-                            }
+                            },
                         ))
                     }
                     ast::generated::EqOperator_OrdOperator::OrdOperator(ord_operator) => {
@@ -100,7 +104,9 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                             ast::generated::Ord::Token_Less(_) => ComparisonOperatorKind::Lt,
                             ast::generated::Ord::Token_Greater(_) => ComparisonOperatorKind::Gt,
                             ast::generated::Ord::Token_LessEqual(_) => ComparisonOperatorKind::Le,
-                            ast::generated::Ord::Token_GreaterEqual(_) => ComparisonOperatorKind::Ge,
+                            ast::generated::Ord::Token_GreaterEqual(_) => {
+                                ComparisonOperatorKind::Ge
+                            }
                         };
 
                         Ok(Expr::new(
@@ -110,7 +116,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                                 left,
                                 operator,
                                 right,
-                            }
+                            },
                         ))
                     }
                 }
@@ -130,7 +136,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                         left,
                         operator,
                         right,
-                    }
+                    },
                 ))
             }
             ast::generated::Expression::MultOperator(mult_operator) => {
@@ -149,7 +155,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                         left,
                         operator,
                         right,
-                    }
+                    },
                 ))
             }
             ast::generated::Expression::PowerOperator(power_operator) => {
@@ -201,12 +207,12 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                 // todo: add multibits support
 
                 Ok(Expr::new(
-                    db, 
+                    db,
                     v.get_span(),
-                    ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess { 
-                        variable, 
-                        multibits: None
-                    })
+                    ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess {
+                        variable,
+                        multibits: None,
+                    }),
                 ))
             }
             ast::generated::PrimaryExpression::FuncCall(func) => {
@@ -226,7 +232,6 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                                     }
                                     ast::generated::ParamAssignInput_ParamAssignOutput::ParamAssignOutput(p) => {
                                         let variable = p.variable.to_access(db, file)?;
-                                        
                                         parameters.push(ParamAssign::ParamAssignOutput {
                                             not: p.not.is_some(),
                                             param: Ident::from_node(db, file, p.param.deref())?,
@@ -241,7 +246,10 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                     db,
                     func.get_span(),
                     ExprKind::PrimaryExpr(PrimaryExpr::FuncCall {
-                        path: PathExpr { span: func.get_span(), expr: target },
+                        path: PathExpr {
+                            span: func.get_span(),
+                            expr: target,
+                        },
                         params: parameters,
                     }),
                 ))
@@ -267,9 +275,10 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                             db,
                             s.get_span(),
                             ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
-                                value: RefValue::Address(RefAdress::Symbolic(
-                                    SymbolicVariable { this: s.this.is_some(), kind: s.children.parse(db, file)? }
-                                )),
+                                value: RefValue::Address(RefAdress::Symbolic(SymbolicVariable {
+                                    this: s.this.is_some(),
+                                    kind: s.children.parse(db, file)?,
+                                })),
                             }),
                         ))
                     }
@@ -298,17 +307,28 @@ impl<'db> ParseNumeric<'db> for ast::generated::BinaryInt_HexInt_OctalInt_Signed
     fn parse(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Numeric> {
         Ok(match self {
             ast::generated::BinaryInt_HexInt_OctalInt_SignedInt::BinaryInt(binary_int) => {
-                Numeric::new(db, Ident::from_node(db, file, binary_int)?, NumericKind::Binary)
+                Numeric::new(
+                    db,
+                    Ident::from_node(db, file, binary_int)?,
+                    NumericKind::Binary,
+                )
             }
             ast::generated::BinaryInt_HexInt_OctalInt_SignedInt::HexInt(hex_int) => {
                 Numeric::new(db, Ident::from_node(db, file, hex_int)?, NumericKind::Hex)
             }
             ast::generated::BinaryInt_HexInt_OctalInt_SignedInt::OctalInt(octal_int) => {
-                Numeric::new(db, Ident::from_node(db, file, octal_int)?, NumericKind::Octal)
+                Numeric::new(
+                    db,
+                    Ident::from_node(db, file, octal_int)?,
+                    NumericKind::Octal,
+                )
             }
             ast::generated::BinaryInt_HexInt_OctalInt_SignedInt::SignedInt(signed_int) => {
-                Numeric::new(db, Ident::from_node(db, file, signed_int)?, NumericKind::Signed)
-
+                Numeric::new(
+                    db,
+                    Ident::from_node(db, file, signed_int)?,
+                    NumericKind::Signed,
+                )
             }
         })
     }
@@ -328,8 +348,8 @@ impl<'db> ParseExpression<'db> for ast::generated::Constant {
                            AnyElementary::AnyBit(AnyBit::Bool(Ident::from_node(db, file, bool_literal.value.deref())?))
                         }
                     }
-                } 
-                Constant::CharLiteral(char_literal) => { 
+                }
+                Constant::CharLiteral(char_literal) => {
                     AnyElementary::AnyChars(AnyChars::AnyString(Ident::from_node(db, file, char_literal.value.deref())?))
                 }
                 Constant::NumericLiteral(numeric_literal) => {
@@ -369,9 +389,9 @@ impl<'db> ParseExpression<'db> for ast::generated::Constant {
                                     },
                                 }
                             }
-                        } 
+                        }
                     },
-                    ast::generated::IntLiteral_RealLiteral::RealLiteral(real_literal) => { 
+                    ast::generated::IntLiteral_RealLiteral::RealLiteral(real_literal) => {
                         let j = real_literal.Type.as_deref();
 
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(match real_literal.Type.as_deref() {
@@ -388,7 +408,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Constant {
                             None => AnyNum::AnyReal(AnyReal::Infer(Ident::from_node(db, file, real_literal.value.deref())?))
                         }))
                     },
-                } 
+                }
                 }
                 Constant::TimeLiteral(time_literal) => match time_literal.children.deref() {
                     ast::generated::Date_DateAndTime_Duration_TimeOfDay::Date(date) => {
@@ -434,8 +454,10 @@ impl<'db> ParseExpression<'db> for ast::generated::Constant {
                 },
             };
 
-        Ok(Expr::new(db, self.get_span(),
-        ExprKind::PrimaryExpr(PrimaryExpr::Literal(lit)),
+        Ok(Expr::new(
+            db,
+            self.get_span(),
+            ExprKind::PrimaryExpr(PrimaryExpr::Literal(lit)),
         ))
     }
 }
@@ -480,13 +502,14 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::DirectVariable {
             ast::generated::Offset_Partly::Partly(partly) => (None, true),
         };
 
-                Ok(VariableAccess {
+        Ok(VariableAccess {
             span: self.get_span(),
-            kind: VariableAccessKind::Direct{
+            kind: VariableAccessKind::Direct {
                 adress,
-            partly,
-            offset,
-            }})
+                partly,
+                offset,
+            },
+        })
     }
 }
 
@@ -499,9 +522,10 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::SymbolicVariable {
         Ok(VariableAccess {
             span: self.get_span(),
             kind: VariableAccessKind::Symbolic(SymbolicVariable {
-            this: self.this.is_some(),
-            kind: self.children.parse(db, file)?,
-        })})
+                this: self.this.is_some(),
+                kind: self.children.parse(db, file)?,
+            }),
+        })
     }
 }
 
@@ -516,18 +540,18 @@ impl<'db> ParseExpr<'db> for ast::generated::PathExpression {
 
     fn parse(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output> {
         Ok(match self.children.deref() {
-            ast::generated::FieldExpression_IndexExpression_VarAccess::FieldExpression(field_expr) => {
-                PathExprKind::Field(field_expr.parse(db, file)?) 
-            }
-            ast::generated::FieldExpression_IndexExpression_VarAccess::IndexExpression(index_expr) => {
-                PathExprKind::Index(index_expr.parse(db, file)?) 
-            }
+            ast::generated::FieldExpression_IndexExpression_VarAccess::FieldExpression(
+                field_expr,
+            ) => PathExprKind::Field(field_expr.parse(db, file)?),
+            ast::generated::FieldExpression_IndexExpression_VarAccess::IndexExpression(
+                index_expr,
+            ) => PathExprKind::Index(index_expr.parse(db, file)?),
             ast::generated::FieldExpression_IndexExpression_VarAccess::VarAccess(var_access) => {
                 PathExprKind::VarAccess(var_access.parse(db, file)?)
             }
         })
     }
-} 
+}
 
 impl<'db> ParseExpr<'db> for ast::generated::FieldExpression {
     type Output = FieldExpr<'db>;
@@ -535,7 +559,7 @@ impl<'db> ParseExpr<'db> for ast::generated::FieldExpression {
     fn parse(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output> {
         Ok(FieldExpr {
             path: Box::new(self.path.parse(db, file)?),
-            var: self.target.parse(db, file)?
+            var: self.target.parse(db, file)?,
         })
     }
 }
@@ -544,10 +568,11 @@ impl<'db> ParseExpr<'db> for ast::generated::IndexExpression {
     type Output = IndexExpr<'db>;
 
     fn parse(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output> {
-
         Ok(IndexExpr {
             path: Box::new(self.children.parse(db, file)?),
-            index: self.index.children
+            index: self
+                .index
+                .children
                 .iter()
                 .map(|i| i.children.to_expr(db, file))
                 .collect::<anyhow::Result<Vec<_>>>()?,
@@ -560,22 +585,24 @@ impl<'db> ParseExpr<'db> for ast::generated::VarAccess {
 
     fn parse(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output> {
         match self.children.deref() {
-            ast::generated::ERRUnexpectedThisInPath_Field_RefDeref::ERRUnexpectedThisInPath(direct_variable) => {
-                    let diag = diag()
-                        .message("Unexpected 'this' in path".into())
-                        .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
-                        .range(direct_variable.get_span())
-                        .call();
-                    DiagnosticAccumulator::accumulate(diag.into(), db);
-                
+            ast::generated::ERRUnexpectedThisInPath_Field_RefDeref::ERRUnexpectedThisInPath(
+                direct_variable,
+            ) => {
+                let diag = diag()
+                    .message("Unexpected 'this' in path".into())
+                    .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+                    .range(direct_variable.get_span())
+                    .call();
+                DiagnosticAccumulator::accumulate(diag.into(), db);
+
                 Err(anyhow::anyhow!("Unexpected 'this' in path"))
             }
             ast::generated::ERRUnexpectedThisInPath_Field_RefDeref::Field(field) => {
                 Ok(VarAccess::Simple(Ident::from_node(db, file, field)?))
             }
-            ast::generated::ERRUnexpectedThisInPath_Field_RefDeref::RefDeref(ref_deref) => {
-                Ok(VarAccess::Deref(Ident::from_node(db, file, ref_deref.Ref.deref())?))
-            }
+            ast::generated::ERRUnexpectedThisInPath_Field_RefDeref::RefDeref(ref_deref) => Ok(
+                VarAccess::Deref(Ident::from_node(db, file, ref_deref.Ref.deref())?),
+            ),
         }
     }
 }

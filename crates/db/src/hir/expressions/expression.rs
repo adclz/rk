@@ -1,9 +1,9 @@
 use crate::hir::interned::identifier::Ident;
-use crate::to_proto::{self_iter, IterToProto, ToProto};
 use crate::hir::semantic_index::SemanticIndex;
+use crate::to_proto::{self_iter, IterToProto, ToProto};
 use auto_enums::auto_enum;
 use auto_lsp::core::span::Span;
-use auto_lsp::default::db::BaseDatabase; 
+use auto_lsp::default::db::BaseDatabase;
 
 #[salsa::tracked(debug)]
 pub struct Expr<'db> {
@@ -154,7 +154,11 @@ impl<'a> Iterator for PathExprIterator<'a> {
 }
 
 impl<'db> IterToProto<'db> for PathExpr<'db> {
-    fn iter(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+    fn iter(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        sema: &'db SemanticIndex,
+    ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
         match &self.expr {
             PathExprKind::Field(field) => self_iter(self),
             PathExprKind::Index(index) => self_iter(self),
@@ -214,7 +218,11 @@ pub enum ParamAssign<'db> {
 }
 
 impl<'db> IterToProto<'db> for ParamAssign<'db> {
-    fn iter(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+    fn iter(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        sema: &'db SemanticIndex,
+    ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
         std::iter::empty()
     }
 }
@@ -258,7 +266,11 @@ pub enum VariableAccessKind<'db> {
 }
 
 impl<'db> IterToProto<'db> for VariableAccess<'db> {
-    fn iter(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+    fn iter(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        sema: &'db SemanticIndex,
+    ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
         match &self.kind {
             VariableAccessKind::Direct { adress, .. } => self_iter(self),
             VariableAccessKind::Symbolic(symbolic) => self_iter(self),
@@ -371,7 +383,7 @@ pub enum AnyBit {
 pub struct Numeric {
     pub ident: Ident,
     pub kind: NumericKind,
-} 
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NumericKind {
@@ -380,7 +392,6 @@ pub enum NumericKind {
     Octal,
     Signed,
 }
-
 
 #[salsa::tracked]
 impl Ident {
@@ -397,88 +408,135 @@ impl Ident {
 
 #[salsa::tracked]
 impl Numeric {
-
     #[salsa::tracked]
     pub fn as_bool(self, db: &dyn BaseDatabase) -> Result<bool, std::str::ParseBoolError> {
         self.ident(db).text(db).parse()
     }
 
     #[salsa::tracked]
-   pub fn as_u8(self, db: &dyn BaseDatabase) -> Result<u8, std::num::ParseIntError> {
+    pub fn as_u8(self, db: &dyn BaseDatabase) -> Result<u8, std::num::ParseIntError> {
         match self.kind(db) {
-            NumericKind::Binary => u8::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2),
-            NumericKind::Octal => u8::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8),
-            NumericKind::Hex => u8::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16),
+            NumericKind::Binary => {
+                u8::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2)
+            }
+            NumericKind::Octal => {
+                u8::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8)
+            }
+            NumericKind::Hex => {
+                u8::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16)
+            }
             NumericKind::Signed => self.ident(db).text(db).parse(),
         }
     }
 
     #[salsa::tracked]
-   pub fn as_u16(self, db: &dyn BaseDatabase) -> Result<u16, std::num::ParseIntError> {
+    pub fn as_u16(self, db: &dyn BaseDatabase) -> Result<u16, std::num::ParseIntError> {
         match self.kind(db) {
-            NumericKind::Binary => u16::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2),
-            NumericKind::Octal => u16::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8),
-            NumericKind::Hex => u16::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16),
+            NumericKind::Binary => {
+                u16::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2)
+            }
+            NumericKind::Octal => {
+                u16::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8)
+            }
+            NumericKind::Hex => {
+                u16::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16)
+            }
             NumericKind::Signed => self.ident(db).text(db).parse(),
         }
     }
 
     #[salsa::tracked]
-   pub fn as_u32(self, db: &dyn BaseDatabase) -> Result<u32, std::num::ParseIntError> {
+    pub fn as_u32(self, db: &dyn BaseDatabase) -> Result<u32, std::num::ParseIntError> {
         match self.kind(db) {
-            NumericKind::Binary => u32::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2),
-            NumericKind::Octal => u32::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8),
-            NumericKind::Hex => u32::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16),
+            NumericKind::Binary => {
+                u32::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2)
+            }
+            NumericKind::Octal => {
+                u32::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8)
+            }
+            NumericKind::Hex => {
+                u32::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16)
+            }
             NumericKind::Signed => self.ident(db).text(db).parse(),
         }
     }
 
     #[salsa::tracked]
-   pub fn as_u64(self, db: &dyn BaseDatabase) -> Result<u64, std::num::ParseIntError> {
+    pub fn as_u64(self, db: &dyn BaseDatabase) -> Result<u64, std::num::ParseIntError> {
         match self.kind(db) {
-            NumericKind::Binary => u64::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2),
-            NumericKind::Octal => u64::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8),
-            NumericKind::Hex => u64::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16),
+            NumericKind::Binary => {
+                u64::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2)
+            }
+            NumericKind::Octal => {
+                u64::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8)
+            }
+            NumericKind::Hex => {
+                u64::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16)
+            }
             NumericKind::Signed => self.ident(db).text(db).parse(),
         }
     }
 
     #[salsa::tracked]
-   pub fn as_i8(self, db: &dyn BaseDatabase) -> Result<i8, std::num::ParseIntError> {
+    pub fn as_i8(self, db: &dyn BaseDatabase) -> Result<i8, std::num::ParseIntError> {
         match self.kind(db) {
-            NumericKind::Binary => i8::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2),
-            NumericKind::Octal => i8::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8),
-            NumericKind::Hex => i8::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16),
+            NumericKind::Binary => {
+                i8::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2)
+            }
+            NumericKind::Octal => {
+                i8::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8)
+            }
+            NumericKind::Hex => {
+                i8::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16)
+            }
             NumericKind::Signed => self.ident(db).text(db).parse(),
         }
     }
 
     #[salsa::tracked]
-   pub fn as_i16(self, db: &dyn BaseDatabase) -> Result<i16, std::num::ParseIntError> {
+    pub fn as_i16(self, db: &dyn BaseDatabase) -> Result<i16, std::num::ParseIntError> {
         match self.kind(db) {
-            NumericKind::Binary => i16::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2),
-            NumericKind::Octal => i16::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8),
-            NumericKind::Hex => i16::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16),
+            NumericKind::Binary => {
+                i16::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2)
+            }
+            NumericKind::Octal => {
+                i16::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8)
+            }
+            NumericKind::Hex => {
+                i16::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16)
+            }
             NumericKind::Signed => self.ident(db).text(db).parse(),
         }
     }
 
     #[salsa::tracked]
-   pub fn as_i32(self, db: &dyn BaseDatabase) -> Result<i32, std::num::ParseIntError> {
+    pub fn as_i32(self, db: &dyn BaseDatabase) -> Result<i32, std::num::ParseIntError> {
         match self.kind(db) {
-            NumericKind::Binary => i32::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2),
-            NumericKind::Octal => i32::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8),
-            NumericKind::Hex => i32::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16),
+            NumericKind::Binary => {
+                i32::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2)
+            }
+            NumericKind::Octal => {
+                i32::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8)
+            }
+            NumericKind::Hex => {
+                i32::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16)
+            }
             NumericKind::Signed => self.ident(db).text(db).parse(),
         }
     }
 
-   #[salsa::tracked]
-   pub fn as_i64(self, db: &dyn BaseDatabase) -> Result<i64, std::num::ParseIntError> {
+    #[salsa::tracked]
+    pub fn as_i64(self, db: &dyn BaseDatabase) -> Result<i64, std::num::ParseIntError> {
         match self.kind(db) {
-            NumericKind::Binary => i64::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2),
-            NumericKind::Octal => i64::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8),
-            NumericKind::Hex => i64::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16),
+            NumericKind::Binary => {
+                i64::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2)
+            }
+            NumericKind::Octal => {
+                i64::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8)
+            }
+            NumericKind::Hex => {
+                i64::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16)
+            }
             NumericKind::Signed => self.ident(db).text(db).parse(),
         }
     }
@@ -572,7 +630,11 @@ impl<'db> ToProto<'db> for Expr<'db> {
 
 impl<'db> IterToProto<'db> for Expr<'db> {
     #[auto_enum(Iterator)]
-    fn iter(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+    fn iter(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        sema: &'db SemanticIndex,
+    ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
         match self.expr(db) {
             ExprKind::AddOperator {
                 left,
@@ -619,7 +681,8 @@ impl<'db> IterToProto<'db> for Expr<'db> {
                 Box::new(self_iter(self).chain(expr.iter(db, sema))) as Box<dyn Iterator<Item = _>>
             }
             ExprKind::PrimaryExpr(primary) => {
-                Box::new(self_iter(self).chain(primary.iter(db, sema))) as Box<dyn Iterator<Item = _>>
+                Box::new(self_iter(self).chain(primary.iter(db, sema)))
+                    as Box<dyn Iterator<Item = _>>
             }
         }
     }
@@ -627,7 +690,11 @@ impl<'db> IterToProto<'db> for Expr<'db> {
 
 impl<'db> IterToProto<'db> for PrimaryExpr<'db> {
     #[auto_enum(Iterator)]
-    fn iter(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+    fn iter(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        sema: &'db SemanticIndex,
+    ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
         match self {
             PrimaryExpr::FuncCall { path, params } => path
                 .iter(db, sema)

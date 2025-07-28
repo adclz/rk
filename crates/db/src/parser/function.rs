@@ -1,22 +1,17 @@
 use std::ops::Deref;
 
-use crate::diagnostics::diagnostic_builder::diag;
-use crate::diagnostics::DiagnosticAccumulator;
 use crate::hir::interned::identifier::Ident;
-use crate::hir::interned::namespace::SpannedNamespaceAccess;
 use crate::hir::pous::function::Function;
 use crate::hir::pous::pou::{Pou, PouDecl};
-use crate::hir::scopes::scope::{PouId, Scope, ScopeId, ScopeKind, ScopedPouId, Visibility};
 use crate::hir::pous::variable::Variable;
-use crate::hir::visibility::Modifiers;
-use crate::parser::semantic_index::{SemanticIndexBuilder};
+use crate::hir::scopes::scope::{PouId, Scope, ScopeId, ScopeKind, ScopedPouId, Visibility};
+use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::parser::statement::ParseStatement;
-use crate::parser::{ParseVarSection};
-use ast::generated::{FbDecl, FbVariables, FuncVariables};
+use crate::parser::ParseVarSection;
+use ast::generated::FuncVariables;
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::default::db::{file::File, BaseDatabase};
-use salsa::Accumulator;
 
 impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_function(&mut self, func: &ast::generated::FuncDecl) -> anyhow::Result<PouId> {
@@ -39,8 +34,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         let name = Ident::from_node(self.db, self.file, func.name.deref())?;
         let usings = self.parse_usings(&func.directives)?;
 
-        let result =
-            Function::new(self.db, variables, statements, self.current_scope);
+        let result = Function::new(self.db, variables, statements, self.current_scope);
 
         let scope = Scope::new(
             self.file,
@@ -62,11 +56,11 @@ impl<'db> SemanticIndexBuilder<'db> {
             ),
         );
 
-        self.scope_to_pous.entry(id).or_default().insert(
-                name.clone(),
-                ScopedPouId(pou_key, self.file),
-        );
- 
+        self.scope_to_pous
+            .entry(id)
+            .or_default()
+            .insert(name.clone(), ScopedPouId(pou_key, self.file));
+
         Ok(pou_key)
     }
 }
@@ -108,7 +102,11 @@ mod tests {
 
     use super::*;
     use crate::{
-        hir::{interned::{identifier::SpannedIdent, namespace::NamespacePath}, semantic_index::semantic_index}, RootDatabase
+        hir::{
+            interned::{identifier::SpannedIdent, namespace::NamespacePath},
+            semantic_index::semantic_index,
+        },
+        RootDatabase,
     };
 
     #[test]

@@ -715,10 +715,19 @@ impl<'db> ParseSpecInit<'db> for ast::generated::EdgeDecl {
                     .range(err.get_span())
                     .call();
                 DiagnosticAccumulator::accumulate(diag.into(), db);
-                Spec { span: self.get_span(), kind: SpecKind::Bool }
+                Spec {
+                    span: self.get_span(),
+                    kind: SpecKind::Bool,
+                }
             }
-            ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::Token_F_EDGE(fedge) => Spec { span: self.get_span(), kind: SpecKind::Bool },
-            ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::Token_R_EDGE(redge) => Spec { span: self.get_span(), kind: SpecKind::Bool },
+            ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::Token_F_EDGE(fedge) => Spec {
+                span: self.get_span(),
+                kind: SpecKind::Bool,
+            },
+            ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::Token_R_EDGE(redge) => Spec {
+                span: self.get_span(),
+                kind: SpecKind::Bool,
+            },
         };
 
         Ok(SpecInitResult::new(spec, None))

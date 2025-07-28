@@ -1,10 +1,16 @@
 use auto_lsp::{
     core::span::Span,
-    default::db::{file::File, BaseDatabase}, lsp_types::{MarkupContent, MarkupKind},
+    default::db::{file::File, BaseDatabase},
+    lsp_types::{MarkupContent, MarkupKind},
 };
 
 use crate::{
-    hir::{expressions::expression::Expr, interned::{identifier::Ident, namespace::NamespaceAccess}, semantic_index::SemanticIndex}, to_proto::{self_iter, IterToProto, SymbolInfo, ToProto}
+    hir::{
+        expressions::expression::Expr,
+        interned::{identifier::Ident, namespace::NamespaceAccess},
+        semantic_index::SemanticIndex,
+    },
+    to_proto::{self_iter, IterToProto, SymbolInfo, ToProto},
 };
 
 #[salsa::tracked(debug)]
@@ -28,7 +34,7 @@ pub struct Variable<'db> {
 
     #[tracked]
     #[returns(as_ref)]
-    pub init: Option<Expr<'db>>
+    pub init: Option<Expr<'db>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -69,19 +75,21 @@ impl<'db> ToProto<'db> for Variable<'db> {
 
     fn hover(&'db self, db: &'db dyn crate::BaseDatabase) -> Option<auto_lsp::lsp_types::Hover> {
         Some(auto_lsp::lsp_types::Hover {
-            contents: auto_lsp::lsp_types::HoverContents::Markup(
-                MarkupContent {
-                    kind: MarkupKind::Markdown,
-                    value: format!("Variable {}", self.name(db).text(db)).to_string()
-                }
-            ),
-            range: Some(self.name_span(db).into())
+            contents: auto_lsp::lsp_types::HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: format!("Variable {}", self.name(db).text(db)).to_string(),
+            }),
+            range: Some(self.name_span(db).into()),
         })
     }
 }
 
 impl<'db> IterToProto<'db> for Variable<'db> {
-    fn iter(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+    fn iter(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        sema: &'db SemanticIndex,
+    ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
         self_iter(self)
             .chain(self.spec(db).iter(db, sema))
             .chain(self.init(db).into_iter().map(|i| i as _))
@@ -153,7 +161,7 @@ impl<'db> Spec<'db> {
             SpecKind::LTod => "LTIME_OF_DAY",
             SpecKind::Time => "TIME",
             SpecKind::LTime => "LTIME",
-            _ => "?"
+            _ => "?",
         }
     }
 }
@@ -175,7 +183,11 @@ impl<'db> ToProto<'db> for Spec<'db> {
 
 impl<'db> IterToProto<'db> for Spec<'db> {
     #[auto_enums::auto_enum(Iterator)]
-    fn iter(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+    fn iter(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        sema: &'db SemanticIndex,
+    ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
         match &self.kind {
             SpecKind::Expr(expr) => self_iter(self).chain(expr.iter(db, sema)),
             _ => self_iter(self),

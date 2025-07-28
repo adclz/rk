@@ -9,13 +9,11 @@ use auto_lsp::default::server::capabilities::WORKSPACE_PROVIDER;
 use auto_lsp::default::server::file_events::change_text_document;
 use auto_lsp::default::server::file_events::changed_watched_files;
 use auto_lsp::default::server::file_events::open_text_document;
-use auto_lsp::lsp_server::Message;
-use auto_lsp::lsp_types;
-use auto_lsp::salsa;
-use db::RK_PARSER;
 use auto_lsp::default::server::workspace_init::WorkspaceInit;
 use auto_lsp::lsp_server;
 use auto_lsp::lsp_server::Connection;
+use auto_lsp::lsp_server::Message;
+use auto_lsp::lsp_types;
 use auto_lsp::lsp_types::notification::Cancel;
 use auto_lsp::lsp_types::notification::DidChangeTextDocument;
 use auto_lsp::lsp_types::notification::DidChangeWatchedFiles;
@@ -48,12 +46,14 @@ use auto_lsp::lsp_types::{
     OneOf, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
     SemanticTokensServerCapabilities,
 };
+use auto_lsp::salsa;
 use auto_lsp::server::notification_registry::NotificationRegistry;
 use auto_lsp::server::options::InitOptions;
 use auto_lsp::server::request_registry::RequestRegistry;
 use auto_lsp::server::Session;
 use capabilties::semantic_tokens::SUPPORTED_TYPES;
 use db::RootDatabase;
+use db::RK_PARSER;
 use std::error::Error;
 use std::panic::RefUnwindSafe;
 
@@ -166,7 +166,7 @@ fn on_notifications<Db: BaseDatabase + Clone + RefUnwindSafe>(
     registry
         .on_mut::<DidOpenTextDocument, _>(|s, p| Ok(open_text_document(s, p)?))
         .on_mut::<DidChangeTextDocument, _>(|s, p| Ok(change_text_document(s, p)?))
-        .on_mut::<DidChangeWatchedFiles, _>(|s, p|  {
+        .on_mut::<DidChangeWatchedFiles, _>(|s, p| {
             changed_watched_files(s, p)?;
             send_request::<lsp_types::request::WorkspaceDiagnosticRefresh>(s, ())
         })
@@ -187,15 +187,15 @@ fn on_notifications<Db: BaseDatabase + Clone + RefUnwindSafe>(
 }
 
 pub fn send_request<N: lsp_types::request::Request>(
-        session: &Session<impl salsa::Database>,
-        params: N::Params,
-    ) -> anyhow::Result<()> {
-        let params = serde_json::to_value(&params)?;
-        let n = lsp_server::Request {
-            method: N::METHOD.into(),
-            id: lsp_server::RequestId::from(0),
-            params,
-        };
-        session.connection.sender.send(Message::Request(n))?;
-        Ok(())
-    }
+    session: &Session<impl salsa::Database>,
+    params: N::Params,
+) -> anyhow::Result<()> {
+    let params = serde_json::to_value(&params)?;
+    let n = lsp_server::Request {
+        method: N::METHOD.into(),
+        id: lsp_server::RequestId::from(0),
+        params,
+    };
+    session.connection.sender.send(Message::Request(n))?;
+    Ok(())
+}

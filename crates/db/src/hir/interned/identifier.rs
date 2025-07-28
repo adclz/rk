@@ -1,8 +1,11 @@
+use auto_lsp::{
+    anyhow,
+    core::{ast::AstNode, span::Span},
+    default::db::{file::File, BaseDatabase},
+};
 use std::hash::Hash;
-use auto_lsp::{anyhow, core::{ast::AstNode, span::Span}, default::db::{file::File, BaseDatabase}};
 
 use crate::to_proto::ToProto;
-
 
 #[derive(Clone, Eq, salsa::Update, Debug)]
 pub struct SpannedIdent {
@@ -38,9 +41,9 @@ impl SpannedIdent {
 
     #[cfg(debug_assertions)]
     pub fn from_blank(db: &dyn BaseDatabase, text: &str) -> Self {
-        use auto_lsp::tree_sitter::Range;
         use auto_lsp::tree_sitter::Point;
-        
+        use auto_lsp::tree_sitter::Range;
+
         let range = Range {
             start_byte: 0,
             end_byte: 0,
@@ -57,7 +60,6 @@ impl SpannedIdent {
         self.ident.text(db)
     }
 }
-
 
 impl<'db> ToProto<'db> for SpannedIdent {
     fn get_span(&'db self, db: &'db dyn crate::BaseDatabase) -> &'db Span {

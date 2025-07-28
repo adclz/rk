@@ -1,7 +1,24 @@
 use auto_enums::auto_enum;
-use auto_lsp::{core::span::Span, default::db::BaseDatabase, lsp_types::{CompletionItem, InlayHint, InlayHintKind, InlayHintLabel, MarkupContent, MarkupKind}};
+use auto_lsp::{
+    core::span::Span,
+    default::db::BaseDatabase,
+    lsp_types::{
+        CompletionItem, InlayHint, InlayHintKind, InlayHintLabel, MarkupContent, MarkupKind,
+    },
+};
 
-use crate::{completions, hir::{interned::identifier::Ident, pous::{class::Class, data_type::DataType, function::Function, function_block::FunctionBlock, interface::Interface}, semantic_index::SemanticIndex}, to_proto::{self_iter, Extends, IterToProto, SymbolInfo, ToProto}};
+use crate::{
+    completions,
+    hir::{
+        interned::identifier::Ident,
+        pous::{
+            class::Class, data_type::DataType, function::Function, function_block::FunctionBlock,
+            interface::Interface,
+        },
+        semantic_index::SemanticIndex,
+    },
+    to_proto::{self_iter, Extends, IterToProto, SymbolInfo, ToProto},
+};
 
 #[salsa::tracked(debug)]
 pub struct PouDecl<'db> {
@@ -17,7 +34,7 @@ pub struct PouDecl<'db> {
 
     #[tracked]
     #[returns(ref)]
-    pub name_span: Span, 
+    pub name_span: Span,
 }
 
 impl<'db> IterToProto<'db> for PouDecl<'db> {
@@ -148,4 +165,3 @@ pub enum Pou<'db> {
     Interface(Interface<'db>),
     DataType(DataType<'db>),
 }
-

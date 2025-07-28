@@ -42,7 +42,6 @@ impl<'db> Function<'db> {
             // If there are no statements, we are also in variable declarations
             _ => return Some(var_completions),
         }
-        None
     }
 }
 

@@ -6,11 +6,11 @@ use crate::hir::interned::identifier::Ident;
 use crate::hir::interned::namespace::SpannedNamespaceAccess;
 use crate::hir::pous::function_block::FunctionBlock;
 use crate::hir::pous::pou::{Pou, PouDecl};
-use crate::hir::scopes::scope::{PouId, Scope, ScopeId, ScopeKind, ScopedPouId, Visibility};
 use crate::hir::pous::variable::Variable;
+use crate::hir::scopes::scope::{PouId, Scope, ScopeId, ScopeKind, ScopedPouId, Visibility};
 use crate::hir::visibility::Modifiers;
-use crate::parser::semantic_index::{SemanticIndexBuilder};
-use crate::parser::{ParseVarSection};
+use crate::parser::semantic_index::SemanticIndexBuilder;
+use crate::parser::ParseVarSection;
 use ast::generated::{FbDecl, FbVariables};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
@@ -36,7 +36,7 @@ impl<'db> SemanticIndexBuilder<'db> {
                     .map(|i| SpannedNamespaceAccess::from_ast(self.db, self.file, i))
                     .collect()
             })
-            .transpose()?; 
+            .transpose()?;
 
         func.children.iter().for_each(|f| {
             type Error = ast::generated::ERRExtendsMultipleTimes_ERRImplementsBeforeExtends_ERRImplementsMultipleTimes;
@@ -48,7 +48,7 @@ impl<'db> SemanticIndexBuilder<'db> {
                         .range(err.get_span())
                         .call();
                     DiagnosticAccumulator::accumulate(diag.into(), self.db);
-                }, 
+                },
                 Error::ERRImplementsBeforeExtends(err) => {
                     let diag = diag()
                         .message("IMPLEMENTS can only be defined after EXTENDS".into())
@@ -79,8 +79,14 @@ impl<'db> SemanticIndexBuilder<'db> {
         let name = Ident::from_node(self.db, self.file, func.name.deref())?;
         let usings = self.parse_usings(&func.directives)?;
 
-        let result =
-            FunctionBlock::new(self.db, extends, implements, variables, modifiers, self.current_scope);
+        let result = FunctionBlock::new(
+            self.db,
+            extends,
+            implements,
+            variables,
+            modifiers,
+            self.current_scope,
+        );
 
         let scope = Scope::new(
             self.file,
@@ -102,10 +108,10 @@ impl<'db> SemanticIndexBuilder<'db> {
             ),
         );
 
-        self.scope_to_pous.entry(id).or_default().insert(
-                name.clone(),
-                ScopedPouId(pou_key, self.file),
-        );
+        self.scope_to_pous
+            .entry(id)
+            .or_default()
+            .insert(name.clone(), ScopedPouId(pou_key, self.file));
 
         Ok(pou_key)
     }
@@ -153,11 +159,15 @@ impl<'db> ParseVariable<'db> for ast::generated::FbDecl {
 
 #[cfg(test)]
 mod tests {
-    use auto_lsp::{default::db::FileManager, lsp_types, tree_sitter::{Point, Range}};
+    use auto_lsp::{default::db::FileManager, lsp_types};
 
     use super::*;
     use crate::{
-        hir::{interned::{identifier::SpannedIdent, namespace::NamespacePath}, semantic_index::semantic_index}, RootDatabase
+        hir::{
+            interned::{identifier::SpannedIdent, namespace::NamespacePath},
+            semantic_index::semantic_index,
+        },
+        RootDatabase,
     };
 
     #[test]

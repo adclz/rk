@@ -7,7 +7,7 @@ use auto_lsp::{
     default::db::{file::File, BaseDatabase},
     lsp_types::{self, CompletionParams, CompletionResponse},
 };
-use db::{hir::COMPLETION_MARKER, hir::semantic_index::semantic_index, to_proto::{IterToProto}};
+use db::{hir::semantic_index::semantic_index, hir::COMPLETION_MARKER, to_proto::IterToProto};
 
 pub fn completions(
     db: &impl BaseDatabase,
@@ -39,7 +39,12 @@ pub fn completions(
     }
 }
 
-pub fn use_completion_marker(db: &impl BaseDatabase, file: File, position: lsp_types::Position, offset: usize) -> anyhow::Result<Option<CompletionResponse>> {
+pub fn use_completion_marker(
+    db: &impl BaseDatabase,
+    file: File,
+    position: lsp_types::Position,
+    offset: usize,
+) -> anyhow::Result<Option<CompletionResponse>> {
     let mut doc = (**file.document(db)).clone();
 
     let changes = vec![lsp_types::TextDocumentContentChangeEvent {
@@ -53,12 +58,22 @@ pub fn use_completion_marker(db: &impl BaseDatabase, file: File, position: lsp_t
 
     doc.update(&mut file.parsers(db).parser.write(), &changes)?;
 
-    let file = File::new(db, file.url(db).clone(), file.parsers(db), Arc::new(doc), None);
+    let file = File::new(
+        db,
+        file.url(db).clone(),
+        file.parsers(db),
+        Arc::new(doc),
+        None,
+    );
 
     use_completion_ctx(db, file, offset)
 }
 
-pub fn use_completion_ctx(db: &impl BaseDatabase, file: File, offset: usize) -> anyhow::Result<Option<CompletionResponse>> {
+pub fn use_completion_ctx(
+    db: &impl BaseDatabase,
+    file: File,
+    offset: usize,
+) -> anyhow::Result<Option<CompletionResponse>> {
     let ns = match semantic_index(db, file) {
         Some(ns) => ns,
         None => return Ok(None),

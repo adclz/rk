@@ -1,9 +1,9 @@
 use auto_lsp::{
     anyhow,
     default::db::BaseDatabase,
-    lsp_types::{CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams},
+    lsp_types::{CodeActionOrCommand, CodeActionParams},
 };
-use db::{diagnostics::cached_diagnostics, hir::semantic_index::semantic_index, to_proto::{IterToProto}};
+use db::{diagnostics::cached_diagnostics, hir::semantic_index::semantic_index};
 
 pub fn code_actions(
     db: &impl BaseDatabase,

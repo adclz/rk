@@ -84,7 +84,7 @@ impl<'db> ToProto<'db> for Namespace<'db> {
     ) -> Option<Vec<CompletionItem>> {
         let sema = semantic_index(db, self.file(db)).unwrap();
         let scope = sema.get_scope(self.scope_id(db));
-        
+
         // Don't provide completions between the namespace keyword and the namespace name
         if self.name_span(db).end_byte > offset {
             if !scope.visibility == Visibility::PUBLIC {
@@ -125,17 +125,22 @@ impl<'db> IterToProto<'db> for Namespace<'db> {
         sema: &'db SemanticIndex<'db>,
     ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
         let scope = sema.get_scope(self.scope_id(db));
-        
+
         self_iter(self)
             .chain(scope.usings.iter().map(move |using| using as _))
-            .chain(self.sorted_pous(db).iter().map(move |pou| sema.get_pou(*pou).iter(db, sema)).flatten())
+            .chain(
+                self.sorted_pous(db)
+                    .iter()
+                    .map(move |pou| sema.get_pou(*pou).iter(db, sema))
+                    .flatten(),
+            )
     }
 }
 
 /// Pous need to be sorted by their order of appearance in the namespace.
-/// 
+///
 /// Since FxHashMap does not guarantee order, we need to sort them explicitly.
-/// 
+///
 /// This is only used when iterating at the namespace level.
 #[salsa::tracked]
 impl<'db> Namespace<'db> {
@@ -152,9 +157,7 @@ mod tests {
     use auto_lsp::{default::db::FileManager, lsp_types};
 
     use super::*;
-    use crate::{
-        hir::pous::pou::Pou, RootDatabase
-    };
+    use crate::{hir::pous::pou::Pou, RootDatabase};
 
     #[test]
     fn global_scope() {
@@ -179,15 +182,16 @@ mod tests {
             .url(&url)
             .source(source.to_string())
             .call()
-            .unwrap();  
+            .unwrap();
 
         db.add_file(file).unwrap();
 
         let file = db.get_file(&url).unwrap();
-        let sema = semantic_index(&db, file).unwrap();  
+        let sema = semantic_index(&db, file).unwrap();
 
-        sema.pou_keys.iter().for_each(|(key, pou)| {
-            match pou.pou(&db) {
+        sema.pou_keys
+            .iter()
+            .for_each(|(key, pou)| match pou.pou(&db) {
                 Pou::Function(f) => {
                     assert_eq!(pou.name(&db).text(&db), "fn1");
                     assert_eq!(f.scope_id(&db), ScopeId::global());
@@ -205,10 +209,7 @@ mod tests {
                     assert_eq!(i.scope_id(&db), ScopeId::global());
                 }
                 Pou::DataType(_) => {}
-            }
-        });
-
-
+            });
     }
 
     #[test]
@@ -308,9 +309,12 @@ END_NAMESPACE
         let file = db.get_file(&url).unwrap();
         let sema = semantic_index(&db, file).unwrap();
 
-        let nested_ns = sema.namespace_keys.iter().find(|(k, n)| {
-            n.path(&db).to_string(&db) == "ns.nss2"
-        }).unwrap().1;
+        let nested_ns = sema
+            .namespace_keys
+            .iter()
+            .find(|(k, n)| n.path(&db).to_string(&db) == "ns.nss2")
+            .unwrap()
+            .1;
 
         let scope = sema.get_scope(nested_ns.scope_id(&db));
 
@@ -353,13 +357,13 @@ END_NAMESPACE
             .db(&db)
             .parsers(ast::RK_PARSER.get("structured_text").unwrap())
             .url(&url)
-            .source(source.to_string()) 
+            .source(source.to_string())
             .call()
             .unwrap();
 
-        db.add_file(file).unwrap(); 
+        db.add_file(file).unwrap();
         let file = db.get_file(&url).unwrap();
-        let sema = semantic_index(&db, file).unwrap();  
+        let sema = semantic_index(&db, file).unwrap();
 
         let main_ns = sema.namespace_keys.values().next().unwrap();
         let scope = sema.get_scope(main_ns.scope_id(&db));

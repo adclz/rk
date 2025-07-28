@@ -1,22 +1,20 @@
 use std::ops::Deref;
 
-use crate::diagnostics::diagnostic_builder::diag;
-use crate::diagnostics::DiagnosticAccumulator;
-use crate::hir;
 use crate::hir::interned::identifier::Ident;
 use crate::hir::interned::namespace::SpannedNamespaceAccess;
 use crate::hir::pous::interface::{Interface, Method};
 use crate::hir::pous::pou::{Pou, PouDecl};
 use crate::hir::scopes::scope::{PouId, Scope, ScopeId, ScopeKind, Visibility};
-use crate::parser::semantic_index::{SemanticIndexBuilder};
-use crate::parser::{Parse, ParseSpec, ParseVarSection};
+use crate::parser::semantic_index::SemanticIndexBuilder;
+use crate::parser::{ParseSpec, ParseVarSection};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
-use auto_lsp::default::db::{file::File, BaseDatabase};
-use salsa::Accumulator;
 
 impl<'db> SemanticIndexBuilder<'db> {
-    pub fn parse_interface(&mut self, interface: &ast::generated::InterfaceDecl) -> anyhow::Result<PouId> {
+    pub fn parse_interface(
+        &mut self,
+        interface: &ast::generated::InterfaceDecl,
+    ) -> anyhow::Result<PouId> {
         let id = ScopeId::from(interface.get_id());
         let pou_key = PouId::from(interface.get_id());
         let name = Ident::from_node(self.db, self.file, interface.name.deref())?;
@@ -48,8 +46,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             Some(self.current_scope),
         );
 
-        let result =
-             Interface::new(self.db, extends, methods, self.current_scope);
+        let result = Interface::new(self.db, extends, methods, self.current_scope);
 
         self.pou_keys.insert(
             pou_key,
@@ -77,7 +74,9 @@ impl<'db> SemanticIndexBuilder<'db> {
                 ast::generated::DataTypeAccess::ElemTypeName(elem_type_name) => {
                     elem_type_name.to_spec(self.db, self.file)
                 }
-                ast::generated::DataTypeAccess::NamespaceAccess(target) => target.to_spec(self.db, self.file),
+                ast::generated::DataTypeAccess::NamespaceAccess(target) => {
+                    target.to_spec(self.db, self.file)
+                }
             })
             .transpose()?;
 
@@ -105,5 +104,4 @@ impl<'db> SemanticIndexBuilder<'db> {
             variables,
         ))
     }
-    
 }

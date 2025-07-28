@@ -1,2 +1,2 @@
-pub mod snippets;
 pub mod request;
+pub mod snippets;

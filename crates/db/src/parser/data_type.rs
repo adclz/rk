@@ -1,7 +1,14 @@
 use std::ops::Deref;
 
 use crate::{
-    hir::{interned::identifier::Ident, pous::{data_type::DataType, pou::{Pou, PouDecl}}, scopes::scope::PouId},
+    hir::{
+        interned::identifier::Ident,
+        pous::{
+            data_type::DataType,
+            pou::{Pou, PouDecl},
+        },
+        scopes::scope::PouId,
+    },
     parser::{semantic_index::SemanticIndexBuilder, ParseInit, ParseSpec},
 };
 use auto_lsp::core::ast::AstNode;
@@ -11,9 +18,11 @@ use auto_lsp::{
 };
 use rustc_hash::FxHashMap;
 
-
 impl SemanticIndexBuilder<'_> {
-    pub fn parse_data_type(&mut self, data_type: &ast::generated::DataTypeDecl) -> anyhow::Result<()> {
+    pub fn parse_data_type(
+        &mut self,
+        data_type: &ast::generated::DataTypeDecl,
+    ) -> anyhow::Result<()> {
         let mut types = FxHashMap::default();
         data_type.parse(self.db, self.file, &mut types)?;
 
@@ -39,7 +48,7 @@ impl<'db> ParseDataType<'db> for ast::generated::DataTypeDecl {
         &self,
         db: &'db dyn BaseDatabase,
         file: File,
-        types: &mut FxHashMap<PouId, PouDecl<'db>>
+        types: &mut FxHashMap<PouId, PouDecl<'db>>,
     ) -> anyhow::Result<()> {
         type Spec = ast::generated::ArrayTypeSpec_EnumTypeSpec_RefTypeSpec_SimpleTypeSpec_StrTypeSpec_StructTypeSpec_SubrangeTypeSpec;
 
@@ -68,12 +77,13 @@ impl<'db> ParseDataType<'db> for ast::generated::DataTypeDecl {
             types.insert(
                 PouId::from(child.get_id()),
                 PouDecl::new(
-                db,
-                Pou::DataType(DataType::new(db, spec, init)),
-                child.get_span(),
-                name,
-                child.name.get_span()
-            ));
+                    db,
+                    Pou::DataType(DataType::new(db, spec, init)),
+                    child.get_span(),
+                    name,
+                    child.name.get_span(),
+                ),
+            );
         }
 
         Ok(())

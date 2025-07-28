@@ -1,8 +1,22 @@
-use auto_lsp::{default::db::{file::File, BaseDatabase}, lsp_types::{DiagnosticRelatedInformation, DiagnosticTag, Location}};
+use auto_lsp::{
+    default::db::{file::File, BaseDatabase},
+    lsp_types::{DiagnosticRelatedInformation, DiagnosticTag, Location},
+};
 use rustc_hash::FxHashMap;
 use salsa::Accumulator;
 
-use crate::{diagnostics::{diagnostic_builder::diag, DiagnosticAccumulator}, hir::{interned::{identifier::Ident, namespace::NamespacePath}, scopes::{iterators::{PouIterator, ScopedMap}, scope::{Scope, ScopeId, ScopeKind, ScopedNamespaceId, ScopedPouId}}, semantic_index::{semantic_index, SemanticIndex}, using::Using}};
+use crate::{
+    diagnostics::{diagnostic_builder::diag, DiagnosticAccumulator},
+    hir::{
+        interned::{identifier::Ident, namespace::NamespacePath},
+        scopes::{
+            iterators::{PouIterator, ScopedMap},
+            scope::{Scope, ScopeId, ScopeKind, ScopedNamespaceId, ScopedPouId},
+        },
+        semantic_index::{semantic_index, SemanticIndex},
+        using::Using,
+    },
+};
 
 #[salsa::tracked(returns(ref))]
 pub fn find_namespaces<'db>(
@@ -12,17 +26,16 @@ pub fn find_namespaces<'db>(
     db.get_files()
         .iter()
         .filter_map(|file| match semantic_index(db, *file) {
-            Some(sema) => sema.namespace_keys
-                .iter()
-                .find_map(|(key, ns)| {
-                    if ns.path(db) == &path {
-                        Some(ScopedNamespaceId(*key, *file))
-                    } else {
-                        None
-                    }
-                }),
-            None => None
-        }).collect()
+            Some(sema) => sema.namespace_keys.iter().find_map(|(key, ns)| {
+                if ns.path(db) == &path {
+                    Some(ScopedNamespaceId(*key, *file))
+                } else {
+                    None
+                }
+            }),
+            None => None,
+        })
+        .collect()
 }
 
 #[salsa::tracked(returns(ref), no_eq)]

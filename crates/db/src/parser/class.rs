@@ -8,7 +8,7 @@ use crate::hir::pous::class::Class;
 use crate::hir::pous::pou::{Pou, PouDecl};
 use crate::hir::scopes::scope::{PouId, Scope, ScopeId, ScopeKind, ScopedPouId, Visibility};
 use crate::hir::visibility::Modifiers;
-use crate::parser::semantic_index::{SemanticIndexBuilder};
+use crate::parser::semantic_index::SemanticIndexBuilder;
 use ast::generated::ClassDecl;
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
@@ -16,7 +16,7 @@ use salsa::Accumulator;
 
 impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_class(&mut self, class: &ClassDecl) -> anyhow::Result<PouId> {
-                let extends = class
+        let extends = class
             .extends
             .as_ref()
             .map(|e| SpannedNamespaceAccess::from_ast(self.db, self.file, e))
@@ -66,7 +66,7 @@ impl<'db> SemanticIndexBuilder<'db> {
                         .call();
                     DiagnosticAccumulator::accumulate(diag.into(), self.db);
                 },
-            } 
+            }
         });
 
         let id = ScopeId::from(class.get_id());
@@ -74,8 +74,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         let name = Ident::from_node(self.db, self.file, class.name.deref())?;
         let usings = self.parse_usings(&class.directives)?;
 
-        let result =
-            Class::new(self.db, extends, implements, modifiers, self.current_scope);
+        let result = Class::new(self.db, extends, implements, modifiers, self.current_scope);
 
         let scope = Scope::new(
             self.file,
@@ -97,10 +96,10 @@ impl<'db> SemanticIndexBuilder<'db> {
             ),
         );
 
-        self.scope_to_pous.entry(id).or_default().insert(
-                name.clone(),
-                ScopedPouId(pou_key, self.file),
-        );
+        self.scope_to_pous
+            .entry(id)
+            .or_default()
+            .insert(name.clone(), ScopedPouId(pou_key, self.file));
 
         Ok(pou_key)
     }

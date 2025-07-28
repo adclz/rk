@@ -1,8 +1,12 @@
 use std::ops::Deref;
 
-use auto_lsp::{anyhow, core::span::Span, default::db::{file::File, BaseDatabase}};
-use auto_lsp::core::ast::AstNode;
 use crate::{hir::interned::identifier::SpannedIdent, to_proto::ToProto};
+use auto_lsp::core::ast::AstNode;
+use auto_lsp::{
+    anyhow,
+    core::span::Span,
+    default::db::{file::File, BaseDatabase},
+};
 
 /// Interned namespace path
 #[salsa::interned(debug, no_lifetime)]
@@ -57,7 +61,6 @@ impl From<(&dyn BaseDatabase, &Vec<SpannedIdent>)> for NamespacePath {
     }
 }
 
-
 /// A [`SpannedPath`] is a wrapper around a [`NamespaceAccess`] that includes a span
 #[derive(Clone, Hash, salsa::Update, Debug)]
 pub struct SpannedNamespaceAccess {
@@ -70,7 +73,7 @@ impl PartialEq for SpannedNamespaceAccess {
         self.path == other.path
     }
 }
- 
+
 impl<'db> ToProto<'db> for SpannedNamespaceAccess {
     fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         &self.span
@@ -97,7 +100,7 @@ impl SpannedNamespaceAccess {
 }
 
 /// A [`PathTarget`] represents a fully qualified path to something
-/// 
+///
 /// If no namespace is present, it is a simple identifier
 #[salsa::interned(debug, no_lifetime)]
 pub struct NamespaceAccess {

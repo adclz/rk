@@ -2,10 +2,10 @@ use auto_lsp::{
     anyhow,
     core::document::Document,
     default::db::BaseDatabase,
-    lsp_types::{Hover, HoverContents, HoverParams, MarkupContent, MarkupKind},
+    lsp_types::{Hover, HoverParams},
 };
-use db::{hir::semantic_index::semantic_index};
-use db::to_proto::{Extends, IterToProto};
+use db::hir::semantic_index::semantic_index;
+use db::to_proto::IterToProto;
 
 pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Option<Hover>> {
     let uri = &params.text_document_position_params.text_document.uri;
@@ -29,10 +29,11 @@ pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Opti
         Some(ns) => ns,
         None => return Ok(None),
     };
-    
-    let symbol = ns.named_descendant_at(db, &ns, position)
+
+    let symbol = ns
+        .named_descendant_at(db, &ns, position)
         .or_else(|| ns.descendant_at(db, &ns, position));
-        
+
     match symbol.and_then(|s| s.hover(db)) {
         Some(hover) => Ok(Some(hover)),
         None => Ok(None),

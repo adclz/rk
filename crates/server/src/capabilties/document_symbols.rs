@@ -7,7 +7,8 @@ use auto_lsp::{
     lsp_types::{DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse},
 };
 use db::{
-    hir::semantic_index::{semantic_index}, to_proto::{IterToProto, SymbolInfo}
+    hir::semantic_index::semantic_index,
+    to_proto::{IterToProto, SymbolInfo},
 };
 
 /// Helper function to check if one range is inside another

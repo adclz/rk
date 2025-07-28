@@ -1,11 +1,13 @@
 use auto_lsp::{core::span::Span, default::db::BaseDatabase};
 
 use crate::{
-    hir::{
-        semantic_index::SemanticIndex, scopes::scope::ScopeId, pous::variable::{Spec, Variable}
-    },
     hir::interned::identifier::Ident,
     hir::interned::namespace::SpannedNamespaceAccess,
+    hir::{
+        pous::variable::{Spec, Variable},
+        scopes::scope::ScopeId,
+        semantic_index::SemanticIndex,
+    },
     to_proto::{IterToProto, ToProto},
 };
 
@@ -17,11 +19,15 @@ pub struct Interface<'db> {
     #[returns(ref)]
     pub methods: Vec<Method<'db>>,
 
-    pub scope_id: ScopeId
+    pub scope_id: ScopeId,
 }
 
 impl<'db> IterToProto<'db> for Interface<'db> {
-    fn iter(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+    fn iter(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        sema: &'db SemanticIndex,
+    ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
         self.methods(db)
             .iter()
             .map(move |m| m.iter(db, sema).map(|n| n))
@@ -57,7 +63,11 @@ impl<'db> ToProto<'db> for Method<'db> {
 }
 
 impl<'db> IterToProto<'db> for Method<'db> {
-    fn iter(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+    fn iter(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        sema: &'db SemanticIndex,
+    ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
         Box::new(self.variables(db).iter().map(move |v| v as _))
     }
 }

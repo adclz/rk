@@ -1,10 +1,7 @@
-use auto_lsp::{
-    core::ast::AstNode, default::db::{file::File}
-};
+use auto_lsp::{core::ast::AstNode, default::db::file::File};
 use bitflags::bitflags;
 
-use crate::hir::{using::Using};
-
+use crate::hir::using::Using;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, salsa::Update)]
 pub struct NamespaceId(pub(crate) usize);

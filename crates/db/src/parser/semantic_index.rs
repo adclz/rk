@@ -1,11 +1,7 @@
 use std::ops::Deref;
 use std::panic;
-use std::sync::Arc;
 
-use ast::generated::{
-    ERRInvalidPouKeyword,
-    ERRInvalidPouKeyword_ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl,
-};
+use ast::generated::ERRInvalidPouKeyword;
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::default::db::{file::File, BaseDatabase};
@@ -14,11 +10,13 @@ use salsa::Accumulator;
 
 use crate::diagnostics::diagnostic_builder::diag;
 use crate::diagnostics::DiagnosticAccumulator;
-use crate::hir::interned::namespace::NamespacePath;
-use crate::hir::namespace::{Namespace};
-use crate::hir::pous::pou::PouDecl;
-use crate::hir::scopes::scope::{NamespaceId, PouId, Scope, ScopeId, ScopeKind, ScopedNamespaceId, ScopedPouId, Visibility};
 use crate::hir::interned::identifier::{Ident, SpannedIdent};
+use crate::hir::interned::namespace::NamespacePath;
+use crate::hir::namespace::Namespace;
+use crate::hir::pous::pou::PouDecl;
+use crate::hir::scopes::scope::{
+    NamespaceId, PouId, Scope, ScopeId, ScopeKind, ScopedNamespaceId, ScopedPouId, Visibility,
+};
 use crate::hir::semantic_index::SemanticIndex;
 
 pub struct SemanticIndexBuilder<'db> {
@@ -154,7 +152,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         self.scope_keys.insert(ScopeId::global(), scope);
 
         debug_assert!(!self
-            .namespace_keys 
+            .namespace_keys
             .keys()
             .any(|k| self.pou_keys.contains_key(&PouId::from(k.0))));
 

@@ -1,7 +1,7 @@
 use auto_lsp_codegen::generate;
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::fs;
+use std::path::PathBuf;
 
 fn main() {
     println!("cargo:rerun-if-changed=../tree-sitter/src/node-types.json");
@@ -16,8 +16,8 @@ fn main() {
             Some(HashMap::from([
                 ("\n", "EOL"),
                 (" ", "WHITESPACE"),
-                ("`", "BACKTICK")
-            ]))
+                ("`", "BACKTICK"),
+            ])),
         )
         .to_string(),
     )

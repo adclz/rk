@@ -1,6 +1,8 @@
 use auto_lsp::core::span::Span;
 
-use crate::hir::expressions::expression::{Expr, ParamAssign, PathExprKind, SymbolicVariable, VariableAccess};
+use crate::hir::expressions::expression::{
+    Expr, ParamAssign, PathExprKind, SymbolicVariable, VariableAccess,
+};
 
 #[salsa::tracked(debug)]
 pub struct Stmt<'db> {

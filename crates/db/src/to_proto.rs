@@ -1,10 +1,15 @@
 use auto_lsp::{
     core::span::Span,
-    default::db::{BaseDatabase},
+    default::db::BaseDatabase,
     lsp_types::{CompletionItem, Hover, InlayHint, SymbolKind},
 };
 
-use crate::hir::{expressions::expression::Expr, interned::namespace::SpannedNamespaceAccess, pous::variable::{Spec, SpecKind}, semantic_index::SemanticIndex};
+use crate::hir::{
+    expressions::expression::Expr,
+    interned::namespace::SpannedNamespaceAccess,
+    pous::variable::{Spec, SpecKind},
+    semantic_index::SemanticIndex,
+};
 
 #[derive(bon::Builder, Debug, Clone)]
 pub struct SymbolInfo<'a> {
@@ -91,7 +96,11 @@ pub trait ToProto<'db> {
 
     // LSP
 
-    fn completion(&'db self, _db: &'db dyn crate::BaseDatabase,  _offset: usize) -> Option<Vec<CompletionItem>> {
+    fn completion(
+        &'db self,
+        _db: &'db dyn crate::BaseDatabase,
+        _offset: usize,
+    ) -> Option<Vec<CompletionItem>> {
         None
     }
 
@@ -104,16 +113,23 @@ pub trait ToProto<'db> {
     }
 }
 
-pub fn self_iter<'db>(
-    s: &'db impl ToProto<'db>,
-) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+pub fn self_iter<'db>(s: &'db impl ToProto<'db>) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
     std::iter::once::<&'db dyn ToProto<'db>>(s)
 }
 
 pub trait IterToProto<'db> {
-    fn iter(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>,) -> impl Iterator<Item = &'db dyn ToProto<'db>>;
+    fn iter(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        sema: &'db SemanticIndex<'db>,
+    ) -> impl Iterator<Item = &'db dyn ToProto<'db>>;
 
-    fn descendant_at(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>, offset: usize) -> Option<&'db dyn ToProto<'db>> {
+    fn descendant_at(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        sema: &'db SemanticIndex<'db>,
+        offset: usize,
+    ) -> Option<&'db dyn ToProto<'db>> {
         let mut best_match: Option<&'db dyn ToProto<'db>> = None;
 
         for node in self.iter(db, sema) {
@@ -136,7 +152,12 @@ pub trait IterToProto<'db> {
         best_match
     }
 
-    fn named_descendant_at(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>, offset: usize) -> Option<&'db dyn ToProto<'db>>  {
+    fn named_descendant_at(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        sema: &'db SemanticIndex<'db>,
+        offset: usize,
+    ) -> Option<&'db dyn ToProto<'db>> {
         let mut best_match: Option<&'db dyn ToProto<'db>> = None;
 
         for node in self.iter(db, sema) {

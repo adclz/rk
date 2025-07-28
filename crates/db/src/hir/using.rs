@@ -1,6 +1,15 @@
-use auto_lsp::{core::span::Span, default::db::BaseDatabase, lsp_types::{CompletionItem, MarkupContent, MarkupKind}};
+use auto_lsp::{
+    core::span::Span,
+    default::db::BaseDatabase,
+    lsp_types::{CompletionItem, MarkupContent, MarkupKind},
+};
 
-use crate::{hir::{interned::namespace::NamespacePath, scopes::scope::ScopeId, semantic_index::SemanticIndex}, to_proto::{self_iter, IterToProto, ToProto}};
+use crate::{
+    hir::{
+        interned::namespace::NamespacePath, scopes::scope::ScopeId, semantic_index::SemanticIndex,
+    },
+    to_proto::{self_iter, IterToProto, ToProto},
+};
 
 #[salsa::tracked(debug)]
 pub struct Using<'db> {
@@ -37,7 +46,7 @@ impl<'db> ToProto<'db> for Using<'db> {
         _offset: usize,
     ) -> Option<Vec<CompletionItem>> {
         None
-       /* let fragments = self.path(db).fragments(db);
+        /* let fragments = self.path(db).fragments(db);
         let mut marker_index = None;
 
         for (i, fragment) in fragments.iter().enumerate() {
@@ -89,7 +98,7 @@ impl<'db> ToProto<'db> for Using<'db> {
             .map(|ident| CompletionItem::new_simple(ident.ident.text(db), ident.ident.text(db)))
             .collect();
 
-        Some(completions)*/ 
+        Some(completions)*/
     }
 }
 
@@ -102,5 +111,3 @@ impl<'db> IterToProto<'db> for Using<'db> {
         self_iter(self).chain(self.path(db).fragments(db).iter().map(move |f| f as _))
     }
 }
-
-

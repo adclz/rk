@@ -3,10 +3,7 @@ use std::sync::LazyLock;
 use auto_lsp::{
     anyhow,
     default::db::BaseDatabase,
-    lsp_types::{
-        self,
-        DocumentFormattingParams, TextEdit,
-    },
+    lsp_types::{self, DocumentFormattingParams, TextEdit},
 };
 use topiary_core::{formatter, Language, Operation, TopiaryQuery};
 
@@ -174,14 +171,13 @@ pub fn formatting(
 
 #[cfg(test)]
 mod tests {
-    use auto_lsp::{tree_sitter};
+    use auto_lsp::tree_sitter;
 
     use super::*;
 
     #[test]
     fn load_formatting_query() {
         tree_sitter::Query::new(&tree_sitter_rk::LANGUAGE.into(), QUERY)
-        .expect("Failed to create formatting query");
+            .expect("Failed to create formatting query");
     }
-
 }

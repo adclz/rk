@@ -1,23 +1,14 @@
-use std::ops::Deref;
-use std::panic;
-
-use ast::generated::{
-    ERRInvalidPouKeyword,
-    ERRInvalidPouKeyword_ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl,
-};
+use ast::generated::ERRInvalidPouKeyword_ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl;
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
-use auto_lsp::default::db::{file::File, BaseDatabase};
-use rustc_hash::FxHashMap;
-use salsa::Accumulator;
 
-use crate::diagnostics::diagnostic_builder::diag;
-use crate::diagnostics::DiagnosticAccumulator;
+use super::semantic_index::SemanticIndexBuilder;
+use crate::hir::interned::identifier::SpannedIdent;
 use crate::hir::interned::namespace::NamespacePath;
 use crate::hir::namespace::Namespace;
-use crate::hir::scopes::scope::{NamespaceId, Scope, ScopeId, ScopeKind, ScopedNamespaceId, ScopedPouId, Visibility};
-use crate::hir::interned::identifier::{Ident, SpannedIdent};
-use super::semantic_index::SemanticIndexBuilder;
+use crate::hir::scopes::scope::{
+    NamespaceId, Scope, ScopeId, ScopeKind, ScopedNamespaceId, Visibility,
+};
 
 impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_namespace(
@@ -67,7 +58,6 @@ impl<'db> SemanticIndexBuilder<'db> {
                     }
                     Decl::FuncDecl(func) => {
                         pous.push(self.parse_function(func)?);
-
                     }
                     Decl::FbDecl(fb) => {
                         pous.push(self.parse_function_block(fb)?);
@@ -76,7 +66,7 @@ impl<'db> SemanticIndexBuilder<'db> {
                         self.parse_class(class)?;
                     }
                     Decl::DataTypeDecl(data_type) => {
-                        self.parse_data_type(data_type)?; 
+                        self.parse_data_type(data_type)?;
                     }
                     Decl::InterfaceDecl(interface) => {
                         self.parse_interface(interface)?;
@@ -101,7 +91,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         // Then insert it into the map with its ID
         self.namespace_keys
             .insert(namespace_id.into(), result.clone());
-        
+
         Ok(())
     }
 }

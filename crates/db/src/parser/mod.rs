@@ -1,8 +1,11 @@
 use auto_lsp::{anyhow, default::db::file::File};
-use salsa::Update;
 
 use crate::{
-    hir::{expressions::expression::Expr, pous::variable::{Spec, Variable}}, parser::semantic_index::SemanticIndexBuilder, BaseDatabase
+    hir::{
+        expressions::expression::Expr,
+        pous::variable::{Spec, Variable},
+    },
+    BaseDatabase,
 };
 
 pub mod class;
@@ -12,17 +15,11 @@ pub mod function;
 pub mod function_block;
 pub mod interface;
 pub mod namespace;
+pub mod semantic_index;
 pub mod statement;
 pub mod types;
-pub mod variables;
 pub mod using;
-pub mod semantic_index; 
-
-trait Parse<'db>: Sized {
-    type Output: Update;
-
-    fn parse(&self, db: &'db dyn BaseDatabase, sem: &'db SemanticIndexBuilder<'db>) -> anyhow::Result<Self::Output>;
-}
+pub mod variables;
 
 pub trait ParseVarSection<'db> {
     fn parse(

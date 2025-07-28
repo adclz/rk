@@ -83,14 +83,13 @@ pub fn folding_ranges(
 
 #[cfg(test)]
 mod tests {
-    use auto_lsp::{tree_sitter};
+    use auto_lsp::tree_sitter;
 
     use super::*;
 
     #[test]
     fn load_fold_query() {
         tree_sitter::Query::new(&tree_sitter_rk::LANGUAGE.into(), FOLD)
-        .expect("Failed to create fold query");
+            .expect("Failed to create fold query");
     }
-
 }
