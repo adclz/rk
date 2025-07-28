@@ -9,7 +9,6 @@ use crate::diagnostics::IdeDiagnostic;
 
 #[bon::builder]
 pub fn diag<'a>(
-    file: File,
     range: Span,
     message: String,
     source: Option<String>,
@@ -21,7 +20,6 @@ pub fn diag<'a>(
     fixes: Option<Vec<CodeAction>>,
 ) -> IdeDiagnostic {
     IdeDiagnostic {
-        file,
         diagnostic: auto_lsp::lsp_types::Diagnostic {
             range: range.into(),
             severity,

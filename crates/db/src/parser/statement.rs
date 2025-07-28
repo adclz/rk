@@ -2,7 +2,7 @@ use std::ops::Deref;
 
 use crate::diagnostics::diagnostic_builder::diag;
 use crate::diagnostics::DiagnosticAccumulator;
-use crate::hir::statement::{Stmt, StmtKind};
+use crate::hir::expressions::statement::{Stmt, StmtKind};
 use crate::parser::expression::{ParseExpression, ParseVariableAccess};
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::{anyhow, default::db::file::File};
@@ -10,7 +10,7 @@ use salsa::Accumulator;
 
 pub trait ParseStatement<'db> {
     fn to_statement(
-        &'db self,
+        &self,
         db: &'db dyn auto_lsp::default::db::BaseDatabase,
         file: File,
     ) -> anyhow::Result<Stmt<'db>>;
@@ -18,7 +18,7 @@ pub trait ParseStatement<'db> {
 
 impl<'db> ParseStatement<'db> for ast::generated::Stmt {
     fn to_statement(
-        &'db self,
+        &self,
         db: &'db dyn auto_lsp::default::db::BaseDatabase,
         file: File,
     ) -> anyhow::Result<Stmt<'db>> {
@@ -42,14 +42,13 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
 
 impl<'db> ParseStatement<'db> for ast::generated::Assign {
     fn to_statement(
-        &'db self,
+        &self,
         db: &'db dyn auto_lsp::default::db::BaseDatabase,
         file: File,
     ) -> anyhow::Result<Stmt<'db>> {
         let var = match self.variable.deref() {
             ast::generated::ERRAssignFuncCall_Variable::ERRAssignFuncCall(err) => {
                 let diag = diag()
-                    .file(file)
                     .message("Cannot assign to a function call".into())
                     .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                     .range(err.get_span())
@@ -63,7 +62,6 @@ impl<'db> ParseStatement<'db> for ast::generated::Assign {
         match self.target.deref() {
             ast::generated::ERREmptyRightHandAssignment_Assignment_AssignmentAttempt::ERREmptyRightHandAssignment(err) => {
                 let diag = diag()
-                    .file(file)
                     .message("Empty right-hand side in assignment".into())
                     .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                     .range(err.get_span())

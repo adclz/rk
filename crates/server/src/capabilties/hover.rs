@@ -4,7 +4,7 @@ use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{Hover, HoverContents, HoverParams, MarkupContent, MarkupKind},
 };
-use db::{solver::namespace::namespaces_in_file};
+use db::{hir::semantic_index::semantic_index};
 use db::to_proto::{Extends, IterToProto};
 
 pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Option<Hover>> {
@@ -25,13 +25,13 @@ pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Opti
             )
         })?;
 
-    let ns = match namespaces_in_file(db, file) {
+    let ns = match semantic_index(db, file) {
         Some(ns) => ns,
         None => return Ok(None),
     };
     
-    let symbol = ns.named_descendant_at(db, position)
-        .or_else(|| ns.descendant_at(db, position));
+    let symbol = ns.named_descendant_at(db, &ns, position)
+        .or_else(|| ns.descendant_at(db, &ns, position));
         
     match symbol.and_then(|s| s.hover(db)) {
         Some(hover) => Ok(Some(hover)),

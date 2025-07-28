@@ -8,18 +8,16 @@ use auto_lsp::{
 
 use crate::{
     hir::{
-        expression::Expr,
-        variable::{Spec, SpecKind, Subrange},
+        expressions::expression::Expr, interned::namespace::NamespaceAccess, pous::variable::{Spec, SpecKind, Subrange}
     },
     parser::{expression::ParseExpression, ParseInit, ParseSpec, ParseSpecInit, SpecInitResult},
-    solver::fq_name::NamespaceAccess,
 };
 
 // Target
 
 impl<'db> ParseSpecInit<'db> for ast::generated::NamespaceAccess {
     fn to_spec_init(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         file: File,
     ) -> anyhow::Result<SpecInitResult<'db>> {
@@ -28,7 +26,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::NamespaceAccess {
 }
 
 impl<'db> ParseSpec<'db> for ast::generated::NamespaceAccess {
-    fn to_spec(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
+    fn to_spec(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
         Ok(Spec {
             span: self.get_span(),
             kind: SpecKind::Target(NamespaceAccess::from_ast(db, file, self)?)
@@ -39,14 +37,14 @@ impl<'db> ParseSpec<'db> for ast::generated::NamespaceAccess {
 // Simple type
 
 impl<'db> ParseSpec<'db> for ast::generated::SimpleTypeSpec {
-    fn to_spec(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
+    fn to_spec(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
         // forwarded to ElemTypeName
         self.children.deref().to_spec(db, file)
     }
 }
 
 impl<'db> ParseSpec<'db> for ast::generated::DataTypeAccess {
-    fn to_spec(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
+    fn to_spec(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
         match self {
             ast::generated::DataTypeAccess::ElemTypeName(elem_type_name) => {
                 elem_type_name.to_spec(db, file)
@@ -57,7 +55,7 @@ impl<'db> ParseSpec<'db> for ast::generated::DataTypeAccess {
 }
 
 impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
-    fn to_spec(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
+    fn to_spec(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
         type AstSpec = ast::generated::ElemTypeName;
         Ok(match self {
             AstSpec::BitStrTypeName(str) => match str.children.deref() {
@@ -113,7 +111,7 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
 }
 
 impl<'db> ParseSpec<'db> for ast::generated::IntTypeName {
-    fn to_spec(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
+    fn to_spec(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
         Ok(match self.children.deref() {
             ast::generated::SignIntTypeName_UnsignIntTypeName::SignIntTypeName(int) => {
                 match int.children.deref() {
@@ -144,7 +142,7 @@ impl<'db> ParseSpec<'db> for ast::generated::IntTypeName {
 }
 
 impl<'db> ParseInit<'db> for ast::generated::SimpleTypeInit {
-    fn to_init(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>> {
+    fn to_init(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>> {
         Ok(self.children.children.to_expr(db, file)?)
     }
 }
@@ -152,7 +150,7 @@ impl<'db> ParseInit<'db> for ast::generated::SimpleTypeInit {
 // String type
 
 impl<'db> ParseSpec<'db> for ast::generated::StrTypeSpec {
-    fn to_spec(&'db self, _: &'db dyn BaseDatabase, _: File) -> anyhow::Result<Spec<'db>> {
+    fn to_spec(&self, _: &'db dyn BaseDatabase, _: File) -> anyhow::Result<Spec<'db>> {
         type AstSpec = ast::generated::DByteStrSpec_DChar_SByteStrSpec_SChar;
         Ok(match self.children.deref() {
             AstSpec::DByteStrSpec(_) =>                         Spec { span: self.get_span(), kind: SpecKind::String },
@@ -170,7 +168,7 @@ impl<'db> ParseSpec<'db> for ast::generated::StrTypeSpec {
 // Array type
 
 impl<'db> ParseSpec<'db> for ast::generated::ArrayTypeSpec {
-    fn to_spec(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
+    fn to_spec(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
         match self.Type.deref() {
             ast::generated::DataTypeAccess::ElemTypeName(elem_type_name) => {
                 elem_type_name.to_spec(db, file)
@@ -181,7 +179,7 @@ impl<'db> ParseSpec<'db> for ast::generated::ArrayTypeSpec {
 }
 
 impl<'db> ParseInit<'db> for ast::generated::ArrayTypeInit {
-    fn to_init(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>> {
+    fn to_init(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>> {
         todo!()
     }
 }
@@ -189,13 +187,13 @@ impl<'db> ParseInit<'db> for ast::generated::ArrayTypeInit {
 // Array conformand
 
 impl<'db> ParseSpec<'db> for ast::generated::ArrayConformand {
-    fn to_spec(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
+    fn to_spec(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
         todo!()
     }
 }
 
 impl<'db> ParseInit<'db> for ast::generated::ArrayConformand {
-    fn to_init(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>> {
+    fn to_init(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>> {
         todo!()
     }
 }
@@ -203,13 +201,13 @@ impl<'db> ParseInit<'db> for ast::generated::ArrayConformand {
 // Struct type
 
 impl<'db> ParseSpec<'db> for ast::generated::StructTypeSpec {
-    fn to_spec(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
+    fn to_spec(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
         todo!()
     }
 }
 
 impl<'db> ParseInit<'db> for ast::generated::StructTypeInit {
-    fn to_init(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>> {
+    fn to_init(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>> {
         todo!()
     }
 }
@@ -218,7 +216,7 @@ impl<'db> ParseInit<'db> for ast::generated::StructTypeInit {
 
 impl<'db> ParseSpecInit<'db> for ast::generated::RefSpec {
     fn to_spec_init(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         file: File,
     ) -> anyhow::Result<SpecInitResult<'db>> {
@@ -227,7 +225,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::RefSpec {
 }
 
 impl<'db> ParseSpec<'db> for ast::generated::RefTypeSpec {
-    fn to_spec(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
+    fn to_spec(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
         todo!()
     }
 }
@@ -235,7 +233,7 @@ impl<'db> ParseSpec<'db> for ast::generated::RefTypeSpec {
 // Enum type
 
 impl<'db> ParseSpec<'db> for ast::generated::EnumTypeSpec {
-    fn to_spec(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
+    fn to_spec(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
         todo!()
     }
 }
@@ -243,7 +241,7 @@ impl<'db> ParseSpec<'db> for ast::generated::EnumTypeSpec {
 // Subrange type
 
 impl<'db> ParseSpec<'db> for ast::generated::SubrangeTypeSpec {
-    fn to_spec(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
+    fn to_spec(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
         let spec = self.Type.deref().to_spec(db, file)?;
         let range = self.range.deref();
         let lower = range.lower.children.to_expr(db, file)?;

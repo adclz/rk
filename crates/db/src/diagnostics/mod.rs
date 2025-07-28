@@ -20,7 +20,6 @@ pub mod literals;
 pub struct IdeDiagnostic {
     pub diagnostic: auto_lsp::lsp_types::Diagnostic,
     pub fixes: Vec<auto_lsp::lsp_types::CodeAction>,
-    pub file: File,
 }
 
 impl IdeDiagnostic {
@@ -28,7 +27,6 @@ impl IdeDiagnostic {
         Self {
             diagnostic,
             fixes: vec![],
-            file
         }
     }
 
@@ -81,7 +79,6 @@ impl From<&DiagnosticAccumulator> for IdeDiagnostic {
         IdeDiagnostic {
             diagnostic: error.0.diagnostic.clone(),
             fixes: error.0.fixes.clone(),
-            file: error.0.file.clone(),
         }
     }
 }

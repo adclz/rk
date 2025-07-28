@@ -13,16 +13,13 @@ use salsa::Accumulator;
 
 use crate::diagnostics::diagnostic_builder::diag;
 use crate::diagnostics::DiagnosticAccumulator;
-use crate::hir::variable::SpecKind;
+use crate::hir::interned::identifier::Ident;
+use crate::hir::pous::variable::{Spec, SpecKind, Variable, VariableKind};
 use crate::parser::{ParseInit, ParseSpec, ParseSpecInit, ParseVarSection, SpecInitResult};
-use crate::{
-    hir::variable::{Spec, Variable, VariableKind},
-    ident::Ident,
-};
 
 trait ToVariable<'db> {
     fn to_variable(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         file: File,
         name: &impl AstNode,
@@ -32,7 +29,7 @@ trait ToVariable<'db> {
 
 impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
     fn parse(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         file: File,
         section: &mut Vec<Variable<'db>>,
@@ -41,7 +38,6 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
             match child.deref() {
                 ast::generated::ERRVariableWithNoSpec_InputVar::ERRVariableWithNoSpec(child) => {
                     let diag = diag()
-                        .file(file)
                         .message("variable with no type specified".to_string())
                         .range(child.get_span())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
@@ -91,7 +87,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
 
 impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
     fn parse(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         file: File,
         section: &mut Vec<Variable<'db>>,
@@ -100,7 +96,6 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
             match child.deref() {
                 ast::generated::ERRVariableWithNoSpec_FbInputVar::ERRVariableWithNoSpec(child) => {
                     let diag = diag()
-                        .file(file)
                         .message("variable with no type specified".to_string())
                         .range(child.get_span())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
@@ -150,7 +145,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
 
 impl<'db> ParseVarSection<'db> for ast::generated::OutputDecls {
     fn parse(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         file: File,
         section: &mut Vec<Variable<'db>>,
@@ -159,7 +154,6 @@ impl<'db> ParseVarSection<'db> for ast::generated::OutputDecls {
             match child.deref() {
                 ast::generated::ERRVariableWithNoSpec_OutputVar::ERRVariableWithNoSpec(child) => {
                     let diag = diag()
-                        .file(file)
                         .message("variable with no type specified".to_string())
                         .range(child.get_span())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
@@ -199,7 +193,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::OutputDecls {
 
 impl<'db> ParseVarSection<'db> for ast::generated::FbOutputDecls {
     fn parse(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         file: File,
         section: &mut Vec<Variable<'db>>,
@@ -208,7 +202,6 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbOutputDecls {
             match child.deref() {
                 ast::generated::ERRVariableWithNoSpec_FbOutputVar::ERRVariableWithNoSpec(child) => {
                     let diag = diag()
-                        .file(file)
                         .message("variable with no type specified".to_string())
                         .range(child.get_span())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
@@ -248,7 +241,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbOutputDecls {
 
 impl<'db> ParseVarSection<'db> for ast::generated::TempVarDecls {
     fn parse(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         file: File,
         section: &mut Vec<Variable<'db>>,
@@ -257,7 +250,6 @@ impl<'db> ParseVarSection<'db> for ast::generated::TempVarDecls {
             match child.deref() {
                 ast::generated::ERRVariableWithNoSpec_TempVar::ERRVariableWithNoSpec(child) => {
                     let diag = diag()
-                        .file(file)
                         .message("variable with no type specified".to_string())
                         .range(child.get_span())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
@@ -297,7 +289,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::TempVarDecls {
 
 impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
     fn parse(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         file: File,
         section: &mut Vec<Variable<'db>>,
@@ -306,7 +298,6 @@ impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
             match child.deref() {
                 ast::generated::ERRVariableWithNoSpec_InOutVar::ERRVariableWithNoSpec(child) => {
                     let diag = diag()
-                        .file(file)
                         .message("variable with no type specified".to_string())
                         .range(child.get_span())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
@@ -346,7 +337,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
 
 impl<'db> ToVariable<'db> for ast::generated::EdgeDecl {
     fn to_variable(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         file: File,
         name: &impl AstNode,
@@ -371,7 +362,7 @@ impl<'db> ToVariable<'db> for ast::generated::EdgeDecl {
 
 impl<'db> ToVariable<'db> for ast::generated::VarDecl {
     fn to_variable(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         file: File,
         name: &impl AstNode,
@@ -394,7 +385,7 @@ impl<'db> ToVariable<'db> for ast::generated::VarDecl {
 
 impl<'db> ToVariable<'db> for ast::generated::VarDeclInit {
     fn to_variable(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         file: File,
         name: &impl AstNode,
@@ -418,7 +409,7 @@ impl<'db> ToVariable<'db> for ast::generated::VarDeclInit {
 
 impl<'db> ToVariable<'db> for ast::generated::ArrayConformand {
     fn to_variable(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         file: File,
         name: &impl AstNode,
@@ -442,7 +433,7 @@ impl<'db> ToVariable<'db> for ast::generated::ArrayConformand {
 
 impl<'db> ToVariable<'db> for ast::generated::LocPartlyVar {
     fn to_variable(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         file: File,
         name: &impl AstNode,
@@ -466,7 +457,7 @@ impl<'db> ToVariable<'db> for ast::generated::LocPartlyVar {
 
 impl<'db> ToVariable<'db> for ast::generated::RefSpec {
     fn to_variable(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         file: File,
         name: &impl AstNode,
@@ -490,7 +481,7 @@ impl<'db> ToVariable<'db> for ast::generated::RefSpec {
 
 impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
     fn parse(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         file: File,
         section: &mut Vec<Variable<'db>>,
@@ -521,7 +512,6 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
                     child,
                 ) => {
                     let diag = diag()
-                        .file(file)
                         .message("variable with no type specified".to_string())
                         .range(child.get_span())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
@@ -537,7 +527,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
 
 impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
     fn parse(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         file: File,
         section: &mut Vec<Variable<'db>>,
@@ -548,7 +538,6 @@ impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
                     var_decl,
                 ) => {
                     let diag = diag()
-                        .file(file)
                         .message("variable with no type specified".to_string())
                         .range(var_decl.get_span())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
@@ -576,7 +565,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
 
 impl<'db> ParseVarSection<'db> for ast::generated::RetainVarDecls {
     fn parse(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         file: File,
         section: &mut Vec<Variable<'db>>,
@@ -587,7 +576,6 @@ impl<'db> ParseVarSection<'db> for ast::generated::RetainVarDecls {
                     var_decl,
                 ) => {
                     let diag = diag()
-                        .file(file)
                         .message("variable with no type specified".to_string())
                         .range(var_decl.get_span())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
@@ -615,7 +603,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::RetainVarDecls {
 
 impl<'db> ParseVarSection<'db> for ast::generated::NoRetainVarDecls {
     fn parse(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         file: File,
         section: &mut Vec<Variable<'db>>,
@@ -626,7 +614,6 @@ impl<'db> ParseVarSection<'db> for ast::generated::NoRetainVarDecls {
                     var_decl,
                 ) => {
                     let diag = diag()
-                        .file(file)
                         .message("variable with no type specified".to_string())
                         .range(var_decl.get_span())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
@@ -654,7 +641,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::NoRetainVarDecls {
 
 impl<'db> ParseVarSection<'db> for ast::generated::LocPartlyVarDecl {
     fn parse(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         file: File,
         section: &mut Vec<Variable<'db>>,
@@ -673,7 +660,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::LocPartlyVarDecl {
 
 impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
     fn parse(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         file: File,
         section: &mut Vec<Variable<'db>>,
@@ -719,11 +706,10 @@ impl<'db> ParseSpecInit<'db> for ast::generated::EdgeDecl {
         &self,
         db: &'db dyn BaseDatabase,
         file: File,
-    ) -> anyhow::Result<SpecInitResult> {
+    ) -> anyhow::Result<SpecInitResult<'db>> {
         let spec = match self.edge.deref() {
             ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::ERRInvalidEdgeQualifier(err) => {
                 let diag = diag()
-                    .file(file)
                     .message("incomplete edge qualifier, try 'R_EDGE' or 'F_EDGE'".into())
                     .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                     .range(err.get_span())
@@ -744,14 +730,14 @@ impl<'db> ParseSpecInit<'db> for ast::generated::LocPartlyVar {
         &self,
         db: &'db dyn BaseDatabase,
         file: File,
-    ) -> anyhow::Result<SpecInitResult> {
+    ) -> anyhow::Result<SpecInitResult<'db>> {
         todo!()
     }
 }
 
 impl<'db> ParseSpecInit<'db> for ast::generated::VarDecl {
     fn to_spec_init(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         file: File,
     ) -> anyhow::Result<SpecInitResult<'db>> {
@@ -775,7 +761,6 @@ impl<'db> ParseSpecInit<'db> for ast::generated::VarDecl {
 
         if let Some(init) = init {
             let diag = diag()
-                .file(file)
                 .message(
                     "variables declared in TEMP or IN_OUT can not have a default value".to_string(),
                 )
@@ -791,7 +776,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::VarDecl {
 
 impl<'db> ParseSpecInit<'db> for ast::generated::VarDeclInit {
     fn to_spec_init(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         file: File,
     ) -> anyhow::Result<SpecInitResult<'db>> {
@@ -820,7 +805,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::VarDeclInit {
 
 impl<'db> ParseSpecInit<'db> for ast::generated::LocVarSpecInit {
     fn to_spec_init(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         file: File,
     ) -> anyhow::Result<SpecInitResult<'db>> {

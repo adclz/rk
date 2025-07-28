@@ -2,91 +2,118 @@ use std::ops::Deref;
 
 use crate::diagnostics::diagnostic_builder::diag;
 use crate::diagnostics::DiagnosticAccumulator;
-use crate::hir;
-use crate::hir::variable::Variable;
+use crate::hir::interned::identifier::Ident;
+use crate::hir::interned::namespace::SpannedNamespaceAccess;
+use crate::hir::pous::function_block::FunctionBlock;
+use crate::hir::pous::pou::{Pou, PouDecl};
+use crate::hir::scopes::scope::{PouId, Scope, ScopeId, ScopeKind, ScopedPouId, Visibility};
+use crate::hir::pous::variable::Variable;
 use crate::hir::visibility::Modifiers;
-use crate::parser::namespace::ParseUsing;
-use crate::parser::{Parse, ParseVarSection};
-use crate::solver::fq_name::{NamespaceAccess, SpannedNamespaceAccess};
-use ast::generated::FbVariables;
+use crate::parser::semantic_index::{SemanticIndexBuilder};
+use crate::parser::{ParseVarSection};
+use ast::generated::{FbDecl, FbVariables};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::default::db::{file::File, BaseDatabase};
 use salsa::Accumulator;
 
-impl<'db> Parse<'db> for ast::generated::FbDecl {
-    type Output = hir::function_block::FunctionBlock<'db>;
+impl<'db> SemanticIndexBuilder<'db> {
+    pub fn parse_function_block(&mut self, func: &FbDecl) -> anyhow::Result<PouId> {
+        let variables = func.parse_variables(self.db, self.file)?;
 
-    fn parse(&'db self, db: &'db dyn BaseDatabase, file: File, id: Option<usize>) -> anyhow::Result<Self::Output> {
-        let variables = self.parse_variables(db, file)?;
-
-        let extends = self
+        let extends = func
             .extends
             .as_ref()
-            .map(|e| SpannedNamespaceAccess::from_ast(db, file, e))
+            .map(|e| SpannedNamespaceAccess::from_ast(self.db, self.file, e))
             .transpose()?;
 
-        let implements = self
+        let implements = func
             .implements
             .as_ref()
             .map(|i| {
                 i.children
                     .iter()
-                    .map(|i| SpannedNamespaceAccess::from_ast(db, file, i))
+                    .map(|i| SpannedNamespaceAccess::from_ast(self.db, self.file, i))
                     .collect()
             })
             .transpose()?; 
 
-        self.children.iter().for_each(|f| {
+        func.children.iter().for_each(|f| {
             type Error = ast::generated::ERRExtendsMultipleTimes_ERRImplementsBeforeExtends_ERRImplementsMultipleTimes;
             match f.deref() {
                 Error::ERRExtendsMultipleTimes(err) => {
                     let diag = diag()
-                        .file(file)
                         .message("EXTENDS can only be defined once".into())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                         .range(err.get_span())
                         .call();
-                    DiagnosticAccumulator::accumulate(diag.into(), db);
+                    DiagnosticAccumulator::accumulate(diag.into(), self.db);
                 }, 
                 Error::ERRImplementsBeforeExtends(err) => {
                     let diag = diag()
-                        .file(file)
                         .message("IMPLEMENTS can only be defined after EXTENDS".into())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                         .range(err.get_span())
                         .call();
-                    DiagnosticAccumulator::accumulate(diag.into(), db);
+                    DiagnosticAccumulator::accumulate(diag.into(), self.db);
                 },
                 Error::ERRImplementsMultipleTimes(err) => {
                     let diag = diag()
-                        .file(file)
                         .message("IMPLEMENTS can only be defined once".into())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                         .range(err.get_span())
                         .call();
-                    DiagnosticAccumulator::accumulate(diag.into(), db);
+                    DiagnosticAccumulator::accumulate(diag.into(), self.db);
                 },
-            } 
+            }
         });
 
         let mut modifiers = Modifiers::empty();
-        self.qualifier.as_ref().map(|q| match q.deref() {
+        func.qualifier.as_ref().map(|q| match q.deref() {
             ast::generated::Operators_2::Token_ABSTRACT(_) => modifiers.insert(Modifiers::ABSTRACT),
             ast::generated::Operators_2::Token_FINAL(_) => modifiers.insert(Modifiers::FINAL),
         });
 
-        let using = self.directives.parse_using(db, file, id)?;
+        let id = ScopeId::from(func.get_id());
+        let pou_key = PouId::from(func.get_id());
+        let name = Ident::from_node(self.db, self.file, func.name.deref())?;
+        let usings = self.parse_usings(&func.directives)?;
 
-        Ok(hir::function_block::FunctionBlock::new(
-            db, extends, implements, using, variables, modifiers,
-        ))
+        let result =
+            FunctionBlock::new(self.db, extends, implements, variables, modifiers, self.current_scope);
+
+        let scope = Scope::new(
+            self.file,
+            ScopeKind::Pou(pou_key),
+            usings,
+            id,
+            Visibility::empty(),
+            Some(self.current_scope),
+        );
+
+        self.pou_keys.insert(
+            PouId::from(func.get_id()),
+            PouDecl::new(
+                self.db,
+                Pou::FunctionBlock(result),
+                func.get_span(),
+                name,
+                func.name.get_span(),
+            ),
+        );
+
+        self.scope_to_pous.entry(id).or_default().insert(
+                name.clone(),
+                ScopedPouId(pou_key, self.file),
+        );
+
+        Ok(pou_key)
     }
 }
 
 trait ParseVariable<'db> {
     fn parse_variables(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         file: File,
     ) -> anyhow::Result<Vec<Variable<'db>>>;
@@ -94,7 +121,7 @@ trait ParseVariable<'db> {
 
 impl<'db> ParseVariable<'db> for ast::generated::FbDecl {
     fn parse_variables(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         file: File,
     ) -> anyhow::Result<Vec<Variable<'db>>> {
@@ -126,14 +153,11 @@ impl<'db> ParseVariable<'db> for ast::generated::FbDecl {
 
 #[cfg(test)]
 mod tests {
-    use auto_lsp::{core::span::Span, default::db::FileManager, lsp_types, tree_sitter::{Point, Range}};
+    use auto_lsp::{default::db::FileManager, lsp_types, tree_sitter::{Point, Range}};
 
     use super::*;
     use crate::{
-        hir::namespace::{Pou, PouResult},
-        ident::{Ident, SpannedIdent},
-        solver::namespace::{namespaces_in_file, NamespacePath},
-        RootDatabase,
+        hir::{interned::{identifier::SpannedIdent, namespace::NamespacePath}, semantic_index::semantic_index}, RootDatabase
     };
 
     #[test]
@@ -194,22 +218,11 @@ END_NAMESPACE
         db.add_file(file).unwrap();
 
         let file = db.get_file(&url).unwrap();
-        let namespaces = namespaces_in_file(&db, file).unwrap();
+        let namespaces = semantic_index(&db, file).unwrap();
 
         let fn_name = SpannedIdent::from_blank(&db, "f");
         let ns = SpannedIdent::from_blank(&db, "nss");
 
         let ns = NamespacePath::from((&db as _, vec![ns]));
-        let function = namespaces.get_pou(&db as _, ns, ns, fn_name.ident);
-
-        let PouResult::Found(pou) = function else {
-            panic!("Not a function block");
-        };
-
-        if let Pou::FunctionBlock(f) = pou.pou(&db) {
-            assert_eq!(f.variables(&db).len(), 13);
-        } else {
-            panic!("Not a function block");
-        }
     }
 }

@@ -60,7 +60,6 @@ pub fn add_fixes_to_parse_errors(
                     },
             } => {
                 let mut diagnostic = diag()
-                    .file(*file)
                     .range(span.clone().into())
                     .message(missing_error.to_string())
                     .source("IEC".into())
@@ -102,7 +101,6 @@ pub fn add_fixes_to_parse_errors(
             } => {
                 if affected.len() == 1 {
                     let mut diagnostic = diag()
-                        .file(*file)
                         .range(span.clone().into())
                         .message(syntax_error.to_string())
                         .source("IEC".into())
@@ -134,7 +132,6 @@ pub fn add_fixes_to_parse_errors(
                     diagnostic
                 } else if KEYWORDS.contains(affected.split_whitespace().next().unwrap_or("")) {
                     diag()
-                        .file(*file)
                         .range(span.clone().into())
                         .message(format!(
                             "{} is a reserved keyword that is not valid in this context",

@@ -2,11 +2,7 @@ use auto_lsp::{anyhow, default::db::file::File};
 use salsa::Update;
 
 use crate::{
-    hir::{
-        expression::Expr,
-        variable::{Spec, Variable},
-    },
-    BaseDatabase,
+    hir::{expressions::expression::Expr, pous::variable::{Spec, Variable}}, parser::semantic_index::SemanticIndexBuilder, BaseDatabase
 };
 
 pub mod class;
@@ -19,16 +15,18 @@ pub mod namespace;
 pub mod statement;
 pub mod types;
 pub mod variables;
+pub mod using;
+pub mod semantic_index; 
 
 trait Parse<'db>: Sized {
     type Output: Update;
 
-    fn parse(&'db self, db: &'db dyn BaseDatabase, file: File, id: Option<usize>) -> anyhow::Result<Self::Output>;
+    fn parse(&self, db: &'db dyn BaseDatabase, sem: &'db SemanticIndexBuilder<'db>) -> anyhow::Result<Self::Output>;
 }
 
 pub trait ParseVarSection<'db> {
     fn parse(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         file: File,
         section: &mut Vec<Variable<'db>>,
@@ -36,11 +34,11 @@ pub trait ParseVarSection<'db> {
 }
 
 pub trait ParseSpec<'db> {
-    fn to_spec(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>>;
+    fn to_spec(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>>;
 }
 
 pub trait ParseInit<'db> {
-    fn to_init(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>>;
+    fn to_init(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>>;
 }
 
 pub struct SpecInitResult<'db> {
@@ -56,7 +54,7 @@ impl<'db> SpecInitResult<'db> {
 
 pub trait ParseSpecInit<'db> {
     fn to_spec_init(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         file: File,
     ) -> anyhow::Result<SpecInitResult<'db>>;
@@ -64,7 +62,7 @@ pub trait ParseSpecInit<'db> {
 
 impl<'db, T: ParseSpec<'db> + ParseInit<'db>> ParseSpecInit<'db> for T {
     fn to_spec_init(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         file: File,
     ) -> anyhow::Result<SpecInitResult<'db>> {

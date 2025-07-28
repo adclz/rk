@@ -1,5 +1,5 @@
 use auto_lsp::{anyhow, default::db::{BaseDatabase}, lsp_types::{InlayHint, InlayHintParams}};
-use db::{solver::namespace::namespaces_in_file, to_proto::{IterToProto}};
+use db::{hir::semantic_index::semantic_index, to_proto::{IterToProto}};
 
 pub fn inlay_hints(db: &impl BaseDatabase, params: InlayHintParams) -> anyhow::Result<Option<Vec<InlayHint>>> {
     let uri = &params.text_document.uri;
@@ -11,11 +11,11 @@ pub fn inlay_hints(db: &impl BaseDatabase, params: InlayHintParams) -> anyhow::R
 
     let mut results = vec![];
 
-    let ns = match namespaces_in_file(db, file) {
+    let ns = match semantic_index(db, file) {
         Some(ns) => ns,
         None => return Ok(None),
     };
-    ns.iter(db).for_each(|symbol| {
+    ns.iter(db, &ns).for_each(|symbol| {
         let span = symbol.get_span(db);
         if span.lsp().start.line < range.start.line ||
            span.lsp().end.line > range.end.line {

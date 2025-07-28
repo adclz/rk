@@ -4,10 +4,7 @@ use auto_lsp::{
 };
 
 use crate::{
-    hir::expression::Expr,
-    ident::Ident,
-    solver::fq_name::NamespaceAccess,
-    to_proto::{self_iter, IterToProto, SymbolInfo, ToProto},
+    hir::{expressions::expression::Expr, interned::{identifier::Ident, namespace::NamespaceAccess}, semantic_index::SemanticIndex}, to_proto::{self_iter, IterToProto, SymbolInfo, ToProto}
 };
 
 #[salsa::tracked(debug)]
@@ -84,9 +81,9 @@ impl<'db> ToProto<'db> for Variable<'db> {
 }
 
 impl<'db> IterToProto<'db> for Variable<'db> {
-    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+    fn iter(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
         self_iter(self)
-            .chain(self.spec(db).iter(db))
+            .chain(self.spec(db).iter(db, sema))
             .chain(self.init(db).into_iter().map(|i| i as _))
     }
 }
@@ -178,9 +175,9 @@ impl<'db> ToProto<'db> for Spec<'db> {
 
 impl<'db> IterToProto<'db> for Spec<'db> {
     #[auto_enums::auto_enum(Iterator)]
-    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+    fn iter(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
         match &self.kind {
-            SpecKind::Expr(expr) => self_iter(self).chain(expr.iter(db)),
+            SpecKind::Expr(expr) => self_iter(self).chain(expr.iter(db, sema)),
             _ => self_iter(self),
         }
     }

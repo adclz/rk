@@ -7,7 +7,7 @@ use auto_lsp::{
     lsp_types::{DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse},
 };
 use db::{
-    hir::namespace::FileNamespaces, solver::namespace::namespaces_in_file, to_proto::{IterToProto, SymbolInfo}
+    hir::semantic_index::{semantic_index}, to_proto::{IterToProto, SymbolInfo}
 };
 
 /// Helper function to check if one range is inside another
@@ -78,14 +78,14 @@ pub fn document_symbols(
         .ok_or_else(|| anyhow::format_err!("File not found in workspace"))?;
 
     let mut builder = DocumentSymbolsBuilder::default();
-    let ns = match namespaces_in_file(db, file) {
+    let ns = match semantic_index(db, file) {
         Some(ns) => ns,
         None => return Ok(None),
     };
 
     // Collect all symbols first
     let symbols: Vec<_> = ns
-        .iter(db)
+        .iter(db, &ns)
         .filter_map(|symbol| symbol.symbol_info(db))
         .filter(|symbol| !symbol.name.is_empty())
         .filter_map(|symbol| symbol.kind.map(|kind| (symbol, kind)))

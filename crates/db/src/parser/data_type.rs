@@ -1,31 +1,45 @@
 use std::ops::Deref;
 
 use crate::{
-    hir::{data_type::DataType, namespace::PouDecl},
-    ident::Ident,
-    parser::{ParseInit, ParseSpec},
+    hir::{interned::identifier::Ident, pous::{data_type::DataType, pou::{Pou, PouDecl}}, scopes::scope::PouId},
+    parser::{semantic_index::SemanticIndexBuilder, ParseInit, ParseSpec},
 };
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::{
     anyhow,
     default::db::{file::File, BaseDatabase},
 };
+use rustc_hash::FxHashMap;
+
+
+impl SemanticIndexBuilder<'_> {
+    pub fn parse_data_type(&mut self, data_type: &ast::generated::DataTypeDecl) -> anyhow::Result<()> {
+        let mut types = FxHashMap::default();
+        data_type.parse(self.db, self.file, &mut types)?;
+
+        for (id, decl) in types {
+            self.pou_keys.insert(id, decl);
+        }
+
+        Ok(())
+    }
+}
 
 pub trait ParseDataType<'db> {
     fn parse(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         file: File,
-        types: &mut Vec<PouDecl<'db>>,
+        types: &mut FxHashMap<PouId, PouDecl<'db>>,
     ) -> anyhow::Result<()>;
 }
 
 impl<'db> ParseDataType<'db> for ast::generated::DataTypeDecl {
     fn parse(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         file: File,
-        types: &mut Vec<PouDecl<'db>>,
+        types: &mut FxHashMap<PouId, PouDecl<'db>>
     ) -> anyhow::Result<()> {
         type Spec = ast::generated::ArrayTypeSpec_EnumTypeSpec_RefTypeSpec_SimpleTypeSpec_StrTypeSpec_StructTypeSpec_SubrangeTypeSpec;
 
@@ -51,13 +65,15 @@ impl<'db> ParseDataType<'db> for ast::generated::DataTypeDecl {
                 None => None,
             };
 
-            types.push(PouDecl::new(
+            types.insert(
+                PouId::from(child.get_id()),
+                PouDecl::new(
                 db,
-                crate::hir::namespace::Pou::DataType(DataType::new(db, spec, init)),
+                Pou::DataType(DataType::new(db, spec, init)),
                 child.get_span(),
                 name,
                 child.name.get_span()
-            ))
+            ));
         }
 
         Ok(())

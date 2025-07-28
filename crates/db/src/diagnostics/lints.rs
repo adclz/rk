@@ -98,7 +98,6 @@ fn handle_duplicate_namespace(
 
     DiagnosticAccumulator::accumulate(
         diag()
-            .file(file)
             .range(range.into())
             .message(format!(
                 "duplicate declarations of namespace '{name}' in same scope"
@@ -130,7 +129,6 @@ fn handle_duplicate_declaration(
 
     DiagnosticAccumulator::accumulate(
         diag()
-            .file(file)
             .range(range.into())
             .message(format!(
                 "duplicate declarations of '{name}' in same namespace"

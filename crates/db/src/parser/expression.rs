@@ -7,21 +7,21 @@ use auto_lsp::{
 };
 use salsa::Accumulator;
 
-use crate::hir::expression::{AnyBit, AnyChars, AnyDate, AnyDuration, AnyInt, AnyMagnitude, AnyNum, AnyReal, AnySigned, AnyUnsigned, FieldExpr, IndexExpr, Numeric, NumericKind, PathExpr, VariableAccessKind};
+use crate::hir::expressions::expression::{AnyBit, AnyChars, AnyDate, AnyDuration, AnyInt, AnyMagnitude, AnyNum, AnyReal, AnySigned, AnyUnsigned, FieldExpr, IndexExpr, Numeric, NumericKind, PathExpr, VariableAccessKind};
 use crate::{
     diagnostics::{diagnostic_builder::diag, DiagnosticAccumulator},
-    hir::expression::{
+    hir::expressions::expression::{
         Expr, ExprKind, AnyElementary, AddOperatorKind, BooleanOperatorKind, ComparisonOperatorKind, MultOperatorKind, UnaryOperatorKind, ParamAssign, PathExprKind, PrimaryExpr, RefAdress,
         RefValue, SymbolicVariable, VarAccess, VariableAccess,
     },
-    ident::Ident,
+    hir::interned::identifier::Ident,
 };
 pub trait ParseExpression<'db> {
-    fn to_expr(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>>;
+    fn to_expr(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>>;
 }
 
 impl<'db> ParseExpression<'db> for ast::generated::Expression {
-    fn to_expr(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>> {
+    fn to_expr(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>> {
         match self {
             ast::generated::Expression::PrimaryExpression(p) => p.to_expr(db, file),
             ast::generated::Expression::BooleanOperator(boolean_operator) => match boolean_operator
@@ -182,11 +182,10 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
 }
 
 impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
-    fn to_expr(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>> {
+    fn to_expr(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>> {
         match self {
             ast::generated::PrimaryExpression::ERRInvocationInExprContext(err) => {
                 let diag = diag()
-                    .file(file)
                     .message("Invocation in expression context is not allowed".into())
                     .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                     .range(err.get_span())
@@ -292,11 +291,11 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
 }
 
 pub trait ParseNumeric<'db> {
-    fn parse(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Numeric>;
+    fn parse(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Numeric>;
 }
 
 impl<'db> ParseNumeric<'db> for ast::generated::BinaryInt_HexInt_OctalInt_SignedInt {
-    fn parse(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Numeric> {
+    fn parse(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Numeric> {
         Ok(match self {
             ast::generated::BinaryInt_HexInt_OctalInt_SignedInt::BinaryInt(binary_int) => {
                 Numeric::new(db, Ident::from_node(db, file, binary_int)?, NumericKind::Binary)
@@ -443,7 +442,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Constant {
 
 pub trait ParseVariableAccess<'db> {
     fn to_access(
-        &'db self,
+        &self,
         db: &'db dyn auto_lsp::default::db::BaseDatabase,
         file: File,
     ) -> anyhow::Result<VariableAccess<'db>>;
@@ -451,7 +450,7 @@ pub trait ParseVariableAccess<'db> {
 
 impl<'db> ParseVariableAccess<'db> for ast::generated::Variable {
     fn to_access(
-        &'db self,
+        &self,
         db: &'db dyn auto_lsp::default::db::BaseDatabase,
         file: File,
     ) -> anyhow::Result<VariableAccess<'db>> {
@@ -468,7 +467,7 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::Variable {
 
 impl<'db> ParseVariableAccess<'db> for ast::generated::DirectVariable {
     fn to_access(
-        &'db self,
+        &self,
         db: &'db dyn auto_lsp::default::db::BaseDatabase,
         file: File,
     ) -> anyhow::Result<VariableAccess<'db>> {
@@ -493,7 +492,7 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::DirectVariable {
 
 impl<'db> ParseVariableAccess<'db> for ast::generated::SymbolicVariable {
     fn to_access(
-        &'db self,
+        &self,
         db: &'db dyn auto_lsp::default::db::BaseDatabase,
         file: File,
     ) -> anyhow::Result<VariableAccess<'db>> {
@@ -506,16 +505,16 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::SymbolicVariable {
     }
 }
 
-trait ParseExpr<'db> {
+pub trait ParseExpr<'db> {
     type Output;
 
-    fn parse(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output>;
+    fn parse(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output>;
 }
 
 impl<'db> ParseExpr<'db> for ast::generated::PathExpression {
     type Output = PathExprKind<'db>;
 
-    fn parse(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output> {
+    fn parse(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output> {
         Ok(match self.children.deref() {
             ast::generated::FieldExpression_IndexExpression_VarAccess::FieldExpression(field_expr) => {
                 PathExprKind::Field(field_expr.parse(db, file)?) 
@@ -533,7 +532,7 @@ impl<'db> ParseExpr<'db> for ast::generated::PathExpression {
 impl<'db> ParseExpr<'db> for ast::generated::FieldExpression {
     type Output = FieldExpr<'db>;
 
-    fn parse(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output> {
+    fn parse(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output> {
         Ok(FieldExpr {
             path: Box::new(self.path.parse(db, file)?),
             var: self.target.parse(db, file)?
@@ -544,7 +543,7 @@ impl<'db> ParseExpr<'db> for ast::generated::FieldExpression {
 impl<'db> ParseExpr<'db> for ast::generated::IndexExpression {
     type Output = IndexExpr<'db>;
 
-    fn parse(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output> {
+    fn parse(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output> {
 
         Ok(IndexExpr {
             path: Box::new(self.children.parse(db, file)?),
@@ -559,11 +558,10 @@ impl<'db> ParseExpr<'db> for ast::generated::IndexExpression {
 impl<'db> ParseExpr<'db> for ast::generated::VarAccess {
     type Output = VarAccess;
 
-    fn parse(&'db self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output> {
+    fn parse(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Self::Output> {
         match self.children.deref() {
             ast::generated::ERRUnexpectedThisInPath_Field_RefDeref::ERRUnexpectedThisInPath(direct_variable) => {
                     let diag = diag()
-                        .file(file)
                         .message("Unexpected 'this' in path".into())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                         .range(direct_variable.get_span())

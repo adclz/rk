@@ -3,7 +3,7 @@ use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams},
 };
-use db::{diagnostics::cached_diagnostics, solver::namespace::namespaces_in_file, to_proto::{IterToProto}};
+use db::{diagnostics::cached_diagnostics, hir::semantic_index::semantic_index, to_proto::{IterToProto}};
 
 pub fn code_actions(
     db: &impl BaseDatabase,
@@ -18,7 +18,7 @@ pub fn code_actions(
 
     let mut results = vec![];
 
-    let ns = match namespaces_in_file(db, file) {
+    let ns = match semantic_index(db, file) {
         Some(ns) => ns,
         None => return Ok(None),
     };

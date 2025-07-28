@@ -4,9 +4,7 @@
 pub mod completions;
 pub mod diagnostics;
 pub mod hir;
-pub mod ident;
 pub mod parser;
-pub mod solver;
 pub mod to_proto;
 
 pub use ast::RK_PARSER;

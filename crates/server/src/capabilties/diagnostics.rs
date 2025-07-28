@@ -27,7 +27,6 @@ pub fn diagnostics(
                 result_id: None,
                 items: cached_diagnostics(db, file)
                     .iter()
-                    .filter(|d| d.file.url(db) == &uri)
                     .map(|d| d.diagnostic.clone())
                     .collect::<Vec<_>>(),
             },
@@ -46,7 +45,6 @@ pub fn workspace_diagnostics(
             let file = *file;
             let errors: Vec<auto_lsp::lsp_types::Diagnostic> = cached_diagnostics(db, file)
                 .iter()
-                .filter(|d| d.file.url(db) == file.url(db))
                 .map(|d| d.diagnostic.clone())
                 .collect::<Vec<_>>();
 

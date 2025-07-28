@@ -1,311 +1,107 @@
 use std::ops::Deref;
 use std::panic;
-use std::sync::Arc;
 
-use ast::generated::ERRInvalidPouKeyword_ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl;
+use ast::generated::{
+    ERRInvalidPouKeyword,
+    ERRInvalidPouKeyword_ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl,
+};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::default::db::{file::File, BaseDatabase};
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 use salsa::Accumulator;
 
 use crate::diagnostics::diagnostic_builder::diag;
 use crate::diagnostics::DiagnosticAccumulator;
-use crate::hir::namespace::{FileNamespaces, Namespace, Pou, PouDecl, Using};
-use crate::ident::{Ident, SpannedIdent};
-use crate::parser::data_type::ParseDataType;
-use crate::parser::Parse;
-use crate::solver::namespace::NamespacePath;
+use crate::hir::interned::namespace::NamespacePath;
+use crate::hir::namespace::Namespace;
+use crate::hir::scopes::scope::{NamespaceId, Scope, ScopeId, ScopeKind, ScopedNamespaceId, ScopedPouId, Visibility};
+use crate::hir::interned::identifier::{Ident, SpannedIdent};
+use super::semantic_index::SemanticIndexBuilder;
 
-pub struct FileNamespacesBuilder<'db> {
-    db: &'db dyn BaseDatabase,
-    source: &'db ast::generated::SourceFile,
-    pub(crate) file: File,
-    pub(crate) directives: Vec<Using<'db>>,
-    pub(crate) globals: Vec<PouDecl<'db>>,
-    pub(crate) paths: Vec<Namespace<'db>>,
-    pub(crate) namespace_map: FxHashMap<usize, Namespace<'db>>,
-}
-
-pub trait ParseUsing<'db> {
-    type Output;
-
-    fn parse_using(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        file: File,
-        id: Option<usize>
-    ) -> anyhow::Result<Self::Output>;
-}
-
-impl<'db> ParseUsing<'db> for ast::generated::UsingDirective {
-    type Output = Vec<Using<'db>>;
-
-    fn parse_using(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        file: File,
-        id: Option<usize>,
-    ) -> anyhow::Result<Self::Output> {
-        let mut using = vec![];
-        for child in self.children.iter() {
-            let mut path = vec![];
-            for child in child.children.iter() {
-                path.push(SpannedIdent::new(db, file, child.deref())?);
-            }
-            using.push(Using::new(
-                db,
-                NamespacePath::from((db, &path)),
-                child.get_span(),
-                id
-            ));
-        }
-        Ok(using)
-    }
-}
-
-impl<'db> ParseUsing<'db> for Vec<Arc<ast::generated::UsingDirective>> {
-    type Output = Vec<Using<'db>>;
-    fn parse_using(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        file: File,
-        id: Option<usize>,
-    ) -> anyhow::Result<Self::Output> {
-        let mut using = vec![];
-        for directive in self.iter() {
-            for child in directive.children.iter() {
-                let mut path = vec![];
-                for child in child.children.iter() {
-                    path.push(SpannedIdent::new(db, file, child.deref())?);
-                }
-                using.push(Using::new(
-                    db,
-                    NamespacePath::from((db, &path)),
-                    child.get_span(),
-                    id
-                ));
-            }
-        }
-        Ok(using)
-    }
-}
-
-impl<'db> FileNamespacesBuilder<'db> {
-    pub fn new(
-        db: &'db dyn BaseDatabase,
-        file: File,
-        source: &'db ast::generated::SourceFile,
-    ) -> Self {
-        Self {
-            db,
-            file,
-            source,
-            directives: vec![],
-            globals: vec![],
-            paths: vec![],
-            namespace_map: FxHashMap::default(),
-        }
-    }
-
-    pub fn get_namespace_path(
-        &mut self,
-        namespace: &ast::generated::NamespaceDecl,
-    ) -> anyhow::Result<Vec<SpannedIdent>> {
-        namespace
-            .name
-            .children
-            .iter()
-            .map(|n| SpannedIdent::new(self.db, self.file, n.deref()))
-            .collect::<anyhow::Result<Vec<_>>>()
-    }
-
-    // Fix me: This function should not panic, but handle errors gracefully.
-    pub fn build(mut self) -> FileNamespaces<'db> {
-        for child in self.source.children.iter() {
-            type SourceFileDecl = ast::generated::ERRInvalidPouKeyword_ClassDecl_ConfigDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl_ProgDecl_UsingDirective;
-
-            match child.as_ref() {
-                SourceFileDecl::ERRInvalidPouKeyword(err) => {
-                    let diag = diag()
-                        .file(self.file)
-                        .message("Expected a POU keyword".into())
-                        .range(err.get_span())
-                        .call();
-                    DiagnosticAccumulator::accumulate(diag.into(), self.db);
-                }
-                SourceFileDecl::NamespaceDecl(namespace) => {
-                    let path = match self.get_namespace_path(namespace) {
-                        Ok(path) => path,
-                        Err(_err) => {
-                            panic!("Failed to build namespace: {:?}", _err);
-                        }
-                    };
-                    let namespace_id = namespace.get_id();
-                    
-                    // For top-level namespaces, parent_id should be None
-                    let namespace = match self.handle_namespace_elements(&path, namespace, None) {
-                        Ok(namespace) => {
-                            self.namespace_map.insert(namespace_id, namespace.clone());
-                            namespace
-                        },
-                        Err(_err) => {
-                            panic!("Failed to build namespace: {:?}", _err);
-                        }
-                    };
-
-                    self.paths.push(namespace);
-                }
-                SourceFileDecl::UsingDirective(directive) => {
-                    let using = directive.parse_using(self.db, self.file, None).unwrap();
-                    self.directives.extend(using);
-                }
-                SourceFileDecl::FuncDecl(func) => {
-                    let name = Ident::from_node(self.db, self.file, &*func.name).unwrap();
-                    self.globals.push(PouDecl::new(
-                        self.db,
-                        Pou::Function(func.parse(self.db, self.file, None).unwrap()),
-                        func.get_span(),
-                        name,
-                        func.name.get_span(),
-                    ));
-                }
-                SourceFileDecl::FbDecl(fb) => {
-                    let name = Ident::from_node(self.db, self.file, &*fb.name).unwrap();
-                    self.globals.push(PouDecl::new(
-                        self.db,
-                        Pou::FunctionBlock(fb.parse(self.db, self.file, None).unwrap()),
-                        fb.get_span(),
-                        name,
-                        fb.name.get_span(),
-                    ));
-                }
-                SourceFileDecl::ClassDecl(class) => {
-                    let name = Ident::from_node(self.db, self.file, &*class.name).unwrap();
-                    self.globals.push(PouDecl::new(
-                        self.db,
-                        Pou::Class(class.parse(self.db, self.file, None).unwrap()),
-                        class.get_span(),
-                        name,
-                        class.name.get_span(),
-                    ));
-                }
-                SourceFileDecl::DataTypeDecl(data_type) => {
-                    data_type
-                        .parse(self.db, self.file, &mut self.globals)
-                        .unwrap();
-                }
-                SourceFileDecl::InterfaceDecl(interface) => {
-                    let name = Ident::from_node(self.db, self.file, &*interface.name).unwrap();
-                    self.globals.push(PouDecl::new(
-                        self.db,
-                        Pou::Interface(interface.parse(self.db, self.file, None).unwrap()),
-                        interface.get_span(),
-                        name,
-                        interface.name.get_span(),
-                    ));
-                }
-                _ => {
-                    //todo: add config and program declarations
-                }
-            }
-        }
-        FileNamespaces::new(self.db, self.file, self.globals, self.paths, self.namespace_map)
-    }
-
-    pub fn handle_namespace_elements(
+impl<'db> SemanticIndexBuilder<'db> {
+    pub fn parse_namespace(
         &mut self,
         parent_path: &[SpannedIdent],
-        nested: &'db ast::generated::NamespaceDecl,
-        parent_id: Option<usize>,
-    ) -> anyhow::Result<Namespace<'db>> {
+        nested: &ast::generated::NamespaceDecl,
+    ) -> anyhow::Result<()> {
         type Decl =
             ERRInvalidPouKeyword_ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl;
-        let curr_id = Some(nested.get_id());
-        let using = nested.directives.parse_using(self.db, self.file, curr_id)?;
-        let mut keys = FxHashSet::default();
 
+        let scope_id = ScopeId::from(nested.get_id());
+        let namespace_id = NamespaceId::from(nested.get_id());
+        let path = NamespacePath::from((self.db, parent_path));
+        let usings = self.parse_usings(&nested.directives)?;
         let mut pous = vec![];
+
+        let scope = Scope::new(
+            self.file,
+            ScopeKind::Namespace(namespace_id),
+            usings,
+            scope_id,
+            match nested.internal {
+                Some(_) => Visibility::INTERNAL,
+                None => Visibility::PUBLIC,
+            },
+            Some(self.current_scope),
+        );
+
+        self.scope_keys.insert(scope_id, scope);
+        self.scope_to_namespaces
+            .entry(scope_id)
+            .or_default()
+            .insert(path, ScopedNamespaceId(namespace_id, self.file));
+
+        self.current_scope = scope_id;
+
         if let Some(elements) = nested.elements.as_ref() {
             for child in elements.children.iter() {
                 match child.as_ref() {
                     Decl::NamespaceDecl(namespace) => {
-                        let mut path = parent_path.to_vec();
-                        path.extend(self.get_namespace_path(namespace)?);
-
-                        let namespace_id = namespace.get_id();
-                        
-                        // First, create the namespace with the proper parent relationship
-                        let ns = self.handle_namespace_elements(&path, namespace, curr_id)?;
-                        // Then insert it into the map with its ID
-                        self.namespace_map.insert(namespace_id, ns.clone());
-                        keys.insert(namespace_id);
-                        self.paths.push(ns);
+                        let nested_path = {
+                            let mut path = parent_path.to_vec();
+                            path.extend(self.get_namespace_path(namespace)?);
+                            path
+                        };
+                        self.parse_namespace(&nested_path, namespace)?;
                     }
                     Decl::FuncDecl(func) => {
-                        let name = Ident::from_node(self.db, self.file, &*func.name)?;
-                        pous.push(PouDecl::new(
-                            self.db,
-                            Pou::Function(func.parse(self.db, self.file, curr_id)?),
-                            func.get_span(),
-                            name,
-                            func.name.get_span(),
-                        ));
+                        pous.push(self.parse_function(func)?);
+
                     }
                     Decl::FbDecl(fb) => {
-                        let name = Ident::from_node(self.db, self.file, &*fb.name)?;
-                        pous.push(PouDecl::new(
-                            self.db,
-                            Pou::FunctionBlock(fb.parse(self.db, self.file, curr_id)?),
-                            fb.get_span(),
-                            name,
-                            fb.name.get_span(),
-                        ));
+                        pous.push(self.parse_function_block(fb)?);
                     }
                     Decl::ClassDecl(class) => {
-                        let name = Ident::from_node(self.db, self.file, &*class.name)?;
-                        pous.push(PouDecl::new(
-                            self.db,
-                            Pou::Class(class.parse(self.db, self.file, curr_id)?),
-                            class.get_span(),
-                            name,
-                            class.name.get_span(),
-                        ));
+                        self.parse_class(class)?;
                     }
                     Decl::DataTypeDecl(data_type) => {
-                        data_type.parse(self.db, self.file, &mut pous)?;
+                        self.parse_data_type(data_type)?; 
                     }
                     Decl::InterfaceDecl(interface) => {
-                        let name = Ident::from_node(self.db, self.file, &*interface.name)?;
-                        pous.push(PouDecl::new(
-                            self.db,
-                            Pou::Interface(interface.parse(self.db, self.file, curr_id)?),
-                            interface.get_span(),
-                            name,
-                            interface.name.get_span(),
-                        ));
+                        self.parse_interface(interface)?;
                     }
                     Decl::ERRInvalidPouKeyword(err) => {
-                        let diag = diag()
-                            .file(self.file)
-                            .message("Expected a POU keyword".into())
-                            .range(err.get_span())
-                            .call();
-                        DiagnosticAccumulator::accumulate(diag.into(), self.db);
+                        self.create_pou_error(err);
                     }
                 }
             }
         }
-        Ok(Namespace::new(
+
+        let result = Namespace::new(
             self.db,
-            nested.internal.is_some(),
-            using,
             nested.get_span(),
-            NamespacePath::from((self.db, parent_path)),
+            path,
             nested.name.get_span(),
             pous,
-            parent_id,
-            keys,
-        ))
+            self.file,
+            scope_id,
+        );
+
+        // Then insert it into the map with its ID
+        self.namespace_keys
+            .insert(namespace_id.into(), result.clone());
+        
+        Ok(())
     }
 }

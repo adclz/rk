@@ -1,20 +1,10 @@
-use std::ops::Deref;
-
 use auto_lsp::{
     core::span::Span,
-    default::db::{file::File, BaseDatabase},
+    default::db::{BaseDatabase},
     lsp_types::{CompletionItem, Hover, InlayHint, SymbolKind},
 };
-use salsa::Database;
 
-use crate::{
-    hir::{
-        expression::Expr,
-        namespace::{Namespace, PouDecl},
-        variable::{Spec, SpecKind},
-    },
-    solver::{fq_name::SpannedNamespaceAccess, namespace::NamespacePath},
-};
+use crate::hir::{expressions::expression::Expr, interned::namespace::SpannedNamespaceAccess, pous::variable::{Spec, SpecKind}, semantic_index::SemanticIndex};
 
 #[derive(bon::Builder, Debug, Clone)]
 pub struct SymbolInfo<'a> {
@@ -121,12 +111,12 @@ pub fn self_iter<'db>(
 }
 
 pub trait IterToProto<'db> {
-    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>>;
+    fn iter(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>,) -> impl Iterator<Item = &'db dyn ToProto<'db>>;
 
-    fn descendant_at(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<&'db dyn ToProto<'db>> {
+    fn descendant_at(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>, offset: usize) -> Option<&'db dyn ToProto<'db>> {
         let mut best_match: Option<&'db dyn ToProto<'db>> = None;
 
-        for node in self.iter(db) {
+        for node in self.iter(db, sema) {
             let range = node.get_span(db);
             // Only consider nodes that contain the offset
             if range.start_byte <= offset && offset <= range.end_byte {
@@ -146,10 +136,10 @@ pub trait IterToProto<'db> {
         best_match
     }
 
-    fn named_descendant_at(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<&'db dyn ToProto<'db>>  {
+    fn named_descendant_at(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>, offset: usize) -> Option<&'db dyn ToProto<'db>>  {
         let mut best_match: Option<&'db dyn ToProto<'db>> = None;
 
-        for node in self.iter(db) {
+        for node in self.iter(db, sema) {
             let range = match node.get_named_span(db) {
                 Some(span) => span,
                 None => continue,

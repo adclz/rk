@@ -2,12 +2,11 @@ use auto_lsp::{core::span::Span, default::db::BaseDatabase};
 
 use crate::{
     hir::{
-        namespace::Using,
-        variable::{Spec, Variable},
+        semantic_index::SemanticIndex, scopes::scope::ScopeId, pous::variable::{Spec, Variable}
     },
-    ident::Ident,
-    solver::fq_name::SpannedNamespaceAccess,
-    to_proto::{ToProto, IterToProto, SymbolInfo},
+    hir::interned::identifier::Ident,
+    hir::interned::namespace::SpannedNamespaceAccess,
+    to_proto::{IterToProto, ToProto},
 };
 
 #[salsa::tracked(debug)]
@@ -15,19 +14,17 @@ pub struct Interface<'db> {
     #[returns(as_ref)]
     pub extends: Option<Vec<SpannedNamespaceAccess>>,
 
-    #[tracked]
-    #[returns(ref)]
-    pub using: Vec<Using<'db>>,
-
     #[returns(ref)]
     pub methods: Vec<Method<'db>>,
+
+    pub scope_id: ScopeId
 }
 
 impl<'db> IterToProto<'db> for Interface<'db> {
-    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+    fn iter(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
         self.methods(db)
             .iter()
-            .map(move |m| m.iter(db).map(|n| n))
+            .map(move |m| m.iter(db, sema).map(|n| n))
             .flatten()
     }
 }
@@ -60,7 +57,7 @@ impl<'db> ToProto<'db> for Method<'db> {
 }
 
 impl<'db> IterToProto<'db> for Method<'db> {
-    fn iter(&'db self, db: &'db dyn BaseDatabase) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+    fn iter(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
         Box::new(self.variables(db).iter().map(move |v| v as _))
     }
 }

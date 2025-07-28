@@ -7,7 +7,7 @@ use auto_lsp::{
     default::db::{file::File, BaseDatabase},
     lsp_types::{self, CompletionParams, CompletionResponse},
 };
-use db::{hir::COMPLETION_MARKER, solver::namespace::namespaces_in_file, to_proto::{IterToProto}};
+use db::{hir::COMPLETION_MARKER, hir::semantic_index::semantic_index, to_proto::{IterToProto}};
 
 pub fn completions(
     db: &impl BaseDatabase,
@@ -59,11 +59,11 @@ pub fn use_completion_marker(db: &impl BaseDatabase, file: File, position: lsp_t
 }
 
 pub fn use_completion_ctx(db: &impl BaseDatabase, file: File, offset: usize) -> anyhow::Result<Option<CompletionResponse>> {
-    let ns = match namespaces_in_file(db, file) {
+    let ns = match semantic_index(db, file) {
         Some(ns) => ns,
         None => return Ok(None),
     };
-    if let Some(symbol) = ns.descendant_at(db, offset) {
+    if let Some(symbol) = ns.descendant_at(db, &ns, offset) {
         if let Some(ctx) = symbol.completion(db, offset) {
             return Ok(Some(CompletionResponse::Array(ctx)));
         }
