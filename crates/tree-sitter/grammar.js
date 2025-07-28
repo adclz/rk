@@ -320,15 +320,7 @@ module.exports = grammar({
             field("value", $.real_value)
         ),
 
-        real_value: $ => seq(
-            $.signed_int,
-            ".",
-            $.unsigned_int,
-            optional(seq(
-                /[eE]/,
-                field("exp", $.signed_int)
-            ))
-        ),
+        real_value: $ => token(/[0-9][0-9_]*\.[0-9][0-9_]*([eE][-+]?[0-9][0-9_]*)?/),
 
         bool_literal: $ => choice(
             $.bool_literal_with_string,
@@ -1627,10 +1619,12 @@ module.exports = grammar({
 
         multibit_part_access: $ => seq(
             '.',
-            choice(
-                $.unsigned_int,
-                seq('%', field("size", optional($.XBWDL)), $.unsigned_int)
-            )
+            field("path", $.multibit)
+        ),
+
+        multibit: $ => choice(
+            $.unsigned_int,
+            seq('%', field("size", optional($.XBWDL)), $.unsigned_int)  
         ),
 
         invocation: $ => seq(
