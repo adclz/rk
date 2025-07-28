@@ -3336,7 +3336,7 @@
     }
   },
   {
-    "type": "multibit_part_access",
+    "type": "multibit",
     "named": true,
     "fields": {
       "size": {
@@ -3359,6 +3359,22 @@
           "named": true
         }
       ]
+    }
+  },
+  {
+    "type": "multibit_part_access",
+    "named": true,
+    "fields": {
+      "path": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "multibit",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -4222,36 +4238,6 @@
         },
         {
           "type": "real_name",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "real_value",
-    "named": true,
-    "fields": {
-      "exp": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "signed_int",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "signed_int",
-          "named": true
-        },
-        {
-          "type": "unsigned_int",
           "named": true
         }
       ]
@@ -6568,6 +6554,10 @@
   },
   {
     "type": "real_name",
+    "named": true
+  },
+  {
+    "type": "real_value",
     "named": true
   },
   {

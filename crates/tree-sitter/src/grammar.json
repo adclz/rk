@@ -154,28 +154,6 @@
         "value": "THIS"
       }
     },
-    "_ERR_empty_brackets": {
-      "type": "PREC",
-      "value": -1,
-      "content": {
-        "type": "SEQ",
-        "members": [
-          {
-            "type": "SYMBOL",
-            "name": "path_expression"
-          },
-          {
-            "type": "ALIAS",
-            "content": {
-              "type": "STRING",
-              "value": "[]"
-            },
-            "named": true,
-            "value": "ERR_empty_index"
-          }
-        ]
-      }
-    },
     "line_comment": {
       "type": "TOKEN",
       "content": {
@@ -507,46 +485,11 @@
       ]
     },
     "real_value": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "SYMBOL",
-          "name": "signed_int"
-        },
-        {
-          "type": "STRING",
-          "value": "."
-        },
-        {
-          "type": "SYMBOL",
-          "name": "unsigned_int"
-        },
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SEQ",
-              "members": [
-                {
-                  "type": "PATTERN",
-                  "value": "[eE]"
-                },
-                {
-                  "type": "FIELD",
-                  "name": "exp",
-                  "content": {
-                    "type": "SYMBOL",
-                    "name": "signed_int"
-                  }
-                }
-              ]
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
-        }
-      ]
+      "type": "TOKEN",
+      "content": {
+        "type": "PATTERN",
+        "value": "[0-9][0-9_]*\\.[0-9][0-9_]*([eE][-+]?[0-9][0-9_]*)?"
+      }
     },
     "bool_literal": {
       "type": "CHOICE",
@@ -7866,40 +7809,48 @@
           "value": "."
         },
         {
-          "type": "CHOICE",
+          "type": "FIELD",
+          "name": "path",
+          "content": {
+            "type": "SYMBOL",
+            "name": "multibit"
+          }
+        }
+      ]
+    },
+    "multibit": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "unsigned_int"
+        },
+        {
+          "type": "SEQ",
           "members": [
+            {
+              "type": "STRING",
+              "value": "%"
+            },
+            {
+              "type": "FIELD",
+              "name": "size",
+              "content": {
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "XBWDL"
+                  },
+                  {
+                    "type": "BLANK"
+                  }
+                ]
+              }
+            },
             {
               "type": "SYMBOL",
               "name": "unsigned_int"
-            },
-            {
-              "type": "SEQ",
-              "members": [
-                {
-                  "type": "STRING",
-                  "value": "%"
-                },
-                {
-                  "type": "FIELD",
-                  "name": "size",
-                  "content": {
-                    "type": "CHOICE",
-                    "members": [
-                      {
-                        "type": "SYMBOL",
-                        "name": "XBWDL"
-                      },
-                      {
-                        "type": "BLANK"
-                      }
-                    ]
-                  }
-                },
-                {
-                  "type": "SYMBOL",
-                  "name": "unsigned_int"
-                }
-              ]
             }
           ]
         }
