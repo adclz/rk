@@ -31,3 +31,4 @@ bon = "3.6.4"
 phf = { version = "0.11.3", features = ["macros"] }
 bitflags = "2.9.1"
 auto_enums = "0.8.7"
+camelpaste = "0.1.0"
