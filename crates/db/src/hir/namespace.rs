@@ -83,9 +83,8 @@ impl<'db> ToProto<'db> for Namespace<'db> {
         sema: &'db SemanticIndex<'db>,
         offset: usize,
     ) -> Option<Vec<CompletionItem>> {
-        let sema = semantic_index(db, self.file(db)).unwrap();
         let scope = sema.get_scope(self.scope_id(db));
-
+        
         // Don't provide completions between the namespace keyword and the namespace name
         if self.name_span(db).end_byte > offset {
             if !scope.visibility == Visibility::PUBLIC {

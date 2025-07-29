@@ -6,10 +6,11 @@ use crate::hir::interned::identifier::Ident;
 use crate::hir::interned::namespace::NamespacePath;
 use crate::hir::namespace::Namespace;
 use crate::hir::pous::pou::PouDecl;
-use crate::hir::scopes::iterators::AncestorsIter;
+use crate::hir::scopes::iterators::{AncestorsIter, PouIterator, ScopedMap};
 use crate::hir::scopes::scope::{
     NamespaceId, PouId, Scope, ScopeId, ScopedNamespaceId, ScopedPouId,
 };
+use crate::hir::scopes::solver::exported_items_in_scope;
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::to_proto::{IterToProto, ToProto};
 
@@ -58,6 +59,15 @@ impl<'db> SemanticIndex<'db> {
     pub(crate) fn ancestor_scopes(&self, scope: ScopeId) -> AncestorsIter {
         AncestorsIter::new(&self.scopes, self.get_scope(scope))
     }
+
+    pub(crate) fn pou_iterator(&'db self, db: &'db dyn BaseDatabase, scope: ScopeId) -> PouIterator<'db> {
+        PouIterator::new(db, &self, scope)
+    }
+
+    pub(crate) fn exported_items_in_scope(&'db self, db: &'db dyn BaseDatabase, scope: ScopeId) -> &'db ScopedMap {
+        exported_items_in_scope(db, self.file, self.get_scope(scope))
+    }
+    
 }
 
 impl<'db> IterToProto<'db> for SemanticIndex<'db> {
