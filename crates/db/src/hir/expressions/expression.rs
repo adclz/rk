@@ -1,5 +1,6 @@
+use crate::completions::snippets::elem_type_names_init;
 use crate::hir::interned::identifier::Ident;
-use crate::hir::scopes::scope::ScopeId;
+use crate::hir::scopes::scope::{PouId, ScopeId};
 use crate::hir::semantic_index::SemanticIndex;
 use crate::to_proto::{self_iter, IterToProto, ToProto};
 use auto_enums::auto_enum;
@@ -628,6 +629,15 @@ impl AnyElementary {
 impl<'db> ToProto<'db> for Expr<'db> {
     fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         self.span(db)
+    }
+
+    fn completion(
+            &'db self,
+            _db: &'db dyn crate::BaseDatabase,
+            _sema: &'db SemanticIndex<'db>,
+            _offset: usize,
+        ) -> Option<Vec<auto_lsp::lsp_types::CompletionItem>> {
+        Some(elem_type_names_init())
     }
 }
 

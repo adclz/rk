@@ -23,7 +23,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
     ) -> anyhow::Result<Stmt<'db>> {
         type StmtType = ast::generated::Stmt;
         match self {
-            StmtType::Assign(assign) => todo!(),
+            StmtType::Assign(assign) => assign.to_statement(sema),
             StmtType::SuperStmt(super_stmt) => {
                 Ok(Stmt::new(sema.db, super_stmt.get_span(), StmtKind::Super))
             }

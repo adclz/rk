@@ -31,6 +31,7 @@ impl<'db> ParseSpec<'db> for ast::generated::NamespaceAccess {
         Ok(Spec {
             span: self.get_span(),
             kind: SpecKind::Target(NamespaceAccess::from_ast(sema.db, sema.file, self)?),
+            scope_id: sema.current_scope
         })
     }
 }
@@ -63,6 +64,7 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
                 ast::generated::BoolName_MultibitsTypeName::BoolName(_) => Spec {
                     span: self.get_span(),
                     kind: SpecKind::Bool,
+                    scope_id: sema.current_scope
                 },
                 ast::generated::BoolName_MultibitsTypeName::MultibitsTypeName(a) => {
                     match a.children.deref() {
@@ -70,24 +72,28 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
                             Spec {
                                 span: self.get_span(),
                                 kind: SpecKind::Byte,
+                                scope_id: sema.current_scope
                             }
                         }
                         ast::generated::ByteName_DwordName_LwordName_WordName::WordName(_) => {
                             Spec {
                                 span: self.get_span(),
                                 kind: SpecKind::Word,
+                                scope_id: sema.current_scope
                             }
                         }
                         ast::generated::ByteName_DwordName_LwordName_WordName::DwordName(_) => {
                             Spec {
                                 span: self.get_span(),
                                 kind: SpecKind::DWord,
+                                scope_id: sema.current_scope
                             }
                         }
                         ast::generated::ByteName_DwordName_LwordName_WordName::LwordName(_) => {
                             Spec {
                                 span: self.get_span(),
                                 kind: SpecKind::LWord,
+                                scope_id: sema.current_scope
                             }
                         }
                     }
@@ -103,10 +109,12 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
                             ast::generated::LrealName_RealName::RealName(_) => Spec {
                                 span: self.get_span(),
                                 kind: SpecKind::Real,
+                                scope_id: sema.current_scope
                             },
                             ast::generated::LrealName_RealName::LrealName(_) => Spec {
                                 span: self.get_span(),
                                 kind: SpecKind::LReal,
+                                scope_id: sema.current_scope
                             },
                         }
                     }
@@ -116,40 +124,48 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
                 ast::generated::AnyDateTypeName::DateTypeName(_) => Spec {
                     span: self.get_span(),
                     kind: SpecKind::Date,
+                    scope_id: sema.current_scope
                 },
                 ast::generated::AnyDateTypeName::LDateTypeName(_) => Spec {
                     span: self.get_span(),
                     kind: SpecKind::LDate,
+                    scope_id: sema.current_scope
                 },
             },
             AstSpec::AnyTimeTypeName(time_type_name) => match time_type_name {
                 ast::generated::AnyTimeTypeName::TimeTypeName(_) => Spec {
                     span: self.get_span(),
                     kind: SpecKind::Time,
+                    scope_id: sema.current_scope
                 },
                 ast::generated::AnyTimeTypeName::LTimeTypeName(_) => Spec {
                     span: self.get_span(),
                     kind: SpecKind::LTime,
+                    scope_id: sema.current_scope
                 },
             },
             AstSpec::AnyTodTypeName(tod_type_name) => match tod_type_name {
                 ast::generated::AnyTodTypeName::TodTypeName(_) => Spec {
                     span: self.get_span(),
                     kind: SpecKind::Tod,
+                    scope_id: sema.current_scope
                 },
                 ast::generated::AnyTodTypeName::LtodTypeName(_) => Spec {
                     span: self.get_span(),
                     kind: SpecKind::LTod,
+                    scope_id: sema.current_scope
                 },
             },
             AstSpec::AnyDtTypeName(dt_type_name) => match dt_type_name {
                 ast::generated::AnyDtTypeName::DtTypeName(_) => Spec {
                     span: self.get_span(),
                     kind: SpecKind::Dt,
+                    scope_id: sema.current_scope
                 },
                 ast::generated::AnyDtTypeName::LDtTypeName(_) => Spec {
                     span: self.get_span(),
                     kind: SpecKind::Ldt,
+                    scope_id: sema.current_scope
                 },
             },
         })
@@ -164,18 +180,22 @@ impl<'db> ParseSpec<'db> for ast::generated::IntTypeName {
                     ast::generated::DintName_IntName_LintName_SintName::SintName(_) => Spec {
                         span: self.get_span(),
                         kind: SpecKind::SInt,
+                        scope_id: sema.current_scope
                     },
                     ast::generated::DintName_IntName_LintName_SintName::IntName(_) => Spec {
                         span: self.get_span(),
                         kind: SpecKind::Int,
+                        scope_id: sema.current_scope
                     },
                     ast::generated::DintName_IntName_LintName_SintName::DintName(_) => Spec {
                         span: self.get_span(),
                         kind: SpecKind::DInt,
+                        scope_id: sema.current_scope
                     },
                     ast::generated::DintName_IntName_LintName_SintName::LintName(_) => Spec {
                         span: self.get_span(),
                         kind: SpecKind::LInt,
+                        scope_id: sema.current_scope
                     },
                 }
             }
@@ -184,18 +204,22 @@ impl<'db> ParseSpec<'db> for ast::generated::IntTypeName {
                     ast::generated::UdintName_UintName_UlintName_UsintName::UsintName(_) => Spec {
                         span: self.get_span(),
                         kind: SpecKind::USInt,
+                        scope_id: sema.current_scope
                     },
                     ast::generated::UdintName_UintName_UlintName_UsintName::UintName(_) => Spec {
                         span: self.get_span(),
                         kind: SpecKind::UInt,
+                        scope_id: sema.current_scope
                     },
                     ast::generated::UdintName_UintName_UlintName_UsintName::UdintName(_) => Spec {
                         span: self.get_span(),
                         kind: SpecKind::UDInt,
+                        scope_id: sema.current_scope
                     },
                     ast::generated::UdintName_UintName_UlintName_UsintName::UlintName(_) => Spec {
                         span: self.get_span(),
                         kind: SpecKind::ULInt,
+                        scope_id: sema.current_scope
                     },
                 }
             }
@@ -218,21 +242,25 @@ impl<'db> ParseSpec<'db> for ast::generated::StrTypeSpec {
             AstSpec::DByteStrSpec(_) => Spec {
                 span: self.get_span(),
                 kind: SpecKind::String,
+                scope_id: sema.current_scope
             },
 
             AstSpec::SByteStrSpec(_) => Spec {
                 span: self.get_span(),
                 kind: SpecKind::WString,
+                scope_id: sema.current_scope
             },
 
             AstSpec::DChar(_) => Spec {
                 span: self.get_span(),
                 kind: SpecKind::Char,
+                scope_id: sema.current_scope
             },
 
             AstSpec::SChar(_) => Spec {
                 span: self.get_span(),
                 kind: SpecKind::WChar,
+                scope_id: sema.current_scope
             },
         })
     }
@@ -321,6 +349,7 @@ impl<'db> ParseSpec<'db> for ast::generated::SubrangeTypeSpec {
         Ok(Spec {
             span: self.get_span(),
             kind: SpecKind::Subrange(Subrange::new(sema.db, spec, lower, upper)),
+            scope_id: sema.current_scope
         })
     }
 }

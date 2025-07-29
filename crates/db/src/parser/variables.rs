@@ -335,6 +335,7 @@ impl<'db> ToVariable<'db> for ast::generated::EdgeDecl {
             kind,
             result.spec,
             result.init,
+            sema.current_scope
         ))
     }
 }
@@ -357,6 +358,7 @@ impl<'db> ToVariable<'db> for ast::generated::VarDecl {
             VariableKind::Input,
             result.spec,
             result.init,
+            sema.current_scope
         ))
     }
 }
@@ -380,6 +382,7 @@ impl<'db> ToVariable<'db> for ast::generated::VarDeclInit {
             VariableKind::Input,
             result.spec,
             result.init,
+            sema.current_scope
         ))
     }
 }
@@ -403,6 +406,7 @@ impl<'db> ToVariable<'db> for ast::generated::ArrayConformand {
             VariableKind::Input,
             result.spec,
             result.init,
+            sema.current_scope
         ))
     }
 }
@@ -426,6 +430,7 @@ impl<'db> ToVariable<'db> for ast::generated::LocPartlyVar {
             VariableKind::Input,
             result.spec,
             result.init,
+            sema.current_scope
         ))
     }
 }
@@ -449,6 +454,7 @@ impl<'db> ToVariable<'db> for ast::generated::RefSpec {
             VariableKind::Input,
             result.spec,
             result.init,
+            sema.current_scope
         ))
     }
 }
@@ -641,6 +647,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
                         VariableKind::Global,
                         result.spec,
                         result.init,
+                        sema.current_scope
                     ))
                 }
                 GlobalVarKind::LocVarSpecInit(var_decl) => {
@@ -655,6 +662,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
                         VariableKind::Global,
                         result.spec,
                         result.init,
+                        sema.current_scope
                     ))
                 }
             }
@@ -679,15 +687,18 @@ impl<'db> ParseSpecInit<'db> for ast::generated::EdgeDecl {
                 Spec {
                     span: self.get_span(),
                     kind: SpecKind::Bool,
+                    scope_id: sema.current_scope
                 }
             }
             ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::Token_F_EDGE(fedge) => Spec {
                 span: self.get_span(),
                 kind: SpecKind::Bool,
+                scope_id: sema.current_scope
             },
             ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::Token_R_EDGE(redge) => Spec {
                 span: self.get_span(),
                 kind: SpecKind::Bool,
+                scope_id: sema.current_scope
             },
         };
 

@@ -99,9 +99,6 @@ impl SpannedNamespaceAccess {
     }
 }
 
-/// A [`PathTarget`] represents a fully qualified path to something
-///
-/// If no namespace is present, it is a simple identifier
 #[salsa::interned(debug, no_lifetime)]
 pub struct NamespaceAccess {
     pub namespace: Option<NamespacePath>,

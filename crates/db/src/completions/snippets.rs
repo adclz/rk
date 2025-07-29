@@ -120,3 +120,123 @@ pub fn var() -> CompletionItem {
         ..Default::default()
     }
 }
+
+#[inline]
+pub fn elem_type_names() -> Vec<CompletionItem> {
+    vec![
+        bool(),
+        sint(),
+        int(),
+        dint(),
+        lint(),
+        usint(),
+        uint(),
+        udint(),
+        ulint(),
+        byte(),
+        word(),
+        dword(),
+        lword(),
+        date(),
+        ldate(),
+        dt(),
+        ldt(),
+        tod(),
+        ltod(),
+        time(),
+        ltime(),
+        string(),
+        wstring(),
+        char(),
+        wchar(),
+    ]
+}
+
+#[inline]
+pub fn elem_type_names_init() -> Vec<CompletionItem> {
+    vec![
+        sint_init(),
+        int_init(),
+        dint_init(),
+        lint_init(),
+        usint_init(),
+        uint_init(),                
+        udint_init(),
+        ulint_init(),
+        byte_init(),
+        word_init(),
+        dword_init(),
+        lword_init(),
+        date_init(),
+        ldate_init(),
+        dt_init(),
+        ldt_init(),
+        tod_init(),
+        ltod_init(),
+        time_init(),
+        ltime_init(),
+        string_init(),
+        wstring_init(),
+        char_init(),
+        wchar_init(),
+    ]
+}
+
+use camelpaste::paste;
+
+macro_rules! gen_elem_data_types_snippets {
+    ($($type_name: ident => $label: ident),*) => {
+        $(
+            #[inline]
+            pub fn $type_name() -> CompletionItem {
+                CompletionItem {
+                    label: stringify!($label).into(),
+                    kind: Some(lsp_types::CompletionItemKind::TYPE_PARAMETER),
+                    insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+                    insert_text: Some(stringify!($label).into()),
+                    ..Default::default()
+                }
+            }
+        
+        paste! {
+            #[inline]
+            pub fn [<$type_name _init>]() -> CompletionItem {
+                CompletionItem {
+                    label: stringify!($label).into(),
+                    kind: Some(lsp_types::CompletionItemKind::VALUE),
+                    insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+                    insert_text: Some(format!("{}#", stringify!($label)).into()),
+                    ..Default::default()
+                }
+            }}
+        )*
+    };
+}
+
+gen_elem_data_types_snippets! {
+    sint => SINT,
+    int => INT,
+    dint => DINT,
+    lint => LINT,
+    usint => USINT,
+    uint => UINT,
+    udint => UDINT,
+    ulint => ULINT,
+    byte => BYTE,
+    word => WORD,
+    dword => DWORD,
+    lword => LWORD,
+    date => DATE,
+    ldate => LDATE,
+    dt => DATE_AND_TIME,
+    ldt => LDATE_AND_TIME,
+    tod => TIME_OF_DAY,
+    ltod => LTIME_OF_DAY,
+    time => TIME,
+    ltime => LTIME,
+    bool => BOOL,
+    string => STRING,
+    wstring => WSTRING,
+    char => CHAR,
+    wchar => WCHAR
+}

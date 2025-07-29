@@ -99,6 +99,8 @@ impl<'db> Iterator for PouIterator<'db> {
                 ScopeKind::Namespace(ns_id) => {
                     let ns = self.sema.get_namespace(ns_id);
                     self.current_iterator = Some(ns.pous(self.db).iter());
+
+                    
                     return self.current_iterator.as_mut().unwrap().next().map(|pou| {
                         let pou_name = self.sema.pou_keys[pou].name(self.db);
                         (*pou_name, ScopedPouId(*pou, self.sema.file))

@@ -33,7 +33,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         let name = Ident::from_node(self.db, self.file, func.name.deref())?;
         let usings = self.parse_usings(&func.directives)?;
 
-        let result = Function::new(self.db, vec![], statements, self.current_scope);
+        let result = Function::new(self.db, variables, statements, self.current_scope);
 
         let scope = Scope::new(
             self.file,
@@ -96,13 +96,8 @@ impl<'db> ParseVariable<'db> for ast::generated::FuncDecl {
 #[cfg(test)]
 mod tests {
     use auto_lsp::{default::db::{file::File, BaseDatabase, FileManager}, lsp_types};
-
-    use super::*;
     use crate::{
-        hir::{
-            interned::{identifier::SpannedIdent, namespace::NamespacePath},
-            semantic_index::semantic_index,
-        },
+        hir::{pous::pou::{self, Pou, PouDecl}, semantic_index::semantic_index},
         RootDatabase,
     };
 
@@ -152,13 +147,17 @@ END_NAMESPACE
         db.add_file(file).unwrap();
 
         let file = db.get_file(&url).unwrap();
-        let namespaces = semantic_index(&db, file).unwrap();
+        let sema = semantic_index(&db, file).unwrap();
 
-        let fn_name = SpannedIdent::from_blank(&db, "f");
-        let ns = SpannedIdent::from_blank(&db, "nss");
+        let first_pou = sema.pou_keys.iter().next().unwrap();
+        let pou_decl = first_pou.1;
 
-        let ns = NamespacePath::from((&db as _, vec![ns]));
-
-        eprintln!("Namespace: {:?}", namespaces);
+        assert_eq!(pou_decl.name(&db).text(&db), "f");
+        match pou_decl.pou(&db) {
+            Pou::Function(func) => {
+                assert_eq!(func.variables(&db).len(), 8);
+            }
+            _ => panic!("Expected a function POU"),
+        }
     }
 }

@@ -5,12 +5,9 @@ use auto_lsp::{
 };
 
 use crate::{
-    hir::{
-        expressions::expression::Expr,
-        interned::{identifier::Ident, namespace::NamespaceAccess},
-        semantic_index::SemanticIndex,
-    },
-    to_proto::{self_iter, IterToProto, SymbolInfo, ToProto},
+    completions::snippets::elem_type_names, hir::{
+        expressions::expression::Expr, interned::{identifier::Ident, namespace::NamespaceAccess}, pous::pou::Pou, scopes::scope::ScopeId, semantic_index::SemanticIndex
+    }, to_proto::{self_iter, IterToProto, SymbolInfo, ToProto}
 };
 
 #[salsa::tracked(debug)]
@@ -35,6 +32,8 @@ pub struct Variable<'db> {
     #[tracked]
     #[returns(as_ref)]
     pub init: Option<Expr<'db>>,
+
+    pub scope_id: ScopeId,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -99,6 +98,7 @@ impl<'db> IterToProto<'db> for Variable<'db> {
 pub struct Spec<'db> {
     pub span: Span,
     pub kind: SpecKind<'db>,
+    pub scope_id: ScopeId
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -178,6 +178,37 @@ impl<'db> ToProto<'db> for Spec<'db> {
             ),
             range: None,
         })
+    }
+
+    fn completion(
+            &'db self,
+            db: &'db dyn crate::BaseDatabase,
+            sema: &'db SemanticIndex<'db>,
+            _offset: usize,
+        ) -> Option<Vec<auto_lsp::lsp_types::CompletionItem>> {
+        let mut primary = elem_type_names();
+        primary.extend(sema.pou_iterator(db, self.scope_id)
+        .filter_map(|(name, pou)| {
+            let pou = sema.get_pou(pou.0);
+            match pou.pou(db) {
+                Pou::DataType(fb) => Some(auto_lsp::lsp_types::CompletionItem {
+                label: pou.name(db).text(db).to_string(),
+                kind: Some(auto_lsp::lsp_types::CompletionItemKind::TYPE_PARAMETER),
+                detail: Some("TYPE".to_string()),
+                documentation: None,
+                ..Default::default()
+            }),
+                Pou::Function(dt) => Some(auto_lsp::lsp_types::CompletionItem {
+                label: pou.name(db).text(db).to_string(),
+                kind: Some(auto_lsp::lsp_types::CompletionItemKind::FUNCTION),
+                detail: Some("FUNCTION".to_string()),
+                documentation: None,
+                ..Default::default()
+            }),
+                _ => None,
+            }
+        }));
+        Some(primary)
     }
 }
 
