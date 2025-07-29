@@ -74,12 +74,12 @@ pub fn use_completion_ctx(
     file: File,
     offset: usize,
 ) -> anyhow::Result<Option<CompletionResponse>> {
-    let ns = match semantic_index(db, file) {
-        Some(ns) => ns,
+    let sema = match semantic_index(db, file) {
+        Some(sema) => sema,
         None => return Ok(None),
     };
-    if let Some(symbol) = ns.descendant_at(db, &ns, offset) {
-        if let Some(ctx) = symbol.completion(db, offset) {
+    if let Some(symbol) = sema.descendant_at(db, &sema, offset) {
+        if let Some(ctx) = symbol.completion(db, &sema, offset) {
             return Ok(Some(CompletionResponse::Array(ctx)));
         }
     }

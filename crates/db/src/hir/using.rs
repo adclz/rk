@@ -42,7 +42,8 @@ impl<'db> ToProto<'db> for Using<'db> {
 
     fn completion(
         &'db self,
-        db: &'db dyn crate::BaseDatabase,
+        db: &'db dyn BaseDatabase,
+        _sema: &'db SemanticIndex<'db>,
         _offset: usize,
     ) -> Option<Vec<CompletionItem>> {
         None

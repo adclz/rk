@@ -80,6 +80,7 @@ impl<'db> ToProto<'db> for Namespace<'db> {
     fn completion(
         &'db self,
         db: &'db dyn crate::BaseDatabase,
+        sema: &'db SemanticIndex<'db>,
         offset: usize,
     ) -> Option<Vec<CompletionItem>> {
         let sema = semantic_index(db, self.file(db)).unwrap();

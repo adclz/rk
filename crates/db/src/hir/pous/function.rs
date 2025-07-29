@@ -25,6 +25,7 @@ impl<'db> Function<'db> {
     pub fn completion_ctx(
         &'db self,
         db: &'db dyn BaseDatabase,
+        sema: &'db SemanticIndex,
         offset: usize,
     ) -> Option<Vec<CompletionItem>> {
         let var_completions = vec![

@@ -99,6 +99,7 @@ pub trait ToProto<'db> {
     fn completion(
         &'db self,
         _db: &'db dyn crate::BaseDatabase,
+        _sema: &'db SemanticIndex<'db>,
         _offset: usize,
     ) -> Option<Vec<CompletionItem>> {
         None

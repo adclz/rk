@@ -102,10 +102,11 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
     fn completion(
         &'db self,
         db: &'db dyn crate::BaseDatabase,
+        sema: &'db SemanticIndex<'db>,
         offset: usize,
     ) -> Option<Vec<CompletionItem>> {
         match self.pou(db) {
-            Pou::Function(f) => f.completion_ctx(db, offset),
+            Pou::Function(f) => f.completion_ctx(db, sema, offset),
             Pou::FunctionBlock(_) => Some(vec![completions::snippets::var_input()]),
             Pou::Class(_) => Some(vec![completions::snippets::var_input()]),
             Pou::Interface(_) => Some(vec![completions::snippets::var_input()]),
