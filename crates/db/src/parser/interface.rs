@@ -10,7 +10,7 @@ use crate::parser::{ParseSpec, ParseVarSection};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 
-impl<'db> SemanticIndexBuilder<'db> {
+impl SemanticIndexBuilder<'_> {
     pub fn parse_interface(
         &mut self,
         interface: &ast::generated::InterfaceDecl,
@@ -46,7 +46,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             Some(self.current_scope),
         );
 
-        let result = Interface::new(self.db, extends, methods, self.current_scope);
+        let result = Interface::new(self.db, extends, vec![], self.current_scope);
 
         self.pou_keys.insert(
             pou_key,
@@ -62,20 +62,20 @@ impl<'db> SemanticIndexBuilder<'db> {
         Ok(pou_key)
     }
 
-    pub fn parse_method_prototype(
-        &mut self,
+    pub fn parse_method_prototype<'a>(
+        &'a self,
         method: &ast::generated::MethodPrototype,
-    ) -> anyhow::Result<Method<'db>> {
+    ) -> anyhow::Result<Method<'a>> {
         let name = Ident::from_node(self.db, self.file, &*method.name)?;
         let return_type = method
             .data_type
             .as_ref()
             .map(|i| match i.deref() {
                 ast::generated::DataTypeAccess::ElemTypeName(elem_type_name) => {
-                    elem_type_name.to_spec(self.db, self.file)
+                    elem_type_name.to_spec(self)
                 }
                 ast::generated::DataTypeAccess::NamespaceAccess(target) => {
-                    target.to_spec(self.db, self.file)
+                    target.to_spec(self)
                 }
             })
             .transpose()?;
@@ -84,13 +84,13 @@ impl<'db> SemanticIndexBuilder<'db> {
         for variable in method.variables.iter() {
             match variable.deref() {
                 ast::generated::InOutDecls_InputDecls_OutputDecls::InputDecls(decls) => {
-                    decls.parse(self.db, self.file, &mut variables)?
+                    decls.parse(self, &mut variables)?
                 }
                 ast::generated::InOutDecls_InputDecls_OutputDecls::InOutDecls(decls) => {
-                    decls.parse(self.db, self.file, &mut variables)?
+                    decls.parse(self, &mut variables)?
                 }
                 ast::generated::InOutDecls_InputDecls_OutputDecls::OutputDecls(decls) => {
-                    decls.parse(self.db, self.file, &mut variables)?
+                    decls.parse(self, &mut variables)?
                 }
             }
         }

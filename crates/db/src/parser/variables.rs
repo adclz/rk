@@ -15,13 +15,13 @@ use crate::diagnostics::diagnostic_builder::diag;
 use crate::diagnostics::DiagnosticAccumulator;
 use crate::hir::interned::identifier::Ident;
 use crate::hir::pous::variable::{Spec, SpecKind, Variable, VariableKind};
+use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::parser::{ParseInit, ParseSpec, ParseSpecInit, ParseVarSection, SpecInitResult};
 
 trait ToVariable<'db> {
     fn to_variable(
         &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'db>,
         name: &impl AstNode,
         kind: VariableKind,
     ) -> anyhow::Result<Variable<'db>>;
@@ -30,8 +30,7 @@ trait ToVariable<'db> {
 impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
     fn parse(
         &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'db>,
         section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
@@ -42,7 +41,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
                         .range(child.get_span())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                         .call();
-                    DiagnosticAccumulator::accumulate(diag.into(), db);
+                    DiagnosticAccumulator::accumulate(diag.into(), sema.db);
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_InputVar::InputVar(child) => {
@@ -50,8 +49,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
                         ast::generated::InputVarKind::VarDeclInit(var_decl) => {
                             for variable in child.variables.children.iter() {
                                 section.push(var_decl.to_variable(
-                                    db,
-                                    file,
+                                    sema,
                                     variable.deref(),
                                     VariableKind::Input,
                                 )?);
@@ -60,8 +58,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
                         ast::generated::InputVarKind::ArrayConformand(var_decl) => {
                             for variable in child.variables.children.iter() {
                                 section.push(var_decl.to_variable(
-                                    db,
-                                    file,
+                                    sema,
                                     variable.deref(),
                                     VariableKind::Input,
                                 )?);
@@ -70,8 +67,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
                         ast::generated::InputVarKind::EdgeDecl(edge_decl) => {
                             for variable in child.variables.children.iter() {
                                 section.push(edge_decl.to_variable(
-                                    db,
-                                    file,
+                                    sema,
                                     variable.deref(),
                                     VariableKind::Input,
                                 )?);
@@ -88,8 +84,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
 impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
     fn parse(
         &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'db>,
         section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
@@ -100,7 +95,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
                         .range(child.get_span())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                         .call();
-                    DiagnosticAccumulator::accumulate(diag.into(), db);
+                    DiagnosticAccumulator::accumulate(diag.into(), sema.db);
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_FbInputVar::FbInputVar(child) => {
@@ -108,8 +103,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
                         ast::generated::FbInputVarKind::VarDeclInit(var_decl) => {
                             for variable in child.variables.children.iter() {
                                 section.push(var_decl.to_variable(
-                                    db,
-                                    file,
+                                    sema,
                                     variable.deref(),
                                     VariableKind::Input,
                                 )?);
@@ -118,8 +112,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
                         ast::generated::FbInputVarKind::ArrayConformand(var_decl) => {
                             for variable in child.variables.children.iter() {
                                 section.push(var_decl.to_variable(
-                                    db,
-                                    file,
+                                    sema,
                                     variable.deref(),
                                     VariableKind::Input,
                                 )?);
@@ -128,8 +121,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
                         ast::generated::FbInputVarKind::EdgeDecl(edge_decl) => {
                             for variable in child.variables.children.iter() {
                                 section.push(edge_decl.to_variable(
-                                    db,
-                                    file,
+                                    sema,
                                     variable.deref(),
                                     VariableKind::Input,
                                 )?);
@@ -146,8 +138,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
 impl<'db> ParseVarSection<'db> for ast::generated::OutputDecls {
     fn parse(
         &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'db>,
         section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
@@ -158,7 +149,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::OutputDecls {
                         .range(child.get_span())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                         .call();
-                    DiagnosticAccumulator::accumulate(diag.into(), db);
+                    DiagnosticAccumulator::accumulate(diag.into(), sema.db);
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_OutputVar::OutputVar(child) => {
@@ -166,8 +157,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::OutputDecls {
                         ast::generated::OutputVarKind::VarDeclInit(var_decl) => {
                             for variable in child.variables.children.iter() {
                                 section.push(var_decl.to_variable(
-                                    db,
-                                    file,
+                                    sema,
                                     variable.deref(),
                                     VariableKind::Output,
                                 )?);
@@ -176,8 +166,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::OutputDecls {
                         ast::generated::OutputVarKind::ArrayConformand(var_decl) => {
                             for variable in child.variables.children.iter() {
                                 section.push(var_decl.to_variable(
-                                    db,
-                                    file,
+                                    sema,
                                     variable.deref(),
                                     VariableKind::Output,
                                 )?);
@@ -194,8 +183,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::OutputDecls {
 impl<'db> ParseVarSection<'db> for ast::generated::FbOutputDecls {
     fn parse(
         &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'db>,
         section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
@@ -206,7 +194,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbOutputDecls {
                         .range(child.get_span())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                         .call();
-                    DiagnosticAccumulator::accumulate(diag.into(), db);
+                    DiagnosticAccumulator::accumulate(diag.into(), sema.db);
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_FbOutputVar::FbOutputVar(child) => {
@@ -214,8 +202,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbOutputDecls {
                         ast::generated::FbOutputVarKind::VarDeclInit(var_decl) => {
                             for variable in child.variables.children.iter() {
                                 section.push(var_decl.to_variable(
-                                    db,
-                                    file,
+                                    sema,
                                     variable.deref(),
                                     VariableKind::Output,
                                 )?);
@@ -224,8 +211,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbOutputDecls {
                         ast::generated::FbOutputVarKind::ArrayConformand(var_decl) => {
                             for variable in child.variables.children.iter() {
                                 section.push(var_decl.to_variable(
-                                    db,
-                                    file,
+                                    sema,
                                     variable.deref(),
                                     VariableKind::Output,
                                 )?);
@@ -242,8 +228,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbOutputDecls {
 impl<'db> ParseVarSection<'db> for ast::generated::TempVarDecls {
     fn parse(
         &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'db>,
         section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
@@ -254,7 +239,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::TempVarDecls {
                         .range(child.get_span())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                         .call();
-                    DiagnosticAccumulator::accumulate(diag.into(), db);
+                    DiagnosticAccumulator::accumulate(diag.into(), sema.db);
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_TempVar::TempVar(child) => {
@@ -262,8 +247,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::TempVarDecls {
                         ast::generated::TempVarKind::VarDecl(var_decl) => {
                             for variable in child.variables.children.iter() {
                                 section.push(var_decl.to_variable(
-                                    db,
-                                    file,
+                                    sema,
                                     variable.deref(),
                                     VariableKind::Input,
                                 )?);
@@ -272,8 +256,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::TempVarDecls {
                         ast::generated::TempVarKind::RefSpec(var_decl) => {
                             for variable in child.variables.children.iter() {
                                 section.push(var_decl.to_variable(
-                                    db,
-                                    file,
+                                    sema,
                                     variable.deref(),
                                     VariableKind::Input,
                                 )?);
@@ -290,8 +273,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::TempVarDecls {
 impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
     fn parse(
         &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'db>,
         section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
@@ -302,7 +284,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
                         .range(child.get_span())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                         .call();
-                    DiagnosticAccumulator::accumulate(diag.into(), db);
+                    DiagnosticAccumulator::accumulate(diag.into(), sema.db);
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_InOutVar::InOutVar(child) => {
@@ -310,8 +292,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
                         ast::generated::InOutVarKind::ArrayConformand(var_decl) => {
                             for variable in child.variables.children.iter() {
                                 section.push(var_decl.to_variable(
-                                    db,
-                                    file,
+                                    sema,
                                     variable.deref(),
                                     VariableKind::InOut,
                                 )?);
@@ -320,8 +301,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
                         ast::generated::InOutVarKind::VarDecl(var_decl) => {
                             for variable in child.variables.children.iter() {
                                 section.push(var_decl.to_variable(
-                                    db,
-                                    file,
+                                    sema,
                                     variable.deref(),
                                     VariableKind::Input,
                                 )?);
@@ -338,18 +318,17 @@ impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
 impl<'db> ToVariable<'db> for ast::generated::EdgeDecl {
     fn to_variable(
         &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'db>,
         name: &impl AstNode,
         kind: VariableKind,
     ) -> anyhow::Result<Variable<'db>> {
-        let var_name = Ident::from_node(db, file, name)?;
-        let result = self.to_spec_init(db, file)?;
+        let var_name = Ident::from_node(sema.db, sema.file, name)?;
+        let result = self.to_spec_init(sema)?;
         let self_span = self.get_span();
         let name_span = name.get_span();
         Ok(Variable::new(
-            db,
-            file,
+            sema.db,
+            sema.file,
             var_name,
             name.get_span(),
             name.get_span(),
@@ -363,16 +342,15 @@ impl<'db> ToVariable<'db> for ast::generated::EdgeDecl {
 impl<'db> ToVariable<'db> for ast::generated::VarDecl {
     fn to_variable(
         &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'db>,
         name: &impl AstNode,
         kind: VariableKind,
     ) -> anyhow::Result<Variable<'db>> {
-        let var_name = Ident::from_node(db, file, name)?;
-        let result = self.to_spec_init(db, file)?;
+        let var_name = Ident::from_node(sema.db, sema.file, name)?;
+        let result = self.to_spec_init(sema)?;
         Ok(Variable::new(
-            db,
-            file,
+            sema.db,
+            sema.file,
             var_name,
             name.get_span(),
             name.get_span(),
@@ -386,17 +364,16 @@ impl<'db> ToVariable<'db> for ast::generated::VarDecl {
 impl<'db> ToVariable<'db> for ast::generated::VarDeclInit {
     fn to_variable(
         &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'db>,
         name: &impl AstNode,
         kind: VariableKind,
     ) -> anyhow::Result<Variable<'db>> {
-        let var_name = Ident::from_node(db, file, name)?;
-        let result = self.to_spec_init(db, file)?;
+        let var_name = Ident::from_node(sema.db, sema.file, name)?;
+        let result = self.to_spec_init(sema)?;
 
         Ok(Variable::new(
-            db,
-            file,
+            sema.db,
+            sema.file,
             var_name,
             name.get_span(),
             name.get_span(),
@@ -410,17 +387,16 @@ impl<'db> ToVariable<'db> for ast::generated::VarDeclInit {
 impl<'db> ToVariable<'db> for ast::generated::ArrayConformand {
     fn to_variable(
         &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'db>,
         name: &impl AstNode,
         kind: VariableKind,
     ) -> anyhow::Result<Variable<'db>> {
-        let var_name = Ident::from_node(db, file, name)?;
-        let result = self.to_spec_init(db, file)?;
+        let var_name = Ident::from_node(sema.db, sema.file, name)?;
+        let result = self.to_spec_init(sema)?;
 
         Ok(Variable::new(
-            db,
-            file,
+            sema.db,
+            sema.file,
             var_name,
             name.get_span(),
             name.get_span(),
@@ -434,17 +410,16 @@ impl<'db> ToVariable<'db> for ast::generated::ArrayConformand {
 impl<'db> ToVariable<'db> for ast::generated::LocPartlyVar {
     fn to_variable(
         &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'db>,
         name: &impl AstNode,
         kind: VariableKind,
     ) -> anyhow::Result<Variable<'db>> {
-        let var_name = Ident::from_node(db, file, name)?;
-        let result = self.to_spec_init(db, file)?;
+        let var_name = Ident::from_node(sema.db, sema.file, name)?;
+        let result = self.to_spec_init(sema)?;
 
         Ok(Variable::new(
-            db,
-            file,
+            sema.db,
+            sema.file,
             var_name,
             name.get_span(),
             name.get_span(),
@@ -458,17 +433,16 @@ impl<'db> ToVariable<'db> for ast::generated::LocPartlyVar {
 impl<'db> ToVariable<'db> for ast::generated::RefSpec {
     fn to_variable(
         &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'db>,
         name: &impl AstNode,
         kind: VariableKind,
     ) -> anyhow::Result<Variable<'db>> {
-        let var_name = Ident::from_node(db, file, name)?;
-        let result = self.to_spec_init(db, file)?;
+        let var_name = Ident::from_node(sema.db, sema.file, name)?;
+        let result = self.to_spec_init(sema)?;
 
         Ok(Variable::new(
-            db,
-            file,
+            sema.db,
+            sema.file,
             var_name,
             name.get_span(),
             name.get_span(),
@@ -482,8 +456,7 @@ impl<'db> ToVariable<'db> for ast::generated::RefSpec {
 impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
     fn parse(
         &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'db>,
         section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
@@ -492,16 +465,14 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
                     match child.Type.deref() {
                         ExternalVarKind::VarDecl(var_decl) => {
                             section.push(var_decl.to_variable(
-                                db,
-                                file,
+                                sema,
                                 child.name.deref(),
                                 VariableKind::Local,
                             )?);
                         }
                         ExternalVarKind::ArrayConformand(var_decl) => {
                             section.push(var_decl.to_variable(
-                                db,
-                                file,
+                                sema,
                                 child.name.deref(),
                                 VariableKind::Local,
                             )?);
@@ -516,7 +487,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
                         .range(child.get_span())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                         .call();
-                    DiagnosticAccumulator::accumulate(diag.into(), db);
+                    DiagnosticAccumulator::accumulate(diag.into(), sema.db);
                     continue;
                 }
             }
@@ -528,8 +499,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
 impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
     fn parse(
         &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'db>,
         section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
@@ -542,7 +512,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
                         .range(var_decl.get_span())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                         .call();
-                    DiagnosticAccumulator::accumulate(diag.into(), db);
+                    DiagnosticAccumulator::accumulate(diag.into(), sema.db);
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_VarDeclInitList::VarDeclInitList(
@@ -550,8 +520,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
                 ) => {
                     for variable in var_decl.variables.children.iter() {
                         section.push(var_decl.Type.to_variable(
-                            db,
-                            file,
+                            sema,
                             variable.deref(),
                             VariableKind::Local,
                         )?);
@@ -566,8 +535,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
 impl<'db> ParseVarSection<'db> for ast::generated::RetainVarDecls {
     fn parse(
         &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'db>,
         section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
@@ -580,7 +548,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::RetainVarDecls {
                         .range(var_decl.get_span())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                         .call();
-                    DiagnosticAccumulator::accumulate(diag.into(), db);
+                    DiagnosticAccumulator::accumulate(diag.into(), sema.db);
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_VarDeclInitList::VarDeclInitList(
@@ -588,8 +556,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::RetainVarDecls {
                 ) => {
                     for variable in var_decl.variables.children.iter() {
                         section.push(var_decl.Type.to_variable(
-                            db,
-                            file,
+                            sema,
                             variable.deref(),
                             VariableKind::Local,
                         )?);
@@ -604,8 +571,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::RetainVarDecls {
 impl<'db> ParseVarSection<'db> for ast::generated::NoRetainVarDecls {
     fn parse(
         &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'db>,
         section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
@@ -618,7 +584,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::NoRetainVarDecls {
                         .range(var_decl.get_span())
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                         .call();
-                    DiagnosticAccumulator::accumulate(diag.into(), db);
+                    DiagnosticAccumulator::accumulate(diag.into(), sema.db);
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_VarDeclInitList::VarDeclInitList(
@@ -626,8 +592,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::NoRetainVarDecls {
                 ) => {
                     for variable in var_decl.variables.children.iter() {
                         section.push(var_decl.Type.to_variable(
-                            db,
-                            file,
+                            sema,
                             variable.deref(),
                             VariableKind::Local,
                         )?);
@@ -642,14 +607,12 @@ impl<'db> ParseVarSection<'db> for ast::generated::NoRetainVarDecls {
 impl<'db> ParseVarSection<'db> for ast::generated::LocPartlyVarDecl {
     fn parse(
         &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'db>,
         section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
             section.push(child.to_variable(
-                db,
-                file,
+                sema,
                 child.variable_name.deref(),
                 VariableKind::Local,
             )?);
@@ -661,18 +624,17 @@ impl<'db> ParseVarSection<'db> for ast::generated::LocPartlyVarDecl {
 impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
     fn parse(
         &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'db>,
         section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
             match child.Type.deref() {
                 GlobalVarKind::NamespaceAccess(var_decl) => {
-                    let name = Ident::from_node(db, file, child.spec.deref())?;
-                    let result = var_decl.to_spec_init(db, file)?;
+                    let name = Ident::from_node(sema.db, sema.file, child.spec.deref())?;
+                    let result = var_decl.to_spec_init(sema)?;
                     section.push(Variable::new(
-                        db,
-                        file,
+                        sema.db,
+                        sema.file,
                         name,
                         child.get_span(),
                         child.spec.get_span(),
@@ -682,11 +644,11 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
                     ))
                 }
                 GlobalVarKind::LocVarSpecInit(var_decl) => {
-                    let name = Ident::from_node(db, file, child.spec.deref())?;
-                    let result = var_decl.to_spec_init(db, file)?;
+                    let name = Ident::from_node(sema.db, sema.file, child.spec.deref())?;
+                    let result = var_decl.to_spec_init(sema)?;
                     section.push(Variable::new(
-                        db,
-                        file,
+                        sema.db,
+                        sema.file,
                         name,
                         child.get_span(),
                         child.spec.get_span(),
@@ -704,8 +666,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
 impl<'db> ParseSpecInit<'db> for ast::generated::EdgeDecl {
     fn to_spec_init(
         &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<SpecInitResult<'db>> {
         let spec = match self.edge.deref() {
             ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::ERRInvalidEdgeQualifier(err) => {
@@ -714,7 +675,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::EdgeDecl {
                     .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                     .range(err.get_span())
                     .call();
-                DiagnosticAccumulator::accumulate(diag.into(), db);
+                DiagnosticAccumulator::accumulate(diag.into(), sema.db);
                 Spec {
                     span: self.get_span(),
                     kind: SpecKind::Bool,
@@ -737,8 +698,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::EdgeDecl {
 impl<'db> ParseSpecInit<'db> for ast::generated::LocPartlyVar {
     fn to_spec_init(
         &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'db>
     ) -> anyhow::Result<SpecInitResult<'db>> {
         todo!()
     }
@@ -747,24 +707,23 @@ impl<'db> ParseSpecInit<'db> for ast::generated::LocPartlyVar {
 impl<'db> ParseSpecInit<'db> for ast::generated::VarDecl {
     fn to_spec_init(
         &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'db>
     ) -> anyhow::Result<SpecInitResult<'db>> {
         type Spec = ast::generated::ArrayTypeSpec_SimpleTypeSpec_StrTypeSpec_StructTypeSpec;
 
         let spec = match self.spec.deref() {
-            Spec::ArrayTypeSpec(a) => a.to_spec(db, file),
-            Spec::SimpleTypeSpec(a) => a.to_spec(db, file),
-            Spec::StrTypeSpec(a) => a.to_spec(db, file),
-            Spec::StructTypeSpec(a) => a.to_spec(db, file),
+            Spec::ArrayTypeSpec(a) => a.to_spec(sema),
+            Spec::SimpleTypeSpec(a) => a.to_spec(sema),
+            Spec::StrTypeSpec(a) => a.to_spec(sema),
+            Spec::StructTypeSpec(a) => a.to_spec(sema),
         };
 
         type Init = ast::generated::ArrayTypeInit_SimpleTypeInit_StructTypeInit;
 
         let init = match self.init.as_deref() {
-            Some(Init::ArrayTypeInit(a)) => Some(a.to_init(db, file)?),
-            Some(Init::SimpleTypeInit(a)) => Some(a.to_init(db, file)?),
-            Some(Init::StructTypeInit(a)) => Some(a.to_init(db, file)?),
+            Some(Init::ArrayTypeInit(a)) => Some(a.to_init(sema)?),
+            Some(Init::SimpleTypeInit(a)) => Some(a.to_init(sema)?),
+            Some(Init::StructTypeInit(a)) => Some(a.to_init(sema)?),
             None => None,
         };
 
@@ -773,10 +732,10 @@ impl<'db> ParseSpecInit<'db> for ast::generated::VarDecl {
                 .message(
                     "variables declared in TEMP or IN_OUT can not have a default value".to_string(),
                 )
-                .range(init.span(db).clone())
+                .range(init.span(sema.db).clone())
                 .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                 .call();
-            DiagnosticAccumulator::accumulate(diag.into(), db);
+            DiagnosticAccumulator::accumulate(diag.into(), sema.db);
         }
 
         Ok(SpecInitResult::new(spec?, None))
@@ -786,25 +745,24 @@ impl<'db> ParseSpecInit<'db> for ast::generated::VarDecl {
 impl<'db> ParseSpecInit<'db> for ast::generated::VarDeclInit {
     fn to_spec_init(
         &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'db>
     ) -> anyhow::Result<SpecInitResult<'db>> {
         type Spec =
             ast::generated::ArrayTypeSpec_RefTypeSpec_SimpleTypeSpec_StrTypeSpec_StructTypeSpec;
 
         let spec = match self.spec.deref() {
-            Spec::ArrayTypeSpec(a) => a.to_spec(db, file),
-            Spec::SimpleTypeSpec(a) => a.to_spec(db, file),
-            Spec::StrTypeSpec(a) => a.to_spec(db, file),
-            Spec::StructTypeSpec(a) => a.to_spec(db, file),
-            Spec::RefTypeSpec(target) => target.to_spec(db, file),
+            Spec::ArrayTypeSpec(a) => a.to_spec(sema),
+            Spec::SimpleTypeSpec(a) => a.to_spec(sema),
+            Spec::StrTypeSpec(a) => a.to_spec(sema),
+            Spec::StructTypeSpec(a) => a.to_spec(sema),
+            Spec::RefTypeSpec(target) => target.to_spec(sema),
         };
 
         type Init = ast::generated::ArrayTypeInit_SimpleTypeInit_StructTypeInit;
         let init = match self.init.as_deref() {
-            Some(Init::ArrayTypeInit(a)) => Some(a.to_init(db, file)?),
-            Some(Init::SimpleTypeInit(a)) => Some(a.to_init(db, file)?),
-            Some(Init::StructTypeInit(a)) => Some(a.to_init(db, file)?),
+            Some(Init::ArrayTypeInit(a)) => Some(a.to_init(sema)?),
+            Some(Init::SimpleTypeInit(a)) => Some(a.to_init(sema)?),
+            Some(Init::StructTypeInit(a)) => Some(a.to_init(sema)?),
             None => None,
         };
 
@@ -815,23 +773,22 @@ impl<'db> ParseSpecInit<'db> for ast::generated::VarDeclInit {
 impl<'db> ParseSpecInit<'db> for ast::generated::LocVarSpecInit {
     fn to_spec_init(
         &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'db>
     ) -> anyhow::Result<SpecInitResult<'db>> {
         type Spec = ast::generated::ArrayTypeSpec_SimpleTypeSpec_StrTypeSpec_StructTypeSpec;
 
         let spec = match self.spec.deref() {
-            Spec::ArrayTypeSpec(a) => a.to_spec(db, file),
-            Spec::SimpleTypeSpec(a) => a.to_spec(db, file),
-            Spec::StrTypeSpec(a) => a.to_spec(db, file),
-            Spec::StructTypeSpec(a) => a.to_spec(db, file),
+            Spec::ArrayTypeSpec(a) => a.to_spec(sema),
+            Spec::SimpleTypeSpec(a) => a.to_spec(sema),
+            Spec::StrTypeSpec(a) => a.to_spec(sema),
+            Spec::StructTypeSpec(a) => a.to_spec(sema),
         };
 
         type Init = ast::generated::ArrayTypeInit_SimpleTypeInit_StructTypeInit;
         let init = match self.init.as_deref() {
-            Some(Init::ArrayTypeInit(a)) => Some(a.to_init(db, file)?),
-            Some(Init::SimpleTypeInit(a)) => Some(a.to_init(db, file)?),
-            Some(Init::StructTypeInit(a)) => Some(a.to_init(db, file)?),
+            Some(Init::ArrayTypeInit(a)) => Some(a.to_init(sema)?),
+            Some(Init::SimpleTypeInit(a)) => Some(a.to_init(sema)?),
+            Some(Init::StructTypeInit(a)) => Some(a.to_init(sema)?),
             None => None,
         };
 

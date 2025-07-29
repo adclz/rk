@@ -4,8 +4,7 @@ use crate::{
     hir::{
         expressions::expression::Expr,
         pous::variable::{Spec, Variable},
-    },
-    BaseDatabase,
+    }, parser::semantic_index::SemanticIndexBuilder, BaseDatabase
 };
 
 pub mod class;
@@ -24,18 +23,17 @@ pub mod variables;
 pub trait ParseVarSection<'db> {
     fn parse(
         &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'db>,
         section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()>;
 }
 
 pub trait ParseSpec<'db> {
-    fn to_spec(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>>;
+    fn to_spec(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Spec<'db>>;
 }
 
 pub trait ParseInit<'db> {
-    fn to_init(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>>;
+    fn to_init(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Expr<'db>>;
 }
 
 pub struct SpecInitResult<'db> {
@@ -52,20 +50,18 @@ impl<'db> SpecInitResult<'db> {
 pub trait ParseSpecInit<'db> {
     fn to_spec_init(
         &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'db>
     ) -> anyhow::Result<SpecInitResult<'db>>;
 }
 
 impl<'db, T: ParseSpec<'db> + ParseInit<'db>> ParseSpecInit<'db> for T {
     fn to_spec_init(
         &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'db>
     ) -> anyhow::Result<SpecInitResult<'db>> {
         Ok(SpecInitResult::new(
-            self.to_spec(db, file)?,
-            Some(self.to_init(db, file)?),
+            self.to_spec(sema)?,
+            Some(self.to_init(sema)?),
         ))
     }
 }

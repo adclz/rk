@@ -11,11 +11,10 @@ use crate::parser::ParseVarSection;
 use ast::generated::FuncVariables;
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
-use auto_lsp::default::db::{file::File, BaseDatabase};
 
 impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_function(&mut self, func: &ast::generated::FuncDecl) -> anyhow::Result<PouId> {
-        let variables = func.parse_variables(self.db, self.file)?;
+        let variables = func.parse_variables(self)?;
         let statements = func
             .body
             .as_ref()
@@ -23,7 +22,7 @@ impl<'db> SemanticIndexBuilder<'db> {
                 ast::generated::FbDiagram_LadderDiagram_StmtList::StmtList(ref stmts) => stmts
                     .children
                     .iter()
-                    .map(|stmt| stmt.to_statement(self.db, self.file))
+                    .map(|stmt| stmt.to_statement(self))
                     .collect::<anyhow::Result<Vec<_>>>()
                     .unwrap_or_default(),
                 _ => vec![],
@@ -34,7 +33,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         let name = Ident::from_node(self.db, self.file, func.name.deref())?;
         let usings = self.parse_usings(&func.directives)?;
 
-        let result = Function::new(self.db, variables, statements, self.current_scope);
+        let result = Function::new(self.db, vec![], statements, self.current_scope);
 
         let scope = Scope::new(
             self.file,
@@ -68,27 +67,25 @@ impl<'db> SemanticIndexBuilder<'db> {
 trait ParseVariable<'db> {
     fn parse_variables(
         &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'db>
     ) -> anyhow::Result<Vec<Variable<'db>>>;
 }
 
 impl<'db> ParseVariable<'db> for ast::generated::FuncDecl {
     fn parse_variables(
         &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'db>
     ) -> anyhow::Result<Vec<Variable<'db>>> {
         let mut variables = vec![];
 
         for variable in self.variables.iter() {
             match variable.deref() {
-                FuncVariables::InputDecls(decls) => decls.parse(db, file, &mut variables)?,
-                FuncVariables::OutputDecls(decls) => decls.parse(db, file, &mut variables)?,
-                FuncVariables::InOutDecls(decls) => decls.parse(db, file, &mut variables)?,
-                FuncVariables::ExternalVarDecls(decls) => decls.parse(db, file, &mut variables)?,
-                FuncVariables::TempVarDecls(decls) => decls.parse(db, file, &mut variables)?,
-                FuncVariables::VarDecls(decls) => decls.parse(db, file, &mut variables)?,
+                FuncVariables::InputDecls(decls) => decls.parse(sema, &mut variables)?,
+                FuncVariables::OutputDecls(decls) => decls.parse(sema, &mut variables)?,
+                FuncVariables::InOutDecls(decls) => decls.parse(sema, &mut variables)?,
+                FuncVariables::ExternalVarDecls(decls) => decls.parse(sema, &mut variables)?,
+                FuncVariables::TempVarDecls(decls) => decls.parse(sema, &mut variables)?,
+                FuncVariables::VarDecls(decls) => decls.parse(sema, &mut variables)?,
             }
         }
 
@@ -98,7 +95,7 @@ impl<'db> ParseVariable<'db> for ast::generated::FuncDecl {
 
 #[cfg(test)]
 mod tests {
-    use auto_lsp::{default::db::FileManager, lsp_types};
+    use auto_lsp::{default::db::{file::File, BaseDatabase, FileManager}, lsp_types};
 
     use super::*;
     use crate::{

@@ -14,12 +14,11 @@ use crate::parser::ParseVarSection;
 use ast::generated::{FbDecl, FbVariables};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
-use auto_lsp::default::db::{file::File, BaseDatabase};
 use salsa::Accumulator;
 
 impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_function_block(&mut self, func: &FbDecl) -> anyhow::Result<PouId> {
-        let variables = func.parse_variables(self.db, self.file)?;
+        let variables = func.parse_variables(self)?;
 
         let extends = func
             .extends
@@ -120,35 +119,33 @@ impl<'db> SemanticIndexBuilder<'db> {
 trait ParseVariable<'db> {
     fn parse_variables(
         &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<Vec<Variable<'db>>>;
 }
 
 impl<'db> ParseVariable<'db> for ast::generated::FbDecl {
     fn parse_variables(
         &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<Vec<Variable<'db>>> {
         let mut variables = vec![];
 
         for variable in self.variables.iter() {
             match variable.deref() {
-                FbVariables::FbInputDecls(decls) => decls.parse(db, file, &mut variables)?,
-                FbVariables::FbOutputDecls(decls) => decls.parse(db, file, &mut variables)?,
-                FbVariables::InOutDecls(decls) => decls.parse(db, file, &mut variables)?,
-                FbVariables::ExternalVarDecls(decls) => decls.parse(db, file, &mut variables)?,
-                FbVariables::TempVarDecls(decls) => decls.parse(db, file, &mut variables)?,
-                FbVariables::VarDecls(decls) => decls.parse(db, file, &mut variables)?,
+                FbVariables::FbInputDecls(decls) => decls.parse(sema, &mut variables)?,
+                FbVariables::FbOutputDecls(decls) => decls.parse(sema, &mut variables)?,
+                FbVariables::InOutDecls(decls) => decls.parse(sema, &mut variables)?,
+                FbVariables::ExternalVarDecls(decls) => decls.parse(sema, &mut variables)?,
+                FbVariables::TempVarDecls(decls) => decls.parse(sema, &mut variables)?,
+                FbVariables::VarDecls(decls) => decls.parse(sema, &mut variables)?,
                 FbVariables::LocPartlyVarDecl(loc_partly_var_decl) => {
-                    loc_partly_var_decl.parse(db, file, &mut variables)?
+                    loc_partly_var_decl.parse(sema, &mut variables)?
                 }
                 FbVariables::NoRetainVarDecls(no_retain_var_decls) => {
-                    no_retain_var_decls.parse(db, file, &mut variables)?
+                    no_retain_var_decls.parse(sema, &mut variables)?
                 }
                 FbVariables::RetainVarDecls(retain_var_decls) => {
-                    retain_var_decls.parse(db, file, &mut variables)?
+                    retain_var_decls.parse(sema, &mut variables)?
                 }
             }
         }
@@ -160,8 +157,8 @@ impl<'db> ParseVariable<'db> for ast::generated::FbDecl {
 #[cfg(test)]
 mod tests {
     use auto_lsp::{default::db::FileManager, lsp_types};
-
-    use super::*;
+    use auto_lsp::default::db::{file::File, BaseDatabase};
+    
     use crate::{
         hir::{
             interned::{identifier::SpannedIdent, namespace::NamespacePath},

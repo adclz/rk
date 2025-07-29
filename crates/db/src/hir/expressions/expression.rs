@@ -1,4 +1,5 @@
 use crate::hir::interned::identifier::Ident;
+use crate::hir::scopes::scope::ScopeId;
 use crate::hir::semantic_index::SemanticIndex;
 use crate::to_proto::{self_iter, IterToProto, ToProto};
 use auto_enums::auto_enum;
@@ -12,6 +13,8 @@ pub struct Expr<'db> {
 
     #[returns(ref)]
     pub expr: ExprKind<'db>,
+
+    pub scope_id: ScopeId
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

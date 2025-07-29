@@ -12,7 +12,7 @@ use crate::{
         interned::namespace::NamespaceAccess,
         pous::variable::{Spec, SpecKind, Subrange},
     },
-    parser::{expression::ParseExpression, ParseInit, ParseSpec, ParseSpecInit, SpecInitResult},
+    parser::{expression::ParseExpression, semantic_index::SemanticIndexBuilder, ParseInit, ParseSpec, ParseSpecInit, SpecInitResult},
 };
 
 // Target
@@ -20,18 +20,17 @@ use crate::{
 impl<'db> ParseSpecInit<'db> for ast::generated::NamespaceAccess {
     fn to_spec_init(
         &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'db>
     ) -> anyhow::Result<SpecInitResult<'db>> {
-        Ok(SpecInitResult::new(self.to_spec(db, file)?, None))
+        Ok(SpecInitResult::new(self.to_spec(sema)?, None))
     }
 }
 
 impl<'db> ParseSpec<'db> for ast::generated::NamespaceAccess {
-    fn to_spec(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
+    fn to_spec(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Spec<'db>> {
         Ok(Spec {
             span: self.get_span(),
-            kind: SpecKind::Target(NamespaceAccess::from_ast(db, file, self)?),
+            kind: SpecKind::Target(NamespaceAccess::from_ast(sema.db, sema.file, self)?),
         })
     }
 }
@@ -39,25 +38,25 @@ impl<'db> ParseSpec<'db> for ast::generated::NamespaceAccess {
 // Simple type
 
 impl<'db> ParseSpec<'db> for ast::generated::SimpleTypeSpec {
-    fn to_spec(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
+    fn to_spec(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Spec<'db>> {
         // forwarded to ElemTypeName
-        self.children.deref().to_spec(db, file)
+        self.children.deref().to_spec(sema)
     }
 }
 
 impl<'db> ParseSpec<'db> for ast::generated::DataTypeAccess {
-    fn to_spec(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
+    fn to_spec(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Spec<'db>> {
         match self {
             ast::generated::DataTypeAccess::ElemTypeName(elem_type_name) => {
-                elem_type_name.to_spec(db, file)
+                elem_type_name.to_spec(sema)
             }
-            ast::generated::DataTypeAccess::NamespaceAccess(target) => target.to_spec(db, file),
+            ast::generated::DataTypeAccess::NamespaceAccess(target) => target.to_spec(sema),
         }
     }
 }
 
 impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
-    fn to_spec(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
+    fn to_spec(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Spec<'db>> {
         type AstSpec = ast::generated::ElemTypeName;
         Ok(match self {
             AstSpec::BitStrTypeName(str) => match str.children.deref() {
@@ -97,7 +96,7 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
             AstSpec::NumericTypeName(numeric_type_name) => {
                 match numeric_type_name.children.deref() {
                     ast::generated::IntTypeName_RealTypeName::IntTypeName(int) => {
-                        int.to_spec(db, file)?
+                        int.to_spec(sema)?
                     }
                     ast::generated::IntTypeName_RealTypeName::RealTypeName(real) => {
                         match real.children.deref() {
@@ -158,7 +157,7 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
 }
 
 impl<'db> ParseSpec<'db> for ast::generated::IntTypeName {
-    fn to_spec(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
+    fn to_spec(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Spec<'db>> {
         Ok(match self.children.deref() {
             ast::generated::SignIntTypeName_UnsignIntTypeName::SignIntTypeName(int) => {
                 match int.children.deref() {
@@ -205,15 +204,15 @@ impl<'db> ParseSpec<'db> for ast::generated::IntTypeName {
 }
 
 impl<'db> ParseInit<'db> for ast::generated::SimpleTypeInit {
-    fn to_init(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>> {
-        Ok(self.children.children.to_expr(db, file)?)
+    fn to_init(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Expr<'db>> {
+        Ok(self.children.children.to_expr(sema)?)
     }
 }
 
 // String type
 
 impl<'db> ParseSpec<'db> for ast::generated::StrTypeSpec {
-    fn to_spec(&self, _: &'db dyn BaseDatabase, _: File) -> anyhow::Result<Spec<'db>> {
+    fn to_spec(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Spec<'db>> {
         type AstSpec = ast::generated::DByteStrSpec_DChar_SByteStrSpec_SChar;
         Ok(match self.children.deref() {
             AstSpec::DByteStrSpec(_) => Spec {
@@ -242,18 +241,18 @@ impl<'db> ParseSpec<'db> for ast::generated::StrTypeSpec {
 // Array type
 
 impl<'db> ParseSpec<'db> for ast::generated::ArrayTypeSpec {
-    fn to_spec(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
+    fn to_spec(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Spec<'db>> {
         match self.Type.deref() {
             ast::generated::DataTypeAccess::ElemTypeName(elem_type_name) => {
-                elem_type_name.to_spec(db, file)
+                elem_type_name.to_spec(sema)
             }
-            ast::generated::DataTypeAccess::NamespaceAccess(target) => target.to_spec(db, file),
+            ast::generated::DataTypeAccess::NamespaceAccess(target) => target.to_spec(sema),
         }
     }
 }
 
 impl<'db> ParseInit<'db> for ast::generated::ArrayTypeInit {
-    fn to_init(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>> {
+    fn to_init(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Expr<'db>> {
         todo!()
     }
 }
@@ -261,13 +260,13 @@ impl<'db> ParseInit<'db> for ast::generated::ArrayTypeInit {
 // Array conformand
 
 impl<'db> ParseSpec<'db> for ast::generated::ArrayConformand {
-    fn to_spec(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
+    fn to_spec(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Spec<'db>> {
         todo!()
     }
 }
 
 impl<'db> ParseInit<'db> for ast::generated::ArrayConformand {
-    fn to_init(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>> {
+    fn to_init(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Expr<'db>> {
         todo!()
     }
 }
@@ -275,13 +274,13 @@ impl<'db> ParseInit<'db> for ast::generated::ArrayConformand {
 // Struct type
 
 impl<'db> ParseSpec<'db> for ast::generated::StructTypeSpec {
-    fn to_spec(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
+    fn to_spec(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Spec<'db>> {
         todo!()
     }
 }
 
 impl<'db> ParseInit<'db> for ast::generated::StructTypeInit {
-    fn to_init(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Expr<'db>> {
+    fn to_init(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Expr<'db>> {
         todo!()
     }
 }
@@ -291,15 +290,14 @@ impl<'db> ParseInit<'db> for ast::generated::StructTypeInit {
 impl<'db> ParseSpecInit<'db> for ast::generated::RefSpec {
     fn to_spec_init(
         &self,
-        db: &'db dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'db>
     ) -> anyhow::Result<SpecInitResult<'db>> {
         todo!()
     }
 }
 
 impl<'db> ParseSpec<'db> for ast::generated::RefTypeSpec {
-    fn to_spec(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
+    fn to_spec(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Spec<'db>> {
         todo!()
     }
 }
@@ -307,7 +305,7 @@ impl<'db> ParseSpec<'db> for ast::generated::RefTypeSpec {
 // Enum type
 
 impl<'db> ParseSpec<'db> for ast::generated::EnumTypeSpec {
-    fn to_spec(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
+    fn to_spec(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Spec<'db>> {
         todo!()
     }
 }
@@ -315,14 +313,14 @@ impl<'db> ParseSpec<'db> for ast::generated::EnumTypeSpec {
 // Subrange type
 
 impl<'db> ParseSpec<'db> for ast::generated::SubrangeTypeSpec {
-    fn to_spec(&self, db: &'db dyn BaseDatabase, file: File) -> anyhow::Result<Spec<'db>> {
-        let spec = self.Type.deref().to_spec(db, file)?;
+    fn to_spec(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Spec<'db>> {
+        let spec = self.Type.deref().to_spec(sema)?;
         let range = self.range.deref();
-        let lower = range.lower.children.to_expr(db, file)?;
-        let upper = range.upper.children.to_expr(db, file)?;
+        let lower = range.lower.children.to_expr(sema)?;
+        let upper = range.upper.children.to_expr(sema)?;
         Ok(Spec {
             span: self.get_span(),
-            kind: SpecKind::Subrange(Subrange::new(db, spec, lower, upper)),
+            kind: SpecKind::Subrange(Subrange::new(sema.db, spec, lower, upper)),
         })
     }
 }
