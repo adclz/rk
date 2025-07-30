@@ -13,9 +13,9 @@ use salsa::Accumulator;
 
 use crate::diagnostics::diagnostic_builder::diag;
 use crate::diagnostics::DiagnosticAccumulator;
+use crate::hir::expressions::spec::{SimpleSpecKind, Spec, SpecKind};
 use crate::hir::interned::identifier::Ident;
 use crate::hir::pous::variable::{Variable, VariableKind};
-use crate::hir::expressions::spec::{Spec, SpecKind};
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::parser::{ParseInit, ParseSpec, ParseSpecInit, ParseVarSection, SpecInitResult};
 
@@ -336,7 +336,7 @@ impl<'db> ToVariable<'db> for ast::generated::EdgeDecl {
             kind,
             result.spec,
             result.init,
-            sema.current_scope
+            sema.current_scope,
         ))
     }
 }
@@ -359,7 +359,7 @@ impl<'db> ToVariable<'db> for ast::generated::VarDecl {
             VariableKind::Input,
             result.spec,
             result.init,
-            sema.current_scope
+            sema.current_scope,
         ))
     }
 }
@@ -383,7 +383,7 @@ impl<'db> ToVariable<'db> for ast::generated::VarDeclInit {
             VariableKind::Input,
             result.spec,
             result.init,
-            sema.current_scope
+            sema.current_scope,
         ))
     }
 }
@@ -407,7 +407,7 @@ impl<'db> ToVariable<'db> for ast::generated::ArrayConformand {
             VariableKind::Input,
             result.spec,
             result.init,
-            sema.current_scope
+            sema.current_scope,
         ))
     }
 }
@@ -431,7 +431,7 @@ impl<'db> ToVariable<'db> for ast::generated::LocPartlyVar {
             VariableKind::Input,
             result.spec,
             result.init,
-            sema.current_scope
+            sema.current_scope,
         ))
     }
 }
@@ -455,7 +455,7 @@ impl<'db> ToVariable<'db> for ast::generated::RefSpec {
             VariableKind::Input,
             result.spec,
             result.init,
-            sema.current_scope
+            sema.current_scope,
         ))
     }
 }
@@ -648,7 +648,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
                         VariableKind::Global,
                         result.spec,
                         result.init,
-                        sema.current_scope
+                        sema.current_scope,
                     ))
                 }
                 GlobalVarKind::LocVarSpecInit(var_decl) => {
@@ -663,7 +663,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
                         VariableKind::Global,
                         result.spec,
                         result.init,
-                        sema.current_scope
+                        sema.current_scope,
                     ))
                 }
             }
@@ -685,22 +685,25 @@ impl<'db> ParseSpecInit<'db> for ast::generated::EdgeDecl {
                     .range(err.get_span())
                     .call();
                 DiagnosticAccumulator::accumulate(diag.into(), sema.db);
-                Spec {
-                    span: self.get_span(),
-                    kind: SpecKind::Bool,
-                    scope_id: sema.current_scope
-                }
+                Spec::new(
+                    sema.db,
+                    self.get_span(),
+                    SpecKind::Simple(SimpleSpecKind::Bool),
+                    sema.current_scope,
+                )
             }
-            ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::Token_F_EDGE(fedge) => Spec {
-                span: self.get_span(),
-                kind: SpecKind::Bool,
-                scope_id: sema.current_scope
-            },
-            ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::Token_R_EDGE(redge) => Spec {
-                span: self.get_span(),
-                kind: SpecKind::Bool,
-                scope_id: sema.current_scope
-            },
+            ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::Token_F_EDGE(fedge) => Spec::new(
+                sema.db,
+                self.get_span(),
+                SpecKind::Simple(SimpleSpecKind::Bool),
+                sema.current_scope,
+            ),
+            ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::Token_R_EDGE(redge) => Spec::new(
+                sema.db,
+                self.get_span(),
+                SpecKind::Simple(SimpleSpecKind::Bool),
+                sema.current_scope,
+            ),
         };
 
         Ok(SpecInitResult::new(spec, None))
@@ -710,7 +713,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::EdgeDecl {
 impl<'db> ParseSpecInit<'db> for ast::generated::LocPartlyVar {
     fn to_spec_init(
         &self,
-        sema: &SemanticIndexBuilder<'db>
+        sema: &SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<SpecInitResult<'db>> {
         todo!()
     }
@@ -719,7 +722,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::LocPartlyVar {
 impl<'db> ParseSpecInit<'db> for ast::generated::VarDecl {
     fn to_spec_init(
         &self,
-        sema: &SemanticIndexBuilder<'db>
+        sema: &SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<SpecInitResult<'db>> {
         type Spec = ast::generated::ArrayTypeSpec_SimpleTypeSpec_StrTypeSpec_StructTypeSpec;
 
@@ -757,7 +760,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::VarDecl {
 impl<'db> ParseSpecInit<'db> for ast::generated::VarDeclInit {
     fn to_spec_init(
         &self,
-        sema: &SemanticIndexBuilder<'db>
+        sema: &SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<SpecInitResult<'db>> {
         type Spec =
             ast::generated::ArrayTypeSpec_RefTypeSpec_SimpleTypeSpec_StrTypeSpec_StructTypeSpec;
@@ -785,7 +788,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::VarDeclInit {
 impl<'db> ParseSpecInit<'db> for ast::generated::LocVarSpecInit {
     fn to_spec_init(
         &self,
-        sema: &SemanticIndexBuilder<'db>
+        sema: &SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<SpecInitResult<'db>> {
         type Spec = ast::generated::ArrayTypeSpec_SimpleTypeSpec_StrTypeSpec_StructTypeSpec;
 

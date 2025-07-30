@@ -25,16 +25,16 @@ pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Opti
             )
         })?;
 
-    let ns = match semantic_index(db, file) {
+    let sema = match semantic_index(db, file) {
         Some(ns) => ns,
         None => return Ok(None),
     };
 
-    let symbol = ns
-        .named_descendant_at(db, &ns, position)
-        .or_else(|| ns.descendant_at(db, &ns, position));
+    let symbol = sema
+        .named_descendant_at(db, &sema, position)
+        .or_else(|| sema.descendant_at(db, &sema, position));
 
-    match symbol.and_then(|s| s.hover(db)) {
+    match symbol.and_then(|s| s.hover(db, &sema)) {
         Some(hover) => Ok(Some(hover)),
         None => Ok(None),
     }

@@ -114,7 +114,7 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
         }
     }
 
-    fn inlay_hint(&'db self, db: &'db dyn crate::BaseDatabase) -> Option<InlayHint> {
+    fn inlay_hint(&'db self, db: &'db dyn crate::BaseDatabase, _sema: &'db SemanticIndex<'db>,) -> Option<InlayHint> {
         Some(InlayHint {
             label: InlayHintLabel::String(format!(
                 "{} {}",
@@ -137,7 +137,7 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
         })
     }
 
-    fn hover(&'db self, _db: &'db dyn crate::BaseDatabase) -> Option<auto_lsp::lsp_types::Hover> {
+    fn hover(&'db self, _db: &'db dyn crate::BaseDatabase, _sema: &'db SemanticIndex<'db>,) -> Option<auto_lsp::lsp_types::Hover> {
         Some(auto_lsp::lsp_types::Hover {
             contents: auto_lsp::lsp_types::HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,

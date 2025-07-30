@@ -51,7 +51,7 @@ impl<'db> ToProto<'db> for Namespace<'db> {
         )
     }
 
-    fn hover(&'db self, db: &'db dyn crate::BaseDatabase) -> Option<auto_lsp::lsp_types::Hover> {
+    fn hover(&'db self, db: &'db dyn crate::BaseDatabase, _sema: &'db SemanticIndex<'db>,) -> Option<auto_lsp::lsp_types::Hover> {
         Some(auto_lsp::lsp_types::Hover {
             contents: auto_lsp::lsp_types::HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,
@@ -64,6 +64,7 @@ impl<'db> ToProto<'db> for Namespace<'db> {
     fn inlay_hint(
         &'db self,
         db: &'db dyn crate::BaseDatabase,
+        _sema: &'db SemanticIndex<'db>
     ) -> Option<auto_lsp::lsp_types::InlayHint> {
         Some(InlayHint {
             label: InlayHintLabel::String(format!("namespace {}", self.path(db).to_string(db))),

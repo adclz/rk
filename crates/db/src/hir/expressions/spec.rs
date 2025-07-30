@@ -1,27 +1,45 @@
-use auto_lsp::core::span::Span;
 use auto_lsp::default::db::BaseDatabase;
+use auto_lsp::{core::span::Span, default::db::file::File};
 
-use crate::{completions::snippets::elem_type_names, hir::{expressions::expression::{Expr, MultibitsPart}, interned::{identifier::Ident, namespace::NamespaceAccess}, pous::pou::Pou, scopes::scope::ScopeId, semantic_index::SemanticIndex}, to_proto::{self_iter, IterToProto, ToProto}};
+use crate::hir::semantic_index::semantic_index;
+use crate::hir::signature::signature_for_pou;
+use crate::{
+    completions::snippets::elem_type_names,
+    hir::{
+        expressions::expression::{Expr, MultibitsPart},
+        interned::{identifier::Ident, namespace::NamespaceAccess},
+        pous::pou::Pou,
+        scopes::{scope::ScopeId, solver::resolve_access},
+        semantic_index::SemanticIndex,
+    },
+    to_proto::{self_iter, IterToProto, ToProto},
+};
 
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+#[salsa::tracked(debug)]
 pub struct Spec<'db> {
+    #[returns(ref)]
     pub span: Span,
+
+    #[tracked]
+    #[returns(ref)]
     pub kind: SpecKind<'db>,
+
     pub scope_id: ScopeId,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum SpecKind<'db> {
+    Simple(SimpleSpecKind),
+    Composite(CompositeSpecKind<'db>),
+    //ConstantExpr(Expr<'db>),
     Target(NamespaceAccess),
-    Array(Array<'db>),
-    Subrange(SubRangeType<'db>),
-    Expr(Expr<'db>),
-    Enum(Enum<'db>),
-    // StructLike is also used to represent FBs, interfaces, and classes
-    StructLike(Struct<'db>),
-    Edge,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum SimpleSpecKind {
     Bool,
+    REDGEBool,
+    FEDGEBool,
     Byte,
     Word,
     DWord,
@@ -49,43 +67,77 @@ pub enum SpecKind<'db> {
     Tod,
     LTod,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum CompositeSpecKind<'db> {
+    Struct(Struct<'db>),
+    Array(Array<'db>),
+    Subrange(SubRange<'db>),
+    Enum(Enum<'db>),
+}
+
 impl<'db> Spec<'db> {
-    pub fn to_string(&self, db: &'db dyn BaseDatabase) -> &str {
-        match self.kind {
-            SpecKind::SInt => "SINT",
-            SpecKind::Int => "INT",
-            SpecKind::DInt => "DINT",
-            SpecKind::LInt => "LINT",
-            SpecKind::USInt => "USINT",
-            SpecKind::UInt => "UINT",
-            SpecKind::UDInt => "UDINT",
-            SpecKind::ULInt => "ULINT",
-            SpecKind::Byte => "BYTE",
-            SpecKind::Word => "WORD",
-            SpecKind::DWord => "DWORD",
-            SpecKind::LWord => "LWORD",
-            SpecKind::Date => "DATE",
-            SpecKind::LDate => "LDATE",
-            SpecKind::Dt => "DATE_AND_TIME",
-            SpecKind::Ldt => "LDATE_AND_TIME",
-            SpecKind::Tod => "TIME_OF_DAY",
-            SpecKind::LTod => "LTIME_OF_DAY",
-            SpecKind::Time => "TIME",
-            SpecKind::LTime => "LTIME",
-            _ => "?",
+    pub fn to_string(&self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>) -> &str {
+        match self.kind(db) {
+            SpecKind::Simple(simple_kind) => match simple_kind {
+                SimpleSpecKind::SInt => "SINT",
+                SimpleSpecKind::Int => "INT",
+                SimpleSpecKind::DInt => "DINT",
+                SimpleSpecKind::LInt => "LINT",
+                SimpleSpecKind::USInt => "USINT",
+                SimpleSpecKind::UInt => "UINT",
+                SimpleSpecKind::UDInt => "UDINT",
+                SimpleSpecKind::ULInt => "ULINT",
+                SimpleSpecKind::REDGEBool => "BOOL (Rising Edge)",
+                SimpleSpecKind::FEDGEBool => "BOOL (Falling Edge)",
+                SimpleSpecKind::Byte => "BYTE",
+                SimpleSpecKind::Word => "WORD",
+                SimpleSpecKind::DWord => "DWORD",
+                SimpleSpecKind::LWord => "LWORD",
+                SimpleSpecKind::Date => "DATE",
+                SimpleSpecKind::LDate => "LDATE",
+                SimpleSpecKind::Dt => "DATE_AND_TIME",
+                SimpleSpecKind::Ldt => "LDATE_AND_TIME",
+                SimpleSpecKind::Tod => "TIME_OF_DAY",
+                SimpleSpecKind::LTod => "LTIME_OF_DAY",
+                SimpleSpecKind::Time => "TIME",
+                SimpleSpecKind::LTime => "LTIME",
+                SimpleSpecKind::Bool => "BOOL",
+                SimpleSpecKind::Real => "REAL",
+                SimpleSpecKind::LReal => "LREAL",
+                SimpleSpecKind::String => "STRING",
+                SimpleSpecKind::WString => "WSTRING",
+                SimpleSpecKind::Char => "CHAR",
+                SimpleSpecKind::WChar => "WCHAR",
+            },
+            SpecKind::Composite(composite_kind) => match composite_kind {
+                CompositeSpecKind::Struct(_) => "STRUCT",
+                CompositeSpecKind::Array(_) => "ARRAY",
+                CompositeSpecKind::Subrange(_) => "SUBRANGE",
+                CompositeSpecKind::Enum(_) => "ENUM",
+            },
+            SpecKind::Target(target) => {
+                match resolve_access(db, sema.file, self.scope_id(db), *target) {
+                    Some(pou) => Box::leak(
+                        format!("{:?}", signature_for_pou(db, sema.pou_keys[&pou.0]))
+                            .into_boxed_str(),
+                    ),
+                    None => "{unknown}",
+                }
+            }
         }
     }
 }
 
 impl<'db> ToProto<'db> for Spec<'db> {
     fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
-        &self.span
+        self.span(db)
     }
 
-    fn hover(&'db self, db: &'db dyn crate::BaseDatabase) -> Option<auto_lsp::lsp_types::Hover> {
+    fn hover(&'db self, db: &'db dyn crate::BaseDatabase, sema: &'db SemanticIndex<'db>,) -> Option<auto_lsp::lsp_types::Hover> {
         Some(auto_lsp::lsp_types::Hover {
             contents: auto_lsp::lsp_types::HoverContents::Scalar(
-                auto_lsp::lsp_types::MarkedString::String(self.to_string(db).to_string()),
+                auto_lsp::lsp_types::MarkedString::String(self.to_string(db, sema).to_string()),
             ),
             range: None,
         })
@@ -99,7 +151,7 @@ impl<'db> ToProto<'db> for Spec<'db> {
     ) -> Option<Vec<auto_lsp::lsp_types::CompletionItem>> {
         let mut primary = elem_type_names();
         primary.extend(
-            sema.pou_iterator(db, self.scope_id)
+            sema.pou_iterator(db, self.scope_id(db))
                 .filter_map(|(name, pou)| {
                     let pou = sema.get_pou(pou.0);
                     match pou.pou(db) {
@@ -126,14 +178,12 @@ impl<'db> ToProto<'db> for Spec<'db> {
 }
 
 impl<'db> IterToProto<'db> for Spec<'db> {
-    #[auto_enums::auto_enum(Iterator)]
     fn iter(
         &'db self,
         db: &'db dyn BaseDatabase,
         sema: &'db SemanticIndex,
     ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        match &self.kind {
-            SpecKind::Expr(expr) => self_iter(self).chain(expr.iter(db, sema)),
+        match self.kind(db) {
             _ => self_iter(self),
         }
     }
@@ -149,6 +199,7 @@ pub struct Struct<'db> {
 pub struct StructElement<'db> {
     pub name: Ident,
     pub located: Located,
+    // Parameters can be of any type
     pub spec: Spec<'db>,
 }
 
@@ -163,23 +214,21 @@ pub struct Located {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum Enum<'db> {
     Anonymous(Vec<Ident>),
+    // Each enum variant has a value
+    // Values must be integers
     Named(Vec<(Ident, Expr<'db>)>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct Array<'db> {
-    pub subranges: Vec<SubRange<'db>>,
+    // lower - upper bounds
+    pub subranges: Vec<(Expr<'db>, Expr<'db>)>,
     pub of_type: Box<Spec<'db>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct SubRange<'db> {
-    pub lower: Expr<'db>,
-    pub upper: Expr<'db>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub struct SubRangeType<'db> {
+    // Should be a INT
     pub _type: Box<Spec<'db>>,
     pub lower: Expr<'db>,
     pub upper: Expr<'db>,

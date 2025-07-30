@@ -6,9 +6,9 @@ use auto_lsp::{
 
 use crate::hir::{
     expressions::expression::Expr,
-    interned::namespace::SpannedNamespaceAccess,
     expressions::spec::{Spec, SpecKind},
-    semantic_index::SemanticIndex, 
+    interned::namespace::SpannedNamespaceAccess,
+    semantic_index::SemanticIndex,
 };
 
 #[derive(bon::Builder, Debug, Clone)]
@@ -42,45 +42,6 @@ impl SymbolInfo<'_> {
             _ => "unknown",
         }
     }
-
-    pub fn spec_to_string(&self, db: &dyn BaseDatabase) -> String {
-        match &self.spec {
-            Some(spec) => match spec.kind {
-                SpecKind::Enum(_) => "ENUM".into(),
-                SpecKind::StructLike(_) => "STRUCT".into(),
-                SpecKind::Edge => "EDGE".into(),
-                SpecKind::Bool => "BOOL".into(),
-                SpecKind::Byte => "BYTE (8 bits)".into(),
-                SpecKind::Word => "WORD (16 bits)".into(),
-                SpecKind::DWord => "DWORD (32 bits)".into(),
-                SpecKind::LWord => "LWORD (64 bits)".into(),
-                SpecKind::SInt => "SINT (8 bits)".into(),
-                SpecKind::USInt => "USINT (8 bits)".into(),
-                SpecKind::UInt => "UINT (16 bits)".into(),
-                SpecKind::Int => "INT (16 bits)".into(),
-                SpecKind::DInt => "DINT (32 bits)".into(),
-                SpecKind::UDInt => "UDINT (32 bits)".into(),
-                SpecKind::LInt => "LINT (64 bits)".into(),
-                SpecKind::ULInt => "ULINT (64 bits)".into(),
-                SpecKind::Real => "REAL (64 bits)".into(),
-                SpecKind::LReal => "LREAL (128 bits)".into(),
-                SpecKind::String => "STRING".into(),
-                SpecKind::WString => "WSTRING".into(),
-                SpecKind::Char => "CHAR".into(),
-                SpecKind::WChar => "WCHAR".into(),
-                SpecKind::Date => "DATE".into(),
-                SpecKind::LDate => "LONG DATE".into(),
-                SpecKind::Dt => "DATE AND TIME D".into(),
-                SpecKind::Ldt => "LONG DATE AND TIME".into(),
-                SpecKind::Time => "TIME".into(),
-                SpecKind::LTime => "LONG TIME".into(),
-                SpecKind::Tod => "TIME OF DAY".into(),
-                SpecKind::LTod => "LONG TIME OF DAY".into(),
-                _ => "?".into(),
-            },
-            None => "?".into(),
-        }
-    }
 }
 
 pub trait ToProto<'db> {
@@ -105,11 +66,19 @@ pub trait ToProto<'db> {
         None
     }
 
-    fn inlay_hint(&'db self, _db: &'db dyn crate::BaseDatabase) -> Option<InlayHint> {
+    fn inlay_hint(
+        &'db self,
+        _db: &'db dyn crate::BaseDatabase,
+        _sema: &'db SemanticIndex<'db>,
+    ) -> Option<InlayHint> {
         None
     }
 
-    fn hover(&'db self, _db: &'db dyn crate::BaseDatabase) -> Option<Hover> {
+    fn hover(
+        &'db self,
+        _db: &'db dyn crate::BaseDatabase,
+        _sema: &'db SemanticIndex<'db>,
+    ) -> Option<Hover> {
         None
     }
 }

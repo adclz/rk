@@ -18,17 +18,17 @@ pub fn inlay_hints(
 
     let mut results = vec![];
 
-    let ns = match semantic_index(db, file) {
+    let sema = match semantic_index(db, file) {
         Some(ns) => ns,
         None => return Ok(None),
     };
-    ns.iter(db, &ns).for_each(|symbol| {
+    sema.iter(db, &sema).for_each(|symbol| {
         let span = symbol.get_span(db);
         if span.lsp().start.line < range.start.line || span.lsp().end.line > range.end.line {
             return;
         }
 
-        if let Some(inlay_hint) = symbol.inlay_hint(db) {
+        if let Some(inlay_hint) = symbol.inlay_hint(db, &sema) {
             results.push(inlay_hint);
         }
     });

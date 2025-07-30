@@ -13,41 +13,22 @@ use salsa::Accumulator;
 use crate::{
     diagnostics::{diagnostic_builder::diag, literals::check_date, DiagnosticAccumulator},
     hir::{
-        expressions::expression::{
+        expressions::{expression::{
             AnyBit, AnyChars, AnyDate, AnyDuration, AnyElementary, AnyInt, AnyMagnitude, AnyNum,
             AnyReal, AnySigned, AnyUnsigned, Expr, ExprKind, Numeric, NumericKind, PrimaryExpr,
-        },
-        interned::namespace::NamespacePath,
-        pous::variable::Variable,
-        expressions::spec::{Spec, SpecKind},
-        using::Using,
+        }, spec::{SimpleSpecKind, Spec, SpecKind}}, interned::namespace::NamespacePath, pous::variable::Variable, semantic_index::SemanticIndex, using::Using
     },
 };
 
 trait Check<'db> {
-    fn check(&'db self, db: &'db dyn BaseDatabase, file: File);
-}
-
-trait CheckWithVisibility<'db> {
-    fn check_with_visibility(&'db self, db: &'db dyn BaseDatabase, file: File, ns: NamespacePath);
+    fn check(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>);
 }
 
 #[salsa::tracked(no_eq)]
 pub fn duplicate_declarations<'db>(db: &'db dyn BaseDatabase, file: File) {}
 
-impl<'db> CheckWithVisibility<'db> for Using<'db> {
-    fn check_with_visibility(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        file: File,
-        from: NamespacePath,
-    ) {
-        let to = self.path(db);
-    }
-}
-
 impl<'db> Check<'db> for &'db Vec<Variable<'db>> {
-    fn check(&'db self, db: &'db dyn BaseDatabase, file: File) {
+    fn check(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>) {
         let mut seen_variable = FxHashMap::default();
         let mut seen_spec = FxHashSet::default();
 
@@ -78,28 +59,28 @@ impl<'db> Check<'db> for &'db Vec<Variable<'db>> {
 
             // Avoid checking the same spec multiple times
             if seen_spec.insert(variable.spec(db)) {
-                variable.check(db, file);
+                variable.check(db, sema);
             }
         }
     }
 }
 
 impl<'db> Check<'db> for Variable<'db> {
-    fn check(&'db self, db: &'db dyn BaseDatabase, file: File) {
+    fn check(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>) {
         match self.init(db) {
-            Some(init) => init.check(db, file, &self.spec(db)),
+            Some(init) => init.check(db, sema, &self.spec(db)),
             None => {}
         }
     }
 }
 
 trait SpecCheck<'db> {
-    fn check(&self, db: &'db dyn BaseDatabase, file: File, spec: &Spec<'db>);
+    fn check(&self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>, spec: &Spec<'db>);
 }
 
 fn create_type_inference_error<'db>(
     db: &'db dyn BaseDatabase,
-    file: File,
+    sema: &'db SemanticIndex<'db>,
     span: Span,
     spec: &'db Spec<'db>,
     err: impl Error,
@@ -111,10 +92,10 @@ fn create_type_inference_error<'db>(
         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
         .related_information(vec![DiagnosticRelatedInformation {
             location: auto_lsp::lsp_types::Location {
-                uri: file.url(db).clone(),
-                range: spec.span.clone().into(),
+                uri: sema.file.url(db).clone(),
+                range: spec.span(db).clone().into(),
             },
-            message: format!("because of type: '{:?}' declared here", spec.kind),
+            message: format!("because of type: '{:?}' declared here", spec.kind(db)),
         }])
         .call();
     DiagnosticAccumulator::accumulate(diagnostic.into(), db);
@@ -122,7 +103,7 @@ fn create_type_inference_error<'db>(
 
 fn create_mismatch_type_error<'db>(
     db: &'db dyn BaseDatabase,
-    file: File,
+    sema: &'db SemanticIndex<'db>,
     span: Span,
     spec: &'db Spec<'db>,
     message: String,
@@ -134,70 +115,70 @@ fn create_mismatch_type_error<'db>(
         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
         .related_information(vec![DiagnosticRelatedInformation {
             location: auto_lsp::lsp_types::Location {
-                uri: file.url(db).clone(),
-                range: spec.span.clone().into(),
+                uri: sema.file.url(db).clone(),
+                range: spec.span(db).clone().into(),
             },
-            message: format!("because of type: '{}' declared here", spec.to_string(db)),
+            message: format!("because of type: '{}' declared here", spec.to_string(db, sema)),
         }])
         .call();
     DiagnosticAccumulator::accumulate(diagnostic.into(), db);
 }
 
 impl<'db> SpecCheck<'db> for Expr<'db> {
-    fn check(&self, db: &'db dyn BaseDatabase, file: File, spec: &Spec<'db>) {
+    fn check(&self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>, spec: &Spec<'db>) {
         match self.expr(db) {
             ExprKind::AddOperator {
                 left,
                 operator,
                 right,
             } => {
-                left.check(db, file, spec);
-                right.check(db, file, spec);
+                left.check(db, sema, spec);
+                right.check(db, sema, spec);
             }
             ExprKind::BooleanOperator {
                 left,
                 operator,
                 right,
             } => {
-                if !matches!(spec.kind, SpecKind::Bool) {
-                    create_mismatch_type_error(db, file, self.span(db).clone(), spec,
-                        format!("A boolean operator always returns a 'BOOL' but the expected type is '{}'", spec.to_string(db))
+                if !matches!(spec.kind(db), SpecKind::Simple(SimpleSpecKind::Bool)) {
+                    create_mismatch_type_error(db, sema, self.span(db).clone(), spec,
+                        format!("A boolean operator always returns a 'BOOL' but the expected type is '{}'", spec.to_string(db, sema))
                     );
                 }
-                left.check(db, file, spec);
-                right.check(db, file, spec);
+                left.check(db, sema, spec);
+                right.check(db, sema, spec);
             }
             ExprKind::ComparisonOperator {
                 left,
                 operator,
                 right,
             } => {
-                if !matches!(spec.kind, SpecKind::Bool) {
-                    create_mismatch_type_error(db, file, self.span(db).clone(), spec,
-                        format!("A comparison operator always returns a 'BOOL' but the expected type is '{}'", spec.to_string(db))
+                if !matches!(spec.kind(db), SpecKind::Simple(SimpleSpecKind::Bool)) {
+                    create_mismatch_type_error(db, sema, self.span(db).clone(), spec,
+                        format!("A comparison operator always returns a 'BOOL' but the expected type is '{}'", spec.to_string(db, sema))
                     );
                 }
-                left.check(db, file, spec);
-                right.check(db, file, spec);
+                left.check(db, sema, spec);
+                right.check(db, sema, spec);
             }
             ExprKind::MultOperator {
                 left,
                 operator,
                 right,
             } => {
-                left.check(db, file, spec);
-                right.check(db, file, spec);
+                left.check(db, sema, spec);
+                right.check(db, sema, spec);
             }
             ExprKind::PowerOperator { left, right } => {
-                left.check(db, file, spec);
-                right.check(db, file, spec);
+                left.check(db, sema, spec);
+                right.check(db, sema, spec);
             }
             ExprKind::UnaryOperator { expr, operator } => {
-                expr.check(db, file, spec);
+                expr.check(db, sema, spec);
             }
             ExprKind::PrimaryExpr(PrimaryExpr::Literal(lit)) => {
-                let result = match spec.kind {
-                    SpecKind::Bool => match lit {
+                let result = match spec.kind(db) {
+                    SpecKind::Simple(SimpleSpecKind::Bool) => match lit {
                         AnyElementary::AnyBit(AnyBit::Bool(_)) => true,
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
                             AnyInt::Infer(infer),
@@ -206,7 +187,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                             Err(err) => {
                                 create_type_inference_error(
                                     db,
-                                    file,
+                                    sema,
                                     self.span(db).clone(),
                                     spec,
                                     err,
@@ -217,7 +198,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         _ => false,
                     },
                     // bit string types
-                    SpecKind::Byte => match lit {
+                    SpecKind::Simple(SimpleSpecKind::Byte) => match lit {
                         AnyElementary::AnyBit(AnyBit::Byte(_)) => true,
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
                             AnyInt::Infer(infer),
@@ -226,7 +207,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                             Err(err) => {
                                 create_type_inference_error(
                                     db,
-                                    file,
+                                    sema,
                                     self.span(db).clone(),
                                     spec,
                                     err,
@@ -236,7 +217,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         },
                         _ => false,
                     },
-                    SpecKind::Word => match lit {
+                    SpecKind::Simple(SimpleSpecKind::Word) => match lit {
                         AnyElementary::AnyBit(AnyBit::Byte(_)) => true,
                         AnyElementary::AnyBit(AnyBit::Word(_)) => true,
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
@@ -246,7 +227,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                             Err(err) => {
                                 create_type_inference_error(
                                     db,
-                                    file,
+                                    sema,
                                     self.span(db).clone(),
                                     spec,
                                     err,
@@ -256,7 +237,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         },
                         _ => false,
                     },
-                    SpecKind::DWord => match lit {
+                    SpecKind::Simple(SimpleSpecKind::DWord) => match lit {
                         AnyElementary::AnyBit(AnyBit::Byte(_)) => true,
                         AnyElementary::AnyBit(AnyBit::Word(_)) => true,
                         AnyElementary::AnyBit(AnyBit::DWord(_)) => true,
@@ -267,7 +248,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                             Err(err) => {
                                 create_type_inference_error(
                                     db,
-                                    file,
+                                    sema,
                                     self.span(db).clone(),
                                     spec,
                                     err,
@@ -277,7 +258,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         },
                         _ => false,
                     },
-                    SpecKind::LWord => match lit {
+                    SpecKind::Simple(SimpleSpecKind::LWord) => match lit {
                         AnyElementary::AnyBit(AnyBit::Byte(_)) => true,
                         AnyElementary::AnyBit(AnyBit::Word(_)) => true,
                         AnyElementary::AnyBit(AnyBit::DWord(_)) => true,
@@ -289,7 +270,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                             Err(err) => {
                                 create_type_inference_error(
                                     db,
-                                    file,
+                                    sema,
                                     self.span(db).clone(),
                                     spec,
                                     err,
@@ -300,7 +281,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         _ => false,
                     },
                     // signed integers
-                    SpecKind::SInt => match lit {
+                    SpecKind::Simple(SimpleSpecKind::SInt) => match lit {
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
                             AnyInt::AnySigned(AnySigned::SInt(_)),
                         ))) => true,
@@ -311,7 +292,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                             Err(err) => {
                                 create_type_inference_error(
                                     db,
-                                    file,
+                                    sema,
                                     self.span(db).clone(),
                                     spec,
                                     err,
@@ -321,7 +302,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         },
                         _ => false,
                     },
-                    SpecKind::Int => match lit {
+                    SpecKind::Simple(SimpleSpecKind::LInt) => match lit {
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
                             AnyInt::AnySigned(AnySigned::SInt(_)),
                         ))) => true,
@@ -335,7 +316,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                             Err(err) => {
                                 create_type_inference_error(
                                     db,
-                                    file,
+                                    sema,
                                     self.span(db).clone(),
                                     spec,
                                     err,
@@ -345,7 +326,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         },
                         _ => false,
                     },
-                    SpecKind::DInt => match lit {
+                    SpecKind::Simple(SimpleSpecKind::DInt) => match lit {
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
                             AnyInt::AnySigned(AnySigned::SInt(_)),
                         ))) => true,
@@ -362,7 +343,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                             Err(err) => {
                                 create_type_inference_error(
                                     db,
-                                    file,
+                                    sema,
                                     self.span(db).clone(),
                                     spec,
                                     err,
@@ -372,7 +353,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         },
                         _ => false,
                     },
-                    SpecKind::LInt => match lit {
+                    SpecKind::Simple(SimpleSpecKind::LInt) => match lit {
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
                             AnyInt::AnySigned(AnySigned::SInt(_)),
                         ))) => true,
@@ -392,7 +373,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                             Err(err) => {
                                 create_type_inference_error(
                                     db,
-                                    file,
+                                    sema,
                                     self.span(db).clone(),
                                     spec,
                                     err,
@@ -403,7 +384,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         _ => false,
                     },
                     // unsigned integers
-                    SpecKind::USInt => match lit {
+                    SpecKind::Simple(SimpleSpecKind::USInt) => match lit {
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
                             AnyInt::AnyUnsigned(AnyUnsigned::USInt(_)),
                         ))) => true,
@@ -414,7 +395,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                             Err(err) => {
                                 create_type_inference_error(
                                     db,
-                                    file,
+                                    sema,
                                     self.span(db).clone(),
                                     spec,
                                     err,
@@ -424,7 +405,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         },
                         _ => false,
                     },
-                    SpecKind::UInt => match lit {
+                    SpecKind::Simple(SimpleSpecKind::UInt) => match lit {
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
                             AnyInt::AnyUnsigned(AnyUnsigned::USInt(_)),
                         ))) => true,
@@ -438,7 +419,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                             Err(err) => {
                                 create_type_inference_error(
                                     db,
-                                    file,
+                                    sema,
                                     self.span(db).clone(),
                                     spec,
                                     err,
@@ -448,7 +429,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         },
                         _ => false,
                     },
-                    SpecKind::UDInt => match lit {
+                    SpecKind::Simple(SimpleSpecKind::UDInt) => match lit {
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
                             AnyInt::AnyUnsigned(AnyUnsigned::USInt(_)),
                         ))) => true,
@@ -465,7 +446,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                             Err(err) => {
                                 create_type_inference_error(
                                     db,
-                                    file,
+                                    sema,
                                     self.span(db).clone(),
                                     spec,
                                     err,
@@ -475,7 +456,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         },
                         _ => false,
                     },
-                    SpecKind::ULInt => match lit {
+                    SpecKind::Simple(SimpleSpecKind::ULInt) => match lit {
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
                             AnyInt::AnyUnsigned(AnyUnsigned::USInt(_)),
                         ))) => true,
@@ -495,7 +476,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                             Err(err) => {
                                 create_type_inference_error(
                                     db,
-                                    file,
+                                    sema,
                                     self.span(db).clone(),
                                     spec,
                                     err,
@@ -505,7 +486,8 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         },
                         _ => false,
                     },
-                    SpecKind::Real => match lit {
+                    // floats
+                    SpecKind::Simple(SimpleSpecKind::Real) => match lit {
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyReal(
                             AnyReal::Real(_),
                         ))) => true,
@@ -516,7 +498,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                             Err(err) => {
                                 create_type_inference_error(
                                     db,
-                                    file,
+                                    sema,
                                     self.span(db).clone(),
                                     spec,
                                     err,
@@ -526,7 +508,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         },
                         _ => false,
                     },
-                    SpecKind::LReal => match lit {
+                    SpecKind::Simple(SimpleSpecKind::LReal) => match lit {
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyReal(
                             AnyReal::Real(_),
                         ))) => true,
@@ -540,7 +522,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                             Err(err) => {
                                 create_type_inference_error(
                                     db,
-                                    file,
+                                    sema,
                                     self.span(db).clone(),
                                     spec,
                                     err,
@@ -557,7 +539,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                     let message = format!(
                         "value '{}' is not assignable to '{}'",
                         lit.to_string(db),
-                        spec.to_string(db),
+                        spec.to_string(db, sema),
                     );
                     let diagnostic = diag()
                         .range(self.span(db).clone())
@@ -566,12 +548,12 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                         .related_information(vec![DiagnosticRelatedInformation {
                             location: auto_lsp::lsp_types::Location {
-                                uri: file.url(db).clone(),
-                                range: spec.span.clone().into(),
+                                uri: sema.file.url(db).clone(),
+                                range: spec.span(db).clone().into(),
                             },
                             message: format!(
                                 "because of type '{}' declared here",
-                                spec.to_string(db)
+                                spec.to_string(db, sema)
                             ),
                         }])
                         .call();

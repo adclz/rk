@@ -8,7 +8,10 @@ use salsa::Accumulator;
 use crate::{
     diagnostics::{diagnostic_builder::diag, DiagnosticAccumulator},
     hir::{
-        interned::{identifier::Ident, namespace::NamespacePath},
+        interned::{
+            identifier::Ident,
+            namespace::{NamespaceAccess, NamespacePath},
+        },
         scopes::{
             iterators::{PouIterator, ScopedMap},
             scope::{Scope, ScopeId, ScopeKind, ScopedNamespaceId, ScopedPouId},
@@ -18,7 +21,8 @@ use crate::{
     },
 };
 
-#[salsa::tracked(returns(ref))]
+/// Finds all namespaces that match the given path.
+#[salsa::tracked(returns(ref), no_eq)]
 pub fn find_namespaces<'db>(
     db: &'db dyn BaseDatabase,
     path: NamespacePath,
@@ -38,7 +42,8 @@ pub fn find_namespaces<'db>(
         .collect()
 }
 
-#[salsa::tracked(returns(ref), no_eq)]
+/// Finds all exported items in a given scope.
+#[salsa::tracked(returns(ref))]
 pub fn exported_items_in_scope<'db>(
     db: &'db dyn BaseDatabase,
     file: File,
@@ -63,16 +68,6 @@ pub fn exported_items_in_scope<'db>(
     ScopedMap { namespaces, pous }
 }
 
-pub fn find_pou_in_scope(
-    db: &dyn BaseDatabase,
-    sema: &SemanticIndex,
-    scope: ScopeId,
-    name: &Ident,
-) -> Option<ScopedPouId> {
-    let mut pou_iter = PouIterator::new(db, sema, scope);
-    pou_iter.find(|(ident, _)| ident == name).map(|pou| pou.1)
-}
-
 // Rules for resolving Using directives
 
 /// 1 - We first search if the namespace matches any of the namespaces declared in all files.
@@ -82,7 +77,7 @@ pub fn find_pou_in_scope(
 /// 2.5 - Check if the directive is not declared multiple times in the same scope.
 ///
 /// 3 - We then see if the visibility allows the namespace to be used in the current scope.
-pub fn exported_namespaces<'db>(
+fn exported_namespaces<'db>(
     db: &'db dyn BaseDatabase,
     file: File,
     using: Using<'db>,
@@ -189,4 +184,35 @@ pub fn exported_namespaces<'db>(
         results.insert(*ns.path(db), ScopedNamespaceId(ns_id, file));
     }
     results
+}
+
+pub fn resolve_access<'db>(
+    db: &'db dyn BaseDatabase,
+    file: File,
+    scope: ScopeId,
+    access: NamespaceAccess,
+) -> Option<ScopedPouId> {
+    let target = access.target(db);
+
+    // Namespace is optional
+    match access.namespace(db) {
+        Some(ns) => {
+            let namespaces = find_namespaces(db, ns);
+            namespaces
+                .iter()
+                .find_map(|ns| {
+                    let sema = semantic_index(db, ns.1)?;
+                    let pou = sema.get_namespace(ns.0).pous(db).iter().find(|pou| {
+                        *sema.pou_keys[*pou].name(db) == target.ident
+                    })?;
+                    Some(ScopedPouId(*pou, ns.1))
+                })
+
+        }
+        None => {
+            let sema = semantic_index(db, file)?;
+            let exported = exported_items_in_scope(db, file, sema.get_scope(scope));
+            exported.pous.get(&target.ident).copied()
+        }
+    }
 }
