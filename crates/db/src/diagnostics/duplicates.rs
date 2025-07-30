@@ -18,7 +18,8 @@ use crate::{
             AnyReal, AnySigned, AnyUnsigned, Expr, ExprKind, Numeric, NumericKind, PrimaryExpr,
         },
         interned::namespace::NamespacePath,
-        pous::variable::{Spec, SpecKind, Variable},
+        pous::variable::Variable,
+        expressions::spec::{Spec, SpecKind},
         using::Using,
     },
 };

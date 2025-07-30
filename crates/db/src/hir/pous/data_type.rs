@@ -1,7 +1,7 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    hir::{expressions::expression::Expr, pous::variable::Spec, semantic_index::SemanticIndex},
+    hir::{expressions::expression::Expr, expressions::spec::Spec, semantic_index::SemanticIndex},
     to_proto::{IterToProto, ToProto},
 };
 

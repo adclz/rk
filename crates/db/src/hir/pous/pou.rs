@@ -86,13 +86,13 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
                 .name_range(self.name_span(db).clone())
                 .maybe_extends(match self.pou(db) {
                     Pou::Class(c) => c.extends(db).map(|a| Extends::Single(a)),
-                    Pou::FunctionBlock(fb) => fb.extends(db).map(|a| Extends::Single(a)),
+                    Pou::FunctionBlock(fb) => fb.extends(db).map(|a| Extends::Single(a.clone())),
                     Pou::Interface(i) => i.extends(db).map(|a| Extends::Multiple(a)),
                     _ => None,
                 })
                 .maybe_implements(match self.pou(db) {
                     Pou::Class(c) => c.implements(db),
-                    Pou::FunctionBlock(fb) => fb.implements(db),
+                    Pou::FunctionBlock(fb) => fb.implements(db).cloned(),
                     _ => None,
                 })
                 .build(),

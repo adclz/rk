@@ -67,7 +67,6 @@ impl<'db> SemanticIndex<'db> {
     pub(crate) fn exported_items_in_scope(&'db self, db: &'db dyn BaseDatabase, scope: ScopeId) -> &'db ScopedMap {
         exported_items_in_scope(db, self.file, self.get_scope(scope))
     }
-    
 }
 
 impl<'db> IterToProto<'db> for SemanticIndex<'db> {

@@ -10,10 +10,15 @@ use crate::{
 
 #[salsa::tracked(debug)]
 pub struct FunctionBlock<'db> {
+    #[tracked]
+    #[returns(as_ref)]
     pub extends: Option<SpannedNamespaceAccess>,
 
+    #[tracked]
+    #[returns(as_ref)]
     pub implements: Option<Vec<SpannedNamespaceAccess>>,
 
+    #[tracked]
     #[returns(ref)]
     pub variables: Vec<Variable<'db>>,
 

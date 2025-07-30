@@ -8,9 +8,8 @@ use auto_lsp::{
 
 use crate::{
     hir::{
-        expressions::expression::Expr,
+        expressions::{expression::Expr, spec::{Spec, SpecKind, SubRangeType}},
         interned::namespace::NamespaceAccess,
-        pous::variable::{Spec, SpecKind, Subrange},
     },
     parser::{expression::ParseExpression, semantic_index::SemanticIndexBuilder, ParseInit, ParseSpec, ParseSpecInit, SpecInitResult},
 };
@@ -348,7 +347,7 @@ impl<'db> ParseSpec<'db> for ast::generated::SubrangeTypeSpec {
         let upper = range.upper.children.to_expr(sema)?;
         Ok(Spec {
             span: self.get_span(),
-            kind: SpecKind::Subrange(Subrange::new(sema.db, spec, lower, upper)),
+            kind: SpecKind::Subrange(SubRangeType {_type: Box::new(spec), lower, upper }),
             scope_id: sema.current_scope
         })
     }

@@ -4,7 +4,8 @@ use crate::{
     hir::interned::identifier::Ident,
     hir::interned::namespace::SpannedNamespaceAccess,
     hir::{
-        pous::variable::{Spec, Variable},
+        pous::variable::{Variable},
+        expressions::spec::{Spec},
         scopes::scope::ScopeId,
         semantic_index::SemanticIndex,
     },

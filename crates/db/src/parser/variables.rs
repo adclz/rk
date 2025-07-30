@@ -14,7 +14,8 @@ use salsa::Accumulator;
 use crate::diagnostics::diagnostic_builder::diag;
 use crate::diagnostics::DiagnosticAccumulator;
 use crate::hir::interned::identifier::Ident;
-use crate::hir::pous::variable::{Spec, SpecKind, Variable, VariableKind};
+use crate::hir::pous::variable::{Variable, VariableKind};
+use crate::hir::expressions::spec::{Spec, SpecKind};
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::parser::{ParseInit, ParseSpec, ParseSpecInit, ParseVarSection, SpecInitResult};
 

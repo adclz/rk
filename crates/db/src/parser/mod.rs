@@ -3,7 +3,8 @@ use auto_lsp::{anyhow, default::db::file::File};
 use crate::{
     hir::{
         expressions::expression::Expr,
-        pous::variable::{Spec, Variable},
+        expressions::spec::Spec,
+        pous::variable::{Variable},
     }, parser::semantic_index::SemanticIndexBuilder, BaseDatabase
 };
 

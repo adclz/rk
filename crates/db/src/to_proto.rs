@@ -7,8 +7,8 @@ use auto_lsp::{
 use crate::hir::{
     expressions::expression::Expr,
     interned::namespace::SpannedNamespaceAccess,
-    pous::variable::{Spec, SpecKind},
-    semantic_index::SemanticIndex,
+    expressions::spec::{Spec, SpecKind},
+    semantic_index::SemanticIndex, 
 };
 
 #[derive(bon::Builder, Debug, Clone)]
@@ -46,8 +46,8 @@ impl SymbolInfo<'_> {
     pub fn spec_to_string(&self, db: &dyn BaseDatabase) -> String {
         match &self.spec {
             Some(spec) => match spec.kind {
-                SpecKind::Enum => "ENUM".into(),
-                SpecKind::Struct => "STRUCT".into(),
+                SpecKind::Enum(_) => "ENUM".into(),
+                SpecKind::StructLike(_) => "STRUCT".into(),
                 SpecKind::Edge => "EDGE".into(),
                 SpecKind::Bool => "BOOL".into(),
                 SpecKind::Byte => "BYTE (8 bits)".into(),
