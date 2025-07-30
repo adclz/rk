@@ -1,9 +1,9 @@
-use auto_lsp::{default::db::BaseDatabase, lsp_types::CompletionItem};
+use auto_lsp::{default::db::{file::File, BaseDatabase}, lsp_types::CompletionItem};
 
 use crate::{
     completions,
     hir::{
-        expressions::statement::Stmt, pous::variable::Variable, scopes::scope::ScopeId,
+        expressions::{expression::Expr, statement::Stmt}, expressions::spec::{Spec, SpecKind}, pous::variable::{Variable}, scopes::scope::ScopeId,
         semantic_index::SemanticIndex,
     },
     to_proto::{IterToProto, ToProto},
@@ -11,12 +11,18 @@ use crate::{
 
 #[salsa::tracked(debug)]
 pub struct Function<'db> {
+    #[tracked]
     #[returns(ref)]
     pub variables: Vec<Variable<'db>>,
 
+    // Statements 
     #[tracked]
-    #[no_eq]
+    #[returns(ref)]
     pub statements: Vec<Stmt<'db>>,
+
+    #[tracked]
+    #[returns(as_ref)]
+    pub return_type: Option<Spec<'db>>,
 
     pub scope_id: ScopeId,
 }

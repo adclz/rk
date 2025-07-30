@@ -588,7 +588,6 @@ module.exports = grammar({
             'END_TYPE'
         ),
 
-
         // Type_Decl : Simple_Type_Decl | Subrange_Type_Decl | Enum_Type_Decl | Array_Type_Decl | Struct_Type_Decl |
         //  Str_Type_Decl | Ref_Type_Decl;
         type_decl: $ =>
@@ -1053,7 +1052,7 @@ module.exports = grammar({
             'FUNCTION',
             field("spec", optional($.access_spec)),
             field("name", $.identifier),
-            field("access", optional(seq(':', $.data_type_access))),
+            optional(seq(':', field("return_type", $.data_type_access))),
             field("directives", repeat($.using_directive)),
             field("variables", repeat($._func_variables)),
             field("body", optional($.func_body)),

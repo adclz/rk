@@ -7,7 +7,7 @@ use crate::hir::pous::variable::Variable;
 use crate::hir::scopes::scope::{PouId, Scope, ScopeId, ScopeKind, ScopedPouId, Visibility};
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::parser::statement::ParseStatement;
-use crate::parser::ParseVarSection;
+use crate::parser::{ParseSpec, ParseVarSection};
 use ast::generated::FuncVariables;
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
@@ -28,12 +28,18 @@ impl<'db> SemanticIndexBuilder<'db> {
                 _ => vec![],
             });
 
+        let return_type = func
+            .return_type
+            .as_ref()
+            .map(|rt| rt.to_spec(self))
+            .transpose()?;     
+
         let id = ScopeId::from(func.get_id());
         let pou_key = PouId::from(func.get_id());
         let name = Ident::from_node(self.db, self.file, func.name.deref())?;
         let usings = self.parse_usings(&func.directives)?;
 
-        let result = Function::new(self.db, variables, statements, self.current_scope);
+        let result = Function::new(self.db, variables, statements, return_type, self.current_scope);
 
         let scope = Scope::new(
             self.file,
