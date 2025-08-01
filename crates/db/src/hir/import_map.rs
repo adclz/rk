@@ -2,10 +2,13 @@ use auto_lsp::default::db::{file::File, BaseDatabase};
 use auto_lsp::lsp_types::{CompletionItem, CompletionItemKind};
 use fst::{raw::IndexedValue, Automaton, Streamer};
 use rayon::prelude::*;
+use rustc_hash::FxHashSet;
 
 use std::{cmp::Ordering, hash::Hash};
 use std::{hash::Hasher, ops::ControlFlow};
 
+use crate::hir::scopes::scope::ScopeId;
+use crate::hir::scopes::solver::exported_items_in_scope;
 use crate::hir::semantic_index::semantic_index;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -260,20 +263,37 @@ pub fn file_symbol_index<'db>(db: &'db dyn BaseDatabase, file: File) -> SymbolIn
     SymbolIndex::new(pous.into_boxed_slice())
 }
 
-fn global_symbol_indexes<'db>(db: &'db dyn BaseDatabase) -> Vec<&'db SymbolIndex> {
+fn global_symbol_indexes<'db>(db: &'db dyn BaseDatabase, file_to_omit: File) -> Vec<&'db SymbolIndex> {
     db.get_files()
         .iter()
-        .map(|file| file_symbol_index(db, *file))
+        // Filter out the file to omit
+        // Local queries have to be used to know which items are visible in the current scope
+        .filter_map(|file| match *file == file_to_omit {
+            true => Some(file_symbol_index(db, *file)),
+            false => None,
+        })
         .collect()
 }
 
 pub fn query_completions(
     db: &dyn BaseDatabase,
+    file: File,
+    scope_id: ScopeId,
     query: &str,
 ) -> Vec<CompletionItem> {
-    let indexes = global_symbol_indexes(db);
+    let sema = semantic_index(db, file).unwrap();
+    let scoped_map = exported_items_in_scope(db, file, scope_id);
+
+    let locally_visible_names: FxHashSet<String> = scoped_map
+        .pous
+        .keys()
+        .map(|ident| ident.text(db).to_owned())
+        .collect();
+
+    let indexes = global_symbol_indexes(db, file);
     let mut fast_query = Query::new(query.to_string());
     fast_query.fuzzy(); // or fast_query.exact();
+    
 
     let mut results = vec![];
 

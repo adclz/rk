@@ -60,7 +60,7 @@ pub struct PouIterator<'db> {
 
 impl<'db> PouIterator<'db> {
     pub fn new(db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>, scope: ScopeId) -> Self {
-        let exported = exported_items_in_scope(db, sema.file, sema.get_scope(scope));
+        let exported = exported_items_in_scope(db, sema.file, scope);
         Self {
             db,
             sema,

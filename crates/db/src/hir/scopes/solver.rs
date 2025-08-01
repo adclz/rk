@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use auto_lsp::{
     default::db::{file::File, BaseDatabase},
     lsp_types::{DiagnosticRelatedInformation, DiagnosticTag, Location},
@@ -47,13 +49,16 @@ pub fn find_namespaces<'db>(
 pub fn exported_items_in_scope<'db>(
     db: &'db dyn BaseDatabase,
     file: File,
-    scope: &'db Scope<'db>,
+    scope_id: ScopeId,
 ) -> ScopedMap {
+    let sema = semantic_index(db, file).unwrap();
+    let scope = sema.get_scope(scope_id);
+    
     let mut namespaces = FxHashMap::default();
     let mut pous = FxHashMap::default();
 
     scope.usings.iter().for_each(|using| {
-        let exported_namespaces = exported_namespaces(db, scope.file, *using);
+        let exported_namespaces = exported_namespaces(db, file, *using);
 
         for (path, ns) in exported_namespaces {
             namespaces.insert(path, ns);
@@ -211,7 +216,7 @@ pub fn resolve_access<'db>(
         }
         None => {
             let sema = semantic_index(db, file)?;
-            let exported = exported_items_in_scope(db, file, sema.get_scope(scope));
+            let exported = exported_items_in_scope(db, file, scope);
             exported.pous.get(&target.ident).copied()
         }
     }
