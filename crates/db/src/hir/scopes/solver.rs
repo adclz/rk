@@ -31,15 +31,14 @@ pub fn find_namespaces<'db>(
 ) -> Vec<ScopedNamespaceId> {
     db.get_files()
         .iter()
-        .filter_map(|file| match semantic_index(db, *file) {
-            Some(sema) => sema.namespace_keys.iter().find_map(|(key, ns)| {
+        .filter_map(|file| {
+            semantic_index(db, *file).namespace_keys.iter().find_map(|(key, ns)| {
                 if ns.path(db) == &path {
                     Some(ScopedNamespaceId(*key, *file))
                 } else {
                     None
                 }
-            }),
-            None => None,
+            })
         })
         .collect()
 }
@@ -51,7 +50,7 @@ pub fn exported_items_in_scope<'db>(
     file: File,
     scope_id: ScopeId,
 ) -> ScopedMap {
-    let sema = semantic_index(db, file).unwrap();
+    let sema = semantic_index(db, file);
     let scope = sema.get_scope(scope_id);
     
     let mut namespaces = FxHashMap::default();
@@ -63,7 +62,7 @@ pub fn exported_items_in_scope<'db>(
         for (path, ns) in exported_namespaces {
             namespaces.insert(path, ns);
 
-            let sema = semantic_index(db, ns.1).unwrap();
+            let sema = semantic_index(db, ns.1);
 
             for pou in sema.get_namespace(ns.0).pous(db).iter() {
                 pous.insert(sema.pou_keys[pou].name(db).clone(), ScopedPouId(*pou, ns.1));
@@ -105,7 +104,7 @@ fn exported_namespaces<'db>(
         return results;
     }
 
-    let sema = semantic_index(db, file).unwrap();
+    let sema = semantic_index(db, file);
 
     // Check if this directive is not declared multiple times in the same scope
     sema.get_scope(using.scope_id(db))
@@ -141,11 +140,7 @@ fn exported_namespaces<'db>(
         let ns_file = scoped_ns.1;
         let ns_id = scoped_ns.0;
 
-        let sema = match semantic_index(db, ns_file) {
-            Some(sema) => sema,
-            None => continue,
-        };
-
+        let sema = semantic_index(db, ns_file);
         let ns = sema.get_namespace(ns_id);
 
         // 2: Check if the namespace is not shadowed by any other namespace in the current scope
@@ -206,7 +201,7 @@ pub fn resolve_access<'db>(
             namespaces
                 .iter()
                 .find_map(|ns| {
-                    let sema = semantic_index(db, ns.1)?;
+                    let sema = semantic_index(db, ns.1);
                     let pou = sema.get_namespace(ns.0).pous(db).iter().find(|pou| {
                         *sema.pou_keys[*pou].name(db) == target.ident
                     })?;
@@ -215,7 +210,7 @@ pub fn resolve_access<'db>(
 
         }
         None => {
-            let sema = semantic_index(db, file)?;
+            let sema = semantic_index(db, file);
             let exported = exported_items_in_scope(db, file, scope);
             exported.pous.get(&target.ident).copied()
         }

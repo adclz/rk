@@ -225,7 +225,7 @@ END_NAMESPACE
         db.add_file(file).unwrap();
 
         let file = db.get_file(&url).unwrap();
-        let namespaces = semantic_index(&db, file).unwrap();
+        let namespaces = semantic_index(&db, file);
 
         let fn_name = SpannedIdent::from_blank(&db, "f");
         let ns = SpannedIdent::from_blank(&db, "nss");

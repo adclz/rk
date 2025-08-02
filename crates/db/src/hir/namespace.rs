@@ -188,7 +188,7 @@ mod tests {
         db.add_file(file).unwrap();
 
         let file = db.get_file(&url).unwrap();
-        let sema = semantic_index(&db, file).unwrap();
+        let sema = semantic_index(&db, file);
 
         sema.pou_keys
             .iter()
@@ -245,7 +245,7 @@ END_NAMESPACE
         db.add_file(file).unwrap();
 
         let file = db.get_file(&url).unwrap();
-        let sema = semantic_index(&db, file).unwrap();
+        let sema = semantic_index(&db, file);
 
         let main_ns = sema.namespace_keys.values().next().unwrap();
         let scope = sema.get_scope(main_ns.scope_id(&db));
@@ -308,7 +308,7 @@ END_NAMESPACE
         db.add_file(file).unwrap();
 
         let file = db.get_file(&url).unwrap();
-        let sema = semantic_index(&db, file).unwrap();
+        let sema = semantic_index(&db, file);
 
         let nested_ns = sema
             .namespace_keys
@@ -364,7 +364,7 @@ END_NAMESPACE
 
         db.add_file(file).unwrap();
         let file = db.get_file(&url).unwrap();
-        let sema = semantic_index(&db, file).unwrap();
+        let sema = semantic_index(&db, file);
 
         let main_ns = sema.namespace_keys.values().next().unwrap();
         let scope = sema.get_scope(main_ns.scope_id(&db));

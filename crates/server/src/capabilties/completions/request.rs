@@ -74,10 +74,7 @@ pub fn use_completion_ctx(
     file: File,
     offset: usize,
 ) -> anyhow::Result<Option<CompletionResponse>> {
-    let sema = match semantic_index(db, file) {
-        Some(sema) => sema,
-        None => return Ok(None),
-    };
+    let sema = semantic_index(db, file);
     if let Some(symbol) = sema.descendant_at(db, &sema, offset) {
         if let Some(ctx) = symbol.completion(db, &sema, offset) {
             return Ok(Some(CompletionResponse::Array(ctx)));

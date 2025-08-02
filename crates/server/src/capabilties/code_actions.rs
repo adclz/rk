@@ -18,10 +18,7 @@ pub fn code_actions(
 
     let mut results = vec![];
 
-    let ns = match semantic_index(db, file) {
-        Some(ns) => ns,
-        None => return Ok(None),
-    };
+    let ns = semantic_index(db, file);
 
     cached_diagnostics(db, file).iter().for_each(|diagnostic| {
         if diagnostic.fixes.is_empty() {

@@ -35,7 +35,7 @@ pub enum SpecKind<'db> {
     Target(NamespaceAccess),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum SimpleSpecKind {
     Bool,
     REDGEBool,

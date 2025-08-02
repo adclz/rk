@@ -18,10 +18,8 @@ pub fn inlay_hints(
 
     let mut results = vec![];
 
-    let sema = match semantic_index(db, file) {
-        Some(ns) => ns,
-        None => return Ok(None),
-    };
+    let sema = semantic_index(db, file);
+    
     sema.iter(db, &sema).for_each(|symbol| {
         let span = symbol.get_span(db);
         if span.lsp().start.line < range.start.line || span.lsp().end.line > range.end.line {

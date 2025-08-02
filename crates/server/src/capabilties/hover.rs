@@ -25,10 +25,7 @@ pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Opti
             )
         })?;
 
-    let sema = match semantic_index(db, file) {
-        Some(ns) => ns,
-        None => return Ok(None),
-    };
+    let sema = semantic_index(db, file);
 
     let symbol = sema
         .named_descendant_at(db, &sema, position)

@@ -247,7 +247,7 @@ pub struct FileSymbol {
 pub fn file_symbol_index<'db>(db: &'db dyn BaseDatabase, file: File) -> SymbolIndex {
     let mut pous = vec![];
 
-    let sema = semantic_index(db, file).unwrap();
+    let sema = semantic_index(db, file);
 
     sema.namespace_keys.iter().for_each(|(key, ns)| {
         ns.pous(db).iter().for_each(|pou| {
@@ -281,7 +281,7 @@ pub fn query_completions(
     scope_id: ScopeId,
     query: &str,
 ) -> Vec<CompletionItem> {
-    let sema = semantic_index(db, file).unwrap();
+    let sema = semantic_index(db, file);
     let scoped_map = exported_items_in_scope(db, file, scope_id);
 
     let locally_visible_names: FxHashSet<&str> = scoped_map

@@ -79,10 +79,7 @@ pub fn document_symbols(
         .ok_or_else(|| anyhow::format_err!("File not found in workspace"))?;
 
     let mut builder = DocumentSymbolsBuilder::default();
-    let ns = match semantic_index(db, file) {
-        Some(ns) => ns,
-        None => return Ok(None),
-    };
+    let ns = semantic_index(db, file);
 
     // Collect all symbols first
     let symbols: Vec<_> = ns

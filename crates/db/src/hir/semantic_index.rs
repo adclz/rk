@@ -16,11 +16,17 @@ use crate::to_proto::{IterToProto, ToProto};
 
 /// Returns the semantic index of a given file
 #[salsa::tracked]
-pub fn semantic_index<'db>(db: &'db dyn BaseDatabase, file: File) -> Option<SemanticIndex<'db>> {
-    let ast = get_ast(db, file).get_root()?;
-    let source = ast.downcast_ref::<ast::generated::SourceFile>()?;
+pub fn semantic_index<'db>(db: &'db dyn BaseDatabase, file: File) -> SemanticIndex<'db> {
+    let ast = match get_ast(db, file).get_root() {
+        Some(ast) => ast,
+        None => return SemanticIndex::empty(file),
+    };
+    let source = match ast.downcast_ref::<ast::generated::SourceFile>() {
+        Some(source) => source,
+        None => return SemanticIndex::empty(file),
+    };
 
-    Some(SemanticIndexBuilder::new(db, file, source).build())
+    SemanticIndexBuilder::new(db, file, source).build()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
@@ -44,6 +50,17 @@ pub struct SemanticIndex<'db> {
 }
 
 impl<'db> SemanticIndex<'db> {
+    pub fn empty(file: File) -> Self {
+        SemanticIndex {
+            file,
+            scopes: FxHashMap::default(),
+            namespace_keys: FxHashMap::default(),
+            pou_keys: FxHashMap::default(),
+            scope_to_namespaces: FxHashMap::default(),
+            scope_to_pous: FxHashMap::default(),
+        }
+    }
+
     pub fn get_namespace(&'db self, key: NamespaceId) -> &'db Namespace<'db> {
         &self.namespace_keys[&key]
     }

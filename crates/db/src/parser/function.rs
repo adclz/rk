@@ -153,7 +153,7 @@ END_NAMESPACE
         db.add_file(file).unwrap();
 
         let file = db.get_file(&url).unwrap();
-        let sema = semantic_index(&db, file).unwrap();
+        let sema = semantic_index(&db, file);
 
         let first_pou = sema.pou_keys.iter().next().unwrap();
         let pou_decl = first_pou.1;
