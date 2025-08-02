@@ -3,6 +3,7 @@ use auto_lsp::{
     core::{ast::AstNode, span::Span},
     default::db::{file::File, BaseDatabase},
 };
+use compact_str::CompactString;
 use std::hash::Hash;
 
 use crate::to_proto::ToProto;
@@ -52,12 +53,12 @@ impl SpannedIdent {
         };
         SpannedIdent {
             span: Span::from(range),
-            ident: Ident::new(db, text.to_string()),
+            ident: Ident::from_slice(db, text),
         }
     }
 
-    pub fn to_string(&self, db: &dyn BaseDatabase) -> String {
-        self.ident.text(db)
+    pub fn to_string<'db>(&'db self, db: &'db dyn BaseDatabase) -> &'db str {
+        &self.ident.text(db)
     }
 }
 
@@ -70,8 +71,8 @@ impl<'db> ToProto<'db> for SpannedIdent {
 /// Interned identifier
 #[salsa::interned(debug, no_lifetime)]
 pub struct Ident {
-    #[return_ref]
-    pub text: String,
+    #[returns(ref)]
+    pub text: CompactString,
 }
 
 #[salsa::tracked]
@@ -81,20 +82,20 @@ impl<'db> Ident {
         file: File,
         node: &impl AstNode,
     ) -> anyhow::Result<Self> {
-        Ok(Ident::new(db, node.get_text(file.document(db).as_bytes())?))
+        Ok(Ident::new(db, CompactString::from(node.get_text(file.document(db).as_bytes())?)))
+    }
+
+    pub fn from_slice(db: &dyn BaseDatabase, text: &str) -> Self {
+        Ident::new(db, CompactString::from(text))
     }
 
     pub fn join(db: &dyn BaseDatabase, other: &[Ident]) -> Ident {
-        Ident::new(db, other.iter().map(|i| i.text(db)).collect::<String>())
+        Ident::new(db, other.iter().map(|i| i.text(db).to_owned()).collect::<CompactString>())
     }
 
     #[salsa::tracked]
     pub fn as_u8(self, db: &'db dyn BaseDatabase) -> Option<u8> {
         self.text(db).as_str().parse::<u8>().ok()
-    }
-
-    pub fn is_u8(self, db: &dyn BaseDatabase) -> bool {
-        self.as_u8(db).is_some()
     }
 
     #[salsa::tracked]

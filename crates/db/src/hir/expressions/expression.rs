@@ -550,10 +550,10 @@ impl Numeric {
             NumericKind::Binary => format!("[Binary] {}", self.ident(db).text(db)),
             NumericKind::Hex => format!("[Hexa] {}", self.ident(db).text(db)),
             NumericKind::Octal => format!("[Octal] {}", self.ident(db).text(db)),
-            NumericKind::Signed => self.ident(db).text(db),
+            NumericKind::Signed => self.ident(db).text(db).to_string(),
         }
     }
-}
+} 
 
 // todo: improve support for string and char
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]

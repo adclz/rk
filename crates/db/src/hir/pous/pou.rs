@@ -73,7 +73,7 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
                     Pou::Interface(_) => auto_lsp::lsp_types::SymbolKind::INTERFACE,
                     Pou::DataType(_) => auto_lsp::lsp_types::SymbolKind::TYPE_PARAMETER,
                 })
-                .name(self.name(db).text(db))
+                .name(self.name(db).text(db).to_string())
                 .range(self.get_span(db).clone())
                 .maybe_spec(match self.pou(db) {
                     Pou::DataType(d) => Some(d.spec(db)),

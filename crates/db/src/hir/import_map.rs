@@ -284,10 +284,10 @@ pub fn query_completions(
     let sema = semantic_index(db, file).unwrap();
     let scoped_map = exported_items_in_scope(db, file, scope_id);
 
-    let locally_visible_names: FxHashSet<String> = scoped_map
+    let locally_visible_names: FxHashSet<&str> = scoped_map
         .pous
         .keys()
-        .map(|ident| ident.text(db).to_owned())
+        .map(|ident| ident.text(db).as_str())
         .collect();
 
     let indexes = global_symbol_indexes(db, file);

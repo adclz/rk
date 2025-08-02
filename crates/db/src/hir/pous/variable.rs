@@ -71,7 +71,7 @@ impl<'db> ToProto<'db> for Variable<'db> {
         Some(
             SymbolInfo::builder()
                 .kind(auto_lsp::lsp_types::SymbolKind::VARIABLE)
-                .name(self.name(db).text(db))
+                .name(self.name(db).text(db).to_string())
                 .range(self.range(db).clone())
                 .name_range(self.name_span(db).clone())
                 .spec(self.spec(db).clone())

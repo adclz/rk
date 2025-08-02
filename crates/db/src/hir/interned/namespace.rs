@@ -31,7 +31,7 @@ impl<'db> NamespacePath {
     pub fn to_string(&self, db: &dyn BaseDatabase) -> String {
         self.fragments(db)
             .iter()
-            .map(|i| i.ident.text(db))
+            .map(|i| i.ident.text(db).to_string())
             .collect::<Vec<_>>()
             .join(".")
     }
