@@ -156,9 +156,9 @@ impl<'db> ParseVariable<'db> for ast::generated::FbDecl {
 
 #[cfg(test)]
 mod tests {
-    use auto_lsp::{default::db::FileManager, lsp_types};
     use auto_lsp::default::db::{file::File, BaseDatabase};
-    
+    use auto_lsp::{default::db::FileManager, lsp_types};
+
     use crate::{
         hir::{
             interned::{identifier::SpannedIdent, namespace::NamespacePath},

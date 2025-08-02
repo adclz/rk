@@ -1,7 +1,6 @@
 use auto_lsp::default::db::BaseDatabase;
-use auto_lsp::{core::span::Span, default::db::file::File};
+use auto_lsp::{core::span::Span};
 
-use crate::hir::semantic_index::semantic_index;
 use crate::hir::signature::signature_for_pou;
 use crate::{
     completions::snippets::elem_type_names,
@@ -134,7 +133,11 @@ impl<'db> ToProto<'db> for Spec<'db> {
         self.span(db)
     }
 
-    fn hover(&'db self, db: &'db dyn crate::BaseDatabase, sema: &'db SemanticIndex<'db>,) -> Option<auto_lsp::lsp_types::Hover> {
+    fn hover(
+        &'db self,
+        db: &'db dyn crate::BaseDatabase,
+        sema: &'db SemanticIndex<'db>,
+    ) -> Option<auto_lsp::lsp_types::Hover> {
         Some(auto_lsp::lsp_types::Hover {
             contents: auto_lsp::lsp_types::HoverContents::Scalar(
                 auto_lsp::lsp_types::MarkedString::String(self.to_string(db, sema).to_string()),

@@ -1,9 +1,7 @@
 use std::ops::Deref;
 
+use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
-use auto_lsp::{
-    anyhow
-};
 use salsa::Accumulator;
 
 use crate::hir::expressions::expression::{
@@ -44,7 +42,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                             operator: BooleanOperatorKind::Or,
                             right,
                         },
-                        sema.current_scope
+                        sema.current_scope,
                     ))
                 }
                 ast::generated::AndOperator_OrOperator_XorOperator::XorOperator(xor_operator) => {
@@ -59,7 +57,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                             operator: BooleanOperatorKind::Xor,
                             right,
                         },
-                        sema.current_scope
+                        sema.current_scope,
                     ))
                 }
                 ast::generated::AndOperator_OrOperator_XorOperator::AndOperator(and_operator) => {
@@ -74,7 +72,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                             operator: BooleanOperatorKind::And,
                             right,
                         },
-                        sema.current_scope
+                        sema.current_scope,
                     ))
                 }
             },
@@ -189,7 +187,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                     sema.db,
                     unary_operator.get_span(),
                     ExprKind::UnaryOperator { expr, operator },
-                    sema.current_scope
+                    sema.current_scope,
                 ))
             }
         }
@@ -222,7 +220,7 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                         variable,
                         multibits: None,
                     }),
-                    sema.current_scope
+                    sema.current_scope,
                 ))
             }
             ast::generated::PrimaryExpression::FuncCall(func) => {
@@ -262,7 +260,7 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                         },
                         params: parameters,
                     }),
-                    sema.current_scope
+                    sema.current_scope,
                 ))
             }
             ast::generated::PrimaryExpression::ParenthesizedExpression(p) => Ok(Expr::new(
@@ -271,7 +269,7 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                 ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr {
                     expr: p.children.to_expr(sema)?,
                 }),
-                sema.current_scope
+                sema.current_scope,
             )),
             ast::generated::PrimaryExpression::RefValue(r) => match r.children.deref() {
                 ast::generated::Null_RefAddr::Null(_) => Ok(Expr::new(
@@ -280,7 +278,7 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                     ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
                         value: RefValue::Null,
                     }),
-                    sema.current_scope
+                    sema.current_scope,
                 )),
                 ast::generated::Null_RefAddr::RefAddr(a) => match a.children.deref() {
                     ast::generated::InstanceName_SymbolicVariable::SymbolicVariable(s) => {
@@ -293,7 +291,7 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                                     kind: s.children.parse(sema)?,
                                 })),
                             }),
-                            sema.current_scope
+                            sema.current_scope,
                         ))
                     }
                     ast::generated::InstanceName_SymbolicVariable::InstanceName(i) => {
@@ -305,7 +303,7 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                                     sema.db, sema.file, i,
                                 )?)),
                             }),
-                            sema.current_scope
+                            sema.current_scope,
                         ))
                     }
                 },
@@ -328,9 +326,11 @@ impl<'db> ParseNumeric<'db> for ast::generated::BinaryInt_HexInt_OctalInt_Signed
                     NumericKind::Binary,
                 )
             }
-            ast::generated::BinaryInt_HexInt_OctalInt_SignedInt::HexInt(hex_int) => {
-                Numeric::new(sema.db, Ident::from_node(sema.db, sema.file, hex_int)?, NumericKind::Hex)
-            }
+            ast::generated::BinaryInt_HexInt_OctalInt_SignedInt::HexInt(hex_int) => Numeric::new(
+                sema.db,
+                Ident::from_node(sema.db, sema.file, hex_int)?,
+                NumericKind::Hex,
+            ),
             ast::generated::BinaryInt_HexInt_OctalInt_SignedInt::OctalInt(octal_int) => {
                 Numeric::new(
                     sema.db,
@@ -434,7 +434,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Constant {
                             ast::generated::LongDate_ShortDate::ShortDate(date) => {
                                 AnyElementary::AnyDate(AnyDate::Date(Ident::from_node(sema.db, sema.file, date.value.deref())?))
                             }
-                        } 
+                        }
                     }
                     ast::generated::Date_DateAndTime_Duration_TimeOfDay::DateAndTime(
                         date_and_time,
@@ -473,27 +473,19 @@ impl<'db> ParseExpression<'db> for ast::generated::Constant {
             sema.db,
             self.get_span(),
             ExprKind::PrimaryExpr(PrimaryExpr::Literal(lit)),
-            sema.current_scope
+            sema.current_scope,
         ))
     }
 }
 
 pub trait ParseVariableAccess<'db> {
-    fn to_access(
-        &self,
-        sema: &SemanticIndexBuilder<'db>
-    ) -> anyhow::Result<VariableAccess<'db>>;
+    fn to_access(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<VariableAccess<'db>>;
 }
 
 impl<'db> ParseVariableAccess<'db> for ast::generated::Variable {
-    fn to_access(
-        &self,
-        sema: &SemanticIndexBuilder<'db>
-    ) -> anyhow::Result<VariableAccess<'db>> {
+    fn to_access(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<VariableAccess<'db>> {
         match self.children.deref() {
-            ast::generated::DirectVariable_SymbolicVariable::DirectVariable(v) => {
-                v.to_access(sema)
-            }
+            ast::generated::DirectVariable_SymbolicVariable::DirectVariable(v) => v.to_access(sema),
             ast::generated::DirectVariable_SymbolicVariable::SymbolicVariable(v) => {
                 v.to_access(sema)
             }
@@ -502,10 +494,7 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::Variable {
 }
 
 impl<'db> ParseVariableAccess<'db> for ast::generated::DirectVariable {
-    fn to_access(
-        &self,
-        sema: &SemanticIndexBuilder<'db>
-    ) -> anyhow::Result<VariableAccess<'db>> {
+    fn to_access(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<VariableAccess<'db>> {
         let adress = Ident::from_node(sema.db, sema.file, self.adress.deref())?;
 
         let (offset, partly) = match self.offset.deref() {
@@ -527,10 +516,7 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::DirectVariable {
 }
 
 impl<'db> ParseVariableAccess<'db> for ast::generated::SymbolicVariable {
-    fn to_access(
-        &self,
-        sema: &SemanticIndexBuilder<'db>
-    ) -> anyhow::Result<VariableAccess<'db>> {
+    fn to_access(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<VariableAccess<'db>> {
         Ok(VariableAccess {
             span: self.get_span(),
             kind: VariableAccessKind::Symbolic(SymbolicVariable {
@@ -609,9 +595,9 @@ impl<'db> ParseExpr<'db> for ast::generated::VarAccess {
 
                 Err(anyhow::anyhow!("Unexpected 'this' in path"))
             }
-            ast::generated::ERRUnexpectedThisInPath_Field_RefDeref::Field(field) => {
-                Ok(VarAccess::Simple(Ident::from_node(sema.db, sema.file, field)?))
-            }
+            ast::generated::ERRUnexpectedThisInPath_Field_RefDeref::Field(field) => Ok(
+                VarAccess::Simple(Ident::from_node(sema.db, sema.file, field)?),
+            ),
             ast::generated::ERRUnexpectedThisInPath_Field_RefDeref::RefDeref(ref_deref) => Ok(
                 VarAccess::Deref(Ident::from_node(sema.db, sema.file, ref_deref.Ref.deref())?),
             ),

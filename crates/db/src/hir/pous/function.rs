@@ -1,9 +1,15 @@
-use auto_lsp::{default::db::{file::File, BaseDatabase}, lsp_types::CompletionItem};
+use auto_lsp::{
+    default::db::{BaseDatabase},
+    lsp_types::CompletionItem,
+};
 
 use crate::{
     completions,
     hir::{
-        expressions::{expression::Expr, statement::Stmt}, expressions::spec::{Spec, SpecKind}, pous::variable::{Variable}, scopes::scope::ScopeId,
+        expressions::spec::{Spec},
+        expressions::{statement::Stmt},
+        pous::variable::Variable,
+        scopes::scope::ScopeId,
         semantic_index::SemanticIndex,
     },
     to_proto::{IterToProto, ToProto},
@@ -15,7 +21,7 @@ pub struct Function<'db> {
     #[returns(ref)]
     pub variables: Vec<Variable<'db>>,
 
-    // Statements 
+    // Statements
     #[tracked]
     #[returns(ref)]
     pub statements: Vec<Stmt<'db>>,

@@ -6,21 +6,15 @@ use crate::hir::expressions::statement::{Stmt, StmtKind};
 use crate::parser::expression::{ParseExpression, ParseVariableAccess};
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use auto_lsp::core::ast::AstNode;
-use auto_lsp::{anyhow, default::db::file::File};
+use auto_lsp::{anyhow};
 use salsa::Accumulator;
 
 pub trait ParseStatement<'db> {
-    fn to_statement(
-        &self,
-        sema: &SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<Stmt<'db>>;
+    fn to_statement(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Stmt<'db>>;
 }
 
 impl<'db> ParseStatement<'db> for ast::generated::Stmt {
-    fn to_statement(
-        &self,
-        sema: &SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<Stmt<'db>> {
+    fn to_statement(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Stmt<'db>> {
         type StmtType = ast::generated::Stmt;
         match self {
             StmtType::Assign(assign) => assign.to_statement(sema),
@@ -40,10 +34,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
 }
 
 impl<'db> ParseStatement<'db> for ast::generated::Assign {
-    fn to_statement(
-        &self,
-        sema: &SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<Stmt<'db>> {
+    fn to_statement(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Stmt<'db>> {
         let var = match self.variable.deref() {
             ast::generated::ERRAssignFuncCall_Variable::ERRAssignFuncCall(err) => {
                 let diag = diag()

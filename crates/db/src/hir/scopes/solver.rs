@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use auto_lsp::{
     default::db::{file::File, BaseDatabase},
     lsp_types::{DiagnosticRelatedInformation, DiagnosticTag, Location},
@@ -11,14 +9,13 @@ use crate::{
     diagnostics::{diagnostic_builder::diag, DiagnosticAccumulator},
     hir::{
         interned::{
-            identifier::Ident,
             namespace::{NamespaceAccess, NamespacePath},
         },
         scopes::{
-            iterators::{PouIterator, ScopedMap},
-            scope::{Scope, ScopeId, ScopeKind, ScopedNamespaceId, ScopedPouId},
+            iterators::{ScopedMap},
+            scope::{ScopeId, ScopeKind, ScopedNamespaceId, ScopedPouId},
         },
-        semantic_index::{semantic_index, SemanticIndex},
+        semantic_index::{semantic_index},
         using::Using,
     },
 };
@@ -32,13 +29,16 @@ pub fn find_namespaces<'db>(
     db.get_files()
         .iter()
         .filter_map(|file| {
-            semantic_index(db, *file).namespace_keys.iter().find_map(|(key, ns)| {
-                if ns.path(db) == &path {
-                    Some(ScopedNamespaceId(*key, *file))
-                } else {
-                    None
-                }
-            })
+            semantic_index(db, *file)
+                .namespace_keys
+                .iter()
+                .find_map(|(key, ns)| {
+                    if ns.path(db) == &path {
+                        Some(ScopedNamespaceId(*key, *file))
+                    } else {
+                        None
+                    }
+                })
         })
         .collect()
 }
@@ -52,7 +52,7 @@ pub fn exported_items_in_scope<'db>(
 ) -> ScopedMap {
     let sema = semantic_index(db, file);
     let scope = sema.get_scope(scope_id);
-    
+
     let mut namespaces = FxHashMap::default();
     let mut pous = FxHashMap::default();
 
@@ -198,16 +198,15 @@ pub fn resolve_access<'db>(
     match access.namespace(db) {
         Some(ns) => {
             let namespaces = find_namespaces(db, ns);
-            namespaces
-                .iter()
-                .find_map(|ns| {
-                    let sema = semantic_index(db, ns.1);
-                    let pou = sema.get_namespace(ns.0).pous(db).iter().find(|pou| {
-                        *sema.pou_keys[*pou].name(db) == target.ident
-                    })?;
-                    Some(ScopedPouId(*pou, ns.1))
-                })
-
+            namespaces.iter().find_map(|ns| {
+                let sema = semantic_index(db, ns.1);
+                let pou = sema
+                    .get_namespace(ns.0)
+                    .pous(db)
+                    .iter()
+                    .find(|pou| *sema.pou_keys[*pou].name(db) == target.ident)?;
+                Some(ScopedPouId(*pou, ns.1))
+            })
         }
         None => {
             let sema = semantic_index(db, file);

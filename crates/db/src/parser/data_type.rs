@@ -11,9 +11,8 @@ use crate::{
     },
     parser::{semantic_index::SemanticIndexBuilder, ParseInit, ParseSpec},
 };
+use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
-use auto_lsp::{
-    anyhow};
 use rustc_hash::FxHashMap;
 
 impl<'db> SemanticIndexBuilder<'db> {

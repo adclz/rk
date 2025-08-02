@@ -3,7 +3,6 @@ use std::ops::Deref;
 use auto_lsp::{
     anyhow::{self},
     core::ast::AstNode,
-    default::db::{file::File, BaseDatabase},
 };
 
 use crate::{

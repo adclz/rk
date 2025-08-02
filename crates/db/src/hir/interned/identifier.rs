@@ -82,7 +82,10 @@ impl<'db> Ident {
         file: File,
         node: &impl AstNode,
     ) -> anyhow::Result<Self> {
-        Ok(Ident::new(db, CompactString::from(node.get_text(file.document(db).as_bytes())?)))
+        Ok(Ident::new(
+            db,
+            CompactString::from(node.get_text(file.document(db).as_bytes())?),
+        ))
     }
 
     pub fn from_slice(db: &dyn BaseDatabase, text: &str) -> Self {
@@ -90,6 +93,12 @@ impl<'db> Ident {
     }
 
     pub fn join(db: &dyn BaseDatabase, other: &[Ident]) -> Ident {
-        Ident::new(db, other.iter().map(|i| i.text(db).to_owned()).collect::<CompactString>())
+        Ident::new(
+            db,
+            other
+                .iter()
+                .map(|i| i.text(db).to_owned())
+                .collect::<CompactString>(),
+        )
     }
 }

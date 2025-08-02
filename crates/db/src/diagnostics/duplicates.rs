@@ -13,10 +13,18 @@ use salsa::Accumulator;
 use crate::{
     diagnostics::{diagnostic_builder::diag, literals::check_date, DiagnosticAccumulator},
     hir::{
-        expressions::{expression::{
-            AnyBit, AnyChars, AnyDate, AnyDuration, AnyElementary, AnyInt, AnyMagnitude, AnyNum,
-            AnyReal, AnySigned, AnyUnsigned, Expr, ExprKind, Numeric, NumericKind, PrimaryExpr,
-        }, spec::{SimpleSpecKind, Spec, SpecKind}}, interned::namespace::NamespacePath, pous::{pou::Pou, variable::Variable}, scopes::solver::exported_items_in_scope, semantic_index::{semantic_index, SemanticIndex}
+        expressions::{
+            expression::{
+                AnyBit, AnyChars, AnyDate, AnyDuration, AnyElementary, AnyInt, AnyMagnitude,
+                AnyNum, AnyReal, AnySigned, AnyUnsigned, Expr, ExprKind, Numeric, NumericKind,
+                PrimaryExpr,
+            },
+            spec::{SimpleSpecKind, Spec, SpecKind},
+        },
+        interned::namespace::NamespacePath,
+        pous::{pou::Pou, variable::Variable},
+        scopes::solver::exported_items_in_scope,
+        semantic_index::{semantic_index, SemanticIndex},
     },
 };
 
@@ -36,26 +44,21 @@ pub fn duplicate_declarations<'db>(db: &'db dyn BaseDatabase, file: File) {
         for pou in ns.pous(db).iter() {
             let pou = sema.get_pou(*pou);
             let pou_name = pou.name(db);
-            
 
             match pou.pou(db) {
                 Pou::Function(func) => {
                     func.variables(db).check(db, &sema);
-                },
+                }
                 Pou::FunctionBlock(fb) => {
                     fb.variables(db).check(db, &sema);
-                },
+                }
                 Pou::Interface(interface) => {
                     interface.methods(db).iter().for_each(|method| {
                         method.variables(db).check(db, &sema);
                     });
-                },
-                Pou::DataType(dt) => {
-
-                },
-                Pou::Class(class) => {
-
-                },
+                }
+                Pou::DataType(dt) => {}
+                Pou::Class(class) => {}
             }
         }
     }
@@ -152,7 +155,10 @@ fn create_mismatch_type_error<'db>(
                 uri: sema.file.url(db).clone(),
                 range: spec.span(db).clone().into(),
             },
-            message: format!("because of type: '{}' declared here", spec.to_string(db, sema)),
+            message: format!(
+                "because of type: '{}' declared here",
+                spec.to_string(db, sema)
+            ),
         }])
         .call();
     DiagnosticAccumulator::accumulate(diagnostic.into(), db);

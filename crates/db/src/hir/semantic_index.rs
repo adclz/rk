@@ -77,11 +77,19 @@ impl<'db> SemanticIndex<'db> {
         AncestorsIter::new(&self.scopes, self.get_scope(scope))
     }
 
-    pub(crate) fn pou_iterator(&'db self, db: &'db dyn BaseDatabase, scope: ScopeId) -> PouIterator<'db> {
+    pub(crate) fn pou_iterator(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        scope: ScopeId,
+    ) -> PouIterator<'db> {
         PouIterator::new(db, &self, scope)
     }
 
-    pub(crate) fn exported_items_in_scope(&'db self, db: &'db dyn BaseDatabase, scope: ScopeId) -> &'db ScopedMap {
+    pub(crate) fn _exported_items_in_scope(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        scope: ScopeId,
+    ) -> &'db ScopedMap {
         exported_items_in_scope(db, self.file, scope)
     }
 }

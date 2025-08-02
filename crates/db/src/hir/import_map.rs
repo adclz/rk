@@ -263,7 +263,10 @@ pub fn file_symbol_index<'db>(db: &'db dyn BaseDatabase, file: File) -> SymbolIn
     SymbolIndex::new(pous.into_boxed_slice())
 }
 
-fn global_symbol_indexes<'db>(db: &'db dyn BaseDatabase, file_to_omit: File) -> Vec<&'db SymbolIndex> {
+fn global_symbol_indexes<'db>(
+    db: &'db dyn BaseDatabase,
+    file_to_omit: File,
+) -> Vec<&'db SymbolIndex> {
     db.get_files()
         .iter()
         // Filter out the file to omit
@@ -293,7 +296,6 @@ pub fn query_completions(
     let indexes = global_symbol_indexes(db, file);
     let mut fast_query = Query::new(query.to_string());
     fast_query.fuzzy(); // or fast_query.exact();
-    
 
     let mut results = vec![];
 

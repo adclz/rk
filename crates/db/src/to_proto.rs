@@ -6,7 +6,7 @@ use auto_lsp::{
 
 use crate::hir::{
     expressions::expression::Expr,
-    expressions::spec::{Spec, SpecKind},
+    expressions::spec::{Spec},
     interned::namespace::SpannedNamespaceAccess,
     semantic_index::SemanticIndex,
 };

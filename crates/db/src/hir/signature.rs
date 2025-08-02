@@ -1,6 +1,6 @@
 use std::iter::FusedIterator;
 
-use auto_lsp::default::db::{BaseDatabase};
+use auto_lsp::default::db::BaseDatabase;
 
 use crate::hir::{
     expressions::spec::{CompositeSpecKind, Enum, SimpleSpecKind, Spec, SpecKind},
@@ -12,10 +12,7 @@ use crate::hir::{
 };
 
 #[salsa::tracked(returns(ref))]
-pub fn signature_for_pou<'db>(
-    db: &'db dyn BaseDatabase,
-    pou: PouDecl<'db>,
-) -> Signature<'db> {
+pub fn signature_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Signature<'db> {
     let kind;
     let mut return_type = None;
     let mut parameters = vec![];
@@ -110,7 +107,7 @@ pub enum ParameterKind<'db> {
     SubRange,
     Composite(Signature<'db>),
     // Will be solved later when using "resolve_spec"
-    Unresolved(NamespaceAccess)
+    Unresolved(NamespaceAccess),
 }
 
 impl<'db> Spec<'db> {
@@ -181,7 +178,7 @@ impl<'db> Spec<'db> {
 }
 
 pub struct ParameterIterator<'db> {
-    db: &'db dyn BaseDatabase,
+    _db: &'db dyn BaseDatabase,
 
     outer_iter: std::slice::Iter<'db, Parameter<'db>>,
     nested_iter: Option<std::slice::Iter<'db, Parameter<'db>>>,
@@ -190,7 +187,7 @@ pub struct ParameterIterator<'db> {
 impl<'db> Signature<'db> {
     pub fn iter(&'db self, db: &'db dyn BaseDatabase) -> ParameterIterator<'db> {
         ParameterIterator {
-            db,
+            _db: db,
             nested_iter: None,
             outer_iter: self.specs.iter(),
         }

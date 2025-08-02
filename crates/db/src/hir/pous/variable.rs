@@ -5,12 +5,10 @@ use auto_lsp::{
 };
 
 use crate::{
-    completions::snippets::elem_type_names,
     hir::{
-        expressions::expression::{Expr, MultibitsPart},
-        expressions::spec::{Spec, SpecKind},
-        interned::{identifier::Ident, namespace::NamespaceAccess},
-        pous::pou::Pou,
+        expressions::expression::{Expr},
+        expressions::spec::{Spec},
+        interned::{identifier::Ident},
         scopes::scope::ScopeId,
         semantic_index::SemanticIndex,
     },

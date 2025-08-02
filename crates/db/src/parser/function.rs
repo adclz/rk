@@ -32,14 +32,20 @@ impl<'db> SemanticIndexBuilder<'db> {
             .return_type
             .as_ref()
             .map(|rt| rt.to_spec(self))
-            .transpose()?;     
+            .transpose()?;
 
         let id = ScopeId::from(func.get_id());
         let pou_key = PouId::from(func.get_id());
         let name = Ident::from_node(self.db, self.file, func.name.deref())?;
         let usings = self.parse_usings(&func.directives)?;
 
-        let result = Function::new(self.db, variables, statements, return_type, self.current_scope);
+        let result = Function::new(
+            self.db,
+            variables,
+            statements,
+            return_type,
+            self.current_scope,
+        );
 
         let scope = Scope::new(
             self.file,
@@ -73,14 +79,14 @@ impl<'db> SemanticIndexBuilder<'db> {
 trait ParseVariable<'db> {
     fn parse_variables(
         &self,
-        sema: &SemanticIndexBuilder<'db>
+        sema: &SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<Vec<Variable<'db>>>;
 }
 
 impl<'db> ParseVariable<'db> for ast::generated::FuncDecl {
     fn parse_variables(
         &self,
-        sema: &SemanticIndexBuilder<'db>
+        sema: &SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<Vec<Variable<'db>>> {
         let mut variables = vec![];
 
@@ -101,10 +107,16 @@ impl<'db> ParseVariable<'db> for ast::generated::FuncDecl {
 
 #[cfg(test)]
 mod tests {
-    use auto_lsp::{default::db::{file::File, BaseDatabase, FileManager}, lsp_types};
     use crate::{
-        hir::{pous::pou::{self, Pou, PouDecl}, semantic_index::semantic_index},
+        hir::{
+            pous::pou::{Pou},
+            semantic_index::semantic_index,
+        },
         RootDatabase,
+    };
+    use auto_lsp::{
+        default::db::{file::File, BaseDatabase, FileManager},
+        lsp_types,
     };
 
     #[test]

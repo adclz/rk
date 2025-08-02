@@ -160,7 +160,7 @@ pub fn elem_type_names_init() -> Vec<CompletionItem> {
         dint_init(),
         lint_init(),
         usint_init(),
-        uint_init(),                
+        uint_init(),
         udint_init(),
         ulint_init(),
         byte_init(),
@@ -197,7 +197,7 @@ macro_rules! gen_elem_data_types_snippets {
                     ..Default::default()
                 }
             }
-        
+
         paste! {
             #[inline]
             pub fn [<$type_name _init>]() -> CompletionItem {

@@ -74,9 +74,7 @@ impl SemanticIndexBuilder<'_> {
                 ast::generated::DataTypeAccess::ElemTypeName(elem_type_name) => {
                     elem_type_name.to_spec(self)
                 }
-                ast::generated::DataTypeAccess::NamespaceAccess(target) => {
-                    target.to_spec(self)
-                }
+                ast::generated::DataTypeAccess::NamespaceAccess(target) => target.to_spec(self),
             })
             .transpose()?;
 

@@ -30,7 +30,11 @@ impl<'db> ToProto<'db> for Using<'db> {
         Some(self.span(db))
     }
 
-    fn hover(&'db self, db: &'db dyn crate::BaseDatabase, _sema: &'db SemanticIndex<'db>,) -> Option<auto_lsp::lsp_types::Hover> {
+    fn hover(
+        &'db self,
+        db: &'db dyn crate::BaseDatabase,
+        _sema: &'db SemanticIndex<'db>,
+    ) -> Option<auto_lsp::lsp_types::Hover> {
         Some(auto_lsp::lsp_types::Hover {
             contents: auto_lsp::lsp_types::HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,

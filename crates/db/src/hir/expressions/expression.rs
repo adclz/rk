@@ -1,6 +1,6 @@
 use crate::completions::snippets::elem_type_names_init;
 use crate::hir::interned::identifier::Ident;
-use crate::hir::scopes::scope::{PouId, ScopeId};
+use crate::hir::scopes::scope::{ScopeId};
 use crate::hir::semantic_index::SemanticIndex;
 use crate::to_proto::{self_iter, IterToProto, ToProto};
 use auto_enums::auto_enum;
@@ -15,7 +15,7 @@ pub struct Expr<'db> {
     #[returns(ref)]
     pub expr: ExprKind<'db>,
 
-    pub scope_id: ScopeId
+    pub scope_id: ScopeId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -553,7 +553,7 @@ impl Numeric {
             NumericKind::Signed => self.ident(db).text(db).to_string(),
         }
     }
-} 
+}
 
 // todo: improve support for string and char
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -632,11 +632,11 @@ impl<'db> ToProto<'db> for Expr<'db> {
     }
 
     fn completion(
-            &'db self,
-            _db: &'db dyn crate::BaseDatabase,
-            _sema: &'db SemanticIndex<'db>,
-            _offset: usize,
-        ) -> Option<Vec<auto_lsp::lsp_types::CompletionItem>> {
+        &'db self,
+        _db: &'db dyn crate::BaseDatabase,
+        _sema: &'db SemanticIndex<'db>,
+        _offset: usize,
+    ) -> Option<Vec<auto_lsp::lsp_types::CompletionItem>> {
         Some(elem_type_names_init())
     }
 }

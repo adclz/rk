@@ -4,9 +4,7 @@ use crate::{
     hir::interned::identifier::Ident,
     hir::interned::namespace::SpannedNamespaceAccess,
     hir::{
-        pous::variable::{Variable},
-        expressions::spec::{Spec},
-        scopes::scope::ScopeId,
+        expressions::spec::Spec, pous::variable::Variable, scopes::scope::ScopeId,
         semantic_index::SemanticIndex,
     },
     to_proto::{IterToProto, ToProto},

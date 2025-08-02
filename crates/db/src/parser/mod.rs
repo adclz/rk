@@ -1,12 +1,8 @@
-use auto_lsp::{anyhow, default::db::file::File};
+use auto_lsp::{anyhow};
 
 use crate::{
-    hir::{
-        expressions::expression::Expr,
-        expressions::spec::Spec,
-        pous::variable::{Variable},
-    }, parser::semantic_index::SemanticIndexBuilder, BaseDatabase
-};
+    hir::{expressions::expression::Expr, expressions::spec::Spec, pous::variable::Variable},
+    parser::semantic_index::SemanticIndexBuilder,};
 
 pub mod class;
 pub mod data_type;
@@ -49,16 +45,14 @@ impl<'db> SpecInitResult<'db> {
 }
 
 pub trait ParseSpecInit<'db> {
-    fn to_spec_init(
-        &self,
-        sema: &SemanticIndexBuilder<'db>
-    ) -> anyhow::Result<SpecInitResult<'db>>;
+    fn to_spec_init(&self, sema: &SemanticIndexBuilder<'db>)
+        -> anyhow::Result<SpecInitResult<'db>>;
 }
 
 impl<'db, T: ParseSpec<'db> + ParseInit<'db>> ParseSpecInit<'db> for T {
     fn to_spec_init(
         &self,
-        sema: &SemanticIndexBuilder<'db>
+        sema: &SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<SpecInitResult<'db>> {
         Ok(SpecInitResult::new(
             self.to_spec(sema)?,

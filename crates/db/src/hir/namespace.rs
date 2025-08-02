@@ -7,7 +7,7 @@ use auto_lsp::lsp_types::{
 use crate::completions;
 use crate::hir::interned::namespace::NamespacePath;
 use crate::hir::scopes::scope::{PouId, ScopeId, Visibility};
-use crate::hir::semantic_index::{semantic_index, SemanticIndex};
+use crate::hir::semantic_index::SemanticIndex;
 use crate::to_proto::{self_iter, IterToProto, SymbolInfo, ToProto};
 
 #[salsa::tracked(debug)]
@@ -51,7 +51,11 @@ impl<'db> ToProto<'db> for Namespace<'db> {
         )
     }
 
-    fn hover(&'db self, db: &'db dyn crate::BaseDatabase, _sema: &'db SemanticIndex<'db>,) -> Option<auto_lsp::lsp_types::Hover> {
+    fn hover(
+        &'db self,
+        db: &'db dyn crate::BaseDatabase,
+        _sema: &'db SemanticIndex<'db>,
+    ) -> Option<auto_lsp::lsp_types::Hover> {
         Some(auto_lsp::lsp_types::Hover {
             contents: auto_lsp::lsp_types::HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,
@@ -64,7 +68,7 @@ impl<'db> ToProto<'db> for Namespace<'db> {
     fn inlay_hint(
         &'db self,
         db: &'db dyn crate::BaseDatabase,
-        _sema: &'db SemanticIndex<'db>
+        _sema: &'db SemanticIndex<'db>,
     ) -> Option<auto_lsp::lsp_types::InlayHint> {
         Some(InlayHint {
             label: InlayHintLabel::String(format!("namespace {}", self.path(db).to_string(db))),
@@ -85,7 +89,7 @@ impl<'db> ToProto<'db> for Namespace<'db> {
         offset: usize,
     ) -> Option<Vec<CompletionItem>> {
         let scope = sema.get_scope(self.scope_id(db));
-        
+
         // Don't provide completions between the namespace keyword and the namespace name
         if self.name_span(db).end_byte > offset {
             if !scope.visibility == Visibility::PUBLIC {
@@ -158,7 +162,7 @@ mod tests {
     use auto_lsp::{default::db::FileManager, lsp_types};
 
     use super::*;
-    use crate::{hir::pous::pou::Pou, RootDatabase};
+    use crate::{hir::{pous::pou::Pou, semantic_index::semantic_index}, RootDatabase};
 
     #[test]
     fn global_scope() {

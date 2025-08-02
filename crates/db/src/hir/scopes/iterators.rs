@@ -46,7 +46,7 @@ pub struct ScopedMap {
 }
 
 /// An iterator that yields all POUs declared in a scope and its ancestors.
-/// 
+///
 /// It first yields exported POUs from `using` statements, then POUs from the current scope,
 /// and finally POUs from ancestor scopes.
 pub struct PouIterator<'db> {
@@ -93,19 +93,18 @@ impl<'db> Iterator for PouIterator<'db> {
         while let Some(scope) = self.ancestor_iter.next() {
             match scope.kind {
                 ScopeKind::Global => {
-                    // todo: 
-                    return None
-                },
+                    // todo:
+                    return None;
+                }
                 ScopeKind::Namespace(ns_id) => {
                     let ns = self.sema.get_namespace(ns_id);
                     self.current_iterator = Some(ns.pous(self.db).iter());
 
-                    
                     return self.current_iterator.as_mut().unwrap().next().map(|pou| {
                         let pou_name = self.sema.pou_keys[pou].name(self.db);
                         (*pou_name, ScopedPouId(*pou, self.sema.file))
-                    })
-                }, 
+                    });
+                }
                 _ => continue,
             }
         }
