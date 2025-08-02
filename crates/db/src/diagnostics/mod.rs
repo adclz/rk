@@ -106,15 +106,16 @@ impl Deref for DiagnosticResults {
 }
 
 pub fn cached_diagnostics(db: &dyn BaseDatabase, file: File) -> DiagnosticResults {
-    let mut parse_errors = get_ast::accumulated::<ParseErrorAccumulator>(db, file);
-    let lexer_errors = add_fixes_to_parse_errors(db, &file, &mut parse_errors);
-    let lints = get_duplicates_by_query::accumulated::<DiagnosticAccumulator>(db, file);
+    let lexer_errors = add_fixes_to_parse_errors(
+        db,
+        &file,
+        &mut get_ast::accumulated::<ParseErrorAccumulator>(db, file),
+    );
 
     let uncached_diags = duplicate_declarations::accumulated::<DiagnosticAccumulator>(db, file);
 
     let mut all_diagnostics = vec![];
     all_diagnostics.extend(lexer_errors.into_iter());
-    all_diagnostics.extend(lints.into_iter().map(|d| d.into()));
     all_diagnostics.extend(uncached_diags.into_iter().map(|d| d.into()));
 
     DiagnosticResults(Arc::new(all_diagnostics))

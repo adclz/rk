@@ -16,7 +16,7 @@ use crate::{
         expressions::{expression::{
             AnyBit, AnyChars, AnyDate, AnyDuration, AnyElementary, AnyInt, AnyMagnitude, AnyNum,
             AnyReal, AnySigned, AnyUnsigned, Expr, ExprKind, Numeric, NumericKind, PrimaryExpr,
-        }, spec::{SimpleSpecKind, Spec, SpecKind}}, interned::namespace::NamespacePath, pous::variable::Variable, semantic_index::SemanticIndex, using::Using
+        }, spec::{SimpleSpecKind, Spec, SpecKind}}, interned::namespace::NamespacePath, pous::{pou::Pou, variable::Variable}, scopes::solver::exported_items_in_scope, semantic_index::{semantic_index, SemanticIndex}
     },
 };
 
@@ -25,7 +25,41 @@ trait Check<'db> {
 }
 
 #[salsa::tracked(no_eq)]
-pub fn duplicate_declarations<'db>(db: &'db dyn BaseDatabase, file: File) {}
+pub fn duplicate_declarations<'db>(db: &'db dyn BaseDatabase, file: File) {
+    let sema = semantic_index(db, file);
+
+    for scope in sema.scopes.values() {
+        exported_items_in_scope(db, file, scope.id);
+    }
+
+    for (id, ns) in sema.namespace_keys.iter() {
+        for pou in ns.pous(db).iter() {
+            let pou = sema.get_pou(*pou);
+            let pou_name = pou.name(db);
+            
+
+            match pou.pou(db) {
+                Pou::Function(func) => {
+                    func.variables(db).check(db, &sema);
+                },
+                Pou::FunctionBlock(fb) => {
+                    fb.variables(db).check(db, &sema);
+                },
+                Pou::Interface(interface) => {
+                    interface.methods(db).iter().for_each(|method| {
+                        method.variables(db).check(db, &sema);
+                    });
+                },
+                Pou::DataType(dt) => {
+
+                },
+                Pou::Class(class) => {
+
+                },
+            }
+        }
+    }
+}
 
 impl<'db> Check<'db> for &'db Vec<Variable<'db>> {
     fn check(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>) {
@@ -302,7 +336,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         },
                         _ => false,
                     },
-                    SpecKind::Simple(SimpleSpecKind::LInt) => match lit {
+                    SpecKind::Simple(SimpleSpecKind::Int) => match lit {
                         AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
                             AnyInt::AnySigned(AnySigned::SInt(_)),
                         ))) => true,
