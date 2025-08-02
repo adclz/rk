@@ -7,13 +7,11 @@ use auto_lsp::{
 
 use crate::diagnostics::{
     duplicates::duplicate_declarations, lexer::add_fixes_to_parse_errors,
-    lints::get_duplicates_by_query,
 };
 
 pub mod diagnostic_builder;
 pub mod duplicates;
 pub mod lexer;
-pub mod lints;
 pub mod literals;
 
 #[derive(Clone)]
