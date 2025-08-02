@@ -92,44 +92,4 @@ impl<'db> Ident {
     pub fn join(db: &dyn BaseDatabase, other: &[Ident]) -> Ident {
         Ident::new(db, other.iter().map(|i| i.text(db).to_owned()).collect::<CompactString>())
     }
-
-    #[salsa::tracked]
-    pub fn as_u8(self, db: &'db dyn BaseDatabase) -> Option<u8> {
-        self.text(db).as_str().parse::<u8>().ok()
-    }
-
-    #[salsa::tracked]
-    pub fn as_u16(self, db: &'db dyn BaseDatabase) -> Option<u16> {
-        self.text(db).as_str().parse::<u16>().ok()
-    }
-
-    #[salsa::tracked]
-    pub fn as_u32(self, db: &'db dyn BaseDatabase) -> Option<u32> {
-        self.text(db).as_str().parse::<u32>().ok()
-    }
-
-    #[salsa::tracked]
-    pub fn as_u64(self, db: &'db dyn BaseDatabase) -> Option<u64> {
-        self.text(db).as_str().parse::<u64>().ok()
-    }
-
-    #[salsa::tracked]
-    pub fn as_i8(self, db: &'db dyn BaseDatabase) -> Option<i8> {
-        self.text(db).as_str().parse::<i8>().ok()
-    }
-
-    #[salsa::tracked]
-    pub fn as_i16(self, db: &'db dyn BaseDatabase) -> Option<i16> {
-        self.text(db).as_str().parse::<i16>().ok()
-    }
-
-    #[salsa::tracked]
-    pub fn as_i32(self, db: &'db dyn BaseDatabase) -> Option<i32> {
-        self.text(db).as_str().parse::<i32>().ok()
-    }
-
-    #[salsa::tracked]
-    pub fn as_i64(self, db: &'db dyn BaseDatabase) -> Option<i64> {
-        self.text(db).as_str().parse::<i64>().ok()
-    }
 }
