@@ -37,7 +37,7 @@ impl From<usize> for PouId {
 pub struct ScopedNamespaceId(pub NamespaceId, pub File);
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub struct ScopedPouId(pub PouId, pub File);
+pub struct FilePouId(pub PouId, pub File);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, salsa::Update)]
 pub struct ScopeId(usize);

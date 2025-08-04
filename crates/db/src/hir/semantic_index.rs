@@ -6,11 +6,11 @@ use crate::hir::interned::identifier::Ident;
 use crate::hir::interned::namespace::NamespacePath;
 use crate::hir::namespace::Namespace;
 use crate::hir::pous::pou::PouDecl;
-use crate::hir::scopes::iterators::{AncestorsIter, PouIterator, ScopedMap};
+use crate::hir::scopes::iterators::{AncestorsIter};
 use crate::hir::scopes::scope::{
-    NamespaceId, PouId, Scope, ScopeId, ScopedNamespaceId, ScopedPouId,
+    NamespaceId, PouId, Scope, ScopeId, ScopedNamespaceId, FilePouId,
 };
-use crate::hir::scopes::solver::exported_items_in_scope;
+use crate::hir::scopes::solver::{imported_pous_in_scope, LocalIndex};
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::to_proto::{IterToProto, ToProto};
 
@@ -44,9 +44,6 @@ pub struct SemanticIndex<'db> {
 
     /// Map of scope IDs to their containing namespaces
     pub scope_to_namespaces: FxHashMap<ScopeId, FxHashMap<NamespacePath, ScopedNamespaceId>>,
-
-    /// Map of scope IDs to their containing POUs
-    pub scope_to_pous: FxHashMap<ScopeId, FxHashMap<Ident, ScopedPouId>>,
 }
 
 impl<'db> SemanticIndex<'db> {
@@ -56,8 +53,7 @@ impl<'db> SemanticIndex<'db> {
             scopes: FxHashMap::default(),
             namespace_keys: FxHashMap::default(),
             pou_keys: FxHashMap::default(),
-            scope_to_namespaces: FxHashMap::default(),
-            scope_to_pous: FxHashMap::default(),
+            scope_to_namespaces: FxHashMap::default()
         }
     }
 
@@ -73,24 +69,12 @@ impl<'db> SemanticIndex<'db> {
         &self.scopes[&id]
     }
 
-    pub(crate) fn ancestor_scopes(&self, scope: ScopeId) -> AncestorsIter {
+    pub fn ancestor_scopes(&self, scope: ScopeId) -> AncestorsIter {
         AncestorsIter::new(&self.scopes, self.get_scope(scope))
     }
 
-    pub(crate) fn pou_iterator(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        scope: ScopeId,
-    ) -> PouIterator<'db> {
-        PouIterator::new(db, &self, scope)
-    }
-
-    pub(crate) fn _exported_items_in_scope(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        scope: ScopeId,
-    ) -> &'db ScopedMap {
-        exported_items_in_scope(db, self.file, scope)
+    pub fn local_index(&self, db: &'db dyn BaseDatabase, scope: ScopeId) -> LocalIndex {
+        LocalIndex::new(db, self, scope)
     }
 }
 

@@ -1,3 +1,5 @@
+use std::iter::FusedIterator;
+
 use auto_lsp::{
     default::db::{file::File, BaseDatabase},
     lsp_types::{DiagnosticRelatedInformation, DiagnosticTag, Location},
@@ -9,20 +11,17 @@ use crate::{
     diagnostics::{diagnostic_builder::diag, DiagnosticAccumulator},
     hir::{
         interned::{
-            namespace::{NamespaceAccess, NamespacePath},
+            identifier::Ident, namespace::{NamespaceAccess, NamespacePath}
         },
-        scopes::{
-            iterators::{ScopedMap},
-            scope::{ScopeId, ScopeKind, ScopedNamespaceId, ScopedPouId},
-        },
-        semantic_index::{semantic_index},
+        scopes::{iterators::AncestorsIter, scope::{PouId, ScopeId, ScopeKind, ScopedNamespaceId, FilePouId}},
+        semantic_index::{semantic_index, SemanticIndex},
         using::Using,
     },
 };
 
 /// Finds all namespaces that match the given path.
 #[salsa::tracked(returns(ref), no_eq)]
-pub fn find_namespaces<'db>(
+pub fn shared_namespaces<'db>(
     db: &'db dyn BaseDatabase,
     path: NamespacePath,
 ) -> Vec<ScopedNamespaceId> {
@@ -45,31 +44,28 @@ pub fn find_namespaces<'db>(
 
 /// Finds all exported items in a given scope.
 #[salsa::tracked(returns(ref))]
-pub fn exported_items_in_scope<'db>(
+pub fn imported_pous_in_scope<'db>(
     db: &'db dyn BaseDatabase,
     file: File,
     scope_id: ScopeId,
-) -> ScopedMap {
+) -> FxHashMap<Ident, FilePouId> {
     let sema = semantic_index(db, file);
     let scope = sema.get_scope(scope_id);
 
-    let mut namespaces = FxHashMap::default();
     let mut pous = FxHashMap::default();
 
     scope.usings.iter().for_each(|using| {
-        let exported_namespaces = exported_namespaces(db, file, *using);
+        let exported_namespaces = imported_namespaces(db, file, *using);
 
         for (path, ns) in exported_namespaces {
-            namespaces.insert(path, ns);
-
             let sema = semantic_index(db, ns.1);
 
             for pou in sema.get_namespace(ns.0).pous(db).iter() {
-                pous.insert(sema.pou_keys[pou].name(db).clone(), ScopedPouId(*pou, ns.1));
+                pous.insert(sema.pou_keys[pou].name(db).clone(), FilePouId(*pou, ns.1));
             }
         }
     });
-    ScopedMap { namespaces, pous }
+    pous
 }
 
 // Rules for resolving Using directives
@@ -81,14 +77,14 @@ pub fn exported_items_in_scope<'db>(
 /// 2.5 - Check if the directive is not declared multiple times in the same scope.
 ///
 /// 3 - We then see if the visibility allows the namespace to be used in the current scope.
-fn exported_namespaces<'db>(
+fn imported_namespaces<'db>(
     db: &'db dyn BaseDatabase,
     file: File,
     using: Using<'db>,
 ) -> FxHashMap<NamespacePath, ScopedNamespaceId> {
     let mut results = FxHashMap::default();
     // 1: Check if the namespace exists
-    let accross = find_namespaces(db, using.path(db));
+    let accross = shared_namespaces(db, using.path(db));
 
     if accross.is_empty() {
         let diag = diag()
@@ -186,18 +182,18 @@ fn exported_namespaces<'db>(
     results
 }
 
-pub fn resolve_access<'db>(
+pub fn resolve_namespace_access<'db>(
     db: &'db dyn BaseDatabase,
     file: File,
     scope: ScopeId,
     access: NamespaceAccess,
-) -> Option<ScopedPouId> {
+) -> Option<FilePouId> {
     let target = access.target(db);
 
     // Namespace is optional
     match access.namespace(db) {
         Some(ns) => {
-            let namespaces = find_namespaces(db, ns);
+            let namespaces = shared_namespaces(db, ns);
             namespaces.iter().find_map(|ns| {
                 let sema = semantic_index(db, ns.1);
                 let pou = sema
@@ -205,13 +201,141 @@ pub fn resolve_access<'db>(
                     .pous(db)
                     .iter()
                     .find(|pou| *sema.pou_keys[*pou].name(db) == target.ident)?;
-                Some(ScopedPouId(*pou, ns.1))
+                Some(FilePouId(*pou, ns.1))
             })
         }
         None => {
-            let sema = semantic_index(db, file);
-            let exported = exported_items_in_scope(db, file, scope);
-            exported.pous.get(&target.ident).copied()
+            semantic_index(db, file)
+                .local_index(db, scope)
+                .find_exact_pou(target.ident)
         }
     }
 }
+
+
+// "The recursive call of POUs and methods is Implementer specific."
+pub enum LocalSearchMode {
+    Recursive,
+    NonRecursive,
+}
+
+pub struct LocalIndex<'db> {
+    db: &'db dyn BaseDatabase,
+    sema: &'db SemanticIndex<'db>,
+    scope: ScopeId,
+    mode: LocalSearchMode,
+}
+
+impl<'db> LocalIndex<'db> {
+    pub fn new(
+        db: &'db dyn BaseDatabase,
+        sema: &'db SemanticIndex<'db>,
+        scope: ScopeId,
+    ) -> Self {
+        Self { db, sema, scope, mode: LocalSearchMode::NonRecursive }
+    }
+
+    pub fn allow_recursive(&mut self) {
+        self.mode = LocalSearchMode::Recursive;
+    }
+
+    pub fn find_exact_pou(
+        &self,
+        pou_name: Ident,
+    ) -> Option<FilePouId> {
+        let pou = PouIterator::new(self.db, self.sema, self.scope)
+            .find(|(name, _)| *name == pou_name).map(|(_, pou)| pou)?;
+
+        match self.mode {
+            LocalSearchMode::Recursive => Some(pou),
+            LocalSearchMode::NonRecursive => {
+                let curr_scope = self.sema.get_scope(self.scope);
+                match curr_scope.kind {
+                    ScopeKind::Pou(pou_id) => {
+                        if FilePouId(pou_id, self.sema.file) == pou {
+                            None
+                        } else {
+                            Some(pou)
+                        }
+                    },
+                    _ => Some(pou)
+                 }
+            }
+        }
+    }
+
+    pub fn list_pous(&self) -> PouIterator<'_> {
+        PouIterator::new(self.db, self.sema, self.scope)
+    }
+}
+
+
+/// An iterator that yields all POUs declared in a scope and its ancestors.
+///
+/// It first yields exported POUs from `using` statements, then POUs from the current scope,
+/// and finally POUs from ancestor scopes.
+pub struct PouIterator<'db> {
+    db: &'db dyn BaseDatabase,
+    sema: &'db SemanticIndex<'db>,
+
+    exported_pous_iter: std::collections::hash_map::Iter<'db, Ident, FilePouId>,
+    ancestor_iter: AncestorsIter<'db>,
+    current_iterator: Option<std::slice::Iter<'db, PouId>>,
+}
+
+impl<'db> PouIterator<'db> {
+    pub fn new(db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>, scope: ScopeId) -> Self {
+        let exported = imported_pous_in_scope(db, sema.file, scope);
+        Self {
+            db,
+            sema,
+            exported_pous_iter: exported.iter(),
+            ancestor_iter: AncestorsIter::new(&sema.scopes, sema.get_scope(scope)),
+            current_iterator: None,
+        }
+    }
+}
+
+impl<'db> Iterator for PouIterator<'db> {
+    type Item = (Ident, FilePouId);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // Exported phase first
+        if let Some((path, ns)) = self.exported_pous_iter.next() {
+            return Some((*path, *ns));
+        }
+
+        if let Some(iter) = &mut self.current_iterator {
+            if let Some(pou) = iter.next() {
+                let pou_name = self.sema.pou_keys[pou].name(self.db);
+                return Some((*pou_name, FilePouId(*pou, self.sema.file)));
+            } else {
+                self.current_iterator = None;
+            }
+        }
+
+        // Fallback to ancestor declarations
+        while let Some(scope) = self.ancestor_iter.next() {
+            match scope.kind {
+                ScopeKind::Global => {
+                    // todo:
+                    return None;
+                }
+                ScopeKind::Namespace(ns_id) => {
+                    let ns = self.sema.get_namespace(ns_id);
+                    self.current_iterator = Some(ns.pous(self.db).iter());
+
+                    return self.current_iterator.as_mut().unwrap().next().map(|pou| {
+                        let pou_name = self.sema.pou_keys[pou].name(self.db);
+                        (*pou_name, FilePouId(*pou, self.sema.file))
+                    });
+                }
+                _ => continue,
+            }
+        }
+
+        None
+    }
+}
+
+impl FusedIterator for PouIterator<'_> {}

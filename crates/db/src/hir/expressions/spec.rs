@@ -1,5 +1,7 @@
+use auto_lsp::core::span::Span;
+use auto_lsp::default::db::file::File;
 use auto_lsp::default::db::BaseDatabase;
-use auto_lsp::{core::span::Span};
+use auto_lsp::lsp_types::MarkupContent;
 
 use crate::hir::signature::signature_for_pou;
 use crate::{
@@ -8,7 +10,7 @@ use crate::{
         expressions::expression::{Expr, MultibitsPart},
         interned::{identifier::Ident, namespace::NamespaceAccess},
         pous::pou::Pou,
-        scopes::{scope::ScopeId, solver::resolve_access},
+        scopes::{scope::ScopeId, solver::resolve_namespace_access},
         semantic_index::SemanticIndex,
     },
     to_proto::{self_iter, IterToProto, ToProto},
@@ -24,13 +26,14 @@ pub struct Spec<'db> {
     pub kind: SpecKind<'db>,
 
     pub scope_id: ScopeId,
+
+    pub file: File
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum SpecKind<'db> {
     Simple(SimpleSpecKind),
     Composite(CompositeSpecKind<'db>),
-    //ConstantExpr(Expr<'db>),
     Target(NamespaceAccess),
 }
 
@@ -67,6 +70,42 @@ pub enum SimpleSpecKind {
     LTod,
 }
 
+impl SimpleSpecKind {
+    pub fn to_string(&self) -> &str {
+        match self {
+            SimpleSpecKind::Bool => "BOOL",
+            SimpleSpecKind::REDGEBool => "BOOL (Rising Edge)",
+            SimpleSpecKind::FEDGEBool => "BOOL (Falling Edge)",
+            SimpleSpecKind::Byte => "BYTE",
+            SimpleSpecKind::Word => "WORD",
+            SimpleSpecKind::DWord => "DWORD",
+            SimpleSpecKind::LWord => "LWORD",
+            SimpleSpecKind::SInt => "SINT",
+            SimpleSpecKind::USInt => "USINT",
+            SimpleSpecKind::UInt => "UINT",
+            SimpleSpecKind::Int => "INT",
+            SimpleSpecKind::DInt => "DINT",
+            SimpleSpecKind::UDInt => "UDINT",
+            SimpleSpecKind::LInt => "LINT",
+            SimpleSpecKind::ULInt => "ULINT",
+            SimpleSpecKind::Real => "REAL",
+            SimpleSpecKind::LReal => "LREAL",
+            SimpleSpecKind::String => "STRING",
+            SimpleSpecKind::WString => "WSTRING",
+            SimpleSpecKind::Char => "CHAR",
+            SimpleSpecKind::WChar => "WCHAR",
+            SimpleSpecKind::Date => "DATE",
+            SimpleSpecKind::LDate => "LDATE",
+            SimpleSpecKind::Dt => "DATE_AND_TIME",
+            SimpleSpecKind::Ldt => "LDATE_AND_TIME",
+            SimpleSpecKind::Time => "TIME",
+            SimpleSpecKind::LTime => "LTIME",
+            SimpleSpecKind::Tod => "TIME_OF_DAY",
+            SimpleSpecKind::LTod => "LTIME_OF_DAY",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum CompositeSpecKind<'db> {
     Struct(Struct<'db>),
@@ -76,39 +115,15 @@ pub enum CompositeSpecKind<'db> {
 }
 
 impl<'db> Spec<'db> {
-    pub fn to_string(&self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>) -> &str {
-        match self.kind(db) {
-            SpecKind::Simple(simple_kind) => match simple_kind {
-                SimpleSpecKind::SInt => "SINT",
-                SimpleSpecKind::Int => "INT",
-                SimpleSpecKind::DInt => "DINT",
-                SimpleSpecKind::LInt => "LINT",
-                SimpleSpecKind::USInt => "USINT",
-                SimpleSpecKind::UInt => "UINT",
-                SimpleSpecKind::UDInt => "UDINT",
-                SimpleSpecKind::ULInt => "ULINT",
-                SimpleSpecKind::REDGEBool => "BOOL (Rising Edge)",
-                SimpleSpecKind::FEDGEBool => "BOOL (Falling Edge)",
-                SimpleSpecKind::Byte => "BYTE",
-                SimpleSpecKind::Word => "WORD",
-                SimpleSpecKind::DWord => "DWORD",
-                SimpleSpecKind::LWord => "LWORD",
-                SimpleSpecKind::Date => "DATE",
-                SimpleSpecKind::LDate => "LDATE",
-                SimpleSpecKind::Dt => "DATE_AND_TIME",
-                SimpleSpecKind::Ldt => "LDATE_AND_TIME",
-                SimpleSpecKind::Tod => "TIME_OF_DAY",
-                SimpleSpecKind::LTod => "LTIME_OF_DAY",
-                SimpleSpecKind::Time => "TIME",
-                SimpleSpecKind::LTime => "LTIME",
-                SimpleSpecKind::Bool => "BOOL",
-                SimpleSpecKind::Real => "REAL",
-                SimpleSpecKind::LReal => "LREAL",
-                SimpleSpecKind::String => "STRING",
-                SimpleSpecKind::WString => "WSTRING",
-                SimpleSpecKind::Char => "CHAR",
-                SimpleSpecKind::WChar => "WCHAR",
-            },
+    pub fn to_string(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>) -> &'db str {
+        self.kind(db).to_string(db, sema, self.scope_id(db))
+    }
+}
+
+impl<'db> SpecKind<'db> {
+    pub fn to_string(&self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>, scope: ScopeId) -> &str {
+        match self {
+            SpecKind::Simple(simple_kind) => simple_kind.to_string(),
             SpecKind::Composite(composite_kind) => match composite_kind {
                 CompositeSpecKind::Struct(_) => "STRUCT",
                 CompositeSpecKind::Array(_) => "ARRAY",
@@ -116,10 +131,17 @@ impl<'db> Spec<'db> {
                 CompositeSpecKind::Enum(_) => "ENUM",
             },
             SpecKind::Target(target) => {
-                match resolve_access(db, sema.file, self.scope_id(db), *target) {
+                match resolve_namespace_access(db, sema.file, scope, *target) {
                     Some(pou) => Box::leak(
-                        format!("{:?}", signature_for_pou(db, sema.pou_keys[&pou.0]))
-                            .into_boxed_str(),
+                        format!(
+                            "{}",
+                            signature_for_pou(db, sema.pou_keys[&pou.0]).signature_to_string(
+                                db,
+                                sema,
+                                scope
+                            )
+                        )
+                        .into_boxed_str(),
                     ),
                     None => "{unknown}",
                 }
@@ -139,8 +161,16 @@ impl<'db> ToProto<'db> for Spec<'db> {
         sema: &'db SemanticIndex<'db>,
     ) -> Option<auto_lsp::lsp_types::Hover> {
         Some(auto_lsp::lsp_types::Hover {
-            contents: auto_lsp::lsp_types::HoverContents::Scalar(
-                auto_lsp::lsp_types::MarkedString::String(self.to_string(db, sema).to_string()),
+            contents: auto_lsp::lsp_types::HoverContents::Markup(
+                MarkupContent {
+                    kind: auto_lsp::lsp_types::MarkupKind::Markdown,
+                    value: format!(
+                        r#"```typescript
+{}
+```"#,
+                        self.to_string(db, sema)
+                    ),
+                },
             ),
             range: None,
         })
@@ -153,29 +183,28 @@ impl<'db> ToProto<'db> for Spec<'db> {
         _offset: usize,
     ) -> Option<Vec<auto_lsp::lsp_types::CompletionItem>> {
         let mut primary = elem_type_names();
-        primary.extend(
-            sema.pou_iterator(db, self.scope_id(db))
-                .filter_map(|(name, pou)| {
-                    let pou = sema.get_pou(pou.0);
-                    match pou.pou(db) {
-                        Pou::DataType(fb) => Some(auto_lsp::lsp_types::CompletionItem {
-                            label: pou.name(db).text(db).to_string(),
-                            kind: Some(auto_lsp::lsp_types::CompletionItemKind::TYPE_PARAMETER),
-                            detail: Some("TYPE".to_string()),
-                            documentation: None,
-                            ..Default::default()
-                        }),
-                        Pou::Function(dt) => Some(auto_lsp::lsp_types::CompletionItem {
-                            label: pou.name(db).text(db).to_string(),
-                            kind: Some(auto_lsp::lsp_types::CompletionItemKind::FUNCTION),
-                            detail: Some("FUNCTION".to_string()),
-                            documentation: None,
-                            ..Default::default()
-                        }),
-                        _ => None,
-                    }
+        let finder = sema.local_index(db, self.scope_id(db));
+
+        primary.extend(finder.list_pous().filter_map(|(name, pou)| {
+            let pou = sema.get_pou(pou.0);
+            match pou.pou(db) {
+                Pou::DataType(fb) => Some(auto_lsp::lsp_types::CompletionItem {
+                    label: pou.name(db).text(db).to_string(),
+                    kind: Some(auto_lsp::lsp_types::CompletionItemKind::TYPE_PARAMETER),
+                    detail: Some("TYPE".to_string()),
+                    documentation: None,
+                    ..Default::default()
                 }),
-        );
+                Pou::FunctionBlock(dt) => Some(auto_lsp::lsp_types::CompletionItem {
+                    label: pou.name(db).text(db).to_string(),
+                    kind: Some(auto_lsp::lsp_types::CompletionItemKind::FUNCTION),
+                    detail: Some("FUNCTION_BLOCK".to_string()),
+                    documentation: None,
+                    ..Default::default()
+                }),
+                _ => None,
+            }
+        }));
         Some(primary)
     }
 }

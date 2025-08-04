@@ -8,7 +8,7 @@ use std::{cmp::Ordering, hash::Hash};
 use std::{hash::Hasher, ops::ControlFlow};
 
 use crate::hir::scopes::scope::ScopeId;
-use crate::hir::scopes::solver::exported_items_in_scope;
+use crate::hir::scopes::solver::imported_pous_in_scope;
 use crate::hir::semantic_index::semantic_index;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -285,21 +285,26 @@ pub fn query_completions(
     query: &str,
 ) -> Vec<CompletionItem> {
     let sema = semantic_index(db, file);
-    let scoped_map = exported_items_in_scope(db, file, scope_id);
+    let scoped_map = imported_pous_in_scope(db, file, scope_id);
 
     let locally_visible_names: FxHashSet<&str> = scoped_map
-        .pous
         .keys()
         .map(|ident| ident.text(db).as_str())
         .collect();
 
     let indexes = global_symbol_indexes(db, file);
     let mut fast_query = Query::new(query.to_string());
-    fast_query.fuzzy(); // or fast_query.exact();
+    fast_query.fuzzy();
 
     let mut results = vec![];
 
-    fast_query.search(&indexes, |symbol| {
+    fast_query
+        .search(&indexes, |symbol| {
+        if locally_visible_names.contains(symbol.name.as_str()) {
+            // Skip symbols that are already visible in the current scope
+            return ControlFlow::Continue(());
+        }
+
         results.push(CompletionItem {
             label: symbol.name.clone(),
             kind: Some(CompletionItemKind::MODULE),
