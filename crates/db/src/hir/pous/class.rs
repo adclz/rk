@@ -1,8 +1,8 @@
-use auto_lsp::default::db::BaseDatabase;
+use auto_lsp::default::db::{file::File, BaseDatabase};
 
 use crate::{
     hir::{
-        interned::namespace::SpannedNamespaceAccess, scopes::scope::ScopeId,
+        interned::namespace::SpannedNamespaceAccess, scopes::scope::{FilePouId, ScopeId},
         semantic_index::SemanticIndex, visibility::Modifiers,
     },
     to_proto::{IterToProto, ToProto},
@@ -10,8 +10,13 @@ use crate::{
 
 #[salsa::tracked(debug)]
 pub struct Class<'db> {
+    
+    #[tracked]
+    #[returns(as_ref)]
     pub extends: Option<SpannedNamespaceAccess>,
 
+    #[tracked]
+    #[returns(as_ref)]
     pub implements: Option<Vec<SpannedNamespaceAccess>>,
 
     pub modifiers: Modifiers,

@@ -1,12 +1,7 @@
-use auto_lsp::{core::span::Span, default::db::BaseDatabase};
+use auto_lsp::{core::span::Span, default::db::{file::File, BaseDatabase}};
 
 use crate::{
-    hir::interned::identifier::Ident,
-    hir::interned::namespace::SpannedNamespaceAccess,
-    hir::{
-        expressions::spec::Spec, pous::variable::Variable, scopes::scope::ScopeId,
-        semantic_index::SemanticIndex,
-    },
+    hir::{expressions::spec::Spec, interned::{identifier::Ident, namespace::SpannedNamespaceAccess}, pous::variable::Variable, scopes::scope::{FilePouId, ScopeId}, semantic_index::SemanticIndex},
     to_proto::{IterToProto, ToProto},
 };
 
@@ -19,6 +14,7 @@ pub struct Interface<'db> {
     pub methods: Vec<Method<'db>>,
 
     pub scope_id: ScopeId,
+
 }
 
 impl<'db> IterToProto<'db> for Interface<'db> {

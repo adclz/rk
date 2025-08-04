@@ -1,15 +1,14 @@
 use auto_lsp::{
-    default::db::{BaseDatabase},
+    default::db::{file::File, BaseDatabase},
     lsp_types::CompletionItem,
 };
 
 use crate::{
     completions,
     hir::{
-        expressions::spec::{Spec},
-        expressions::{statement::Stmt},
+        expressions::{spec::Spec, statement::Stmt},
         pous::variable::Variable,
-        scopes::scope::ScopeId,
+        scopes::scope::{FilePouId, ScopeId},
         semantic_index::SemanticIndex,
     },
     to_proto::{IterToProto, ToProto},

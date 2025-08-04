@@ -1,7 +1,7 @@
 use auto_enums::auto_enum;
 use auto_lsp::{
     core::span::Span,
-    default::db::BaseDatabase,
+    default::db::{file::File, BaseDatabase},
     lsp_types::{
         CompletionItem, InlayHint, InlayHintKind, InlayHintLabel, MarkupContent, MarkupKind,
     },
@@ -10,12 +10,10 @@ use auto_lsp::{
 use crate::{
     completions,
     hir::{
-        interned::identifier::Ident,
-        pous::{
+        interned::identifier::Ident, pous::{
             class::Class, data_type::DataType, function::Function, function_block::FunctionBlock,
             interface::Interface,
-        },
-        semantic_index::SemanticIndex,
+        }, scopes::scope::{FilePouId, ScopeId}, semantic_index::SemanticIndex
     },
     to_proto::{self_iter, Extends, IterToProto, SymbolInfo, ToProto},
 };
@@ -35,6 +33,10 @@ pub struct PouDecl<'db> {
     #[tracked]
     #[returns(ref)]
     pub name_span: Span,
+
+    pub pou_id: FilePouId,
+
+    pub scope_id: ScopeId,
 }
 
 impl<'db> IterToProto<'db> for PouDecl<'db> {
@@ -85,13 +87,13 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
                 })
                 .name_range(self.name_span(db).clone())
                 .maybe_extends(match self.pou(db) {
-                    Pou::Class(c) => c.extends(db).map(|a| Extends::Single(a)),
+                    Pou::Class(c) => c.extends(db).map(|a| Extends::Single(a.clone())),
                     Pou::FunctionBlock(fb) => fb.extends(db).map(|a| Extends::Single(a.clone())),
                     Pou::Interface(i) => i.extends(db).map(|a| Extends::Multiple(a)),
                     _ => None,
                 })
                 .maybe_implements(match self.pou(db) {
-                    Pou::Class(c) => c.implements(db),
+                    Pou::Class(c) => c.implements(db).cloned(),
                     Pou::FunctionBlock(fb) => fb.implements(db).cloned(),
                     _ => None,
                 })

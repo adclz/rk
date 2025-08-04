@@ -7,80 +7,65 @@ use crate::{
             data_type::DataType,
             pou::{Pou, PouDecl},
         },
-        scopes::scope::PouId,
+        scopes::scope::{FilePouId, PouId, Scope, ScopeKind, Visibility},
     },
     parser::{semantic_index::SemanticIndexBuilder, ParseInit, ParseSpec},
 };
+use ast::generated::TypeDecl;
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
-use rustc_hash::FxHashMap;
 
 impl<'db> SemanticIndexBuilder<'db> {
-    pub fn parse_data_type(
-        &mut self,
-        data_type: &ast::generated::DataTypeDecl,
-    ) -> anyhow::Result<()> {
-        let mut types = FxHashMap::default();
-        data_type.parse(self, &mut types)?;
+    pub fn parse_data_type(&mut self, data_type: &TypeDecl) -> anyhow::Result<PouId> {
+        let name = Ident::from_node(self.db, self.file, data_type.name.deref())?;
 
-        for (id, decl) in types {
-            self.pou_keys.insert(id, decl);
-        }
-
-        Ok(())
-    }
-}
-
-pub trait ParseDataType<'db> {
-    fn parse(
-        &self,
-        sema: &SemanticIndexBuilder<'db>,
-        types: &mut FxHashMap<PouId, PouDecl<'db>>,
-    ) -> anyhow::Result<()>;
-}
-
-impl<'db> ParseDataType<'db> for ast::generated::DataTypeDecl {
-    fn parse(
-        &self,
-        sema: &SemanticIndexBuilder<'db>,
-        types: &mut FxHashMap<PouId, PouDecl<'db>>,
-    ) -> anyhow::Result<()> {
         type Spec = ast::generated::ArrayTypeSpec_EnumTypeSpec_RefTypeSpec_SimpleTypeSpec_StrTypeSpec_StructTypeSpec_SubrangeTypeSpec;
 
-        for child in &self.children {
-            let name = Ident::from_node(sema.db, sema.file, child.name.deref())?;
+        let spec = match data_type.spec.deref() {
+            Spec::ArrayTypeSpec(a) => a.to_spec(self),
+            Spec::EnumTypeSpec(a) => a.to_spec(self),
+            Spec::SimpleTypeSpec(a) => a.to_spec(self),
+            Spec::StrTypeSpec(a) => a.to_spec(self),
+            Spec::StructTypeSpec(a) => a.to_spec(self),
+            Spec::SubrangeTypeSpec(a) => a.to_spec(self),
+            Spec::RefTypeSpec(a) => a.to_spec(self),
+        }?;
 
-            let spec = match child.spec.deref() {
-                Spec::ArrayTypeSpec(a) => a.to_spec(sema),
-                Spec::EnumTypeSpec(a) => a.to_spec(sema),
-                Spec::SimpleTypeSpec(a) => a.to_spec(sema),
-                Spec::StrTypeSpec(a) => a.to_spec(sema),
-                Spec::StructTypeSpec(a) => a.to_spec(sema),
-                Spec::SubrangeTypeSpec(a) => a.to_spec(sema),
-                Spec::RefTypeSpec(a) => a.to_spec(sema),
-            }?;
+        type Init = ast::generated::ArrayTypeInit_SimpleTypeInit_StructTypeInit;
 
-            type Init = ast::generated::ArrayTypeInit_SimpleTypeInit_StructTypeInit;
+        let init = match data_type.init.as_deref() {
+            Some(Init::ArrayTypeInit(a)) => Some(a.to_init(self)?),
+            Some(Init::SimpleTypeInit(a)) => Some(a.to_init(self)?),
+            Some(Init::StructTypeInit(a)) => Some(a.to_init(self)?),
+            None => None,
+        };
 
-            let init = match child.init.as_deref() {
-                Some(Init::ArrayTypeInit(a)) => Some(a.to_init(sema)?),
-                Some(Init::SimpleTypeInit(a)) => Some(a.to_init(sema)?),
-                Some(Init::StructTypeInit(a)) => Some(a.to_init(sema)?),
-                None => None,
-            };
+        let (id, pou_key, file_id) = self.create_pou_id(data_type);
 
-            types.insert(
-                PouId::from(child.get_id()),
-                PouDecl::new(
-                    sema.db,
-                    Pou::DataType(DataType::new(sema.db, spec, init)),
-                    child.get_span(),
-                    name,
-                    child.name.get_span(),
-                ),
-            );
-        }
+        let scope = Scope::new(
+            self.file,
+            ScopeKind::Pou(pou_key),
+            vec![],
+            id,
+            Visibility::empty(),
+            Some(self.current_scope),
+        );
 
-        Ok(())
+        self.scope_keys.insert(id, scope);
+
+        self.pou_keys.insert(
+            pou_key,
+            PouDecl::new(
+                self.db,
+                Pou::DataType(DataType::new(self.db, spec, init, self.current_scope)),
+                data_type.get_span(),
+                name,
+                data_type.name.get_span(),
+                FilePouId(pou_key, self.file),
+                self.current_scope
+            ),
+        );
+
+        Ok(pou_key)
     }
 }

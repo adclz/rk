@@ -6,7 +6,7 @@ use crate::hir::interned::identifier::Ident;
 use crate::hir::interned::namespace::SpannedNamespaceAccess;
 use crate::hir::pous::class::Class;
 use crate::hir::pous::pou::{Pou, PouDecl};
-use crate::hir::scopes::scope::{PouId, Scope, ScopeId, ScopeKind, ScopedPouId, Visibility};
+use crate::hir::scopes::scope::{FilePouId, PouId, Scope, ScopeId, ScopeKind, Visibility};
 use crate::hir::visibility::Modifiers;
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use ast::generated::ClassDecl;
@@ -69,12 +69,12 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
         });
 
-        let id = ScopeId::from(class.get_id());
-        let pou_key = PouId::from(class.get_id());
         let name = Ident::from_node(self.db, self.file, class.name.deref())?;
         let usings = self.parse_usings(&class.directives)?;
 
-        let result = Class::new(self.db, extends, implements, modifiers, self.current_scope);
+        let (id, pou_key, file_id) = self.create_pou_id(class);
+
+        let result = Class::new(self.db, extends, implements, modifiers, id);
 
         let scope = Scope::new(
             self.file,
@@ -85,21 +85,20 @@ impl<'db> SemanticIndexBuilder<'db> {
             Some(self.current_scope),
         );
 
+        self.scope_keys.insert(id, scope);
+
         self.pou_keys.insert(
-            PouId::from(class.get_id()),
+            pou_key,
             PouDecl::new(
                 self.db,
                 Pou::Class(result),
                 class.get_span(),
                 name,
                 class.name.get_span(),
+                file_id,
+                self.current_scope,
             ),
         );
-
-        self.scope_to_pous
-            .entry(id)
-            .or_default()
-            .insert(name.clone(), ScopedPouId(pou_key, self.file));
 
         Ok(pou_key)
     }

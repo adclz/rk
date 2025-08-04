@@ -15,7 +15,7 @@ use crate::hir::interned::namespace::NamespacePath;
 use crate::hir::namespace::Namespace;
 use crate::hir::pous::pou::PouDecl;
 use crate::hir::scopes::scope::{
-    NamespaceId, PouId, Scope, ScopeId, ScopeKind, ScopedNamespaceId, ScopedPouId, Visibility,
+    FilePouId, NamespaceId, PouId, Scope, ScopeId, ScopeKind, ScopedNamespaceId, Visibility
 };
 use crate::hir::semantic_index::SemanticIndex;
 
@@ -37,9 +37,6 @@ pub struct SemanticIndexBuilder<'db> {
     /// Map of scope IDs to their containing namespaces
     pub(crate) scope_to_namespaces: FxHashMap<ScopeId, FxHashMap<NamespacePath, ScopedNamespaceId>>,
 
-    /// Map of scope IDs to their containing POUs
-    pub(crate) scope_to_pous: FxHashMap<ScopeId, FxHashMap<Ident, ScopedPouId>>,
-
     /// The current scope ID being processed (by default, the global scope).
     pub(crate) current_scope: ScopeId,
 }
@@ -58,7 +55,6 @@ impl<'db> SemanticIndexBuilder<'db> {
             pou_keys: FxHashMap::default(),
             scope_keys: FxHashMap::default(),
             scope_to_namespaces: FxHashMap::default(),
-            scope_to_pous: FxHashMap::default(),
             current_scope: ScopeId::global(),
         }
     }
@@ -77,10 +73,13 @@ impl<'db> SemanticIndexBuilder<'db> {
 
     pub fn insert_pou(&mut self, pou_id: PouId, pou_name: Ident, pou_decl: PouDecl<'db>) {
         self.pou_keys.insert(pou_id, pou_decl);
-        self.scope_to_pous
-            .entry(self.current_scope)
-            .or_default()
-            .insert(pou_name, ScopedPouId(pou_id, self.file));
+    }
+
+    pub fn create_pou_id(&self, node: &impl AstNode) -> (ScopeId, PouId, FilePouId) {
+        let scope_id = ScopeId::from(node.get_id());
+        let pou_id = PouId::from(node.get_id());
+        let file_pou_id = FilePouId(pou_id, self.file);
+        (scope_id, pou_id, file_pou_id)
     }
 
     pub fn create_pou_error(&self, err: &ERRInvalidPouKeyword) {
@@ -116,8 +115,7 @@ impl<'db> SemanticIndexBuilder<'db> {
                     }
                 }
                 SourceFileDecl::UsingDirective(directive) => {
-                    let r = self.parse_using(directive).unwrap();
-                    usings.extend(r);
+                    usings.extend(self.parse_using(directive).unwrap());
                 }
                 SourceFileDecl::FuncDecl(func) => {
                     self.parse_function(func).unwrap();
@@ -129,7 +127,9 @@ impl<'db> SemanticIndexBuilder<'db> {
                     self.parse_class(class).unwrap();
                 }
                 SourceFileDecl::DataTypeDecl(data_type) => {
-                    self.parse_data_type(data_type).unwrap();
+                    for child in &data_type.children {
+                        self.parse_data_type(child).unwrap();   
+                    }
                 }
                 SourceFileDecl::InterfaceDecl(interface) => {
                     self.parse_interface(interface).unwrap();
@@ -161,8 +161,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             namespace_keys: self.namespace_keys,
             pou_keys: self.pou_keys,
             scopes: self.scope_keys,
-            scope_to_namespaces: self.scope_to_namespaces,
-            scope_to_pous: self.scope_to_pous,
+            scope_to_namespaces: self.scope_to_namespaces
         }
     }
 }

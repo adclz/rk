@@ -1,9 +1,9 @@
-use auto_lsp::default::db::BaseDatabase;
+use auto_lsp::default::db::{file::File, BaseDatabase};
 
 use crate::{
     hir::{
         interned::namespace::SpannedNamespaceAccess, pous::variable::Variable,
-        scopes::scope::ScopeId, semantic_index::SemanticIndex, visibility::Modifiers,
+        scopes::scope::{FilePouId, ScopeId}, semantic_index::SemanticIndex, visibility::Modifiers,
     },
     to_proto::{IterToProto, ToProto},
 };

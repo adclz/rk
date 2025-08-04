@@ -690,6 +690,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::EdgeDecl {
                     self.get_span(),
                     SpecKind::Simple(SimpleSpecKind::Bool),
                     sema.current_scope,
+                    sema.file
                 )
             }
             ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::Token_F_EDGE(fedge) => Spec::new(
@@ -697,12 +698,14 @@ impl<'db> ParseSpecInit<'db> for ast::generated::EdgeDecl {
                 self.get_span(),
                 SpecKind::Simple(SimpleSpecKind::Bool),
                 sema.current_scope,
+                sema.file
             ),
             ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::Token_R_EDGE(redge) => Spec::new(
                 sema.db,
                 self.get_span(),
                 SpecKind::Simple(SimpleSpecKind::Bool),
                 sema.current_scope,
+                sema.file
             ),
         };
 

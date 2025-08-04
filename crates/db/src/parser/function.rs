@@ -4,7 +4,7 @@ use crate::hir::interned::identifier::Ident;
 use crate::hir::pous::function::Function;
 use crate::hir::pous::pou::{Pou, PouDecl};
 use crate::hir::pous::variable::Variable;
-use crate::hir::scopes::scope::{PouId, Scope, ScopeId, ScopeKind, ScopedPouId, Visibility};
+use crate::hir::scopes::scope::{FilePouId, PouId, Scope, ScopeId, ScopeKind, Visibility};
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::parser::statement::ParseStatement;
 use crate::parser::{ParseSpec, ParseVarSection};
@@ -34,18 +34,11 @@ impl<'db> SemanticIndexBuilder<'db> {
             .map(|rt| rt.to_spec(self))
             .transpose()?;
 
-        let id = ScopeId::from(func.get_id());
-        let pou_key = PouId::from(func.get_id());
+        
+        let (id, pou_key, file_id) = self.create_pou_id(func);
+
         let name = Ident::from_node(self.db, self.file, func.name.deref())?;
         let usings = self.parse_usings(&func.directives)?;
-
-        let result = Function::new(
-            self.db,
-            variables,
-            statements,
-            return_type,
-            self.current_scope,
-        );
 
         let scope = Scope::new(
             self.file,
@@ -56,21 +49,26 @@ impl<'db> SemanticIndexBuilder<'db> {
             Some(self.current_scope),
         );
 
+        self.scope_keys.insert(id, scope);
+
         self.pou_keys.insert(
-            PouId::from(func.get_id()),
+            pou_key,
             PouDecl::new(
                 self.db,
-                Pou::Function(result),
+                Pou::Function(Function::new(
+                    self.db,
+                    variables,
+                    statements,
+                    return_type,
+                    self.current_scope,
+                )),
                 func.get_span(),
                 name,
                 func.name.get_span(),
+                file_id,
+                self.current_scope,
             ),
         );
-
-        self.scope_to_pous
-            .entry(id)
-            .or_default()
-            .insert(name.clone(), ScopedPouId(pou_key, self.file));
 
         Ok(pou_key)
     }
@@ -108,10 +106,7 @@ impl<'db> ParseVariable<'db> for ast::generated::FuncDecl {
 #[cfg(test)]
 mod tests {
     use crate::{
-        hir::{
-            pous::pou::{Pou},
-            semantic_index::semantic_index,
-        },
+        hir::{pous::pou::Pou, semantic_index::semantic_index},
         RootDatabase,
     };
     use auto_lsp::{

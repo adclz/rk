@@ -1,7 +1,7 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    hir::{expressions::expression::Expr, expressions::spec::Spec, semantic_index::SemanticIndex},
+    hir::{expressions::{expression::Expr, spec::Spec}, scopes::scope::{FilePouId, ScopeId}, semantic_index::SemanticIndex},
     to_proto::{IterToProto, ToProto},
 };
 
@@ -12,6 +12,8 @@ pub struct DataType<'db> {
 
     #[tracked]
     pub init: Option<Expr<'db>>,
+    
+    pub scope_id: ScopeId,
 }
 
 impl<'db> IterToProto<'db> for DataType<'db> {

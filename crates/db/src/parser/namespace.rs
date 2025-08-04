@@ -38,6 +38,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         );
 
         self.scope_keys.insert(scope_id, scope);
+
         self.scope_to_namespaces
             .entry(scope_id)
             .or_default()
@@ -66,7 +67,9 @@ impl<'db> SemanticIndexBuilder<'db> {
                         self.parse_class(class)?;
                     }
                     Decl::DataTypeDecl(data_type) => {
-                        self.parse_data_type(data_type)?;
+                        for data_type in &data_type.children {
+                            pous.push(self.parse_data_type(data_type)?);
+                        }
                     }
                     Decl::InterfaceDecl(interface) => {
                         self.parse_interface(interface)?;
