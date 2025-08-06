@@ -10,7 +10,7 @@ use crate::hir::expressions::expression::{
 };
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::{
-    diagnostics::{diagnostic_builder::diag, DiagnosticAccumulator},
+    check::{diagnostic_builder::diag, DiagnosticAccumulator},
     hir::expressions::expression::{
         AddOperatorKind, AnyElementary, BooleanOperatorKind, ComparisonOperatorKind, Expr,
         ExprKind, MultOperatorKind, ParamAssign, PathExprKind, PrimaryExpr, RefAdress, RefValue,

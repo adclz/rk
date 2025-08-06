@@ -6,7 +6,7 @@ use auto_lsp::lsp_types::{
     WorkspaceDiagnosticReport, WorkspaceDiagnosticReportResult, WorkspaceDocumentDiagnosticReport,
     WorkspaceFullDocumentDiagnosticReport,
 };
-use db::diagnostics::cached_diagnostics;
+use db::check::cached_diagnostics;
 
 pub fn diagnostics(
     db: &impl BaseDatabase,

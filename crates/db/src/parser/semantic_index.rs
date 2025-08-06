@@ -8,8 +8,8 @@ use auto_lsp::default::db::{file::File, BaseDatabase};
 use rustc_hash::FxHashMap;
 use salsa::Accumulator;
 
-use crate::diagnostics::diagnostic_builder::diag;
-use crate::diagnostics::DiagnosticAccumulator;
+use crate::check::diagnostic_builder::diag;
+use crate::check::DiagnosticAccumulator;
 use crate::hir::interned::identifier::{Ident, SpannedIdent};
 use crate::hir::interned::namespace::NamespacePath;
 use crate::hir::namespace::Namespace;

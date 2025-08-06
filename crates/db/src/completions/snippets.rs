@@ -61,7 +61,7 @@ pub fn class() -> CompletionItem {
         label: "CLASS".into(),
         kind: Some(lsp_types::CompletionItemKind::CLASS),
         insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
-        insert_text: Some("CLASS ${1:class} USING ${2:ns} \n\nEND_CLASS".into()),
+        insert_text: Some("CLASS ${1:class} \n\nEND_CLASS".into()),
         ..Default::default()
     }
 }

@@ -8,7 +8,7 @@ use rustc_hash::FxHashMap;
 use salsa::Accumulator;
 
 use crate::{
-    diagnostics::{diagnostic_builder::diag, DiagnosticAccumulator},
+    check::{diagnostic_builder::diag, DiagnosticAccumulator},
     hir::{
         interned::{
             identifier::Ident, namespace::{NamespaceAccess, NamespacePath}

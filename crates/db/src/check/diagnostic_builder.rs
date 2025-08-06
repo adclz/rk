@@ -6,7 +6,7 @@ use auto_lsp::{
     },
 };
 
-use crate::diagnostics::IdeDiagnostic;
+use crate::check::IdeDiagnostic;
 
 #[bon::builder]
 pub fn diag<'a>(

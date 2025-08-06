@@ -5,12 +5,13 @@ use auto_lsp::{
     default::db::{file::File, tracked::get_ast, BaseDatabase},
 };
 
-use crate::diagnostics::{duplicates::duplicate_declarations, lexer::add_fixes_to_parse_errors};
+use crate::check::{duplicates::duplicate_declarations, lexer::add_fixes_to_parse_errors};
 
 pub mod diagnostic_builder;
 pub mod duplicates;
 pub mod lexer;
 pub mod literals;
+pub mod signature;
 
 #[derive(Clone)]
 pub struct IdeDiagnostic {

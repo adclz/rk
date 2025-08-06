@@ -4,8 +4,8 @@ use auto_lsp::core::errors::{LexerError, ParseError, ParseErrorAccumulator};
 use auto_lsp::lsp_types::{DiagnosticRelatedInformation, WorkspaceEdit};
 use phf::phf_set;
 
-use crate::diagnostics::diagnostic_builder::{action, diag, edit};
-use crate::diagnostics::IdeDiagnostic;
+use crate::check::diagnostic_builder::{action, diag, edit};
+use crate::check::IdeDiagnostic;
 
 static KEYWORDS: phf::Set<&'static str> = phf_set! {
 "PROGRAM", "END_PROGRAM",

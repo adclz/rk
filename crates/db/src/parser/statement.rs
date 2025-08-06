@@ -1,7 +1,7 @@
 use std::ops::Deref;
 
-use crate::diagnostics::diagnostic_builder::diag;
-use crate::diagnostics::DiagnosticAccumulator;
+use crate::check::diagnostic_builder::diag;
+use crate::check::DiagnosticAccumulator;
 use crate::hir::expressions::statement::{Stmt, StmtKind};
 use crate::parser::expression::{ParseExpression, ParseVariableAccess};
 use crate::parser::semantic_index::SemanticIndexBuilder;

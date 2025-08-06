@@ -11,8 +11,8 @@ use auto_lsp::{
 };
 use salsa::Accumulator;
 
-use crate::diagnostics::diagnostic_builder::diag;
-use crate::diagnostics::DiagnosticAccumulator;
+use crate::check::diagnostic_builder::diag;
+use crate::check::DiagnosticAccumulator;
 use crate::hir::expressions::spec::{SimpleSpecKind, Spec, SpecKind};
 use crate::hir::interned::identifier::Ident;
 use crate::hir::pous::variable::{Variable, VariableKind};

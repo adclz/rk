@@ -11,7 +11,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use salsa::Accumulator;
 
 use crate::{
-    diagnostics::{diagnostic_builder::diag, literals::check_date, DiagnosticAccumulator},
+    check::{diagnostic_builder::diag, literals::check_date, DiagnosticAccumulator},
     hir::{
         expressions::{
             expression::{
@@ -23,8 +23,8 @@ use crate::{
         },
         interned::namespace::NamespacePath,
         pous::{pou::Pou, variable::Variable},
-        scopes::solver::exported_items_in_scope,
-        semantic_index::{semantic_index, SemanticIndex},
+        scopes::solver::{imported_pous_in_scope, resolve_namespace_access},
+        semantic_index::{semantic_index, SemanticIndex}, signature::{type_signature, TypeSignature, SignatureKind},
     },
 };
 
@@ -37,7 +37,7 @@ pub fn duplicate_declarations<'db>(db: &'db dyn BaseDatabase, file: File) {
     let sema = semantic_index(db, file);
 
     for scope in sema.scopes.values() {
-        exported_items_in_scope(db, file, scope.id);
+        imported_pous_in_scope(db, file, scope.id);
     }
 
     for (id, ns) in sema.namespace_keys.iter() {
@@ -104,8 +104,11 @@ impl<'db> Check<'db> for &'db Vec<Variable<'db>> {
 
 impl<'db> Check<'db> for Variable<'db> {
     fn check(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>) {
+        self.spec(db).check(db, sema);
         match self.init(db) {
-            Some(init) => init.check(db, sema, &self.spec(db)),
+            Some(init) => {
+                init.check(db, sema, &self.spec(db))
+            },
             None => {}
         }
     }
@@ -157,11 +160,40 @@ fn create_mismatch_type_error<'db>(
             },
             message: format!(
                 "because of type: '{}' declared here",
-                spec.to_string(db, sema)
+                spec.shorthand(db)
             ),
         }])
         .call();
     DiagnosticAccumulator::accumulate(diagnostic.into(), db);
+}
+
+impl<'db> Spec<'db> {
+    pub fn check(&self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>) {
+        match self.kind(db) {
+            SpecKind::Target(target) => {
+                resolve_namespace_access(db, self.file(db), self.scope_id(db), *target)
+                    .map(|pou| {
+                        match type_signature(db, sema.pou_keys[&pou.0]) {
+                            _ => {}
+                        }
+                    })
+                    .unwrap_or_else(|| {
+                        let message = format!(
+                            "no '{}' items found in scope",
+                            target.to_string(db)
+                        );
+                        let diagnostic = diag()
+                            .range(self.span(db).clone())
+                            .message(message)
+                            .source("IEC".into())
+                            .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+                            .call();
+                        DiagnosticAccumulator::accumulate(diagnostic.into(), db);
+                    });
+            },
+            _ => {}
+        }
+    }
 }
 
 impl<'db> SpecCheck<'db> for Expr<'db> {
@@ -182,7 +214,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
             } => {
                 if !matches!(spec.kind(db), SpecKind::Simple(SimpleSpecKind::Bool)) {
                     create_mismatch_type_error(db, sema, self.span(db).clone(), spec,
-                        format!("A boolean operator always returns a 'BOOL' but the expected type is '{}'", spec.to_string(db, sema))
+                        format!("A boolean operator always returns a 'BOOL' but the expected type is '{}'", spec.shorthand(db))
                     );
                 }
                 left.check(db, sema, spec);
@@ -195,7 +227,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
             } => {
                 if !matches!(spec.kind(db), SpecKind::Simple(SimpleSpecKind::Bool)) {
                     create_mismatch_type_error(db, sema, self.span(db).clone(), spec,
-                        format!("A comparison operator always returns a 'BOOL' but the expected type is '{}'", spec.to_string(db, sema))
+                        format!("A comparison operator always returns a 'BOOL' but the expected type is '{}'", spec.shorthand(db))
                     );
                 }
                 left.check(db, sema, spec);
@@ -570,16 +602,16 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                                 return;
                             }
                         },
-                        _ => false,
+                        _ => true,
                     },
-                    _ => false,
+                    _ => true,
                 };
 
                 if !result {
                     let message = format!(
                         "value '{}' is not assignable to '{}'",
                         lit.to_string(db),
-                        spec.to_string(db, sema),
+                        spec.shorthand(db),
                     );
                     let diagnostic = diag()
                         .range(self.span(db).clone())
@@ -593,7 +625,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                             },
                             message: format!(
                                 "because of type '{}' declared here",
-                                spec.to_string(db, sema)
+                                spec.shorthand(db)
                             ),
                         }])
                         .call();

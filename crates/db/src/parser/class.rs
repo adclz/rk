@@ -1,7 +1,7 @@
 use std::ops::Deref;
 
-use crate::diagnostics::diagnostic_builder::diag;
-use crate::diagnostics::DiagnosticAccumulator;
+use crate::check::diagnostic_builder::diag;
+use crate::check::DiagnosticAccumulator;
 use crate::hir::interned::identifier::Ident;
 use crate::hir::interned::namespace::SpannedNamespaceAccess;
 use crate::hir::pous::class::Class;
