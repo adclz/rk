@@ -37,7 +37,7 @@ impl<'db> ParseSpec<'db> for ast::generated::NamespaceAccess {
             self.get_span(),
             SpecKind::Target(NamespaceAccess::from_ast(sema.db, sema.file, self)?),
             sema.current_scope,
-            sema.file
+            sema.file,
         ))
     }
 }
@@ -72,7 +72,7 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
                     self.get_span(),
                     SpecKind::Simple(SimpleSpecKind::Bool),
                     sema.current_scope,
-                    sema.file
+                    sema.file,
                 ),
                 ast::generated::BoolName_MultibitsTypeName::MultibitsTypeName(a) => {
                     match a.children.deref() {
@@ -82,7 +82,7 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
                                 self.get_span(),
                                 SpecKind::Simple(SimpleSpecKind::Byte),
                                 sema.current_scope,
-                                sema.file
+                                sema.file,
                             )
                         }
                         ast::generated::ByteName_DwordName_LwordName_WordName::WordName(_) => {
@@ -91,7 +91,7 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
                                 self.get_span(),
                                 SpecKind::Simple(SimpleSpecKind::Word),
                                 sema.current_scope,
-                                sema.file
+                                sema.file,
                             )
                         }
                         ast::generated::ByteName_DwordName_LwordName_WordName::DwordName(_) => {
@@ -100,7 +100,7 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
                                 self.get_span(),
                                 SpecKind::Simple(SimpleSpecKind::DWord),
                                 sema.current_scope,
-                                sema.file
+                                sema.file,
                             )
                         }
                         ast::generated::ByteName_DwordName_LwordName_WordName::LwordName(_) => {
@@ -109,7 +109,7 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
                                 self.get_span(),
                                 SpecKind::Simple(SimpleSpecKind::LWord),
                                 sema.current_scope,
-                                sema.file
+                                sema.file,
                             )
                         }
                     }
@@ -127,14 +127,14 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
                                 self.get_span(),
                                 SpecKind::Simple(SimpleSpecKind::Real),
                                 sema.current_scope,
-                                sema.file
+                                sema.file,
                             ),
                             ast::generated::LrealName_RealName::LrealName(_) => Spec::new(
                                 sema.db,
                                 self.get_span(),
                                 SpecKind::Simple(SimpleSpecKind::LReal),
                                 sema.current_scope,
-                                sema.file
+                                sema.file,
                             ),
                         }
                     }
@@ -146,14 +146,14 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
                     self.get_span(),
                     SpecKind::Simple(SimpleSpecKind::Date),
                     sema.current_scope,
-                    sema.file
+                    sema.file,
                 ),
                 ast::generated::AnyDateTypeName::LDateTypeName(_) => Spec::new(
                     sema.db,
                     self.get_span(),
                     SpecKind::Simple(SimpleSpecKind::LDate),
                     sema.current_scope,
-                    sema.file
+                    sema.file,
                 ),
             },
             AstSpec::AnyTimeTypeName(time_type_name) => match time_type_name {
@@ -162,14 +162,14 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
                     self.get_span(),
                     SpecKind::Simple(SimpleSpecKind::Time),
                     sema.current_scope,
-                    sema.file
+                    sema.file,
                 ),
                 ast::generated::AnyTimeTypeName::LTimeTypeName(_) => Spec::new(
                     sema.db,
                     self.get_span(),
                     SpecKind::Simple(SimpleSpecKind::LTime),
                     sema.current_scope,
-                    sema.file
+                    sema.file,
                 ),
             },
             AstSpec::AnyTodTypeName(tod_type_name) => match tod_type_name {
@@ -178,14 +178,14 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
                     self.get_span(),
                     SpecKind::Simple(SimpleSpecKind::Tod),
                     sema.current_scope,
-                    sema.file
+                    sema.file,
                 ),
                 ast::generated::AnyTodTypeName::LtodTypeName(_) => Spec::new(
                     sema.db,
                     self.get_span(),
                     SpecKind::Simple(SimpleSpecKind::LTod),
                     sema.current_scope,
-                    sema.file
+                    sema.file,
                 ),
             },
             AstSpec::AnyDtTypeName(dt_type_name) => match dt_type_name {
@@ -194,14 +194,14 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
                     self.get_span(),
                     SpecKind::Simple(SimpleSpecKind::Dt),
                     sema.current_scope,
-                    sema.file
+                    sema.file,
                 ),
                 ast::generated::AnyDtTypeName::LDtTypeName(_) => Spec::new(
                     sema.db,
                     self.get_span(),
                     SpecKind::Simple(SimpleSpecKind::Ldt),
                     sema.current_scope,
-                    sema.file
+                    sema.file,
                 ),
             },
         })
@@ -218,28 +218,28 @@ impl<'db> ParseSpec<'db> for ast::generated::IntTypeName {
                         self.get_span(),
                         SpecKind::Simple(SimpleSpecKind::SInt),
                         sema.current_scope,
-                        sema.file
+                        sema.file,
                     ),
                     ast::generated::DintName_IntName_LintName_SintName::IntName(_) => Spec::new(
                         sema.db,
                         self.get_span(),
                         SpecKind::Simple(SimpleSpecKind::Int),
                         sema.current_scope,
-                        sema.file
+                        sema.file,
                     ),
                     ast::generated::DintName_IntName_LintName_SintName::DintName(_) => Spec::new(
                         sema.db,
                         self.get_span(),
                         SpecKind::Simple(SimpleSpecKind::DInt),
                         sema.current_scope,
-                        sema.file
+                        sema.file,
                     ),
                     ast::generated::DintName_IntName_LintName_SintName::LintName(_) => Spec::new(
                         sema.db,
                         self.get_span(),
                         SpecKind::Simple(SimpleSpecKind::LInt),
                         sema.current_scope,
-                        sema.file
+                        sema.file,
                     ),
                 }
             }
@@ -251,7 +251,7 @@ impl<'db> ParseSpec<'db> for ast::generated::IntTypeName {
                             self.get_span(),
                             SpecKind::Simple(SimpleSpecKind::USInt),
                             sema.current_scope,
-                            sema.file
+                            sema.file,
                         )
                     }
                     ast::generated::UdintName_UintName_UlintName_UsintName::UintName(_) => {
@@ -260,7 +260,7 @@ impl<'db> ParseSpec<'db> for ast::generated::IntTypeName {
                             self.get_span(),
                             SpecKind::Simple(SimpleSpecKind::UInt),
                             sema.current_scope,
-                            sema.file
+                            sema.file,
                         )
                     }
                     ast::generated::UdintName_UintName_UlintName_UsintName::UdintName(_) => {
@@ -269,7 +269,7 @@ impl<'db> ParseSpec<'db> for ast::generated::IntTypeName {
                             self.get_span(),
                             SpecKind::Simple(SimpleSpecKind::UDInt),
                             sema.current_scope,
-                            sema.file
+                            sema.file,
                         )
                     }
                     ast::generated::UdintName_UintName_UlintName_UsintName::UlintName(_) => {
@@ -278,7 +278,7 @@ impl<'db> ParseSpec<'db> for ast::generated::IntTypeName {
                             self.get_span(),
                             SpecKind::Simple(SimpleSpecKind::ULInt),
                             sema.current_scope,
-                            sema.file
+                            sema.file,
                         )
                     }
                 }
@@ -304,7 +304,7 @@ impl<'db> ParseSpec<'db> for ast::generated::StrTypeSpec {
                 self.get_span(),
                 SpecKind::Simple(SimpleSpecKind::WString),
                 sema.current_scope,
-                sema.file
+                sema.file,
             ),
 
             AstSpec::SByteStrSpec(_) => Spec::new(
@@ -312,7 +312,7 @@ impl<'db> ParseSpec<'db> for ast::generated::StrTypeSpec {
                 self.get_span(),
                 SpecKind::Simple(SimpleSpecKind::String),
                 sema.current_scope,
-                sema.file
+                sema.file,
             ),
 
             AstSpec::DChar(_) => Spec::new(
@@ -320,7 +320,7 @@ impl<'db> ParseSpec<'db> for ast::generated::StrTypeSpec {
                 self.get_span(),
                 SpecKind::Simple(SimpleSpecKind::WChar),
                 sema.current_scope,
-                sema.file
+                sema.file,
             ),
 
             AstSpec::SChar(_) => Spec::new(
@@ -328,7 +328,7 @@ impl<'db> ParseSpec<'db> for ast::generated::StrTypeSpec {
                 self.get_span(),
                 SpecKind::Simple(SimpleSpecKind::Char),
                 sema.current_scope,
-                sema.file
+                sema.file,
             ),
         })
     }
@@ -394,7 +394,13 @@ impl<'db> ParseSpecInit<'db> for ast::generated::RefSpec {
 
 impl<'db> ParseSpec<'db> for ast::generated::RefTypeSpec {
     fn to_spec(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Spec<'db>> {
-        todo!()
+        Ok(Spec::new(
+            sema.db,
+            self.get_span(),
+            SpecKind::Ref(self.children.to_spec(sema)?),
+            sema.current_scope,
+            sema.file,
+        ))
     }
 }
 
@@ -423,7 +429,7 @@ impl<'db> ParseSpec<'db> for ast::generated::SubrangeTypeSpec {
                 upper,
             })),
             sema.current_scope,
-            sema.file
+            sema.file,
         ))
     }
 }

@@ -10,10 +10,15 @@ use auto_lsp::{
 use crate::{
     completions,
     hir::{
-        interned::identifier::Ident, pous::{
+        interned::identifier::Ident,
+        comment_index::comment_index,
+        pous::{
             class::Class, data_type::DataType, function::Function, function_block::FunctionBlock,
             interface::Interface,
-        }, scopes::scope::{FilePouId, ScopeId}, semantic_index::SemanticIndex
+        },
+        scopes::scope::{FilePouId, ScopeId},
+        semantic_index::SemanticIndex,
+        signature::type_signature,
     },
     to_proto::{self_iter, Extends, IterToProto, SymbolInfo, ToProto},
 };
@@ -145,25 +150,34 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
 
     fn hover(
         &'db self,
-        _db: &'db dyn crate::BaseDatabase,
-        _sema: &'db SemanticIndex<'db>,
+        db: &'db dyn crate::BaseDatabase,
+        sema: &'db SemanticIndex<'db>, 
     ) -> Option<auto_lsp::lsp_types::Hover> {
+        let comment = comment_index(db, sema.file);
+        let comment = comment
+            .find_nearby_comment(sema.file.document(db), self.span(db))
+            .map(|c| format!("{}\n&nbsp;", c.to_string(sema.file.document(db))))
+            .unwrap_or_default();
+
         Some(auto_lsp::lsp_types::Hover {
             contents: auto_lsp::lsp_types::HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,
-                value: format!(
-                    "{} `{}`",
-                    match self.pou(_db) {
-                        Pou::Function(_) => "Function",
-                        Pou::FunctionBlock(_) => "Function Block",
-                        Pou::Class(_) => "Class",
-                        Pou::Interface(_) => "Interface",
-                        Pou::DataType(_) => "Data Type",
-                    },
-                    self.name(_db).text(_db)
+                value: format!(    
+                    r#"{comment}
+```typescript
+{}
+```
+"#,
+                    type_signature(db, *self)
+                        .map(|s| s.signature_to_string(db, sema, self.scope_id(db)))
+                        .unwrap_or_else(|| "{unknown}".to_string()),
                 ),
             }),
-            range: Some(self.get_span(_db).lsp()),
+            range: Some(
+                self.get_named_span(db)
+                    .map(|span| span.lsp())
+                    .unwrap_or_default(),
+            ),
         })
     }
 }
