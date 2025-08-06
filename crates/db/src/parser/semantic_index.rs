@@ -9,6 +9,7 @@ use rustc_hash::FxHashMap;
 use salsa::Accumulator;
 
 use crate::check::diagnostic_builder::diag;
+use crate::check::errors::semantic_errors::invalid_pou_keyword;
 use crate::check::DiagnosticAccumulator;
 use crate::hir::interned::identifier::{Ident, SpannedIdent};
 use crate::hir::interned::namespace::NamespacePath;
@@ -83,11 +84,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     }
 
     pub fn create_pou_error(&self, err: &ERRInvalidPouKeyword) {
-        let diag = diag()
-            .message("Expected a POU keyword".into())
-            .range(err.get_span())
-            .call();
-        DiagnosticAccumulator::accumulate(diag.into(), self.db);
+        invalid_pou_keyword(self.db, err.get_span());
     }
 
     // Fix me: This function should not panic, but handle errors gracefully.

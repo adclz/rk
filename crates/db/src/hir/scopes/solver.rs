@@ -8,12 +8,12 @@ use rustc_hash::FxHashMap;
 use salsa::Accumulator;
 
 use crate::{
-    check::{diagnostic_builder::diag, DiagnosticAccumulator},
+    check::{diagnostic_builder::diag, errors::semantic_errors::{duplicate_using_declaration, namespace_already_in_scope, namespace_not_found}, DiagnosticAccumulator},
     hir::{
         interned::{
             identifier::Ident, namespace::{NamespaceAccess, NamespacePath}
         },
-        scopes::{iterators::AncestorsIter, scope::{PouId, ScopeId, ScopeKind, ScopedNamespaceId, FilePouId}},
+        scopes::{iterators::AncestorsIter, scope::{FilePouId, PouId, ScopeId, ScopeKind, ScopedNamespaceId}},
         semantic_index::{semantic_index, SemanticIndex},
         using::Using,
     },
@@ -87,16 +87,7 @@ fn imported_namespaces<'db>(
     let accross = shared_namespaces(db, using.path(db));
 
     if accross.is_empty() {
-        let diag = diag()
-            .message(format!(
-                "namespace '{}' not found",
-                using.path(db).to_string(db)
-            ))
-            .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
-            .range(using.span(db).clone())
-            .call();
-
-        DiagnosticAccumulator::accumulate(diag.into(), db);
+        namespace_not_found(db, using.span(db).clone(), using.path(db));
         return results;
     }
 
@@ -108,27 +99,7 @@ fn imported_namespaces<'db>(
         .iter()
         .for_each(|u| {
             if u.path(db) == using.path(db) && *u != using {
-                let diag = diag()
-                    .message(format!(
-                        "duplicate declarations of using directive '{}'",
-                        using.path(db).to_string(db)
-                    ))
-                    .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
-                    .tags(vec![DiagnosticTag::UNNECESSARY])
-                    .related_information(vec![DiagnosticRelatedInformation {
-                        location: Location {
-                            uri: file.url(db).clone(),
-                            range: u.span(db).into(),
-                        },
-                        message: format!(
-                            "namespace '{}' is already imported here",
-                            using.path(db).to_string(db)
-                        ),
-                    }])
-                    .range(using.span(db).clone())
-                    .call();
-
-                DiagnosticAccumulator::accumulate(diag.into(), db);
+                duplicate_using_declaration(db, file, using, *u);
             }
         });
 
@@ -154,27 +125,7 @@ fn imported_namespaces<'db>(
                     None
                 }
             }) {
-                let diag = diag()
-                    .message(format!(
-                        "'{}' is already in scope",
-                        using.path(db).to_string(db)
-                    ))
-                    .severity(auto_lsp::lsp_types::DiagnosticSeverity::WARNING)
-                    .tags(vec![DiagnosticTag::UNNECESSARY])
-                    .related_information(vec![DiagnosticRelatedInformation {
-                        location: Location {
-                            uri: file.url(db).clone(),
-                            range: parent.span(db).into(),
-                        },
-                        message: format!(
-                            "namespace '{}' is defined here",
-                            using.path(db).to_string(db)
-                        ),
-                    }])
-                    .range(using.span(db).clone())
-                    .call();
-
-                DiagnosticAccumulator::accumulate(diag.into(), db);
+                namespace_already_in_scope(db, file, using, *parent);
             }
         }
         results.insert(*ns.path(db), ScopedNamespaceId(ns_id, file));

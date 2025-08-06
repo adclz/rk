@@ -5,6 +5,7 @@ use auto_lsp::lsp_types::{DiagnosticRelatedInformation, WorkspaceEdit};
 use phf::phf_set;
 
 use crate::check::diagnostic_builder::{action, diag, edit};
+use crate::check::errors::syntax_errors::{missing_node, unexpected_char, unexpected_keyword};
 use crate::check::IdeDiagnostic;
 
 static KEYWORDS: phf::Set<&'static str> = phf_set! {
@@ -58,38 +59,7 @@ pub fn add_fixes_to_parse_errors(
                         grammar_name,
                         ..
                     },
-            } => {
-                let mut diagnostic = diag()
-                    .range(span.clone().into())
-                    .message(missing_error.to_string())
-                    .source("IEC".into())
-                    .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
-                    .related_information(vec![DiagnosticRelatedInformation {
-                        location: auto_lsp::lsp_types::Location {
-                            uri: file.url(db).clone(),
-                            range: span.clone().into(),
-                        },
-                        message: format!("help: add missing {grammar_name} here"),
-                    }])
-                    .call();
-
-                diagnostic.with_fix(
-                    action()
-                        .title(format!("Insert missing '{grammar_name}'"))
-                        .kind(auto_lsp::lsp_types::CodeActionKind::QUICKFIX)
-                        .diagnostics(vec![diagnostic.diagnostic.clone()])
-                        .is_preferred(true)
-                        .edit(WorkspaceEdit::new(HashMap::from([(
-                            file.url(db).clone(),
-                            vec![edit()
-                                .new_text(format!(" {}", grammar_name))
-                                .range(span.into())
-                                .call()],
-                        )])))
-                        .call(),
-                );
-                diagnostic
-            }
+            } => missing_node(db, *file, span, &missing_error, grammar_name),
             ParseError::LexerError {
                 span,
                 error:
@@ -100,56 +70,9 @@ pub fn add_fixes_to_parse_errors(
                     },
             } => {
                 if affected.len() == 1 {
-                    let mut diagnostic = diag()
-                        .range(span.clone().into())
-                        .message(syntax_error.to_string())
-                        .source("IEC".into())
-                        .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
-                        .related_information(vec![DiagnosticRelatedInformation {
-                            location: auto_lsp::lsp_types::Location {
-                                uri: file.url(db).clone(),
-                                range: span.clone().into(),
-                            },
-                            message: format!("help: remove '{affected}'"),
-                        }])
-                        .call();
-
-                    diagnostic.with_fix(
-                        action()
-                            .title(format!("Remove {affected}"))
-                            .kind(auto_lsp::lsp_types::CodeActionKind::QUICKFIX)
-                            .diagnostics(vec![diagnostic.diagnostic.clone()])
-                            .is_preferred(true)
-                            .edit(WorkspaceEdit::new(HashMap::from([(
-                                file.url(db).clone(),
-                                vec![edit()
-                                    .new_text("".to_string())
-                                    .range(span.clone().into())
-                                    .call()],
-                            )])))
-                            .call(),
-                    );
-                    diagnostic
+                    unexpected_char(db, *file, span, &affected, &syntax_error)
                 } else if KEYWORDS.contains(affected.split_whitespace().next().unwrap_or("")) {
-                    diag()
-                        .range(span.clone().into())
-                        .message(format!(
-                            "{} is a reserved keyword that is not valid in this context",
-                            affected.split_whitespace().next().unwrap_or("")
-                        ))
-                        .source("IEC".into())
-                        .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
-                        .related_information(vec![DiagnosticRelatedInformation {
-                            location: auto_lsp::lsp_types::Location {
-                                uri: file.url(db).clone(),
-                                range: span.clone().into(),
-                            },
-                            message: format!(
-                                "help: remove or replace '{}'",
-                                affected.split_whitespace().next().unwrap_or("")
-                            ),
-                        }])
-                        .call()
+                    unexpected_keyword(db, *file, span, &affected)
                 } else {
                     (*file, *error).into()
                 }

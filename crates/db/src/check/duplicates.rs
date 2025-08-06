@@ -1,6 +1,6 @@
 #![allow(unused_imports)]
 #![allow(dead_code)]
-use std::{error::Error, fmt::format, num::ParseIntError};
+use std::{error::Error, fmt::format, num::ParseIntError, str::ParseBoolError};
 
 use auto_lsp::{
     core::span::Span,
@@ -11,7 +11,12 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use salsa::Accumulator;
 
 use crate::{
-    check::{diagnostic_builder::diag, literals::check_date, DiagnosticAccumulator},
+    check::{
+        diagnostic_builder::diag,
+        errors::semantic_errors::{duplicate_variable_declaration, mismatch_type},
+        literals::check_date,
+        DiagnosticAccumulator,
+    },
     hir::{
         expressions::{
             expression::{
@@ -24,7 +29,8 @@ use crate::{
         interned::namespace::NamespacePath,
         pous::{pou::Pou, variable::Variable},
         scopes::solver::{imported_pous_in_scope, resolve_namespace_access},
-        semantic_index::{semantic_index, SemanticIndex}, signature::{type_signature, TypeSignature, SignatureKind},
+        semantic_index::{semantic_index, SemanticIndex},
+        signature::{type_signature, SignatureKind, TypeSignature},
     },
 };
 
@@ -71,27 +77,7 @@ impl<'db> Check<'db> for &'db Vec<Variable<'db>> {
 
         for variable in self.iter() {
             if let Some(other) = seen_variable.insert(variable.name(db), variable) {
-                let message = format!(
-                    "duplicate variable declaration: '{}'",
-                    variable.name(db).text(db)
-                );
-                let diagnostic = diag()
-                    .range(variable.name_span(db).clone())
-                    .message(message)
-                    .source("IEC".into())
-                    .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
-                    .related_information(vec![DiagnosticRelatedInformation {
-                        location: auto_lsp::lsp_types::Location {
-                            uri: variable.file(db).url(db).clone(),
-                            range: other.name_span(db).into(),
-                        },
-                        message: format!(
-                            "variable '{}' is previously declared here",
-                            other.name(db).text(db)
-                        ),
-                    }])
-                    .call();
-                DiagnosticAccumulator::accumulate(diagnostic.into(), db);
+                duplicate_variable_declaration(db, variable.file(db), variable, other);
             }
 
             // Avoid checking the same spec multiple times
@@ -104,11 +90,8 @@ impl<'db> Check<'db> for &'db Vec<Variable<'db>> {
 
 impl<'db> Check<'db> for Variable<'db> {
     fn check(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>) {
-        self.spec(db).check(db, sema);
         match self.init(db) {
-            Some(init) => {
-                init.check(db, sema, &self.spec(db))
-            },
+            Some(init) => init.check(db, sema, &self.spec(db)),
             None => {}
         }
     }
@@ -116,84 +99,6 @@ impl<'db> Check<'db> for Variable<'db> {
 
 trait SpecCheck<'db> {
     fn check(&self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>, spec: &Spec<'db>);
-}
-
-fn create_type_inference_error<'db>(
-    db: &'db dyn BaseDatabase,
-    sema: &'db SemanticIndex<'db>,
-    span: Span,
-    spec: &'db Spec<'db>,
-    err: impl Error,
-) {
-    let diagnostic = diag()
-        .range(span.clone().into())
-        .message(err.to_string())
-        .source("IEC".into())
-        .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
-        .related_information(vec![DiagnosticRelatedInformation {
-            location: auto_lsp::lsp_types::Location {
-                uri: sema.file.url(db).clone(),
-                range: spec.span(db).clone().into(),
-            },
-            message: format!("because of type: '{:?}' declared here", spec.kind(db)),
-        }])
-        .call();
-    DiagnosticAccumulator::accumulate(diagnostic.into(), db);
-}
-
-fn create_mismatch_type_error<'db>(
-    db: &'db dyn BaseDatabase,
-    sema: &'db SemanticIndex<'db>,
-    span: Span,
-    spec: &'db Spec<'db>,
-    message: String,
-) {
-    let diagnostic = diag()
-        .range(span.clone().into())
-        .message(message)
-        .source("IEC".into())
-        .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
-        .related_information(vec![DiagnosticRelatedInformation {
-            location: auto_lsp::lsp_types::Location {
-                uri: sema.file.url(db).clone(),
-                range: spec.span(db).clone().into(),
-            },
-            message: format!(
-                "because of type: '{}' declared here",
-                spec.shorthand(db)
-            ),
-        }])
-        .call();
-    DiagnosticAccumulator::accumulate(diagnostic.into(), db);
-}
-
-impl<'db> Spec<'db> {
-    pub fn check(&self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>) {
-        match self.kind(db) {
-            SpecKind::Target(target) => {
-                resolve_namespace_access(db, self.file(db), self.scope_id(db), *target)
-                    .map(|pou| {
-                        match type_signature(db, sema.pou_keys[&pou.0]) {
-                            _ => {}
-                        }
-                    })
-                    .unwrap_or_else(|| {
-                        let message = format!(
-                            "no '{}' items found in scope",
-                            target.to_string(db)
-                        );
-                        let diagnostic = diag()
-                            .range(self.span(db).clone())
-                            .message(message)
-                            .source("IEC".into())
-                            .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
-                            .call();
-                        DiagnosticAccumulator::accumulate(diagnostic.into(), db);
-                    });
-            },
-            _ => {}
-        }
-    }
 }
 
 impl<'db> SpecCheck<'db> for Expr<'db> {
@@ -212,11 +117,6 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                 operator,
                 right,
             } => {
-                if !matches!(spec.kind(db), SpecKind::Simple(SimpleSpecKind::Bool)) {
-                    create_mismatch_type_error(db, sema, self.span(db).clone(), spec,
-                        format!("A boolean operator always returns a 'BOOL' but the expected type is '{}'", spec.shorthand(db))
-                    );
-                }
                 left.check(db, sema, spec);
                 right.check(db, sema, spec);
             }
@@ -225,11 +125,6 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                 operator,
                 right,
             } => {
-                if !matches!(spec.kind(db), SpecKind::Simple(SimpleSpecKind::Bool)) {
-                    create_mismatch_type_error(db, sema, self.span(db).clone(), spec,
-                        format!("A comparison operator always returns a 'BOOL' but the expected type is '{}'", spec.shorthand(db))
-                    );
-                }
                 left.check(db, sema, spec);
                 right.check(db, sema, spec);
             }
@@ -257,13 +152,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         ))) => match infer.as_bool(db) {
                             Ok(_) => true,
                             Err(err) => {
-                                create_type_inference_error(
-                                    db,
-                                    sema,
-                                    self.span(db).clone(),
-                                    spec,
-                                    err,
-                                );
+                                mismatch_type(db, sema, self.span(db).clone(), spec, err);
                                 return;
                             }
                         },
@@ -277,13 +166,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         ))) => match infer.as_u8(db) {
                             Ok(_) => true,
                             Err(err) => {
-                                create_type_inference_error(
-                                    db,
-                                    sema,
-                                    self.span(db).clone(),
-                                    spec,
-                                    err,
-                                );
+                                mismatch_type(db, sema, self.span(db).clone(), spec, err);
                                 return;
                             }
                         },
@@ -297,13 +180,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         ))) => match infer.as_u16(db) {
                             Ok(_) => true,
                             Err(err) => {
-                                create_type_inference_error(
-                                    db,
-                                    sema,
-                                    self.span(db).clone(),
-                                    spec,
-                                    err,
-                                );
+                                mismatch_type(db, sema, self.span(db).clone(), spec, err);
                                 return;
                             }
                         },
@@ -318,13 +195,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         ))) => match infer.as_u32(db) {
                             Ok(_) => true,
                             Err(err) => {
-                                create_type_inference_error(
-                                    db,
-                                    sema,
-                                    self.span(db).clone(),
-                                    spec,
-                                    err,
-                                );
+                                mismatch_type(db, sema, self.span(db).clone(), spec, err);
                                 return;
                             }
                         },
@@ -340,13 +211,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         ))) => match infer.as_u64(db) {
                             Ok(_) => true,
                             Err(err) => {
-                                create_type_inference_error(
-                                    db,
-                                    sema,
-                                    self.span(db).clone(),
-                                    spec,
-                                    err,
-                                );
+                                mismatch_type(db, sema, self.span(db).clone(), spec, err);
                                 return;
                             }
                         },
@@ -362,13 +227,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         ))) => match infer.as_u8(db) {
                             Ok(_) => true,
                             Err(err) => {
-                                create_type_inference_error(
-                                    db,
-                                    sema,
-                                    self.span(db).clone(),
-                                    spec,
-                                    err,
-                                );
+                                mismatch_type(db, sema, self.span(db).clone(), spec, err);
                                 return;
                             }
                         },
@@ -386,13 +245,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         ))) => match infer.as_u16(db) {
                             Ok(_) => true,
                             Err(err) => {
-                                create_type_inference_error(
-                                    db,
-                                    sema,
-                                    self.span(db).clone(),
-                                    spec,
-                                    err,
-                                );
+                                mismatch_type(db, sema, self.span(db).clone(), spec, err);
                                 return;
                             }
                         },
@@ -413,13 +266,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         ))) => match infer.as_u32(db) {
                             Ok(_) => true,
                             Err(err) => {
-                                create_type_inference_error(
-                                    db,
-                                    sema,
-                                    self.span(db).clone(),
-                                    spec,
-                                    err,
-                                );
+                                mismatch_type(db, sema, self.span(db).clone(), spec, err);
                                 return;
                             }
                         },
@@ -443,13 +290,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         ))) => match infer.as_u64(db) {
                             Ok(_) => true,
                             Err(err) => {
-                                create_type_inference_error(
-                                    db,
-                                    sema,
-                                    self.span(db).clone(),
-                                    spec,
-                                    err,
-                                );
+                                mismatch_type(db, sema, self.span(db).clone(), spec, err);
                                 return;
                             }
                         },
@@ -465,13 +306,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         ))) => match infer.as_u8(db) {
                             Ok(_) => true,
                             Err(err) => {
-                                create_type_inference_error(
-                                    db,
-                                    sema,
-                                    self.span(db).clone(),
-                                    spec,
-                                    err,
-                                );
+                                mismatch_type(db, sema, self.span(db).clone(), spec, err);
                                 return;
                             }
                         },
@@ -489,13 +324,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         ))) => match infer.as_u16(db) {
                             Ok(_) => true,
                             Err(err) => {
-                                create_type_inference_error(
-                                    db,
-                                    sema,
-                                    self.span(db).clone(),
-                                    spec,
-                                    err,
-                                );
+                                mismatch_type(db, sema, self.span(db).clone(), spec, err);
                                 return;
                             }
                         },
@@ -516,13 +345,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         ))) => match infer.as_u32(db) {
                             Ok(_) => true,
                             Err(err) => {
-                                create_type_inference_error(
-                                    db,
-                                    sema,
-                                    self.span(db).clone(),
-                                    spec,
-                                    err,
-                                );
+                                mismatch_type(db, sema, self.span(db).clone(), spec, err);
                                 return;
                             }
                         },
@@ -546,13 +369,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         ))) => match infer.as_u64(db) {
                             Ok(_) => true,
                             Err(err) => {
-                                create_type_inference_error(
-                                    db,
-                                    sema,
-                                    self.span(db).clone(),
-                                    spec,
-                                    err,
-                                );
+                                mismatch_type(db, sema, self.span(db).clone(), spec, err);
                                 return;
                             }
                         },
@@ -568,13 +385,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         ))) => match identifier.as_f32(db) {
                             Ok(_) => true,
                             Err(err) => {
-                                create_type_inference_error(
-                                    db,
-                                    sema,
-                                    self.span(db).clone(),
-                                    spec,
-                                    err,
-                                );
+                                mismatch_type(db, sema, self.span(db).clone(), spec, err);
                                 return;
                             }
                         },
@@ -592,13 +403,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         ))) => match identifier.as_f64(db) {
                             Ok(_) => true,
                             Err(err) => {
-                                create_type_inference_error(
-                                    db,
-                                    sema,
-                                    self.span(db).clone(),
-                                    spec,
-                                    err,
-                                );
+                                mismatch_type(db, sema, self.span(db).clone(), spec, err);
                                 return;
                             }
                         },
@@ -608,28 +413,17 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                 };
 
                 if !result {
-                    let message = format!(
-                        "value '{}' is not assignable to '{}'",
-                        lit.to_string(db),
-                        spec.shorthand(db),
+                    mismatch_type(
+                        db,
+                        sema,
+                        self.span(db).clone(),
+                        spec,
+                        format!(
+                            "Literal '{}' does not match expected type '{}'",
+                            lit.to_string(db),
+                            spec.shorthand(db)
+                        ),
                     );
-                    let diagnostic = diag()
-                        .range(self.span(db).clone())
-                        .message(message)
-                        .source("IEC".into())
-                        .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
-                        .related_information(vec![DiagnosticRelatedInformation {
-                            location: auto_lsp::lsp_types::Location {
-                                uri: sema.file.url(db).clone(),
-                                range: spec.span(db).clone().into(),
-                            },
-                            message: format!(
-                                "because of type '{}' declared here",
-                                spec.shorthand(db)
-                            ),
-                        }])
-                        .call();
-                    DiagnosticAccumulator::accumulate(diagnostic.into(), db);
                 }
             }
             _ => {}

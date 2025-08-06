@@ -1,6 +1,7 @@
 use std::ops::Deref;
 
 use crate::check::diagnostic_builder::diag;
+use crate::check::errors::semantic_errors::{implements_before_extends, multiple_extends, multiple_implements};
 use crate::check::DiagnosticAccumulator;
 use crate::hir::interned::identifier::Ident;
 use crate::hir::interned::namespace::SpannedNamespaceAccess;
@@ -56,28 +57,13 @@ impl<'db> SemanticIndexBuilder<'db> {
             type Error = ast::generated::ERRExtendsMultipleTimes_ERRImplementsBeforeExtends_ERRImplementsMultipleTimes;
             match f.deref() {
                 Error::ERRExtendsMultipleTimes(err) => {
-                    let diag = diag()
-                        .message("EXTENDS can only be defined once".into())
-                        .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
-                        .range(err.get_span())
-                        .call();
-                    DiagnosticAccumulator::accumulate(diag.into(), self.db);
+                    multiple_extends(self.db, err.get_span());
                 },
                 Error::ERRImplementsBeforeExtends(err) => {
-                    let diag = diag()
-                        .message("IMPLEMENTS can only be defined after EXTENDS".into())
-                        .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
-                        .range(err.get_span())
-                        .call();
-                    DiagnosticAccumulator::accumulate(diag.into(), self.db);
+                    implements_before_extends(self.db, err.get_span());
                 },
                 Error::ERRImplementsMultipleTimes(err) => {
-                    let diag = diag()
-                        .message("IMPLEMENTS can only be defined once".into())
-                        .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
-                        .range(err.get_span())
-                        .call();
-                    DiagnosticAccumulator::accumulate(diag.into(), self.db);
+                    multiple_implements(self.db, err.get_span());
                 },
             }
         });

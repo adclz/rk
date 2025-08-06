@@ -12,6 +12,7 @@ pub mod duplicates;
 pub mod lexer;
 pub mod literals;
 pub mod signature;
+pub mod errors;
 
 #[derive(Clone)]
 pub struct IdeDiagnostic {

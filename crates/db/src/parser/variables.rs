@@ -12,6 +12,7 @@ use auto_lsp::{
 use salsa::Accumulator;
 
 use crate::check::diagnostic_builder::diag;
+use crate::check::errors::semantic_errors::{incomplete_edge_qualifier, missing_type_for_variable, unauthorized_variable_init};
 use crate::check::DiagnosticAccumulator;
 use crate::hir::expressions::spec::{SimpleSpecKind, Spec, SpecKind};
 use crate::hir::interned::identifier::Ident;
@@ -37,12 +38,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
         for child in self.children.iter() {
             match child.deref() {
                 ast::generated::ERRVariableWithNoSpec_InputVar::ERRVariableWithNoSpec(child) => {
-                    let diag = diag()
-                        .message("variable with no type specified".to_string())
-                        .range(child.get_span())
-                        .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
-                        .call();
-                    DiagnosticAccumulator::accumulate(diag.into(), sema.db);
+                    missing_type_for_variable(sema.db, child.get_span());
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_InputVar::InputVar(child) => {
@@ -91,12 +87,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
         for child in self.children.iter() {
             match child.deref() {
                 ast::generated::ERRVariableWithNoSpec_FbInputVar::ERRVariableWithNoSpec(child) => {
-                    let diag = diag()
-                        .message("variable with no type specified".to_string())
-                        .range(child.get_span())
-                        .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
-                        .call();
-                    DiagnosticAccumulator::accumulate(diag.into(), sema.db);
+                    missing_type_for_variable(sema.db, child.get_span());
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_FbInputVar::FbInputVar(child) => {
@@ -145,12 +136,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::OutputDecls {
         for child in self.children.iter() {
             match child.deref() {
                 ast::generated::ERRVariableWithNoSpec_OutputVar::ERRVariableWithNoSpec(child) => {
-                    let diag = diag()
-                        .message("variable with no type specified".to_string())
-                        .range(child.get_span())
-                        .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
-                        .call();
-                    DiagnosticAccumulator::accumulate(diag.into(), sema.db);
+                    missing_type_for_variable(sema.db, child.get_span());
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_OutputVar::OutputVar(child) => {
@@ -190,12 +176,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbOutputDecls {
         for child in self.children.iter() {
             match child.deref() {
                 ast::generated::ERRVariableWithNoSpec_FbOutputVar::ERRVariableWithNoSpec(child) => {
-                    let diag = diag()
-                        .message("variable with no type specified".to_string())
-                        .range(child.get_span())
-                        .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
-                        .call();
-                    DiagnosticAccumulator::accumulate(diag.into(), sema.db);
+                    missing_type_for_variable(sema.db, child.get_span());
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_FbOutputVar::FbOutputVar(child) => {
@@ -235,12 +216,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::TempVarDecls {
         for child in self.children.iter() {
             match child.deref() {
                 ast::generated::ERRVariableWithNoSpec_TempVar::ERRVariableWithNoSpec(child) => {
-                    let diag = diag()
-                        .message("variable with no type specified".to_string())
-                        .range(child.get_span())
-                        .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
-                        .call();
-                    DiagnosticAccumulator::accumulate(diag.into(), sema.db);
+                    missing_type_for_variable(sema.db, child.get_span());
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_TempVar::TempVar(child) => {
@@ -280,12 +256,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
         for child in self.children.iter() {
             match child.deref() {
                 ast::generated::ERRVariableWithNoSpec_InOutVar::ERRVariableWithNoSpec(child) => {
-                    let diag = diag()
-                        .message("variable with no type specified".to_string())
-                        .range(child.get_span())
-                        .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
-                        .call();
-                    DiagnosticAccumulator::accumulate(diag.into(), sema.db);
+                    missing_type_for_variable(sema.db, child.get_span());
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_InOutVar::InOutVar(child) => {
@@ -489,12 +460,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
                 ast::generated::ERRVariableWithNoSpec_ExternalDecl::ERRVariableWithNoSpec(
                     child,
                 ) => {
-                    let diag = diag()
-                        .message("variable with no type specified".to_string())
-                        .range(child.get_span())
-                        .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
-                        .call();
-                    DiagnosticAccumulator::accumulate(diag.into(), sema.db);
+                    missing_type_for_variable(sema.db, child.get_span());
                     continue;
                 }
             }
@@ -514,12 +480,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
                 ast::generated::ERRVariableWithNoSpec_VarDeclInitList::ERRVariableWithNoSpec(
                     var_decl,
                 ) => {
-                    let diag = diag()
-                        .message("variable with no type specified".to_string())
-                        .range(var_decl.get_span())
-                        .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
-                        .call();
-                    DiagnosticAccumulator::accumulate(diag.into(), sema.db);
+                    missing_type_for_variable(sema.db, child.get_span());
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_VarDeclInitList::VarDeclInitList(
@@ -550,12 +511,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::RetainVarDecls {
                 ast::generated::ERRVariableWithNoSpec_VarDeclInitList::ERRVariableWithNoSpec(
                     var_decl,
                 ) => {
-                    let diag = diag()
-                        .message("variable with no type specified".to_string())
-                        .range(var_decl.get_span())
-                        .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
-                        .call();
-                    DiagnosticAccumulator::accumulate(diag.into(), sema.db);
+                    missing_type_for_variable(sema.db, child.get_span());
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_VarDeclInitList::VarDeclInitList(
@@ -586,12 +542,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::NoRetainVarDecls {
                 ast::generated::ERRVariableWithNoSpec_VarDeclInitList::ERRVariableWithNoSpec(
                     var_decl,
                 ) => {
-                    let diag = diag()
-                        .message("variable with no type specified".to_string())
-                        .range(var_decl.get_span())
-                        .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
-                        .call();
-                    DiagnosticAccumulator::accumulate(diag.into(), sema.db);
+                    missing_type_for_variable(sema.db, child.get_span());
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_VarDeclInitList::VarDeclInitList(
@@ -679,12 +630,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::EdgeDecl {
     ) -> anyhow::Result<SpecInitResult<'db>> {
         let spec = match self.edge.deref() {
             ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::ERRInvalidEdgeQualifier(err) => {
-                let diag = diag()
-                    .message("incomplete edge qualifier, try 'R_EDGE' or 'F_EDGE'".into())
-                    .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
-                    .range(err.get_span())
-                    .call();
-                DiagnosticAccumulator::accumulate(diag.into(), sema.db);
+                incomplete_edge_qualifier(sema.db, err.get_span());
                 Spec::new(
                     sema.db,
                     self.get_span(),
@@ -746,14 +692,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::VarDecl {
         };
 
         if let Some(init) = init {
-            let diag = diag()
-                .message(
-                    "variables declared in TEMP or IN_OUT can not have a default value".to_string(),
-                )
-                .range(init.span(sema.db).clone())
-                .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
-                .call();
-            DiagnosticAccumulator::accumulate(diag.into(), sema.db);
+            unauthorized_variable_init(sema.db, init.span(sema.db).clone());
         }
 
         Ok(SpecInitResult::new(spec?, None))

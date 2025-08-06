@@ -4,6 +4,7 @@ use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 use salsa::Accumulator;
 
+use crate::check::errors::semantic_errors::{invocation_in_expression, unexpected_this};
 use crate::hir::expressions::expression::{
     AnyBit, AnyChars, AnyDate, AnyDuration, AnyInt, AnyMagnitude, AnyNum, AnyReal, AnySigned,
     AnyUnsigned, FieldExpr, IndexExpr, Numeric, NumericKind, PathExpr, VariableAccessKind,
@@ -198,12 +199,7 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
     fn to_expr(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Expr<'db>> {
         match self {
             ast::generated::PrimaryExpression::ERRInvocationInExprContext(err) => {
-                let diag = diag()
-                    .message("Invocation in expression context is not allowed".into())
-                    .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
-                    .range(err.get_span())
-                    .call();
-                DiagnosticAccumulator::accumulate(diag.into(), sema.db);
+                invocation_in_expression(sema.db, err.get_span());
                 Err(anyhow::anyhow!(
                     "Invocation in expression context is not allowed"
                 ))
@@ -586,13 +582,7 @@ impl<'db> ParseExpr<'db> for ast::generated::VarAccess {
             ast::generated::ERRUnexpectedThisInPath_Field_RefDeref::ERRUnexpectedThisInPath(
                 direct_variable,
             ) => {
-                let diag = diag()
-                    .message("Unexpected 'this' in path".into())
-                    .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
-                    .range(direct_variable.get_span())
-                    .call();
-                DiagnosticAccumulator::accumulate(diag.into(), sema.db);
-
+                unexpected_this(sema.db, direct_variable.get_span());
                 Err(anyhow::anyhow!("Unexpected 'this' in path"))
             }
             ast::generated::ERRUnexpectedThisInPath_Field_RefDeref::Field(field) => Ok(

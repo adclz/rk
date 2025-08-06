@@ -1,6 +1,7 @@
 use std::ops::Deref;
 
 use crate::check::diagnostic_builder::diag;
+use crate::check::errors::semantic_errors::{assign_to_function_call, empty_right_hand_assignment};
 use crate::check::DiagnosticAccumulator;
 use crate::hir::expressions::statement::{Stmt, StmtKind};
 use crate::parser::expression::{ParseExpression, ParseVariableAccess};
@@ -37,12 +38,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Assign {
     fn to_statement(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Stmt<'db>> {
         let var = match self.variable.deref() {
             ast::generated::ERRAssignFuncCall_Variable::ERRAssignFuncCall(err) => {
-                let diag = diag()
-                    .message("Cannot assign to a function call".into())
-                    .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
-                    .range(err.get_span())
-                    .call();
-                DiagnosticAccumulator::accumulate(diag.into(), sema.db);
+                assign_to_function_call(sema.db, err.get_span());
                 Err(anyhow::anyhow!("Cannot assign to a function call"))
             }
             ast::generated::ERRAssignFuncCall_Variable::Variable(var) => var.to_access(sema),
@@ -50,12 +46,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Assign {
 
         match self.target.deref() {
             ast::generated::ERREmptyRightHandAssignment_Assignment_AssignmentAttempt::ERREmptyRightHandAssignment(err) => {
-                let diag = diag()
-                    .message("Empty right-hand side in assignment".into())
-                    .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
-                    .range(err.get_span())
-                    .call();
-                DiagnosticAccumulator::accumulate(diag.into(), sema.db);
+                empty_right_hand_assignment(sema.db, err.get_span());
                 Err(anyhow::anyhow!("Empty right-hand side in assignment"))
             },
             ast::generated::ERREmptyRightHandAssignment_Assignment_AssignmentAttempt::Assignment(assign) => Ok(Stmt::new(
