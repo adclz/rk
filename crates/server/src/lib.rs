@@ -29,6 +29,8 @@ use auto_lsp::lsp_types::request::DocumentDiagnosticRequest;
 use auto_lsp::lsp_types::request::DocumentSymbolRequest;
 use auto_lsp::lsp_types::request::FoldingRangeRequest;
 use auto_lsp::lsp_types::request::Formatting;
+use auto_lsp::lsp_types::request::GotoDeclaration;
+use auto_lsp::lsp_types::request::GotoDefinition;
 use auto_lsp::lsp_types::request::HoverRequest;
 use auto_lsp::lsp_types::request::InlayHintRequest;
 use auto_lsp::lsp_types::request::SemanticTokensFullRequest;
@@ -36,11 +38,14 @@ use auto_lsp::lsp_types::request::WorkspaceDiagnosticRequest;
 use auto_lsp::lsp_types::CodeActionProviderCapability;
 use auto_lsp::lsp_types::CodeLensOptions;
 use auto_lsp::lsp_types::CompletionOptions;
+use auto_lsp::lsp_types::DeclarationCapability;
 use auto_lsp::lsp_types::DiagnosticOptions;
 use auto_lsp::lsp_types::DiagnosticServerCapabilities;
 use auto_lsp::lsp_types::FoldingRangeProviderCapability;
 use auto_lsp::lsp_types::HoverProviderCapability;
+use auto_lsp::lsp_types::ImplementationProviderCapability;
 use auto_lsp::lsp_types::ServerCapabilities;
+use auto_lsp::lsp_types::TypeDefinitionProviderCapability;
 use auto_lsp::lsp_types::WorkDoneProgressOptions;
 use auto_lsp::lsp_types::{
     OneOf, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
@@ -60,6 +65,8 @@ use std::panic::RefUnwindSafe;
 use crate::capabilties::code_actions::code_actions;
 use crate::capabilties::code_lens::code_lens;
 use crate::capabilties::completions::request::completions;
+use crate::capabilties::declaration::go_to_declaration;
+use crate::capabilties::definition::go_to_definition;
 use crate::capabilties::diagnostics::diagnostics;
 use crate::capabilties::diagnostics::workspace_diagnostics;
 use crate::capabilties::document_symbols::document_symbols;
@@ -121,6 +128,8 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
                         work_done_progress: None,
                     },
                 }),
+                declaration_provider: Some(DeclarationCapability::Simple(true)),
+                definition_provider: Some(OneOf::Left(true)),
                 document_formatting_provider: Some(OneOf::Left(true)),
                 ..Default::default()
             },
@@ -158,6 +167,8 @@ fn on_requests<Db: BaseDatabase + Clone + RefUnwindSafe>(
         .on::<Completion, _>(completions)
         .on::<InlayHintRequest, _>(inlay_hints)
         .on::<Formatting, _>(formatting)
+        .on::<GotoDeclaration, _>(go_to_declaration)
+        .on::<GotoDefinition, _>(go_to_definition)
 }
 
 fn on_notifications<Db: BaseDatabase + Clone + RefUnwindSafe>(

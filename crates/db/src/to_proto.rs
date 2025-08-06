@@ -1,7 +1,7 @@
 use auto_lsp::{
     core::span::Span,
     default::db::BaseDatabase,
-    lsp_types::{CompletionItem, Hover, InlayHint, SymbolKind},
+    lsp_types::{self, request::GotoDeclarationResponse, CompletionItem, GotoDefinitionResponse, Hover, InlayHint, Location, SymbolKind, Url},
 };
 
 use crate::hir::{
@@ -79,6 +79,22 @@ pub trait ToProto<'db> {
         _db: &'db dyn crate::BaseDatabase,
         _sema: &'db SemanticIndex<'db>,
     ) -> Option<Hover> {
+        None
+    }
+
+    fn declaration(
+        &'db self,
+        _db: &'db dyn crate::BaseDatabase,
+        _sema: &'db SemanticIndex<'db>,
+    ) -> Option<GotoDeclarationResponse> {
+        None
+    }
+
+    fn definition(
+        &'db self,
+        _db: &'db dyn crate::BaseDatabase,
+        _sema: &'db SemanticIndex<'db>,
+    ) -> Option<GotoDefinitionResponse> {
         None
     }
 }

@@ -8,3 +8,5 @@ pub mod formatting;
 pub mod hover;
 pub mod inlay_hints;
 pub mod semantic_tokens;
+pub mod declaration;
+pub mod definition;
