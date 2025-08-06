@@ -5265,7 +5265,7 @@
         },
         {
           "type": "FIELD",
-          "name": "declarations",
+          "name": "variables",
           "content": {
             "type": "REPEAT",
             "content": {

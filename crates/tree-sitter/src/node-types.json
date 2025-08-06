@@ -1306,16 +1306,6 @@
     "type": "class_decl",
     "named": true,
     "fields": {
-      "declarations": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "_class_variables",
-            "named": true
-          }
-        ]
-      },
       "directives": {
         "multiple": true,
         "required": false,
@@ -1377,6 +1367,16 @@
           {
             "type": "FINAL",
             "named": false
+          }
+        ]
+      },
+      "variables": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "_class_variables",
+            "named": true
           }
         ]
       }
