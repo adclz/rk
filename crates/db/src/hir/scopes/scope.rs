@@ -1,43 +1,7 @@
 use auto_lsp::{core::ast::AstNode, default::db::file::File};
 use bitflags::bitflags;
 
-use crate::hir::using::Using;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, salsa::Update)]
-pub struct NamespaceId(pub(crate) usize);
-
-impl<T: AstNode> From<&T> for NamespaceId {
-    fn from(node: &T) -> Self {
-        NamespaceId(node.get_id())
-    }
-}
-
-impl From<usize> for NamespaceId {
-    fn from(node: usize) -> Self {
-        NamespaceId(node)
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, salsa::Update)]
-pub struct PouId(pub(crate) usize);
-
-impl<T: AstNode> From<&T> for PouId {
-    fn from(node: &T) -> Self {
-        PouId(node.get_id())
-    }
-}
-
-impl From<usize> for PouId {
-    fn from(node: usize) -> Self {
-        PouId(node)
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub struct ScopedNamespaceId(pub NamespaceId, pub File);
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub struct FilePouId(pub PouId, pub File);
+use crate::hir::{namespace::Namespace, pous::pou::PouDecl, using::Using};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, salsa::Update)]
 pub struct ScopeId(usize);
@@ -65,7 +29,7 @@ pub struct Scope<'db> {
     // TLDR: Using directives are not recursive
     pub usings: Vec<Using<'db>>,
 
-    pub kind: ScopeKind,
+    pub kind: ScopeKind<'db>,
 
     pub id: ScopeId,
 
@@ -75,11 +39,10 @@ pub struct Scope<'db> {
     pub visibility: Visibility,
 }
 
-#[salsa::tracked]
 impl<'db> Scope<'db> {
     pub fn new(
         file: File,
-        kind: ScopeKind,
+        kind: ScopeKind<'db>,
         usings: Vec<Using<'db>>,
         id: ScopeId,
         visibility: Visibility,
@@ -125,9 +88,9 @@ impl Default for Visibility {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ScopeKind {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, salsa::Update)]
+pub enum ScopeKind<'db> {
     Global,
-    Namespace(NamespaceId),
-    Pou(PouId),
+    Namespace(Namespace<'db>),
+    Pou(PouDecl<'db>),
 }

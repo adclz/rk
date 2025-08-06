@@ -46,9 +46,8 @@ pub fn duplicate_declarations<'db>(db: &'db dyn BaseDatabase, file: File) {
         imported_pous_in_scope(db, file, scope.id);
     }
 
-    for (id, ns) in sema.namespace_keys.iter() {
+    for ns in sema.namespaces.iter() {
         for pou in ns.pous(db).iter() {
-            let pou = sema.get_pou(*pou);
             let pou_name = pou.name(db);
 
             match pou.pou(db) {

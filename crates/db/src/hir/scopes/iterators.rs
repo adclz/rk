@@ -1,8 +1,16 @@
 use std::iter::FusedIterator;
 
+use auto_lsp::default::db::BaseDatabase;
 use rustc_hash::FxHashMap;
 
-use crate::hir::scopes::scope::{Scope, ScopeId};
+use crate::hir::{
+    interned::{identifier::Ident, namespace::NamespacePath},
+    scopes::{
+        scope::{Scope, ScopeId, ScopeKind},
+        solver::imported_pous_in_scope,
+    },
+    semantic_index::SemanticIndex,
+};
 
 pub struct AncestorsIter<'db> {
     scopes: &'db FxHashMap<ScopeId, Scope<'db>>,

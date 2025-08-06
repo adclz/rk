@@ -4,18 +4,18 @@ use crate::hir::interned::identifier::Ident;
 use crate::hir::interned::namespace::SpannedNamespaceAccess;
 use crate::hir::pous::interface::{Interface, Method};
 use crate::hir::pous::pou::{Pou, PouDecl};
-use crate::hir::scopes::scope::{PouId, Scope, ScopeKind, Visibility};
+use crate::hir::scopes::scope::{Scope, ScopeKind, Visibility};
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::parser::{ParseSpec, ParseVarSection};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 
-impl SemanticIndexBuilder<'_> {
+impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_interface(
         &mut self,
         interface: &ast::generated::InterfaceDecl,
-    ) -> anyhow::Result<PouId> {
-        let (id, pou_key, file_id) = self.create_pou_id(interface);
+    ) -> anyhow::Result<PouDecl<'db>> {
+        let scope_id = self.create_pou_id(interface);
 
         let name = Ident::from_node(self.db, self.file, interface.name.deref())?;
         let extends = interface
@@ -37,31 +37,27 @@ impl SemanticIndexBuilder<'_> {
 
         let usings = self.parse_usings(&interface.directives)?;
 
+        let result = PouDecl::new(
+            self.db,
+            Pou::Interface(Interface::new(self.db, extends, vec![], self.current_scope)),
+            interface.get_span(),
+            name,
+            interface.name.get_span(),
+            self.current_scope,
+        );
+
         let scope = Scope::new(
             self.file,
-            ScopeKind::Pou(pou_key),
+            ScopeKind::Pou(result),
             usings,
-            id,
+            scope_id,
             Visibility::empty(),
             Some(self.current_scope),
         );
 
-        self.scope_keys.insert(id, scope);
+        self.scope_keys.insert(scope_id, scope);
 
-        self.pou_keys.insert(
-            pou_key,
-            PouDecl::new(
-                self.db,
-                Pou::Interface(Interface::new(self.db, extends, vec![], self.current_scope)),
-                interface.get_span(),
-                name,
-                interface.name.get_span(),
-                file_id,
-                self.current_scope,
-            ),
-        );
-
-        Ok(pou_key)
+        Ok(result)
     }
 
     pub fn parse_method_prototype<'a>(

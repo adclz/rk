@@ -3,7 +3,7 @@ use auto_lsp::default::db::BaseDatabase;
 use crate::{
     hir::{
         interned::namespace::SpannedNamespaceAccess, pous::variable::Variable,
-        scopes::scope::ScopeId, semantic_index::SemanticIndex, visibility::Modifiers,
+        scopes::scope::{Scope, ScopeId}, semantic_index::SemanticIndex, visibility::Modifiers,
     },
     to_proto::{IterToProto, ToProto},
 };

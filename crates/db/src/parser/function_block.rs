@@ -8,7 +8,7 @@ use crate::hir::interned::namespace::SpannedNamespaceAccess;
 use crate::hir::pous::function_block::FunctionBlock;
 use crate::hir::pous::pou::{Pou, PouDecl};
 use crate::hir::pous::variable::Variable;
-use crate::hir::scopes::scope::{FilePouId, PouId, Scope, ScopeKind, Visibility};
+use crate::hir::scopes::scope::{Scope, ScopeKind, Visibility};
 use crate::hir::visibility::Modifiers;
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::parser::ParseVarSection;
@@ -17,7 +17,7 @@ use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 
 impl<'db> SemanticIndexBuilder<'db> {
-    pub fn parse_function_block(&mut self, func: &FbDecl) -> anyhow::Result<PouId> {
+    pub fn parse_function_block(&mut self, func: &FbDecl) -> anyhow::Result<PouDecl<'db>> {
         let variables = func.parse_variables(self)?;
 
         let extends = func
@@ -58,43 +58,39 @@ impl<'db> SemanticIndexBuilder<'db> {
             ast::generated::Operators_2::Token_FINAL(_) => modifiers.insert(Modifiers::FINAL),
         });
 
-        let (id, pou_key, file_id) = self.create_pou_id(func);
+        let scope_id = self.create_pou_id(func);
 
         let name = Ident::from_node(self.db, self.file, func.name.deref())?;
         let usings = self.parse_usings(&func.directives)?;
 
+        let result = PouDecl::new(
+            self.db,
+            Pou::FunctionBlock(FunctionBlock::new(
+                self.db,
+                extends,
+                implements,
+                variables,
+                modifiers,
+                self.current_scope,
+            )),
+            func.get_span(),
+            name,
+            func.name.get_span(),
+            self.current_scope,
+        );
+
         let scope = Scope::new(
             self.file,
-            ScopeKind::Pou(pou_key),
+            ScopeKind::Pou(result),
             usings,
-            id,
+            scope_id,
             Visibility::empty(),
             Some(self.current_scope),
         );
 
-        self.scope_keys.insert(id, scope);
+        self.scope_keys.insert(scope_id, scope);
 
-        self.pou_keys.insert(
-            pou_key,
-            PouDecl::new(
-                self.db,
-                Pou::FunctionBlock(FunctionBlock::new(
-                    self.db,
-                    extends,
-                    implements,
-                    variables,
-                    modifiers,
-                    self.current_scope,
-                )),
-                func.get_span(),
-                name,
-                func.name.get_span(),
-                FilePouId(pou_key, self.file),
-                self.current_scope,
-            ),
-        );
-
-        Ok(pou_key)
+        Ok(result)
     }
 }
 

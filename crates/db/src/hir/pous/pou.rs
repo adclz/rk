@@ -16,7 +16,7 @@ use crate::{
             class::Class, data_type::DataType, function::Function, function_block::FunctionBlock,
             interface::Interface,
         },
-        scopes::scope::{FilePouId, ScopeId},
+        scopes::scope::{ScopeId},
         semantic_index::SemanticIndex,
         signature::type_signature,
     },
@@ -38,8 +38,6 @@ pub struct PouDecl<'db> {
     #[tracked]
     #[returns(ref)]
     pub name_span: Span,
-
-    pub pou_id: FilePouId,
 
     pub scope_id: ScopeId,
 }

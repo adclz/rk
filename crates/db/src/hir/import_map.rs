@@ -249,9 +249,8 @@ pub fn file_symbol_index<'db>(db: &'db dyn BaseDatabase, file: File) -> SymbolIn
 
     let sema = semantic_index(db, file);
 
-    sema.namespace_keys.iter().for_each(|(key, ns)| {
+    sema.namespaces.iter().for_each(|ns| {
         ns.pous(db).iter().for_each(|pou| {
-            let pou = sema.get_pou(*pou);
             pous.push(FileSymbol {
                 name: pou.name(db).text(db).to_string(),
                 is_import: false, // This can be set based on some condition

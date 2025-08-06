@@ -12,9 +12,11 @@ use crate::{
             identifier::Ident,
             namespace::{NamespaceAccess, NamespacePath},
         },
+        namespace::Namespace,
+        pous::pou::PouDecl,
         scopes::{
             iterators::AncestorsIter,
-            scope::{FilePouId, PouId, ScopeId, ScopeKind, ScopedNamespaceId},
+            scope::{ScopeId, ScopeKind},
         },
         semantic_index::{semantic_index, SemanticIndex},
         using::Using,
@@ -26,20 +28,17 @@ use crate::{
 pub fn shared_namespaces<'db>(
     db: &'db dyn BaseDatabase,
     path: NamespacePath,
-) -> Vec<ScopedNamespaceId> {
+) -> Vec<Namespace<'db>> {
     db.get_files()
         .iter()
         .filter_map(|file| {
-            semantic_index(db, *file)
-                .namespace_keys
-                .iter()
-                .find_map(|(key, ns)| {
-                    if ns.path(db) == &path {
-                        Some(ScopedNamespaceId(*key, *file))
-                    } else {
-                        None
-                    }
-                })
+            semantic_index(db, *file).namespaces.iter().find_map(|ns| {
+                if ns.path(db) == &path {
+                    Some(*ns)
+                } else {
+                    None
+                }
+            })
         })
         .collect()
 }
@@ -50,7 +49,7 @@ pub fn imported_pous_in_scope<'db>(
     db: &'db dyn BaseDatabase,
     file: File,
     scope_id: ScopeId,
-) -> FxHashMap<Ident, FilePouId> {
+) -> FxHashMap<Ident, PouDecl<'db>> {
     let sema = semantic_index(db, file);
     let scope = sema.get_scope(scope_id);
 
@@ -60,10 +59,8 @@ pub fn imported_pous_in_scope<'db>(
         let exported_namespaces = imported_namespaces(db, file, *using);
 
         for (path, ns) in exported_namespaces {
-            let sema = semantic_index(db, ns.1);
-
-            for pou in sema.get_namespace(ns.0).pous(db).iter() {
-                pous.insert(*sema.pou_keys[pou].name(db), FilePouId(*pou, ns.1));
+            for pou in ns.pous(db).iter() {
+                pous.insert(*pou.name(db), *pou);
             }
         }
     });
@@ -83,7 +80,7 @@ fn imported_namespaces<'db>(
     db: &'db dyn BaseDatabase,
     file: File,
     using: Using<'db>,
-) -> FxHashMap<NamespacePath, ScopedNamespaceId> {
+) -> FxHashMap<NamespacePath, Namespace<'db>> {
     let mut results = FxHashMap::default();
     // 1: Check if the namespace exists
     let accross = shared_namespaces(db, using.path(db));
@@ -106,20 +103,16 @@ fn imported_namespaces<'db>(
         });
 
     for scoped_ns in accross {
-        let ns_file = scoped_ns.1;
-        let ns_id = scoped_ns.0;
-
-        let sema = semantic_index(db, ns_file);
-        let ns = sema.get_namespace(ns_id);
+        let ns_file = scoped_ns.file(db);
 
         // 2: Check if the namespace is not shadowed by any other namespace in the current scope
         if ns_file == file {
-            let mut ancestors = sema.ancestor_scopes(ns.scope_id(db));
+            let mut ancestors = sema.ancestor_scopes(scoped_ns.scope_id(db));
             if let Some(parent) = ancestors.find_map(|sc| {
                 if let ScopeKind::Namespace(ns_id) = sc.kind {
-                    let ns_path = sema.get_namespace(ns_id).path(db);
+                    let ns_path = ns_id.path(db);
                     if *ns_path == using.path(db) {
-                        Some(sema.get_namespace(ns_id))
+                        Some(ns_id)
                     } else {
                         None
                     }
@@ -127,20 +120,20 @@ fn imported_namespaces<'db>(
                     None
                 }
             }) {
-                namespace_already_in_scope(db, file, using, *parent);
+                namespace_already_in_scope(db, file, using, parent);
             }
         }
-        results.insert(*ns.path(db), ScopedNamespaceId(ns_id, file));
+        results.insert(*scoped_ns.path(db), *scoped_ns);
     }
     results
 }
 
-pub fn resolve_namespace_access(
-    db: &dyn BaseDatabase,
+pub fn resolve_namespace_access<'db>(
+    db: &'db dyn BaseDatabase,
     file: File,
     scope: ScopeId,
     access: NamespaceAccess,
-) -> Option<FilePouId> {
+) -> Option<PouDecl<'db>> {
     let target = access.target(db);
 
     // Namespace is optional
@@ -148,13 +141,11 @@ pub fn resolve_namespace_access(
         Some(ns) => {
             let namespaces = shared_namespaces(db, ns);
             namespaces.iter().find_map(|ns| {
-                let sema = semantic_index(db, ns.1);
-                let pou = sema
-                    .get_namespace(ns.0)
+                let pou = ns
                     .pous(db)
                     .iter()
-                    .find(|pou| *sema.pou_keys[*pou].name(db) == target.ident)?;
-                Some(FilePouId(*pou, ns.1))
+                    .find(|pou| *pou.name(db) == target.ident)?;
+                Some(*pou)
             })
         }
         None => semantic_index(db, file)
@@ -190,7 +181,7 @@ impl<'db> LocalIndex<'db> {
         self.mode = LocalSearchMode::Recursive;
     }
 
-    pub fn find_exact_pou(&self, pou_name: Ident) -> Option<FilePouId> {
+    pub fn find_exact_pou(&self, pou_name: Ident) -> Option<PouDecl<'db>> {
         let pou = PouIterator::new(self.db, self.sema, self.scope)
             .find(|(name, _)| *name == pou_name)
             .map(|(_, pou)| pou)?;
@@ -201,7 +192,7 @@ impl<'db> LocalIndex<'db> {
                 let curr_scope = self.sema.get_scope(self.scope);
                 match curr_scope.kind {
                     ScopeKind::Pou(pou_id) => {
-                        if FilePouId(pou_id, self.sema.file) == pou {
+                        if pou_id == pou {
                             None
                         } else {
                             Some(pou)
@@ -226,9 +217,9 @@ pub struct PouIterator<'db> {
     db: &'db dyn BaseDatabase,
     sema: &'db SemanticIndex<'db>,
 
-    exported_pous_iter: std::collections::hash_map::Iter<'db, Ident, FilePouId>,
+    exported_pous_iter: std::collections::hash_map::Iter<'db, Ident, PouDecl<'db>>,
     ancestor_iter: AncestorsIter<'db>,
-    current_iterator: Option<std::slice::Iter<'db, PouId>>,
+    current_iterator: Option<std::slice::Iter<'db, PouDecl<'db>>>,
 }
 
 impl<'db> PouIterator<'db> {
@@ -245,7 +236,7 @@ impl<'db> PouIterator<'db> {
 }
 
 impl<'db> Iterator for PouIterator<'db> {
-    type Item = (Ident, FilePouId);
+    type Item = (Ident, PouDecl<'db>);
 
     fn next(&mut self) -> Option<Self::Item> {
         // Exported phase first
@@ -255,8 +246,7 @@ impl<'db> Iterator for PouIterator<'db> {
 
         if let Some(iter) = &mut self.current_iterator {
             if let Some(pou) = iter.next() {
-                let pou_name = self.sema.pou_keys[pou].name(self.db);
-                return Some((*pou_name, FilePouId(*pou, self.sema.file)));
+                return Some((*pou.name(self.db), *pou));
             } else {
                 self.current_iterator = None;
             }
@@ -269,14 +259,14 @@ impl<'db> Iterator for PouIterator<'db> {
                     // todo:
                     return None;
                 }
-                ScopeKind::Namespace(ns_id) => {
-                    let ns = self.sema.get_namespace(ns_id);
+                ScopeKind::Namespace(ns) => {
                     self.current_iterator = Some(ns.pous(self.db).iter());
 
-                    return self.current_iterator.as_mut().unwrap().next().map(|pou| {
-                        let pou_name = self.sema.pou_keys[pou].name(self.db);
-                        (*pou_name, FilePouId(*pou, self.sema.file))
-                    });
+                    if let Some(pou) = self.current_iterator.as_mut().unwrap().next() {
+                        return Some((*pou.name(self.db), *pou));
+                    }
+                    // If the namespace has no POUs, continue to the next ancestor
+                    self.current_iterator = None;
                 }
                 _ => continue,
             }

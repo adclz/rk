@@ -6,7 +6,8 @@ use auto_lsp::lsp_types::{
 
 use crate::completions;
 use crate::hir::interned::namespace::NamespacePath;
-use crate::hir::scopes::scope::{PouId, ScopeId, Visibility};
+use crate::hir::pous::pou::PouDecl;
+use crate::hir::scopes::scope::{ScopeId, Visibility};
 use crate::hir::semantic_index::SemanticIndex;
 use crate::to_proto::{self_iter, IterToProto, SymbolInfo, ToProto};
 
@@ -24,7 +25,7 @@ pub struct Namespace<'db> {
 
     #[tracked]
     #[returns(ref)]
-    pub pous: Vec<PouId>,
+    pub pous: Vec<PouDecl<'db>>,
 
     pub file: File,
 
@@ -112,7 +113,6 @@ impl<'db> ToProto<'db> for Namespace<'db> {
         ];
         // Using directives can only be added before any POU declarations
         if let Some(pou) = self.pous(db).first() {
-            let pou = sema.get_pou(*pou);
             if pou.get_span(db).end_byte >= offset {
                 completions.push(completions::snippets::using());
             }
@@ -134,24 +134,9 @@ impl<'db> IterToProto<'db> for Namespace<'db> {
         self_iter(self)
             .chain(scope.usings.iter().map(move |using| using as _))
             .chain(
-                self.sorted_pous(db)
+                self.pous(db)
                     .iter()
-                    .flat_map(move |pou| sema.get_pou(*pou).iter(db, sema)),
+                    .flat_map(move |pou| pou.iter(db, sema)),
             )
-    }
-}
-
-/// Pous need to be sorted by their order of appearance in the namespace.
-///
-/// Since FxHashMap does not guarantee order, we need to sort them explicitly.
-///
-/// This is only used when iterating at the namespace level.
-#[salsa::tracked]
-impl<'db> Namespace<'db> {
-    #[salsa::tracked(returns(ref))]
-    fn sorted_pous(self, db: &'db dyn BaseDatabase) -> Vec<PouId> {
-        let mut sorted_pous: Vec<_> = self.pous(db).to_vec();
-        sorted_pous.sort();
-        sorted_pous
     }
 }

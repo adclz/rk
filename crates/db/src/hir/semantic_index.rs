@@ -2,17 +2,16 @@ use auto_lsp::default::db::tracked::get_ast;
 use auto_lsp::default::db::{file::File, BaseDatabase};
 use rustc_hash::FxHashMap;
 
-use crate::hir::interned::namespace::NamespacePath;
 use crate::hir::namespace::Namespace;
 use crate::hir::pous::pou::PouDecl;
 use crate::hir::scopes::iterators::AncestorsIter;
-use crate::hir::scopes::scope::{NamespaceId, PouId, Scope, ScopeId, ScopedNamespaceId};
+use crate::hir::scopes::scope::{Scope, ScopeId};
 use crate::hir::scopes::solver::LocalIndex;
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::to_proto::{IterToProto, ToProto};
 
 /// Returns the semantic index of a given file
-#[salsa::tracked]
+#[salsa::tracked(returns(ref))]
 pub fn semantic_index<'db>(db: &'db dyn BaseDatabase, file: File) -> SemanticIndex<'db> {
     let ast = match get_ast(db, file).get_root() {
         Some(ast) => ast,
@@ -29,18 +28,15 @@ pub fn semantic_index<'db>(db: &'db dyn BaseDatabase, file: File) -> SemanticInd
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub struct SemanticIndex<'db> {
     pub file: File,
-
+ 
     /// Map of scope IDs to their corresponding scopes
     pub scopes: FxHashMap<ScopeId, Scope<'db>>,
 
-    /// Map of namespace keys to their corresponding namespaces
-    pub namespace_keys: FxHashMap<NamespaceId, Namespace<'db>>,
+    /// Global POU declarations in the file
+    pub global_pous: Vec<PouDecl<'db>>,
 
-    /// Map of pou keys to their corresponding POU declarations
-    pub pou_keys: FxHashMap<PouId, PouDecl<'db>>,
-
-    /// Map of scope IDs to their containing namespaces
-    pub scope_to_namespaces: FxHashMap<ScopeId, FxHashMap<NamespacePath, ScopedNamespaceId>>,
+    /// All namespaces in the file
+    pub namespaces: Vec<Namespace<'db>>,
 }
 
 impl<'db> SemanticIndex<'db> {
@@ -48,18 +44,9 @@ impl<'db> SemanticIndex<'db> {
         SemanticIndex {
             file,
             scopes: FxHashMap::default(),
-            namespace_keys: FxHashMap::default(),
-            pou_keys: FxHashMap::default(),
-            scope_to_namespaces: FxHashMap::default(),
+            global_pous: Vec::new(),
+            namespaces: Vec::new(),
         }
-    }
-
-    pub fn get_namespace(&'db self, key: NamespaceId) -> &'db Namespace<'db> {
-        &self.namespace_keys[&key]
-    }
-
-    pub fn get_pou(&'db self, key: PouId) -> &'db PouDecl<'db> {
-        &self.pou_keys[&key]
     }
 
     pub fn get_scope(&'db self, id: ScopeId) -> &'db Scope<'db> {
@@ -70,7 +57,7 @@ impl<'db> SemanticIndex<'db> {
         AncestorsIter::new(&self.scopes, self.get_scope(scope))
     }
 
-    pub fn local_index(&self, db: &'db dyn BaseDatabase, scope: ScopeId) -> LocalIndex {
+    pub fn local_index(&'db self, db: &'db dyn BaseDatabase, scope: ScopeId) -> LocalIndex<'db> {
         LocalIndex::new(db, self, scope)
     }
 }
@@ -81,8 +68,8 @@ impl<'db> IterToProto<'db> for SemanticIndex<'db> {
         db: &'db dyn BaseDatabase,
         sema: &'db SemanticIndex,
     ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        self.namespace_keys
+        self.namespaces
             .iter()
-            .flat_map(move |(key, ns)| ns.iter(db, sema))
+            .flat_map(move |ns| ns.iter(db, sema))
     }
 }

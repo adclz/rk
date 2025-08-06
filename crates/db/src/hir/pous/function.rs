@@ -5,7 +5,7 @@ use crate::{
     hir::{
         expressions::{spec::Spec, statement::Stmt},
         pous::variable::Variable,
-        scopes::scope::ScopeId,
+        scopes::scope::{Scope, ScopeId},
         semantic_index::SemanticIndex,
     },
     to_proto::{IterToProto, ToProto},

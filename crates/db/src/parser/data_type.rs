@@ -7,7 +7,7 @@ use crate::{
             data_type::DataType,
             pou::{Pou, PouDecl},
         },
-        scopes::scope::{FilePouId, PouId, Scope, ScopeKind, Visibility},
+        scopes::scope::{Scope, ScopeKind, Visibility},
     },
     parser::{semantic_index::SemanticIndexBuilder, ParseInit, ParseSpec},
 };
@@ -16,7 +16,7 @@ use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 
 impl<'db> SemanticIndexBuilder<'db> {
-    pub fn parse_data_type(&mut self, data_type: &TypeDecl) -> anyhow::Result<PouId> {
+    pub fn parse_data_type(&mut self, data_type: &TypeDecl) -> anyhow::Result<PouDecl<'db>> {
         let name = Ident::from_node(self.db, self.file, data_type.name.deref())?;
 
         type Spec = ast::generated::ArrayTypeSpec_EnumTypeSpec_RefTypeSpec_SimpleTypeSpec_StrTypeSpec_StructTypeSpec_SubrangeTypeSpec;
@@ -40,32 +40,28 @@ impl<'db> SemanticIndexBuilder<'db> {
             None => None,
         };
 
-        let (id, pou_key, file_id) = self.create_pou_id(data_type);
+        let scope_id = self.create_pou_id(data_type);
 
-        let scope = Scope::new(
-            self.file,
-            ScopeKind::Pou(pou_key),
-            vec![],
-            id,
-            Visibility::empty(),
-            Some(self.current_scope),
-        );
-
-        self.scope_keys.insert(id, scope);
-
-        self.pou_keys.insert(
-            pou_key,
-            PouDecl::new(
+                let result = PouDecl::new(
                 self.db,
                 Pou::DataType(DataType::new(self.db, spec, init, self.current_scope)),
                 data_type.get_span(),
                 name,
                 data_type.name.get_span(),
-                FilePouId(pou_key, self.file),
                 self.current_scope,
-            ),
+            );
+
+        let scope = Scope::new(
+            self.file,
+            ScopeKind::Pou(result),
+            vec![],
+            scope_id,
+            Visibility::empty(),
+            Some(self.current_scope),
         );
 
-        Ok(pou_key)
+        self.scope_keys.insert(scope_id, scope);
+
+        Ok(result)
     }
 }

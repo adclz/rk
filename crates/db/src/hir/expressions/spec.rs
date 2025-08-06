@@ -38,8 +38,6 @@ impl<'db> Spec<'db> {
                 let sema = semantic_index(db, self.file(db));
                 match resolve_namespace_access(db, sema.file, self.scope_id(db), *target) {
                     Some(pou) => {
-                        let sema = semantic_index(db, pou.1);
-                        let pou = sema.pou_keys[&pou.0];
                         match pou.pou(db) {
                             Pou::Function(dt) => format!("(function) {}", pou.name(db).text(db)),
                             Pou::FunctionBlock(fb) => {
@@ -223,8 +221,6 @@ impl<'db> ToProto<'db> for Spec<'db> {
             SpecKind::Target(target) => {
                 match resolve_namespace_access(db, sema.file, self.scope_id(db), *target) {
                     Some(pou) => {
-                        let sema = semantic_index(db, pou.1);
-                        let pou = sema.pou_keys[&pou.0];
                         pou.hover(db, &sema)
                     }
                     None => None,
@@ -255,7 +251,6 @@ impl<'db> ToProto<'db> for Spec<'db> {
         let finder = sema.local_index(db, self.scope_id(db));
 
         primary.extend(finder.list_pous().filter_map(|(name, pou)| {
-            let pou = sema.get_pou(pou.0);
             match pou.pou(db) {
                 Pou::DataType(fb) => Some(auto_lsp::lsp_types::CompletionItem {
                     label: pou.name(db).text(db).to_string(),

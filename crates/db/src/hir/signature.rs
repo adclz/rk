@@ -14,30 +14,30 @@ use crate::hir::{
         variable::VariableKind,
     },
     scopes::{
-        scope::{FilePouId, ScopeId},
+        scope::{ScopeId},
         solver::resolve_namespace_access,
     },
-    semantic_index::{semantic_index, SemanticIndex},
+    semantic_index::{SemanticIndex},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub struct TypeSignature<'db> {
     pub name: Option<Ident>,
-    pub kind: SignatureKind,
+    pub kind: SignatureKind<'db>,
     pub specs: FxHashMap<Ident, TypeParameter<'db>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
-pub enum SignatureKind {
-    Pou(FilePouId),
+pub enum SignatureKind<'db> {
+    Pou(PouDecl<'db>),
     // Errored variants
-    Recursive(FilePouId),
+    Recursive(PouDecl<'db>),
     Never(SpannedNamespaceAccess),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub struct CallableSignature<'db> {
-    pub kind: CallableSignatureKind,
+    pub kind: CallableSignatureKind<'db>,
     pub input_section: FxHashMap<Ident, TypeParameter<'db>>,
     pub output_section: FxHashMap<Ident, TypeParameter<'db>>,
     pub in_out_section: FxHashMap<Ident, TypeParameter<'db>>,
@@ -45,12 +45,12 @@ pub struct CallableSignature<'db> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
-pub enum CallableSignatureKind {
-    Function(FilePouId),
-    FunctionBlock(FilePouId),
-    Method(FilePouId),
+pub enum CallableSignatureKind<'db> {
+    Function(PouDecl<'db>),
+    FunctionBlock(PouDecl<'db>),
+    Method(PouDecl<'db>),
     // Errored variants
-    Recursive(FilePouId),
+    Recursive(PouDecl<'db>),
     Never(SpannedNamespaceAccess),
 }
 
@@ -73,14 +73,14 @@ pub enum TypeParameter<'db> {
     // Errors
     Unresolved(NamespaceAccess),
     // usually means a function is being used
-    Incompatible(FilePouId),
+    Incompatible(PouDecl<'db>),
 }
 
 fn type_signature_result<'db>(
     db: &'db dyn BaseDatabase,
-    value: PouDecl<'db>,
+    pou: PouDecl<'db>,
 ) -> Option<Arc<TypeSignature<'db>>> {
-    TypeSignature::recursive(db, value.pou_id(db))
+    TypeSignature::recursive(db, pou)
 }
 
 #[salsa::tracked(cycle_result = type_signature_result)]
@@ -88,7 +88,7 @@ pub fn type_signature<'db>(
     db: &'db dyn BaseDatabase,
     pou: PouDecl<'db>,
 ) -> Option<Arc<TypeSignature<'db>>> {
-    let kind = SignatureKind::Pou(pou.pou_id(db));
+    let kind = SignatureKind::Pou(pou);
     let mut parameters = FxHashMap::default();
 
     match pou.pou(db) {
@@ -130,16 +130,14 @@ fn call_signature_result<'db>(
     db: &'db dyn BaseDatabase,
     value: PouDecl<'db>,
 ) -> Option<Arc<CallableSignature<'db>>> {
-    CallableSignature::recursive(db, value.pou_id(db))
+    CallableSignature::recursive(db, value)
 }
 
 impl<'db> CallableSignature<'db> {
     pub fn recursive(
         db: &'db dyn BaseDatabase,
-        pou: FilePouId,
+        pou: PouDecl<'db>,
     ) -> Option<Arc<CallableSignature<'db>>> {
-        let sema = semantic_index(db, pou.1);
-        let id = sema.pou_keys[&pou.0];
         Some(Arc::new(CallableSignature {
             kind: CallableSignatureKind::Recursive(pou),
             input_section: FxHashMap::default(),
@@ -156,9 +154,9 @@ pub fn call_signature<'db>(
     pou: PouDecl<'db>,
 ) -> Option<Arc<CallableSignature<'db>>> {
     let kind = match pou.pou(db) {
-        Pou::Function(f) => CallableSignatureKind::Function(pou.pou_id(db)),
-        Pou::FunctionBlock(fb) => CallableSignatureKind::FunctionBlock(pou.pou_id(db)),
-        Pou::Class(c) => CallableSignatureKind::Method(pou.pou_id(db)),
+        Pou::Function(f) => CallableSignatureKind::Function(pou),
+        Pou::FunctionBlock(fb) => CallableSignatureKind::FunctionBlock(pou),
+        Pou::Class(c) => CallableSignatureKind::Method(pou),
         Pou::DataType(_) | Pou::Interface(_) => return None,
     };
 
@@ -229,11 +227,9 @@ pub fn call_signature<'db>(
 }
 
 impl<'db> TypeSignature<'db> {
-    pub fn recursive(db: &'db dyn BaseDatabase, pou: FilePouId) -> Option<Arc<TypeSignature<'db>>> {
-        let sema = semantic_index(db, pou.1);
-        let id = sema.pou_keys[&pou.0];
+    pub fn recursive(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Option<Arc<TypeSignature<'db>>> {
         Some(Arc::new(TypeSignature {
-            name: Some(*id.name(db)),
+            name: Some(*pou.name(db)),
             kind: SignatureKind::Recursive(pou),
             specs: FxHashMap::default(),
         }))
@@ -259,9 +255,6 @@ impl<'db> TypeSignature<'db> {
                 return "{unknown}".to_string();
             }
         };
-
-        let sema = semantic_index(db, pou.1);
-        let pou = sema.pou_keys[&pou.0];
 
         let (head, end) = match pou.pou(db) {
             Pou::Function(_) => ("FUNCTION", "END_FUNCTION"),
@@ -330,13 +323,11 @@ impl<'db> Spec<'db> {
 
             SpecKind::Target(target) => {
                 match resolve_namespace_access(db, self.file(db), self.scope_id(db), *target) {
-                    Some(id) => {
-                        let pou = semantic_index(db, self.file(db)).pou_keys[&id.0];
-
+                    Some(pou) => {
                         let signature = type_signature(db, pou);
                         match signature {
                             Some(signature) => TypeParameter::Pou(signature),
-                            None => TypeParameter::Incompatible(pou.pou_id(db)),
+                            None => TypeParameter::Incompatible(pou),
                         }
                     }
                     None => TypeParameter::Unresolved(*target),

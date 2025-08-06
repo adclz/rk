@@ -7,7 +7,7 @@ use crate::hir::interned::identifier::SpannedIdent;
 use crate::hir::interned::namespace::NamespacePath;
 use crate::hir::namespace::Namespace;
 use crate::hir::scopes::scope::{
-    NamespaceId, Scope, ScopeId, ScopeKind, ScopedNamespaceId, Visibility,
+    Scope, ScopeId, ScopeKind, Visibility,
 };
 
 impl<'db> SemanticIndexBuilder<'db> {
@@ -20,30 +20,11 @@ impl<'db> SemanticIndexBuilder<'db> {
             ERRInvalidPouKeyword_ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl;
 
         let scope_id = ScopeId::from(nested.get_id());
-        let namespace_id = NamespaceId::from(nested.get_id());
         let path = NamespacePath::from((self.db, parent_path));
         let usings = self.parse_usings(&nested.directives)?;
         let mut pous = vec![];
 
-        let scope = Scope::new(
-            self.file,
-            ScopeKind::Namespace(namespace_id),
-            usings,
-            scope_id,
-            match nested.internal {
-                Some(_) => Visibility::INTERNAL,
-                None => Visibility::PUBLIC,
-            },
-            Some(self.current_scope),
-        );
-
-        self.scope_keys.insert(scope_id, scope);
-
-        self.scope_to_namespaces
-            .entry(scope_id)
-            .or_default()
-            .insert(path, ScopedNamespaceId(namespace_id, self.file));
-
+        let previous_scope = self.current_scope.clone();
         self.current_scope = scope_id;
 
         if let Some(elements) = nested.elements.as_ref() {
@@ -91,8 +72,22 @@ impl<'db> SemanticIndexBuilder<'db> {
             scope_id,
         );
 
+        let scope = Scope::new(
+            self.file,
+            ScopeKind::Namespace(result),
+            usings,
+            scope_id,
+            match nested.internal {
+                Some(_) => Visibility::INTERNAL,
+                None => Visibility::PUBLIC,
+            },
+            Some(previous_scope),
+        );
+
+        self.scope_keys.insert(scope_id, scope);
+
         // Then insert it into the map with its ID
-        self.namespace_keys.insert(namespace_id, result);
+        self.namespaces.push(result);
 
         Ok(())
     }

@@ -7,7 +7,7 @@ use crate::hir::interned::identifier::Ident;
 use crate::hir::interned::namespace::SpannedNamespaceAccess;
 use crate::hir::pous::class::Class;
 use crate::hir::pous::pou::{Pou, PouDecl};
-use crate::hir::scopes::scope::{PouId, Scope, ScopeKind, Visibility};
+use crate::hir::scopes::scope::{Scope, ScopeKind, Visibility};
 use crate::hir::visibility::Modifiers;
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::parser::ParseVarSection;
@@ -16,7 +16,7 @@ use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 
 impl<'db> SemanticIndexBuilder<'db> {
-    pub fn parse_class(&mut self, class: &ClassDecl) -> anyhow::Result<PouId> {
+    pub fn parse_class(&mut self, class: &ClassDecl) -> anyhow::Result<PouDecl<'db>> {
         let extends = class
             .extends
             .as_ref()
@@ -70,22 +70,9 @@ impl<'db> SemanticIndexBuilder<'db> {
         let name = Ident::from_node(self.db, self.file, class.name.deref())?;
         let usings = self.parse_usings(&class.directives)?;
 
-        let (id, pou_key, file_id) = self.create_pou_id(class);
+        let scope_id = self.create_pou_id(class);
 
-        let scope = Scope::new(
-            self.file,
-            ScopeKind::Pou(pou_key),
-            usings,
-            id,
-            Visibility::empty(),
-            Some(self.current_scope),
-        );
-
-        self.scope_keys.insert(id, scope);
-
-        self.pou_keys.insert(
-            pou_key,
-            PouDecl::new(
+        let result = PouDecl::new(
                 self.db,
                 Pou::Class(Class::new(
                     self.db,
@@ -98,11 +85,20 @@ impl<'db> SemanticIndexBuilder<'db> {
                 class.get_span(),
                 name,
                 class.name.get_span(),
-                file_id,
                 self.current_scope,
-            ),
+            );
+
+        let scope = Scope::new(
+            self.file,
+            ScopeKind::Pou(result),
+            usings,
+            scope_id,
+            Visibility::empty(),
+            Some(self.current_scope),
         );
 
-        Ok(pou_key)
+        self.scope_keys.insert(scope_id, scope);
+
+        Ok(result)
     }
 }
