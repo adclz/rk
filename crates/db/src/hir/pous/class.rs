@@ -2,8 +2,7 @@ use auto_lsp::default::db::{file::File, BaseDatabase};
 
 use crate::{
     hir::{
-        interned::namespace::SpannedNamespaceAccess, scopes::scope::{FilePouId, ScopeId},
-        semantic_index::SemanticIndex, visibility::Modifiers,
+        interned::namespace::SpannedNamespaceAccess, pous::variable::Variable, scopes::scope::{FilePouId, ScopeId}, semantic_index::SemanticIndex, visibility::Modifiers
     },
     to_proto::{IterToProto, ToProto},
 };
@@ -19,6 +18,10 @@ pub struct Class<'db> {
     #[returns(as_ref)]
     pub implements: Option<Vec<SpannedNamespaceAccess>>,
 
+    #[tracked]    
+    #[returns(ref)]
+    pub variables: Vec<Variable<'db>>,
+
     pub modifiers: Modifiers,
 
     pub scope_id: ScopeId,
@@ -30,6 +33,16 @@ impl<'db> IterToProto<'db> for Class<'db> {
         db: &'db dyn BaseDatabase,
         sema: &'db SemanticIndex,
     ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        Box::new(std::iter::empty())
+                let scope = sema.get_scope(self.scope_id(db));
+
+        scope
+            .usings
+            .iter()
+            .flat_map(move |u| u.iter(db, sema))
+            .chain(
+                self.variables(db)
+                    .iter()
+                    .flat_map(move |v| v.iter(db, sema)),
+            )
     }
 }

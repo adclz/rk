@@ -9,7 +9,8 @@ use crate::hir::pous::pou::{Pou, PouDecl};
 use crate::hir::scopes::scope::{FilePouId, PouId, Scope, ScopeId, ScopeKind, Visibility};
 use crate::hir::visibility::Modifiers;
 use crate::parser::semantic_index::SemanticIndexBuilder;
-use ast::generated::ClassDecl;
+use crate::parser::ParseVarSection;
+use ast::generated::{ClassDecl, ClassVariables};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 use salsa::Accumulator;
@@ -38,6 +39,18 @@ impl<'db> SemanticIndexBuilder<'db> {
             ast::generated::Operators_2::Token_ABSTRACT(_) => modifiers.insert(Modifiers::ABSTRACT),
             ast::generated::Operators_2::Token_FINAL(_) => modifiers.insert(Modifiers::FINAL),
         });
+
+        let mut variables = vec![];
+
+        for v in class.variables.iter() {
+            match v.deref() {
+                ClassVariables::ExternalVarDecls(e) => e.parse(self, &mut variables)?,
+                ClassVariables::LocPartlyVarDecl(i) => i.parse(self, &mut variables)?,
+                ClassVariables::NoRetainVarDecls(i) => i.parse(self, &mut variables)?,
+                ClassVariables::RetainVarDecls(i) => i.parse(self, &mut variables)?,
+                ClassVariables::VarDecls(i) => i.parse(self, &mut variables)?,
+            }
+        }
 
         class.children.iter().for_each(|f| {
             type Error = ast::generated::ERRExtendsMultipleTimes_ERRImplementsBeforeExtends_ERRImplementsMultipleTimes;
@@ -74,8 +87,6 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         let (id, pou_key, file_id) = self.create_pou_id(class);
 
-        let result = Class::new(self.db, extends, implements, modifiers, id);
-
         let scope = Scope::new(
             self.file,
             ScopeKind::Pou(pou_key),
@@ -91,7 +102,14 @@ impl<'db> SemanticIndexBuilder<'db> {
             pou_key,
             PouDecl::new(
                 self.db,
-                Pou::Class(result),
+                Pou::Class(Class::new(
+                    self.db,
+                    extends,
+                    implements,
+                    variables,
+                    modifiers,
+                    self.current_scope,
+                )),
                 class.get_span(),
                 name,
                 class.name.get_span(),

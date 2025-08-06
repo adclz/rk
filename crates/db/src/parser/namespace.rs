@@ -64,7 +64,7 @@ impl<'db> SemanticIndexBuilder<'db> {
                         pous.push(self.parse_function_block(fb)?);
                     }
                     Decl::ClassDecl(class) => {
-                        self.parse_class(class)?;
+                        pous.push(self.parse_class(class)?);
                     }
                     Decl::DataTypeDecl(data_type) => {
                         for data_type in &data_type.children {
@@ -72,7 +72,7 @@ impl<'db> SemanticIndexBuilder<'db> {
                         }
                     }
                     Decl::InterfaceDecl(interface) => {
-                        self.parse_interface(interface)?;
+                        pous.push(self.parse_interface(interface)?);
                     }
                     Decl::ERRInvalidPouKeyword(err) => {
                         self.create_pou_error(err);

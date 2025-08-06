@@ -1176,7 +1176,7 @@ module.exports = grammar({
             optional(repeat($.ERR_extends_multiple_times)),
             optional(seq("IMPLEMENTS", field("implements", $.interface_name_list))),
             optional(repeat($.ERR_implements_multiple_times)),
-            field("declarations", repeat($._class_variables)),
+            field("variables", repeat($._class_variables)),
             field("methods", repeat($.method_decl)),
             'END_CLASS'
         ),
