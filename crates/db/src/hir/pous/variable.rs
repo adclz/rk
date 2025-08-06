@@ -58,7 +58,7 @@ pub enum VariableKind {
 
 impl<'db> ToProto<'db> for Variable<'db> {
     fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
-        self.range(db).into()
+        self.range(db)
     }
 
     fn get_named_span(&'db self, db: &'db dyn crate::BaseDatabase) -> Option<&'db Span> {
@@ -72,7 +72,7 @@ impl<'db> ToProto<'db> for Variable<'db> {
                 .name(self.name(db).text(db).to_string())
                 .range(self.range(db).clone())
                 .name_range(self.name_span(db).clone())
-                .spec(self.spec(db).clone())
+                .spec(*self.spec(db))
                 .maybe_init(self.init(db).cloned())
                 .build(),
         )

@@ -1,6 +1,5 @@
 use auto_lsp::{
     anyhow,
-    core::document::Document,
     default::db::BaseDatabase,
     lsp_types::{Hover, HoverParams},
 };

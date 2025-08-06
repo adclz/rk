@@ -1,7 +1,7 @@
 use auto_enums::auto_enum;
 use auto_lsp::{
     core::span::Span,
-    default::db::{file::File, BaseDatabase},
+    default::db::BaseDatabase,
     lsp_types::{
         CompletionItem, InlayHint, InlayHintKind, InlayHintLabel, MarkupContent, MarkupKind,
     },
@@ -63,11 +63,11 @@ impl<'db> IterToProto<'db> for PouDecl<'db> {
 
 impl<'db> ToProto<'db> for PouDecl<'db> {
     fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
-        self.span(db).into()
+        self.span(db)
     }
 
     fn get_named_span(&'db self, db: &'db dyn BaseDatabase) -> Option<&'db Span> {
-        Some(self.name_span(db).into())
+        Some(self.name_span(db))
     }
 
     fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> Option<SymbolInfo<'db>> {
@@ -94,7 +94,7 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
                 .maybe_extends(match self.pou(db) {
                     Pou::Class(c) => c.extends(db).map(|a| Extends::Single(a.clone())),
                     Pou::FunctionBlock(fb) => fb.extends(db).map(|a| Extends::Single(a.clone())),
-                    Pou::Interface(i) => i.extends(db).map(|a| Extends::Multiple(a)),
+                    Pou::Interface(i) => i.extends(db).map(Extends::Multiple),
                     _ => None,
                 })
                 .maybe_implements(match self.pou(db) {

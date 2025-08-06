@@ -53,17 +53,17 @@ pub fn comment_index(db: &dyn BaseDatabase, file: File) -> CommentIndex {
                     continue;
                 } else {
                     // Update current range for new non-nested comment
-                    curr_range = Some(range.clone());
+                    curr_range = Some(range);
                 }
             }
             None => {
                 // Initialize the current range if it's not set
-                curr_range = Some(range.clone());
+                curr_range = Some(range);
             }
         }
 
         let comment = Comment {
-            range: range.clone(),
+            range,
             kind,
         };
 

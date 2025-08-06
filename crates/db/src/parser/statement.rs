@@ -1,14 +1,11 @@
 use std::ops::Deref;
 
-use crate::check::diagnostic_builder::diag;
 use crate::check::errors::semantic_errors::{assign_to_function_call, empty_right_hand_assignment};
-use crate::check::DiagnosticAccumulator;
 use crate::hir::expressions::statement::{Stmt, StmtKind};
 use crate::parser::expression::{ParseExpression, ParseVariableAccess};
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::{anyhow};
-use salsa::Accumulator;
 
 pub trait ParseStatement<'db> {
     fn to_statement(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Stmt<'db>>;

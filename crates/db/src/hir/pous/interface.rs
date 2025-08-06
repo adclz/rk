@@ -1,7 +1,7 @@
-use auto_lsp::{core::span::Span, default::db::{file::File, BaseDatabase}};
+use auto_lsp::{core::span::Span, default::db::BaseDatabase};
 
 use crate::{
-    hir::{expressions::spec::Spec, interned::{identifier::Ident, namespace::SpannedNamespaceAccess}, pous::variable::Variable, scopes::scope::{FilePouId, ScopeId}, semantic_index::SemanticIndex},
+    hir::{expressions::spec::Spec, interned::{identifier::Ident, namespace::SpannedNamespaceAccess}, pous::variable::Variable, scopes::scope::ScopeId, semantic_index::SemanticIndex},
     to_proto::{IterToProto, ToProto},
 };
 
@@ -25,8 +25,7 @@ impl<'db> IterToProto<'db> for Interface<'db> {
     ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
         self.methods(db)
             .iter()
-            .map(move |m| m.iter(db, sema).map(|n| n))
-            .flatten()
+            .flat_map(move |m| m.iter(db, sema))
     }
 }
 

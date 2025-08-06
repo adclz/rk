@@ -1,20 +1,17 @@
 use std::ops::Deref;
 
-use crate::check::diagnostic_builder::diag;
 use crate::check::errors::semantic_errors::{implements_before_extends, multiple_extends, multiple_implements};
-use crate::check::DiagnosticAccumulator;
 use crate::hir::interned::identifier::Ident;
 use crate::hir::interned::namespace::SpannedNamespaceAccess;
 use crate::hir::pous::class::Class;
 use crate::hir::pous::pou::{Pou, PouDecl};
-use crate::hir::scopes::scope::{FilePouId, PouId, Scope, ScopeId, ScopeKind, Visibility};
+use crate::hir::scopes::scope::{PouId, Scope, ScopeKind, Visibility};
 use crate::hir::visibility::Modifiers;
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::parser::ParseVarSection;
 use ast::generated::{ClassDecl, ClassVariables};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
-use salsa::Accumulator;
 
 impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_class(&mut self, class: &ClassDecl) -> anyhow::Result<PouId> {
@@ -30,7 +27,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             .map(|i| {
                 i.children
                     .iter()
-                    .map(|i| SpannedNamespaceAccess::from_ast(self.db, self.file, &i))
+                    .map(|i| SpannedNamespaceAccess::from_ast(self.db, self.file, i))
                     .collect()
             })
             .transpose()?;

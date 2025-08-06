@@ -1,10 +1,7 @@
-use std::collections::HashMap;
 
 use auto_lsp::core::errors::{LexerError, ParseError, ParseErrorAccumulator};
-use auto_lsp::lsp_types::{DiagnosticRelatedInformation, WorkspaceEdit};
 use phf::phf_set;
 
-use crate::check::diagnostic_builder::{action, diag, edit};
 use crate::check::errors::syntax_errors::{missing_node, unexpected_char, unexpected_keyword};
 use crate::check::IdeDiagnostic;
 

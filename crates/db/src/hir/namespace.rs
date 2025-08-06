@@ -136,8 +136,7 @@ impl<'db> IterToProto<'db> for Namespace<'db> {
             .chain(
                 self.sorted_pous(db)
                     .iter()
-                    .map(move |pou| sema.get_pou(*pou).iter(db, sema))
-                    .flatten(),
+                    .flat_map(move |pou| sema.get_pou(*pou).iter(db, sema)),
             )
     }
 }
@@ -151,7 +150,7 @@ impl<'db> IterToProto<'db> for Namespace<'db> {
 impl<'db> Namespace<'db> {
     #[salsa::tracked(returns(ref))]
     fn sorted_pous(self, db: &'db dyn BaseDatabase) -> Vec<PouId> {
-        let mut sorted_pous: Vec<_> = self.pous(db).iter().cloned().collect();
+        let mut sorted_pous: Vec<_> = self.pous(db).to_vec();
         sorted_pous.sort();
         sorted_pous
     }

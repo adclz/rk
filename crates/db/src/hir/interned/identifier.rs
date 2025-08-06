@@ -58,7 +58,7 @@ impl SpannedIdent {
     }
 
     pub fn to_string<'db>(&'db self, db: &'db dyn BaseDatabase) -> &'db str {
-        &self.ident.text(db)
+        self.ident.text(db)
     }
 }
 

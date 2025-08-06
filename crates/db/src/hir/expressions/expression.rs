@@ -545,7 +545,7 @@ impl Numeric {
         }
     }
 
-    pub fn to_string<'db>(&self, db: &'db dyn BaseDatabase) -> String {
+    pub fn to_string(&self, db: &dyn BaseDatabase) -> String {
         match self.kind(db) {
             NumericKind::Binary => format!("[Binary] {}", self.ident(db).text(db)),
             NumericKind::Hex => format!("[Hexa] {}", self.ident(db).text(db)),
@@ -573,7 +573,7 @@ pub enum AnyDate {
 }
 
 impl AnyElementary {
-    pub fn to_string<'db>(&self, db: &'db dyn BaseDatabase) -> String {
+    pub fn to_string(&self, db: &dyn BaseDatabase) -> String {
         match self {
             Self::AnyBit(n) => match n {
                 AnyBit::Bool(ident) => format!("Bool: {}", ident.text(db)),
@@ -602,7 +602,7 @@ impl AnyElementary {
                             AnyUnsigned::UDInt(ident) => format!("UDInt: {}", ident.to_string(db)),
                             AnyUnsigned::ULInt(ident) => format!("ULInt: {}", ident.to_string(db)),
                         },
-                        AnyInt::Infer(ident) => format!("{}", ident.to_string(db)),
+                        AnyInt::Infer(ident) => ident.to_string(db),
                     },
                 },
                 AnyMagnitude::AnyDuration(n) => match n {

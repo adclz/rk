@@ -2,15 +2,14 @@ use auto_lsp::default::db::tracked::get_ast;
 use auto_lsp::default::db::{file::File, BaseDatabase};
 use rustc_hash::FxHashMap;
 
-use crate::hir::interned::identifier::Ident;
 use crate::hir::interned::namespace::NamespacePath;
 use crate::hir::namespace::Namespace;
 use crate::hir::pous::pou::PouDecl;
 use crate::hir::scopes::iterators::{AncestorsIter};
 use crate::hir::scopes::scope::{
-    NamespaceId, PouId, Scope, ScopeId, ScopedNamespaceId, FilePouId,
+    NamespaceId, PouId, Scope, ScopeId, ScopedNamespaceId,
 };
-use crate::hir::scopes::solver::{imported_pous_in_scope, LocalIndex};
+use crate::hir::scopes::solver::LocalIndex;
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::to_proto::{IterToProto, ToProto};
 

@@ -18,7 +18,7 @@ pub struct NamespacePath {
 impl<'db> NamespacePath {
     pub fn concat(&self, db: &dyn BaseDatabase, other: &NamespacePath) -> NamespacePath {
         let mut path = self.fragments(db).to_owned();
-        path.extend_from_slice(&other.fragments(db));
+        path.extend_from_slice(other.fragments(db));
         NamespacePath::new(db, path)
     }
 
@@ -90,7 +90,7 @@ impl SpannedNamespaceAccess {
     ) -> anyhow::Result<Self> {
         Ok(SpannedNamespaceAccess {
             span: fq_name.get_span(),
-            path: NamespaceAccess::from_ast(db, file, &fq_name)?,
+            path: NamespaceAccess::from_ast(db, file, fq_name)?,
         })
     }
 
@@ -156,7 +156,7 @@ impl NamespaceAccess {
         let mut path = self
             .namespace(db)
             .map(|ns| ns.to_string(db))
-            .unwrap_or_else(String::default);
+            .unwrap_or_default();
         if !path.is_empty() {
             path.push('.');
         }

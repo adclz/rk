@@ -4,7 +4,7 @@ use crate::hir::interned::identifier::Ident;
 use crate::hir::interned::namespace::SpannedNamespaceAccess;
 use crate::hir::pous::interface::{Interface, Method};
 use crate::hir::pous::pou::{Pou, PouDecl};
-use crate::hir::scopes::scope::{FilePouId, PouId, Scope, ScopeId, ScopeKind, Visibility};
+use crate::hir::scopes::scope::{PouId, Scope, ScopeKind, Visibility};
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::parser::{ParseSpec, ParseVarSection};
 use auto_lsp::anyhow;

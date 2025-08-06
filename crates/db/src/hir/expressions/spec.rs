@@ -55,25 +55,25 @@ impl<'db> Spec<'db> {
                 match cmp {
                     CompositeSpecKind::Array(arr) => {
                         let of_type = arr.of_type.shorthand(db);
-                        format!("(array) {}", of_type)
+                        format!("(array) {of_type}")
                     },
                     CompositeSpecKind::Struct(st) => {
                         let elements = st.elements.iter()
                             .map(|e| format!("{}: {}", e.name.text(db), e.spec.shorthand(db)))
                             .collect::<Vec<_>>()
                             .join(", ");
-                        format!("(struct) {{{}}}", elements)
+                        format!("(struct) {{{elements}}}")
                     },
                     CompositeSpecKind::Subrange(sr) => {
-                        format!("(subrange)")
+                        "(subrange)".to_string()
                     },
                     CompositeSpecKind::Enum(en) => {
                         match en {
                             Enum::Anonymous(variants) => {
-                                format!("(enum)")
+                                "(enum)".to_string()
                             },
                             Enum::Named(variants) => {
-                                format!("(enum)")
+                                "(enum)".to_string()
                             },
                         }
                     }

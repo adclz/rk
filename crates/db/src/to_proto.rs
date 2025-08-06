@@ -1,7 +1,7 @@
 use auto_lsp::{
     core::span::Span,
     default::db::BaseDatabase,
-    lsp_types::{self, request::GotoDeclarationResponse, CompletionItem, GotoDefinitionResponse, Hover, InlayHint, Location, SymbolKind, Url},
+    lsp_types::{request::GotoDeclarationResponse, CompletionItem, GotoDefinitionResponse, Hover, InlayHint, SymbolKind},
 };
 
 use crate::hir::{

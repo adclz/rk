@@ -4,7 +4,7 @@ use crate::hir::interned::identifier::Ident;
 use crate::hir::pous::function::Function;
 use crate::hir::pous::pou::{Pou, PouDecl};
 use crate::hir::pous::variable::Variable;
-use crate::hir::scopes::scope::{FilePouId, PouId, Scope, ScopeId, ScopeKind, Visibility};
+use crate::hir::scopes::scope::{PouId, Scope, ScopeKind, Visibility};
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::parser::statement::ParseStatement;
 use crate::parser::{ParseSpec, ParseVarSection};

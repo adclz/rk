@@ -43,9 +43,7 @@ use auto_lsp::lsp_types::DiagnosticOptions;
 use auto_lsp::lsp_types::DiagnosticServerCapabilities;
 use auto_lsp::lsp_types::FoldingRangeProviderCapability;
 use auto_lsp::lsp_types::HoverProviderCapability;
-use auto_lsp::lsp_types::ImplementationProviderCapability;
 use auto_lsp::lsp_types::ServerCapabilities;
-use auto_lsp::lsp_types::TypeDefinitionProviderCapability;
 use auto_lsp::lsp_types::WorkDoneProgressOptions;
 use auto_lsp::lsp_types::{
     OneOf, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,

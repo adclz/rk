@@ -289,7 +289,7 @@ impl<'db> ParseSpec<'db> for ast::generated::IntTypeName {
 
 impl<'db> ParseInit<'db> for ast::generated::SimpleTypeInit {
     fn to_init(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Expr<'db>> {
-        Ok(self.children.children.to_expr(sema)?)
+        self.children.children.to_expr(sema)
     }
 }
 

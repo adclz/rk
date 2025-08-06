@@ -17,7 +17,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 use std::error::Error;
 
-use fastrace::collector::{Config, ConsoleReporter};
 use server::boot;
 
 fn main() -> Result<(), Box<dyn Error + Sync + Send>> {

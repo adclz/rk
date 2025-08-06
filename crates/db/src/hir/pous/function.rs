@@ -1,5 +1,5 @@
 use auto_lsp::{
-    default::db::{file::File, BaseDatabase},
+    default::db::BaseDatabase,
     lsp_types::CompletionItem,
 };
 
@@ -8,7 +8,7 @@ use crate::{
     hir::{
         expressions::{spec::Spec, statement::Stmt},
         pous::variable::Variable,
-        scopes::scope::{FilePouId, ScopeId},
+        scopes::scope::ScopeId,
         semantic_index::SemanticIndex,
     },
     to_proto::{IterToProto, ToProto},
@@ -49,10 +49,10 @@ impl<'db> Function<'db> {
         match self.statements(db).first() {
             Some(first_stmt) if first_stmt.span(db).start_byte > offset => {
                 // If the first statement starts after the offset, we are in variable declarations
-                return Some(var_completions);
+                Some(var_completions)
             }
             // If there are no statements, we are also in variable declarations
-            _ => return Some(var_completions),
+            _ => Some(var_completions),
         }
     }
 }

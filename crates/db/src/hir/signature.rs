@@ -1,13 +1,10 @@
-use std::{iter::FusedIterator, sync::Arc};
+use std::sync::Arc;
 
 use auto_lsp::default::db::BaseDatabase;
 use rustc_hash::FxHashMap;
 
 use crate::hir::{
-    expressions::{
-        expression::{Expr, ExprKind, ParamAssign, PathExpr, PrimaryExpr},
-        spec::{CompositeSpecKind, Enum, SimpleSpecKind, Spec, SpecKind},
-    },
+    expressions::spec::{CompositeSpecKind, Enum, SimpleSpecKind, Spec, SpecKind},
     interned::{
         identifier::Ident,
         namespace::{NamespaceAccess, SpannedNamespaceAccess},
@@ -312,7 +309,7 @@ impl<'db> Spec<'db> {
                 match enum_ {
                     Enum::Anonymous(list) => TypeParameter::Enum {
                         spec: kind,
-                        list: list.iter().map(|name| *name).collect(),
+                        list: list.to_vec(),
                     },
                     Enum::Named(list) => TypeParameter::Enum {
                         spec: kind,

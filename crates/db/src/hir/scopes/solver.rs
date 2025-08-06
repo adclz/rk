@@ -1,14 +1,10 @@
 use std::iter::FusedIterator;
 
-use auto_lsp::{
-    default::db::{file::File, BaseDatabase},
-    lsp_types::{DiagnosticRelatedInformation, DiagnosticTag, Location},
-};
+use auto_lsp::default::db::{file::File, BaseDatabase};
 use rustc_hash::FxHashMap;
-use salsa::Accumulator;
 
 use crate::{
-    check::{diagnostic_builder::diag, errors::semantic_errors::{duplicate_using_declaration, namespace_already_in_scope, namespace_not_found}, DiagnosticAccumulator},
+    check::errors::semantic_errors::{duplicate_using_declaration, namespace_already_in_scope, namespace_not_found},
     hir::{
         interned::{
             identifier::Ident, namespace::{NamespaceAccess, NamespacePath}
@@ -61,7 +57,7 @@ pub fn imported_pous_in_scope<'db>(
             let sema = semantic_index(db, ns.1);
 
             for pou in sema.get_namespace(ns.0).pous(db).iter() {
-                pous.insert(sema.pou_keys[pou].name(db).clone(), FilePouId(*pou, ns.1));
+                pous.insert(*sema.pou_keys[pou].name(db), FilePouId(*pou, ns.1));
             }
         }
     });
@@ -133,8 +129,8 @@ fn imported_namespaces<'db>(
     results
 }
 
-pub fn resolve_namespace_access<'db>(
-    db: &'db dyn BaseDatabase,
+pub fn resolve_namespace_access(
+    db: &dyn BaseDatabase,
     file: File,
     scope: ScopeId,
     access: NamespaceAccess,

@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 
 use auto_lsp::{core::span::Span, default::db::{file::File, BaseDatabase}, lsp_types::{DiagnosticRelatedInformation, WorkspaceEdit}};
-use salsa::Accumulator;
 
-use crate::check::{diagnostic_builder::{action, diag, edit}, DiagnosticAccumulator, IdeDiagnostic};
+use crate::check::{diagnostic_builder::{action, diag, edit}, IdeDiagnostic};
 
 /// Missing node in the parse tree
 ///
@@ -16,7 +15,7 @@ pub fn missing_node(
     grammar_name: &str,
 ) -> IdeDiagnostic {
     let mut diagnostic = diag()
-        .range(span.clone().into())
+        .range(span.clone())
         .message(missing_error.to_string())
         .source("IEC".into())
         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
@@ -41,7 +40,7 @@ pub fn missing_node(
                     file.url(db).clone(),
                     vec![edit()
                         .new_text(format!(" {grammar_name}"))
-                        .range(span.into())
+                        .range(span)
                         .call()],
                 )])))
                 .call(),
@@ -60,7 +59,7 @@ pub fn unexpected_char(
     syntax_error: &str,
 ) -> IdeDiagnostic {
     let mut diagnostic = diag()
-        .range(span.clone().into())
+        .range(span.clone())
         .message(syntax_error.to_string())
         .source("IEC".into())
         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
@@ -83,7 +82,7 @@ pub fn unexpected_char(
                 file.url(db).clone(),
                 vec![edit()
                     .new_text("".to_string())
-                    .range(span.clone().into())
+                    .range(span.clone())
                     .call()],
             )])))
             .call(),
@@ -94,7 +93,7 @@ pub fn unexpected_char(
 /// Usage of a reserved keyword in an invalid context
 pub fn unexpected_keyword(db: &dyn BaseDatabase, file: File, span: Span, affected: &str) -> IdeDiagnostic {
     diag()
-        .range(span.clone().into())
+        .range(span.clone())
         .message(format!(
             "{} is a reserved keyword that is not valid in this context",
             affected.split_whitespace().next().unwrap_or("")

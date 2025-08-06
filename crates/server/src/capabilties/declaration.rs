@@ -1,8 +1,7 @@
 use auto_lsp::{
     anyhow,
-    core::document::Document,
     default::db::BaseDatabase,
-    lsp_types::{request::{GotoDeclarationParams, GotoDeclarationResponse}, Hover, HoverParams},
+    lsp_types::request::{GotoDeclarationParams, GotoDeclarationResponse},
 };
 use db::hir::semantic_index::semantic_index;
 use db::to_proto::IterToProto;

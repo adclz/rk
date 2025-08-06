@@ -2,7 +2,6 @@ use std::ops::Deref;
 
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
-use salsa::Accumulator;
 
 use crate::check::errors::semantic_errors::{invocation_in_expression, unexpected_this};
 use crate::hir::expressions::expression::{
@@ -11,7 +10,6 @@ use crate::hir::expressions::expression::{
 };
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::{
-    check::{diagnostic_builder::diag, DiagnosticAccumulator},
     hir::expressions::expression::{
         AddOperatorKind, AnyElementary, BooleanOperatorKind, ComparisonOperatorKind, Expr,
         ExprKind, MultOperatorKind, ParamAssign, PathExprKind, PrimaryExpr, RefAdress, RefValue,

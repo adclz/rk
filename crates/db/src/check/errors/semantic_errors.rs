@@ -1,14 +1,12 @@
-use std::collections::HashMap;
 use std::error::Error;
 
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::{
-    DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, Location, WorkspaceEdit,
+    DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, Location,
 };
 use auto_lsp::{core::span::Span, default::db::file::File};
 use salsa::Accumulator;
 
-use crate::check::diagnostic_builder::{action, edit};
 use crate::check::{diagnostic_builder::diag, DiagnosticAccumulator};
 use crate::hir::expressions::spec::Spec;
 use crate::hir::interned::namespace::NamespacePath;
@@ -215,7 +213,7 @@ pub fn mismatch_type<'db>(
     err: impl ToString,
 ) {
     let diag = diag()
-        .range(origin.clone().into())
+        .range(origin.clone())
         .message(err.to_string())
         .source("IEC".into())
         .severity(DiagnosticSeverity::ERROR)

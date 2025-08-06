@@ -6,11 +6,8 @@ use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::default::db::{file::File, BaseDatabase};
 use rustc_hash::FxHashMap;
-use salsa::Accumulator;
 
-use crate::check::diagnostic_builder::diag;
 use crate::check::errors::semantic_errors::invalid_pou_keyword;
-use crate::check::DiagnosticAccumulator;
 use crate::hir::interned::identifier::{Ident, SpannedIdent};
 use crate::hir::interned::namespace::NamespacePath;
 use crate::hir::namespace::Namespace;
@@ -102,13 +99,13 @@ impl<'db> SemanticIndexBuilder<'db> {
                     let path = match self.get_namespace_path(namespace) {
                         Ok(path) => path,
                         Err(_err) => {
-                            panic!("Failed to build namespace: {:?}", _err);
+                            panic!("Failed to build namespace: {_err:?}");
                         }
                     };
                     let namespace_id = namespace.get_id();
 
                     if let Err(e) = self.parse_namespace(&path, namespace) {
-                        panic!("Failed to build namespace: {:?}", e);
+                        panic!("Failed to build namespace: {e:?}");
                     }
                 }
                 SourceFileDecl::UsingDirective(directive) => {

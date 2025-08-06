@@ -49,8 +49,7 @@ pub fn check_date(_db: &dyn crate::BaseDatabase, text: &str) -> Result<(), DateA
     let parts: Vec<_> = text.split('-').collect();
 
     // Year
-    let year_part = parts
-        .get(0)
+    let year_part = parts.first()
         .ok_or(DateAndTimeError::InvalidYear(ErrorKind::Missing(Range {
             start: 0,
             end: 1,

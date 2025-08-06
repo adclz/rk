@@ -263,10 +263,10 @@ pub fn file_symbol_index<'db>(db: &'db dyn BaseDatabase, file: File) -> SymbolIn
     SymbolIndex::new(pous.into_boxed_slice())
 }
 
-fn global_symbol_indexes<'db>(
-    db: &'db dyn BaseDatabase,
+fn global_symbol_indexes(
+    db: &dyn BaseDatabase,
     file_to_omit: File,
-) -> Vec<&'db SymbolIndex> {
+) -> Vec<&SymbolIndex> {
     db.get_files()
         .iter()
         // Filter out the file to omit

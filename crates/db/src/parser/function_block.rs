@@ -1,8 +1,6 @@
 use std::ops::Deref;
 
-use crate::check::diagnostic_builder::diag;
 use crate::check::errors::semantic_errors::{implements_before_extends, multiple_extends, multiple_implements};
-use crate::check::DiagnosticAccumulator;
 use crate::hir::interned::identifier::Ident;
 use crate::hir::interned::namespace::SpannedNamespaceAccess;
 use crate::hir::pous::function_block::FunctionBlock;
@@ -15,7 +13,6 @@ use crate::parser::ParseVarSection;
 use ast::generated::{FbDecl, FbVariables};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
-use salsa::Accumulator;
 
 impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_function_block(&mut self, func: &FbDecl) -> anyhow::Result<PouId> {

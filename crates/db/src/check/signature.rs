@@ -25,7 +25,7 @@ impl<'db> CallableSignature<'db> {
         path: PathExpr<'db>,
         params: Vec<ParamAssign<'db>>,
     ) {
-        let mut iterable = self.iter(db);
+        let iterable = self.iter(db);
         let mut itera = params.iter();
         
         

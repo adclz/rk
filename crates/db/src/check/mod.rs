@@ -113,7 +113,7 @@ pub fn cached_diagnostics(db: &dyn BaseDatabase, file: File) -> DiagnosticResult
     let uncached_diags = duplicate_declarations::accumulated::<DiagnosticAccumulator>(db, file);
 
     let mut all_diagnostics = vec![];
-    all_diagnostics.extend(lexer_errors.into_iter());
+    all_diagnostics.extend(lexer_errors);
     all_diagnostics.extend(uncached_diags.into_iter().map(|d| d.into()));
 
     DiagnosticResults(Arc::new(all_diagnostics))
