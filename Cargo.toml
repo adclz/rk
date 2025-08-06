@@ -35,3 +35,8 @@ camelpaste = "0.1.0"
 fst = "0.4.7"
 rayon = "1.10.0"
 compact_str = "0.9.0"
+
+[dependencies]
+auto-lsp = { workspace = true }
+ast = { workspace = true }
+db = { workspace = true}
