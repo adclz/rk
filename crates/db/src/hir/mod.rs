@@ -1,3 +1,4 @@
+pub mod comment_index;
 pub mod expressions;
 pub mod import_map;
 pub mod interned;
@@ -8,6 +9,5 @@ pub mod semantic_index;
 pub mod signature;
 pub mod using;
 pub mod visibility;
-pub mod comment_index;
 
 pub static COMPLETION_MARKER: &str = "い";

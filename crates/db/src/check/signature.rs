@@ -1,6 +1,11 @@
 use auto_lsp::default::db::BaseDatabase;
 
-use crate::hir::{expressions::expression::{ParamAssign, PathExpr}, pous::variable::VariableKind, semantic_index::SemanticIndex, signature::{CallableSignature, CallableSignatureIter}};
+use crate::hir::{
+    expressions::expression::{ParamAssign, PathExpr},
+    pous::variable::VariableKind,
+    semantic_index::SemanticIndex,
+    signature::{CallableSignature, CallableSignatureIter},
+};
 
 /// Will be moved to dedicated module later
 
@@ -27,8 +32,7 @@ impl<'db> CallableSignature<'db> {
     ) {
         let iterable = self.iter(db);
         let mut itera = params.iter();
-        
-        
+
         for (name, param, section) in iterable {
             match itera.next() {
                 Some(ParamAssign::ParamAssignInput { param, value }) => {
@@ -42,7 +46,7 @@ impl<'db> CallableSignature<'db> {
 
                             // TYPE CHECK
                         }
-                        _ => { 
+                        _ => {
                             // Error: attempting to assign output parameter in input section
                         }
                     }
@@ -55,7 +59,7 @@ impl<'db> CallableSignature<'db> {
                     match section {
                         VariableKind::Output => {
                             if param != name {
-                                    // Error: parameter name mismatch
+                                // Error: parameter name mismatch
                             }
 
                             // TYPE CHECK

@@ -6,7 +6,10 @@ use auto_lsp::{
 use db::hir::semantic_index::semantic_index;
 use db::to_proto::IterToProto;
 
-pub fn go_to_definition(db: &impl BaseDatabase, params: GotoDefinitionParams) -> anyhow::Result<Option<GotoDefinitionResponse>> {
+pub fn go_to_definition(
+    db: &impl BaseDatabase,
+    params: GotoDefinitionParams,
+) -> anyhow::Result<Option<GotoDefinitionResponse>> {
     let uri = &params.text_document_position_params.text_document.uri;
 
     let file = db

@@ -388,4 +388,3 @@ impl<'db> Iterator for CallableSignatureIter<'db> {
         }
     }
 }
-

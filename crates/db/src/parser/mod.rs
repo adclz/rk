@@ -1,8 +1,9 @@
-use auto_lsp::{anyhow};
+use auto_lsp::anyhow;
 
 use crate::{
     hir::{expressions::expression::Expr, expressions::spec::Spec, pous::variable::Variable},
-    parser::semantic_index::SemanticIndexBuilder,};
+    parser::semantic_index::SemanticIndexBuilder,
+};
 
 pub mod class;
 pub mod data_type;

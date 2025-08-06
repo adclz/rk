@@ -15,7 +15,6 @@ impl SemanticIndexBuilder<'_> {
         &mut self,
         interface: &ast::generated::InterfaceDecl,
     ) -> anyhow::Result<PouId> {
-        
         let (id, pou_key, file_id) = self.create_pou_id(interface);
 
         let name = Ident::from_node(self.db, self.file, interface.name.deref())?;
@@ -53,12 +52,7 @@ impl SemanticIndexBuilder<'_> {
             pou_key,
             PouDecl::new(
                 self.db,
-                Pou::Interface(Interface::new(
-                    self.db,
-                    extends,
-                    vec![],
-                    self.current_scope,
-                )),
+                Pou::Interface(Interface::new(self.db, extends, vec![], self.current_scope)),
                 interface.get_span(),
                 name,
                 interface.name.get_span(),

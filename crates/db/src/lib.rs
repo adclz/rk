@@ -1,8 +1,8 @@
 #![allow(unused_variables)]
 #![recursion_limit = "256"]
 
-pub mod completions;
 pub mod check;
+pub mod completions;
 pub mod hir;
 pub mod parser;
 pub mod to_proto;
@@ -12,7 +12,7 @@ use auto_lsp::{
     default::db::{file::File, BaseDatabase},
     lsp_types::Url,
     salsa,
-}; 
+};
 use dashmap::DashMap;
 use salsa::Event;
 

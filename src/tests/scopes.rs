@@ -1,4 +1,7 @@
-use auto_lsp::{default::db::{BaseDatabase, file::File, FileManager}, lsp_types};
+use auto_lsp::{
+    default::db::{file::File, BaseDatabase, FileManager},
+    lsp_types,
+};
 
 use db::{
     hir::{pous::pou::Pou, scopes::scope::ScopeId, semantic_index::semantic_index},

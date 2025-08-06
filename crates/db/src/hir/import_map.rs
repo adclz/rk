@@ -263,10 +263,7 @@ pub fn file_symbol_index<'db>(db: &'db dyn BaseDatabase, file: File) -> SymbolIn
     SymbolIndex::new(pous.into_boxed_slice())
 }
 
-fn global_symbol_indexes(
-    db: &dyn BaseDatabase,
-    file_to_omit: File,
-) -> Vec<&SymbolIndex> {
+fn global_symbol_indexes(db: &dyn BaseDatabase, file_to_omit: File) -> Vec<&SymbolIndex> {
     db.get_files()
         .iter()
         // Filter out the file to omit
@@ -298,8 +295,7 @@ pub fn query_completions(
 
     let mut results = vec![];
 
-    fast_query
-        .search(&indexes, |symbol| {
+    fast_query.search(&indexes, |symbol| {
         if locally_visible_names.contains(symbol.name.as_str()) {
             // Skip symbols that are already visible in the current scope
             return ControlFlow::Continue(());

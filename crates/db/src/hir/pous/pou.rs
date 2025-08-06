@@ -10,8 +10,8 @@ use auto_lsp::{
 use crate::{
     completions,
     hir::{
-        interned::identifier::Ident,
         comment_index::comment_index,
+        interned::identifier::Ident,
         pous::{
             class::Class, data_type::DataType, function::Function, function_block::FunctionBlock,
             interface::Interface,
@@ -151,7 +151,7 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
     fn hover(
         &'db self,
         db: &'db dyn crate::BaseDatabase,
-        sema: &'db SemanticIndex<'db>, 
+        sema: &'db SemanticIndex<'db>,
     ) -> Option<auto_lsp::lsp_types::Hover> {
         let comment = comment_index(db, sema.file);
         let comment = comment
@@ -162,7 +162,7 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
         Some(auto_lsp::lsp_types::Hover {
             contents: auto_lsp::lsp_types::HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,
-                value: format!(    
+                value: format!(
                     r#"{comment}
 ```typescript
 {}

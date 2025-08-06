@@ -5,10 +5,8 @@ use rustc_hash::FxHashMap;
 use crate::hir::interned::namespace::NamespacePath;
 use crate::hir::namespace::Namespace;
 use crate::hir::pous::pou::PouDecl;
-use crate::hir::scopes::iterators::{AncestorsIter};
-use crate::hir::scopes::scope::{
-    NamespaceId, PouId, Scope, ScopeId, ScopedNamespaceId,
-};
+use crate::hir::scopes::iterators::AncestorsIter;
+use crate::hir::scopes::scope::{NamespaceId, PouId, Scope, ScopeId, ScopedNamespaceId};
 use crate::hir::scopes::solver::LocalIndex;
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::to_proto::{IterToProto, ToProto};
@@ -52,7 +50,7 @@ impl<'db> SemanticIndex<'db> {
             scopes: FxHashMap::default(),
             namespace_keys: FxHashMap::default(),
             pou_keys: FxHashMap::default(),
-            scope_to_namespaces: FxHashMap::default()
+            scope_to_namespaces: FxHashMap::default(),
         }
     }
 

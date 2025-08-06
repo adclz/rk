@@ -12,7 +12,9 @@ use auto_lsp::{
 use salsa::Accumulator;
 
 use crate::check::diagnostic_builder::diag;
-use crate::check::errors::semantic_errors::{incomplete_edge_qualifier, missing_type_for_variable, unauthorized_variable_init};
+use crate::check::errors::semantic_errors::{
+    incomplete_edge_qualifier, missing_type_for_variable, unauthorized_variable_init,
+};
 use crate::check::DiagnosticAccumulator;
 use crate::hir::expressions::spec::{SimpleSpecKind, Spec, SpecKind};
 use crate::hir::interned::identifier::Ident;
@@ -636,7 +638,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::EdgeDecl {
                     self.get_span(),
                     SpecKind::Simple(SimpleSpecKind::Bool),
                     sema.current_scope,
-                    sema.file
+                    sema.file,
                 )
             }
             ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::Token_F_EDGE(fedge) => Spec::new(
@@ -644,14 +646,14 @@ impl<'db> ParseSpecInit<'db> for ast::generated::EdgeDecl {
                 self.get_span(),
                 SpecKind::Simple(SimpleSpecKind::Bool),
                 sema.current_scope,
-                sema.file
+                sema.file,
             ),
             ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::Token_R_EDGE(redge) => Spec::new(
                 sema.db,
                 self.get_span(),
                 SpecKind::Simple(SimpleSpecKind::Bool),
                 sema.current_scope,
-                sema.file
+                sema.file,
             ),
         };
 

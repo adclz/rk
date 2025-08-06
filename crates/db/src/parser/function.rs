@@ -34,7 +34,6 @@ impl<'db> SemanticIndexBuilder<'db> {
             .map(|rt| rt.to_spec(self))
             .transpose()?;
 
-        
         let (id, pou_key, file_id) = self.create_pou_id(func);
 
         let name = Ident::from_node(self.db, self.file, func.name.deref())?;

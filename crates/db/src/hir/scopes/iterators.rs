@@ -30,5 +30,3 @@ impl<'db> Iterator for AncestorsIter<'db> {
 }
 
 impl FusedIterator for AncestorsIter<'_> {}
-
-

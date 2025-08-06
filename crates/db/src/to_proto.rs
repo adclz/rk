@@ -1,14 +1,15 @@
 use auto_lsp::{
     core::span::Span,
     default::db::BaseDatabase,
-    lsp_types::{request::GotoDeclarationResponse, CompletionItem, GotoDefinitionResponse, Hover, InlayHint, SymbolKind},
+    lsp_types::{
+        request::GotoDeclarationResponse, CompletionItem, GotoDefinitionResponse, Hover, InlayHint,
+        SymbolKind,
+    },
 };
 
 use crate::hir::{
-    expressions::expression::Expr,
-    expressions::spec::{Spec},
-    interned::namespace::SpannedNamespaceAccess,
-    semantic_index::SemanticIndex,
+    expressions::expression::Expr, expressions::spec::Spec,
+    interned::namespace::SpannedNamespaceAccess, semantic_index::SemanticIndex,
 };
 
 #[derive(bon::Builder, Debug, Clone)]

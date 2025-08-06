@@ -1,6 +1,8 @@
 use std::ops::Deref;
 
-use crate::check::errors::semantic_errors::{implements_before_extends, multiple_extends, multiple_implements};
+use crate::check::errors::semantic_errors::{
+    implements_before_extends, multiple_extends, multiple_implements,
+};
 use crate::hir::interned::identifier::Ident;
 use crate::hir::interned::namespace::SpannedNamespaceAccess;
 use crate::hir::pous::class::Class;

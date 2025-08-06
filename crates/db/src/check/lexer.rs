@@ -1,4 +1,3 @@
-
 use auto_lsp::core::errors::{LexerError, ParseError, ParseErrorAccumulator};
 use phf::phf_set;
 

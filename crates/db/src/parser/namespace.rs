@@ -92,8 +92,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         );
 
         // Then insert it into the map with its ID
-        self.namespace_keys
-            .insert(namespace_id, result);
+        self.namespace_keys.insert(namespace_id, result);
 
         Ok(())
     }

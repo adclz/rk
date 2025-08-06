@@ -13,7 +13,7 @@ use crate::hir::interned::namespace::NamespacePath;
 use crate::hir::namespace::Namespace;
 use crate::hir::pous::pou::PouDecl;
 use crate::hir::scopes::scope::{
-    FilePouId, NamespaceId, PouId, Scope, ScopeId, ScopeKind, ScopedNamespaceId, Visibility
+    FilePouId, NamespaceId, PouId, Scope, ScopeId, ScopeKind, ScopedNamespaceId, Visibility,
 };
 use crate::hir::semantic_index::SemanticIndex;
 
@@ -122,7 +122,7 @@ impl<'db> SemanticIndexBuilder<'db> {
                 }
                 SourceFileDecl::DataTypeDecl(data_type) => {
                     for child in &data_type.children {
-                        self.parse_data_type(child).unwrap();   
+                        self.parse_data_type(child).unwrap();
                     }
                 }
                 SourceFileDecl::InterfaceDecl(interface) => {
@@ -155,7 +155,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             namespace_keys: self.namespace_keys,
             pou_keys: self.pou_keys,
             scopes: self.scope_keys,
-            scope_to_namespaces: self.scope_to_namespaces
+            scope_to_namespaces: self.scope_to_namespaces,
         }
     }
 }

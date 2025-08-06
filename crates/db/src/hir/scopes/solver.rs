@@ -4,12 +4,18 @@ use auto_lsp::default::db::{file::File, BaseDatabase};
 use rustc_hash::FxHashMap;
 
 use crate::{
-    check::errors::semantic_errors::{duplicate_using_declaration, namespace_already_in_scope, namespace_not_found},
+    check::errors::semantic_errors::{
+        duplicate_using_declaration, namespace_already_in_scope, namespace_not_found,
+    },
     hir::{
         interned::{
-            identifier::Ident, namespace::{NamespaceAccess, NamespacePath}
+            identifier::Ident,
+            namespace::{NamespaceAccess, NamespacePath},
         },
-        scopes::{iterators::AncestorsIter, scope::{FilePouId, PouId, ScopeId, ScopeKind, ScopedNamespaceId}},
+        scopes::{
+            iterators::AncestorsIter,
+            scope::{FilePouId, PouId, ScopeId, ScopeKind, ScopedNamespaceId},
+        },
         semantic_index::{semantic_index, SemanticIndex},
         using::Using,
     },
@@ -151,14 +157,11 @@ pub fn resolve_namespace_access(
                 Some(FilePouId(*pou, ns.1))
             })
         }
-        None => {
-            semantic_index(db, file)
-                .local_index(db, scope)
-                .find_exact_pou(target.ident)
-        }
+        None => semantic_index(db, file)
+            .local_index(db, scope)
+            .find_exact_pou(target.ident),
     }
 }
-
 
 // "The recursive call of POUs and methods is Implementer specific."
 pub enum LocalSearchMode {
@@ -174,24 +177,23 @@ pub struct LocalIndex<'db> {
 }
 
 impl<'db> LocalIndex<'db> {
-    pub fn new(
-        db: &'db dyn BaseDatabase,
-        sema: &'db SemanticIndex<'db>,
-        scope: ScopeId,
-    ) -> Self {
-        Self { db, sema, scope, mode: LocalSearchMode::NonRecursive }
+    pub fn new(db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>, scope: ScopeId) -> Self {
+        Self {
+            db,
+            sema,
+            scope,
+            mode: LocalSearchMode::NonRecursive,
+        }
     }
 
     pub fn allow_recursive(&mut self) {
         self.mode = LocalSearchMode::Recursive;
     }
 
-    pub fn find_exact_pou(
-        &self,
-        pou_name: Ident,
-    ) -> Option<FilePouId> {
+    pub fn find_exact_pou(&self, pou_name: Ident) -> Option<FilePouId> {
         let pou = PouIterator::new(self.db, self.sema, self.scope)
-            .find(|(name, _)| *name == pou_name).map(|(_, pou)| pou)?;
+            .find(|(name, _)| *name == pou_name)
+            .map(|(_, pou)| pou)?;
 
         match self.mode {
             LocalSearchMode::Recursive => Some(pou),
@@ -204,9 +206,9 @@ impl<'db> LocalIndex<'db> {
                         } else {
                             Some(pou)
                         }
-                    },
-                    _ => Some(pou)
-                 }
+                    }
+                    _ => Some(pou),
+                }
             }
         }
     }
@@ -215,7 +217,6 @@ impl<'db> LocalIndex<'db> {
         PouIterator::new(self.db, self.sema, self.scope)
     }
 }
-
 
 /// An iterator that yields all POUs declared in a scope and its ancestors.
 ///

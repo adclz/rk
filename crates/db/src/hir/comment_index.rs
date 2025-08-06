@@ -62,10 +62,7 @@ pub fn comment_index(db: &dyn BaseDatabase, file: File) -> CommentIndex {
             }
         }
 
-        let comment = Comment {
-            range,
-            kind,
-        };
+        let comment = Comment { range, kind };
 
         map.insert(range.end_point.row, comment);
     }
@@ -148,11 +145,19 @@ impl Comment {
             CommentKind::Line => text.replace("//", "").trim_start().to_string(),
             CommentKind::C => {
                 let content = text.strip_prefix("/*").unwrap_or(text).trim_start();
-                content.strip_suffix("*/").unwrap_or(content).trim_end().to_string()
+                content
+                    .strip_suffix("*/")
+                    .unwrap_or(content)
+                    .trim_end()
+                    .to_string()
             }
             CommentKind::Pascal => {
                 let content = text.strip_prefix("(*").unwrap_or(text).trim_start();
-                content.strip_suffix("*)").unwrap_or(content).trim_end().to_string()
+                content
+                    .strip_suffix("*)")
+                    .unwrap_or(content)
+                    .trim_end()
+                    .to_string()
             }
         }
     }

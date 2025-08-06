@@ -1,7 +1,4 @@
-use auto_lsp::{
-    default::db::BaseDatabase,
-    lsp_types::CompletionItem,
-};
+use auto_lsp::{default::db::BaseDatabase, lsp_types::CompletionItem};
 
 use crate::{
     completions,

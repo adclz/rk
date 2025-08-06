@@ -1,6 +1,6 @@
 use crate::completions::snippets::elem_type_names_init;
 use crate::hir::interned::identifier::Ident;
-use crate::hir::scopes::scope::{ScopeId};
+use crate::hir::scopes::scope::ScopeId;
 use crate::hir::semantic_index::SemanticIndex;
 use crate::to_proto::{self_iter, IterToProto, ToProto};
 use auto_enums::auto_enum;

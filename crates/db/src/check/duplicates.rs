@@ -90,7 +90,9 @@ impl<'db> Check<'db> for &'db Vec<Variable<'db>> {
 
 impl<'db> Check<'db> for Variable<'db> {
     fn check(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>) {
-        if let Some(init) = self.init(db) { init.check(db, sema, self.spec(db)) }
+        if let Some(init) = self.init(db) {
+            init.check(db, sema, self.spec(db))
+        }
     }
 }
 

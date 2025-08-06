@@ -1,6 +1,8 @@
 use std::ops::Deref;
 
-use crate::check::errors::semantic_errors::{implements_before_extends, multiple_extends, multiple_implements};
+use crate::check::errors::semantic_errors::{
+    implements_before_extends, multiple_extends, multiple_implements,
+};
 use crate::hir::interned::identifier::Ident;
 use crate::hir::interned::namespace::SpannedNamespaceAccess;
 use crate::hir::pous::function_block::FunctionBlock;
@@ -82,13 +84,13 @@ impl<'db> SemanticIndexBuilder<'db> {
                     implements,
                     variables,
                     modifiers,
-                    self.current_scope
+                    self.current_scope,
                 )),
                 func.get_span(),
                 name,
                 func.name.get_span(),
                 FilePouId(pou_key, self.file),
-                self.current_scope
+                self.current_scope,
             ),
         );
 

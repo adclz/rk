@@ -62,7 +62,7 @@ impl<'db> SemanticIndexBuilder<'db> {
                 name,
                 data_type.name.get_span(),
                 FilePouId(pou_key, self.file),
-                self.current_scope
+                self.current_scope,
             ),
         );
 

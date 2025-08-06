@@ -34,7 +34,7 @@ impl<'db> Spec<'db> {
     pub fn shorthand(&'db self, db: &'db dyn BaseDatabase) -> String {
         match self.kind(db) {
             SpecKind::Simple(simple_kind) => simple_kind.to_string(),
-            SpecKind::Target(target ) => {
+            SpecKind::Target(target) => {
                 let sema = semantic_index(db, self.file(db));
                 match resolve_namespace_access(db, sema.file, self.scope_id(db), *target) {
                     Some(pou) => {
@@ -42,7 +42,9 @@ impl<'db> Spec<'db> {
                         let pou = sema.pou_keys[&pou.0];
                         match pou.pou(db) {
                             Pou::Function(dt) => format!("(function) {}", pou.name(db).text(db)),
-                            Pou::FunctionBlock(fb) => format!("(function_block) {}", pou.name(db).text(db)),
+                            Pou::FunctionBlock(fb) => {
+                                format!("(function_block) {}", pou.name(db).text(db))
+                            }
                             Pou::DataType(dt) => dt.spec(db).shorthand(db),
                             Pou::Class(class) => format!("(class) {}", pou.name(db).text(db)),
                             Pou::Interface(it) => format!("(interface) {}", pou.name(db).text(db)),
@@ -50,38 +52,30 @@ impl<'db> Spec<'db> {
                     }
                     None => "{unknown}".to_string(),
                 }
-            },
-            SpecKind::Composite(cmp) => {
-                match cmp {
-                    CompositeSpecKind::Array(arr) => {
-                        let of_type = arr.of_type.shorthand(db);
-                        format!("(array) {of_type}")
-                    },
-                    CompositeSpecKind::Struct(st) => {
-                        let elements = st.elements.iter()
-                            .map(|e| format!("{}: {}", e.name.text(db), e.spec.shorthand(db)))
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                        format!("(struct) {{{elements}}}")
-                    },
-                    CompositeSpecKind::Subrange(sr) => {
-                        "(subrange)".to_string()
-                    },
-                    CompositeSpecKind::Enum(en) => {
-                        match en {
-                            Enum::Anonymous(variants) => {
-                                "(enum)".to_string()
-                            },
-                            Enum::Named(variants) => {
-                                "(enum)".to_string()
-                            },
-                        }
-                    }
-                }
             }
+            SpecKind::Composite(cmp) => match cmp {
+                CompositeSpecKind::Array(arr) => {
+                    let of_type = arr.of_type.shorthand(db);
+                    format!("(array) {of_type}")
+                }
+                CompositeSpecKind::Struct(st) => {
+                    let elements = st
+                        .elements
+                        .iter()
+                        .map(|e| format!("{}: {}", e.name.text(db), e.spec.shorthand(db)))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    format!("(struct) {{{elements}}}")
+                }
+                CompositeSpecKind::Subrange(sr) => "(subrange)".to_string(),
+                CompositeSpecKind::Enum(en) => match en {
+                    Enum::Anonymous(variants) => "(enum)".to_string(),
+                    Enum::Named(variants) => "(enum)".to_string(),
+                },
+            },
             SpecKind::Ref(ref_name) => {
                 format!("(*ref*) {}", ref_name.shorthand(db))
-            },
+            }
         }
     }
 }
@@ -159,7 +153,8 @@ impl SimpleSpecKind {
             SimpleSpecKind::LTime => "LTIME",
             SimpleSpecKind::Tod => "TIME_OF_DAY",
             SimpleSpecKind::LTod => "LTIME_OF_DAY",
-        }.to_string()
+        }
+        .to_string()
     }
 
     pub fn with_details(&self) -> String {
@@ -193,7 +188,8 @@ impl SimpleSpecKind {
             SimpleSpecKind::LTime => "LTIME (DD:HH:MM:SS)",
             SimpleSpecKind::Tod => "TIME_OF_DAY (HH:MM:SS)",
             SimpleSpecKind::LTod => "LTIME_OF_DAY (HH:MM:SS)",
-        }.to_string()
+        }
+        .to_string()
     }
 }
 
@@ -220,10 +216,7 @@ impl<'db> ToProto<'db> for Spec<'db> {
                 range: Some(self.span(db).into()),
                 contents: HoverContents::Markup(MarkupContent {
                     kind: MarkupKind::Markdown,
-                    value: format!(
-                        "```typescript\n{}\n```",
-                        simple_kind.with_details()
-                    ),
+                    value: format!("```typescript\n{}\n```", simple_kind.with_details()),
                 }),
             }),
             SpecKind::Composite(composite_kind) => todo!(),
@@ -236,19 +229,19 @@ impl<'db> ToProto<'db> for Spec<'db> {
                     }
                     None => None,
                 }
-            },
-            SpecKind::Ref(_) => {
-                Some(Hover {
-                    range: Some(self.span(db).into()),
-                    contents: HoverContents::Markup(MarkupContent {
-                        kind: MarkupKind::Markdown,
-                        value: format!(
-r#"```typescript
+            }
+            SpecKind::Ref(_) => Some(Hover {
+                range: Some(self.span(db).into()),
+                contents: HoverContents::Markup(MarkupContent {
+                    kind: MarkupKind::Markdown,
+                    value: format!(
+                        r#"```typescript
 {} 
-```"#, self.shorthand(db)),
-                    }),
-                })  
-            },
+```"#,
+                        self.shorthand(db)
+                    ),
+                }),
+            }),
         }
     }
 

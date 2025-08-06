@@ -1,8 +1,15 @@
 use std::collections::HashMap;
 
-use auto_lsp::{core::span::Span, default::db::{file::File, BaseDatabase}, lsp_types::{DiagnosticRelatedInformation, WorkspaceEdit}};
+use auto_lsp::{
+    core::span::Span,
+    default::db::{file::File, BaseDatabase},
+    lsp_types::{DiagnosticRelatedInformation, WorkspaceEdit},
+};
 
-use crate::check::{diagnostic_builder::{action, diag, edit}, IdeDiagnostic};
+use crate::check::{
+    diagnostic_builder::{action, diag, edit},
+    IdeDiagnostic,
+};
 
 /// Missing node in the parse tree
 ///
@@ -80,10 +87,7 @@ pub fn unexpected_char(
             .is_preferred(true)
             .edit(WorkspaceEdit::new(HashMap::from([(
                 file.url(db).clone(),
-                vec![edit()
-                    .new_text("".to_string())
-                    .range(span.clone())
-                    .call()],
+                vec![edit().new_text("".to_string()).range(span.clone()).call()],
             )])))
             .call(),
     );
@@ -91,7 +95,12 @@ pub fn unexpected_char(
 }
 
 /// Usage of a reserved keyword in an invalid context
-pub fn unexpected_keyword(db: &dyn BaseDatabase, file: File, span: Span, affected: &str) -> IdeDiagnostic {
+pub fn unexpected_keyword(
+    db: &dyn BaseDatabase,
+    file: File,
+    span: Span,
+    affected: &str,
+) -> IdeDiagnostic {
     diag()
         .range(span.clone())
         .message(format!(

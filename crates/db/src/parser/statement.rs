@@ -4,8 +4,8 @@ use crate::check::errors::semantic_errors::{assign_to_function_call, empty_right
 use crate::hir::expressions::statement::{Stmt, StmtKind};
 use crate::parser::expression::{ParseExpression, ParseVariableAccess};
 use crate::parser::semantic_index::SemanticIndexBuilder;
+use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
-use auto_lsp::{anyhow};
 
 pub trait ParseStatement<'db> {
     fn to_statement(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Stmt<'db>>;

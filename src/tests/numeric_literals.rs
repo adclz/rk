@@ -1,4 +1,10 @@
-use db::{hir::{expressions::expression::{Numeric, NumericKind}, interned::identifier::Ident}, RootDatabase};
+use db::{
+    hir::{
+        expressions::expression::{Numeric, NumericKind},
+        interned::identifier::Ident,
+    },
+    RootDatabase,
+};
 
 #[test]
 fn byte() {
@@ -20,10 +26,14 @@ fn byte_invalid() {
     let db = RootDatabase::default();
 
     // Values too large for u8 (max 255)
-    let b2_large = Numeric::new(&db, Ident::from_slice(&db, "2#100000000"), NumericKind::Binary); // 256 in binary
-    let b8_large = Numeric::new(&db, Ident::from_slice(&db, "8#400"), NumericKind::Octal);        // 256 in octal
-    let b16_large = Numeric::new(&db, Ident::from_slice(&db, "16#100"), NumericKind::Hex);       // 256 in hex
-    let b10_large = Numeric::new(&db, Ident::from_slice(&db, "256"), NumericKind::Signed);       // 256 in decimal
+    let b2_large = Numeric::new(
+        &db,
+        Ident::from_slice(&db, "2#100000000"),
+        NumericKind::Binary,
+    ); // 256 in binary
+    let b8_large = Numeric::new(&db, Ident::from_slice(&db, "8#400"), NumericKind::Octal); // 256 in octal
+    let b16_large = Numeric::new(&db, Ident::from_slice(&db, "16#100"), NumericKind::Hex); // 256 in hex
+    let b10_large = Numeric::new(&db, Ident::from_slice(&db, "256"), NumericKind::Signed); // 256 in decimal
 
     assert!(b2_large.as_u8(&db).is_err());
     assert!(b8_large.as_u8(&db).is_err());
@@ -51,9 +61,13 @@ fn usint() {
     let db = RootDatabase::default();
 
     // USINT: 0 to 255 (same as BYTE but semantically different)
-    let b2 = Numeric::new(&db, Ident::from_slice(&db, "2#11111111"), NumericKind::Binary); // 255
-    let b8 = Numeric::new(&db, Ident::from_slice(&db, "8#377"), NumericKind::Octal);       // 255
-    let b16 = Numeric::new(&db, Ident::from_slice(&db, "16#FF"), NumericKind::Hex);        // 255
+    let b2 = Numeric::new(
+        &db,
+        Ident::from_slice(&db, "2#11111111"),
+        NumericKind::Binary,
+    ); // 255
+    let b8 = Numeric::new(&db, Ident::from_slice(&db, "8#377"), NumericKind::Octal); // 255
+    let b16 = Numeric::new(&db, Ident::from_slice(&db, "16#FF"), NumericKind::Hex); // 255
     let b10 = Numeric::new(&db, Ident::from_slice(&db, "255"), NumericKind::Signed);
 
     assert!(b2.as_u8(&db).is_ok());
@@ -67,9 +81,13 @@ fn uint() {
     let db = RootDatabase::default();
 
     // UINT: 0 to 65535
-    let b2 = Numeric::new(&db, Ident::from_slice(&db, "2#1111111111111111"), NumericKind::Binary); // 65535
-    let b8 = Numeric::new(&db, Ident::from_slice(&db, "8#177777"), NumericKind::Octal);             // 65535
-    let b16 = Numeric::new(&db, Ident::from_slice(&db, "16#FFFF"), NumericKind::Hex);               // 65535
+    let b2 = Numeric::new(
+        &db,
+        Ident::from_slice(&db, "2#1111111111111111"),
+        NumericKind::Binary,
+    ); // 65535
+    let b8 = Numeric::new(&db, Ident::from_slice(&db, "8#177777"), NumericKind::Octal); // 65535
+    let b16 = Numeric::new(&db, Ident::from_slice(&db, "16#FFFF"), NumericKind::Hex); // 65535
     let b10 = Numeric::new(&db, Ident::from_slice(&db, "65535"), NumericKind::Signed);
 
     assert!(b2.as_u16(&db).is_ok());
@@ -83,8 +101,8 @@ fn uint_invalid() {
     let db = RootDatabase::default();
 
     // Values too large for u16 (max 65535)
-    let b16_large = Numeric::new(&db, Ident::from_slice(&db, "16#10000"), NumericKind::Hex);   // 65536
-    let b10_large = Numeric::new(&db, Ident::from_slice(&db, "65536"), NumericKind::Signed);   // 65536
+    let b16_large = Numeric::new(&db, Ident::from_slice(&db, "16#10000"), NumericKind::Hex); // 65536
+    let b10_large = Numeric::new(&db, Ident::from_slice(&db, "65536"), NumericKind::Signed); // 65536
 
     assert!(b16_large.as_u16(&db).is_err());
     assert!(b10_large.as_u16(&db).is_err());
@@ -95,8 +113,12 @@ fn udint() {
     let db = RootDatabase::default();
 
     // UDINT: 0 to 4294967295
-    let b16 = Numeric::new(&db, Ident::from_slice(&db, "16#FFFFFFFF"), NumericKind::Hex);     // 4294967295
-    let b10 = Numeric::new(&db, Ident::from_slice(&db, "4294967295"), NumericKind::Signed);   // 4294967295
+    let b16 = Numeric::new(&db, Ident::from_slice(&db, "16#FFFFFFFF"), NumericKind::Hex); // 4294967295
+    let b10 = Numeric::new(
+        &db,
+        Ident::from_slice(&db, "4294967295"),
+        NumericKind::Signed,
+    ); // 4294967295
 
     assert!(b16.as_u32(&db).is_ok());
     assert!(b10.as_u32(&db).is_ok());
@@ -107,9 +129,17 @@ fn dint() {
     let db = RootDatabase::default();
 
     // DINT: -2147483648 to 2147483647
-    let b16_max = Numeric::new(&db, Ident::from_slice(&db, "16#7FFFFFFF"), NumericKind::Hex);  // 2147483647
-    let b10_max = Numeric::new(&db, Ident::from_slice(&db, "2147483647"), NumericKind::Signed);
-    let b10_min = Numeric::new(&db, Ident::from_slice(&db, "-2147483648"), NumericKind::Signed);
+    let b16_max = Numeric::new(&db, Ident::from_slice(&db, "16#7FFFFFFF"), NumericKind::Hex); // 2147483647
+    let b10_max = Numeric::new(
+        &db,
+        Ident::from_slice(&db, "2147483647"),
+        NumericKind::Signed,
+    );
+    let b10_min = Numeric::new(
+        &db,
+        Ident::from_slice(&db, "-2147483648"),
+        NumericKind::Signed,
+    );
 
     assert!(b16_max.as_i32(&db).is_ok());
     assert!(b10_max.as_i32(&db).is_ok());
@@ -121,8 +151,16 @@ fn ulint() {
     let db = RootDatabase::default();
 
     // ULINT: 0 to 18446744073709551615
-    let b16 = Numeric::new(&db, Ident::from_slice(&db, "16#FFFFFFFFFFFFFFFF"), NumericKind::Hex);
-    let b10 = Numeric::new(&db, Ident::from_slice(&db, "18446744073709551615"), NumericKind::Signed);
+    let b16 = Numeric::new(
+        &db,
+        Ident::from_slice(&db, "16#FFFFFFFFFFFFFFFF"),
+        NumericKind::Hex,
+    );
+    let b10 = Numeric::new(
+        &db,
+        Ident::from_slice(&db, "18446744073709551615"),
+        NumericKind::Signed,
+    );
 
     assert!(b16.as_u64(&db).is_ok());
     assert!(b10.as_u64(&db).is_ok());
@@ -133,9 +171,21 @@ fn lint() {
     let db = RootDatabase::default();
 
     // LINT: -9223372036854775808 to 9223372036854775807
-    let b16_max = Numeric::new(&db, Ident::from_slice(&db, "16#7FFFFFFFFFFFFFFF"), NumericKind::Hex);
-    let b10_max = Numeric::new(&db, Ident::from_slice(&db, "9223372036854775807"), NumericKind::Signed);
-    let b10_min = Numeric::new(&db, Ident::from_slice(&db, "-9223372036854775808"), NumericKind::Signed);
+    let b16_max = Numeric::new(
+        &db,
+        Ident::from_slice(&db, "16#7FFFFFFFFFFFFFFF"),
+        NumericKind::Hex,
+    );
+    let b10_max = Numeric::new(
+        &db,
+        Ident::from_slice(&db, "9223372036854775807"),
+        NumericKind::Signed,
+    );
+    let b10_min = Numeric::new(
+        &db,
+        Ident::from_slice(&db, "-9223372036854775808"),
+        NumericKind::Signed,
+    );
 
     assert!(b16_max.as_i64(&db).is_ok());
     assert!(b10_max.as_i64(&db).is_ok());
@@ -147,7 +197,11 @@ fn word() {
     let db = RootDatabase::default();
 
     // WORD: 16-bit unsigned (same range as UINT)
-    let b2 = Numeric::new(&db, Ident::from_slice(&db, "2#1010101010101010"), NumericKind::Binary);
+    let b2 = Numeric::new(
+        &db,
+        Ident::from_slice(&db, "2#1010101010101010"),
+        NumericKind::Binary,
+    );
     let b8 = Numeric::new(&db, Ident::from_slice(&db, "8#125252"), NumericKind::Octal);
     let b16 = Numeric::new(&db, Ident::from_slice(&db, "16#AAAA"), NumericKind::Hex);
     let b10 = Numeric::new(&db, Ident::from_slice(&db, "43690"), NumericKind::Signed);
@@ -163,9 +217,17 @@ fn dword() {
     let db = RootDatabase::default();
 
     // DWORD: 32-bit unsigned (same range as UDINT)
-    let b2 = Numeric::new(&db, Ident::from_slice(&db, "2#10101010101010101010101010101010"), NumericKind::Binary);
+    let b2 = Numeric::new(
+        &db,
+        Ident::from_slice(&db, "2#10101010101010101010101010101010"),
+        NumericKind::Binary,
+    );
     let b16 = Numeric::new(&db, Ident::from_slice(&db, "16#AAAAAAAA"), NumericKind::Hex);
-    let b10 = Numeric::new(&db, Ident::from_slice(&db, "2863311530"), NumericKind::Signed);
+    let b10 = Numeric::new(
+        &db,
+        Ident::from_slice(&db, "2863311530"),
+        NumericKind::Signed,
+    );
 
     assert!(b2.as_u32(&db).is_ok());
     assert!(b16.as_u32(&db).is_ok());
@@ -177,8 +239,16 @@ fn lword() {
     let db = RootDatabase::default();
 
     // LWORD: 64-bit unsigned (same range as ULINT)
-    let b16 = Numeric::new(&db, Ident::from_slice(&db, "16#AAAAAAAAAAAAAAAA"), NumericKind::Hex);
-    let b10 = Numeric::new(&db, Ident::from_slice(&db, "12297829382473034410"), NumericKind::Signed);
+    let b16 = Numeric::new(
+        &db,
+        Ident::from_slice(&db, "16#AAAAAAAAAAAAAAAA"),
+        NumericKind::Hex,
+    );
+    let b10 = Numeric::new(
+        &db,
+        Ident::from_slice(&db, "12297829382473034410"),
+        NumericKind::Signed,
+    );
 
     assert!(b16.as_u64(&db).is_ok());
     assert!(b10.as_u64(&db).is_ok());
