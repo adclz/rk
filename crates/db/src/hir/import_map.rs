@@ -8,7 +8,7 @@ use std::{cmp::Ordering, hash::Hash};
 use std::{hash::Hasher, ops::ControlFlow};
 
 use crate::hir::scopes::scope::ScopeId;
-use crate::hir::scopes::solver::imported_pous_in_scope;
+use crate::hir::scopes::solver::pous_in_scope;
 use crate::hir::semantic_index::semantic_index;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -249,7 +249,7 @@ pub fn file_symbol_index<'db>(db: &'db dyn BaseDatabase, file: File) -> SymbolIn
 
     let sema = semantic_index(db, file);
 
-    sema.namespaces.iter().for_each(|ns| {
+    sema.namespaces.iter().for_each(|ns| { 
         ns.pous(db).iter().for_each(|pou| {
             pous.push(FileSymbol {
                 name: pou.name(db).text(db).to_string(),
@@ -281,7 +281,7 @@ pub fn query_completions(
     query: &str,
 ) -> Vec<CompletionItem> {
     let sema = semantic_index(db, file);
-    let scoped_map = imported_pous_in_scope(db, file, scope_id);
+    let scoped_map = pous_in_scope(db, file, scope_id);
 
     let locally_visible_names: FxHashSet<&str> = scoped_map
         .keys()

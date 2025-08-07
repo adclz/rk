@@ -1,16 +1,18 @@
+use std::iter::FusedIterator;
+
 use auto_lsp::default::db::tracked::get_ast;
 use auto_lsp::default::db::{file::File, BaseDatabase};
 use rustc_hash::FxHashMap;
 
+use crate::hir::interned::identifier::Ident;
 use crate::hir::namespace::Namespace;
 use crate::hir::pous::pou::PouDecl;
-use crate::hir::scopes::iterators::AncestorsIter;
-use crate::hir::scopes::scope::{Scope, ScopeId};
-use crate::hir::scopes::solver::LocalIndex;
+use crate::hir::scopes::scope::{Scope, ScopeId, ScopeKind};
+use crate::hir::scopes::solver::{pous_in_scope};
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::to_proto::{IterToProto, ToProto};
 
-/// Returns the semantic index of a given file
+/// Returns the semantic index of a given file 
 #[salsa::tracked(returns(ref))]
 pub fn semantic_index<'db>(db: &'db dyn BaseDatabase, file: File) -> SemanticIndex<'db> {
     let ast = match get_ast(db, file).get_root() {
@@ -53,12 +55,19 @@ impl<'db> SemanticIndex<'db> {
         &self.scopes[&id]
     }
 
-    pub fn ancestor_scopes(&self, scope: ScopeId) -> AncestorsIter {
-        AncestorsIter::new(&self.scopes, self.get_scope(scope))
+    /// Returns a [`ScopeIterator`] starting from the given scope.
+    pub fn scope_iterator(&self, scope: ScopeId) -> ScopeIterator {
+        ScopeIterator::new(&self.scopes, self.get_scope(scope))
     }
 
-    pub fn local_index(&'db self, db: &'db dyn BaseDatabase, scope: ScopeId) -> LocalIndex<'db> {
-        LocalIndex::new(db, self, scope)
+    /// Returns all POUs available in a given scope
+    /// 
+    /// This includes:
+    /// - Locally declared POUs
+    /// - Imported POUs via USING directives
+    /// - Inherited POUs from ancestor scopes (including the global scope)
+    pub fn pous_in_scope(&'db self, db: &'db dyn BaseDatabase, scope: ScopeId) -> &'db FxHashMap<Ident, PouDecl<'db>> {
+        pous_in_scope(db, self.file, scope)
     }
 }
 
@@ -73,3 +82,31 @@ impl<'db> IterToProto<'db> for SemanticIndex<'db> {
             .flat_map(move |ns| ns.iter(db, sema))
     }
 }
+
+/// Iterator over scopes in a given scope hierarchy
+pub struct ScopeIterator<'db> {
+    scopes: &'db FxHashMap<ScopeId, Scope<'db>>,
+    next_id: Option<ScopeId>,
+}
+
+impl<'db> ScopeIterator<'db> {
+    pub fn new(scopes: &'db FxHashMap<ScopeId, Scope<'db>>, scope: &'db Scope<'db>) -> Self {
+        Self {
+            scopes,
+            next_id: Some(scope.id),
+        }
+    }
+}
+
+impl<'db> Iterator for ScopeIterator<'db> {
+    type Item = &'db Scope<'db>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let current = self.next_id?;
+        let current = self.scopes.get(&current)?;
+        self.next_id = current.parent;
+        Some(current)
+    }
+}
+
+impl FusedIterator for ScopeIterator<'_> {}

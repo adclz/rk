@@ -28,7 +28,7 @@ use crate::{
         },
         interned::namespace::NamespacePath,
         pous::{pou::Pou, variable::Variable},
-        scopes::solver::{imported_pous_in_scope, resolve_namespace_access},
+        scopes::solver::{pous_in_scope, resolve_namespace_access},
         semantic_index::{semantic_index, SemanticIndex},
         signature::{type_signature, SignatureKind, TypeSignature},
     },
@@ -43,7 +43,7 @@ pub fn duplicate_declarations<'db>(db: &'db dyn BaseDatabase, file: File) {
     let sema = semantic_index(db, file);
 
     for scope in sema.scopes.values() {
-        imported_pous_in_scope(db, file, scope.id);
+        pous_in_scope(db, file, scope.id);
     }
 
     for ns in sema.namespaces.iter() {

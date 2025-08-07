@@ -3,6 +3,7 @@ use auto_lsp::default::db::file::File;
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind};
 
+use crate::hir::scopes::solver::pous_in_scope;
 use crate::hir::semantic_index::semantic_index;
 use crate::{
     completions::snippets::elem_type_names,
@@ -248,9 +249,9 @@ impl<'db> ToProto<'db> for Spec<'db> {
         _offset: usize,
     ) -> Option<Vec<auto_lsp::lsp_types::CompletionItem>> {
         let mut primary = elem_type_names();
-        let finder = sema.local_index(db, self.scope_id(db));
+        let finder = sema.pous_in_scope(db, self.scope_id(db));
 
-        primary.extend(finder.list_pous().filter_map(|(name, pou)| {
+        primary.extend(finder.iter().filter_map(|(name, pou)| {
             match pou.pou(db) {
                 Pou::DataType(fb) => Some(auto_lsp::lsp_types::CompletionItem {
                     label: pou.name(db).text(db).to_string(),
