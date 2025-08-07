@@ -21,5 +21,7 @@ camelpaste = { workspace = true }
 fst = { workspace = true }
 rayon = { workspace = true }
 compact_str = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 salsa = "0.22.0"
 expect-test = "1.5.1"

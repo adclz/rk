@@ -133,6 +133,7 @@ pub fn shared_namespaces<'db>(
 /// We first search if the namespace matches any of the namespaces declared in all files (via [`shared_namespaces`]).
 ///
 /// The, we check if the directive is not declared multiple times in the same scope.
+#[tracing::instrument(skip_all, name = "imported_namespaces_for_using")]
 fn imported_namespaces<'db>(
     db: &'db dyn BaseDatabase,
     file: File,
@@ -164,6 +165,7 @@ fn imported_namespaces<'db>(
     result
 }
 
+#[tracing::instrument(skip_all)]
 /// Resolve a namespace access to a POU declaration.
 pub fn resolve_namespace_access<'db>(
     db: &'db dyn BaseDatabase,

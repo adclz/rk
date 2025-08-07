@@ -243,6 +243,7 @@ pub struct FileSymbol {
     // pub pou: Pou,
 }
 
+#[tracing::instrument(skip_all)]
 #[salsa::tracked(returns(ref))]
 pub fn file_symbol_index<'db>(db: &'db dyn BaseDatabase, file: File) -> SymbolIndex {
     let mut pous = vec![];

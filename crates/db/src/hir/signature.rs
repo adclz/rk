@@ -83,6 +83,7 @@ fn type_signature_result<'db>(
     TypeSignature::recursive(db, pou)
 }
 
+#[tracing::instrument(skip_all, name = "query_type_signature")]
 #[salsa::tracked(cycle_result = type_signature_result)]
 pub fn type_signature<'db>(
     db: &'db dyn BaseDatabase,
@@ -148,6 +149,7 @@ impl<'db> CallableSignature<'db> {
     }
 }
 
+#[tracing::instrument(skip_all, name = "query_call_signature")]
 #[salsa::tracked(cycle_result = call_signature_result)]
 pub fn call_signature<'db>(
     db: &'db dyn BaseDatabase,

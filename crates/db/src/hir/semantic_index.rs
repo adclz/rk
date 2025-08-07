@@ -3,22 +3,26 @@ use std::iter::FusedIterator;
 use auto_lsp::default::db::tracked::get_ast;
 use auto_lsp::default::db::{file::File, BaseDatabase};
 use rustc_hash::FxHashMap;
+use tracing::info_span;
 
 use crate::hir::interned::identifier::Ident;
 use crate::hir::namespace::Namespace;
 use crate::hir::pous::pou::PouDecl;
 use crate::hir::scopes::scope::{Scope, ScopeId, ScopeKind};
-use crate::hir::scopes::solver::{pous_in_scope};
+use crate::hir::scopes::solver::pous_in_scope;
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::to_proto::{IterToProto, ToProto};
 
-/// Returns the semantic index of a given file 
+/// Returns the semantic index of a given file
+#[tracing::instrument(skip_all, name = "query_semantic_index")]
 #[salsa::tracked(returns(ref))]
 pub fn semantic_index<'db>(db: &'db dyn BaseDatabase, file: File) -> SemanticIndex<'db> {
-    let ast = match get_ast(db, file).get_root() {
+    let ast = match info_span!("build AST").in_scope(|| get_ast(db, file).get_root())
+    {
         Some(ast) => ast,
         None => return SemanticIndex::empty(file),
     };
+
     let source = match ast.downcast_ref::<ast::generated::SourceFile>() {
         Some(source) => source,
         None => return SemanticIndex::empty(file),
@@ -30,7 +34,7 @@ pub fn semantic_index<'db>(db: &'db dyn BaseDatabase, file: File) -> SemanticInd
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub struct SemanticIndex<'db> {
     pub file: File,
- 
+
     /// Map of scope IDs to their corresponding scopes
     pub scopes: FxHashMap<ScopeId, Scope<'db>>,
 
@@ -61,12 +65,16 @@ impl<'db> SemanticIndex<'db> {
     }
 
     /// Returns all POUs available in a given scope
-    /// 
+    ///
     /// This includes:
     /// - Locally declared POUs
     /// - Imported POUs via USING directives
     /// - Inherited POUs from ancestor scopes (including the global scope)
-    pub fn pous_in_scope(&'db self, db: &'db dyn BaseDatabase, scope: ScopeId) -> &'db FxHashMap<Ident, PouDecl<'db>> {
+    pub fn pous_in_scope(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        scope: ScopeId,
+    ) -> &'db FxHashMap<Ident, PouDecl<'db>> {
         pous_in_scope(db, self.file, scope)
     }
 }
@@ -77,9 +85,7 @@ impl<'db> IterToProto<'db> for SemanticIndex<'db> {
         db: &'db dyn BaseDatabase,
         sema: &'db SemanticIndex,
     ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        self.namespaces
-            .iter()
-            .flat_map(move |ns| ns.iter(db, sema))
+        self.namespaces.iter().flat_map(move |ns| ns.iter(db, sema))
     }
 }
 

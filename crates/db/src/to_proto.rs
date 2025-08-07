@@ -111,6 +111,7 @@ pub trait IterToProto<'db> {
         sema: &'db SemanticIndex<'db>,
     ) -> impl Iterator<Item = &'db dyn ToProto<'db>>;
 
+    #[tracing::instrument(skip(self, db, sema))]
     fn descendant_at(
         &'db self,
         db: &'db dyn BaseDatabase,
@@ -139,6 +140,7 @@ pub trait IterToProto<'db> {
         best_match
     }
 
+    #[tracing::instrument(skip(self, db, sema))]
     fn named_descendant_at(
         &'db self,
         db: &'db dyn BaseDatabase,

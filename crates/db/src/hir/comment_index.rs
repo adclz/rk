@@ -19,19 +19,18 @@ static COMMENT_QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
     .unwrap()
 });
 
-#[salsa::tracked(returns(ref), no_eq)]
+#[tracing::instrument(skip_all, name = "query_comment_index")]
+#[salsa::tracked(returns(ref))]
 pub fn comment_index(db: &dyn BaseDatabase, file: File) -> CommentIndex {
     let mut map = FxHashMap::default();
-
     let mut query_cursor = tree_sitter::QueryCursor::new();
     let mut captures = query_cursor.captures(
         &COMMENT_QUERY,
         file.document(db).tree.root_node(),
         file.document(db).as_bytes(),
     );
-
     // Since the standard supports nested comments,
-    // we need to carefully ignores them if they are nested
+    // we need to carefully ignore them if they are nested
     let mut curr_range: Option<tree_sitter::Range> = None;
 
     while let Some((capture, capture_index)) = captures.next() {
@@ -66,6 +65,7 @@ pub fn comment_index(db: &dyn BaseDatabase, file: File) -> CommentIndex {
 
         map.insert(range.end_point.row, comment);
     }
+
     CommentIndex { map }
 }
 
@@ -90,7 +90,7 @@ impl CommentIndex {
             }
             if let Some(line_content) = document.texter.get_row(row) {
                 if !line_content.is_empty() {
-                    // Still no comment, but we found a non-empty line
+                    // Still no comment, but there's a non-empty line
                     break;
                 }
             }

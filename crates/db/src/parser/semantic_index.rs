@@ -6,6 +6,7 @@ use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::default::db::{file::File, BaseDatabase};
 use rustc_hash::FxHashMap;
+use tracing::info_span;
 
 use crate::check::errors::semantic_errors::invalid_pou_keyword;
 use crate::hir::interned::identifier::SpannedIdent;
@@ -71,6 +72,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     }
 
     // Fix me: This function should not panic, but handle errors gracefully.
+    #[tracing::instrument(skip_all, name = "build HIR")]
     pub fn build(mut self) -> SemanticIndex<'db> {
         let mut usings = vec![];
 

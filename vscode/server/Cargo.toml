@@ -8,3 +8,6 @@ auto-lsp = { workspace = true, features = ["lsp_server"] }
 server = { workspace = true }
 fastrace = { version = "0.7", features = ["enable"] }
 stderrlog = "0.6.0"
+tracing-span-tree = "0.1.1"
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
