@@ -10,4 +10,4 @@ pub mod signature;
 pub mod using;
 pub mod visibility;
 
-pub static COMPLETION_MARKER: &str = "い";
+pub static COMPLETION_MARKER: &str = "completionZzzzz";
