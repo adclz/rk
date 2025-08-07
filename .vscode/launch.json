@@ -1,14 +1,11 @@
 {
-	// Use IntelliSense to learn about possible attributes.
-	// Hover to view descriptions of existing attributes.
-	// For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
 	"version": "0.2.0",
 	"configurations": [
 		{
 			"type": "extensionHost",
 			"request": "launch",
-			"name": "Run Vscode LSP",
-			"runtimeExecutable": "${execPath}/vscode",
+			"name": "Release",
+			"runtimeExecutable": "${execPath}",
 			"args": [
 				"--extensionDevelopmentPath=${workspaceFolder}/vscode",
 				"${workspaceFolder}/vscode/test"
@@ -16,8 +13,48 @@
 			"outFiles": [
 				"${workspaceFolder}/vscode/client/out/**/*.js"
 			],
-			"autoAttachChildProcesses": true,
 			"preLaunchTask": "npm: build native"
+		},
+		{
+			"type": "extensionHost",
+			"request": "launch",
+			"name": "Debug Extension",
+			"runtimeExecutable": "${execPath}",
+			"args": [
+				"--extensionDevelopmentPath=${workspaceFolder}/vscode",
+				"${workspaceFolder}/vscode/test"
+			],
+			"outFiles": [
+				"${workspaceFolder}/vscode/client/out/**/*.js"
+			],
+			"preLaunchTask": "Build LSP Server (Debug)",
+			"env": {
+				"RUST_LOG": "debug",
+				"RUST_BACKTRACE": "1"
+			},
+			"presentation": {
+				"hidden": true
+			}
+		},
+		{
+			"type": "lldb",
+			"request": "attach",
+			"name": "Attach to LSP",
+			"program": "${workspaceFolder}/target/debug/vscode-lsp-server",
+			"waitFor": true,
+			"presentation": {
+				"hidden": true
+			}
+		}
+	],
+	"compounds": [
+		{
+			"name": "Debug + Tracing",
+			"configurations": [
+				"Debug Extension",
+				"Attach to LSP"
+			],
+			"stopAll": true
 		}
 	]
 }

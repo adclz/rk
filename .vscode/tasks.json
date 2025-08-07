@@ -6,6 +6,25 @@
 			"script": "build",
 			"label": "npm: build native",
 			"path": "/vscode"
+		},
+		{
+			"type": "shell",
+			"label": "Build LSP Server (Debug)",
+			"command": "cargo",
+			"args": ["build", "--bin", "vscode-lsp-server"],
+			"group": "build",
+			"options": {
+				"cwd": "${workspaceFolder}/vscode/server"
+			},
+			"presentation": {
+				"echo": true,
+				"reveal": "always",
+				"focus": false,
+				"panel": "shared",
+				"showReuseMessage": true,
+				"clear": false
+			},
+			"problemMatcher": ["$rustc"]
 		}
 	]
 }
