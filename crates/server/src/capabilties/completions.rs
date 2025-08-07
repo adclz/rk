@@ -8,6 +8,7 @@ use auto_lsp::{
     lsp_types::{self, CompletionParams, CompletionResponse},
 };
 use db::{hir::semantic_index::semantic_index, hir::COMPLETION_MARKER, to_proto::IterToProto};
+use tracing::info_span;
 
 pub fn completions(
     db: &impl BaseDatabase,
@@ -27,16 +28,9 @@ pub fn completions(
         None => return Ok(None),
     };
 
-    match params.context {
-        Some(ctx) => match ctx.trigger_character.as_ref() {
-            Some(char) => match char.as_str() {
-                "." => use_completion_marker(db, file, position, offset),
-                _ => use_completion_marker(db, file, position, offset),
-            },
-            None => use_completion_marker(db, file, position, offset),
-        },
-        None => use_completion_marker(db, file, position, offset),
-    }
+    let _s = tracing::trace_span!("completions").entered();
+   
+    use_completion_marker(db, file, position, offset)
 }
 
 pub fn use_completion_marker(
@@ -45,6 +39,7 @@ pub fn use_completion_marker(
     position: lsp_types::Position,
     offset: usize,
 ) -> anyhow::Result<Option<CompletionResponse>> {
+    let span = info_span!("injecting completion marker", file = %file.url(db).path()).entered();
     let mut doc = (**file.document(db)).clone();
 
     let changes = vec![lsp_types::TextDocumentContentChangeEvent {
