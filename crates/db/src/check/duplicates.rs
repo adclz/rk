@@ -19,12 +19,8 @@ use crate::{
     },
     hir::{
         expressions::{
-            expression::{
-                AnyBit, AnyChars, AnyDate, AnyDuration, AnyElementary, AnyInt, AnyMagnitude,
-                AnyNum, AnyReal, AnySigned, AnyUnsigned, Expr, ExprKind, Numeric, NumericKind,
-                PrimaryExpr,
-            },
-            spec::{SimpleSpecKind, Spec, SpecKind},
+            expression::{Elementary, Expr, ExprKind, Numeric, NumericKind, PrimaryExpr},
+            spec::{Spec, SpecKind},
         },
         interned::namespace::NamespacePath,
         pous::{pou::Pou, variable::Variable},
@@ -143,11 +139,9 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
             }
             ExprKind::PrimaryExpr(PrimaryExpr::Literal(lit)) => {
                 let result = match spec.kind(db) {
-                    SpecKind::Simple(SimpleSpecKind::Bool) => match lit {
-                        AnyElementary::AnyBit(AnyBit::Bool(_)) => true,
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
-                            AnyInt::Infer(infer),
-                        ))) => match infer.as_bool(db) {
+                    SpecKind::Bool => match lit {
+                        Elementary::Bool(_) => true,
+                        Elementary::InferNumeric(infer) => match infer.as_bool(db) {
                             Ok(_) => true,
                             Err(err) => {
                                 mismatch_type(db, sema, self.span(db).clone(), spec, err);
@@ -157,11 +151,9 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         _ => false,
                     },
                     // bit string types
-                    SpecKind::Simple(SimpleSpecKind::Byte) => match lit {
-                        AnyElementary::AnyBit(AnyBit::Byte(_)) => true,
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
-                            AnyInt::Infer(infer),
-                        ))) => match infer.as_u8(db) {
+                    SpecKind::Byte => match lit {
+                        Elementary::Byte(_) => true,
+                        Elementary::InferNumeric(infer) => match infer.as_u8(db) {
                             Ok(_) => true,
                             Err(err) => {
                                 mismatch_type(db, sema, self.span(db).clone(), spec, err);
@@ -170,12 +162,9 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         },
                         _ => false,
                     },
-                    SpecKind::Simple(SimpleSpecKind::Word) => match lit {
-                        AnyElementary::AnyBit(AnyBit::Byte(_)) => true,
-                        AnyElementary::AnyBit(AnyBit::Word(_)) => true,
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
-                            AnyInt::Infer(infer),
-                        ))) => match infer.as_u16(db) {
+                    SpecKind::Word => match lit {
+                        Elementary::Byte(_) | Elementary::Word(_) => true,
+                        Elementary::InferNumeric(infer) => match infer.as_u16(db) {
                             Ok(_) => true,
                             Err(err) => {
                                 mismatch_type(db, sema, self.span(db).clone(), spec, err);
@@ -184,13 +173,9 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         },
                         _ => false,
                     },
-                    SpecKind::Simple(SimpleSpecKind::DWord) => match lit {
-                        AnyElementary::AnyBit(AnyBit::Byte(_)) => true,
-                        AnyElementary::AnyBit(AnyBit::Word(_)) => true,
-                        AnyElementary::AnyBit(AnyBit::DWord(_)) => true,
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
-                            AnyInt::Infer(infer),
-                        ))) => match infer.as_u32(db) {
+                    SpecKind::DWord => match lit {
+                        Elementary::Byte(_) | Elementary::Word(_) | Elementary::DWord(_) => true,
+                        Elementary::InferNumeric(infer) => match infer.as_u32(db) {
                             Ok(_) => true,
                             Err(err) => {
                                 mismatch_type(db, sema, self.span(db).clone(), spec, err);
@@ -199,14 +184,12 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         },
                         _ => false,
                     },
-                    SpecKind::Simple(SimpleSpecKind::LWord) => match lit {
-                        AnyElementary::AnyBit(AnyBit::Byte(_)) => true,
-                        AnyElementary::AnyBit(AnyBit::Word(_)) => true,
-                        AnyElementary::AnyBit(AnyBit::DWord(_)) => true,
-                        AnyElementary::AnyBit(AnyBit::LWord(_)) => true,
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
-                            AnyInt::Infer(infer),
-                        ))) => match infer.as_u64(db) {
+                    SpecKind::LWord => match lit {
+                        Elementary::Byte(_)
+                        | Elementary::Word(_)
+                        | Elementary::DWord(_)
+                        | Elementary::LWord(_) => true,
+                        Elementary::InferNumeric(infer) => match infer.as_u64(db) {
                             Ok(_) => true,
                             Err(err) => {
                                 mismatch_type(db, sema, self.span(db).clone(), spec, err);
@@ -216,13 +199,9 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         _ => false,
                     },
                     // signed integers
-                    SpecKind::Simple(SimpleSpecKind::SInt) => match lit {
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
-                            AnyInt::AnySigned(AnySigned::SInt(_)),
-                        ))) => true,
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
-                            AnyInt::Infer(infer),
-                        ))) => match infer.as_u8(db) {
+                    SpecKind::SInt => match lit {
+                        Elementary::SInt(_) => true,
+                        Elementary::InferNumeric(infer) => match infer.as_u8(db) {
                             Ok(_) => true,
                             Err(err) => {
                                 mismatch_type(db, sema, self.span(db).clone(), spec, err);
@@ -231,16 +210,9 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         },
                         _ => false,
                     },
-                    SpecKind::Simple(SimpleSpecKind::Int) => match lit {
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
-                            AnyInt::AnySigned(AnySigned::SInt(_)),
-                        ))) => true,
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
-                            AnyInt::AnySigned(AnySigned::Int(_)),
-                        ))) => true,
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
-                            AnyInt::Infer(infer),
-                        ))) => match infer.as_u16(db) {
+                    SpecKind::Int => match lit {
+                        Elementary::SInt(_) | Elementary::Int(_) => true,
+                        Elementary::InferNumeric(infer) => match infer.as_u16(db) {
                             Ok(_) => true,
                             Err(err) => {
                                 mismatch_type(db, sema, self.span(db).clone(), spec, err);
@@ -249,19 +221,9 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         },
                         _ => false,
                     },
-                    SpecKind::Simple(SimpleSpecKind::DInt) => match lit {
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
-                            AnyInt::AnySigned(AnySigned::SInt(_)),
-                        ))) => true,
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
-                            AnyInt::AnySigned(AnySigned::Int(_)),
-                        ))) => true,
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
-                            AnyInt::AnySigned(AnySigned::DInt(_)),
-                        ))) => true,
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
-                            AnyInt::Infer(infer),
-                        ))) => match infer.as_u32(db) {
+                    SpecKind::DInt => match lit {
+                        Elementary::SInt(_) | Elementary::Int(_) | Elementary::DInt(_) => true,
+                        Elementary::InferNumeric(infer) => match infer.as_u32(db) {
                             Ok(_) => true,
                             Err(err) => {
                                 mismatch_type(db, sema, self.span(db).clone(), spec, err);
@@ -270,22 +232,12 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         },
                         _ => false,
                     },
-                    SpecKind::Simple(SimpleSpecKind::LInt) => match lit {
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
-                            AnyInt::AnySigned(AnySigned::SInt(_)),
-                        ))) => true,
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
-                            AnyInt::AnySigned(AnySigned::Int(_)),
-                        ))) => true,
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
-                            AnyInt::AnySigned(AnySigned::DInt(_)),
-                        ))) => true,
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
-                            AnyInt::AnySigned(AnySigned::LInt(_)),
-                        ))) => true,
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
-                            AnyInt::Infer(infer),
-                        ))) => match infer.as_u64(db) {
+                    SpecKind::LInt => match lit {
+                        Elementary::SInt(_)
+                        | Elementary::Int(_)
+                        | Elementary::DInt(_)
+                        | Elementary::LInt(_) => true,
+                        Elementary::InferNumeric(infer) => match infer.as_u64(db) {
                             Ok(_) => true,
                             Err(err) => {
                                 mismatch_type(db, sema, self.span(db).clone(), spec, err);
@@ -295,13 +247,9 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         _ => false,
                     },
                     // unsigned integers
-                    SpecKind::Simple(SimpleSpecKind::USInt) => match lit {
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
-                            AnyInt::AnyUnsigned(AnyUnsigned::USInt(_)),
-                        ))) => true,
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
-                            AnyInt::Infer(infer),
-                        ))) => match infer.as_u8(db) {
+                    SpecKind::USInt => match lit {
+                        Elementary::USInt(_) => true,
+                        Elementary::InferNumeric(infer) => match infer.as_u8(db) {
                             Ok(_) => true,
                             Err(err) => {
                                 mismatch_type(db, sema, self.span(db).clone(), spec, err);
@@ -310,16 +258,9 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         },
                         _ => false,
                     },
-                    SpecKind::Simple(SimpleSpecKind::UInt) => match lit {
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
-                            AnyInt::AnyUnsigned(AnyUnsigned::USInt(_)),
-                        ))) => true,
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
-                            AnyInt::AnyUnsigned(AnyUnsigned::UInt(_)),
-                        ))) => true,
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
-                            AnyInt::Infer(infer),
-                        ))) => match infer.as_u16(db) {
+                    SpecKind::UInt => match lit {
+                        Elementary::USInt(_) | Elementary::UInt(_) => true,
+                        Elementary::InferNumeric(infer) => match infer.as_u16(db) {
                             Ok(_) => true,
                             Err(err) => {
                                 mismatch_type(db, sema, self.span(db).clone(), spec, err);
@@ -328,19 +269,9 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         },
                         _ => false,
                     },
-                    SpecKind::Simple(SimpleSpecKind::UDInt) => match lit {
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
-                            AnyInt::AnyUnsigned(AnyUnsigned::USInt(_)),
-                        ))) => true,
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
-                            AnyInt::AnyUnsigned(AnyUnsigned::UInt(_)),
-                        ))) => true,
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
-                            AnyInt::AnyUnsigned(AnyUnsigned::UDInt(_)),
-                        ))) => true,
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
-                            AnyInt::Infer(infer),
-                        ))) => match infer.as_u32(db) {
+                    SpecKind::UDInt => match lit {
+                        Elementary::USInt(_) | Elementary::UInt(_) | Elementary::UDInt(_) => true,
+                        Elementary::InferNumeric(infer) => match infer.as_u32(db) {
                             Ok(_) => true,
                             Err(err) => {
                                 mismatch_type(db, sema, self.span(db).clone(), spec, err);
@@ -349,22 +280,12 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         },
                         _ => false,
                     },
-                    SpecKind::Simple(SimpleSpecKind::ULInt) => match lit {
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
-                            AnyInt::AnyUnsigned(AnyUnsigned::USInt(_)),
-                        ))) => true,
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
-                            AnyInt::AnyUnsigned(AnyUnsigned::UInt(_)),
-                        ))) => true,
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
-                            AnyInt::AnyUnsigned(AnyUnsigned::UDInt(_)),
-                        ))) => true,
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
-                            AnyInt::AnyUnsigned(AnyUnsigned::ULInt(_)),
-                        ))) => true,
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(
-                            AnyInt::Infer(infer),
-                        ))) => match infer.as_u64(db) {
+                    SpecKind::ULInt => match lit {
+                        Elementary::USInt(_)
+                        | Elementary::UInt(_)
+                        | Elementary::UDInt(_)
+                        | Elementary::ULInt(_) => true,
+                        Elementary::InferNumeric(infer) => match infer.as_u64(db) {
                             Ok(_) => true,
                             Err(err) => {
                                 mismatch_type(db, sema, self.span(db).clone(), spec, err);
@@ -374,31 +295,20 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                         _ => false,
                     },
                     // floats
-                    SpecKind::Simple(SimpleSpecKind::Real) => match lit {
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyReal(
-                            AnyReal::Real(_),
-                        ))) => true,
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyReal(
-                            AnyReal::Infer(identifier),
-                        ))) => match identifier.as_f32(db) {
+                    SpecKind::Real => match lit {
+                        Elementary::Real(_) => true,
+                        Elementary::InferIdent(identifier) => match identifier.as_f32(db) {
                             Ok(_) => true,
                             Err(err) => {
                                 mismatch_type(db, sema, self.span(db).clone(), spec, err);
                                 return;
                             }
                         },
-                        _ => false,
+                        _ => true,
                     },
-                    SpecKind::Simple(SimpleSpecKind::LReal) => match lit {
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyReal(
-                            AnyReal::Real(_),
-                        ))) => true,
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyReal(
-                            AnyReal::LReal(_),
-                        ))) => true,
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyReal(
-                            AnyReal::Infer(identifier),
-                        ))) => match identifier.as_f64(db) {
+                    SpecKind::LReal => match lit {
+                        Elementary::Real(_) | Elementary::LReal(_) => true,
+                        Elementary::InferIdent(identifier) => match identifier.as_f64(db) {
                             Ok(_) => true,
                             Err(err) => {
                                 mismatch_type(db, sema, self.span(db).clone(), spec, err);

@@ -5,14 +5,13 @@ use auto_lsp::core::ast::AstNode;
 
 use crate::check::errors::semantic_errors::{invocation_in_expression, unexpected_this};
 use crate::hir::expressions::expression::{
-    AnyBit, AnyChars, AnyDate, AnyDuration, AnyInt, AnyMagnitude, AnyNum, AnyReal, AnySigned,
-    AnyUnsigned, FieldExpr, IndexExpr, Numeric, NumericKind, PathExpr, VariableAccessKind,
+    FieldExpr, IndexExpr, Numeric, NumericKind, PathExpr, VariableAccessKind,
 };
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::{
     hir::expressions::expression::{
-        AddOperatorKind, AnyElementary, BooleanOperatorKind, ComparisonOperatorKind, Expr,
-        ExprKind, MultOperatorKind, ParamAssign, PathExprKind, PrimaryExpr, RefAdress, RefValue,
+        AddOperatorKind, BooleanOperatorKind, ComparisonOperatorKind, Elementary, Expr, ExprKind,
+        MultOperatorKind, ParamAssign, PathExprKind, PrimaryExpr, RefAdress, RefValue,
         SymbolicVariable, UnaryOperatorKind, VarAccess, VariableAccess,
     },
     hir::interned::identifier::Ident,
@@ -351,49 +350,49 @@ impl<'db> ParseExpression<'db> for ast::generated::Constant {
                 Constant::BoolLiteral(bool_literal) => {
                     match bool_literal.children.deref() {
                         ast::generated::BoolLiteralWithNumeric_BoolLiteralWithString::BoolLiteralWithNumeric(bool_literal) => {
-                            AnyElementary::AnyBit(AnyBit::Bool(Ident::from_node(sema.db, sema.file, bool_literal.value.deref())?))
+                            Elementary::Bool(Ident::from_node(sema.db, sema.file, bool_literal.value.deref())?)
                         }
                         ast::generated::BoolLiteralWithNumeric_BoolLiteralWithString::BoolLiteralWithString(bool_literal) => {
-                           AnyElementary::AnyBit(AnyBit::Bool(Ident::from_node(sema.db, sema.file, bool_literal.value.deref())?))
+                           Elementary::Bool(Ident::from_node(sema.db, sema.file, bool_literal.value.deref())?)
                         }
                     }
                 }
                 Constant::CharLiteral(char_literal) => {
-                    AnyElementary::AnyChars(AnyChars::AnyString(Ident::from_node(sema.db, sema.file, char_literal.value.deref())?))
+                    Elementary::AnyString(Ident::from_node(sema.db, sema.file, char_literal.value.deref())?)
                 }
                 Constant::NumericLiteral(numeric_literal) => {
                     match numeric_literal.children.deref() {
                     ast::generated::IntLiteral_RealLiteral::IntLiteral(int_literal) => {
                         match &int_literal.kind {
-                            None => AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(AnyInt::Infer(int_literal.int.parse(sema)?)))),
+                            None => Elementary::InferNumeric(int_literal.int.parse(sema)?),
                             Some(kind) => {
                                 match kind.children.deref() {
                                     ast::generated::IntTypeName_MultibitsTypeName::IntTypeName(int_type_name) => {
-                                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(AnyNum::AnyInt(match int_type_name.children.deref() {
+                                        match int_type_name.children.deref() {
                                             ast::generated::SignIntTypeName_UnsignIntTypeName::SignIntTypeName(sign_int_type_name) => {
                                                 match sign_int_type_name.children.deref() {
-                                                    ast::generated::DintName_IntName_LintName_SintName::SintName(_) => AnyInt::AnySigned(AnySigned::SInt(int_literal.int.parse(sema)?)),
-                                                    ast::generated::DintName_IntName_LintName_SintName::IntName(_) => AnyInt::AnySigned(AnySigned::Int(int_literal.int.parse(sema)?)),
-                                                    ast::generated::DintName_IntName_LintName_SintName::DintName(_) => AnyInt::AnySigned(AnySigned::DInt(int_literal.int.parse(sema)?)),
-                                                    ast::generated::DintName_IntName_LintName_SintName::LintName(_) => AnyInt::AnySigned(AnySigned::LInt(int_literal.int.parse(sema)?)),
+                                                    ast::generated::DintName_IntName_LintName_SintName::SintName(_) => Elementary::SInt(int_literal.int.parse(sema)?),
+                                                    ast::generated::DintName_IntName_LintName_SintName::IntName(_) => Elementary::Int(int_literal.int.parse(sema)?),
+                                                    ast::generated::DintName_IntName_LintName_SintName::DintName(_) => Elementary::DInt(int_literal.int.parse(sema)?),
+                                                    ast::generated::DintName_IntName_LintName_SintName::LintName(_) => Elementary::LInt(int_literal.int.parse(sema)?),
                                                 }
                                             },
                                             ast::generated::SignIntTypeName_UnsignIntTypeName::UnsignIntTypeName(unsign_int_type_name) => {
                                                 match unsign_int_type_name.children.deref() {
-                                                    ast::generated::UdintName_UintName_UlintName_UsintName::UsintName(_) => AnyInt::AnyUnsigned(AnyUnsigned::USInt(int_literal.int.parse(sema)?)),
-                                                    ast::generated::UdintName_UintName_UlintName_UsintName::UintName(_) => AnyInt::AnyUnsigned(AnyUnsigned::UInt(int_literal.int.parse(sema)?)),
-                                                    ast::generated::UdintName_UintName_UlintName_UsintName::UdintName(_) => AnyInt::AnyUnsigned(AnyUnsigned::UDInt(int_literal.int.parse(sema)?)),
-                                                    ast::generated::UdintName_UintName_UlintName_UsintName::UlintName(_) => AnyInt::AnyUnsigned(AnyUnsigned::ULInt(int_literal.int.parse(sema)?)),
+                                                    ast::generated::UdintName_UintName_UlintName_UsintName::UsintName(_) => Elementary::USInt(int_literal.int.parse(sema)?),
+                                                    ast::generated::UdintName_UintName_UlintName_UsintName::UintName(_) => Elementary::UInt(int_literal.int.parse(sema)?),
+                                                    ast::generated::UdintName_UintName_UlintName_UsintName::UdintName(_) => Elementary::UDInt(int_literal.int.parse(sema)?),
+                                                    ast::generated::UdintName_UintName_UlintName_UsintName::UlintName(_) => Elementary::ULInt(int_literal.int.parse(sema)?),
                                                 }
                                             },
-                                        })))
+                                        }
                                     },
                                     ast::generated::IntTypeName_MultibitsTypeName::MultibitsTypeName(multibits_type_name) => {
                                         match multibits_type_name.children.deref() {
-                                            ast::generated::ByteName_DwordName_LwordName_WordName::ByteName(_) => AnyElementary::AnyBit(AnyBit::Byte(int_literal.int.parse(sema)?)),
-                                            ast::generated::ByteName_DwordName_LwordName_WordName::WordName(_) => AnyElementary::AnyBit(AnyBit::Word(int_literal.int.parse(sema)?)),
-                                            ast::generated::ByteName_DwordName_LwordName_WordName::DwordName(_) => AnyElementary::AnyBit(AnyBit::DWord(int_literal.int.parse(sema)?)),
-                                            ast::generated::ByteName_DwordName_LwordName_WordName::LwordName(_) => AnyElementary::AnyBit(AnyBit::LWord(int_literal.int.parse(sema)?)),
+                                            ast::generated::ByteName_DwordName_LwordName_WordName::ByteName(_) => Elementary::Byte(int_literal.int.parse(sema)?),
+                                            ast::generated::ByteName_DwordName_LwordName_WordName::WordName(_) => Elementary::Word(int_literal.int.parse(sema)?),
+                                            ast::generated::ByteName_DwordName_LwordName_WordName::DwordName(_) => Elementary::DWord(int_literal.int.parse(sema)?),
+                                            ast::generated::ByteName_DwordName_LwordName_WordName::LwordName(_) => Elementary::LWord(int_literal.int.parse(sema)?),
                                         }
                                     },
                                 }
@@ -403,19 +402,19 @@ impl<'db> ParseExpression<'db> for ast::generated::Constant {
                     ast::generated::IntLiteral_RealLiteral::RealLiteral(real_literal) => {
                         let j = real_literal.Type.as_deref();
 
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyNum(match real_literal.Type.as_deref() {
+                        match real_literal.Type.as_deref() {
                             Some(kind) => {
                                 match kind.children.deref() {
                                     ast::generated::LrealName_RealName::RealName(_) => {
-                                        AnyNum::AnyReal(AnyReal::Real(Ident::from_node(sema.db, sema.file, real_literal.value.deref())?))
+                                        Elementary::Real(Ident::from_node(sema.db, sema.file, real_literal.value.deref())?)
                                     }
                                     ast::generated::LrealName_RealName::LrealName(_) => {
-                                        AnyNum::AnyReal(AnyReal::LReal(Ident::from_node(sema.db, sema.file, real_literal.value.deref())?))
+                                        Elementary::LReal(Ident::from_node(sema.db, sema.file, real_literal.value.deref())?)
                                     }
                                 }
                             }
-                            None => AnyNum::AnyReal(AnyReal::Infer(Ident::from_node(sema.db, sema.file, real_literal.value.deref())?))
-                        }))
+                            None => Elementary::InferIdent(Ident::from_node(sema.db, sema.file, real_literal.value.deref())?)
+                        }
                     },
                 }
                 }
@@ -423,10 +422,10 @@ impl<'db> ParseExpression<'db> for ast::generated::Constant {
                     ast::generated::Date_DateAndTime_Duration_TimeOfDay::Date(date) => {
                         match date.children.deref() {
                             ast::generated::LongDate_ShortDate::LongDate(date) => {
-                                AnyElementary::AnyDate(AnyDate::LDate(Ident::from_node(sema.db, sema.file, date.value.deref())?))
+                                Elementary::LDate(Ident::from_node(sema.db, sema.file, date.value.deref())?)
                             }
                             ast::generated::LongDate_ShortDate::ShortDate(date) => {
-                                AnyElementary::AnyDate(AnyDate::Date(Ident::from_node(sema.db, sema.file, date.value.deref())?))
+                                Elementary::Date(Ident::from_node(sema.db, sema.file, date.value.deref())?)
                             }
                         }
                     }
@@ -435,28 +434,28 @@ impl<'db> ParseExpression<'db> for ast::generated::Constant {
                     ) => match date_and_time.children.deref() {
                         ast::generated::LongDateAndTime_ShortDateAndTime::LongDateAndTime(
                             dt,
-                        ) => AnyElementary::AnyDate(AnyDate::LDateTime(Ident::from_node(sema.db, sema.file, dt.value.deref())?)),
+                        ) => Elementary::LDateTime(Ident::from_node(sema.db, sema.file, dt.value.deref())?),
                         ast::generated::LongDateAndTime_ShortDateAndTime::ShortDateAndTime(
                             dt,
-                        ) => AnyElementary::AnyDate(AnyDate::DateAndTime(Ident::from_node(sema.db, sema.file, dt.value.deref())?)),
+                        ) => Elementary::DateAndTime(Ident::from_node(sema.db, sema.file, dt.value.deref())?),
                     },
                     ast::generated::Date_DateAndTime_Duration_TimeOfDay::Duration(duration) => {
-                        AnyElementary::AnyMagnitude(AnyMagnitude::AnyDuration(match duration.children.deref() {
+                        match duration.children.deref() {
                             ast::generated::Ltime_Time::Ltime(ltime) => {
-                                AnyDuration::LTime(Ident::from_node(sema.db, sema.file, ltime.value.deref())?)
+                                Elementary::LTime(Ident::from_node(sema.db, sema.file, ltime.value.deref())?)
                             }
                             ast::generated::Ltime_Time::Time(time) => {
-                                AnyDuration::Time(Ident::from_node(sema.db, sema.file, time.value.deref())?)
+                                Elementary::Time(Ident::from_node(sema.db, sema.file, time.value.deref())?)
                             }
-                        }))
+                        }
                     }
                     ast::generated::Date_DateAndTime_Duration_TimeOfDay::TimeOfDay(time_of_day) => {
                         match time_of_day.children.deref() {
                             ast::generated::Ltod_Tod::Ltod(ltod) => {
-                                AnyElementary::AnyDate(AnyDate::LTod(Ident::from_node(sema.db, sema.file, ltod.value.deref())?))
+                                Elementary::LTod(Ident::from_node(sema.db, sema.file, ltod.value.deref())?)
                             }
                             ast::generated::Ltod_Tod::Tod(tod) => {
-                                AnyElementary::AnyDate(AnyDate::TimeOfDay(Ident::from_node(sema.db, sema.file, tod.value.deref())?))
+                                Elementary::TimeOfDay(Ident::from_node(sema.db, sema.file, tod.value.deref())?)
                             }
                         }
                     }

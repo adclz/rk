@@ -4,7 +4,7 @@ use auto_lsp::default::db::BaseDatabase;
 use rustc_hash::FxHashMap;
 
 use crate::hir::{
-    expressions::spec::{CompositeSpecKind, Enum, SimpleSpecKind, Spec, SpecKind},
+    expressions::spec::{Enum, Spec, SpecKind},
     interned::{
         identifier::Ident,
         namespace::{NamespaceAccess, SpannedNamespaceAccess},
@@ -57,10 +57,10 @@ pub enum CallableSignatureKind<'db> {
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum TypeParameter<'db> {
     // Single type spec (usually a literal)
-    Simple(SimpleSpecKind),
+    Simple(Spec<'db>),
     // enums can have an integer or one of the enum values
     Enum {
-        spec: SimpleSpecKind,
+        spec: Spec<'db>,
         list: Vec<Ident>,
     },
     Array {
@@ -294,26 +294,23 @@ impl<'db> TypeSignature<'db> {
 impl<'db> Spec<'db> {
     pub fn to_type_parameter(&self, db: &'db dyn BaseDatabase) -> TypeParameter<'db> {
         match self.kind(db) {
-            SpecKind::Simple(simple) => TypeParameter::Simple(*simple),
-
-            SpecKind::Composite(CompositeSpecKind::Array(array)) => TypeParameter::Array {
+            SpecKind::Array(array) => TypeParameter::Array {
                 spec: *array.of_type,
             },
-            SpecKind::Composite(CompositeSpecKind::Enum(enum_)) => {
-                let kind = SimpleSpecKind::UInt;
+            SpecKind::Enum(enum_) => {
                 match enum_ {
                     Enum::Anonymous(list) => TypeParameter::Enum {
-                        spec: kind,
+                        spec: *self,
                         list: list.to_vec(),
                     },
                     Enum::Named(list) => TypeParameter::Enum {
-                        spec: kind,
+                        spec: *self,
                         list: list.iter().map(|(name, _)| *name).collect(),
                     },
                 }
             }
 
-            SpecKind::Composite(CompositeSpecKind::Struct(struct_)) => TypeParameter::Struct(
+            SpecKind::Struct(struct_) => TypeParameter::Struct(
                 struct_
                     .elements
                     .iter()
@@ -321,7 +318,7 @@ impl<'db> Spec<'db> {
                     .collect::<FxHashMap<Ident, TypeParameter<'db>>>(),
             ),
 
-            SpecKind::Composite(CompositeSpecKind::Subrange(subrange)) => TypeParameter::SubRange,
+            SpecKind::Subrange(subrange) => TypeParameter::SubRange,
 
             SpecKind::Target(target) => {
                 match resolve_namespace_access(db, self.file(db), self.scope_id(db), *target) {
@@ -336,6 +333,7 @@ impl<'db> Spec<'db> {
                 }
             }
             SpecKind::Ref(target) => TypeParameter::RefTo(target.to_type_parameter(db).into()),
+            _  => TypeParameter::Simple(*self),
         }
     }
 }

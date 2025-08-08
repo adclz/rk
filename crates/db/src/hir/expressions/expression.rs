@@ -90,7 +90,7 @@ pub enum ExprKind<'db> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum PrimaryExpr<'db> {
-    Literal(AnyElementary), // constant
+    Literal(Elementary), // constant
     // Path --> Target
     VariableAccess {
         variable: VariableAccess<'db>,
@@ -294,93 +294,49 @@ pub enum VarAccess {
     Deref(Ident), // ^
 }
 
-// Generic data types Generic data types
-// Groups of elementary data types
-// ANY
-// |_ ANY_DERIVED
-// |_ ANY_ELEMENTARY
-//    |_ ANY_MAGNITUDE
-//       |_ ANY_NUM
-//          |_ ANY_REAL -  REAL, LREAL
-//          |_ ANY_INT
-//              |_ ANY_UNSIGNED - USINT, UINT, UDINT, ULINT
-//              |_ ANY_SIGNED - SINT, INT, DINT, LINT
-//       |_ ANY_DURATION - TIME, LTIME
-//    |_ ANY_BIT - BOOL, BYTE, WORD, DWORD, LWORD
-//    |_ ANY_CHARS
-//       |_ ANY_STRING - STRING, WSTRING
-//       |_ ANY_CHAR - CHAR, WCHAR
-//    |_ ANY_DATE - DATE_AND_TIME, LDT, DATE, TIME_OF_DAY, LTOD, LDATE*
-//
-// Notes:
-//
-// - All ANY_UNSIGNED, ANY_INT and ANY_BIT (except for bool) can be represented as octal, decimal or hexadecimal - hence the Numeric enum.
-// - ANY_INT and ANY_REAL have an "Infer" variant to represent unspecified types which have to be inferred later.
-// * (LDATE is not present in the spec ?)
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum AnyElementary {
-    AnyMagnitude(AnyMagnitude),
-    AnyBit(AnyBit),
-    AnyChars(AnyChars),
-    AnyDate(AnyDate),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum AnyMagnitude {
-    AnyNum(AnyNum),
-    AnyDuration(AnyDuration),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum AnyNum {
-    AnyReal(AnyReal),
-    AnyInt(AnyInt),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum AnyReal {
-    Real(Ident),
-    LReal(Ident),
-    Infer(Ident), // Represents an unspecified real type
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum AnyInt {
-    AnySigned(AnySigned),
-    AnyUnsigned(AnyUnsigned),
-    Infer(Numeric), // Represents an unspecified numeric type
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum AnySigned {
-    SInt(Numeric),
-    Int(Numeric),
-    DInt(Numeric),
-    LInt(Numeric),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum AnyUnsigned {
-    USInt(Numeric),
-    UInt(Numeric),
-    UDInt(Numeric),
-    ULInt(Numeric),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum AnyDuration {
-    Time(Ident),
-    LTime(Ident),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum AnyBit {
+pub enum Elementary {
+    // Bit strings
     Bool(Ident),
     Byte(Numeric),
     Word(Numeric),
     DWord(Numeric),
     LWord(Numeric),
+
+    // Signed and Unsigned Integers
+    SInt(Numeric),
+    Int(Numeric),
+    DInt(Numeric),
+    LInt(Numeric),
+
+    USInt(Numeric),
+    UInt(Numeric),
+    UDInt(Numeric),
+    ULInt(Numeric),
+
+    // Time
+    Time(Ident),
+    LTime(Ident),
+
+    // Reals
+    Real(Ident),
+    LReal(Ident),
+
+    // dates
+    DateAndTime(Ident),
+    LDateTime(Ident),
+    LDate(Ident),
+    Date(Ident),
+    TimeOfDay(Ident),
+    LTod(Ident),
+
+    // strings
+    AnyString(Ident),
+    AnyChar(Ident),
+
+    // Has to be solved later
+    InferNumeric(Numeric),
+    InferIdent(Ident),
 }
 
 #[salsa::interned(debug, no_lifetime)]
@@ -555,73 +511,36 @@ impl Numeric {
     }
 }
 
-// todo: improve support for string and char
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum AnyChars {
-    AnyString(Ident),
-    AnyChar(Ident),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum AnyDate {
-    DateAndTime(Ident),
-    LDateTime(Ident),
-    LDate(Ident),
-    Date(Ident),
-    TimeOfDay(Ident),
-    LTod(Ident),
-}
-
-impl AnyElementary {
+impl Elementary {
     pub fn to_string(&self, db: &dyn BaseDatabase) -> String {
         match self {
-            Self::AnyBit(n) => match n {
-                AnyBit::Bool(ident) => format!("Bool: {}", ident.text(db)),
-                AnyBit::Byte(ident) => format!("Byte: {}", ident.to_string(db)),
-                AnyBit::Word(ident) => format!("Word: {}", ident.to_string(db)),
-                AnyBit::DWord(ident) => format!("DWord: {}", ident.to_string(db)),
-                AnyBit::LWord(ident) => format!("Lword: {}", ident.to_string(db)),
-            },
-            Self::AnyMagnitude(n) => match n {
-                AnyMagnitude::AnyNum(n) => match n {
-                    AnyNum::AnyReal(n) => match n {
-                        AnyReal::Real(ident) => format!("Real: {}", ident.text(db)),
-                        AnyReal::LReal(ident) => format!("LReal: {}", ident.text(db)),
-                        AnyReal::Infer(ident) => format!("{}", ident.text(db)),
-                    },
-                    AnyNum::AnyInt(n) => match n {
-                        AnyInt::AnySigned(n) => match n {
-                            AnySigned::SInt(ident) => format!("SInt: {}", ident.to_string(db)),
-                            AnySigned::Int(ident) => format!("Int: {}", ident.to_string(db)),
-                            AnySigned::DInt(ident) => format!("DInt: {}", ident.to_string(db)),
-                            AnySigned::LInt(ident) => format!("LInt: {}", ident.to_string(db)),
-                        },
-                        AnyInt::AnyUnsigned(ident) => match ident {
-                            AnyUnsigned::USInt(ident) => format!("USInt: {}", ident.to_string(db)),
-                            AnyUnsigned::UInt(ident) => format!("UInt: {}", ident.to_string(db)),
-                            AnyUnsigned::UDInt(ident) => format!("UDInt: {}", ident.to_string(db)),
-                            AnyUnsigned::ULInt(ident) => format!("ULInt: {}", ident.to_string(db)),
-                        },
-                        AnyInt::Infer(ident) => ident.to_string(db),
-                    },
-                },
-                AnyMagnitude::AnyDuration(n) => match n {
-                    AnyDuration::Time(ident) => format!("Time: {}", ident.text(db)),
-                    AnyDuration::LTime(ident) => format!("LTime: {}", ident.text(db)),
-                },
-            },
-            Self::AnyChars(n) => match n {
-                AnyChars::AnyString(ident) => format!("String: {}", ident.text(db)),
-                AnyChars::AnyChar(ident) => format!("Char: {}", ident.text(db)),
-            },
-            Self::AnyDate(n) => match n {
-                AnyDate::DateAndTime(ident) => format!("Date and Time: {}", ident.text(db)),
-                AnyDate::LDateTime(ident) => format!("Long Date and Time: {}", ident.text(db)),
-                AnyDate::Date(ident) => format!("Date: {}", ident.text(db)),
-                AnyDate::LDate(ident) => format!("Long Date: {}", ident.text(db)),
-                AnyDate::TimeOfDay(ident) => format!("Time of Day: {}", ident.text(db)),
-                AnyDate::LTod(ident) => format!("Long Time of Day: {}", ident.text(db)),
-            },
+            Self::InferNumeric(numeric) => numeric.to_string(db),
+            Self::InferIdent(ident) => ident.text(db).to_string(),
+            Self::Bool(ident) => format!("Bool: {}", ident.text(db)),
+            Self::Byte(ident) => format!("Byte: {}", ident.to_string(db)),
+            Self::Word(ident) => format!("Word: {}", ident.to_string(db)),
+            Self::DWord(ident) => format!("DWord: {}", ident.to_string(db)),
+            Self::LWord(ident) => format!("Lword: {}", ident.to_string(db)),
+            Self::Real(ident) => format!("Real: {}", ident.text(db)),
+            Self::LReal(ident) => format!("LReal: {}", ident.text(db)),
+            Self::SInt(ident) => format!("SInt: {}", ident.to_string(db)),
+            Self::Int(ident) => format!("Int: {}", ident.to_string(db)),
+            Self::DInt(ident) => format!("DInt: {}", ident.to_string(db)),
+            Self::LInt(ident) => format!("LInt: {}", ident.to_string(db)),
+            Self::USInt(ident) => format!("USInt: {}", ident.to_string(db)),
+            Self::UInt(ident) => format!("UInt: {}", ident.to_string(db)),
+            Self::UDInt(ident) => format!("UDInt: {}", ident.to_string(db)),
+            Self::ULInt(ident) => format!("ULInt: {}", ident.to_string(db)),
+            Self::Time(ident) => format!("Time: {}", ident.text(db)),
+            Self::LTime(ident) => format!("LTime: {}", ident.text(db)),
+            Self::AnyString(ident) => format!("String: {}", ident.text(db)),
+            Self::AnyChar(ident) => format!("Char: {}", ident.text(db)),
+            Self::DateAndTime(ident) => format!("Date and Time: {}", ident.text(db)),
+            Self::LDateTime(ident) => format!("Long Date and Time: {}", ident.text(db)),
+            Self::Date(ident) => format!("Date: {}", ident.text(db)),
+            Self::LDate(ident) => format!("Long Date: {}", ident.text(db)),
+            Self::TimeOfDay(ident) => format!("Time of Day: {}", ident.text(db)),
+            Self::LTod(ident) => format!("Long Time of Day: {}", ident.text(db)),
         }
     }
 }

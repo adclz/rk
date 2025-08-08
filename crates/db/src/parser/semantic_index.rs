@@ -6,7 +6,6 @@ use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::default::db::{file::File, BaseDatabase};
 use rustc_hash::FxHashMap;
-use tracing::info_span;
 
 use crate::check::errors::semantic_errors::invalid_pou_keyword;
 use crate::hir::interned::identifier::SpannedIdent;

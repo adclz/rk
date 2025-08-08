@@ -16,7 +16,7 @@ use crate::check::errors::semantic_errors::{
     incomplete_edge_qualifier, missing_type_for_variable, unauthorized_variable_init,
 };
 use crate::check::DiagnosticAccumulator;
-use crate::hir::expressions::spec::{SimpleSpecKind, Spec, SpecKind};
+use crate::hir::expressions::spec::{Spec, SpecKind};
 use crate::hir::interned::identifier::Ident;
 use crate::hir::pous::variable::{Variable, VariableKind};
 use crate::parser::semantic_index::SemanticIndexBuilder;
@@ -636,7 +636,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::EdgeDecl {
                 Spec::new(
                     sema.db,
                     self.get_span(),
-                    SpecKind::Simple(SimpleSpecKind::Bool),
+                    SpecKind::Bool,
                     sema.current_scope,
                     sema.file,
                 )
@@ -644,14 +644,14 @@ impl<'db> ParseSpecInit<'db> for ast::generated::EdgeDecl {
             ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::Token_F_EDGE(fedge) => Spec::new(
                 sema.db,
                 self.get_span(),
-                SpecKind::Simple(SimpleSpecKind::Bool),
+                SpecKind::FEDGEBool,
                 sema.current_scope,
                 sema.file,
             ),
             ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::Token_R_EDGE(redge) => Spec::new(
                 sema.db,
                 self.get_span(),
-                SpecKind::Simple(SimpleSpecKind::Bool),
+                SpecKind::REDGEBool,
                 sema.current_scope,
                 sema.file,
             ),

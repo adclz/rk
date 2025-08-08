@@ -3,7 +3,7 @@ use auto_lsp::default::db::file::File;
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind};
 
-use crate::hir::scopes::solver::pous_in_scope;
+use crate::hir::pous::pou::PouDecl;
 use crate::hir::semantic_index::semantic_index;
 use crate::{
     completions::snippets::elem_type_names,
@@ -34,7 +34,6 @@ pub struct Spec<'db> {
 impl<'db> Spec<'db> {
     pub fn shorthand(&'db self, db: &'db dyn BaseDatabase) -> String {
         match self.kind(db) {
-            SpecKind::Simple(simple_kind) => simple_kind.to_string(),
             SpecKind::Target(target) => {
                 let sema = semantic_index(db, self.file(db));
                 match resolve_namespace_access(db, sema.file, self.scope_id(db), *target) {
@@ -51,29 +50,12 @@ impl<'db> Spec<'db> {
                     }
                     None => "{unknown}".to_string(),
                 }
-            }
-            SpecKind::Composite(cmp) => match cmp {
-                CompositeSpecKind::Array(arr) => {
-                    let of_type = arr.of_type.shorthand(db);
-                    format!("(array) {of_type}")
-                }
-                CompositeSpecKind::Struct(st) => {
-                    let elements = st
-                        .elements
-                        .iter()
-                        .map(|e| format!("{}: {}", e.name.text(db), e.spec.shorthand(db)))
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    format!("(struct) {{{elements}}}")
-                }
-                CompositeSpecKind::Subrange(sr) => "(subrange)".to_string(),
-                CompositeSpecKind::Enum(en) => match en {
-                    Enum::Anonymous(variants) => "(enum)".to_string(),
-                    Enum::Named(variants) => "(enum)".to_string(),
-                },
             },
-            SpecKind::Ref(ref_name) => {
+            SpecKind::Ref(ref_name) => { 
                 format!("(*ref*) {}", ref_name.shorthand(db))
+            },
+            _ => {
+                self.to_string(db)
             }
         }
     }
@@ -81,14 +63,7 @@ impl<'db> Spec<'db> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum SpecKind<'db> {
-    Simple(SimpleSpecKind),
-    Composite(CompositeSpecKind<'db>),
-    Ref(Spec<'db>),
-    Target(NamespaceAccess),
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum SimpleSpecKind {
+    // Simple types
     Bool,
     REDGEBool,
     FEDGEBool,
@@ -118,86 +93,102 @@ pub enum SimpleSpecKind {
     LTime,
     Tod,
     LTod,
-}
 
-impl SimpleSpecKind {
-    pub fn to_string(&self) -> String {
-        match self {
-            SimpleSpecKind::Bool => "BOOL",
-            SimpleSpecKind::REDGEBool => "BOOL (Rising Edge)",
-            SimpleSpecKind::FEDGEBool => "BOOL (Falling Edge)",
-            SimpleSpecKind::Byte => "BYTE",
-            SimpleSpecKind::Word => "WORD",
-            SimpleSpecKind::DWord => "DWORD",
-            SimpleSpecKind::LWord => "LWORD",
-            SimpleSpecKind::SInt => "SINT",
-            SimpleSpecKind::USInt => "USINT",
-            SimpleSpecKind::UInt => "UINT",
-            SimpleSpecKind::Int => "INT",
-            SimpleSpecKind::DInt => "DINT",
-            SimpleSpecKind::UDInt => "UDINT",
-            SimpleSpecKind::LInt => "LINT",
-            SimpleSpecKind::ULInt => "ULINT",
-            SimpleSpecKind::Real => "REAL",
-            SimpleSpecKind::LReal => "LREAL",
-            SimpleSpecKind::String => "STRING",
-            SimpleSpecKind::WString => "WSTRING",
-            SimpleSpecKind::Char => "CHAR",
-            SimpleSpecKind::WChar => "WCHAR",
-            SimpleSpecKind::Date => "DATE",
-            SimpleSpecKind::LDate => "LDATE",
-            SimpleSpecKind::Dt => "DATE_AND_TIME",
-            SimpleSpecKind::Ldt => "LDATE_AND_TIME",
-            SimpleSpecKind::Time => "TIME",
-            SimpleSpecKind::LTime => "LTIME",
-            SimpleSpecKind::Tod => "TIME_OF_DAY",
-            SimpleSpecKind::LTod => "LTIME_OF_DAY",
-        }
-        .to_string()
-    }
-
-    pub fn with_details(&self) -> String {
-        match self {
-            SimpleSpecKind::Bool => "BOOL",
-            SimpleSpecKind::REDGEBool => "BOOL (Rising Edge)",
-            SimpleSpecKind::FEDGEBool => "BOOL (Falling Edge)",
-            SimpleSpecKind::Byte => "BYTE (8-bit)",
-            SimpleSpecKind::Word => "WORD (16-bit)",
-            SimpleSpecKind::DWord => "DWORD (32-bit)",
-            SimpleSpecKind::LWord => "LWORD (64-bit)",
-            SimpleSpecKind::SInt => "SINT (-128 to 127)",
-            SimpleSpecKind::USInt => "USINT (0 to 255)",
-            SimpleSpecKind::UInt => "UINT (0 to 65535)",
-            SimpleSpecKind::Int => "INT (-32768 to 32767)",
-            SimpleSpecKind::DInt => "DINT (-2147483648 to 2147483647)",
-            SimpleSpecKind::UDInt => "UDINT (0 to 4294967295)",
-            SimpleSpecKind::LInt => "LINT (-9223372036854775808 to 9223372036854775807)",
-            SimpleSpecKind::ULInt => "ULINT (0 to 18446744073709551615)",
-            SimpleSpecKind::Real => "REAL (32-bit floating point)",
-            SimpleSpecKind::LReal => "LREAL (64-bit floating point)",
-            SimpleSpecKind::String => "STRING (UTF-8)",
-            SimpleSpecKind::WString => "WSTRING (UTF-16)",
-            SimpleSpecKind::Char => "CHAR (8-bit character)",
-            SimpleSpecKind::WChar => "WCHAR (16-bit character)",
-            SimpleSpecKind::Date => "DATE (YYYY-MM-DD)",
-            SimpleSpecKind::LDate => "LDATE (YYYY-MM-DD)",
-            SimpleSpecKind::Dt => "DATE_AND_TIME (YYYY-MM-DD HH:MM:SS)",
-            SimpleSpecKind::Ldt => "LDATE_AND_TIME (YYYY-MM-DD HH:MM:SS)",
-            SimpleSpecKind::Time => "TIME (DD:HH:MM:SS)",
-            SimpleSpecKind::LTime => "LTIME (DD:HH:MM:SS)",
-            SimpleSpecKind::Tod => "TIME_OF_DAY (HH:MM:SS)",
-            SimpleSpecKind::LTod => "LTIME_OF_DAY (HH:MM:SS)",
-        }
-        .to_string()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum CompositeSpecKind<'db> {
+    // Composite types
     Struct(Struct<'db>),
     Array(Array<'db>),
     Subrange(SubRange<'db>),
     Enum(Enum<'db>),
+
+    // Reference to another spec
+    Ref(Spec<'db>),
+
+    // Targeting a POU or namespace (has to be resolved)
+    Target(NamespaceAccess),
+
+    // Unresolved or unknown spec
+    Unresolved(NamespaceAccess),
+
+    // Recursive pou
+    Recursive(PouDecl<'db>),
+}
+
+impl<'db> Spec<'db> {
+    pub fn to_string(&'db self, db: &'db dyn BaseDatabase) -> String {
+        match self.kind(db) {
+            SpecKind::Bool => "BOOL",
+            SpecKind::REDGEBool => "BOOL (Rising Edge)",
+            SpecKind::FEDGEBool => "BOOL (Falling Edge)",
+            SpecKind::Byte => "BYTE",
+            SpecKind::Word => "WORD",
+            SpecKind::DWord => "DWORD",
+            SpecKind::LWord => "LWORD",
+            SpecKind::SInt => "SINT",
+            SpecKind::USInt => "USINT",
+            SpecKind::UInt => "UINT",
+            SpecKind::Int => "INT",
+            SpecKind::DInt => "DINT",
+            SpecKind::UDInt => "UDINT",
+            SpecKind::LInt => "LINT",
+            SpecKind::ULInt => "ULINT",
+            SpecKind::Real => "REAL",
+            SpecKind::LReal => "LREAL",
+            SpecKind::String => "STRING",
+            SpecKind::WString => "WSTRING",
+            SpecKind::Char => "CHAR",
+            SpecKind::WChar => "WCHAR",
+            SpecKind::Date => "DATE",
+            SpecKind::LDate => "LDATE",
+            SpecKind::Dt => "DATE_AND_TIME",
+            SpecKind::Ldt => "LDATE_AND_TIME",
+            SpecKind::Time => "TIME",
+            SpecKind::LTime => "LTIME",
+            SpecKind::Tod => "TIME_OF_DAY",
+            SpecKind::LTod => "LTIME_OF_DAY",
+            SpecKind::Struct(_) => "STRUCT",
+            SpecKind::Array(_) => "ARRAY",
+            SpecKind::Subrange(_) => "SUBRANGE",
+            SpecKind::Enum(_) => "ENUM",
+            _ => "(unknown spec)",
+        }
+        .to_string()
+    }
+
+    pub fn with_details(&self, db: &'db dyn BaseDatabase) -> String {
+        match self.kind(db) {
+            SpecKind::Bool => "BOOL",
+            SpecKind::REDGEBool => "BOOL (Rising Edge)",
+            SpecKind::FEDGEBool => "BOOL (Falling Edge)",
+            SpecKind::Byte => "BYTE (8-bit)",
+            SpecKind::Word => "WORD (16-bit)",
+            SpecKind::DWord => "DWORD (32-bit)",
+            SpecKind::LWord => "LWORD (64-bit)",
+            SpecKind::SInt => "SINT (-128 to 127)",
+            SpecKind::USInt => "USINT (0 to 255)",
+            SpecKind::UInt => "UINT (0 to 65535)",
+            SpecKind::Int => "INT (-32768 to 32767)",
+            SpecKind::DInt => "DINT (-2147483648 to 2147483647)",
+            SpecKind::UDInt => "UDINT (0 to 4294967295)",
+            SpecKind::LInt => "LINT (-9223372036854775808 to 9223372036854775807)",
+            SpecKind::ULInt => "ULINT (0 to 18446744073709551615)",
+            SpecKind::Real => "REAL (32-bit floating point)",
+            SpecKind::LReal => "LREAL (64-bit floating point)",
+            SpecKind::String => "STRING (UTF-8)",
+            SpecKind::WString => "WSTRING (UTF-16)",
+            SpecKind::Char => "CHAR (8-bit character)",
+            SpecKind::WChar => "WCHAR (16-bit character)",
+            SpecKind::Date => "DATE (YYYY-MM-DD)",
+            SpecKind::LDate => "LDATE (YYYY-MM-DD)",
+            SpecKind::Dt => "DATE_AND_TIME (YYYY-MM-DD HH:MM:SS)",
+            SpecKind::Ldt => "LDATE_AND_TIME (YYYY-MM-DD HH:MM:SS)",
+            SpecKind::Time => "TIME (DD:HH:MM:SS)",
+            SpecKind::LTime => "LTIME (DD:HH:MM:SS)",
+            SpecKind::Tod => "TIME_OF_DAY (HH:MM:SS)",
+            SpecKind::LTod => "LTIME_OF_DAY (HH:MM:SS)",
+            _ => "(unknown spec)",
+        }
+        .to_string()
+    }
 }
 
 impl<'db> ToProto<'db> for Spec<'db> {
@@ -211,14 +202,6 @@ impl<'db> ToProto<'db> for Spec<'db> {
         sema: &'db SemanticIndex<'db>,
     ) -> Option<Hover> {
         match self.kind(db) {
-            SpecKind::Simple(simple_kind) => Some(Hover {
-                range: Some(self.span(db).into()),
-                contents: HoverContents::Markup(MarkupContent {
-                    kind: MarkupKind::Markdown,
-                    value: format!("```typescript\n{}\n```", simple_kind.with_details()),
-                }),
-            }),
-            SpecKind::Composite(composite_kind) => todo!(),
             SpecKind::Target(target) => {
                 match resolve_namespace_access(db, sema.file, self.scope_id(db), *target) {
                     Some(pou) => {
@@ -237,6 +220,13 @@ impl<'db> ToProto<'db> for Spec<'db> {
 ```"#,
                         self.shorthand(db)
                     ),
+                }),
+            }),
+                        _ =>  Some(Hover {
+                range: Some(self.span(db).into()),
+                contents: HoverContents::Markup(MarkupContent {
+                    kind: MarkupKind::Markdown,
+                    value: format!("```typescript\n{}\n```", self.with_details(db)),
                 }),
             }),
         }
