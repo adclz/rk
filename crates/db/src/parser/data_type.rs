@@ -7,7 +7,7 @@ use crate::{
             data_type::DataType,
             pou::{Pou, PouDecl},
         },
-        scopes::scope::{Scope, ScopeKind, Visibility},
+        scopes::scope::{Scope, ScopeId, ScopeKind, Visibility},
     },
     parser::{semantic_index::SemanticIndexBuilder, ParseInit, ParseSpec},
 };
@@ -17,6 +17,10 @@ use auto_lsp::core::ast::AstNode;
 
 impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_data_type(&mut self, data_type: &TypeDecl) -> anyhow::Result<PouDecl<'db>> {
+        let scope_id = ScopeId::from(data_type.get_id());
+        let previous_scope = self.current_scope.clone();
+        self.current_scope = scope_id;
+
         let name = Ident::from_node(self.db, self.file, data_type.name.deref())?;
 
         type Spec = ast::generated::ArrayTypeSpec_EnumTypeSpec_RefTypeSpec_SimpleTypeSpec_StrTypeSpec_StructTypeSpec_SubrangeTypeSpec;
@@ -42,14 +46,19 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         let scope_id = self.create_pou_id(data_type);
 
-                let result = PouDecl::new(
+        let result = PouDecl::new(
+            self.db,
+            Pou::DataType(DataType::new(
                 self.db,
-                Pou::DataType(DataType::new(self.db, spec, init, self.current_scope)),
-                data_type.get_span(),
-                name,
-                data_type.name.get_span(),
-                self.current_scope,
-            );
+                spec, 
+                init, 
+                scope_id
+            )),
+            data_type.get_span(),
+            name,
+            data_type.name.get_span(),
+            scope_id,
+        );
 
         let scope = Scope::new(
             self.file,
@@ -57,7 +66,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             vec![],
             scope_id,
             Visibility::empty(),
-            Some(self.current_scope),
+            Some(previous_scope),
         );
 
         self.scope_keys.insert(scope_id, scope);

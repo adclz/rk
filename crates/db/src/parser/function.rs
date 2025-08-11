@@ -4,7 +4,7 @@ use crate::hir::interned::identifier::Ident;
 use crate::hir::pous::function::Function;
 use crate::hir::pous::pou::{Pou, PouDecl};
 use crate::hir::pous::variable::Variable;
-use crate::hir::scopes::scope::{Scope, ScopeKind, Visibility};
+use crate::hir::scopes::scope::{Scope, ScopeId, ScopeKind, Visibility};
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::parser::statement::ParseStatement;
 use crate::parser::{ParseSpec, ParseVarSection};
@@ -14,6 +14,11 @@ use auto_lsp::core::ast::AstNode;
 
 impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_function(&mut self, func: &ast::generated::FuncDecl) -> anyhow::Result<PouDecl<'db>> {
+        
+        let scope_id = ScopeId::from(func.get_id());
+        let previous_scope = self.current_scope.clone();
+        self.current_scope = scope_id;
+
         let variables = func.parse_variables(self)?;
         let statements = func
             .body
@@ -34,8 +39,6 @@ impl<'db> SemanticIndexBuilder<'db> {
             .map(|rt| rt.to_spec(self))
             .transpose()?;
 
-        let scope_id = self.create_pou_id(func);
-
         let name = Ident::from_node(self.db, self.file, func.name.deref())?;
         let usings = self.parse_usings(&func.directives)?;
 
@@ -46,12 +49,12 @@ impl<'db> SemanticIndexBuilder<'db> {
                 variables,
                 statements,
                 return_type,
-                self.current_scope,
+                scope_id,
             )),
             func.get_span(),
             name,
             func.name.get_span(),
-            self.current_scope,
+            scope_id,
         );
 
         let scope = Scope::new(
@@ -60,7 +63,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             usings,
             scope_id,
             Visibility::empty(),
-            Some(self.current_scope),
+            Some(previous_scope),
         );
 
         self.scope_keys.insert(scope_id, scope);

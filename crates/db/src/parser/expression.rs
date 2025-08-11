@@ -7,6 +7,7 @@ use crate::check::errors::semantic_errors::{invocation_in_expression, unexpected
 use crate::hir::expressions::expression::{
     FieldExpr, IndexExpr, Numeric, NumericKind, PathExpr, VariableAccessKind,
 };
+use crate::hir::interned::identifier::SpannedIdent;
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::{
     hir::expressions::expression::{
@@ -247,10 +248,7 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                     sema.db,
                     func.get_span(),
                     ExprKind::PrimaryExpr(PrimaryExpr::FuncCall {
-                        path: PathExpr {
-                            span: func.get_span(),
-                            expr: target,
-                        },
+                        path: target,
                         params: parameters,
                     }),
                     sema.current_scope,
@@ -527,18 +525,33 @@ pub trait ParseExpr<'db> {
 }
 
 impl<'db> ParseExpr<'db> for ast::generated::PathExpression {
-    type Output = PathExprKind<'db>;
+    type Output = PathExpr<'db>;
 
     fn parse(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Self::Output> {
         Ok(match self.children.deref() {
             ast::generated::FieldExpression_IndexExpression_VarAccess::FieldExpression(
                 field_expr,
-            ) => PathExprKind::Field(field_expr.parse(sema)?),
+            ) => PathExpr::new(
+                sema.db,
+                self.get_span(),
+                sema.current_scope,
+                PathExprKind::Field(field_expr.parse(sema)?),
+            ),
             ast::generated::FieldExpression_IndexExpression_VarAccess::IndexExpression(
                 index_expr,
-            ) => PathExprKind::Index(index_expr.parse(sema)?),
+            ) => PathExpr::new(
+                sema.db,
+                self.get_span(),
+                sema.current_scope,
+                PathExprKind::Index(index_expr.parse(sema)?),
+            ),
             ast::generated::FieldExpression_IndexExpression_VarAccess::VarAccess(var_access) => {
-                PathExprKind::VarAccess(var_access.parse(sema)?)
+                PathExpr::new(
+                    sema.db,
+                    self.get_span(),
+                    sema.current_scope,
+                    PathExprKind::VarAccess(var_access.parse(sema)?),
+                )
             }
         })
     }
@@ -549,7 +562,7 @@ impl<'db> ParseExpr<'db> for ast::generated::FieldExpression {
 
     fn parse(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Self::Output> {
         Ok(FieldExpr {
-            path: Box::new(self.path.parse(sema)?),
+            path: self.path.parse(sema)?,
             var: self.target.parse(sema)?,
         })
     }
@@ -560,7 +573,7 @@ impl<'db> ParseExpr<'db> for ast::generated::IndexExpression {
 
     fn parse(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Self::Output> {
         Ok(IndexExpr {
-            path: Box::new(self.children.parse(sema)?),
+            path: self.children.parse(sema)?,
             index: self
                 .index
                 .children
@@ -583,11 +596,15 @@ impl<'db> ParseExpr<'db> for ast::generated::VarAccess {
                 Err(anyhow::anyhow!("Unexpected 'this' in path"))
             }
             ast::generated::ERRUnexpectedThisInPath_Field_RefDeref::Field(field) => Ok(
-                VarAccess::Simple(Ident::from_node(sema.db, sema.file, field)?),
+                VarAccess::Simple(SpannedIdent::new(sema.db, sema.file, field)?),
             ),
-            ast::generated::ERRUnexpectedThisInPath_Field_RefDeref::RefDeref(ref_deref) => Ok(
-                VarAccess::Deref(Ident::from_node(sema.db, sema.file, ref_deref.Ref.deref())?),
-            ),
+            ast::generated::ERRUnexpectedThisInPath_Field_RefDeref::RefDeref(ref_deref) => {
+                Ok(VarAccess::Deref(SpannedIdent::new(
+                    sema.db,
+                    sema.file,
+                    ref_deref.Ref.deref(),
+                )?))
+            }
         }
     }
 }
