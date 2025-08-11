@@ -1,381 +1,331 @@
 use std::sync::Arc;
 
-use auto_lsp::default::db::BaseDatabase;
+use auto_lsp::{core::span::Span, default::db::BaseDatabase};
 use rustc_hash::FxHashMap;
 
 use crate::hir::{
-    expressions::spec::{Enum, Spec, SpecKind},
+    expressions::{
+        expression::{PathExpr, PathExprKind, VarAccess},
+        spec::{Enum, Spec, SpecKind},
+    },
     interned::{
-        identifier::Ident,
+        identifier::{Ident, SpannedIdent},
         namespace::{NamespaceAccess, SpannedNamespaceAccess},
     },
     pous::{
         pou::{Pou, PouDecl},
-        variable::VariableKind,
+        variable::{Variable, VariableKind},
     },
-    scopes::{
-        scope::{ScopeId},
-        solver::resolve_namespace_access,
-    },
-    semantic_index::{SemanticIndex},
+    scopes::{scope::ScopeId, solver::resolve_namespace_access},
+    semantic_index::SemanticIndex,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
-pub struct TypeSignature<'db> {
-    pub name: Option<Ident>,
-    pub kind: SignatureKind<'db>,
-    pub specs: FxHashMap<Ident, TypeParameter<'db>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
-pub enum SignatureKind<'db> {
-    Pou(PouDecl<'db>),
-    // Errored variants
-    Recursive(PouDecl<'db>),
-    Never(SpannedNamespaceAccess),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
-pub struct CallableSignature<'db> {
-    pub kind: CallableSignatureKind<'db>,
-    pub input_section: FxHashMap<Ident, TypeParameter<'db>>,
-    pub output_section: FxHashMap<Ident, TypeParameter<'db>>,
-    pub in_out_section: FxHashMap<Ident, TypeParameter<'db>>,
-    pub return_type: Option<TypeParameter<'db>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
-pub enum CallableSignatureKind<'db> {
-    Function(PouDecl<'db>),
-    FunctionBlock(PouDecl<'db>),
-    Method(PouDecl<'db>),
-    // Errored variants
-    Recursive(PouDecl<'db>),
-    Never(SpannedNamespaceAccess),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
-pub enum TypeParameter<'db> {
-    // Single type spec (usually a literal)
+pub enum Signature<'db> {
+    // Base types
     Simple(Spec<'db>),
-    // enums can have an integer or one of the enum values
     Enum {
         spec: Spec<'db>,
         list: Vec<Ident>,
     },
-    Array {
-        spec: Spec<'db>,
-    },
     SubRange,
-    Struct(FxHashMap<Ident, TypeParameter<'db>>),
-    RefTo(Arc<TypeParameter<'db>>),
-    Pou(Arc<TypeSignature<'db>>),
-    // Errors
+    Array {
+        spec: Arc<Signature<'db>>,
+    },
+    Struct(FxHashMap<Ident, Arc<Signature<'db>>>),
+
+    Callable {
+        decl: PouDecl<'db>,
+        input: FxHashMap<Ident, Arc<Signature<'db>>>,
+        output: FxHashMap<Ident, Arc<Signature<'db>>>,
+        in_out: FxHashMap<Ident, Arc<Signature<'db>>>,
+        return_type: Option<Arc<Signature<'db>>>,
+    },
+
+    RefTo(Arc<Signature<'db>>),
+
+    Variable(Arc<Signature<'db>>),
+
+    // Meta / error
     Unresolved(NamespaceAccess),
-    // usually means a function is being used
-    Incompatible(PouDecl<'db>),
+    RecursivePou(PouDecl<'db>),
+    RecursiveVariable(Variable<'db>),
 }
 
-fn type_signature_result<'db>(
-    db: &'db dyn BaseDatabase,
-    pou: PouDecl<'db>,
-) -> Option<Arc<TypeSignature<'db>>> {
-    TypeSignature::recursive(db, pou)
+fn pou_result<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Arc<Signature<'db>> {
+    Arc::new(Signature::RecursivePou(pou))
 }
 
 #[tracing::instrument(skip_all, name = "query_type_signature")]
-#[salsa::tracked(cycle_result = type_signature_result)]
-pub fn type_signature<'db>(
-    db: &'db dyn BaseDatabase,
-    pou: PouDecl<'db>,
-) -> Option<Arc<TypeSignature<'db>>> {
-    let kind = SignatureKind::Pou(pou);
-    let mut parameters = FxHashMap::default();
-
+#[salsa::tracked(cycle_result = pou_result)]
+pub fn signature_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Arc<Signature<'db>> {
     match pou.pou(db) {
-        Pou::FunctionBlock(fb) => {
-            for v in fb.variables(db) {
-                if matches!(
-                    v.kind(db),
-                    VariableKind::Input | VariableKind::Output | VariableKind::InOut
-                ) {
-                    parameters.insert(*v.name(db), v.spec(db).to_type_parameter(db));
-                }
+        Pou::Function(func) => {
+            let mut inputs = FxHashMap::default();
+            let mut outputs = FxHashMap::default();
+            let mut in_outs = FxHashMap::default();
+
+            for v in func.variables(db) {
+                match v.kind(db) {
+                    VariableKind::Input => {
+                        inputs.insert(*v.name(db), v.spec(db).to_sig(db));
+                    }
+                    VariableKind::Output => {
+                        outputs.insert(*v.name(db), v.spec(db).to_sig(db));
+                    }
+                    VariableKind::InOut => {
+                        in_outs.insert(*v.name(db), v.spec(db).to_sig(db));
+                    }
+                    _ => continue,
+                };
             }
+
+            Arc::new(Signature::Callable {
+                decl: pou,
+                input: inputs,
+                output: outputs,
+                in_out: in_outs,
+                return_type: func.return_type(db).map(|rt| rt.to_sig(db)),
+            })
         }
-        Pou::DataType(dt) => {
-            parameters.insert(*pou.name(db), dt.spec(db).to_type_parameter(db));
+        Pou::FunctionBlock(fb) => {
+            let mut inputs = FxHashMap::default();
+            let mut outputs = FxHashMap::default();
+            let mut in_outs = FxHashMap::default();
+
+            for v in fb.variables(db) {
+                match v.kind(db) {
+                    VariableKind::Input => {
+                        inputs.insert(*v.name(db), v.spec(db).to_sig(db));
+                    }
+                    VariableKind::Output => {
+                        outputs.insert(*v.name(db), v.spec(db).to_sig(db));
+                    }
+                    VariableKind::InOut => {
+                        in_outs.insert(*v.name(db), v.spec(db).to_sig(db));
+                    }
+                    _ => continue,
+                };
+            }
+
+            Arc::new(Signature::Callable {
+                decl: pou,
+                input: inputs,
+                output: outputs,
+                in_out: in_outs,
+                return_type: None, // Function blocks don't have a return type in this context
+            })
         }
+        Pou::DataType(dt) => dt.spec(db).to_sig(db),
         Pou::Class(class) => {
-            for v in class.variables(db) {
-                if matches!(
-                    v.kind(db),
-                    VariableKind::Input | VariableKind::Output | VariableKind::InOut
-                ) {
-                    parameters.insert(*v.name(db), v.spec(db).to_type_parameter(db));
-                }
-            }
+            todo!()
         }
-        // Interfaces and Functions do not have variables
-        _ => return None,
+        Pou::Interface(interface) => {
+            todo!()
+        }
     }
-
-    Some(Arc::new(TypeSignature {
-        kind,
-        name: Some(*pou.name(db)),
-        specs: parameters,
-    }))
 }
 
-fn call_signature_result<'db>(
+fn signature_result<'db>(
     db: &'db dyn BaseDatabase,
-    value: PouDecl<'db>,
-) -> Option<Arc<CallableSignature<'db>>> {
-    CallableSignature::recursive(db, value)
+    variable: Variable<'db>,
+) -> Arc<Signature<'db>> {
+    Arc::new(Signature::RecursiveVariable(variable))
 }
-
-impl<'db> CallableSignature<'db> {
-    pub fn recursive(
-        db: &'db dyn BaseDatabase,
-        pou: PouDecl<'db>,
-    ) -> Option<Arc<CallableSignature<'db>>> {
-        Some(Arc::new(CallableSignature {
-            kind: CallableSignatureKind::Recursive(pou),
-            input_section: FxHashMap::default(),
-            output_section: FxHashMap::default(),
-            in_out_section: FxHashMap::default(),
-            return_type: None,
-        }))
-    }
-}
-
-#[tracing::instrument(skip_all, name = "query_call_signature")]
-#[salsa::tracked(cycle_result = call_signature_result)]
-pub fn call_signature<'db>(
+#[salsa::tracked(cycle_result = signature_result)]
+pub fn signature_for_variable<'db>(
     db: &'db dyn BaseDatabase,
-    pou: PouDecl<'db>,
-) -> Option<Arc<CallableSignature<'db>>> {
-    let kind = match pou.pou(db) {
-        Pou::Function(f) => CallableSignatureKind::Function(pou),
-        Pou::FunctionBlock(fb) => CallableSignatureKind::FunctionBlock(pou),
-        Pou::Class(c) => CallableSignatureKind::Method(pou),
-        Pou::DataType(_) | Pou::Interface(_) => return None,
-    };
-
-    let mut input_section = FxHashMap::default();
-    let mut output_section = FxHashMap::default();
-    let mut in_out_section = FxHashMap::default();
-    let mut return_type = None;
-
-    match pou.pou(db) {
-        Pou::Function(f) => {
-            for v in f.variables(db) {
-                match v.kind(db) {
-                    VariableKind::Input => {
-                        input_section.insert(*v.name(db), v.spec(db).to_type_parameter(db))
-                    }
-                    VariableKind::Output => {
-                        output_section.insert(*v.name(db), v.spec(db).to_type_parameter(db))
-                    }
-                    VariableKind::InOut => {
-                        in_out_section.insert(*v.name(db), v.spec(db).to_type_parameter(db))
-                    }
-                    _ => continue,
-                };
-            }
-            return_type = f.return_type(db).map(|s| s.to_type_parameter(db));
-        }
-        Pou::FunctionBlock(fb) => {
-            for v in fb.variables(db) {
-                match v.kind(db) {
-                    VariableKind::Input => {
-                        input_section.insert(*v.name(db), v.spec(db).to_type_parameter(db))
-                    }
-                    VariableKind::Output => {
-                        output_section.insert(*v.name(db), v.spec(db).to_type_parameter(db))
-                    }
-                    VariableKind::InOut => {
-                        in_out_section.insert(*v.name(db), v.spec(db).to_type_parameter(db))
-                    }
-                    _ => continue,
-                };
-            }
-        }
-        Pou::Class(c) => {
-            for v in c.variables(db) {
-                match v.kind(db) {
-                    VariableKind::Input => {
-                        input_section.insert(*v.name(db), v.spec(db).to_type_parameter(db))
-                    }
-                    VariableKind::Output => {
-                        output_section.insert(*v.name(db), v.spec(db).to_type_parameter(db))
-                    }
-                    VariableKind::InOut => {
-                        in_out_section.insert(*v.name(db), v.spec(db).to_type_parameter(db))
-                    }
-                    _ => continue,
-                };
-            }
-        }
-        Pou::DataType(_) | Pou::Interface(_) => return None,
-    }
-    Some(Arc::new(CallableSignature {
-        kind,
-        input_section,
-        output_section,
-        in_out_section,
-        return_type,
-    }))
+    variable: Variable<'db>,
+) -> Arc<Signature<'db>> {
+    Arc::new(Signature::Variable(variable.spec(db).to_sig(db)))
 }
 
-impl<'db> TypeSignature<'db> {
-    pub fn recursive(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Option<Arc<TypeSignature<'db>>> {
-        Some(Arc::new(TypeSignature {
-            name: Some(*pou.name(db)),
-            kind: SignatureKind::Recursive(pou),
-            specs: FxHashMap::default(),
-        }))
+impl<'db> Signature<'db> {
+    pub fn is_simple(&self) -> bool {
+        if let Signature::RefTo(sig) = self {
+            return sig.is_simple();
+        };
+        matches!(self, Signature::Simple(_))
     }
 
-    pub fn signature_to_string(
-        &self,
-        db: &'db dyn BaseDatabase,
-        sema: &SemanticIndex<'db>,
-        scope: ScopeId,
-    ) -> String {
-        let mut result = String::new();
-
-        let mut infinite_size = false;
-
-        let pou = match &self.kind {
-            SignatureKind::Pou(pou) => pou,
-            SignatureKind::Recursive(pou) => {
-                infinite_size = true;
-                pou
-            }
-            SignatureKind::Never(target) => {
-                return "{unknown}".to_string();
-            }
+    pub fn is_callable(&self) -> bool {
+        if let Signature::RefTo(sig) = self {
+            return sig.is_callable();
         };
+        matches!(self, Signature::Callable { .. })
+    }
 
-        let (head, end) = match pou.pou(db) {
-            Pou::Function(_) => ("FUNCTION", "END_FUNCTION"),
-            Pou::FunctionBlock(_) => ("FUNCTION_BLOCK", "END_FUNCTION_BLOCK"),
-            Pou::DataType(_) => ("TYPE", "END_TYPE"),
-            Pou::Interface(_) => ("INTERFACE", "END_INTERFACE"),
-            Pou::Class(_) => ("CLASS", "END_CLASS"),
+    pub fn is_invalid(&self) -> bool {
+        matches!(self, Signature::Unresolved(_) | Signature::RecursivePou(_))
+    }
+
+    pub fn is_reference(&self) -> bool {
+        matches!(self, Signature::RefTo(_))
+    }
+
+    pub fn has_return_type(&self) -> bool {
+        if let Signature::RefTo(sig) = self {
+            return sig.has_return_type();
         };
-
-        let name = match &self.name {
-            Some(name) => name.text(db),
-            None => "{unknown}",
-        };
-
-        let infinite = if infinite_size {
-            "\n(infinite size !)\n"
-        } else {
-            ""
-        };
-
-        result.push_str(
-            format!(
-                r#"{head} {name}
-{infinite}
-{end}
-"#
-            )
-            .as_str(),
-        );
-
-        result
+        if let Signature::Callable { return_type, .. } = self {
+            return return_type.is_some();
+        }
+        false
     }
 }
 
 impl<'db> Spec<'db> {
-    pub fn to_type_parameter(&self, db: &'db dyn BaseDatabase) -> TypeParameter<'db> {
+    pub fn to_sig(&self, db: &'db dyn BaseDatabase) -> Arc<Signature<'db>> {
         match self.kind(db) {
-            SpecKind::Array(array) => TypeParameter::Array {
-                spec: *array.of_type,
+            SpecKind::Array(array) => Arc::new(Signature::Array {
+                spec: array.of_type.to_sig(db),
+            }),
+            SpecKind::Enum(enum_spec) => match enum_spec {
+                Enum::Named(list) => Arc::new(Signature::Enum {
+                    spec: self.clone(),
+                    list: list.iter().map(|(name, expr)| (*name)).collect(),
+                }),
+                Enum::Anonymous(list) => Arc::new(Signature::Enum {
+                    spec: self.clone(),
+                    list: list.iter().map(|name| *name).collect(),
+                }),
             },
-            SpecKind::Enum(enum_) => {
-                match enum_ {
-                    Enum::Anonymous(list) => TypeParameter::Enum {
-                        spec: *self,
-                        list: list.to_vec(),
-                    },
-                    Enum::Named(list) => TypeParameter::Enum {
-                        spec: *self,
-                        list: list.iter().map(|(name, _)| *name).collect(),
-                    },
-                }
-            }
-
-            SpecKind::Struct(struct_) => TypeParameter::Struct(
-                struct_
+            SpecKind::Subrange(_) => Arc::new(Signature::SubRange),
+            SpecKind::Struct(fields) => Arc::new(Signature::Struct(
+                fields
                     .elements
                     .iter()
-                    .map(|e| (e.name, e.spec.to_type_parameter(db)))
-                    .collect::<FxHashMap<Ident, TypeParameter<'db>>>(),
-            ),
-
-            SpecKind::Subrange(subrange) => TypeParameter::SubRange,
-
+                    .map(|elem| (elem.name, elem.spec.to_sig(db)))
+                    .collect(),
+            )),
             SpecKind::Target(target) => {
                 match resolve_namespace_access(db, self.file(db), self.scope_id(db), *target) {
-                    Some(pou) => {
-                        let signature = type_signature(db, pou);
-                        match signature {
-                            Some(signature) => TypeParameter::Pou(signature),
-                            None => TypeParameter::Incompatible(pou),
-                        }
-                    }
-                    None => TypeParameter::Unresolved(*target),
+                    Some(pou) => signature_for_pou(db, pou),
+                    None => Arc::new(Signature::Unresolved(*target)),
                 }
             }
-            SpecKind::Ref(target) => TypeParameter::RefTo(target.to_type_parameter(db).into()),
-            _  => TypeParameter::Simple(*self),
+            _ => Arc::new(Signature::Simple(self.clone())),
         }
     }
 }
 
-pub struct CallableSignatureIter<'db> {
-    pub(crate) signature: &'db CallableSignature<'db>,
-    pub(crate) db: &'db dyn BaseDatabase,
-    pub(crate) input_iter: std::collections::hash_map::Iter<'db, Ident, TypeParameter<'db>>,
-    pub(crate) output_iter: std::collections::hash_map::Iter<'db, Ident, TypeParameter<'db>>,
-    pub(crate) in_out_iter: std::collections::hash_map::Iter<'db, Ident, TypeParameter<'db>>,
-    pub(crate) current_section: Option<VariableKind>,
+pub trait WalkSignature<'db> {
+    fn linear(&self, step: SignatureStep<'db>) -> Result<Arc<Signature<'db>>, LinearError<'db>>;
+    fn as_callable(&'db self) -> Option<Callable<'db>>;
 }
 
-impl<'db> Iterator for CallableSignatureIter<'db> {
-    type Item = (&'db Ident, &'db TypeParameter<'db>, VariableKind);
+#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+pub enum SignatureStep<'db> {
+    Field {
+        ident: SpannedIdent,
+        expr: PathExpr<'db>,
+    }, // By name
+    Index {
+        expr: PathExpr<'db>,
+    }, // By index
+    Deref {
+        expr: PathExpr<'db>,
+    }, // For pointers or references
+}
 
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            match self.current_section {
-                Some(VariableKind::Input) => {
-                    if let Some(item) = self.input_iter.next() {
-                        return Some((item.0, item.1, VariableKind::Input));
-                    } else {
-                        self.current_section = Some(VariableKind::Output);
-                    }
-                }
-                Some(VariableKind::Output) => {
-                    if let Some(item) = self.output_iter.next() {
-                        return Some((item.0, item.1, VariableKind::Output));
-                    } else {
-                        self.current_section = Some(VariableKind::InOut);
-                    }
-                }
-                Some(VariableKind::InOut) => {
-                    if let Some(item) = self.in_out_iter.next() {
-                        return Some((item.0, item.1, VariableKind::InOut));
-                    } else {
-                        self.current_section = None;
-                    }
-                }
-                _ => return None,
-            }
+pub struct Callable<'db> {
+    pub inputs: FxHashMap<Ident, Arc<Signature<'db>>>,
+    pub in_outs: FxHashMap<Ident, Arc<Signature<'db>>>,
+    pub outputs: FxHashMap<Ident, Arc<Signature<'db>>>,
+    pub return_type: Option<Arc<Signature<'db>>>,
+}
+
+impl<'db> Callable<'db> {
+    pub fn get_param(&self, ident: &Ident) -> Option<&Arc<Signature<'db>>> {
+        self.inputs
+            .get(ident)
+            .or_else(|| self.outputs.get(ident))
+            .or_else(|| self.in_outs.get(ident))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LinearError<'db> {
+    NoItemInScope {
+        ident: SpannedIdent,
+        scope: ScopeId,
+    },
+    FieldNotFound {
+        ident: SpannedIdent,
+    },
+    SpecNotHaveField {
+        ident: SpannedIdent,
+        spec: Spec<'db>,
+    },
+    CanNotHaveField {
+        ident: SpannedIdent,
+    },
+    NotAnArray {
+        expr: PathExpr<'db>,
+    },
+    NotAReference,
+}
+
+impl<'db> WalkSignature<'db> for Signature<'db> {
+    fn linear(&self, step: SignatureStep<'db>) -> Result<Arc<Signature<'db>>, LinearError<'db>> {
+        match &step {
+            SignatureStep::Field { ident, expr } => match self {
+                Signature::Struct(fields) => fields
+                    .get(&ident.ident)
+                    .ok_or_else(|| LinearError::FieldNotFound {
+                        ident: ident.clone(),
+                    })
+                    .cloned(),
+                Signature::Callable {
+                    input,
+                    output,
+                    in_out,
+                    ..
+                } => input
+                    .get(&ident.ident)
+                    .or_else(|| output.get(&ident.ident))
+                    .or_else(|| in_out.get(&ident.ident))
+                    .ok_or_else(|| LinearError::FieldNotFound {
+                        ident: ident.clone(),
+                    })
+                    .cloned(),
+                Signature::RefTo(inner) => inner.linear(step),
+                Signature::Variable(var) => var.linear(step),
+                Signature::Simple(spec) => Err(LinearError::SpecNotHaveField {
+                    ident: ident.clone(),
+                    spec: *spec,
+                }),
+                _ => Err(LinearError::CanNotHaveField {
+                    ident: ident.clone(),
+                }),
+            },
+            SignatureStep::Index { expr } => match self {
+                Signature::Array { spec } => Ok(spec.clone()),
+                Signature::Variable(var) => var.linear(step),
+                _ => Err(LinearError::NotAnArray { expr: *expr }),
+            },
+            SignatureStep::Deref { .. } => match self {
+                Signature::RefTo(inner) => Ok(inner).cloned(),
+                _ => Err(LinearError::NotAReference),
+            },
+        }
+    }
+
+    fn as_callable(&'db self) -> Option<Callable<'db>> {
+        match self {
+            Signature::Callable {
+                input,
+                output,
+                in_out,
+                return_type,
+                ..
+            } => Some(Callable {
+                inputs: input.clone(),
+                in_outs: in_out.clone(),
+                outputs: output.clone(),
+                return_type: return_type.clone(),
+            }),
+            _ => None,
         }
     }
 }

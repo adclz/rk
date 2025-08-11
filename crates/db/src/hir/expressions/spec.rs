@@ -105,12 +105,6 @@ pub enum SpecKind<'db> {
 
     // Targeting a POU or namespace (has to be resolved)
     Target(NamespaceAccess),
-
-    // Unresolved or unknown spec
-    Unresolved(NamespaceAccess),
-
-    // Recursive pou
-    Recursive(PouDecl<'db>),
 }
 
 impl<'db> Spec<'db> {

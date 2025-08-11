@@ -1,7 +1,8 @@
 use crate::completions::snippets::elem_type_names_init;
-use crate::hir::interned::identifier::Ident;
+use crate::hir::interned::identifier::{Ident, SpannedIdent};
 use crate::hir::scopes::scope::ScopeId;
 use crate::hir::semantic_index::SemanticIndex;
+use crate::hir::signature::SignatureStep;
 use crate::to_proto::{self_iter, IterToProto, ToProto};
 use auto_enums::auto_enum;
 use auto_lsp::core::span::Span;
@@ -108,52 +109,20 @@ pub enum PrimaryExpr<'db> {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+#[salsa::tracked(debug)]
 pub struct PathExpr<'db> {
+    #[returns(ref)]
     pub span: Span,
 
+    pub scope_id: ScopeId,
+
+    #[tracked]
     pub expr: PathExprKind<'db>,
 }
 
 impl<'db> ToProto<'db> for PathExpr<'db> {
     fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
-        &self.span
-    }
-}
-
-pub struct PathExprIterator<'a> {
-    current: Option<&'a PathExprKind<'a>>,
-}
-
-impl<'db> IntoIterator for &'db PathExpr<'db> {
-    type Item = &'db PathExprKind<'db>;
-    type IntoIter = PathExprIterator<'db>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        PathExprIterator {
-            current: Some(&self.expr),
-        }
-    }
-}
-
-impl<'a> Iterator for PathExprIterator<'a> {
-    type Item = &'a PathExprKind<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some(current) = self.current.take() {
-            match &current {
-                PathExprKind::Field(field) => {
-                    self.current = Some(&field.path);
-                }
-                PathExprKind::Index(index) => {
-                    self.current = Some(&index.path);
-                }
-                PathExprKind::VarAccess(var_access) => {
-                    self.current = None;
-                }
-            }
-        }
-        self.current
+        self.span(db)
     }
 }
 
@@ -163,7 +132,7 @@ impl<'db> IterToProto<'db> for PathExpr<'db> {
         db: &'db dyn BaseDatabase,
         sema: &'db SemanticIndex,
     ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        match &self.expr {
+        match &self.expr(db) {
             PathExprKind::Field(field) => self_iter(self),
             PathExprKind::Index(index) => self_iter(self),
             PathExprKind::VarAccess(var_access) => self_iter(self),
@@ -180,14 +149,76 @@ pub enum PathExprKind<'db> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct FieldExpr<'db> {
-    pub path: Box<PathExprKind<'db>>,
+    pub path: PathExpr<'db>,
     pub var: VarAccess,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct IndexExpr<'db> {
-    pub path: Box<PathExprKind<'db>>,
+    pub path: PathExpr<'db>,
     pub index: Vec<Expr<'db>>,
+}
+
+#[salsa::tracked]
+impl<'db> PathExpr<'db> {
+    #[salsa::tracked(returns(ref))]
+    pub fn flatten_steps(self, db: &'db dyn BaseDatabase) -> Vec<SignatureStep<'db>> {
+        let mut result = Vec::new();
+
+        match self.expr(db) {
+            PathExprKind::Field(field_expr) => {
+                result.extend(field_expr.path.flatten_steps(db).iter().cloned());
+                match &field_expr.var {
+                    VarAccess::Simple(simple) => result.push(SignatureStep::Field {
+                        expr: self,
+                        ident: simple.clone(),
+                    }),
+                    VarAccess::Deref(_) => result.push(SignatureStep::Deref { expr: self }),
+                }
+            }
+            PathExprKind::Index(index_expr) => {
+                result.extend(index_expr.path.flatten_steps(db).iter().cloned());
+                result.push(SignatureStep::Index { expr: self });
+            }
+            PathExprKind::VarAccess(var_access) => match var_access {
+                VarAccess::Simple(simple) => result.push(SignatureStep::Field {
+                    expr: self,
+                    ident: simple.clone(),
+                }),
+                VarAccess::Deref(_) => result.push(SignatureStep::Deref { expr: self }),
+            },
+        }
+
+        result
+    }
+
+    pub fn to_string(&self, db: &'db dyn BaseDatabase) -> SpannedIdent {
+        match &self.expr(db) {
+            PathExprKind::Field(field_expr) => {
+                match field_expr.var {
+                    VarAccess::Simple(ref simple) => {
+                        simple.clone()
+                    }
+                    VarAccess::Deref(ref deref) => {
+                        deref.clone()
+                    }
+                }
+            }
+            PathExprKind::Index(index_expr) => {
+                index_expr.path.to_string(db)
+            }
+            PathExprKind::VarAccess(var_access) => {
+                match var_access {
+                    VarAccess::Simple(ref simple) => {
+                        simple.clone()
+                    }
+                    VarAccess::Deref(ref deref) => {
+                        deref.clone()
+                    }
+                }
+            },
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -285,13 +316,13 @@ impl<'db> IterToProto<'db> for VariableAccess<'db> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct SymbolicVariable<'db> {
     pub this: bool,
-    pub kind: PathExprKind<'db>,
+    pub kind: PathExpr<'db>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update, salsa::Supertype)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum VarAccess {
-    Simple(Ident),
-    Deref(Ident), // ^
+    Simple(SpannedIdent),
+    Deref(SpannedIdent), // ^
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]

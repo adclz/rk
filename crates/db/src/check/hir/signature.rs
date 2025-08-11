@@ -1,82 +1,159 @@
-use auto_lsp::default::db::BaseDatabase;
+use std::sync::Arc;
 
-use crate::hir::{
-    expressions::expression::{ParamAssign, PathExpr},
-    pous::variable::VariableKind,
-    semantic_index::SemanticIndex,
-    signature::{CallableSignature, CallableSignatureIter},
+use auto_lsp::default::db::{file::File, BaseDatabase};
+use compact_str::CompactString;
+
+use crate::{
+    check::{errors::semantic_errors::unexpected_index_expression, hir::signature},
+    hir::{
+        expressions::{
+            expression::{ParamAssign, PathExpr, PathExprKind, VarAccess},
+            spec::Spec,
+        },
+        interned::{
+            identifier::{Ident, SpannedIdent},
+            namespace::{NamespaceAccess, NamespacePath},
+        },
+        pous::variable::VariableKind,
+        scopes::solver::{pous_in_scope, resolve_namespace_access, variables_in_scope},
+        semantic_index::SemanticIndex,
+        signature::{
+            signature_for_pou, signature_for_variable, LinearError, Signature, SignatureStep,
+            WalkSignature,
+        },
+    },
 };
 
-/// Will be moved to dedicated module later
-
-impl<'db> CallableSignature<'db> {
-    pub fn iter(&'db self, db: &'db dyn BaseDatabase) -> CallableSignatureIter<'db> {
-        CallableSignatureIter {
-            signature: self,
-            db,
-            input_iter: self.input_section.iter(),
-            output_iter: self.output_section.iter(),
-            in_out_iter: self.in_out_section.iter(),
-            current_section: Some(VariableKind::Input),
-        }
-    }
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResolvedPathElement<'db> {
+    Signature(Arc<Signature<'db>>),
+    Error {
+        step: Option<SignatureStep<'db>>,
+        kind: LinearError<'db>,
+    },
 }
 
-impl<'db> CallableSignature<'db> {
-    pub fn check_signature(
-        &self,
-        db: &'db dyn BaseDatabase,
-        sema: &'db SemanticIndex<'db>,
-        path: PathExpr<'db>,
-        params: Vec<ParamAssign<'db>>,
-    ) {
-        let iterable = self.iter(db);
-        let mut itera = params.iter();
+pub struct ResolvedPath<'db> {
+    pub elements: Vec<ResolvedPathElement<'db>>,
+}
 
-        for (name, param, section) in iterable {
-            match itera.next() {
-                Some(ParamAssign::ParamAssignInput { param, value }) => {
-                    match section {
-                        VariableKind::Input | VariableKind::InOut => {
-                            if let Some(p_name) = param {
-                                if p_name != name {
-                                    // Error: parameter name mismatch
-                                }
+/// [`PathExpr`] resolver.
+///
+/// Tries to resolve a [`PathExpr`] to a sequence of [`Signature`] steps.
+pub struct ResolvePathExprCtx<'db> {
+    db: &'db dyn BaseDatabase,
+    file: File,
+    expr: &'db PathExpr<'db>,
+    fragments: Vec<SpannedIdent>,
+    signature: Option<Arc<Signature<'db>>>,
+}
+
+impl<'db> ResolvePathExprCtx<'db> {
+    pub fn new(db: &'db dyn BaseDatabase, file: File, expr: &'db PathExpr<'db>) -> Self {
+        Self {
+            db,
+            file,
+            expr,
+            fragments: vec![],
+            signature: None,
+        }
+    }
+
+    pub fn resolve_path_expr(mut self) -> ResolvedPath<'db> {
+        let mut elements = Vec::new();
+        let mut current_path = self.expr.flatten_steps(self.db);
+
+        'resolve: for (index, step) in current_path.iter().enumerate() {
+            match &self.signature {
+                // Both signature and path are available
+                // We need to resolve the signature step by step
+                Some(sig) => {
+                    let steps = &current_path[index..];
+                    let mut current = Arc::new(sig.as_ref().clone());
+                    elements.push(ResolvedPathElement::Signature(current.clone()));
+
+                    for step in steps {
+                        match current.linear(step.clone()) {
+                            Ok(next_sig) => {
+                                current = next_sig.clone();
+                                elements.push(ResolvedPathElement::Signature(current.clone()));
                             }
-
-                            // TYPE CHECK
-                        }
-                        _ => {
-                            // Error: attempting to assign output parameter in input section
+                            Err(e) => {
+                                elements.push(ResolvedPathElement::Error {
+                                    step: Some(step.clone()),
+                                    kind: e,
+                                });
+                            }
                         }
                     }
+                    break 'resolve; // Exit the loop after resolving the path
                 }
-                Some(ParamAssign::ParamAssignOutput {
-                    not,
-                    param,
-                    variable,
-                }) => {
-                    match section {
-                        VariableKind::Output => {
-                            if param != name {
-                                // Error: parameter name mismatch
-                            }
-
-                            // TYPE CHECK
-                        }
-                        _ => {
-                            // Error: attempting to assign input parameter in output section
-                        }
-                    }
-                }
+                // No signature yet
                 None => {
-                    // Error: not enough parameters provided
+                    match step {
+                        SignatureStep::Field { ident, expr } => {
+                            self.find_signature(ident);
+                        },
+                        _ => {}
+                    }
                 }
             }
         }
 
-        if let Some(param) = itera.next() {
-            // Error: too many parameters provided
+        match self.signature {
+            Some(sig) => {
+                elements.push(ResolvedPathElement::Signature(sig));
+            }
+            None => {
+                // If no signature was found, we can still return the fragments
+                for fragment in self.fragments {
+                    elements.push(ResolvedPathElement::Error {
+                        step: None,
+                        kind: LinearError::NoItemInScope {
+                            ident: self.expr.to_string(self.db),
+                            scope: self.expr.scope_id(self.db),
+                        },
+                    });
+                }
+            }
         }
+
+        ResolvedPath { elements }
+    }
+
+    fn find_signature(&mut self, identifier: &SpannedIdent) {
+        eprintln!(
+            "Finding signature for identifier: {:?}",
+            identifier.ident.text(self.db)
+        );
+
+        // Try variables in scope
+        if let Some(variable) = variables_in_scope(self.db, self.file, self.expr.scope_id(self.db))
+            .get(&identifier.ident)
+        {
+            self.signature = Some(signature_for_variable(self.db, *variable));
+            return;
+        }
+
+        // Try POUs in scope
+        if let Some(pou) =
+            pous_in_scope(self.db, self.file, self.expr.scope_id(self.db)).get(&identifier.ident)
+        {
+            self.signature = Some(signature_for_pou(self.db, *pou));
+            return;
+        }
+
+        // Try namespace resolution
+        let path = NamespacePath::from((self.db, &self.fragments));
+        let access = NamespaceAccess::new(self.db, Some(path), identifier);
+        if let Some(pou) =
+            resolve_namespace_access(self.db, self.file, self.expr.scope_id(self.db), access)
+        {
+            self.signature = Some(signature_for_pou(self.db, pou));
+            return;
+        }
+
+        // Accumulate fragments if not resolved yet
+        self.fragments.push(identifier.clone());
     }
 }
