@@ -11,12 +11,90 @@ use crate::{
             namespace::{NamespaceAccess, NamespacePath},
         },
         namespace::Namespace,
-        pous::pou::PouDecl,
+        pous::{pou::{Pou, PouDecl}, variable::Variable},
         scopes::scope::{ScopeId, ScopeKind},
         semantic_index::semantic_index,
         using::Using,
     },
 };
+
+
+/// Find all namespaces in all files that match a given namespace path.
+#[salsa::tracked(returns(ref), no_eq)]
+pub fn shared_namespaces<'db>(
+    db: &'db dyn BaseDatabase,
+    path: NamespacePath,
+) -> Vec<Namespace<'db>> {
+    db.get_files()
+        .iter()
+        .flat_map(|file| {
+            semantic_index(db, *file)
+                .namespaces
+                .iter()
+                .filter_map(move |ns| (ns.path(db) == &path).then_some(*ns))
+        })
+        .collect()
+}
+
+/// Rules for resolving USING directives
+///
+/// We first search if the namespace matches any of the namespaces declared in all files (via [`shared_namespaces`]).
+///
+/// The, we check if the directive is not declared multiple times in the same scope.
+#[tracing::instrument(skip_all, name = "imported_namespaces_for_using")]
+fn imported_namespaces<'db>(
+    db: &'db dyn BaseDatabase,
+    file: File,
+    using: Using<'db>,
+) -> FxHashMap<NamespacePath, Namespace<'db>> {
+    let mut result = FxHashMap::default();
+    let path = using.path(db);
+
+    let matching_namespaces = shared_namespaces(db, path);
+
+    if matching_namespaces.is_empty() {
+        namespace_not_found(db, using.span(db).clone(), path);
+        return result;
+    }
+
+    // Check for duplicate `USING` in the same top-level scope
+    let sema = semantic_index(db, file);
+    let scope = sema.get_scope(using.scope_id(db));
+    for other in &scope.usings {
+        if *other != using && other.path(db) == path {
+            duplicate_using_declaration(db, file, using, *other);
+        }
+    }
+
+    for ns in matching_namespaces {
+        result.insert(*ns.path(db), *ns);
+    }
+
+    result
+}
+
+#[tracing::instrument(skip_all)]
+/// Resolve a namespace access to a POU declaration.
+pub fn resolve_namespace_access<'db>(
+    db: &'db dyn BaseDatabase,
+    file: File,
+    scope: ScopeId,
+    access: NamespaceAccess,
+) -> Option<PouDecl<'db>> {
+    let target = access.target(db);
+
+    match access.namespace(db) {
+        // There's a namespace specified, so we look for it
+        Some(path) => shared_namespaces(db, path).iter().find_map(|ns| {
+            ns.pous(db)
+                .iter()
+                .find(|pou| *pou.name(db) == target.ident)
+                .copied()
+        }),
+        // None, look for the POU in the current scope
+        None => pous_in_scope(db, file, scope).get(&target.ident).copied(),
+    }
+}
 
 /// Returns all POU declarations *locally declared* in this scope.
 #[salsa::tracked(returns(ref))]
@@ -111,79 +189,33 @@ pub fn pous_in_scope<'db>(
     map
 }
 
-/// Find all namespaces in all files that match a given namespace path.
-#[salsa::tracked(returns(ref), no_eq)]
-pub fn shared_namespaces<'db>(
-    db: &'db dyn BaseDatabase,
-    path: NamespacePath,
-) -> Vec<Namespace<'db>> {
-    db.get_files()
-        .iter()
-        .flat_map(|file| {
-            semantic_index(db, *file)
-                .namespaces
-                .iter()
-                .filter_map(move |ns| (ns.path(db) == &path).then_some(*ns))
-        })
-        .collect()
-}
 
-/// Rules for resolving USING directives
-///
-/// We first search if the namespace matches any of the namespaces declared in all files (via [`shared_namespaces`]).
-///
-/// The, we check if the directive is not declared multiple times in the same scope.
-#[tracing::instrument(skip_all, name = "imported_namespaces_for_using")]
-fn imported_namespaces<'db>(
+#[salsa::tracked(returns(ref))]
+pub fn variables_in_scope<'db>(
     db: &'db dyn BaseDatabase,
     file: File,
-    using: Using<'db>,
-) -> FxHashMap<NamespacePath, Namespace<'db>> {
-    let mut result = FxHashMap::default();
-    let path = using.path(db);
-
-    let matching_namespaces = shared_namespaces(db, path);
-
-    if matching_namespaces.is_empty() {
-        namespace_not_found(db, using.span(db).clone(), path);
-        return result;
-    }
-
-    // Check for duplicate `USING` in the same top-level scope
+    scope_id: ScopeId,
+) -> FxHashMap<Ident, Variable<'db>> {
     let sema = semantic_index(db, file);
-    let scope = sema.get_scope(using.scope_id(db));
-    for other in &scope.usings {
-        if *other != using && other.path(db) == path {
-            duplicate_using_declaration(db, file, using, *other);
+    let scope = sema.get_scope(scope_id);
+
+    let mut map = FxHashMap::default();
+
+    if let ScopeKind::Pou(pou) = scope.kind {
+        match pou.pou(db) {
+            Pou::Function(f) => {
+                for var in f.variables(db) {
+                    map.insert(*var.name(db), *var);
+                }
+            }
+            Pou::FunctionBlock(fb) => {
+                for var in fb.variables(db) {
+                    map.insert(*var.name(db), *var);
+                }
+            },
+            _ => {}
         }
     }
 
-    for ns in matching_namespaces {
-        result.insert(*ns.path(db), *ns);
-    }
-
-    result
-}
-
-#[tracing::instrument(skip_all)]
-/// Resolve a namespace access to a POU declaration.
-pub fn resolve_namespace_access<'db>(
-    db: &'db dyn BaseDatabase,
-    file: File,
-    scope: ScopeId,
-    access: NamespaceAccess,
-) -> Option<PouDecl<'db>> {
-    let target = access.target(db);
-
-    match access.namespace(db) {
-        // There's a namespace specified, so we look for it
-        Some(path) => shared_namespaces(db, path).iter().find_map(|ns| {
-            ns.pous(db)
-                .iter()
-                .find(|pou| *pou.name(db) == target.ident)
-                .copied()
-        }),
-        // None, look for the POU in the current scope
-        None => pous_in_scope(db, file, scope).get(&target.ident).copied(),
-    }
+    map
 }
