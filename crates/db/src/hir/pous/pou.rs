@@ -18,7 +18,7 @@ use crate::{
         },
         scopes::scope::{ScopeId},
         semantic_index::SemanticIndex,
-        signature::type_signature,
+        signature::signature_for_pou,
     },
     to_proto::{self_iter, Extends, IterToProto, SymbolInfo, ToProto},
 };
@@ -166,9 +166,7 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
 {}
 ```
 "#,
-                    type_signature(db, *self)
-                        .map(|s| s.signature_to_string(db, sema, self.scope_id(db)))
-                        .unwrap_or_else(|| "{unknown}".to_string()),
+                    "signature"
                 ),
             }),
             range: Some(

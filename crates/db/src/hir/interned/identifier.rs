@@ -40,7 +40,6 @@ impl SpannedIdent {
         })
     }
 
-    #[cfg(debug_assertions)]
     pub fn from_blank(db: &dyn BaseDatabase, text: &str) -> Self {
         use auto_lsp::tree_sitter::Point;
         use auto_lsp::tree_sitter::Range;

@@ -9,6 +9,7 @@ use salsa::Accumulator;
 
 use crate::check::{diagnostic_builder::diag, DiagnosticAccumulator};
 use crate::hir::expressions::spec::Spec;
+use crate::hir::interned::identifier::Ident;
 use crate::hir::interned::namespace::NamespacePath;
 use crate::hir::namespace::Namespace;
 use crate::hir::pous::variable::Variable;
@@ -254,6 +255,65 @@ pub fn duplicate_variable_declaration(
                 other.name(db).text(db)
             ),
         }])
+        .call();
+    DiagnosticAccumulator::accumulate(diag.into(), db);
+}
+
+/// Unexpected index expression (x := [0])
+pub fn unexpected_index_expression(db: &dyn BaseDatabase, file: File, span: &Span) {
+    let diag = diag()
+        .message(format!("unexpected index expression"))
+        .severity(DiagnosticSeverity::ERROR)
+        .range(span.clone())
+        .call();
+    DiagnosticAccumulator::accumulate(diag.into(), db);
+}
+
+/// field not found
+pub fn unknown_field(db: &dyn BaseDatabase, file: File, field: &Ident, span: &Span) {
+    let diag = diag()
+        .message(format!("field {} not found in type", field.text(db)))
+        .severity(DiagnosticSeverity::ERROR)
+        .range(span.clone())
+        .call();
+    DiagnosticAccumulator::accumulate(diag.into(), db);
+}
+
+/// no item found in scope
+pub fn no_item_in_scope(db: &dyn BaseDatabase, file: File, field: &Ident, span: &Span) {
+    let diag = diag()
+        .message(format!("no item '{}' in scope", field.text(db)))
+        .severity(DiagnosticSeverity::ERROR)
+        .range(span.clone())
+        .call();
+    DiagnosticAccumulator::accumulate(diag.into(), db);
+}
+
+/// no item found in scope
+pub fn type_has_no_field(db: &dyn BaseDatabase, file: File, option: Option<Spec>, span: &Span) {
+    let diag = diag()
+        .message(format!(
+            "'{}' is a primitive type and therefore doesn't have fields",
+            option.map(|s| s.to_string(db)).unwrap_or("".to_string())
+        ))
+        .severity(DiagnosticSeverity::ERROR)
+        .range(span.clone())
+        .call();
+    DiagnosticAccumulator::accumulate(diag.into(), db);
+}
+
+
+pub fn type_can_not_be_dereferenced(
+    db: &dyn BaseDatabase,
+    file: File,
+    span: &Span,
+) {
+    let diag = diag()
+        .message(format!(
+            "type can not be dereferenced",
+        ))
+        .severity(DiagnosticSeverity::ERROR)
+        .range(span.clone())
         .call();
     DiagnosticAccumulator::accumulate(diag.into(), db);
 }

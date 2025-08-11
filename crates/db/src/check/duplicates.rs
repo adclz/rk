@@ -13,20 +13,27 @@ use salsa::Accumulator;
 use crate::{
     check::{
         diagnostic_builder::diag,
-        errors::semantic_errors::{duplicate_variable_declaration, mismatch_type},
+        errors::semantic_errors::{
+            duplicate_variable_declaration, mismatch_type, no_item_in_scope, type_can_not_be_dereferenced, type_has_no_field, unexpected_index_expression, unknown_field
+        },
+        hir::signature::{ResolvePathExprCtx, ResolvedPathElement},
         literals::check_date,
         DiagnosticAccumulator,
     },
     hir::{
         expressions::{
-            expression::{Elementary, Expr, ExprKind, Numeric, NumericKind, PrimaryExpr},
+            expression::{
+                Elementary, Expr, ExprKind, Numeric, NumericKind, PathExpr, PrimaryExpr,
+                VariableAccessKind,
+            },
             spec::{Spec, SpecKind},
+            statement::{Stmt, StmtKind},
         },
         interned::namespace::NamespacePath,
         pous::{pou::Pou, variable::Variable},
         scopes::solver::{pous_in_scope, resolve_namespace_access},
         semantic_index::{semantic_index, SemanticIndex},
-        signature::{type_signature, SignatureKind, TypeSignature},
+        signature::{signature_for_pou, LinearError},
     },
 };
 
@@ -49,6 +56,7 @@ pub fn duplicate_declarations<'db>(db: &'db dyn BaseDatabase, file: File) {
             match pou.pou(db) {
                 Pou::Function(func) => {
                     func.variables(db).check(db, &sema);
+                    func.statements(db).check(db, sema);
                 }
                 Pou::FunctionBlock(fb) => {
                     fb.variables(db).check(db, &sema);
@@ -62,6 +70,50 @@ pub fn duplicate_declarations<'db>(db: &'db dyn BaseDatabase, file: File) {
                 Pou::Class(class) => {}
             }
         }
+    }
+}
+
+impl<'db> Check<'db> for Vec<Stmt<'db>> {
+    fn check(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>) {
+        self.iter().for_each(|stmt| match stmt.stmt(db) {
+            StmtKind::Assignment { var, target } => {
+                if let VariableAccessKind::Symbolic(symbolic) = var.kind {
+                    let ctx = ResolvePathExprCtx::new(db, sema.file, &symbolic.kind);
+                    let r = ctx.resolve_path_expr();
+                    eprintln!("len of resolved path: {}", r.elements.len());
+                    for resolved in r.elements {
+                        match resolved {
+                            ResolvedPathElement::Error { step, kind } => match kind {
+                                LinearError::NoItemInScope { ident, scope } => {
+                                    no_item_in_scope(db, sema.file, &ident.ident, &ident.span);
+                                }
+                                LinearError::FieldNotFound { ident } => {
+                                    unknown_field(db, sema.file, &ident.ident, &ident.span)
+                                }
+                                LinearError::NotAnArray{ expr} => {
+                                    unexpected_index_expression(db, sema.file, expr.span(db))
+                                }
+                                LinearError::CanNotHaveField{ ident} => {
+                                    type_has_no_field(db, sema.file, None, &ident.span);
+                                }
+                                LinearError::SpecNotHaveField { spec, ident } => {
+                                    type_has_no_field(db, sema.file, Some(spec), &ident.span)
+                                }
+                                LinearError::NotAReference => {
+                                    type_can_not_be_dereferenced(
+                                        db,
+                                        sema.file,
+                                        &stmt.span(db),
+                                    );
+                                }
+                            },
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            _ => {}
+        });
     }
 }
 
