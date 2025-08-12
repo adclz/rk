@@ -3,38 +3,25 @@ use std::sync::Arc;
 use auto_lsp::default::db::{file::File, BaseDatabase};
 use compact_str::CompactString;
 
-use crate::{
-    check::{errors::semantic_errors::unexpected_index_expression, hir::signature},
-    hir::{
-        expressions::{
-            expression::{ParamAssign, PathExpr, PathExprKind, VarAccess},
-            spec::Spec,
-        },
-        interned::{
-            identifier::{Ident, SpannedIdent},
-            namespace::{NamespaceAccess, NamespacePath},
-        },
-        pous::variable::VariableKind,
-        scopes::solver::{pous_in_scope, resolve_namespace_access, variables_in_scope},
-        semantic_index::SemanticIndex,
-        signature::{
-            signature_for_pou, signature_for_variable, LinearError, Signature, SignatureStep,
-            WalkSignature,
-        },
+use crate::hir::{
+    expressions::{
+        expression::{ParamAssign, PathExpr, PathExprKind, VarAccess},
+        spec::Spec,
     },
+    interned::{
+        identifier::{Ident, SpannedIdent},
+        namespace::{NamespaceAccess, NamespacePath},
+    },
+    pous::variable::VariableKind,
+    scopes::solver::{pous_in_scope, resolve_namespace_access, variables_in_scope},
+    semantic_index::SemanticIndex,
+    ty::{ty_for_pou, ty_for_variable, Ty, TyKind, TyStep, WalkError},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ResolvedPathElement<'db> {
-    Signature(Arc<Signature<'db>>),
-    Error {
-        step: Option<SignatureStep<'db>>,
-        kind: LinearError<'db>,
-    },
-}
-
 pub struct ResolvedPath<'db> {
-    pub elements: Vec<ResolvedPathElement<'db>>,
+    pub elements: Vec<(PathExpr<'db>, Ty<'db>)>,
+    pub error: Option<WalkError<'db>>,
 }
 
 /// [`PathExpr`] resolver.
@@ -45,7 +32,7 @@ pub struct ResolvePathExprCtx<'db> {
     file: File,
     expr: &'db PathExpr<'db>,
     fragments: Vec<SpannedIdent>,
-    signature: Option<Arc<Signature<'db>>>,
+    signature: Option<Ty<'db>>,
 }
 
 impl<'db> ResolvePathExprCtx<'db> {
@@ -61,7 +48,7 @@ impl<'db> ResolvePathExprCtx<'db> {
 
     pub fn resolve_path_expr(mut self) -> ResolvedPath<'db> {
         let mut elements = Vec::new();
-        let mut current_path = self.expr.flatten_steps(self.db);
+        let current_path = self.expr.flatten_steps(self.db);
 
         'resolve: for (index, step) in current_path.iter().enumerate() {
             match &self.signature {
@@ -69,20 +56,20 @@ impl<'db> ResolvePathExprCtx<'db> {
                 // We need to resolve the signature step by step
                 Some(sig) => {
                     let steps = &current_path[index..];
-                    let mut current = Arc::new(sig.as_ref().clone());
-                    elements.push(ResolvedPathElement::Signature(current.clone()));
+                    let mut current = *sig;
+                    //elements.push(sig);
 
                     for step in steps {
-                        match current.linear(step.clone()) {
+                        match current.linear(self.db, step) {
                             Ok(next_sig) => {
-                                current = next_sig.clone();
-                                elements.push(ResolvedPathElement::Signature(current.clone()));
+                                current = next_sig;
+                                elements.push((*step.get_expr(), current));
                             }
-                            Err(e) => {
-                                elements.push(ResolvedPathElement::Error {
-                                    step: Some(step.clone()),
-                                    kind: e,
-                                });
+                            Err(error) => {
+                                return ResolvedPath {
+                                    elements,
+                                    error: Some(error),
+                                };
                             }
                         }
                     }
@@ -90,11 +77,8 @@ impl<'db> ResolvePathExprCtx<'db> {
                 }
                 // No signature yet
                 None => {
-                    match step {
-                        SignatureStep::Field { ident, expr } => {
-                            self.find_signature(ident);
-                        },
-                        _ => {}
+                    if let TyStep::Field { ident, expr } = step {
+                        self.find_signature(ident);
                     }
                 }
             }
@@ -102,44 +86,39 @@ impl<'db> ResolvePathExprCtx<'db> {
 
         match self.signature {
             Some(sig) => {
-                elements.push(ResolvedPathElement::Signature(sig));
+                elements.push((*self.expr, sig));
             }
             None => {
-                // If no signature was found, we can still return the fragments
-                for fragment in self.fragments {
-                    elements.push(ResolvedPathElement::Error {
-                        step: None,
-                        kind: LinearError::NoItemInScope {
-                            ident: self.expr.to_string(self.db),
-                            scope: self.expr.scope_id(self.db),
-                        },
-                    });
-                }
+                return ResolvedPath {
+                    elements,
+                    error: Some(WalkError::NoItemInScope {
+                        expr: *self.expr,
+                        scope: self.expr.scope_id(self.db),
+                    }),
+                };
             }
         }
 
-        ResolvedPath { elements }
+        ResolvedPath {
+            elements,
+            error: None,
+        }
     }
 
     fn find_signature(&mut self, identifier: &SpannedIdent) {
-        eprintln!(
-            "Finding signature for identifier: {:?}",
-            identifier.ident.text(self.db)
-        );
-
         // Try variables in scope
         if let Some(variable) = variables_in_scope(self.db, self.file, self.expr.scope_id(self.db))
-            .get(&identifier.ident)
+            .get(&identifier)
         {
-            self.signature = Some(signature_for_variable(self.db, *variable));
+            self.signature = Some(ty_for_variable(self.db, *variable));
             return;
         }
 
         // Try POUs in scope
         if let Some(pou) =
-            pous_in_scope(self.db, self.file, self.expr.scope_id(self.db)).get(&identifier.ident)
+            pous_in_scope(self.db, self.file, self.expr.scope_id(self.db)).get(identifier)
         {
-            self.signature = Some(signature_for_pou(self.db, *pou));
+            self.signature = Some(ty_for_pou(self.db, *pou));
             return;
         }
 
@@ -149,7 +128,7 @@ impl<'db> ResolvePathExprCtx<'db> {
         if let Some(pou) =
             resolve_namespace_access(self.db, self.file, self.expr.scope_id(self.db), access)
         {
-            self.signature = Some(signature_for_pou(self.db, pou));
+            self.signature = Some(ty_for_pou(self.db, pou));
             return;
         }
 

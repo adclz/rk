@@ -14,9 +14,11 @@ use crate::{
     check::{
         diagnostic_builder::diag,
         errors::semantic_errors::{
-            duplicate_variable_declaration, mismatch_type, no_item_in_scope, type_can_not_be_dereferenced, type_has_no_field, unexpected_index_expression, unknown_field
+            assign_direct_pou_to_a_variable, duplicate_variable_declaration, mismatch_type,
+            no_item_in_scope, type_can_not_be_dereferenced, type_has_no_field,
+            unexpected_index_expression, unknown_field,
         },
-        hir::signature::{ResolvePathExprCtx, ResolvedPathElement},
+        hir::signature::ResolvePathExprCtx,
         literals::check_date,
         DiagnosticAccumulator,
     },
@@ -33,7 +35,7 @@ use crate::{
         pous::{pou::Pou, variable::Variable},
         scopes::solver::{pous_in_scope, resolve_namespace_access},
         semantic_index::{semantic_index, SemanticIndex},
-        signature::{signature_for_pou, LinearError},
+        ty::{ty_for_pou, TyKind, WalkError},
     },
 };
 
@@ -80,33 +82,32 @@ impl<'db> Check<'db> for Vec<Stmt<'db>> {
                 if let VariableAccessKind::Symbolic(symbolic) = var.kind {
                     let ctx = ResolvePathExprCtx::new(db, sema.file, &symbolic.kind);
                     let r = ctx.resolve_path_expr();
-                    eprintln!("len of resolved path: {}", r.elements.len());
-                    for resolved in r.elements {
-                        match resolved {
-                            ResolvedPathElement::Error { step, kind } => match kind {
-                                LinearError::NoItemInScope { ident, scope } => {
-                                    no_item_in_scope(db, sema.file, &ident.ident, &ident.span);
-                                }
-                                LinearError::FieldNotFound { ident } => {
-                                    unknown_field(db, sema.file, &ident.ident, &ident.span)
-                                }
-                                LinearError::NotAnArray{ expr} => {
-                                    unexpected_index_expression(db, sema.file, expr.span(db))
-                                }
-                                LinearError::CanNotHaveField{ ident} => {
-                                    type_has_no_field(db, sema.file, None, &ident.span);
-                                }
-                                LinearError::SpecNotHaveField { spec, ident } => {
-                                    type_has_no_field(db, sema.file, Some(spec), &ident.span)
-                                }
-                                LinearError::NotAReference => {
-                                    type_can_not_be_dereferenced(
-                                        db,
-                                        sema.file,
-                                        &stmt.span(db),
-                                    );
-                                }
-                            },
+
+                    if let Some(err) = r.error {
+                        match err {
+                            WalkError::NoItemInScope { expr, scope } => {
+                                no_item_in_scope(
+                                    db,
+                                    sema.file,
+                                    &expr.to_string(db),
+                                    &expr.span(db),
+                                );
+                            }
+                            WalkError::FieldNotFound { origin, expr } => {
+                                unknown_field(db, sema.file, &expr.to_string(db), &expr.span(db))
+                            }
+                            WalkError::NotAnArray { origin, expr } => {
+                                unexpected_index_expression(db, sema.file, expr.span(db))
+                            }
+                            WalkError::NotAReference { origin, expr } => {
+                                type_can_not_be_dereferenced(db, sema.file, &expr.span(db));
+                            }
+                        }
+                    } else {
+                        match r.elements[0].1.kind(db) {
+                            TyKind::Callable { .. } => {
+                                assign_direct_pou_to_a_variable(db, sema.file, r.elements[0].0, r.elements[0].1.origin(db));
+                            }
                             _ => {}
                         }
                     }

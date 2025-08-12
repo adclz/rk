@@ -96,7 +96,7 @@ impl Query {
         self.case_sensitive = true;
     }
 
-    fn search<'sym, T>(
+    pub fn search<'sym, T>(
         &self,
         indices: &'sym [&SymbolIndex],
         cb: impl FnMut(&'sym FileSymbol) -> ControlFlow<T>,
@@ -263,7 +263,7 @@ pub fn file_symbol_index<'db>(db: &'db dyn BaseDatabase, file: File) -> SymbolIn
     SymbolIndex::new(pous.into_boxed_slice())
 }
 
-fn global_symbol_indexes(db: &dyn BaseDatabase, file_to_omit: File) -> Vec<&SymbolIndex> {
+pub fn global_symbol_indexes(db: &dyn BaseDatabase, file_to_omit: File) -> Vec<&SymbolIndex> {
     db.get_files()
         .iter()
         // Filter out the file to omit
@@ -281,7 +281,6 @@ pub fn query_completions(
     scope_id: ScopeId,
     query: &str,
 ) -> Vec<CompletionItem> {
-    let sema = semantic_index(db, file);
     let scoped_map = pous_in_scope(db, file, scope_id);
 
     let locally_visible_names: FxHashSet<&str> = scoped_map

@@ -7,13 +7,17 @@ use auto_lsp::lsp_types::{
 use auto_lsp::{core::span::Span, default::db::file::File};
 use salsa::Accumulator;
 
+use crate::check::errors::recovery::pou_recovery;
 use crate::check::{diagnostic_builder::diag, DiagnosticAccumulator};
+use crate::hir::expressions::expression::PathExpr;
 use crate::hir::expressions::spec::Spec;
 use crate::hir::interned::identifier::Ident;
 use crate::hir::interned::namespace::NamespacePath;
 use crate::hir::namespace::Namespace;
+use crate::hir::pous::pou::{Pou, PouDecl};
 use crate::hir::pous::variable::Variable;
 use crate::hir::semantic_index::SemanticIndex;
+use crate::hir::ty::TyOrigin;
 use crate::hir::using::Using;
 
 /// POU has multiple EXTENDS declared
@@ -281,11 +285,28 @@ pub fn unknown_field(db: &dyn BaseDatabase, file: File, field: &Ident, span: &Sp
 
 /// no item found in scope
 pub fn no_item_in_scope(db: &dyn BaseDatabase, file: File, field: &Ident, span: &Span) {
-    let diag = diag()
+    let mut diag = diag()
         .message(format!("no item '{}' in scope", field.text(db)))
         .severity(DiagnosticSeverity::ERROR)
         .range(span.clone())
         .call();
+
+    let recovery = pou_recovery(db, file, field.text(db));
+    if !recovery.is_empty() {
+        let suggestions = recovery
+            .into_iter()
+            .map(|name| format!("  - {}", name))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        diag.diagnostic.related_information = Some(vec![DiagnosticRelatedInformation {
+            location: Location {
+                uri: file.url(db).clone(),
+                range: span.clone().into(),
+            },
+            message: format!("did you mean:\n{}", suggestions),
+        }]);
+    }
     DiagnosticAccumulator::accumulate(diag.into(), db);
 }
 
@@ -302,18 +323,54 @@ pub fn type_has_no_field(db: &dyn BaseDatabase, file: File, option: Option<Spec>
     DiagnosticAccumulator::accumulate(diag.into(), db);
 }
 
-
-pub fn type_can_not_be_dereferenced(
-    db: &dyn BaseDatabase,
-    file: File,
-    span: &Span,
-) {
+pub fn type_can_not_be_dereferenced(db: &dyn BaseDatabase, file: File, span: &Span) {
     let diag = diag()
-        .message(format!(
-            "type can not be dereferenced",
-        ))
+        .message(format!("type can not be dereferenced",))
         .severity(DiagnosticSeverity::ERROR)
         .range(span.clone())
         .call();
     DiagnosticAccumulator::accumulate(diag.into(), db);
+}
+
+pub fn assign_direct_pou_to_a_variable(db: &dyn BaseDatabase, file: File, expr: PathExpr<'_>, origin: TyOrigin) {
+    if let TyOrigin::FromPou(pou) = origin {
+        match pou.pou(db) {
+            Pou::FunctionBlock(_) | Pou::Class(_) => {
+                let diag = diag()
+                .message(format!(
+                    "POU '{}' can not be assigned\nbut you can declare a variable of same type instead",
+                    pou.name(db).text(db),
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .range(expr.span(db).clone())
+                .related_information(vec![DiagnosticRelatedInformation {
+                    location: Location {
+                        uri: file.url(db).clone(),
+                        range: pou.name_span(db).into(),
+                    },
+                    message: format!("POU '{}' is declared here", pou.name(db).text(db)),
+                }])
+                .call();
+                DiagnosticAccumulator::accumulate(diag.into(), db);
+            }
+            _ => {
+                let diag = diag()
+                    .message(format!(
+                        "POU '{}' can not be assigned",
+                        pou.name(db).text(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(expr.span(db).clone())
+                    .related_information(vec![DiagnosticRelatedInformation {
+                        location: Location {
+                            uri: file.url(db).clone(),
+                            range: pou.name_span(db).into(),
+                        },
+                        message: format!("POU '{}' is declared here", pou.name(db).text(db)),
+                    }])
+                    .call();
+                DiagnosticAccumulator::accumulate(diag.into(), db);
+            }
+        }
+    }
 }
