@@ -4,7 +4,7 @@ use auto_lsp::{
     default::db::{file::File, BaseDatabase},
 };
 use compact_str::CompactString;
-use std::hash::Hash;
+use std::{hash::Hash, ops::Deref};
 
 use crate::to_proto::ToProto;
 
@@ -12,6 +12,14 @@ use crate::to_proto::ToProto;
 pub struct SpannedIdent {
     pub span: Span,
     pub ident: Ident,
+}
+
+impl Deref for SpannedIdent {
+    type Target = Ident;
+
+    fn deref(&self) -> &Self::Target {
+        &self.ident
+    }
 }
 
 impl PartialEq for SpannedIdent {
@@ -74,7 +82,6 @@ pub struct Ident {
     pub text: CompactString,
 }
 
-#[salsa::tracked]
 impl<'db> Ident {
     pub fn from_node(
         db: &dyn BaseDatabase,
