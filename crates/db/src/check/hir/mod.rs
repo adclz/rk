@@ -1,2 +1,2 @@
 pub mod signature;
-pub mod simple_spec; 
+pub mod simple_spec;

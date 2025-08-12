@@ -5,7 +5,7 @@ use crate::{
         expressions::spec::Spec,
         interned::{identifier::Ident, namespace::SpannedNamespaceAccess},
         pous::variable::Variable,
-        scopes::scope::{FileScopeId},
+        scopes::scope::FileScopeId,
         semantic_index::SemanticIndex,
     },
     to_proto::{IterToProto, ToProto},

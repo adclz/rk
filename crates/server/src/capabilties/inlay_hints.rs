@@ -20,13 +20,13 @@ pub fn inlay_hints(
 
     let sema = semantic_index(db, file);
 
-    sema.iter(db, &sema).for_each(|symbol| {
+    sema.iter(db, sema).for_each(|symbol| {
         let span = symbol.get_span(db);
         if span.lsp().start.line < range.start.line || span.lsp().end.line > range.end.line {
             return;
         }
 
-        if let Some(inlay_hint) = symbol.inlay_hint(db, &sema) {
+        if let Some(inlay_hint) = symbol.inlay_hint(db, sema) {
             results.push(inlay_hint);
         }
     });

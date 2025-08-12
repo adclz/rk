@@ -7,7 +7,7 @@ use crate::{
             data_type::DataType,
             pou::{Pou, PouDecl},
         },
-        scopes::scope::{Scope, FileScopeId, ScopeKind, Visibility},
+        scopes::scope::{FileScopeId, Scope, ScopeKind, Visibility},
     },
     parser::{semantic_index::SemanticIndexBuilder, ParseInit, ParseSpec},
 };
@@ -18,7 +18,7 @@ use auto_lsp::core::ast::AstNode;
 impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_data_type(&mut self, data_type: &TypeDecl) -> anyhow::Result<PouDecl<'db>> {
         let scope_id = FileScopeId::from((self.file, data_type.get_id()));
-        let previous_scope = self.current_scope.clone();
+        let previous_scope = self.current_scope;
         self.current_scope = scope_id;
 
         let name = Ident::from_node(self.db, self.file, data_type.name.deref())?;
@@ -48,12 +48,7 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         let result = PouDecl::new(
             self.db,
-            Pou::DataType(DataType::new(
-                self.db,
-                spec, 
-                init, 
-                scope_id
-            )),
+            Pou::DataType(DataType::new(self.db, spec, init, scope_id)),
             data_type.get_span(),
             name,
             data_type.name.get_span(),

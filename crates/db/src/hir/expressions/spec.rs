@@ -3,7 +3,6 @@ use auto_lsp::default::db::file::File;
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind};
 
-use crate::hir::pous::pou::PouDecl;
 use crate::hir::semantic_index::semantic_index;
 use crate::{
     completions::snippets::elem_type_names,
@@ -37,26 +36,22 @@ impl<'db> Spec<'db> {
             SpecKind::Target(target) => {
                 let sema = semantic_index(db, self.file(db));
                 match resolve_namespace_access(db, sema.file, self.scope_id(db), *target) {
-                    Some(pou) => {
-                        match pou.pou(db) {
-                            Pou::Function(dt) => format!("(function) {}", pou.name(db).text(db)),
-                            Pou::FunctionBlock(fb) => {
-                                format!("(function_block) {}", pou.name(db).text(db))
-                            }
-                            Pou::DataType(dt) => dt.spec(db).shorthand(db),
-                            Pou::Class(class) => format!("(class) {}", pou.name(db).text(db)),
-                            Pou::Interface(it) => format!("(interface) {}", pou.name(db).text(db)),
+                    Some(pou) => match pou.pou(db) {
+                        Pou::Function(dt) => format!("(function) {}", pou.name(db).text(db)),
+                        Pou::FunctionBlock(fb) => {
+                            format!("(function_block) {}", pou.name(db).text(db))
                         }
-                    }
+                        Pou::DataType(dt) => dt.spec(db).shorthand(db),
+                        Pou::Class(class) => format!("(class) {}", pou.name(db).text(db)),
+                        Pou::Interface(it) => format!("(interface) {}", pou.name(db).text(db)),
+                    },
                     None => "{unknown}".to_string(),
                 }
-            },
-            SpecKind::Ref(ref_name) => { 
-                format!("(*ref*) {}", ref_name.shorthand(db))
-            },
-            _ => {
-                self.to_string(db)
             }
+            SpecKind::Ref(ref_name) => {
+                format!("(*ref*) {}", ref_name.shorthand(db))
+            }
+            _ => self.to_string(db),
         }
     }
 }
@@ -198,9 +193,7 @@ impl<'db> ToProto<'db> for Spec<'db> {
         match self.kind(db) {
             SpecKind::Target(target) => {
                 match resolve_namespace_access(db, sema.file, self.scope_id(db), *target) {
-                    Some(pou) => {
-                        pou.hover(db, &sema)
-                    }
+                    Some(pou) => pou.hover(db, sema),
                     None => None,
                 }
             }
@@ -216,7 +209,7 @@ impl<'db> ToProto<'db> for Spec<'db> {
                     ),
                 }),
             }),
-                        _ =>  Some(Hover {
+            _ => Some(Hover {
                 range: Some(self.span(db).into()),
                 contents: HoverContents::Markup(MarkupContent {
                     kind: MarkupKind::Markdown,
@@ -235,24 +228,22 @@ impl<'db> ToProto<'db> for Spec<'db> {
         let mut primary = elem_type_names();
         let finder = sema.pous_in_scope(db, self.scope_id(db));
 
-        primary.extend(finder.iter().filter_map(|(name, pou)| {
-            match pou.pou(db) {
-                Pou::DataType(fb) => Some(auto_lsp::lsp_types::CompletionItem {
-                    label: pou.name(db).text(db).to_string(),
-                    kind: Some(auto_lsp::lsp_types::CompletionItemKind::TYPE_PARAMETER),
-                    detail: Some("TYPE".to_string()),
-                    documentation: None,
-                    ..Default::default()
-                }),
-                Pou::FunctionBlock(dt) => Some(auto_lsp::lsp_types::CompletionItem {
-                    label: pou.name(db).text(db).to_string(),
-                    kind: Some(auto_lsp::lsp_types::CompletionItemKind::FUNCTION),
-                    detail: Some("FUNCTION_BLOCK".to_string()),
-                    documentation: None,
-                    ..Default::default()
-                }),
-                _ => None,
-            }
+        primary.extend(finder.iter().filter_map(|(name, pou)| match pou.pou(db) {
+            Pou::DataType(fb) => Some(auto_lsp::lsp_types::CompletionItem {
+                label: pou.name(db).text(db).to_string(),
+                kind: Some(auto_lsp::lsp_types::CompletionItemKind::TYPE_PARAMETER),
+                detail: Some("TYPE".to_string()),
+                documentation: None,
+                ..Default::default()
+            }),
+            Pou::FunctionBlock(dt) => Some(auto_lsp::lsp_types::CompletionItem {
+                label: pou.name(db).text(db).to_string(),
+                kind: Some(auto_lsp::lsp_types::CompletionItemKind::FUNCTION),
+                detail: Some("FUNCTION_BLOCK".to_string()),
+                documentation: None,
+                ..Default::default()
+            }),
+            _ => None,
         }));
         Some(primary)
     }

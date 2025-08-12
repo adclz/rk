@@ -1,5 +1,3 @@
-use std::error::Error;
-
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::{
     DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, Location,
@@ -14,7 +12,7 @@ use crate::hir::expressions::spec::Spec;
 use crate::hir::interned::identifier::Ident;
 use crate::hir::interned::namespace::NamespacePath;
 use crate::hir::namespace::Namespace;
-use crate::hir::pous::pou::{Pou, PouDecl};
+use crate::hir::pous::pou::Pou;
 use crate::hir::pous::variable::Variable;
 use crate::hir::semantic_index::SemanticIndex;
 use crate::hir::ty::TyOrigin;
@@ -266,7 +264,7 @@ pub fn duplicate_variable_declaration(
 /// Unexpected index expression (x := [0])
 pub fn unexpected_index_expression(db: &dyn BaseDatabase, file: File, span: &Span) {
     let diag = diag()
-        .message(format!("unexpected index expression"))
+        .message("unexpected index expression".to_string())
         .severity(DiagnosticSeverity::ERROR)
         .range(span.clone())
         .call();
@@ -295,7 +293,7 @@ pub fn no_item_in_scope(db: &dyn BaseDatabase, file: File, field: &Ident, span: 
     if !recovery.is_empty() {
         let suggestions = recovery
             .into_iter()
-            .map(|name| format!("  - {}", name))
+            .map(|name| format!("  - {name}"))
             .collect::<Vec<_>>()
             .join("\n");
 
@@ -304,7 +302,7 @@ pub fn no_item_in_scope(db: &dyn BaseDatabase, file: File, field: &Ident, span: 
                 uri: file.url(db).clone(),
                 range: span.clone().into(),
             },
-            message: format!("did you mean:\n{}", suggestions),
+            message: format!("did you mean:\n{suggestions}"),
         }]);
     }
     DiagnosticAccumulator::accumulate(diag.into(), db);
@@ -325,14 +323,19 @@ pub fn type_has_no_field(db: &dyn BaseDatabase, file: File, option: Option<Spec>
 
 pub fn type_can_not_be_dereferenced(db: &dyn BaseDatabase, file: File, span: &Span) {
     let diag = diag()
-        .message(format!("type can not be dereferenced",))
+        .message("type can not be dereferenced".to_string())
         .severity(DiagnosticSeverity::ERROR)
         .range(span.clone())
         .call();
     DiagnosticAccumulator::accumulate(diag.into(), db);
 }
 
-pub fn assign_direct_pou_to_a_variable(db: &dyn BaseDatabase, file: File, expr: PathExpr<'_>, origin: TyOrigin) {
+pub fn assign_direct_pou_to_a_variable(
+    db: &dyn BaseDatabase,
+    file: File,
+    expr: PathExpr<'_>,
+    origin: TyOrigin,
+) {
     if let TyOrigin::FromPou(pou) = origin {
         match pou.pou(db) {
             Pou::FunctionBlock(_) | Pou::Class(_) => {

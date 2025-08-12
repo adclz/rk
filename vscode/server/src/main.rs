@@ -26,14 +26,14 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     let default_log_level = "debug";
     #[cfg(not(debug_assertions))]
     let default_log_level = "off";
-    
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(default_log_level));
-    
+
+    let env_filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_log_level));
+
     let subscriber = Registry::default()
         .with(env_filter)
         .with(tracing_span_tree::SpanTree::default());
-    
+
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
     stderrlog::new()
@@ -43,8 +43,8 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
         .timestamp(stderrlog::Timestamp::Second)
         .init()
         .unwrap();
-    
+
     tracing::info!("VSCode LSP server starting...");
-    
+
     boot()
 }

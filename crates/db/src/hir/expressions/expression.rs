@@ -194,28 +194,14 @@ impl<'db> PathExpr<'db> {
 
     pub fn to_string(&self, db: &'db dyn BaseDatabase) -> SpannedIdent {
         match &self.expr(db) {
-            PathExprKind::Field(field_expr) => {
-                match field_expr.var {
-                    VarAccess::Simple(ref simple) => {
-                        simple.clone()
-                    }
-                    VarAccess::Deref(ref deref) => {
-                        deref.clone()
-                    }
-                }
-            }
-            PathExprKind::Index(index_expr) => {
-                index_expr.path.to_string(db)
-            }
-            PathExprKind::VarAccess(var_access) => {
-                match var_access {
-                    VarAccess::Simple(ref simple) => {
-                        simple.clone()
-                    }
-                    VarAccess::Deref(ref deref) => {
-                        deref.clone()
-                    }
-                }
+            PathExprKind::Field(field_expr) => match field_expr.var {
+                VarAccess::Simple(ref simple) => simple.clone(),
+                VarAccess::Deref(ref deref) => deref.clone(),
+            },
+            PathExprKind::Index(index_expr) => index_expr.path.to_string(db),
+            PathExprKind::VarAccess(var_access) => match var_access {
+                VarAccess::Simple(ref simple) => simple.clone(),
+                VarAccess::Deref(ref deref) => deref.clone(),
             },
         }
     }

@@ -11,7 +11,7 @@ use crate::check::errors::semantic_errors::invalid_pou_keyword;
 use crate::hir::interned::identifier::SpannedIdent;
 use crate::hir::namespace::Namespace;
 use crate::hir::pous::pou::PouDecl;
-use crate::hir::scopes::scope::{Scope, FileScopeId, ScopeKind, Visibility};
+use crate::hir::scopes::scope::{FileScopeId, Scope, ScopeKind, Visibility};
 use crate::hir::semantic_index::SemanticIndex;
 
 pub struct SemanticIndexBuilder<'db> {
@@ -62,8 +62,8 @@ impl<'db> SemanticIndexBuilder<'db> {
     }
 
     pub fn create_pou_id(&self, node: &impl AstNode) -> FileScopeId {
-        let scope_id = FileScopeId::from((self.file, node.get_id()));
-        scope_id
+        
+        FileScopeId::from((self.file, node.get_id()))
     }
 
     pub fn create_pou_error(&self, err: &ERRInvalidPouKeyword) {
@@ -135,7 +135,8 @@ impl<'db> SemanticIndexBuilder<'db> {
             None,
         );
 
-        self.scope_keys.insert(FileScopeId::global(self.file), scope);
+        self.scope_keys
+            .insert(FileScopeId::global(self.file), scope);
 
         SemanticIndex {
             file: self.file,

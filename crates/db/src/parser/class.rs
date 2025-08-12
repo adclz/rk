@@ -7,7 +7,7 @@ use crate::hir::interned::identifier::Ident;
 use crate::hir::interned::namespace::SpannedNamespaceAccess;
 use crate::hir::pous::class::Class;
 use crate::hir::pous::pou::{Pou, PouDecl};
-use crate::hir::scopes::scope::{Scope, FileScopeId, ScopeKind, Visibility};
+use crate::hir::scopes::scope::{FileScopeId, Scope, ScopeKind, Visibility};
 use crate::hir::visibility::Modifiers;
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::parser::ParseVarSection;
@@ -17,11 +17,10 @@ use auto_lsp::core::ast::AstNode;
 
 impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_class(&mut self, class: &ClassDecl) -> anyhow::Result<PouDecl<'db>> {
-        
         let scope_id = FileScopeId::from((self.file, class.get_id()));
-        let previous_scope = self.current_scope.clone();
+        let previous_scope = self.current_scope;
         self.current_scope = scope_id;
-        
+
         let extends = class
             .extends
             .as_ref()
@@ -76,20 +75,15 @@ impl<'db> SemanticIndexBuilder<'db> {
         let usings = self.parse_usings(&class.directives)?;
 
         let result = PouDecl::new(
-                self.db,
-                Pou::Class(Class::new(
-                    self.db,
-                    extends,
-                    implements,
-                    variables,
-                    modifiers,
-                    scope_id,
-                )),
-                class.get_span(),
-                name,
-                class.name.get_span(),
-                scope_id,
-            );
+            self.db,
+            Pou::Class(Class::new(
+                self.db, extends, implements, variables, modifiers, scope_id,
+            )),
+            class.get_span(),
+            name,
+            class.name.get_span(),
+            scope_id,
+        );
 
         let scope = Scope::new(
             self.file,

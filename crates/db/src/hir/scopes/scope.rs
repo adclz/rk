@@ -1,4 +1,4 @@
-use auto_lsp::{core::ast::AstNode, default::db::file::File};
+use auto_lsp::{default::db::file::File};
 use bitflags::bitflags;
 
 use crate::hir::{namespace::Namespace, pous::pou::PouDecl, using::Using};

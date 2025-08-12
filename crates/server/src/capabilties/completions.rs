@@ -29,7 +29,7 @@ pub fn completions(
     };
 
     let _s = tracing::trace_span!("completions").entered();
-   
+
     use_completion_marker(db, file, position, offset)
 }
 
@@ -70,8 +70,8 @@ pub fn use_completion_ctx(
     offset: usize,
 ) -> anyhow::Result<Option<CompletionResponse>> {
     let sema = semantic_index(db, file);
-    if let Some(symbol) = sema.descendant_at(db, &sema, offset) {
-        if let Some(ctx) = symbol.completion(db, &sema, offset) {
+    if let Some(symbol) = sema.descendant_at(db, sema, offset) {
+        if let Some(ctx) = symbol.completion(db, sema, offset) {
             return Ok(Some(CompletionResponse::Array(ctx)));
         }
     }

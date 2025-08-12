@@ -6,8 +6,10 @@ use auto_lsp::{
 
 use crate::{
     hir::{
-        expressions::{expression::Expr, spec::Spec}, interned::identifier::Ident,
-        scopes::scope::{Scope, FileScopeId}, semantic_index::SemanticIndex,
+        expressions::{expression::Expr, spec::Spec},
+        interned::identifier::Ident,
+        scopes::scope::FileScopeId,
+        semantic_index::SemanticIndex,
     },
     to_proto::{self_iter, IterToProto, SymbolInfo, ToProto},
 };

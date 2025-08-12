@@ -6,9 +6,7 @@ use super::semantic_index::SemanticIndexBuilder;
 use crate::hir::interned::identifier::SpannedIdent;
 use crate::hir::interned::namespace::NamespacePath;
 use crate::hir::namespace::Namespace;
-use crate::hir::scopes::scope::{
-    Scope, FileScopeId, ScopeKind, Visibility,
-};
+use crate::hir::scopes::scope::{FileScopeId, Scope, ScopeKind, Visibility};
 
 impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_namespace(
@@ -24,7 +22,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         let usings = self.parse_usings(&nested.directives)?;
         let mut pous = vec![];
 
-        let previous_scope = self.current_scope.clone();
+        let previous_scope = self.current_scope;
         self.current_scope = scope_id;
 
         if let Some(elements) = nested.elements.as_ref() {

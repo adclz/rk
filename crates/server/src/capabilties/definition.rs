@@ -30,10 +30,10 @@ pub fn go_to_definition(
     let sema = semantic_index(db, file);
 
     let symbol = sema
-        .named_descendant_at(db, &sema, position)
-        .or_else(|| sema.descendant_at(db, &sema, position));
+        .named_descendant_at(db, sema, position)
+        .or_else(|| sema.descendant_at(db, sema, position));
 
-    match symbol.and_then(|s| s.definition(db, &sema)) {
+    match symbol.and_then(|s| s.definition(db, sema)) {
         Some(def) => Ok(Some(def)),
         None => Ok(None),
     }

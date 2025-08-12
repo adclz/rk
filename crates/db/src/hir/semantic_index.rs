@@ -8,7 +8,7 @@ use tracing::info_span;
 use crate::hir::interned::identifier::Ident;
 use crate::hir::namespace::Namespace;
 use crate::hir::pous::pou::PouDecl;
-use crate::hir::scopes::scope::{Scope, FileScopeId, ScopeKind};
+use crate::hir::scopes::scope::{FileScopeId, Scope};
 use crate::hir::scopes::solver::pous_in_scope;
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::to_proto::{IterToProto, ToProto};
@@ -17,8 +17,7 @@ use crate::to_proto::{IterToProto, ToProto};
 #[tracing::instrument(skip_all, name = "query_semantic_index")]
 #[salsa::tracked(returns(ref))]
 pub fn semantic_index<'db>(db: &'db dyn BaseDatabase, file: File) -> SemanticIndex<'db> {
-    let ast = match info_span!("build AST").in_scope(|| get_ast(db, file).get_root())
-    {
+    let ast = match info_span!("build AST").in_scope(|| get_ast(db, file).get_root()) {
         Some(ast) => ast,
         None => return SemanticIndex::empty(file),
     };

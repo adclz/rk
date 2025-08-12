@@ -10,9 +10,9 @@ use crate::check::{duplicates::duplicate_declarations, lexer::add_fixes_to_parse
 pub mod diagnostic_builder;
 pub mod duplicates;
 pub mod errors;
+pub mod hir;
 pub mod lexer;
 pub mod literals;
-pub mod hir;
 
 #[derive(Clone)]
 pub struct IdeDiagnostic {

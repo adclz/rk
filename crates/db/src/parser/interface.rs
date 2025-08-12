@@ -4,7 +4,7 @@ use crate::hir::interned::identifier::Ident;
 use crate::hir::interned::namespace::SpannedNamespaceAccess;
 use crate::hir::pous::interface::{Interface, Method};
 use crate::hir::pous::pou::{Pou, PouDecl};
-use crate::hir::scopes::scope::{Scope, FileScopeId, ScopeKind, Visibility};
+use crate::hir::scopes::scope::{FileScopeId, Scope, ScopeKind, Visibility};
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::parser::{ParseSpec, ParseVarSection};
 use auto_lsp::anyhow;
@@ -16,7 +16,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         interface: &ast::generated::InterfaceDecl,
     ) -> anyhow::Result<PouDecl<'db>> {
         let scope_id = FileScopeId::from((self.file, interface.get_id()));
-        let previous_scope = self.current_scope.clone();
+        let previous_scope = self.current_scope;
         self.current_scope = scope_id;
 
         let name = Ident::from_node(self.db, self.file, interface.name.deref())?;
@@ -41,12 +41,7 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         let result = PouDecl::new(
             self.db,
-            Pou::Interface(Interface::new(
-                self.db, 
-                extends, 
-                vec![], 
-                scope_id
-            )),
+            Pou::Interface(Interface::new(self.db, extends, vec![], scope_id)),
             interface.get_span(),
             name,
             interface.name.get_span(),

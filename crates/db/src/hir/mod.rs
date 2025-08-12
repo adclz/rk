@@ -6,7 +6,7 @@ pub mod namespace;
 pub mod pous;
 pub mod scopes;
 pub mod semantic_index;
-pub mod ty; 
+pub mod ty;
 pub mod using;
 pub mod visibility;
 

@@ -1,21 +1,14 @@
-use std::sync::Arc;
 
 use auto_lsp::default::db::{file::File, BaseDatabase};
-use compact_str::CompactString;
 
 use crate::hir::{
-    expressions::{
-        expression::{ParamAssign, PathExpr, PathExprKind, VarAccess},
-        spec::Spec,
-    },
+    expressions::expression::PathExpr,
     interned::{
-        identifier::{Ident, SpannedIdent},
+        identifier::SpannedIdent,
         namespace::{NamespaceAccess, NamespacePath},
     },
-    pous::variable::VariableKind,
     scopes::solver::{pous_in_scope, resolve_namespace_access, variables_in_scope},
-    semantic_index::SemanticIndex,
-    ty::{ty_for_pou, ty_for_variable, Ty, TyKind, TyStep, WalkError},
+    ty::{ty_for_pou, ty_for_variable, Ty, TyStep, WalkError},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -107,8 +100,8 @@ impl<'db> ResolvePathExprCtx<'db> {
 
     fn find_signature(&mut self, identifier: &SpannedIdent) {
         // Try variables in scope
-        if let Some(variable) = variables_in_scope(self.db, self.file, self.expr.scope_id(self.db))
-            .get(&identifier)
+        if let Some(variable) =
+            variables_in_scope(self.db, self.file, self.expr.scope_id(self.db)).get(identifier)
         {
             self.signature = Some(ty_for_variable(self.db, *variable));
             return;

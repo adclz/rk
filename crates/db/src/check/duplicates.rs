@@ -57,15 +57,15 @@ pub fn duplicate_declarations<'db>(db: &'db dyn BaseDatabase, file: File) {
 
             match pou.pou(db) {
                 Pou::Function(func) => {
-                    func.variables(db).check(db, &sema);
+                    func.variables(db).check(db, sema);
                     func.statements(db).check(db, sema);
                 }
                 Pou::FunctionBlock(fb) => {
-                    fb.variables(db).check(db, &sema);
+                    fb.variables(db).check(db, sema);
                 }
                 Pou::Interface(interface) => {
                     interface.methods(db).iter().for_each(|method| {
-                        method.variables(db).check(db, &sema);
+                        method.variables(db).check(db, sema);
                     });
                 }
                 Pou::DataType(dt) => {}
@@ -77,43 +77,40 @@ pub fn duplicate_declarations<'db>(db: &'db dyn BaseDatabase, file: File) {
 
 impl<'db> Check<'db> for Vec<Stmt<'db>> {
     fn check(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>) {
-        self.iter().for_each(|stmt| match stmt.stmt(db) {
-            StmtKind::Assignment { var, target } => {
-                if let VariableAccessKind::Symbolic(symbolic) = var.kind {
-                    let ctx = ResolvePathExprCtx::new(db, sema.file, &symbolic.kind);
-                    let r = ctx.resolve_path_expr();
+        self.iter().for_each(|stmt| if let StmtKind::Assignment { var, target } = stmt.stmt(db) {
+            if let VariableAccessKind::Symbolic(symbolic) = var.kind {
+                let ctx = ResolvePathExprCtx::new(db, sema.file, &symbolic.kind);
+                let r = ctx.resolve_path_expr();
 
-                    if let Some(err) = r.error {
-                        match err {
-                            WalkError::NoItemInScope { expr, scope } => {
-                                no_item_in_scope(
-                                    db,
-                                    sema.file,
-                                    &expr.to_string(db),
-                                    &expr.span(db),
-                                );
-                            }
-                            WalkError::FieldNotFound { origin, expr } => {
-                                unknown_field(db, sema.file, &expr.to_string(db), &expr.span(db))
-                            }
-                            WalkError::NotAnArray { origin, expr } => {
-                                unexpected_index_expression(db, sema.file, expr.span(db))
-                            }
-                            WalkError::NotAReference { origin, expr } => {
-                                type_can_not_be_dereferenced(db, sema.file, &expr.span(db));
-                            }
+                if let Some(err) = r.error {
+                    match err {
+                        WalkError::NoItemInScope { expr, scope } => {
+                            no_item_in_scope(
+                                db,
+                                sema.file,
+                                &expr.to_string(db),
+                                expr.span(db),
+                            );
                         }
-                    } else {
-                        match r.elements[0].1.kind(db) {
-                            TyKind::Callable { .. } => {
-                                assign_direct_pou_to_a_variable(db, sema.file, r.elements[0].0, r.elements[0].1.origin(db));
-                            }
-                            _ => {}
+                        WalkError::FieldNotFound { origin, expr } => {
+                            unknown_field(db, sema.file, &expr.to_string(db), expr.span(db))
+                        }
+                        WalkError::NotAnArray { origin, expr } => {
+                            unexpected_index_expression(db, sema.file, expr.span(db))
+                        }
+                        WalkError::NotAReference { origin, expr } => {
+                            type_can_not_be_dereferenced(db, sema.file, expr.span(db));
                         }
                     }
+                } else if let TyKind::Callable { .. } = r.elements[0].1.kind(db) {
+                    assign_direct_pou_to_a_variable(
+                        db,
+                        sema.file,
+                        r.elements[0].0,
+                        r.elements[0].1.origin(db),
+                    );
                 }
             }
-            _ => {}
         });
     }
 }

@@ -90,10 +90,10 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
                     }
                     VariableKind::InOut => {
                         in_outs.insert(*v.name(db), v.spec(db).to_sig(db, origin));
-                    },
+                    }
                     VariableKind::Local => {
                         ztatic.insert(*v.name(db), v.spec(db).to_sig(db, origin));
-                    },
+                    }
                     VariableKind::Temp => {
                         temp.insert(*v.name(db), v.spec(db).to_sig(db, origin));
                     }
@@ -132,7 +132,7 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
                     }
                     VariableKind::InOut => {
                         in_outs.insert(*v.name(db), v.spec(db).to_sig(db, origin));
-                    },
+                    }
                     VariableKind::Local => {
                         ztatic.insert(*v.name(db), v.spec(db).to_sig(db, origin));
                     }
@@ -167,24 +167,17 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
 }
 
 fn variable_ty_result<'db>(db: &'db dyn BaseDatabase, variable: Variable<'db>) -> Ty<'db> {
-    Ty::new(
-        db,
-        TyOrigin::FromVariable(variable),
-        TyKind::Recursive,
-    )
+    Ty::new(db, TyOrigin::FromVariable(variable), TyKind::Recursive)
 }
 #[salsa::tracked(cycle_result = variable_ty_result)]
-pub fn ty_for_variable<'db>(
-    db: &'db dyn BaseDatabase,
-    variable: Variable<'db>,
-) -> Ty<'db> {
+pub fn ty_for_variable<'db>(db: &'db dyn BaseDatabase, variable: Variable<'db>) -> Ty<'db> {
     variable
         .spec(db)
         .to_sig(db, TyOrigin::FromVariable(variable))
 }
 
 impl<'db> Ty<'db> {
-        pub fn linear(
+    pub fn linear(
         &self,
         db: &'db dyn BaseDatabase,
         step: &TyStep<'db>,
@@ -219,9 +212,7 @@ impl<'db> Ty<'db> {
                 }),
             },
             TyStep::Index { expr } => match self.kind(db) {
-                TyKind::Array {
-                    type_signature,
-                } => Ok(type_signature),
+                TyKind::Array { type_signature } => Ok(type_signature),
                 _ => Err(WalkError::NotAnArray {
                     expr: *expr,
                     origin: self.origin(db),
@@ -237,7 +228,10 @@ impl<'db> Ty<'db> {
         }
     }
 
-    pub fn as_callable_signature(self, db: &'db dyn BaseDatabase) -> Option<CallableSignature<'db>> {
+    pub fn as_callable_signature(
+        self,
+        db: &'db dyn BaseDatabase,
+    ) -> Option<CallableSignature<'db>> {
         match self.kind(db) {
             TyKind::Callable {
                 input,
@@ -249,7 +243,7 @@ impl<'db> Ty<'db> {
                 inputs: input.clone(),
                 in_outs: in_out.clone(),
                 outputs: output.clone(),
-                return_type: return_type.clone(),
+                return_type,
             }),
             _ => None,
         }
@@ -270,10 +264,7 @@ impl<'db> Ty<'db> {
     }
 
     pub fn is_invalid(&self, db: &'db dyn BaseDatabase) -> bool {
-        matches!(
-            self.kind(db),
-            TyKind::Unresolved(_) | TyKind::Recursive
-        )
+        matches!(self.kind(db), TyKind::Unresolved(_) | TyKind::Recursive)
     }
 
     pub fn is_reference(&self, db: &'db dyn BaseDatabase) -> bool {
@@ -292,11 +283,7 @@ impl<'db> Ty<'db> {
 }
 
 impl<'db> Spec<'db> {
-    pub fn to_sig(
-        &self,
-        db: &'db dyn BaseDatabase,
-        origin: TyOrigin<'db>,
-    ) -> Ty<'db> {
+    pub fn to_sig(&self, db: &'db dyn BaseDatabase, origin: TyOrigin<'db>) -> Ty<'db> {
         match self.kind(db) {
             SpecKind::Array(array) => Ty::new(
                 db,
@@ -317,13 +304,11 @@ impl<'db> Spec<'db> {
                     db,
                     origin,
                     TyKind::Enum {
-                        list: list.iter().map(|name| *name).collect(),
+                        list: list.to_vec(),
                     },
                 ),
             },
-            SpecKind::Subrange(subrange) => {
-                Ty::new(db, origin, TyKind::SubRange(*subrange._type))
-            }
+            SpecKind::Subrange(subrange) => Ty::new(db, origin, TyKind::SubRange(*subrange._type)),
             SpecKind::Struct(fields) => Ty::new(
                 db,
                 origin,

@@ -153,8 +153,8 @@ fn inherited_pous<'db>(
     let sema = semantic_index(db, file);
     let mut result = Vec::new();
 
-    let mut it = sema.scope_iterator(scope_id);
-    while let Some(scope) = it.next() {
+    let it = sema.scope_iterator(scope_id);
+    for scope in it {
         if scope.is_global() {
             result.extend_from_slice(&sema.global_pous);
         } else if let ScopeKind::Namespace(ns) = scope.kind {

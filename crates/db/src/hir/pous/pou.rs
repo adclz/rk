@@ -16,9 +16,8 @@ use crate::{
             class::Class, data_type::DataType, function::Function, function_block::FunctionBlock,
             interface::Interface,
         },
-        scopes::scope::{FileScopeId},
+        scopes::scope::FileScopeId,
         semantic_index::SemanticIndex,
-        ty::ty_for_pou,
     },
     to_proto::{self_iter, Extends, IterToProto, SymbolInfo, ToProto},
 };

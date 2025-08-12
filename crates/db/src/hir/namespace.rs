@@ -131,10 +131,6 @@ impl<'db> IterToProto<'db> for Namespace<'db> {
 
         self_iter(self)
             .chain(scope.usings.iter().map(move |using| using as _))
-            .chain(
-                self.pous(db)
-                    .iter()
-                    .flat_map(move |pou| pou.iter(db, sema)),
-            )
+            .chain(self.pous(db).iter().flat_map(move |pou| pou.iter(db, sema)))
     }
 }

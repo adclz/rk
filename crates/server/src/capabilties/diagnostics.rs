@@ -7,14 +7,13 @@ use auto_lsp::lsp_types::{
     WorkspaceFullDocumentDiagnosticReport,
 };
 use db::check::cached_diagnostics;
-use tracing::info_span;
 
 pub fn diagnostics(
     db: &impl BaseDatabase,
     params: DocumentDiagnosticParams,
 ) -> anyhow::Result<DocumentDiagnosticReportResult> {
     let uri = params.text_document.uri;
-    
+
     let file = db
         .get_file(&uri)
         .ok_or_else(|| anyhow::format_err!("File not found in workspace"))?;

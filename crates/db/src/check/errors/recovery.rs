@@ -1,10 +1,10 @@
-use std::{collections::HashSet, ops::ControlFlow};
+use std::collections::HashSet;
 
 use auto_lsp::default::db::{file::File, BaseDatabase};
 
 use crate::hir::import_map::{global_symbol_indexes, Query};
 
-pub fn pou_recovery<'db>(db: &'db dyn BaseDatabase, file: File, query: &str) -> HashSet<String> {
+pub fn pou_recovery(db: &dyn BaseDatabase, file: File, query: &str) -> HashSet<String> {
     query_ident(db, file, query)
 }
 

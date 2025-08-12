@@ -8,7 +8,7 @@ use crate::hir::interned::namespace::SpannedNamespaceAccess;
 use crate::hir::pous::function_block::FunctionBlock;
 use crate::hir::pous::pou::{Pou, PouDecl};
 use crate::hir::pous::variable::Variable;
-use crate::hir::scopes::scope::{Scope, FileScopeId, ScopeKind, Visibility};
+use crate::hir::scopes::scope::{FileScopeId, Scope, ScopeKind, Visibility};
 use crate::hir::visibility::Modifiers;
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::parser::ParseVarSection;
@@ -19,9 +19,9 @@ use auto_lsp::core::ast::AstNode;
 impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_function_block(&mut self, func: &FbDecl) -> anyhow::Result<PouDecl<'db>> {
         let scope_id = FileScopeId::from((self.file, func.get_id()));
-        let previous_scope = self.current_scope.clone();
+        let previous_scope = self.current_scope;
         self.current_scope = scope_id;
-        
+
         let variables = func.parse_variables(self)?;
 
         let extends = func
@@ -70,12 +70,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         let result = PouDecl::new(
             self.db,
             Pou::FunctionBlock(FunctionBlock::new(
-                self.db,
-                extends,
-                implements,
-                variables,
-                modifiers,
-                scope_id,
+                self.db, extends, implements, variables, modifiers, scope_id,
             )),
             func.get_span(),
             name,
