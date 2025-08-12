@@ -4,7 +4,7 @@ use crate::hir::interned::identifier::Ident;
 use crate::hir::interned::namespace::SpannedNamespaceAccess;
 use crate::hir::pous::interface::{Interface, Method};
 use crate::hir::pous::pou::{Pou, PouDecl};
-use crate::hir::scopes::scope::{Scope, ScopeId, ScopeKind, Visibility};
+use crate::hir::scopes::scope::{Scope, FileScopeId, ScopeKind, Visibility};
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::parser::{ParseSpec, ParseVarSection};
 use auto_lsp::anyhow;
@@ -15,7 +15,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         &mut self,
         interface: &ast::generated::InterfaceDecl,
     ) -> anyhow::Result<PouDecl<'db>> {
-        let scope_id = ScopeId::from(interface.get_id());
+        let scope_id = FileScopeId::from((self.file, interface.get_id()));
         let previous_scope = self.current_scope.clone();
         self.current_scope = scope_id;
 

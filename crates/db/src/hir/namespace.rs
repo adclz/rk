@@ -7,7 +7,7 @@ use auto_lsp::lsp_types::{
 use crate::completions;
 use crate::hir::interned::namespace::NamespacePath;
 use crate::hir::pous::pou::PouDecl;
-use crate::hir::scopes::scope::{ScopeId, Visibility};
+use crate::hir::scopes::scope::{FileScopeId, Visibility};
 use crate::hir::semantic_index::SemanticIndex;
 use crate::to_proto::{self_iter, IterToProto, SymbolInfo, ToProto};
 
@@ -27,7 +27,7 @@ pub struct Namespace<'db> {
 
     pub file: File,
 
-    pub scope_id: ScopeId,
+    pub scope_id: FileScopeId,
 }
 
 impl<'db> ToProto<'db> for Namespace<'db> {

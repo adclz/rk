@@ -345,7 +345,7 @@ pub fn assign_direct_pou_to_a_variable(db: &dyn BaseDatabase, file: File, expr: 
                 .range(expr.span(db).clone())
                 .related_information(vec![DiagnosticRelatedInformation {
                     location: Location {
-                        uri: file.url(db).clone(),
+                        uri: pou.scope_id(db).file().url(db).clone(),
                         range: pou.name_span(db).into(),
                     },
                     message: format!("POU '{}' is declared here", pou.name(db).text(db)),
@@ -363,7 +363,7 @@ pub fn assign_direct_pou_to_a_variable(db: &dyn BaseDatabase, file: File, expr: 
                     .range(expr.span(db).clone())
                     .related_information(vec![DiagnosticRelatedInformation {
                         location: Location {
-                            uri: file.url(db).clone(),
+                            uri: pou.scope_id(db).file().url(db).clone(),
                             range: pou.name_span(db).into(),
                         },
                         message: format!("POU '{}' is declared here", pou.name(db).text(db)),

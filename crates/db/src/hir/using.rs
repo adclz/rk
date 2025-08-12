@@ -6,7 +6,7 @@ use auto_lsp::{
 
 use crate::{
     hir::{
-        interned::namespace::NamespacePath, scopes::scope::ScopeId, semantic_index::SemanticIndex,
+        interned::namespace::NamespacePath, scopes::scope::FileScopeId, semantic_index::SemanticIndex,
     },
     to_proto::{self_iter, IterToProto, ToProto},
 };
@@ -18,7 +18,7 @@ pub struct Using<'db> {
     #[returns(ref)]
     pub span: Span,
 
-    pub scope_id: ScopeId,
+    pub scope_id: FileScopeId,
 }
 
 impl<'db> ToProto<'db> for Using<'db> {

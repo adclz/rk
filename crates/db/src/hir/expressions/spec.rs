@@ -11,7 +11,7 @@ use crate::{
         expressions::expression::{Expr, MultibitsPart},
         interned::{identifier::Ident, namespace::NamespaceAccess},
         pous::pou::Pou,
-        scopes::{scope::ScopeId, solver::resolve_namespace_access},
+        scopes::{scope::FileScopeId, solver::resolve_namespace_access},
         semantic_index::SemanticIndex,
     },
     to_proto::{self_iter, IterToProto, ToProto},
@@ -26,7 +26,7 @@ pub struct Spec<'db> {
     #[returns(ref)]
     pub kind: SpecKind<'db>,
 
-    pub scope_id: ScopeId,
+    pub scope_id: FileScopeId,
 
     pub file: File,
 }

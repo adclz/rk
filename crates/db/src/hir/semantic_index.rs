@@ -8,7 +8,7 @@ use tracing::info_span;
 use crate::hir::interned::identifier::Ident;
 use crate::hir::namespace::Namespace;
 use crate::hir::pous::pou::PouDecl;
-use crate::hir::scopes::scope::{Scope, ScopeId, ScopeKind};
+use crate::hir::scopes::scope::{Scope, FileScopeId, ScopeKind};
 use crate::hir::scopes::solver::pous_in_scope;
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::to_proto::{IterToProto, ToProto};
@@ -36,7 +36,7 @@ pub struct SemanticIndex<'db> {
     pub file: File,
 
     /// Map of scope IDs to their corresponding scopes
-    pub scopes: FxHashMap<ScopeId, Scope<'db>>,
+    pub scopes: FxHashMap<FileScopeId, Scope<'db>>,
 
     /// Global POU declarations in the file
     pub global_pous: Vec<PouDecl<'db>>,
@@ -55,12 +55,12 @@ impl<'db> SemanticIndex<'db> {
         }
     }
 
-    pub fn get_scope(&'db self, id: ScopeId) -> &'db Scope<'db> {
+    pub fn get_scope(&'db self, id: FileScopeId) -> &'db Scope<'db> {
         &self.scopes[&id]
     }
 
     /// Returns a [`ScopeIterator`] starting from the given scope.
-    pub fn scope_iterator(&self, scope: ScopeId) -> ScopeIterator {
+    pub fn scope_iterator(&self, scope: FileScopeId) -> ScopeIterator {
         ScopeIterator::new(&self.scopes, self.get_scope(scope))
     }
 
@@ -73,7 +73,7 @@ impl<'db> SemanticIndex<'db> {
     pub fn pous_in_scope(
         &'db self,
         db: &'db dyn BaseDatabase,
-        scope: ScopeId,
+        scope: FileScopeId,
     ) -> &'db FxHashMap<Ident, PouDecl<'db>> {
         pous_in_scope(db, self.file, scope)
     }
@@ -91,12 +91,12 @@ impl<'db> IterToProto<'db> for SemanticIndex<'db> {
 
 /// Iterator over scopes in a given scope hierarchy
 pub struct ScopeIterator<'db> {
-    scopes: &'db FxHashMap<ScopeId, Scope<'db>>,
-    next_id: Option<ScopeId>,
+    scopes: &'db FxHashMap<FileScopeId, Scope<'db>>,
+    next_id: Option<FileScopeId>,
 }
 
 impl<'db> ScopeIterator<'db> {
-    pub fn new(scopes: &'db FxHashMap<ScopeId, Scope<'db>>, scope: &'db Scope<'db>) -> Self {
+    pub fn new(scopes: &'db FxHashMap<FileScopeId, Scope<'db>>, scope: &'db Scope<'db>) -> Self {
         Self {
             scopes,
             next_id: Some(scope.id),

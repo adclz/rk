@@ -7,7 +7,7 @@ use auto_lsp::{
 use crate::{
     hir::{
         expressions::{expression::Expr, spec::Spec}, interned::identifier::Ident,
-        scopes::scope::{Scope, ScopeId}, semantic_index::SemanticIndex,
+        scopes::scope::{Scope, FileScopeId}, semantic_index::SemanticIndex,
     },
     to_proto::{self_iter, IterToProto, SymbolInfo, ToProto},
 };
@@ -36,7 +36,7 @@ pub struct Variable<'db> {
     #[returns(as_ref)]
     pub init: Option<Expr<'db>>,
 
-    pub scope_id: ScopeId,
+    pub scope_id: FileScopeId,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]

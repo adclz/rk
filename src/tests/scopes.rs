@@ -6,7 +6,7 @@ use auto_lsp::{
 use db::{
     hir::{
         pous::pou::Pou,
-        scopes::scope::{ScopeId, ScopeKind},
+        scopes::scope::{FileScopeId, ScopeKind},
         semantic_index::semantic_index,
     },
     RootDatabase,
@@ -43,24 +43,24 @@ fn global_scope() {
     let sema = semantic_index(&db, file);
 
     // Global scope should have no parent
-    assert_eq!(sema.get_scope(ScopeId::global()).parent, None);
+    assert_eq!(sema.get_scope(FileScopeId::global(file)).parent, None);
 
     sema.global_pous.iter().for_each(|pou| match pou.pou(&db) {
         Pou::Function(f) => {
             assert_eq!(pou.name(&db).text(&db), "fn1");
-            assert_eq!(f.scope_id(&db), ScopeId::global());
+            assert!(f.scope_id(&db).is_global());
         }
         Pou::FunctionBlock(fb) => {
             assert_eq!(pou.name(&db).text(&db), "fn2");
-            assert_eq!(fb.scope_id(&db), ScopeId::global());
+            assert!(fb.scope_id(&db).is_global());
         }
         Pou::Class(c) => {
             assert_eq!(pou.name(&db).text(&db), "cl");
-            assert_eq!(c.scope_id(&db), ScopeId::global());
+            assert!(c.scope_id(&db).is_global());
         }
         Pou::Interface(i) => {
             assert_eq!(pou.name(&db).text(&db), "in");
-            assert_eq!(i.scope_id(&db), ScopeId::global());
+            assert!(i.scope_id(&db).is_global());
         }
         Pou::DataType(_) => {}
     });
@@ -103,7 +103,7 @@ END_NAMESPACE
 
     // Main namespaces should have Global scope as parent
     let scope = sema.get_scope(main_ns.scope_id(&db));
-    assert_eq!(scope.parent, Some(ScopeId::global()));
+    assert_eq!(scope.parent, Some(FileScopeId::global(file)));
 
     let scope = sema
         .scopes

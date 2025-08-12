@@ -1,6 +1,6 @@
 use crate::completions::snippets::elem_type_names_init;
 use crate::hir::interned::identifier::{Ident, SpannedIdent};
-use crate::hir::scopes::scope::ScopeId;
+use crate::hir::scopes::scope::FileScopeId;
 use crate::hir::semantic_index::SemanticIndex;
 use crate::hir::ty::TyStep;
 use crate::to_proto::{self_iter, IterToProto, ToProto};
@@ -16,7 +16,7 @@ pub struct Expr<'db> {
     #[returns(ref)]
     pub expr: ExprKind<'db>,
 
-    pub scope_id: ScopeId,
+    pub scope_id: FileScopeId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -114,7 +114,7 @@ pub struct PathExpr<'db> {
     #[returns(ref)]
     pub span: Span,
 
-    pub scope_id: ScopeId,
+    pub scope_id: FileScopeId,
 
     #[tracked]
     pub expr: PathExprKind<'db>,

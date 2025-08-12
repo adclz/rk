@@ -11,7 +11,7 @@ use crate::check::errors::semantic_errors::invalid_pou_keyword;
 use crate::hir::interned::identifier::SpannedIdent;
 use crate::hir::namespace::Namespace;
 use crate::hir::pous::pou::PouDecl;
-use crate::hir::scopes::scope::{Scope, ScopeId, ScopeKind, Visibility};
+use crate::hir::scopes::scope::{Scope, FileScopeId, ScopeKind, Visibility};
 use crate::hir::semantic_index::SemanticIndex;
 
 pub struct SemanticIndexBuilder<'db> {
@@ -21,7 +21,7 @@ pub struct SemanticIndexBuilder<'db> {
     pub(crate) file: File,
 
     /// Maps scope IDs to their corresponding scopes.
-    pub(crate) scope_keys: FxHashMap<ScopeId, Scope<'db>>,
+    pub(crate) scope_keys: FxHashMap<FileScopeId, Scope<'db>>,
 
     /// Maps scope IDs to their corresponding namespaces.
     pub(crate) namespaces: Vec<Namespace<'db>>,
@@ -29,7 +29,7 @@ pub struct SemanticIndexBuilder<'db> {
     pub(crate) pous: Vec<PouDecl<'db>>,
 
     /// The current scope ID being processed (by default, the global scope).
-    pub(crate) current_scope: ScopeId,
+    pub(crate) current_scope: FileScopeId,
 }
 
 impl<'db> SemanticIndexBuilder<'db> {
@@ -45,7 +45,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             scope_keys: FxHashMap::default(),
             pous: Vec::new(),
             namespaces: Vec::new(),
-            current_scope: ScopeId::global(),
+            current_scope: FileScopeId::global(file),
         }
     }
 
@@ -61,8 +61,8 @@ impl<'db> SemanticIndexBuilder<'db> {
             .collect::<anyhow::Result<Vec<_>>>()
     }
 
-    pub fn create_pou_id(&self, node: &impl AstNode) -> ScopeId {
-        let scope_id = ScopeId::from(node.get_id());
+    pub fn create_pou_id(&self, node: &impl AstNode) -> FileScopeId {
+        let scope_id = FileScopeId::from((self.file, node.get_id()));
         scope_id
     }
 
@@ -135,7 +135,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             None,
         );
 
-        self.scope_keys.insert(ScopeId::global(), scope);
+        self.scope_keys.insert(FileScopeId::global(self.file), scope);
 
         SemanticIndex {
             file: self.file,

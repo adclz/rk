@@ -5,7 +5,7 @@ use crate::{
         expressions::spec::Spec,
         interned::{identifier::Ident, namespace::SpannedNamespaceAccess},
         pous::variable::Variable,
-        scopes::scope::{ScopeId},
+        scopes::scope::{FileScopeId},
         semantic_index::SemanticIndex,
     },
     to_proto::{IterToProto, ToProto},
@@ -19,7 +19,7 @@ pub struct Interface<'db> {
     #[returns(ref)]
     pub methods: Vec<Method<'db>>,
 
-    pub scope_id: ScopeId,
+    pub scope_id: FileScopeId,
 }
 
 impl<'db> IterToProto<'db> for Interface<'db> {

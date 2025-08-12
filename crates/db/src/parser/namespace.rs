@@ -7,7 +7,7 @@ use crate::hir::interned::identifier::SpannedIdent;
 use crate::hir::interned::namespace::NamespacePath;
 use crate::hir::namespace::Namespace;
 use crate::hir::scopes::scope::{
-    Scope, ScopeId, ScopeKind, Visibility,
+    Scope, FileScopeId, ScopeKind, Visibility,
 };
 
 impl<'db> SemanticIndexBuilder<'db> {
@@ -19,7 +19,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         type Decl =
             ERRInvalidPouKeyword_ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl;
 
-        let scope_id = ScopeId::from(nested.get_id());
+        let scope_id = FileScopeId::from((self.file, nested.get_id()));
         let path = NamespacePath::from((self.db, parent_path));
         let usings = self.parse_usings(&nested.directives)?;
         let mut pous = vec![];

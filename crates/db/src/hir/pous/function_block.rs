@@ -3,7 +3,7 @@ use auto_lsp::default::db::BaseDatabase;
 use crate::{
     hir::{
         interned::namespace::SpannedNamespaceAccess, pous::variable::Variable,
-        scopes::scope::{Scope, ScopeId}, semantic_index::SemanticIndex, visibility::Modifiers,
+        scopes::scope::{Scope, FileScopeId}, semantic_index::SemanticIndex, visibility::Modifiers,
     },
     to_proto::{IterToProto, ToProto},
 };
@@ -24,7 +24,7 @@ pub struct FunctionBlock<'db> {
 
     pub modifiers: Modifiers,
 
-    pub scope_id: ScopeId,
+    pub scope_id: FileScopeId,
 }
 
 impl<'db> IterToProto<'db> for FunctionBlock<'db> {

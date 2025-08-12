@@ -5,7 +5,7 @@ use crate::{
     hir::{
         expressions::{spec::Spec, statement::Stmt},
         pous::variable::Variable,
-        scopes::scope::{Scope, ScopeId},
+        scopes::scope::{Scope, FileScopeId},
         semantic_index::SemanticIndex,
     },
     to_proto::{IterToProto, ToProto},
@@ -26,7 +26,7 @@ pub struct Function<'db> {
     #[returns(as_ref)]
     pub return_type: Option<Spec<'db>>,
 
-    pub scope_id: ScopeId,
+    pub scope_id: FileScopeId,
 }
 
 impl<'db> Function<'db> {

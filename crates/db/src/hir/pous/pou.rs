@@ -16,7 +16,7 @@ use crate::{
             class::Class, data_type::DataType, function::Function, function_block::FunctionBlock,
             interface::Interface,
         },
-        scopes::scope::{ScopeId},
+        scopes::scope::{FileScopeId},
         semantic_index::SemanticIndex,
         ty::ty_for_pou,
     },
@@ -39,7 +39,7 @@ pub struct PouDecl<'db> {
     #[returns(ref)]
     pub name_span: Span,
 
-    pub scope_id: ScopeId,
+    pub scope_id: FileScopeId,
 }
 
 impl<'db> IterToProto<'db> for PouDecl<'db> {

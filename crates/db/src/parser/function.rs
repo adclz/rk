@@ -4,7 +4,7 @@ use crate::hir::interned::identifier::Ident;
 use crate::hir::pous::function::Function;
 use crate::hir::pous::pou::{Pou, PouDecl};
 use crate::hir::pous::variable::Variable;
-use crate::hir::scopes::scope::{Scope, ScopeId, ScopeKind, Visibility};
+use crate::hir::scopes::scope::{Scope, FileScopeId, ScopeKind, Visibility};
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::parser::statement::ParseStatement;
 use crate::parser::{ParseSpec, ParseVarSection};
@@ -15,7 +15,7 @@ use auto_lsp::core::ast::AstNode;
 impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_function(&mut self, func: &ast::generated::FuncDecl) -> anyhow::Result<PouDecl<'db>> {
         
-        let scope_id = ScopeId::from(func.get_id());
+        let scope_id = FileScopeId::from((self.file ,func.get_id()));
         let previous_scope = self.current_scope.clone();
         self.current_scope = scope_id;
 

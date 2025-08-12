@@ -14,7 +14,7 @@ use crate::hir::{
         pou::{Pou, PouDecl},
         variable::{Variable, VariableKind},
     },
-    scopes::{scope::ScopeId, solver::resolve_namespace_access},
+    scopes::{scope::FileScopeId, solver::resolve_namespace_access},
 };
 
 #[salsa::tracked(debug)]
@@ -375,7 +375,7 @@ impl TyStep<'_> {
 pub enum WalkError<'db> {
     NoItemInScope {
         expr: PathExpr<'db>,
-        scope: ScopeId,
+        scope: FileScopeId,
     },
     FieldNotFound {
         expr: PathExpr<'db>,

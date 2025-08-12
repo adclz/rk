@@ -13,7 +13,7 @@ use crate::{
             pou::{Pou, PouDecl},
             variable::Variable,
         },
-        scopes::scope::{ScopeId, ScopeKind},
+        scopes::scope::{FileScopeId, ScopeKind},
         semantic_index::semantic_index,
         using::Using,
     },
@@ -78,7 +78,7 @@ fn imported_namespaces<'db>(
 pub fn resolve_namespace_access<'db>(
     db: &'db dyn BaseDatabase,
     file: File,
-    scope: ScopeId,
+    scope: FileScopeId,
     access: NamespaceAccess,
 ) -> Option<PouDecl<'db>> {
     let target = access.target(db);
@@ -110,7 +110,7 @@ fn global_pous<'db>(db: &'db dyn BaseDatabase) -> Vec<PouDecl<'db>> {
 fn local_pous_in_scope<'db>(
     db: &'db dyn BaseDatabase,
     file: File,
-    scope_id: ScopeId,
+    scope_id: FileScopeId,
 ) -> Vec<PouDecl<'db>> {
     let sema = semantic_index(db, file);
     let scope = sema.get_scope(scope_id);
@@ -126,7 +126,7 @@ fn local_pous_in_scope<'db>(
 fn imported_pous_in_scope<'db>(
     db: &'db dyn BaseDatabase,
     file: File,
-    scope_id: ScopeId,
+    scope_id: FileScopeId,
 ) -> Vec<PouDecl<'db>> {
     let sema = semantic_index(db, file);
     let scope = sema.get_scope(scope_id);
@@ -148,14 +148,14 @@ fn imported_pous_in_scope<'db>(
 fn inherited_pous<'db>(
     db: &'db dyn BaseDatabase,
     file: File,
-    scope_id: ScopeId,
+    scope_id: FileScopeId,
 ) -> Vec<PouDecl<'db>> {
     let sema = semantic_index(db, file);
     let mut result = Vec::new();
 
     let mut it = sema.scope_iterator(scope_id);
     while let Some(scope) = it.next() {
-        if scope.id == ScopeId::global() {
+        if scope.is_global() {
             result.extend_from_slice(&sema.global_pous);
         } else if let ScopeKind::Namespace(ns) = scope.kind {
             shared_namespaces(db, *ns.path(db)).iter().for_each(|ns| {
@@ -175,7 +175,7 @@ fn inherited_pous<'db>(
 pub fn pous_in_scope<'db>(
     db: &'db dyn BaseDatabase,
     file: File,
-    scope_id: ScopeId,
+    scope_id: FileScopeId,
 ) -> FxHashMap<Ident, PouDecl<'db>> {
     let mut map = FxHashMap::default();
 
@@ -211,7 +211,7 @@ pub fn pous_in_scope<'db>(
 pub fn variables_in_scope<'db>(
     db: &'db dyn BaseDatabase,
     file: File,
-    scope_id: ScopeId,
+    scope_id: FileScopeId,
 ) -> FxHashMap<Ident, Variable<'db>> {
     let sema = semantic_index(db, file);
     let scope = sema.get_scope(scope_id);

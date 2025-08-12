@@ -7,7 +7,7 @@ use rustc_hash::FxHashSet;
 use std::{cmp::Ordering, hash::Hash};
 use std::{hash::Hasher, ops::ControlFlow};
 
-use crate::hir::scopes::scope::ScopeId;
+use crate::hir::scopes::scope::FileScopeId;
 use crate::hir::scopes::solver::pous_in_scope;
 use crate::hir::semantic_index::semantic_index;
 
@@ -278,7 +278,7 @@ pub fn global_symbol_indexes(db: &dyn BaseDatabase, file_to_omit: File) -> Vec<&
 pub fn query_completions(
     db: &dyn BaseDatabase,
     file: File,
-    scope_id: ScopeId,
+    scope_id: FileScopeId,
     query: &str,
 ) -> Vec<CompletionItem> {
     let scoped_map = pous_in_scope(db, file, scope_id);
