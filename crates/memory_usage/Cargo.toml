@@ -1,0 +1,9 @@
+[package]
+name = "memory_usage"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[dependencies]
+get-size2 = { workspace = true }
+ordermap = { workspace = true }
