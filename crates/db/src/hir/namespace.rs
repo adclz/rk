@@ -13,7 +13,6 @@ use crate::to_proto::{self_iter, IterToProto, SymbolInfo, ToProto};
 
 #[salsa::tracked(debug)]
 pub struct Namespace<'db> {
-    #[tracked]
     #[returns(ref)]
     pub span: Span,
 
@@ -23,7 +22,6 @@ pub struct Namespace<'db> {
     #[returns(ref)]
     pub name_span: Span,
 
-    #[tracked]
     #[returns(ref)]
     pub pous: Vec<PouDecl<'db>>,
 

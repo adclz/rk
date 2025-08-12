@@ -2,7 +2,7 @@ use crate::completions::snippets::elem_type_names_init;
 use crate::hir::interned::identifier::{Ident, SpannedIdent};
 use crate::hir::scopes::scope::ScopeId;
 use crate::hir::semantic_index::SemanticIndex;
-use crate::hir::signature::SignatureStep;
+use crate::hir::ty::TyStep;
 use crate::to_proto::{self_iter, IterToProto, ToProto};
 use auto_enums::auto_enum;
 use auto_lsp::core::span::Span;
@@ -162,30 +162,30 @@ pub struct IndexExpr<'db> {
 #[salsa::tracked]
 impl<'db> PathExpr<'db> {
     #[salsa::tracked(returns(ref))]
-    pub fn flatten_steps(self, db: &'db dyn BaseDatabase) -> Vec<SignatureStep<'db>> {
+    pub fn flatten_steps(self, db: &'db dyn BaseDatabase) -> Vec<TyStep<'db>> {
         let mut result = Vec::new();
 
         match self.expr(db) {
             PathExprKind::Field(field_expr) => {
                 result.extend(field_expr.path.flatten_steps(db).iter().cloned());
                 match &field_expr.var {
-                    VarAccess::Simple(simple) => result.push(SignatureStep::Field {
+                    VarAccess::Simple(simple) => result.push(TyStep::Field {
                         expr: self,
                         ident: simple.clone(),
                     }),
-                    VarAccess::Deref(_) => result.push(SignatureStep::Deref { expr: self }),
+                    VarAccess::Deref(_) => result.push(TyStep::Deref { expr: self }),
                 }
             }
             PathExprKind::Index(index_expr) => {
                 result.extend(index_expr.path.flatten_steps(db).iter().cloned());
-                result.push(SignatureStep::Index { expr: self });
+                result.push(TyStep::Index { expr: self });
             }
             PathExprKind::VarAccess(var_access) => match var_access {
-                VarAccess::Simple(simple) => result.push(SignatureStep::Field {
+                VarAccess::Simple(simple) => result.push(TyStep::Field {
                     expr: self,
                     ident: simple.clone(),
                 }),
-                VarAccess::Deref(_) => result.push(SignatureStep::Deref { expr: self }),
+                VarAccess::Deref(_) => result.push(TyStep::Deref { expr: self }),
             },
         }
 

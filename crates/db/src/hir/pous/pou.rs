@@ -18,7 +18,7 @@ use crate::{
         },
         scopes::scope::{ScopeId},
         semantic_index::SemanticIndex,
-        signature::signature_for_pou,
+        ty::ty_for_pou,
     },
     to_proto::{self_iter, Extends, IterToProto, SymbolInfo, ToProto},
 };
