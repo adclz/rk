@@ -23,10 +23,11 @@ impl<'db> SemanticIndexBuilder<'db> {
         let mut pous = vec![];
 
         let previous_scope = self.current_scope;
-        self.current_scope = scope_id;
 
         if let Some(elements) = nested.elements.as_ref() {
             for child in elements.children.iter() {
+                self.current_scope = scope_id;
+
                 match child.as_ref() {
                     Decl::NamespaceDecl(namespace) => {
                         let nested_path = {

@@ -78,6 +78,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         for child in self.source.children.iter() {
             type SourceFileDecl = ast::generated::ERRInvalidPouKeyword_ClassDecl_ConfigDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl_ProgDecl_UsingDirective;
 
+            self.current_scope = FileScopeId::global(self.file);
             match child.as_ref() {
                 SourceFileDecl::ERRInvalidPouKeyword(err) => {
                     self.create_pou_error(err);

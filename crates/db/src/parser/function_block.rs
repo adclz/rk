@@ -62,8 +62,6 @@ impl<'db> SemanticIndexBuilder<'db> {
             ast::generated::Operators_2::Token_FINAL(_) => modifiers.insert(Modifiers::FINAL),
         });
 
-        let scope_id = self.create_pou_id(func);
-
         let name = Ident::from_node(self.db, self.file, func.name.deref())?;
         let usings = self.parse_usings(&func.directives)?;
 

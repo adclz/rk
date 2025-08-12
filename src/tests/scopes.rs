@@ -4,11 +4,7 @@ use auto_lsp::{
 };
 
 use db::{
-    hir::{
-        pous::pou::Pou,
-        scopes::scope::{FileScopeId, ScopeKind},
-        semantic_index::semantic_index,
-    },
+    hir::{pous::pou::Pou, scopes::scope::FileScopeId, semantic_index::semantic_index},
     RootDatabase,
 };
 
@@ -48,19 +44,23 @@ fn global_scope() {
     sema.global_pous.iter().for_each(|pou| match pou.pou(&db) {
         Pou::Function(f) => {
             assert_eq!(pou.name(&db).text(&db), "fn1");
-            assert!(f.scope_id(&db).is_global());
+            let scope = sema.get_scope(f.scope_id(&db));
+            assert!(scope.parent.is_some_and(|scope| scope.is_global()));
         }
         Pou::FunctionBlock(fb) => {
             assert_eq!(pou.name(&db).text(&db), "fn2");
-            assert!(fb.scope_id(&db).is_global());
+            let scope = sema.get_scope(fb.scope_id(&db));
+            assert!(scope.parent.is_some_and(|scope| scope.is_global()));
         }
         Pou::Class(c) => {
             assert_eq!(pou.name(&db).text(&db), "cl");
-            assert!(c.scope_id(&db).is_global());
+            let scope = sema.get_scope(c.scope_id(&db));
+            assert!(scope.parent.is_some_and(|scope| scope.is_global()));
         }
         Pou::Interface(i) => {
             assert_eq!(pou.name(&db).text(&db), "in");
-            assert!(i.scope_id(&db).is_global());
+            let scope = sema.get_scope(i.scope_id(&db));
+            assert!(scope.parent.is_some_and(|scope| scope.is_global()));
         }
         Pou::DataType(_) => {}
     });
@@ -102,38 +102,30 @@ END_NAMESPACE
     let main_ns = sema.namespaces.first().unwrap();
 
     // Main namespaces should have Global scope as parent
-    let scope = sema.get_scope(main_ns.scope_id(&db));
-    assert_eq!(scope.parent, Some(FileScopeId::global(file)));
-
-    let scope = sema
-        .scopes
-        .iter()
-        .find_map(|(_id, scope)| {
-            if let ScopeKind::Namespace(_) = scope.kind {
-                Some(scope)
-            } else {
-                None
-            }
-        })
-        .unwrap();
+    let main_ns_scope = sema.get_scope(main_ns.scope_id(&db));
+    assert_eq!(main_ns_scope.parent, Some(FileScopeId::global(file)));
 
     for pou in main_ns.pous(&db) {
         match pou.pou(&db) {
             Pou::Function(f) => {
                 assert_eq!(pou.name(&db).text(&db), "fn1");
-                assert_eq!(f.scope_id(&db), scope.id);
+                let scope = sema.get_scope(f.scope_id(&db));
+                assert_eq!(scope.parent, Some(main_ns.scope_id(&db)));
             }
             Pou::FunctionBlock(fb) => {
                 assert_eq!(pou.name(&db).text(&db), "fn2");
-                assert_eq!(fb.scope_id(&db), scope.id);
+                let scope = sema.get_scope(fb.scope_id(&db));
+                assert_eq!(scope.parent, Some(main_ns.scope_id(&db)));
             }
             Pou::Class(c) => {
                 assert_eq!(pou.name(&db).text(&db), "cl");
-                assert_eq!(c.scope_id(&db), scope.id);
+                let scope = sema.get_scope(c.scope_id(&db));
+                assert_eq!(scope.parent, Some(main_ns.scope_id(&db)));
             }
             Pou::Interface(i) => {
                 assert_eq!(pou.name(&db).text(&db), "in");
-                assert_eq!(i.scope_id(&db), scope.id);
+                let scope = sema.get_scope(i.scope_id(&db));
+                assert_eq!(scope.parent, Some(main_ns.scope_id(&db)));
             }
             Pou::DataType(_) => {}
         }
