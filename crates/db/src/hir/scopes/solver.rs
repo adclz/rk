@@ -2,22 +2,22 @@ use auto_lsp::default::db::{file::File, BaseDatabase};
 use rustc_hash::FxHashMap;
 
 use crate::{
-    check::errors::semantic_errors::{
-        duplicate_using_declaration, namespace_not_found,
-    },
+    check::errors::semantic_errors::{duplicate_using_declaration, namespace_not_found},
     hir::{
         interned::{
             identifier::Ident,
             namespace::{NamespaceAccess, NamespacePath},
         },
         namespace::Namespace,
-        pous::{pou::{Pou, PouDecl}, variable::Variable},
+        pous::{
+            pou::{Pou, PouDecl},
+            variable::Variable,
+        },
         scopes::scope::{ScopeId, ScopeKind},
         semantic_index::semantic_index,
         using::Using,
     },
 };
-
 
 /// Find all namespaces in all files that match a given namespace path.
 #[salsa::tracked(returns(ref), no_eq)]
@@ -96,6 +96,15 @@ pub fn resolve_namespace_access<'db>(
     }
 }
 
+/// Returns all POU declarations *globally declared*.
+#[salsa::tracked(returns(ref))]
+fn global_pous<'db>(db: &'db dyn BaseDatabase) -> Vec<PouDecl<'db>> {
+    db.get_files()
+        .iter()
+        .flat_map(|file| semantic_index(db, *file).global_pous.clone())
+        .collect()
+}
+
 /// Returns all POU declarations *locally declared* in this scope.
 #[salsa::tracked(returns(ref))]
 fn local_pous_in_scope<'db>(
@@ -134,7 +143,7 @@ fn imported_pous_in_scope<'db>(
     result
 }
 
-/// Returns all POU declarations from parent (ancestor) scopes, including the global scope.
+/// Returns all POU declarations from parent (ancestor) scopes, including shared namespaces the global scope.
 #[salsa::tracked(returns(ref))]
 fn inherited_pous<'db>(
     db: &'db dyn BaseDatabase,
@@ -149,7 +158,9 @@ fn inherited_pous<'db>(
         if scope.id == ScopeId::global() {
             result.extend_from_slice(&sema.global_pous);
         } else if let ScopeKind::Namespace(ns) = scope.kind {
-            result.extend_from_slice(ns.pous(db));
+            shared_namespaces(db, *ns.path(db)).iter().for_each(|ns| {
+                result.extend_from_slice(ns.pous(db));
+            });
         }
     }
 
@@ -169,11 +180,17 @@ pub fn pous_in_scope<'db>(
     let mut map = FxHashMap::default();
 
     // Note that the order of these calls matters:
-    // 1 Inherited POU declarations
-    // 2 Imported POU declarations
-    // 3 Local POU declarations
+    // 1 Global POU declarations
+    // 2 Inherited POU declarations
+    // 3 Imported POU declarations
+    // 4 Local POU declarations
 
     // If a same name is found in multiple sources, the last one will shadow the previous ones.
+
+    for pou in global_pous(db) {
+        map.insert(*pou.name(db), *pou);
+    }
+
     for pou in inherited_pous(db, file, scope_id) {
         map.insert(*pou.name(db), *pou);
     }
@@ -186,9 +203,9 @@ pub fn pous_in_scope<'db>(
         map.insert(*pou.name(db), *pou);
     }
 
+    eprintln!("POUs in scope {:?}", map.keys());
     map
 }
-
 
 #[salsa::tracked(returns(ref))]
 pub fn variables_in_scope<'db>(
@@ -212,7 +229,7 @@ pub fn variables_in_scope<'db>(
                 for var in fb.variables(db) {
                     map.insert(*var.name(db), *var);
                 }
-            },
+            }
             _ => {}
         }
     }
