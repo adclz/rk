@@ -68,7 +68,8 @@ END_PROGRAM
 
 --------------------------------------------------------------------------------
 
-   (source_file
+
+    (source_file
       (prog_decl
         (identifier)
         (var_decls
@@ -93,70 +94,62 @@ END_PROGRAM
                 (bit_str_type_name
                   (bool_name)))
               (array_type_init
-                (array_elem_init
-                  (array_elem_init_value
-                    (constant_expr
-                      (constant
-                        (numeric_literal
-                          (int_literal
-                            (signed_int
-                              (unsigned_int))))))))
-                (array_elem_init
-                  (array_elem_init_value
-                    (constant_expr
-                      (constant
-                        (numeric_literal
-                          (int_literal
-                            (signed_int
-                              (unsigned_int))))))))
-                (array_elem_init
-                  (array_elem_init_value
-                    (constant_expr
-                      (constant
-                        (numeric_literal
-                          (int_literal
-                            (signed_int
-                              (unsigned_int))))))))
-                (array_elem_init
-                  (array_elem_init_value
-                    (constant_expr
-                      (constant
-                        (numeric_literal
-                          (int_literal
-                            (signed_int
-                              (unsigned_int))))))))
-                (array_elem_init
-                  (array_elem_init_value
-                    (constant_expr
-                      (constant
-                        (numeric_literal
-                          (int_literal
-                            (signed_int
-                              (unsigned_int))))))))
-                (array_elem_init
-                  (array_elem_init_value
-                    (constant_expr
-                      (constant
-                        (numeric_literal
-                          (int_literal
-                            (signed_int
-                              (unsigned_int))))))))
-                (array_elem_init
-                  (array_elem_init_value
-                    (constant_expr
-                      (constant
-                        (numeric_literal
-                          (int_literal
-                            (signed_int
-                              (unsigned_int))))))))
-                (array_elem_init
-                  (array_elem_init_value
-                    (constant_expr
-                      (constant
-                        (numeric_literal
-                          (int_literal
-                            (signed_int
-                              (unsigned_int)))))))))))
+                (init_elem
+                  (constant_expr
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int)))))))
+                (init_elem
+                  (constant_expr
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int)))))))
+                (init_elem
+                  (constant_expr
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int)))))))
+                (init_elem
+                  (constant_expr
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int)))))))
+                (init_elem
+                  (constant_expr
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int)))))))
+                (init_elem
+                  (constant_expr
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int)))))))
+                (init_elem
+                  (constant_expr
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int)))))))
+                (init_elem
+                  (constant_expr
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int))))))))))
           (var_decl_init_list
             (variable_list
               (identifier))
@@ -193,39 +186,38 @@ END_PROGRAM
                     (sign_int_type_name
                       (int_name)))))
               (array_type_init
-                (array_elem_init
-                  (array_elem_init_value
-                    (constant_expr
-                      (constant
-                        (numeric_literal
-                          (int_literal
-                            (signed_int
-                              (unsigned_int))))))))
-                (array_elem_init
-                  (array_elem_init_value
-                    (constant_expr
-                      (constant
-                        (numeric_literal
-                          (int_literal
-                            (signed_int
-                              (unsigned_int))))))))
-                (array_elem_init
-                  (unsigned_int)
-                  (array_elem_init_value
-                    (constant_expr
-                      (constant
-                        (numeric_literal
-                          (int_literal
-                            (signed_int
-                              (unsigned_int))))))))
-                (array_elem_init
-                  (array_elem_init_value
-                    (constant_expr
-                      (constant
-                        (numeric_literal
-                          (int_literal
-                            (signed_int
-                              (unsigned_int))))))))))))
+                (init_elem
+                  (constant_expr
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int)))))))
+                (init_elem
+                  (constant_expr
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int)))))))
+                (init_elem
+                  (array_index_elem
+                    (unsigned_int)
+                    (array_values
+                      (init_elem
+                        (constant_expr
+                          (constant
+                            (numeric_literal
+                              (int_literal
+                                (signed_int
+                                  (unsigned_int))))))))))
+                (init_elem
+                  (constant_expr
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int)))))))))))
         (loc_var_decls
           (loc_var_decl
             (identifier)
@@ -254,16 +246,18 @@ END_PROGRAM
                     (sign_int_type_name
                       (int_name)))))
               (array_type_init
-                (array_elem_init
-                  (unsigned_int)
-                  (array_elem_init_value
-                    (constant_expr
-                      (constant
-                        (numeric_literal
-                          (int_literal
-                            (signed_int
-                              (unsigned_int))))))))))))))
-
+                (init_elem
+                  (array_index_elem
+                    (unsigned_int)
+                    (array_values
+                      (init_elem
+                        (constant_expr
+                          (constant
+                            (numeric_literal
+                              (int_literal
+                                (signed_int
+                                  (unsigned_int))))))))))))))))
+                                  
 ================================================================================
 Declaration and initialization of constants
 ================================================================================

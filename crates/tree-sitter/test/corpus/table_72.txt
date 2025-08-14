@@ -243,58 +243,59 @@ END_FUNCTION
                         (int_literal
                           (signed_int
                             (unsigned_int))))))))
-              (comparison_operator
-                (eq_operator
-                  (variable_access
+              (else_if_stmt
+                (comparison_operator
+                  (eq_operator
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field))))))
+                    (constant
+                      (numeric_literal
+                        (real_literal
+                          (real_value))))))
+                (stmt_list
+                  (assign
                     (variable
                       (symbolic_variable
                         (path_expression
                           (var_access
-                            (field))))))
-                  (constant
-                    (numeric_literal
-                      (real_literal
-                        (real_value))))))
-              (stmt_list
-                (assign
-                  (variable
-                    (symbolic_variable
-                      (path_expression
-                        (var_access
-                          (field)))))
-                  (assignment
-                    (constant
-                      (numeric_literal
-                        (int_literal
-                          (signed_int
-                            (unsigned_int)))))))
-                (assign
-                  (variable
-                    (symbolic_variable
-                      (path_expression
-                        (var_access
-                          (field)))))
-                  (assignment
-                    (unary_operator
-                      (mult_operator
-                        (variable_access
-                          (variable
-                            (symbolic_variable
-                              (path_expression
-                                (var_access
-                                  (field))))))
-                        (parenthesized_expression
-                          (mult_operator
-                            (constant
-                              (numeric_literal
-                                (real_literal
-                                  (real_value))))
-                            (variable_access
-                              (variable
-                                (symbolic_variable
-                                  (path_expression
-                                    (var_access
-                                      (field)))))))))))))
+                            (field)))))
+                    (assignment
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int)))))))
+                  (assign
+                    (variable
+                      (symbolic_variable
+                        (path_expression
+                          (var_access
+                            (field)))))
+                    (assignment
+                      (unary_operator
+                        (mult_operator
+                          (variable_access
+                            (variable
+                              (symbolic_variable
+                                (path_expression
+                                  (var_access
+                                    (field))))))
+                          (parenthesized_expression
+                            (mult_operator
+                              (constant
+                                (numeric_literal
+                                  (real_literal
+                                    (real_value))))
+                              (variable_access
+                                (variable
+                                  (symbolic_variable
+                                    (path_expression
+                                      (var_access
+                                        (field))))))))))))))
               (stmt_list
                 (assign
                   (variable
@@ -668,8 +669,11 @@ END_FUNCTION
                       (signed_int
                         (unsigned_int)))))))
             (for_stmt
-              (control_variable
-                (identifier))
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
               (for_list
                 (constant
                   (numeric_literal

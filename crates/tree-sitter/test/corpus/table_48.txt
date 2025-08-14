@@ -1,0 +1,235 @@
+================================================================================
+Class definition
+================================================================================
+
+CLASS class END_CLASS 
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (class_decl
+        (class_type_name
+          (identifier))))
+
+================================================================================
+Class definition
+================================================================================
+
+CLASS CCounter
+	VAR
+		m_iCurrentValue: INT; (* Default = 0 *)
+		m_bCountUp: BOOL:=TRUE;
+	END_VAR
+
+	VAR PUBLIC
+		m_iUpperLimit: INT:=+10000;
+		m_iLowerLimit: INT:=-10000;
+	END_VAR
+
+	METHOD Count (* Only body *)
+		IF (m_bCountUp AND m_iCurrentValue<m_iUpperLimit) THEN
+			m_iCurrentValue:= m_iCurrentValue+1;
+		END_IF;
+
+		IF (NOT m_bCountUp AND m_iCurrentValue>m_iLowerLimit) THEN
+			m_iCurrentValue:= m_iCurrentValue-1;
+		END_IF;
+	END_METHOD
+
+	METHOD SetDirection
+	
+    VAR_INPUT
+		bCountUp: BOOL;
+	END_VAR
+	
+    m_bCountUp:=bCountUp;
+
+	END_METHOD
+END_CLASS 
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (class_decl
+        (class_type_name
+          (identifier))
+        (var_decls
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name)))))))
+          (pascal_style_comment
+            (comment_text))
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (bit_str_type_name
+                  (bool_name)))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (bool_literal
+                      (bool_literal_with_string))))))))
+        (var_decls
+          (access_spec)
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name)))))
+              (simple_type_init
+                (constant_expr
+                  (unary_operator
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int))))))))))
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name)))))
+              (simple_type_init
+                (constant_expr
+                  (unary_operator
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int)))))))))))
+        (method_decl
+          (identifier)
+          (pascal_style_comment
+            (comment_text))
+          (func_body
+            (stmt_list
+              (if_stmt
+                (parenthesized_expression
+                  (boolean_operator
+                    (and_operator
+                      (variable_access
+                        (variable
+                          (symbolic_variable
+                            (path_expression
+                              (var_access
+                                (field))))))
+                      (comparison_operator
+                        (ord_operator
+                          (variable_access
+                            (variable
+                              (symbolic_variable
+                                (path_expression
+                                  (var_access
+                                    (field))))))
+                          (variable_access
+                            (variable
+                              (symbolic_variable
+                                (path_expression
+                                  (var_access
+                                    (field)))))))))))
+                (stmt_list
+                  (assign
+                    (variable
+                      (symbolic_variable
+                        (path_expression
+                          (var_access
+                            (field)))))
+                    (assignment
+                      (add_operator
+                        (variable_access
+                          (variable
+                            (symbolic_variable
+                              (path_expression
+                                (var_access
+                                  (field))))))
+                        (constant
+                          (numeric_literal
+                            (int_literal
+                              (signed_int
+                                (unsigned_int))))))))))
+              (if_stmt
+                (parenthesized_expression
+                  (unary_operator
+                    (boolean_operator
+                      (and_operator
+                        (variable_access
+                          (variable
+                            (symbolic_variable
+                              (path_expression
+                                (var_access
+                                  (field))))))
+                        (comparison_operator
+                          (ord_operator
+                            (variable_access
+                              (variable
+                                (symbolic_variable
+                                  (path_expression
+                                    (var_access
+                                      (field))))))
+                            (variable_access
+                              (variable
+                                (symbolic_variable
+                                  (path_expression
+                                    (var_access
+                                      (field))))))))))))
+                (stmt_list
+                  (assign
+                    (variable
+                      (symbolic_variable
+                        (path_expression
+                          (var_access
+                            (field)))))
+                    (assignment
+                      (add_operator
+                        (variable_access
+                          (variable
+                            (symbolic_variable
+                              (path_expression
+                                (var_access
+                                  (field))))))
+                        (constant
+                          (numeric_literal
+                            (int_literal
+                              (signed_int
+                                (unsigned_int)))))))))))))
+        (method_decl
+          (identifier)
+          (input_decls
+            (input_var
+              (variable_list
+                (identifier))
+              (var_decl_init
+                (simple_type_spec
+                  (bit_str_type_name
+                    (bool_name))))))
+          (func_body
+            (stmt_list
+              (assign
+                (variable
+                  (symbolic_variable
+                    (path_expression
+                      (var_access
+                        (field)))))
+                (assignment
+                  (variable_access
+                    (variable
+                      (symbolic_variable
+                        (path_expression
+                          (var_access
+                            (field)))))))))))))

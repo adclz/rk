@@ -164,44 +164,4 @@ END_FUNCTION
                     (sign_int_type_name
                       (int_name))))))))))
 
-================================================================================
-Array conformands
-================================================================================
 
-FUNCTION MATRIX_MUL
-	VAR_INPUT
-		A: ARRAY [*, *] OF INT;
-		B: ARRAY [*, *] OF INT;
-	END_VAR;
-	VAR_OUTPUT C: ARRAY [*, *] OF IN END_VAR;
-END_FUNCTION
-
---------------------------------------------------------------------------------
-
-    (source_file
-      (func_decl
-        (identifier)
-        (input_decls
-          (input_var
-            (variable_list
-              (identifier))
-            (array_conformand
-              (numeric_type_name
-                (int_type_name
-                  (sign_int_type_name
-                    (int_name))))))
-          (input_var
-            (variable_list
-              (identifier))
-            (array_conformand
-              (numeric_type_name
-                (int_type_name
-                  (sign_int_type_name
-                    (int_name)))))))
-        (output_decls
-          (output_var
-            (variable_list
-              (identifier))
-            (array_conformand
-              (namespace_access
-                (identifier)))))))
