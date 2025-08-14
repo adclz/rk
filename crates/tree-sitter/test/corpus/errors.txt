@@ -319,3 +319,68 @@ END_FUNCTION_BLOCK
                     (var_access
                       (field)))))
               (ERR_empty_right_hand_assignment))))))
+
+================================================================================
+Function call in Init Expression
+================================================================================
+
+FUNCTION_BLOCK fn
+  VAR
+    ml : ARRAY [0..2] OF TON := [10(call(IN := 5, OUT => OUT))]
+  END_VAR    
+    
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (fb_decl
+        (identifier)
+        (var_decls
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (array_type_spec
+                (subrange
+                  (constant_expr
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int))))))
+                  (constant_expr
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int)))))))
+                (namespace_access
+                  (identifier)))
+              (array_type_init
+                (init_elem
+                  (array_index_elem
+                    (unsigned_int)
+                    (array_values
+                      (init_elem
+                        (ERR_func_call_in_init
+                          (func_call
+                            (path_expression
+                              (var_access
+                                (field)))
+                            (param_assign
+                              (param_assign_input
+                                (identifier)
+                                (constant
+                                  (numeric_literal
+                                    (int_literal
+                                      (signed_int
+                                        (unsigned_int)))))))
+                            (param_assign
+                              (param_assign_output
+                                (identifier)
+                                (variable
+                                  (symbolic_variable
+                                    (path_expression
+                                      (var_access
+                                        (field)))))))))))))))))))
