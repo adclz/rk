@@ -1,9 +1,10 @@
-use auto_lsp::default::db::BaseDatabase;
+use auto_lsp::{core::span::Span, default::db::BaseDatabase};
 
 use crate::{
     hir::{
-        interned::namespace::SpannedNamespaceAccess,
-        pous::variable::Variable,
+        expressions::{spec::Spec, statement::Stmt},
+        interned::{identifier::Ident, namespace::SpannedNamespaceAccess},
+        pous::{variable::Variable},
         scopes::scope::FileScopeId,
         semantic_index::SemanticIndex,
         visibility::Modifiers,
@@ -24,6 +25,8 @@ pub struct Class<'db> {
     #[tracked]
     #[returns(ref)]
     pub variables: Vec<Variable<'db>>,
+
+    pub methods: Vec<MethodDecl<'db>>,
 
     pub modifiers: Modifiers,
 
@@ -48,4 +51,30 @@ impl<'db> IterToProto<'db> for Class<'db> {
                     .flat_map(move |v| v.iter(db, sema)),
             )
     }
+}
+
+#[salsa::tracked(debug)]
+pub struct MethodDecl<'db> {
+    #[tracked]
+    #[returns(ref)]
+    pub name: Ident,
+
+    #[returns(ref)]
+    pub span: Span,
+
+    #[tracked]
+    #[returns(ref)]
+    pub variables: Vec<Variable<'db>>,
+
+    #[tracked]
+    #[returns(ref)]
+    pub return_type: Option<Spec<'db>>,
+
+    pub modifiers: Modifiers,
+
+    pub _override: bool,
+
+    pub scope_id: FileScopeId,
+
+    pub body: Vec<Stmt<'db>>,
 }

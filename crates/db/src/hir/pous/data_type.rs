@@ -2,7 +2,7 @@ use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     hir::{
-        expressions::{expression::Expr, spec::Spec},
+        expressions::{expression::{InitExpr}, spec::Spec},
         scopes::scope::FileScopeId,
         semantic_index::SemanticIndex,
     },
@@ -15,7 +15,7 @@ pub struct DataType<'db> {
     pub spec: Spec<'db>,
 
     #[tracked]
-    pub init: Option<Expr<'db>>,
+    pub init: Option<InitExpr<'db>>,
 
     pub scope_id: FileScopeId,
 }

@@ -1,10 +1,12 @@
 use std::ops::Deref;
 
 use crate::check::errors::semantic_errors::{assign_to_function_call, empty_right_hand_assignment};
-use crate::hir::expressions::statement::{Stmt, StmtKind};
-use crate::parser::expression::{ParseExpression, ParseVariableAccess};
+use crate::hir::expressions::expression::{ParamAssign, SymbolicVariable};
+use crate::hir::expressions::statement::{CaseKind, Stmt, StmtKind};
+use crate::hir::interned::identifier::Ident;
+use crate::parser::expression::{ParseExpr, ParseExpression, ParseVariableAccess};
 use crate::parser::semantic_index::SemanticIndexBuilder;
-use auto_lsp::anyhow;
+use auto_lsp::anyhow::{self, Ok};
 use auto_lsp::core::ast::AstNode;
 
 pub trait ParseStatement<'db> {
@@ -16,6 +18,224 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
         type StmtType = ast::generated::Stmt;
         match self {
             StmtType::Assign(assign) => assign.to_statement(sema),
+            StmtType::FuncCall(call) => {
+                let target = call.function.parse(sema)?;
+                let mut parameters = vec![];
+                for params in call.params.iter() {
+                    match params.deref() {
+                        ast::generated::Comma_ParamAssign::Token_Comma(_) => {}
+                        ast::generated::Comma_ParamAssign::ParamAssign(p) => {
+                            match p.children.deref() {
+                                    ast::generated::ParamAssignInput_ParamAssignOutput::ParamAssignInput(p) => {
+                                        parameters.push(ParamAssign::ParamAssignInput {
+                                            param: p.param.as_ref().map(|p| Ident::from_node(sema.db, sema.file, p.deref())).transpose()?,
+                                            value: p.value.to_expr(sema)?,
+                                        })
+                                    }
+                                    ast::generated::ParamAssignInput_ParamAssignOutput::ParamAssignOutput(p) => {
+                                        let variable = p.variable.to_access(sema)?;
+                                        parameters.push(ParamAssign::ParamAssignOutput {
+                                            not: p.not.is_some(),
+                                            param: Ident::from_node(sema.db, sema.file, p.param.deref())?,
+                                            variable,
+                                        })
+                                    }
+                                }
+                        }
+                    }
+                }
+                Ok(Stmt::new(
+                    sema.db,
+                    call.get_span(),
+                    StmtKind::FuncCall { target, params: parameters },
+                ))
+            }
+            StmtType::Invocation(invocation) => {
+                let mut parameters = vec![];
+                for params in invocation.params.iter() {
+                    match params.deref() {
+                        ast::generated::Comma_ParamAssign::Token_Comma(_) => {}
+                        ast::generated::Comma_ParamAssign::ParamAssign(p) => {
+                            match p.children.deref() {
+                                    ast::generated::ParamAssignInput_ParamAssignOutput::ParamAssignInput(p) => {
+                                        parameters.push(ParamAssign::ParamAssignInput {
+                                            param: p.param.as_ref().map(|p| Ident::from_node(sema.db, sema.file, p.deref())).transpose()?,
+                                            value: p.value.to_expr(sema)?,
+                                        })
+                                    }
+                                    ast::generated::ParamAssignInput_ParamAssignOutput::ParamAssignOutput(p) => {
+                                        let variable = p.variable.to_access(sema)?;
+                                        parameters.push(ParamAssign::ParamAssignOutput {
+                                            not: p.not.is_some(),
+                                            param: Ident::from_node(sema.db, sema.file, p.param.deref())?,
+                                            variable,
+                                        })
+                                    }
+                                }
+                        }
+                    }
+                };
+                Ok(Stmt::new(sema.db, invocation.get_span(), StmtKind::Invocation { 
+                    target: SymbolicVariable {
+                        this: invocation.invocation.this.is_some(),
+                        kind: invocation.invocation.children.parse(sema)?,
+                    }, 
+                    params: parameters
+                }))
+            }
+            StmtType::IfStmt(if_stmt) => {
+                let condition = if_stmt.if_cond.to_expr(sema)?;
+                let then = if_stmt.if_body
+                    .as_ref()
+                    .map(|b| b.children.iter()
+                        .map(|stmt| stmt.to_statement(sema))
+                        .collect::<anyhow::Result<Vec<_>>>())
+                    .transpose()?;  
+
+                let else_if = if_stmt
+                    .else_if
+                    .iter()
+                    .map(|else_if_stmt| {
+                        let condition = else_if_stmt.else_if_cond.to_expr(sema)?;
+                        let then = else_if_stmt.else_if_body.children
+                            .iter()
+                            .map(|stmt| stmt.to_statement(sema))
+                            .collect::<anyhow::Result<Vec<_>>>()?;
+                    Ok((condition, then)) 
+                }).collect::<anyhow::Result<Vec<_>>>()?; 
+ 
+                let else_ = if_stmt
+                    .else_body
+                    .as_ref().map(|b| b
+                            .children
+                            .iter()
+                            .map(|stmt| stmt.to_statement(sema))
+                            .collect::<anyhow::Result<Vec<_>>>()
+                    ).transpose()?;
+
+                Ok(Stmt::new( 
+                    sema.db,
+                    if_stmt.get_span(),
+                    StmtKind::If {
+                        condition,
+                        then,
+                        else_,
+                        else_if
+                    },
+                ))
+            }
+            StmtType::ForStmt(for_stmt) => {
+                let control_variable = for_stmt.control_variable.to_access(sema)?;
+                
+                let start = for_stmt.control_list.initial_value.to_expr(sema)?;
+                let end = for_stmt.control_list.end_value.to_expr(sema)?;
+                let step = for_stmt.control_list.step.as_ref().map(|s| s.to_expr(sema)).transpose()?;
+
+                let body = for_stmt.body
+                    .as_ref()
+                    .map(|body| {
+                        body.children
+                            .iter()
+                            .map(|stmt| stmt.to_statement(sema))
+                            .collect::<anyhow::Result<Vec<_>>>()
+                    }).transpose()?
+                    .unwrap_or_else(|| vec![]);
+
+                Ok(Stmt::new(
+                    sema.db,
+                    for_stmt.get_span(),
+                    StmtKind::For {
+                        control_variable,
+                        start,
+                        end,
+                        step,
+                        body,
+                    }, 
+                )) 
+            }
+            StmtType::CaseStmt(case_stmt) => {
+                let condition = case_stmt.case_cond.to_expr(sema)?;
+
+                let mut cases = vec![];
+                for case in case_stmt.case_selection.iter() {
+                    let mut case_of = vec![];
+
+                    for case in case.case_of.children.deref() {
+                        match case.children.deref() {
+                            ast::generated::ConstantExpr_Subrange::ConstantExpr(constant) => {
+                                case_of.push(CaseKind::Expression(constant.children.to_expr(sema)? 
+                            ));
+                                
+                            }
+                            ast::generated::ConstantExpr_Subrange::Subrange(subrange) => {
+                                let lower = subrange.lower.children.to_expr(sema)?;
+                                let upper = subrange.upper.children.to_expr(sema)?;
+                                case_of.push(CaseKind::Subrange { lower, upper });
+                            }
+                        }
+                    }
+
+                    let mut body = vec![];
+                    if let Some(case_body) = &case.case_do {
+                        body = case_body
+                            .children
+                            .iter()
+                            .map(|stmt| stmt.to_statement(sema))
+                            .collect::<anyhow::Result<Vec<_>>>()?;
+                    }
+                    cases.push((case_of, body));
+                }
+
+                let else_ = case_stmt
+                    .default
+                    .as_ref()
+                    .map(|b| b
+                        .children
+                        .iter()
+                        .map(|stmt| stmt.to_statement(sema))
+                        .collect::<anyhow::Result<Vec<_>>>()
+                    ).transpose()?;
+
+                Ok(Stmt::new(
+                    sema.db,
+                    case_stmt.get_span(),
+                    StmtKind::Case {
+                        condition,
+                        cases,
+                        else_,
+                    },
+                ))
+            }
+            StmtType::RepeatStmt(repeat) => {
+                let body = repeat
+                    .repeat_body
+                    .children
+                    .iter()
+                    .map(|stmt| stmt.to_statement(sema))
+                    .collect::<anyhow::Result<Vec<_>>>()?;
+
+                let condition = repeat.repeat_cond.to_expr(sema)?;
+                Ok(Stmt::new(
+                    sema.db,
+                    repeat.get_span(),
+                    StmtKind::Repeat { body, condition },
+                ))
+            }
+            StmtType::WhileStmt(while_stmt) => {
+                let condition = while_stmt.while_cond.to_expr(sema)?;
+                let body = while_stmt
+                    .while_body
+                    .children
+                    .iter()
+                    .map(|stmt| stmt.to_statement(sema))
+                    .collect::<anyhow::Result<Vec<_>>>()?;
+
+                Ok(Stmt::new(
+                    sema.db,
+                    while_stmt.get_span(),
+                    StmtKind::While { condition, body },
+                ))
+            }
             StmtType::SuperStmt(super_stmt) => {
                 Ok(Stmt::new(sema.db, super_stmt.get_span(), StmtKind::Super))
             }
@@ -26,7 +246,6 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                 Ok(Stmt::new(sema.db, stmt.get_span(), StmtKind::Continue))
             }
             StmtType::Token_EXIT(stmt) => Ok(Stmt::new(sema.db, stmt.get_span(), StmtKind::Exit)),
-            _ => todo!(),
         }
     }
 }
@@ -53,9 +272,16 @@ impl<'db> ParseStatement<'db> for ast::generated::Assign {
                     var,
                     target: assign.children.to_expr(sema)?,
                 },
-            )),
-            ast::generated::ERREmptyRightHandAssignment_Assignment_AssignmentAttempt::AssignmentAttempt(attempt) => {
-                unreachable!()
+            )), 
+            ast::generated::ERREmptyRightHandAssignment_Assignment_AssignmentAttempt::AssignmentAttempt(attempt) => {    
+                Ok(Stmt::new(
+                    sema.db,
+                    attempt.get_span(),
+                    StmtKind::AssignmentAttempt {
+                        var,
+                        target: attempt.children.to_expr(sema)?,
+                    },
+                ))
             }
         }
     }

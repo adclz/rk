@@ -9,7 +9,7 @@ use crate::{
         },
         scopes::scope::{FileScopeId, Scope, ScopeKind, Visibility},
     },
-    parser::{semantic_index::SemanticIndexBuilder, ParseInit, ParseSpec},
+    parser::{expression::ParseExpr, semantic_index::SemanticIndexBuilder, ParseSpec},
 };
 use ast::generated::TypeDecl;
 use auto_lsp::anyhow;
@@ -38,9 +38,9 @@ impl<'db> SemanticIndexBuilder<'db> {
         type Init = ast::generated::ArrayTypeInit_SimpleTypeInit_StructTypeInit;
 
         let init = match data_type.init.as_deref() {
-            Some(Init::ArrayTypeInit(a)) => Some(a.to_init(self)?),
-            Some(Init::SimpleTypeInit(a)) => Some(a.to_init(self)?),
-            Some(Init::StructTypeInit(a)) => Some(a.to_init(self)?),
+            Some(Init::ArrayTypeInit(a)) => Some(a.parse(self)?),
+            Some(Init::SimpleTypeInit(a)) => Some(a.parse(self)?),
+            Some(Init::StructTypeInit(a)) => Some(a.parse(self)?),
             None => None,
         };
 

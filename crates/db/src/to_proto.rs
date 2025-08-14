@@ -8,8 +8,7 @@ use auto_lsp::{
 };
 
 use crate::hir::{
-    expressions::expression::Expr, expressions::spec::Spec,
-    interned::namespace::SpannedNamespaceAccess, semantic_index::SemanticIndex,
+    expressions::{expression::{InitExpr}, spec::Spec}, interned::namespace::SpannedNamespaceAccess, semantic_index::SemanticIndex,
 };
 
 #[derive(bon::Builder, Debug, Clone)]
@@ -19,7 +18,7 @@ pub struct SymbolInfo<'a> {
     pub name_range: Span,
     pub kind: Option<SymbolKind>,
     pub spec: Option<Spec<'a>>,
-    pub init: Option<Expr<'a>>,
+    pub init: Option<InitExpr<'a>>,
     pub implements: Option<Vec<SpannedNamespaceAccess>>,
     pub extends: Option<Extends<'a>>,
 }

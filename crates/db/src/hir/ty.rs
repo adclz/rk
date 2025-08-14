@@ -1,20 +1,22 @@
 use auto_lsp::default::db::BaseDatabase;
 use rustc_hash::FxHashMap;
 
-use crate::hir::{
-    expressions::{
-        expression::PathExpr,
-        spec::{Enum, Spec, SpecKind},
+use crate::{
+    hir::{
+        expressions::{
+            expression::PathExpr,
+            spec::{Spec, SpecKind},
+        },
+        interned::{
+            identifier::{Ident, SpannedIdent},
+            namespace::NamespaceAccess,
+        },
+        pous::{
+            pou::{Pou, PouDecl},
+            variable::{Variable, VariableKind},
+        },
+        scopes::{scope::FileScopeId, solver::resolve_namespace_access},
     },
-    interned::{
-        identifier::{Ident, SpannedIdent},
-        namespace::NamespaceAccess,
-    },
-    pous::{
-        pou::{Pou, PouDecl},
-        variable::{Variable, VariableKind},
-    },
-    scopes::{scope::FileScopeId, solver::resolve_namespace_access},
 };
 
 #[salsa::tracked(debug)]
@@ -37,6 +39,7 @@ pub enum TyKind<'db> {
     // Base types
     Simple(Spec<'db>),
     Enum {
+        typ: Option<Ty<'db>>,
         list: Vec<Ident>,
     },
     SubRange(Spec<'db>),
@@ -292,22 +295,14 @@ impl<'db> Spec<'db> {
                     type_signature: array.of_type.to_sig(db, origin),
                 },
             ),
-            SpecKind::Enum(enum_spec) => match enum_spec {
-                Enum::Named(list) => Ty::new(
-                    db,
-                    origin,
-                    TyKind::Enum {
-                        list: list.iter().map(|(name, expr)| (*name)).collect(),
-                    },
-                ),
-                Enum::Anonymous(list) => Ty::new(
-                    db,
-                    origin,
-                    TyKind::Enum {
-                        list: list.to_vec(),
-                    },
-                ),
-            },
+            SpecKind::Enum(enum_spec) => Ty::new(
+                db,
+                origin,
+                TyKind::Enum {
+                    typ: enum_spec.typ.as_ref().map(|t| t.to_sig(db, origin)),
+                    list: enum_spec.variants.iter().map(|v| v.name).collect(),
+                },
+            ),
             SpecKind::Subrange(subrange) => Ty::new(db, origin, TyKind::SubRange(*subrange._type)),
             SpecKind::Struct(fields) => Ty::new(
                 db,
@@ -356,7 +351,7 @@ impl TyStep<'_> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum WalkError<'db> {
     NoItemInScope {
         expr: PathExpr<'db>,
@@ -390,5 +385,19 @@ impl<'db> CallableSignature<'db> {
             .get(ident)
             .or_else(|| self.outputs.get(ident))
             .or_else(|| self.in_outs.get(ident))
+    }
+
+    pub fn to_completion_string(&self, db: &'db dyn BaseDatabase) -> String {
+        let mut params = Vec::new();
+        for (name, ty) in &self.inputs {
+            params.push(format!("{} := n", name.text(db)));
+        }
+        for (name, ty) in &self.in_outs {
+            params.push(format!("{} := n", name.text(db)));
+        }
+        for (name, ty) in &self.outputs {
+            params.push(format!("{} => n", name.text(db)));
+        }
+        format!("({})", params.join(",\n"))
     }
 }

@@ -9,6 +9,7 @@ use crate::hir::expressions::expression::{
 };
 use crate::hir::interned::identifier::SpannedIdent;
 use crate::parser::semantic_index::SemanticIndexBuilder;
+use crate::parser::types::ParseMultiBits;
 use crate::{
     hir::expressions::expression::{
         AddOperatorKind, BooleanOperatorKind, ComparisonOperatorKind, Elementary, Expr, ExprKind,
@@ -205,14 +206,19 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
             ast::generated::PrimaryExpression::Constant(c) => c.to_expr(sema),
             ast::generated::PrimaryExpression::VariableAccess(v) => {
                 let variable = v.variable.to_access(sema)?;
-                // todo: add multibits support
+
+                let multibits = v
+                    .access
+                    .as_ref()
+                    .map(|multibits| multibits.to_multibits(sema))
+                    .transpose()?;
 
                 Ok(Expr::new(
                     sema.db,
                     v.get_span(),
                     ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess {
                         variable,
-                        multibits: None,
+                        multibits,
                     }),
                     sema.current_scope,
                 ))

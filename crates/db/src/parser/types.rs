@@ -8,14 +8,17 @@ use auto_lsp::{
 use crate::{
     hir::{
         expressions::{
-            expression::Expr,
-            spec::{Spec, SpecKind, SubRange},
+            expression::{
+                InitExpr, InitExprKind, MultibitsPart, Numeric, NumericKind
+            },
+            spec::{Enum, EnumVariant, Spec, SpecKind, Struct, StructElement, SubRange},
         },
-        interned::namespace::NamespaceAccess,
+        interned::{identifier::Ident, namespace::NamespaceAccess},
     },
     parser::{
-        expression::ParseExpression, semantic_index::SemanticIndexBuilder, ParseInit, ParseSpec,
-        ParseSpecInit, SpecInitResult,
+        expression::{ParseExpr, ParseExpression, ParseVariableAccess},
+        semantic_index::SemanticIndexBuilder,
+        ParseSpec, ParseSpecInit, SpecInitResult,
     },
 };
 
@@ -46,7 +49,6 @@ impl<'db> ParseSpec<'db> for ast::generated::NamespaceAccess {
 
 impl<'db> ParseSpec<'db> for ast::generated::SimpleTypeSpec {
     fn to_spec(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Spec<'db>> {
-        // forwarded to ElemTypeName
         self.children.deref().to_spec(sema)
     }
 }
@@ -287,9 +289,14 @@ impl<'db> ParseSpec<'db> for ast::generated::IntTypeName {
     }
 }
 
-impl<'db> ParseInit<'db> for ast::generated::SimpleTypeInit {
-    fn to_init(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Expr<'db>> {
-        self.children.children.to_expr(sema)
+impl<'db> ParseExpr<'db> for ast::generated::SimpleTypeInit {
+    type Output = InitExpr<'db>;
+
+    fn parse(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<InitExpr<'db>> {
+        Ok(InitExpr{
+            span: self.get_span(),
+            kind: InitExprKind::ConstantExpr(self.children.children.to_expr(sema)?)
+        }) 
     }
 }
 
@@ -347,9 +354,123 @@ impl<'db> ParseSpec<'db> for ast::generated::ArrayTypeSpec {
     }
 }
 
-impl<'db> ParseInit<'db> for ast::generated::ArrayTypeInit {
-    fn to_init(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Expr<'db>> {
-        todo!()
+impl<'db> ParseExpr<'db> for ast::generated::ArrayTypeInit {
+    type Output = InitExpr<'db>;
+
+    fn parse(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Self::Output> {
+        let values = self
+            .children
+            .iter()
+            .map(|elem| elem.parse(sema))
+            .collect::<anyhow::Result<Vec<_>>>()?;
+
+        Ok(InitExpr { span: self.get_span(), kind: InitExprKind::ArrayInit { values } })
+    }
+}
+
+impl<'db> ParseExpr<'db> for ast::generated::StructTypeInit {
+    type Output = InitExpr<'db>;
+
+    fn parse(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Self::Output> {
+        let values = self
+            .children
+            .iter()
+            .map(|elem| elem.parse(sema))
+            .collect::<anyhow::Result<Vec<_>>>()?;
+
+        Ok(InitExpr { span: self.get_span(), kind: InitExprKind::ArrayInit { values } })
+    }
+}
+
+impl<'db> ParseExpr<'db> for ast::generated::InitElem {
+    type Output = InitExpr<'db>;
+
+    fn parse(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Self::Output> {
+        type InitElem = ast::generated::ERRFuncCallInInit_ArrayIndexElem_ArrayInit_ConstantExpr_StructElem_StructInit;
+        match self.children.deref() {
+            InitElem::ArrayIndexElem(array_type_init) => {
+                array_type_init.parse(sema)
+            }
+            InitElem::ArrayInit(expr) => {
+                expr.parse(sema)
+            }
+            InitElem::StructElem(struct_elem_init) => {
+                struct_elem_init.parse(sema)
+            },
+            InitElem::StructInit(struct_type_init) => {
+                struct_type_init.parse(sema)
+            }
+            InitElem::ConstantExpr(expr) => { 
+                Ok(InitExpr {
+                    span: self.get_span(),
+                    kind: InitExprKind::ConstantExpr(expr.children.to_expr(sema)?),
+                })
+            },
+            InitElem::ERRFuncCallInInit(err) => {
+                todo!()
+            }
+        }
+    }
+}
+
+impl<'db> ParseExpr<'db> for ast::generated::ArrayInit {
+    type Output = InitExpr<'db>;
+
+    fn parse(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Self::Output> {
+        let values = self
+            .values 
+            .children
+            .iter()
+            .map(|elem| elem.parse(sema))
+            .collect::<anyhow::Result<Vec<_>>>()?;
+ 
+        Ok(InitExpr { span: self.get_span(), kind: InitExprKind::ArrayInit { values } })
+    }
+}
+
+impl<'db> ParseExpr<'db> for ast::generated::ArrayIndexElem {
+    type Output = InitExpr<'db>;
+
+    fn parse(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Self::Output> {
+        let index = Numeric::new(
+            sema.db,
+            Ident::from_node(sema.db, sema.file, self.index.deref())?,
+            NumericKind::Signed,
+        ); 
+
+        let values = self
+            .values
+            .children
+            .iter()
+            .map(|elem| elem.parse(sema))
+            .collect::<anyhow::Result<Vec<_>>>()?;
+
+        Ok(InitExpr { span: self.get_span(), kind: InitExprKind::ArrayIndexedElement { index, values } })
+    }
+} 
+
+impl<'db> ParseExpr<'db> for ast::generated::StructInit {
+    type Output = InitExpr<'db>;
+
+    fn parse(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Self::Output> {
+        let values = self
+            .children
+            .iter()
+            .map(|elem| elem.parse(sema))
+            .collect::<anyhow::Result<Vec<_>>>()?;
+
+        Ok(InitExpr { span: self.get_span(), kind: InitExprKind::StructInit { values } })
+    }
+}
+
+impl<'db> ParseExpr<'db> for ast::generated::StructElem {
+    type Output = InitExpr<'db>;
+
+    fn parse(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Self::Output> {
+        let name = Ident::from_node(sema.db, sema.file, self.name.deref())?;
+        let value = Box::new(self.value.parse(sema)?);
+
+        Ok(InitExpr { span: self.get_span(), kind: InitExprKind::StructElement { name, value }})
     }
 }
 
@@ -357,27 +478,99 @@ impl<'db> ParseInit<'db> for ast::generated::ArrayTypeInit {
 
 impl<'db> ParseSpec<'db> for ast::generated::ArrayConformand {
     fn to_spec(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Spec<'db>> {
-        todo!()
+        Ok(Spec::new(
+            sema.db,
+            self.get_span(),
+            SpecKind::ArrayConformand(self.children.to_spec(sema)?),
+            sema.current_scope,
+            sema.file,
+        ))
     }
 }
-
-impl<'db> ParseInit<'db> for ast::generated::ArrayConformand {
-    fn to_init(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Expr<'db>> {
-        todo!()
-    }
-}
-
-// Struct type
 
 impl<'db> ParseSpec<'db> for ast::generated::StructTypeSpec {
     fn to_spec(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Spec<'db>> {
-        todo!()
+
+        let mut elements = vec![];
+
+        for elem in &self.children {
+             type Spec = ast::generated::ArrayTypeSpec_EnumTypeSpec_SimpleTypeSpec_StructTypeSpec_SubrangeTypeSpec;
+
+            let spec = match elem.spec.deref() {
+                Spec::ArrayTypeSpec(elem) => elem.to_spec(sema)?,
+                Spec::SimpleTypeSpec(init) => init.to_spec(sema)?,
+                Spec::EnumTypeSpec(en) => en.to_spec(sema)?,
+                Spec::SubrangeTypeSpec(sub) => sub.to_spec(sema)?,
+                Spec::StructTypeSpec(st) => st.to_spec(sema)?,
+            };
+
+            type Init = ast::generated::ArrayTypeInit_SimpleTypeInit_StructTypeInit;
+
+            let init = if let Some(init) = elem.init.as_ref() {
+                match init.deref() {
+                    Init::ArrayTypeInit(array_type_init) => Some(array_type_init.parse(sema)?),
+                    Init::SimpleTypeInit(simple_type_init) => Some(simple_type_init.parse(sema)?),
+                    Init::StructTypeInit(struct_type_init) => Some(struct_type_init.parse(sema)?),
+                }
+            } else {
+                None
+            };
+
+            let name = Ident::from_node(sema.db, sema.file, elem.name.deref())?;
+
+            let (located, multibits) = if let Some(attrs) = elem.attributes.as_ref() {
+                let located = attrs.located.children.to_access(sema).ok();
+                let multibits = attrs
+                    .multibits
+                    .as_ref()
+                    .map(|mb| mb.to_multibits(sema))
+                    .transpose()?;
+                (located, multibits)
+            } else {
+                (None, None)
+            };
+
+            elements.push(StructElement { 
+                name,
+                spec,
+                init,
+                located,
+                multibits,
+            });
+        }
+
+        Ok(Spec::new(
+            sema.db,
+            self.get_span(),
+            SpecKind::Struct(Struct {
+                elements,
+                overlap: self.overlap.is_some(),
+            }),
+            sema.current_scope,
+            sema.file,
+        ))
     }
 }
 
-impl<'db> ParseInit<'db> for ast::generated::StructTypeInit {
-    fn to_init(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Expr<'db>> {
-        todo!()
+pub trait ParseMultiBits<'db> {
+    fn to_multibits(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<MultibitsPart>;
+}
+
+impl<'db> ParseMultiBits<'db> for ast::generated::MultibitPartAccess {
+    fn to_multibits(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<MultibitsPart> {
+        let offset = Numeric::new(
+            sema.db,
+            Ident::from_node(sema.db, sema.file, self.path.children.deref())?,
+            NumericKind::Signed,
+        );
+
+        match &self.path.access {
+            Some(access) => Ok(MultibitsPart::AccessOffset {
+                offset,
+                access: Ident::from_node(sema.db, sema.file, access.deref())?,
+            }),
+            None => Ok(MultibitsPart::Offset(offset)),
+        }
     }
 }
 
@@ -388,7 +581,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::RefSpec {
         &self,
         sema: &SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<SpecInitResult<'db>> {
-        todo!()
+        Ok(SpecInitResult { spec: self.children.to_spec(sema)?, init: None })
     }
 }
 
@@ -408,7 +601,30 @@ impl<'db> ParseSpec<'db> for ast::generated::RefTypeSpec {
 
 impl<'db> ParseSpec<'db> for ast::generated::EnumTypeSpec {
     fn to_spec(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Spec<'db>> {
-        todo!()
+        let typ = self.children.elem_type
+            .as_ref()
+            .map(|elem| elem.to_spec(sema))
+            .transpose()?;
+        
+        let mut variants = vec![];
+        for spec in &self.children.children {
+            let name = Ident::from_node(sema.db, sema.file, spec.value.deref())?;
+            let value = spec.children
+                .as_ref()
+                .map(|v| v.to_expr(sema))
+                .transpose()?;
+
+            variants.push(EnumVariant {
+                name,
+                value,
+            });
+        }
+        Ok(Spec::new(sema.db, self.get_span(), 
+        SpecKind::Enum(Enum {
+            typ,
+            variants
+        }),
+         sema.current_scope, sema.file))
     }
 }
 

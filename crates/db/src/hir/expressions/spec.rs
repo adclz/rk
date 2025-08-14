@@ -3,6 +3,7 @@ use auto_lsp::default::db::file::File;
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind};
 
+use crate::hir::expressions::expression::{InitExpr, VariableAccess};
 use crate::hir::semantic_index::semantic_index;
 use crate::{
     completions::snippets::elem_type_names,
@@ -92,6 +93,7 @@ pub enum SpecKind<'db> {
     // Composite types
     Struct(Struct<'db>),
     Array(Array<'db>),
+    ArrayConformand(Spec<'db>),
     Subrange(SubRange<'db>),
     Enum(Enum<'db>),
 
@@ -270,25 +272,22 @@ pub struct Struct<'db> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct StructElement<'db> {
     pub name: Ident,
-    pub located: Located,
-    // Parameters can be of any type
+    pub located: Option<VariableAccess<'db>>,
+    pub multibits: Option<MultibitsPart>,
     pub spec: Spec<'db>,
+    pub init: Option<InitExpr<'db>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub struct Located {
-    adress: Ident,
-    partly: bool,
-    offset: Option<Ident>,
-    multibits: Option<MultibitsPart>,
+pub struct Enum<'db> {
+    pub typ: Option<Spec<'db>>,
+    pub variants: Vec<EnumVariant<'db>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum Enum<'db> {
-    Anonymous(Vec<Ident>),
-    // Each enum variant has a value
-    // Values must be integers
-    Named(Vec<(Ident, Expr<'db>)>),
+pub struct EnumVariant<'db> {
+    pub name: Ident,
+    pub value: Option<Expr<'db>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]

@@ -2,7 +2,7 @@ use std::ops::Deref;
 
 use crate::hir::interned::identifier::Ident;
 use crate::hir::interned::namespace::SpannedNamespaceAccess;
-use crate::hir::pous::interface::{Interface, Method};
+use crate::hir::pous::interface::{Interface, MethodPrototype};
 use crate::hir::pous::pou::{Pou, PouDecl};
 use crate::hir::scopes::scope::{FileScopeId, Scope, ScopeKind, Visibility};
 use crate::parser::semantic_index::SemanticIndexBuilder;
@@ -65,7 +65,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_method_prototype<'a>(
         &'a self,
         method: &ast::generated::MethodPrototype,
-    ) -> anyhow::Result<Method<'a>> {
+    ) -> anyhow::Result<MethodPrototype<'a>> {
         let name = Ident::from_node(self.db, self.file, &*method.name)?;
         let return_type = method
             .data_type
@@ -93,7 +93,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
         }
 
-        Ok(Method::new(
+        Ok(MethodPrototype::new(
             self.db,
             method.get_span(),
             name,

@@ -1,7 +1,7 @@
 use auto_lsp::anyhow;
 
 use crate::{
-    hir::{expressions::expression::Expr, expressions::spec::Spec, pous::variable::Variable},
+    hir::{expressions::{expression::{InitExpr}, spec::Spec}, pous::variable::Variable},
     parser::semantic_index::SemanticIndexBuilder,
 };
 
@@ -31,16 +31,16 @@ pub trait ParseSpec<'db> {
 }
 
 pub trait ParseInit<'db> {
-    fn to_init(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Expr<'db>>;
+    fn to_init(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<InitExpr<'db>>;
 }
 
 pub struct SpecInitResult<'db> {
     pub spec: Spec<'db>,
-    pub init: Option<Expr<'db>>,
+    pub init: Option<InitExpr<'db>>,
 }
 
 impl<'db> SpecInitResult<'db> {
-    pub fn new(spec: Spec<'db>, init: Option<Expr<'db>>) -> Self {
+    pub fn new(spec: Spec<'db>, init: Option<InitExpr<'db>>) -> Self {
         Self { spec, init }
     }
 }

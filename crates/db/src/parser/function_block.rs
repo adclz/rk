@@ -11,6 +11,7 @@ use crate::hir::pous::variable::Variable;
 use crate::hir::scopes::scope::{FileScopeId, Scope, ScopeKind, Visibility};
 use crate::hir::visibility::Modifiers;
 use crate::parser::semantic_index::SemanticIndexBuilder;
+use crate::parser::statement::ParseStatement;
 use crate::parser::ParseVarSection;
 use ast::generated::{FbDecl, FbVariables};
 use auto_lsp::anyhow;
@@ -56,6 +57,19 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
         });
 
+        let statements = func
+            .body
+            .as_ref()
+            .map_or(vec![], |body| match body.children.deref() {
+                ast::generated::SFC_FbDiagram_LadderDiagram_StmtList::StmtList(ref stmts) => stmts
+                    .children
+                    .iter()
+                    .map(|stmt| stmt.to_statement(self))
+                    .collect::<anyhow::Result<Vec<_>>>()
+                    .unwrap_or_default(),
+                _ => vec![],
+            });
+
         let mut modifiers = Modifiers::empty();
         func.qualifier.as_ref().map(|q| match q.deref() {
             ast::generated::Operators_2::Token_ABSTRACT(_) => modifiers.insert(Modifiers::ABSTRACT),
@@ -68,7 +82,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         let result = PouDecl::new(
             self.db,
             Pou::FunctionBlock(FunctionBlock::new(
-                self.db, extends, implements, variables, modifiers, scope_id,
+                self.db, extends, implements, variables, statements, modifiers, scope_id,
             )),
             func.get_span(),
             name,

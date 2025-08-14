@@ -78,8 +78,8 @@ pub fn duplicate_declarations<'db>(db: &'db dyn BaseDatabase, file: File) {
 impl<'db> Check<'db> for Vec<Stmt<'db>> {
     fn check(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>) {
         self.iter().for_each(|stmt| if let StmtKind::Assignment { var, target } = stmt.stmt(db) {
-            if let VariableAccessKind::Symbolic(symbolic) = var.kind {
-                let ctx = ResolvePathExprCtx::new(db, sema.file, &symbolic.kind);
+            if let VariableAccessKind::Symbolic(symbolic) = &var.kind {
+                let ctx = ResolvePathExprCtx::new(db, sema.file, symbolic.kind);
                 let r = ctx.resolve_path_expr();
 
                 if let Some(err) = r.error {
@@ -102,12 +102,12 @@ impl<'db> Check<'db> for Vec<Stmt<'db>> {
                             type_can_not_be_dereferenced(db, sema.file, expr.span(db));
                         }
                     }
-                } else if let TyKind::Callable { .. } = r.elements[0].1.kind(db) {
+                } else if let TyKind::Callable { .. } = r.elements[0].get_ty().kind(db) {
                     assign_direct_pou_to_a_variable(
                         db,
                         sema.file,
-                        r.elements[0].0,
-                        r.elements[0].1.origin(db),
+                        *r.elements[0].get_expr(),
+                        r.elements[0].get_ty().origin(db),
                     );
                 }
             }
@@ -136,7 +136,7 @@ impl<'db> Check<'db> for &'db Vec<Variable<'db>> {
 impl<'db> Check<'db> for Variable<'db> {
     fn check(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>) {
         if let Some(init) = self.init(db) {
-            init.check(db, sema, self.spec(db))
+            //init.check(db, sema, self.spec(db))
         }
     }
 }

@@ -1,3 +1,4 @@
+use crate::check::hir::signature::resolved_path_expr;
 use crate::completions::snippets::elem_type_names_init;
 use crate::hir::interned::identifier::{Ident, SpannedIdent};
 use crate::hir::scopes::scope::FileScopeId;
@@ -58,6 +59,7 @@ pub enum UnaryOperatorKind {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ExprKind<'db> {
+    // Normal expressions
     PrimaryExpr(PrimaryExpr<'db>),
     AddOperator {
         left: Expr<'db>,
@@ -120,23 +122,16 @@ pub struct PathExpr<'db> {
     pub expr: PathExprKind<'db>,
 }
 
-impl<'db> ToProto<'db> for PathExpr<'db> {
-    fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
-        self.span(db)
-    }
-}
-
 impl<'db> IterToProto<'db> for PathExpr<'db> {
     fn iter(
         &'db self,
         db: &'db dyn BaseDatabase,
-        sema: &'db SemanticIndex,
+        sema: &'db SemanticIndex<'db>,
     ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        match &self.expr(db) {
-            PathExprKind::Field(field) => self_iter(self),
-            PathExprKind::Index(index) => self_iter(self),
-            PathExprKind::VarAccess(var_access) => self_iter(self),
-        }
+        resolved_path_expr(db, sema.file, *self)
+            .elements
+            .iter()
+            .map(|element| element as _)
     }
 }
 
@@ -209,8 +204,9 @@ impl<'db> PathExpr<'db> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum MultibitsPart {
-    Offset(Ident),
-    SizedOffset { size: SizeOperator, offset: Ident },
+    Offset(Numeric),
+    // XBWDL
+    AccessOffset { access: Ident, offset: Numeric },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -287,6 +283,7 @@ pub enum VariableAccessKind<'db> {
 }
 
 impl<'db> IterToProto<'db> for VariableAccess<'db> {
+    #[auto_enum(Iterator)]
     fn iter(
         &'db self,
         db: &'db dyn BaseDatabase,
@@ -294,7 +291,7 @@ impl<'db> IterToProto<'db> for VariableAccess<'db> {
     ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
         match &self.kind {
             VariableAccessKind::Direct { adress, .. } => self_iter(self),
-            VariableAccessKind::Symbolic(symbolic) => self_iter(self),
+            VariableAccessKind::Symbolic(symbolic) => symbolic.kind.iter(db, sema),
         }
     }
 }
@@ -657,5 +654,37 @@ impl<'db> IterToProto<'db> for PrimaryExpr<'db> {
             PrimaryExpr::Literal(lit) => std::iter::empty(),
             PrimaryExpr::RefValue { value } => std::iter::empty(),
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub struct InitExpr<'db> {
+    pub span: Span,
+
+    pub kind: InitExprKind<'db>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum InitExprKind<'db> {
+    ArrayInit {
+        values: Vec<InitExpr<'db>>,
+    },
+    ArrayIndexedElement {
+        index: Numeric,
+        values: Vec<InitExpr<'db>>,
+    },
+    StructInit {
+        values: Vec<InitExpr<'db>>,
+    },
+    StructElement{
+        name: Ident,
+        value: Box<InitExpr<'db>>,
+    },
+    ConstantExpr(Expr<'db>),
+}
+
+impl ToProto<'_> for InitExpr<'_> {
+    fn get_span(&self, db: &dyn BaseDatabase) -> &Span {
+        &self.span
     }
 }

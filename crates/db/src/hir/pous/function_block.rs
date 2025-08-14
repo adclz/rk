@@ -2,10 +2,8 @@ use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     hir::{
-        interned::namespace::SpannedNamespaceAccess,
-        pous::variable::Variable,
-        scopes::scope::FileScopeId,
-        semantic_index::SemanticIndex,
+        expressions::statement::Stmt, interned::namespace::SpannedNamespaceAccess,
+        pous::variable::Variable, scopes::scope::FileScopeId, semantic_index::SemanticIndex,
         visibility::Modifiers,
     },
     to_proto::{IterToProto, ToProto},
@@ -24,6 +22,10 @@ pub struct FunctionBlock<'db> {
     #[tracked]
     #[returns(ref)]
     pub variables: Vec<Variable<'db>>,
+
+    #[tracked]
+    #[returns(ref)]
+    pub statements: Vec<Stmt<'db>>,
 
     pub modifiers: Modifiers,
 

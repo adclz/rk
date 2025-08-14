@@ -19,6 +19,7 @@ use crate::check::DiagnosticAccumulator;
 use crate::hir::expressions::spec::{Spec, SpecKind};
 use crate::hir::interned::identifier::Ident;
 use crate::hir::pous::variable::{Variable, VariableKind};
+use crate::parser::expression::ParseExpr;
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::parser::{ParseInit, ParseSpec, ParseSpecInit, ParseVarSection, SpecInitResult};
 
@@ -369,7 +370,7 @@ impl<'db> ToVariable<'db> for ast::generated::ArrayConformand {
         kind: VariableKind,
     ) -> anyhow::Result<Variable<'db>> {
         let var_name = Ident::from_node(sema.db, sema.file, name)?;
-        let result = self.to_spec_init(sema)?;
+        let spec = self.to_spec(sema)?;
 
         Ok(Variable::new(
             sema.db,
@@ -378,8 +379,8 @@ impl<'db> ToVariable<'db> for ast::generated::ArrayConformand {
             name.get_span(),
             name.get_span(),
             VariableKind::Input,
-            result.spec,
-            result.init,
+            spec,
+            None,
             sema.current_scope,
         ))
     }
@@ -687,14 +688,14 @@ impl<'db> ParseSpecInit<'db> for ast::generated::VarDecl {
         type Init = ast::generated::ArrayTypeInit_SimpleTypeInit_StructTypeInit;
 
         let init = match self.init.as_deref() {
-            Some(Init::ArrayTypeInit(a)) => Some(a.to_init(sema)?),
-            Some(Init::SimpleTypeInit(a)) => Some(a.to_init(sema)?),
-            Some(Init::StructTypeInit(a)) => Some(a.to_init(sema)?),
+            Some(Init::ArrayTypeInit(a)) => Some(a.parse(sema)?),
+            Some(Init::SimpleTypeInit(a)) => Some(a.parse(sema)?),
+            Some(Init::StructTypeInit(a)) => Some(a.parse(sema)?),
             None => None,
         };
 
         if let Some(init) = init {
-            unauthorized_variable_init(sema.db, init.span(sema.db).clone());
+            unauthorized_variable_init(sema.db, init.span.clone());
         }
 
         Ok(SpecInitResult::new(spec?, None))
@@ -719,9 +720,9 @@ impl<'db> ParseSpecInit<'db> for ast::generated::VarDeclInit {
 
         type Init = ast::generated::ArrayTypeInit_SimpleTypeInit_StructTypeInit;
         let init = match self.init.as_deref() {
-            Some(Init::ArrayTypeInit(a)) => Some(a.to_init(sema)?),
-            Some(Init::SimpleTypeInit(a)) => Some(a.to_init(sema)?),
-            Some(Init::StructTypeInit(a)) => Some(a.to_init(sema)?),
+            Some(Init::ArrayTypeInit(a)) => Some(a.parse(sema)?),
+            Some(Init::SimpleTypeInit(a)) => Some(a.parse(sema)?),
+            Some(Init::StructTypeInit(a)) => Some(a.parse(sema)?),
             None => None,
         };
 
@@ -745,9 +746,9 @@ impl<'db> ParseSpecInit<'db> for ast::generated::LocVarSpecInit {
 
         type Init = ast::generated::ArrayTypeInit_SimpleTypeInit_StructTypeInit;
         let init = match self.init.as_deref() {
-            Some(Init::ArrayTypeInit(a)) => Some(a.to_init(sema)?),
-            Some(Init::SimpleTypeInit(a)) => Some(a.to_init(sema)?),
-            Some(Init::StructTypeInit(a)) => Some(a.to_init(sema)?),
+            Some(Init::ArrayTypeInit(a)) => Some(a.parse(sema)?),
+            Some(Init::SimpleTypeInit(a)) => Some(a.parse(sema)?),
+            Some(Init::StructTypeInit(a)) => Some(a.parse(sema)?),
             None => None,
         };
 

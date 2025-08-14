@@ -17,7 +17,7 @@ pub struct Interface<'db> {
     pub extends: Option<Vec<SpannedNamespaceAccess>>,
 
     #[returns(ref)]
-    pub methods: Vec<Method<'db>>,
+    pub methods: Vec<MethodPrototype<'db>>,
 
     pub scope_id: FileScopeId,
 }
@@ -33,7 +33,7 @@ impl<'db> IterToProto<'db> for Interface<'db> {
 }
 
 #[salsa::tracked(debug)]
-pub struct Method<'db> {
+pub struct MethodPrototype<'db> {
     #[returns(ref)]
     pub range: Span,
 
@@ -49,7 +49,7 @@ pub struct Method<'db> {
     pub variables: Vec<Variable<'db>>,
 }
 
-impl<'db> ToProto<'db> for Method<'db> {
+impl<'db> ToProto<'db> for MethodPrototype<'db> {
     fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
         self.range(db)
     }
@@ -59,7 +59,7 @@ impl<'db> ToProto<'db> for Method<'db> {
     }
 }
 
-impl<'db> IterToProto<'db> for Method<'db> {
+impl<'db> IterToProto<'db> for MethodPrototype<'db> {
     fn iter(
         &'db self,
         db: &'db dyn BaseDatabase,

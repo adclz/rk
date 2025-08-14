@@ -17,7 +17,6 @@ pub struct Function<'db> {
     #[returns(ref)]
     pub variables: Vec<Variable<'db>>,
 
-    // Statements
     #[tracked]
     #[returns(ref)]
     pub statements: Vec<Stmt<'db>>,
@@ -69,7 +68,12 @@ impl<'db> IterToProto<'db> for Function<'db> {
             .chain(
                 self.variables(db)
                     .iter()
-                    .flat_map(move |v| v.iter(db, sema)),
+                    .flat_map(move |v| v.iter(db, sema))
+            )
+            .chain(
+                self.statements(db)
+                    .iter()
+                    .flat_map(move |s| s.iter(db, sema)),
             )
     }
 }
