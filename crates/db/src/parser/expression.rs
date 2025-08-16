@@ -277,33 +277,17 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                     }),
                     sema.current_scope,
                 )),
-                ast::generated::Null_RefAddr::RefAddr(a) => match a.children.deref() {
-                    ast::generated::InstanceName_SymbolicVariable::SymbolicVariable(s) => {
-                        Ok(Expr::new(
-                            sema.db,
-                            s.get_span(),
-                            ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
-                                value: RefValue::Address(RefAdress::Symbolic(SymbolicVariable {
-                                    this: s.this.is_some(),
-                                    kind: s.children.parse(sema)?,
-                                })),
-                            }),
-                            sema.current_scope,
-                        ))
-                    }
-                    ast::generated::InstanceName_SymbolicVariable::InstanceName(i) => {
-                        Ok(Expr::new(
-                            sema.db,
-                            r.get_span(),
-                            ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
-                                value: RefValue::Address(RefAdress::Instance(Ident::from_node(
-                                    sema.db, sema.file, i,
-                                )?)),
-                            }),
-                            sema.current_scope,
-                        ))
-                    }
-                },
+                ast::generated::Null_RefAddr::RefAddr(a) => Ok(Expr::new(
+                    sema.db,
+                    a.children.get_span(),
+                    ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
+                        value: RefValue::Address(RefAdress::Symbolic(SymbolicVariable {
+                            this: a.children.this.is_some(),
+                            kind: a.children.children.parse(sema)?,
+                        })),
+                    }),
+                    sema.current_scope,
+                )),
             },
         }
     }
