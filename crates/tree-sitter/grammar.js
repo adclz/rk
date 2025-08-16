@@ -1048,10 +1048,10 @@ module.exports = grammar({
             field("variable_name", $.identifier),
             'AT',
             '%',
-            $.IQM,
+            field("IQM", $.IQM),
             '*',
             ':',
-            $.var_spec
+            field("spec", $.var_spec)
         ),
 
         // Var_Spec : Simple_Spec | Array_Spec | Struct_Type_Access

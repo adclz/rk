@@ -667,7 +667,8 @@ impl<'db> ParseSpecInit<'db> for ast::generated::LocPartlyVar {
         &self,
         sema: &SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<SpecInitResult<'db>> {
-        todo!()
+        let spec = self.spec.children.to_spec(sema)?;
+        Ok(SpecInitResult::new(spec, None))
     }
 }
 
