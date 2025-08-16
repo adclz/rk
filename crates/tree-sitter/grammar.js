@@ -118,7 +118,7 @@ const RESERVED_NAMES = [
     "VAR_EXTERNAL",
     "VAR_GLOBAL",
     "VAR_LOCATED",
-    "VAR_PARTLY",
+    //"VAR_PARTLY",
     "RETAIN", "NON_RETAIN",
     "IF", "THEN", "ELSE", "ELSIF", "END_IF",
     "CASE", "OF", "END_CASE",
@@ -241,6 +241,7 @@ module.exports = grammar({
         // so permissive that it is fine to call functions inside.
         // for now we will forbid function calls, until the day we implement compile time evaluation
         ERR_func_call_in_init: $ => prec(2, $.func_call),
+
 
         // Table 3 - Comments 
 
@@ -795,14 +796,16 @@ module.exports = grammar({
         ref_addr: $ => seq(
             'REF',
             '(',
-            choice($.symbolic_variable, $.instance_name),
+            $.symbolic_variable,
             ')'
         ),
 
-        ref_deref: $ => prec(RK_PREC.dereference, seq(
-            field("ref", $.identifier),
-            '^'
-        )),
+        ref_deref: $ => prec(RK_PREC.dereference,
+            seq( 
+                field("ref", $.identifier),
+                '^'
+            ),
+        ),
 
         // Table 13 - Declaration of variables/Table 14 – Initialization of variables 
 
@@ -988,6 +991,8 @@ module.exports = grammar({
 
         _external_var_kind: $ => choice($.var_decl, $.array_conformand),
 
+
+        // Global_Var_Decls : 'VAR_GLOBAL' ( 'CONSTANT' | 'RETAIN' )? ( Global_Var_Decl ';' )* 'END_VAR';
         global_var_decls: $ => seq(
             'VAR_GLOBAL',
             field("constant_or_retain", optional(choice('CONSTANT', 'RETAIN'))),
@@ -996,18 +1001,19 @@ module.exports = grammar({
             optional(';')
         ),
 
+        // Global_Var_Decl : Global_Var_Spec ':' ( Loc_Var_Spec_Init | FB_Type_Access ); 
         global_var_decl: $ => seq(
             field("spec", $.global_var_spec),
             ':',
             field("type", $._global_var_kind)
         ),
-
         _global_var_kind: $ => choice($.loc_var_spec_init, $.namespace_access),
 
+        // Global_Var_Spec : ( Global_Var_Name ( ',' Global_Var_Name )* ) | ( Global_Var_Name Located_At ); 
         global_var_spec: $ => choice(
-            seq(commaSep1($.identifier)),
+            seq(commaSep1(field("name", $.identifier))),
             seq(
-                $.identifier,
+                field("name", $.identifier),
                 $.located_at
             )
         ),
@@ -1031,9 +1037,9 @@ module.exports = grammar({
         ),
 
         loc_partly_var_decl: $ => seq(
-            'VAR_PARTLY',
+            'VAR',
             field("retain", optional(choice('RETAIN', 'NON_RETAIN'))),
-            repeat(seq($.loc_partly_var, optional(';'))),
+            repeat1(seq($.loc_partly_var, optional(';'))),
             'END_VAR',
             optional(';')
         ),
@@ -1175,7 +1181,7 @@ module.exports = grammar({
         class_decl: $ => seq(
             'CLASS',
             field("qualifier", optional(choice('FINAL', 'ABSTRACT'))),
-            field("name", $.class_type_name),
+            field("name", $.identifier),
             field("directives", repeat($.using_directive)),
             optional($.ERR_implements_before_extends),
             optional(seq("EXTENDS", field("extends", $.namespace_access))),
@@ -1191,13 +1197,6 @@ module.exports = grammar({
             ...func_var_decls($),
             ...other_var_decls($)
         ),
-
-        class_type_name: $ => $.identifier,
-
-        instance_name: $ => prec(RK_PREC.dereference, seq(
-            field("name", $.identifier),
-            repeat1('^')
-        )),
 
         interface_decl: $ => seq(
             'INTERFACE',
@@ -1221,7 +1220,7 @@ module.exports = grammar({
 
         interface_value: $ => choice(
             $.symbolic_variable,
-            $.instance_name,
+            $.path_expression,
             'NULL'
         ),
 
@@ -1242,7 +1241,8 @@ module.exports = grammar({
                 $.temp_var_decls,
                 ...other_var_decls($),
                 $.loc_var_decls,
-                $.prog_access_decl
+                $.prog_access_decls,
+                $.global_var_decls
             ))),
             field("body", optional($.fb_body)),
             'END_PROGRAM'
@@ -1251,25 +1251,27 @@ module.exports = grammar({
         prog_type_access: $ => $.namespace_access,
 
         prog_access_decls: $ => seq(
-            'ref_deref',
-            repeat(seq($.prog_access_decl, ';')),
-            $.identifier
+            'VAR_ACCESS',
+            repeat(seq($.prog_access_decl, optional(';'))),
+            'END_VAR'
         ),
 
+        // Prog_Access_Decl : Access_Name ':' Symbolic_Variable Multibit_Part_Access ?
+        // ':' Data_Type_Access Access_Direction ?; 
         prog_access_decl: $ => seq(
-            $.access_name,
+            field("name", $.identifier),
             ':',
-            $.symbolic_variable,
-            optional($.multibit_part_access),
+            field("variable", $.symbolic_variable),
+            optional(seq(".", $.direct_variable)),
             ':',
-            $.data_type_access,
-            $.access_direction
+            field("access", $.data_type_access),
+            field("direction", optional($.access_direction))
         ),
 
         // Table 54 - 61 - Sequential Function Chart (SFC) 
 
         SFC: $ => repeat1($.SFC_network),
-
+ 
         SFC_network: $ => seq(
             $.initial_step,
             repeat(choice($.step, $.transition, $.action))
@@ -1364,8 +1366,8 @@ module.exports = grammar({
             'CONFIGURATION',
             field("name", $.config_name),
             field("global_variables", optional($.global_var_decls)),
-            field("resources", repeat1(choice($.single_resource_decl, $.resource_decl))),
-            //field("access_decls", optional($.access_decls)),
+            field("resources", repeat(choice($.single_resource_decl, $.resource_decl))),
+            field("access_decls", optional($.access_decls)),
             field("config_init", optional($.config_init)),
             'END_CONFIGURATION'
         ),
@@ -1376,14 +1378,17 @@ module.exports = grammar({
             'ON',
             field("resource_type_name", $.resource_type_name),
             field("global_variables", optional($.global_var_decls)),
-            field("resource", $.single_resource_decl),
+            field("resource", repeat($.single_resource_decl)),
             'END_RESOURCE'
         ),
 
-        single_resource_decl: $ => prec.left(seq(
-            repeat(seq($.task_config, ';')),
-            repeat1(seq($.prog_config, ';'))
-        )),
+        single_resource_decl: $ => seq(
+             choice(
+                $.task_config,
+                $.prog_config
+            ),
+            optional(";")
+        ),
 
         access_decls: $ => seq(
             'VAR_ACCESS',
@@ -1392,29 +1397,21 @@ module.exports = grammar({
             optional(';')
         ),
 
+        // Access_Decl : Access_Name ':' Access_Path ':' Data_Type_Access Access_Direction ?; 
         access_decl: $ => seq(
-            $.access_name,
+            field("name", $.identifier),
             ':',
-            $.access_path,
+            field("path", $.access_path),
             ':',
-            optional(seq($.data_type_access, $.access_direction)),
+            field("access", $.data_type_access), 
+            field("direction", optional($.access_direction)),
         ),
 
-        access_path: $ => choice(
-            seq(optional(seq($.identifier, '.')), $.direct_variable),
-            seq(
-                optional(seq($.identifier, '.')),
-                repeat(seq(choice($.instance_name), '.')),
-                $.symbolic_variable
-            )
-        ),
-
-        access_name: $ => $.identifier,
-
-        prog_output_access: $ => seq(
-            field("prog_name", $.identifier),
-            '.',
-            $.symbolic_variable
+        // Access_Path : ( Resource_Name '.' )? Direct_Variable | ( Resource_Name '.' )? ( Prog_Name '.' )? 
+        // ( ( FB_Instance_Name | Class_Instance_Name ) '.' )* Symbolic_Variable; 
+        access_path: $ => seq(
+            field("path", $.path_expression),
+            optional(seq(".", field("direct", $.direct_variable))),
         ),
 
         access_direction: $ => choice('READ_WRITE', 'READ_ONLY'),
@@ -1435,7 +1432,7 @@ module.exports = grammar({
 
         data_source: $ => choice(
             $.constant,
-            $.prog_output_access,
+            $.path_expression,
             $.direct_variable
         ),
 
@@ -1446,10 +1443,10 @@ module.exports = grammar({
             field("task", optional(seq('WITH', $.identifier))),
             ':',
             field("access", $.prog_type_access),
-            field("configuration_elements", optional(seq('(', $.prog_conf_elems, ')')))
+            field("configuration_elements", optional($.prog_conf_elems)),
         ),
 
-        prog_conf_elems: $ => commaSep1($.prog_conf_elem),
+        prog_conf_elems: $ => seq("(", commaSep($.prog_conf_elem), ")"),
 
         prog_conf_elem: $ => choice(
             $.fb_task,
@@ -1457,7 +1454,7 @@ module.exports = grammar({
         ),
 
         fb_task: $ => seq(
-            $.instance_name,
+            $.path_expression,
             'WITH',
             field("task", $.identifier)
         ),
@@ -1469,12 +1466,12 @@ module.exports = grammar({
 
         prog_data_source: $ => choice(
             $.constant,
-            $.field_expression,
+            $.path_expression,
             $.direct_variable
         ),
 
         data_sink: $ => choice(
-            $.field_expression,
+            $.path_expression,
             $.direct_variable
         ),
 
@@ -1485,21 +1482,13 @@ module.exports = grammar({
             optional(';')
         ),
 
+        // Config_Inst_Init : Resource_Name '.' Prog_Name '.' ( ( FB_Instance_Name | Class_Instance_Name ) '.' )*
+        // ( Variable_Name Located_At ? ':' Loc_Var_Spec_Init
+        // | ( ( FB_Instance_Name ':' FB_Type_Access )
+        // | ( Class_Instance_Name ':' Class_Type_Access ) ) ':=' Struct_Init );
         config_inst_init: $ => seq(
-            field("resource", $.identifier),
-            '.',
-            field("prog", $.identifier),
-            '.',
-            repeat(seq(choice($.instance_name), '.')),
-            choice(
-                seq($.identifier, optional($.located_at), ':', $.loc_var_spec_init),
-                seq(
-                    $.instance_name,
-                    ':',
-                    $.namespace_access,
-                    $.struct_type_init
-                )
-            )
+            field("path", $.path_expression),
+            seq(optional($.located_at), $.loc_var_spec_init)
         ),
 
         // Table 64 - Namespace 
