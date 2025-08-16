@@ -8,8 +8,7 @@ CLASS class END_CLASS
 
     (source_file
       (class_decl
-        (class_type_name
-          (identifier))))
+        (identifier)))
 
 ================================================================================
 Class definition
@@ -51,8 +50,7 @@ END_CLASS
 
     (source_file
       (class_decl
-        (class_type_name
-          (identifier))
+        (identifier)
         (var_decls
           (var_decl_init_list
             (variable_list

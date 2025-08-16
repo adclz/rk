@@ -1,0 +1,578 @@
+================================================================================
+Declaration of a program
+================================================================================
+
+PROGRAM myPrg END_PROGRAM 
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (prog_decl
+        (identifier)))
+
+================================================================================
+Declaration of inputs
+================================================================================
+
+PROGRAM myPrg
+    VAR_INPUT IN: BOOL; T1: TIME; END_VAR
+END_PROGRAM 
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (prog_decl
+        (identifier)
+        (input_decls
+          (input_var
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (bit_str_type_name
+                  (bool_name)))))
+          (input_var
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (time_type_name)))))))
+
+================================================================================
+Declaration of inputs
+================================================================================
+
+PROGRAM myPrg
+    VAR_OUTPUT OUT: BOOL; ET_OFF: TIME; END_VAR 
+END_PROGRAM 
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (prog_decl
+        (identifier)
+        (output_decls
+          (output_var
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (bit_str_type_name
+                  (bool_name)))))
+          (output_var
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (time_type_name)))))))
+
+================================================================================
+Declaration of outputs
+================================================================================
+
+PROGRAM myPrg
+    VAR_OUTPUT OUT: BOOL; ET_OFF: TIME; END_VAR 
+END_PROGRAM 
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (prog_decl
+        (identifier)
+        (output_decls
+          (output_var
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (bit_str_type_name
+                  (bool_name)))))
+          (output_var
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (time_type_name)))))))
+
+================================================================================
+Declaration of in-outs
+================================================================================
+
+PROGRAM myPrg
+    VAR_IN_OUT A: INT; END_VAR 
+END_PROGRAM 
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (prog_decl
+        (identifier)
+        (in_out_decls
+          (in_out_var
+            (variable_list
+              (identifier))
+            (var_decl
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name))))))))))
+
+================================================================================
+Declaration of temporary variables
+================================================================================
+
+PROGRAM myPrg
+    VAR_TEMP I: INT; END_VAR 
+END_PROGRAM 
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (prog_decl
+        (identifier)
+        (temp_var_decls
+          (temp_var
+            (variable_list
+              (identifier))
+            (var_decl
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name))))))))))
+
+================================================================================
+Declaration of static variables
+================================================================================
+
+PROGRAM myPrg
+    VAR B: REAL; END_VAR
+END_PROGRAM 
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (prog_decl
+        (identifier)
+        (var_decls
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (real_type_name
+                    (real_name)))))))))
+                    
+================================================================================
+Declaration of external variables
+================================================================================
+
+PROGRAM myPrg
+    VAR_EXTERNAL B: REAL; END_VAR 
+END_PROGRAM 
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (prog_decl
+        (identifier)
+        (external_var_decls
+          (external_decl
+            (identifier)
+            (var_decl
+              (simple_type_spec
+                (numeric_type_name
+                  (real_type_name
+                    (real_name)))))))))
+
+================================================================================
+Declaration of external variables (CONSTANT)
+================================================================================
+
+PROGRAM myPrg
+    VAR_EXTERNAL CONSTANT B: REAL; END_VAR 
+END_PROGRAM 
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (prog_decl
+        (identifier)
+        (external_var_decls
+          (external_decl
+            (identifier)
+            (var_decl
+              (simple_type_spec
+                (numeric_type_name
+                  (real_type_name
+                    (real_name)))))))))
+
+================================================================================
+Initialization of variables
+================================================================================
+
+PROGRAM myPrg
+    VAR_INPUT MN: INT:= 0; END_VAR
+    VAR_OUTPUT RES: INT:= 1; END_VAR
+    VAR B: REAL:= 12.1; END_VAR
+    VAR_TEMP I: INT:= 1; END_VAR
+END_PROGRAM 
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (prog_decl
+        (identifier)
+        (input_decls
+          (input_var
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name)))))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))))
+        (output_decls
+          (output_var
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name)))))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))))
+        (var_decls
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (real_type_name
+                    (real_name))))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (real_literal
+                        (real_value)))))))))
+        (temp_var_decls
+          (temp_var
+            (variable_list
+              (identifier))
+            (var_decl
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name)))))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))))))
+
+================================================================================
+Declaration of RETAIN qualifier on variables
+================================================================================
+
+PROGRAM myPrg
+    VAR_INPUT RETAIN X: REAL; END_VAR
+    VAR RETAIN X: REAL; END_VAR
+    VAR_OUTPUT RETAIN X: REAL; END_VAR
+END_PROGRAM 
+
+--------------------------------------------------------------------------------
+
+   (source_file
+      (prog_decl
+        (identifier)
+        (input_decls
+          (input_var
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (real_type_name
+                    (real_name)))))))
+        (retain_var_decls
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (real_type_name
+                    (real_name)))))))
+        (output_decls
+          (output_var
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (real_type_name
+                    (real_name)))))))))
+
+================================================================================
+Declaration of NON_RETAIN qualifier on variables
+================================================================================
+
+PROGRAM myPrg
+    VAR_INPUT NON_RETAIN X: REAL; END_VAR
+    VAR_OUTPUT NON_RETAIN X: REAL; END_VAR
+    VAR NON_RETAIN X: REAL; END_VAR
+END_PROGRAM 
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (prog_decl
+        (identifier)
+        (input_decls
+          (input_var
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (real_type_name
+                    (real_name)))))))
+        (output_decls
+          (output_var
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (real_type_name
+                    (real_name)))))))
+        (no_retain_var_decls
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (real_type_name
+                    (real_name)))))))))
+
+================================================================================
+Declaration of RETAIN qualifier on local FB instances
+================================================================================
+
+PROGRAM myPrg
+    VAR RETAIN TMR1: TON; END_VAR
+END_PROGRAM 
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (prog_decl
+        (identifier)
+        (retain_var_decls
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (namespace_access
+                  (identifier))))))))
+
+================================================================================
+Declaration of NON_RETAIN qualifier on local FB instances
+================================================================================
+
+PROGRAM myPrg
+    VAR NON_RETAIN TMR1: TON; END_VAR
+END_PROGRAM 
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (prog_decl
+        (identifier)
+        (no_retain_var_decls
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (namespace_access
+                  (identifier))))))))
+
+================================================================================
+Textual declaration of - rising edge inputs 
+================================================================================
+
+PROGRAM AND_EDGE
+    VAR_INPUT 
+        X: BOOL R_EDGE;
+        Y: BOOL F_EDGE;
+    END_VAR
+    
+    VAR_OUTPUT Z: BOOL; END_VAR
+
+        Z:= X AND Y; (* ST language example *)
+
+END_PROGRAM
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (prog_decl
+        (identifier)
+        (input_decls
+          (input_var
+            (variable_list
+              (identifier))
+            (edge_decl))
+          (input_var
+            (variable_list
+              (identifier))
+            (edge_decl)))
+        (output_decls
+          (output_var
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (bit_str_type_name
+                  (bool_name))))))
+        (fb_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (boolean_operator
+                  (and_operator
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field))))))
+                    (variable_access
+                      (variable
+                        (symbolic_variable
+                          (path_expression
+                            (var_access
+                              (field))))))))))))
+        (pascal_style_comment
+          (comment_text))))
+
+================================================================================
+VAR_GLOBAL...END_VAR declaration within a PROGRAM
+================================================================================
+
+PROGRAM myPrg
+    VAR_GLOBAL z1: BYTE; END_VAR
+END_PROGRAM
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (prog_decl
+        (identifier)
+        (global_var_decls
+          (global_var_decl
+            (global_var_spec
+              (identifier))
+            (namespace_access
+              (identifier))))))
+
+================================================================================
+VAR_GLOBAL CONSTANT declarations within PROGRAM type declarations
+================================================================================
+
+PROGRAM myPrg
+    VAR_GLOBAL CONSTANT z2: BYTE; END_VAR 
+END_PROGRAM
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (prog_decl
+        (identifier)
+        (global_var_decls
+          (global_var_decl
+            (global_var_spec
+              (identifier))
+            (namespace_access
+              (identifier))))))
+
+================================================================================
+VAR_ACCESS...END_VAR declaration within a PROGRAM
+================================================================================
+
+PROGRAM myPrg
+    VAR_ACCESS
+        ABLE: STATION_1.%IX1.1: BOOL READ_ONLY;
+        BAKER: STATION_1.P1.x2: UINT READ_WRITE;
+    END_VAR
+END_PROGRAM
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (prog_decl
+        (identifier)
+        (prog_access_decls
+          (prog_access_decl
+            (identifier)
+            (symbolic_variable
+              (path_expression
+                (var_access
+                  (field))))
+            (direct_variable
+              (direct_variable_identifier)
+              (offset
+                (unsigned_int)
+                (unsigned_int)))
+            (bit_str_type_name
+              (bool_name))
+            (access_direction))
+          (prog_access_decl
+            (identifier)
+            (symbolic_variable
+              (path_expression
+                (field_expression
+                  (path_expression
+                    (field_expression
+                      (path_expression
+                        (var_access
+                          (field)))
+                      (var_access
+                        (field))))
+                  (var_access
+                    (field)))))
+            (numeric_type_name
+              (int_type_name
+                (unsign_int_type_name
+                  (uint_name))))
+            (access_direction)))))

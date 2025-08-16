@@ -128,8 +128,7 @@ END_CLASS
 
     (source_file
       (class_decl
-        (class_type_name
-          (identifier))
+        (identifier)
         (interface_name_list
           (namespace_access
             (identifier)))

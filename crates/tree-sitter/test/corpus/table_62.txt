@@ -1,0 +1,750 @@
+================================================================================
+Configuration and resource declaration
+================================================================================
+
+CONFIGURATION cfg
+    VAR_GLOBAL w: UINT; END_VAR
+    
+    RESOURCE STATION_1 ON PROCESSOR_TYPE_1
+        VAR_GLOBAL z1: BYTE; END_VAR
+    END_RESOURCE
+
+END_CONFIGURATION 
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (config_decl
+        (config_name
+          (identifier))
+        (global_var_decls
+          (global_var_decl
+            (global_var_spec
+              (identifier))
+            (namespace_access
+              (identifier))))
+        (resource_decl
+          (identifier)
+          (resource_type_name
+            (identifier))
+          (global_var_decls
+            (global_var_decl
+              (global_var_spec
+                (identifier))
+              (namespace_access
+                (identifier)))))))
+
+================================================================================
+Periodic TASK - Non-periodic TASK
+================================================================================
+
+CONFIGURATION cfg
+    RESOURCE STATION_1 ON PROCESSOR_TYPE_1
+        VAR_GLOBAL z1: BYTE; END_VAR
+        
+        TASK SLOW_1(INTERVAL:= t#20ms, PRIORITY:= 2);
+        TASK FAST_1(INTERVAL:= t#10ms, PRIORITY:= 1);
+    
+    END_RESOURCE
+END_CONFIGURATION 
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (config_decl
+        (config_name
+          (identifier))
+        (resource_decl
+          (identifier)
+          (resource_type_name
+            (identifier))
+          (global_var_decls
+            (global_var_decl
+              (global_var_spec
+                (identifier))
+              (namespace_access
+                (identifier))))
+          (single_resource_decl
+            (task_config
+              (identifier)
+              (task_init
+                (data_source
+                  (constant
+                    (time_literal
+                      (duration
+                        (time
+                          (time_type_name)
+                          (time_value))))))
+                (unsigned_int))))
+          (single_resource_decl
+            (task_config
+              (identifier)
+              (task_init
+                (data_source
+                  (constant
+                    (time_literal
+                      (duration
+                        (time
+                          (time_type_name)
+                          (time_value))))))
+                (unsigned_int)))))))
+
+
+================================================================================
+Periodic TASK - Non-periodic TASK
+================================================================================
+
+CONFIGURATION cfg
+    RESOURCE STATION_1 ON PROCESSOR_TYPE_1
+        VAR_GLOBAL z1: BYTE; END_VAR
+        
+        TASK SLOW_1(INTERVAL:= t#20ms, PRIORITY:= 2);
+        TASK FAST_1(INTERVAL:= t#10ms, PRIORITY:= 1);
+    
+    END_RESOURCE
+END_CONFIGURATION 
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (config_decl
+        (config_name
+          (identifier))
+        (resource_decl
+          (identifier)
+          (resource_type_name
+            (identifier))
+          (global_var_decls
+            (global_var_decl
+              (global_var_spec
+                (identifier))
+              (namespace_access
+                (identifier))))
+          (single_resource_decl
+            (task_config
+              (identifier)
+              (task_init
+                (data_source
+                  (constant
+                    (time_literal
+                      (duration
+                        (time
+                          (time_type_name)
+                          (time_value))))))
+                (unsigned_int))))
+          (single_resource_decl
+            (task_config
+              (identifier)
+              (task_init
+                (data_source
+                  (constant
+                    (time_literal
+                      (duration
+                        (time
+                          (time_type_name)
+                          (time_value))))))
+                (unsigned_int)))))))
+
+================================================================================
+WITH for PROGRAM to TASK association 
+================================================================================
+
+CONFIGURATION cfg
+	PROGRAM P1 WITH SLOW_1: F(x1:= %IX1.1);
+    
+	PROGRAM P2: G( 
+    		FB1^ WITH SLOW_1,
+			FB2^ WITH FAST_1);
+
+END_CONFIGURATION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (config_decl
+        (config_name
+          (identifier))
+        (single_resource_decl
+          (prog_config
+            (identifier)
+            (identifier)
+            (prog_type_access
+              (namespace_access
+                (identifier)))
+            (prog_conf_elems
+              (prog_conf_elem
+                (prog_cnxn
+                  (symbolic_variable
+                    (path_expression
+                      (var_access
+                        (field))))
+                  (prog_data_source
+                    (direct_variable
+                      (direct_variable_identifier)
+                      (offset
+                        (unsigned_int)
+                        (unsigned_int)))))))))
+        (single_resource_decl
+          (prog_config
+            (identifier)
+            (prog_type_access
+              (namespace_access
+                (identifier)))
+            (prog_conf_elems
+              (prog_conf_elem
+                (fb_task
+                  (path_expression
+                    (var_access
+                      (ref_deref
+                        (identifier))))
+                  (identifier)))
+              (prog_conf_elem
+                (fb_task
+                  (path_expression
+                    (var_access
+                      (ref_deref
+                        (identifier))))
+                  (identifier))))))))
+
+================================================================================
+Directly represented variables in VAR_GLOBAL 
+================================================================================
+
+CONFIGURATION cfg
+
+	RESOURCE STATION_2 ON PROCESSOR_TYPE_2 
+		
+        VAR_GLOBAL z2 : BOOL; 
+			x2 AT %QW5: INT; 
+		END_VAR 
+
+	END_RESOURCE
+
+END_CONFIGURATION
+
+--------------------------------------------------------------------------------
+
+   (source_file
+      (config_decl
+        (config_name
+          (identifier))
+        (resource_decl
+          (identifier)
+          (resource_type_name
+            (identifier))
+          (global_var_decls
+            (global_var_decl
+              (global_var_spec
+                (identifier))
+              (namespace_access
+                (identifier)))
+            (global_var_decl
+              (global_var_spec
+                (identifier)
+                (located_at
+                  (direct_variable
+                    (direct_variable_identifier)
+                    (offset
+                      (unsigned_int)))))
+              (namespace_access
+                (identifier)))))))
+
+================================================================================
+Connection of GLOBAL variables to PROGRAM inputs 
+================================================================================
+
+CONFIGURATION cfg
+
+	RESOURCE STATION_2 ON PROCESSOR_TYPE_2 
+		VAR_GLOBAL z2 : BOOL; 
+			x2 AT %QW5: INT; 
+		END_VAR 
+
+		TASK PER_2(INTERVAL:= t#50ms, PRIORITY:= 2); 
+		TASK INT_2(SINGLE:= z2, PRIORITY:= 1);
+    
+		PROGRAM P1 WITH PER_2: F(x1:= z2, x2:= w);
+        
+		PROGRAM P4 WITH INT_2: H(HOUT1 => %QW5,
+								 FB1^ WITH PER_2)
+	END_RESOURCE
+
+END_CONFIGURATION
+
+--------------------------------------------------------------------------------
+
+   (source_file
+      (config_decl
+        (config_name
+          (identifier))
+        (resource_decl
+          (identifier)
+          (resource_type_name
+            (identifier))
+          (global_var_decls
+            (global_var_decl
+              (global_var_spec
+                (identifier))
+              (namespace_access
+                (identifier)))
+            (global_var_decl
+              (global_var_spec
+                (identifier)
+                (located_at
+                  (direct_variable
+                    (direct_variable_identifier)
+                    (offset
+                      (unsigned_int)))))
+              (namespace_access
+                (identifier))))
+          (single_resource_decl
+            (task_config
+              (identifier)
+              (task_init
+                (data_source
+                  (constant
+                    (time_literal
+                      (duration
+                        (time
+                          (time_type_name)
+                          (time_value))))))
+                (unsigned_int))))
+          (single_resource_decl
+            (task_config
+              (identifier)
+              (task_init
+                (data_source
+                  (path_expression
+                    (var_access
+                      (field))))
+                (unsigned_int))))
+          (single_resource_decl
+            (prog_config
+              (identifier)
+              (identifier)
+              (prog_type_access
+                (namespace_access
+                  (identifier)))
+              (prog_conf_elems
+                (prog_conf_elem
+                  (prog_cnxn
+                    (symbolic_variable
+                      (path_expression
+                        (var_access
+                          (field))))
+                    (prog_data_source
+                      (path_expression
+                        (var_access
+                          (field))))))
+                (prog_conf_elem
+                  (prog_cnxn
+                    (symbolic_variable
+                      (path_expression
+                        (var_access
+                          (field))))
+                    (prog_data_source
+                      (path_expression
+                        (var_access
+                          (field)))))))))
+          (single_resource_decl
+            (prog_config
+              (identifier)
+              (identifier)
+              (prog_type_access
+                (namespace_access
+                  (identifier)))
+              (prog_conf_elems
+                (prog_conf_elem
+                  (prog_cnxn
+                    (symbolic_variable
+                      (path_expression
+                        (var_access
+                          (field))))
+                    (data_sink
+                      (direct_variable
+                        (direct_variable_identifier)
+                        (offset
+                          (unsigned_int))))))
+                (prog_conf_elem
+                  (fb_task
+                    (path_expression
+                      (var_access
+                        (ref_deref
+                          (identifier))))
+                    (identifier)))))))))
+
+================================================================================
+VAR_ACCESS ... END_VAR
+================================================================================
+
+CONFIGURATION cfg
+
+    VAR_ACCESS
+        ABLE : STATION_1.%IX1.1 : BOOL READ_ONLY;
+        BAKER : STATION_1.P1.x2 : UINT READ_WRITE;
+        CHARLIE : STATION_1.z1 : BYTE;
+        DOG : w : UINT READ_ONLY;
+        ALPHA : STATION_2.P1.y1 : BYTE READ_ONLY;
+        BETA : STATION_2.P4.HOUT1 : INT READ_ONLY;
+        GAMMA : STATION_2.z2 : BOOL READ_WRITE;
+        S1_COUNT : STATION_1.P1.COUNT : INT;
+        THETA : STATION_2.P4.FB2.d1 : BOOL READ_WRITE;
+        ZETA : STATION_2.P4.FB1.c1 : BOOL READ_ONLY;
+        OMEGA : STATION_2.P4.FB1.C3 : INT READ_WRITE;
+    END_VAR
+
+END_CONFIGURATION
+
+--------------------------------------------------------------------------------
+
+   (source_file
+      (config_decl
+        (config_name
+          (identifier))
+        (access_decls
+          (access_decl
+            (identifier)
+            (access_path
+              (path_expression
+                (var_access
+                  (field)))
+              (direct_variable
+                (direct_variable_identifier)
+                (offset
+                  (unsigned_int)
+                  (unsigned_int))))
+            (bit_str_type_name
+              (bool_name))
+            (access_direction))
+          (access_decl
+            (identifier)
+            (access_path
+              (path_expression
+                (field_expression
+                  (path_expression
+                    (field_expression
+                      (path_expression
+                        (var_access
+                          (field)))
+                      (var_access
+                        (field))))
+                  (var_access
+                    (field)))))
+            (numeric_type_name
+              (int_type_name
+                (unsign_int_type_name
+                  (uint_name))))
+            (access_direction))
+          (access_decl
+            (identifier)
+            (access_path
+              (path_expression
+                (field_expression
+                  (path_expression
+                    (var_access
+                      (field)))
+                  (var_access
+                    (field)))))
+            (bit_str_type_name
+              (multibits_type_name
+                (byte_name))))
+          (access_decl
+            (identifier)
+            (access_path
+              (path_expression
+                (var_access
+                  (field))))
+            (numeric_type_name
+              (int_type_name
+                (unsign_int_type_name
+                  (uint_name))))
+            (access_direction))
+          (access_decl
+            (identifier)
+            (access_path
+              (path_expression
+                (field_expression
+                  (path_expression
+                    (field_expression
+                      (path_expression
+                        (var_access
+                          (field)))
+                      (var_access
+                        (field))))
+                  (var_access
+                    (field)))))
+            (bit_str_type_name
+              (multibits_type_name
+                (byte_name)))
+            (access_direction))
+          (access_decl
+            (identifier)
+            (access_path
+              (path_expression
+                (field_expression
+                  (path_expression
+                    (field_expression
+                      (path_expression
+                        (var_access
+                          (field)))
+                      (var_access
+                        (field))))
+                  (var_access
+                    (field)))))
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))
+            (access_direction))
+          (access_decl
+            (identifier)
+            (access_path
+              (path_expression
+                (field_expression
+                  (path_expression
+                    (var_access
+                      (field)))
+                  (var_access
+                    (field)))))
+            (bit_str_type_name
+              (bool_name))
+            (access_direction))
+          (access_decl
+            (identifier)
+            (access_path
+              (path_expression
+                (field_expression
+                  (path_expression
+                    (field_expression
+                      (path_expression
+                        (var_access
+                          (field)))
+                      (var_access
+                        (field))))
+                  (var_access
+                    (field)))))
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name)))))
+          (access_decl
+            (identifier)
+            (access_path
+              (path_expression
+                (field_expression
+                  (path_expression
+                    (field_expression
+                      (path_expression
+                        (field_expression
+                          (path_expression
+                            (var_access
+                              (field)))
+                          (var_access
+                            (field))))
+                      (var_access
+                        (field))))
+                  (var_access
+                    (field)))))
+            (bit_str_type_name
+              (bool_name))
+            (access_direction))
+          (access_decl
+            (identifier)
+            (access_path
+              (path_expression
+                (field_expression
+                  (path_expression
+                    (field_expression
+                      (path_expression
+                        (field_expression
+                          (path_expression
+                            (var_access
+                              (field)))
+                          (var_access
+                            (field))))
+                      (var_access
+                        (field))))
+                  (var_access
+                    (field)))))
+            (bit_str_type_name
+              (bool_name))
+            (access_direction))
+          (access_decl
+            (identifier)
+            (access_path
+              (path_expression
+                (field_expression
+                  (path_expression
+                    (field_expression
+                      (path_expression
+                        (field_expression
+                          (path_expression
+                            (var_access
+                              (field)))
+                          (var_access
+                            (field))))
+                      (var_access
+                        (field))))
+                  (var_access
+                    (field)))))
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))
+            (access_direction)))))
+
+================================================================================
+VAR_CONFIG...END_VAR
+================================================================================
+
+CONFIGURATION cfg
+
+    VAR_CONFIG
+        STATION_1.P1.COUNT: INT:= 1;
+        STATION_2.P1.COUNT: INT:= 100;
+        STATION_1.P1.TIME1: TON:= (PT:= T#2.5s);
+        STATION_2.P1.TIME1: TON:= (PT:= T#4.5s);
+        STATION_2.P4.FB1.C2 AT %QB25: BYTE;
+    END_VAR
+
+END_CONFIGURATION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (config_decl
+        (config_name
+          (identifier))
+        (config_init
+          (config_inst_init
+            (path_expression
+              (field_expression
+                (path_expression
+                  (field_expression
+                    (path_expression
+                      (var_access
+                        (field)))
+                    (var_access
+                      (field))))
+                (var_access
+                  (field))))
+            (loc_var_spec_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name)))))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int)))))))))
+          (config_inst_init
+            (path_expression
+              (field_expression
+                (path_expression
+                  (field_expression
+                    (path_expression
+                      (var_access
+                        (field)))
+                    (var_access
+                      (field))))
+                (var_access
+                  (field))))
+            (loc_var_spec_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name)))))
+              (simple_type_init
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int)))))))))
+          (config_inst_init
+            (path_expression
+              (field_expression
+                (path_expression
+                  (field_expression
+                    (path_expression
+                      (var_access
+                        (field)))
+                    (var_access
+                      (field))))
+                (var_access
+                  (field))))
+            (loc_var_spec_init
+              (simple_type_spec
+                (namespace_access
+                  (identifier)))
+              (struct_type_init
+                (init_elem
+                  (struct_elem
+                    (identifier)
+                    (init_elem
+                      (constant_expr
+                        (constant
+                          (time_literal
+                            (duration
+                              (time
+                                (time_type_name)
+                                (time_value))))))))))))
+          (config_inst_init
+            (path_expression
+              (field_expression
+                (path_expression
+                  (field_expression
+                    (path_expression
+                      (var_access
+                        (field)))
+                    (var_access
+                      (field))))
+                (var_access
+                  (field))))
+            (loc_var_spec_init
+              (simple_type_spec
+                (namespace_access
+                  (identifier)))
+              (struct_type_init
+                (init_elem
+                  (struct_elem
+                    (identifier)
+                    (init_elem
+                      (constant_expr
+                        (constant
+                          (time_literal
+                            (duration
+                              (time
+                                (time_type_name)
+                                (time_value))))))))))))
+          (config_inst_init
+            (path_expression
+              (field_expression
+                (path_expression
+                  (field_expression
+                    (path_expression
+                      (field_expression
+                        (path_expression
+                          (var_access
+                            (field)))
+                        (var_access
+                          (field))))
+                    (var_access
+                      (field))))
+                (var_access
+                  (field))))
+            (located_at
+              (direct_variable
+                (direct_variable_identifier)
+                (offset
+                  (unsigned_int))))
+            (loc_var_spec_init
+              (simple_type_spec
+                (bit_str_type_name
+                  (multibits_type_name
+                    (byte_name)))))))))
