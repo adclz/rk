@@ -709,23 +709,95 @@
     "fields": {}
   },
   {
+    "type": "access_decl",
+    "named": true,
+    "fields": {
+      "access": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "data_type_access",
+            "named": true
+          }
+        ]
+      },
+      "direction": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "access_direction",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "path": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "access_path",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "access_decls",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "access_decl",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "access_direction",
     "named": true,
     "fields": {}
   },
   {
-    "type": "access_name",
+    "type": "access_path",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "identifier",
-          "named": true
-        }
-      ]
+    "fields": {
+      "direct": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "direct_variable",
+            "named": true
+          }
+        ]
+      },
+      "path": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "path_expression",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -1392,7 +1464,7 @@
         "required": true,
         "types": [
           {
-            "type": "class_type_name",
+            "type": "identifier",
             "named": true
           }
         ]
@@ -1442,21 +1514,6 @@
     }
   },
   {
-    "type": "class_type_name",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "identifier",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
     "type": "comment_text",
     "named": true,
     "fields": {}
@@ -1484,6 +1541,16 @@
     "type": "config_decl",
     "named": true,
     "fields": {
+      "access_decls": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "access_decls",
+            "named": true
+          }
+        ]
+      },
       "config_init": {
         "multiple": false,
         "required": false,
@@ -1516,7 +1583,7 @@
       },
       "resources": {
         "multiple": true,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "resource_decl",
@@ -1549,22 +1616,12 @@
     "type": "config_inst_init",
     "named": true,
     "fields": {
-      "prog": {
+      "path": {
         "multiple": false,
         "required": true,
         "types": [
           {
-            "type": "identifier",
-            "named": true
-          }
-        ]
-      },
-      "resource": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "identifier",
+            "type": "path_expression",
             "named": true
           }
         ]
@@ -1575,27 +1632,11 @@
       "required": true,
       "types": [
         {
-          "type": "identifier",
-          "named": true
-        },
-        {
-          "type": "instance_name",
-          "named": true
-        },
-        {
           "type": "loc_var_spec_init",
           "named": true
         },
         {
           "type": "located_at",
-          "named": true
-        },
-        {
-          "type": "namespace_access",
-          "named": true
-        },
-        {
-          "type": "struct_type_init",
           "named": true
         }
       ]
@@ -1687,7 +1728,7 @@
           "named": true
         },
         {
-          "type": "field_expression",
+          "type": "path_expression",
           "named": true
         }
       ]
@@ -1710,7 +1751,7 @@
           "named": true
         },
         {
-          "type": "prog_output_access",
+          "type": "path_expression",
           "named": true
         }
       ]
@@ -2287,7 +2328,7 @@
       "required": true,
       "types": [
         {
-          "type": "instance_name",
+          "type": "path_expression",
           "named": true
         }
       ]
@@ -2569,15 +2610,22 @@
   {
     "type": "global_var_spec",
     "named": true,
-    "fields": {},
+    "fields": {
+      "name": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
-      "multiple": true,
-      "required": true,
+      "multiple": false,
+      "required": false,
       "types": [
-        {
-          "type": "identifier",
-          "named": true
-        },
         {
           "type": "located_at",
           "named": true
@@ -2837,22 +2885,6 @@
     }
   },
   {
-    "type": "instance_name",
-    "named": true,
-    "fields": {
-      "name": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "identifier",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
     "type": "int_kind",
     "named": true,
     "fields": {},
@@ -3048,6 +3080,26 @@
     "type": "loc_partly_var",
     "named": true,
     "fields": {
+      "IQM": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "IQM",
+            "named": true
+          }
+        ]
+      },
+      "spec": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "var_spec",
+            "named": true
+          }
+        ]
+      },
       "variable_name": {
         "multiple": false,
         "required": true,
@@ -3058,20 +3110,6 @@
           }
         ]
       }
-    },
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "IQM",
-          "named": true
-        },
-        {
-          "type": "var_spec",
-          "named": true
-        }
-      ]
     }
   },
   {
@@ -3095,7 +3133,7 @@
     },
     "children": {
       "multiple": true,
-      "required": false,
+      "required": true,
       "types": [
         {
           "type": "loc_partly_var",
@@ -4078,29 +4116,69 @@
   {
     "type": "prog_access_decl",
     "named": true,
+    "fields": {
+      "access": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "data_type_access",
+            "named": true
+          }
+        ]
+      },
+      "direction": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "access_direction",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "variable": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "symbolic_variable",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "direct_variable",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "prog_access_decls",
+    "named": true,
     "fields": {},
     "children": {
       "multiple": true,
-      "required": true,
+      "required": false,
       "types": [
         {
-          "type": "access_direction",
-          "named": true
-        },
-        {
-          "type": "access_name",
-          "named": true
-        },
-        {
-          "type": "data_type_access",
-          "named": true
-        },
-        {
-          "type": "multibit_part_access",
-          "named": true
-        },
-        {
-          "type": "symbolic_variable",
+          "type": "prog_access_decl",
           "named": true
         }
       ]
@@ -4154,7 +4232,7 @@
     "fields": {},
     "children": {
       "multiple": true,
-      "required": true,
+      "required": false,
       "types": [
         {
           "type": "prog_conf_elem",
@@ -4178,17 +4256,9 @@
         ]
       },
       "configuration_elements": {
-        "multiple": true,
+        "multiple": false,
         "required": false,
         "types": [
-          {
-            "type": "(",
-            "named": false
-          },
-          {
-            "type": ")",
-            "named": false
-          },
           {
             "type": "prog_conf_elems",
             "named": true
@@ -4252,7 +4322,7 @@
           "named": true
         },
         {
-          "type": "field_expression",
+          "type": "path_expression",
           "named": true
         }
       ]
@@ -4281,6 +4351,10 @@
             "named": true
           },
           {
+            "type": "global_var_decls",
+            "named": true
+          },
+          {
             "type": "in_out_decls",
             "named": true
           },
@@ -4305,7 +4379,7 @@
             "named": true
           },
           {
-            "type": "prog_access_decl",
+            "type": "prog_access_decls",
             "named": true
           },
           {
@@ -4332,32 +4406,6 @@
           }
         ]
       }
-    }
-  },
-  {
-    "type": "prog_output_access",
-    "named": true,
-    "fields": {
-      "prog_name": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "identifier",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "symbolic_variable",
-          "named": true
-        }
-      ]
     }
   },
   {
@@ -4428,10 +4476,6 @@
       "multiple": false,
       "required": true,
       "types": [
-        {
-          "type": "instance_name",
-          "named": true
-        },
         {
           "type": "symbolic_variable",
           "named": true
@@ -4555,8 +4599,8 @@
         ]
       },
       "resource": {
-        "multiple": false,
-        "required": true,
+        "multiple": true,
+        "required": false,
         "types": [
           {
             "type": "single_resource_decl",
@@ -4806,7 +4850,7 @@
     "named": true,
     "fields": {},
     "children": {
-      "multiple": true,
+      "multiple": false,
       "required": true,
       "types": [
         {
@@ -6569,6 +6613,10 @@
     "named": false
   },
   {
+    "type": "VAR_ACCESS",
+    "named": false
+  },
+  {
     "type": "VAR_CONFIG",
     "named": false
   },
@@ -6594,10 +6642,6 @@
   },
   {
     "type": "VAR_OUTPUT",
-    "named": false
-  },
-  {
-    "type": "VAR_PARTLY",
     "named": false
   },
   {
