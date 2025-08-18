@@ -39,36 +39,36 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
         section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
-            match child.deref() {
+            match child.cast(&sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_InputVar::ERRVariableWithNoSpec(child) => {
                     missing_type_for_variable(sema.db, child.get_span());
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_InputVar::InputVar(child) => {
-                    match child.Type.deref() {
+                    match child.Type.cast(&sema.ast) {
                         ast::generated::InputVarKind::VarDeclInit(var_decl) => {
-                            for variable in child.variables.children.iter() {
+                            for variable in child.variables.cast(&sema.ast).children.iter() {
                                 section.push(var_decl.to_variable(
                                     sema,
-                                    variable.deref(),
+                                    variable.cast(&sema.ast),
                                     VariableKind::Input,
                                 )?);
                             }
                         }
                         ast::generated::InputVarKind::ArrayConformand(var_decl) => {
-                            for variable in child.variables.children.iter() {
+                            for variable in child.variables.cast(&sema.ast).children.iter() {
                                 section.push(var_decl.to_variable(
                                     sema,
-                                    variable.deref(),
+                                    variable.cast(&sema.ast),
                                     VariableKind::Input,
                                 )?);
                             }
                         }
                         ast::generated::InputVarKind::EdgeDecl(edge_decl) => {
-                            for variable in child.variables.children.iter() {
+                            for variable in child.variables.cast(&sema.ast).children.iter() {
                                 section.push(edge_decl.to_variable(
                                     sema,
-                                    variable.deref(),
+                                    variable.cast(&sema.ast),
                                     VariableKind::Input,
                                 )?);
                             }
@@ -88,36 +88,36 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
         section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
-            match child.deref() {
+            match child.cast(&sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_FbInputVar::ERRVariableWithNoSpec(child) => {
                     missing_type_for_variable(sema.db, child.get_span());
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_FbInputVar::FbInputVar(child) => {
-                    match child.Type.deref() {
+                    match child.Type.cast(&sema.ast) {
                         ast::generated::FbInputVarKind::VarDeclInit(var_decl) => {
-                            for variable in child.variables.children.iter() {
+                            for variable in child.variables.cast(&sema.ast).children.iter() {
                                 section.push(var_decl.to_variable(
                                     sema,
-                                    variable.deref(),
+                                    variable.cast(&sema.ast),
                                     VariableKind::Input,
                                 )?);
                             }
                         }
                         ast::generated::FbInputVarKind::ArrayConformand(var_decl) => {
-                            for variable in child.variables.children.iter() {
+                            for variable in child.variables.cast(&sema.ast).children.iter() {
                                 section.push(var_decl.to_variable(
                                     sema,
-                                    variable.deref(),
+                                    variable.cast(&sema.ast),
                                     VariableKind::Input,
                                 )?);
                             }
                         }
                         ast::generated::FbInputVarKind::EdgeDecl(edge_decl) => {
-                            for variable in child.variables.children.iter() {
+                            for variable in child.variables.cast(&sema.ast).children.iter() {
                                 section.push(edge_decl.to_variable(
                                     sema,
-                                    variable.deref(),
+                                    variable.cast(&sema.ast),
                                     VariableKind::Input,
                                 )?);
                             }
@@ -137,27 +137,27 @@ impl<'db> ParseVarSection<'db> for ast::generated::OutputDecls {
         section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
-            match child.deref() {
+            match child.cast(&sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_OutputVar::ERRVariableWithNoSpec(child) => {
                     missing_type_for_variable(sema.db, child.get_span());
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_OutputVar::OutputVar(child) => {
-                    match child.Type.deref() {
+                    match child.Type.cast(&sema.ast) {
                         ast::generated::OutputVarKind::VarDeclInit(var_decl) => {
-                            for variable in child.variables.children.iter() {
+                            for variable in child.variables.cast(&sema.ast).children.iter() {
                                 section.push(var_decl.to_variable(
                                     sema,
-                                    variable.deref(),
+                                    variable.cast(&sema.ast),
                                     VariableKind::Output,
                                 )?);
                             }
                         }
                         ast::generated::OutputVarKind::ArrayConformand(var_decl) => {
-                            for variable in child.variables.children.iter() {
+                            for variable in child.variables.cast(&sema.ast).children.iter() {
                                 section.push(var_decl.to_variable(
                                     sema,
-                                    variable.deref(),
+                                    variable.cast(&sema.ast),
                                     VariableKind::Output,
                                 )?);
                             }
@@ -177,27 +177,27 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbOutputDecls {
         section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
-            match child.deref() {
+            match child.cast(&sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_FbOutputVar::ERRVariableWithNoSpec(child) => {
                     missing_type_for_variable(sema.db, child.get_span());
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_FbOutputVar::FbOutputVar(child) => {
-                    match child.Type.deref() {
+                    match child.Type.cast(&sema.ast) {
                         ast::generated::FbOutputVarKind::VarDeclInit(var_decl) => {
-                            for variable in child.variables.children.iter() {
+                            for variable in child.variables.cast(&sema.ast).children.iter() {
                                 section.push(var_decl.to_variable(
                                     sema,
-                                    variable.deref(),
+                                    variable.cast(&sema.ast),
                                     VariableKind::Output,
                                 )?);
                             }
                         }
                         ast::generated::FbOutputVarKind::ArrayConformand(var_decl) => {
-                            for variable in child.variables.children.iter() {
+                            for variable in child.variables.cast(&sema.ast).children.iter() {
                                 section.push(var_decl.to_variable(
                                     sema,
-                                    variable.deref(),
+                                    variable.cast(&sema.ast),
                                     VariableKind::Output,
                                 )?);
                             }
@@ -217,27 +217,27 @@ impl<'db> ParseVarSection<'db> for ast::generated::TempVarDecls {
         section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
-            match child.deref() {
+            match child.cast(&sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_TempVar::ERRVariableWithNoSpec(child) => {
                     missing_type_for_variable(sema.db, child.get_span());
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_TempVar::TempVar(child) => {
-                    match child.Type.deref() {
+                    match child.Type.cast(&sema.ast) {
                         ast::generated::TempVarKind::VarDecl(var_decl) => {
-                            for variable in child.variables.children.iter() {
+                            for variable in child.variables.cast(&sema.ast).children.iter() {
                                 section.push(var_decl.to_variable(
                                     sema,
-                                    variable.deref(),
+                                    variable.cast(&sema.ast),
                                     VariableKind::Input,
                                 )?);
                             }
                         }
                         ast::generated::TempVarKind::RefSpec(var_decl) => {
-                            for variable in child.variables.children.iter() {
+                            for variable in child.variables.cast(&sema.ast).children.iter() {
                                 section.push(var_decl.to_variable(
                                     sema,
-                                    variable.deref(),
+                                    variable.cast(&sema.ast),
                                     VariableKind::Input,
                                 )?);
                             }
@@ -257,27 +257,27 @@ impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
         section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
-            match child.deref() {
+            match child.cast(&sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_InOutVar::ERRVariableWithNoSpec(child) => {
                     missing_type_for_variable(sema.db, child.get_span());
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_InOutVar::InOutVar(child) => {
-                    match child.Type.deref() {
+                    match child.Type.cast(&sema.ast) {
                         ast::generated::InOutVarKind::ArrayConformand(var_decl) => {
-                            for variable in child.variables.children.iter() {
+                            for variable in child.variables.cast(&sema.ast).children.iter() {
                                 section.push(var_decl.to_variable(
                                     sema,
-                                    variable.deref(),
+                                    variable.cast(&sema.ast),
                                     VariableKind::InOut,
                                 )?);
                             }
                         }
                         ast::generated::InOutVarKind::VarDecl(var_decl) => {
-                            for variable in child.variables.children.iter() {
+                            for variable in child.variables.cast(&sema.ast).children.iter() {
                                 section.push(var_decl.to_variable(
                                     sema,
-                                    variable.deref(),
+                                    variable.cast(&sema.ast),
                                     VariableKind::Input,
                                 )?);
                             }
@@ -441,20 +441,20 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
         section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
-            match child.deref() {
+            match child.cast(&sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_ExternalDecl::ExternalDecl(child) => {
-                    match child.Type.deref() {
+                    match child.Type.cast(&sema.ast) {
                         ExternalVarKind::VarDecl(var_decl) => {
                             section.push(var_decl.to_variable(
                                 sema,
-                                child.name.deref(),
+                                child.name.cast(&sema.ast),
                                 VariableKind::Local,
                             )?);
                         }
                         ExternalVarKind::ArrayConformand(var_decl) => {
                             section.push(var_decl.to_variable(
                                 sema,
-                                child.name.deref(),
+                                child.name.cast(&sema.ast),
                                 VariableKind::Local,
                             )?);
                         }
@@ -479,20 +479,20 @@ impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
         section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
-            match child.deref() {
+            match child.cast(&sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_VarDeclInitList::ERRVariableWithNoSpec(
                     var_decl,
                 ) => {
-                    missing_type_for_variable(sema.db, child.get_span());
+                    missing_type_for_variable(sema.db, child.cast(&sema.ast).get_span());
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_VarDeclInitList::VarDeclInitList(
                     var_decl,
                 ) => {
-                    for variable in var_decl.variables.children.iter() {
-                        section.push(var_decl.Type.to_variable(
+                    for variable in var_decl.variables.cast(&sema.ast).children.iter() {
+                        section.push(var_decl.Type.cast(&sema.ast).to_variable(
                             sema,
-                            variable.deref(),
+                            variable.cast(&sema.ast),
                             VariableKind::Local,
                         )?);
                     }
@@ -510,20 +510,20 @@ impl<'db> ParseVarSection<'db> for ast::generated::RetainVarDecls {
         section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
-            match child.deref() {
+            match child.cast(&sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_VarDeclInitList::ERRVariableWithNoSpec(
                     var_decl,
                 ) => {
-                    missing_type_for_variable(sema.db, child.get_span());
+                    missing_type_for_variable(sema.db, child.cast(&sema.ast).get_span());
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_VarDeclInitList::VarDeclInitList(
                     var_decl,
                 ) => {
-                    for variable in var_decl.variables.children.iter() {
-                        section.push(var_decl.Type.to_variable(
+                    for variable in var_decl.variables.cast(&sema.ast).children.iter() {
+                        section.push(var_decl.Type.cast(&sema.ast).to_variable(
                             sema,
-                            variable.deref(),
+                            variable.cast(&sema.ast),
                             VariableKind::Local,
                         )?);
                     }
@@ -541,20 +541,20 @@ impl<'db> ParseVarSection<'db> for ast::generated::NoRetainVarDecls {
         section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
-            match child.deref() {
+            match child.cast(&sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_VarDeclInitList::ERRVariableWithNoSpec(
                     var_decl,
                 ) => {
-                    missing_type_for_variable(sema.db, child.get_span());
+                    missing_type_for_variable(sema.db, child.cast(&sema.ast).get_span());
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_VarDeclInitList::VarDeclInitList(
                     var_decl,
                 ) => {
-                    for variable in var_decl.variables.children.iter() {
-                        section.push(var_decl.Type.to_variable(
+                    for variable in var_decl.variables.cast(&sema.ast).children.iter() {
+                        section.push(var_decl.Type.cast(&sema.ast).to_variable(
                             sema,
-                            variable.deref(),
+                            variable.cast(&sema.ast),
                             VariableKind::Local,
                         )?);
                     }
@@ -572,9 +572,9 @@ impl<'db> ParseVarSection<'db> for ast::generated::LocPartlyVarDecl {
         section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
-            section.push(child.to_variable(
+            section.push(child.cast(&sema.ast).to_variable(
                 sema,
-                child.variable_name.deref(),
+                child.cast(&sema.ast).variable_name.cast(&sema.ast),
                 VariableKind::Local,
             )?);
         }
@@ -589,16 +589,16 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
         section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
-            match child.Type.deref() {
+            match child.cast(&sema.ast).Type.cast(&sema.ast) {
                 GlobalVarKind::NamespaceAccess(var_decl) => {
-                    let name = Ident::from_node(sema.db, sema.file, child.spec.deref())?;
+                    let name = Ident::from_node(sema.db, sema.file, child.cast(&sema.ast).spec.cast(&sema.ast))?;
                     let result = var_decl.to_spec_init(sema)?;
                     section.push(Variable::new(
                         sema.db,
                         sema.file,
                         name,
-                        child.get_span(),
-                        child.spec.get_span(),
+                        child.cast(&sema.ast).get_span(),
+                        child.cast(&sema.ast).spec.cast(&sema.ast).get_span(),
                         VariableKind::Global,
                         result.spec,
                         result.init,
@@ -606,14 +606,14 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
                     ))
                 }
                 GlobalVarKind::LocVarSpecInit(var_decl) => {
-                    let name = Ident::from_node(sema.db, sema.file, child.spec.deref())?;
+                    let name = Ident::from_node(sema.db, sema.file, child.cast(&sema.ast).spec.cast(&sema.ast))?;
                     let result = var_decl.to_spec_init(sema)?;
                     section.push(Variable::new(
                         sema.db,
                         sema.file,
                         name,
-                        child.get_span(),
-                        child.spec.get_span(),
+                        child.cast(&sema.ast).get_span(),
+                        child.cast(&sema.ast).spec.cast(&sema.ast).get_span(),
                         VariableKind::Global,
                         result.spec,
                         result.init,
@@ -631,7 +631,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::EdgeDecl {
         &self,
         sema: &SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<SpecInitResult<'db>> {
-        let spec = match self.edge.deref() {
+        let spec = match self.edge.cast(&sema.ast) {
             ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::ERRInvalidEdgeQualifier(err) => {
                 incomplete_edge_qualifier(sema.db, err.get_span());
                 Spec::new(
@@ -667,7 +667,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::LocPartlyVar {
         &self,
         sema: &SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<SpecInitResult<'db>> {
-        let spec = self.spec.children.to_spec(sema)?;
+        let spec = self.spec.cast(&sema.ast).children.cast(&sema.ast).to_spec(sema)?;
         Ok(SpecInitResult::new(spec, None))
     }
 }
@@ -679,7 +679,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::VarDecl {
     ) -> anyhow::Result<SpecInitResult<'db>> {
         type Spec = ast::generated::ArrayTypeSpec_SimpleTypeSpec_StrTypeSpec_StructTypeSpec;
 
-        let spec = match self.spec.deref() {
+        let spec = match self.spec.cast(&sema.ast) {
             Spec::ArrayTypeSpec(a) => a.to_spec(sema),
             Spec::SimpleTypeSpec(a) => a.to_spec(sema),
             Spec::StrTypeSpec(a) => a.to_spec(sema),
@@ -688,7 +688,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::VarDecl {
 
         type Init = ast::generated::ArrayTypeInit_SimpleTypeInit_StructTypeInit;
 
-        let init = match self.init.as_deref() {
+        let init = match self.init.as_ref().map(|i| i.cast(&sema.ast)) {
             Some(Init::ArrayTypeInit(a)) => Some(a.parse(sema)?),
             Some(Init::SimpleTypeInit(a)) => Some(a.parse(sema)?),
             Some(Init::StructTypeInit(a)) => Some(a.parse(sema)?),
@@ -711,7 +711,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::VarDeclInit {
         type Spec =
             ast::generated::ArrayTypeSpec_RefTypeSpec_SimpleTypeSpec_StrTypeSpec_StructTypeSpec;
 
-        let spec = match self.spec.deref() {
+        let spec = match self.spec.cast(&sema.ast) {
             Spec::ArrayTypeSpec(a) => a.to_spec(sema),
             Spec::SimpleTypeSpec(a) => a.to_spec(sema),
             Spec::StrTypeSpec(a) => a.to_spec(sema),
@@ -720,7 +720,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::VarDeclInit {
         };
 
         type Init = ast::generated::ArrayTypeInit_SimpleTypeInit_StructTypeInit;
-        let init = match self.init.as_deref() {
+        let init = match self.init.as_ref().map(|i| i.cast(&sema.ast)) {
             Some(Init::ArrayTypeInit(a)) => Some(a.parse(sema)?),
             Some(Init::SimpleTypeInit(a)) => Some(a.parse(sema)?),
             Some(Init::StructTypeInit(a)) => Some(a.parse(sema)?),
@@ -738,7 +738,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::LocVarSpecInit {
     ) -> anyhow::Result<SpecInitResult<'db>> {
         type Spec = ast::generated::ArrayTypeSpec_SimpleTypeSpec_StrTypeSpec_StructTypeSpec;
 
-        let spec = match self.spec.deref() {
+        let spec = match self.spec.cast(&sema.ast) {
             Spec::ArrayTypeSpec(a) => a.to_spec(sema),
             Spec::SimpleTypeSpec(a) => a.to_spec(sema),
             Spec::StrTypeSpec(a) => a.to_spec(sema),
@@ -746,7 +746,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::LocVarSpecInit {
         };
 
         type Init = ast::generated::ArrayTypeInit_SimpleTypeInit_StructTypeInit;
-        let init = match self.init.as_deref() {
+        let init = match self.init.as_ref().map(|i| i.cast(&sema.ast)) {
             Some(Init::ArrayTypeInit(a)) => Some(a.parse(sema)?),
             Some(Init::SimpleTypeInit(a)) => Some(a.parse(sema)?),
             Some(Init::StructTypeInit(a)) => Some(a.parse(sema)?),

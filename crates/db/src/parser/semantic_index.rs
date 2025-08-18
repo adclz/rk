@@ -1,9 +1,9 @@
-use std::ops::Deref;
 use std::panic;
 
 use ast::generated::ERRInvalidPouKeyword;
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
+use auto_lsp::default::db::tracked::ParsedAst;
 use auto_lsp::default::db::{file::File, BaseDatabase};
 use rustc_hash::FxHashMap;
 
@@ -16,6 +16,7 @@ use crate::hir::semantic_index::SemanticIndex;
 
 pub struct SemanticIndexBuilder<'db> {
     source: &'db ast::generated::SourceFile,
+    pub ast: &'db ParsedAst,
 
     pub(crate) db: &'db dyn BaseDatabase,
     pub(crate) file: File,
@@ -36,11 +37,13 @@ impl<'db> SemanticIndexBuilder<'db> {
     pub fn new(
         db: &'db dyn BaseDatabase,
         file: File,
+        ast: &'db ParsedAst,
         source: &'db ast::generated::SourceFile,
     ) -> Self {
         Self {
             db,
             file,
+            ast,
             source,
             scope_keys: FxHashMap::default(),
             pous: Vec::new(),
@@ -55,9 +58,10 @@ impl<'db> SemanticIndexBuilder<'db> {
     ) -> anyhow::Result<Vec<SpannedIdent>> {
         namespace
             .name
+            .cast(&self.ast)
             .children
             .iter()
-            .map(|n| SpannedIdent::new(self.db, self.file, n.deref()))
+            .map(|n| SpannedIdent::new(self.db, self.file, &n))
             .collect::<anyhow::Result<Vec<_>>>()
     }
 
@@ -79,7 +83,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             type SourceFileDecl = ast::generated::ERRInvalidPouKeyword_ClassDecl_ConfigDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl_ProgDecl_UsingDirective;
 
             self.current_scope = FileScopeId::global(self.file);
-            match child.as_ref() {
+            match child.cast(self.ast) {
                 SourceFileDecl::ERRInvalidPouKeyword(err) => {
                     self.create_pou_error(err);
                 }
@@ -113,7 +117,7 @@ impl<'db> SemanticIndexBuilder<'db> {
                 }
                 SourceFileDecl::DataTypeDecl(data_type) => {
                     for child in &data_type.children {
-                        let r = self.parse_data_type(child).unwrap();
+                        let r = self.parse_data_type(child.cast(&self.ast)).unwrap();
                         self.pous.push(r);
                     }
                 }

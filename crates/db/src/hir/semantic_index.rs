@@ -27,7 +27,7 @@ pub fn semantic_index<'db>(db: &'db dyn BaseDatabase, file: File) -> SemanticInd
         None => return SemanticIndex::empty(file),
     };
 
-    SemanticIndexBuilder::new(db, file, source).build()
+    SemanticIndexBuilder::new(db, file, get_ast(db, file), source).build()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]

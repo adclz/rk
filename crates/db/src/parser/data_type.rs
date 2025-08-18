@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use crate::{
     hir::{
         interned::identifier::Ident,
@@ -21,11 +19,11 @@ impl<'db> SemanticIndexBuilder<'db> {
         let previous_scope = self.current_scope;
         self.current_scope = scope_id;
 
-        let name = Ident::from_node(self.db, self.file, data_type.name.deref())?;
+        let name = Ident::from_node(self.db, self.file, data_type.name.cast(&self.ast))?;
 
         type Spec = ast::generated::ArrayTypeSpec_EnumTypeSpec_RefTypeSpec_SimpleTypeSpec_StrTypeSpec_StructTypeSpec_SubrangeTypeSpec;
 
-        let spec = match data_type.spec.deref() {
+        let spec = match data_type.spec.cast(&self.ast) {
             Spec::ArrayTypeSpec(a) => a.to_spec(self),
             Spec::EnumTypeSpec(a) => a.to_spec(self),
             Spec::SimpleTypeSpec(a) => a.to_spec(self),
@@ -37,10 +35,12 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         type Init = ast::generated::ArrayTypeInit_SimpleTypeInit_StructTypeInit;
 
-        let init = match data_type.init.as_deref() {
-            Some(Init::ArrayTypeInit(a)) => Some(a.parse(self)?),
-            Some(Init::SimpleTypeInit(a)) => Some(a.parse(self)?),
-            Some(Init::StructTypeInit(a)) => Some(a.parse(self)?),
+        let init = match data_type.init.as_ref() {
+            Some(init_node) => match init_node.cast(&self.ast) {
+                Init::ArrayTypeInit(a) => Some(a.parse(self)?),
+                Init::SimpleTypeInit(a) => Some(a.parse(self)?),
+                Init::StructTypeInit(a) => Some(a.parse(self)?),
+            },
             None => None,
         };
 
@@ -51,7 +51,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             Pou::DataType(DataType::new(self.db, spec, init, scope_id)),
             data_type.get_span(),
             name,
-            data_type.name.get_span(),
+            data_type.name.cast(&self.ast).get_span(),
             scope_id,
         );
 

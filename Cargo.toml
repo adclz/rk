@@ -18,8 +18,8 @@ members = [
 ]
 
 [workspace.dependencies]
-auto-lsp = { git = "https://github.com/adclz/auto-lsp", rev = "4d6fc146b5d0659332ba94363bdb7043fec2ef61" }
-auto-lsp-codegen = { git = "https://github.com/adclz/auto-lsp", rev = "4d6fc146b5d0659332ba94363bdb7043fec2ef61" }
+auto-lsp = { git = "https://github.com/adclz/auto-lsp", rev = "be245971c4c335e607bd3aa82925ea1a91e5f248" }
+auto-lsp-codegen = { git = "https://github.com/adclz/auto-lsp", rev = "be245971c4c335e607bd3aa82925ea1a91e5f248" }
 log = "0.4.27"
 dashmap = "6.1.0"
 rustc-hash = "2.1.0"

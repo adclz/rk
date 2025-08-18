@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use crate::check::errors::semantic_errors::{
     implements_before_extends, multiple_extends, multiple_implements,
 };
@@ -28,23 +26,23 @@ impl<'db> SemanticIndexBuilder<'db> {
         let extends = func
             .extends
             .as_ref()
-            .map(|e| SpannedNamespaceAccess::from_ast(self.db, self.file, e))
+            .map(|e| SpannedNamespaceAccess::from_ast(self.db, self.file, e.cast(&self.ast)))
             .transpose()?;
 
         let implements = func
             .implements
             .as_ref()
             .map(|i| {
-                i.children
+                i.cast(&self.ast).children
                     .iter()
-                    .map(|i| SpannedNamespaceAccess::from_ast(self.db, self.file, i))
+                    .map(|i| SpannedNamespaceAccess::from_ast(self.db, self.file, i.cast(&self.ast)))
                     .collect()
             })
             .transpose()?;
 
         func.children.iter().for_each(|f| {
             type Error = ast::generated::ERRExtendsMultipleTimes_ERRImplementsBeforeExtends_ERRImplementsMultipleTimes;
-            match f.deref() {
+            match f.cast(&self.ast) {
                 Error::ERRExtendsMultipleTimes(err) => {
                     multiple_extends(self.db, err.get_span());
                 },
@@ -60,23 +58,23 @@ impl<'db> SemanticIndexBuilder<'db> {
         let statements = func
             .body
             .as_ref()
-            .map_or(vec![], |body| match body.children.deref() {
+            .map_or(vec![], |body| match body.cast(&self.ast).children.cast(&self.ast) {
                 ast::generated::SFC_FbDiagram_LadderDiagram_StmtList::StmtList(ref stmts) => stmts
                     .children
                     .iter()
-                    .map(|stmt| stmt.to_statement(self))
+                    .map(|stmt| stmt.cast(&self.ast).to_statement(self))
                     .collect::<anyhow::Result<Vec<_>>>()
                     .unwrap_or_default(),
                 _ => vec![],
             });
 
         let mut modifiers = Modifiers::empty();
-        func.qualifier.as_ref().map(|q| match q.deref() {
+        func.qualifier.as_ref().map(|q| match q.cast(&self.ast) {
             ast::generated::Operators_2::Token_ABSTRACT(_) => modifiers.insert(Modifiers::ABSTRACT),
             ast::generated::Operators_2::Token_FINAL(_) => modifiers.insert(Modifiers::FINAL),
         });
 
-        let name = Ident::from_node(self.db, self.file, func.name.deref())?;
+        let name = Ident::from_node(self.db, self.file, func.name.cast(&self.ast))?;
         let usings = self.parse_usings(&func.directives)?;
 
         let result = PouDecl::new(
@@ -86,7 +84,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             )),
             func.get_span(),
             name,
-            func.name.get_span(),
+            func.name.cast(&self.ast).get_span(),
             scope_id,
         );
 
@@ -120,7 +118,7 @@ impl<'db> ParseVariable<'db> for ast::generated::FbDecl {
         let mut variables = vec![];
 
         for variable in self.variables.iter() {
-            match variable.deref() {
+            match variable.cast(&sema.ast) {
                 FbVariables::FbInputDecls(decls) => decls.parse(sema, &mut variables)?,
                 FbVariables::FbOutputDecls(decls) => decls.parse(sema, &mut variables)?,
                 FbVariables::InOutDecls(decls) => decls.parse(sema, &mut variables)?,

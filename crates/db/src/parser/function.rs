@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use crate::hir::interned::identifier::Ident;
 use crate::hir::pous::function::Function;
 use crate::hir::pous::pou::{Pou, PouDecl};
@@ -25,11 +23,11 @@ impl<'db> SemanticIndexBuilder<'db> {
         let statements = func
             .body
             .as_ref()
-            .map_or(vec![], |body| match body.children.deref() {
+            .map_or(vec![], |body| match body.cast(&self.ast).children.cast(&self.ast) {
                 ast::generated::FbDiagram_LadderDiagram_StmtList::StmtList(ref stmts) => stmts
                     .children
                     .iter()
-                    .map(|stmt| stmt.to_statement(self))
+                    .map(|stmt| stmt.cast(&self.ast).to_statement(self))
                     .collect::<anyhow::Result<Vec<_>>>()
                     .unwrap_or_default(),
                 _ => vec![],
@@ -38,10 +36,10 @@ impl<'db> SemanticIndexBuilder<'db> {
         let return_type = func
             .return_type
             .as_ref()
-            .map(|rt| rt.to_spec(self))
+            .map(|rt| rt.cast(&self.ast).to_spec(self))
             .transpose()?;
 
-        let name = Ident::from_node(self.db, self.file, func.name.deref())?;
+        let name = Ident::from_node(self.db, self.file, func.name.cast(&self.ast))?;
         let usings = self.parse_usings(&func.directives)?;
 
         let result = PouDecl::new(
@@ -55,7 +53,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             )),
             func.get_span(),
             name,
-            func.name.get_span(),
+            func.name.cast(&self.ast).get_span(),
             scope_id,
         );
 
@@ -89,7 +87,7 @@ impl<'db> ParseVariable<'db> for ast::generated::FuncDecl {
         let mut variables = vec![];
 
         for variable in self.variables.iter() {
-            match variable.deref() {
+            match variable.cast(&sema.ast) {
                 FuncVariables::InputDecls(decls) => decls.parse(sema, &mut variables)?,
                 FuncVariables::OutputDecls(decls) => decls.parse(sema, &mut variables)?,
                 FuncVariables::InOutDecls(decls) => decls.parse(sema, &mut variables)?,

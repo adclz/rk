@@ -1,7 +1,6 @@
-use std::ops::Deref;
-
 use crate::{hir::interned::identifier::SpannedIdent, to_proto::ToProto};
 use auto_lsp::core::ast::AstNode;
+use auto_lsp::default::db::tracked::get_ast;
 use auto_lsp::{
     anyhow,
     core::span::Span,
@@ -111,28 +110,29 @@ impl NamespaceAccess {
         file: File,
         fq_name: &ast::generated::NamespaceAccess,
     ) -> anyhow::Result<Self> {
+        let ast = get_ast(db, file);
         let mut fragments = Vec::new();
 
         // Walk the tree from root down `.path` fields
-        let mut current = match fq_name.children.deref() {
+        let mut current = match fq_name.children.cast(ast) {
             ast::generated::Identifier_ScopedIdentifier::ScopedIdentifier(scoped) => scoped,
             ast::generated::Identifier_ScopedIdentifier::Identifier(ident) => {
-                let target = SpannedIdent::new(db, file, ident)?;
+                let target = SpannedIdent::from_node(db, file, ident)?;
                 return Ok(NamespaceAccess::new(db, None, target));
             }
         };
 
         loop {
             // Extract the target of the current scoped_identifier (e.g. m1, m2, m3...)
-            fragments.push(SpannedIdent::new(db, file, current.target.deref())?);
+            fragments.push(SpannedIdent::new(db, file, &current.target)?);
 
-            match current.path.deref() {
+            match current.path.cast(ast) {
                 ast::generated::Identifier_ScopedIdentifier::ScopedIdentifier(next) => {
                     current = next;
                 }
                 ast::generated::Identifier_ScopedIdentifier::Identifier(base) => {
                     // Reached the bottom-most path (e.g. "system")
-                    fragments.push(SpannedIdent::new(db, file, base)?);
+                    fragments.push(SpannedIdent::from_node(db, file, base)?);
                     break;
                 }
             }

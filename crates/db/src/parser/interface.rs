@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use crate::hir::interned::identifier::Ident;
 use crate::hir::interned::namespace::SpannedNamespaceAccess;
 use crate::hir::pous::interface::{Interface, MethodPrototype};
@@ -19,14 +17,14 @@ impl<'db> SemanticIndexBuilder<'db> {
         let previous_scope = self.current_scope;
         self.current_scope = scope_id;
 
-        let name = Ident::from_node(self.db, self.file, interface.name.deref())?;
+        let name = Ident::from_node(self.db, self.file, interface.name.cast(&self.ast))?;
         let extends = interface
             .extends
             .as_ref()
             .map(|i| {
-                i.children
+                i.cast(&self.ast).children
                     .iter()
-                    .map(|i| SpannedNamespaceAccess::from_ast(self.db, self.file, i))
+                    .map(|i| SpannedNamespaceAccess::from_ast(self.db, self.file, i.cast(&self.ast)))
                     .collect()
             })
             .transpose()?;
@@ -34,7 +32,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         let methods = interface
             .prototype
             .iter()
-            .map(|m| self.parse_method_prototype(m))
+            .map(|m| self.parse_method_prototype(m.cast(&self.ast)))
             .collect::<anyhow::Result<Vec<_>>>()?;
 
         let usings = self.parse_usings(&interface.directives)?;
@@ -44,7 +42,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             Pou::Interface(Interface::new(self.db, extends, vec![], scope_id)),
             interface.get_span(),
             name,
-            interface.name.get_span(),
+            interface.name.cast(&self.ast).get_span(),
             scope_id,
         );
 
@@ -66,11 +64,11 @@ impl<'db> SemanticIndexBuilder<'db> {
         &'a self,
         method: &ast::generated::MethodPrototype,
     ) -> anyhow::Result<MethodPrototype<'a>> {
-        let name = Ident::from_node(self.db, self.file, &*method.name)?;
+        let name = Ident::from_node(self.db, self.file, method.name.cast(&self.ast))?;
         let return_type = method
             .data_type
             .as_ref()
-            .map(|i| match i.deref() {
+            .map(|i| match i.cast(&self.ast) {
                 ast::generated::DataTypeAccess::ElemTypeName(elem_type_name) => {
                     elem_type_name.to_spec(self)
                 }
@@ -80,7 +78,7 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         let mut variables = vec![];
         for variable in method.variables.iter() {
-            match variable.deref() {
+            match variable.cast(&self.ast) {
                 ast::generated::InOutDecls_InputDecls_OutputDecls::InputDecls(decls) => {
                     decls.parse(self, &mut variables)?
                 }
@@ -97,7 +95,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             self.db,
             method.get_span(),
             name,
-            method.name.get_span(),
+            method.name.cast(&self.ast).get_span(),
             return_type,
             variables,
         ))

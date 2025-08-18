@@ -1,7 +1,7 @@
 use auto_lsp::{
     anyhow,
-    core::{ast::AstNode, span::Span},
-    default::db::{file::File, BaseDatabase},
+    core::{ast::{AstNode, AstNodeId}, span::Span},
+    default::db::{file::File, tracked::get_ast, BaseDatabase},
 };
 use compact_str::CompactString;
 use std::{hash::Hash, ops::Deref};
@@ -41,10 +41,16 @@ impl Hash for SpannedIdent {
 }
 
 impl SpannedIdent {
-    pub fn new(db: &dyn BaseDatabase, file: File, ident: &impl AstNode) -> anyhow::Result<Self> {
+    pub fn new<T: AstNode>(db: &dyn BaseDatabase, file: File, ident: &AstNodeId<T>) -> anyhow::Result<Self> {
+        let ast = get_ast(db, file);
+        let ident = ident.cast(&ast);
+        Self::from_node(db, file, ident)
+    }
+
+    pub fn from_node(db: &dyn BaseDatabase, file: File, node: &impl AstNode) -> anyhow::Result<Self> {
         Ok(SpannedIdent {
-            span: ident.get_span(),
-            ident: Ident::from_node(db, file, ident)?,
+            span: node.get_span(),
+            ident: Ident::from_node(db, file, node)?,
         })
     }
 

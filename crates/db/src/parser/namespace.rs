@@ -24,18 +24,18 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         let previous_scope = self.current_scope;
 
-        if let Some(elements) = nested.elements.as_ref() {
-            for child in elements.children.iter() {
+        if let Some(elements) = &nested.elements {
+            for child in elements.cast(&self.ast).children.iter() {
                 self.current_scope = scope_id;
 
-                match child.as_ref() {
+                match child.cast(&self.ast) {
                     Decl::NamespaceDecl(namespace) => {
                         let nested_path = {
                             let mut path = parent_path.to_vec();
-                            path.extend(self.get_namespace_path(namespace)?);
+                            path.extend(self.get_namespace_path(&namespace)?);
                             path
                         };
-                        self.parse_namespace(&nested_path, namespace)?;
+                        self.parse_namespace(&nested_path, &namespace)?;
                     }
                     Decl::FuncDecl(func) => {
                         pous.push(self.parse_function(func)?);
@@ -48,7 +48,7 @@ impl<'db> SemanticIndexBuilder<'db> {
                     }
                     Decl::DataTypeDecl(data_type) => {
                         for data_type in &data_type.children {
-                            pous.push(self.parse_data_type(data_type)?);
+                            pous.push(self.parse_data_type(data_type.cast(&self.ast))?);
                         }
                     }
                     Decl::InterfaceDecl(interface) => {
@@ -65,7 +65,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             self.db,
             nested.get_span(),
             path,
-            nested.name.get_span(),
+            nested.name.cast(&self.ast).get_span(),
             pous,
             self.file,
             scope_id,
