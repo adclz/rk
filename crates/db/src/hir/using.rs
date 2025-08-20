@@ -6,7 +6,7 @@ use auto_lsp::{
 
 use crate::{
     hir::{
-        interned::namespace::NamespacePath, scopes::scope::FileScopeId,
+        interned::namespace::NamespacePath, scope::FileScopeId,
         semantic_index::SemanticIndex,
     },
     to_proto::{self_iter, IterToProto, ToProto},

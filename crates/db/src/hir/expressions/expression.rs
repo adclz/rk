@@ -1,9 +1,7 @@
-use crate::check::hir::signature::resolved_path_expr;
 use crate::completions::snippets::elem_type_names_init;
 use crate::hir::interned::identifier::{Ident, SpannedIdent};
-use crate::hir::scopes::scope::FileScopeId;
+use crate::hir::scope::FileScopeId;
 use crate::hir::semantic_index::SemanticIndex;
-use crate::hir::ty::TyStep;
 use crate::to_proto::{self_iter, IterToProto, ToProto};
 use auto_enums::auto_enum;
 use auto_lsp::core::span::Span;
@@ -128,10 +126,12 @@ impl<'db> IterToProto<'db> for PathExpr<'db> {
         db: &'db dyn BaseDatabase,
         sema: &'db SemanticIndex<'db>,
     ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        resolved_path_expr(db, sema.file, *self)
+        std::iter::empty()
+        /*resolved_path_expr(db, sema.file, *self)
+            .clone()
             .elements
             .iter()
-            .map(|element| element as _)
+            .map(|element| element as _)*/
     }
 }
 
@@ -154,39 +154,7 @@ pub struct IndexExpr<'db> {
     pub index: Vec<Expr<'db>>,
 }
 
-#[salsa::tracked]
 impl<'db> PathExpr<'db> {
-    #[salsa::tracked(returns(ref))]
-    pub fn flatten_steps(self, db: &'db dyn BaseDatabase) -> Vec<TyStep<'db>> {
-        let mut result = Vec::new();
-
-        match self.expr(db) {
-            PathExprKind::Field(field_expr) => {
-                result.extend(field_expr.path.flatten_steps(db).iter().cloned());
-                match &field_expr.var {
-                    VarAccess::Simple(simple) => result.push(TyStep::Field {
-                        expr: self,
-                        ident: simple.clone(),
-                    }),
-                    VarAccess::Deref(_) => result.push(TyStep::Deref { expr: self }),
-                }
-            }
-            PathExprKind::Index(index_expr) => {
-                result.extend(index_expr.path.flatten_steps(db).iter().cloned());
-                result.push(TyStep::Index { expr: self });
-            }
-            PathExprKind::VarAccess(var_access) => match var_access {
-                VarAccess::Simple(simple) => result.push(TyStep::Field {
-                    expr: self,
-                    ident: simple.clone(),
-                }),
-                VarAccess::Deref(_) => result.push(TyStep::Deref { expr: self }),
-            },
-        }
-
-        result
-    }
-
     pub fn to_string(&self, db: &'db dyn BaseDatabase) -> SpannedIdent {
         match &self.expr(db) {
             PathExprKind::Field(field_expr) => match field_expr.var {
@@ -308,7 +276,7 @@ pub enum VarAccess {
     Deref(SpannedIdent), // ^
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum Elementary {
     // Bit strings
     Bool(Ident),
@@ -676,7 +644,7 @@ pub enum InitExprKind<'db> {
     StructInit {
         values: Vec<InitExpr<'db>>,
     },
-    StructElement{
+    StructElement {
         name: Ident,
         value: Box<InitExpr<'db>>,
     },

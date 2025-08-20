@@ -5,7 +5,7 @@ use crate::{
             data_type::DataType,
             pou::{Pou, PouDecl},
         },
-        scopes::scope::{FileScopeId, Scope, ScopeKind, Visibility},
+        scope::{FileScopeId, Scope, ScopeKind, Visibility},
     },
     parser::{expression::ParseExpr, semantic_index::SemanticIndexBuilder, ParseSpec},
 };

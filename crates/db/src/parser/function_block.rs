@@ -6,7 +6,7 @@ use crate::hir::interned::namespace::SpannedNamespaceAccess;
 use crate::hir::pous::function_block::FunctionBlock;
 use crate::hir::pous::pou::{Pou, PouDecl};
 use crate::hir::pous::variable::Variable;
-use crate::hir::scopes::scope::{FileScopeId, Scope, ScopeKind, Visibility};
+use crate::hir::scope::{FileScopeId, Scope, ScopeKind, Visibility};
 use crate::hir::visibility::Modifiers;
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::parser::statement::ParseStatement;

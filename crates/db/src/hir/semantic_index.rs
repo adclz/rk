@@ -8,8 +8,8 @@ use tracing::info_span;
 use crate::hir::interned::identifier::Ident;
 use crate::hir::namespace::Namespace;
 use crate::hir::pous::pou::PouDecl;
-use crate::hir::scopes::scope::{FileScopeId, Scope};
-use crate::hir::scopes::solver::pous_in_scope;
+use crate::hir::scope::{FileScopeId, Scope};
+use crate::hir_ty::name_res::pous_in_scope;
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::to_proto::{IterToProto, ToProto};
 

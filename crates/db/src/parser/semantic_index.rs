@@ -11,7 +11,7 @@ use crate::check::errors::semantic_errors::invalid_pou_keyword;
 use crate::hir::interned::identifier::SpannedIdent;
 use crate::hir::namespace::Namespace;
 use crate::hir::pous::pou::PouDecl;
-use crate::hir::scopes::scope::{FileScopeId, Scope, ScopeKind, Visibility};
+use crate::hir::scope::{FileScopeId, Scope, ScopeKind, Visibility};
 use crate::hir::semantic_index::SemanticIndex;
 
 pub struct SemanticIndexBuilder<'db> {

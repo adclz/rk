@@ -8,7 +8,7 @@ use crate::{
     hir::{
         expressions::{expression::{InitExpr}, spec::Spec},
         interned::identifier::Ident,
-        scopes::scope::FileScopeId,
+        scope::FileScopeId,
         semantic_index::SemanticIndex,
     },
     to_proto::{self_iter, IterToProto, SymbolInfo, ToProto},

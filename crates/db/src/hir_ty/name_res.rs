@@ -13,7 +13,7 @@ use crate::{
             pou::{Pou, PouDecl},
             variable::Variable,
         },
-        scopes::scope::{FileScopeId, ScopeKind},
+        scope::{FileScopeId, ScopeKind},
         semantic_index::semantic_index,
         using::Using,
     },
@@ -203,7 +203,6 @@ pub fn pous_in_scope<'db>(
         map.insert(*pou.name(db), *pou);
     }
 
-    eprintln!("POUs in scope {:?}", map.keys());
     map
 }
 

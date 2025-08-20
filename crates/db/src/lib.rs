@@ -4,6 +4,7 @@
 pub mod check;
 pub mod completions;
 pub mod hir;
+pub mod hir_ty;
 pub mod parser;
 pub mod to_proto;
 

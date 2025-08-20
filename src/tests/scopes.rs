@@ -4,7 +4,7 @@ use auto_lsp::{
 };
 
 use db::{
-    hir::{pous::pou::Pou, scopes::scope::FileScopeId, semantic_index::semantic_index},
+    hir::{pous::pou::Pou, scope::FileScopeId, semantic_index::semantic_index},
     RootDatabase,
 };
 

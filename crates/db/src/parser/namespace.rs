@@ -6,7 +6,7 @@ use super::semantic_index::SemanticIndexBuilder;
 use crate::hir::interned::identifier::SpannedIdent;
 use crate::hir::interned::namespace::NamespacePath;
 use crate::hir::namespace::Namespace;
-use crate::hir::scopes::scope::{FileScopeId, Scope, ScopeKind, Visibility};
+use crate::hir::scope::{FileScopeId, Scope, ScopeKind, Visibility};
 
 impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_namespace(

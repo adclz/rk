@@ -4,9 +4,8 @@ pub mod import_map;
 pub mod interned;
 pub mod namespace;
 pub mod pous;
-pub mod scopes;
+pub mod scope;
 pub mod semantic_index;
-pub mod ty;
 pub mod using;
 pub mod visibility;
 

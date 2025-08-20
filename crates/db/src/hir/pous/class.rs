@@ -5,7 +5,7 @@ use crate::{
         expressions::{spec::Spec, statement::Stmt},
         interned::{identifier::Ident, namespace::SpannedNamespaceAccess},
         pous::{variable::Variable},
-        scopes::scope::FileScopeId,
+        scope::FileScopeId,
         semantic_index::SemanticIndex,
         visibility::Modifiers,
     },

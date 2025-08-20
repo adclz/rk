@@ -2,6 +2,7 @@
 #![allow(dead_code)]
 use std::{error::Error, fmt::format, num::ParseIntError, str::ParseBoolError};
 
+use ast::generated::ConstantExpr;
 use auto_lsp::{
     core::span::Span,
     default::db::{file::File, BaseDatabase},
@@ -18,25 +19,18 @@ use crate::{
             no_item_in_scope, type_can_not_be_dereferenced, type_has_no_field,
             unexpected_index_expression, unknown_field,
         },
-        hir::signature::ResolvePathExprCtx,
         literals::check_date,
         DiagnosticAccumulator,
     },
     hir::{
         expressions::{
             expression::{
-                Elementary, Expr, ExprKind, Numeric, NumericKind, PathExpr, PrimaryExpr,
-                VariableAccessKind,
+                Elementary, Expr, ExprKind, InitExprKind, Numeric, NumericKind, PathExpr, PrimaryExpr, VariableAccessKind
             },
             spec::{Spec, SpecKind},
             statement::{Stmt, StmtKind},
-        },
-        interned::namespace::NamespacePath,
-        pous::{pou::Pou, variable::Variable},
-        scopes::solver::{pous_in_scope, resolve_namespace_access},
-        semantic_index::{semantic_index, SemanticIndex},
-        ty::{ty_for_pou, TyKind, WalkError},
-    },
+        }, interned::namespace::NamespacePath, pous::{pou::Pou, variable::Variable}, scope::FileScopeId, semantic_index::{semantic_index, SemanticIndex}
+    }, hir_ty::{name_res::pous_in_scope, stmt_resolver::resolve_stmts, ty::{ty_for_variable, Ty, TyKind}, ty_path_expr_resolver::ResolvePathExprCtx},
 };
 
 trait Check<'db> {
@@ -58,7 +52,7 @@ pub fn duplicate_declarations<'db>(db: &'db dyn BaseDatabase, file: File) {
             match pou.pou(db) {
                 Pou::Function(func) => {
                     func.variables(db).check(db, sema);
-                    func.statements(db).check(db, sema);
+                    func.statements(db).check(db, sema, pou.scope_id(db));
                 }
                 Pou::FunctionBlock(fb) => {
                     fb.variables(db).check(db, sema);
@@ -75,43 +69,13 @@ pub fn duplicate_declarations<'db>(db: &'db dyn BaseDatabase, file: File) {
     }
 }
 
-impl<'db> Check<'db> for Vec<Stmt<'db>> {
-    fn check(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>) {
-        self.iter().for_each(|stmt| if let StmtKind::Assignment { var, target } = stmt.stmt(db) {
-            if let VariableAccessKind::Symbolic(symbolic) = &var.kind {
-                let ctx = ResolvePathExprCtx::new(db, sema.file, symbolic.kind);
-                let r = ctx.resolve_path_expr();
+trait CheckStmts<'db> {
+    fn check(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>, scope_id: FileScopeId);
+}
 
-                if let Some(err) = r.error {
-                    match err {
-                        WalkError::NoItemInScope { expr, scope } => {
-                            no_item_in_scope(
-                                db,
-                                sema.file,
-                                &expr.to_string(db),
-                                expr.span(db),
-                            );
-                        }
-                        WalkError::FieldNotFound { origin, expr } => {
-                            unknown_field(db, sema.file, &expr.to_string(db), expr.span(db))
-                        }
-                        WalkError::NotAnArray { origin, expr } => {
-                            unexpected_index_expression(db, sema.file, expr.span(db))
-                        }
-                        WalkError::NotAReference { origin, expr } => {
-                            type_can_not_be_dereferenced(db, sema.file, expr.span(db));
-                        }
-                    }
-                } else if let TyKind::Callable { .. } = r.elements[0].get_ty().kind(db) {
-                    assign_direct_pou_to_a_variable(
-                        db,
-                        sema.file,
-                        *r.elements[0].get_expr(),
-                        r.elements[0].get_ty().origin(db),
-                    );
-                }
-            }
-        });
+impl<'db> CheckStmts<'db> for Vec<Stmt<'db>> {
+    fn check(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>, scope_id: FileScopeId) {
+        resolve_stmts(db, self, scope_id);
     }
 }
 
@@ -135,251 +99,267 @@ impl<'db> Check<'db> for &'db Vec<Variable<'db>> {
 
 impl<'db> Check<'db> for Variable<'db> {
     fn check(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>) {
+        let signature = ty_for_variable(db, *self);
         if let Some(init) = self.init(db) {
-            //init.check(db, sema, self.spec(db))
+            match init.kind {
+                InitExprKind::ConstantExpr(expr) => {
+                    expr.check(db, sema, &signature)
+                },
+                _ => {}
+            }
         }
     }
 }
 
 trait SpecCheck<'db> {
-    fn check(&self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>, spec: &Spec<'db>);
+    fn check(&self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>, spec: &Ty<'db>);
 }
 
 impl<'db> SpecCheck<'db> for Expr<'db> {
-    fn check(&self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>, spec: &Spec<'db>) {
+    fn check(&self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>, ty: &Ty<'db>) {
         match self.expr(db) {
             ExprKind::AddOperator {
                 left,
                 operator,
                 right,
             } => {
-                left.check(db, sema, spec);
-                right.check(db, sema, spec);
+                left.check(db, sema, ty);
+                right.check(db, sema, ty);
             }
             ExprKind::BooleanOperator {
                 left,
                 operator,
                 right,
             } => {
-                left.check(db, sema, spec);
-                right.check(db, sema, spec);
+                left.check(db, sema, ty);
+                right.check(db, sema, ty);
             }
             ExprKind::ComparisonOperator {
                 left,
                 operator,
                 right,
             } => {
-                left.check(db, sema, spec);
-                right.check(db, sema, spec);
+                left.check(db, sema, ty);
+                right.check(db, sema, ty);
             }
             ExprKind::MultOperator {
                 left,
                 operator,
                 right,
             } => {
-                left.check(db, sema, spec);
-                right.check(db, sema, spec);
+                left.check(db, sema, ty);
+                right.check(db, sema, ty);
             }
             ExprKind::PowerOperator { left, right } => {
-                left.check(db, sema, spec);
-                right.check(db, sema, spec);
+                left.check(db, sema, ty);
+                right.check(db, sema, ty);
             }
             ExprKind::UnaryOperator { expr, operator } => {
-                expr.check(db, sema, spec);
+                expr.check(db, sema, ty);
             }
             ExprKind::PrimaryExpr(PrimaryExpr::Literal(lit)) => {
-                let result = match spec.kind(db) {
-                    SpecKind::Bool => match lit {
-                        Elementary::Bool(_) => true,
-                        Elementary::InferNumeric(infer) => match infer.as_bool(db) {
-                            Ok(_) => true,
-                            Err(err) => {
-                                mismatch_type(db, sema, self.span(db).clone(), spec, err);
-                                return;
-                            }
-                        },
-                        _ => false,
-                    },
-                    // bit string types
-                    SpecKind::Byte => match lit {
-                        Elementary::Byte(_) => true,
-                        Elementary::InferNumeric(infer) => match infer.as_u8(db) {
-                            Ok(_) => true,
-                            Err(err) => {
-                                mismatch_type(db, sema, self.span(db).clone(), spec, err);
-                                return;
-                            }
-                        },
-                        _ => false,
-                    },
-                    SpecKind::Word => match lit {
-                        Elementary::Byte(_) | Elementary::Word(_) => true,
-                        Elementary::InferNumeric(infer) => match infer.as_u16(db) {
-                            Ok(_) => true,
-                            Err(err) => {
-                                mismatch_type(db, sema, self.span(db).clone(), spec, err);
-                                return;
-                            }
-                        },
-                        _ => false,
-                    },
-                    SpecKind::DWord => match lit {
-                        Elementary::Byte(_) | Elementary::Word(_) | Elementary::DWord(_) => true,
-                        Elementary::InferNumeric(infer) => match infer.as_u32(db) {
-                            Ok(_) => true,
-                            Err(err) => {
-                                mismatch_type(db, sema, self.span(db).clone(), spec, err);
-                                return;
-                            }
-                        },
-                        _ => false,
-                    },
-                    SpecKind::LWord => match lit {
-                        Elementary::Byte(_)
-                        | Elementary::Word(_)
-                        | Elementary::DWord(_)
-                        | Elementary::LWord(_) => true,
-                        Elementary::InferNumeric(infer) => match infer.as_u64(db) {
-                            Ok(_) => true,
-                            Err(err) => {
-                                mismatch_type(db, sema, self.span(db).clone(), spec, err);
-                                return;
-                            }
-                        },
-                        _ => false,
-                    },
-                    // signed integers
-                    SpecKind::SInt => match lit {
-                        Elementary::SInt(_) => true,
-                        Elementary::InferNumeric(infer) => match infer.as_u8(db) {
-                            Ok(_) => true,
-                            Err(err) => {
-                                mismatch_type(db, sema, self.span(db).clone(), spec, err);
-                                return;
-                            }
-                        },
-                        _ => false,
-                    },
-                    SpecKind::Int => match lit {
-                        Elementary::SInt(_) | Elementary::Int(_) => true,
-                        Elementary::InferNumeric(infer) => match infer.as_u16(db) {
-                            Ok(_) => true,
-                            Err(err) => {
-                                mismatch_type(db, sema, self.span(db).clone(), spec, err);
-                                return;
-                            }
-                        },
-                        _ => false,
-                    },
-                    SpecKind::DInt => match lit {
-                        Elementary::SInt(_) | Elementary::Int(_) | Elementary::DInt(_) => true,
-                        Elementary::InferNumeric(infer) => match infer.as_u32(db) {
-                            Ok(_) => true,
-                            Err(err) => {
-                                mismatch_type(db, sema, self.span(db).clone(), spec, err);
-                                return;
-                            }
-                        },
-                        _ => false,
-                    },
-                    SpecKind::LInt => match lit {
-                        Elementary::SInt(_)
-                        | Elementary::Int(_)
-                        | Elementary::DInt(_)
-                        | Elementary::LInt(_) => true,
-                        Elementary::InferNumeric(infer) => match infer.as_u64(db) {
-                            Ok(_) => true,
-                            Err(err) => {
-                                mismatch_type(db, sema, self.span(db).clone(), spec, err);
-                                return;
-                            }
-                        },
-                        _ => false,
-                    },
-                    // unsigned integers
-                    SpecKind::USInt => match lit {
-                        Elementary::USInt(_) => true,
-                        Elementary::InferNumeric(infer) => match infer.as_u8(db) {
-                            Ok(_) => true,
-                            Err(err) => {
-                                mismatch_type(db, sema, self.span(db).clone(), spec, err);
-                                return;
-                            }
-                        },
-                        _ => false,
-                    },
-                    SpecKind::UInt => match lit {
-                        Elementary::USInt(_) | Elementary::UInt(_) => true,
-                        Elementary::InferNumeric(infer) => match infer.as_u16(db) {
-                            Ok(_) => true,
-                            Err(err) => {
-                                mismatch_type(db, sema, self.span(db).clone(), spec, err);
-                                return;
-                            }
-                        },
-                        _ => false,
-                    },
-                    SpecKind::UDInt => match lit {
-                        Elementary::USInt(_) | Elementary::UInt(_) | Elementary::UDInt(_) => true,
-                        Elementary::InferNumeric(infer) => match infer.as_u32(db) {
-                            Ok(_) => true,
-                            Err(err) => {
-                                mismatch_type(db, sema, self.span(db).clone(), spec, err);
-                                return;
-                            }
-                        },
-                        _ => false,
-                    },
-                    SpecKind::ULInt => match lit {
-                        Elementary::USInt(_)
-                        | Elementary::UInt(_)
-                        | Elementary::UDInt(_)
-                        | Elementary::ULInt(_) => true,
-                        Elementary::InferNumeric(infer) => match infer.as_u64(db) {
-                            Ok(_) => true,
-                            Err(err) => {
-                                mismatch_type(db, sema, self.span(db).clone(), spec, err);
-                                return;
-                            }
-                        },
-                        _ => false,
-                    },
-                    // floats
-                    SpecKind::Real => match lit {
-                        Elementary::Real(_) => true,
-                        Elementary::InferIdent(identifier) => match identifier.as_f32(db) {
-                            Ok(_) => true,
-                            Err(err) => {
-                                mismatch_type(db, sema, self.span(db).clone(), spec, err);
-                                return;
-                            }
-                        },
-                        _ => true,
-                    },
-                    SpecKind::LReal => match lit {
-                        Elementary::Real(_) | Elementary::LReal(_) => true,
-                        Elementary::InferIdent(identifier) => match identifier.as_f64(db) {
-                            Ok(_) => true,
-                            Err(err) => {
-                                mismatch_type(db, sema, self.span(db).clone(), spec, err);
-                                return;
-                            }
-                        },
-                        _ => true,
+                let result = match ty.kind(db) {
+                    TyKind::Simple(spec) => {
+                        match spec.kind(db) {
+                            SpecKind::Bool => match lit {
+                                Elementary::Bool(_) => true,
+                                Elementary::InferNumeric(infer) => match infer.as_bool(db) {
+                                    Ok(_) => true,
+                                    Err(err) => {
+                                        mismatch_type(db, sema, self.span(db).clone(), ty, err);
+                                        return;
+                                    }
+                                },
+                                _ => false,
+                            },
+                            // bit string types
+                            SpecKind::Byte => match lit {
+                                Elementary::Byte(_) => true,
+                                Elementary::InferNumeric(infer) => match infer.as_u8(db) {
+                                    Ok(_) => true,
+                                    Err(err) => {
+                                        mismatch_type(db, sema, self.span(db).clone(), ty, err);
+                                        return;
+                                    }
+                                },
+                                _ => false,
+                            },
+                            SpecKind::Word => match lit {
+                                Elementary::Byte(_) | Elementary::Word(_) => true,
+                                Elementary::InferNumeric(infer) => match infer.as_u16(db) {
+                                    Ok(_) => true,
+                                    Err(err) => {
+                                        mismatch_type(db, sema, self.span(db).clone(), ty, err);
+                                        return;
+                                    }
+                                },
+                                _ => false,
+                            },
+                            SpecKind::DWord => match lit {
+                                Elementary::Byte(_)
+                                | Elementary::Word(_)
+                                | Elementary::DWord(_) => true,
+                                Elementary::InferNumeric(infer) => match infer.as_u32(db) {
+                                    Ok(_) => true,
+                                    Err(err) => {
+                                        mismatch_type(db, sema, self.span(db).clone(), ty, err);
+                                        return;
+                                    }
+                                },
+                                _ => false,
+                            },
+                            SpecKind::LWord => match lit {
+                                Elementary::Byte(_)
+                                | Elementary::Word(_)
+                                | Elementary::DWord(_)
+                                | Elementary::LWord(_) => true,
+                                Elementary::InferNumeric(infer) => match infer.as_u64(db) {
+                                    Ok(_) => true,
+                                    Err(err) => {
+                                        mismatch_type(db, sema, self.span(db).clone(), ty, err);
+                                        return;
+                                    }
+                                },
+                                _ => false,
+                            },
+                            // signed integers
+                            SpecKind::SInt => match lit {
+                                Elementary::SInt(_) => true,
+                                Elementary::InferNumeric(infer) => match infer.as_u8(db) {
+                                    Ok(_) => true,
+                                    Err(err) => {
+                                        mismatch_type(db, sema, self.span(db).clone(), ty, err);
+                                        return;
+                                    }
+                                },
+                                _ => false,
+                            },
+                            SpecKind::Int => match lit {
+                                Elementary::SInt(_) | Elementary::Int(_) => true,
+                                Elementary::InferNumeric(infer) => match infer.as_u16(db) {
+                                    Ok(_) => true,
+                                    Err(err) => {
+                                        mismatch_type(db, sema, self.span(db).clone(), ty, err);
+                                        return;
+                                    }
+                                },
+                                _ => false,
+                            },
+                            SpecKind::DInt => match lit {
+                                Elementary::SInt(_) | Elementary::Int(_) | Elementary::DInt(_) => {
+                                    true
+                                }
+                                Elementary::InferNumeric(infer) => match infer.as_u32(db) {
+                                    Ok(_) => true,
+                                    Err(err) => {
+                                        mismatch_type(db, sema, self.span(db).clone(), ty, err);
+                                        return;
+                                    }
+                                },
+                                _ => false,
+                            },
+                            SpecKind::LInt => match lit {
+                                Elementary::SInt(_)
+                                | Elementary::Int(_)
+                                | Elementary::DInt(_)
+                                | Elementary::LInt(_) => true,
+                                Elementary::InferNumeric(infer) => match infer.as_u64(db) {
+                                    Ok(_) => true,
+                                    Err(err) => {
+                                        mismatch_type(db, sema, self.span(db).clone(), ty, err);
+                                        return;
+                                    }
+                                },
+                                _ => false,
+                            },
+                            // unsigned integers
+                            SpecKind::USInt => match lit {
+                                Elementary::USInt(_) => true,
+                                Elementary::InferNumeric(infer) => match infer.as_u8(db) {
+                                    Ok(_) => true,
+                                    Err(err) => {
+                                        mismatch_type(db, sema, self.span(db).clone(), ty, err);
+                                        return;
+                                    }
+                                },
+                                _ => false,
+                            },
+                            SpecKind::UInt => match lit {
+                                Elementary::USInt(_) | Elementary::UInt(_) => true,
+                                Elementary::InferNumeric(infer) => match infer.as_u16(db) {
+                                    Ok(_) => true,
+                                    Err(err) => {
+                                        mismatch_type(db, sema, self.span(db).clone(), ty, err);
+                                        return;
+                                    }
+                                },
+                                _ => false,
+                            },
+                            SpecKind::UDInt => match lit {
+                                Elementary::USInt(_)
+                                | Elementary::UInt(_)
+                                | Elementary::UDInt(_) => true,
+                                Elementary::InferNumeric(infer) => match infer.as_u32(db) {
+                                    Ok(_) => true,
+                                    Err(err) => {
+                                        mismatch_type(db, sema, self.span(db).clone(), ty, err);
+                                        return;
+                                    }
+                                },
+                                _ => false,
+                            },
+                            SpecKind::ULInt => match lit {
+                                Elementary::USInt(_)
+                                | Elementary::UInt(_)
+                                | Elementary::UDInt(_)
+                                | Elementary::ULInt(_) => true,
+                                Elementary::InferNumeric(infer) => match infer.as_u64(db) {
+                                    Ok(_) => true,
+                                    Err(err) => {
+                                        mismatch_type(db, sema, self.span(db).clone(), ty, err);
+                                        return;
+                                    }
+                                },
+                                _ => false,
+                            },
+                            // floats
+                            SpecKind::Real => match lit {
+                                Elementary::Real(_) => true,
+                                Elementary::InferIdent(identifier) => match identifier.as_f32(db) {
+                                    Ok(_) => true,
+                                    Err(err) => {
+                                        mismatch_type(db, sema, self.span(db).clone(), ty, err);
+                                        return;
+                                    }
+                                },
+                                _ => true,
+                            },
+                            SpecKind::LReal => match lit {
+                                Elementary::Real(_) | Elementary::LReal(_) => true,
+                                Elementary::InferIdent(identifier) => match identifier.as_f64(db) {
+                                    Ok(_) => true,
+                                    Err(err) => {
+                                        mismatch_type(db, sema, self.span(db).clone(), ty, err);
+                                        return;
+                                    }
+                                },
+                                _ => true,
+                            },
+                            _ => true,
+                        }
                     },
                     _ => true,
                 };
-
                 if !result {
                     mismatch_type(
                         db,
                         sema,
                         self.span(db).clone(),
-                        spec,
+                        ty,
                         format!(
                             "Literal '{}' does not match expected type '{}'",
                             lit.to_string(db),
-                            spec.shorthand(db)
+                            ""
                         ),
                     );
                 }

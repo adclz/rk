@@ -5,13 +5,14 @@ use auto_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind};
 
 use crate::hir::expressions::expression::{InitExpr, VariableAccess};
 use crate::hir::semantic_index::semantic_index;
+use crate::hir_ty::name_res::resolve_namespace_access;
 use crate::{
     completions::snippets::elem_type_names,
     hir::{
         expressions::expression::{Expr, MultibitsPart},
         interned::{identifier::Ident, namespace::NamespaceAccess},
         pous::pou::Pou,
-        scopes::{scope::FileScopeId, solver::resolve_namespace_access},
+        {scope::FileScopeId},
         semantic_index::SemanticIndex,
     },
     to_proto::{self_iter, IterToProto, ToProto},

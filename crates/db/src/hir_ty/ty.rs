@@ -1,22 +1,20 @@
-use auto_lsp::default::db::BaseDatabase;
+use auto_lsp::{core::span::Span, default::db::BaseDatabase};
 use rustc_hash::FxHashMap;
 
 use crate::{
     hir::{
         expressions::{
-            expression::PathExpr,
             spec::{Spec, SpecKind},
         },
         interned::{
-            identifier::{Ident, SpannedIdent},
+            identifier::{Ident},
             namespace::NamespaceAccess,
         },
         pous::{
             pou::{Pou, PouDecl},
             variable::{Variable, VariableKind},
         },
-        scopes::{scope::FileScopeId, solver::resolve_namespace_access},
-    },
+    }, hir_ty::{name_res::resolve_namespace_access, ty_path_expr_resolver::{PathExprWalkError, PathExprWalkStep}}, to_proto::ToProto
 };
 
 #[salsa::tracked(debug)]
@@ -28,10 +26,41 @@ pub struct Ty<'db> {
     pub kind: TyKind<'db>,
 }
 
+impl<'db> Ty<'db> {
+    pub fn display(&self, db: &'db dyn BaseDatabase) -> String {
+        match self.kind(db) {
+            TyKind::Simple(spec) => spec.to_string(db),
+            TyKind::Enum { typ, list } => "".to_string(),
+            TyKind::SubRange(subrange) => format!("SUBRANGE({})", subrange.to_string(db)),
+            TyKind::Array { type_signature } => format!("ARRAY OF {}", type_signature.display(db)),
+            TyKind::Struct { spec, elements } => {
+                let fields: Vec<String> = elements
+                    .iter()
+                    .map(|(name, ty)| format!("{}: {}", name.text(db), ty.display(db)))
+                    .collect();
+                format!("STRUCT({}){{{}}}", spec.to_string(db), fields.join(", "))
+            }
+            TyKind::Callable { .. } => "CALLABLE".to_string(),
+            TyKind::RefTo(inner) => format!("REF TO {}", inner.display(db)),
+            TyKind::Unresolved(ns_access) => ns_access.to_string(db),
+            TyKind::Recursive => "RECURSIVE".to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum TyOrigin<'db> {
     FromPou(PouDecl<'db>),
     FromVariable(Variable<'db>),
+}
+
+impl<'db> TyOrigin<'db> {
+    pub fn span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
+        match self {
+            TyOrigin::FromPou(pou) => pou.get_span(db),
+            TyOrigin::FromVariable(variable) => variable.get_span(db),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
@@ -183,13 +212,13 @@ impl<'db> Ty<'db> {
     pub fn linear(
         &self,
         db: &'db dyn BaseDatabase,
-        step: &TyStep<'db>,
-    ) -> Result<Ty<'db>, WalkError<'db>> {
+        step: &PathExprWalkStep<'db>,
+    ) -> Result<Ty<'db>, PathExprWalkError<'db>> {
         match &step {
-            TyStep::Field { ident, expr } => match self.kind(db) {
+            PathExprWalkStep::Field { ident, expr } => match self.kind(db) {
                 TyKind::Struct { elements, spec } => elements
                     .get(&ident.ident)
-                    .ok_or_else(|| WalkError::FieldNotFound {
+                    .ok_or_else(|| PathExprWalkError::FieldNotFound {
                         expr: *expr,
                         origin: self.origin(db),
                     })
@@ -203,27 +232,27 @@ impl<'db> Ty<'db> {
                     .get(&ident.ident)
                     .or_else(|| output.get(&ident.ident))
                     .or_else(|| in_out.get(&ident.ident))
-                    .ok_or_else(|| WalkError::FieldNotFound {
+                    .ok_or_else(|| PathExprWalkError::FieldNotFound {
                         expr: *expr,
                         origin: self.origin(db),
                     })
                     .cloned(),
                 TyKind::RefTo(inner) => inner.linear(db, step),
-                _ => Err(WalkError::FieldNotFound {
+                _ => Err(PathExprWalkError::FieldNotFound {
                     expr: *expr,
                     origin: self.origin(db),
                 }),
             },
-            TyStep::Index { expr } => match self.kind(db) {
+            PathExprWalkStep::Index { expr } => match self.kind(db) {
                 TyKind::Array { type_signature } => Ok(type_signature),
-                _ => Err(WalkError::NotAnArray {
+                _ => Err(PathExprWalkError::NotAnArray {
                     expr: *expr,
                     origin: self.origin(db),
                 }),
             },
-            TyStep::Deref { expr } => match self.kind(db) {
+            PathExprWalkStep::Deref { expr } => match self.kind(db) {
                 TyKind::RefTo(inner) => Ok(inner),
-                _ => Err(WalkError::NotAReference {
+                _ => Err(PathExprWalkError::NotAReference {
                     expr: *expr,
                     origin: self.origin(db),
                 }),
@@ -325,50 +354,6 @@ impl<'db> Spec<'db> {
             _ => Ty::new(db, origin, TyKind::Simple(*self)),
         }
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
-pub enum TyStep<'db> {
-    Field {
-        ident: SpannedIdent,
-        expr: PathExpr<'db>,
-    }, // By name
-    Index {
-        expr: PathExpr<'db>,
-    }, // By index
-    Deref {
-        expr: PathExpr<'db>,
-    }, // For pointers or references
-}
-
-impl TyStep<'_> {
-    pub fn get_expr(&self) -> &PathExpr<'_> {
-        match self {
-            TyStep::Field { expr, .. } => expr,
-            TyStep::Index { expr } => expr,
-            TyStep::Deref { expr } => expr,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
-pub enum WalkError<'db> {
-    NoItemInScope {
-        expr: PathExpr<'db>,
-        scope: FileScopeId,
-    },
-    FieldNotFound {
-        expr: PathExpr<'db>,
-        origin: TyOrigin<'db>,
-    },
-    NotAnArray {
-        expr: PathExpr<'db>,
-        origin: TyOrigin<'db>,
-    },
-    NotAReference {
-        expr: PathExpr<'db>,
-        origin: TyOrigin<'db>,
-    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]

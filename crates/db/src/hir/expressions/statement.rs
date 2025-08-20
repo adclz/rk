@@ -3,7 +3,7 @@ use auto_lsp::{core::span::Span, default::db::BaseDatabase};
 
 use crate::{hir::{expressions::expression::{
     Expr, ParamAssign, PathExpr, SymbolicVariable, VariableAccess
-}, semantic_index::SemanticIndex}, to_proto::{self_iter, IterToProto, ToProto}};
+}, scope::FileScopeId, semantic_index::SemanticIndex}, to_proto::{self_iter, IterToProto, ToProto}};
 
 #[salsa::tracked(debug)]
 pub struct Stmt<'db> {
@@ -12,6 +12,8 @@ pub struct Stmt<'db> {
 
     #[returns(ref)]
     pub stmt: StmtKind<'db>,
+
+    pub scope_id: FileScopeId,
 }
 
 impl<'db> ToProto<'db> for Stmt<'db> {
@@ -81,8 +83,8 @@ pub enum StmtKind<'db> {
         body: Vec<Stmt<'db>>,
     },
     Repeat {
-        body: Vec<Stmt<'db>>,
         condition: Expr<'db>,
+        body: Vec<Stmt<'db>>,
     },
     Exit,
     Continue,

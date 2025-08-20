@@ -46,6 +46,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                     sema.db,
                     call.get_span(),
                     StmtKind::FuncCall { target, params: parameters },
+                    sema.current_scope
                 ))
             }
             StmtType::Invocation(invocation) => {
@@ -78,8 +79,8 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                         this: invocation.invocation.cast(&sema.ast).this.is_some(),
                         kind: invocation.invocation.cast(&sema.ast).children.cast(&sema.ast).parse(sema)?,
                     }, 
-                    params: parameters
-                }))
+                    params: parameters,
+                },sema.current_scope))
             }
             StmtType::IfStmt(if_stmt) => {
                 let condition = if_stmt.if_cond.cast(&sema.ast).to_expr(sema)?;
@@ -121,6 +122,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                         else_,
                         else_if
                     },
+                    sema.current_scope
                 ))
             }
             StmtType::ForStmt(for_stmt) => {
@@ -150,6 +152,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                         step,
                         body,
                     }, 
+                    sema.current_scope
                 )) 
             }
             StmtType::CaseStmt(case_stmt) => {
@@ -205,6 +208,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                         cases,
                         else_,
                     },
+                    sema.current_scope
                 ))
             }
             StmtType::RepeatStmt(repeat) => {
@@ -221,6 +225,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                     sema.db,
                     repeat.get_span(),
                     StmtKind::Repeat { body, condition },
+                    sema.current_scope
                 ))
             }
             StmtType::WhileStmt(while_stmt) => {
@@ -237,18 +242,19 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                     sema.db,
                     while_stmt.get_span(),
                     StmtKind::While { condition, body },
+                    sema.current_scope
                 ))
             }
             StmtType::SuperStmt(super_stmt) => {
-                Ok(Stmt::new(sema.db, super_stmt.get_span(), StmtKind::Super))
+                Ok(Stmt::new(sema.db, super_stmt.get_span(), StmtKind::Super, sema.current_scope))
             }
             StmtType::Token_RETURN(return_stmt) => {
-                Ok(Stmt::new(sema.db, return_stmt.get_span(), StmtKind::Return))
+                Ok(Stmt::new(sema.db, return_stmt.get_span(), StmtKind::Return, sema.current_scope))
             }
             StmtType::Token_CONTINUE(stmt) => {
-                Ok(Stmt::new(sema.db, stmt.get_span(), StmtKind::Continue))
+                Ok(Stmt::new(sema.db, stmt.get_span(), StmtKind::Continue, sema.current_scope))
             }
-            StmtType::Token_EXIT(stmt) => Ok(Stmt::new(sema.db, stmt.get_span(), StmtKind::Exit)),
+            StmtType::Token_EXIT(stmt) => Ok(Stmt::new(sema.db, stmt.get_span(), StmtKind::Exit, sema.current_scope)),
         }
     }
 }
@@ -275,6 +281,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Assign {
                     var,
                     target: assign.children.cast(&sema.ast).to_expr(sema)?,
                 },
+                sema.current_scope
             )), 
             ast::generated::ERREmptyRightHandAssignment_Assignment_AssignmentAttempt::AssignmentAttempt(attempt) => {    
                 Ok(Stmt::new(
@@ -284,6 +291,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Assign {
                         var,
                         target: attempt.children.cast(&sema.ast).to_expr(sema)?,
                     },
+                    sema.current_scope
                 ))
             }
         }

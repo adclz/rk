@@ -2,21 +2,22 @@ use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::{
     DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, Location,
 };
+use auto_lsp::tree_sitter;
 use auto_lsp::{core::span::Span, default::db::file::File};
 use salsa::Accumulator;
 
 use crate::check::errors::recovery::pou_recovery;
 use crate::check::{diagnostic_builder::diag, DiagnosticAccumulator};
-use crate::hir::expressions::expression::PathExpr;
 use crate::hir::expressions::spec::Spec;
+use crate::hir::expressions::statement::Stmt;
 use crate::hir::interned::identifier::Ident;
 use crate::hir::interned::namespace::NamespacePath;
 use crate::hir::namespace::Namespace;
 use crate::hir::pous::pou::Pou;
 use crate::hir::pous::variable::Variable;
 use crate::hir::semantic_index::SemanticIndex;
-use crate::hir::ty::TyOrigin;
 use crate::hir::using::Using;
+use crate::hir_ty::ty::{Ty, TyOrigin};
 
 /// POU has multiple EXTENDS declared
 pub fn multiple_extends(db: &dyn salsa::Database, span: Span) {
@@ -212,7 +213,7 @@ pub fn mismatch_type<'db>(
     db: &'db dyn BaseDatabase,
     sema: &'db SemanticIndex<'db>,
     origin: Span,
-    spec: &'db Spec<'db>,
+    ty: &'db Ty<'db>,
     err: impl ToString,
 ) {
     let diag = diag()
@@ -223,9 +224,12 @@ pub fn mismatch_type<'db>(
         .related_information(vec![DiagnosticRelatedInformation {
             location: Location {
                 uri: sema.file.url(db).clone(),
-                range: spec.span(db).clone().into(),
+                range: ty.origin(db).span(db).clone().into(),
             },
-            message: format!("because of type: '{:?}' declared here", spec.kind(db)),
+            message: format!("type '{:?}' is declared by '{}' here", ty.display(db), match ty.origin(db)  {
+                TyOrigin::FromPou(pou) => pou.name(db).text(db),
+                TyOrigin::FromVariable(ns) => ns.name(db).text(db),
+            }),
         }])
         .call();
     DiagnosticAccumulator::accumulate(diag.into(), db);
@@ -332,8 +336,7 @@ pub fn type_can_not_be_dereferenced(db: &dyn BaseDatabase, file: File, span: &Sp
 
 pub fn assign_direct_pou_to_a_variable(
     db: &dyn BaseDatabase,
-    file: File,
-    expr: PathExpr<'_>,
+    loc: &Span,
     origin: TyOrigin,
 ) {
     if let TyOrigin::FromPou(pou) = origin {
@@ -345,7 +348,7 @@ pub fn assign_direct_pou_to_a_variable(
                     pou.name(db).text(db),
                 ))
                 .severity(DiagnosticSeverity::ERROR)
-                .range(expr.span(db).clone())
+                .range(loc.clone())
                 .related_information(vec![DiagnosticRelatedInformation {
                     location: Location {
                         uri: pou.scope_id(db).file().url(db).clone(),
@@ -363,7 +366,7 @@ pub fn assign_direct_pou_to_a_variable(
                         pou.name(db).text(db),
                     ))
                     .severity(DiagnosticSeverity::ERROR)
-                    .range(expr.span(db).clone())
+                    .range(loc.clone())
                     .related_information(vec![DiagnosticRelatedInformation {
                         location: Location {
                             uri: pou.scope_id(db).file().url(db).clone(),
@@ -376,4 +379,40 @@ pub fn assign_direct_pou_to_a_variable(
             }
         }
     }
+}
+
+
+pub fn continue_outside_loop(db: &dyn BaseDatabase, stmt: Stmt) {
+    let diag = diag()
+        .message("continue statement can only be used inside a loop".into())
+        .severity(DiagnosticSeverity::ERROR)
+        .range(stmt.span(db).clone())
+        .call();
+    DiagnosticAccumulator::accumulate(diag.into(), db);
+}
+
+pub fn exit_outside_loop(db: &dyn BaseDatabase, stmt: Stmt) {
+    let diag = diag()
+        .message("exit statement can only be used inside a loop".into())
+        .severity(DiagnosticSeverity::ERROR)
+        .range(stmt.span(db).clone())
+        .call();
+    DiagnosticAccumulator::accumulate(diag.into(), db);
+}
+
+pub fn unreachable_code(db: &dyn BaseDatabase, start: &Span, end: &Span) {
+    let range = Span::from(tree_sitter::Range {
+        start_byte: start.start_byte,
+        end_byte: end.end_byte,
+        start_point: start.start_point,
+        end_point: end.end_point
+    });
+
+    let diag = diag()
+        .message("unreachable code".into())
+        .severity(DiagnosticSeverity::WARNING)
+        .tags(vec![DiagnosticTag::UNNECESSARY])
+        .range(start.clone())
+        .call();
+    DiagnosticAccumulator::accumulate(diag.into(), db);
 }

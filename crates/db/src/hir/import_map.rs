@@ -7,8 +7,8 @@ use rustc_hash::FxHashSet;
 use std::{cmp::Ordering, hash::Hash};
 use std::{hash::Hasher, ops::ControlFlow};
 
-use crate::hir::scopes::scope::FileScopeId;
-use crate::hir::scopes::solver::pous_in_scope;
+use crate::hir::scope::FileScopeId;
+use crate::hir_ty::name_res::pous_in_scope;
 use crate::hir::semantic_index::semantic_index;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

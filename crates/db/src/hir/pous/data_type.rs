@@ -3,7 +3,7 @@ use auto_lsp::default::db::BaseDatabase;
 use crate::{
     hir::{
         expressions::{expression::{InitExpr}, spec::Spec},
-        scopes::scope::FileScopeId,
+        scope::FileScopeId,
         semantic_index::SemanticIndex,
     },
     to_proto::{IterToProto, ToProto},
