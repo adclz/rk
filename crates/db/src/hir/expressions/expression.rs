@@ -2,18 +2,16 @@ use crate::completions::snippets::elem_type_names_init;
 use crate::hir::interned::identifier::{Ident, SpannedIdent};
 use crate::hir::scope::FileScopeId;
 use crate::hir::semantic_index::SemanticIndex;
-use crate::to_proto::{self_iter, IterToProto, ToProto};
+use crate::to_proto::{self_iter, AstId, IterToProto, ToProto};
 use auto_enums::auto_enum;
-use auto_lsp::core::span::Span;
 use auto_lsp::default::db::BaseDatabase;
 
 #[salsa::tracked(debug)]
 pub struct Expr<'db> {
     #[returns(ref)]
-    pub span: Span,
-
-    #[returns(ref)]
     pub expr: ExprKind<'db>,
+
+    pub id: AstId,
 
     pub scope_id: FileScopeId,
 }
@@ -111,13 +109,22 @@ pub enum PrimaryExpr<'db> {
 
 #[salsa::tracked(debug)]
 pub struct PathExpr<'db> {
-    #[returns(ref)]
-    pub span: Span,
-
-    pub scope_id: FileScopeId,
-
     #[tracked]
     pub expr: PathExprKind<'db>,
+
+    pub id: AstId,
+
+    pub scope_id: FileScopeId,
+}
+
+impl<'db> ToProto<'db> for PathExpr<'db> {
+    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
+        self.id(db)
+    }
+
+    fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
+        self.scope_id(db)
+    }
 }
 
 impl<'db> IterToProto<'db> for PathExpr<'db> {
@@ -229,14 +236,20 @@ pub enum SizeOperator {
 }
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct VariableAccess<'db> {
-    pub span: Span,
-
     pub kind: VariableAccessKind<'db>,
+
+    pub id: AstId,
+
+    pub scope_id: FileScopeId
 }
 
 impl<'db> ToProto<'db> for VariableAccess<'db> {
-    fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
-        &self.span
+    fn get_id(&'db self, db: &'db dyn crate::BaseDatabase) -> AstId {
+        self.id
+    }
+
+    fn get_scope_id(&'db self, db: &'db dyn crate::BaseDatabase) -> FileScopeId {
+        self.scope_id
     }
 }
 
@@ -528,8 +541,12 @@ impl Elementary {
 }
 
 impl<'db> ToProto<'db> for Expr<'db> {
-    fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
-        self.span(db)
+    fn get_id(&'db self, db: &'db dyn crate::BaseDatabase) -> AstId {
+        self.id(db)
+    }
+    
+    fn get_scope_id(&'db self, db: &'db dyn crate::BaseDatabase) -> FileScopeId {
+        self.scope_id(db)
     }
 
     fn completion(
@@ -627,9 +644,11 @@ impl<'db> IterToProto<'db> for PrimaryExpr<'db> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct InitExpr<'db> {
-    pub span: Span,
-
     pub kind: InitExprKind<'db>,
+
+    pub id: AstId,
+
+    pub scope_id: FileScopeId,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -652,7 +671,11 @@ pub enum InitExprKind<'db> {
 }
 
 impl ToProto<'_> for InitExpr<'_> {
-    fn get_span(&self, db: &dyn BaseDatabase) -> &Span {
-        &self.span
+    fn get_id(&'_ self, db: &'_ dyn crate::BaseDatabase) -> AstId {
+        self.id
+    }
+
+    fn get_scope_id(&'_ self, db: &'_ dyn crate::BaseDatabase) -> FileScopeId {
+        self.scope_id
     }
 }

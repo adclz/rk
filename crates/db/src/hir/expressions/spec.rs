@@ -1,11 +1,10 @@
-use auto_lsp::core::span::Span;
-use auto_lsp::default::db::file::File;
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind};
 
 use crate::hir::expressions::expression::{InitExpr, VariableAccess};
 use crate::hir::semantic_index::semantic_index;
 use crate::hir_ty::name_res::resolve_namespace_access;
+use crate::to_proto::AstId;
 use crate::{
     completions::snippets::elem_type_names,
     hir::{
@@ -20,23 +19,20 @@ use crate::{
 
 #[salsa::tracked(debug)]
 pub struct Spec<'db> {
-    #[returns(ref)]
-    pub span: Span,
-
     #[tracked]
     #[returns(ref)]
     pub kind: SpecKind<'db>,
 
-    pub scope_id: FileScopeId,
+    pub id: AstId,
 
-    pub file: File,
+    pub scope_id: FileScopeId
 }
 
 impl<'db> Spec<'db> {
     pub fn shorthand(&'db self, db: &'db dyn BaseDatabase) -> String {
         match self.kind(db) {
             SpecKind::Target(target) => {
-                let sema = semantic_index(db, self.file(db));
+                let sema = semantic_index(db, self.scope_id(db).file());
                 match resolve_namespace_access(db, sema.file, self.scope_id(db), *target) {
                     Some(pou) => match pou.pou(db) {
                         Pou::Function(dt) => format!("(function) {}", pou.name(db).text(db)),
@@ -184,8 +180,12 @@ impl<'db> Spec<'db> {
 }
 
 impl<'db> ToProto<'db> for Spec<'db> {
-    fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
-        self.span(db)
+    fn get_id(&'db self, db: &'db dyn crate::BaseDatabase) -> AstId {
+        self.id(db)
+    }
+    
+    fn get_scope_id(&'db self, db: &'db dyn crate::BaseDatabase) -> FileScopeId {
+        self.scope_id(db)
     }
 
     fn hover(
@@ -201,7 +201,7 @@ impl<'db> ToProto<'db> for Spec<'db> {
                 }
             }
             SpecKind::Ref(_) => Some(Hover {
-                range: Some(self.span(db).into()),
+                range: Some(self.get_span(db).into()),
                 contents: HoverContents::Markup(MarkupContent {
                     kind: MarkupKind::Markdown,
                     value: format!(
@@ -213,7 +213,7 @@ impl<'db> ToProto<'db> for Spec<'db> {
                 }),
             }),
             _ => Some(Hover {
-                range: Some(self.span(db).into()),
+                range: Some(self.get_span(db).into()),
                 contents: HoverContents::Markup(MarkupContent {
                     kind: MarkupKind::Markdown,
                     value: format!("```typescript\n{}\n```", self.with_details(db)),

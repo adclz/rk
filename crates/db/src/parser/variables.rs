@@ -22,6 +22,7 @@ use crate::hir::pous::variable::{Variable, VariableKind};
 use crate::parser::expression::ParseExpr;
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::parser::{ParseInit, ParseSpec, ParseSpecInit, ParseVarSection, SpecInitResult};
+use crate::to_proto::{AstId, ToProto};
 
 trait ToVariable<'db> {
     fn to_variable(
@@ -303,13 +304,12 @@ impl<'db> ToVariable<'db> for ast::generated::EdgeDecl {
         let name_span = name.get_span();
         Ok(Variable::new(
             sema.db,
-            sema.file,
             var_name,
-            name.get_span(),
-            name.get_span(),
             kind,
             result.spec,
             result.init,
+            AstId(0),
+            name.into(),
             sema.current_scope,
         ))
     }
@@ -326,13 +326,12 @@ impl<'db> ToVariable<'db> for ast::generated::VarDecl {
         let result = self.to_spec_init(sema)?;
         Ok(Variable::new(
             sema.db,
-            sema.file,
             var_name,
-            name.get_span(),
-            name.get_span(),
-            VariableKind::Input,
+            kind,
             result.spec,
             result.init,
+            AstId(0),
+            name.into(),
             sema.current_scope,
         ))
     }
@@ -350,13 +349,12 @@ impl<'db> ToVariable<'db> for ast::generated::VarDeclInit {
 
         Ok(Variable::new(
             sema.db,
-            sema.file,
             var_name,
-            name.get_span(),
-            name.get_span(),
-            VariableKind::Input,
+            kind,
             result.spec,
             result.init,
+            AstId(0),
+            name.into(),
             sema.current_scope,
         ))
     }
@@ -374,13 +372,12 @@ impl<'db> ToVariable<'db> for ast::generated::ArrayConformand {
 
         Ok(Variable::new(
             sema.db,
-            sema.file,
             var_name,
-            name.get_span(),
-            name.get_span(),
-            VariableKind::Input,
+            kind,
             spec,
             None,
+            AstId(0),
+            name.into(),
             sema.current_scope,
         ))
     }
@@ -398,13 +395,12 @@ impl<'db> ToVariable<'db> for ast::generated::LocPartlyVar {
 
         Ok(Variable::new(
             sema.db,
-            sema.file,
             var_name,
-            name.get_span(),
-            name.get_span(),
-            VariableKind::Input,
+            kind,
             result.spec,
             result.init,
+            AstId(0),
+            name.into(),
             sema.current_scope,
         ))
     }
@@ -422,13 +418,12 @@ impl<'db> ToVariable<'db> for ast::generated::RefSpec {
 
         Ok(Variable::new(
             sema.db,
-            sema.file,
             var_name,
-            name.get_span(),
-            name.get_span(),
-            VariableKind::Input,
+            kind,
             result.spec,
             result.init,
+            AstId(0),
+            name.into(),
             sema.current_scope,
         ))
     }
@@ -591,32 +586,38 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
         for child in self.children.iter() {
             match child.cast(&sema.ast).Type.cast(&sema.ast) {
                 GlobalVarKind::NamespaceAccess(var_decl) => {
-                    let name = Ident::from_node(sema.db, sema.file, child.cast(&sema.ast).spec.cast(&sema.ast))?;
+                    let name = Ident::from_node(
+                        sema.db,
+                        sema.file,
+                        child.cast(&sema.ast).spec.cast(&sema.ast),
+                    )?;
                     let result = var_decl.to_spec_init(sema)?;
                     section.push(Variable::new(
                         sema.db,
-                        sema.file,
                         name,
-                        child.cast(&sema.ast).get_span(),
-                        child.cast(&sema.ast).spec.cast(&sema.ast).get_span(),
                         VariableKind::Global,
                         result.spec,
                         result.init,
+                        child.cast(&sema.ast).into(),
+                        child.cast(&sema.ast).spec.cast(&sema.ast).into(),
                         sema.current_scope,
                     ))
                 }
                 GlobalVarKind::LocVarSpecInit(var_decl) => {
-                    let name = Ident::from_node(sema.db, sema.file, child.cast(&sema.ast).spec.cast(&sema.ast))?;
+                    let name = Ident::from_node(
+                        sema.db,
+                        sema.file,
+                        child.cast(&sema.ast).spec.cast(&sema.ast),
+                    )?;
                     let result = var_decl.to_spec_init(sema)?;
                     section.push(Variable::new(
                         sema.db,
-                        sema.file,
                         name,
-                        child.cast(&sema.ast).get_span(),
-                        child.cast(&sema.ast).spec.cast(&sema.ast).get_span(),
                         VariableKind::Global,
                         result.spec,
                         result.init,
+                        child.cast(&sema.ast).into(),
+                        child.cast(&sema.ast).spec.cast(&sema.ast).into(),
                         sema.current_scope,
                     ))
                 }
@@ -636,25 +637,22 @@ impl<'db> ParseSpecInit<'db> for ast::generated::EdgeDecl {
                 incomplete_edge_qualifier(sema.db, err.get_span());
                 Spec::new(
                     sema.db,
-                    self.get_span(),
                     SpecKind::Bool,
+                    self.into(),
                     sema.current_scope,
-                    sema.file,
                 )
             }
             ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::Token_F_EDGE(fedge) => Spec::new(
                 sema.db,
-                self.get_span(),
                 SpecKind::FEDGEBool,
+                self.into(),
                 sema.current_scope,
-                sema.file,
             ),
             ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::Token_R_EDGE(redge) => Spec::new(
                 sema.db,
-                self.get_span(),
                 SpecKind::REDGEBool,
+                self.into(),
                 sema.current_scope,
-                sema.file,
             ),
         };
 
@@ -667,7 +665,12 @@ impl<'db> ParseSpecInit<'db> for ast::generated::LocPartlyVar {
         &self,
         sema: &SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<SpecInitResult<'db>> {
-        let spec = self.spec.cast(&sema.ast).children.cast(&sema.ast).to_spec(sema)?;
+        let spec = self
+            .spec
+            .cast(&sema.ast)
+            .children
+            .cast(&sema.ast)
+            .to_spec(sema)?;
         Ok(SpecInitResult::new(spec, None))
     }
 }
@@ -696,7 +699,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::VarDecl {
         };
 
         if let Some(init) = init {
-            unauthorized_variable_init(sema.db, init.span.clone());
+            unauthorized_variable_init(sema.db, init.get_span(sema.db).clone());
         }
 
         Ok(SpecInitResult::new(spec?, None))

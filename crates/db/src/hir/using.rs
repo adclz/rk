@@ -7,28 +7,31 @@ use auto_lsp::{
 use crate::{
     hir::{
         interned::namespace::NamespacePath, scope::FileScopeId,
-        semantic_index::SemanticIndex,
+        semantic_index::{SemanticIndex},
     },
-    to_proto::{self_iter, IterToProto, ToProto},
+    to_proto::{self_iter, AstId, IterToProto, ToProto},
 };
 
 #[salsa::tracked(debug)]
 pub struct Using<'db> {
     pub path: NamespacePath,
 
-    #[returns(ref)]
-    pub span: Span,
+    pub id: AstId,
 
     pub scope_id: FileScopeId,
 }
 
 impl<'db> ToProto<'db> for Using<'db> {
-    fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
-        self.span(db)
+    fn get_id(&'db self, db: &'db dyn crate::BaseDatabase) -> AstId {
+        self.id(db)
     }
 
-    fn get_named_span(&'db self, db: &'db dyn crate::BaseDatabase) -> Option<&'db Span> {
-        Some(self.span(db))
+    fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
+        self.scope_id(db)
+    }
+
+    fn get_name_span(&'db self, db: &'db dyn crate::BaseDatabase) -> Option<&'db Span> {
+        Some(self.get_span(db))
     }
 
     fn hover(
@@ -41,7 +44,7 @@ impl<'db> ToProto<'db> for Using<'db> {
                 kind: MarkupKind::Markdown,
                 value: format!("Using namespace `{}`", self.path(db).to_string(db)),
             }),
-            range: Some(self.span(db).lsp()),
+            range: Some(self.get_span(db).lsp()),
         })
     }
 

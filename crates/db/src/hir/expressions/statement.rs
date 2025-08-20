@@ -1,24 +1,27 @@
 use auto_enums::auto_enum;
-use auto_lsp::{core::span::Span, default::db::BaseDatabase};
+use auto_lsp::{default::db::BaseDatabase};
 
 use crate::{hir::{expressions::expression::{
     Expr, ParamAssign, PathExpr, SymbolicVariable, VariableAccess
-}, scope::FileScopeId, semantic_index::SemanticIndex}, to_proto::{self_iter, IterToProto, ToProto}};
+}, scope::FileScopeId, semantic_index::SemanticIndex}, to_proto::{self_iter, AstId, IterToProto, ToProto}};
 
 #[salsa::tracked(debug)]
 pub struct Stmt<'db> {
     #[returns(ref)]
-    pub span: Span,
-
-    #[returns(ref)]
     pub stmt: StmtKind<'db>,
+
+    pub id: AstId,
 
     pub scope_id: FileScopeId,
 }
 
 impl<'db> ToProto<'db> for Stmt<'db> {
-    fn get_span(&'db self, db: &'db dyn crate::BaseDatabase) -> &'db Span {
-        self.span(db)
+    fn get_id(&'db self, db: &'db dyn crate::BaseDatabase) -> AstId {
+        self.id(db)
+    }
+
+    fn get_scope_id(&'db self, db: &'db dyn crate::BaseDatabase) -> FileScopeId {
+        self.scope_id(db)
     }
 }
 

@@ -16,7 +16,7 @@ use crate::{
         scope::{FileScopeId, ScopeKind},
         semantic_index::semantic_index,
         using::Using,
-    },
+    }, to_proto::ToProto,
 };
 
 /// Find all namespaces in all files that match a given namespace path.
@@ -53,7 +53,7 @@ fn imported_namespaces<'db>(
     let matching_namespaces = shared_namespaces(db, path);
 
     if matching_namespaces.is_empty() {
-        namespace_not_found(db, using.span(db).clone(), path);
+        namespace_not_found(db, using.get_span(db).clone(), path);
         return result;
     }
 

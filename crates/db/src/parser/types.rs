@@ -1,14 +1,11 @@
 use auto_lsp::{
     anyhow::{self},
-    core::ast::AstNode,
 };
 
 use crate::{
     hir::{
         expressions::{
-            expression::{
-                InitExpr, InitExprKind, MultibitsPart, Numeric, NumericKind
-            },
+            expression::{InitExpr, InitExprKind, MultibitsPart, Numeric, NumericKind},
             spec::{Enum, EnumVariant, Spec, SpecKind, Struct, StructElement, SubRange},
         },
         interned::{identifier::Ident, namespace::NamespaceAccess},
@@ -35,10 +32,9 @@ impl<'db> ParseSpec<'db> for ast::generated::NamespaceAccess {
     fn to_spec(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Spec<'db>> {
         Ok(Spec::new(
             sema.db,
-            self.get_span(),
-            SpecKind::Target(NamespaceAccess::from_ast(sema.db, sema.file, self)?),
+            SpecKind::Target(NamespaceAccess::from_ast(sema.db, sema, self)?),
+            self.into(),
             sema.current_scope,
-            sema.file,
         ))
     }
 }
@@ -67,50 +63,22 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
         type AstSpec = ast::generated::ElemTypeName;
         Ok(match self {
             AstSpec::BitStrTypeName(str) => match str.children.cast(&sema.ast) {
-                ast::generated::BoolName_MultibitsTypeName::BoolName(_) => Spec::new(
-                    sema.db,
-                    self.get_span(),
-                    SpecKind::Bool,
-                    sema.current_scope,
-                    sema.file,
-                ),
+                ast::generated::BoolName_MultibitsTypeName::BoolName(_) => {
+                    Spec::new(sema.db, SpecKind::Bool, self.into(), sema.current_scope)
+                }
                 ast::generated::BoolName_MultibitsTypeName::MultibitsTypeName(a) => {
                     match a.children.cast(&sema.ast) {
                         ast::generated::ByteName_DwordName_LwordName_WordName::ByteName(_) => {
-                            Spec::new(
-                                sema.db,
-                                self.get_span(),
-                                SpecKind::Byte,
-                                sema.current_scope,
-                                sema.file,
-                            )
+                            Spec::new(sema.db, SpecKind::Byte, self.into(), sema.current_scope)
                         }
                         ast::generated::ByteName_DwordName_LwordName_WordName::WordName(_) => {
-                            Spec::new(
-                                sema.db,
-                                self.get_span(),
-                                SpecKind::Word,
-                                sema.current_scope,
-                                sema.file,
-                            )
+                            Spec::new(sema.db, SpecKind::Word, self.into(), sema.current_scope)
                         }
                         ast::generated::ByteName_DwordName_LwordName_WordName::DwordName(_) => {
-                            Spec::new(
-                                sema.db,
-                                self.get_span(),
-                                SpecKind::DWord,
-                                sema.current_scope,
-                                sema.file,
-                            )
+                            Spec::new(sema.db, SpecKind::DWord, self.into(), sema.current_scope)
                         }
                         ast::generated::ByteName_DwordName_LwordName_WordName::LwordName(_) => {
-                            Spec::new(
-                                sema.db,
-                                self.get_span(),
-                                SpecKind::LWord,
-                                sema.current_scope,
-                                sema.file,
-                            )
+                            Spec::new(sema.db, SpecKind::LWord, self.into(), sema.current_scope)
                         }
                     }
                 }
@@ -122,87 +90,47 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
                     }
                     ast::generated::IntTypeName_RealTypeName::RealTypeName(real) => {
                         match real.children.cast(&sema.ast) {
-                            ast::generated::LrealName_RealName::RealName(_) => Spec::new(
-                                sema.db,
-                                self.get_span(),
-                                SpecKind::Real,
-                                sema.current_scope,
-                                sema.file,
-                            ),
-                            ast::generated::LrealName_RealName::LrealName(_) => Spec::new(
-                                sema.db,
-                                self.get_span(),
-                                SpecKind::LReal,
-                                sema.current_scope,
-                                sema.file,
-                            ),
+                            ast::generated::LrealName_RealName::RealName(_) => {
+                                Spec::new(sema.db, SpecKind::Real, self.into(), sema.current_scope)
+                            }
+                            ast::generated::LrealName_RealName::LrealName(_) => {
+                                Spec::new(sema.db, SpecKind::LReal, self.into(), sema.current_scope)
+                            }
                         }
                     }
                 }
             }
             AstSpec::AnyDateTypeName(date_type_name) => match date_type_name {
-                ast::generated::AnyDateTypeName::DateTypeName(_) => Spec::new(
-                    sema.db,
-                    self.get_span(),
-                    SpecKind::Date,
-                    sema.current_scope,
-                    sema.file,
-                ),
-                ast::generated::AnyDateTypeName::LDateTypeName(_) => Spec::new(
-                    sema.db,
-                    self.get_span(),
-                    SpecKind::LDate,
-                    sema.current_scope,
-                    sema.file,
-                ),
+                ast::generated::AnyDateTypeName::DateTypeName(_) => {
+                    Spec::new(sema.db, SpecKind::Date, self.into(), sema.current_scope)
+                }
+                ast::generated::AnyDateTypeName::LDateTypeName(_) => {
+                    Spec::new(sema.db, SpecKind::LDate, self.into(), sema.current_scope)
+                }
             },
             AstSpec::AnyTimeTypeName(time_type_name) => match time_type_name {
-                ast::generated::AnyTimeTypeName::TimeTypeName(_) => Spec::new(
-                    sema.db,
-                    self.get_span(),
-                    SpecKind::Time,
-                    sema.current_scope,
-                    sema.file,
-                ),
-                ast::generated::AnyTimeTypeName::LTimeTypeName(_) => Spec::new(
-                    sema.db,
-                    self.get_span(),
-                    SpecKind::LTime,
-                    sema.current_scope,
-                    sema.file,
-                ),
+                ast::generated::AnyTimeTypeName::TimeTypeName(_) => {
+                    Spec::new(sema.db, SpecKind::Time, self.into(), sema.current_scope)
+                }
+                ast::generated::AnyTimeTypeName::LTimeTypeName(_) => {
+                    Spec::new(sema.db, SpecKind::LTime, self.into(), sema.current_scope)
+                }
             },
             AstSpec::AnyTodTypeName(tod_type_name) => match tod_type_name {
-                ast::generated::AnyTodTypeName::TodTypeName(_) => Spec::new(
-                    sema.db,
-                    self.get_span(),
-                    SpecKind::Tod,
-                    sema.current_scope,
-                    sema.file,
-                ),
-                ast::generated::AnyTodTypeName::LtodTypeName(_) => Spec::new(
-                    sema.db,
-                    self.get_span(),
-                    SpecKind::LTod,
-                    sema.current_scope,
-                    sema.file,
-                ),
+                ast::generated::AnyTodTypeName::TodTypeName(_) => {
+                    Spec::new(sema.db, SpecKind::Tod, self.into(), sema.current_scope)
+                }
+                ast::generated::AnyTodTypeName::LtodTypeName(_) => {
+                    Spec::new(sema.db, SpecKind::LTod, self.into(), sema.current_scope)
+                }
             },
             AstSpec::AnyDtTypeName(dt_type_name) => match dt_type_name {
-                ast::generated::AnyDtTypeName::DtTypeName(_) => Spec::new(
-                    sema.db,
-                    self.get_span(),
-                    SpecKind::Dt,
-                    sema.current_scope,
-                    sema.file,
-                ),
-                ast::generated::AnyDtTypeName::LDtTypeName(_) => Spec::new(
-                    sema.db,
-                    self.get_span(),
-                    SpecKind::Ldt,
-                    sema.current_scope,
-                    sema.file,
-                ),
+                ast::generated::AnyDtTypeName::DtTypeName(_) => {
+                    Spec::new(sema.db, SpecKind::Dt, self.into(), sema.current_scope)
+                }
+                ast::generated::AnyDtTypeName::LDtTypeName(_) => {
+                    Spec::new(sema.db, SpecKind::Ldt, self.into(), sema.current_scope)
+                }
             },
         })
     }
@@ -213,73 +141,33 @@ impl<'db> ParseSpec<'db> for ast::generated::IntTypeName {
         Ok(match self.children.cast(&sema.ast) {
             ast::generated::SignIntTypeName_UnsignIntTypeName::SignIntTypeName(int) => {
                 match int.children.cast(&sema.ast) {
-                    ast::generated::DintName_IntName_LintName_SintName::SintName(_) => Spec::new(
-                        sema.db,
-                        self.get_span(),
-                        SpecKind::SInt,
-                        sema.current_scope,
-                        sema.file,
-                    ),
-                    ast::generated::DintName_IntName_LintName_SintName::IntName(_) => Spec::new(
-                        sema.db,
-                        self.get_span(),
-                        SpecKind::Int,
-                        sema.current_scope,
-                        sema.file,
-                    ),
-                    ast::generated::DintName_IntName_LintName_SintName::DintName(_) => Spec::new(
-                        sema.db,
-                        self.get_span(),
-                        SpecKind::DInt,
-                        sema.current_scope,
-                        sema.file,
-                    ),
-                    ast::generated::DintName_IntName_LintName_SintName::LintName(_) => Spec::new(
-                        sema.db,
-                        self.get_span(),
-                        SpecKind::LInt,
-                        sema.current_scope,
-                        sema.file,
-                    ),
+                    ast::generated::DintName_IntName_LintName_SintName::SintName(_) => {
+                        Spec::new(sema.db, SpecKind::SInt, self.into(), sema.current_scope)
+                    }
+                    ast::generated::DintName_IntName_LintName_SintName::IntName(_) => {
+                        Spec::new(sema.db, SpecKind::Int, self.into(), sema.current_scope)
+                    }
+                    ast::generated::DintName_IntName_LintName_SintName::DintName(_) => {
+                        Spec::new(sema.db, SpecKind::DInt, self.into(), sema.current_scope)
+                    }
+                    ast::generated::DintName_IntName_LintName_SintName::LintName(_) => {
+                        Spec::new(sema.db, SpecKind::LInt, self.into(), sema.current_scope)
+                    }
                 }
             }
             ast::generated::SignIntTypeName_UnsignIntTypeName::UnsignIntTypeName(uint) => {
                 match uint.children.cast(&sema.ast) {
                     ast::generated::UdintName_UintName_UlintName_UsintName::UsintName(_) => {
-                        Spec::new(
-                            sema.db,
-                            self.get_span(),
-                            SpecKind::USInt,
-                            sema.current_scope,
-                            sema.file,
-                        )
+                        Spec::new(sema.db, SpecKind::USInt, self.into(), sema.current_scope)
                     }
                     ast::generated::UdintName_UintName_UlintName_UsintName::UintName(_) => {
-                        Spec::new(
-                            sema.db,
-                            self.get_span(),
-                            SpecKind::UInt,
-                            sema.current_scope,
-                            sema.file,
-                        )
+                        Spec::new(sema.db, SpecKind::UInt, self.into(), sema.current_scope)
                     }
                     ast::generated::UdintName_UintName_UlintName_UsintName::UdintName(_) => {
-                        Spec::new(
-                            sema.db,
-                            self.get_span(),
-                            SpecKind::UDInt,
-                            sema.current_scope,
-                            sema.file,
-                        )
+                        Spec::new(sema.db, SpecKind::UDInt, self.into(), sema.current_scope)
                     }
                     ast::generated::UdintName_UintName_UlintName_UsintName::UlintName(_) => {
-                        Spec::new(
-                            sema.db,
-                            self.get_span(),
-                            SpecKind::ULInt,
-                            sema.current_scope,
-                            sema.file,
-                        )
+                        Spec::new(sema.db, SpecKind::ULInt, self.into(), sema.current_scope)
                     }
                 }
             }
@@ -291,10 +179,17 @@ impl<'db> ParseExpr<'db> for ast::generated::SimpleTypeInit {
     type Output = InitExpr<'db>;
 
     fn parse(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<InitExpr<'db>> {
-        Ok(InitExpr{
-            span: self.get_span(),
-            kind: InitExprKind::ConstantExpr(self.children.cast(&sema.ast).children.cast(&sema.ast).to_expr(sema)?)
-        }) 
+        Ok(InitExpr {
+            id: self.into(),
+            scope_id: sema.current_scope,
+            kind: InitExprKind::ConstantExpr(
+                self.children
+                    .cast(&sema.ast)
+                    .children
+                    .cast(&sema.ast)
+                    .to_expr(sema)?,
+            ),
+        })
     }
 }
 
@@ -304,37 +199,21 @@ impl<'db> ParseSpec<'db> for ast::generated::StrTypeSpec {
     fn to_spec(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Spec<'db>> {
         type AstSpec = ast::generated::DByteStrSpec_DChar_SByteStrSpec_SChar;
         Ok(match self.children.cast(&sema.ast) {
-            AstSpec::DByteStrSpec(_) => Spec::new(
-                sema.db,
-                self.get_span(),
-                SpecKind::WString,
-                sema.current_scope,
-                sema.file,
-            ),
+            AstSpec::DByteStrSpec(_) => {
+                Spec::new(sema.db, SpecKind::WString, self.into(), sema.current_scope)
+            }
 
-            AstSpec::SByteStrSpec(_) => Spec::new(
-                sema.db,
-                self.get_span(),
-                SpecKind::String,
-                sema.current_scope,
-                sema.file,
-            ),
+            AstSpec::SByteStrSpec(_) => {
+                Spec::new(sema.db, SpecKind::String, self.into(), sema.current_scope)
+            }
 
-            AstSpec::DChar(_) => Spec::new(
-                sema.db,
-                self.get_span(),
-                SpecKind::WChar,
-                sema.current_scope,
-                sema.file,
-            ),
+            AstSpec::DChar(_) => {
+                Spec::new(sema.db, SpecKind::WChar, self.into(), sema.current_scope)
+            }
 
-            AstSpec::SChar(_) => Spec::new(
-                sema.db,
-                self.get_span(),
-                SpecKind::Char,
-                sema.current_scope,
-                sema.file,
-            ),
+            AstSpec::SChar(_) => {
+                Spec::new(sema.db, SpecKind::Char, self.into(), sema.current_scope)
+            }
         })
     }
 }
@@ -362,7 +241,11 @@ impl<'db> ParseExpr<'db> for ast::generated::ArrayTypeInit {
             .map(|elem| elem.cast(&sema.ast).parse(sema))
             .collect::<anyhow::Result<Vec<_>>>()?;
 
-        Ok(InitExpr { span: self.get_span(), kind: InitExprKind::ArrayInit { values } })
+        Ok(InitExpr {
+            id: self.into(),
+            scope_id: sema.current_scope,
+            kind: InitExprKind::ArrayInit { values },
+        })
     }
 }
 
@@ -376,7 +259,11 @@ impl<'db> ParseExpr<'db> for ast::generated::StructTypeInit {
             .map(|elem| elem.cast(&sema.ast).parse(sema))
             .collect::<anyhow::Result<Vec<_>>>()?;
 
-        Ok(InitExpr { span: self.get_span(), kind: InitExprKind::ArrayInit { values } })
+        Ok(InitExpr {
+            id: self.into(),
+            scope_id: sema.current_scope,
+            kind: InitExprKind::ArrayInit { values },
+        })
     }
 }
 
@@ -386,24 +273,15 @@ impl<'db> ParseExpr<'db> for ast::generated::InitElem {
     fn parse(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Self::Output> {
         type InitElem = ast::generated::ERRFuncCallInInit_ArrayIndexElem_ArrayInit_ConstantExpr_StructElem_StructInit;
         match self.children.cast(&sema.ast) {
-            InitElem::ArrayIndexElem(array_type_init) => {
-                array_type_init.parse(sema)
-            }
-            InitElem::ArrayInit(expr) => {
-                expr.parse(sema)
-            }
-            InitElem::StructElem(struct_elem_init) => {
-                struct_elem_init.parse(sema)
-            },
-            InitElem::StructInit(struct_type_init) => {
-                struct_type_init.parse(sema)
-            }
-            InitElem::ConstantExpr(expr) => { 
-                Ok(InitExpr {
-                    span: self.get_span(),
-                    kind: InitExprKind::ConstantExpr(expr.children.cast(&sema.ast).to_expr(sema)?),
-                })
-            },
+            InitElem::ArrayIndexElem(array_type_init) => array_type_init.parse(sema),
+            InitElem::ArrayInit(expr) => expr.parse(sema),
+            InitElem::StructElem(struct_elem_init) => struct_elem_init.parse(sema),
+            InitElem::StructInit(struct_type_init) => struct_type_init.parse(sema),
+            InitElem::ConstantExpr(expr) => Ok(InitExpr {
+                id: self.into(),
+                scope_id: sema.current_scope,
+                kind: InitExprKind::ConstantExpr(expr.children.cast(&sema.ast).to_expr(sema)?),
+            }),
             InitElem::ERRFuncCallInInit(err) => {
                 todo!()
             }
@@ -417,13 +295,17 @@ impl<'db> ParseExpr<'db> for ast::generated::ArrayInit {
     fn parse(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Self::Output> {
         let values = self
             .values
-            .cast(&sema.ast) 
+            .cast(&sema.ast)
             .children
             .iter()
             .map(|elem| elem.cast(&sema.ast).parse(sema))
             .collect::<anyhow::Result<Vec<_>>>()?;
- 
-        Ok(InitExpr { span: self.get_span(), kind: InitExprKind::ArrayInit { values } })
+
+        Ok(InitExpr {
+            id: self.into(),
+            scope_id: sema.current_scope,
+            kind: InitExprKind::ArrayInit { values },
+        })
     }
 }
 
@@ -435,7 +317,7 @@ impl<'db> ParseExpr<'db> for ast::generated::ArrayIndexElem {
             sema.db,
             Ident::from_node(sema.db, sema.file, self.index.cast(&sema.ast))?,
             NumericKind::Signed,
-        ); 
+        );
 
         let values = self
             .values
@@ -445,9 +327,13 @@ impl<'db> ParseExpr<'db> for ast::generated::ArrayIndexElem {
             .map(|elem| elem.cast(&sema.ast).parse(sema))
             .collect::<anyhow::Result<Vec<_>>>()?;
 
-        Ok(InitExpr { span: self.get_span(), kind: InitExprKind::ArrayIndexedElement { index, values } })
+        Ok(InitExpr {
+            id: self.into(),
+            scope_id: sema.current_scope,
+            kind: InitExprKind::ArrayIndexedElement { index, values },
+        })
     }
-} 
+}
 
 impl<'db> ParseExpr<'db> for ast::generated::StructInit {
     type Output = InitExpr<'db>;
@@ -459,7 +345,11 @@ impl<'db> ParseExpr<'db> for ast::generated::StructInit {
             .map(|elem| elem.cast(&sema.ast).parse(sema))
             .collect::<anyhow::Result<Vec<_>>>()?;
 
-        Ok(InitExpr { span: self.get_span(), kind: InitExprKind::StructInit { values } })
+        Ok(InitExpr {
+            id: self.into(),
+            scope_id: sema.current_scope,
+            kind: InitExprKind::StructInit { values },
+        })
     }
 }
 
@@ -470,7 +360,11 @@ impl<'db> ParseExpr<'db> for ast::generated::StructElem {
         let name = Ident::from_node(sema.db, sema.file, self.name.cast(&sema.ast))?;
         let value = Box::new(self.value.cast(&sema.ast).parse(sema)?);
 
-        Ok(InitExpr { span: self.get_span(), kind: InitExprKind::StructElement { name, value }})
+        Ok(InitExpr {
+            id: self.into(),
+            scope_id: sema.current_scope,
+            kind: InitExprKind::StructElement { name, value },
+        })
     }
 }
 
@@ -480,21 +374,19 @@ impl<'db> ParseSpec<'db> for ast::generated::ArrayConformand {
     fn to_spec(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Spec<'db>> {
         Ok(Spec::new(
             sema.db,
-            self.get_span(),
             SpecKind::ArrayConformand(self.children.cast(&sema.ast).to_spec(sema)?),
+            self.into(),
             sema.current_scope,
-            sema.file,
         ))
     }
 }
 
 impl<'db> ParseSpec<'db> for ast::generated::StructTypeSpec {
     fn to_spec(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Spec<'db>> {
-
         let mut elements = vec![];
 
         for elem in &self.children {
-             type Spec = ast::generated::ArrayTypeSpec_EnumTypeSpec_SimpleTypeSpec_StructTypeSpec_SubrangeTypeSpec;
+            type Spec = ast::generated::ArrayTypeSpec_EnumTypeSpec_SimpleTypeSpec_StructTypeSpec_SubrangeTypeSpec;
 
             let spec = match elem.cast(&sema.ast).spec.cast(&sema.ast) {
                 Spec::ArrayTypeSpec(elem) => elem.to_spec(sema)?,
@@ -506,7 +398,12 @@ impl<'db> ParseSpec<'db> for ast::generated::StructTypeSpec {
 
             type Init = ast::generated::ArrayTypeInit_SimpleTypeInit_StructTypeInit;
 
-            let init = if let Some(init) = elem.cast(&sema.ast).init.as_ref().map(|i| i.cast(&sema.ast)) {
+            let init = if let Some(init) = elem
+                .cast(&sema.ast)
+                .init
+                .as_ref()
+                .map(|i| i.cast(&sema.ast))
+            {
                 match init {
                     Init::ArrayTypeInit(array_type_init) => Some(array_type_init.parse(sema)?),
                     Init::SimpleTypeInit(simple_type_init) => Some(simple_type_init.parse(sema)?),
@@ -516,10 +413,21 @@ impl<'db> ParseSpec<'db> for ast::generated::StructTypeSpec {
                 None
             };
 
-            let name = Ident::from_node(sema.db, sema.file, elem.cast(&sema.ast).name.cast(&sema.ast))?;
+            let name = Ident::from_node(
+                sema.db,
+                sema.file,
+                elem.cast(&sema.ast).name.cast(&sema.ast),
+            )?;
 
             let (located, multibits) = if let Some(attrs) = &elem.cast(&sema.ast).attributes {
-                let located = attrs.cast(&sema.ast).located.cast(&sema.ast).children.cast(&sema.ast).to_access(sema).ok();
+                let located = attrs
+                    .cast(&sema.ast)
+                    .located
+                    .cast(&sema.ast)
+                    .children
+                    .cast(&sema.ast)
+                    .to_access(sema)
+                    .ok();
                 let multibits = attrs
                     .cast(&sema.ast)
                     .multibits
@@ -531,7 +439,7 @@ impl<'db> ParseSpec<'db> for ast::generated::StructTypeSpec {
                 (None, None)
             };
 
-            elements.push(StructElement { 
+            elements.push(StructElement {
                 name,
                 spec,
                 init,
@@ -542,13 +450,12 @@ impl<'db> ParseSpec<'db> for ast::generated::StructTypeSpec {
 
         Ok(Spec::new(
             sema.db,
-            self.get_span(),
             SpecKind::Struct(Struct {
                 elements,
                 overlap: self.overlap.is_some(),
             }),
+            self.into(),
             sema.current_scope,
-            sema.file,
         ))
     }
 }
@@ -561,7 +468,11 @@ impl<'db> ParseMultiBits<'db> for ast::generated::MultibitPartAccess {
     fn to_multibits(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<MultibitsPart> {
         let offset = Numeric::new(
             sema.db,
-            Ident::from_node(sema.db, sema.file, self.path.cast(&sema.ast).children.cast(&sema.ast))?,
+            Ident::from_node(
+                sema.db,
+                sema.file,
+                self.path.cast(&sema.ast).children.cast(&sema.ast),
+            )?,
             NumericKind::Signed,
         );
 
@@ -582,7 +493,10 @@ impl<'db> ParseSpecInit<'db> for ast::generated::RefSpec {
         &self,
         sema: &SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<SpecInitResult<'db>> {
-        Ok(SpecInitResult { spec: self.children.cast(&sema.ast).to_spec(sema)?, init: None })
+        Ok(SpecInitResult {
+            spec: self.children.cast(&sema.ast).to_spec(sema)?,
+            init: None,
+        })
     }
 }
 
@@ -590,10 +504,9 @@ impl<'db> ParseSpec<'db> for ast::generated::RefTypeSpec {
     fn to_spec(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Spec<'db>> {
         Ok(Spec::new(
             sema.db,
-            self.get_span(),
             SpecKind::Ref(self.children.cast(&sema.ast).to_spec(sema)?),
+            self.into(),
             sema.current_scope,
-            sema.file,
         ))
     }
 }
@@ -602,30 +515,36 @@ impl<'db> ParseSpec<'db> for ast::generated::RefTypeSpec {
 
 impl<'db> ParseSpec<'db> for ast::generated::EnumTypeSpec {
     fn to_spec(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Spec<'db>> {
-        let typ = self.children.cast(&sema.ast).elem_type
+        let typ = self
+            .children
+            .cast(&sema.ast)
+            .elem_type
             .as_ref()
             .map(|elem| elem.cast(&sema.ast).to_spec(sema))
             .transpose()?;
-        
+
         let mut variants = vec![];
         for spec in &self.children.cast(&sema.ast).children {
-            let name = Ident::from_node(sema.db, sema.file, spec.cast(&sema.ast).value.cast(&sema.ast))?;
-            let value = spec.cast(&sema.ast).children
+            let name = Ident::from_node(
+                sema.db,
+                sema.file,
+                spec.cast(&sema.ast).value.cast(&sema.ast),
+            )?;
+            let value = spec
+                .cast(&sema.ast)
+                .children
                 .as_ref()
                 .map(|v| v.cast(&sema.ast).to_expr(sema))
                 .transpose()?;
 
-            variants.push(EnumVariant {
-                name,
-                value,
-            });
+            variants.push(EnumVariant { name, value });
         }
-        Ok(Spec::new(sema.db, self.get_span(), 
-        SpecKind::Enum(Enum {
-            typ,
-            variants
-        }),
-         sema.current_scope, sema.file))
+        Ok(Spec::new(
+            sema.db,
+            SpecKind::Enum(Enum { typ, variants }),
+            self.into(),
+            sema.current_scope,
+        ))
     }
 }
 
@@ -635,18 +554,27 @@ impl<'db> ParseSpec<'db> for ast::generated::SubrangeTypeSpec {
     fn to_spec(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Spec<'db>> {
         let spec = self.Type.cast(&sema.ast).to_spec(sema)?;
         let range = self.range.cast(&sema.ast);
-        let lower = range.lower.cast(&sema.ast).children.cast(&sema.ast).to_expr(sema)?;
-        let upper = range.upper.cast(&sema.ast).children.cast(&sema.ast).to_expr(sema)?;
+        let lower = range
+            .lower
+            .cast(&sema.ast)
+            .children
+            .cast(&sema.ast)
+            .to_expr(sema)?;
+        let upper = range
+            .upper
+            .cast(&sema.ast)
+            .children
+            .cast(&sema.ast)
+            .to_expr(sema)?;
         Ok(Spec::new(
             sema.db,
-            self.get_span(),
             SpecKind::Subrange(SubRange {
                 _type: Box::new(spec),
                 lower,
                 upper,
             }),
+            self.into(),
             sema.current_scope,
-            sema.file,
         ))
     }
 }

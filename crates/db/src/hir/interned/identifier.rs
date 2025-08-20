@@ -1,16 +1,17 @@
 use auto_lsp::{
     anyhow,
-    core::{ast::{AstNode, AstNodeId}, span::Span},
+    core::{ast::{AstNode, AstNodeId}},
     default::db::{file::File, tracked::get_ast, BaseDatabase},
 };
 use compact_str::CompactString;
 use std::{hash::Hash, ops::Deref};
 
-use crate::to_proto::ToProto;
+use crate::{hir::scope::FileScopeId, parser::semantic_index::SemanticIndexBuilder, to_proto::{AstId, ToProto}};
 
 #[derive(Clone, Eq, salsa::Update, Debug)]
 pub struct SpannedIdent {
-    pub span: Span,
+    pub id: AstId,
+    pub scope_id: FileScopeId,
     pub ident: Ident,
 }
 
@@ -41,33 +42,18 @@ impl Hash for SpannedIdent {
 }
 
 impl SpannedIdent {
-    pub fn new<T: AstNode>(db: &dyn BaseDatabase, file: File, ident: &AstNodeId<T>) -> anyhow::Result<Self> {
-        let ast = get_ast(db, file);
+    pub fn new<T: AstNode>(db: &dyn BaseDatabase, sema: &SemanticIndexBuilder, ident: &AstNodeId<T>) -> anyhow::Result<Self> {
+        let ast = get_ast(db, sema.file);
         let ident = ident.cast(&ast);
-        Self::from_node(db, file, ident)
+        Self::from_node(db, sema, ident)
     }
 
-    pub fn from_node(db: &dyn BaseDatabase, file: File, node: &impl AstNode) -> anyhow::Result<Self> {
+    pub fn from_node(db: &dyn BaseDatabase, sema: &SemanticIndexBuilder, node: &impl AstNode) -> anyhow::Result<Self> {
         Ok(SpannedIdent {
-            span: node.get_span(),
-            ident: Ident::from_node(db, file, node)?,
+            id: node.into(),
+            scope_id: sema.current_scope,
+            ident: Ident::from_node(db, sema.file, node)?,
         })
-    }
-
-    pub fn from_blank(db: &dyn BaseDatabase, text: &str) -> Self {
-        use auto_lsp::tree_sitter::Point;
-        use auto_lsp::tree_sitter::Range;
-
-        let range = Range {
-            start_byte: 0,
-            end_byte: 0,
-            start_point: Point { row: 0, column: 0 },
-            end_point: Point { row: 0, column: 0 },
-        };
-        SpannedIdent {
-            span: Span::from(range),
-            ident: Ident::from_slice(db, text),
-        }
     }
 
     pub fn to_string<'db>(&'db self, db: &'db dyn BaseDatabase) -> &'db str {
@@ -76,8 +62,12 @@ impl SpannedIdent {
 }
 
 impl<'db> ToProto<'db> for SpannedIdent {
-    fn get_span(&'db self, db: &'db dyn crate::BaseDatabase) -> &'db Span {
-        &self.span
+    fn get_id(&'db self, db: &'db dyn crate::BaseDatabase) -> AstId {
+        self.id
+    }
+
+    fn get_scope_id(&'db self, db: &'db dyn crate::BaseDatabase) -> FileScopeId {
+        self.scope_id
     }
 }
 

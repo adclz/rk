@@ -7,6 +7,7 @@ use crate::hir_ty::expr_resolver::{resolve_expr, Env, ResolvedExpr};
 use crate::hir_ty::ty::{Ty, TyKind};
 use crate::hir_ty::ty_var_access_resolver::{resolve_var_access, ResolvedVarResult};
 use crate::hir_ty::TyResolved;
+use crate::to_proto::ToProto;
 use auto_lsp::core::span::Span;
 use auto_lsp::default::db::BaseDatabase;
 
@@ -140,10 +141,10 @@ impl<'db> ResolveStmtCtx<'db> {
             if let Some(ret) = self.return_reached {
                 match &mut self.unreachable_range {
                     None => {
-                        self.unreachable_range = Some((stmt.span(self.db).clone(), stmt.span(self.db).clone()));
+                        self.unreachable_range = Some((stmt.get_span(self.db).clone(), stmt.get_span(self.db).clone()));
                     }
                     Some((start, end)) => {
-                        self.unreachable_range = Some((start.clone(), stmt.span(self.db).clone()));
+                        self.unreachable_range = Some((start.clone(), stmt.get_span(self.db).clone()));
                     }
                 }
             }
@@ -153,7 +154,7 @@ impl<'db> ResolveStmtCtx<'db> {
                     let resolved_var = resolve_var_access(self.db, self.scope_id, var);
                     if let Some(ty) = resolved_var.ty() {
                         if let TyKind::Callable { .. } = ty.kind(self.db) {
-                            self.errors.push(StmtResolveError::AssignmentToCallable { loc: resolved_var.origin.span.clone(), ty });
+                            self.errors.push(StmtResolveError::AssignmentToCallable { loc: resolved_var.origin.get_span(self.db).clone(), ty });
                             return;
                         }
 

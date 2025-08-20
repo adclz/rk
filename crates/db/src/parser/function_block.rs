@@ -26,7 +26,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         let extends = func
             .extends
             .as_ref()
-            .map(|e| SpannedNamespaceAccess::from_ast(self.db, self.file, e.cast(&self.ast)))
+            .map(|e| SpannedNamespaceAccess::from_ast(self.db, self, e.cast(&self.ast)))
             .transpose()?;
 
         let implements = func
@@ -35,7 +35,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             .map(|i| {
                 i.cast(&self.ast).children
                     .iter()
-                    .map(|i| SpannedNamespaceAccess::from_ast(self.db, self.file, i.cast(&self.ast)))
+                    .map(|i| SpannedNamespaceAccess::from_ast(self.db, self, i.cast(&self.ast)))
                     .collect()
             })
             .transpose()?;
@@ -82,9 +82,9 @@ impl<'db> SemanticIndexBuilder<'db> {
             Pou::FunctionBlock(FunctionBlock::new(
                 self.db, extends, implements, variables, statements, modifiers, scope_id,
             )),
-            func.get_span(),
             name,
-            func.name.cast(&self.ast).get_span(),
+            func.into(),
+            func.name.cast(&self.ast).into(),
             scope_id,
         );
 
@@ -148,7 +148,6 @@ mod tests {
 
     use crate::{
         hir::{
-            interned::{identifier::SpannedIdent, namespace::NamespacePath},
             semantic_index::semantic_index,
         },
         RootDatabase,
@@ -213,10 +212,5 @@ END_NAMESPACE
 
         let file = db.get_file(&url).unwrap();
         let namespaces = semantic_index(&db, file);
-
-        let fn_name = SpannedIdent::from_blank(&db, "f");
-        let ns = SpannedIdent::from_blank(&db, "nss");
-
-        let ns = NamespacePath::from((&db as _, vec![ns]));
     }
 }

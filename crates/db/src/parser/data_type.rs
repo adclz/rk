@@ -49,9 +49,9 @@ impl<'db> SemanticIndexBuilder<'db> {
         let result = PouDecl::new(
             self.db,
             Pou::DataType(DataType::new(self.db, spec, init, scope_id)),
-            data_type.get_span(),
             name,
-            data_type.name.cast(&self.ast).get_span(),
+            data_type.into(),
+            data_type.name.cast(&self.ast).into(),
             scope_id,
         );
 

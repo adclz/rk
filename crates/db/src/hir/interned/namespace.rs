@@ -1,10 +1,11 @@
+use crate::hir::scope::FileScopeId;
+use crate::parser::semantic_index::SemanticIndexBuilder;
+use crate::to_proto::AstId;
 use crate::{hir::interned::identifier::SpannedIdent, to_proto::ToProto};
-use auto_lsp::core::ast::AstNode;
 use auto_lsp::default::db::tracked::get_ast;
 use auto_lsp::{
     anyhow,
-    core::span::Span,
-    default::db::{file::File, BaseDatabase},
+    default::db::{BaseDatabase},
 };
 
 /// Interned namespace path
@@ -63,7 +64,8 @@ impl From<(&dyn BaseDatabase, &Vec<SpannedIdent>)> for NamespacePath {
 /// A [`SpannedPath`] is a wrapper around a [`NamespaceAccess`] that includes a span
 #[derive(Clone, Hash, salsa::Update, Debug)]
 pub struct SpannedNamespaceAccess {
-    pub span: Span,
+    pub id: AstId,
+    pub scope_id: FileScopeId,
     pub path: NamespaceAccess,
 }
 
@@ -74,8 +76,12 @@ impl PartialEq for SpannedNamespaceAccess {
 }
 
 impl<'db> ToProto<'db> for SpannedNamespaceAccess {
-    fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
-        &self.span
+    fn get_id(&'db self, db: &'db dyn crate::BaseDatabase) -> AstId {
+        self.id
+    }
+
+    fn get_scope_id(&'db self, db: &'db dyn crate::BaseDatabase) -> FileScopeId {
+        self.scope_id
     }
 }
 
@@ -84,12 +90,13 @@ impl Eq for SpannedNamespaceAccess {}
 impl SpannedNamespaceAccess {
     pub fn from_ast(
         db: &dyn BaseDatabase,
-        file: File,
+        sema: & SemanticIndexBuilder<'_>,
         fq_name: &ast::generated::NamespaceAccess,
     ) -> anyhow::Result<Self> {
         Ok(SpannedNamespaceAccess {
-            span: fq_name.get_span(),
-            path: NamespaceAccess::from_ast(db, file, fq_name)?,
+            id: fq_name.into(),
+            scope_id: sema.current_scope,
+            path: NamespaceAccess::from_ast(db, sema, fq_name)?,
         })
     }
 
@@ -107,24 +114,24 @@ pub struct NamespaceAccess {
 impl NamespaceAccess {
     pub fn from_ast(
         db: &dyn BaseDatabase,
-        file: File,
+        sema: &SemanticIndexBuilder<'_>,
         fq_name: &ast::generated::NamespaceAccess,
     ) -> anyhow::Result<Self> {
-        let ast = get_ast(db, file);
+        let ast = get_ast(db, sema.file);
         let mut fragments = Vec::new();
 
         // Walk the tree from root down `.path` fields
         let mut current = match fq_name.children.cast(ast) {
             ast::generated::Identifier_ScopedIdentifier::ScopedIdentifier(scoped) => scoped,
             ast::generated::Identifier_ScopedIdentifier::Identifier(ident) => {
-                let target = SpannedIdent::from_node(db, file, ident)?;
+                let target = SpannedIdent::from_node(db, sema, ident)?;
                 return Ok(NamespaceAccess::new(db, None, target));
             }
         };
 
         loop {
             // Extract the target of the current scoped_identifier (e.g. m1, m2, m3...)
-            fragments.push(SpannedIdent::new(db, file, &current.target)?);
+            fragments.push(SpannedIdent::new(db, sema, &current.target)?);
 
             match current.path.cast(ast) {
                 ast::generated::Identifier_ScopedIdentifier::ScopedIdentifier(next) => {
@@ -132,7 +139,7 @@ impl NamespaceAccess {
                 }
                 ast::generated::Identifier_ScopedIdentifier::Identifier(base) => {
                     // Reached the bottom-most path (e.g. "system")
-                    fragments.push(SpannedIdent::from_node(db, file, base)?);
+                    fragments.push(SpannedIdent::from_node(db, sema, base)?);
                     break;
                 }
             }

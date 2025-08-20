@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use auto_lsp::core::span::Span;
 use auto_lsp::default::db::file::File;
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::{InlayHint, InlayHintKind, InlayHintLabel};
@@ -12,7 +11,7 @@ use crate::hir_ty::name_res::{pous_in_scope, resolve_namespace_access, variables
 use crate::hir::semantic_index::SemanticIndex;
 use crate::hir_ty::ty::{ty_for_pou, ty_for_variable, Ty};
 use crate::hir_ty::TyResolved;
-use crate::to_proto::ToProto;
+use crate::to_proto::{AstId, ToProto};
 use crate::{
     hir::{
         expressions::expression::PathExpr, interned::identifier::SpannedIdent,
@@ -226,16 +225,16 @@ impl<'db> PathExprWalkError<'db> {
     pub fn emit_error(&self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>) {
         match self {
             PathExprWalkError::NoItemInScope { expr, scope } => {
-                no_item_in_scope(db, sema.file, &expr.to_string(db), expr.span(db));
+                no_item_in_scope(db, sema.file, &expr.to_string(db), expr.get_span(db));
             }
             PathExprWalkError::FieldNotFound { origin, expr } => {
-                unknown_field(db, sema.file, &expr.to_string(db), expr.span(db))
+                unknown_field(db, sema.file, &expr.to_string(db), expr.get_span(db))
             }
             PathExprWalkError::NotAnArray { origin, expr } => {
-                unexpected_index_expression(db, sema.file, expr.span(db))
+                unexpected_index_expression(db, sema.file, expr.get_span(db))
             }
             PathExprWalkError::NotAReference { origin, expr } => {
-                type_can_not_be_dereferenced(db, sema.file, expr.span(db));
+                type_can_not_be_dereferenced(db, sema.file, expr.get_span(db));
             }
         }
     }
@@ -276,8 +275,12 @@ impl<'db> PathExpr<'db> {
 }
 
 impl<'db> ToProto<'db> for ResolvedPathElement<'db> {
-    fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
-        self.expr.span(db)
+    fn get_id(&'db self, db: &'db dyn crate::BaseDatabase) -> AstId {
+        self.expr.get_id(db)
+    }
+
+    fn get_scope_id(&'db self,  db: &'db dyn crate::BaseDatabase) -> FileScopeId {
+        self.expr.scope_id(db)
     }
 
     fn inlay_hint(
@@ -287,7 +290,7 @@ impl<'db> ToProto<'db> for ResolvedPathElement<'db> {
     ) -> Option<InlayHint> {
         Some(InlayHint {
             label: InlayHintLabel::String(self.expr.to_string(db).text(db).to_string()),
-            position: self.expr.span(db).lsp().end,
+            position: self.expr.get_span(db).lsp().end,
             kind: Some(InlayHintKind::TYPE),
             text_edits: None,
             padding_left: Some(true),

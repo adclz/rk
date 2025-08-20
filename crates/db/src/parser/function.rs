@@ -51,9 +51,9 @@ impl<'db> SemanticIndexBuilder<'db> {
                 return_type,
                 scope_id,
             )),
-            func.get_span(),
             name,
-            func.name.cast(&self.ast).get_span(),
+            func.into(),
+            func.name.cast(&self.ast).into(),
             scope_id,
         );
 

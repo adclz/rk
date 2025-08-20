@@ -18,6 +18,7 @@ use crate::hir::pous::variable::Variable;
 use crate::hir::semantic_index::SemanticIndex;
 use crate::hir::using::Using;
 use crate::hir_ty::ty::{Ty, TyOrigin};
+use crate::to_proto::ToProto;
 
 /// POU has multiple EXTENDS declared
 pub fn multiple_extends(db: &dyn salsa::Database, span: Span) {
@@ -165,14 +166,14 @@ pub fn duplicate_using_declaration(
         .related_information(vec![DiagnosticRelatedInformation {
             location: Location {
                 uri: file.url(db).clone(),
-                range: related.span(db).into(),
+                range: related.get_span(db).into(),
             },
             message: format!(
                 "namespace '{}' is already imported here",
                 origin.path(db).to_string(db)
             ),
         }])
-        .range(origin.span(db).clone())
+        .range(origin.get_span(db).clone())
         .call();
 
     DiagnosticAccumulator::accumulate(diag.into(), db);
@@ -195,14 +196,14 @@ pub fn namespace_already_in_scope(
         .related_information(vec![DiagnosticRelatedInformation {
             location: Location {
                 uri: file.url(db).clone(),
-                range: imported.span(db).into(),
+                range: imported.get_span(db).into(),
             },
             message: format!(
                 "namespace '{}' is defined here",
                 origin.path(db).to_string(db)
             ),
         }])
-        .range(origin.span(db).clone())
+        .range(origin.get_span(db).clone())
         .call();
 
     DiagnosticAccumulator::accumulate(diag.into(), db);
@@ -247,14 +248,14 @@ pub fn duplicate_variable_declaration(
         origin.name(db).text(db)
     );
     let diag = diag()
-        .range(origin.name_span(db).clone())
+        .range(origin.get_name_span(db).unwrap().clone())
         .message(message)
         .source("IEC".into())
         .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
         .related_information(vec![DiagnosticRelatedInformation {
             location: auto_lsp::lsp_types::Location {
-                uri: origin.file(db).url(db).clone(),
-                range: other.name_span(db).into(),
+                uri: origin.scope_id(db).file().url(db).clone(),
+                range: other.get_name_span(db).unwrap().into(),
             },
             message: format!(
                 "variable '{}' is previously declared here",
@@ -352,7 +353,7 @@ pub fn assign_direct_pou_to_a_variable(
                 .related_information(vec![DiagnosticRelatedInformation {
                     location: Location {
                         uri: pou.scope_id(db).file().url(db).clone(),
-                        range: pou.name_span(db).into(),
+                        range: pou.get_name_span(db).unwrap().into(),
                     },
                     message: format!("POU '{}' is declared here", pou.name(db).text(db)),
                 }])
@@ -370,7 +371,7 @@ pub fn assign_direct_pou_to_a_variable(
                     .related_information(vec![DiagnosticRelatedInformation {
                         location: Location {
                             uri: pou.scope_id(db).file().url(db).clone(),
-                            range: pou.name_span(db).into(),
+                            range: pou.get_name_span(db).unwrap().into(),
                         },
                         message: format!("POU '{}' is declared here", pou.name(db).text(db)),
                     }])
@@ -386,7 +387,7 @@ pub fn continue_outside_loop(db: &dyn BaseDatabase, stmt: Stmt) {
     let diag = diag()
         .message("continue statement can only be used inside a loop".into())
         .severity(DiagnosticSeverity::ERROR)
-        .range(stmt.span(db).clone())
+        .range(stmt.get_span(db).clone())
         .call();
     DiagnosticAccumulator::accumulate(diag.into(), db);
 }
@@ -395,7 +396,7 @@ pub fn exit_outside_loop(db: &dyn BaseDatabase, stmt: Stmt) {
     let diag = diag()
         .message("exit statement can only be used inside a loop".into())
         .severity(DiagnosticSeverity::ERROR)
-        .range(stmt.span(db).clone())
+        .range(stmt.get_span(db).clone())
         .call();
     DiagnosticAccumulator::accumulate(diag.into(), db);
 }

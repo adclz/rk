@@ -34,12 +34,12 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
 
                     Ok(Expr::new(
                         sema.db,
-                        or_operator.get_span(),
                         ExprKind::BooleanOperator {
                             left,
                             operator: BooleanOperatorKind::Or,
                             right,
                         },
+                        or_operator.into(),
                         sema.current_scope,
                     ))
                 }
@@ -49,12 +49,12 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
 
                     Ok(Expr::new(
                         sema.db,
-                        xor_operator.get_span(),
                         ExprKind::BooleanOperator {
                             left,
                             operator: BooleanOperatorKind::Xor,
                             right,
                         },
+                        xor_operator.into(),
                         sema.current_scope,
                     ))
                 }
@@ -64,12 +64,12 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
 
                     Ok(Expr::new(
                         sema.db,
-                        and_operator.get_span(),
                         ExprKind::BooleanOperator {
                             left,
                             operator: BooleanOperatorKind::And,
                             right,
                         },
+                        and_operator.into(),
                         sema.current_scope,
                     ))
                 }
@@ -87,12 +87,12 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
 
                         Ok(Expr::new(
                             sema.db,
-                            eq_operator.get_span(),
                             ExprKind::ComparisonOperator {
                                 left,
                                 operator,
                                 right,
                             },
+                            eq_operator.into(),
                             sema.current_scope,
                         ))
                     }
@@ -111,12 +111,12 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
 
                         Ok(Expr::new(
                             sema.db,
-                            ord_operator.get_span(),
                             ExprKind::ComparisonOperator {
                                 left,
                                 operator,
                                 right,
                             },
+                            ord_operator.into(),
                             sema.current_scope,
                         ))
                     }
@@ -132,12 +132,12 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
 
                 Ok(Expr::new(
                     sema.db,
-                    add_operator.get_span(),
                     ExprKind::AddOperator {
                         left,
                         operator,
                         right,
                     },
+                    add_operator.into(),
                     sema.current_scope,
                 ))
             }
@@ -152,12 +152,12 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
 
                 Ok(Expr::new(
                     sema.db,
-                    mult_operator.get_span(),
                     ExprKind::MultOperator {
                         left,
                         operator,
                         right,
                     },
+                    mult_operator.into(),
                     sema.current_scope,
                 ))
             }
@@ -167,8 +167,8 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
 
                 Ok(Expr::new(
                     sema.db,
-                    power_operator.get_span(),
                     ExprKind::PowerOperator { left, right },
+                    power_operator.into(),
                     sema.current_scope,
                 ))
             }
@@ -183,8 +183,8 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
 
                 Ok(Expr::new(
                     sema.db,
-                    unary_operator.get_span(),
                     ExprKind::UnaryOperator { expr, operator },
+                    unary_operator.into(),
                     sema.current_scope,
                 ))
             }
@@ -213,11 +213,11 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
 
                 Ok(Expr::new(
                     sema.db,
-                    v.get_span(),
                     ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess {
                         variable,
                         multibits,
                     }),
+                    v.into(),
                     sema.current_scope,
                 ))
             }
@@ -250,40 +250,40 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                 }
                 Ok(Expr::new(
                     sema.db,
-                    func.get_span(),
                     ExprKind::PrimaryExpr(PrimaryExpr::FuncCall {
                         path: target,
                         params: parameters,
                     }),
+                    func.into(),
                     sema.current_scope,
                 ))
             }
             ast::generated::PrimaryExpression::ParenthesizedExpression(p) => Ok(Expr::new(
                 sema.db,
-                p.get_span(),
                 ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr {
                     expr: p.children.cast(&sema.ast).to_expr(sema)?,
                 }),
+                p.into(),
                 sema.current_scope,
             )),
             ast::generated::PrimaryExpression::RefValue(r) => match r.children.cast(&sema.ast) {
                 ast::generated::Null_RefAddr::Null(_) => Ok(Expr::new(
                     sema.db,
-                    r.get_span(),
                     ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
                         value: RefValue::Null,
                     }),
+                    r.into(),
                     sema.current_scope,
                 )),
                 ast::generated::Null_RefAddr::RefAddr(a) => Ok(Expr::new(
                     sema.db,
-                    a.children.cast(&sema.ast).get_span(),
                     ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
                         value: RefValue::Address(RefAdress::Symbolic(SymbolicVariable {
                             this: a.children.cast(&sema.ast).this.is_some(),
                             kind: a.children.cast(&sema.ast).children.cast(&sema.ast).parse(sema)?,
                         })),
                     }),
+                    a.into(),
                     sema.current_scope,
                 )),
             },
@@ -448,8 +448,8 @@ impl<'db> ParseExpression<'db> for ast::generated::Constant {
 
         Ok(Expr::new(
             sema.db,
-            self.get_span(),
             ExprKind::PrimaryExpr(PrimaryExpr::Literal(lit)),
+            self.into(),
             sema.current_scope,
         ))
     }
@@ -482,7 +482,8 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::DirectVariable {
         };
 
         Ok(VariableAccess {
-            span: self.get_span(),
+            id: self.into(),
+            scope_id: sema.current_scope,
             kind: VariableAccessKind::Direct {
                 adress,
                 partly,
@@ -495,7 +496,8 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::DirectVariable {
 impl<'db> ParseVariableAccess<'db> for ast::generated::SymbolicVariable {
     fn to_access(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<VariableAccess<'db>> {
         Ok(VariableAccess {
-            span: self.get_span(),
+            id: self.into(),
+            scope_id: sema.current_scope,
             kind: VariableAccessKind::Symbolic(SymbolicVariable {
                 this: self.this.is_some(),
                 kind: self.children.cast(&sema.ast).parse(sema)?,
@@ -519,24 +521,24 @@ impl<'db> ParseExpr<'db> for ast::generated::PathExpression {
                 field_expr,
             ) => PathExpr::new(
                 sema.db,
-                self.get_span(),
+             PathExprKind::Field(field_expr.parse(sema)?),
+                self.into(),
                 sema.current_scope,
-                PathExprKind::Field(field_expr.parse(sema)?),
             ),
             ast::generated::FieldExpression_IndexExpression_VarAccess::IndexExpression(
                 index_expr,
             ) => PathExpr::new(
                 sema.db,
-                self.get_span(),
-                sema.current_scope,
                 PathExprKind::Index(index_expr.parse(sema)?),
+                self.into(),
+                sema.current_scope,
             ),
             ast::generated::FieldExpression_IndexExpression_VarAccess::VarAccess(var_access) => {
                 PathExpr::new(
                     sema.db,
-                    self.get_span(),
-                    sema.current_scope,
                     PathExprKind::VarAccess(var_access.parse(sema)?),
+                    self.into(),
+                    sema.current_scope,
                 )
             }
         })
@@ -583,12 +585,12 @@ impl<'db> ParseExpr<'db> for ast::generated::VarAccess {
                 Err(anyhow::anyhow!("Unexpected 'this' in path"))
             }
             ast::generated::ERRUnexpectedThisInPath_Field_RefDeref::Field(field) => Ok(
-                VarAccess::Simple(SpannedIdent::from_node(sema.db, sema.file, field)?),
+                VarAccess::Simple(SpannedIdent::from_node(sema.db, sema, field)?),
             ),
             ast::generated::ERRUnexpectedThisInPath_Field_RefDeref::RefDeref(ref_deref) => {
                 Ok(VarAccess::Deref(SpannedIdent::from_node(
                     sema.db,
-                    sema.file,
+                    sema,
                     ref_deref.Ref.cast(&sema.ast),
                 )?))
             }

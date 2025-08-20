@@ -17,9 +17,9 @@ use crate::{
             interface::Interface,
         },
         scope::FileScopeId,
-        semantic_index::SemanticIndex,
+        semantic_index::{semantic_index, SemanticIndex},
     },
-    to_proto::{self_iter, Extends, IterToProto, SymbolInfo, ToProto},
+    to_proto::{self_iter, AstId, Extends, IterToProto, SymbolInfo, ToProto},
 };
 
 #[salsa::tracked(debug)]
@@ -29,14 +29,11 @@ pub struct PouDecl<'db> {
     pub pou: Pou<'db>,
 
     #[returns(ref)]
-    pub span: Span,
-
-    #[returns(ref)]
     pub name: Ident,
 
-    #[tracked]
-    #[returns(ref)]
-    pub name_span: Span,
+    pub id: AstId,
+
+    pub name_id: AstId,
 
     pub scope_id: FileScopeId,
 }
@@ -59,12 +56,17 @@ impl<'db> IterToProto<'db> for PouDecl<'db> {
 }
 
 impl<'db> ToProto<'db> for PouDecl<'db> {
-    fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
-        self.span(db)
+    fn get_id(&'db self, db: &'db dyn crate::BaseDatabase) -> AstId {
+        self.id(db)
     }
 
-    fn get_named_span(&'db self, db: &'db dyn BaseDatabase) -> Option<&'db Span> {
-        Some(self.name_span(db))
+    fn get_scope_id(&'db self, db: &'db dyn crate::BaseDatabase) -> FileScopeId {
+        self.scope_id(db)
+    }
+
+    fn get_name_span(&'db self, db: &'db dyn BaseDatabase) -> Option<&'db Span> {
+        let file = self.get_scope_id(db).file();
+        semantic_index(db, file).span_map.get(&self.name_id(db).0)
     }
 
     fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> Option<SymbolInfo<'db>> {
@@ -87,7 +89,7 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
                     Pou::DataType(d) => d.init(db),
                     _ => None,
                 })
-                .name_range(self.name_span(db).clone())
+                .name_range(self.get_name_span(db).unwrap().clone())
                 .maybe_extends(match self.pou(db) {
                     Pou::Class(c) => c.extends(db).map(|a| Extends::Single(a.clone())),
                     Pou::FunctionBlock(fb) => fb.extends(db).map(|a| Extends::Single(a.clone())),
@@ -135,7 +137,7 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
                 },
                 self.name(db).text(db)
             )),
-            position: self.span(db).lsp().end,
+            position: self.get_span(db).lsp().end,
             kind: Some(InlayHintKind::TYPE),
             text_edits: None,
             padding_left: Some(true),
@@ -152,7 +154,7 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
     ) -> Option<auto_lsp::lsp_types::Hover> {
         let comment = comment_index(db, sema.file);
         let comment = comment
-            .find_nearby_comment(sema.file.document(db), self.span(db))
+            .find_nearby_comment(sema.file.document(db), self.get_span(db))
             .map(|c| format!("{}\n&nbsp;", c.to_string(sema.file.document(db))))
             .unwrap_or_default();
 
@@ -169,7 +171,7 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
                 ),
             }),
             range: Some(
-                self.get_named_span(db)
+                self.get_name_span(db)
                     .map(|span| span.lsp())
                     .unwrap_or_default(),
             ),

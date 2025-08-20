@@ -23,7 +23,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         let extends = class
             .extends
             .as_ref()
-            .map(|e| SpannedNamespaceAccess::from_ast(self.db, self.file, e.cast(&self.ast)))
+            .map(|e| SpannedNamespaceAccess::from_ast(self.db, self, e.cast(&self.ast)))
             .transpose()?;
 
         let implements = class
@@ -32,7 +32,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             .map(|i| {
                 i.cast(&self.ast).children
                     .iter()
-                    .map(|i| SpannedNamespaceAccess::from_ast(self.db, self.file, i.cast(&self.ast)))
+                    .map(|i| SpannedNamespaceAccess::from_ast(self.db, self, i.cast(&self.ast)))
                     .collect()
             })
             .transpose()?;
@@ -121,13 +121,13 @@ impl<'db> SemanticIndexBuilder<'db> {
                 Ok(MethodDecl::new(
                     self.db,
                     name,
-                    m.cast(&self.ast).get_span(),
                     method_variables,
                     return_type,
                     modifiers,
                     _override,
-                    scope_id,
-                    body 
+                    body,
+                    m.cast(&self.ast).into(),
+                    scope_id
                 )) 
         }).collect::<anyhow::Result<Vec<_>>>()?;
 
@@ -139,9 +139,9 @@ impl<'db> SemanticIndexBuilder<'db> {
             Pou::Class(Class::new(
                 self.db, extends, implements, variables, methods, modifiers, scope_id,
             )),
-            class.get_span(),
             name,
-            class.name.cast(&self.ast).get_span(),
+            class.into(),
+            class.name.cast(&self.ast).into(),
             scope_id,
         );
 

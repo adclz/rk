@@ -6,9 +6,9 @@ use crate::{
         interned::{identifier::Ident, namespace::SpannedNamespaceAccess},
         pous::variable::Variable,
         scope::FileScopeId,
-        semantic_index::SemanticIndex,
+        semantic_index::{semantic_index, SemanticIndex},
     },
-    to_proto::{IterToProto, ToProto},
+    to_proto::{AstId, IterToProto, ToProto},
 };
 
 #[salsa::tracked(debug)]
@@ -34,28 +34,33 @@ impl<'db> IterToProto<'db> for Interface<'db> {
 
 #[salsa::tracked(debug)]
 pub struct MethodPrototype<'db> {
-    #[returns(ref)]
-    pub range: Span,
-
     pub name: Ident,
-
-    #[returns(ref)]
-    pub name_span: Span,
 
     #[returns(as_ref)]
     pub return_type: Option<Spec<'db>>,
 
     #[returns(ref)]
     pub variables: Vec<Variable<'db>>,
+
+    pub id: AstId,
+
+    pub name_id: AstId,
+
+    pub scope_id: FileScopeId,
 }
 
 impl<'db> ToProto<'db> for MethodPrototype<'db> {
-    fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
-        self.range(db)
+    fn get_id(&'db self, db: &'db dyn crate::BaseDatabase) -> crate::to_proto::AstId {
+        self.id(db)       
     }
 
-    fn get_named_span(&'db self, db: &'db dyn BaseDatabase) -> Option<&'db Span> {
-        Some(self.name_span(db))
+    fn get_scope_id(&'db self, db: &'db dyn crate::BaseDatabase) -> FileScopeId {
+        self.scope_id(db)
+    }
+
+    fn get_name_span(&'db self, db: &'db dyn BaseDatabase) -> Option<&'db Span> {
+        let file = self.get_scope_id(db).file();
+        semantic_index(db, file).span_map.get(&self.name_id(db).0)
     }
 }
 

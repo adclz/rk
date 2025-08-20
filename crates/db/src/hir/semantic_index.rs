@@ -1,5 +1,6 @@
 use std::iter::FusedIterator;
 
+use auto_lsp::core::span::Span;
 use auto_lsp::default::db::tracked::get_ast;
 use auto_lsp::default::db::{file::File, BaseDatabase};
 use rustc_hash::FxHashMap;
@@ -34,6 +35,9 @@ pub fn semantic_index<'db>(db: &'db dyn BaseDatabase, file: File) -> SemanticInd
 pub struct SemanticIndex<'db> {
     pub file: File,
 
+    // Maps of AST node ids to their spans
+    pub span_map: FxHashMap<usize, Span>,
+
     /// Map of scope IDs to their corresponding scopes
     pub scopes: FxHashMap<FileScopeId, Scope<'db>>,
 
@@ -51,6 +55,7 @@ impl<'db> SemanticIndex<'db> {
             scopes: FxHashMap::default(),
             global_pous: Vec::new(),
             namespaces: Vec::new(),
+            span_map: FxHashMap::default(),
         }
     }
 

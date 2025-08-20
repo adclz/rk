@@ -63,11 +63,10 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         let result = Namespace::new(
             self.db,
-            nested.get_span(),
             path,
             nested.name.cast(&self.ast).get_span(),
             pous,
-            self.file,
+            nested.into(),
             scope_id,
         );
 

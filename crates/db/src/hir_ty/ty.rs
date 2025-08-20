@@ -346,7 +346,7 @@ impl<'db> Spec<'db> {
                 },
             ),
             SpecKind::Target(target) => {
-                match resolve_namespace_access(db, self.file(db), self.scope_id(db), *target) {
+                match resolve_namespace_access(db, self.scope_id(db).file(), self.scope_id(db), *target) {
                     Some(pou) => ty_for_pou(db, pou),
                     None => Ty::new(db, origin, TyKind::Unresolved(*target)),
                 }

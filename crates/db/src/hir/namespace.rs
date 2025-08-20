@@ -1,5 +1,5 @@
 use auto_lsp::core::span::Span;
-use auto_lsp::default::db::{file::File, BaseDatabase};
+use auto_lsp::default::db::{BaseDatabase};
 use auto_lsp::lsp_types::{
     CompletionItem, InlayHint, InlayHintKind, InlayHintLabel, MarkupContent, MarkupKind,
 };
@@ -9,13 +9,10 @@ use crate::hir::interned::namespace::NamespacePath;
 use crate::hir::pous::pou::PouDecl;
 use crate::hir::scope::{FileScopeId, Visibility};
 use crate::hir::semantic_index::SemanticIndex;
-use crate::to_proto::{self_iter, IterToProto, SymbolInfo, ToProto};
+use crate::to_proto::{self_iter, AstId, IterToProto, SymbolInfo, ToProto};
 
 #[salsa::tracked(debug)]
 pub struct Namespace<'db> {
-    #[returns(ref)]
-    pub span: Span,
-
     #[returns(ref)]
     pub path: NamespacePath,
 
@@ -25,17 +22,21 @@ pub struct Namespace<'db> {
     #[returns(ref)]
     pub pous: Vec<PouDecl<'db>>,
 
-    pub file: File,
+    pub id: AstId,
 
     pub scope_id: FileScopeId,
 }
 
 impl<'db> ToProto<'db> for Namespace<'db> {
-    fn get_span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
-        self.span(db)
+    fn get_id(&'db self, db: &'db dyn crate::BaseDatabase) -> crate::to_proto::AstId {
+        self.id(db)
     }
 
-    fn get_named_span(&'db self, db: &'db dyn BaseDatabase) -> Option<&'db Span> {
+    fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
+        self.scope_id(db)
+    }
+
+    fn get_name_span(&'db self, db: &'db dyn BaseDatabase) -> Option<&'db Span> {
         Some(self.name_span(db))
     }
 
@@ -71,7 +72,7 @@ impl<'db> ToProto<'db> for Namespace<'db> {
     ) -> Option<auto_lsp::lsp_types::InlayHint> {
         Some(InlayHint {
             label: InlayHintLabel::String(format!("namespace {}", self.path(db).to_string(db))),
-            position: self.span(db).lsp().end,
+            position: self.get_span(db).lsp().end,
             kind: Some(InlayHintKind::TYPE),
             text_edits: None,
             padding_left: Some(true),

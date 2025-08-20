@@ -1,5 +1,5 @@
 use auto_lsp::{
-    core::span::Span,
+    core::{ast::AstNode, span::Span},
     default::db::BaseDatabase,
     lsp_types::{
         request::GotoDeclarationResponse, CompletionItem, GotoDefinitionResponse, Hover, InlayHint,
@@ -8,7 +8,7 @@ use auto_lsp::{
 };
 
 use crate::hir::{
-    expressions::{expression::{InitExpr}, spec::Spec}, interned::namespace::SpannedNamespaceAccess, semantic_index::SemanticIndex,
+    expressions::{expression::InitExpr, spec::Spec}, interned::namespace::SpannedNamespaceAccess, scope::FileScopeId, semantic_index::{semantic_index, SemanticIndex}
 };
 
 #[derive(bon::Builder, Debug, Clone)]
@@ -44,10 +44,27 @@ impl SymbolInfo<'_> {
     }
 }
 
-pub trait ToProto<'db> {
-    fn get_span(&'db self, db: &'db dyn crate::BaseDatabase) -> &'db Span;
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct AstId(pub(crate) usize);
 
-    fn get_named_span(&'db self, db: &'db dyn crate::BaseDatabase) -> Option<&'db Span> {
+impl<T: AstNode> From<&T> for AstId {
+    fn from(node: &T) -> Self {
+        AstId(node.get_id())
+    }
+}
+
+pub trait ToProto<'db> {
+    fn get_id(&'db self, db: &'db dyn crate::BaseDatabase) -> AstId;
+
+    fn get_scope_id(&'db self, db: &'db dyn crate::BaseDatabase) -> FileScopeId;
+
+    fn get_span(&'db self, db: &'db dyn crate::BaseDatabase) -> &'db Span {
+        let file = self.get_scope_id(db).file();
+        semantic_index(db, file).span_map.get(&self.get_id(db).0)
+            .expect("Invalid ID")
+    }
+
+    fn get_name_span(&'db self, db: &'db dyn crate::BaseDatabase) -> Option<&'db Span> {
         None
     }
 
@@ -149,7 +166,7 @@ pub trait IterToProto<'db> {
         let mut best_match: Option<&'db dyn ToProto<'db>> = None;
 
         for node in self.iter(db, sema) {
-            let range = match node.get_named_span(db) {
+            let range = match node.get_name_span(db) {
                 Some(span) => span,
                 None => continue,
             };
@@ -158,7 +175,7 @@ pub trait IterToProto<'db> {
             if range.start_byte <= offset && offset <= range.end_byte {
                 // Compare old best match with new node
                 if let Some(a) = best_match {
-                    let a = match a.get_named_span(db) {
+                    let a = match a.get_name_span(db) {
                         Some(span) => span,
                         None => continue,
                     };

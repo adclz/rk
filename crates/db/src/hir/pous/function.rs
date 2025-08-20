@@ -43,7 +43,7 @@ impl<'db> Function<'db> {
         ];
 
         match self.statements(db).first() {
-            Some(first_stmt) if first_stmt.span(db).start_byte > offset => {
+            Some(first_stmt) if first_stmt.get_span(db).start_byte > offset => {
                 // If the first statement starts after the offset, we are in variable declarations
                 Some(var_completions)
             }

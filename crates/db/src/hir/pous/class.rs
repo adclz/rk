@@ -1,15 +1,15 @@
-use auto_lsp::{core::span::Span, default::db::BaseDatabase};
+use auto_lsp::{default::db::BaseDatabase};
 
 use crate::{
     hir::{
         expressions::{spec::Spec, statement::Stmt},
         interned::{identifier::Ident, namespace::SpannedNamespaceAccess},
-        pous::{variable::Variable},
+        pous::variable::Variable,
         scope::FileScopeId,
         semantic_index::SemanticIndex,
         visibility::Modifiers,
     },
-    to_proto::{IterToProto, ToProto},
+    to_proto::{AstId, IterToProto, ToProto},
 };
 
 #[salsa::tracked(debug)]
@@ -59,9 +59,6 @@ pub struct MethodDecl<'db> {
     #[returns(ref)]
     pub name: Ident,
 
-    #[returns(ref)]
-    pub span: Span,
-
     #[tracked]
     #[returns(ref)]
     pub variables: Vec<Variable<'db>>,
@@ -74,7 +71,9 @@ pub struct MethodDecl<'db> {
 
     pub _override: bool,
 
-    pub scope_id: FileScopeId,
-
     pub body: Vec<Stmt<'db>>,
+
+    pub id: AstId,
+
+    pub scope_id: FileScopeId,
 }

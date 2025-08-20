@@ -30,7 +30,7 @@ use crate::{
             spec::{Spec, SpecKind},
             statement::{Stmt, StmtKind},
         }, interned::namespace::NamespacePath, pous::{pou::Pou, variable::Variable}, scope::FileScopeId, semantic_index::{semantic_index, SemanticIndex}
-    }, hir_ty::{name_res::pous_in_scope, stmt_resolver::resolve_stmts, ty::{ty_for_variable, Ty, TyKind}, ty_path_expr_resolver::ResolvePathExprCtx},
+    }, hir_ty::{name_res::pous_in_scope, stmt_resolver::resolve_stmts, ty::{ty_for_variable, Ty, TyKind}, ty_path_expr_resolver::ResolvePathExprCtx}, to_proto::ToProto,
 };
 
 trait Check<'db> {
@@ -86,7 +86,7 @@ impl<'db> Check<'db> for &'db Vec<Variable<'db>> {
 
         for variable in self.iter() {
             if let Some(other) = seen_variable.insert(variable.name(db), variable) {
-                duplicate_variable_declaration(db, variable.file(db), variable, other);
+                duplicate_variable_declaration(db, variable.scope_id(db).file(), variable, other);
             }
 
             // Avoid checking the same spec multiple times
@@ -166,7 +166,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                                 Elementary::InferNumeric(infer) => match infer.as_bool(db) {
                                     Ok(_) => true,
                                     Err(err) => {
-                                        mismatch_type(db, sema, self.span(db).clone(), ty, err);
+                                        mismatch_type(db, sema, self.get_span(db).clone(), ty, err);
                                         return;
                                     }
                                 },
@@ -178,7 +178,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                                 Elementary::InferNumeric(infer) => match infer.as_u8(db) {
                                     Ok(_) => true,
                                     Err(err) => {
-                                        mismatch_type(db, sema, self.span(db).clone(), ty, err);
+                                        mismatch_type(db, sema, self.get_span(db).clone(), ty, err);
                                         return;
                                     }
                                 },
@@ -189,7 +189,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                                 Elementary::InferNumeric(infer) => match infer.as_u16(db) {
                                     Ok(_) => true,
                                     Err(err) => {
-                                        mismatch_type(db, sema, self.span(db).clone(), ty, err);
+                                        mismatch_type(db, sema, self.get_span(db).clone(), ty, err);
                                         return;
                                     }
                                 },
@@ -202,7 +202,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                                 Elementary::InferNumeric(infer) => match infer.as_u32(db) {
                                     Ok(_) => true,
                                     Err(err) => {
-                                        mismatch_type(db, sema, self.span(db).clone(), ty, err);
+                                        mismatch_type(db, sema, self.get_span(db).clone(), ty, err);
                                         return;
                                     }
                                 },
@@ -216,7 +216,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                                 Elementary::InferNumeric(infer) => match infer.as_u64(db) {
                                     Ok(_) => true,
                                     Err(err) => {
-                                        mismatch_type(db, sema, self.span(db).clone(), ty, err);
+                                        mismatch_type(db, sema, self.get_span(db).clone(), ty, err);
                                         return;
                                     }
                                 },
@@ -228,7 +228,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                                 Elementary::InferNumeric(infer) => match infer.as_u8(db) {
                                     Ok(_) => true,
                                     Err(err) => {
-                                        mismatch_type(db, sema, self.span(db).clone(), ty, err);
+                                        mismatch_type(db, sema, self.get_span(db).clone(), ty, err);
                                         return;
                                     }
                                 },
@@ -239,7 +239,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                                 Elementary::InferNumeric(infer) => match infer.as_u16(db) {
                                     Ok(_) => true,
                                     Err(err) => {
-                                        mismatch_type(db, sema, self.span(db).clone(), ty, err);
+                                        mismatch_type(db, sema, self.get_span(db).clone(), ty, err);
                                         return;
                                     }
                                 },
@@ -252,7 +252,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                                 Elementary::InferNumeric(infer) => match infer.as_u32(db) {
                                     Ok(_) => true,
                                     Err(err) => {
-                                        mismatch_type(db, sema, self.span(db).clone(), ty, err);
+                                        mismatch_type(db, sema, self.get_span(db).clone(), ty, err);
                                         return;
                                     }
                                 },
@@ -266,7 +266,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                                 Elementary::InferNumeric(infer) => match infer.as_u64(db) {
                                     Ok(_) => true,
                                     Err(err) => {
-                                        mismatch_type(db, sema, self.span(db).clone(), ty, err);
+                                        mismatch_type(db, sema, self.get_span(db).clone(), ty, err);
                                         return;
                                     }
                                 },
@@ -278,7 +278,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                                 Elementary::InferNumeric(infer) => match infer.as_u8(db) {
                                     Ok(_) => true,
                                     Err(err) => {
-                                        mismatch_type(db, sema, self.span(db).clone(), ty, err);
+                                        mismatch_type(db, sema, self.get_span(db).clone(), ty, err);
                                         return;
                                     }
                                 },
@@ -289,7 +289,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                                 Elementary::InferNumeric(infer) => match infer.as_u16(db) {
                                     Ok(_) => true,
                                     Err(err) => {
-                                        mismatch_type(db, sema, self.span(db).clone(), ty, err);
+                                        mismatch_type(db, sema, self.get_span(db).clone(), ty, err);
                                         return;
                                     }
                                 },
@@ -302,7 +302,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                                 Elementary::InferNumeric(infer) => match infer.as_u32(db) {
                                     Ok(_) => true,
                                     Err(err) => {
-                                        mismatch_type(db, sema, self.span(db).clone(), ty, err);
+                                        mismatch_type(db, sema, self.get_span(db).clone(), ty, err);
                                         return;
                                     }
                                 },
@@ -316,7 +316,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                                 Elementary::InferNumeric(infer) => match infer.as_u64(db) {
                                     Ok(_) => true,
                                     Err(err) => {
-                                        mismatch_type(db, sema, self.span(db).clone(), ty, err);
+                                        mismatch_type(db, sema, self.get_span(db).clone(), ty, err);
                                         return;
                                     }
                                 },
@@ -328,7 +328,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                                 Elementary::InferIdent(identifier) => match identifier.as_f32(db) {
                                     Ok(_) => true,
                                     Err(err) => {
-                                        mismatch_type(db, sema, self.span(db).clone(), ty, err);
+                                        mismatch_type(db, sema, self.get_span(db).clone(), ty, err);
                                         return;
                                     }
                                 },
@@ -339,7 +339,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                                 Elementary::InferIdent(identifier) => match identifier.as_f64(db) {
                                     Ok(_) => true,
                                     Err(err) => {
-                                        mismatch_type(db, sema, self.span(db).clone(), ty, err);
+                                        mismatch_type(db, sema, self.get_span(db).clone(), ty, err);
                                         return;
                                     }
                                 },
@@ -354,7 +354,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                     mismatch_type(
                         db,
                         sema,
-                        self.span(db).clone(),
+                        self.get_span(db).clone(),
                         ty,
                         format!(
                             "Literal '{}' does not match expected type '{}'",

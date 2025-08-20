@@ -44,8 +44,8 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                 }
                 Ok(Stmt::new(
                     sema.db,
-                    call.get_span(),
                     StmtKind::FuncCall { target, params: parameters },
+                    call.into(),
                     sema.current_scope
                 ))
             }
@@ -74,13 +74,15 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                         }
                     }
                 };
-                Ok(Stmt::new(sema.db, invocation.get_span(), StmtKind::Invocation { 
+                Ok(Stmt::new(sema.db, StmtKind::Invocation { 
                     target: SymbolicVariable {
                         this: invocation.invocation.cast(&sema.ast).this.is_some(),
                         kind: invocation.invocation.cast(&sema.ast).children.cast(&sema.ast).parse(sema)?,
                     }, 
                     params: parameters,
-                },sema.current_scope))
+                },
+                invocation.into(),
+                sema.current_scope))
             }
             StmtType::IfStmt(if_stmt) => {
                 let condition = if_stmt.if_cond.cast(&sema.ast).to_expr(sema)?;
@@ -115,13 +117,13 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
 
                 Ok(Stmt::new( 
                     sema.db,
-                    if_stmt.get_span(),
                     StmtKind::If {
                         condition,
                         then,
                         else_,
                         else_if
                     },
+                    if_stmt.into(),
                     sema.current_scope
                 ))
             }
@@ -144,14 +146,14 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
 
                 Ok(Stmt::new(
                     sema.db,
-                    for_stmt.get_span(),
                     StmtKind::For {
                         control_variable,
                         start,
                         end,
                         step,
                         body,
-                    }, 
+                    },
+                    for_stmt.into(),
                     sema.current_scope
                 )) 
             }
@@ -202,12 +204,12 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
 
                 Ok(Stmt::new(
                     sema.db,
-                    case_stmt.get_span(),
                     StmtKind::Case {
                         condition,
                         cases,
                         else_,
                     },
+                    case_stmt.into(),
                     sema.current_scope
                 ))
             }
@@ -223,8 +225,8 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                 let condition = repeat.repeat_cond.cast(&sema.ast).to_expr(sema)?;
                 Ok(Stmt::new(
                     sema.db,
-                    repeat.get_span(),
                     StmtKind::Repeat { body, condition },
+                    repeat.into(),
                     sema.current_scope
                 ))
             }
@@ -240,21 +242,21 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
 
                 Ok(Stmt::new(
                     sema.db,
-                    while_stmt.get_span(),
                     StmtKind::While { condition, body },
+                    while_stmt.into(),
                     sema.current_scope
                 ))
             }
             StmtType::SuperStmt(super_stmt) => {
-                Ok(Stmt::new(sema.db, super_stmt.get_span(), StmtKind::Super, sema.current_scope))
+                Ok(Stmt::new(sema.db, StmtKind::Super, super_stmt.into(), sema.current_scope))
             }
             StmtType::Token_RETURN(return_stmt) => {
-                Ok(Stmt::new(sema.db, return_stmt.get_span(), StmtKind::Return, sema.current_scope))
+                Ok(Stmt::new(sema.db, StmtKind::Return, return_stmt.into(), sema.current_scope))
             }
             StmtType::Token_CONTINUE(stmt) => {
-                Ok(Stmt::new(sema.db, stmt.get_span(), StmtKind::Continue, sema.current_scope))
+                Ok(Stmt::new(sema.db, StmtKind::Continue, stmt.into(), sema.current_scope))
             }
-            StmtType::Token_EXIT(stmt) => Ok(Stmt::new(sema.db, stmt.get_span(), StmtKind::Exit, sema.current_scope)),
+            StmtType::Token_EXIT(stmt) => Ok(Stmt::new(sema.db, StmtKind::Exit, stmt.into(), sema.current_scope)),
         }
     }
 }
@@ -276,21 +278,21 @@ impl<'db> ParseStatement<'db> for ast::generated::Assign {
             },
             ast::generated::ERREmptyRightHandAssignment_Assignment_AssignmentAttempt::Assignment(assign) => Ok(Stmt::new(
                 sema.db,
-                assign.get_span(),
                 StmtKind::Assignment {
                     var,
                     target: assign.children.cast(&sema.ast).to_expr(sema)?,
                 },
+                assign.into(),
                 sema.current_scope
             )), 
             ast::generated::ERREmptyRightHandAssignment_Assignment_AssignmentAttempt::AssignmentAttempt(attempt) => {    
                 Ok(Stmt::new(
                     sema.db,
-                    attempt.get_span(),
                     StmtKind::AssignmentAttempt {
                         var,
                         target: attempt.children.cast(&sema.ast).to_expr(sema)?,
                     },
+                    attempt.into(),
                     sema.current_scope
                 ))
             }
