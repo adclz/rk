@@ -1,7 +1,8 @@
 use std::iter::FusedIterator;
+use std::sync::Arc;
 
-use auto_lsp::core::span::Span;
-use auto_lsp::default::db::tracked::get_ast;
+use auto_lsp::core::ast::AstNode;
+use auto_lsp::default::db::tracked::{get_ast};
 use auto_lsp::default::db::{file::File, BaseDatabase};
 use rustc_hash::FxHashMap;
 use tracing::info_span;
@@ -18,25 +19,25 @@ use crate::to_proto::{IterToProto, ToProto};
 #[tracing::instrument(skip_all, name = "query_semantic_index")]
 #[salsa::tracked(returns(ref))]
 pub fn semantic_index<'db>(db: &'db dyn BaseDatabase, file: File) -> SemanticIndex<'db> {
-    let ast = match info_span!("build AST").in_scope(|| get_ast(db, file).get_root()) {
-        Some(ast) => ast,
-        None => return SemanticIndex::empty(file),
+    let ast =  info_span!("build AST").in_scope(|| get_ast(db, file));
+    let root = match ast.get_root() {
+        Some(root) => root,
+        None => return SemanticIndex::empty(file, ast.nodes.clone()),
     };
-
-    let source = match ast.downcast_ref::<ast::generated::SourceFile>() {
+    let source = match root.downcast_ref::<ast::generated::SourceFile>() {
         Some(source) => source,
-        None => return SemanticIndex::empty(file),
+        None => return SemanticIndex::empty(file, ast.nodes.clone()),
     };
 
     SemanticIndexBuilder::new(db, file, get_ast(db, file), source).build()
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+#[derive(Debug, PartialEq, Eq, salsa::Update)]
 pub struct SemanticIndex<'db> {
     pub file: File,
 
     // Maps of AST node ids to their spans
-    pub span_map: FxHashMap<usize, Span>,
+    pub ast: Arc<Vec<Box<dyn AstNode>>>,
 
     /// Map of scope IDs to their corresponding scopes
     pub scopes: FxHashMap<FileScopeId, Scope<'db>>,
@@ -49,13 +50,13 @@ pub struct SemanticIndex<'db> {
 }
 
 impl<'db> SemanticIndex<'db> {
-    pub fn empty(file: File) -> Self {
+    pub fn empty(file: File, ast: Arc<Vec<Box<dyn AstNode>>>) -> Self {
         SemanticIndex {
             file,
             scopes: FxHashMap::default(),
             global_pous: Vec::new(),
             namespaces: Vec::new(),
-            span_map: FxHashMap::default(),
+            ast
         }
     }
 

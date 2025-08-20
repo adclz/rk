@@ -55,7 +55,7 @@ pub enum TyOrigin<'db> {
 }
 
 impl<'db> TyOrigin<'db> {
-    pub fn span(&'db self, db: &'db dyn BaseDatabase) -> &'db Span {
+    pub fn span(&'db self, db: &'db dyn BaseDatabase) -> Span {
         match self {
             TyOrigin::FromPou(pou) => pou.get_span(db),
             TyOrigin::FromVariable(variable) => variable.get_span(db),
@@ -114,6 +114,9 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
 
             for v in func.variables(db) {
                 match v.kind(db) {
+                    VariableKind::Var => {
+                        ztatic.insert(*v.name(db), v.spec(db).to_sig(db, origin));
+                    }
                     VariableKind::Input => {
                         inputs.insert(*v.name(db), v.spec(db).to_sig(db, origin));
                     }
@@ -122,9 +125,6 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
                     }
                     VariableKind::InOut => {
                         in_outs.insert(*v.name(db), v.spec(db).to_sig(db, origin));
-                    }
-                    VariableKind::Local => {
-                        ztatic.insert(*v.name(db), v.spec(db).to_sig(db, origin));
                     }
                     VariableKind::Temp => {
                         temp.insert(*v.name(db), v.spec(db).to_sig(db, origin));
@@ -156,6 +156,9 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
 
             for v in fb.variables(db) {
                 match v.kind(db) {
+                    VariableKind::Var => {
+                        ztatic.insert(*v.name(db), v.spec(db).to_sig(db, origin));
+                    },
                     VariableKind::Input => {
                         inputs.insert(*v.name(db), v.spec(db).to_sig(db, origin));
                     }
@@ -164,9 +167,6 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
                     }
                     VariableKind::InOut => {
                         in_outs.insert(*v.name(db), v.spec(db).to_sig(db, origin));
-                    }
-                    VariableKind::Local => {
-                        ztatic.insert(*v.name(db), v.spec(db).to_sig(db, origin));
                     }
                     VariableKind::Temp => {
                         temp.insert(*v.name(db), v.spec(db).to_sig(db, origin));

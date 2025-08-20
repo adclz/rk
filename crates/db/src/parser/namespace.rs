@@ -64,9 +64,9 @@ impl<'db> SemanticIndexBuilder<'db> {
         let result = Namespace::new(
             self.db,
             path,
-            nested.name.cast(&self.ast).get_span(),
             pous,
             nested.into(),
+     nested.name.cast(&self.ast).into(),
             scope_id,
         );
 

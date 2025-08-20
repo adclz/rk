@@ -58,9 +58,9 @@ impl<'db> ToProto<'db> for MethodPrototype<'db> {
         self.scope_id(db)
     }
 
-    fn get_name_span(&'db self, db: &'db dyn BaseDatabase) -> Option<&'db Span> {
+    fn get_name_span(&'db self, db: &'db dyn BaseDatabase) -> Option<Span> {
         let file = self.get_scope_id(db).file();
-        semantic_index(db, file).span_map.get(&self.name_id(db).0)
+        Some(semantic_index(db, file).ast.get(self.name_id(db).0)?.get_span())
     }
 }
 

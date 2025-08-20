@@ -30,7 +30,7 @@ impl<'db> ToProto<'db> for Using<'db> {
         self.scope_id(db)
     }
 
-    fn get_name_span(&'db self, db: &'db dyn crate::BaseDatabase) -> Option<&'db Span> {
+    fn get_name_span(&'db self, db: &'db dyn crate::BaseDatabase) -> Option<Span> {
         Some(self.get_span(db))
     }
 

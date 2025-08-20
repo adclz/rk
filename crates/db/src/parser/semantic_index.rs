@@ -3,7 +3,6 @@ use std::panic;
 use ast::generated::ERRInvalidPouKeyword;
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
-use auto_lsp::core::span::Span;
 use auto_lsp::default::db::tracked::ParsedAst;
 use auto_lsp::default::db::{file::File, BaseDatabase};
 use rustc_hash::FxHashMap;
@@ -30,8 +29,6 @@ pub struct SemanticIndexBuilder<'db> {
 
     pub(crate) pous: Vec<PouDecl<'db>>,
 
-    pub(crate) span_map: FxHashMap<usize, Span>,
-
     /// The current scope ID being processed (by default, the global scope).
     pub(crate) current_scope: FileScopeId,
 }
@@ -52,7 +49,6 @@ impl<'db> SemanticIndexBuilder<'db> {
             pous: Vec::new(),
             namespaces: Vec::new(),
             current_scope: FileScopeId::global(file),
-            span_map: FxHashMap::default(),
         }
     }
 
@@ -149,10 +145,10 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         SemanticIndex {
             file: self.file,
+            ast: self.ast.nodes.clone(),
             scopes: self.scope_keys,
             namespaces: self.namespaces,
             global_pous: self.pous,
-            span_map: self.span_map,
         }
     }
 }

@@ -58,13 +58,14 @@ pub trait ToProto<'db> {
 
     fn get_scope_id(&'db self, db: &'db dyn crate::BaseDatabase) -> FileScopeId;
 
-    fn get_span(&'db self, db: &'db dyn crate::BaseDatabase) -> &'db Span {
+    fn get_span(&'db self, db: &'db dyn crate::BaseDatabase) -> Span {
         let file = self.get_scope_id(db).file();
-        semantic_index(db, file).span_map.get(&self.get_id(db).0)
-            .expect("Invalid ID")
+        semantic_index(db, file).ast
+            .get(self.get_id(db).0)
+            .expect("Invalid ID").get_span()
     }
 
-    fn get_name_span(&'db self, db: &'db dyn crate::BaseDatabase) -> Option<&'db Span> {
+    fn get_name_span(&'db self, db: &'db dyn crate::BaseDatabase) -> Option<Span> {
         None
     }
 

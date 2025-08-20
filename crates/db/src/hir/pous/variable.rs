@@ -37,18 +37,27 @@ pub struct Variable<'db> {
     pub scope_id: FileScopeId,
 }
 
+// VAR Internal to entity (function, function block, etc.)
+// VAR_INPUT Externally supplied, not modifiable within entity
+// VAR_OUTPUT Supplied by entity to external entities
+// VAR_IN_OUT Supplied by external entities, can be modified within entity and supplied to external entity
+// VAR_EXTERNAL Supplied by configuration via VAR_GLOBAL
+// VAR_GLOBAL Global variable declaration
+// VAR_ACCESS Access path declaration
+// VAR_TEMP Temporary storage for variables in function blocks, methods and programs
+// VAR_CONFIG Instance-specific initialization and location assignment.
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum VariableKind {
+    Var,
     Input,
     Output,
     InOut,
-    Temp,
-    Local,
     External,
     Global,
-    Retain,
-    NoRetain,
-    LocPartly,
+    Access,
+    Temp,
+    Config,
 }
 
 impl<'db> ToProto<'db> for Variable<'db> {
@@ -60,9 +69,9 @@ impl<'db> ToProto<'db> for Variable<'db> {
         self.scope_id(db)
     }
 
-    fn get_name_span(&'db self, db: &'db dyn crate::BaseDatabase) -> Option<&'db Span> {
+    fn get_name_span(&'db self, db: &'db dyn crate::BaseDatabase) -> Option<Span> {
         let file = self.get_scope_id(db).file();
-        semantic_index(db, file).span_map.get(&self.name_id(db).0)
+        Some(semantic_index(db, file).ast.get(self.name_id(db).0)?.get_span())
     }
 
     fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> Option<SymbolInfo<'db>> {

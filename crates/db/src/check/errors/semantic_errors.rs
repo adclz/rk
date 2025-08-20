@@ -267,7 +267,7 @@ pub fn duplicate_variable_declaration(
 }
 
 /// Unexpected index expression (x := [0])
-pub fn unexpected_index_expression(db: &dyn BaseDatabase, file: File, span: &Span) {
+pub fn unexpected_index_expression(db: &dyn BaseDatabase, file: File, span: Span) {
     let diag = diag()
         .message("unexpected index expression".to_string())
         .severity(DiagnosticSeverity::ERROR)
@@ -277,7 +277,7 @@ pub fn unexpected_index_expression(db: &dyn BaseDatabase, file: File, span: &Spa
 }
 
 /// field not found
-pub fn unknown_field(db: &dyn BaseDatabase, file: File, field: &Ident, span: &Span) {
+pub fn unknown_field(db: &dyn BaseDatabase, file: File, field: &Ident, span: Span) {
     let diag = diag()
         .message(format!("field {} not found in type", field.text(db)))
         .severity(DiagnosticSeverity::ERROR)
@@ -287,7 +287,7 @@ pub fn unknown_field(db: &dyn BaseDatabase, file: File, field: &Ident, span: &Sp
 }
 
 /// no item found in scope
-pub fn no_item_in_scope(db: &dyn BaseDatabase, file: File, field: &Ident, span: &Span) {
+pub fn no_item_in_scope(db: &dyn BaseDatabase, file: File, field: &Ident, span: Span) {
     let mut diag = diag()
         .message(format!("no item '{}' in scope", field.text(db)))
         .severity(DiagnosticSeverity::ERROR)
@@ -314,7 +314,7 @@ pub fn no_item_in_scope(db: &dyn BaseDatabase, file: File, field: &Ident, span: 
 }
 
 /// no item found in scope
-pub fn type_has_no_field(db: &dyn BaseDatabase, file: File, option: Option<Spec>, span: &Span) {
+pub fn type_has_no_field(db: &dyn BaseDatabase, file: File, option: Option<Spec>, span: Span) {
     let diag = diag()
         .message(format!(
             "'{}' is a primitive type and therefore doesn't have fields",
@@ -326,7 +326,7 @@ pub fn type_has_no_field(db: &dyn BaseDatabase, file: File, option: Option<Spec>
     DiagnosticAccumulator::accumulate(diag.into(), db);
 }
 
-pub fn type_can_not_be_dereferenced(db: &dyn BaseDatabase, file: File, span: &Span) {
+pub fn type_can_not_be_dereferenced(db: &dyn BaseDatabase, file: File, span: Span) {
     let diag = diag()
         .message("type can not be dereferenced".to_string())
         .severity(DiagnosticSeverity::ERROR)

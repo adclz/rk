@@ -8,7 +8,7 @@ use crate::completions;
 use crate::hir::interned::namespace::NamespacePath;
 use crate::hir::pous::pou::PouDecl;
 use crate::hir::scope::{FileScopeId, Visibility};
-use crate::hir::semantic_index::SemanticIndex;
+use crate::hir::semantic_index::{semantic_index, SemanticIndex};
 use crate::to_proto::{self_iter, AstId, IterToProto, SymbolInfo, ToProto};
 
 #[salsa::tracked(debug)]
@@ -17,12 +17,11 @@ pub struct Namespace<'db> {
     pub path: NamespacePath,
 
     #[returns(ref)]
-    pub name_span: Span,
-
-    #[returns(ref)]
     pub pous: Vec<PouDecl<'db>>,
 
     pub id: AstId,
+
+    pub name_id: AstId,
 
     pub scope_id: FileScopeId,
 }
@@ -36,8 +35,9 @@ impl<'db> ToProto<'db> for Namespace<'db> {
         self.scope_id(db)
     }
 
-    fn get_name_span(&'db self, db: &'db dyn BaseDatabase) -> Option<&'db Span> {
-        Some(self.name_span(db))
+    fn get_name_span(&'db self, db: &'db dyn BaseDatabase) -> Option<Span> {
+        let file = self.get_scope_id(db).file();
+        Some(semantic_index(db, file).ast.get(self.name_id(db).0)?.get_span())
     }
 
     fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> Option<SymbolInfo<'db>> {
@@ -46,7 +46,7 @@ impl<'db> ToProto<'db> for Namespace<'db> {
                 .kind(auto_lsp::lsp_types::SymbolKind::NAMESPACE)
                 .name(self.path(db).to_string(db))
                 .range(self.get_span(db).clone())
-                .name_range(self.name_span(db).clone())
+                .name_range(self.get_name_span(db)?.clone())
                 .build(),
         )
     }
@@ -91,7 +91,7 @@ impl<'db> ToProto<'db> for Namespace<'db> {
         let scope = sema.get_scope(self.scope_id(db));
 
         // Don't provide completions between the namespace keyword and the namespace name
-        if self.name_span(db).end_byte > offset {
+        if self.get_name_span(db)?.end_byte > offset {
             if !scope.visibility == Visibility::PUBLIC {
                 return Some(vec![CompletionItem::new_simple(
                     "INTERNAL".into(),

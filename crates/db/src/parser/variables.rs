@@ -24,15 +24,6 @@ use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::parser::{ParseInit, ParseSpec, ParseSpecInit, ParseVarSection, SpecInitResult};
 use crate::to_proto::{AstId, ToProto};
 
-trait ToVariable<'db> {
-    fn to_variable(
-        &self,
-        sema: &SemanticIndexBuilder<'db>,
-        name: &impl AstNode,
-        kind: VariableKind,
-    ) -> anyhow::Result<Variable<'db>>;
-}
-
 impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
     fn parse(
         &self,
@@ -49,29 +40,50 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
                     match child.Type.cast(&sema.ast) {
                         ast::generated::InputVarKind::VarDeclInit(var_decl) => {
                             for variable in child.variables.cast(&sema.ast).children.iter() {
-                                section.push(var_decl.to_variable(
-                                    sema,
-                                    variable.cast(&sema.ast),
+                                let var_name = Ident::from_node(sema.db, sema.file, variable.cast(&sema.ast))?;
+                                let result = var_decl.to_spec_init(sema)?;
+                                section.push(Variable::new(
+                                    sema.db,
+                                    var_name,
                                     VariableKind::Input,
-                                )?);
+                                    result.spec,
+                                    result.init,
+                                    child.into(),
+                                    variable.cast(&sema.ast).into(),
+                                    sema.current_scope,
+                                ));
                             }
                         }
                         ast::generated::InputVarKind::ArrayConformand(var_decl) => {
                             for variable in child.variables.cast(&sema.ast).children.iter() {
-                                section.push(var_decl.to_variable(
-                                    sema,
-                                    variable.cast(&sema.ast),
+                                let var_name = Ident::from_node(sema.db, sema.file, variable.cast(&sema.ast))?;
+                                let spec = var_decl.to_spec(sema)?;
+                                section.push(Variable::new(
+                                    sema.db,
+                                    var_name,
                                     VariableKind::Input,
-                                )?);
+                                    spec,
+                                    None,
+                                    child.into(),
+                                    variable.cast(&sema.ast).into(),
+                                    sema.current_scope,
+                                ));
                             }
                         }
                         ast::generated::InputVarKind::EdgeDecl(edge_decl) => {
                             for variable in child.variables.cast(&sema.ast).children.iter() {
-                                section.push(edge_decl.to_variable(
-                                    sema,
-                                    variable.cast(&sema.ast),
+                                let var_name = Ident::from_node(sema.db, sema.file, variable.cast(&sema.ast))?;
+                                let result = edge_decl.to_spec_init(sema)?;
+                                section.push(Variable::new(
+                                    sema.db,
+                                    var_name,
                                     VariableKind::Input,
-                                )?);
+                                    result.spec,
+                                    result.init,
+                                    child.into(),
+                                    variable.cast(&sema.ast).into(),
+                                    sema.current_scope,
+                                ));
                             }
                         }
                     }
@@ -98,29 +110,50 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
                     match child.Type.cast(&sema.ast) {
                         ast::generated::FbInputVarKind::VarDeclInit(var_decl) => {
                             for variable in child.variables.cast(&sema.ast).children.iter() {
-                                section.push(var_decl.to_variable(
-                                    sema,
-                                    variable.cast(&sema.ast),
+                                let var_name = Ident::from_node(sema.db, sema.file, variable.cast(&sema.ast))?;
+                                let result = var_decl.to_spec_init(sema)?;
+                                section.push(Variable::new(
+                                    sema.db,
+                                    var_name,
                                     VariableKind::Input,
-                                )?);
+                                    result.spec,
+                                    result.init,
+                                    child.into(),
+                                    variable.cast(&sema.ast).into(),
+                                    sema.current_scope,
+                                ));
                             }
                         }
                         ast::generated::FbInputVarKind::ArrayConformand(var_decl) => {
                             for variable in child.variables.cast(&sema.ast).children.iter() {
-                                section.push(var_decl.to_variable(
-                                    sema,
-                                    variable.cast(&sema.ast),
+                                let var_name = Ident::from_node(sema.db, sema.file, variable.cast(&sema.ast))?;
+                                let spec = var_decl.to_spec(sema)?;
+                                section.push(Variable::new(
+                                    sema.db,
+                                    var_name,
                                     VariableKind::Input,
-                                )?);
+                                    spec,
+                                    None,
+                                    child.into(),
+                                    variable.cast(&sema.ast).into(),
+                                    sema.current_scope,
+                                ));
                             }
                         }
                         ast::generated::FbInputVarKind::EdgeDecl(edge_decl) => {
                             for variable in child.variables.cast(&sema.ast).children.iter() {
-                                section.push(edge_decl.to_variable(
-                                    sema,
-                                    variable.cast(&sema.ast),
+                                let var_name = Ident::from_node(sema.db, sema.file, variable.cast(&sema.ast))?;
+                                let result = edge_decl.to_spec_init(sema)?;
+                                section.push(Variable::new(
+                                    sema.db,
+                                    var_name,
                                     VariableKind::Input,
-                                )?);
+                                    result.spec,
+                                    result.init,
+                                    child.into(),
+                                    variable.cast(&sema.ast).into(),
+                                    sema.current_scope,
+                                ));
                             }
                         }
                     }
@@ -147,20 +180,34 @@ impl<'db> ParseVarSection<'db> for ast::generated::OutputDecls {
                     match child.Type.cast(&sema.ast) {
                         ast::generated::OutputVarKind::VarDeclInit(var_decl) => {
                             for variable in child.variables.cast(&sema.ast).children.iter() {
-                                section.push(var_decl.to_variable(
-                                    sema,
-                                    variable.cast(&sema.ast),
+                                let var_name = Ident::from_node(sema.db, sema.file, variable.cast(&sema.ast))?;
+                                let result = var_decl.to_spec_init(sema)?;
+                                section.push(Variable::new(
+                                    sema.db,
+                                    var_name,
                                     VariableKind::Output,
-                                )?);
+                                    result.spec,
+                                    result.init,
+                                    child.into(),
+                                    variable.cast(&sema.ast).into(),
+                                    sema.current_scope,
+                                ));
                             }
                         }
                         ast::generated::OutputVarKind::ArrayConformand(var_decl) => {
                             for variable in child.variables.cast(&sema.ast).children.iter() {
-                                section.push(var_decl.to_variable(
-                                    sema,
-                                    variable.cast(&sema.ast),
+                                let var_name = Ident::from_node(sema.db, sema.file, variable.cast(&sema.ast))?;
+                                let spec = var_decl.to_spec(sema)?;
+                                section.push(Variable::new(
+                                    sema.db,
+                                    var_name,
                                     VariableKind::Output,
-                                )?);
+                                    spec,
+                                    None,
+                                    child.into(),
+                                    variable.cast(&sema.ast).into(),
+                                    sema.current_scope,
+                                ));
                             }
                         }
                     }
@@ -187,20 +234,34 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbOutputDecls {
                     match child.Type.cast(&sema.ast) {
                         ast::generated::FbOutputVarKind::VarDeclInit(var_decl) => {
                             for variable in child.variables.cast(&sema.ast).children.iter() {
-                                section.push(var_decl.to_variable(
-                                    sema,
-                                    variable.cast(&sema.ast),
+                                let var_name = Ident::from_node(sema.db, sema.file, variable.cast(&sema.ast))?;
+                                let result = var_decl.to_spec_init(sema)?;
+                                section.push(Variable::new(
+                                    sema.db,
+                                    var_name,
                                     VariableKind::Output,
-                                )?);
+                                    result.spec,
+                                    result.init,
+                                    child.into(),
+                                    variable.cast(&sema.ast).into(),
+                                    sema.current_scope,
+                                ));
                             }
                         }
                         ast::generated::FbOutputVarKind::ArrayConformand(var_decl) => {
                             for variable in child.variables.cast(&sema.ast).children.iter() {
-                                section.push(var_decl.to_variable(
-                                    sema,
-                                    variable.cast(&sema.ast),
+                                let var_name = Ident::from_node(sema.db, sema.file, variable.cast(&sema.ast))?;
+                                let spec = var_decl.to_spec(sema)?;
+                                section.push(Variable::new(
+                                    sema.db,
+                                    var_name,
                                     VariableKind::Output,
-                                )?);
+                                    spec,
+                                    None,
+                                    child.into(),
+                                    variable.cast(&sema.ast).into(),
+                                    sema.current_scope,
+                                ));
                             }
                         }
                     }
@@ -227,20 +288,34 @@ impl<'db> ParseVarSection<'db> for ast::generated::TempVarDecls {
                     match child.Type.cast(&sema.ast) {
                         ast::generated::TempVarKind::VarDecl(var_decl) => {
                             for variable in child.variables.cast(&sema.ast).children.iter() {
-                                section.push(var_decl.to_variable(
-                                    sema,
-                                    variable.cast(&sema.ast),
-                                    VariableKind::Input,
-                                )?);
+                                let var_name = Ident::from_node(sema.db, sema.file, variable.cast(&sema.ast))?;
+                                let result = var_decl.to_spec_init(sema)?;
+                                section.push(Variable::new(
+                                    sema.db,
+                                    var_name,
+                                    VariableKind::Temp,
+                                    result.spec,
+                                    result.init,
+                                    child.into(),
+                                    variable.cast(&sema.ast).into(),
+                                    sema.current_scope,
+                                ));
                             }
                         }
                         ast::generated::TempVarKind::RefSpec(var_decl) => {
                             for variable in child.variables.cast(&sema.ast).children.iter() {
-                                section.push(var_decl.to_variable(
-                                    sema,
-                                    variable.cast(&sema.ast),
-                                    VariableKind::Input,
-                                )?);
+                                let var_name = Ident::from_node(sema.db, sema.file, variable.cast(&sema.ast))?;
+                                let result = var_decl.to_spec_init(sema)?;
+                                section.push(Variable::new(
+                                    sema.db,
+                                    var_name,
+                                    VariableKind::Temp,
+                                    result.spec,
+                                    result.init,
+                                    child.into(),
+                                    variable.cast(&sema.ast).into(),
+                                    sema.current_scope,
+                                ));
                             }
                         }
                     }
@@ -267,20 +342,34 @@ impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
                     match child.Type.cast(&sema.ast) {
                         ast::generated::InOutVarKind::ArrayConformand(var_decl) => {
                             for variable in child.variables.cast(&sema.ast).children.iter() {
-                                section.push(var_decl.to_variable(
-                                    sema,
-                                    variable.cast(&sema.ast),
+                                let var_name = Ident::from_node(sema.db, sema.file, variable.cast(&sema.ast))?;
+                                let spec = var_decl.to_spec(sema)?;
+                                section.push(Variable::new(
+                                    sema.db,
+                                    var_name,
                                     VariableKind::InOut,
-                                )?);
+                                    spec,
+                                    None,
+                                    child.into(),
+                                    variable.cast(&sema.ast).into(),
+                                    sema.current_scope,
+                                ));
                             }
                         }
                         ast::generated::InOutVarKind::VarDecl(var_decl) => {
                             for variable in child.variables.cast(&sema.ast).children.iter() {
-                                section.push(var_decl.to_variable(
-                                    sema,
-                                    variable.cast(&sema.ast),
-                                    VariableKind::Input,
-                                )?);
+                                let var_name = Ident::from_node(sema.db, sema.file, variable.cast(&sema.ast))?;
+                                let result = var_decl.to_spec_init(sema)?;
+                                section.push(Variable::new(
+                                    sema.db,
+                                    var_name,
+                                    VariableKind::InOut, // Note: Using InOut instead of Input
+                                    result.spec,
+                                    result.init,
+                                    child.into(),
+                                    variable.cast(&sema.ast).into(),
+                                    sema.current_scope,
+                                ));
                             }
                         }
                     }
@@ -288,144 +377,6 @@ impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
             }
         }
         Ok(())
-    }
-}
-
-impl<'db> ToVariable<'db> for ast::generated::EdgeDecl {
-    fn to_variable(
-        &self,
-        sema: &SemanticIndexBuilder<'db>,
-        name: &impl AstNode,
-        kind: VariableKind,
-    ) -> anyhow::Result<Variable<'db>> {
-        let var_name = Ident::from_node(sema.db, sema.file, name)?;
-        let result = self.to_spec_init(sema)?;
-        let self_span = self.get_span();
-        let name_span = name.get_span();
-        Ok(Variable::new(
-            sema.db,
-            var_name,
-            kind,
-            result.spec,
-            result.init,
-            AstId(0),
-            name.into(),
-            sema.current_scope,
-        ))
-    }
-}
-
-impl<'db> ToVariable<'db> for ast::generated::VarDecl {
-    fn to_variable(
-        &self,
-        sema: &SemanticIndexBuilder<'db>,
-        name: &impl AstNode,
-        kind: VariableKind,
-    ) -> anyhow::Result<Variable<'db>> {
-        let var_name = Ident::from_node(sema.db, sema.file, name)?;
-        let result = self.to_spec_init(sema)?;
-        Ok(Variable::new(
-            sema.db,
-            var_name,
-            kind,
-            result.spec,
-            result.init,
-            AstId(0),
-            name.into(),
-            sema.current_scope,
-        ))
-    }
-}
-
-impl<'db> ToVariable<'db> for ast::generated::VarDeclInit {
-    fn to_variable(
-        &self,
-        sema: &SemanticIndexBuilder<'db>,
-        name: &impl AstNode,
-        kind: VariableKind,
-    ) -> anyhow::Result<Variable<'db>> {
-        let var_name = Ident::from_node(sema.db, sema.file, name)?;
-        let result = self.to_spec_init(sema)?;
-
-        Ok(Variable::new(
-            sema.db,
-            var_name,
-            kind,
-            result.spec,
-            result.init,
-            AstId(0),
-            name.into(),
-            sema.current_scope,
-        ))
-    }
-}
-
-impl<'db> ToVariable<'db> for ast::generated::ArrayConformand {
-    fn to_variable(
-        &self,
-        sema: &SemanticIndexBuilder<'db>,
-        name: &impl AstNode,
-        kind: VariableKind,
-    ) -> anyhow::Result<Variable<'db>> {
-        let var_name = Ident::from_node(sema.db, sema.file, name)?;
-        let spec = self.to_spec(sema)?;
-
-        Ok(Variable::new(
-            sema.db,
-            var_name,
-            kind,
-            spec,
-            None,
-            AstId(0),
-            name.into(),
-            sema.current_scope,
-        ))
-    }
-}
-
-impl<'db> ToVariable<'db> for ast::generated::LocPartlyVar {
-    fn to_variable(
-        &self,
-        sema: &SemanticIndexBuilder<'db>,
-        name: &impl AstNode,
-        kind: VariableKind,
-    ) -> anyhow::Result<Variable<'db>> {
-        let var_name = Ident::from_node(sema.db, sema.file, name)?;
-        let result = self.to_spec_init(sema)?;
-
-        Ok(Variable::new(
-            sema.db,
-            var_name,
-            kind,
-            result.spec,
-            result.init,
-            AstId(0),
-            name.into(),
-            sema.current_scope,
-        ))
-    }
-}
-
-impl<'db> ToVariable<'db> for ast::generated::RefSpec {
-    fn to_variable(
-        &self,
-        sema: &SemanticIndexBuilder<'db>,
-        name: &impl AstNode,
-        kind: VariableKind,
-    ) -> anyhow::Result<Variable<'db>> {
-        let var_name = Ident::from_node(sema.db, sema.file, name)?;
-        let result = self.to_spec_init(sema)?;
-
-        Ok(Variable::new(
-            sema.db,
-            var_name,
-            kind,
-            result.spec,
-            result.init,
-            AstId(0),
-            name.into(),
-            sema.current_scope,
-        ))
     }
 }
 
@@ -440,18 +391,32 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
                 ast::generated::ERRVariableWithNoSpec_ExternalDecl::ExternalDecl(child) => {
                     match child.Type.cast(&sema.ast) {
                         ExternalVarKind::VarDecl(var_decl) => {
-                            section.push(var_decl.to_variable(
-                                sema,
-                                child.name.cast(&sema.ast),
-                                VariableKind::Local,
-                            )?);
+                            let var_name = Ident::from_node(sema.db, sema.file, child.name.cast(&sema.ast))?;
+                            let result = var_decl.to_spec_init(sema)?;
+                            section.push(Variable::new(
+                                sema.db,
+                                var_name,
+                                VariableKind::External, 
+                                result.spec,
+                                result.init,
+                                child.into(),
+                                child.name.cast(&sema.ast).into(),
+                                sema.current_scope,
+                            ));
                         }
                         ExternalVarKind::ArrayConformand(var_decl) => {
-                            section.push(var_decl.to_variable(
-                                sema,
-                                child.name.cast(&sema.ast),
-                                VariableKind::Local,
-                            )?);
+                            let var_name = Ident::from_node(sema.db, sema.file, child.name.cast(&sema.ast))?;
+                            let spec = var_decl.to_spec(sema)?;
+                            section.push(Variable::new(
+                                sema.db,
+                                var_name,
+                                VariableKind::External,
+                                spec,
+                                None,
+                                child.into(),
+                                child.name.cast(&sema.ast).into(),
+                                sema.current_scope,
+                            ));
                         }
                     }
                 }
@@ -485,11 +450,18 @@ impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
                     var_decl,
                 ) => {
                     for variable in var_decl.variables.cast(&sema.ast).children.iter() {
-                        section.push(var_decl.Type.cast(&sema.ast).to_variable(
-                            sema,
-                            variable.cast(&sema.ast),
-                            VariableKind::Local,
-                        )?);
+                        let var_name = Ident::from_node(sema.db, sema.file, variable.cast(&sema.ast))?;
+                        let result = var_decl.Type.cast(&sema.ast).to_spec_init(sema)?;
+                        section.push(Variable::new(
+                            sema.db,
+                            var_name,
+                            VariableKind::Var,
+                            result.spec,
+                            result.init,
+                            var_decl.into(),
+                            variable.cast(&sema.ast).into(),
+                            sema.current_scope,
+                        ));
                     }
                 }
             }
@@ -516,11 +488,18 @@ impl<'db> ParseVarSection<'db> for ast::generated::RetainVarDecls {
                     var_decl,
                 ) => {
                     for variable in var_decl.variables.cast(&sema.ast).children.iter() {
-                        section.push(var_decl.Type.cast(&sema.ast).to_variable(
-                            sema,
-                            variable.cast(&sema.ast),
-                            VariableKind::Local,
-                        )?);
+                        let var_name = Ident::from_node(sema.db, sema.file, variable.cast(&sema.ast))?;
+                        let result = var_decl.Type.cast(&sema.ast).to_spec_init(sema)?;
+                        section.push(Variable::new(
+                            sema.db,
+                            var_name,
+                            VariableKind::Var,
+                            result.spec,
+                            result.init,
+                            var_decl.into(),
+                            variable.cast(&sema.ast).into(),
+                            sema.current_scope,
+                        ));
                     }
                 }
             }
@@ -547,11 +526,18 @@ impl<'db> ParseVarSection<'db> for ast::generated::NoRetainVarDecls {
                     var_decl,
                 ) => {
                     for variable in var_decl.variables.cast(&sema.ast).children.iter() {
-                        section.push(var_decl.Type.cast(&sema.ast).to_variable(
-                            sema,
-                            variable.cast(&sema.ast),
-                            VariableKind::Local,
-                        )?);
+                        let var_name = Ident::from_node(sema.db, sema.file, variable.cast(&sema.ast))?;
+                        let result = var_decl.Type.cast(&sema.ast).to_spec_init(sema)?;
+                        section.push(Variable::new(
+                            sema.db,
+                            var_name,
+                            VariableKind::Var,
+                            result.spec,
+                            result.init,
+                            var_decl.into(),
+                            variable.cast(&sema.ast).into(),
+                            sema.current_scope,
+                        ));
                     }
                 }
             }
@@ -567,11 +553,22 @@ impl<'db> ParseVarSection<'db> for ast::generated::LocPartlyVarDecl {
         section: &mut Vec<Variable<'db>>,
     ) -> anyhow::Result<()> {
         for child in self.children.iter() {
-            section.push(child.cast(&sema.ast).to_variable(
-                sema,
+            let var_name = Ident::from_node(
+                sema.db,
+                sema.file,
                 child.cast(&sema.ast).variable_name.cast(&sema.ast),
-                VariableKind::Local,
-            )?);
+            )?;
+            let result = child.cast(&sema.ast).to_spec_init(sema)?;
+            section.push(Variable::new(
+                sema.db,
+                var_name,
+                VariableKind::Var,
+                result.spec,
+                result.init,
+                child.cast(&sema.ast).into(),
+                child.cast(&sema.ast).variable_name.cast(&sema.ast).into(),
+                sema.current_scope,
+            ));
         }
         Ok(())
     }
