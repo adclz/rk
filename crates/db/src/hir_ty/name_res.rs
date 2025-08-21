@@ -2,7 +2,6 @@ use auto_lsp::default::db::{file::File, BaseDatabase};
 use rustc_hash::FxHashMap;
 
 use crate::{
-    check::errors::semantic_errors::{duplicate_using_declaration, namespace_not_found},
     hir::{
         interned::{
             identifier::Ident,
@@ -14,11 +13,11 @@ use crate::{
             variable::Variable,
         },
         scope::{FileScopeId, ScopeKind},
-        semantic_index::semantic_index,
+        semantic_index::{semantic_index},
         using::Using,
-    }, to_proto::ToProto,
+    }
 };
-
+ 
 /// Find all namespaces in all files that match a given namespace path.
 #[salsa::tracked(returns(ref), no_eq)]
 pub fn shared_namespaces<'db>(
@@ -53,18 +52,12 @@ fn imported_namespaces<'db>(
     let matching_namespaces = shared_namespaces(db, path);
 
     if matching_namespaces.is_empty() {
-        namespace_not_found(db, using.get_span(db).clone(), path);
         return result;
     }
 
     // Check for duplicate `USING` in the same top-level scope
     let sema = semantic_index(db, file);
     let scope = sema.get_scope(using.scope_id(db));
-    for other in &scope.usings {
-        if *other != using && other.path(db) == path {
-            duplicate_using_declaration(db, file, using, *other);
-        }
-    }
 
     for ns in matching_namespaces {
         result.insert(*ns.path(db), *ns);

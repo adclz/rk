@@ -19,7 +19,7 @@ use crate::{
         scope::FileScopeId,
         semantic_index::{semantic_index, SemanticIndex},
     },
-    to_proto::{self_iter, AstId, Extends, IterToProto, SymbolInfo, ToProto},
+    to_proto::{self_iter, AstId, IterToProto, SymbolInfo, ToProto},
 };
 
 #[salsa::tracked(debug)]
@@ -90,17 +90,6 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
                     _ => None,
                 })
                 .name_range(self.get_name_span(db).unwrap().clone())
-                .maybe_extends(match self.pou(db) {
-                    Pou::Class(c) => c.extends(db).map(|a| Extends::Single(a.clone())),
-                    Pou::FunctionBlock(fb) => fb.extends(db).map(|a| Extends::Single(a.clone())),
-                    Pou::Interface(i) => i.extends(db).map(Extends::Multiple),
-                    _ => None,
-                })
-                .maybe_implements(match self.pou(db) {
-                    Pou::Class(c) => c.implements(db).cloned(),
-                    Pou::FunctionBlock(fb) => fb.implements(db).cloned(),
-                    _ => None,
-                })
                 .build(),
         )
     }

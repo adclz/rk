@@ -3,17 +3,15 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     hir::{
-        expressions::{
-            spec::{Spec, SpecKind},
-        },
+        expressions::spec::{Spec, SpecKind},
         interned::{
-            identifier::{Ident},
+            identifier::Ident,
             namespace::NamespaceAccess,
         },
         pous::{
             pou::{Pou, PouDecl},
             variable::{Variable, VariableKind},
-        },
+        }, scope::FileScopeId,
     }, hir_ty::{name_res::resolve_namespace_access, ty_path_expr_resolver::{PathExprWalkError, PathExprWalkStep}}, to_proto::ToProto
 };
 
@@ -59,6 +57,27 @@ impl<'db> TyOrigin<'db> {
         match self {
             TyOrigin::FromPou(pou) => pou.get_span(db),
             TyOrigin::FromVariable(variable) => variable.get_span(db),
+        }
+    }
+
+    pub fn name_span(&'db self, db: &'db dyn BaseDatabase) -> Option<Span> {
+        match self {
+            TyOrigin::FromPou(pou) => pou.get_name_span(db),
+            TyOrigin::FromVariable(variable) => variable.get_name_span(db),
+        }
+    }
+
+    pub fn scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
+        match self {
+            TyOrigin::FromPou(pou) => pou.get_scope_id(db),
+            TyOrigin::FromVariable(variable) => variable.get_scope_id(db),
+        }
+    }
+
+    pub fn name(&'db self, db: &'db dyn BaseDatabase) -> Ident {
+        match self {
+            TyOrigin::FromPou(pou) => *pou.name(db),
+            TyOrigin::FromVariable(variable) => *variable.name(db),
         }
     }
 }

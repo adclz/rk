@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use crate::check::errors::semantic_errors::{assign_direct_pou_to_a_variable, continue_outside_loop, exit_outside_loop, unreachable_code};
 use crate::hir::expressions::statement::{Stmt, StmtKind};
 use crate::hir::scope::FileScopeId;
 use crate::hir_ty::expr_resolver::{resolve_expr, Env, ResolvedExpr};
@@ -73,25 +72,6 @@ pub enum StmtResolveError<'db> {
     ExitOutsideLoop { exit_stmt: Stmt<'db> },
     Unreachable { start: Span, end: Span },
     AssignmentToCallable { loc: Span, ty: Ty<'db> },
-}
-
-impl<'db> StmtResolveError<'db> {
-    pub fn emit_error(&self, db: &'db dyn BaseDatabase) {
-        match self {
-            StmtResolveError::ContinueOutsideLoop { continue_stmt } => {
-                continue_outside_loop(db, *continue_stmt);
-            }
-            StmtResolveError::ExitOutsideLoop { exit_stmt } => {
-                exit_outside_loop(db, *exit_stmt);
-            }
-            StmtResolveError::Unreachable { start, end } => {
-                unreachable_code(db, start, end); 
-            }
-            StmtResolveError::AssignmentToCallable { loc, ty } => {
-                assign_direct_pou_to_a_variable(db, loc, ty.origin(db));
-            }
-        }
-    }
 }
 
 pub struct ResolveStmtCtx<'db> {
@@ -313,10 +293,6 @@ impl<'db> ResolveStmtCtx<'db> {
         if let Some((start, end)) = self.unreachable_range {
             self.errors.push(StmtResolveError::Unreachable { start, end });
         }
-
-        self.errors.iter().for_each(|error| {
-            error.emit_error(self.db);
-        });
 
         ResolveStmtsResult {
             stmts: self.resolved,

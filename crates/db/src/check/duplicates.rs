@@ -14,67 +14,57 @@ use salsa::Accumulator;
 use crate::{
     check::{
         diagnostic_builder::diag,
-        errors::semantic_errors::{
-            assign_direct_pou_to_a_variable, duplicate_variable_declaration, mismatch_type,
-            no_item_in_scope, type_can_not_be_dereferenced, type_has_no_field,
-            unexpected_index_expression, unknown_field,
-        },
         literals::check_date,
         DiagnosticAccumulator,
     },
     hir::{
         expressions::{
             expression::{
-                Elementary, Expr, ExprKind, InitExprKind, Numeric, NumericKind, PathExpr, PrimaryExpr, VariableAccessKind
+                Elementary, Expr, ExprKind, InitExprKind, Numeric, NumericKind, PathExpr,
+                PrimaryExpr, VariableAccessKind,
             },
             spec::{Spec, SpecKind},
             statement::{Stmt, StmtKind},
-        }, interned::namespace::NamespacePath, pous::{pou::Pou, variable::Variable}, scope::FileScopeId, semantic_index::{semantic_index, SemanticIndex}
-    }, hir_ty::{name_res::pous_in_scope, stmt_resolver::resolve_stmts, ty::{ty_for_variable, Ty, TyKind}, ty_path_expr_resolver::ResolvePathExprCtx}, to_proto::ToProto,
+        },
+        interned::namespace::NamespacePath,
+        pous::{pou::Pou, variable::Variable},
+        scope::FileScopeId,
+        semantic_index::{semantic_index, SemanticIndex},
+    },
+    hir_ty::{
+        name_res::pous_in_scope,
+        stmt_resolver::resolve_stmts,
+        ty::{ty_for_variable, Ty, TyKind},
+        ty_path_expr_resolver::ResolvePathExprCtx,
+    },
+    to_proto::ToProto,
 };
 
 trait Check<'db> {
     fn check(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>);
 }
 
-#[salsa::tracked(no_eq)]
+#[salsa::tracked]
 pub fn duplicate_declarations<'db>(db: &'db dyn BaseDatabase, file: File) {
     let sema = semantic_index(db, file);
-
-    for scope in sema.scopes.values() {
-        pous_in_scope(db, file, scope.id);
-    }
-
-    for ns in sema.namespaces.iter() {
-        for pou in ns.pous(db).iter() {
-            let pou_name = pou.name(db);
-
-            match pou.pou(db) {
-                Pou::Function(func) => {
-                    func.variables(db).check(db, sema);
-                    func.statements(db).check(db, sema, pou.scope_id(db));
-                }
-                Pou::FunctionBlock(fb) => {
-                    fb.variables(db).check(db, sema);
-                }
-                Pou::Interface(interface) => {
-                    interface.methods(db).iter().for_each(|method| {
-                        method.variables(db).check(db, sema);
-                    });
-                }
-                Pou::DataType(dt) => {}
-                Pou::Class(class) => {}
-            }
-        }
-    }
 }
-
+/* 
 trait CheckStmts<'db> {
-    fn check(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>, scope_id: FileScopeId);
+    fn check(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        sema: &'db SemanticIndex<'db>,
+        scope_id: FileScopeId,
+    );
 }
 
 impl<'db> CheckStmts<'db> for Vec<Stmt<'db>> {
-    fn check(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>, scope_id: FileScopeId) {
+    fn check(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        sema: &'db SemanticIndex<'db>,
+        scope_id: FileScopeId,
+    ) {
         resolve_stmts(db, self, scope_id);
     }
 }
@@ -102,9 +92,7 @@ impl<'db> Check<'db> for Variable<'db> {
         let signature = ty_for_variable(db, *self);
         if let Some(init) = self.init(db) {
             match init.kind {
-                InitExprKind::ConstantExpr(expr) => {
-                    expr.check(db, sema, &signature)
-                },
+                InitExprKind::ConstantExpr(expr) => expr.check(db, sema, &signature),
                 _ => {}
             }
         }
@@ -347,7 +335,7 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
                             },
                             _ => true,
                         }
-                    },
+                    }
                     _ => true,
                 };
                 if !result {
@@ -368,3 +356,4 @@ impl<'db> SpecCheck<'db> for Expr<'db> {
         }
     }
 }
+*/

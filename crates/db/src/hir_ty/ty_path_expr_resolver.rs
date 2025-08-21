@@ -4,7 +4,6 @@ use auto_lsp::default::db::file::File;
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::{InlayHint, InlayHintKind, InlayHintLabel};
 
-use crate::check::errors::semantic_errors::{no_item_in_scope, type_can_not_be_dereferenced, unexpected_index_expression, unknown_field};
 use crate::hir::expressions::expression::{PathExprKind, VarAccess};
 use crate::hir::interned::namespace::{NamespaceAccess, NamespacePath};
 use crate::hir_ty::name_res::{pous_in_scope, resolve_namespace_access, variables_in_scope};
@@ -219,25 +218,6 @@ pub enum PathExprWalkError<'db> {
         expr: PathExpr<'db>,
         origin: TyOrigin<'db>,
     },
-}
-
-impl<'db> PathExprWalkError<'db> {
-    pub fn emit_error(&self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>) {
-        match self {
-            PathExprWalkError::NoItemInScope { expr, scope } => {
-                no_item_in_scope(db, sema.file, &expr.to_string(db), expr.get_span(db));
-            }
-            PathExprWalkError::FieldNotFound { origin, expr } => {
-                unknown_field(db, sema.file, &expr.to_string(db), expr.get_span(db))
-            }
-            PathExprWalkError::NotAnArray { origin, expr } => {
-                unexpected_index_expression(db, sema.file, expr.get_span(db))
-            }
-            PathExprWalkError::NotAReference { origin, expr } => {
-                type_can_not_be_dereferenced(db, sema.file, expr.get_span(db));
-            }
-        }
-    }
 }
 
 #[salsa::tracked]

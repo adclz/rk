@@ -1,3 +1,4 @@
+use crate::check::errors::sem_errors::AnalysisError;
 use crate::hir::interned::identifier::Ident;
 use crate::hir::interned::namespace::SpannedNamespaceAccess;
 use crate::hir::pous::interface::{Interface, MethodPrototype};
@@ -12,7 +13,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_interface(
         &mut self,
         interface: &ast::generated::InterfaceDecl,
-    ) -> anyhow::Result<PouDecl<'db>> {
+    ) -> anyhow::Result<PouDecl<'db>, AnalysisError<'db>> {
         let scope_id = FileScopeId::from((self.file, interface.get_id()));
         let previous_scope = self.current_scope;
         self.current_scope = scope_id;
@@ -22,20 +23,42 @@ impl<'db> SemanticIndexBuilder<'db> {
             .extends
             .as_ref()
             .map(|i| {
-                i.cast(&self.ast).children
-                    .iter()
-                    .map(|i| SpannedNamespaceAccess::from_ast(self.db, self, i.cast(&self.ast)))
-                    .collect()
+            i.cast(&self.ast).children
+                .iter()
+                .filter_map(|i| {
+                match SpannedNamespaceAccess::from_ast(self.db, self, i.cast(&self.ast)) {
+                    Ok(namespace) => Some(Some(namespace)),
+                    Err(error) => {
+                    self.errors.push(error);
+                    None
+                    }
+                }
+                })
+                .collect()
             })
-            .transpose()?;
+            .unwrap_or_default();
 
         let methods = interface
             .prototype
             .iter()
-            .map(|m| self.parse_method_prototype(m.cast(&self.ast)))
-            .collect::<anyhow::Result<Vec<_>>>()?;
+            .filter_map(|m| {
+            match self.parse_method_prototype(m.cast(&self.ast)) {
+                Ok(method) => Some(method),
+                Err(error) => {
+                self.errors.push(error);
+                None
+                }
+            }
+            })
+            .collect::<Vec<_>>();
 
-        let usings = self.parse_usings(&interface.directives)?;
+        let usings = match self.parse_usings(&interface.directives) {
+            Ok(usings) => usings,
+            Err(error) => {
+            self.errors.push(error);
+            vec![] 
+            }
+        };
 
         let result = PouDecl::new(
             self.db,
@@ -60,10 +83,10 @@ impl<'db> SemanticIndexBuilder<'db> {
         Ok(result)
     }
 
-    pub fn parse_method_prototype<'a>(
-        &'a self,
+    pub fn parse_method_prototype(
+        &mut self,
         method: &ast::generated::MethodPrototype,
-    ) -> anyhow::Result<MethodPrototype<'a>> {
+    ) -> anyhow::Result<MethodPrototype<'db>, AnalysisError<'db>> {
         let name = Ident::from_node(self.db, self.file, method.name.cast(&self.ast))?;
         let return_type = method
             .data_type
@@ -80,13 +103,13 @@ impl<'db> SemanticIndexBuilder<'db> {
         for variable in method.variables.iter() {
             match variable.cast(&self.ast) {
                 ast::generated::InOutDecls_InputDecls_OutputDecls::InputDecls(decls) => {
-                    decls.parse(self, &mut variables)?
+                    decls.parse(self, &mut variables)
                 }
                 ast::generated::InOutDecls_InputDecls_OutputDecls::InOutDecls(decls) => {
-                    decls.parse(self, &mut variables)?
+                    decls.parse(self, &mut variables)
                 }
                 ast::generated::InOutDecls_InputDecls_OutputDecls::OutputDecls(decls) => {
-                    decls.parse(self, &mut variables)?
+                    decls.parse(self, &mut variables)
                 }
             }
         }

@@ -6,7 +6,7 @@ use auto_lsp::{
 use compact_str::CompactString;
 use std::{hash::Hash, ops::Deref};
 
-use crate::{hir::scope::FileScopeId, parser::semantic_index::SemanticIndexBuilder, to_proto::{AstId, ToProto}};
+use crate::{check::errors::sem_errors::AnalysisError, hir::scope::FileScopeId, parser::semantic_index::SemanticIndexBuilder, to_proto::{AstId, ToProto}};
 
 #[derive(Clone, Eq, salsa::Update, Debug)]
 pub struct SpannedIdent {
@@ -41,14 +41,14 @@ impl Hash for SpannedIdent {
     }
 }
 
-impl SpannedIdent {
-    pub fn new<T: AstNode>(db: &dyn BaseDatabase, sema: &SemanticIndexBuilder, ident: &AstNodeId<T>) -> anyhow::Result<Self> {
+impl<'db> SpannedIdent {
+    pub fn new<T: AstNode>(db: &'db dyn BaseDatabase, sema: &SemanticIndexBuilder, ident: &AstNodeId<T>) -> anyhow::Result<Self, AnalysisError<'db>> {
         let ast = get_ast(db, sema.file);
         let ident = ident.cast(&ast);
         Self::from_node(db, sema, ident)
     }
 
-    pub fn from_node(db: &dyn BaseDatabase, sema: &SemanticIndexBuilder, node: &impl AstNode) -> anyhow::Result<Self> {
+    pub fn from_node(db: &'db dyn BaseDatabase, sema: &SemanticIndexBuilder, node: &impl AstNode) -> anyhow::Result<Self, AnalysisError<'db>> {
         Ok(SpannedIdent {
             id: node.into(),
             scope_id: sema.current_scope,
@@ -56,7 +56,7 @@ impl SpannedIdent {
         })
     }
 
-    pub fn to_string<'db>(&'db self, db: &'db dyn BaseDatabase) -> &'db str {
+    pub fn to_string(&'db self, db: &'db dyn BaseDatabase) -> &'db str {
         self.ident.text(db)
     }
 }
@@ -83,7 +83,7 @@ impl<'db> Ident {
         db: &dyn BaseDatabase,
         file: File,
         node: &impl AstNode,
-    ) -> anyhow::Result<Self> {
+    ) -> anyhow::Result<Self, AnalysisError<'db>> {
         Ok(Ident::new(
             db,
             CompactString::from(node.get_text(file.document(db).as_bytes())?),

@@ -1,3 +1,4 @@
+use crate::check::errors::sem_errors::AnalysisError;
 use crate::hir::scope::FileScopeId;
 use crate::parser::semantic_index::SemanticIndexBuilder;
 use crate::to_proto::AstId;
@@ -87,12 +88,12 @@ impl<'db> ToProto<'db> for SpannedNamespaceAccess {
 
 impl Eq for SpannedNamespaceAccess {}
 
-impl SpannedNamespaceAccess {
+impl<'db> SpannedNamespaceAccess {
     pub fn from_ast(
-        db: &dyn BaseDatabase,
-        sema: & SemanticIndexBuilder<'_>,
+        db: &'db dyn BaseDatabase,
+        sema: &SemanticIndexBuilder<'db>,
         fq_name: &ast::generated::NamespaceAccess,
-    ) -> anyhow::Result<Self> {
+    ) -> anyhow::Result<Self, AnalysisError<'db>> {
         Ok(SpannedNamespaceAccess {
             id: fq_name.into(),
             scope_id: sema.current_scope,
@@ -112,11 +113,11 @@ pub struct NamespaceAccess {
 }
 
 impl NamespaceAccess {
-    pub fn from_ast(
-        db: &dyn BaseDatabase,
-        sema: &SemanticIndexBuilder<'_>,
+    pub fn from_ast<'db>(
+        db: &'db dyn BaseDatabase,
+        sema: &SemanticIndexBuilder<'db>,
         fq_name: &ast::generated::NamespaceAccess,
-    ) -> anyhow::Result<Self> {
+    ) -> anyhow::Result<Self, AnalysisError<'db>> {
         let ast = get_ast(db, sema.file);
         let mut fragments = Vec::new();
 

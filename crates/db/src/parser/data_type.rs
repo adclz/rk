@@ -1,20 +1,19 @@
 use crate::{
-    hir::{
+    check::errors::sem_errors::AnalysisError, hir::{
         interned::identifier::Ident,
         pous::{
             data_type::DataType,
             pou::{Pou, PouDecl},
         },
         scope::{FileScopeId, Scope, ScopeKind, Visibility},
-    },
-    parser::{expression::ParseExpr, semantic_index::SemanticIndexBuilder, ParseSpec},
+    }, parser::{expression::ParseExpr, semantic_index::SemanticIndexBuilder, ParseSpec}
 };
 use ast::generated::TypeDecl;
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 
 impl<'db> SemanticIndexBuilder<'db> {
-    pub fn parse_data_type(&mut self, data_type: &TypeDecl) -> anyhow::Result<PouDecl<'db>> {
+    pub fn parse_data_type(&mut self, data_type: &TypeDecl) -> anyhow::Result<PouDecl<'db>, AnalysisError<'db>> {
         let scope_id = FileScopeId::from((self.file, data_type.get_id()));
         let previous_scope = self.current_scope;
         self.current_scope = scope_id;

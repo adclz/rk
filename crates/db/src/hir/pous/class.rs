@@ -19,8 +19,8 @@ pub struct Class<'db> {
     pub extends: Option<SpannedNamespaceAccess>,
 
     #[tracked]
-    #[returns(as_ref)]
-    pub implements: Option<Vec<SpannedNamespaceAccess>>,
+    #[returns(ref)]
+    pub implements: Vec<SpannedNamespaceAccess>,
 
     #[tracked]
     #[returns(ref)]

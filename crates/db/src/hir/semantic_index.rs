@@ -7,6 +7,7 @@ use auto_lsp::default::db::{file::File, BaseDatabase};
 use rustc_hash::FxHashMap;
 use tracing::info_span;
 
+use crate::check::errors::sem_errors::AnalysisError;
 use crate::hir::interned::identifier::Ident;
 use crate::hir::namespace::Namespace;
 use crate::hir::pous::pou::PouDecl;
@@ -17,7 +18,7 @@ use crate::to_proto::{IterToProto, ToProto};
 
 /// Returns the semantic index of a given file
 #[tracing::instrument(skip_all, name = "query_semantic_index")]
-#[salsa::tracked(returns(ref))]
+#[salsa::tracked(returns(ref), no_eq)]
 pub fn semantic_index<'db>(db: &'db dyn BaseDatabase, file: File) -> SemanticIndex<'db> {
     let ast =  info_span!("build AST").in_scope(|| get_ast(db, file));
     let root = match ast.get_root() {
@@ -37,7 +38,7 @@ pub struct SemanticIndex<'db> {
     pub file: File,
 
     // Maps of AST node ids to their spans
-    pub ast: Arc<Vec<Box<dyn AstNode>>>,
+    pub ast: Arc<Vec<Box<dyn AstNode>>>, 
 
     /// Map of scope IDs to their corresponding scopes
     pub scopes: FxHashMap<FileScopeId, Scope<'db>>,
@@ -47,6 +48,9 @@ pub struct SemanticIndex<'db> {
 
     /// All namespaces in the file
     pub namespaces: Vec<Namespace<'db>>,
+
+    /// A list of errors encountered during semantic analysis
+    pub errors: Vec<AnalysisError<'db>>
 }
 
 impl<'db> SemanticIndex<'db> {
@@ -54,9 +58,10 @@ impl<'db> SemanticIndex<'db> {
         SemanticIndex {
             file,
             scopes: FxHashMap::default(),
-            global_pous: Vec::new(),
-            namespaces: Vec::new(),
-            ast
+            global_pous: vec![],
+            namespaces: vec![],
+            ast,
+            errors: vec![],
         }
     }
 

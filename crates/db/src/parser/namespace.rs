@@ -3,6 +3,7 @@ use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 
 use super::semantic_index::SemanticIndexBuilder;
+use crate::check::errors::sem_errors::{AnalysisError, SyntaxError};
 use crate::hir::interned::identifier::SpannedIdent;
 use crate::hir::interned::namespace::NamespacePath;
 use crate::hir::namespace::Namespace;
@@ -13,13 +14,20 @@ impl<'db> SemanticIndexBuilder<'db> {
         &mut self,
         parent_path: &[SpannedIdent],
         nested: &ast::generated::NamespaceDecl,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<(), AnalysisError<'db>> {
         type Decl =
             ERRInvalidPouKeyword_ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl;
 
         let scope_id = FileScopeId::from((self.file, nested.get_id()));
         let path = NamespacePath::from((self.db, parent_path));
-        let usings = self.parse_usings(&nested.directives)?;
+        let usings = match self.parse_usings(&nested.directives) {
+            Ok(usings) => usings,
+            Err(error) => {
+                self.errors.push(error);
+                vec![]
+            }
+        };
+
         let mut pous = vec![];
 
         let previous_scope = self.current_scope;
@@ -55,7 +63,9 @@ impl<'db> SemanticIndexBuilder<'db> {
                         pous.push(self.parse_interface(interface)?);
                     }
                     Decl::ERRInvalidPouKeyword(err) => {
-                        self.create_pou_error(err);
+                        self.errors.push(AnalysisError::SyntaxError(
+                            SyntaxError::InvalidPouKeyword(err.get_span()),
+                        ));
                     }
                 }
             }
@@ -66,7 +76,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             path,
             pous,
             nested.into(),
-     nested.name.cast(&self.ast).into(),
+            nested.name.cast(&self.ast).into(),
             scope_id,
         );
 

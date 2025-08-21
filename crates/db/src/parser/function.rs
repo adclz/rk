@@ -1,3 +1,4 @@
+use crate::check::errors::sem_errors::AnalysisError;
 use crate::hir::interned::identifier::Ident;
 use crate::hir::pous::function::Function;
 use crate::hir::pous::pou::{Pou, PouDecl};
@@ -14,23 +15,29 @@ impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_function(
         &mut self,
         func: &ast::generated::FuncDecl,
-    ) -> anyhow::Result<PouDecl<'db>> {
+    ) -> anyhow::Result<PouDecl<'db>, AnalysisError<'db>> {
         let scope_id = FileScopeId::from((self.file, func.get_id()));
         let previous_scope = self.current_scope;
         self.current_scope = scope_id;
 
-        let variables = func.parse_variables(self)?;
+        let variables = func.parse_variables(self);
+
         let statements = func
             .body
             .as_ref()
             .map_or(vec![], |body| match body.cast(&self.ast).children.cast(&self.ast) {
-                ast::generated::FbDiagram_LadderDiagram_StmtList::StmtList(ref stmts) => stmts
-                    .children
-                    .iter()
-                    .map(|stmt| stmt.cast(&self.ast).to_statement(self))
-                    .collect::<anyhow::Result<Vec<_>>>()
-                    .unwrap_or_default(),
-                _ => vec![],
+            ast::generated::FbDiagram_LadderDiagram_StmtList::StmtList(ref stmts) => stmts
+                .children
+                .iter()
+                .filter_map(|stmt| match stmt.cast(&self.ast).to_statement(self) {
+                Ok(statement) => Some(statement),
+                Err(err) => {
+                    self.errors.push(AnalysisError::from(err));
+                    None
+                }
+                })
+                .collect(),
+            _ => vec![],
             });
 
         let return_type = func
@@ -75,28 +82,28 @@ impl<'db> SemanticIndexBuilder<'db> {
 trait ParseVariable<'db> {
     fn parse_variables(
         &self,
-        sema: &SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<Vec<Variable<'db>>>;
+        sema: &mut SemanticIndexBuilder<'db>,
+    ) -> Vec<Variable<'db>>;
 }
 
 impl<'db> ParseVariable<'db> for ast::generated::FuncDecl {
     fn parse_variables(
         &self,
-        sema: &SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<Vec<Variable<'db>>> {
+        sema: &mut SemanticIndexBuilder<'db>,
+    ) -> Vec<Variable<'db>> {
         let mut variables = vec![];
 
         for variable in self.variables.iter() {
             match variable.cast(&sema.ast) {
-                FuncVariables::InputDecls(decls) => decls.parse(sema, &mut variables)?,
-                FuncVariables::OutputDecls(decls) => decls.parse(sema, &mut variables)?,
-                FuncVariables::InOutDecls(decls) => decls.parse(sema, &mut variables)?,
-                FuncVariables::ExternalVarDecls(decls) => decls.parse(sema, &mut variables)?,
-                FuncVariables::TempVarDecls(decls) => decls.parse(sema, &mut variables)?,
-                FuncVariables::VarDecls(decls) => decls.parse(sema, &mut variables)?,
+                FuncVariables::InputDecls(decls) => decls.parse(sema, &mut variables),
+                FuncVariables::OutputDecls(decls) => decls.parse(sema, &mut variables),
+                FuncVariables::InOutDecls(decls) => decls.parse(sema, &mut variables),
+                FuncVariables::ExternalVarDecls(decls) => decls.parse(sema, &mut variables),
+                FuncVariables::TempVarDecls(decls) => decls.parse(sema, &mut variables),
+                FuncVariables::VarDecls(decls) => decls.parse(sema, &mut variables),
             }
         }
 
-        Ok(variables)
+        variables
     }
 }

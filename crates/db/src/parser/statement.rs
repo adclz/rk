@@ -1,18 +1,18 @@
-use crate::check::errors::semantic_errors::{assign_to_function_call, empty_right_hand_assignment};
+use crate::check::errors::sem_errors::{AnalysisError, SyntaxError};
 use crate::hir::expressions::expression::{ParamAssign, SymbolicVariable};
 use crate::hir::expressions::statement::{CaseKind, Stmt, StmtKind};
 use crate::hir::interned::identifier::Ident;
 use crate::parser::expression::{ParseExpr, ParseExpression, ParseVariableAccess};
 use crate::parser::semantic_index::SemanticIndexBuilder;
-use auto_lsp::anyhow::{self, Ok};
+use auto_lsp::anyhow::{self};
 use auto_lsp::core::ast::AstNode;
 
 pub trait ParseStatement<'db> {
-    fn to_statement(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Stmt<'db>>;
+    fn to_statement(&self, sema: &mut SemanticIndexBuilder<'db>) -> anyhow::Result<Stmt<'db>, AnalysisError<'db>>;
 }
 
 impl<'db> ParseStatement<'db> for ast::generated::Stmt {
-    fn to_statement(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Stmt<'db>> {
+    fn to_statement(&self, sema: &mut SemanticIndexBuilder<'db>) -> anyhow::Result<Stmt<'db>, AnalysisError<'db>> {
         type StmtType = ast::generated::Stmt;
         match self {
             StmtType::Assign(assign) => assign.to_statement(sema),
@@ -90,7 +90,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                     .as_ref()
                     .map(|b| b.cast(&sema.ast).children.iter()
                         .map(|stmt| stmt.cast(&sema.ast).to_statement(sema))
-                        .collect::<anyhow::Result<Vec<_>>>())
+                        .collect::<Result<Vec<_>, AnalysisError<'db>>>())
                     .transpose()?;  
 
                 let else_if = if_stmt
@@ -101,9 +101,9 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                         let then = else_if_stmt.cast(&sema.ast).else_if_body.cast(&sema.ast).children
                             .iter()
                             .map(|stmt| stmt.cast(&sema.ast).to_statement(sema))
-                            .collect::<anyhow::Result<Vec<_>>>()?;
+                            .collect::<Result<Vec<_>, AnalysisError<'db>>>()?;
                     Ok((condition, then)) 
-                }).collect::<anyhow::Result<Vec<_>>>()?; 
+                }).collect::<Result<Vec<_>, AnalysisError<'db>>>()?; 
  
                 let else_ = if_stmt
                     .else_body
@@ -112,7 +112,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                             .children
                             .iter()
                             .map(|stmt| stmt.cast(&sema.ast).to_statement(sema))
-                            .collect::<anyhow::Result<Vec<_>>>()
+                            .collect::<Result<Vec<_>, AnalysisError<'db>>>()
                     ).transpose()?;
 
                 Ok(Stmt::new( 
@@ -140,7 +140,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                         body.cast(&sema.ast).children
                             .iter()
                             .map(|stmt| stmt.cast(&sema.ast).to_statement(sema))
-                            .collect::<anyhow::Result<Vec<_>>>()
+                            .collect::<Result<Vec<_>, AnalysisError<'db>>>()
                     }).transpose()?
                     .unwrap_or_else(|| vec![]);
 
@@ -186,7 +186,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                             .children
                             .iter()
                             .map(|stmt| stmt.cast(&sema.ast).to_statement(sema))
-                            .collect::<anyhow::Result<Vec<_>>>()?;
+                            .collect::<Result<Vec<_>, AnalysisError<'db>>>()?;
                     }
                     cases.push((case_of, body));
                 }
@@ -199,7 +199,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                         .children
                         .iter()
                         .map(|stmt| stmt.cast(&sema.ast).to_statement(sema))
-                        .collect::<anyhow::Result<Vec<_>>>()
+                        .collect::<Result<Vec<_>, AnalysisError<'db>>>()
                     ).transpose()?;
 
                 Ok(Stmt::new(
@@ -220,7 +220,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                     .children
                     .iter()
                     .map(|stmt| stmt.cast(&sema.ast).to_statement(sema))
-                    .collect::<anyhow::Result<Vec<_>>>()?;
+                    .collect::<Result<Vec<_>, AnalysisError<'db>>>()?;
 
                 let condition = repeat.repeat_cond.cast(&sema.ast).to_expr(sema)?;
                 Ok(Stmt::new(
@@ -238,7 +238,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                     .children
                     .iter()
                     .map(|stmt| stmt.cast(&sema.ast).to_statement(sema))
-                    .collect::<anyhow::Result<Vec<_>>>()?;
+                    .collect::<Result<Vec<_>, AnalysisError<'db>>>()?;
 
                 Ok(Stmt::new(
                     sema.db,
@@ -262,19 +262,17 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
 }
 
 impl<'db> ParseStatement<'db> for ast::generated::Assign {
-    fn to_statement(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Stmt<'db>> {
+    fn to_statement(&self, sema: &mut SemanticIndexBuilder<'db>) -> anyhow::Result<Stmt<'db>, AnalysisError<'db>> {
         let var = match self.variable.cast(&sema.ast) {
             ast::generated::ERRAssignFuncCall_Variable::ERRAssignFuncCall(err) => {
-                assign_to_function_call(sema.db, err.get_span());
-                Err(anyhow::anyhow!("Cannot assign to a function call"))
+                Err(AnalysisError::SyntaxError(SyntaxError::AssignToFUnctionCall(err.get_span())))
             }
             ast::generated::ERRAssignFuncCall_Variable::Variable(var) => var.to_access(sema),
         }?;
 
         match self.target.cast(&sema.ast) {
             ast::generated::ERREmptyRightHandAssignment_Assignment_AssignmentAttempt::ERREmptyRightHandAssignment(err) => {
-                empty_right_hand_assignment(sema.db, err.get_span());
-                Err(anyhow::anyhow!("Empty right-hand side in assignment"))
+                Err(AnalysisError::SyntaxError(SyntaxError::EmptyRightHandSide(err.get_span())))
             },
             ast::generated::ERREmptyRightHandAssignment_Assignment_AssignmentAttempt::Assignment(assign) => Ok(Stmt::new(
                 sema.db,

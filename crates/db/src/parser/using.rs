@@ -2,13 +2,14 @@ use ast::generated::UsingDirective;
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::{AstNodeId};
 
+use crate::check::errors::sem_errors::AnalysisError;
 use crate::hir::interned::identifier::SpannedIdent;
 use crate::hir::interned::namespace::NamespacePath;
 use crate::hir::using::Using;
 use crate::parser::semantic_index::SemanticIndexBuilder;
 
 impl<'db> SemanticIndexBuilder<'db> {
-    pub fn parse_using(&mut self, using: &'db UsingDirective) -> anyhow::Result<Vec<Using<'db>>> {
+    pub fn parse_using(&mut self, using: &'db UsingDirective) -> anyhow::Result<Vec<Using<'db>>, AnalysisError<'db>> {
         let mut result = vec![];
         for child in using.children.iter() {
             let mut path = vec![];
@@ -28,7 +29,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_usings(
         &mut self,
         usings: &[AstNodeId<UsingDirective>],
-    ) -> anyhow::Result<Vec<Using<'db>>> {
+    ) -> anyhow::Result<Vec<Using<'db>>, AnalysisError<'db>> {
         let mut using = vec![];
         for directive in usings.iter() {
             for child in directive.cast(&self.ast).children.iter() {

@@ -1,8 +1,7 @@
 use auto_lsp::anyhow;
 
 use crate::{
-    hir::{expressions::{expression::{InitExpr}, spec::Spec}, pous::variable::Variable},
-    parser::semantic_index::SemanticIndexBuilder,
+    check::errors::sem_errors::AnalysisError, hir::{expressions::{expression::InitExpr, spec::Spec}, pous::variable::Variable}, parser::semantic_index::SemanticIndexBuilder
 };
 
 pub mod class;
@@ -21,17 +20,17 @@ pub mod variables;
 pub trait ParseVarSection<'db> {
     fn parse(
         &self,
-        sema: &SemanticIndexBuilder<'db>,
+        sema: &mut SemanticIndexBuilder<'db>,
         section: &mut Vec<Variable<'db>>,
-    ) -> anyhow::Result<()>;
+    );
 }
 
 pub trait ParseSpec<'db> {
-    fn to_spec(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<Spec<'db>>;
+    fn to_spec(&self, sema: &mut SemanticIndexBuilder<'db>) -> anyhow::Result<Spec<'db>, AnalysisError<'db>>;
 }
 
 pub trait ParseInit<'db> {
-    fn to_init(&self, sema: &SemanticIndexBuilder<'db>) -> anyhow::Result<InitExpr<'db>>;
+    fn to_init(&self, sema: &mut SemanticIndexBuilder<'db>) -> anyhow::Result<InitExpr<'db>, AnalysisError<'db>>;
 }
 
 pub struct SpecInitResult<'db> {
@@ -46,15 +45,15 @@ impl<'db> SpecInitResult<'db> {
 }
 
 pub trait ParseSpecInit<'db> {
-    fn to_spec_init(&self, sema: &SemanticIndexBuilder<'db>)
-        -> anyhow::Result<SpecInitResult<'db>>;
+    fn to_spec_init(&self, sema: &mut SemanticIndexBuilder<'db>)
+        -> anyhow::Result<SpecInitResult<'db>, AnalysisError<'db>>;
 }
 
 impl<'db, T: ParseSpec<'db> + ParseInit<'db>> ParseSpecInit<'db> for T {
     fn to_spec_init(
         &self,
-        sema: &SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<SpecInitResult<'db>> {
+        sema: &mut SemanticIndexBuilder<'db>,
+    ) -> anyhow::Result<SpecInitResult<'db>, AnalysisError<'db>> {
         Ok(SpecInitResult::new(
             self.to_spec(sema)?,
             Some(self.to_init(sema)?),

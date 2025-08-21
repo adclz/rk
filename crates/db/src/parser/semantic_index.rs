@@ -1,13 +1,10 @@
-use std::panic;
-
-use ast::generated::ERRInvalidPouKeyword;
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::default::db::tracked::ParsedAst;
 use auto_lsp::default::db::{file::File, BaseDatabase};
 use rustc_hash::FxHashMap;
 
-use crate::check::errors::semantic_errors::invalid_pou_keyword;
+use crate::check::errors::sem_errors::{AnalysisError, SyntaxError};
 use crate::hir::interned::identifier::SpannedIdent;
 use crate::hir::namespace::Namespace;
 use crate::hir::pous::pou::PouDecl;
@@ -31,6 +28,8 @@ pub struct SemanticIndexBuilder<'db> {
 
     /// The current scope ID being processed (by default, the global scope).
     pub(crate) current_scope: FileScopeId,
+
+    pub(crate) errors: Vec<AnalysisError<'db>>
 }
 
 impl<'db> SemanticIndexBuilder<'db> {
@@ -46,32 +45,29 @@ impl<'db> SemanticIndexBuilder<'db> {
             ast,
             source,
             scope_keys: FxHashMap::default(),
-            pous: Vec::new(),
-            namespaces: Vec::new(),
+            pous: vec![],
+            namespaces: vec![],
             current_scope: FileScopeId::global(file),
+            errors: vec![]
         }
     }
 
     pub fn get_namespace_path(
         &mut self,
         namespace: &ast::generated::NamespaceDecl,
-    ) -> anyhow::Result<Vec<SpannedIdent>> {
+    ) -> anyhow::Result<Vec<SpannedIdent>, AnalysisError<'db>> {
         namespace
             .name
             .cast(&self.ast)
             .children
             .iter()
             .map(|n| SpannedIdent::new(self.db, self, &n))
-            .collect::<anyhow::Result<Vec<_>>>()
+            .collect::<Result<Vec<_>, AnalysisError<'db>>>()
     }
 
     pub fn create_pou_id(&self, node: &impl AstNode) -> FileScopeId {
         
         FileScopeId::from((self.file, node.get_id()))
-    }
-
-    pub fn create_pou_error(&self, err: &ERRInvalidPouKeyword) {
-        invalid_pou_keyword(self.db, err.get_span());
     }
 
     // Fix me: This function should not panic, but handle errors gracefully.
@@ -85,19 +81,21 @@ impl<'db> SemanticIndexBuilder<'db> {
             self.current_scope = FileScopeId::global(self.file);
             match child.cast(self.ast) {
                 SourceFileDecl::ERRInvalidPouKeyword(err) => {
-                    self.create_pou_error(err);
+                    self.errors.push(AnalysisError::SyntaxError(SyntaxError::InvalidPouKeyword(err.get_span())))
                 }
                 SourceFileDecl::NamespaceDecl(namespace) => {
                     let path = match self.get_namespace_path(namespace) {
                         Ok(path) => path,
-                        Err(_err) => {
-                            panic!("Failed to build namespace: {_err:?}");
+                        Err(err) => {
+                            self.errors.push(err);
+                            continue;
                         }
                     };
                     let namespace_id = namespace.get_id();
 
-                    if let Err(e) = self.parse_namespace(&path, namespace) {
-                        panic!("Failed to build namespace: {e:?}");
+                    if let Err(err) = self.parse_namespace(&path, namespace) {
+                        self.errors.push(err);
+                        continue;
                     }
                 }
                 SourceFileDecl::UsingDirective(directive) => {
@@ -149,6 +147,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             scopes: self.scope_keys,
             namespaces: self.namespaces,
             global_pous: self.pous,
+            errors: self.errors,
         }
     }
 }
