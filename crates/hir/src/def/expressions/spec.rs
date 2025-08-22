@@ -1,20 +1,20 @@
+use crate::completions::snippets::elem_type_names;
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind};
-use crate::completions::snippets::elem_type_names;
 
 use crate::def::expressions::expression::{InitExpr, VariableAccess};
 use crate::def::semantic_index::semantic_index;
-use crate::ty::name_res::resolve_namespace_access;
 use crate::to_proto::AstId;
+use crate::ty::name_res::resolve_namespace_access;
 use crate::{
     def::{
         expressions::expression::{Expr, MultibitsPart},
         interned::{identifier::Ident, namespace::NamespaceAccess},
         pous::pou::Pou,
-        {scope::FileScopeId},
+        scope::FileScopeId,
         semantic_index::SemanticIndex,
     },
-    to_proto::{self_iter, IterToProto, ToProto},
+    to_proto::{IterToProto, ToProto, self_iter},
 };
 
 #[salsa::tracked(debug)]
@@ -25,7 +25,7 @@ pub struct Spec<'db> {
 
     pub id: AstId,
 
-    pub scope_id: FileScopeId
+    pub scope_id: FileScopeId,
 }
 
 impl<'db> Spec<'db> {
@@ -183,16 +183,12 @@ impl<'db> ToProto<'db> for Spec<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
         self.id(db)
     }
-    
+
     fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
         self.scope_id(db)
     }
 
-    fn hover(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        sema: &'db SemanticIndex<'db>,
-    ) -> Option<Hover> {
+    fn hover(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>) -> Option<Hover> {
         match self.kind(db) {
             SpecKind::Target(target) => {
                 match resolve_namespace_access(db, sema.file, self.scope_id(db), *target) {

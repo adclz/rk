@@ -1,4 +1,4 @@
-use auto_lsp::{default::db::BaseDatabase};
+use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     def::{

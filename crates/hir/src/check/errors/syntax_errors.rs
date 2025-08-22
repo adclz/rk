@@ -2,10 +2,10 @@ use std::collections::HashMap;
 
 use auto_lsp::{
     core::span::Span,
-    default::db::{file::File, BaseDatabase},
+    default::db::{BaseDatabase, file::File},
     lsp_types::{DiagnosticRelatedInformation, WorkspaceEdit},
 };
-use ide_diagnostic::{action, diag, edit, IdeDiagnostic};
+use ide_diagnostic::{IdeDiagnostic, action, diag, edit};
 
 /// Missing node in the parse tree
 ///
@@ -41,10 +41,12 @@ pub fn missing_node(
                 .is_preferred(true)
                 .edit(WorkspaceEdit::new(HashMap::from([(
                     file.url(db).clone(),
-                    vec![edit()
-                        .new_text(format!(" {grammar_name}"))
-                        .range(span)
-                        .call()],
+                    vec![
+                        edit()
+                            .new_text(format!(" {grammar_name}"))
+                            .range(span)
+                            .call(),
+                    ],
                 )])))
                 .call(),
         );

@@ -1,7 +1,7 @@
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::default::db::tracked::ParsedAst;
-use auto_lsp::default::db::{file::File, BaseDatabase};
+use auto_lsp::default::db::{BaseDatabase, file::File};
 use rustc_hash::FxHashMap;
 
 use crate::check::errors::sem_errors::{AnalysisError, SyntaxError};
@@ -29,7 +29,7 @@ pub struct SemanticIndexBuilder<'db> {
     /// The current scope ID being processed (by default, the global scope).
     pub(crate) current_scope: FileScopeId,
 
-    pub(crate) errors: Vec<AnalysisError<'db>>
+    pub(crate) errors: Vec<AnalysisError<'db>>,
 }
 
 impl<'db> SemanticIndexBuilder<'db> {
@@ -48,7 +48,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             pous: vec![],
             namespaces: vec![],
             current_scope: FileScopeId::global(file),
-            errors: vec![]
+            errors: vec![],
         }
     }
 
@@ -58,15 +58,14 @@ impl<'db> SemanticIndexBuilder<'db> {
     ) -> anyhow::Result<Vec<SpannedIdent>, AnalysisError<'db>> {
         namespace
             .name
-            .cast(&self.ast)
+            .cast(self.ast)
             .children
             .iter()
-            .map(|n| SpannedIdent::new(self.db, self, &n))
+            .map(|n| SpannedIdent::new(self.db, self, n))
             .collect::<Result<Vec<_>, AnalysisError<'db>>>()
     }
 
     pub fn create_pou_id(&self, node: &impl AstNode) -> FileScopeId {
-        
         FileScopeId::from((self.file, node.get_id()))
     }
 
@@ -81,7 +80,10 @@ impl<'db> SemanticIndexBuilder<'db> {
             self.current_scope = FileScopeId::global(self.file);
             match child.cast(self.ast) {
                 SourceFileDecl::ERRInvalidPouKeyword(err) => {
-                    self.errors.push(AnalysisError::SyntaxError(SyntaxError::InvalidPouKeyword(err.get_span())))
+                    self.errors
+                        .push(AnalysisError::SyntaxError(SyntaxError::InvalidPouKeyword(
+                            err.get_span(),
+                        )))
                 }
                 SourceFileDecl::NamespaceDecl(namespace) => {
                     let path = match self.get_namespace_path(namespace) {
@@ -115,7 +117,7 @@ impl<'db> SemanticIndexBuilder<'db> {
                 }
                 SourceFileDecl::DataTypeDecl(data_type) => {
                     for child in &data_type.children {
-                        let r = self.parse_data_type(child.cast(&self.ast)).unwrap();
+                        let r = self.parse_data_type(child.cast(self.ast)).unwrap();
                         self.pous.push(r);
                     }
                 }

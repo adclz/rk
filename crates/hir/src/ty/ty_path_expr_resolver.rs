@@ -1,20 +1,19 @@
 use std::sync::Arc;
 
-use auto_lsp::default::db::file::File;
 use auto_lsp::default::db::BaseDatabase;
+use auto_lsp::default::db::file::File;
 use auto_lsp::lsp_types::{InlayHint, InlayHintKind, InlayHintLabel};
 
 use crate::def::expressions::expression::{PathExprKind, VarAccess};
 use crate::def::interned::namespace::{NamespaceAccess, NamespacePath};
-use crate::ty::name_res::{pous_in_scope, resolve_namespace_access, variables_in_scope};
 use crate::def::semantic_index::SemanticIndex;
-use crate::ty::ty::{ty_for_pou, ty_for_variable, Ty};
-use crate::ty::TyResolved;
 use crate::to_proto::{AstId, ToProto};
+use crate::ty::TyResolved;
+use crate::ty::name_res::{pous_in_scope, resolve_namespace_access, variables_in_scope};
+use crate::ty::ty::{Ty, ty_for_pou, ty_for_variable};
 use crate::{
     def::{
-        expressions::expression::PathExpr, interned::identifier::SpannedIdent,
-        scope::FileScopeId,
+        expressions::expression::PathExpr, interned::identifier::SpannedIdent, scope::FileScopeId,
     },
     ty::ty::TyOrigin,
 };
@@ -259,7 +258,7 @@ impl<'db> ToProto<'db> for ResolvedPathElement<'db> {
         self.expr.get_id(db)
     }
 
-    fn get_scope_id(&'db self,  db: &'db dyn BaseDatabase) -> FileScopeId {
+    fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
         self.expr.scope_id(db)
     }
 

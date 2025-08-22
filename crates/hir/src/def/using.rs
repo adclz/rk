@@ -5,11 +5,8 @@ use auto_lsp::{
 };
 
 use crate::{
-    def::{
-        interned::namespace::NamespacePath, scope::FileScopeId,
-        semantic_index::{SemanticIndex},
-    },
-    to_proto::{self_iter, AstId, IterToProto, ToProto},
+    def::{interned::namespace::NamespacePath, scope::FileScopeId, semantic_index::SemanticIndex},
+    to_proto::{AstId, IterToProto, ToProto, self_iter},
 };
 
 #[salsa::tracked(debug)]

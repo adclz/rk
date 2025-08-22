@@ -1,5 +1,5 @@
 use auto_lsp::{
-    default::db::{file::File, BaseDatabase},
+    default::db::{BaseDatabase, file::File},
     lsp_types::Url,
     salsa,
 };

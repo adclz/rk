@@ -1,12 +1,12 @@
 use auto_lsp::anyhow;
 
 use crate::{
+    builder::semantic_index::SemanticIndexBuilder,
     check::errors::sem_errors::AnalysisError,
     def::{
         expressions::{expression::InitExpr, spec::Spec},
         pous::variable::VariableDecl,
     },
-    builder::semantic_index::SemanticIndexBuilder,
 };
 
 pub mod class;

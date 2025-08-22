@@ -1,4 +1,4 @@
-use auto_lsp::{default::db::file::File};
+use auto_lsp::default::db::file::File;
 use bitflags::bitflags;
 
 use crate::def::{namespace::Namespace, pous::pou::PouDecl, using::Using};
@@ -19,15 +19,15 @@ impl FileScopeId {
     }
 
     pub fn is_global(&self) -> bool {
-        self.0 .1 == usize::MAX
+        self.0.1 == usize::MAX
     }
 
     pub fn file(&self) -> File {
-        self.0 .0
+        self.0.0
     }
 
     pub fn scope(&self) -> usize {
-        self.0 .1
+        self.0.1
     }
 }
 

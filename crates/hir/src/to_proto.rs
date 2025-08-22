@@ -2,13 +2,16 @@ use auto_lsp::{
     core::{ast::AstNode, span::Span},
     default::db::BaseDatabase,
     lsp_types::{
-        request::GotoDeclarationResponse, CompletionItem, GotoDefinitionResponse, Hover, InlayHint,
-        SymbolKind,
+        CompletionItem, GotoDefinitionResponse, Hover, InlayHint, SymbolKind,
+        request::GotoDeclarationResponse,
     },
 };
 
 use crate::def::{
-    expressions::{expression::InitExpr, spec::Spec}, interned::namespace::SpannedNamespaceAccess, scope::FileScopeId, semantic_index::{semantic_index, SemanticIndex}
+    expressions::{expression::InitExpr, spec::Spec},
+    interned::namespace::SpannedNamespaceAccess,
+    scope::FileScopeId,
+    semantic_index::{SemanticIndex, semantic_index},
 };
 
 #[derive(bon::Builder, Debug, Clone)]
@@ -60,9 +63,11 @@ pub trait ToProto<'db> {
 
     fn get_span(&'db self, db: &'db dyn BaseDatabase) -> Span {
         let file = self.get_scope_id(db).file();
-        semantic_index(db, file).ast
+        semantic_index(db, file)
+            .ast
             .get(self.get_id(db).0)
-            .expect("Invalid ID").get_span()
+            .expect("Invalid ID")
+            .get_span()
     }
 
     fn get_name_span(&'db self, db: &'db dyn BaseDatabase) -> Option<Span> {

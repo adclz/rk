@@ -54,7 +54,7 @@ pub fn add_fixes_to_parse_errors(
                         error: missing_error,
                         grammar_name,
                         ..
-                    }, 
+                    },
             } => missing_node(db, *file, span, &missing_error, grammar_name),
             ParseError::LexerError {
                 span,

@@ -1,10 +1,10 @@
+use crate::completions::snippets::elem_type_names_init;
 use crate::def::interned::identifier::{Ident, SpannedIdent};
 use crate::def::scope::FileScopeId;
 use crate::def::semantic_index::SemanticIndex;
-use crate::to_proto::{self_iter, AstId, IterToProto, ToProto};
+use crate::to_proto::{AstId, IterToProto, ToProto, self_iter};
 use auto_enums::auto_enum;
 use auto_lsp::default::db::BaseDatabase;
-use crate::completions::snippets::elem_type_names_init;
 
 #[salsa::tracked(debug)]
 pub struct Expr<'db> {
@@ -135,10 +135,10 @@ impl<'db> IterToProto<'db> for PathExpr<'db> {
     ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
         std::iter::empty()
         /*resolved_path_expr(db, sema.file, *self)
-            .clone()
-            .elements
-            .iter()
-            .map(|element| element as _)*/
+        .clone()
+        .elements
+        .iter()
+        .map(|element| element as _)*/
     }
 }
 
@@ -240,7 +240,7 @@ pub struct VariableAccess<'db> {
 
     pub id: AstId,
 
-    pub scope_id: FileScopeId
+    pub scope_id: FileScopeId,
 }
 
 impl<'db> ToProto<'db> for VariableAccess<'db> {
@@ -271,7 +271,7 @@ impl<'db> IterToProto<'db> for VariableAccess<'db> {
         sema: &'db SemanticIndex,
     ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
         match &self.kind {
-            VariableAccessKind::Direct { adress, .. } => self_iter(self),
+            VariableAccessKind::Direct {  .. } => self_iter(self),
             VariableAccessKind::Symbolic(symbolic) => symbolic.kind.iter(db, sema),
         }
     }
@@ -544,7 +544,7 @@ impl<'db> ToProto<'db> for Expr<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
         self.id(db)
     }
-    
+
     fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
         self.scope_id(db)
     }

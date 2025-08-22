@@ -1,5 +1,5 @@
-use auto_lsp::{default::db::BaseDatabase, lsp_types::CompletionItem};
 use crate::completions;
+use auto_lsp::{default::db::BaseDatabase, lsp_types::CompletionItem};
 
 use crate::{
     def::{
@@ -68,7 +68,7 @@ impl<'db> IterToProto<'db> for Function<'db> {
             .chain(
                 self.variables(db)
                     .iter()
-                    .flat_map(move |v| v.iter(db, sema))
+                    .flat_map(move |v| v.iter(db, sema)),
             )
             .chain(
                 self.statements(db)

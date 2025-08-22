@@ -1,11 +1,9 @@
 use auto_lsp::{
-    default::db::{file::File, BaseDatabase, FileManager},
+    default::db::{BaseDatabase, FileManager, file::File},
     lsp_types,
 };
 
-use hir::{
-    def::{pous::pou::Pou, scope::FileScopeId, semantic_index::semantic_index},
-};
+use hir::def::{pous::pou::Pou, scope::FileScopeId, semantic_index::semantic_index};
 
 use db::RootDatabase;
 

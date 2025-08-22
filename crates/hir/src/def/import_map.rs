@@ -1,6 +1,6 @@
-use auto_lsp::default::db::{file::File, BaseDatabase};
+use auto_lsp::default::db::{BaseDatabase, file::File};
 use auto_lsp::lsp_types::{CompletionItem, CompletionItemKind};
-use fst::{raw::IndexedValue, Automaton, Streamer};
+use fst::{Automaton, Streamer, raw::IndexedValue};
 use rayon::prelude::*;
 use rustc_hash::FxHashSet;
 
@@ -8,8 +8,8 @@ use std::{cmp::Ordering, hash::Hash};
 use std::{hash::Hasher, ops::ControlFlow};
 
 use crate::def::scope::FileScopeId;
-use crate::ty::name_res::pous_in_scope;
 use crate::def::semantic_index::semantic_index;
+use crate::ty::name_res::pous_in_scope;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum SearchMode {

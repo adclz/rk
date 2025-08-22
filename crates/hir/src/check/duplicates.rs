@@ -5,16 +5,14 @@ use std::{error::Error, fmt::format, num::ParseIntError, str::ParseBoolError};
 use ast::generated::ConstantExpr;
 use auto_lsp::{
     core::span::Span,
-    default::db::{file::File, BaseDatabase},
+    default::db::{BaseDatabase, file::File},
     lsp_types::DiagnosticRelatedInformation,
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 use salsa::Accumulator;
 
 use crate::{
-    check::{
-        literals::check_date,
-    },
+    check::literals::check_date,
     def::{
         expressions::{
             expression::{
@@ -22,20 +20,20 @@ use crate::{
                 PrimaryExpr, VariableAccessKind,
             },
             spec::{Spec, SpecKind},
-            statement::{Stmt, StmtKind}, 
+            statement::{Stmt, StmtKind},
         },
         interned::namespace::NamespacePath,
         pous::{pou::Pou, variable::VariableDecl},
         scope::FileScopeId,
-        semantic_index::{semantic_index, SemanticIndex},
+        semantic_index::{SemanticIndex, semantic_index},
     },
+    to_proto::ToProto,
     ty::{
         name_res::pous_in_scope,
         stmt_resolver::resolve_stmts,
-        ty::{ty_for_variable, Ty, TyKind},
+        ty::{Ty, TyKind, ty_for_variable},
         ty_path_expr_resolver::ResolvePathExprCtx,
     },
-    to_proto::ToProto,
 };
 
 trait Check<'db> {
@@ -46,7 +44,7 @@ trait Check<'db> {
 pub fn duplicate_declarations<'db>(db: &'db dyn BaseDatabase, file: File) {
     let sema = semantic_index(db, file);
 }
-/* 
+/*
 trait CheckStmts<'db> {
     fn check(
         &'db self,

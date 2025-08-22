@@ -1,3 +1,4 @@
+use crate::completions;
 use auto_enums::auto_enum;
 use auto_lsp::{
     core::span::Span,
@@ -6,7 +7,6 @@ use auto_lsp::{
         CompletionItem, InlayHint, InlayHintKind, InlayHintLabel, MarkupContent, MarkupKind,
     },
 };
-use crate::completions;
 
 use crate::{
     def::{
@@ -17,9 +17,9 @@ use crate::{
             interface::Interface,
         },
         scope::FileScopeId,
-        semantic_index::{semantic_index, SemanticIndex},
+        semantic_index::{SemanticIndex, semantic_index},
     },
-    to_proto::{self_iter, AstId, IterToProto, SymbolInfo, ToProto},
+    to_proto::{AstId, IterToProto, SymbolInfo, ToProto, self_iter},
 };
 
 #[salsa::tracked(debug)]
@@ -66,7 +66,12 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
 
     fn get_name_span(&'db self, db: &'db dyn BaseDatabase) -> Option<Span> {
         let file = self.get_scope_id(db).file();
-        Some(semantic_index(db, file).ast.get(self.name_id(db).0)?.get_span())
+        Some(
+            semantic_index(db, file)
+                .ast
+                .get(self.name_id(db).0)?
+                .get_span(),
+        )
     }
 
     fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> Option<SymbolInfo<'db>> {

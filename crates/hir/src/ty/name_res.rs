@@ -1,23 +1,21 @@
-use auto_lsp::default::db::{file::File, BaseDatabase};
+use auto_lsp::default::db::{BaseDatabase, file::File};
 use rustc_hash::FxHashMap;
 
-use crate::{
-    def::{
-        interned::{
-            identifier::Ident,
-            namespace::{NamespaceAccess, NamespacePath},
-        },
-        namespace::Namespace,
-        pous::{
-            pou::{Pou, PouDecl},
-            variable::VariableDecl,
-        },
-        scope::{FileScopeId, ScopeKind},
-        semantic_index::{semantic_index},
-        using::Using,
-    }
+use crate::def::{
+    interned::{
+        identifier::Ident,
+        namespace::{NamespaceAccess, NamespacePath},
+    },
+    namespace::Namespace,
+    pous::{
+        pou::{Pou, PouDecl},
+        variable::VariableDecl,
+    },
+    scope::{FileScopeId, ScopeKind},
+    semantic_index::semantic_index,
+    using::Using,
 };
- 
+
 /// Find all namespaces in all files that match a given namespace path.
 #[salsa::tracked(returns(ref), no_eq)]
 pub fn shared_namespaces<'db>(

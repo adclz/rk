@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
-use auto_lsp::default::db::{file::File, BaseDatabase};
+use auto_lsp::default::db::{BaseDatabase, file::File};
 
-use crate::def::import_map::{global_symbol_indexes, Query};
+use crate::def::import_map::{Query, global_symbol_indexes};
 
 pub fn pou_recovery(db: &dyn BaseDatabase, file: File, query: &str) -> HashSet<String> {
     query_ident(db, file, query)

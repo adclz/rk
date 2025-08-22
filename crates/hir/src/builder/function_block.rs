@@ -1,3 +1,6 @@
+use crate::builder::ParseVarSection;
+use crate::builder::semantic_index::SemanticIndexBuilder;
+use crate::builder::statement::ParseStatement;
 use crate::check::errors::sem_errors::{AnalysisError, SyntaxError};
 use crate::def::interned::identifier::Ident;
 use crate::def::interned::namespace::SpannedNamespaceAccess;
@@ -6,15 +9,15 @@ use crate::def::pous::pou::{Pou, PouDecl};
 use crate::def::pous::variable::VariableDecl;
 use crate::def::scope::{FileScopeId, Scope, ScopeKind, Visibility};
 use crate::def::visibility::Modifiers;
-use crate::builder::semantic_index::SemanticIndexBuilder;
-use crate::builder::statement::ParseStatement;
-use crate::builder::ParseVarSection;
 use ast::generated::{FbDecl, FbVariables};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 
 impl<'db> SemanticIndexBuilder<'db> {
-    pub fn parse_function_block(&mut self, func: &FbDecl) -> anyhow::Result<PouDecl<'db>, AnalysisError<'db>> {
+    pub fn parse_function_block(
+        &mut self,
+        func: &FbDecl,
+    ) -> anyhow::Result<PouDecl<'db>, AnalysisError<'db>> {
         let scope_id = FileScopeId::from((self.file, func.get_id()));
         let previous_scope = self.current_scope;
         self.current_scope = scope_id;
@@ -24,40 +27,37 @@ impl<'db> SemanticIndexBuilder<'db> {
         let extends = func
             .extends
             .as_ref()
-            .map(|e| {
-            match SpannedNamespaceAccess::from_ast(self.db, self, e.cast(&self.ast)) {
-                Ok(namespace) => Some(namespace),
-                Err(error) => {
-                self.errors.push(error);
-                None
-                }
-            }
-            })
-            .flatten();
+            .and_then(|e| match SpannedNamespaceAccess::from_ast(self.db, self, e.cast(self.ast)) {
+                    Ok(namespace) => Some(namespace),
+                    Err(error) => {
+                        self.errors.push(error);
+                        None
+                    }
+                });
 
         let implements = func
             .implements
             .as_ref()
             .map(|i| {
-            i.cast(&self.ast).children
-                .iter()
-                .map(|i| {
-                match SpannedNamespaceAccess::from_ast(self.db, self, i.cast(&self.ast)) {
-                    Ok(namespace) => Some(namespace),
-                    Err(error) => {
-                    self.errors.push(error);
-                    None
-                    }
-                }
-                })
-                .filter_map(|x| x)
-                .collect::<Vec<_>>()
+                i.cast(self.ast)
+                    .children
+                    .iter()
+                    .filter_map(|i| {
+                        match SpannedNamespaceAccess::from_ast(self.db, self, i.cast(self.ast)) {
+                            Ok(namespace) => Some(namespace),
+                            Err(error) => {
+                                self.errors.push(error);
+                                None
+                            }
+                        }
+                    })
+                    .collect::<Vec<_>>()
             })
             .unwrap_or_default();
 
         func.children.iter().for_each(|f| {
             type Error = ast::generated::ERRExtendsMultipleTimes_ERRImplementsBeforeExtends_ERRImplementsMultipleTimes;
-            match f.cast(&self.ast) {
+            match f.cast(self.ast) {
                 Error::ERRExtendsMultipleTimes(err) => {
                     self.errors.push(AnalysisError::SyntaxError(SyntaxError::MultipleExtends(err.get_span())));
                 },
@@ -70,36 +70,35 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
         });
 
-        let statements = func
-            .body
-            .as_ref()
-            .map_or(vec![], |body| match body.cast(&self.ast).children.cast(&self.ast) {
-            ast::generated::SFC_FbDiagram_LadderDiagram_StmtList::StmtList(stmts) => stmts
-                .children
-                .iter()
-                .filter_map(|stmt| match stmt.cast(&self.ast).to_statement(self) {
-                Ok(statement) => Some(statement),
-                Err(err) => {
-                    self.errors.push(AnalysisError::from(err));
-                    None
-                }
-                })
-                .collect(),
-            _ => vec![],
-            });
+        let statements = func.body.as_ref().map_or(vec![], |body| {
+            match body.cast(self.ast).children.cast(self.ast) {
+                ast::generated::SFC_FbDiagram_LadderDiagram_StmtList::StmtList(stmts) => stmts
+                    .children
+                    .iter()
+                    .filter_map(|stmt| match stmt.cast(self.ast).to_statement(self) {
+                        Ok(statement) => Some(statement),
+                        Err(err) => {
+                            self.errors.push(err);
+                            None
+                        }
+                    })
+                    .collect(),
+                _ => vec![],
+            }
+        });
 
         let mut modifiers = Modifiers::empty();
-        func.qualifier.as_ref().map(|q| match q.cast(&self.ast) {
+        func.qualifier.as_ref().map(|q| match q.cast(self.ast) {
             ast::generated::Operators_2::Token_ABSTRACT(_) => modifiers.insert(Modifiers::ABSTRACT),
             ast::generated::Operators_2::Token_FINAL(_) => modifiers.insert(Modifiers::FINAL),
         });
 
-        let name = Ident::from_node(self.db, self.file, func.name.cast(&self.ast))?;
+        let name = Ident::from_node(self.db, self.file, func.name.cast(self.ast))?;
         let usings = match self.parse_usings(&func.directives) {
             Ok(usings) => usings,
             Err(error) => {
-            self.errors.push(error);
-            vec![] 
+                self.errors.push(error);
+                vec![]
             }
         };
         let result = PouDecl::new(
@@ -109,7 +108,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             )),
             name,
             func.into(),
-            func.name.cast(&self.ast).into(),
+            func.name.cast(self.ast).into(),
             scope_id,
         );
 
@@ -129,21 +128,15 @@ impl<'db> SemanticIndexBuilder<'db> {
 }
 
 trait ParseVariable<'db> {
-    fn parse_variables(
-        &self,
-        sema: &mut SemanticIndexBuilder<'db>,
-    ) -> Vec<VariableDecl<'db>>;
+    fn parse_variables(&self, sema: &mut SemanticIndexBuilder<'db>) -> Vec<VariableDecl<'db>>;
 }
 
 impl<'db> ParseVariable<'db> for ast::generated::FbDecl {
-    fn parse_variables(
-        &self,
-        sema: &mut SemanticIndexBuilder<'db>,
-    ) -> Vec<VariableDecl<'db>> {
+    fn parse_variables(&self, sema: &mut SemanticIndexBuilder<'db>) -> Vec<VariableDecl<'db>> {
         let mut variables = vec![];
 
         for variable in self.variables.iter() {
-            match variable.cast(&sema.ast) {
+            match variable.cast(sema.ast) {
                 FbVariables::FbInputDecls(decls) => decls.parse(sema, &mut variables),
                 FbVariables::FbOutputDecls(decls) => decls.parse(sema, &mut variables),
                 FbVariables::InOutDecls(decls) => decls.parse(sema, &mut variables),
@@ -168,15 +161,11 @@ impl<'db> ParseVariable<'db> for ast::generated::FbDecl {
 
 #[cfg(test)]
 mod tests {
-    use auto_lsp::default::db::{file::File, BaseDatabase};
+    use auto_lsp::default::db::{BaseDatabase, file::File};
     use auto_lsp::{default::db::FileManager, lsp_types};
     use db::RootDatabase;
 
-    use crate::{
-        def::{
-            semantic_index::semantic_index,
-        },
-    };
+    use crate::def::semantic_index::semantic_index;
 
     #[test]
     fn variables_in_function_block() {

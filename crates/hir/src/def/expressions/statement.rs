@@ -1,9 +1,14 @@
 use auto_enums::auto_enum;
-use auto_lsp::{default::db::BaseDatabase};
+use auto_lsp::default::db::BaseDatabase;
 
-use crate::{def::{expressions::expression::{
-    Expr, ParamAssign, PathExpr, SymbolicVariable, VariableAccess
-}, scope::FileScopeId, semantic_index::SemanticIndex}, to_proto::{self_iter, AstId, IterToProto, ToProto}};
+use crate::{
+    def::{
+        expressions::expression::{Expr, ParamAssign, PathExpr, SymbolicVariable, VariableAccess},
+        scope::FileScopeId,
+        semantic_index::SemanticIndex,
+    },
+    to_proto::{AstId, IterToProto, ToProto, self_iter},
+};
 
 #[salsa::tracked(debug)]
 pub struct Stmt<'db> {
@@ -33,12 +38,12 @@ impl<'db> IterToProto<'db> for Stmt<'db> {
         sema: &'db SemanticIndex<'db>,
     ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
         match self.stmt(db) {
-            StmtKind::Assignment { var, target } => {
-                Box::new(self_iter(self)
+            StmtKind::Assignment { var, target } => Box::new(
+                self_iter(self)
                     .chain(var.iter(db, sema))
-                    .chain(target.iter(db, sema)))
-            },
-            _ => std::iter::empty()
+                    .chain(target.iter(db, sema)),
+            ),
+            _ => std::iter::empty(),
         }
     }
 }
@@ -96,8 +101,5 @@ pub enum StmtKind<'db> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum CaseKind<'db> {
     Expression(Expr<'db>),
-    Subrange {
-        lower: Expr<'db>,
-        upper: Expr<'db>,
-    }
+    Subrange { lower: Expr<'db>, upper: Expr<'db> },
 }

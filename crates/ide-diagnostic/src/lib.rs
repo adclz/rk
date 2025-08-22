@@ -1,7 +1,7 @@
 use ariadne::{ColorGenerator, Fmt, Label, Report, Source};
 use auto_lsp::{
     core::{errors::ParseErrorAccumulator, span::Span},
-    default::db::{file::File, BaseDatabase},
+    default::db::{BaseDatabase, file::File},
     lsp_types::{
         self, CodeAction, CodeActionKind, DiagnosticRelatedInformation, DiagnosticSeverity,
         DiagnosticTag, NumberOrString, TextEdit,
@@ -89,7 +89,7 @@ impl IdeDiagnostic {
             }
         }
 
-        if self.fixes.len() > 0 {
+        if !self.fixes.is_empty() {
             report.add_note(format!("{} fix(es) available", self.fixes.len()));
         }
 
@@ -106,7 +106,7 @@ impl IdeDiagnostic {
 }
 
 #[bon::builder]
-pub fn diag<'a>(
+pub fn diag(
     range: Span,
     message: String,
     source: Option<String>,
@@ -156,6 +156,6 @@ pub fn action(
 }
 
 #[bon::builder]
-pub fn edit<'a>(range: Span, new_text: String) -> TextEdit {
+pub fn edit(range: Span, new_text: String) -> TextEdit {
     TextEdit::new(range.into(), new_text)
 }

@@ -6,7 +6,7 @@ use auto_lsp::{
     lsp_types::{DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, Location},
     tree_sitter,
 };
-use ide_diagnostic::{diag, IdeDiagnostic};
+use ide_diagnostic::{IdeDiagnostic, diag};
 
 use crate::{
     def::{
@@ -20,7 +20,8 @@ use crate::{
         scope::FileScopeId,
         using::Using,
     },
-    to_proto::ToProto, ty::ty::{Ty, TyOrigin},
+    to_proto::ToProto,
+    ty::ty::{Ty, TyOrigin},
 };
 
 pub trait ToIdeDiagnostic<'db> {
@@ -193,7 +194,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 .message("invalid POU keyword".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .range(span.clone())
-                .call()       
+                .call(),
         }
     }
 }
@@ -230,7 +231,7 @@ impl<'db> ToIdeDiagnostic<'db> for NamespaceError<'db> {
                     ),
                 }])
                 .range(using.get_span(db).clone())
-                .call(),    
+                .call(),
             Self::NamespaceAlreadyInScope { using, namespace } => diag()
                 .message(format!(
                     "'{}' is already in scope",
@@ -369,7 +370,7 @@ impl<'db> ToIdeDiagnostic<'db> for PathExprError<'db> {
                     "no item '{}' in scope",
                     expr.to_string(db).text(db)
                 ))
-                .severity(DiagnosticSeverity::ERROR) 
+                .severity(DiagnosticSeverity::ERROR)
                 .range(expr.get_span(db).clone())
                 .call(),
             Self::UnknownField { origin, expr } => diag()

@@ -1,12 +1,17 @@
 use auto_lsp::{
     anyhow,
-    core::{ast::{AstNode, AstNodeId}},
-    default::db::{file::File, tracked::get_ast, BaseDatabase},
+    core::ast::{AstNode, AstNodeId},
+    default::db::{BaseDatabase, file::File, tracked::get_ast},
 };
 use compact_str::CompactString;
 use std::{hash::Hash, ops::Deref};
 
-use crate::{check::errors::sem_errors::AnalysisError, def::scope::FileScopeId, builder::semantic_index::SemanticIndexBuilder, to_proto::{AstId, ToProto}};
+use crate::{
+    builder::semantic_index::SemanticIndexBuilder,
+    check::errors::sem_errors::AnalysisError,
+    def::scope::FileScopeId,
+    to_proto::{AstId, ToProto},
+};
 
 #[derive(Clone, Eq, salsa::Update, Debug)]
 pub struct SpannedIdent {
@@ -42,13 +47,21 @@ impl Hash for SpannedIdent {
 }
 
 impl<'db> SpannedIdent {
-    pub fn new<T: AstNode>(db: &'db dyn BaseDatabase, sema: &SemanticIndexBuilder, ident: &AstNodeId<T>) -> anyhow::Result<Self, AnalysisError<'db>> {
+    pub fn new<T: AstNode>(
+        db: &'db dyn BaseDatabase,
+        sema: &SemanticIndexBuilder,
+        ident: &AstNodeId<T>,
+    ) -> anyhow::Result<Self, AnalysisError<'db>> {
         let ast = get_ast(db, sema.file);
-        let ident = ident.cast(&ast);
+        let ident = ident.cast(ast);
         Self::from_node(db, sema, ident)
     }
 
-    pub fn from_node(db: &'db dyn BaseDatabase, sema: &SemanticIndexBuilder, node: &impl AstNode) -> anyhow::Result<Self, AnalysisError<'db>> {
+    pub fn from_node(
+        db: &'db dyn BaseDatabase,
+        sema: &SemanticIndexBuilder,
+        node: &impl AstNode,
+    ) -> anyhow::Result<Self, AnalysisError<'db>> {
         Ok(SpannedIdent {
             id: node.into(),
             scope_id: sema.current_scope,

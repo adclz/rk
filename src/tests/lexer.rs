@@ -1,10 +1,10 @@
 use auto_lsp::{
     core::errors::ParseErrorAccumulator,
-    default::db::{file::File, tracked::get_ast, BaseDatabase, FileManager},
+    default::db::{BaseDatabase, FileManager, file::File, tracked::get_ast},
     lsp_types,
 };
-use hir::check::lexer::add_fixes_to_parse_errors;
 use db::RootDatabase;
+use hir::check::lexer::add_fixes_to_parse_errors;
 
 #[test]
 fn missing_identifier() {

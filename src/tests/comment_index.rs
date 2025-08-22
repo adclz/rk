@@ -1,10 +1,9 @@
 use auto_lsp::{
-    default::db::{file::File, BaseDatabase, FileManager},
+    default::db::{BaseDatabase, FileManager, file::File},
     lsp_types, tree_sitter,
 };
 use db::RootDatabase;
 use hir::def::comment_index::comment_index;
-
 
 #[test]
 fn single_line_comment() {

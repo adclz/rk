@@ -4,15 +4,18 @@ use rustc_hash::FxHashMap;
 use crate::{
     def::{
         expressions::spec::{Spec, SpecKind},
-        interned::{
-            identifier::Ident,
-            namespace::NamespaceAccess,
-        },
+        interned::{identifier::Ident, namespace::NamespaceAccess},
         pous::{
             pou::{Pou, PouDecl},
             variable::{VariableDecl, VariableKind},
-        }, scope::FileScopeId,
-    }, ty::{name_res::resolve_namespace_access, ty_path_expr_resolver::{PathExprWalkError, PathExprWalkStep}}, to_proto::ToProto
+        },
+        scope::FileScopeId,
+    },
+    to_proto::ToProto,
+    ty::{
+        name_res::resolve_namespace_access,
+        ty_path_expr_resolver::{PathExprWalkError, PathExprWalkStep},
+    },
 };
 
 #[salsa::tracked(debug)]
@@ -177,7 +180,7 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
                 match v.kind(db) {
                     VariableKind::Var => {
                         ztatic.insert(*v.name(db), v.spec(db).to_sig(db, origin));
-                    },
+                    }
                     VariableKind::Input => {
                         inputs.insert(*v.name(db), v.spec(db).to_sig(db, origin));
                     }
@@ -365,7 +368,12 @@ impl<'db> Spec<'db> {
                 },
             ),
             SpecKind::Target(target) => {
-                match resolve_namespace_access(db, self.scope_id(db).file(), self.scope_id(db), *target) {
+                match resolve_namespace_access(
+                    db,
+                    self.scope_id(db).file(),
+                    self.scope_id(db),
+                    *target,
+                ) {
                     Some(pou) => ty_for_pou(db, pou),
                     None => Ty::new(db, origin, TyKind::Unresolved(*target)),
                 }

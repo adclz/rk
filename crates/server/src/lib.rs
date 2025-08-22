@@ -2,6 +2,7 @@
 #![recursion_limit = "256"]
 mod capabilties;
 
+use ast::RK_PARSER;
 use auto_lsp::anyhow;
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::default::server::capabilities::TEXT_DOCUMENT_SYNC;
@@ -14,6 +15,16 @@ use auto_lsp::lsp_server;
 use auto_lsp::lsp_server::Connection;
 use auto_lsp::lsp_server::Message;
 use auto_lsp::lsp_types;
+use auto_lsp::lsp_types::CodeActionProviderCapability;
+use auto_lsp::lsp_types::CodeLensOptions;
+use auto_lsp::lsp_types::CompletionOptions;
+use auto_lsp::lsp_types::DeclarationCapability;
+use auto_lsp::lsp_types::DiagnosticOptions;
+use auto_lsp::lsp_types::DiagnosticServerCapabilities;
+use auto_lsp::lsp_types::FoldingRangeProviderCapability;
+use auto_lsp::lsp_types::HoverProviderCapability;
+use auto_lsp::lsp_types::ServerCapabilities;
+use auto_lsp::lsp_types::WorkDoneProgressOptions;
 use auto_lsp::lsp_types::notification::Cancel;
 use auto_lsp::lsp_types::notification::DidChangeTextDocument;
 use auto_lsp::lsp_types::notification::DidChangeWatchedFiles;
@@ -35,28 +46,17 @@ use auto_lsp::lsp_types::request::HoverRequest;
 use auto_lsp::lsp_types::request::InlayHintRequest;
 use auto_lsp::lsp_types::request::SemanticTokensFullRequest;
 use auto_lsp::lsp_types::request::WorkspaceDiagnosticRequest;
-use auto_lsp::lsp_types::CodeActionProviderCapability;
-use auto_lsp::lsp_types::CodeLensOptions;
-use auto_lsp::lsp_types::CompletionOptions;
-use auto_lsp::lsp_types::DeclarationCapability;
-use auto_lsp::lsp_types::DiagnosticOptions;
-use auto_lsp::lsp_types::DiagnosticServerCapabilities;
-use auto_lsp::lsp_types::FoldingRangeProviderCapability;
-use auto_lsp::lsp_types::HoverProviderCapability;
-use auto_lsp::lsp_types::ServerCapabilities;
-use auto_lsp::lsp_types::WorkDoneProgressOptions;
 use auto_lsp::lsp_types::{
     OneOf, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
     SemanticTokensServerCapabilities,
 };
 use auto_lsp::salsa;
+use auto_lsp::server::Session;
 use auto_lsp::server::notification_registry::NotificationRegistry;
 use auto_lsp::server::options::InitOptions;
 use auto_lsp::server::request_registry::RequestRegistry;
-use auto_lsp::server::Session;
 use capabilties::semantic_tokens::SUPPORTED_TYPES;
 use db::RootDatabase;
-use ast::RK_PARSER;
 use std::error::Error;
 use std::panic::RefUnwindSafe;
 

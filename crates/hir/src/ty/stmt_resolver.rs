@@ -2,11 +2,11 @@ use std::sync::Arc;
 
 use crate::def::expressions::statement::{Stmt, StmtKind};
 use crate::def::scope::FileScopeId;
-use crate::ty::expr_resolver::{resolve_expr, Env, ResolvedExpr};
-use crate::ty::ty::{Ty, TyKind};
-use crate::ty::ty_var_access_resolver::{resolve_var_access, ResolvedVarResult};
-use crate::ty::TyResolved;
 use crate::to_proto::ToProto;
+use crate::ty::TyResolved;
+use crate::ty::expr_resolver::{Env, ResolvedExpr, resolve_expr};
+use crate::ty::ty::{Ty, TyKind};
+use crate::ty::ty_var_access_resolver::{ResolvedVarResult, resolve_var_access};
 use auto_lsp::core::span::Span;
 use auto_lsp::default::db::BaseDatabase;
 
@@ -121,10 +121,14 @@ impl<'db> ResolveStmtCtx<'db> {
             if let Some(ret) = self.return_reached {
                 match &mut self.unreachable_range {
                     None => {
-                        self.unreachable_range = Some((stmt.get_span(self.db).clone(), stmt.get_span(self.db).clone()));
+                        self.unreachable_range = Some((
+                            stmt.get_span(self.db).clone(),
+                            stmt.get_span(self.db).clone(),
+                        ));
                     }
                     Some((start, end)) => {
-                        self.unreachable_range = Some((start.clone(), stmt.get_span(self.db).clone()));
+                        self.unreachable_range =
+                            Some((start.clone(), stmt.get_span(self.db).clone()));
                     }
                 }
             }
@@ -134,7 +138,10 @@ impl<'db> ResolveStmtCtx<'db> {
                     let resolved_var = resolve_var_access(self.db, self.scope_id, var);
                     if let Some(ty) = resolved_var.ty() {
                         if let TyKind::Callable { .. } = ty.kind(self.db) {
-                            self.errors.push(StmtResolveError::AssignmentToCallable { loc: resolved_var.origin.get_span(self.db).clone(), ty });
+                            self.errors.push(StmtResolveError::AssignmentToCallable {
+                                loc: resolved_var.origin.get_span(self.db).clone(),
+                                ty,
+                            });
                             return;
                         }
 
@@ -170,19 +177,19 @@ impl<'db> ResolveStmtCtx<'db> {
                             condition: resolve_expr(self.db, Env::Bool, *condition),
                             then: then
                                 .as_ref()
-                                .map(|then| resolve_stmts(self.db, &then, self.scope_id)),
+                                .map(|then| resolve_stmts(self.db, then, self.scope_id)),
                             else_if: else_if
-                                .into_iter()
+                                .iter()
                                 .map(|(cond, stmts)| {
                                     (
                                         resolve_expr(self.db, Env::Bool, *cond),
-                                        resolve_stmts(self.db, &stmts, self.scope_id),
+                                        resolve_stmts(self.db, stmts, self.scope_id),
                                     )
                                 })
                                 .collect(),
                             else_: else_
                                 .as_ref()
-                                .map(|else_| resolve_stmts(self.db, &else_, self.scope_id)),
+                                .map(|else_| resolve_stmts(self.db, else_, self.scope_id)),
                         },
                     });
                 }
@@ -225,7 +232,7 @@ impl<'db> ResolveStmtCtx<'db> {
                                 start: start_expr,
                                 end: end_expr,
                                 step: step_expr,
-                                body: resolve_stmts(self.db, &body, self.scope_id),
+                                body: resolve_stmts(self.db, body, self.scope_id),
                             },
                         });
                     }
@@ -234,7 +241,7 @@ impl<'db> ResolveStmtCtx<'db> {
                     self.resolved.push(ResolvedStmt {
                         kind: ResolvedStmtKind::Repeat {
                             condition: resolve_expr(self.db, Env::Bool, *condition),
-                            body: resolve_stmts(self.db, &body, self.scope_id),
+                            body: resolve_stmts(self.db, body, self.scope_id),
                         },
                     });
                 }
@@ -242,7 +249,7 @@ impl<'db> ResolveStmtCtx<'db> {
                     self.resolved.push(ResolvedStmt {
                         kind: ResolvedStmtKind::While {
                             condition: resolve_expr(self.db, Env::Bool, *condition),
-                            body: resolve_stmts(self.db, &body, self.scope_id),
+                            body: resolve_stmts(self.db, body, self.scope_id),
                         },
                     });
                 }
@@ -291,7 +298,8 @@ impl<'db> ResolveStmtCtx<'db> {
         });
 
         if let Some((start, end)) = self.unreachable_range {
-            self.errors.push(StmtResolveError::Unreachable { start, end });
+            self.errors
+                .push(StmtResolveError::Unreachable { start, end });
         }
 
         ResolveStmtsResult {

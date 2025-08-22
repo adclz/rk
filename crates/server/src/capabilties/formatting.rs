@@ -5,7 +5,7 @@ use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{self, DocumentFormattingParams, TextEdit},
 };
-use topiary_core::{formatter, Language, Operation, TopiaryQuery};
+use topiary_core::{Language, Operation, TopiaryQuery, formatter};
 
 static QUERY: &str = r#"
 [

@@ -6,7 +6,7 @@ use crate::{
         interned::{identifier::Ident, namespace::SpannedNamespaceAccess},
         pous::variable::VariableDecl,
         scope::FileScopeId,
-        semantic_index::{semantic_index, SemanticIndex},
+        semantic_index::{SemanticIndex, semantic_index},
     },
     to_proto::{AstId, IterToProto, ToProto},
 };
@@ -51,7 +51,7 @@ pub struct MethodPrototype<'db> {
 
 impl<'db> ToProto<'db> for MethodPrototype<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> crate::to_proto::AstId {
-        self.id(db)       
+        self.id(db)
     }
 
     fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
@@ -60,7 +60,12 @@ impl<'db> ToProto<'db> for MethodPrototype<'db> {
 
     fn get_name_span(&'db self, db: &'db dyn BaseDatabase) -> Option<Span> {
         let file = self.get_scope_id(db).file();
-        Some(semantic_index(db, file).ast.get(self.name_id(db).0)?.get_span())
+        Some(
+            semantic_index(db, file)
+                .ast
+                .get(self.name_id(db).0)?
+                .get_span(),
+        )
     }
 }
 

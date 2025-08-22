@@ -1,13 +1,11 @@
+use std::hash::Hash;
+use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::sem_errors::AnalysisError;
 use crate::def::scope::FileScopeId;
-use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::to_proto::AstId;
 use crate::{def::interned::identifier::SpannedIdent, to_proto::ToProto};
 use auto_lsp::default::db::tracked::get_ast;
-use auto_lsp::{
-    anyhow,
-    default::db::{BaseDatabase},
-};
+use auto_lsp::{anyhow, default::db::BaseDatabase};
 
 /// Interned namespace path
 #[salsa::interned(debug, no_lifetime)]
@@ -16,7 +14,7 @@ pub struct NamespacePath {
     pub fragments: Vec<SpannedIdent>,
 }
 
-impl<'db> NamespacePath {
+impl NamespacePath {
     pub fn concat(&self, db: &dyn BaseDatabase, other: &NamespacePath) -> NamespacePath {
         let mut path = self.fragments(db).to_owned();
         path.extend_from_slice(other.fragments(db));
@@ -63,7 +61,7 @@ impl From<(&dyn BaseDatabase, &Vec<SpannedIdent>)> for NamespacePath {
 }
 
 /// A [`SpannedPath`] is a wrapper around a [`NamespaceAccess`] that includes a span
-#[derive(Clone, Hash, salsa::Update, Debug)]
+#[derive(Clone, salsa::Update, Debug)]
 pub struct SpannedNamespaceAccess {
     pub id: AstId,
     pub scope_id: FileScopeId,
@@ -73,6 +71,12 @@ pub struct SpannedNamespaceAccess {
 impl PartialEq for SpannedNamespaceAccess {
     fn eq(&self, other: &Self) -> bool {
         self.path == other.path
+    }
+}
+
+impl Hash for SpannedNamespaceAccess {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.path.hash(state);
     }
 }
 

@@ -1,15 +1,15 @@
+use crate::completions;
 use auto_lsp::core::span::Span;
-use auto_lsp::default::db::{BaseDatabase};
+use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::{
     CompletionItem, InlayHint, InlayHintKind, InlayHintLabel, MarkupContent, MarkupKind,
 };
-use crate::completions;
 
 use crate::def::interned::namespace::NamespacePath;
 use crate::def::pous::pou::PouDecl;
 use crate::def::scope::{FileScopeId, Visibility};
-use crate::def::semantic_index::{semantic_index, SemanticIndex};
-use crate::to_proto::{self_iter, AstId, IterToProto, SymbolInfo, ToProto};
+use crate::def::semantic_index::{SemanticIndex, semantic_index};
+use crate::to_proto::{AstId, IterToProto, SymbolInfo, ToProto, self_iter};
 
 #[salsa::tracked(debug)]
 pub struct Namespace<'db> {
@@ -37,7 +37,12 @@ impl<'db> ToProto<'db> for Namespace<'db> {
 
     fn get_name_span(&'db self, db: &'db dyn BaseDatabase) -> Option<Span> {
         let file = self.get_scope_id(db).file();
-        Some(semantic_index(db, file).ast.get(self.name_id(db).0)?.get_span())
+        Some(
+            semantic_index(db, file)
+                .ast
+                .get(self.name_id(db).0)?
+                .get_span(),
+        )
     }
 
     fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> Option<SymbolInfo<'db>> {

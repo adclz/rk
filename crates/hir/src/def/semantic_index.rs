@@ -2,25 +2,25 @@ use std::iter::FusedIterator;
 use std::sync::Arc;
 
 use auto_lsp::core::ast::AstNode;
-use auto_lsp::default::db::tracked::{get_ast};
-use auto_lsp::default::db::{file::File, BaseDatabase};
+use auto_lsp::default::db::tracked::get_ast;
+use auto_lsp::default::db::{BaseDatabase, file::File};
 use rustc_hash::FxHashMap;
 use tracing::info_span;
 
+use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::sem_errors::AnalysisError;
 use crate::def::interned::identifier::Ident;
 use crate::def::namespace::Namespace;
 use crate::def::pous::pou::PouDecl;
 use crate::def::scope::{FileScopeId, Scope};
-use crate::ty::name_res::pous_in_scope;
-use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::to_proto::{IterToProto, ToProto};
+use crate::ty::name_res::pous_in_scope;
 
 /// Returns the semantic index of a given file
 #[tracing::instrument(skip_all, name = "query_semantic_index")]
 #[salsa::tracked(returns(ref), no_eq)]
 pub fn semantic_index<'db>(db: &'db dyn BaseDatabase, file: File) -> SemanticIndex<'db> {
-    let ast =  info_span!("build AST").in_scope(|| get_ast(db, file));
+    let ast = info_span!("build AST").in_scope(|| get_ast(db, file));
     let root = match ast.get_root() {
         Some(root) => root,
         None => return SemanticIndex::empty(file, ast.nodes.clone()),
@@ -38,7 +38,7 @@ pub struct SemanticIndex<'db> {
     pub file: File,
 
     // Maps of AST node ids to their spans
-    pub ast: Arc<Vec<Box<dyn AstNode>>>, 
+    pub ast: Arc<Vec<Box<dyn AstNode>>>,
 
     /// Map of scope IDs to their corresponding scopes
     pub scopes: FxHashMap<FileScopeId, Scope<'db>>,
@@ -50,7 +50,7 @@ pub struct SemanticIndex<'db> {
     pub namespaces: Vec<Namespace<'db>>,
 
     /// A list of errors encountered during semantic analysis
-    pub errors: Vec<AnalysisError<'db>>
+    pub errors: Vec<AnalysisError<'db>>,
 }
 
 impl<'db> SemanticIndex<'db> {

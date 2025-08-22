@@ -5,21 +5,21 @@ use auto_lsp::default::db::BaseDatabase;
 use crate::{
     def::expressions::expression::{Elementary, Expr, ExprKind, PrimaryExpr},
     ty::{
+        TyResolved,
         ty::Ty,
         ty_path_expr_resolver::ResolvedPathResult,
-        ty_var_access_resolver::{resolve_var_access, ResolvedVarResult},
-        TyResolved,
+        ty_var_access_resolver::{ResolvedVarResult, resolve_var_access},
     },
 };
 
 /// The environment in which the expression is resolved.
 /// It can be a concrete type or a boolean context.
-/// 
+///
 /// Boolean context is used for boolean statements and expressions,
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Env<'db> {
     Ty(Ty<'db>),
-    Bool
+    Bool,
 }
 
 #[salsa::tracked(no_eq)]
@@ -66,7 +66,7 @@ impl<'db> TyResolved<'db> for ResolvedExpr<'db> {
         match &self.kind {
             ResolvedExprKind::PathExpr(path) => path.ty(),
             ResolvedExprKind::VarAccess(var) => var.ty(),
-            ResolvedExprKind::FuncCall(ty) => Some(ty.clone()),
+            ResolvedExprKind::FuncCall(ty) => Some(*ty),
             _ => None,
         }
     }
@@ -100,11 +100,7 @@ impl<'db> ResolveExprCtx<'db> {
                     kind: ResolvedExprKind::Literal(*lit),
                 },
                 PrimaryExpr::ParenthesizedExpr { expr } => ResolvedExpr {
-                    kind: ResolvedExprKind::Parenthesized(resolve_expr(
-                        self.db,
-                        self.env,
-                        *expr,
-                    )),
+                    kind: ResolvedExprKind::Parenthesized(resolve_expr(self.db, self.env, *expr)),
                 },
                 _ => todo!(),
             },

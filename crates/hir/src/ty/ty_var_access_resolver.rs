@@ -7,7 +7,7 @@ use crate::{
         expressions::expression::{VariableAccess, VariableAccessKind},
         scope::FileScopeId,
     },
-    ty::{ty::Ty, ty_path_expr_resolver::resolved_path_expr, TyResolved},
+    ty::{TyResolved, ty::Ty, ty_path_expr_resolver::resolved_path_expr},
 };
 
 #[salsa::tracked(no_eq)]

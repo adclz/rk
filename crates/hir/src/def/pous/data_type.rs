@@ -2,7 +2,7 @@ use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     def::{
-        expressions::{expression::{InitExpr}, spec::Spec},
+        expressions::{expression::InitExpr, spec::Spec},
         scope::FileScopeId,
         semantic_index::SemanticIndex,
     },

@@ -1,10 +1,10 @@
 use auto_lsp::{
     core::errors::ParseErrorAccumulator,
-    default::db::{file::File, tracked::get_ast, BaseDatabase},
+    default::db::{BaseDatabase, file::File, tracked::get_ast},
 };
 use ide_diagnostic::IdeDiagnostic;
 
-use crate::check::{ lexer::add_fixes_to_parse_errors};
+use crate::check::lexer::add_fixes_to_parse_errors;
 
 pub mod duplicates;
 pub mod errors;

@@ -1,6 +1,6 @@
 use std::sync::{LazyLock, Mutex};
 
-use get_size2::{GetSize, StandardTracker}; 
+use get_size2::{GetSize, StandardTracker};
 use ordermap::OrderSet;
 
 /// Returns the memory usage of the provided object, using a global tracker to avoid

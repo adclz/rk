@@ -4,10 +4,10 @@ use std::sync::Arc;
 
 use auto_lsp::{
     anyhow,
-    default::db::{file::File, BaseDatabase},
+    default::db::{BaseDatabase, file::File},
     lsp_types::{self, CompletionParams, CompletionResponse},
 };
-use hir::{def::semantic_index::semantic_index, def::COMPLETION_MARKER, to_proto::IterToProto};
+use hir::{def::COMPLETION_MARKER, def::semantic_index::semantic_index, to_proto::IterToProto};
 use tracing::info_span;
 
 pub fn completions(

@@ -2,7 +2,7 @@ use std::sync::LazyLock;
 
 use auto_lsp::{
     core::document::Document,
-    default::db::{file::File, BaseDatabase},
+    default::db::{BaseDatabase, file::File},
     tree_sitter::{self, StreamingIterator},
 };
 use rustc_hash::FxHashMap;
