@@ -3,7 +3,7 @@ use auto_lsp::{
     default::db::{file::File, tracked::get_ast, BaseDatabase, FileManager},
     lsp_types,
 };
-use db::check::lexer::add_fixes_to_parse_errors;
+use hir::check::lexer::add_fixes_to_parse_errors;
 use db::RootDatabase;
 
 #[test]

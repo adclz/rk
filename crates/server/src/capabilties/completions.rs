@@ -7,7 +7,7 @@ use auto_lsp::{
     default::db::{file::File, BaseDatabase},
     lsp_types::{self, CompletionParams, CompletionResponse},
 };
-use db::{hir::semantic_index::semantic_index, hir::COMPLETION_MARKER, to_proto::IterToProto};
+use hir::{def::semantic_index::semantic_index, def::COMPLETION_MARKER, to_proto::IterToProto};
 use tracing::info_span;
 
 pub fn completions(

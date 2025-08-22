@@ -6,8 +6,8 @@ use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse},
 };
-use db::{
-    hir::semantic_index::semantic_index,
+use hir::{
+    def::semantic_index::semantic_index,
     to_proto::{IterToProto, SymbolInfo},
 };
 

@@ -1,9 +1,7 @@
-use db::{
-    hir::{
-        expressions::expression::{Numeric, NumericKind},
-        interned::identifier::Ident,
-    },
-    RootDatabase,
+use db::RootDatabase;
+use hir::def::{
+    expressions::expression::{Numeric, NumericKind},
+    interned::identifier::Ident,
 };
 
 #[test]

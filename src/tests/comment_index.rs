@@ -2,8 +2,10 @@ use auto_lsp::{
     default::db::{file::File, BaseDatabase, FileManager},
     lsp_types, tree_sitter,
 };
+use db::RootDatabase;
+use hir::def::comment_index::comment_index;
 
-use db::{hir::comment_index::comment_index, RootDatabase};
+
 #[test]
 fn single_line_comment() {
     let mut db = RootDatabase::default();

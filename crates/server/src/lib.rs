@@ -56,7 +56,7 @@ use auto_lsp::server::request_registry::RequestRegistry;
 use auto_lsp::server::Session;
 use capabilties::semantic_tokens::SUPPORTED_TYPES;
 use db::RootDatabase;
-use db::RK_PARSER;
+use ast::RK_PARSER;
 use std::error::Error;
 use std::panic::RefUnwindSafe;
 

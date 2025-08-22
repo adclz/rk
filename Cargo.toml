@@ -11,6 +11,7 @@ publish = false
 members = [
     "crates/ast",
     "crates/db",
+    "crates/hir",
     "crates/server",
     "crates/tree-sitter",
     "crates/memory_usage",
@@ -31,6 +32,7 @@ server = { path = "crates/server" }
 db = { path = "crates/db" }
 memory_usage = { path = "crates/memory_usage" }
 ide-diagnostic = { path = "crates/ide-diagnostic" }
+hir = { path = "crates/hir" }
 bon = "3.6.4"
 phf = { version = "0.11.3", features = ["macros"] }
 bitflags = "2.9.1"
@@ -48,4 +50,5 @@ ariadne = "0.5.1"
 [dependencies]
 auto-lsp = { workspace = true }
 ast = { workspace = true }
-db = { workspace = true}
+db = { workspace = true }
+hir = { workspace = true }

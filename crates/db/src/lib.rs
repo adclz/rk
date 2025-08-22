@@ -1,14 +1,3 @@
-#![allow(unused_variables)]
-#![recursion_limit = "256"]
-
-pub mod check;
-pub mod completions;
-pub mod hir;
-pub mod hir_ty;
-pub mod parser;
-pub mod to_proto;
-
-pub use ast::RK_PARSER;
 use auto_lsp::{
     default::db::{file::File, BaseDatabase},
     lsp_types::Url,

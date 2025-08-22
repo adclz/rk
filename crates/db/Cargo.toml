@@ -10,20 +10,5 @@ publish = false
 [dependencies]
 auto-lsp = { workspace = true }
 dashmap = { workspace = true }
-ast = { workspace = true }
-rustc-hash = { workspace = true }
-tree-sitter-rk = { workspace = true }
-bon = { workspace = true }
-phf = { workspace = true }
-bitflags = { workspace = true }
-auto_enums = { workspace = true }
-camelpaste = { workspace = true }
-fst = { workspace = true }
-rayon = { workspace = true }
-compact_str = { workspace = true }
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
-ariadne = { workspace = true }
-ide-diagnostic = { workspace = true }
 salsa = "0.22.0"
 expect-test = "1.5.1"

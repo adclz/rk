@@ -9,7 +9,9 @@ publish = false
 
 [dependencies]
 auto-lsp = { workspace = true, features = ["lsp_server"] }
+ast = { workspace = true }
 db = { workspace = true }
+hir = { workspace = true}
 log = { workspace = true }
 tree-sitter-rk = { workspace = true }
 topiary-core = { workspace = true }

@@ -3,10 +3,11 @@ use auto_lsp::{
     lsp_types,
 };
 
-use db::{
-    hir::{pous::pou::Pou, scope::FileScopeId, semantic_index::semantic_index},
-    RootDatabase,
+use hir::{
+    def::{pous::pou::Pou, scope::FileScopeId, semantic_index::semantic_index},
 };
+
+use db::RootDatabase;
 
 #[test]
 fn global_scope() {
