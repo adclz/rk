@@ -6,9 +6,9 @@ use auto_lsp::{
     lsp_types::{DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, Location},
     tree_sitter,
 };
+use ide_diagnostic::{diag, IdeDiagnostic};
 
 use crate::{
-    check::{diagnostic_builder::diag, IdeDiagnostic},
     hir::{
         expressions::{expression::PathExpr, statement::Stmt},
         interned::namespace::NamespacePath,

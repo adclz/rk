@@ -13,9 +13,7 @@ use salsa::Accumulator;
 
 use crate::{
     check::{
-        diagnostic_builder::diag,
         literals::check_date,
-        DiagnosticAccumulator,
     },
     hir::{
         expressions::{

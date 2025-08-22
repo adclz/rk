@@ -12,7 +12,6 @@ use auto_lsp::{
 use salsa::Accumulator;
 
 use crate::check::errors::sem_errors::{AnalysisError, SyntaxError};
-use crate::check::DiagnosticAccumulator;
 use crate::hir::expressions::spec::{Spec, SpecKind};
 use crate::hir::interned::identifier::Ident;
 use crate::hir::pous::variable::{Variable, VariableKind};

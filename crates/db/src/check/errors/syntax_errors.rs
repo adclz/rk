@@ -5,11 +5,7 @@ use auto_lsp::{
     default::db::{file::File, BaseDatabase},
     lsp_types::{DiagnosticRelatedInformation, WorkspaceEdit},
 };
-
-use crate::check::{
-    diagnostic_builder::{action, diag, edit},
-    IdeDiagnostic,
-};
+use ide_diagnostic::{action, diag, edit, IdeDiagnostic};
 
 /// Missing node in the parse tree
 ///
@@ -36,7 +32,7 @@ pub fn missing_node(
         .call();
 
     // If the grammar name is an identifier, suggest inserting it.
-    if grammar_name.contains("identifier") {
+    if grammar_name.len() == 1 {
         diagnostic.with_fix(
             action()
                 .title(format!("Insert missing '{grammar_name}'"))

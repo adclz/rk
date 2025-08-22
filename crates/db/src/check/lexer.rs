@@ -1,8 +1,8 @@
 use auto_lsp::core::errors::{LexerError, ParseError, ParseErrorAccumulator};
+use ide_diagnostic::IdeDiagnostic;
 use phf::phf_set;
 
 use crate::check::errors::syntax_errors::{missing_node, unexpected_char, unexpected_keyword};
-use crate::check::IdeDiagnostic;
 
 static KEYWORDS: phf::Set<&'static str> = phf_set! {
 "PROGRAM", "END_PROGRAM",
@@ -54,7 +54,7 @@ pub fn add_fixes_to_parse_errors(
                         error: missing_error,
                         grammar_name,
                         ..
-                    },
+                    }, 
             } => missing_node(db, *file, span, &missing_error, grammar_name),
             ParseError::LexerError {
                 span,
@@ -70,10 +70,10 @@ pub fn add_fixes_to_parse_errors(
                 } else if KEYWORDS.contains(affected.split_whitespace().next().unwrap_or("")) {
                     unexpected_keyword(db, *file, span, &affected)
                 } else {
-                    (*file, *error).into()
+                    (*error).into()
                 }
             }
-            _ => (*file, *error).into(),
+            _ => (*error).into(),
         })
         .collect()
 }
