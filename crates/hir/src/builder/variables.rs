@@ -14,7 +14,7 @@ use salsa::Accumulator;
 use crate::check::errors::sem_errors::{AnalysisError, SyntaxError};
 use crate::def::expressions::spec::{Spec, SpecKind};
 use crate::def::interned::identifier::Ident;
-use crate::def::pous::variable::{Variable, VariableKind};
+use crate::def::pous::variable::{VariableDecl, VariableKind};
 use crate::builder::expression::ParseExpr;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::{ParseInit, ParseSpec, ParseSpecInit, ParseVarSection, SpecInitResult};
@@ -24,7 +24,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
     fn parse(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-        section: &mut Vec<Variable<'db>>,
+        section: &mut Vec<VariableDecl<'db>>,
     ) {
         for child in self.children.iter() {
             match child.cast(&sema.ast) {
@@ -53,7 +53,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
                                         continue;
                                     }
                                 };
-                                section.push(Variable::new(
+                                section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
                                     VariableKind::Input,
@@ -81,7 +81,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
                                         continue;
                                     }
                                 };
-                                section.push(Variable::new(
+                                section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
                                     VariableKind::Input,
@@ -109,7 +109,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
                                         continue;
                                     }
                                 };
-                                section.push(Variable::new(
+                                section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
                                     VariableKind::Input,
@@ -132,7 +132,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
     fn parse(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-        section: &mut Vec<Variable<'db>>,
+        section: &mut Vec<VariableDecl<'db>>,
     ) {
         for child in self.children.iter() {
             match child.cast(&sema.ast) {
@@ -161,7 +161,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
                                         continue;
                                     }
                                 };
-                                section.push(Variable::new(
+                                section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
                                     VariableKind::Input,
@@ -189,7 +189,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
                                         continue;
                                     }
                                 };
-                                section.push(Variable::new(
+                                section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
                                     VariableKind::Input,
@@ -217,7 +217,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
                                         continue;
                                     }
                                 };
-                                section.push(Variable::new(
+                                section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
                                     VariableKind::Input,
@@ -240,7 +240,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::OutputDecls {
     fn parse(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-        section: &mut Vec<Variable<'db>>,
+        section: &mut Vec<VariableDecl<'db>>,
     ) {
         for child in self.children.iter() {
             match child.cast(&sema.ast) {
@@ -269,7 +269,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::OutputDecls {
                                         continue;
                                     }
                                 };
-                                section.push(Variable::new(
+                                section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
                                     VariableKind::Output,
@@ -297,7 +297,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::OutputDecls {
                                         continue;
                                     }
                                 };
-                                section.push(Variable::new(
+                                section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
                                     VariableKind::Output,
@@ -320,7 +320,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbOutputDecls {
     fn parse(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-        section: &mut Vec<Variable<'db>>,
+        section: &mut Vec<VariableDecl<'db>>,
     ) {
         for child in self.children.iter() {
             match child.cast(&sema.ast) {
@@ -349,7 +349,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbOutputDecls {
                                         continue;
                                     }
                                 };
-                                section.push(Variable::new(
+                                section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
                                     VariableKind::Output,
@@ -377,7 +377,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbOutputDecls {
                                         continue;
                                     }
                                 };
-                                section.push(Variable::new(
+                                section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
                                     VariableKind::Output,
@@ -400,7 +400,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::TempVarDecls {
     fn parse(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-        section: &mut Vec<Variable<'db>>,
+        section: &mut Vec<VariableDecl<'db>>,
     ) {
         for child in self.children.iter() {
             match child.cast(&sema.ast) {
@@ -429,7 +429,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::TempVarDecls {
                                         continue;
                                     }
                                 };
-                                section.push(Variable::new(
+                                section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
                                     VariableKind::Temp,
@@ -457,7 +457,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::TempVarDecls {
                                         continue;
                                     }
                                 };
-                                section.push(Variable::new(
+                                section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
                                     VariableKind::Temp,
@@ -480,7 +480,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
     fn parse(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-        section: &mut Vec<Variable<'db>>,
+        section: &mut Vec<VariableDecl<'db>>,
     ) {
         for child in self.children.iter() {
             match child.cast(&sema.ast) {
@@ -509,7 +509,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
                                         continue;
                                     }
                                 };
-                                section.push(Variable::new(
+                                section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
                                     VariableKind::InOut,
@@ -537,7 +537,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
                                         continue;
                                     }
                                 };
-                                section.push(Variable::new(
+                                section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
                                     VariableKind::InOut,
@@ -560,7 +560,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
     fn parse(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-        section: &mut Vec<Variable<'db>>,
+        section: &mut Vec<VariableDecl<'db>>,
     ) {
         for child in self.children.iter() {
             match child.cast(&sema.ast) {
@@ -581,7 +581,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
                                     continue;
                                 }
                             };
-                            section.push(Variable::new(
+                            section.push(VariableDecl::new(
                                 sema.db,
                                 var_name,
                                 VariableKind::External,
@@ -607,7 +607,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
                                     continue;
                                 }
                             };
-                            section.push(Variable::new(
+                            section.push(VariableDecl::new(
                                 sema.db,
                                 var_name,
                                 VariableKind::External,
@@ -638,7 +638,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
     fn parse(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-        section: &mut Vec<Variable<'db>>,
+        section: &mut Vec<VariableDecl<'db>>,
     ) {
         for child in self.children.iter() {
             match child.cast(&sema.ast) {
@@ -669,7 +669,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
                                 continue;
                             }
                         };
-                        section.push(Variable::new(
+                        section.push(VariableDecl::new(
                             sema.db,
                             var_name,
                             VariableKind::Var,
@@ -690,7 +690,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::RetainVarDecls {
     fn parse(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-        section: &mut Vec<Variable<'db>>,
+        section: &mut Vec<VariableDecl<'db>>,
     ) {
         for child in self.children.iter() {
             match child.cast(&sema.ast) {
@@ -721,7 +721,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::RetainVarDecls {
                                 continue;
                             }
                         };
-                        section.push(Variable::new(
+                        section.push(VariableDecl::new(
                             sema.db,
                             var_name,
                             VariableKind::Var,
@@ -742,7 +742,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::NoRetainVarDecls {
     fn parse(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-        section: &mut Vec<Variable<'db>>,
+        section: &mut Vec<VariableDecl<'db>>,
     ) {
         for child in self.children.iter() {
             match child.cast(&sema.ast) {
@@ -773,7 +773,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::NoRetainVarDecls {
                                 continue;
                             }
                         };
-                        section.push(Variable::new(
+                        section.push(VariableDecl::new(
                             sema.db,
                             var_name,
                             VariableKind::Var,
@@ -794,7 +794,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::LocPartlyVarDecl {
     fn parse(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-        section: &mut Vec<Variable<'db>>,
+        section: &mut Vec<VariableDecl<'db>>,
     ) {
         for child in self.children.iter() {
             let var_name = match Ident::from_node(
@@ -815,7 +815,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::LocPartlyVarDecl {
                     continue;
                 }
             };
-            section.push(Variable::new(
+            section.push(VariableDecl::new(
                 sema.db,
                 var_name,
                 VariableKind::Var,
@@ -833,7 +833,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
     fn parse(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-        section: &mut Vec<Variable<'db>>,
+        section: &mut Vec<VariableDecl<'db>>,
     ) {
         for child in self.children.iter() {
             match child.cast(&sema.ast).Type.cast(&sema.ast) {
@@ -856,7 +856,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
                             continue;
                         }
                     };
-                    section.push(Variable::new(
+                    section.push(VariableDecl::new(
                         sema.db,
                         name,
                         VariableKind::Global,
@@ -886,7 +886,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
                             continue;
                         }
                     };
-                    section.push(Variable::new(
+                    section.push(VariableDecl::new(
                         sema.db,
                         name,
                         VariableKind::Global,

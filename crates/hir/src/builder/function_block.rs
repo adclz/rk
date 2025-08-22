@@ -3,7 +3,7 @@ use crate::def::interned::identifier::Ident;
 use crate::def::interned::namespace::SpannedNamespaceAccess;
 use crate::def::pous::function_block::FunctionBlock;
 use crate::def::pous::pou::{Pou, PouDecl};
-use crate::def::pous::variable::Variable;
+use crate::def::pous::variable::VariableDecl;
 use crate::def::scope::{FileScopeId, Scope, ScopeKind, Visibility};
 use crate::def::visibility::Modifiers;
 use crate::builder::semantic_index::SemanticIndexBuilder;
@@ -132,14 +132,14 @@ trait ParseVariable<'db> {
     fn parse_variables(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> Vec<Variable<'db>>;
+    ) -> Vec<VariableDecl<'db>>;
 }
 
 impl<'db> ParseVariable<'db> for ast::generated::FbDecl {
     fn parse_variables(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> Vec<Variable<'db>> {
+    ) -> Vec<VariableDecl<'db>> {
         let mut variables = vec![];
 
         for variable in self.variables.iter() {

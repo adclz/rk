@@ -4,7 +4,7 @@ use crate::completions;
 use crate::{
     def::{
         expressions::{spec::Spec, statement::Stmt},
-        pous::variable::Variable,
+        pous::variable::VariableDecl,
         scope::FileScopeId,
         semantic_index::SemanticIndex,
     },
@@ -15,7 +15,7 @@ use crate::{
 pub struct Function<'db> {
     #[tracked]
     #[returns(ref)]
-    pub variables: Vec<Variable<'db>>,
+    pub variables: Vec<VariableDecl<'db>>,
 
     #[tracked]
     #[returns(ref)]

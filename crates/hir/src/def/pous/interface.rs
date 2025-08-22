@@ -4,7 +4,7 @@ use crate::{
     def::{
         expressions::spec::Spec,
         interned::{identifier::Ident, namespace::SpannedNamespaceAccess},
-        pous::variable::Variable,
+        pous::variable::VariableDecl,
         scope::FileScopeId,
         semantic_index::{semantic_index, SemanticIndex},
     },
@@ -40,7 +40,7 @@ pub struct MethodPrototype<'db> {
     pub return_type: Option<Spec<'db>>,
 
     #[returns(ref)]
-    pub variables: Vec<Variable<'db>>,
+    pub variables: Vec<VariableDecl<'db>>,
 
     pub id: AstId,
 

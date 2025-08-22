@@ -2,7 +2,7 @@ use crate::check::errors::sem_errors::AnalysisError;
 use crate::def::interned::identifier::Ident;
 use crate::def::pous::function::Function;
 use crate::def::pous::pou::{Pou, PouDecl};
-use crate::def::pous::variable::Variable;
+use crate::def::pous::variable::VariableDecl;
 use crate::def::scope::{FileScopeId, Scope, ScopeKind, Visibility};
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::statement::ParseStatement;
@@ -83,14 +83,14 @@ trait ParseVariable<'db> {
     fn parse_variables(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> Vec<Variable<'db>>;
+    ) -> Vec<VariableDecl<'db>>;
 }
 
 impl<'db> ParseVariable<'db> for ast::generated::FuncDecl {
     fn parse_variables(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> Vec<Variable<'db>> {
+    ) -> Vec<VariableDecl<'db>> {
         let mut variables = vec![];
 
         for variable in self.variables.iter() {

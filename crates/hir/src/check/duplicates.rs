@@ -25,7 +25,7 @@ use crate::{
             statement::{Stmt, StmtKind}, 
         },
         interned::namespace::NamespacePath,
-        pous::{pou::Pou, variable::Variable},
+        pous::{pou::Pou, variable::VariableDecl},
         scope::FileScopeId,
         semantic_index::{semantic_index, SemanticIndex},
     },

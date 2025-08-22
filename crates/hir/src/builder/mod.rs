@@ -4,7 +4,7 @@ use crate::{
     check::errors::sem_errors::AnalysisError,
     def::{
         expressions::{expression::InitExpr, spec::Spec},
-        pous::variable::Variable,
+        pous::variable::VariableDecl,
     },
     builder::semantic_index::SemanticIndexBuilder,
 };
@@ -23,7 +23,7 @@ pub mod using;
 pub mod variables;
 
 pub trait ParseVarSection<'db> {
-    fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<Variable<'db>>);
+    fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<VariableDecl<'db>>);
 }
 
 pub trait ParseSpec<'db> {

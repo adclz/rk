@@ -15,7 +15,7 @@ use crate::{
         namespace::Namespace,
         pous::{
             pou::{Pou, PouDecl},
-            variable::Variable,
+            variable::VariableDecl,
         },
         scope::FileScopeId,
         using::Using,
@@ -86,8 +86,8 @@ pub enum NamespaceError<'db> {
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum DuplicateError<'db> {
     Variable {
-        var1: Variable<'db>,
-        var2: Variable<'db>,
+        var1: VariableDecl<'db>,
+        var2: VariableDecl<'db>,
     },
     Pou {
         pou1: PouDecl<'db>,
@@ -369,7 +369,7 @@ impl<'db> ToIdeDiagnostic<'db> for PathExprError<'db> {
                     "no item '{}' in scope",
                     expr.to_string(db).text(db)
                 ))
-                .severity(DiagnosticSeverity::ERROR)
+                .severity(DiagnosticSeverity::ERROR) 
                 .range(expr.get_span(db).clone())
                 .call(),
             Self::UnknownField { origin, expr } => diag()

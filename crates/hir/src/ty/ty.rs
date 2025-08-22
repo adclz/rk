@@ -10,7 +10,7 @@ use crate::{
         },
         pous::{
             pou::{Pou, PouDecl},
-            variable::{Variable, VariableKind},
+            variable::{VariableDecl, VariableKind},
         }, scope::FileScopeId,
     }, ty::{name_res::resolve_namespace_access, ty_path_expr_resolver::{PathExprWalkError, PathExprWalkStep}}, to_proto::ToProto
 };
@@ -49,7 +49,7 @@ impl<'db> Ty<'db> {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum TyOrigin<'db> {
     FromPou(PouDecl<'db>),
-    FromVariable(Variable<'db>),
+    FromVariable(VariableDecl<'db>),
 }
 
 impl<'db> TyOrigin<'db> {
@@ -217,11 +217,11 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
     }
 }
 
-fn variable_ty_result<'db>(db: &'db dyn BaseDatabase, variable: Variable<'db>) -> Ty<'db> {
+fn variable_ty_result<'db>(db: &'db dyn BaseDatabase, variable: VariableDecl<'db>) -> Ty<'db> {
     Ty::new(db, TyOrigin::FromVariable(variable), TyKind::Recursive)
 }
 #[salsa::tracked(cycle_result = variable_ty_result)]
-pub fn ty_for_variable<'db>(db: &'db dyn BaseDatabase, variable: Variable<'db>) -> Ty<'db> {
+pub fn ty_for_variable<'db>(db: &'db dyn BaseDatabase, variable: VariableDecl<'db>) -> Ty<'db> {
     variable
         .spec(db)
         .to_sig(db, TyOrigin::FromVariable(variable))

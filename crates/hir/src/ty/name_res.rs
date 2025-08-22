@@ -10,7 +10,7 @@ use crate::{
         namespace::Namespace,
         pous::{
             pou::{Pou, PouDecl},
-            variable::Variable,
+            variable::VariableDecl,
         },
         scope::{FileScopeId, ScopeKind},
         semantic_index::{semantic_index},
@@ -204,7 +204,7 @@ pub fn variables_in_scope<'db>(
     db: &'db dyn BaseDatabase,
     file: File,
     scope_id: FileScopeId,
-) -> FxHashMap<Ident, Variable<'db>> {
+) -> FxHashMap<Ident, VariableDecl<'db>> {
     let sema = semantic_index(db, file);
     let scope = sema.get_scope(scope_id);
 

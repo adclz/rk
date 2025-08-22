@@ -15,7 +15,7 @@ use crate::{
 };
 
 #[salsa::tracked(debug)]
-pub struct Variable<'db> {
+pub struct VariableDecl<'db> {
     #[returns(ref)]
     pub name: Ident,
 
@@ -60,7 +60,7 @@ pub enum VariableKind {
     Config,
 }
 
-impl<'db> ToProto<'db> for Variable<'db> {
+impl<'db> ToProto<'db> for VariableDecl<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
         self.id(db)
     }
@@ -102,7 +102,7 @@ impl<'db> ToProto<'db> for Variable<'db> {
     }
 }
 
-impl<'db> IterToProto<'db> for Variable<'db> {
+impl<'db> IterToProto<'db> for VariableDecl<'db> {
     fn iter(
         &'db self,
         db: &'db dyn BaseDatabase,

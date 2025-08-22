@@ -3,7 +3,7 @@ use auto_lsp::default::db::BaseDatabase;
 use crate::{
     def::{
         expressions::statement::Stmt, interned::namespace::SpannedNamespaceAccess,
-        pous::variable::Variable, scope::FileScopeId, semantic_index::SemanticIndex,
+        pous::variable::VariableDecl, scope::FileScopeId, semantic_index::SemanticIndex,
         visibility::Modifiers,
     },
     to_proto::{IterToProto, ToProto},
@@ -21,7 +21,7 @@ pub struct FunctionBlock<'db> {
 
     #[tracked]
     #[returns(ref)]
-    pub variables: Vec<Variable<'db>>,
+    pub variables: Vec<VariableDecl<'db>>,
 
     #[tracked]
     #[returns(ref)]

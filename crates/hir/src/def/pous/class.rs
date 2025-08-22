@@ -4,7 +4,7 @@ use crate::{
     def::{
         expressions::{spec::Spec, statement::Stmt},
         interned::{identifier::Ident, namespace::SpannedNamespaceAccess},
-        pous::variable::Variable,
+        pous::variable::VariableDecl,
         scope::FileScopeId,
         semantic_index::SemanticIndex,
         visibility::Modifiers,
@@ -24,7 +24,7 @@ pub struct Class<'db> {
 
     #[tracked]
     #[returns(ref)]
-    pub variables: Vec<Variable<'db>>,
+    pub variables: Vec<VariableDecl<'db>>,
 
     pub methods: Vec<MethodDecl<'db>>,
 
@@ -61,7 +61,7 @@ pub struct MethodDecl<'db> {
 
     #[tracked]
     #[returns(ref)]
-    pub variables: Vec<Variable<'db>>,
+    pub variables: Vec<VariableDecl<'db>>,
 
     #[tracked]
     #[returns(ref)]
