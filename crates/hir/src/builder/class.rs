@@ -117,7 +117,7 @@ impl<'db> SemanticIndexBuilder<'db> {
 
             let mut body = vec![];
             if let Some(body_node) = m.cast(&self.ast).body.as_ref() {
-                if let ast::generated::FbDiagram_LadderDiagram_StmtList::StmtList(ref stmts) = body_node.cast(&self.ast).children.cast(&self.ast) {
+                if let ast::generated::FbDiagram_LadderDiagram_StmtList::StmtList(stmts) = body_node.cast(&self.ast).children.cast(&self.ast) {
                 for stmt in stmts.children.iter() {
                     match stmt.cast(&self.ast).to_statement(self) {
                     Ok(statement) => body.push(statement),

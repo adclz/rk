@@ -2,13 +2,13 @@
 name = "tree-sitter-rk"
 description = "Structured Text grammar for tree-sitter"
 version = "0.1.0"
-authors = ["CLAUZEL Adrien <clauzeladrien@mail.com>"]
-license = "AGPL-3.0-only"
 readme = "README.md"
 keywords = ["incremental", "parsing", "tree-sitter", "structured-text"]
 categories = ["parser-implementations", "parsing", "text-editors"]
 repository = "https://github.com/adclz/rk"
-edition = "2021"
+authors = { workspace = true }
+license = { workspace = true }
+edition = { workspace = true }
 autoexamples = false
 
 build = "bindings/rust/build.rs"

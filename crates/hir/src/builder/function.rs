@@ -26,7 +26,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             .body
             .as_ref()
             .map_or(vec![], |body| match body.cast(&self.ast).children.cast(&self.ast) {
-            ast::generated::FbDiagram_LadderDiagram_StmtList::StmtList(ref stmts) => stmts
+            ast::generated::FbDiagram_LadderDiagram_StmtList::StmtList(stmts) => stmts
                 .children
                 .iter()
                 .filter_map(|stmt| match stmt.cast(&self.ast).to_statement(self) {

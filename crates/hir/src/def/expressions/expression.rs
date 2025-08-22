@@ -170,8 +170,8 @@ impl<'db> PathExpr<'db> {
             },
             PathExprKind::Index(index_expr) => index_expr.path.to_string(db),
             PathExprKind::VarAccess(var_access) => match var_access {
-                VarAccess::Simple(ref simple) => simple.clone(),
-                VarAccess::Deref(ref deref) => deref.clone(),
+                VarAccess::Simple(simple) => simple.clone(),
+                VarAccess::Deref(deref) => deref.clone(),
             },
         }
     }
