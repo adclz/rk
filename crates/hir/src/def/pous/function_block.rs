@@ -6,7 +6,7 @@ use crate::{
         pous::variable::VariableDecl, scope::FileScopeId, semantic_index::SemanticIndex,
         visibility::Modifiers,
     },
-    to_proto::{IterToProto, ToProto},
+    to_proto::{ToProto},
 };
 
 #[salsa::tracked(debug)]
@@ -30,24 +30,4 @@ pub struct FunctionBlock<'db> {
     pub modifiers: Modifiers,
 
     pub scope_id: FileScopeId,
-}
-
-impl<'db> IterToProto<'db> for FunctionBlock<'db> {
-    fn iter(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        sema: &'db SemanticIndex,
-    ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        let scope = sema.get_scope(self.scope_id(db));
-
-        scope
-            .usings
-            .iter()
-            .flat_map(move |u| u.iter(db, sema))
-            .chain(
-                self.variables(db)
-                    .iter()
-                    .flat_map(move |v| v.iter(db, sema)),
-            )
-    }
 }

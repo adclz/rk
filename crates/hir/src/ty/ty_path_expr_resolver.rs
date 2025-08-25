@@ -29,19 +29,21 @@ pub fn resolved_path_expr<'db>(
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub struct ResolvedPathResult<'db> {
+    pub id: AstId,
+    pub scope_id: FileScopeId,
     pub elements: Vec<ResolvedPathElement<'db>>,
     pub error: Option<PathExprWalkError<'db>>,
 }
 
 impl<'db> TyResolved<'db> for ResolvedPathResult<'db> {
-    fn ty(&self) -> Option<Ty<'db>> {
+    fn ty(&self, db: &'db dyn BaseDatabase) -> Option<Ty<'db>> {
         self.elements.last().map(|e| e.get_ty()).copied()
     }
 }
 
 /// Represents a resolved element in a path expression.
 /// Contains the expression and its type.
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct ResolvedPathElement<'db> {
     // The expression that was resolved
     pub expr: PathExpr<'db>,
@@ -105,6 +107,8 @@ impl<'db> ResolvePathExprCtx<'db> {
                             }
                             Err(error) => {
                                 return ResolvedPathResult {
+                                    id: self.expr.id(self.db),
+                                    scope_id: self.expr.scope_id(self.db),
                                     elements,
                                     error: Some(error),
                                 };
@@ -128,6 +132,8 @@ impl<'db> ResolvePathExprCtx<'db> {
             }
             None => {
                 return ResolvedPathResult {
+                    id: self.expr.id(self.db),
+                    scope_id: self.expr.scope_id(self.db),
                     elements,
                     error: Some(PathExprWalkError::NoItemInScope {
                         expr: self.expr,
@@ -138,6 +144,8 @@ impl<'db> ResolvePathExprCtx<'db> {
         }
 
         ResolvedPathResult {
+            id: self.expr.id(self.db),
+            scope_id: self.expr.scope_id(self.db),
             elements,
             error: None,
         }
@@ -253,29 +261,12 @@ impl<'db> PathExpr<'db> {
     }
 }
 
-impl<'db> ToProto<'db> for ResolvedPathElement<'db> {
-    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
-        self.expr.get_id(db)
+impl<'db> ToProto<'db> for ResolvedPathResult<'db> {
+    fn get_id(&'db self, _db: &'db dyn BaseDatabase) -> AstId {
+        self.id
     }
 
-    fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
-        self.expr.scope_id(db)
-    }
-
-    fn inlay_hint(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        _sema: &'db SemanticIndex<'db>,
-    ) -> Option<InlayHint> {
-        Some(InlayHint {
-            label: InlayHintLabel::String(self.expr.to_string(db).text(db).to_string()),
-            position: self.expr.get_span(db).lsp().end,
-            kind: Some(InlayHintKind::TYPE),
-            text_edits: None,
-            padding_left: Some(true),
-            padding_right: None,
-            data: None,
-            tooltip: None,
-        })
+    fn get_scope_id(&'db self, _db: &'db dyn BaseDatabase) -> FileScopeId {
+        self.scope_id
     }
 }

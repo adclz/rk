@@ -1,4 +1,4 @@
-use crate::completions;
+use crate::{completions};
 use auto_lsp::{default::db::BaseDatabase, lsp_types::CompletionItem};
 
 use crate::{
@@ -8,7 +8,7 @@ use crate::{
         scope::FileScopeId,
         semantic_index::SemanticIndex,
     },
-    to_proto::{IterToProto, ToProto},
+    to_proto::{ToProto},
 };
 
 #[salsa::tracked(debug)]
@@ -50,30 +50,5 @@ impl<'db> Function<'db> {
             // If there are no statements, we are also in variable declarations
             _ => Some(var_completions),
         }
-    }
-}
-
-impl<'db> IterToProto<'db> for Function<'db> {
-    fn iter(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        sema: &'db SemanticIndex,
-    ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        let scope = sema.get_scope(self.scope_id(db));
-
-        scope
-            .usings
-            .iter()
-            .flat_map(move |u| u.iter(db, sema))
-            .chain(
-                self.variables(db)
-                    .iter()
-                    .flat_map(move |v| v.iter(db, sema)),
-            )
-            .chain(
-                self.statements(db)
-                    .iter()
-                    .flat_map(move |s| s.iter(db, sema)),
-            )
     }
 }

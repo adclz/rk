@@ -1,12 +1,11 @@
 use auto_lsp::{
-    core::span::Span,
     default::db::BaseDatabase,
     lsp_types::{CompletionItem, MarkupContent, MarkupKind},
 };
 
 use crate::{
     def::{interned::namespace::NamespacePath, scope::FileScopeId, semantic_index::SemanticIndex},
-    to_proto::{AstId, IterToProto, ToProto, self_iter},
+    to_proto::{AstId, ToProto},
 };
 
 #[salsa::tracked(debug)]
@@ -25,10 +24,6 @@ impl<'db> ToProto<'db> for Using<'db> {
 
     fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
         self.scope_id(db)
-    }
-
-    fn get_name_span(&'db self, db: &'db dyn BaseDatabase) -> Option<Span> {
-        Some(self.get_span(db))
     }
 
     fn hover(
@@ -105,15 +100,5 @@ impl<'db> ToProto<'db> for Using<'db> {
             .collect();
 
         Some(completions)*/
-    }
-}
-
-impl<'db> IterToProto<'db> for Using<'db> {
-    fn iter(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        _sema: &SemanticIndex<'db>,
-    ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        self_iter(self).chain(self.path(db).fragments(db).iter().map(move |f| f as _))
     }
 }

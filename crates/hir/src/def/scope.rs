@@ -1,7 +1,7 @@
 use auto_lsp::default::db::file::File;
 use bitflags::bitflags;
 
-use crate::def::{namespace::Namespace, pous::pou::PouDecl, using::Using};
+use crate::def::{namespace::NamespaceDecl, pous::pou::PouDecl, using::Using};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, salsa::Update)]
 pub struct FileScopeId((File, usize));
@@ -103,6 +103,6 @@ impl Default for Visibility {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ScopeKind<'db> {
     Global,
-    Namespace(Namespace<'db>),
+    Namespace(NamespaceDecl<'db>),
     Pou(PouDecl<'db>),
 }

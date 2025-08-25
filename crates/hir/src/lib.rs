@@ -6,3 +6,4 @@ pub mod completions;
 pub mod def;
 pub mod to_proto;
 pub mod ty;
+pub mod walk;

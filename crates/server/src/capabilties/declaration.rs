@@ -4,7 +4,6 @@ use auto_lsp::{
     lsp_types::request::{GotoDeclarationParams, GotoDeclarationResponse},
 };
 use hir::def::semantic_index::semantic_index;
-use hir::to_proto::IterToProto;
 
 pub fn go_to_declaration(
     db: &impl BaseDatabase,
@@ -28,12 +27,11 @@ pub fn go_to_declaration(
         })?;
 
     let sema = semantic_index(db, file);
+    
+    let symbol = sema.
+        descendant_at(db, position);
 
-    let symbol = sema
-        .named_descendant_at(db, sema, position)
-        .or_else(|| sema.descendant_at(db, sema, position));
-
-    match symbol.and_then(|s| s.declaration(db, sema)) {
+    match symbol.and_then(|s| s.as_proto().declaration(db, sema)) {
         Some(hover) => Ok(Some(hover)),
         None => Ok(None),
     }

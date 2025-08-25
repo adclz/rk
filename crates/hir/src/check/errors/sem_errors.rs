@@ -12,7 +12,7 @@ use crate::{
     def::{
         expressions::{expression::PathExpr, statement::Stmt},
         interned::namespace::NamespacePath,
-        namespace::Namespace,
+        namespace::NamespaceDecl,
         pous::{
             pou::{Pou, PouDecl},
             variable::VariableDecl,
@@ -76,7 +76,7 @@ pub enum NamespaceError<'db> {
     },
     NamespaceAlreadyInScope {
         using: Using<'db>,
-        namespace: Namespace<'db>,
+        namespace: NamespaceDecl<'db>,
     },
     DuplicateUsing {
         using: Using<'db>,

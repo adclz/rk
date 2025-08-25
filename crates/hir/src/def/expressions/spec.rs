@@ -14,7 +14,7 @@ use crate::{
         scope::FileScopeId,
         semantic_index::SemanticIndex,
     },
-    to_proto::{IterToProto, ToProto, self_iter},
+    to_proto::{ToProto},
 };
 
 #[salsa::tracked(debug)]
@@ -245,18 +245,6 @@ impl<'db> ToProto<'db> for Spec<'db> {
             _ => None,
         }));
         Some(primary)
-    }
-}
-
-impl<'db> IterToProto<'db> for Spec<'db> {
-    fn iter(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        sema: &'db SemanticIndex,
-    ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        match self.kind(db) {
-            _ => self_iter(self),
-        }
     }
 }
 

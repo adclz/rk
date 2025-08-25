@@ -6,7 +6,7 @@ use crate::def::{
         identifier::Ident,
         namespace::{NamespaceAccess, NamespacePath},
     },
-    namespace::Namespace,
+    namespace::NamespaceDecl,
     pous::{
         pou::{Pou, PouDecl},
         variable::VariableDecl,
@@ -21,7 +21,7 @@ use crate::def::{
 pub fn shared_namespaces<'db>(
     db: &'db dyn BaseDatabase,
     path: NamespacePath,
-) -> Vec<Namespace<'db>> {
+) -> Vec<NamespaceDecl<'db>> {
     db.get_files()
         .iter()
         .flat_map(|file| {
@@ -43,7 +43,7 @@ fn imported_namespaces<'db>(
     db: &'db dyn BaseDatabase,
     file: File,
     using: Using<'db>,
-) -> FxHashMap<NamespacePath, Namespace<'db>> {
+) -> FxHashMap<NamespacePath, NamespaceDecl<'db>> {
     let mut result = FxHashMap::default();
     let path = using.path(db);
 

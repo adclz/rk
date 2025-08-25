@@ -1,7 +1,9 @@
 use std::iter::FusedIterator;
+use std::ops::{ControlFlow, Deref};
 use std::sync::Arc;
 
 use auto_lsp::core::ast::AstNode;
+use auto_lsp::core::span::Span;
 use auto_lsp::default::db::tracked::get_ast;
 use auto_lsp::default::db::{BaseDatabase, file::File};
 use rustc_hash::FxHashMap;
@@ -9,12 +11,23 @@ use tracing::info_span;
 
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::sem_errors::AnalysisError;
+use crate::def::expressions::expression::PathExpr;
+use crate::def::expressions::statement::Stmt;
 use crate::def::interned::identifier::Ident;
-use crate::def::namespace::Namespace;
+use crate::def::namespace::NamespaceDecl;
 use crate::def::pous::pou::PouDecl;
+use crate::def::pous::variable::VariableDecl;
 use crate::def::scope::{FileScopeId, Scope};
-use crate::to_proto::{IterToProto, ToProto};
+use crate::def::using::Using;
+use crate::to_proto::ToProto;
+use crate::ty;
+use crate::ty::expr_resolver::ResolvedExpr;
 use crate::ty::name_res::pous_in_scope;
+use crate::ty::stmt_resolver::{resolve_stmts, ResolveStmtsResult, ResolvedStmt};
+use crate::ty::ty_path_expr_resolver::{
+    ResolvedPathElement, ResolvedPathResult, resolved_path_expr,
+};
+use crate::walk::WalkHir;
 
 /// Returns the semantic index of a given file
 #[tracing::instrument(skip_all, name = "query_semantic_index")]
@@ -35,43 +48,42 @@ pub fn semantic_index<'db>(db: &'db dyn BaseDatabase, file: File) -> SemanticInd
 
 #[derive(Debug, PartialEq, Eq, salsa::Update)]
 pub struct SemanticIndex<'db> {
-    pub file: File,
+    pub(crate) file: File,
 
-    // Maps of AST node ids to their spans
-    pub ast: Arc<Vec<Box<dyn AstNode>>>,
+    /// The AST nodes of the file
+    pub(crate) ast: Arc<Vec<Box<dyn AstNode>>>,
 
     /// Map of scope IDs to their corresponding scopes
-    pub scopes: FxHashMap<FileScopeId, Scope<'db>>,
+    pub(crate) scopes: FxHashMap<FileScopeId, Scope<'db>>,
 
-    /// Global POU declarations in the file
+    /// All *global* POU declarations in the file
     pub global_pous: Vec<PouDecl<'db>>,
 
     /// All namespaces in the file
-    pub namespaces: Vec<Namespace<'db>>,
+    pub namespaces: Vec<NamespaceDecl<'db>>,
 
     /// A list of errors encountered during semantic analysis
-    pub errors: Vec<AnalysisError<'db>>,
+    pub(crate) errors: Vec<AnalysisError<'db>>,
 }
 
 impl<'db> SemanticIndex<'db> {
     pub fn empty(file: File, ast: Arc<Vec<Box<dyn AstNode>>>) -> Self {
         SemanticIndex {
             file,
+            ast,
             scopes: FxHashMap::default(),
             global_pous: vec![],
             namespaces: vec![],
-            ast,
             errors: vec![],
         }
     }
 
+    /// Get the scope corresponding to the given ID.
+    ///
+    /// Panics if the scope does not belong to the same file as the semantic index.
     pub fn get_scope(&'db self, id: FileScopeId) -> &'db Scope<'db> {
+        assert!(self.file == id.file());
         &self.scopes[&id]
-    }
-
-    /// Returns a [`ScopeIterator`] starting from the given scope.
-    pub fn scope_iterator(&self, scope: FileScopeId) -> ScopeIterator {
-        ScopeIterator::new(&self.scopes, self.get_scope(scope))
     }
 
     /// Returns all POUs available in a given scope
@@ -87,15 +99,15 @@ impl<'db> SemanticIndex<'db> {
     ) -> &'db FxHashMap<Ident, PouDecl<'db>> {
         pous_in_scope(db, self.file, scope)
     }
-}
 
-impl<'db> IterToProto<'db> for SemanticIndex<'db> {
-    fn iter(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        sema: &'db SemanticIndex,
-    ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        self.namespaces.iter().flat_map(move |ns| ns.iter(db, sema))
+    /// Returns a [`ScopeIterator`] starting from the given scope.
+    pub fn scope_iterator(&self, scope: FileScopeId) -> ScopeIterator {
+        ScopeIterator::new(&self.scopes, self.get_scope(scope))
+    }
+
+    /// Returns all errors encountered during semantic analysis.
+    pub fn errors(&self) -> &[AnalysisError<'db>] {
+        &self.errors
     }
 }
 
@@ -126,3 +138,70 @@ impl<'db> Iterator for ScopeIterator<'db> {
 }
 
 impl FusedIterator for ScopeIterator<'_> {}
+
+
+#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+pub enum HirNode<'db> {
+    Namespace(NamespaceDecl<'db>),
+    PouDecl(PouDecl<'db>),
+    Using(Using<'db>),
+    Variable(VariableDecl<'db>),
+    ResolvedStmt(ResolvedStmt<'db>),
+    ResolvedExpr(ResolvedExpr<'db>),
+}
+
+impl<'db> HirNode<'db> {
+    pub fn as_proto(&'db self) -> &'db dyn ToProto<'db> {
+        match self {
+            HirNode::Namespace(n) => n,
+            HirNode::PouDecl(p) => p,
+            HirNode::Using(u) => u,
+            HirNode::Variable(v) => v,
+            HirNode::ResolvedStmt(s) => s,
+            HirNode::ResolvedExpr(e) => e,
+        }
+    }
+
+    pub fn get_span(&'db self, db: &'db dyn BaseDatabase) -> Span {
+        match self {
+            HirNode::Namespace(n) => n.get_span(db),
+            HirNode::PouDecl(p) => p.get_span(db),
+            HirNode::Using(u) => u.get_span(db),
+            HirNode::Variable(v) => v.get_span(db),
+            HirNode::ResolvedStmt(s) => s.get_span(db),
+            HirNode::ResolvedExpr(e) => e.get_span(db),
+        }
+    }
+}
+
+impl<'db> SemanticIndex<'db> {
+    #[tracing::instrument(skip(self, db))]
+    pub fn descendant_at(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        offset: usize,
+    ) -> Option<HirNode<'db>> {
+        let mut best_match: Option<HirNode<'db>> = None;
+
+        let _ = self.walk_hir(db, &mut |node| {
+            let range = node.get_span(db);
+            // Only consider nodes that contain the offset
+            if range.start_byte <= offset && offset <= range.end_byte {
+                // Compare old best match with new node
+                if let Some(ref a) = best_match {
+                    let a = a.as_proto().get_span(db);
+                    if a.start_byte >= range.start_byte {
+                        return ControlFlow::Continue(())
+                    } else {
+                        best_match = Some(node);
+                    }
+                } else {
+                    best_match = Some(node);
+                }
+            }
+            ControlFlow::Continue(())
+        });
+
+        best_match
+    }
+}

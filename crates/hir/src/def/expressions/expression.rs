@@ -2,7 +2,7 @@ use crate::completions::snippets::elem_type_names_init;
 use crate::def::interned::identifier::{Ident, SpannedIdent};
 use crate::def::scope::FileScopeId;
 use crate::def::semantic_index::SemanticIndex;
-use crate::to_proto::{AstId, IterToProto, ToProto, self_iter};
+use crate::to_proto::{AstId, ToProto};
 use auto_enums::auto_enum;
 use auto_lsp::default::db::BaseDatabase;
 
@@ -127,21 +127,6 @@ impl<'db> ToProto<'db> for PathExpr<'db> {
     }
 }
 
-impl<'db> IterToProto<'db> for PathExpr<'db> {
-    fn iter(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        sema: &'db SemanticIndex<'db>,
-    ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        std::iter::empty()
-        /*resolved_path_expr(db, sema.file, *self)
-        .clone()
-        .elements
-        .iter()
-        .map(|element| element as _)*/
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum PathExprKind<'db> {
     Field(FieldExpr<'db>), // .
@@ -209,16 +194,6 @@ pub enum ParamAssign<'db> {
     },
 }
 
-impl<'db> IterToProto<'db> for ParamAssign<'db> {
-    fn iter(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        sema: &'db SemanticIndex,
-    ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        std::iter::empty()
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum AccessOperator {
     I,
@@ -261,20 +236,6 @@ pub enum VariableAccessKind<'db> {
         offset: Option<Ident>,
     },
     Symbolic(SymbolicVariable<'db>),
-}
-
-impl<'db> IterToProto<'db> for VariableAccess<'db> {
-    #[auto_enum(Iterator)]
-    fn iter(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        sema: &'db SemanticIndex,
-    ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        match &self.kind {
-            VariableAccessKind::Direct {  .. } => self_iter(self),
-            VariableAccessKind::Symbolic(symbolic) => symbolic.kind.iter(db, sema),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -556,89 +517,6 @@ impl<'db> ToProto<'db> for Expr<'db> {
         _offset: usize,
     ) -> Option<Vec<auto_lsp::lsp_types::CompletionItem>> {
         Some(elem_type_names_init())
-    }
-}
-
-impl<'db> IterToProto<'db> for Expr<'db> {
-    #[auto_enum(Iterator)]
-    fn iter(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        sema: &'db SemanticIndex,
-    ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        match self.expr(db) {
-            ExprKind::AddOperator {
-                left,
-                operator,
-                right,
-            } => Box::new(
-                self_iter(self)
-                    .chain(left.iter(db, sema))
-                    .chain(right.iter(db, sema)),
-            ) as Box<dyn Iterator<Item = _>>,
-            ExprKind::BooleanOperator {
-                left,
-                operator,
-                right,
-            } => Box::new(
-                self_iter(self)
-                    .chain(left.iter(db, sema))
-                    .chain(right.iter(db, sema)),
-            ) as Box<dyn Iterator<Item = _>>,
-            ExprKind::ComparisonOperator {
-                left,
-                operator,
-                right,
-            } => Box::new(
-                self_iter(self)
-                    .chain(left.iter(db, sema))
-                    .chain(right.iter(db, sema)),
-            ) as Box<dyn Iterator<Item = _>>,
-            ExprKind::MultOperator {
-                left,
-                operator,
-                right,
-            } => Box::new(
-                self_iter(self)
-                    .chain(left.iter(db, sema))
-                    .chain(right.iter(db, sema)),
-            ) as Box<dyn Iterator<Item = _>>,
-            ExprKind::PowerOperator { left, right } => Box::new(
-                self_iter(self)
-                    .chain(left.iter(db, sema))
-                    .chain(right.iter(db, sema)),
-            ) as Box<dyn Iterator<Item = _>>,
-            ExprKind::UnaryOperator { expr, operator } => {
-                Box::new(self_iter(self).chain(expr.iter(db, sema))) as Box<dyn Iterator<Item = _>>
-            }
-            ExprKind::PrimaryExpr(primary) => {
-                Box::new(self_iter(self).chain(primary.iter(db, sema)))
-                    as Box<dyn Iterator<Item = _>>
-            }
-        }
-    }
-}
-
-impl<'db> IterToProto<'db> for PrimaryExpr<'db> {
-    #[auto_enum(Iterator)]
-    fn iter(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        sema: &'db SemanticIndex,
-    ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        match self {
-            PrimaryExpr::FuncCall { path, params } => path
-                .iter(db, sema)
-                .chain(params.iter().flat_map(move |p| p.iter(db, sema))),
-            PrimaryExpr::VariableAccess {
-                variable,
-                multibits,
-            } => variable.iter(db, sema),
-            PrimaryExpr::ParenthesizedExpr { expr } => expr.iter(db, sema),
-            // todo: Unsure if literal and ref_value should be iterable
-            PrimaryExpr::Literal(lit) => std::iter::empty(),
-            PrimaryExpr::RefValue { value } => std::iter::empty(),
-        }
     }
 }
 

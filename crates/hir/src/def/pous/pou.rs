@@ -1,4 +1,4 @@
-use crate::completions;
+use crate::{completions, def::expressions::statement::Stmt};
 use auto_enums::auto_enum;
 use auto_lsp::{
     core::span::Span,
@@ -19,7 +19,7 @@ use crate::{
         scope::FileScopeId,
         semantic_index::{SemanticIndex, semantic_index},
     },
-    to_proto::{AstId, IterToProto, SymbolInfo, ToProto, self_iter},
+    to_proto::{AstId, SymbolInfo, ToProto},
 };
 
 #[salsa::tracked(debug)]
@@ -38,19 +38,12 @@ pub struct PouDecl<'db> {
     pub scope_id: FileScopeId,
 }
 
-impl<'db> IterToProto<'db> for PouDecl<'db> {
-    #[auto_enum(Iterator)]
-    fn iter(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        sema: &'db SemanticIndex<'db>,
-    ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
+impl<'db> PouDecl<'db> {
+    pub fn get_stmts(&'db self, db: &'db dyn BaseDatabase) -> Option<&'db Vec<Stmt<'db>>> {
         match self.pou(db) {
-            Pou::Function(f) => self_iter(self).chain(f.iter(db, sema)),
-            Pou::FunctionBlock(fb) => self_iter(self).chain(fb.iter(db, sema)),
-            Pou::Class(c) => self_iter(self).chain(c.iter(db, sema)),
-            Pou::DataType(d) => self_iter(self).chain(d.iter(db, sema)),
-            Pou::Interface(i) => self_iter(self).chain(i.iter(db, sema)),
+            Pou::Function(f) => Some(f.statements(db)),
+            Pou::FunctionBlock(fb) => Some(fb.statements(db)),
+            _ => None,
         }
     }
 }
@@ -60,18 +53,12 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
         self.id(db)
     }
 
-    fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
-        self.scope_id(db)
+    fn get_name_id(&'db self, db: &'db dyn BaseDatabase) -> Option<AstId> {
+        Some(self.name_id(db))
     }
 
-    fn get_name_span(&'db self, db: &'db dyn BaseDatabase) -> Option<Span> {
-        let file = self.get_scope_id(db).file();
-        Some(
-            semantic_index(db, file)
-                .ast
-                .get(self.name_id(db).0)?
-                .get_span(),
-        )
+    fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
+        self.scope_id(db)
     }
 
     fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> Option<SymbolInfo<'db>> {
@@ -86,6 +73,7 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
                 })
                 .name(self.name(db).text(db).to_string())
                 .range(self.get_span(db).clone())
+                .name_range(self.get_name_span(db)?.clone())
                 .maybe_spec(match self.pou(db) {
                     Pou::DataType(d) => Some(d.spec(db)),
                     _ => None,
@@ -94,7 +82,6 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
                     Pou::DataType(d) => d.init(db),
                     _ => None,
                 })
-                .name_range(self.get_name_span(db).unwrap().clone())
                 .build(),
         )
     }
@@ -146,9 +133,10 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
         db: &'db dyn BaseDatabase,
         sema: &'db SemanticIndex<'db>,
     ) -> Option<auto_lsp::lsp_types::Hover> {
+        let name_span = self.get_name_span(db)?;
         let comment = comment_index(db, sema.file);
         let comment = comment
-            .find_nearby_comment(sema.file.document(db), &*self.get_name_span(db)?)
+            .find_nearby_comment(sema.file.document(db), &*name_span)
             .map(|c| format!("{}\n&nbsp;", c.to_string(sema.file.document(db))))
             .unwrap_or_default();
 
@@ -164,11 +152,7 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
                     "signature"
                 ),
             }),
-            range: Some(
-                self.get_name_span(db)
-                    .map(|span| span.lsp())
-                    .unwrap_or_default(),
-            ),
+            range: Some(name_span.lsp()),
         })
     }
 }

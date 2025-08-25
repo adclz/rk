@@ -8,7 +8,7 @@ use crate::{
         scope::FileScopeId,
         semantic_index::{SemanticIndex, semantic_index},
     },
-    to_proto::{AstId, IterToProto, ToProto},
+    to_proto::{AstId, ToProto},
 };
 
 #[salsa::tracked(debug)]
@@ -20,16 +20,6 @@ pub struct Interface<'db> {
     pub methods: Vec<MethodPrototype<'db>>,
 
     pub scope_id: FileScopeId,
-}
-
-impl<'db> IterToProto<'db> for Interface<'db> {
-    fn iter(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        sema: &'db SemanticIndex,
-    ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        self.methods(db).iter().flat_map(move |m| m.iter(db, sema))
-    }
 }
 
 #[salsa::tracked(debug)]
@@ -56,25 +46,5 @@ impl<'db> ToProto<'db> for MethodPrototype<'db> {
 
     fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
         self.scope_id(db)
-    }
-
-    fn get_name_span(&'db self, db: &'db dyn BaseDatabase) -> Option<Span> {
-        let file = self.get_scope_id(db).file();
-        Some(
-            semantic_index(db, file)
-                .ast
-                .get(self.name_id(db).0)?
-                .get_span(),
-        )
-    }
-}
-
-impl<'db> IterToProto<'db> for MethodPrototype<'db> {
-    fn iter(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        sema: &'db SemanticIndex,
-    ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        Box::new(self.variables(db).iter().map(move |v| v as _))
     }
 }

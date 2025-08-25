@@ -7,7 +7,7 @@ use auto_lsp::{
     default::db::{BaseDatabase, file::File},
     lsp_types::{self, CompletionParams, CompletionResponse},
 };
-use hir::{def::COMPLETION_MARKER, def::semantic_index::semantic_index, to_proto::IterToProto};
+use hir::{def::COMPLETION_MARKER, def::semantic_index::semantic_index};
 use tracing::info_span;
 
 pub fn completions(
@@ -31,7 +31,7 @@ pub fn completions(
     let _s = tracing::trace_span!("completions").entered();
 
     use_completion_marker(db, file, position, offset)
-}
+} 
 
 pub fn use_completion_marker(
     db: &impl BaseDatabase,
@@ -70,8 +70,8 @@ pub fn use_completion_ctx(
     offset: usize,
 ) -> anyhow::Result<Option<CompletionResponse>> {
     let sema = semantic_index(db, file);
-    if let Some(symbol) = sema.descendant_at(db, sema, offset) {
-        if let Some(ctx) = symbol.completion(db, sema, offset) {
+    if let Some(symbol) = sema.descendant_at(db, offset) {
+        if let Some(ctx) = symbol.as_proto().completion(db, sema, offset) {
             return Ok(Some(CompletionResponse::Array(ctx)));
         }
     }

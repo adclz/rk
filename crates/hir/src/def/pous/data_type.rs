@@ -6,7 +6,7 @@ use crate::{
         scope::FileScopeId,
         semantic_index::SemanticIndex,
     },
-    to_proto::{IterToProto, ToProto},
+    to_proto::{ToProto},
 };
 
 #[salsa::tracked(debug)]
@@ -18,14 +18,4 @@ pub struct DataType<'db> {
     pub init: Option<InitExpr<'db>>,
 
     pub scope_id: FileScopeId,
-}
-
-impl<'db> IterToProto<'db> for DataType<'db> {
-    fn iter(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        sema: &'db SemanticIndex,
-    ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        Box::new(std::iter::empty())
-    }
 }

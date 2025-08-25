@@ -6,14 +6,14 @@ use rustc_hash::FxHashMap;
 
 use crate::check::errors::sem_errors::{AnalysisError, SyntaxError};
 use crate::def::interned::identifier::SpannedIdent;
-use crate::def::namespace::Namespace;
+use crate::def::namespace::NamespaceDecl;
 use crate::def::pous::pou::PouDecl;
 use crate::def::scope::{FileScopeId, Scope, ScopeKind, Visibility};
 use crate::def::semantic_index::SemanticIndex;
 
 pub struct SemanticIndexBuilder<'db> {
-    source: &'db ast::generated::SourceFile,
-    pub ast: &'db ParsedAst,
+    pub(crate) source: &'db ast::generated::SourceFile,
+    pub(crate) ast: &'db ParsedAst,
 
     pub(crate) db: &'db dyn BaseDatabase,
     pub(crate) file: File,
@@ -22,9 +22,9 @@ pub struct SemanticIndexBuilder<'db> {
     pub(crate) scope_keys: FxHashMap<FileScopeId, Scope<'db>>,
 
     /// Maps scope IDs to their corresponding namespaces.
-    pub(crate) namespaces: Vec<Namespace<'db>>,
+    pub(crate) namespaces: Vec<NamespaceDecl<'db>>,
 
-    pub(crate) pous: Vec<PouDecl<'db>>,
+    pub(crate) global_pous: Vec<PouDecl<'db>>,
 
     /// The current scope ID being processed (by default, the global scope).
     pub(crate) current_scope: FileScopeId,
@@ -45,7 +45,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             ast,
             source,
             scope_keys: FxHashMap::default(),
-            pous: vec![],
+            global_pous: vec![],
             namespaces: vec![],
             current_scope: FileScopeId::global(file),
             errors: vec![],
@@ -93,7 +93,6 @@ impl<'db> SemanticIndexBuilder<'db> {
                             continue;
                         }
                     };
-                    let namespace_id = namespace.get_id();
 
                     if let Err(err) = self.parse_namespace(&path, namespace) {
                         self.errors.push(err);
@@ -105,25 +104,25 @@ impl<'db> SemanticIndexBuilder<'db> {
                 }
                 SourceFileDecl::FuncDecl(func) => {
                     let r = self.parse_function(func).unwrap();
-                    self.pous.push(r);
+                    self.global_pous.push(r);
                 }
                 SourceFileDecl::FbDecl(fb) => {
                     let r = self.parse_function_block(fb).unwrap();
-                    self.pous.push(r);
+                    self.global_pous.push(r);
                 }
                 SourceFileDecl::ClassDecl(class) => {
                     let r = self.parse_class(class).unwrap();
-                    self.pous.push(r);
+                    self.global_pous.push(r);
                 }
                 SourceFileDecl::DataTypeDecl(data_type) => {
                     for child in &data_type.children {
                         let r = self.parse_data_type(child.cast(self.ast)).unwrap();
-                        self.pous.push(r);
+                        self.global_pous.push(r);
                     }
                 }
                 SourceFileDecl::InterfaceDecl(interface) => {
                     let r = self.parse_interface(interface).unwrap();
-                    self.pous.push(r);
+                    self.global_pous.push(r);
                 }
                 _ => {
                     //todo: add config and program declarations
@@ -148,7 +147,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             ast: self.ast.nodes.clone(),
             scopes: self.scope_keys,
             namespaces: self.namespaces,
-            global_pous: self.pous,
+            global_pous: self.global_pous,
             errors: self.errors,
         }
     }

@@ -1,9 +1,11 @@
-use std::sync::Arc;
-
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    def::expressions::expression::{Elementary, Expr, ExprKind, PrimaryExpr},
+    def::{
+        expressions::expression::{Elementary, Expr, ExprKind, PrimaryExpr},
+        scope::FileScopeId,
+    },
+    to_proto::{AstId, ToProto},
     ty::{
         TyResolved,
         ty::Ty,
@@ -22,25 +24,30 @@ pub enum Env<'db> {
     Bool,
 }
 
-#[salsa::tracked(no_eq)]
+#[salsa::tracked(no_eq, returns(ref))]
 pub fn resolve_expr<'db>(
     db: &'db dyn BaseDatabase,
     env: Env<'db>,
     expr: Expr<'db>,
-) -> Arc<ResolvedExpr<'db>> {
-    Arc::new(ResolveExprCtx::new(db, env, expr).resolve())
+) -> ResolvedExpr<'db> {
+    ResolveExprCtx::new(db, env, expr).resolve()
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+#[salsa::tracked(debug)]
 pub struct ResolvedExpr<'db> {
+    pub id: AstId,
+    pub scope_id: FileScopeId,
+    #[tracked]
+    #[no_eq]
+    #[returns(ref)]
     pub kind: ResolvedExprKind<'db>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum ResolvedExprKind<'db> {
     // Should have Ty
-    PathExpr(Arc<ResolvedPathResult<'db>>),
-    VarAccess(Arc<ResolvedVarResult<'db>>),
+    PathExpr(ResolvedPathResult<'db>),
+    VarAccess(ResolvedVarResult<'db>),
 
     // May have Ty (return type)
     FuncCall(Ty<'db>),
@@ -55,17 +62,17 @@ pub enum ResolvedExprKind<'db> {
     // Emitted by comparison expressions
     Compare(Expr<'db>),
 
-    Parenthesized(Arc<ResolvedExpr<'db>>), // Parenthesized expressions
+    Parenthesized(ResolvedExpr<'db>), // Parenthesized expressions
 
     // Emitted by math expressions
     Math(Expr<'db>),
 }
 
 impl<'db> TyResolved<'db> for ResolvedExpr<'db> {
-    fn ty(&self) -> Option<Ty<'db>> {
-        match &self.kind {
-            ResolvedExprKind::PathExpr(path) => path.ty(),
-            ResolvedExprKind::VarAccess(var) => var.ty(),
+    fn ty(&self, db: &'db dyn BaseDatabase) -> Option<Ty<'db>> {
+        match &self.kind(db) {
+            ResolvedExprKind::PathExpr(path) => path.ty(db),
+            ResolvedExprKind::VarAccess(var) => var.ty(db),
             ResolvedExprKind::FuncCall(ty) => Some(*ty),
             _ => None,
         }
@@ -89,19 +96,28 @@ impl<'db> ResolveExprCtx<'db> {
                 PrimaryExpr::VariableAccess {
                     variable,
                     multibits,
-                } => ResolvedExpr {
-                    kind: ResolvedExprKind::VarAccess(resolve_var_access(
+                } => ResolvedExpr::new(
+                    self.db,
+                    self.expr.id(self.db),
+                    self.expr.scope_id(self.db),
+                    ResolvedExprKind::VarAccess(*resolve_var_access(
                         self.db,
                         self.expr.scope_id(self.db),
                         variable,
                     )),
-                },
-                PrimaryExpr::Literal(lit) => ResolvedExpr {
-                    kind: ResolvedExprKind::Literal(*lit),
-                },
-                PrimaryExpr::ParenthesizedExpr { expr } => ResolvedExpr {
-                    kind: ResolvedExprKind::Parenthesized(resolve_expr(self.db, self.env, *expr)),
-                },
+                ),
+                PrimaryExpr::Literal(lit) => ResolvedExpr::new(
+                    self.db,
+                    self.expr.id(self.db),
+                    self.expr.scope_id(self.db),
+                    ResolvedExprKind::Literal(*lit),
+                ),
+                PrimaryExpr::ParenthesizedExpr { expr } => ResolvedExpr::new(
+                    self.db,
+                    self.expr.id(self.db),
+                    self.expr.scope_id(self.db),
+                    ResolvedExprKind::Parenthesized(*resolve_expr(self.db, self.env, *expr)),
+                ),
                 _ => todo!(),
             },
             ExprKind::AddOperator {
@@ -111,9 +127,12 @@ impl<'db> ResolveExprCtx<'db> {
             } => {
                 let left_resolved = resolve_expr(self.db, self.env, *left);
                 let right_resolved = resolve_expr(self.db, self.env, *right);
-                ResolvedExpr {
-                    kind: ResolvedExprKind::Math(self.expr),
-                }
+                ResolvedExpr::new(
+                    self.db,
+                    self.expr.id(self.db),
+                    self.expr.scope_id(self.db),
+                    ResolvedExprKind::Math(self.expr),
+                )
             }
             ExprKind::BooleanOperator {
                 left,
@@ -122,9 +141,12 @@ impl<'db> ResolveExprCtx<'db> {
             } => {
                 let left_resolved = resolve_expr(self.db, self.env, *left);
                 let right_resolved = resolve_expr(self.db, self.env, *right);
-                ResolvedExpr {
-                    kind: ResolvedExprKind::Bool(self.expr),
-                }
+                ResolvedExpr::new(
+                    self.db,
+                    self.expr.id(self.db),
+                    self.expr.scope_id(self.db),
+                    ResolvedExprKind::Bool(self.expr),
+                )
             }
             ExprKind::ComparisonOperator {
                 left,
@@ -133,11 +155,24 @@ impl<'db> ResolveExprCtx<'db> {
             } => {
                 let left_resolved = resolve_expr(self.db, self.env, *left);
                 let right_resolved = resolve_expr(self.db, self.env, *right);
-                ResolvedExpr {
-                    kind: ResolvedExprKind::Compare(self.expr),
-                }
+                ResolvedExpr::new(
+                    self.db,
+                    self.expr.id(self.db),
+                    self.expr.scope_id(self.db),
+                    ResolvedExprKind::Compare(self.expr),
+                )
             }
             _ => todo!(),
         }
+    }
+}
+
+impl<'db> ToProto<'db> for ResolvedExpr<'db> {
+    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
+        self.id(db)
+    }
+
+    fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
+        self.scope_id(db)
     }
 }

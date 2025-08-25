@@ -7,12 +7,9 @@ use auto_lsp::{
     },
 };
 
-use crate::def::{
-    expressions::{expression::InitExpr, spec::Spec},
-    interned::namespace::SpannedNamespaceAccess,
-    scope::FileScopeId,
-    semantic_index::{SemanticIndex, semantic_index},
-};
+use crate::{def::{
+    expressions::{expression::InitExpr, spec::Spec}, interned::{identifier::SpannedIdent, namespace::SpannedNamespaceAccess}, namespace::NamespaceDecl, pous::{function::Function, pou::PouDecl, variable::VariableDecl}, scope::FileScopeId, semantic_index::{semantic_index, SemanticIndex}, using::Using
+}, ty::{expr_resolver::ResolvedExpr, stmt_resolver::{ResolveStmtsResult, ResolvedStmt}, ty::Ty, ty_path_expr_resolver::ResolvedPathElement, ty_var_access_resolver::ResolvedVarResult}};
 
 #[derive(bon::Builder, Debug, Clone)]
 pub struct SymbolInfo<'a> {
@@ -59,19 +56,31 @@ impl<T: AstNode> From<&T> for AstId {
 pub trait ToProto<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId;
 
+    fn get_name_id(&'db self, _db: &'db dyn BaseDatabase) -> Option<AstId> {
+        None
+    }
+
     fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId;
 
     fn get_span(&'db self, db: &'db dyn BaseDatabase) -> Span {
-        let file = self.get_scope_id(db).file();
-        semantic_index(db, file)
+        semantic_index(db, self.get_scope_id(db).file())
             .ast
             .get(self.get_id(db).0)
-            .expect("Invalid ID")
+            .expect(&format!("Invalid ID {} when attempting to retrieve span", self.get_id(db).0))
             .get_span()
     }
 
     fn get_name_span(&'db self, db: &'db dyn BaseDatabase) -> Option<Span> {
-        None
+        self.get_name_id(db).map(|name_id| {
+            semantic_index(db, self.get_scope_id(db).file())
+                .ast
+                .get(name_id.0)
+                .expect(&format!(
+                    "Invalid name ID {} when attempting to retrieve name span",
+                    name_id.0
+                ))
+                .get_span()
+        })
     }
 
     fn symbol_info(&'db self, _db: &'db dyn BaseDatabase) -> Option<SymbolInfo<'db>> {
@@ -119,83 +128,5 @@ pub trait ToProto<'db> {
         _sema: &'db SemanticIndex<'db>,
     ) -> Option<GotoDefinitionResponse> {
         None
-    }
-}
-
-pub fn self_iter<'db>(s: &'db impl ToProto<'db>) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-    std::iter::once::<&'db dyn ToProto<'db>>(s)
-}
-
-pub trait IterToProto<'db> {
-    fn iter(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        sema: &'db SemanticIndex<'db>,
-    ) -> impl Iterator<Item = &'db dyn ToProto<'db>>;
-
-    #[tracing::instrument(skip(self, db, sema))]
-    fn descendant_at(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        sema: &'db SemanticIndex<'db>,
-        offset: usize,
-    ) -> Option<&'db dyn ToProto<'db>> {
-        let mut best_match: Option<&'db dyn ToProto<'db>> = None;
-
-        for node in self.iter(db, sema) {
-            let range = node.get_span(db);
-            // Only consider nodes that contain the offset
-            if range.start_byte <= offset && offset <= range.end_byte {
-                // Compare old best match with new node
-                if let Some(a) = best_match {
-                    let a = a.get_span(db);
-                    if a.start_byte >= range.start_byte {
-                        continue;
-                    } else {
-                        best_match = Some(node);
-                    }
-                } else {
-                    best_match = Some(node);
-                }
-            }
-        }
-        best_match
-    }
-
-    #[tracing::instrument(skip(self, db, sema))]
-    fn named_descendant_at(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        sema: &'db SemanticIndex<'db>,
-        offset: usize,
-    ) -> Option<&'db dyn ToProto<'db>> {
-        let mut best_match: Option<&'db dyn ToProto<'db>> = None;
-
-        for node in self.iter(db, sema) {
-            let range = match node.get_name_span(db) {
-                Some(span) => span,
-                None => continue,
-            };
-
-            // Only consider nodes that contain the offset
-            if range.start_byte <= offset && offset <= range.end_byte {
-                // Compare old best match with new node
-                if let Some(a) = best_match {
-                    let a = match a.get_name_span(db) {
-                        Some(span) => span,
-                        None => continue,
-                    };
-
-                    if a.start_byte >= range.start_byte {
-                        continue;
-                    } else {
-                        best_match = Some(node);
-                    }
-                } else {
-                    best_match = Some(node);
-                }
-            }
-        }
-        best_match
     }
 }

@@ -1,9 +1,11 @@
+use std::ops::ControlFlow;
+
 use auto_lsp::{
     anyhow,
     default::db::BaseDatabase,
     lsp_types::{InlayHint, InlayHintParams},
 };
-use hir::{def::semantic_index::semantic_index, to_proto::IterToProto};
+use hir::{def::semantic_index::semantic_index, walk::WalkHir};
 
 pub fn inlay_hints(
     db: &impl BaseDatabase,
@@ -20,15 +22,15 @@ pub fn inlay_hints(
 
     let sema = semantic_index(db, file);
 
-    sema.iter(db, sema).for_each(|symbol| {
-        let span = symbol.get_span(db);
-        if span.lsp().start.line < range.start.line || span.lsp().end.line > range.end.line {
-            return;
+    let _ = sema.walk_hir(db, &mut |node| {
+        let span = node.get_span(db);
+        if span.lsp().start.line < range.start.line || span.lsp().end.line > range.end.line{
+            return ControlFlow::Break(())
         }
-
-        if let Some(inlay_hint) = symbol.inlay_hint(db, sema) {
+        if let Some(inlay_hint) = node.as_proto().inlay_hint(db, sema) {
             results.push(inlay_hint);
         }
+        ControlFlow::Continue(())
     });
 
     Ok(Some(results))

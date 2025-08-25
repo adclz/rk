@@ -7,7 +7,7 @@ use crate::{
         scope::FileScopeId,
         semantic_index::SemanticIndex,
     },
-    to_proto::{AstId, IterToProto, ToProto, self_iter},
+    to_proto::{AstId, ToProto},
 };
 
 #[salsa::tracked(debug)]
@@ -27,24 +27,6 @@ impl<'db> ToProto<'db> for Stmt<'db> {
 
     fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
         self.scope_id(db)
-    }
-}
-
-impl<'db> IterToProto<'db> for Stmt<'db> {
-    #[auto_enum(Iterator)]
-    fn iter(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        sema: &'db SemanticIndex<'db>,
-    ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        match self.stmt(db) {
-            StmtKind::Assignment { var, target } => Box::new(
-                self_iter(self)
-                    .chain(var.iter(db, sema))
-                    .chain(target.iter(db, sema)),
-            ),
-            _ => std::iter::empty(),
-        }
     }
 }
 

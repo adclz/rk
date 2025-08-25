@@ -9,10 +9,10 @@ use crate::def::interned::namespace::NamespacePath;
 use crate::def::pous::pou::PouDecl;
 use crate::def::scope::{FileScopeId, Visibility};
 use crate::def::semantic_index::{SemanticIndex, semantic_index};
-use crate::to_proto::{AstId, IterToProto, SymbolInfo, ToProto, self_iter};
+use crate::to_proto::{AstId, SymbolInfo, ToProto};
 
 #[salsa::tracked(debug)]
-pub struct Namespace<'db> {
+pub struct NamespaceDecl<'db> {
     #[returns(ref)]
     pub path: NamespacePath,
 
@@ -26,23 +26,13 @@ pub struct Namespace<'db> {
     pub scope_id: FileScopeId,
 }
 
-impl<'db> ToProto<'db> for Namespace<'db> {
+impl<'db> ToProto<'db> for NamespaceDecl<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> crate::to_proto::AstId {
         self.id(db)
     }
 
     fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
         self.scope_id(db)
-    }
-
-    fn get_name_span(&'db self, db: &'db dyn BaseDatabase) -> Option<Span> {
-        let file = self.get_scope_id(db).file();
-        Some(
-            semantic_index(db, file)
-                .ast
-                .get(self.name_id(db).0)?
-                .get_span(),
-        )
     }
 
     fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> Option<SymbolInfo<'db>> {
@@ -124,19 +114,5 @@ impl<'db> ToProto<'db> for Namespace<'db> {
             completions.push(completions::snippets::using());
         }
         Some(completions)
-    }
-}
-
-impl<'db> IterToProto<'db> for Namespace<'db> {
-    fn iter(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        sema: &'db SemanticIndex<'db>,
-    ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        let scope = sema.get_scope(self.scope_id(db));
-
-        self_iter(self)
-            .chain(scope.usings.iter().map(move |using| using as _))
-            .chain(self.pous(db).iter().flat_map(move |pou| pou.iter(db, sema)))
     }
 }

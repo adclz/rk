@@ -4,7 +4,6 @@ use auto_lsp::{
     lsp_types::{GotoDefinitionParams, GotoDefinitionResponse},
 };
 use hir::def::semantic_index::semantic_index;
-use hir::to_proto::IterToProto;
 
 pub fn go_to_definition(
     db: &impl BaseDatabase,
@@ -26,14 +25,12 @@ pub fn go_to_definition(
                 params.text_document_position_params.position
             )
         })?;
-
     let sema = semantic_index(db, file);
+    
+    let symbol = sema.
+        descendant_at(db, position);
 
-    let symbol = sema
-        .named_descendant_at(db, sema, position)
-        .or_else(|| sema.descendant_at(db, sema, position));
-
-    match symbol.and_then(|s| s.definition(db, sema)) {
+    match symbol.and_then(|s| s.as_proto().definition(db, sema)) {
         Some(def) => Ok(Some(def)),
         None => Ok(None),
     }

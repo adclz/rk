@@ -10,24 +10,30 @@ use crate::{
     ty::{TyResolved, ty::Ty, ty_path_expr_resolver::resolved_path_expr},
 };
 
-#[salsa::tracked(no_eq)]
+#[salsa::tracked(no_eq, returns(ref))]
 pub fn resolve_var_access<'db>(
     db: &'db dyn BaseDatabase,
     scope_id: FileScopeId,
     access: &'db VariableAccess<'db>,
-) -> Arc<ResolvedVarResult<'db>> {
-    Arc::new(VarAccessResolverCtx::new(db, scope_id, access).resolve())
+) -> ResolvedVarResult<'db> {
+    VarAccessResolverCtx::new(db, scope_id, access).resolve()
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+#[salsa::tracked(debug)]
 pub struct ResolvedVarResult<'db> {
+    #[tracked]
+    #[returns(ref)]
+    #[no_eq]
     pub origin: VariableAccess<'db>,
+    #[tracked]
+    #[returns(ref)]
+    #[no_eq]
     pub ty: Option<Ty<'db>>,
 }
 
 impl<'db> TyResolved<'db> for ResolvedVarResult<'db> {
-    fn ty(&self) -> Option<Ty<'db>> {
-        self.ty
+    fn ty(&self, db: &'db dyn BaseDatabase) -> Option<Ty<'db>> {
+        self.ty(db)
     }
 }
 
@@ -60,10 +66,10 @@ impl<'db> VarAccessResolverCtx<'db> {
                 // tododododo asap
                 todo!()
             }
-            VariableAccessKind::Symbolic(symbolic) => ResolvedVarResult {
-                origin: self.access.clone(),
-                ty: resolved_path_expr(self.db, self.scope_id.file(), symbolic.kind).ty(),
-            },
+            VariableAccessKind::Symbolic(symbolic) => ResolvedVarResult::new(self.db,
+                self.access.clone(),
+                resolved_path_expr(self.db, self.scope_id.file(), symbolic.kind).ty(self.db),
+            ),
         }
     }
 }

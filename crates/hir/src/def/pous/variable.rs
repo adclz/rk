@@ -11,7 +11,7 @@ use crate::{
         scope::FileScopeId,
         semantic_index::{SemanticIndex, semantic_index},
     },
-    to_proto::{AstId, IterToProto, SymbolInfo, ToProto, self_iter},
+    to_proto::{AstId, SymbolInfo, ToProto},
 };
 
 #[salsa::tracked(debug)]
@@ -64,19 +64,13 @@ impl<'db> ToProto<'db> for VariableDecl<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
         self.id(db)
     }
+    
+    fn get_name_id(&'db self, db: &'db dyn BaseDatabase) -> Option<AstId> {
+        Some(self.name_id(db))
+    }
 
     fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
         self.scope_id(db)
-    }
-
-    fn get_name_span(&'db self, db: &'db dyn BaseDatabase) -> Option<Span> {
-        let file = self.get_scope_id(db).file();
-        Some(
-            semantic_index(db, file)
-                .ast
-                .get(self.name_id(db).0)?
-                .get_span(),
-        )
     }
 
     fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> Option<SymbolInfo<'db>> {
@@ -85,7 +79,7 @@ impl<'db> ToProto<'db> for VariableDecl<'db> {
                 .kind(auto_lsp::lsp_types::SymbolKind::VARIABLE)
                 .name(self.name(db).text(db).to_string())
                 .range(self.get_span(db).clone())
-                .name_range(self.get_name_span(db).unwrap().clone())
+                .name_range(self.get_name_span(db)?.clone())
                 .spec(*self.spec(db))
                 .maybe_init(self.init(db).cloned())
                 .build(),
@@ -104,17 +98,5 @@ impl<'db> ToProto<'db> for VariableDecl<'db> {
             }),
             range: self.get_name_span(db).map(|s| s.lsp()),
         })
-    }
-}
-
-impl<'db> IterToProto<'db> for VariableDecl<'db> {
-    fn iter(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        sema: &'db SemanticIndex,
-    ) -> impl Iterator<Item = &'db dyn ToProto<'db>> {
-        self_iter(self)
-            .chain(self.spec(db).iter(db, sema))
-            .chain(self.init(db).into_iter().map(|i| i as _))
     }
 }
