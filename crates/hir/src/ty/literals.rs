@@ -31,31 +31,31 @@ impl Display for LitCheckError {
     }
 }
 
-impl<'db> Elementary {
+impl<'db> ElementarySpec {
     pub fn lit_check(
         &self,
         db: &'db dyn BaseDatabase,
-        spec: ElementarySpec,
+        spec: Elementary,
     ) -> Result<(), LitCheckError> {
-        match spec {
+        match self {
             ElementarySpec::Bool | ElementarySpec::REDGEBool | ElementarySpec::FEDGEBool => {
-                self.check_bool(db)
+                check_bool(db, &spec)
             }
-            ElementarySpec::Byte => self.check_u8(db),
-            ElementarySpec::Word => self.check_u16(db),
-            ElementarySpec::DWord => self.check_u32(db),
-            ElementarySpec::LWord => self.check_u64(db),
-            ElementarySpec::USInt => self.check_u8(db),
-            ElementarySpec::UInt => self.check_u16(db),
-            ElementarySpec::UDInt => self.check_u32(db),
-            ElementarySpec::ULInt => self.check_u64(db),
-            ElementarySpec::SInt => self.check_i8(db),
-            ElementarySpec::Int => self.check_i16(db),
-            ElementarySpec::DInt => self.check_i32(db),
-            ElementarySpec::LInt => self.check_i64(db),
-            ElementarySpec::Real => self.check_f32(db),
-            ElementarySpec::LReal => self.check_f64(db),
-            ElementarySpec::Date => match self {
+            ElementarySpec::Byte => check_u8(db, &spec),
+            ElementarySpec::Word => check_u16(db, &spec),
+            ElementarySpec::DWord => check_u32(db, &spec),
+            ElementarySpec::LWord => check_u64(db, &spec),
+            ElementarySpec::USInt => check_u8(db, &spec),
+            ElementarySpec::UInt => check_u16(db, &spec),
+            ElementarySpec::UDInt => check_u32(db, &spec),
+            ElementarySpec::ULInt => check_u64(db, &spec),
+            ElementarySpec::SInt => check_i8(db, &spec),
+            ElementarySpec::Int => check_i16(db, &spec),
+            ElementarySpec::DInt => check_i32(db, &spec),
+            ElementarySpec::LInt => check_i64(db, &spec),
+            ElementarySpec::Real => check_f32(db, &spec),
+            ElementarySpec::LReal => check_f64(db, &spec),
+            ElementarySpec::Date => match spec {
                 Elementary::InferIdent(ident) => {
                     ident
                         .as_date(db)
@@ -69,7 +69,7 @@ impl<'db> Elementary {
                     "Expected a date literal".into(),
                 )),
             },
-            ElementarySpec::LDate => match self {
+            ElementarySpec::LDate => match spec {
                 Elementary::InferIdent(ident) => {
                     ident
                         .as_long_date(db)
@@ -83,7 +83,7 @@ impl<'db> Elementary {
                     "Expected a long date literal".into(),
                 )),
             },
-            ElementarySpec::Tod => match self {
+            ElementarySpec::Tod => match spec {
                 Elementary::InferIdent(ident) => {
                     ident
                         .as_tod(db)
@@ -97,7 +97,7 @@ impl<'db> Elementary {
                     "Expected a time-of-day literal".into(),
                 )),
             },
-            ElementarySpec::LTod => match self {
+            ElementarySpec::LTod => match spec {
                 Elementary::InferIdent(ident) => {
                     ident
                         .as_long_tod(db)
@@ -111,7 +111,7 @@ impl<'db> Elementary {
                     "Expected a long time-of-day literal".into(),
                 )),
             },
-            ElementarySpec::Dt => match self {
+            ElementarySpec::Dt => match spec {
                 Elementary::InferIdent(ident) => ident
                     .as_date_time(db)
                     .map_err(|e| LitCheckError::InvalidFormat {
@@ -125,7 +125,7 @@ impl<'db> Elementary {
             },
 
             // 6a/b LDT / LDATE_AND_TIME
-            ElementarySpec::Ldt => match self {
+            ElementarySpec::Ldt => match spec {
                 Elementary::InferIdent(ident) => ident
                     .as_long_date_time(db)
                     .map_err(|e| LitCheckError::InvalidFormat {
@@ -140,13 +140,13 @@ impl<'db> Elementary {
             ElementarySpec::Time => todo!(),
             ElementarySpec::LTime => todo!(),
 
-            ElementarySpec::String => match self {
+            ElementarySpec::String => match spec {
                 Elementary::InferIdent(ident) => ident.as_single_string(db).map(|_| ()),
                 _ => Err(LitCheckError::TypeMismatch(
                     "Expected a string literal".into(),
                 )),
             },
-            ElementarySpec::WString => match self {
+            ElementarySpec::WString => match spec {
                 Elementary::InferIdent(ident) => ident.as_double_string(db).map(|_| ()),
                 _ => Err(LitCheckError::TypeMismatch(
                     "Expected a wide string literal".into(),
@@ -156,137 +156,137 @@ impl<'db> Elementary {
             ElementarySpec::WChar => todo!(),
         }
     }
+}
 
-    fn check_bool(&self, db: &'db dyn BaseDatabase) -> Result<(), LitCheckError> {
-        match self {
-            Elementary::InferInteger(n) => n
-                .as_bool(db)
-                .map(|_| ())
-                .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
-            _ => Err(LitCheckError::TypeMismatch(
-                "Expected one of '0' | '1' | 'TRUE' | 'FALSE'".into(),
-            )),
-        }
+fn check_bool(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckError> {
+    match value {
+        Elementary::InferInteger(n) => n
+            .as_bool(db)
+            .map(|_| ())
+            .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
+        _ => Err(LitCheckError::TypeMismatch(
+            "Expected one of '0' | '1' | 'TRUE' | 'FALSE'".into(),
+        )),
     }
+}
 
-    fn check_u8(&self, db: &'db dyn BaseDatabase) -> Result<(), LitCheckError> {
-        match self {
-            Elementary::InferInteger(n) => n
-                .as_u8(db)
-                .map(|_| ())
-                .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
-            _ => Err(LitCheckError::TypeMismatch(
-                "Expected an unsigned 8-bit integer".into(),
-            )),
-        }
+fn check_u8(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckError> {
+    match value {
+        Elementary::InferInteger(n) => n
+            .as_u8(db)
+            .map(|_| ())
+            .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
+        _ => Err(LitCheckError::TypeMismatch(
+            "Expected an unsigned 8-bit integer".into(),
+        )),
     }
+}
 
-    fn check_u16(&self, db: &'db dyn BaseDatabase) -> Result<(), LitCheckError> {
-        match self {
-            Elementary::InferInteger(n) => n
-                .as_u16(db)
-                .map(|_| ())
-                .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
-            _ => Err(LitCheckError::TypeMismatch(
-                "Expected an unsigned 16-bit integer".into(),
-            )),
-        }
+fn check_u16(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckError> {
+    match value {
+        Elementary::InferInteger(n) => n
+            .as_u16(db)
+            .map(|_| ())
+            .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
+        _ => Err(LitCheckError::TypeMismatch(
+            "Expected an unsigned 16-bit integer".into(),
+        )),
     }
+}
 
-    fn check_u32(&self, db: &'db dyn BaseDatabase) -> Result<(), LitCheckError> {
-        match self {
-            Elementary::InferInteger(n) => n
-                .as_u32(db)
-                .map(|_| ())
-                .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
-            _ => Err(LitCheckError::TypeMismatch(
-                "Expected an unsigned 32-bit integer".into(),
-            )),
-        }
+fn check_u32(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckError> {
+    match value {
+        Elementary::InferInteger(n) => n
+            .as_u32(db)
+            .map(|_| ())
+            .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
+        _ => Err(LitCheckError::TypeMismatch(
+            "Expected an unsigned 32-bit integer".into(),
+        )),
     }
+}
 
-    fn check_u64(&self, db: &'db dyn BaseDatabase) -> Result<(), LitCheckError> {
-        match self {
-            Elementary::InferInteger(n) => n
-                .as_u64(db)
-                .map(|_| ())
-                .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
-            _ => Err(LitCheckError::TypeMismatch(
-                "Expected an unsigned 64-bit integer".into(),
-            )),
-        }
+fn check_u64(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckError> {
+    match value {
+        Elementary::InferInteger(n) => n
+            .as_u64(db)
+            .map(|_| ())
+            .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
+        _ => Err(LitCheckError::TypeMismatch(
+            "Expected an unsigned 64-bit integer".into(),
+        )),
     }
+}
 
-    fn check_i8(&self, db: &'db dyn BaseDatabase) -> Result<(), LitCheckError> {
-        match self {
-            Elementary::InferInteger(n) => n
-                .as_i8(db)
-                .map(|_| ())
-                .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
-            _ => Err(LitCheckError::TypeMismatch(
-                "Expected a signed 8-bit integer".into(),
-            )),
-        }
+fn check_i8(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckError> {
+    match value {
+        Elementary::InferInteger(n) => n
+            .as_i8(db)
+            .map(|_| ())
+            .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
+        _ => Err(LitCheckError::TypeMismatch(
+            "Expected a signed 8-bit integer".into(),
+        )),
     }
+}
 
-    fn check_i16(&self, db: &'db dyn BaseDatabase) -> Result<(), LitCheckError> {
-        match self {
-            Elementary::InferInteger(n) => n
-                .as_i16(db)
-                .map(|_| ())
-                .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
-            _ => Err(LitCheckError::TypeMismatch(
-                "Expected a signed 16-bit integer".into(),
-            )),
-        }
+fn check_i16(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckError> {
+    match value {
+        Elementary::InferInteger(n) => n
+            .as_i16(db)
+            .map(|_| ())
+            .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
+        _ => Err(LitCheckError::TypeMismatch(
+            "Expected a signed 16-bit integer".into(),
+        )),
     }
+}
 
-    fn check_i32(&self, db: &'db dyn BaseDatabase) -> Result<(), LitCheckError> {
-        match self {
-            Elementary::InferInteger(n) => n
-                .as_i32(db)
-                .map(|_| ())
-                .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
-            _ => Err(LitCheckError::TypeMismatch(
-                "Expected a signed 32-bit integer".into(),
-            )),
-        }
+fn check_i32(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckError> {
+    match value {
+        Elementary::InferInteger(n) => n
+            .as_i32(db)
+            .map(|_| ())
+            .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
+        _ => Err(LitCheckError::TypeMismatch(
+            "Expected a signed 32-bit integer".into(),
+        )),
     }
+}
 
-    fn check_i64(&self, db: &'db dyn BaseDatabase) -> Result<(), LitCheckError> {
-        match self {
-            Elementary::InferInteger(n) => n
-                .as_i64(db)
-                .map(|_| ())
-                .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
-            _ => Err(LitCheckError::TypeMismatch(
-                "Expected a signed 64-bit integer".into(),
-            )),
-        }
+fn check_i64(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckError> {
+    match value {
+        Elementary::InferInteger(n) => n
+            .as_i64(db)
+            .map(|_| ())
+            .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
+        _ => Err(LitCheckError::TypeMismatch(
+            "Expected a signed 64-bit integer".into(),
+        )),
     }
+}
 
-    fn check_f32(&self, db: &'db dyn BaseDatabase) -> Result<(), LitCheckError> {
-        match self {
-            Elementary::InferIdent(ident) => ident
-                .as_f32(db)
-                .map(|_| ())
-                .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
-            _ => Err(LitCheckError::TypeMismatch(
-                "Expected a 32-bit floating point number".into(),
-            )),
-        }
+fn check_f32(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckError> {
+    match value {
+        Elementary::InferIdent(ident) => ident
+            .as_f32(db)
+            .map(|_| ())
+            .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
+        _ => Err(LitCheckError::TypeMismatch(
+            "Expected a 32-bit floating point number".into(),
+        )),
     }
+}
 
-    fn check_f64(&self, db: &'db dyn BaseDatabase) -> Result<(), LitCheckError> {
-        match self {
-            Elementary::InferIdent(ident) => ident
-                .as_f64(db)
-                .map(|_| ())
-                .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
-            _ => Err(LitCheckError::TypeMismatch(
-                "Expected a 64-bit floating point number".into(),
-            )),
-        }
+fn check_f64(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckError> {
+    match value {
+        Elementary::InferIdent(ident) => ident
+            .as_f64(db)
+            .map(|_| ())
+            .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
+        _ => Err(LitCheckError::TypeMismatch(
+            "Expected a 64-bit floating point number".into(),
+        )),
     }
 }
 
@@ -396,7 +396,6 @@ impl Ident {
     pub fn as_single_string(self, db: &dyn BaseDatabase) -> Result<Vec<u8>, LitCheckError> {
         parse_single_byte_string(self.text(db))
     }
-
 
     #[salsa::tracked]
     pub fn as_double_string(self, db: &dyn BaseDatabase) -> Result<Vec<char>, LitCheckError> {
@@ -565,8 +564,10 @@ pub fn parse_single_byte_string(s: &str) -> Result<Vec<u8>, LitCheckError> {
                 msg: "Incomplete $xx escape".into(),
             })?;
             let hex = format!("{}{}", h1, h2);
-            let byte = u8::from_str_radix(&hex, 16)
-                .map_err(|_| LitCheckError::InvalidFormat { kind: "STRING", msg: format!("Invalid hex escape ${}", hex) })?;
+            let byte = u8::from_str_radix(&hex, 16).map_err(|_| LitCheckError::InvalidFormat {
+                kind: "STRING",
+                msg: format!("Invalid hex escape ${}", hex),
+            })?;
             result.push(byte);
         } else {
             // Regular single-byte character
@@ -589,16 +590,32 @@ pub fn parse_double_byte_string(s: &str) -> Result<Vec<char>, LitCheckError> {
 
     while let Some(c) = chars.next() {
         if c == '$' {
-            let h1 = chars.next().ok_or_else(|| LitCheckError::InvalidFormat { kind: "WSTRING", msg: "Incomplete $xxxx escape".into() })?;
-            let h2 = chars.next().ok_or_else(|| LitCheckError::InvalidFormat { kind: "WSTRING", msg: "Incomplete $xxxx escape".into() })?;
-            let h3 = chars.next().ok_or_else(|| LitCheckError::InvalidFormat { kind: "WSTRING", msg: "Incomplete $xxxx escape".into() })?;
-            let h4 = chars.next().ok_or_else(|| LitCheckError::InvalidFormat { kind: "WSTRING", msg: "Incomplete $xxxx escape".into() })?;
-            let hex = format!("{}{}{}{}", h1, h2, h3, h4);
-            let code = u16::from_str_radix(&hex, 16)
-                .map_err(|_| LitCheckError::InvalidFormat { kind: "WSTRING", msg: format!("Invalid hex escape ${}", hex) })?;
-            result.push(char::from_u32(code as u32).ok_or_else(|| LitCheckError::InvalidFormat {
+            let h1 = chars.next().ok_or_else(|| LitCheckError::InvalidFormat {
                 kind: "WSTRING",
-                msg: format!("Invalid Unicode scalar: ${}", hex),
+                msg: "Incomplete $xxxx escape".into(),
+            })?;
+            let h2 = chars.next().ok_or_else(|| LitCheckError::InvalidFormat {
+                kind: "WSTRING",
+                msg: "Incomplete $xxxx escape".into(),
+            })?;
+            let h3 = chars.next().ok_or_else(|| LitCheckError::InvalidFormat {
+                kind: "WSTRING",
+                msg: "Incomplete $xxxx escape".into(),
+            })?;
+            let h4 = chars.next().ok_or_else(|| LitCheckError::InvalidFormat {
+                kind: "WSTRING",
+                msg: "Incomplete $xxxx escape".into(),
+            })?;
+            let hex = format!("{}{}{}{}", h1, h2, h3, h4);
+            let code = u16::from_str_radix(&hex, 16).map_err(|_| LitCheckError::InvalidFormat {
+                kind: "WSTRING",
+                msg: format!("Invalid hex escape ${}", hex),
+            })?;
+            result.push(char::from_u32(code as u32).ok_or_else(|| {
+                LitCheckError::InvalidFormat {
+                    kind: "WSTRING",
+                    msg: format!("Invalid Unicode scalar: ${}", hex),
+                }
             })?);
         } else {
             result.push(c);

@@ -165,7 +165,7 @@ impl<'db> ResolveStmtCtx<'db> {
                         }
                         TyKind::Simple(elementary) => {
                             if let ResolvedExprKind::Literal(elem) = resolved_target.kind(self.db) {
-                                if let Err(err) = elem.lit_check(self.db, elementary) {}
+                                if let Err(err) = elementary.lit_check(self.db, *elem) {}
                             }
                         }
                         _ => {}
