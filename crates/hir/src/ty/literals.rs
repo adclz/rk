@@ -160,10 +160,15 @@ impl<'db> ElementarySpec {
 
 fn check_bool(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckError> {
     match value {
-        Elementary::InferInteger(n) => n
+        Elementary::InferIdent(n) => n
             .as_bool(db)
             .map(|_| ())
             .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
+        Elementary::InferInteger(n) => {
+            n.as_bool(db)
+                .map(|_| ())
+                .map_err(|err| LitCheckError::TypeMismatch(err.to_string()))
+        }
         _ => Err(LitCheckError::TypeMismatch(
             "Expected one of '0' | '1' | 'TRUE' | 'FALSE'".into(),
         )),
@@ -293,6 +298,11 @@ fn check_f64(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckEr
 #[salsa::tracked]
 impl Ident {
     #[salsa::tracked]
+    pub fn as_bool(self, db: &dyn BaseDatabase) -> Result<bool, std::str::ParseBoolError> {
+        self.text(db).to_lowercase().parse()
+    }
+
+    #[salsa::tracked]
     pub fn as_f32(self, db: &dyn BaseDatabase) -> Result<f32, std::num::ParseFloatError> {
         self.text(db).parse()
     }
@@ -309,8 +319,8 @@ impl Ident {
             &self
                 .text(db)
                 .to_uppercase()
-                .replace("#DATE", "")
-                .replace("#D", "")
+                .replace("DATE#", "")
+                .replace("D#", "")
                 .replace('_', ""),
             &fmt,
         )
@@ -323,8 +333,8 @@ impl Ident {
             &self
                 .text(db)
                 .to_uppercase()
-                .replace("#LDATE", "")
-                .replace("#LD", "")
+                .replace("LDATE#", "")
+                .replace("LD#", "")
                 .replace('_', ""),
             &fmt,
         )
@@ -337,8 +347,8 @@ impl Ident {
             &self
                 .text(db)
                 .to_uppercase()
-                .replace("#TIME_OF_DAY", "")
-                .replace("#TOD", "")
+                .replace("TIME_OF_DAY#", "")
+                .replace("TOD#", "")
                 .replace('_', ""),
             &fmt,
         )
@@ -351,8 +361,8 @@ impl Ident {
             &self
                 .text(db)
                 .to_uppercase()
-                .replace("#LTIME_OF_DAY", "")
-                .replace("#LTOD", "")
+                .replace("LTIME_OF_DAY#", "")
+                .replace("LTOD#", "")
                 .replace('_', ""),
             &fmt,
         )
@@ -368,8 +378,8 @@ impl Ident {
             &self
                 .text(db)
                 .to_uppercase()
-                .replace("#DATE_AND_TIME", "")
-                .replace("#DT", "")
+                .replace("DATE_AND_TIME#", "")
+                .replace("DT#", "")
                 .replace('_', ""),
             &fmt,
         )
@@ -385,8 +395,8 @@ impl Ident {
             &self
                 .text(db)
                 .to_uppercase()
-                .replace("#LDATE_AND_TIME", "")
-                .replace("#LDT", "")
+                .replace("LDATE_AND_TIME#", "")
+                .replace("LDT#", "")
                 .replace('_', ""),
             &fmt,
         )
@@ -407,7 +417,11 @@ impl Ident {
 impl Integer {
     #[salsa::tracked]
     pub fn as_bool(self, db: &dyn BaseDatabase) -> Result<bool, std::str::ParseBoolError> {
-        self.ident(db).text(db).to_uppercase().parse()
+        match self.ident(db).text(db).to_lowercase().as_str() {
+            "1"  => Ok(true),
+            "0"  => Ok(false),
+            other => other.parse(),
+        }
     }
 
     #[salsa::tracked]
