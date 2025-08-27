@@ -2,8 +2,17 @@ use std::ops::ControlFlow;
 
 use auto_lsp::default::db::BaseDatabase;
 
-use crate::{def::{namespace::NamespaceDecl, pous::pou::PouDecl, semantic_index::{HirNode, SemanticIndex}}, ty::{expr_resolver::{ResolvedExpr, ResolvedExprKind}, stmt_resolver::{resolve_stmts, ResolveStmtsResult, ResolvedStmt, ResolvedStmtKind}}};
-
+use crate::{
+    def::{
+        namespace::NamespaceDecl,
+        pous::pou::PouDecl,
+        semantic_index::{HirNode, SemanticIndex},
+    },
+    ty::{
+        expr_resolver::{ResolvedExpr, ResolvedExprKind},
+        stmt_resolver::{resolve_stmt, ResolveStmtsResult, ResolvedStmt, ResolvedStmtKind}, ty::Ty,
+    },
+};
 
 pub trait WalkHir<'db> {
     fn walk_hir<F>(&'db self, db: &'db dyn BaseDatabase, f: &mut F) -> ControlFlow<()>
@@ -64,8 +73,24 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
         f(HirNode::PouDecl(*self))?;
 
         if let Some(stmts) = self.get_stmts(db) {
-            resolve_stmts(db, stmts, self.scope_id(db)).walk_hir(db, f)?;
+            let mut prev_stmt = None;
+            for stmt in stmts {
+                let resolved = resolve_stmt(db, prev_stmt, *stmt, self.scope_id(db), );
+                resolved.walk_hir(db, f)?;
+                prev_stmt = Some(*stmt);
+            }
         }
+        ControlFlow::Continue(())
+    }
+}
+
+impl<'db> WalkHir<'db> for Ty<'db>{
+    fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        f: &mut F,
+    ) -> ControlFlow<()> {
+        f(HirNode::Ty(*self))?;
         ControlFlow::Continue(())
     }
 }
@@ -80,7 +105,7 @@ impl<'db> WalkHir<'db> for ResolvedExpr<'db> {
 
         match self.kind(db) {
             ResolvedExprKind::FuncCall(ty) => {
-                //ty.walk_hir(db, f);
+                ty.walk_hir(db, f)?;
             }
             _ => {}
         }
@@ -99,7 +124,11 @@ impl<'db> WalkHir<'db> for ResolvedStmt<'db> {
         match self.kind(db) {
             ResolvedStmtKind::Assignment { target, .. } => {
                 target.walk_hir(db, f)?;
-            }
+            },
+            ResolvedStmtKind::AssignmentAttempt { var, target } => {
+                //var.walk_hir(db, f)?;
+                target.walk_hir(db, f)?;
+            },
             ResolvedStmtKind::If {
                 condition,
                 then,
@@ -107,15 +136,17 @@ impl<'db> WalkHir<'db> for ResolvedStmt<'db> {
                 else_,
             } => {
                 condition.walk_hir(db, f)?;
-                if let Some(then) = then {
-                    then.walk_hir(db, f)?;
+                for stmt in then {
+                    stmt.walk_hir(db, f)?;
                 }
                 for (cond, block) in else_if {
                     cond.walk_hir(db, f)?;
-                    block.walk_hir(db, f)?;
+                    for stmt in block {
+                        stmt.walk_hir(db, f)?;
+                    }
                 }
-                if let Some(else_) = else_ {
-                    else_.walk_hir(db, f)?;
+                for stmt in else_ {
+                    stmt.walk_hir(db, f)?;
                 }
             }
             ResolvedStmtKind::For {
@@ -130,8 +161,22 @@ impl<'db> WalkHir<'db> for ResolvedStmt<'db> {
                 if let Some(step) = step {
                     step.walk_hir(db, f)?;
                 }
-                body.walk_hir(db, f)?;
-            }
+                for stmt in body {
+                    stmt.walk_hir(db, f)?;
+                }
+            },
+            ResolvedStmtKind::While { condition, body } => {
+                condition.walk_hir(db, f)?;
+                for stmt in body {
+                    stmt.walk_hir(db, f)?;
+                }
+            },
+            ResolvedStmtKind::Repeat { condition, body } => {
+                condition.walk_hir(db, f)?;
+                for stmt in body {
+                    stmt.walk_hir(db, f)?;
+                }
+            },
             // … same for While/Repeat/etc
             _ => {}
         }

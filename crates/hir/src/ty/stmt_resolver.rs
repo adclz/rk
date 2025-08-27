@@ -1,6 +1,7 @@
 use std::ops::ControlFlow;
 use std::sync::Arc;
 
+use crate::def::expressions::expression::{Elementary, ExprKind};
 use crate::def::expressions::statement::{Stmt, StmtKind};
 use crate::def::namespace::NamespaceDecl;
 use crate::def::pous::pou::PouDecl;
@@ -15,12 +16,13 @@ use auto_lsp::core::span::Span;
 use auto_lsp::default::db::BaseDatabase;
 
 #[salsa::tracked(no_eq, returns(ref))]
-pub fn resolve_stmts<'db>(
+pub fn resolve_stmt<'db>(
     db: &'db dyn BaseDatabase,
-    stmts: &'db [Stmt<'db>],
+    stmt_ctx: Option<Stmt<'db>>,
+    stmt: Stmt<'db>,
     scope_id: FileScopeId,
 ) -> ResolveStmtsResult<'db> {
-    ResolveStmtCtx::new(db, stmts, None, scope_id).resolve()
+    ResolveStmtCtx::new(db, stmt, stmt_ctx, scope_id).resolve()
 }
 
 #[salsa::tracked(debug)]
@@ -67,9 +69,9 @@ pub enum ResolvedStmtKind<'db> {
     FuncCall {},
     If {
         condition: ResolvedExpr<'db>,
-        then: Option<ResolveStmtsResult<'db>>,
-        else_if: Vec<(ResolvedExpr<'db>, ResolveStmtsResult<'db>)>,
-        else_: Option<ResolveStmtsResult<'db>>,
+        then: Vec<ResolveStmtsResult<'db>>,
+        else_if: Vec<(ResolvedExpr<'db>, Vec<ResolveStmtsResult<'db>>)>,
+        else_: Vec<ResolveStmtsResult<'db>>,
     },
     Case {},
     For {
@@ -77,22 +79,22 @@ pub enum ResolvedStmtKind<'db> {
         start: ResolvedExpr<'db>,
         end: ResolvedExpr<'db>,
         step: Option<ResolvedExpr<'db>>,
-        body: ResolveStmtsResult<'db>,
+        body: Vec<ResolveStmtsResult<'db>>,
     },
     Repeat {
         condition: ResolvedExpr<'db>,
-        body: ResolveStmtsResult<'db>,
+        body: Vec<ResolveStmtsResult<'db>>,
     },
     While {
         condition: ResolvedExpr<'db>,
-        body: ResolveStmtsResult<'db>,
+        body: Vec<ResolveStmtsResult<'db>>,
     },
 }
 
 pub struct ResolveStmtCtx<'db> {
     db: &'db dyn BaseDatabase,
     // The statements to resolve
-    stmt: &'db [Stmt<'db>],
+    stmt: Stmt<'db>,
     scope_id: FileScopeId,
     // Solved statements
     resolved: Vec<ResolvedStmt<'db>>,
@@ -112,7 +114,7 @@ pub struct ResolveStmtCtx<'db> {
 impl<'db> ResolveStmtCtx<'db> {
     pub fn new(
         db: &'db dyn BaseDatabase,
-        stmt: &'db [Stmt<'db>],
+        stmt: Stmt<'db>,
         ctx: Option<Stmt<'db>>,
         scope_id: FileScopeId,
     ) -> Self {
@@ -131,211 +133,240 @@ impl<'db> ResolveStmtCtx<'db> {
     }
 
     pub fn resolve(mut self) -> ResolveStmtsResult<'db> {
-        self.stmt.iter().for_each(|stmt| {
-            // Checks if the statement is reachable
-            if let Some(ret) = self.return_reached {
-                match &mut self.unreachable_range {
-                    None => {
-                        self.unreachable_range = Some((
-                            stmt.get_span(self.db).clone(),
-                            stmt.get_span(self.db).clone(),
-                        ));
-                    }
-                    Some((start, end)) => {
-                        self.unreachable_range =
-                            Some((start.clone(), stmt.get_span(self.db).clone()));
-                    }
+        let stmt = self.stmt;
+        // Checks if the statement is reachable
+        if let Some(ret) = self.return_reached {
+            match &mut self.unreachable_range {
+                None => {
+                    self.unreachable_range = Some((
+                        stmt.get_span(self.db).clone(),
+                        stmt.get_span(self.db).clone(),
+                    ));
+                }
+                Some((start, end)) => {
+                    self.unreachable_range = Some((start.clone(), stmt.get_span(self.db).clone()));
                 }
             }
+        }
 
-            match stmt.stmt(self.db) {
-                StmtKind::Assignment { var, target } => {
-                    let resolved_var = resolve_var_access(self.db, self.scope_id, var);
-                    if let Some(ty) = resolved_var.ty(self.db) {
-                        if let TyKind::Callable { .. } = ty.kind(self.db) {
+        match stmt.stmt(self.db) {
+            StmtKind::Assignment { var, target } => {
+                let resolved_var = resolve_var_access(self.db, self.scope_id, var);
+
+                if let Some(ty) = resolved_var.ty(self.db) {
+                    let resolved_target = resolve_expr(self.db, Env::Ty(ty), *target);
+
+                    match ty.kind(self.db) {
+                        TyKind::Callable { .. } => {
                             self.errors.push(StmtResolveError::AssignmentToCallable {
                                 loc: resolved_var.origin(self.db).get_span(self.db).clone(),
                                 ty,
                             });
-                            return;
                         }
+                        TyKind::Simple(elementary) => {
+                            if let ResolvedExprKind::Literal(elem) = resolved_target.kind(self.db) {
+                                if let Err(err) = elem.lit_check(self.db, elementary) {}
+                            }
+                        }
+                        _ => {}
+                    }
 
-                        let resolved_target = resolve_expr(self.db, Env::Ty(ty), *target);
-                        self.resolved.push(ResolvedStmt::new(
-                            self.db,
-                            stmt.id(self.db),
-                            stmt.scope_id(self.db),
-                            ResolvedStmtKind::Assignment {
-                                var: *resolved_var,
-                                target: *resolved_target,
-                            },
-                        ))
-                    }
+                    self.resolved.push(ResolvedStmt::new(
+                        self.db,
+                        stmt.id(self.db),
+                        stmt.scope_id(self.db),
+                        ResolvedStmtKind::Assignment {
+                            var: *resolved_var,
+                            target: *resolved_target,
+                        },
+                    ))
                 }
-                StmtKind::AssignmentAttempt { var, target } => {
-                    let resolved_var = resolve_var_access(self.db, self.scope_id, var);
-                    if let Some(ty) = resolved_var.ty(self.db) {
-                        let resolved_target = resolve_expr(self.db, Env::Ty(ty), *target);
-                        self.resolved.push(ResolvedStmt::new(
-                            self.db,
-                            stmt.id(self.db),
-                            stmt.scope_id(self.db),
-                            ResolvedStmtKind::AssignmentAttempt {
-                                var: *resolved_var,
-                                target: *resolved_target,
-                            },
-                        ));
-                    }
+            }
+            StmtKind::AssignmentAttempt { var, target } => {
+                let resolved_var = resolve_var_access(self.db, self.scope_id, var);
+                if let Some(ty) = resolved_var.ty(self.db) {
+                    let resolved_target = resolve_expr(self.db, Env::Ty(ty), *target);
+                    self.resolved.push(ResolvedStmt::new(
+                        self.db,
+                        stmt.id(self.db),
+                        stmt.scope_id(self.db),
+                        ResolvedStmtKind::AssignmentAttempt {
+                            var: *resolved_var,
+                            target: *resolved_target,
+                        },
+                    ));
                 }
-                StmtKind::If {
-                    condition,
-                    then,
-                    else_if,
-                    else_,
-                } => self.resolved.push(ResolvedStmt::new(
+            }
+            StmtKind::If {
+                condition,
+                then,
+                else_if,
+                else_,
+            } => self.resolved.push(ResolvedStmt::new(
+                self.db,
+                stmt.id(self.db),
+                stmt.scope_id(self.db),
+                ResolvedStmtKind::If {
+                    condition: *resolve_expr(self.db, Env::Bool, *condition),
+                    then: then
+                        .as_ref()
+                        .map(|then| {
+                            then.iter()
+                                .map(|s| *resolve_stmt(self.db, self.stmt_ctx, *s, self.scope_id))
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                    else_if: else_if
+                        .iter()
+                        .map(|(cond, stmts)| {
+                            (
+                                *resolve_expr(self.db, Env::Bool, *cond),
+                                stmts
+                                    .iter()
+                                    .map(|s| *resolve_stmt(self.db, self.stmt_ctx, *s, self.scope_id))
+                                    .collect(),
+                            )
+                        })
+                        .collect(),
+                    else_: else_
+                        .as_ref()
+                        .map(|else_| {
+                            else_
+                                .iter()
+                                .map(|s| *resolve_stmt(self.db, self.stmt_ctx,*s, self.scope_id))
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                },
+            )),
+            StmtKind::Case {
+                condition,
+                cases,
+                else_,
+            } => {
+                self.resolved.push(ResolvedStmt::new(
                     self.db,
                     stmt.id(self.db),
                     stmt.scope_id(self.db),
-                    ResolvedStmtKind::If {
-                        condition: *resolve_expr(self.db, Env::Bool, *condition),
-                        then: then
-                            .as_ref()
-                            .map(|then| *resolve_stmts(self.db, then, self.scope_id)),
-                        else_if: else_if
-                            .iter()
-                            .map(|(cond, stmts)| {
-                                (
-                                    *resolve_expr(self.db, Env::Bool, *cond),
-                                    *resolve_stmts(self.db, stmts, self.scope_id),
-                                )
-                            })
-                            .collect(),
-                        else_: else_
-                            .as_ref()
-                            .map(|else_| *resolve_stmts(self.db, else_, self.scope_id)),
-                    },
-                )),
-                StmtKind::Case {
-                    condition,
-                    cases,
-                    else_,
-                } => {
-                    self.resolved.push(ResolvedStmt::new(
-                        self.db,
-                        stmt.id(self.db),
-                        stmt.scope_id(self.db),
-                        ResolvedStmtKind::Case {},
-                    ));
-                }
-                StmtKind::Invocation { target, params } => {
-                    self.resolved.push(ResolvedStmt::new(
-                        self.db,
-                        stmt.id(self.db),
-                        stmt.scope_id(self.db),
-                        ResolvedStmtKind::Invocation {},
-                    ));
-                }
-                StmtKind::FuncCall { target, params } => {
-                    self.resolved.push(ResolvedStmt::new(
-                        self.db,
-                        stmt.id(self.db),
-                        stmt.scope_id(self.db),
-                        ResolvedStmtKind::FuncCall {},
-                    ));
-                }
-                StmtKind::For {
-                    control_variable,
-                    start,
-                    end,
-                    step,
-                    body,
-                } => {
-                    let control_var = resolve_var_access(self.db, self.scope_id, control_variable);
-                    if let Some(ty) = control_var.ty(self.db) {
-                        let start_expr = resolve_expr(self.db, Env::Ty(ty), *start);
-                        let end_expr = resolve_expr(self.db, Env::Ty(ty), *end);
-                        let step_expr = step
-                            .as_ref()
-                            .map(|s| resolve_expr(self.db, Env::Ty(ty), *s));
-                        self.resolved.push(ResolvedStmt::new(
-                            self.db,
-                            stmt.id(self.db),
-                            stmt.scope_id(self.db),
-                            ResolvedStmtKind::For {
-                                control_var: *control_var,
-                                start: *start_expr,
-                                end: *end_expr,
-                                step: step_expr.copied(),
-                                body: *resolve_stmts(self.db, body, self.scope_id),
-                            },
-                        ));
-                    }
-                }
-                StmtKind::Repeat { body, condition } => {
-                    self.resolved.push(ResolvedStmt::new(
-                        self.db,
-                        stmt.id(self.db),
-                        stmt.scope_id(self.db),
-                        ResolvedStmtKind::Repeat {
-                            condition: *resolve_expr(self.db, Env::Bool, *condition),
-                            body: *resolve_stmts(self.db, body, self.scope_id),
-                        },
-                    ));
-                }
-                StmtKind::While { condition, body } => {
-                    self.resolved.push(ResolvedStmt::new(
-                        self.db,
-                        stmt.id(self.db),
-                        stmt.scope_id(self.db),
-                        ResolvedStmtKind::While {
-                            condition: *resolve_expr(self.db, Env::Bool, *condition),
-                            body: *resolve_stmts(self.db, body, self.scope_id),
-                        },
-                    ));
-                }
-                // "If the EXIT or CONTINUE statement (feature 9 or 11) is supported,
-                // then it shall be supported for all of the iteration statements (FOR, WHILE, REPEAT)
-                // which are supported in the implementation".
-
-                // CONTINUE breaks the current iteration of the loop and continues with the next iteration.
-                StmtKind::Continue => match self.stmt_ctx {
-                    Some(ctx)
-                        if matches!(
-                            ctx.stmt(self.db),
-                            StmtKind::For { .. } | StmtKind::Repeat { .. } | StmtKind::While { .. }
-                        ) =>
-                    {
-                        self.continue_reached = Some(*stmt);
-                    }
-                    _ => {
-                        self.errors.push(StmtResolveError::ContinueOutsideLoop {
-                            continue_stmt: *stmt,
-                        });
-                    }
-                },
-                // EXIT breaks the loop and continues with the next statement after the loop.
-                StmtKind::Exit => match self.stmt_ctx {
-                    Some(ctx)
-                        if matches!(
-                            ctx.stmt(self.db),
-                            StmtKind::For { .. } | StmtKind::Repeat { .. } | StmtKind::While { .. }
-                        ) =>
-                    {
-                        self.exit_reached = Some(*stmt);
-                    }
-                    _ => {
-                        self.errors
-                            .push(StmtResolveError::ExitOutsideLoop { exit_stmt: *stmt });
-                    }
-                },
-                // RETURNS stops the execution of all statements in the current context
-                // and returns to the caller.
-                StmtKind::Return => {
-                    self.return_reached = Some(*stmt);
-                }
-                StmtKind::Super => {}
+                    ResolvedStmtKind::Case {},
+                ));
             }
-        });
+            StmtKind::Invocation { target, params } => {
+                self.resolved.push(ResolvedStmt::new(
+                    self.db,
+                    stmt.id(self.db),
+                    stmt.scope_id(self.db),
+                    ResolvedStmtKind::Invocation {},
+                ));
+            }
+            StmtKind::FuncCall { target, params } => {
+                self.resolved.push(ResolvedStmt::new(
+                    self.db,
+                    stmt.id(self.db),
+                    stmt.scope_id(self.db),
+                    ResolvedStmtKind::FuncCall {},
+                ));
+            }
+            StmtKind::For {
+                control_variable,
+                start,
+                end,
+                step,
+                body,
+            } => {
+                let control_var = resolve_var_access(self.db, self.scope_id, control_variable);
+                if let Some(ty) = control_var.ty(self.db) {
+                    let start_expr = resolve_expr(self.db, Env::Ty(ty), *start);
+                    let end_expr = resolve_expr(self.db, Env::Ty(ty), *end);
+                    let step_expr = step
+                        .as_ref()
+                        .map(|s| resolve_expr(self.db, Env::Ty(ty), *s));
+                    self.resolved.push(ResolvedStmt::new(
+                        self.db,
+                        stmt.id(self.db),
+                        stmt.scope_id(self.db),
+                        ResolvedStmtKind::For {
+                            control_var: *control_var,
+                            start: *start_expr,
+                            end: *end_expr,
+                            step: step_expr.copied(),
+                            body: body
+                                .iter()
+                                .map(|s| *resolve_stmt(self.db, self.stmt_ctx, *s, self.scope_id))
+                                .collect(),
+                        },
+                    ));
+                }
+            }
+            StmtKind::Repeat { body, condition } => {
+                self.resolved.push(ResolvedStmt::new(
+                    self.db,
+                    stmt.id(self.db),
+                    stmt.scope_id(self.db),
+                    ResolvedStmtKind::Repeat {
+                        condition: *resolve_expr(self.db, Env::Bool, *condition),
+                        body: body.iter()
+                            .map(|s| *resolve_stmt(self.db, self.stmt_ctx, *s, self.scope_id))
+                            .collect(),
+                    },
+                ));
+            }
+            StmtKind::While { condition, body } => {
+                self.resolved.push(ResolvedStmt::new(
+                    self.db,
+                    stmt.id(self.db),
+                    stmt.scope_id(self.db),
+                    ResolvedStmtKind::While {
+                        condition: *resolve_expr(self.db, Env::Bool, *condition),
+                        body: body
+                            .iter()
+                            .map(|s| *resolve_stmt(self.db,self.stmt_ctx, *s, self.scope_id))
+                            .collect(),
+                    },
+                ));
+            }
+            // "If the EXIT or CONTINUE statement (feature 9 or 11) is supported,
+            // then it shall be supported for all of the iteration statements (FOR, WHILE, REPEAT)
+            // which are supported in the implementation".
+
+            // CONTINUE breaks the current iteration of the loop and continues with the next iteration.
+            StmtKind::Continue => match self.stmt_ctx {
+                Some(ctx)
+                    if matches!(
+                        ctx.stmt(self.db),
+                        StmtKind::For { .. } | StmtKind::Repeat { .. } | StmtKind::While { .. }
+                    ) =>
+                {
+                    self.continue_reached = Some(stmt);
+                }
+                _ => {
+                    self.errors.push(StmtResolveError::ContinueOutsideLoop {
+                        continue_stmt: stmt,
+                    });
+                }
+            },
+            // EXIT breaks the loop and continues with the next statement after the loop.
+            StmtKind::Exit => match self.stmt_ctx {
+                Some(ctx)
+                    if matches!(
+                        ctx.stmt(self.db),
+                        StmtKind::For { .. } | StmtKind::Repeat { .. } | StmtKind::While { .. }
+                    ) =>
+                {
+                    self.exit_reached = Some(stmt);
+                }
+                _ => {
+                    self.errors
+                        .push(StmtResolveError::ExitOutsideLoop { exit_stmt: stmt });
+                }
+            },
+            // RETURNS stops the execution of all statements in the current context
+            // and returns to the caller.
+            StmtKind::Return => {
+                self.return_reached = Some(stmt);
+            }
+            StmtKind::Super => {}
+        }
 
         if let Some((start, end)) = self.unreachable_range {
             self.errors
