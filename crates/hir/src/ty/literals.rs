@@ -10,7 +10,7 @@ use crate::def::{
     interned::identifier::Ident,
 };
 
-use time::{Date, PrimitiveDateTime, Time, macros::format_description};
+use time::{Date, Duration, PrimitiveDateTime, Time, macros::format_description};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LitCheckError {
@@ -137,8 +137,18 @@ impl<'db> ElementarySpec {
                     "Expected a long date-and-time literal".into(),
                 )),
             },
-            ElementarySpec::Time => todo!(),
-            ElementarySpec::LTime => todo!(),
+            ElementarySpec::Time => match spec {
+                Elementary::InferIdent(ident) => ident.as_time(db).map_err(|e| e).map(|_| ()),
+                _ => Err(LitCheckError::TypeMismatch(
+                    "Expected a time duration literal".into(),
+                )),
+            },
+            ElementarySpec::LTime => match spec {
+                Elementary::InferIdent(ident) => ident.as_ltime(db).map_err(|e| e).map(|_| ()),
+                _ => Err(LitCheckError::TypeMismatch(
+                    "Expected a long time duration literal".into(),
+                )),
+            },
 
             ElementarySpec::String => match spec {
                 Elementary::InferIdent(ident) => ident.as_single_string(db).map(|_| ()),
@@ -164,11 +174,10 @@ fn check_bool(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckE
             .as_bool(db)
             .map(|_| ())
             .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
-        Elementary::InferInteger(n) => {
-            n.as_bool(db)
-                .map(|_| ())
-                .map_err(|err| LitCheckError::TypeMismatch(err.to_string()))
-        }
+        Elementary::InferInteger(n) => n
+            .as_bool(db)
+            .map(|_| ())
+            .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
         _ => Err(LitCheckError::TypeMismatch(
             "Expected one of '0' | '1' | 'TRUE' | 'FALSE'".into(),
         )),
@@ -404,12 +413,36 @@ impl Ident {
 
     #[salsa::tracked]
     pub fn as_single_string(self, db: &dyn BaseDatabase) -> Result<Vec<u8>, LitCheckError> {
-        parse_single_byte_string(self.text(db))
+        parse_single_byte_string(&self.text(db).replace("STRING#", ""))
     }
 
     #[salsa::tracked]
     pub fn as_double_string(self, db: &dyn BaseDatabase) -> Result<Vec<char>, LitCheckError> {
-        parse_double_byte_string(self.text(db))
+        parse_double_byte_string(&self.text(db).replace("WSTRING#", ""))
+    }
+
+    #[salsa::tracked]
+    pub fn as_time(self, db: &dyn BaseDatabase) -> Result<Duration, LitCheckError> {
+        parse_duration_components(
+            self.text(db)
+                .to_uppercase()
+                .replace("TIME#", "")
+                .replace("T#", "")
+                .as_str(),
+            "TIME",
+        )
+    }
+
+    #[salsa::tracked]
+    pub fn as_ltime(self, db: &dyn BaseDatabase) -> Result<Duration, LitCheckError> {
+        parse_duration_components(
+            &self
+                .text(db)
+                .to_uppercase()
+                .replace("LTIME#", "")
+                .replace("LT#", ""),
+            "LT#",
+        )
     }
 }
 
@@ -418,8 +451,8 @@ impl Integer {
     #[salsa::tracked]
     pub fn as_bool(self, db: &dyn BaseDatabase) -> Result<bool, std::str::ParseBoolError> {
         match self.ident(db).text(db).to_lowercase().as_str() {
-            "1"  => Ok(true),
-            "0"  => Ok(false),
+            "1" => Ok(true),
+            "0" => Ok(false),
             other => other.parse(),
         }
     }
@@ -636,4 +669,147 @@ pub fn parse_double_byte_string(s: &str) -> Result<Vec<char>, LitCheckError> {
         }
     }
     Ok(result)
+}
+
+fn parse_duration_components(s: &str, kind: &'static str) -> Result<Duration, LitCheckError> {
+    let mut total_nanos = 0i64;
+    let mut remaining = s;
+
+    // Remove underscores (allowed in literals)
+    let cleaned = remaining.replace('_', "");
+    remaining = &cleaned;
+
+    // Parse each component (days, hours, minutes, seconds, milliseconds, microseconds, nanoseconds)
+    while !remaining.is_empty() {
+        let (value, unit, rest, is_decimal) = parse_next_component(remaining, kind)?;
+
+        let nanos = if is_decimal {
+            // Value is already converted to nanoseconds
+            value
+        } else {
+            // Integer value, needs conversion
+            match unit {
+                "d" | "D" => value * 24 * 60 * 60 * 1_000_000_000,
+                "h" | "H" => value * 60 * 60 * 1_000_000_000,
+                "m" | "M" => value * 60 * 1_000_000_000,
+                "s" | "S" => value * 1_000_000_000,
+                "ms" | "MS" => value * 1_000_000,
+                "us" | "US" => value * 1_000,
+                "ns" | "NS" => value,
+                _ => {
+                    return Err(LitCheckError::InvalidFormat {
+                        kind,
+                        msg: format!("Invalid time unit: {}", unit),
+                    });
+                }
+            }
+        };
+
+        total_nanos = total_nanos
+            .checked_add(nanos)
+            .ok_or_else(|| LitCheckError::OutOfRange("Duration overflow".into()))?;
+
+        remaining = rest;
+    }
+
+    if total_nanos == 0 && !s.is_empty() {
+        return Err(LitCheckError::InvalidFormat {
+            kind,
+            msg: "No valid time components found".into(),
+        });
+    }
+
+    Ok(Duration::nanoseconds(total_nanos))
+}
+
+fn parse_next_component<'a>(
+    s: &'a str,
+    kind: &'static str,
+) -> Result<(i64, &'a str, &'a str, bool), LitCheckError> {
+    let mut number_end = 0;
+    let mut found_decimal = false;
+
+    // Find the end of the number (including decimal point and negative sign)
+    for (i, c) in s.char_indices() {
+        if c.is_ascii_digit() {
+            number_end = i + 1;
+        } else if c == '.' && !found_decimal {
+            found_decimal = true;
+            number_end = i + 1;
+        } else if c == '-' && i == 0 {
+            // Allow negative sign only at the beginning
+            number_end = i + 1;
+        } else {
+            break;
+        }
+    }
+
+    if number_end == 0 {
+        return Err(LitCheckError::InvalidFormat {
+            kind,
+            msg: "Expected number".into(),
+        });
+    }
+
+    let number_str = &s[..number_end];
+    let remainder = &s[number_end..];
+
+    // Find the unit
+    let mut unit_end = 0;
+    for (i, c) in remainder.char_indices() {
+        if c.is_ascii_alphabetic() {
+            unit_end = i + 1;
+        } else {
+            break;
+        }
+    }
+
+    if unit_end == 0 {
+        return Err(LitCheckError::InvalidFormat {
+            kind,
+            msg: "Expected time unit".into(),
+        });
+    }
+
+    let unit = &remainder[..unit_end];
+    let rest = &remainder[unit_end..];
+
+    // Parse the number (handle decimals)
+    let value_nanos = if found_decimal {
+        let float_val: f64 = number_str
+            .parse()
+            .map_err(|_| LitCheckError::InvalidFormat {
+                kind,
+                msg: format!("Invalid number: {}", number_str),
+            })?;
+
+        // Convert to nanoseconds based on unit, then truncate to u64
+        let nanos = match unit.to_uppercase().as_str() {
+            "D" => float_val * 24.0 * 60.0 * 60.0 * 1_000_000_000.0,
+            "H" => float_val * 60.0 * 60.0 * 1_000_000_000.0,
+            "M" => float_val * 60.0 * 1_000_000_000.0,
+            "S" => float_val * 1_000_000_000.0,
+            "MS" => float_val * 1_000_000.0,
+            "US" => float_val * 1_000.0,
+            "NS" => float_val,
+            _ => {
+                return Err(LitCheckError::InvalidFormat {
+                    kind,
+                    msg: format!("Invalid time unit: {}", unit),
+                });
+            }
+        };
+
+        nanos as i64
+    } else {
+        let int_val: i64 = number_str
+            .parse()
+            .map_err(|_| LitCheckError::InvalidFormat {
+                kind,
+                msg: format!("Invalid number: {}", number_str),
+            })?;
+        int_val
+    };
+
+    Ok((value_nanos, unit, rest, found_decimal))
 }

@@ -1,3 +1,4 @@
+use core::panic;
 use std::{error::Error, fmt::Display};
 
 use auto_lsp::{
@@ -21,7 +22,7 @@ use crate::{
         using::Using,
     },
     to_proto::ToProto,
-    ty::ty::{Ty, TyOrigin},
+    ty::{literals::LitCheckError, ty::{Ty, TyOrigin}},
 };
 
 pub trait ToIdeDiagnostic<'db> {
@@ -122,12 +123,13 @@ pub enum StmtError<'db> {
     ExitOutsideLoop { exit_stmt: Stmt<'db> },
     Unreachable { start: Span, end: Span },
     AssignmentToCallable { loc: Span, ty: Ty<'db> },
+    LiteralTypeError { expected: Ty<'db>, found: Ty<'db>, err: String },
 }
 
 impl<'db> ToIdeDiagnostic<'db> for AnalysisError<'db> {
     fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
         match self {
-            Self::AutoLspError(err) => unreachable!(),
+            Self::AutoLspError(err) => panic!("A position error happened: {}", err),
             Self::SyntaxError(err) => err.to_diagnostic(db),
             Self::NamespaceError(err) => err.to_diagnostic(db),
             Self::DuplicateError(err) => err.to_diagnostic(db),
@@ -358,6 +360,18 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 .severity(DiagnosticSeverity::ERROR)
                 .range(continue_stmt.get_span(db))
                 .call(),
+            Self::LiteralTypeError { expected, found, err } => {
+                diag()
+                    .message(format!(
+                        "type error: expected '{}', found '{}' ({})",
+                        expected.origin(db).name(db).text(db),
+                        found.origin(db).name(db).text(db),
+                        err
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(found.origin(db).name_span(db).unwrap().clone())
+                    .call()
+            }    
         }
     }
 }
