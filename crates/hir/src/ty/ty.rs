@@ -3,7 +3,7 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     def::{
-        expressions::spec::{Spec, SpecKind},
+        expressions::spec::{ElementarySpec, Spec, SpecKind},
         interned::{identifier::Ident, namespace::NamespaceAccess},
         pous::{
             pou::{Pou, PouDecl},
@@ -11,7 +11,7 @@ use crate::{
         },
         scope::FileScopeId,
     },
-    to_proto::ToProto,
+    to_proto::{AstId, ToProto},
     ty::{
         name_res::resolve_namespace_access,
         ty_path_expr_resolver::{PathExprWalkError, PathExprWalkStep},
@@ -27,25 +27,13 @@ pub struct Ty<'db> {
     pub kind: TyKind<'db>,
 }
 
-impl<'db> Ty<'db> {
-    pub fn display(&self, db: &'db dyn BaseDatabase) -> String {
-        match self.kind(db) {
-            TyKind::Simple(spec) => spec.to_string(db),
-            TyKind::Enum { typ, list } => "".to_string(),
-            TyKind::SubRange(subrange) => format!("SUBRANGE({})", subrange.to_string(db)),
-            TyKind::Array { type_signature } => format!("ARRAY OF {}", type_signature.display(db)),
-            TyKind::Struct { spec, elements } => {
-                let fields: Vec<String> = elements
-                    .iter()
-                    .map(|(name, ty)| format!("{}: {}", name.text(db), ty.display(db)))
-                    .collect();
-                format!("STRUCT({}){{{}}}", spec.to_string(db), fields.join(", "))
-            }
-            TyKind::Callable { .. } => "CALLABLE".to_string(),
-            TyKind::RefTo(inner) => format!("REF TO {}", inner.display(db)),
-            TyKind::Unresolved(ns_access) => ns_access.to_string(db),
-            TyKind::Recursive => "RECURSIVE".to_string(),
-        }
+impl<'db> ToProto<'db> for Ty<'db> {
+    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
+        self.origin(db).get_id(db)
+    }
+
+    fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
+        self.origin(db).scope_id(db)
     }
 }
 
@@ -70,6 +58,13 @@ impl<'db> TyOrigin<'db> {
         }
     }
 
+    pub fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
+        match self {
+            TyOrigin::FromPou(pou) => pou.get_id(db),
+            TyOrigin::FromVariable(variable) => variable.get_id(db),
+        }
+    }
+
     pub fn scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
         match self {
             TyOrigin::FromPou(pou) => pou.get_scope_id(db),
@@ -87,8 +82,8 @@ impl<'db> TyOrigin<'db> {
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum TyKind<'db> {
-    // Base types
-    Simple(Spec<'db>),
+    // Literal types
+    Simple(ElementarySpec),
     Enum {
         typ: Option<Ty<'db>>,
         list: Vec<Ident>,
@@ -378,7 +373,8 @@ impl<'db> Spec<'db> {
                     None => Ty::new(db, origin, TyKind::Unresolved(*target)),
                 }
             }
-            _ => Ty::new(db, origin, TyKind::Simple(*self)),
+            SpecKind::Simple(simple) => Ty::new(db, origin, TyKind::Simple(*simple)),
+            _ => todo!()
         }
     }
 }

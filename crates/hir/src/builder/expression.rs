@@ -5,7 +5,7 @@ use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::types::ParseMultiBits;
 use crate::check::errors::sem_errors::{AnalysisError, SyntaxError};
 use crate::def::expressions::expression::{
-    FieldExpr, IndexExpr, Numeric, NumericKind, PathExpr, VariableAccessKind,
+    FieldExpr, IndexExpr, Integer, IntegerKind, PathExpr, VariableAccessKind,
 };
 use crate::def::interned::identifier::SpannedIdent;
 use crate::{
@@ -310,39 +310,39 @@ pub trait ParseNumeric<'db> {
     fn parse(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<Numeric, AnalysisError<'db>>;
+    ) -> anyhow::Result<Integer, AnalysisError<'db>>;
 }
 
 impl<'db> ParseNumeric<'db> for ast::generated::BinaryInt_HexInt_OctalInt_SignedInt {
     fn parse(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<Numeric, AnalysisError<'db>> {
+    ) -> anyhow::Result<Integer, AnalysisError<'db>> {
         Ok(match self {
             ast::generated::BinaryInt_HexInt_OctalInt_SignedInt::BinaryInt(binary_int) => {
-                Numeric::new(
+                Integer::new(
                     sema.db,
                     Ident::from_node(sema.db, sema.file, binary_int)?,
-                    NumericKind::Binary,
+                    IntegerKind::Binary,
                 )
             }
-            ast::generated::BinaryInt_HexInt_OctalInt_SignedInt::HexInt(hex_int) => Numeric::new(
+            ast::generated::BinaryInt_HexInt_OctalInt_SignedInt::HexInt(hex_int) => Integer::new(
                 sema.db,
                 Ident::from_node(sema.db, sema.file, hex_int)?,
-                NumericKind::Hex,
+                IntegerKind::Hex,
             ),
             ast::generated::BinaryInt_HexInt_OctalInt_SignedInt::OctalInt(octal_int) => {
-                Numeric::new(
+                Integer::new(
                     sema.db,
                     Ident::from_node(sema.db, sema.file, octal_int)?,
-                    NumericKind::Octal,
+                    IntegerKind::Octal,
                 )
             }
             ast::generated::BinaryInt_HexInt_OctalInt_SignedInt::SignedInt(signed_int) => {
-                Numeric::new(
+                Integer::new(
                     sema.db,
                     Ident::from_node(sema.db, sema.file, signed_int)?,
-                    NumericKind::Signed,
+                    IntegerKind::Signed,
                 )
             }
         })
@@ -374,7 +374,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Constant {
                     match numeric_literal.children.cast(sema.ast) {
                     ast::generated::IntLiteral_RealLiteral::IntLiteral(int_literal) => {
                         match &int_literal.kind {
-                            None => Elementary::InferNumeric(int_literal.int.cast(sema.ast).parse(sema)?),
+                            None => Elementary::InferInteger(int_literal.int.cast(sema.ast).parse(sema)?),
                             Some(kind) => {
                                 match kind.cast(sema.ast).children.cast(sema.ast) {
                                     ast::generated::IntTypeName_MultibitsTypeName::IntTypeName(int_type_name) => {

@@ -49,7 +49,7 @@ impl<'db> Spec<'db> {
             SpecKind::Ref(ref_name) => {
                 format!("(*ref*) {}", ref_name.shorthand(db))
             }
-            _ => self.to_string(db),
+            _ => "".into(),
         }
     }
 }
@@ -57,6 +57,24 @@ impl<'db> Spec<'db> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum SpecKind<'db> {
     // Simple types
+    Simple(ElementarySpec),
+
+    // Composite types
+    Struct(Struct<'db>),
+    Array(Array<'db>),
+    ArrayConformand(Spec<'db>),
+    Subrange(SubRange<'db>),
+    Enum(Enum<'db>),
+
+    // Reference to another spec
+    Ref(Spec<'db>),
+
+    // Targeting a POU or namespace (has to be resolved)
+    Target(NamespaceAccess),
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum ElementarySpec {
     Bool,
     REDGEBool,
     FEDGEBool,
@@ -86,97 +104,6 @@ pub enum SpecKind<'db> {
     LTime,
     Tod,
     LTod,
-
-    // Composite types
-    Struct(Struct<'db>),
-    Array(Array<'db>),
-    ArrayConformand(Spec<'db>),
-    Subrange(SubRange<'db>),
-    Enum(Enum<'db>),
-
-    // Reference to another spec
-    Ref(Spec<'db>),
-
-    // Targeting a POU or namespace (has to be resolved)
-    Target(NamespaceAccess),
-}
-
-impl<'db> Spec<'db> {
-    pub fn to_string(&'db self, db: &'db dyn BaseDatabase) -> String {
-        match self.kind(db) {
-            SpecKind::Bool => "BOOL",
-            SpecKind::REDGEBool => "BOOL (Rising Edge)",
-            SpecKind::FEDGEBool => "BOOL (Falling Edge)",
-            SpecKind::Byte => "BYTE",
-            SpecKind::Word => "WORD",
-            SpecKind::DWord => "DWORD",
-            SpecKind::LWord => "LWORD",
-            SpecKind::SInt => "SINT",
-            SpecKind::USInt => "USINT",
-            SpecKind::UInt => "UINT",
-            SpecKind::Int => "INT",
-            SpecKind::DInt => "DINT",
-            SpecKind::UDInt => "UDINT",
-            SpecKind::LInt => "LINT",
-            SpecKind::ULInt => "ULINT",
-            SpecKind::Real => "REAL",
-            SpecKind::LReal => "LREAL",
-            SpecKind::String => "STRING",
-            SpecKind::WString => "WSTRING",
-            SpecKind::Char => "CHAR",
-            SpecKind::WChar => "WCHAR",
-            SpecKind::Date => "DATE",
-            SpecKind::LDate => "LDATE",
-            SpecKind::Dt => "DATE_AND_TIME",
-            SpecKind::Ldt => "LDATE_AND_TIME",
-            SpecKind::Time => "TIME",
-            SpecKind::LTime => "LTIME",
-            SpecKind::Tod => "TIME_OF_DAY",
-            SpecKind::LTod => "LTIME_OF_DAY",
-            SpecKind::Struct(_) => "STRUCT",
-            SpecKind::Array(_) => "ARRAY",
-            SpecKind::Subrange(_) => "SUBRANGE",
-            SpecKind::Enum(_) => "ENUM",
-            _ => "(unknown spec)",
-        }
-        .to_string()
-    }
-
-    pub fn with_details(&self, db: &'db dyn BaseDatabase) -> String {
-        match self.kind(db) {
-            SpecKind::Bool => "BOOL",
-            SpecKind::REDGEBool => "BOOL (Rising Edge)",
-            SpecKind::FEDGEBool => "BOOL (Falling Edge)",
-            SpecKind::Byte => "BYTE (8-bit)",
-            SpecKind::Word => "WORD (16-bit)",
-            SpecKind::DWord => "DWORD (32-bit)",
-            SpecKind::LWord => "LWORD (64-bit)",
-            SpecKind::SInt => "SINT (-128 to 127)",
-            SpecKind::USInt => "USINT (0 to 255)",
-            SpecKind::UInt => "UINT (0 to 65535)",
-            SpecKind::Int => "INT (-32768 to 32767)",
-            SpecKind::DInt => "DINT (-2147483648 to 2147483647)",
-            SpecKind::UDInt => "UDINT (0 to 4294967295)",
-            SpecKind::LInt => "LINT (-9223372036854775808 to 9223372036854775807)",
-            SpecKind::ULInt => "ULINT (0 to 18446744073709551615)",
-            SpecKind::Real => "REAL (32-bit floating point)",
-            SpecKind::LReal => "LREAL (64-bit floating point)",
-            SpecKind::String => "STRING (UTF-8)",
-            SpecKind::WString => "WSTRING (UTF-16)",
-            SpecKind::Char => "CHAR (8-bit character)",
-            SpecKind::WChar => "WCHAR (16-bit character)",
-            SpecKind::Date => "DATE (YYYY-MM-DD)",
-            SpecKind::LDate => "LDATE (YYYY-MM-DD)",
-            SpecKind::Dt => "DATE_AND_TIME (YYYY-MM-DD HH:MM:SS)",
-            SpecKind::Ldt => "LDATE_AND_TIME (YYYY-MM-DD HH:MM:SS)",
-            SpecKind::Time => "TIME (DD:HH:MM:SS)",
-            SpecKind::LTime => "LTIME (DD:HH:MM:SS)",
-            SpecKind::Tod => "TIME_OF_DAY (HH:MM:SS)",
-            SpecKind::LTod => "LTIME_OF_DAY (HH:MM:SS)",
-            _ => "(unknown spec)",
-        }
-        .to_string()
-    }
 }
 
 impl<'db> ToProto<'db> for Spec<'db> {
@@ -212,7 +139,7 @@ impl<'db> ToProto<'db> for Spec<'db> {
                 range: Some(self.get_span(db).into()),
                 contents: HoverContents::Markup(MarkupContent {
                     kind: MarkupKind::Markdown,
-                    value: format!("```typescript\n{}\n```", self.with_details(db)),
+                    value: "".into(),
                 }),
             }),
         }

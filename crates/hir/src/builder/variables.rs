@@ -15,7 +15,7 @@ use crate::builder::expression::ParseExpr;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::{ParseInit, ParseSpec, ParseSpecInit, ParseVarSection, SpecInitResult};
 use crate::check::errors::sem_errors::{AnalysisError, SyntaxError};
-use crate::def::expressions::spec::{Spec, SpecKind};
+use crate::def::expressions::spec::{ElementarySpec, Spec, SpecKind};
 use crate::def::interned::identifier::Ident;
 use crate::def::pous::variable::{VariableDecl, VariableKind};
 use crate::to_proto::{AstId, ToProto};
@@ -931,17 +931,17 @@ impl<'db> ParseSpecInit<'db> for ast::generated::EdgeDecl {
                 sema.errors.push(AnalysisError::SyntaxError(
                     SyntaxError::IncompleteEdgeQualifier(err.get_span()),
                 ));
-                Spec::new(sema.db, SpecKind::Bool, self.into(), sema.current_scope)
+                Spec::new(sema.db, SpecKind::Simple(ElementarySpec::Bool), self.into(), sema.current_scope)
             }
             ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::Token_F_EDGE(fedge) => Spec::new(
                 sema.db,
-                SpecKind::FEDGEBool,
+                SpecKind::Simple(ElementarySpec::FEDGEBool),
                 self.into(),
                 sema.current_scope,
             ),
             ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::Token_R_EDGE(redge) => Spec::new(
                 sema.db,
-                SpecKind::REDGEBool,
+                SpecKind::Simple(ElementarySpec::REDGEBool),
                 self.into(),
                 sema.current_scope,
             ),
