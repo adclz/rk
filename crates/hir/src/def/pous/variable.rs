@@ -1,5 +1,4 @@
 use auto_lsp::{
-    core::span::Span,
     default::db::BaseDatabase,
     lsp_types::{MarkupContent, MarkupKind},
 };
@@ -9,7 +8,7 @@ use crate::{
         expressions::{expression::InitExpr, spec::Spec},
         interned::identifier::Ident,
         scope::FileScopeId,
-        semantic_index::{SemanticIndex, semantic_index},
+        semantic_index::SemanticIndex,
     },
     to_proto::{AstId, SymbolInfo, ToProto},
 };
@@ -64,7 +63,7 @@ impl<'db> ToProto<'db> for VariableDecl<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
         self.id(db)
     }
-    
+
     fn get_name_id(&'db self, db: &'db dyn BaseDatabase) -> Option<AstId> {
         Some(self.name_id(db))
     }

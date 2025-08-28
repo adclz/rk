@@ -1,13 +1,9 @@
-use auto_lsp::default::db::BaseDatabase;
 
-use crate::{
-    def::{
+use crate::def::{
         expressions::statement::Stmt, interned::namespace::SpannedNamespaceAccess,
-        pous::variable::VariableDecl, scope::FileScopeId, semantic_index::SemanticIndex,
+        pous::variable::VariableDecl, scope::FileScopeId,
         visibility::Modifiers,
-    },
-    to_proto::{ToProto},
-};
+    };
 
 #[salsa::tracked(debug)]
 pub struct FunctionBlock<'db> {

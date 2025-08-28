@@ -22,10 +22,10 @@ pub enum LitCheckError {
 impl Display for LitCheckError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            LitCheckError::OutOfRange(msg) => write!(f, "Out of range: {}", msg),
-            LitCheckError::TypeMismatch(err) => write!(f, "Type mismatch: {}", err),
+            LitCheckError::OutOfRange(msg) => write!(f, "Out of range: {msg}"),
+            LitCheckError::TypeMismatch(err) => write!(f, "Type mismatch: {err}"),
             LitCheckError::InvalidFormat { kind, msg } => {
-                write!(f, "Invalid format for {}: {}", kind, msg)
+                write!(f, "Invalid format for {kind}: {msg}")
             }
         }
     }
@@ -138,13 +138,13 @@ impl<'db> ElementarySpec {
                 )),
             },
             ElementarySpec::Time => match spec {
-                Elementary::InferIdent(ident) => ident.as_time(db).map_err(|e| e).map(|_| ()),
+                Elementary::InferIdent(ident) => ident.as_time(db).map(|_| ()),
                 _ => Err(LitCheckError::TypeMismatch(
                     "Expected a time duration literal".into(),
                 )),
             },
             ElementarySpec::LTime => match spec {
-                Elementary::InferIdent(ident) => ident.as_ltime(db).map_err(|e| e).map(|_| ()),
+                Elementary::InferIdent(ident) => ident.as_ltime(db).map(|_| ()),
                 _ => Err(LitCheckError::TypeMismatch(
                     "Expected a long time duration literal".into(),
                 )),
@@ -610,10 +610,10 @@ pub fn parse_single_byte_string(s: &str) -> Result<Vec<u8>, LitCheckError> {
                 kind: "STRING",
                 msg: "Incomplete $xx escape".into(),
             })?;
-            let hex = format!("{}{}", h1, h2);
+            let hex = format!("{h1}{h2}");
             let byte = u8::from_str_radix(&hex, 16).map_err(|_| LitCheckError::InvalidFormat {
                 kind: "STRING",
-                msg: format!("Invalid hex escape ${}", hex),
+                msg: format!("Invalid hex escape ${hex}"),
             })?;
             result.push(byte);
         } else {
@@ -621,7 +621,7 @@ pub fn parse_single_byte_string(s: &str) -> Result<Vec<u8>, LitCheckError> {
             if (c as u32) > 0xFF {
                 return Err(LitCheckError::InvalidFormat {
                     kind: "STRING",
-                    msg: format!("Character {} not allowed in single-byte string", c),
+                    msg: format!("Character {c} not allowed in single-byte string"),
                 });
             }
             result.push(c as u8);
@@ -653,15 +653,15 @@ pub fn parse_double_byte_string(s: &str) -> Result<Vec<char>, LitCheckError> {
                 kind: "WSTRING",
                 msg: "Incomplete $xxxx escape".into(),
             })?;
-            let hex = format!("{}{}{}{}", h1, h2, h3, h4);
+            let hex = format!("{h1}{h2}{h3}{h4}");
             let code = u16::from_str_radix(&hex, 16).map_err(|_| LitCheckError::InvalidFormat {
                 kind: "WSTRING",
-                msg: format!("Invalid hex escape ${}", hex),
+                msg: format!("Invalid hex escape ${hex}"),
             })?;
             result.push(char::from_u32(code as u32).ok_or_else(|| {
                 LitCheckError::InvalidFormat {
                     kind: "WSTRING",
-                    msg: format!("Invalid Unicode scalar: ${}", hex),
+                    msg: format!("Invalid Unicode scalar: ${hex}"),
                 }
             })?);
         } else {
@@ -699,7 +699,7 @@ fn parse_duration_components(s: &str, kind: &'static str) -> Result<Duration, Li
                 _ => {
                     return Err(LitCheckError::InvalidFormat {
                         kind,
-                        msg: format!("Invalid time unit: {}", unit),
+                        msg: format!("Invalid time unit: {unit}"),
                     });
                 }
             }
@@ -780,7 +780,7 @@ fn parse_next_component<'a>(
             .parse()
             .map_err(|_| LitCheckError::InvalidFormat {
                 kind,
-                msg: format!("Invalid number: {}", number_str),
+                msg: format!("Invalid number: {number_str}"),
             })?;
 
         // Convert to nanoseconds based on unit, then truncate to u64
@@ -795,7 +795,7 @@ fn parse_next_component<'a>(
             _ => {
                 return Err(LitCheckError::InvalidFormat {
                     kind,
-                    msg: format!("Invalid time unit: {}", unit),
+                    msg: format!("Invalid time unit: {unit}"),
                 });
             }
         };
@@ -806,7 +806,7 @@ fn parse_next_component<'a>(
             .parse()
             .map_err(|_| LitCheckError::InvalidFormat {
                 kind,
-                msg: format!("Invalid number: {}", number_str),
+                msg: format!("Invalid number: {number_str}"),
             })?;
         int_val
     };

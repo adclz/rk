@@ -1,4 +1,3 @@
-use std::hash::Hash;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::sem_errors::AnalysisError;
 use crate::def::scope::FileScopeId;
@@ -6,6 +5,7 @@ use crate::to_proto::AstId;
 use crate::{def::interned::identifier::SpannedIdent, to_proto::ToProto};
 use auto_lsp::default::db::tracked::get_ast;
 use auto_lsp::{anyhow, default::db::BaseDatabase};
+use std::hash::Hash;
 
 /// Interned namespace path
 #[salsa::interned(debug, no_lifetime)]

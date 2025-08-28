@@ -24,8 +24,8 @@ pub fn inlay_hints(
 
     let _ = sema.walk_hir(db, &mut |node| {
         let span = node.get_span(db);
-        if span.lsp().start.line < range.start.line || span.lsp().end.line > range.end.line{
-            return ControlFlow::Break(())
+        if span.lsp().start.line < range.start.line || span.lsp().end.line > range.end.line {
+            return ControlFlow::Break(());
         }
         if let Some(inlay_hint) = node.as_proto().inlay_hint(db, sema) {
             results.push(inlay_hint);

@@ -24,16 +24,15 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         let variables = func.parse_variables(self);
 
-        let extends = func
-            .extends
-            .as_ref()
-            .and_then(|e| match SpannedNamespaceAccess::from_ast(self.db, self, e.cast(self.ast)) {
-                    Ok(namespace) => Some(namespace),
-                    Err(error) => {
-                        self.errors.push(error);
-                        None
-                    }
-                });
+        let extends = func.extends.as_ref().and_then(|e| {
+            match SpannedNamespaceAccess::from_ast(self.db, self, e.cast(self.ast)) {
+                Ok(namespace) => Some(namespace),
+                Err(error) => {
+                    self.errors.push(error);
+                    None
+                }
+            }
+        });
 
         let implements = func
             .implements

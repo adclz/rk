@@ -151,7 +151,7 @@ impl<'db> SemanticIndexBuilder<'db> {
                 _override,
                 body,
                 m.cast(self.ast).into(),
-                m.cast(&self.ast).name.cast(&self.ast).into(),
+                m.cast(self.ast).name.cast(self.ast).into(),
                 scope_id
             ))
         }).collect::<Vec<_>>();

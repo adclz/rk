@@ -327,10 +327,10 @@ fn ltime_overflow(with_db: RootDatabase, #[case] lit: &str) {
 }
 
 #[rstest]
-#[case("T#14.7s")]   // Valid decimal
-#[case("T#14.7ms")]  // Invalid — sub-ms must be integer
+#[case("T#14.7s")] // Valid decimal
+#[case("T#14.7ms")] // Invalid — sub-ms must be integer
 #[case("LTIME#1.234us")] // Invalid — sub-micro must be integer
-#[case("T#1.5d")]    // Valid
+#[case("T#1.5d")] // Valid
 fn decimal_unit_rules(with_db: RootDatabase, #[case] lit: &str) {
     let spec = if lit.to_lowercase().starts_with("lt") {
         ElementarySpec::LTime

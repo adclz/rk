@@ -1,5 +1,5 @@
 use std::iter::FusedIterator;
-use std::ops::{ControlFlow, Deref};
+use std::ops::ControlFlow;
 use std::sync::Arc;
 
 use auto_lsp::core::ast::AstNode;
@@ -11,23 +11,16 @@ use tracing::info_span;
 
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::sem_errors::AnalysisError;
-use crate::def::expressions::expression::PathExpr;
-use crate::def::expressions::statement::Stmt;
 use crate::def::interned::identifier::Ident;
 use crate::def::namespace::NamespaceDecl;
 use crate::def::pous::pou::PouDecl;
-use crate::def::pous::variable::VariableDecl;
 use crate::def::scope::{FileScopeId, Scope};
 use crate::def::using::Using;
 use crate::to_proto::ToProto;
-use crate::ty;
 use crate::ty::expr_resolver::ResolvedExpr;
 use crate::ty::name_res::pous_in_scope;
-use crate::ty::stmt_resolver::{resolve_stmt, ResolveStmtsResult, ResolvedStmt};
+use crate::ty::stmt_resolver::ResolvedStmt;
 use crate::ty::ty::Ty;
-use crate::ty::ty_path_expr_resolver::{
-    ResolvedPathElement, ResolvedPathResult, resolved_path_expr,
-};
 use crate::walk::WalkHir;
 
 /// Returns the semantic index of a given file
@@ -140,7 +133,6 @@ impl<'db> Iterator for ScopeIterator<'db> {
 
 impl FusedIterator for ScopeIterator<'_> {}
 
-
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum HirNode<'db> {
     Namespace(NamespaceDecl<'db>),
@@ -189,7 +181,7 @@ impl<'db> SemanticIndex<'db> {
                 if let Some(ref a) = best_match {
                     let a = a.as_proto().get_span(db);
                     if a.start_byte >= range.start_byte {
-                        return ControlFlow::Continue(())
+                        return ControlFlow::Continue(());
                     } else {
                         best_match = Some(node);
                     }

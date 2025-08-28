@@ -572,11 +572,11 @@ impl<'db> Ty<'db> {
                 ztatic,
                 ..
             } => {
-                let mut all_inputs = inputs.clone();
-                let mut all_outputs = outputs.clone();
-                let mut all_in_outs = in_outs.clone();
-                let mut all_temps = temps.clone();
-                let mut all_ztatic = ztatic.clone();
+                let all_inputs = inputs.clone();
+                let all_outputs = outputs.clone();
+                let all_in_outs = in_outs.clone();
+                let all_temps = temps.clone();
+                let all_ztatic = ztatic.clone();
 
                 Some(CallableSignature {
                     inputs: all_inputs,

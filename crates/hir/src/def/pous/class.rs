@@ -6,7 +6,6 @@ use crate::{
         interned::{identifier::Ident, namespace::SpannedNamespaceAccess},
         pous::variable::VariableDecl,
         scope::FileScopeId,
-        semantic_index::SemanticIndex,
         visibility::Modifiers,
     },
     to_proto::{AstId, ToProto},

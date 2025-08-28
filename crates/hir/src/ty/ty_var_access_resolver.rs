@@ -1,4 +1,3 @@
-use std::sync::Arc;
 
 use auto_lsp::default::db::BaseDatabase;
 
@@ -66,7 +65,8 @@ impl<'db> VarAccessResolverCtx<'db> {
                 // tododododo asap
                 todo!()
             }
-            VariableAccessKind::Symbolic(symbolic) => ResolvedVarResult::new(self.db,
+            VariableAccessKind::Symbolic(symbolic) => ResolvedVarResult::new(
+                self.db,
                 self.access.clone(),
                 resolved_path_expr(self.db, self.scope_id.file(), symbolic.kind).ty(self.db),
             ),

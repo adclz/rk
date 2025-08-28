@@ -14,7 +14,7 @@ use crate::{
         scope::FileScopeId,
         semantic_index::SemanticIndex,
     },
-    to_proto::{ToProto},
+    to_proto::ToProto,
 };
 
 #[salsa::tracked(debug)]

@@ -10,7 +10,8 @@ use crate::{
     },
     ty::{
         expr_resolver::{ResolvedExpr, ResolvedExprKind},
-        stmt_resolver::{resolve_stmt, ResolveStmtsResult, ResolvedStmt, ResolvedStmtKind}, ty::{ty_for_pou, Ty},
+        stmt_resolver::{ResolveStmtsResult, ResolvedStmt, ResolvedStmtKind, resolve_stmt},
+        ty::{Ty, ty_for_pou},
     },
 };
 
@@ -75,7 +76,7 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
         if let Some(stmts) = self.get_stmts(db) {
             let mut prev_stmt = None;
             for stmt in stmts {
-                let resolved = resolve_stmt(db, prev_stmt, *stmt, self.scope_id(db), );
+                let resolved = resolve_stmt(db, prev_stmt, *stmt, self.scope_id(db));
                 resolved.walk_hir(db, f)?;
                 prev_stmt = Some(*stmt);
             }
@@ -84,7 +85,7 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
     }
 }
 
-impl<'db> WalkHir<'db> for Ty<'db>{
+impl<'db> WalkHir<'db> for Ty<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
         &'db self,
         db: &'db dyn BaseDatabase,
@@ -103,11 +104,8 @@ impl<'db> WalkHir<'db> for ResolvedExpr<'db> {
     ) -> ControlFlow<()> {
         f(HirNode::ResolvedExpr(*self))?;
 
-        match self.kind(db) {
-            ResolvedExprKind::FuncCall(ty) => {
-                ty.walk_hir(db, f)?;
-            }
-            _ => {}
+        if let ResolvedExprKind::FuncCall(ty) = self.kind(db) {
+            ty.walk_hir(db, f)?;
         }
         ControlFlow::Continue(())
     }
@@ -124,11 +122,11 @@ impl<'db> WalkHir<'db> for ResolvedStmt<'db> {
         match self.kind(db) {
             ResolvedStmtKind::Assignment { target, .. } => {
                 target.walk_hir(db, f)?;
-            },
+            }
             ResolvedStmtKind::AssignmentAttempt { var, target } => {
                 //var.walk_hir(db, f)?;
                 target.walk_hir(db, f)?;
-            },
+            }
             ResolvedStmtKind::If {
                 condition,
                 then,
@@ -164,19 +162,19 @@ impl<'db> WalkHir<'db> for ResolvedStmt<'db> {
                 for stmt in body {
                     stmt.walk_hir(db, f)?;
                 }
-            },
+            }
             ResolvedStmtKind::While { condition, body } => {
                 condition.walk_hir(db, f)?;
                 for stmt in body {
                     stmt.walk_hir(db, f)?;
                 }
-            },
+            }
             ResolvedStmtKind::Repeat { condition, body } => {
                 condition.walk_hir(db, f)?;
                 for stmt in body {
                     stmt.walk_hir(db, f)?;
                 }
-            },
+            }
             // … same for While/Repeat/etc
             _ => {}
         }

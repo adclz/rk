@@ -31,7 +31,7 @@ pub fn completions(
     let _s = tracing::trace_span!("completions").entered();
 
     use_completion_marker(db, file, position, offset)
-} 
+}
 
 pub fn use_completion_marker(
     db: &impl BaseDatabase,

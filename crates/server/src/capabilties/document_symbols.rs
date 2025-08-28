@@ -2,13 +2,9 @@
 
 use auto_lsp::{
     anyhow,
-    core::{document_symbols_builder::DocumentSymbolsBuilder, span::Span},
+    core::document_symbols_builder::DocumentSymbolsBuilder,
     default::db::BaseDatabase,
-    lsp_types::{DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse},
-};
-use hir::{
-    def::semantic_index::semantic_index,
-    to_proto::{SymbolInfo},
+    lsp_types::{DocumentSymbolParams, DocumentSymbolResponse},
 };
 
 pub fn document_symbols(
@@ -21,7 +17,7 @@ pub fn document_symbols(
         .get_file(&uri)
         .ok_or_else(|| anyhow::format_err!("File not found in workspace"))?;
 
-    let mut builder = DocumentSymbolsBuilder::default();
+    let builder = DocumentSymbolsBuilder::default();
 
     // Build hierarchy by finding parent-child relationships
 

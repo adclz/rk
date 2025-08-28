@@ -5,7 +5,6 @@ use crate::def::semantic_index::SemanticIndex;
 use crate::to_proto::{AstId, ToProto};
 use auto_lsp::default::db::BaseDatabase;
 
-
 #[salsa::tracked(debug)]
 pub struct Expr<'db> {
     #[returns(ref)]

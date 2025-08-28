@@ -1,12 +1,6 @@
-use std::ops::ControlFlow;
-use std::sync::Arc;
 
-use crate::def::expressions::expression::{Elementary, ExprKind};
 use crate::def::expressions::statement::{Stmt, StmtKind};
-use crate::def::namespace::NamespaceDecl;
-use crate::def::pous::pou::PouDecl;
 use crate::def::scope::FileScopeId;
-use crate::def::semantic_index::{HirNode, SemanticIndex};
 use crate::to_proto::{AstId, ToProto};
 use crate::ty::TyResolved;
 use crate::ty::expr_resolver::{Env, ResolvedExpr, ResolvedExprKind, resolve_expr};
@@ -223,7 +217,9 @@ impl<'db> ResolveStmtCtx<'db> {
                                 *resolve_expr(self.db, Env::Bool, *cond),
                                 stmts
                                     .iter()
-                                    .map(|s| *resolve_stmt(self.db, self.stmt_ctx, *s, self.scope_id))
+                                    .map(|s| {
+                                        *resolve_stmt(self.db, self.stmt_ctx, *s, self.scope_id)
+                                    })
                                     .collect(),
                             )
                         })
@@ -233,7 +229,7 @@ impl<'db> ResolveStmtCtx<'db> {
                         .map(|else_| {
                             else_
                                 .iter()
-                                .map(|s| *resolve_stmt(self.db, self.stmt_ctx,*s, self.scope_id))
+                                .map(|s| *resolve_stmt(self.db, self.stmt_ctx, *s, self.scope_id))
                                 .collect()
                         })
                         .unwrap_or_default(),
@@ -305,7 +301,8 @@ impl<'db> ResolveStmtCtx<'db> {
                     stmt.scope_id(self.db),
                     ResolvedStmtKind::Repeat {
                         condition: *resolve_expr(self.db, Env::Bool, *condition),
-                        body: body.iter()
+                        body: body
+                            .iter()
                             .map(|s| *resolve_stmt(self.db, self.stmt_ctx, *s, self.scope_id))
                             .collect(),
                     },
@@ -320,7 +317,7 @@ impl<'db> ResolveStmtCtx<'db> {
                         condition: *resolve_expr(self.db, Env::Bool, *condition),
                         body: body
                             .iter()
-                            .map(|s| *resolve_stmt(self.db,self.stmt_ctx, *s, self.scope_id))
+                            .map(|s| *resolve_stmt(self.db, self.stmt_ctx, *s, self.scope_id))
                             .collect(),
                     },
                 ));

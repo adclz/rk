@@ -2,7 +2,7 @@ use ast::generated::ERRInvalidPouKeyword_ClassDecl_DataTypeDecl_FbDecl_FuncDecl_
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 
-use super::semantic_index::{SemanticIndexBuilder};
+use super::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::sem_errors::{AnalysisError, SyntaxError};
 use crate::def::interned::identifier::SpannedIdent;
 use crate::def::interned::namespace::NamespacePath;
@@ -79,7 +79,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             nested.name.cast(self.ast).into(),
             scope_id,
         );
-        
+
         let scope = Scope::new(
             self.file,
             ScopeKind::Namespace(result),

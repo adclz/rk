@@ -931,7 +931,12 @@ impl<'db> ParseSpecInit<'db> for ast::generated::EdgeDecl {
                 sema.errors.push(AnalysisError::SyntaxError(
                     SyntaxError::IncompleteEdgeQualifier(err.get_span()),
                 ));
-                Spec::new(sema.db, SpecKind::Simple(ElementarySpec::Bool), self.into(), sema.current_scope)
+                Spec::new(
+                    sema.db,
+                    SpecKind::Simple(ElementarySpec::Bool),
+                    self.into(),
+                    sema.current_scope,
+                )
             }
             ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::Token_F_EDGE(fedge) => Spec::new(
                 sema.db,

@@ -1,7 +1,5 @@
 use crate::{completions, def::expressions::statement::Stmt};
-use auto_enums::auto_enum;
 use auto_lsp::{
-    core::span::Span,
     default::db::BaseDatabase,
     lsp_types::{
         CompletionItem, InlayHint, InlayHintKind, InlayHintLabel, MarkupContent, MarkupKind,
@@ -17,7 +15,7 @@ use crate::{
             interface::Interface,
         },
         scope::FileScopeId,
-        semantic_index::{SemanticIndex, semantic_index},
+        semantic_index::SemanticIndex,
     },
     to_proto::{AstId, SymbolInfo, ToProto},
 };
@@ -136,7 +134,7 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
         let name_span = self.get_name_span(db)?;
         let comment = comment_index(db, sema.file);
         let comment = comment
-            .find_nearby_comment(sema.file.document(db), &*name_span)
+            .find_nearby_comment(sema.file.document(db), &name_span)
             .map(|c| format!("{}\n&nbsp;", c.to_string(sema.file.document(db))))
             .unwrap_or_default();
 

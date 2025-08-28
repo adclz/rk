@@ -1,13 +1,8 @@
-use auto_lsp::default::db::BaseDatabase;
 
-use crate::{
-    def::{
+use crate::def::{
         expressions::{expression::InitExpr, spec::Spec},
         scope::FileScopeId,
-        semantic_index::SemanticIndex,
-    },
-    to_proto::{ToProto},
-};
+    };
 
 #[salsa::tracked(debug)]
 pub struct DataType<'db> {

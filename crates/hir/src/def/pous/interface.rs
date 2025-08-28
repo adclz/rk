@@ -1,4 +1,4 @@
-use auto_lsp::{core::span::Span, default::db::BaseDatabase};
+use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     def::{
@@ -6,7 +6,6 @@ use crate::{
         interned::{identifier::Ident, namespace::SpannedNamespaceAccess},
         pous::variable::VariableDecl,
         scope::FileScopeId,
-        semantic_index::{SemanticIndex, semantic_index},
     },
     to_proto::{AstId, ToProto},
 };

@@ -7,9 +7,12 @@ use auto_lsp::{
     },
 };
 
-use crate::{def::{
-    expressions::{expression::InitExpr, spec::Spec}, interned::{identifier::SpannedIdent, namespace::SpannedNamespaceAccess}, namespace::NamespaceDecl, pous::{function::Function, pou::PouDecl, variable::VariableDecl}, scope::FileScopeId, semantic_index::{semantic_index, SemanticIndex}, using::Using
-}, ty::{expr_resolver::ResolvedExpr, stmt_resolver::{ResolveStmtsResult, ResolvedStmt}, ty::Ty, ty_path_expr_resolver::ResolvedPathElement, ty_var_access_resolver::ResolvedVarResult}};
+use crate::def::{
+        expressions::{expression::InitExpr, spec::Spec},
+        interned::namespace::SpannedNamespaceAccess,
+        scope::FileScopeId,
+        semantic_index::{SemanticIndex, semantic_index},
+    };
 
 #[derive(bon::Builder, Debug, Clone)]
 pub struct SymbolInfo<'a> {
@@ -66,7 +69,8 @@ pub trait ToProto<'db> {
         semantic_index(db, self.get_scope_id(db).file())
             .ast
             .get(self.get_id(db).0)
-            .expect(&format!("Invalid ID {} when attempting to retrieve span", self.get_id(db).0))
+            .unwrap_or_else(|| panic!("Invalid ID {} when attempting to retrieve span",
+                self.get_id(db).0))
             .get_span()
     }
 
@@ -75,10 +79,8 @@ pub trait ToProto<'db> {
             semantic_index(db, self.get_scope_id(db).file())
                 .ast
                 .get(name_id.0)
-                .expect(&format!(
-                    "Invalid name ID {} when attempting to retrieve name span",
-                    name_id.0
-                ))
+                .unwrap_or_else(|| panic!("Invalid name ID {} when attempting to retrieve name span",
+                    name_id.0))
                 .get_span()
         })
     }

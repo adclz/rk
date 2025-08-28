@@ -22,7 +22,7 @@ use crate::{
         using::Using,
     },
     to_proto::ToProto,
-    ty::{literals::LitCheckError, ty::{Ty, TyOrigin}},
+    ty::ty::{Ty, TyOrigin},
 };
 
 pub trait ToIdeDiagnostic<'db> {
@@ -119,11 +119,25 @@ pub enum PathExprError<'db> {
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum StmtError<'db> {
-    ContinueOutsideLoop { continue_stmt: Stmt<'db> },
-    ExitOutsideLoop { exit_stmt: Stmt<'db> },
-    Unreachable { start: Span, end: Span },
-    AssignmentToCallable { loc: Span, ty: Ty<'db> },
-    LiteralTypeError { expected: Ty<'db>, found: Ty<'db>, err: String },
+    ContinueOutsideLoop {
+        continue_stmt: Stmt<'db>,
+    },
+    ExitOutsideLoop {
+        exit_stmt: Stmt<'db>,
+    },
+    Unreachable {
+        start: Span,
+        end: Span,
+    },
+    AssignmentToCallable {
+        loc: Span,
+        ty: Ty<'db>,
+    },
+    LiteralTypeError {
+        expected: Ty<'db>,
+        found: Ty<'db>,
+        err: String,
+    },
 }
 
 impl<'db> ToIdeDiagnostic<'db> for AnalysisError<'db> {
@@ -360,18 +374,20 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 .severity(DiagnosticSeverity::ERROR)
                 .range(continue_stmt.get_span(db))
                 .call(),
-            Self::LiteralTypeError { expected, found, err } => {
-                diag()
-                    .message(format!(
-                        "type error: expected '{}', found '{}' ({})",
-                        expected.origin(db).name(db).text(db),
-                        found.origin(db).name(db).text(db),
-                        err
-                    ))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .range(found.origin(db).name_span(db).unwrap().clone())
-                    .call()
-            }    
+            Self::LiteralTypeError {
+                expected,
+                found,
+                err,
+            } => diag()
+                .message(format!(
+                    "type error: expected '{}', found '{}' ({})",
+                    expected.origin(db).name(db).text(db),
+                    found.origin(db).name(db).text(db),
+                    err
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .range(found.origin(db).name_span(db).unwrap().clone())
+                .call(),
         }
     }
 }

@@ -1,11 +1,9 @@
-use auto_enums::auto_enum;
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     def::{
         expressions::expression::{Expr, ParamAssign, PathExpr, SymbolicVariable, VariableAccess},
         scope::FileScopeId,
-        semantic_index::SemanticIndex,
     },
     to_proto::{AstId, ToProto},
 };
