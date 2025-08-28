@@ -28,12 +28,12 @@ pub struct ResolvedVarResult<'db> {
     #[tracked]
     #[returns(ref)]
     #[no_eq]
-    pub ty: Option<Ty<'db>>,
+    pub resolved_ty: Option<Ty<'db>>,
 }
 
 impl<'db> TyResolved<'db> for ResolvedVarResult<'db> {
     fn ty(&self, db: &'db dyn BaseDatabase) -> Option<Ty<'db>> {
-        self.ty(db)
+        *self.resolved_ty(db)
     }
 }
 

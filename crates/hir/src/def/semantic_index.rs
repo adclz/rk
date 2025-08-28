@@ -23,7 +23,8 @@ use crate::to_proto::ToProto;
 use crate::ty;
 use crate::ty::expr_resolver::ResolvedExpr;
 use crate::ty::name_res::pous_in_scope;
-use crate::ty::stmt_resolver::{resolve_stmts, ResolveStmtsResult, ResolvedStmt};
+use crate::ty::stmt_resolver::{resolve_stmt, ResolveStmtsResult, ResolvedStmt};
+use crate::ty::ty::Ty;
 use crate::ty::ty_path_expr_resolver::{
     ResolvedPathElement, ResolvedPathResult, resolved_path_expr,
 };
@@ -143,9 +144,8 @@ impl FusedIterator for ScopeIterator<'_> {}
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum HirNode<'db> {
     Namespace(NamespaceDecl<'db>),
-    PouDecl(PouDecl<'db>),
     Using(Using<'db>),
-    Variable(VariableDecl<'db>),
+    Ty(Ty<'db>),
     ResolvedStmt(ResolvedStmt<'db>),
     ResolvedExpr(ResolvedExpr<'db>),
 }
@@ -154,9 +154,8 @@ impl<'db> HirNode<'db> {
     pub fn as_proto(&'db self) -> &'db dyn ToProto<'db> {
         match self {
             HirNode::Namespace(n) => n,
-            HirNode::PouDecl(p) => p,
             HirNode::Using(u) => u,
-            HirNode::Variable(v) => v,
+            HirNode::Ty(t) => t,
             HirNode::ResolvedStmt(s) => s,
             HirNode::ResolvedExpr(e) => e,
         }
@@ -165,9 +164,8 @@ impl<'db> HirNode<'db> {
     pub fn get_span(&'db self, db: &'db dyn BaseDatabase) -> Span {
         match self {
             HirNode::Namespace(n) => n.get_span(db),
-            HirNode::PouDecl(p) => p.get_span(db),
             HirNode::Using(u) => u.get_span(db),
-            HirNode::Variable(v) => v.get_span(db),
+            HirNode::Ty(t) => t.get_span(db),
             HirNode::ResolvedStmt(s) => s.get_span(db),
             HirNode::ResolvedExpr(e) => e.get_span(db),
         }

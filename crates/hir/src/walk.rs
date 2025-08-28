@@ -10,7 +10,7 @@ use crate::{
     },
     ty::{
         expr_resolver::{ResolvedExpr, ResolvedExprKind},
-        stmt_resolver::{resolve_stmt, ResolveStmtsResult, ResolvedStmt, ResolvedStmtKind}, ty::Ty,
+        stmt_resolver::{resolve_stmt, ResolveStmtsResult, ResolvedStmt, ResolvedStmtKind}, ty::{ty_for_pou, Ty},
     },
 };
 
@@ -70,7 +70,7 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
         db: &'db dyn BaseDatabase,
         f: &mut F,
     ) -> ControlFlow<()> {
-        f(HirNode::PouDecl(*self))?;
+        f(HirNode::Ty(ty_for_pou(db, *self)))?;
 
         if let Some(stmts) = self.get_stmts(db) {
             let mut prev_stmt = None;

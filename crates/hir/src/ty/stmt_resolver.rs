@@ -157,7 +157,7 @@ impl<'db> ResolveStmtCtx<'db> {
                     let resolved_target = resolve_expr(self.db, Env::Ty(ty), *target);
 
                     match ty.kind(self.db) {
-                        TyKind::Callable { .. } => {
+                        TyKind::Function { .. } => {
                             self.errors.push(StmtResolveError::AssignmentToCallable {
                                 loc: resolved_var.origin(self.db).get_span(self.db).clone(),
                                 ty,

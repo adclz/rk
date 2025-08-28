@@ -1,4 +1,8 @@
-use auto_lsp::{core::span::Span, default::db::BaseDatabase};
+use auto_lsp::{
+    core::span::Span,
+    default::db::BaseDatabase,
+    lsp_types::{Location, request::GotoDeclarationResponse},
+};
 use rustc_hash::FxHashMap;
 
 use crate::{
@@ -6,6 +10,7 @@ use crate::{
         expressions::spec::{ElementarySpec, Spec, SpecKind},
         interned::{identifier::Ident, namespace::NamespaceAccess},
         pous::{
+            class::MethodDecl,
             pou::{Pou, PouDecl},
             variable::{VariableDecl, VariableKind},
         },
@@ -35,12 +40,36 @@ impl<'db> ToProto<'db> for Ty<'db> {
     fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
         self.origin(db).scope_id(db)
     }
+
+    fn declaration(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        _sema: &'db crate::def::semantic_index::SemanticIndex<'db>,
+    ) -> Option<GotoDeclarationResponse> {
+        let span = match self.origin(db) {
+            TyOrigin::FromPou(pou) => Location::new(
+                pou.scope_id(db).file().url(db).clone(),
+                pou.get_span(db).into(),
+            ),
+            TyOrigin::FromVariable(variable) => Location::new(
+                variable.scope_id(db).file().url(db).clone(),
+                variable.get_span(db).into(),
+            ),
+            TyOrigin::FromMethod(method) => Location::new(
+                method.scope_id(db).file().url(db).clone(),
+                method.get_span(db).into(),
+            ),
+        };
+
+        Some(GotoDeclarationResponse::Scalar(span))
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum TyOrigin<'db> {
     FromPou(PouDecl<'db>),
     FromVariable(VariableDecl<'db>),
+    FromMethod(MethodDecl<'db>),
 }
 
 impl<'db> TyOrigin<'db> {
@@ -48,6 +77,7 @@ impl<'db> TyOrigin<'db> {
         match self {
             TyOrigin::FromPou(pou) => pou.get_span(db),
             TyOrigin::FromVariable(variable) => variable.get_span(db),
+            TyOrigin::FromMethod(method) => method.get_span(db),
         }
     }
 
@@ -55,6 +85,7 @@ impl<'db> TyOrigin<'db> {
         match self {
             TyOrigin::FromPou(pou) => pou.get_name_span(db),
             TyOrigin::FromVariable(variable) => variable.get_name_span(db),
+            TyOrigin::FromMethod(method) => method.get_name_span(db),
         }
     }
 
@@ -62,6 +93,7 @@ impl<'db> TyOrigin<'db> {
         match self {
             TyOrigin::FromPou(pou) => pou.get_id(db),
             TyOrigin::FromVariable(variable) => variable.get_id(db),
+            TyOrigin::FromMethod(method) => method.get_id(db),
         }
     }
 
@@ -69,6 +101,7 @@ impl<'db> TyOrigin<'db> {
         match self {
             TyOrigin::FromPou(pou) => pou.get_scope_id(db),
             TyOrigin::FromVariable(variable) => variable.get_scope_id(db),
+            TyOrigin::FromMethod(method) => method.get_scope_id(db),
         }
     }
 
@@ -76,6 +109,7 @@ impl<'db> TyOrigin<'db> {
         match self {
             TyOrigin::FromPou(pou) => *pou.name(db),
             TyOrigin::FromVariable(variable) => *variable.name(db),
+            TyOrigin::FromMethod(method) => *method.name(db),
         }
     }
 }
@@ -97,7 +131,22 @@ pub enum TyKind<'db> {
         elements: FxHashMap<Ident, Ty<'db>>,
     },
 
-    Callable {
+    Class {
+        extends: Option<Ty<'db>>,
+        implements: FxHashMap<Ident, Ty<'db>>,
+        variables: FxHashMap<Ident, Ty<'db>>,
+        methods: FxHashMap<Ident, Ty<'db>>,
+    },
+
+    Interface {
+        implements: FxHashMap<Ident, Ty<'db>>,
+        methods: FxHashMap<Ident, Ty<'db>>,
+    },
+
+    RefTo(Ty<'db>),
+
+    // Callable types
+    Function {
         input: FxHashMap<Ident, Ty<'db>>,
         ztatic: FxHashMap<Ident, Ty<'db>>,
         output: FxHashMap<Ident, Ty<'db>>,
@@ -106,9 +155,16 @@ pub enum TyKind<'db> {
         return_type: Option<Ty<'db>>,
     },
 
-    RefTo(Ty<'db>),
+    FunctionBlock {
+        extends: Option<Ty<'db>>,
+        inputs: FxHashMap<Ident, Ty<'db>>,
+        outputs: FxHashMap<Ident, Ty<'db>>,
+        in_outs: FxHashMap<Ident, Ty<'db>>,
+        temps: FxHashMap<Ident, Ty<'db>>,
+        ztatic: FxHashMap<Ident, Ty<'db>>,
+    },
 
-    // Meta / error
+    // Error variants
     Unresolved(NamespaceAccess),
     Recursive,
 }
@@ -153,7 +209,7 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
             Ty::new(
                 db,
                 origin,
-                TyKind::Callable {
+                TyKind::Function {
                     input: inputs,
                     output: outputs,
                     in_out: in_outs,
@@ -192,27 +248,221 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
                 };
             }
 
+            let extends = fb.extends(db).map(|e| {
+                match resolve_namespace_access(db, e.scope_id.file(), e.scope_id, e.path) {
+                    Some(pou) => ty_for_pou(db, pou),
+                    None => Ty::new(db, origin, TyKind::Unresolved(e.path)),
+                }
+            });
+
+            if let Some(extends) = &extends {
+                if let TyKind::FunctionBlock {
+                    inputs: ext_inputs,
+                    outputs: ext_outputs,
+                    in_outs: ext_in_outs,
+                    temps: ext_temps,
+                    ztatic: ext_ztatic,
+                    ..
+                } = extends.kind(db)
+                {
+                    for (name, ty) in ext_inputs {
+                        inputs.insert(name, ty);
+                    }
+                    for (name, ty) in ext_outputs {
+                        outputs.insert(name, ty);
+                    }
+                    for (name, ty) in ext_in_outs {
+                        in_outs.insert(name, ty);
+                    }
+                    for (name, ty) in ext_temps {
+                        temp.insert(name, ty);
+                    }
+                    for (name, ty) in ext_ztatic {
+                        ztatic.insert(name, ty);
+                    }
+                };
+                // need to check in the case of class inheritance for function blocks
+            };
+
             Ty::new(
                 db,
                 origin,
-                TyKind::Callable {
-                    input: inputs,
-                    output: outputs,
-                    in_out: in_outs,
+                TyKind::FunctionBlock {
+                    extends,
+                    inputs,
+                    outputs,
+                    in_outs,
                     ztatic,
-                    temp,
-                    return_type: None, // Function blocks don't have a return type
+                    temps: temp,
                 },
             )
         }
         Pou::DataType(dt) => dt.spec(db).to_sig(db, TyOrigin::FromPou(pou)),
         Pou::Class(class) => {
-            todo!()
+            let origin = TyOrigin::FromPou(pou);
+            let mut class_variables = FxHashMap::default();
+            let mut class_methods = FxHashMap::default();
+
+            for v in class.variables(db) {
+                class_variables.insert(*v.name(db), v.spec(db).to_sig(db, origin));
+            }
+
+            for m in class.methods(db) {
+                class_methods.insert(*m.name(db), ty_for_method(db, m));
+            }
+
+            let extends = class.extends(db).map(|e| {
+                match resolve_namespace_access(db, e.scope_id.file(), e.scope_id, e.path) {
+                    Some(pou) => ty_for_pou(db, pou),
+                    None => Ty::new(db, origin, TyKind::Unresolved(e.path)),
+                }
+            });
+
+            // Class can only extends another class
+            if let Some(extends) = extends {
+                if let TyKind::Class {
+                    extends,
+                    implements,
+                    variables,
+                    methods,
+                } = extends.kind(db)
+                {
+                    for m in class.methods(db) {
+                        class_methods.insert(*m.name(db), ty_for_method(db, m));
+                    }
+
+                    for v in variables {
+                        class_variables.insert(v.0, v.1);
+                    }
+                }
+            }
+
+            // There can be any number of inherited interfaces
+            let mut implements = FxHashMap::default();
+
+            for imple in class.implements(db) {
+                let ty = match resolve_namespace_access(
+                    db,
+                    imple.scope_id.file(),
+                    imple.scope_id,
+                    imple.path,
+                ) {
+                    Some(pou) => ty_for_pou(db, pou),
+                    None => Ty::new(db, origin, TyKind::Unresolved(imple.path)),
+                };
+
+                let name = imple.path.target(db);
+
+                implements.insert(name.ident, ty);
+            }
+
+            Ty::new(
+                db,
+                origin,
+                TyKind::Class {
+                    extends,
+                    implements,
+                    variables: class_variables,
+                    methods: class_methods,
+                },
+            )
         }
         Pou::Interface(interface) => {
-            todo!()
+            let origin = TyOrigin::FromPou(pou);
+
+            let mut implements = FxHashMap::default();
+            let mut interface_methods = FxHashMap::default();
+
+            if let Some(ext) = interface.extends(db) {
+                for imple in ext {
+                    let ty = match resolve_namespace_access(
+                        db,
+                        imple.scope_id.file(),
+                        imple.scope_id,
+                        imple.path,
+                    ) {
+                        Some(pou) => ty_for_pou(db, pou),
+                        None => Ty::new(db, origin, TyKind::Unresolved(imple.path)),
+                    };
+
+                    if let TyKind::Interface {
+                        implements: ext_implements,
+                        methods: ext_methods,
+                    } = ty.kind(db)
+                    {
+                        for (name, method) in ext_methods {
+                            interface_methods.insert(name, method);
+                        }
+
+                        for (name, imple) in ext_implements {
+                            implements.insert(name, imple);
+                        }
+                    }
+
+                    let name = imple.path.target(db);
+
+                    implements.insert(name.ident, ty);
+                }
+            }
+
+            Ty::new(
+                db,
+                origin,
+                TyKind::Interface {
+                    implements,
+                    methods: interface_methods,
+                },
+            )
         }
     }
+}
+
+fn method_ty_result<'db>(db: &'db dyn BaseDatabase, method: MethodDecl<'db>) -> Ty<'db> {
+    Ty::new(db, TyOrigin::FromMethod(method), TyKind::Recursive)
+}
+
+#[salsa::tracked(cycle_result = method_ty_result)]
+pub fn ty_for_method<'db>(db: &'db dyn BaseDatabase, method: MethodDecl<'db>) -> Ty<'db> {
+    let origin = TyOrigin::FromMethod(method);
+    let mut inputs = FxHashMap::default();
+    let mut outputs = FxHashMap::default();
+    let mut in_outs = FxHashMap::default();
+    let mut temp = FxHashMap::default();
+    let mut ztatic = FxHashMap::default();
+
+    for v in method.variables(db) {
+        match v.kind(db) {
+            VariableKind::Var => {
+                ztatic.insert(*v.name(db), v.spec(db).to_sig(db, origin));
+            }
+            VariableKind::Input => {
+                inputs.insert(*v.name(db), v.spec(db).to_sig(db, origin));
+            }
+            VariableKind::Output => {
+                outputs.insert(*v.name(db), v.spec(db).to_sig(db, origin));
+            }
+            VariableKind::InOut => {
+                in_outs.insert(*v.name(db), v.spec(db).to_sig(db, origin));
+            }
+            VariableKind::Temp => {
+                temp.insert(*v.name(db), v.spec(db).to_sig(db, origin));
+            }
+            _ => continue,
+        };
+    }
+
+    Ty::new(
+        db,
+        origin,
+        TyKind::Function {
+            input: inputs,
+            output: outputs,
+            in_out: in_outs,
+            ztatic,
+            temp,
+            return_type: method.return_type(db).map(|rt| rt.to_sig(db, origin)),
+        },
+    )
 }
 
 fn variable_ty_result<'db>(db: &'db dyn BaseDatabase, variable: VariableDecl<'db>) -> Ty<'db> {
@@ -225,6 +475,7 @@ pub fn ty_for_variable<'db>(db: &'db dyn BaseDatabase, variable: VariableDecl<'d
         .to_sig(db, TyOrigin::FromVariable(variable))
 }
 
+#[salsa::tracked]
 impl<'db> Ty<'db> {
     pub fn linear(
         &self,
@@ -240,7 +491,7 @@ impl<'db> Ty<'db> {
                         origin: self.origin(db),
                     })
                     .cloned(),
-                TyKind::Callable {
+                TyKind::Function {
                     input,
                     output,
                     in_out,
@@ -249,6 +500,24 @@ impl<'db> Ty<'db> {
                     .get(&ident.ident)
                     .or_else(|| output.get(&ident.ident))
                     .or_else(|| in_out.get(&ident.ident))
+                    .ok_or_else(|| PathExprWalkError::FieldNotFound {
+                        expr: *expr,
+                        origin: self.origin(db),
+                    })
+                    .cloned(),
+                TyKind::FunctionBlock {
+                    extends,
+                    inputs,
+                    outputs,
+                    in_outs,
+                    temps,
+                    ztatic,
+                } => inputs
+                    .get(&ident.ident)
+                    .or_else(|| outputs.get(&ident.ident))
+                    .or_else(|| in_outs.get(&ident.ident))
+                    .or_else(|| temps.get(&ident.ident))
+                    .or_else(|| ztatic.get(&ident.ident))
                     .ok_or_else(|| PathExprWalkError::FieldNotFound {
                         expr: *expr,
                         origin: self.origin(db),
@@ -277,12 +546,13 @@ impl<'db> Ty<'db> {
         }
     }
 
+    #[salsa::tracked]
     pub fn as_callable_signature(
         self,
         db: &'db dyn BaseDatabase,
     ) -> Option<CallableSignature<'db>> {
         match self.kind(db) {
-            TyKind::Callable {
+            TyKind::Function {
                 input,
                 output,
                 in_out,
@@ -294,6 +564,27 @@ impl<'db> Ty<'db> {
                 outputs: output.clone(),
                 return_type,
             }),
+            TyKind::FunctionBlock {
+                inputs,
+                outputs,
+                in_outs,
+                temps,
+                ztatic,
+                ..
+            } => {
+                let mut all_inputs = inputs.clone();
+                let mut all_outputs = outputs.clone();
+                let mut all_in_outs = in_outs.clone();
+                let mut all_temps = temps.clone();
+                let mut all_ztatic = ztatic.clone();
+
+                Some(CallableSignature {
+                    inputs: all_inputs,
+                    in_outs: all_in_outs,
+                    outputs: all_outputs,
+                    return_type: None,
+                })
+            }
             _ => None,
         }
     }
@@ -309,7 +600,7 @@ impl<'db> Ty<'db> {
         if let TyKind::RefTo(sig) = self.kind(db) {
             return sig.is_callable(db);
         };
-        matches!(self.kind(db), TyKind::Callable { .. })
+        matches!(self.kind(db), TyKind::Function { .. })
     }
 
     pub fn is_invalid(&self, db: &'db dyn BaseDatabase) -> bool {
@@ -324,7 +615,7 @@ impl<'db> Ty<'db> {
         if let TyKind::RefTo(sig) = self.kind(db) {
             return sig.has_return_type(db);
         };
-        if let TyKind::Callable { return_type, .. } = self.kind(db) {
+        if let TyKind::Function { return_type, .. } = self.kind(db) {
             return return_type.is_some();
         }
         false
@@ -374,7 +665,7 @@ impl<'db> Spec<'db> {
                 }
             }
             SpecKind::Simple(simple) => Ty::new(db, origin, TyKind::Simple(*simple)),
-            _ => todo!()
+            _ => todo!(),
         }
     }
 }

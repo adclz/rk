@@ -8,7 +8,6 @@ use crate::check::lexer::add_fixes_to_parse_errors;
 
 pub mod duplicates;
 pub mod errors;
-pub mod hir;
 pub mod lexer;
 pub mod literals;
 

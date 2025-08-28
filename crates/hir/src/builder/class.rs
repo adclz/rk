@@ -21,16 +21,15 @@ impl<'db> SemanticIndexBuilder<'db> {
         let previous_scope = self.current_scope;
         self.current_scope = scope_id;
 
-        let extends = class
-            .extends
-            .as_ref()
-            .and_then(|e| match SpannedNamespaceAccess::from_ast(self.db, self, e.cast(self.ast)) {
-                    Ok(namespace) => Some(namespace),
-                    Err(error) => {
-                        self.errors.push(error);
-                        None
-                    }
-                });
+        let extends = class.extends.as_ref().and_then(|e| {
+            match SpannedNamespaceAccess::from_ast(self.db, self, e.cast(self.ast)) {
+                Ok(namespace) => Some(namespace),
+                Err(error) => {
+                    self.errors.push(error);
+                    None
+                }
+            }
+        });
 
         let implements = class
             .implements
@@ -145,13 +144,14 @@ impl<'db> SemanticIndexBuilder<'db> {
 
             Some(MethodDecl::new(
                 self.db,
-                name,
                 method_variables,
+                name,
                 return_type,
                 modifiers,
                 _override,
                 body,
                 m.cast(self.ast).into(),
+                m.cast(&self.ast).name.cast(&self.ast).into(),
                 scope_id
             ))
         }).collect::<Vec<_>>();
