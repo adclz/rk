@@ -27,4 +27,3 @@ ariadne = { workspace = true }
 ide-diagnostic = { workspace = true }
 time = { workspace = true, features = ["macros", "parsing"] }
 salsa = "0.22.0"
-expect-test = "1.5.1"

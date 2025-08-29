@@ -1,28 +1,48 @@
 use auto_lsp::{
-    core::errors::ParseErrorAccumulator,
-    default::db::{BaseDatabase, file::File, tracked::get_ast},
+    core::errors::{LexerError, ParseError, ParseErrorAccumulator},
+    default::db::{file::File, tracked::get_ast, BaseDatabase},
 };
 use ide_diagnostic::IdeDiagnostic;
 
-use crate::check::lexer::add_fixes_to_parse_errors;
+use crate::{
+    check::{check_semantic_index::Check, errors::sem_errors::{AnalysisError, SyntaxError, ToIdeDiagnostic}},
+    def::semantic_index::semantic_index,
+};
 
-pub mod duplicates;
+pub mod check_semantic_index;
 pub mod errors;
-pub mod lexer;
-pub mod literals;
 
-pub fn cached_diagnostics(db: &dyn BaseDatabase, file: File) -> Vec<IdeDiagnostic> {
-    let lexer_errors = add_fixes_to_parse_errors(
-        db,
-        &file,
-        &mut get_ast::accumulated::<ParseErrorAccumulator>(db, file),
-    );
-
-    //let uncached_diags = duplicate_declarations::accumulated::<DiagnosticAccumulator>(db, file);
-
+#[salsa::tracked(no_eq, returns(ref))]
+pub fn diagnostics_for_file(db: &dyn BaseDatabase, file: File) -> Vec<IdeDiagnostic> {
     let mut all_diagnostics = vec![];
-    all_diagnostics.extend(lexer_errors);
-    //all_diagnostics.extend(uncached_diags.into_iter().map(|d| d.into()));
+
+    let lexer_errors: Vec<AnalysisError> = get_ast::accumulated::<ParseErrorAccumulator>(db, file)
+        .into_iter()
+        .map(|e| (file, e).into())
+        .collect::<Vec<_>>();
+    let mut errors = vec![];
+    semantic_index(db, file).collect_errors(db, &mut errors); 
+
+    all_diagnostics.extend(lexer_errors.into_iter().map(|e| e.to_diagnostic(db)));
+    all_diagnostics.extend(errors.into_iter().map(|d| d.to_diagnostic(db)));
 
     all_diagnostics
+}
+
+impl<'db> From<(File, &ParseErrorAccumulator)> for AnalysisError<'db> {
+    fn from((file, err): (File, &ParseErrorAccumulator)) -> Self {
+        match &err.0 {
+            ParseError::LexerError { span, error } => {
+                match error {
+                    LexerError::Missing { range, error, grammar_name } => {
+                        AnalysisError::SyntaxError(SyntaxError::MissingNode { file, span: range.into(), err: error.to_owned(), grammar_name })
+                    },
+                    LexerError::Syntax { range, error, affected } => {
+                        AnalysisError::SyntaxError(SyntaxError::SyntaxError { span: range.into(), err: error.to_owned() })
+                    },
+                }
+            },
+            _ => unreachable!("Only lexer errors should be present here"),
+        }
+    }
 }

@@ -43,9 +43,7 @@ impl<'db> WalkHir<'db> for ResolveStmtsResult<'db> {
         db: &'db dyn BaseDatabase,
         f: &mut F,
     ) -> ControlFlow<()> {
-        for stmt in self.stmts(db) {
-            stmt.walk_hir(db, f)?;
-        }
+        self.stmt(db).as_ref().map(|s| s.walk_hir(db, f));
         ControlFlow::Continue(())
     }
 }
@@ -74,11 +72,8 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
         f(HirNode::Ty(ty_for_pou(db, *self)))?;
 
         if let Some(stmts) = self.get_stmts(db) {
-            let mut prev_stmt = None;
             for stmt in stmts {
-                let resolved = resolve_stmt(db, prev_stmt, *stmt, self.scope_id(db));
-                resolved.walk_hir(db, f)?;
-                prev_stmt = Some(*stmt);
+                resolve_stmt(db,  *stmt, self.scope_id(db)).walk_hir(db, f)?;
             }
         }
         ControlFlow::Continue(())
@@ -120,7 +115,8 @@ impl<'db> WalkHir<'db> for ResolvedStmt<'db> {
         f(HirNode::ResolvedStmt(*self))?;
 
         match self.kind(db) {
-            ResolvedStmtKind::Assignment { target, .. } => {
+            ResolvedStmtKind::Assignment { target, var } => {
+                //var.walk_hir(db, f)?;
                 target.walk_hir(db, f)?;
             }
             ResolvedStmtKind::AssignmentAttempt { var, target } => {

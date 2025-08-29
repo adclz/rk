@@ -1,12 +1,11 @@
 use auto_lsp::anyhow::{self};
+use auto_lsp::core::ast::AstNode;
 
 use crate::{
     builder::{
-        ParseSpec, ParseSpecInit, SpecInitResult,
-        expression::{ParseExpr, ParseExpression, ParseVariableAccess},
-        semantic_index::SemanticIndexBuilder,
+        expression::{ParseExpr, ParseExpression, ParseVariableAccess}, semantic_index::SemanticIndexBuilder, ParseSpec, ParseSpecInit, SpecInitResult
     },
-    check::errors::sem_errors::AnalysisError,
+    check::errors::sem_errors::{AnalysisError, SyntaxError},
     def::{
         expressions::{
             expression::{InitExpr, InitExprKind, Integer, IntegerKind, MultibitsPart},
@@ -414,7 +413,9 @@ impl<'db> ParseExpr<'db> for ast::generated::InitElem {
                 kind: InitExprKind::ConstantExpr(expr.children.cast(sema.ast).to_expr(sema)?),
             }),
             InitElem::ERRFuncCallInInit(err) => {
-                todo!()
+                Err(AnalysisError::SyntaxError(SyntaxError::FUnctionCallInInitExpression(
+                    err.get_span(),
+                )))
             }
         }
     }

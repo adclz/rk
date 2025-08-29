@@ -3,7 +3,7 @@ use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{CodeActionOrCommand, CodeActionParams},
 };
-use hir::{check::cached_diagnostics, def::semantic_index::semantic_index};
+use hir::{check::diagnostics_for_file, def::semantic_index::semantic_index};
 
 pub fn code_actions(
     db: &impl BaseDatabase,
@@ -20,7 +20,7 @@ pub fn code_actions(
 
     let ns = semantic_index(db, file);
 
-    cached_diagnostics(db, file).iter().for_each(|diagnostic| {
+    diagnostics_for_file(db, file).iter().for_each(|diagnostic| {
         if diagnostic.fixes.is_empty() {
             return;
         }

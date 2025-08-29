@@ -1,13 +1,16 @@
 use core::panic;
-use std::{error::Error, fmt::Display};
+use std::{collections::HashMap, error::Error, fmt::Display};
 
 use auto_lsp::{
-    core::{errors::PositionError, span::Span},
-    default::db::BaseDatabase,
-    lsp_types::{DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, Location},
+    core::{
+        errors::PositionError,
+        span::Span,
+    },
+    default::db::{file::File, BaseDatabase},
+    lsp_types::{DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, Location, WorkspaceEdit},
     tree_sitter,
 };
-use ide_diagnostic::{IdeDiagnostic, diag};
+use ide_diagnostic::{action, diag, edit, IdeDiagnostic};
 
 use crate::{
     def::{
@@ -40,6 +43,12 @@ pub enum AnalysisError<'db> {
     StmtError(StmtError<'db>),
 }
 
+impl<'db> From<StmtError<'db>> for AnalysisError<'db> {
+    fn from(err: StmtError<'db>) -> Self {
+        AnalysisError::StmtError(err)
+    }
+}
+
 impl Error for AnalysisError<'_> {}
 
 impl Display for AnalysisError<'_> {
@@ -65,8 +74,21 @@ pub enum SyntaxError {
     IncompleteEdgeQualifier(Span),
     InvocationInExpression(Span),
     UnexpectedThis(Span),
-    AssignToFUnctionCall(Span),
+    AssignToFunctionCall(Span),
     EmptyRightHandSide(Span),
+    FUnctionCallInInitExpression(Span),
+    // tree-sitter
+    MissingNode {
+        file: File,
+        span: Span,
+        err: String,
+        grammar_name: &'static str,
+    },
+    // todo: use custom lexer to handle syntax errors unhandled by tree-sitter
+    SyntaxError {
+        span: Span,
+        err: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
@@ -154,7 +176,7 @@ impl<'db> ToIdeDiagnostic<'db> for AnalysisError<'db> {
 }
 
 impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
-    fn to_diagnostic(&self, _db: &'db dyn BaseDatabase) -> IdeDiagnostic {
+    fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
         match self {
             Self::MultipleExtends(span) => diag()
                 .message("multiple extends declarations".into())
@@ -196,7 +218,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 .severity(DiagnosticSeverity::ERROR)
                 .range(span.clone())
                 .call(),
-            Self::AssignToFUnctionCall(span) => diag()
+            Self::AssignToFunctionCall(span) => diag()
                 .message("assignment to function call is not allowed".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .range(span.clone())
@@ -208,6 +230,61 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 .call(),
             Self::InvalidPouKeyword(span) => diag()
                 .message("invalid POU keyword".into())
+                .severity(DiagnosticSeverity::ERROR)
+                .range(span.clone())
+                .call(),
+            Self::FUnctionCallInInitExpression(span) => diag()
+                .message("function call in initialization expression is not allowed".into())
+                .severity(DiagnosticSeverity::ERROR)
+                .range(span.clone())
+                .call(),  
+            Self::MissingNode {
+                file,
+                span,
+                err,
+                grammar_name,
+            } => {
+                let mut diagnostic = diag()
+                    .range(span.clone())
+                    .message(err.to_string())
+                    .source("IEC".into())
+                    .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+                    .related_information(vec![DiagnosticRelatedInformation {
+                        location: auto_lsp::lsp_types::Location {
+                            uri: file.url(db).clone(),
+                            range: span.clone().into(),
+                        },
+                        message: format!("add missing {grammar_name} here"),
+                    }])
+                    .call();
+
+                // If the grammar name is an identifier, suggest inserting it.
+                if grammar_name.len() == 1 {
+                    diagnostic.with_fix(
+                        action()
+                            .title(format!("insert missing '{grammar_name}'"))
+                            .kind(auto_lsp::lsp_types::CodeActionKind::QUICKFIX)
+                            .diagnostics(vec![diagnostic.diagnostic.clone()])
+                            .is_preferred(true)
+                            .edit(WorkspaceEdit::new(HashMap::from([(
+                                file.url(db).clone(),
+                                vec![
+                                    edit()
+                                        .new_text(format!(" {grammar_name}"))
+                                        .range(span.clone())
+                                        .call(),
+                                ],
+                            )])))
+                            .call(),
+                    );
+                };
+                diagnostic
+            }
+            Self::SyntaxError {
+                span,
+                err,
+            } => diag()
+                .message(err.to_string())
                 .severity(DiagnosticSeverity::ERROR)
                 .range(span.clone())
                 .call(),

@@ -345,7 +345,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Assign {
     ) -> anyhow::Result<Stmt<'db>, AnalysisError<'db>> {
         let var = match self.variable.cast(sema.ast) {
             ast::generated::ERRAssignFuncCall_Variable::ERRAssignFuncCall(err) => Err(
-                AnalysisError::SyntaxError(SyntaxError::AssignToFUnctionCall(err.get_span())),
+                AnalysisError::SyntaxError(SyntaxError::AssignToFunctionCall(err.get_span())),
             ),
             ast::generated::ERRAssignFuncCall_Variable::Variable(var) => var.to_access(sema),
         }?;

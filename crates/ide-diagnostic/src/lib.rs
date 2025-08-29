@@ -1,4 +1,4 @@
-use ariadne::{ColorGenerator, Fmt, Label, Report, Source};
+use ariadne::{ColorGenerator, Label, Report, Source};
 use auto_lsp::{
     core::{errors::ParseErrorAccumulator, span::Span},
     default::db::{BaseDatabase, file::File},
@@ -12,6 +12,20 @@ use auto_lsp::{
 pub struct IdeDiagnostic {
     pub diagnostic: auto_lsp::lsp_types::Diagnostic,
     pub fixes: Vec<auto_lsp::lsp_types::CodeAction>,
+}
+
+impl PartialEq for IdeDiagnostic {
+    fn eq(&self, other: &Self) -> bool {
+        self.diagnostic == other.diagnostic
+    }
+}
+
+impl Eq for IdeDiagnostic {}
+
+impl std::hash::Hash for IdeDiagnostic {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.diagnostic.message.hash(state);
+    }
 }
 
 impl IdeDiagnostic {
@@ -56,8 +70,12 @@ impl IdeDiagnostic {
         &self,
         db: &'db dyn BaseDatabase,
         file: File,
+        config: Option<ariadne::Config>,
     ) -> Report<'db, (&'db str, std::ops::Range<usize>)> {
         let mut colors = ColorGenerator::new();
+        
+        // fixme: colors should be used *only* when ariadne::Config is None or .color is true
+        // The reason is that insta snapshots render incorrectly with colors enabled
         let curr_color = colors.next();
 
         let error_kind = match &self.diagnostic.severity {
@@ -74,18 +92,19 @@ impl IdeDiagnostic {
         let end = end_line + range.end.character as usize;
 
         let mut report = Report::build(error_kind, (file.url(db).as_str(), start..end));
+
+        if let Some(config) = config {
+            report = report.with_config(config);
+        }
+        
         report.add_label(
             Label::new((file.url(db).as_str(), start..end))
-                .with_message(format!(
-                    "{}",
-                    self.diagnostic.message.to_owned().fg(curr_color)
-                ))
-                .with_color(curr_color),
+                .with_message(self.diagnostic.message.to_owned().to_string()),
         );
 
         if let Some(related) = &self.diagnostic.related_information {
             for related in related {
-                report.add_help(format!("{}", related.message.to_owned().fg(curr_color)))
+                report.add_help(related.message.to_owned().to_string())
             }
         }
 

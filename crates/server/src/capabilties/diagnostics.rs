@@ -6,7 +6,7 @@ use auto_lsp::lsp_types::{
     WorkspaceDiagnosticReport, WorkspaceDiagnosticReportResult, WorkspaceDocumentDiagnosticReport,
     WorkspaceFullDocumentDiagnosticReport,
 };
-use hir::check::cached_diagnostics;
+use hir::check::diagnostics_for_file;
 
 pub fn diagnostics(
     db: &impl BaseDatabase,
@@ -23,7 +23,7 @@ pub fn diagnostics(
             related_documents: None,
             full_document_diagnostic_report: FullDocumentDiagnosticReport {
                 result_id: None,
-                items: cached_diagnostics(db, file)
+                items: diagnostics_for_file(db, file)
                     .iter()
                     .map(|d| d.diagnostic.clone())
                     .collect::<Vec<_>>(),
@@ -41,7 +41,7 @@ pub fn workspace_diagnostics(
         .iter()
         .map(|file| {
             let file = *file;
-            let errors: Vec<auto_lsp::lsp_types::Diagnostic> = cached_diagnostics(db, file)
+            let errors: Vec<auto_lsp::lsp_types::Diagnostic> = diagnostics_for_file(db, file)
                 .iter()
                 .map(|d| d.diagnostic.clone())
                 .collect::<Vec<_>>();
