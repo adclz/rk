@@ -1,22 +1,20 @@
-
+use crate::check::errors::sem_errors::StmtError;
 use crate::def::expressions::statement::{Stmt, StmtKind};
 use crate::def::scope::FileScopeId;
 use crate::to_proto::{AstId, ToProto};
 use crate::ty::TyResolved;
 use crate::ty::expr_resolver::{Env, ResolvedExpr, ResolvedExprKind, resolve_expr};
-use crate::ty::ty::{Ty, TyKind};
+use crate::ty::ty::{TyKind};
 use crate::ty::ty_var_access_resolver::{ResolvedVarResult, resolve_var_access};
-use auto_lsp::core::span::Span;
 use auto_lsp::default::db::BaseDatabase;
 
 #[salsa::tracked(no_eq, returns(ref))]
 pub fn resolve_stmt<'db>(
     db: &'db dyn BaseDatabase,
-    stmt_ctx: Option<Stmt<'db>>,
     stmt: Stmt<'db>,
     scope_id: FileScopeId,
 ) -> ResolveStmtsResult<'db> {
-    ResolveStmtCtx::new(db, stmt, stmt_ctx, scope_id).resolve()
+    ResolveStmtCtx::new(db, stmt, scope_id).resolve()
 }
 
 #[salsa::tracked(debug)]
@@ -24,19 +22,11 @@ pub struct ResolveStmtsResult<'db> {
     #[tracked]
     #[returns(ref)]
     #[no_eq]
-    pub stmts: Vec<ResolvedStmt<'db>>,
+    pub stmt: Option<ResolvedStmt<'db>>,
     #[tracked]
     #[returns(ref)]
     #[no_eq]
-    pub errors: Vec<StmtResolveError<'db>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
-pub enum StmtResolveError<'db> {
-    ContinueOutsideLoop { continue_stmt: Stmt<'db> },
-    ExitOutsideLoop { exit_stmt: Stmt<'db> },
-    Unreachable { start: Span, end: Span },
-    AssignmentToCallable { loc: Span, ty: Ty<'db> },
+    pub errors: Vec<StmtError<'db>>,
 }
 
 #[salsa::tracked(debug)]
@@ -83,6 +73,10 @@ pub enum ResolvedStmtKind<'db> {
         condition: ResolvedExpr<'db>,
         body: Vec<ResolveStmtsResult<'db>>,
     },
+    Continue,
+    Exit,
+    Return,
+    Super,
 }
 
 pub struct ResolveStmtCtx<'db> {
@@ -91,58 +85,24 @@ pub struct ResolveStmtCtx<'db> {
     stmt: Stmt<'db>,
     scope_id: FileScopeId,
     // Solved statements
-    resolved: Vec<ResolvedStmt<'db>>,
+    resolved: Option<ResolvedStmt<'db>>,
     // Errors encountered during resolution
-    errors: Vec<StmtResolveError<'db>>,
-    // If a continue statement was reached
-    continue_reached: Option<Stmt<'db>>,
-    // If an exit statement was reached
-    exit_reached: Option<Stmt<'db>>,
-    // If a return statement was reached
-    return_reached: Option<Stmt<'db>>,
-    unreachable_range: Option<(Span, Span)>,
-    // Are we inside a statement context?
-    stmt_ctx: Option<Stmt<'db>>,
+    errors: Vec<StmtError<'db>>,
 }
 
 impl<'db> ResolveStmtCtx<'db> {
-    pub fn new(
-        db: &'db dyn BaseDatabase,
-        stmt: Stmt<'db>,
-        ctx: Option<Stmt<'db>>,
-        scope_id: FileScopeId,
-    ) -> Self {
+    pub fn new(db: &'db dyn BaseDatabase, stmt: Stmt<'db>, scope_id: FileScopeId) -> Self {
         Self {
             db,
             stmt,
             scope_id,
-            stmt_ctx: ctx,
-            resolved: vec![],
+            resolved: None,
             errors: vec![],
-            continue_reached: None,
-            exit_reached: None,
-            return_reached: None,
-            unreachable_range: None,
         }
     }
 
     pub fn resolve(mut self) -> ResolveStmtsResult<'db> {
         let stmt = self.stmt;
-        // Checks if the statement is reachable
-        if let Some(ret) = self.return_reached {
-            match &mut self.unreachable_range {
-                None => {
-                    self.unreachable_range = Some((
-                        stmt.get_span(self.db).clone(),
-                        stmt.get_span(self.db).clone(),
-                    ));
-                }
-                Some((start, end)) => {
-                    self.unreachable_range = Some((start.clone(), stmt.get_span(self.db).clone()));
-                }
-            }
-        }
-
         match stmt.stmt(self.db) {
             StmtKind::Assignment { var, target } => {
                 let resolved_var = resolve_var_access(self.db, self.scope_id, var);
@@ -152,7 +112,7 @@ impl<'db> ResolveStmtCtx<'db> {
 
                     match ty.kind(self.db) {
                         TyKind::Function { .. } => {
-                            self.errors.push(StmtResolveError::AssignmentToCallable {
+                            self.errors.push(StmtError::AssignmentToCallable {
                                 loc: resolved_var.origin(self.db).get_span(self.db).clone(),
                                 ty,
                             });
@@ -165,7 +125,7 @@ impl<'db> ResolveStmtCtx<'db> {
                         _ => {}
                     }
 
-                    self.resolved.push(ResolvedStmt::new(
+                    self.resolved = Some(ResolvedStmt::new(
                         self.db,
                         stmt.id(self.db),
                         stmt.scope_id(self.db),
@@ -180,7 +140,7 @@ impl<'db> ResolveStmtCtx<'db> {
                 let resolved_var = resolve_var_access(self.db, self.scope_id, var);
                 if let Some(ty) = resolved_var.ty(self.db) {
                     let resolved_target = resolve_expr(self.db, Env::Ty(ty), *target);
-                    self.resolved.push(ResolvedStmt::new(
+                    self.resolved = Some(ResolvedStmt::new(
                         self.db,
                         stmt.id(self.db),
                         stmt.scope_id(self.db),
@@ -196,7 +156,7 @@ impl<'db> ResolveStmtCtx<'db> {
                 then,
                 else_if,
                 else_,
-            } => self.resolved.push(ResolvedStmt::new(
+            } => self.resolved = Some(ResolvedStmt::new(
                 self.db,
                 stmt.id(self.db),
                 stmt.scope_id(self.db),
@@ -206,7 +166,7 @@ impl<'db> ResolveStmtCtx<'db> {
                         .as_ref()
                         .map(|then| {
                             then.iter()
-                                .map(|s| *resolve_stmt(self.db, self.stmt_ctx, *s, self.scope_id))
+                                .map(|s| *resolve_stmt(self.db, *s, self.scope_id))
                                 .collect()
                         })
                         .unwrap_or_default(),
@@ -217,9 +177,7 @@ impl<'db> ResolveStmtCtx<'db> {
                                 *resolve_expr(self.db, Env::Bool, *cond),
                                 stmts
                                     .iter()
-                                    .map(|s| {
-                                        *resolve_stmt(self.db, self.stmt_ctx, *s, self.scope_id)
-                                    })
+                                    .map(|s| *resolve_stmt(self.db, *s, self.scope_id))
                                     .collect(),
                             )
                         })
@@ -229,7 +187,7 @@ impl<'db> ResolveStmtCtx<'db> {
                         .map(|else_| {
                             else_
                                 .iter()
-                                .map(|s| *resolve_stmt(self.db, self.stmt_ctx, *s, self.scope_id))
+                                .map(|s| *resolve_stmt(self.db, *s, self.scope_id))
                                 .collect()
                         })
                         .unwrap_or_default(),
@@ -240,7 +198,7 @@ impl<'db> ResolveStmtCtx<'db> {
                 cases,
                 else_,
             } => {
-                self.resolved.push(ResolvedStmt::new(
+                self.resolved = Some(ResolvedStmt::new(
                     self.db,
                     stmt.id(self.db),
                     stmt.scope_id(self.db),
@@ -248,7 +206,7 @@ impl<'db> ResolveStmtCtx<'db> {
                 ));
             }
             StmtKind::Invocation { target, params } => {
-                self.resolved.push(ResolvedStmt::new(
+                self.resolved = Some(ResolvedStmt::new(
                     self.db,
                     stmt.id(self.db),
                     stmt.scope_id(self.db),
@@ -256,7 +214,7 @@ impl<'db> ResolveStmtCtx<'db> {
                 ));
             }
             StmtKind::FuncCall { target, params } => {
-                self.resolved.push(ResolvedStmt::new(
+                self.resolved = Some(ResolvedStmt::new(
                     self.db,
                     stmt.id(self.db),
                     stmt.scope_id(self.db),
@@ -277,7 +235,7 @@ impl<'db> ResolveStmtCtx<'db> {
                     let step_expr = step
                         .as_ref()
                         .map(|s| resolve_expr(self.db, Env::Ty(ty), *s));
-                    self.resolved.push(ResolvedStmt::new(
+                    self.resolved = Some(ResolvedStmt::new(
                         self.db,
                         stmt.id(self.db),
                         stmt.scope_id(self.db),
@@ -288,14 +246,14 @@ impl<'db> ResolveStmtCtx<'db> {
                             step: step_expr.copied(),
                             body: body
                                 .iter()
-                                .map(|s| *resolve_stmt(self.db, self.stmt_ctx, *s, self.scope_id))
+                                .map(|s| *resolve_stmt(self.db, *s, self.scope_id))
                                 .collect(),
                         },
                     ));
                 }
             }
             StmtKind::Repeat { body, condition } => {
-                self.resolved.push(ResolvedStmt::new(
+                self.resolved = Some(ResolvedStmt::new(
                     self.db,
                     stmt.id(self.db),
                     stmt.scope_id(self.db),
@@ -303,13 +261,13 @@ impl<'db> ResolveStmtCtx<'db> {
                         condition: *resolve_expr(self.db, Env::Bool, *condition),
                         body: body
                             .iter()
-                            .map(|s| *resolve_stmt(self.db, self.stmt_ctx, *s, self.scope_id))
+                            .map(|s| *resolve_stmt(self.db, *s, self.scope_id))
                             .collect(),
                     },
                 ));
             }
             StmtKind::While { condition, body } => {
-                self.resolved.push(ResolvedStmt::new(
+                self.resolved = Some(ResolvedStmt::new(
                     self.db,
                     stmt.id(self.db),
                     stmt.scope_id(self.db),
@@ -317,59 +275,34 @@ impl<'db> ResolveStmtCtx<'db> {
                         condition: *resolve_expr(self.db, Env::Bool, *condition),
                         body: body
                             .iter()
-                            .map(|s| *resolve_stmt(self.db, self.stmt_ctx, *s, self.scope_id))
+                            .map(|s| *resolve_stmt(self.db, *s, self.scope_id))
                             .collect(),
                     },
                 ));
-            }
-            // "If the EXIT or CONTINUE statement (feature 9 or 11) is supported,
-            // then it shall be supported for all of the iteration statements (FOR, WHILE, REPEAT)
-            // which are supported in the implementation".
-
-            // CONTINUE breaks the current iteration of the loop and continues with the next iteration.
-            StmtKind::Continue => match self.stmt_ctx {
-                Some(ctx)
-                    if matches!(
-                        ctx.stmt(self.db),
-                        StmtKind::For { .. } | StmtKind::Repeat { .. } | StmtKind::While { .. }
-                    ) =>
-                {
-                    self.continue_reached = Some(stmt);
-                }
-                _ => {
-                    self.errors.push(StmtResolveError::ContinueOutsideLoop {
-                        continue_stmt: stmt,
-                    });
-                }
-            },
-            // EXIT breaks the loop and continues with the next statement after the loop.
-            StmtKind::Exit => match self.stmt_ctx {
-                Some(ctx)
-                    if matches!(
-                        ctx.stmt(self.db),
-                        StmtKind::For { .. } | StmtKind::Repeat { .. } | StmtKind::While { .. }
-                    ) =>
-                {
-                    self.exit_reached = Some(stmt);
-                }
-                _ => {
-                    self.errors
-                        .push(StmtResolveError::ExitOutsideLoop { exit_stmt: stmt });
-                }
-            },
-            // RETURNS stops the execution of all statements in the current context
-            // and returns to the caller.
-            StmtKind::Return => {
-                self.return_reached = Some(stmt);
-            }
-            StmtKind::Super => {}
+            } StmtKind::Continue => self.resolved = Some(ResolvedStmt::new(
+                self.db,
+                stmt.id(self.db),
+                stmt.get_scope_id(self.db),
+                ResolvedStmtKind::Continue,
+            )),
+            StmtKind::Exit => self.resolved = Some(ResolvedStmt::new(
+                self.db,
+                stmt.id(self.db),
+                stmt.get_scope_id(self.db),
+                ResolvedStmtKind::Exit,
+            )),StmtKind::Return => self.resolved = Some(ResolvedStmt::new(
+                self.db,
+                stmt.id(self.db),
+                stmt.get_scope_id(self.db),
+                ResolvedStmtKind::Return,
+            )),
+            StmtKind::Super => self.resolved = Some(ResolvedStmt::new(
+                self.db,
+                stmt.id(self.db),
+                stmt.get_scope_id(self.db),
+                ResolvedStmtKind::Super,
+            )),
         }
-
-        if let Some((start, end)) = self.unreachable_range {
-            self.errors
-                .push(StmtResolveError::Unreachable { start, end });
-        }
-
         ResolveStmtsResult::new(self.db, self.resolved, self.errors)
     }
 }
