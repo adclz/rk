@@ -45,6 +45,7 @@ ordermap = "0.5.8"
 ariadne = "0.5.1"
 time = { version = "0.3.41", features = ["macros", "parsing"] }
 rstest = "0.26.1"
+insta = "1.13.1"
 
 [package]
 name = "rk-tests"
@@ -65,3 +66,5 @@ hir = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }
+insta = { workspace = true }
+ariadne = { workspace = true }
