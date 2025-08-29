@@ -296,10 +296,11 @@ module.exports = grammar({
 
         unsigned_int: $ => token(/[0-9][0-9_]*/),
 
-        signed_int: $ => seq(
+        // The precedence here is necessary to avoid conflicts with the unary minus operator
+        signed_int: $ => prec(RK_PREC.unary + 1, seq(
             optional(choice('+', '-')),
             $.unsigned_int
-        ),
+        )),
 
         binary_int: $ => seq(
             '2#',
