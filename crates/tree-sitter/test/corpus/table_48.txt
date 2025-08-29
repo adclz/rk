@@ -88,12 +88,11 @@ END_CLASS
                       (int_name)))))
               (simple_type_init
                 (constant_expr
-                  (unary_operator
-                    (constant
-                      (numeric_literal
-                        (int_literal
-                          (signed_int
-                            (unsigned_int))))))))))
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int)))))))))
           (var_decl_init_list
             (variable_list
               (identifier))
@@ -105,12 +104,11 @@ END_CLASS
                       (int_name)))))
               (simple_type_init
                 (constant_expr
-                  (unary_operator
-                    (constant
-                      (numeric_literal
-                        (int_literal
-                          (signed_int
-                            (unsigned_int)))))))))))
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))))
         (method_decl
           (identifier)
           (pascal_style_comment

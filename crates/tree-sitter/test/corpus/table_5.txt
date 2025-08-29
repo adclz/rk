@@ -25,19 +25,6 @@ END_FUNCTION
                     (var_access
                       (field)))))
               (assignment
-                (unary_operator
-                  (constant
-                    (numeric_literal
-                      (int_literal
-                        (signed_int
-                          (unsigned_int))))))))
-            (assign
-              (variable
-                (symbolic_variable
-                  (path_expression
-                    (var_access
-                      (field)))))
-              (assignment
                 (constant
                   (numeric_literal
                     (int_literal
@@ -62,12 +49,23 @@ END_FUNCTION
                     (var_access
                       (field)))))
               (assignment
-                (unary_operator
-                  (constant
-                    (numeric_literal
-                      (int_literal
-                        (signed_int
-                          (unsigned_int))))))))))))
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int)))))))
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int)))))))))))
 
 ================================================================================
 Real literal 
