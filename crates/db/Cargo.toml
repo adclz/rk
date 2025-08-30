@@ -9,6 +9,5 @@ publish = false
 
 [dependencies]
 auto-lsp = { workspace = true }
-dashmap = { workspace = true }
-salsa = "0.22.0"
-expect-test = "1.5.1"
+dashmap = { workspace = true, features = ["rayon"] }
+salsa = { workspace = true }

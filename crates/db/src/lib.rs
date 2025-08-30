@@ -1,7 +1,6 @@
 use auto_lsp::{
     default::db::{BaseDatabase, file::File},
     lsp_types::Url,
-    salsa,
 };
 use dashmap::DashMap;
 use salsa::Event;

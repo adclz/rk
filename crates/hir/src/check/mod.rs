@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use auto_lsp::{
     core::errors::{LexerError, ParseError, ParseErrorAccumulator},
     default::db::{file::File, tracked::get_ast, BaseDatabase},
@@ -12,8 +14,8 @@ use crate::{
 pub mod check_semantic_index;
 pub mod errors;
 
-#[salsa::tracked(no_eq, returns(ref))]
-pub fn diagnostics_for_file(db: &dyn BaseDatabase, file: File) -> Vec<IdeDiagnostic> {
+#[salsa::tracked(no_eq)]
+pub fn diagnostics_for_file(db: &dyn BaseDatabase, file: File) -> Arc<Vec<IdeDiagnostic>> {
     let mut all_diagnostics = vec![];
 
     let lexer_errors: Vec<AnalysisError> = get_ast::accumulated::<ParseErrorAccumulator>(db, file)
@@ -26,7 +28,7 @@ pub fn diagnostics_for_file(db: &dyn BaseDatabase, file: File) -> Vec<IdeDiagnos
     all_diagnostics.extend(lexer_errors.into_iter().map(|e| e.to_diagnostic(db)));
     all_diagnostics.extend(errors.into_iter().map(|d| d.to_diagnostic(db)));
 
-    all_diagnostics
+    Arc::new(all_diagnostics)
 }
 
 impl<'db> From<(File, &ParseErrorAccumulator)> for AnalysisError<'db> {
