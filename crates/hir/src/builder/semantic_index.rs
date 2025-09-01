@@ -5,7 +5,7 @@ use auto_lsp::default::db::{BaseDatabase, file::File};
 use rustc_hash::FxHashMap;
 
 use crate::check::errors::sem_errors::{AnalysisError, SyntaxError};
-use crate::def::interned::identifier::SpannedIdent;
+use crate::def::interned::identifier::SpanIdent;
 use crate::def::namespace::NamespaceDecl;
 use crate::def::pous::pou::PouDecl;
 use crate::def::scope::{FileScopeId, Scope, ScopeKind, Visibility};
@@ -55,13 +55,13 @@ impl<'db> SemanticIndexBuilder<'db> {
     pub fn get_namespace_path(
         &mut self,
         namespace: &ast::generated::NamespaceDecl,
-    ) -> anyhow::Result<Vec<SpannedIdent<'db>>, AnalysisError<'db>> {
+    ) -> anyhow::Result<Vec<SpanIdent<'db>>, AnalysisError<'db>> {
         namespace
             .name
             .cast(self.ast)
             .children
             .iter()
-            .map(|n| SpannedIdent::new(self.db, self, n))
+            .map(|n| SpanIdent::new(self.db, self, n))
             .collect::<Result<Vec<_>, AnalysisError<'db>>>()
     }
 

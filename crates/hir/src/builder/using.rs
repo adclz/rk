@@ -4,7 +4,7 @@ use auto_lsp::core::ast::AstNodeId;
 
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::sem_errors::AnalysisError;
-use crate::def::interned::identifier::SpannedIdent;
+use crate::def::interned::identifier::SpanIdent;
 use crate::def::interned::namespace::NamespacePath;
 use crate::def::using::Using;
 
@@ -17,7 +17,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         for child in using.children.iter() {
             let mut path = vec![];
             for child in child.cast(self.ast).children.iter() {
-                path.push(SpannedIdent::new(self.db, self, child)?);
+                path.push(SpanIdent::new(self.db, self, child)?);
             }
             result.push(Using::new(
                 self.db,
@@ -38,7 +38,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             for child in directive.cast(self.ast).children.iter() {
                 let mut path = vec![];
                 for child in child.cast(self.ast).children.iter() {
-                    path.push(SpannedIdent::new(self.db, self, child)?);
+                    path.push(SpanIdent::new(self.db, self, child)?);
                 }
                 using.push(Using::new(
                     self.db,

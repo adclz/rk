@@ -14,13 +14,13 @@ use crate::{
 };
 
 #[derive(Clone, Eq, salsa::Update, Debug)]
-pub struct SpannedIdent<'db> {
+pub struct SpanIdent<'db> {
     pub id: AstId,
     pub scope_id: FileScopeId<'db>,
     pub ident: Ident,
 }
 
-impl Deref for SpannedIdent<'_> {
+impl Deref for SpanIdent<'_> {
     type Target = Ident;
 
     fn deref(&self) -> &Self::Target {
@@ -28,25 +28,25 @@ impl Deref for SpannedIdent<'_> {
     }
 }
 
-impl PartialEq for SpannedIdent<'_> {
+impl PartialEq for SpanIdent<'_> {
     fn eq(&self, other: &Self) -> bool {
         self.ident == other.ident
     }
 }
 
-impl PartialEq<Ident> for SpannedIdent<'_> {
+impl PartialEq<Ident> for SpanIdent<'_> {
     fn eq(&self, other: &Ident) -> bool {
         self.ident == *other
     }
 }
 
-impl Hash for SpannedIdent<'_> {
+impl Hash for SpanIdent<'_> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.ident.hash(state);
     }
 }
 
-impl<'db> SpannedIdent<'db> {
+impl<'db> SpanIdent<'db> {
     pub fn new<T: AstNode>(
         db: &'db dyn BaseDatabase,
         sema: &SemanticIndexBuilder<'db>,
@@ -62,7 +62,7 @@ impl<'db> SpannedIdent<'db> {
         sema: &SemanticIndexBuilder<'db>,
         node: &impl AstNode,
     ) -> anyhow::Result<Self, AnalysisError<'db>> {
-        Ok(SpannedIdent {
+        Ok(SpanIdent {
             id: node.into(),
             scope_id: sema.current_scope,
             ident: Ident::from_node(db, sema.file, node)?,
@@ -74,7 +74,7 @@ impl<'db> SpannedIdent<'db> {
     }
 }
 
-impl<'db> ToProto<'db> for SpannedIdent<'db> {
+impl<'db> ToProto<'db> for SpanIdent<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
         self.id
     }

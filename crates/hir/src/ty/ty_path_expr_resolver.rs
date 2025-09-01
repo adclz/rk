@@ -11,7 +11,7 @@ use crate::ty::name_res::{pous_in_scope, resolve_namespace_access, variables_in_
 use crate::ty::ty::{Ty, ty_for_pou, ty_for_variable};
 use crate::{
     def::{
-        expressions::expression::PathExpr, interned::identifier::SpannedIdent, scope::FileScopeId,
+        expressions::expression::PathExpr, interned::identifier::SpanIdent, scope::FileScopeId,
     },
     ty::ty::TyOrigin,
 };
@@ -68,7 +68,7 @@ impl<'db> ResolvedPathElement<'db> {
 pub struct ResolvePathExprCtx<'db> {
     db: &'db dyn BaseDatabase,
     expr: PathExpr<'db>,
-    fragments: Vec<SpannedIdent<'db>>,
+    fragments: Vec<SpanIdent<'db>>,
     signature: Option<Ty<'db>>,
 }
 
@@ -146,7 +146,7 @@ impl<'db> ResolvePathExprCtx<'db> {
         }
     }
 
-    fn find_signature(&mut self, identifier: &SpannedIdent<'db>) {
+    fn find_signature(&mut self, identifier: &SpanIdent<'db>) {
         // Try variables in scope
         if let Some(variable) =
             variables_in_scope(self.db, self.expr.scope_id(self.db)).get(identifier)
@@ -181,7 +181,7 @@ impl<'db> ResolvePathExprCtx<'db> {
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum PathExprWalkStep<'db> {
     Field {
-        ident: SpannedIdent<'db>,
+        ident: SpanIdent<'db>,
         expr: PathExpr<'db>,
     }, // By name
     Index {

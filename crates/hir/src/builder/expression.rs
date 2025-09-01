@@ -7,7 +7,7 @@ use crate::check::errors::sem_errors::{AnalysisError, SyntaxError};
 use crate::def::expressions::expression::{
     FieldExpr, IndexExpr, Integer, IntegerKind, PathExpr, VariableAccessKind,
 };
-use crate::def::interned::identifier::SpannedIdent;
+use crate::def::interned::identifier::SpanIdent;
 use crate::{
     def::expressions::expression::{
         AddOperatorKind, BooleanOperatorKind, ComparisonOperatorKind, Elementary, Expr, ExprKind,
@@ -635,10 +635,10 @@ impl<'db> ParseExpr<'db> for ast::generated::VarAccess {
                 direct_variable.get_span(),
             ))),
             ast::generated::ERRUnexpectedThisInPath_Field_RefDeref::Field(field) => Ok(
-                VarAccess::Simple(SpannedIdent::from_node(sema.db, sema, field)?),
+                VarAccess::Simple(SpanIdent::from_node(sema.db, sema, field)?),
             ),
             ast::generated::ERRUnexpectedThisInPath_Field_RefDeref::RefDeref(ref_deref) => {
-                Ok(VarAccess::Deref(SpannedIdent::from_node(
+                Ok(VarAccess::Deref(SpanIdent::from_node(
                     sema.db,
                     sema,
                     ref_deref.Ref.cast(sema.ast),

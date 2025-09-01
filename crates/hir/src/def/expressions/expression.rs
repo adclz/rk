@@ -1,5 +1,5 @@
 use crate::completions::snippets::elem_type_names_init;
-use crate::def::interned::identifier::{Ident, SpannedIdent};
+use crate::def::interned::identifier::{Ident, SpanIdent};
 use crate::def::scope::FileScopeId;
 use crate::def::semantic_index::SemanticIndex;
 use crate::to_proto::{AstId, ToProto};
@@ -146,7 +146,7 @@ pub struct IndexExpr<'db> {
 }
 
 impl<'db> PathExpr<'db> {
-    pub fn to_string(&self, db: &'db dyn BaseDatabase) -> SpannedIdent<'db> {
+    pub fn to_string(&self, db: &'db dyn BaseDatabase) -> SpanIdent<'db> {
         match &self.expr(db) {
             PathExprKind::Field(field_expr) => match field_expr.var {
                 VarAccess::Simple(ref simple) => simple.clone(),
@@ -245,8 +245,8 @@ pub struct SymbolicVariable<'db> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum VarAccess<'db> {
-    Simple(SpannedIdent<'db>),
-    Deref(SpannedIdent<'db>), // ^
+    Simple(SpanIdent<'db>),
+    Deref(SpanIdent<'db>), // ^
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]

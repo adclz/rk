@@ -2,7 +2,7 @@ use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::sem_errors::AnalysisError;
 use crate::def::scope::FileScopeId;
 use crate::to_proto::AstId;
-use crate::{def::interned::identifier::SpannedIdent, to_proto::ToProto};
+use crate::{def::interned::identifier::SpanIdent, to_proto::ToProto};
 use auto_lsp::default::db::tracked::get_ast;
 use auto_lsp::{anyhow, default::db::BaseDatabase};
 use std::hash::Hash;
@@ -11,7 +11,7 @@ use std::hash::Hash;
 #[salsa::interned(debug, no_lifetime)]
 pub struct NamespacePath {
     #[returns(ref)]
-    pub fragments: Vec<SpannedIdent<'db>>,
+    pub fragments: Vec<SpanIdent<'db>>,
 }
 
 impl NamespacePath {
@@ -21,7 +21,7 @@ impl NamespacePath {
         NamespacePath::new(db, path)
     }
 
-    pub fn extend(&self, db: &dyn BaseDatabase, ident: SpannedIdent) -> NamespacePath {
+    pub fn extend(&self, db: &dyn BaseDatabase, ident: SpanIdent) -> NamespacePath {
         let mut path = self.fragments(db).to_owned();
         path.push(ident);
         NamespacePath::new(db, path)
@@ -36,26 +36,26 @@ impl NamespacePath {
     }
 }
 
-impl From<(&dyn BaseDatabase, &SpannedIdent<'_>)> for NamespacePath {
-    fn from(from: (&dyn BaseDatabase, &SpannedIdent<'_>)) -> Self {
+impl From<(&dyn BaseDatabase, &SpanIdent<'_>)> for NamespacePath {
+    fn from(from: (&dyn BaseDatabase, &SpanIdent<'_>)) -> Self {
         NamespacePath::new(from.0, vec![from.1.clone()])
     }
 }
 
-impl From<(&dyn BaseDatabase, &[SpannedIdent<'_>])> for NamespacePath {
-    fn from(from: (&dyn BaseDatabase, &[SpannedIdent<'_>])) -> Self {
+impl From<(&dyn BaseDatabase, &[SpanIdent<'_>])> for NamespacePath {
+    fn from(from: (&dyn BaseDatabase, &[SpanIdent<'_>])) -> Self {
         NamespacePath::new(from.0, from.1.to_vec())
     }
 }
 
-impl From<(&dyn BaseDatabase, Vec<SpannedIdent<'_>>)> for NamespacePath {
-    fn from(from: (&dyn BaseDatabase, Vec<SpannedIdent<'_>>)) -> Self {
+impl From<(&dyn BaseDatabase, Vec<SpanIdent<'_>>)> for NamespacePath {
+    fn from(from: (&dyn BaseDatabase, Vec<SpanIdent<'_>>)) -> Self {
         NamespacePath::new(from.0, from.1)
     }
 }
 
-impl From<(&dyn BaseDatabase, &Vec<SpannedIdent<'_>>)> for NamespacePath {
-    fn from(from: (&dyn BaseDatabase, &Vec<SpannedIdent<'_>>)) -> Self {
+impl From<(&dyn BaseDatabase, &Vec<SpanIdent<'_>>)> for NamespacePath {
+    fn from(from: (&dyn BaseDatabase, &Vec<SpanIdent<'_>>)) -> Self {
         NamespacePath::new(from.0, from.1.clone())
     }
 }
@@ -113,7 +113,7 @@ impl<'db> SpanNamespaceAccess<'db> {
 #[salsa::interned(debug, no_lifetime)]
 pub struct NamespaceAccess {
     pub namespace: Option<NamespacePath>,
-    pub target: SpannedIdent<'db>,
+    pub target: SpanIdent<'db>,
 }
 
 impl NamespaceAccess {
@@ -129,14 +129,14 @@ impl NamespaceAccess {
         let mut current = match fq_name.children.cast(ast) {
             ast::generated::Identifier_ScopedIdentifier::ScopedIdentifier(scoped) => scoped,
             ast::generated::Identifier_ScopedIdentifier::Identifier(ident) => {
-                let target = SpannedIdent::from_node(db, sema, ident)?;
+                let target = SpanIdent::from_node(db, sema, ident)?;
                 return Ok(NamespaceAccess::new(db, None, target));
             }
         };
 
         loop {
             // Extract the target of the current scoped_identifier (e.g. m1, m2, m3...)
-            fragments.push(SpannedIdent::new(db, sema, &current.target)?);
+            fragments.push(SpanIdent::new(db, sema, &current.target)?);
 
             match current.path.cast(ast) {
                 ast::generated::Identifier_ScopedIdentifier::ScopedIdentifier(next) => {
@@ -144,7 +144,7 @@ impl NamespaceAccess {
                 }
                 ast::generated::Identifier_ScopedIdentifier::Identifier(base) => {
                     // Reached the bottom-most path (e.g. "system")
-                    fragments.push(SpannedIdent::from_node(db, sema, base)?);
+                    fragments.push(SpanIdent::from_node(db, sema, base)?);
                     break;
                 }
             }
