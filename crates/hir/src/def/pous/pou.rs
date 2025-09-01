@@ -33,7 +33,7 @@ pub struct PouDecl<'db> {
 
     pub name_id: AstId,
 
-    pub scope_id: FileScopeId,
+    pub scope_id: FileScopeId<'db>,
 }
 
 impl<'db> PouDecl<'db> {
@@ -55,7 +55,7 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
         Some(self.name_id(db))
     }
 
-    fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         self.scope_id(db)
     }
 

@@ -1,33 +1,28 @@
-use auto_lsp::default::db::file::File;
+use auto_lsp::default::db::{file::File, BaseDatabase};
 use bitflags::bitflags;
 
 use crate::def::{namespace::NamespaceDecl, pous::pou::PouDecl, using::Using};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, salsa::Update)]
-pub struct FileScopeId((File, usize));
+#[salsa::tracked(debug)]
+pub struct FileScopeId<'db> {
+    pub file: File,
 
-impl From<(File, usize)> for FileScopeId {
-    fn from(data: (File, usize)) -> Self {
-        FileScopeId(data)
+    pub scope: usize,
+}
+
+impl<'db> From<(&'db dyn BaseDatabase, File, usize)> for FileScopeId<'db> {
+    fn from(data: (&'db dyn BaseDatabase, File, usize)) -> Self {
+        FileScopeId::new(data.0, data.1, data.2)
     }
 }
 
-impl FileScopeId {
-    #[inline]
-    pub const fn global(file: File) -> Self {
-        FileScopeId((file, usize::MAX))
+impl<'db> FileScopeId<'db> {
+    pub fn global(db: &'db dyn BaseDatabase, file: File) -> Self {
+        FileScopeId::new(db, file, usize::MAX)
     }
 
-    pub fn is_global(&self) -> bool {
-        self.0.1 == usize::MAX
-    }
-
-    pub fn file(&self) -> File {
-        self.0.0
-    }
-
-    pub fn scope(&self) -> usize {
-        self.0.1
+    pub fn is_global(&self, db: &'db dyn BaseDatabase) -> bool {
+        self.scope(db) == usize::MAX
     }
 }
 
@@ -43,10 +38,10 @@ pub struct Scope<'db> {
 
     pub kind: ScopeKind<'db>,
 
-    pub id: FileScopeId,
+    pub id: FileScopeId<'db>,
 
     // If None, this is the global scope
-    pub parent: Option<FileScopeId>,
+    pub parent: Option<FileScopeId<'db>>,
 
     pub visibility: Visibility,
 }
@@ -56,9 +51,9 @@ impl<'db> Scope<'db> {
         file: File,
         kind: ScopeKind<'db>,
         usings: Vec<Using<'db>>,
-        id: FileScopeId,
+        id: FileScopeId<'db>,
         visibility: Visibility,
-        parent: Option<FileScopeId>,
+        parent: Option<FileScopeId<'db>>,
     ) -> Self {
         Self {
             file,

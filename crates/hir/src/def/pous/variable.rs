@@ -33,7 +33,7 @@ pub struct VariableDecl<'db> {
 
     pub name_id: AstId,
 
-    pub scope_id: FileScopeId,
+    pub scope_id: FileScopeId<'db>,
 }
 
 // VAR Internal to entity (function, function block, etc.)
@@ -68,7 +68,7 @@ impl<'db> ToProto<'db> for VariableDecl<'db> {
         Some(self.name_id(db))
     }
 
-    fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         self.scope_id(db)
     }
 

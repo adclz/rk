@@ -12,7 +12,7 @@ pub struct Expr<'db> {
 
     pub id: AstId,
 
-    pub scope_id: FileScopeId,
+    pub scope_id: FileScopeId<'db>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -113,7 +113,7 @@ pub struct PathExpr<'db> {
 
     pub id: AstId,
 
-    pub scope_id: FileScopeId,
+    pub scope_id: FileScopeId<'db>,
 }
 
 impl<'db> ToProto<'db> for PathExpr<'db> {
@@ -121,7 +121,7 @@ impl<'db> ToProto<'db> for PathExpr<'db> {
         self.id(db)
     }
 
-    fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         self.scope_id(db)
     }
 }
@@ -130,13 +130,13 @@ impl<'db> ToProto<'db> for PathExpr<'db> {
 pub enum PathExprKind<'db> {
     Field(FieldExpr<'db>), // .
     Index(IndexExpr<'db>), // []
-    VarAccess(VarAccess),  // Variable access (e.g. "var" or "var^")
+    VarAccess(VarAccess<'db>),  // Variable access (e.g. "var" or "var^")
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct FieldExpr<'db> {
     pub path: PathExpr<'db>,
-    pub var: VarAccess,
+    pub var: VarAccess<'db>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -146,7 +146,7 @@ pub struct IndexExpr<'db> {
 }
 
 impl<'db> PathExpr<'db> {
-    pub fn to_string(&self, db: &'db dyn BaseDatabase) -> SpannedIdent {
+    pub fn to_string(&self, db: &'db dyn BaseDatabase) -> SpannedIdent<'db> {
         match &self.expr(db) {
             PathExprKind::Field(field_expr) => match field_expr.var {
                 VarAccess::Simple(ref simple) => simple.clone(),
@@ -214,7 +214,7 @@ pub struct VariableAccess<'db> {
 
     pub id: AstId,
 
-    pub scope_id: FileScopeId,
+    pub scope_id: FileScopeId<'db>,
 }
 
 impl<'db> ToProto<'db> for VariableAccess<'db> {
@@ -222,7 +222,7 @@ impl<'db> ToProto<'db> for VariableAccess<'db> {
         self.id
     }
 
-    fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         self.scope_id
     }
 }
@@ -244,9 +244,9 @@ pub struct SymbolicVariable<'db> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum VarAccess {
-    Simple(SpannedIdent),
-    Deref(SpannedIdent), // ^
+pub enum VarAccess<'db> {
+    Simple(SpannedIdent<'db>),
+    Deref(SpannedIdent<'db>), // ^
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -313,7 +313,7 @@ impl<'db> ToProto<'db> for Expr<'db> {
         self.id(db)
     }
 
-    fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         self.scope_id(db)
     }
 
@@ -333,7 +333,7 @@ pub struct InitExpr<'db> {
 
     pub id: AstId,
 
-    pub scope_id: FileScopeId,
+    pub scope_id: FileScopeId<'db>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -355,12 +355,12 @@ pub enum InitExprKind<'db> {
     ConstantExpr(Expr<'db>),
 }
 
-impl ToProto<'_> for InitExpr<'_> {
-    fn get_id(&'_ self, db: &'_ dyn BaseDatabase) -> AstId {
+impl<'db> ToProto<'db> for InitExpr<'db> {
+    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
         self.id
     }
 
-    fn get_scope_id(&'_ self, db: &'_ dyn BaseDatabase) -> FileScopeId {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         self.scope_id
     }
 }

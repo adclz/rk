@@ -622,7 +622,7 @@ impl<'db> ParseExpr<'db> for ast::generated::IndexExpression {
 }
 
 impl<'db> ParseExpr<'db> for ast::generated::VarAccess {
-    type Output = VarAccess;
+    type Output = VarAccess<'db>;
 
     fn parse(
         &self,

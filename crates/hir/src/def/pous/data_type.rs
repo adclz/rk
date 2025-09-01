@@ -12,5 +12,5 @@ pub struct DataType<'db> {
     #[tracked]
     pub init: Option<InitExpr<'db>>,
 
-    pub scope_id: FileScopeId,
+    pub scope_id: FileScopeId<'db>,
 }

@@ -22,14 +22,14 @@ pub struct SymbolInfo<'a> {
     pub kind: Option<SymbolKind>,
     pub spec: Option<Spec<'a>>,
     pub init: Option<InitExpr<'a>>,
-    pub implements: Option<Vec<SpannedNamespaceAccess>>,
+    pub implements: Option<Vec<SpannedNamespaceAccess<'a>>>,
     pub extends: Option<Extends<'a>>,
 }
 
 #[derive(Debug, Clone)]
 pub enum Extends<'a> {
-    Single(SpannedNamespaceAccess),
-    Multiple(&'a Vec<SpannedNamespaceAccess>),
+    Single(SpannedNamespaceAccess<'a>),
+    Multiple(&'a Vec<SpannedNamespaceAccess<'a>>),
 }
 
 impl SymbolInfo<'_> {
@@ -63,10 +63,10 @@ pub trait ToProto<'db> {
         None
     }
 
-    fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId;
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db>;
 
     fn get_span(&'db self, db: &'db dyn BaseDatabase) -> Span {
-        semantic_index(db, self.get_scope_id(db).file())
+        semantic_index(db, self.get_scope_id(db).file(db))
             .ast
             .get(self.get_id(db).0)
             .unwrap_or_else(|| panic!("Invalid ID {} when attempting to retrieve span",
@@ -76,7 +76,7 @@ pub trait ToProto<'db> {
 
     fn get_name_span(&'db self, db: &'db dyn BaseDatabase) -> Option<Span> {
         self.get_name_id(db).map(|name_id| {
-            semantic_index(db, self.get_scope_id(db).file())
+            semantic_index(db, self.get_scope_id(db).file(db))
                 .ast
                 .get(name_id.0)
                 .unwrap_or_else(|| panic!("Invalid name ID {} when attempting to retrieve name span",

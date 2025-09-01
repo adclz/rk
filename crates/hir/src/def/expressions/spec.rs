@@ -25,15 +25,15 @@ pub struct Spec<'db> {
 
     pub id: AstId,
 
-    pub scope_id: FileScopeId,
+    pub scope_id: FileScopeId<'db>,
 }
 
 impl<'db> Spec<'db> {
     pub fn shorthand(&'db self, db: &'db dyn BaseDatabase) -> String {
         match self.kind(db) {
             SpecKind::Target(target) => {
-                let sema = semantic_index(db, self.scope_id(db).file());
-                match resolve_namespace_access(db, sema.file, self.scope_id(db), *target) {
+                let sema = semantic_index(db, self.scope_id(db).file(db));
+                match resolve_namespace_access(db, self.scope_id(db), *target) {
                     Some(pou) => match pou.pou(db) {
                         Pou::Function(dt) => format!("(function) {}", pou.name(db).text(db)),
                         Pou::FunctionBlock(fb) => {
@@ -111,14 +111,14 @@ impl<'db> ToProto<'db> for Spec<'db> {
         self.id(db)
     }
 
-    fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         self.scope_id(db)
     }
 
     fn hover(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>) -> Option<Hover> {
         match self.kind(db) {
             SpecKind::Target(target) => {
-                match resolve_namespace_access(db, sema.file, self.scope_id(db), *target) {
+                match resolve_namespace_access(db, self.scope_id(db), *target) {
                     Some(pou) => pou.hover(db, sema),
                     None => None,
                 }

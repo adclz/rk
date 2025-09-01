@@ -19,7 +19,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         &mut self,
         data_type: &TypeDecl,
     ) -> anyhow::Result<PouDecl<'db>, AnalysisError<'db>> {
-        let scope_id = FileScopeId::from((self.file, data_type.get_id()));
+        let scope_id = FileScopeId::from((self.db, self.file, data_type.get_id()));
         let previous_scope = self.current_scope;
         self.current_scope = scope_id;
 
@@ -47,8 +47,6 @@ impl<'db> SemanticIndexBuilder<'db> {
             },
             None => None,
         };
-
-        let scope_id = self.create_pou_id(data_type);
 
         let result = PouDecl::new(
             self.db,

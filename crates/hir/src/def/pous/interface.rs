@@ -13,12 +13,12 @@ use crate::{
 #[salsa::tracked(debug)]
 pub struct Interface<'db> {
     #[returns(as_ref)]
-    pub extends: Option<Vec<SpannedNamespaceAccess>>,
+    pub extends: Option<Vec<SpannedNamespaceAccess<'db>>>,
 
     #[returns(ref)]
     pub methods: Vec<MethodPrototype<'db>>,
 
-    pub scope_id: FileScopeId,
+    pub scope_id: FileScopeId<'db>,
 }
 
 #[salsa::tracked(debug)]
@@ -35,7 +35,7 @@ pub struct MethodPrototype<'db> {
 
     pub name_id: AstId,
 
-    pub scope_id: FileScopeId,
+    pub scope_id: FileScopeId<'db>,
 }
 
 impl<'db> ToProto<'db> for MethodPrototype<'db> {
@@ -43,7 +43,7 @@ impl<'db> ToProto<'db> for MethodPrototype<'db> {
         self.id(db)
     }
 
-    fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         self.scope_id(db)
     }
 }

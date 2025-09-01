@@ -36,12 +36,9 @@ pub fn shared_namespaces<'db>(
 /// Rules for resolving USING directives
 ///
 /// We first search if the namespace matches any of the namespaces declared in all files (via [`shared_namespaces`]).
-///
-/// The, we check if the directive is not declared multiple times in the same scope.
 #[tracing::instrument(skip_all, name = "imported_namespaces_for_using")]
 fn imported_namespaces<'db>(
     db: &'db dyn BaseDatabase,
-    file: File,
     using: Using<'db>,
 ) -> FxHashMap<NamespacePath, NamespaceDecl<'db>> {
     let mut result = FxHashMap::default();
@@ -52,10 +49,6 @@ fn imported_namespaces<'db>(
     if matching_namespaces.is_empty() {
         return result;
     }
-
-    // Check for duplicate `USING` in the same top-level scope
-    let sema = semantic_index(db, file);
-    let scope = sema.get_scope(using.scope_id(db));
 
     for ns in matching_namespaces {
         result.insert(*ns.path(db), *ns);
@@ -68,8 +61,7 @@ fn imported_namespaces<'db>(
 /// Resolve a namespace access to a POU declaration.
 pub fn resolve_namespace_access<'db>(
     db: &'db dyn BaseDatabase,
-    file: File,
-    scope: FileScopeId,
+    scope: FileScopeId<'db>,
     access: NamespaceAccess,
 ) -> Option<PouDecl<'db>> {
     let target = access.target(db);
@@ -83,7 +75,7 @@ pub fn resolve_namespace_access<'db>(
                 .copied()
         }),
         // None, look for the POU in the current scope
-        None => pous_in_scope(db, file, scope).get(&target.ident).copied(),
+        None => pous_in_scope(db, scope).get(&target.ident).copied(),
     }
 }
 
@@ -100,11 +92,10 @@ fn global_pous<'db>(db: &'db dyn BaseDatabase) -> Vec<PouDecl<'db>> {
 #[salsa::tracked(returns(ref))]
 fn local_pous_in_scope<'db>(
     db: &'db dyn BaseDatabase,
-    file: File,
-    scope_id: FileScopeId,
+    scope_id: FileScopeId<'db>,
 ) -> Vec<PouDecl<'db>> {
-    let sema = semantic_index(db, file);
-    let scope = sema.get_scope(scope_id);
+    let sema = semantic_index(db, scope_id.file(db));
+    let scope = sema.get_scope(db, scope_id);
 
     match scope.kind {
         ScopeKind::Namespace(ns) => ns.pous(db).to_vec(),
@@ -116,16 +107,15 @@ fn local_pous_in_scope<'db>(
 #[salsa::tracked(returns(ref))]
 fn imported_pous_in_scope<'db>(
     db: &'db dyn BaseDatabase,
-    file: File,
-    scope_id: FileScopeId,
+    scope_id: FileScopeId<'db>,
 ) -> Vec<PouDecl<'db>> {
-    let sema = semantic_index(db, file);
-    let scope = sema.get_scope(scope_id);
+    let sema = semantic_index(db, scope_id.file(db));
+    let scope = sema.get_scope(db, scope_id);
 
     let mut result = Vec::new();
 
     for using in &scope.usings {
-        let namespaces = imported_namespaces(db, file, *using);
+        let namespaces = imported_namespaces(db, *using);
         for (_, ns) in namespaces {
             result.extend_from_slice(ns.pous(db));
         }
@@ -138,13 +128,12 @@ fn imported_pous_in_scope<'db>(
 #[salsa::tracked(returns(ref))]
 fn inherited_pous<'db>(
     db: &'db dyn BaseDatabase,
-    file: File,
-    scope_id: FileScopeId,
+    scope_id: FileScopeId<'db>,
 ) -> Vec<PouDecl<'db>> {
-    let sema = semantic_index(db, file);
+    let sema = semantic_index(db, scope_id.file(db));
     let mut result = Vec::new();
 
-    let it = sema.scope_iterator(scope_id);
+    let it = sema.scope_iterator(db, scope_id);
     for scope in it {
         if scope.is_global() {
             result.extend_from_slice(&sema.global_pous);
@@ -165,8 +154,7 @@ fn inherited_pous<'db>(
 #[salsa::tracked(returns(ref))]
 pub fn pous_in_scope<'db>(
     db: &'db dyn BaseDatabase,
-    file: File,
-    scope_id: FileScopeId,
+    scope_id: FileScopeId<'db>,
 ) -> FxHashMap<Ident, PouDecl<'db>> {
     let mut map = FxHashMap::default();
 
@@ -182,15 +170,15 @@ pub fn pous_in_scope<'db>(
         map.insert(*pou.name(db), *pou);
     }
 
-    for pou in inherited_pous(db, file, scope_id) {
+    for pou in inherited_pous(db, scope_id) {
         map.insert(*pou.name(db), *pou);
     }
 
-    for pou in imported_pous_in_scope(db, file, scope_id) {
+    for pou in imported_pous_in_scope(db, scope_id) {
         map.insert(*pou.name(db), *pou);
     }
 
-    for pou in local_pous_in_scope(db, file, scope_id) {
+    for pou in local_pous_in_scope(db, scope_id) {
         map.insert(*pou.name(db), *pou);
     }
 
@@ -200,11 +188,10 @@ pub fn pous_in_scope<'db>(
 #[salsa::tracked(returns(ref))]
 pub fn variables_in_scope<'db>(
     db: &'db dyn BaseDatabase,
-    file: File,
-    scope_id: FileScopeId,
+    scope_id: FileScopeId<'db>,
 ) -> FxHashMap<Ident, VariableDecl<'db>> {
-    let sema = semantic_index(db, file);
-    let scope = sema.get_scope(scope_id);
+    let sema = semantic_index(db, scope_id.file(db));
+    let scope = sema.get_scope(db,scope_id);
 
     let mut map = FxHashMap::default();
 

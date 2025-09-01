@@ -12,7 +12,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use salsa::Accumulator;
 
 use crate::{
-    check::errors::sem_errors::AnalysisError,
+    check::errors::sem_errors::{AnalysisError, StmtError},
     def::{
         expressions::{
             expression::{
@@ -35,9 +35,7 @@ use crate::{
     ty::{
         expr_resolver::ResolvedExpr,
         name_res::pous_in_scope,
-        stmt_resolver::{
-            ResolveStmtCtx, ResolveStmtsResult, ResolvedStmt, ResolvedStmtKind, resolve_stmt,
-        },
+        stmt_resolver::{ResolveStmtCtx, ResolvedStmt, ResolvedStmtKind, resolve_stmt},
         ty::{Ty, TyKind, ty_for_pou, ty_for_variable},
         ty_path_expr_resolver::ResolvePathExprCtx,
     },
@@ -50,8 +48,6 @@ pub trait Check<'db> {
 
 impl<'db> Check<'db> for SemanticIndex<'db> {
     fn collect_errors(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<AnalysisError<'db>>) {
-        eprintln!("global pous: {}", self.global_pous.len());
-        eprintln!("namespaces: {}", self.namespaces.len());
         self.errors.iter().for_each(|err| errors.push(err.clone()));
         self.global_pous
             .iter()
@@ -89,42 +85,33 @@ impl<'db> StmtCheckCtx<'db> {
         }
     }
 
-    fn mark(&mut self, stmt: ResolvedStmt<'db>) {
-        match stmt.kind(self.db) {
-            // "If the EXIT or CONTINUE statement (feature 9 or 11) is supported,
-            // then it shall be supported for all of the iteration statements (FOR, WHILE, REPEAT)
-            // which are supported in the implementation".
+    fn mark_and_check(&mut self, stmt: ResolvedStmt<'db>) {
+        if self.return_reached.is_some() {
+            match &mut self.unreachable_range {
+                Some((_, end)) => {
+                    *end = stmt.get_span(self.db).clone();
+                }
+                None => {
+                    let span = stmt.get_span(self.db).clone();
+                    self.unreachable_range = Some((span.clone(), span));
+                }
+            }
+        }
 
-            // CONTINUE breaks the current iteration of the loop and continues with the next iteration.
-            ResolvedStmtKind::Continue => {
-                self.continue_reached = Some(stmt);
-            }
-            // EXIT breaks the loop and continues with the next statement after the loop.
-            ResolvedStmtKind::Exit => {
-                self.exit_reached = Some(stmt);
-            }
-            // RETURNS stops the execution of all statements in the current context
-            // and returns to the caller.
-            ResolvedStmtKind::Return { .. } => {
-                self.return_reached = Some(stmt);
-            }
+        match stmt.kind(self.db) {
+            ResolvedStmtKind::Continue => self.continue_reached = Some(stmt),
+            ResolvedStmtKind::Exit => self.exit_reached = Some(stmt),
+            ResolvedStmtKind::Return { .. } => self.return_reached = Some(stmt),
             _ => {}
         }
     }
 
-    fn update_unreachable(&mut self, stmt: ResolvedStmt<'db>) {
-        if let Some(ret) = self.return_reached {
-            match &mut self.unreachable_range {
-                None => {
-                    self.unreachable_range = Some((
-                        stmt.get_span(self.db).clone(),
-                        stmt.get_span(self.db).clone(),
-                    ));
-                }
-                Some((start, end)) => {
-                    self.unreachable_range = Some((start.clone(), stmt.get_span(self.db).clone()));
-                }
-            }
+    fn finish_block(&mut self, errors: &mut Vec<AnalysisError<'db>>) {
+        if let Some((start, end)) = self.unreachable_range.take() {
+            errors.push(AnalysisError::StmtError(StmtError::Unreachable {
+                start,
+                end,
+            }));
         }
     }
 }
@@ -135,9 +122,7 @@ impl<'db> Check<'db> for PouDecl<'db> {
             let mut stmt_ctx = StmtCheckCtx::new(db);
 
             for stmt in stmts {
-                resolve_stmt(db, *stmt, self.scope_id(db))
-                    .stmt(db)
-                    .map(|s| s.collect_errors_with_ctx(db, &mut stmt_ctx, errors));
+                resolve_stmt(db, *stmt).collect_errors_with_ctx(db, &mut stmt_ctx, errors);
             }
         }
     }
@@ -152,7 +137,7 @@ trait CheckWithCtx<'db> {
     );
 }
 
-impl<'db> CheckWithCtx<'db> for Vec<ResolveStmtsResult<'db>> {
+impl<'db> CheckWithCtx<'db> for Vec<ResolvedStmt<'db>> {
     fn collect_errors_with_ctx(
         &self,
         db: &'db dyn BaseDatabase,
@@ -160,8 +145,7 @@ impl<'db> CheckWithCtx<'db> for Vec<ResolveStmtsResult<'db>> {
         errors: &mut Vec<AnalysisError<'db>>,
     ) {
         self.iter().for_each(|s| {
-            s.stmt(db)
-                .map(|s| s.collect_errors_with_ctx(db, ctx, errors));
+            s.collect_errors_with_ctx(db, ctx, errors);
         })
     }
 }
@@ -173,16 +157,19 @@ impl<'db> CheckWithCtx<'db> for ResolvedStmt<'db> {
         ctx: &mut StmtCheckCtx<'db>,
         errors: &mut Vec<AnalysisError<'db>>,
     ) {
-        ctx.mark(*self);
+        ctx.mark_and_check(*self);
         match self.kind(db) {
             ResolvedStmtKind::For { body, .. } => {
                 body.collect_errors_with_ctx(db, ctx, errors);
+                ctx.finish_block(errors);
             }
             ResolvedStmtKind::While { body, .. } => {
                 body.collect_errors_with_ctx(db, ctx, errors);
+                ctx.finish_block(errors);
             }
             ResolvedStmtKind::Repeat { body, .. } => {
                 body.collect_errors_with_ctx(db, ctx, errors);
+                ctx.finish_block(errors);
             }
             ResolvedStmtKind::If {
                 then,
@@ -191,12 +178,19 @@ impl<'db> CheckWithCtx<'db> for ResolvedStmt<'db> {
                 ..
             } => {
                 then.collect_errors_with_ctx(db, ctx, errors);
+                ctx.finish_block(errors);
+
                 else_.collect_errors_with_ctx(db, ctx, errors);
+                ctx.finish_block(errors);
+
                 else_if
                     .iter()
                     .for_each(|(_, s)| s.collect_errors_with_ctx(db, ctx, errors));
+                ctx.finish_block(errors);
             }
-            _ => {}
+            _ => {
+                ctx.finish_block(errors);
+            }
         }
     }
 }

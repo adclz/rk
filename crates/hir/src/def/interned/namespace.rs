@@ -11,7 +11,7 @@ use std::hash::Hash;
 #[salsa::interned(debug, no_lifetime)]
 pub struct NamespacePath {
     #[returns(ref)]
-    pub fragments: Vec<SpannedIdent>,
+    pub fragments: Vec<SpannedIdent<'db>>,
 }
 
 impl NamespacePath {
@@ -36,63 +36,63 @@ impl NamespacePath {
     }
 }
 
-impl From<(&dyn BaseDatabase, &SpannedIdent)> for NamespacePath {
-    fn from(from: (&dyn BaseDatabase, &SpannedIdent)) -> Self {
+impl From<(&dyn BaseDatabase, &SpannedIdent<'_>)> for NamespacePath {
+    fn from(from: (&dyn BaseDatabase, &SpannedIdent<'_>)) -> Self {
         NamespacePath::new(from.0, vec![from.1.clone()])
     }
 }
 
-impl From<(&dyn BaseDatabase, &[SpannedIdent])> for NamespacePath {
-    fn from(from: (&dyn BaseDatabase, &[SpannedIdent])) -> Self {
+impl From<(&dyn BaseDatabase, &[SpannedIdent<'_>])> for NamespacePath {
+    fn from(from: (&dyn BaseDatabase, &[SpannedIdent<'_>])) -> Self {
         NamespacePath::new(from.0, from.1.to_vec())
     }
 }
 
-impl From<(&dyn BaseDatabase, Vec<SpannedIdent>)> for NamespacePath {
-    fn from(from: (&dyn BaseDatabase, Vec<SpannedIdent>)) -> Self {
+impl From<(&dyn BaseDatabase, Vec<SpannedIdent<'_>>)> for NamespacePath {
+    fn from(from: (&dyn BaseDatabase, Vec<SpannedIdent<'_>>)) -> Self {
         NamespacePath::new(from.0, from.1)
     }
 }
 
-impl From<(&dyn BaseDatabase, &Vec<SpannedIdent>)> for NamespacePath {
-    fn from(from: (&dyn BaseDatabase, &Vec<SpannedIdent>)) -> Self {
+impl From<(&dyn BaseDatabase, &Vec<SpannedIdent<'_>>)> for NamespacePath {
+    fn from(from: (&dyn BaseDatabase, &Vec<SpannedIdent<'_>>)) -> Self {
         NamespacePath::new(from.0, from.1.clone())
     }
 }
 
 /// A [`SpannedPath`] is a wrapper around a [`NamespaceAccess`] that includes a span
 #[derive(Clone, salsa::Update, Debug)]
-pub struct SpannedNamespaceAccess {
+pub struct SpannedNamespaceAccess<'db> {
     pub id: AstId,
-    pub scope_id: FileScopeId,
+    pub scope_id: FileScopeId<'db>,
     pub path: NamespaceAccess,
 }
 
-impl PartialEq for SpannedNamespaceAccess {
+impl PartialEq for SpannedNamespaceAccess<'_> {
     fn eq(&self, other: &Self) -> bool {
         self.path == other.path
     }
 }
 
-impl Hash for SpannedNamespaceAccess {
+impl Hash for SpannedNamespaceAccess<'_> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.path.hash(state);
     }
 }
 
-impl<'db> ToProto<'db> for SpannedNamespaceAccess {
+impl<'db> ToProto<'db> for SpannedNamespaceAccess<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
         self.id
     }
 
-    fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         self.scope_id
     }
 }
 
-impl Eq for SpannedNamespaceAccess {}
+impl Eq for SpannedNamespaceAccess<'_> {}
 
-impl<'db> SpannedNamespaceAccess {
+impl<'db> SpannedNamespaceAccess<'db> {
     pub fn from_ast(
         db: &'db dyn BaseDatabase,
         sema: &SemanticIndexBuilder<'db>,
@@ -113,7 +113,7 @@ impl<'db> SpannedNamespaceAccess {
 #[salsa::interned(debug, no_lifetime)]
 pub struct NamespaceAccess {
     pub namespace: Option<NamespacePath>,
-    pub target: SpannedIdent,
+    pub target: SpannedIdent<'db>,
 }
 
 impl NamespaceAccess {

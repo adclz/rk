@@ -18,7 +18,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         type Decl =
             ERRInvalidPouKeyword_ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl;
 
-        let scope_id = FileScopeId::from((self.file, nested.get_id()));
+        let scope_id = FileScopeId::from((self.db, self.file, nested.get_id()));
         let path = NamespacePath::from((self.db, parent_path));
         let usings = match self.parse_usings(&nested.directives) {
             Ok(usings) => usings,

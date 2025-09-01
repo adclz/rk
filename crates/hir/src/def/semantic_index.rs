@@ -48,7 +48,7 @@ pub struct SemanticIndex<'db> {
     pub(crate) ast: Arc<Vec<Box<dyn AstNode>>>,
 
     /// Map of scope IDs to their corresponding scopes
-    pub(crate) scopes: FxHashMap<FileScopeId, Scope<'db>>,
+    pub(crate) scopes: FxHashMap<FileScopeId<'db>, Scope<'db>>,
 
     /// All *global* POU declarations in the file
     pub global_pous: Vec<PouDecl<'db>>,
@@ -75,8 +75,8 @@ impl<'db> SemanticIndex<'db> {
     /// Get the scope corresponding to the given ID.
     ///
     /// Panics if the scope does not belong to the same file as the semantic index.
-    pub fn get_scope(&'db self, id: FileScopeId) -> &'db Scope<'db> {
-        assert!(self.file == id.file());
+    pub fn get_scope(&'db self, db: &'db dyn BaseDatabase,  id: FileScopeId<'db>) -> &'db Scope<'db> {
+        assert!(self.file == id.file(db));
         &self.scopes[&id]
     }
 
@@ -89,14 +89,14 @@ impl<'db> SemanticIndex<'db> {
     pub fn pous_in_scope(
         &'db self,
         db: &'db dyn BaseDatabase,
-        scope: FileScopeId,
+        scope: FileScopeId<'db>,
     ) -> &'db FxHashMap<Ident, PouDecl<'db>> {
-        pous_in_scope(db, self.file, scope)
+        pous_in_scope(db, scope)
     }
 
     /// Returns a [`ScopeIterator`] starting from the given scope.
-    pub fn scope_iterator(&self, scope: FileScopeId) -> ScopeIterator {
-        ScopeIterator::new(&self.scopes, self.get_scope(scope))
+    pub fn scope_iterator(&self, db: &'db dyn BaseDatabase, scope: FileScopeId<'db>) -> ScopeIterator {
+        ScopeIterator::new(&self.scopes, self.get_scope(db, scope))
     }
 
     /// Returns all errors encountered during semantic analysis.
@@ -107,12 +107,12 @@ impl<'db> SemanticIndex<'db> {
 
 /// Iterator over scopes in a given scope hierarchy
 pub struct ScopeIterator<'db> {
-    scopes: &'db FxHashMap<FileScopeId, Scope<'db>>,
-    next_id: Option<FileScopeId>,
+    scopes: &'db FxHashMap<FileScopeId<'db>, Scope<'db>>,
+    next_id: Option<FileScopeId<'db>>,
 }
 
 impl<'db> ScopeIterator<'db> {
-    pub fn new(scopes: &'db FxHashMap<FileScopeId, Scope<'db>>, scope: &'db Scope<'db>) -> Self {
+    pub fn new(scopes: &'db FxHashMap<FileScopeId<'db>, Scope<'db>>, scope: &'db Scope<'db>) -> Self {
         Self {
             scopes,
             next_id: Some(scope.id),

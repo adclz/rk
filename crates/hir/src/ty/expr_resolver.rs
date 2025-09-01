@@ -27,16 +27,15 @@ pub enum Env<'db> {
 #[salsa::tracked(no_eq, returns(ref))]
 pub fn resolve_expr<'db>(
     db: &'db dyn BaseDatabase,
-    env: Env<'db>,
     expr: Expr<'db>,
 ) -> ResolvedExpr<'db> {
-    ResolveExprCtx::new(db, env, expr).resolve()
+    ResolveExprCtx::new(db, expr).resolve()
 }
 
 #[salsa::tracked(debug)]
 pub struct ResolvedExpr<'db> {
     pub id: AstId,
-    pub scope_id: FileScopeId,
+    pub scope_id: FileScopeId<'db>,
     #[tracked]
     #[no_eq]
     #[returns(ref)]
@@ -51,21 +50,20 @@ pub enum ResolvedExprKind<'db> {
 
     // May have Ty (return type)
     FuncCall(Ty<'db>),
-    VoidCall(Ty<'db>),
 
     // Does not have Ty - but elmentary literal that has to be resolved
     Literal(Elementary),
 
-    // Emitted by boolean expressions
-    Bool(Expr<'db>),
-
-    // Emitted by comparison expressions
-    Compare(Expr<'db>),
-
     Parenthesized(ResolvedExpr<'db>), // Parenthesized expressions
 
     // Emitted by math expressions
-    Math(Expr<'db>),
+    Math(ResolvedExpr<'db>, ResolvedExpr<'db>), // left, right
+    
+    // Emitted by boolean expressions
+    Bool(ResolvedExpr<'db>, ResolvedExpr<'db>), // left, right
+
+    // Emitted by comparison expressions
+    Compare(ResolvedExpr<'db>, ResolvedExpr<'db>), // left, right
 }
 
 impl<'db> TyResolved<'db> for ResolvedExpr<'db> {
@@ -81,13 +79,12 @@ impl<'db> TyResolved<'db> for ResolvedExpr<'db> {
 
 pub struct ResolveExprCtx<'db> {
     db: &'db dyn BaseDatabase,
-    env: Env<'db>,
     expr: Expr<'db>,
 }
 
 impl<'db> ResolveExprCtx<'db> {
-    pub fn new(db: &'db dyn BaseDatabase, env: Env<'db>, expr: Expr<'db>) -> Self {
-        Self { db, env, expr }
+    pub fn new(db: &'db dyn BaseDatabase, expr: Expr<'db>) -> Self {
+        Self { db, expr }
     }
 
     pub fn resolve(&self) -> ResolvedExpr<'db> {
@@ -100,9 +97,8 @@ impl<'db> ResolveExprCtx<'db> {
                     self.db,
                     self.expr.id(self.db),
                     self.expr.scope_id(self.db),
-                    ResolvedExprKind::VarAccess(*resolve_var_access(
+                    ResolvedExprKind::VarAccess(resolve_var_access(
                         self.db,
-                        self.expr.scope_id(self.db),
                         variable,
                     )),
                 ),
@@ -116,7 +112,7 @@ impl<'db> ResolveExprCtx<'db> {
                     self.db,
                     self.expr.id(self.db),
                     self.expr.scope_id(self.db),
-                    ResolvedExprKind::Parenthesized(*resolve_expr(self.db, self.env, *expr)),
+                    ResolvedExprKind::Parenthesized(*resolve_expr(self.db, *expr)),
                 ),
                 _ => todo!(),
             },
@@ -125,13 +121,13 @@ impl<'db> ResolveExprCtx<'db> {
                 operator,
                 right,
             } => {
-                let left_resolved = resolve_expr(self.db, self.env, *left);
-                let right_resolved = resolve_expr(self.db, self.env, *right);
+                let left_resolved = resolve_expr(self.db, *left);
+                let right_resolved = resolve_expr(self.db, *right);
                 ResolvedExpr::new(
                     self.db,
                     self.expr.id(self.db),
                     self.expr.scope_id(self.db),
-                    ResolvedExprKind::Math(self.expr),
+                    ResolvedExprKind::Math(*left_resolved, *right_resolved),
                 )
             }
             ExprKind::BooleanOperator {
@@ -139,13 +135,13 @@ impl<'db> ResolveExprCtx<'db> {
                 operator,
                 right,
             } => {
-                let left_resolved = resolve_expr(self.db, self.env, *left);
-                let right_resolved = resolve_expr(self.db, self.env, *right);
+                let left_resolved = resolve_expr(self.db, *left);
+                let right_resolved = resolve_expr(self.db, *right);
                 ResolvedExpr::new(
                     self.db,
                     self.expr.id(self.db),
                     self.expr.scope_id(self.db),
-                    ResolvedExprKind::Bool(self.expr),
+                    ResolvedExprKind::Bool(*left_resolved, *right_resolved),
                 )
             }
             ExprKind::ComparisonOperator {
@@ -153,13 +149,13 @@ impl<'db> ResolveExprCtx<'db> {
                 operator,
                 right,
             } => {
-                let left_resolved = resolve_expr(self.db, self.env, *left);
-                let right_resolved = resolve_expr(self.db, self.env, *right);
+                let left_resolved = resolve_expr(self.db, *left);
+                let right_resolved = resolve_expr(self.db, *right);
                 ResolvedExpr::new(
                     self.db,
                     self.expr.id(self.db),
                     self.expr.scope_id(self.db),
-                    ResolvedExprKind::Compare(self.expr),
+                    ResolvedExprKind::Compare(*left_resolved, *right_resolved),
                 )
             }
             _ => todo!(),
@@ -172,7 +168,7 @@ impl<'db> ToProto<'db> for ResolvedExpr<'db> {
         self.id(db)
     }
 
-    fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         self.scope_id(db)
     }
 }

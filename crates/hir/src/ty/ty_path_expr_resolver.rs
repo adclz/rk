@@ -19,16 +19,15 @@ use crate::{
 #[salsa::tracked(no_eq)]
 pub fn resolved_path_expr<'db>(
     db: &'db dyn BaseDatabase,
-    file: File,
     expr: PathExpr<'db>,
 ) -> Arc<ResolvedPathResult<'db>> {
-    Arc::new(ResolvePathExprCtx::new(db, file, expr).resolve_path_expr())
+    Arc::new(ResolvePathExprCtx::new(db, expr).resolve_path_expr())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub struct ResolvedPathResult<'db> {
     pub id: AstId,
-    pub scope_id: FileScopeId,
+    pub scope_id: FileScopeId<'db>,
     pub elements: Vec<ResolvedPathElement<'db>>,
     pub error: Option<PathExprWalkError<'db>>,
 }
@@ -68,17 +67,15 @@ impl<'db> ResolvedPathElement<'db> {
 /// Tries to resolve a [`PathExpr`] to a sequence of [`Signature`] steps.
 pub struct ResolvePathExprCtx<'db> {
     db: &'db dyn BaseDatabase,
-    file: File,
     expr: PathExpr<'db>,
-    fragments: Vec<SpannedIdent>,
+    fragments: Vec<SpannedIdent<'db>>,
     signature: Option<Ty<'db>>,
 }
 
 impl<'db> ResolvePathExprCtx<'db> {
-    pub fn new(db: &'db dyn BaseDatabase, file: File, expr: PathExpr<'db>) -> Self {
+    pub fn new(db: &'db dyn BaseDatabase, expr: PathExpr<'db>) -> Self {
         Self {
             db,
-            file,
             expr,
             fragments: vec![],
             signature: None,
@@ -149,10 +146,10 @@ impl<'db> ResolvePathExprCtx<'db> {
         }
     }
 
-    fn find_signature(&mut self, identifier: &SpannedIdent) {
+    fn find_signature(&mut self, identifier: &SpannedIdent<'db>) {
         // Try variables in scope
         if let Some(variable) =
-            variables_in_scope(self.db, self.file, self.expr.scope_id(self.db)).get(identifier)
+            variables_in_scope(self.db, self.expr.scope_id(self.db)).get(identifier)
         {
             self.signature = Some(ty_for_variable(self.db, *variable));
             return;
@@ -160,7 +157,7 @@ impl<'db> ResolvePathExprCtx<'db> {
 
         // Try POUs in scope
         if let Some(pou) =
-            pous_in_scope(self.db, self.file, self.expr.scope_id(self.db)).get(identifier)
+            pous_in_scope(self.db, self.expr.scope_id(self.db)).get(identifier)
         {
             self.signature = Some(ty_for_pou(self.db, *pou));
             return;
@@ -170,7 +167,7 @@ impl<'db> ResolvePathExprCtx<'db> {
         let path = NamespacePath::from((self.db, &self.fragments));
         let access = NamespaceAccess::new(self.db, Some(path), identifier);
         if let Some(pou) =
-            resolve_namespace_access(self.db, self.file, self.expr.scope_id(self.db), access)
+            resolve_namespace_access(self.db, self.expr.scope_id(self.db), access)
         {
             self.signature = Some(ty_for_pou(self.db, pou));
             return;
@@ -184,7 +181,7 @@ impl<'db> ResolvePathExprCtx<'db> {
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum PathExprWalkStep<'db> {
     Field {
-        ident: SpannedIdent,
+        ident: SpannedIdent<'db>,
         expr: PathExpr<'db>,
     }, // By name
     Index {
@@ -209,7 +206,7 @@ impl PathExprWalkStep<'_> {
 pub enum PathExprWalkError<'db> {
     NoItemInScope {
         expr: PathExpr<'db>,
-        scope: FileScopeId,
+        scope: FileScopeId<'db>,
     },
     FieldNotFound {
         expr: PathExpr<'db>,
@@ -264,7 +261,7 @@ impl<'db> ToProto<'db> for ResolvedPathResult<'db> {
         self.id
     }
 
-    fn get_scope_id(&'db self, _db: &'db dyn BaseDatabase) -> FileScopeId {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         self.scope_id
     }
-}
+} 

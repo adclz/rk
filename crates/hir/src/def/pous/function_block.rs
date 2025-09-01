@@ -9,11 +9,11 @@ use crate::def::{
 pub struct FunctionBlock<'db> {
     #[tracked]
     #[returns(as_ref)]
-    pub extends: Option<SpannedNamespaceAccess>,
+    pub extends: Option<SpannedNamespaceAccess<'db>>,
 
     #[tracked]
     #[returns(ref)]
-    pub implements: Vec<SpannedNamespaceAccess>,
+    pub implements: Vec<SpannedNamespaceAccess<'db>>,
 
     #[tracked]
     #[returns(ref)]
@@ -25,5 +25,5 @@ pub struct FunctionBlock<'db> {
 
     pub modifiers: Modifiers,
 
-    pub scope_id: FileScopeId,
+    pub scope_id: FileScopeId<'db>,
 }

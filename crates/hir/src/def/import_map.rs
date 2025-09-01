@@ -278,10 +278,10 @@ pub fn global_symbol_indexes(db: &dyn BaseDatabase, file_to_omit: File) -> Vec<&
 pub fn query_completions(
     db: &dyn BaseDatabase,
     file: File,
-    scope_id: FileScopeId,
+    scope_id: FileScopeId<'_>,
     query: &str,
 ) -> Vec<CompletionItem> {
-    let scoped_map = pous_in_scope(db, file, scope_id);
+    let scoped_map = pous_in_scope(db, scope_id);
 
     let locally_visible_names: FxHashSet<&str> = scoped_map
         .keys()

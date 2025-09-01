@@ -19,7 +19,7 @@ pub struct SemanticIndexBuilder<'db> {
     pub(crate) file: File,
 
     /// Maps scope IDs to their corresponding scopes.
-    pub(crate) scope_keys: FxHashMap<FileScopeId, Scope<'db>>,
+    pub(crate) scope_keys: FxHashMap<FileScopeId<'db>, Scope<'db>>,
 
     /// Maps scope IDs to their corresponding namespaces.
     pub(crate) namespaces: Vec<NamespaceDecl<'db>>,
@@ -27,7 +27,7 @@ pub struct SemanticIndexBuilder<'db> {
     pub(crate) global_pous: Vec<PouDecl<'db>>,
 
     /// The current scope ID being processed (by default, the global scope).
-    pub(crate) current_scope: FileScopeId,
+    pub(crate) current_scope: FileScopeId<'db>,
 
     pub(crate) errors: Vec<AnalysisError<'db>>,
 }
@@ -47,7 +47,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             scope_keys: FxHashMap::default(),
             global_pous: vec![],
             namespaces: vec![],
-            current_scope: FileScopeId::global(file),
+            current_scope: FileScopeId::global(db, file),
             errors: vec![],
         }
     }
@@ -55,7 +55,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     pub fn get_namespace_path(
         &mut self,
         namespace: &ast::generated::NamespaceDecl,
-    ) -> anyhow::Result<Vec<SpannedIdent>, AnalysisError<'db>> {
+    ) -> anyhow::Result<Vec<SpannedIdent<'db>>, AnalysisError<'db>> {
         namespace
             .name
             .cast(self.ast)
@@ -66,7 +66,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     }
 
     pub fn create_pou_id(&self, node: &impl AstNode) -> FileScopeId {
-        FileScopeId::from((self.file, node.get_id()))
+        FileScopeId::from((self.db, self.file, node.get_id()))
     }
 
     // Fix me: This function should not panic, but handle errors gracefully.
@@ -77,7 +77,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         for child in self.source.children.iter() {
             type SourceFileDecl = ast::generated::ERRInvalidPouKeyword_ClassDecl_ConfigDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl_ProgDecl_UsingDirective;
 
-            self.current_scope = FileScopeId::global(self.file);
+            self.current_scope = FileScopeId::global(self.db, self.file);
             match child.cast(self.ast) {
                 SourceFileDecl::ERRInvalidPouKeyword(err) => {
                     self.errors
@@ -140,7 +140,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         );
 
         self.scope_keys
-            .insert(FileScopeId::global(self.file), scope);
+            .insert(FileScopeId::global(self.db, self.file), scope);
 
         SemanticIndex {
             file: self.file,

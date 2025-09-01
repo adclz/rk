@@ -16,7 +16,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         &mut self,
         func: &ast::generated::FuncDecl,
     ) -> anyhow::Result<PouDecl<'db>, AnalysisError<'db>> {
-        let scope_id = FileScopeId::from((self.file, func.get_id()));
+        let scope_id = FileScopeId::from((self.db, self.file, func.get_id()));
         let previous_scope = self.current_scope;
         self.current_scope = scope_id;
 

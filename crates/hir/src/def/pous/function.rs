@@ -25,7 +25,7 @@ pub struct Function<'db> {
     #[returns(as_ref)]
     pub return_type: Option<Spec<'db>>,
 
-    pub scope_id: FileScopeId,
+    pub scope_id: FileScopeId<'db>,
 }
 
 impl<'db> Function<'db> {

@@ -4,7 +4,7 @@ use crate::def::scope::FileScopeId;
 use crate::to_proto::{AstId, ToProto};
 use crate::ty::TyResolved;
 use crate::ty::expr_resolver::{Env, ResolvedExpr, ResolvedExprKind, resolve_expr};
-use crate::ty::ty::{TyKind};
+use crate::ty::ty::TyKind;
 use crate::ty::ty_var_access_resolver::{ResolvedVarResult, resolve_var_access};
 use auto_lsp::default::db::BaseDatabase;
 
@@ -12,27 +12,14 @@ use auto_lsp::default::db::BaseDatabase;
 pub fn resolve_stmt<'db>(
     db: &'db dyn BaseDatabase,
     stmt: Stmt<'db>,
-    scope_id: FileScopeId,
-) -> ResolveStmtsResult<'db> {
-    ResolveStmtCtx::new(db, stmt, scope_id).resolve()
-}
-
-#[salsa::tracked(debug)]
-pub struct ResolveStmtsResult<'db> {
-    #[tracked]
-    #[returns(ref)]
-    #[no_eq]
-    pub stmt: Option<ResolvedStmt<'db>>,
-    #[tracked]
-    #[returns(ref)]
-    #[no_eq]
-    pub errors: Vec<StmtError<'db>>,
+) -> ResolvedStmt<'db> {
+    ResolveStmtCtx::new(db, stmt).resolve()
 }
 
 #[salsa::tracked(debug)]
 pub struct ResolvedStmt<'db> {
     pub id: AstId,
-    pub scope_id: FileScopeId,
+    pub scope_id: FileScopeId<'db>,
     #[tracked]
     #[no_eq]
     #[returns(ref)]
@@ -53,9 +40,9 @@ pub enum ResolvedStmtKind<'db> {
     FuncCall {},
     If {
         condition: ResolvedExpr<'db>,
-        then: Vec<ResolveStmtsResult<'db>>,
-        else_if: Vec<(ResolvedExpr<'db>, Vec<ResolveStmtsResult<'db>>)>,
-        else_: Vec<ResolveStmtsResult<'db>>,
+        then: Vec<ResolvedStmt<'db>>,
+        else_if: Vec<(ResolvedExpr<'db>, Vec<ResolvedStmt<'db>>)>,
+        else_: Vec<ResolvedStmt<'db>>,
     },
     Case {},
     For {
@@ -63,15 +50,15 @@ pub enum ResolvedStmtKind<'db> {
         start: ResolvedExpr<'db>,
         end: ResolvedExpr<'db>,
         step: Option<ResolvedExpr<'db>>,
-        body: Vec<ResolveStmtsResult<'db>>,
+        body: Vec<ResolvedStmt<'db>>,
     },
     Repeat {
         condition: ResolvedExpr<'db>,
-        body: Vec<ResolveStmtsResult<'db>>,
+        body: Vec<ResolvedStmt<'db>>,
     },
     While {
         condition: ResolvedExpr<'db>,
-        body: Vec<ResolveStmtsResult<'db>>,
+        body: Vec<ResolvedStmt<'db>>,
     },
     Continue,
     Exit,
@@ -83,90 +70,65 @@ pub struct ResolveStmtCtx<'db> {
     db: &'db dyn BaseDatabase,
     // The statements to resolve
     stmt: Stmt<'db>,
-    scope_id: FileScopeId,
-    // Solved statements
-    resolved: Option<ResolvedStmt<'db>>,
     // Errors encountered during resolution
     errors: Vec<StmtError<'db>>,
 }
 
 impl<'db> ResolveStmtCtx<'db> {
-    pub fn new(db: &'db dyn BaseDatabase, stmt: Stmt<'db>, scope_id: FileScopeId) -> Self {
+    pub fn new(db: &'db dyn BaseDatabase, stmt: Stmt<'db>) -> Self {
         Self {
             db,
             stmt,
-            scope_id,
-            resolved: None,
             errors: vec![],
         }
     }
 
-    pub fn resolve(mut self) -> ResolveStmtsResult<'db> {
-        let stmt = self.stmt;
-        match stmt.stmt(self.db) {
+    pub fn resolve(mut self) -> ResolvedStmt<'db> {
+        match self.stmt.stmt(self.db) {
             StmtKind::Assignment { var, target } => {
-                let resolved_var = resolve_var_access(self.db, self.scope_id, var);
+                let resolved_var = resolve_var_access(self.db, var);
+                let resolved_target = resolve_expr(self.db, *target);
 
-                if let Some(ty) = resolved_var.ty(self.db) {
-                    let resolved_target = resolve_expr(self.db, Env::Ty(ty), *target);
-
-                    match ty.kind(self.db) {
-                        TyKind::Function { .. } => {
-                            self.errors.push(StmtError::AssignmentToCallable {
-                                loc: resolved_var.origin(self.db).get_span(self.db).clone(),
-                                ty,
-                            });
-                        }
-                        TyKind::Simple(elementary) => {
-                            if let ResolvedExprKind::Literal(elem) = resolved_target.kind(self.db) {
-                                if let Err(err) = elementary.lit_check(self.db, *elem) {}
-                            }
-                        }
-                        _ => {}
-                    }
-
-                    self.resolved = Some(ResolvedStmt::new(
-                        self.db,
-                        stmt.id(self.db),
-                        stmt.scope_id(self.db),
-                        ResolvedStmtKind::Assignment {
-                            var: *resolved_var,
-                            target: *resolved_target,
-                        },
-                    ))
-                }
+                ResolvedStmt::new(
+                    self.db,
+                    self.stmt.id(self.db),
+                    self.stmt.scope_id(self.db),
+                    ResolvedStmtKind::Assignment {
+                        var: resolved_var,
+                        target: *resolved_target,
+                    },
+                )
             }
             StmtKind::AssignmentAttempt { var, target } => {
-                let resolved_var = resolve_var_access(self.db, self.scope_id, var);
-                if let Some(ty) = resolved_var.ty(self.db) {
-                    let resolved_target = resolve_expr(self.db, Env::Ty(ty), *target);
-                    self.resolved = Some(ResolvedStmt::new(
-                        self.db,
-                        stmt.id(self.db),
-                        stmt.scope_id(self.db),
-                        ResolvedStmtKind::AssignmentAttempt {
-                            var: *resolved_var,
-                            target: *resolved_target,
-                        },
-                    ));
-                }
+                let resolved_var = resolve_var_access(self.db, var);
+                let resolved_target = resolve_expr(self.db, *target);
+
+                ResolvedStmt::new(
+                    self.db,
+                    self.stmt.id(self.db),
+                    self.stmt.scope_id(self.db),
+                    ResolvedStmtKind::AssignmentAttempt {
+                        var: resolved_var,
+                        target: *resolved_target,
+                    },
+                )
             }
             StmtKind::If {
                 condition,
                 then,
                 else_if,
                 else_,
-            } => self.resolved = Some(ResolvedStmt::new(
+            } => ResolvedStmt::new(
                 self.db,
-                stmt.id(self.db),
-                stmt.scope_id(self.db),
+                self.stmt.id(self.db),
+                self.stmt.scope_id(self.db),
                 ResolvedStmtKind::If {
-                    condition: *resolve_expr(self.db, Env::Bool, *condition),
+                    condition: *resolve_expr(self.db, *condition),
                     then: then
                         .as_ref()
                         .map(|then| {
                             then.iter()
-                                .map(|s| *resolve_stmt(self.db, *s, self.scope_id))
+                                .map(|s| *resolve_stmt(self.db, *s))
                                 .collect()
                         })
                         .unwrap_or_default(),
@@ -174,10 +136,10 @@ impl<'db> ResolveStmtCtx<'db> {
                         .iter()
                         .map(|(cond, stmts)| {
                             (
-                                *resolve_expr(self.db, Env::Bool, *cond),
+                                *resolve_expr(self.db, *cond),
                                 stmts
                                     .iter()
-                                    .map(|s| *resolve_stmt(self.db, *s, self.scope_id))
+                                    .map(|s| *resolve_stmt(self.db, *s))
                                     .collect(),
                             )
                         })
@@ -187,40 +149,34 @@ impl<'db> ResolveStmtCtx<'db> {
                         .map(|else_| {
                             else_
                                 .iter()
-                                .map(|s| *resolve_stmt(self.db, *s, self.scope_id))
+                                .map(|s| *resolve_stmt(self.db, *s))
                                 .collect()
                         })
                         .unwrap_or_default(),
                 },
-            )),
+            ),
             StmtKind::Case {
                 condition,
                 cases,
                 else_,
-            } => {
-                self.resolved = Some(ResolvedStmt::new(
-                    self.db,
-                    stmt.id(self.db),
-                    stmt.scope_id(self.db),
-                    ResolvedStmtKind::Case {},
-                ));
-            }
-            StmtKind::Invocation { target, params } => {
-                self.resolved = Some(ResolvedStmt::new(
-                    self.db,
-                    stmt.id(self.db),
-                    stmt.scope_id(self.db),
-                    ResolvedStmtKind::Invocation {},
-                ));
-            }
-            StmtKind::FuncCall { target, params } => {
-                self.resolved = Some(ResolvedStmt::new(
-                    self.db,
-                    stmt.id(self.db),
-                    stmt.scope_id(self.db),
-                    ResolvedStmtKind::FuncCall {},
-                ));
-            }
+            } => ResolvedStmt::new(
+                self.db,
+                self.stmt.id(self.db),
+                self.stmt.scope_id(self.db),
+                ResolvedStmtKind::Case {},
+            ),
+            StmtKind::Invocation { target, params } => ResolvedStmt::new(
+                self.db,
+                self.stmt.id(self.db),
+                self.stmt.scope_id(self.db),
+                ResolvedStmtKind::Invocation {},
+            ),
+            StmtKind::FuncCall { target, params } => ResolvedStmt::new(
+                self.db,
+                self.stmt.id(self.db),
+                self.stmt.scope_id(self.db),
+                ResolvedStmtKind::FuncCall {},
+            ),
             StmtKind::For {
                 control_variable,
                 start,
@@ -228,82 +184,88 @@ impl<'db> ResolveStmtCtx<'db> {
                 step,
                 body,
             } => {
-                let control_var = resolve_var_access(self.db, self.scope_id, control_variable);
-                if let Some(ty) = control_var.ty(self.db) {
-                    let start_expr = resolve_expr(self.db, Env::Ty(ty), *start);
-                    let end_expr = resolve_expr(self.db, Env::Ty(ty), *end);
-                    let step_expr = step
-                        .as_ref()
-                        .map(|s| resolve_expr(self.db, Env::Ty(ty), *s));
-                    self.resolved = Some(ResolvedStmt::new(
-                        self.db,
-                        stmt.id(self.db),
-                        stmt.scope_id(self.db),
-                        ResolvedStmtKind::For {
-                            control_var: *control_var,
-                            start: *start_expr,
-                            end: *end_expr,
-                            step: step_expr.copied(),
-                            body: body
-                                .iter()
-                                .map(|s| *resolve_stmt(self.db, *s, self.scope_id))
-                                .collect(),
-                        },
-                    ));
-                }
+                let control_var = resolve_var_access(self.db, control_variable);
+                let start_expr = resolve_expr(self.db, *start);
+                let end_expr = resolve_expr(self.db, *end);
+                let step_expr = step.as_ref().map(|s| resolve_expr(self.db, *s));
+
+                ResolvedStmt::new(
+                    self.db,
+                    self.stmt.id(self.db),
+                    self.stmt.scope_id(self.db),
+                    ResolvedStmtKind::For {
+                        control_var: control_var,
+                        start: *start_expr,
+                        end: *end_expr,
+                        step: step_expr.copied(),
+                        body: body
+                            .iter()
+                            .map(|s| *resolve_stmt(self.db, *s))
+                            .collect(),
+                    },
+                )
             }
             StmtKind::Repeat { body, condition } => {
-                self.resolved = Some(ResolvedStmt::new(
+                ResolvedStmt::new(
                     self.db,
-                    stmt.id(self.db),
-                    stmt.scope_id(self.db),
+                    self.stmt.id(self.db),
+                    self.stmt.scope_id(self.db),
                     ResolvedStmtKind::Repeat {
-                        condition: *resolve_expr(self.db, Env::Bool, *condition),
+                        condition: *resolve_expr(self.db, *condition),
                         body: body
                             .iter()
-                            .map(|s| *resolve_stmt(self.db, *s, self.scope_id))
+                            .map(|s| *resolve_stmt(self.db, *s))
                             .collect(),
                     },
-                ));
+                )
             }
             StmtKind::While { condition, body } => {
-                self.resolved = Some(ResolvedStmt::new(
+                ResolvedStmt::new(
                     self.db,
-                    stmt.id(self.db),
-                    stmt.scope_id(self.db),
+                    self.stmt.id(self.db),
+                    self.stmt.scope_id(self.db),
                     ResolvedStmtKind::While {
-                        condition: *resolve_expr(self.db, Env::Bool, *condition),
+                        condition: *resolve_expr(self.db, *condition),
                         body: body
                             .iter()
-                            .map(|s| *resolve_stmt(self.db, *s, self.scope_id))
+                            .map(|s| *resolve_stmt(self.db, *s))
                             .collect(),
                     },
-                ));
-            } StmtKind::Continue => self.resolved = Some(ResolvedStmt::new(
-                self.db,
-                stmt.id(self.db),
-                stmt.get_scope_id(self.db),
-                ResolvedStmtKind::Continue,
-            )),
-            StmtKind::Exit => self.resolved = Some(ResolvedStmt::new(
-                self.db,
-                stmt.id(self.db),
-                stmt.get_scope_id(self.db),
-                ResolvedStmtKind::Exit,
-            )),StmtKind::Return => self.resolved = Some(ResolvedStmt::new(
-                self.db,
-                stmt.id(self.db),
-                stmt.get_scope_id(self.db),
-                ResolvedStmtKind::Return,
-            )),
-            StmtKind::Super => self.resolved = Some(ResolvedStmt::new(
-                self.db,
-                stmt.id(self.db),
-                stmt.get_scope_id(self.db),
-                ResolvedStmtKind::Super,
-            )),
+                )
+            }
+            StmtKind::Continue => {
+                ResolvedStmt::new(
+                    self.db,
+                    self.stmt.id(self.db),
+                    self.stmt.scope_id(self.db),
+                    ResolvedStmtKind::Continue,
+                )
+            }
+            StmtKind::Exit => {
+                ResolvedStmt::new(
+                    self.db,
+                    self.stmt.id(self.db),
+                    self.stmt.scope_id(self.db),
+                    ResolvedStmtKind::Exit,
+                )
+            }
+            StmtKind::Return => {
+                ResolvedStmt::new(
+                    self.db,
+                    self.stmt.id(self.db),
+                    self.stmt.scope_id(self.db),
+                    ResolvedStmtKind::Return,
+                )
+            }
+            StmtKind::Super => {
+                ResolvedStmt::new(
+                    self.db,
+                    self.stmt.id(self.db),
+                    self.stmt.scope_id(self.db),
+                    ResolvedStmtKind::Super,
+                )
+            }
         }
-        ResolveStmtsResult::new(self.db, self.resolved, self.errors)
     }
 }
 
@@ -312,7 +274,7 @@ impl<'db> ToProto<'db> for ResolvedStmt<'db> {
         self.id(db)
     }
 
-    fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         self.scope_id(db)
     }
 }

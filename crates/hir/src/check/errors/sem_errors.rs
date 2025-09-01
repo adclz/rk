@@ -123,7 +123,7 @@ pub enum DuplicateError<'db> {
 pub enum PathExprError<'db> {
     NoItemInScope {
         expr: PathExpr<'db>,
-        scope: FileScopeId,
+        scope: FileScopeId<'db>,
     },
     UnknownField {
         origin: TyOrigin<'db>,
@@ -315,7 +315,7 @@ impl<'db> ToIdeDiagnostic<'db> for NamespaceError<'db> {
                 .severity(DiagnosticSeverity::ERROR)
                 .related_information(vec![DiagnosticRelatedInformation {
                     location: Location {
-                        uri: other.scope_id(db).file().url(db).clone(),
+                        uri: other.scope_id(db).file(db).url(db).clone(),
                         range: other.get_span(db).into(),
                     },
                     message: format!(
@@ -334,7 +334,7 @@ impl<'db> ToIdeDiagnostic<'db> for NamespaceError<'db> {
                 .tags(vec![DiagnosticTag::UNNECESSARY])
                 .related_information(vec![DiagnosticRelatedInformation {
                     location: Location {
-                        uri: namespace.scope_id(db).file().url(db).clone(),
+                        uri: namespace.scope_id(db).file(db).url(db).clone(),
                         range: namespace.get_span(db).into(),
                     },
                     message: format!(
@@ -360,7 +360,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 .range(var1.get_span(db).clone())
                 .related_information(vec![DiagnosticRelatedInformation {
                     location: Location {
-                        uri: var2.scope_id(db).file().url(db).clone(),
+                        uri: var2.scope_id(db).file(db).url(db).clone(),
                         range: var2.get_span(db).into(),
                     },
                     message: format!("variable '{}' is defined here", var2.name(db).text(db)),
@@ -375,7 +375,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 .range(pou1.get_span(db).clone())
                 .related_information(vec![DiagnosticRelatedInformation {
                     location: Location {
-                        uri: pou2.scope_id(db).file().url(db).clone(),
+                        uri: pou2.scope_id(db).file(db).url(db).clone(),
                         range: pou2.get_span(db).into(),
                     },
                     message: format!("POU '{}' is defined here", pou2.name(db).text(db)),
@@ -400,7 +400,7 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                             .range(loc.clone())
                             .related_information(vec![DiagnosticRelatedInformation {
                                 location: Location {
-                                    uri: pou.scope_id(db).file().url(db).clone(),
+                                    uri: pou.scope_id(db).file(db).url(db).clone(),
                                     range: pou.get_name_span(db).unwrap().into(),
                                 },
                                 message: format!("POU '{}' is declared here", pou.name(db).text(db))}])
@@ -416,7 +416,7 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                     .range(loc.clone())
                     .related_information(vec![DiagnosticRelatedInformation {
                         location: Location {
-                            uri: ty.origin(db).scope_id(db).file().url(db).clone(),
+                            uri: ty.origin(db).scope_id(db).file(db).url(db).clone(),
                             range: ty.origin(db).name_span(db).unwrap().into(),
                         },
                         message: format!(

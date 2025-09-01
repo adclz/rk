@@ -22,7 +22,7 @@ pub struct NamespaceDecl<'db> {
 
     pub name_id: AstId,
 
-    pub scope_id: FileScopeId,
+    pub scope_id: FileScopeId<'db>,
 }
 
 impl<'db> ToProto<'db> for NamespaceDecl<'db> {
@@ -30,7 +30,7 @@ impl<'db> ToProto<'db> for NamespaceDecl<'db> {
         self.id(db)
     }
 
-    fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         self.scope_id(db)
     }
 
@@ -82,7 +82,7 @@ impl<'db> ToProto<'db> for NamespaceDecl<'db> {
         sema: &'db SemanticIndex<'db>,
         offset: usize,
     ) -> Option<Vec<CompletionItem>> {
-        let scope = sema.get_scope(self.scope_id(db));
+        let scope = sema.get_scope(db, self.scope_id(db));
 
         // Don't provide completions between the namespace keyword and the namespace name
         if self.get_name_span(db)?.end_byte > offset {

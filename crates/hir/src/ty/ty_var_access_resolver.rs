@@ -9,13 +9,11 @@ use crate::{
     ty::{TyResolved, ty::Ty, ty_path_expr_resolver::resolved_path_expr},
 };
 
-#[salsa::tracked(no_eq, returns(ref))]
 pub fn resolve_var_access<'db>(
     db: &'db dyn BaseDatabase,
-    scope_id: FileScopeId,
     access: &'db VariableAccess<'db>,
 ) -> ResolvedVarResult<'db> {
-    VarAccessResolverCtx::new(db, scope_id, access).resolve()
+    VarAccessResolverCtx::new(db, access).resolve()
 }
 
 #[salsa::tracked(debug)]
@@ -38,19 +36,16 @@ impl<'db> TyResolved<'db> for ResolvedVarResult<'db> {
 
 pub struct VarAccessResolverCtx<'db> {
     db: &'db dyn BaseDatabase,
-    scope_id: FileScopeId,
     access: &'db VariableAccess<'db>,
 }
 
 impl<'db> VarAccessResolverCtx<'db> {
     pub fn new(
         db: &'db dyn BaseDatabase,
-        scope_id: FileScopeId,
         access: &'db VariableAccess<'db>,
     ) -> Self {
         Self {
             db,
-            scope_id,
             access,
         }
     }
@@ -68,7 +63,7 @@ impl<'db> VarAccessResolverCtx<'db> {
             VariableAccessKind::Symbolic(symbolic) => ResolvedVarResult::new(
                 self.db,
                 self.access.clone(),
-                resolved_path_expr(self.db, self.scope_id.file(), symbolic.kind).ty(self.db),
+                resolved_path_expr(self.db, symbolic.kind).ty(self.db),
             ),
         }
     }

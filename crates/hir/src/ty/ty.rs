@@ -37,8 +37,9 @@ impl<'db> ToProto<'db> for Ty<'db> {
         self.origin(db).get_id(db)
     }
 
-    fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
-        self.origin(db).scope_id(db)
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+        let or = self.origin(db);
+        or.scope_id(db)
     }
 
     fn declaration(
@@ -48,15 +49,15 @@ impl<'db> ToProto<'db> for Ty<'db> {
     ) -> Option<GotoDeclarationResponse> {
         let span = match self.origin(db) {
             TyOrigin::FromPou(pou) => Location::new(
-                pou.scope_id(db).file().url(db).clone(),
+                pou.scope_id(db).file(db).url(db).clone(),
                 pou.get_span(db).into(),
             ),
             TyOrigin::FromVariable(variable) => Location::new(
-                variable.scope_id(db).file().url(db).clone(),
+                variable.scope_id(db).file(db).url(db).clone(),
                 variable.get_span(db).into(),
             ),
             TyOrigin::FromMethod(method) => Location::new(
-                method.scope_id(db).file().url(db).clone(),
+                method.scope_id(db).file(db).url(db).clone(),
                 method.get_span(db).into(),
             ),
         };
@@ -73,7 +74,7 @@ pub enum TyOrigin<'db> {
 }
 
 impl<'db> TyOrigin<'db> {
-    pub fn span(&'db self, db: &'db dyn BaseDatabase) -> Span {
+    pub fn span(&self, db: &'db dyn BaseDatabase) -> Span {
         match self {
             TyOrigin::FromPou(pou) => pou.get_span(db),
             TyOrigin::FromVariable(variable) => variable.get_span(db),
@@ -81,7 +82,7 @@ impl<'db> TyOrigin<'db> {
         }
     }
 
-    pub fn name_span(&'db self, db: &'db dyn BaseDatabase) -> Option<Span> {
+    pub fn name_span(&self, db: &'db dyn BaseDatabase) -> Option<Span> {
         match self {
             TyOrigin::FromPou(pou) => pou.get_name_span(db),
             TyOrigin::FromVariable(variable) => variable.get_name_span(db),
@@ -89,7 +90,7 @@ impl<'db> TyOrigin<'db> {
         }
     }
 
-    pub fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
+    pub fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
         match self {
             TyOrigin::FromPou(pou) => pou.get_id(db),
             TyOrigin::FromVariable(variable) => variable.get_id(db),
@@ -97,15 +98,15 @@ impl<'db> TyOrigin<'db> {
         }
     }
 
-    pub fn scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
+    pub fn scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         match self {
-            TyOrigin::FromPou(pou) => pou.get_scope_id(db),
-            TyOrigin::FromVariable(variable) => variable.get_scope_id(db),
-            TyOrigin::FromMethod(method) => method.get_scope_id(db),
+            TyOrigin::FromPou(pou) => pou.scope_id(db),
+            TyOrigin::FromVariable(variable) => variable.scope_id(db),
+            TyOrigin::FromMethod(method) => method.scope_id(db),
         }
     }
 
-    pub fn name(&'db self, db: &'db dyn BaseDatabase) -> Ident {
+    pub fn name(&self, db: &'db dyn BaseDatabase) -> Ident {
         match self {
             TyOrigin::FromPou(pou) => *pou.name(db),
             TyOrigin::FromVariable(variable) => *variable.name(db),
@@ -249,7 +250,7 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
             }
 
             let extends = fb.extends(db).map(|e| {
-                match resolve_namespace_access(db, e.scope_id.file(), e.scope_id, e.path) {
+                match resolve_namespace_access(db, e.get_scope_id(db), e.path) {
                     Some(pou) => ty_for_pou(db, pou),
                     None => Ty::new(db, origin, TyKind::Unresolved(e.path)),
                 }
@@ -312,7 +313,7 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
             }
 
             let extends = class.extends(db).map(|e| {
-                match resolve_namespace_access(db, e.scope_id.file(), e.scope_id, e.path) {
+                match resolve_namespace_access(db, e.scope_id, e.path) {
                     Some(pou) => ty_for_pou(db, pou),
                     None => Ty::new(db, origin, TyKind::Unresolved(e.path)),
                 }
@@ -343,7 +344,6 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
             for imple in class.implements(db) {
                 let ty = match resolve_namespace_access(
                     db,
-                    imple.scope_id.file(),
                     imple.scope_id,
                     imple.path,
                 ) {
@@ -377,7 +377,6 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
                 for imple in ext {
                     let ty = match resolve_namespace_access(
                         db,
-                        imple.scope_id.file(),
                         imple.scope_id,
                         imple.path,
                     ) {
@@ -656,7 +655,6 @@ impl<'db> Spec<'db> {
             SpecKind::Target(target) => {
                 match resolve_namespace_access(
                     db,
-                    self.scope_id(db).file(),
                     self.scope_id(db),
                     *target,
                 ) {

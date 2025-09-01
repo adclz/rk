@@ -10,7 +10,7 @@ use crate::{
     },
     ty::{
         expr_resolver::{ResolvedExpr, ResolvedExprKind},
-        stmt_resolver::{ResolveStmtsResult, ResolvedStmt, ResolvedStmtKind, resolve_stmt},
+        stmt_resolver::{ResolvedStmt, ResolvedStmtKind, resolve_stmt},
         ty::{Ty, ty_for_pou},
     },
 };
@@ -33,17 +33,6 @@ impl<'db> WalkHir<'db> for SemanticIndex<'db> {
         for namespace in &self.namespaces {
             namespace.walk_hir(db, f)?;
         }
-        ControlFlow::Continue(())
-    }
-}
-
-impl<'db> WalkHir<'db> for ResolveStmtsResult<'db> {
-    fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        f: &mut F,
-    ) -> ControlFlow<()> {
-        self.stmt(db).as_ref().map(|s| s.walk_hir(db, f));
         ControlFlow::Continue(())
     }
 }
@@ -73,7 +62,7 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
 
         if let Some(stmts) = self.get_stmts(db) {
             for stmt in stmts {
-                resolve_stmt(db,  *stmt, self.scope_id(db)).walk_hir(db, f)?;
+                resolve_stmt(db,  *stmt).walk_hir(db, f)?;
             }
         }
         ControlFlow::Continue(())

@@ -15,7 +15,7 @@ pub struct Stmt<'db> {
 
     pub id: AstId,
 
-    pub scope_id: FileScopeId,
+    pub scope_id: FileScopeId<'db>,
 }
 
 impl<'db> ToProto<'db> for Stmt<'db> {
@@ -23,7 +23,7 @@ impl<'db> ToProto<'db> for Stmt<'db> {
         self.id(db)
     }
 
-    fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> FileScopeId {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         self.scope_id(db)
     }
 }
