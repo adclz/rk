@@ -2,7 +2,7 @@ use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::{ParseSpec, ParseVarSection};
 use crate::check::errors::sem_errors::AnalysisError;
 use crate::def::interned::identifier::Ident;
-use crate::def::interned::namespace::SpannedNamespaceAccess;
+use crate::def::interned::namespace::SpanNamespaceAccess;
 use crate::def::pous::interface::{Interface, MethodPrototype};
 use crate::def::pous::pou::{Pou, PouDecl};
 use crate::def::scope::{FileScopeId, Scope, ScopeKind, Visibility};
@@ -27,7 +27,7 @@ impl<'db> SemanticIndexBuilder<'db> {
                     .children
                     .iter()
                     .filter_map(|i| {
-                        match SpannedNamespaceAccess::from_ast(self.db, self, i.cast(self.ast)) {
+                        match SpanNamespaceAccess::from_ast(self.db, self, i.cast(self.ast)) {
                             Ok(namespace) => Some(Some(namespace)),
                             Err(error) => {
                                 self.errors.push(error);

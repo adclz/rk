@@ -3,7 +3,7 @@ use auto_lsp::default::db::BaseDatabase;
 use crate::{
     def::{
         expressions::spec::Spec,
-        interned::{identifier::Ident, namespace::SpannedNamespaceAccess},
+        interned::{identifier::Ident, namespace::SpanNamespaceAccess},
         pous::variable::VariableDecl,
         scope::FileScopeId,
     },
@@ -13,7 +13,7 @@ use crate::{
 #[salsa::tracked(debug)]
 pub struct Interface<'db> {
     #[returns(as_ref)]
-    pub extends: Option<Vec<SpannedNamespaceAccess<'db>>>,
+    pub extends: Option<Vec<SpanNamespaceAccess<'db>>>,
 
     #[returns(ref)]
     pub methods: Vec<MethodPrototype<'db>>,

@@ -3,7 +3,7 @@ use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::statement::ParseStatement;
 use crate::check::errors::sem_errors::{AnalysisError, SyntaxError};
 use crate::def::interned::identifier::Ident;
-use crate::def::interned::namespace::SpannedNamespaceAccess;
+use crate::def::interned::namespace::SpanNamespaceAccess;
 use crate::def::pous::function_block::FunctionBlock;
 use crate::def::pous::pou::{Pou, PouDecl};
 use crate::def::pous::variable::VariableDecl;
@@ -25,7 +25,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         let variables = func.parse_variables(self);
 
         let extends = func.extends.as_ref().and_then(|e| {
-            match SpannedNamespaceAccess::from_ast(self.db, self, e.cast(self.ast)) {
+            match SpanNamespaceAccess::from_ast(self.db, self, e.cast(self.ast)) {
                 Ok(namespace) => Some(namespace),
                 Err(error) => {
                     self.errors.push(error);
@@ -42,7 +42,7 @@ impl<'db> SemanticIndexBuilder<'db> {
                     .children
                     .iter()
                     .filter_map(|i| {
-                        match SpannedNamespaceAccess::from_ast(self.db, self, i.cast(self.ast)) {
+                        match SpanNamespaceAccess::from_ast(self.db, self, i.cast(self.ast)) {
                             Ok(namespace) => Some(namespace),
                             Err(error) => {
                                 self.errors.push(error);

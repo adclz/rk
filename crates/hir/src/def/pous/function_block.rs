@@ -1,6 +1,6 @@
 
 use crate::def::{
-        expressions::statement::Stmt, interned::namespace::SpannedNamespaceAccess,
+        expressions::statement::Stmt, interned::namespace::SpanNamespaceAccess,
         pous::variable::VariableDecl, scope::FileScopeId,
         visibility::Modifiers,
     };
@@ -9,11 +9,11 @@ use crate::def::{
 pub struct FunctionBlock<'db> {
     #[tracked]
     #[returns(as_ref)]
-    pub extends: Option<SpannedNamespaceAccess<'db>>,
+    pub extends: Option<SpanNamespaceAccess<'db>>,
 
     #[tracked]
     #[returns(ref)]
-    pub implements: Vec<SpannedNamespaceAccess<'db>>,
+    pub implements: Vec<SpanNamespaceAccess<'db>>,
 
     #[tracked]
     #[returns(ref)]

@@ -9,7 +9,7 @@ use auto_lsp::{
 
 use crate::def::{
         expressions::{expression::InitExpr, spec::Spec},
-        interned::namespace::SpannedNamespaceAccess,
+        interned::namespace::SpanNamespaceAccess,
         scope::FileScopeId,
         semantic_index::{SemanticIndex, semantic_index},
     };
@@ -22,14 +22,14 @@ pub struct SymbolInfo<'a> {
     pub kind: Option<SymbolKind>,
     pub spec: Option<Spec<'a>>,
     pub init: Option<InitExpr<'a>>,
-    pub implements: Option<Vec<SpannedNamespaceAccess<'a>>>,
+    pub implements: Option<Vec<SpanNamespaceAccess<'a>>>,
     pub extends: Option<Extends<'a>>,
 }
 
 #[derive(Debug, Clone)]
 pub enum Extends<'a> {
-    Single(SpannedNamespaceAccess<'a>),
-    Multiple(&'a Vec<SpannedNamespaceAccess<'a>>),
+    Single(SpanNamespaceAccess<'a>),
+    Multiple(&'a Vec<SpanNamespaceAccess<'a>>),
 }
 
 impl SymbolInfo<'_> {

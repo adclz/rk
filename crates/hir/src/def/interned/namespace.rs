@@ -62,25 +62,25 @@ impl From<(&dyn BaseDatabase, &Vec<SpannedIdent<'_>>)> for NamespacePath {
 
 /// A [`SpannedPath`] is a wrapper around a [`NamespaceAccess`] that includes a span
 #[derive(Clone, salsa::Update, Debug)]
-pub struct SpannedNamespaceAccess<'db> {
+pub struct SpanNamespaceAccess<'db> {
     pub id: AstId,
     pub scope_id: FileScopeId<'db>,
     pub path: NamespaceAccess,
 }
 
-impl PartialEq for SpannedNamespaceAccess<'_> {
+impl PartialEq for SpanNamespaceAccess<'_> {
     fn eq(&self, other: &Self) -> bool {
         self.path == other.path
     }
 }
 
-impl Hash for SpannedNamespaceAccess<'_> {
+impl Hash for SpanNamespaceAccess<'_> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.path.hash(state);
     }
 }
 
-impl<'db> ToProto<'db> for SpannedNamespaceAccess<'db> {
+impl<'db> ToProto<'db> for SpanNamespaceAccess<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
         self.id
     }
@@ -90,15 +90,15 @@ impl<'db> ToProto<'db> for SpannedNamespaceAccess<'db> {
     }
 }
 
-impl Eq for SpannedNamespaceAccess<'_> {}
+impl Eq for SpanNamespaceAccess<'_> {}
 
-impl<'db> SpannedNamespaceAccess<'db> {
+impl<'db> SpanNamespaceAccess<'db> {
     pub fn from_ast(
         db: &'db dyn BaseDatabase,
         sema: &SemanticIndexBuilder<'db>,
         fq_name: &ast::generated::NamespaceAccess,
     ) -> anyhow::Result<Self, AnalysisError<'db>> {
-        Ok(SpannedNamespaceAccess {
+        Ok(SpanNamespaceAccess {
             id: fq_name.into(),
             scope_id: sema.current_scope,
             path: NamespaceAccess::from_ast(db, sema, fq_name)?,

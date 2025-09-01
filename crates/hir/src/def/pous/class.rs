@@ -3,7 +3,7 @@ use auto_lsp::default::db::BaseDatabase;
 use crate::{
     def::{
         expressions::{spec::Spec, statement::Stmt},
-        interned::{identifier::Ident, namespace::SpannedNamespaceAccess},
+        interned::{identifier::Ident, namespace::SpanNamespaceAccess},
         pous::variable::VariableDecl,
         scope::FileScopeId,
         visibility::Modifiers,
@@ -15,11 +15,11 @@ use crate::{
 pub struct Class<'db> {
     #[tracked]
     #[returns(as_ref)]
-    pub extends: Option<SpannedNamespaceAccess<'db>>,
+    pub extends: Option<SpanNamespaceAccess<'db>>,
 
     #[tracked]
     #[returns(ref)]
-    pub implements: Vec<SpannedNamespaceAccess<'db>>,
+    pub implements: Vec<SpanNamespaceAccess<'db>>,
 
     #[tracked]
     #[returns(ref)]
