@@ -6,21 +6,19 @@ use auto_lsp::{
 use rustc_hash::FxHashMap;
 
 use crate::{
-    def::{
+    check::errors::sem_errors::PathExprError, def::{
         expressions::spec::{ElementarySpec, Spec, SpecKind},
-        interned::{identifier::Ident, namespace::NamespaceAccess},
+        interned::{identifier::Ident, namespace::{NamespaceAccess, SpanNamespaceAccess}},
         pous::{
             class::MethodDecl,
             pou::{Pou, PouDecl},
             variable::{VariableDecl, VariableKind},
         },
         scope::FileScopeId,
-    },
-    to_proto::{AstId, ToProto},
-    ty::{
+    }, to_proto::{AstId, ToProto}, ty::{
         name_res::resolve_namespace_access,
-        ty_path_expr_resolver::{PathExprWalkError, PathExprWalkStep},
-    },
+        ty_path_expr_resolver::PathExprWalkStep,
+    }
 };
 
 #[salsa::tracked(debug)]
@@ -38,8 +36,7 @@ impl<'db> ToProto<'db> for Ty<'db> {
     }
 
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
-        let or = self.origin(db);
-        or.scope_id(db)
+        self.origin(db).scope_id(db)
     }
 
     fn declaration(
@@ -60,6 +57,7 @@ impl<'db> ToProto<'db> for Ty<'db> {
                 method.scope_id(db).file(db).url(db).clone(),
                 method.get_span(db).into(),
             ),
+            _ => return None,
         };
 
         Some(GotoDeclarationResponse::Scalar(span))
@@ -480,12 +478,12 @@ impl<'db> Ty<'db> {
         &self,
         db: &'db dyn BaseDatabase,
         step: &PathExprWalkStep<'db>,
-    ) -> Result<Ty<'db>, PathExprWalkError<'db>> {
+    ) -> Result<Ty<'db>, PathExprError<'db>> {
         match &step {
             PathExprWalkStep::Field { ident, expr } => match self.kind(db) {
                 TyKind::Struct { elements, spec } => elements
                     .get(&ident.ident)
-                    .ok_or_else(|| PathExprWalkError::FieldNotFound {
+                    .ok_or_else(|| PathExprError::UnknownField {
                         expr: *expr,
                         origin: self.origin(db),
                     })
@@ -499,7 +497,7 @@ impl<'db> Ty<'db> {
                     .get(&ident.ident)
                     .or_else(|| output.get(&ident.ident))
                     .or_else(|| in_out.get(&ident.ident))
-                    .ok_or_else(|| PathExprWalkError::FieldNotFound {
+                    .ok_or_else(|| PathExprError::UnknownField {
                         expr: *expr,
                         origin: self.origin(db),
                     })
@@ -517,27 +515,27 @@ impl<'db> Ty<'db> {
                     .or_else(|| in_outs.get(&ident.ident))
                     .or_else(|| temps.get(&ident.ident))
                     .or_else(|| ztatic.get(&ident.ident))
-                    .ok_or_else(|| PathExprWalkError::FieldNotFound {
+                    .ok_or_else(|| PathExprError::UnknownField {
                         expr: *expr,
                         origin: self.origin(db),
                     })
                     .cloned(),
                 TyKind::RefTo(inner) => inner.linear(db, step),
-                _ => Err(PathExprWalkError::FieldNotFound {
+                _ => Err(PathExprError::UnknownField {
                     expr: *expr,
                     origin: self.origin(db),
                 }),
             },
             PathExprWalkStep::Index { expr } => match self.kind(db) {
                 TyKind::Array { type_signature } => Ok(type_signature),
-                _ => Err(PathExprWalkError::NotAnArray {
+                _ => Err(PathExprError::NotAnArray {
                     expr: *expr,
                     origin: self.origin(db),
                 }),
             },
             PathExprWalkStep::Deref { expr } => match self.kind(db) {
                 TyKind::RefTo(inner) => Ok(inner),
-                _ => Err(PathExprWalkError::NotAReference {
+                _ => Err(PathExprError::NotAReference {
                     expr: *expr,
                     origin: self.origin(db),
                 }),
@@ -599,15 +597,23 @@ impl<'db> Ty<'db> {
         if let TyKind::RefTo(sig) = self.kind(db) {
             return sig.is_callable(db);
         };
-        matches!(self.kind(db), TyKind::Function { .. })
+        matches!(self.kind(db), TyKind::Function { .. } | TyKind::FunctionBlock { .. })
     }
 
     pub fn is_invalid(&self, db: &'db dyn BaseDatabase) -> bool {
         matches!(self.kind(db), TyKind::Unresolved(_) | TyKind::Recursive)
     }
 
+    pub fn is_recursive(&self, db: &'db dyn BaseDatabase) -> bool {
+        matches!(self.kind(db), TyKind::Recursive)
+    }
+
     pub fn is_reference(&self, db: &'db dyn BaseDatabase) -> bool {
         matches!(self.kind(db), TyKind::RefTo(_))
+    }
+
+    pub fn is_variable(&self, db: &'db dyn BaseDatabase) -> bool {
+        matches!(self.origin(db), TyOrigin::FromVariable(_))
     }
 
     pub fn has_return_type(&self, db: &'db dyn BaseDatabase) -> bool {

@@ -2,7 +2,6 @@ use crate::check::errors::sem_errors::StmtError;
 use crate::def::expressions::statement::{Stmt, StmtKind};
 use crate::def::scope::FileScopeId;
 use crate::to_proto::{AstId, ToProto};
-use crate::ty::TyResolved;
 use crate::ty::expr_resolver::{Env, ResolvedExpr, ResolvedExprKind, resolve_expr};
 use crate::ty::ty::TyKind;
 use crate::ty::ty_var_access_resolver::{ResolvedVarResult, resolve_var_access};
@@ -69,21 +68,18 @@ pub enum ResolvedStmtKind<'db> {
 pub struct ResolveStmtCtx<'db> {
     db: &'db dyn BaseDatabase,
     // The statements to resolve
-    stmt: Stmt<'db>,
-    // Errors encountered during resolution
-    errors: Vec<StmtError<'db>>,
+    stmt: Stmt<'db>
 }
 
 impl<'db> ResolveStmtCtx<'db> {
     pub fn new(db: &'db dyn BaseDatabase, stmt: Stmt<'db>) -> Self {
         Self {
             db,
-            stmt,
-            errors: vec![],
+            stmt
         }
     }
 
-    pub fn resolve(mut self) -> ResolvedStmt<'db> {
+    pub fn resolve(self) -> ResolvedStmt<'db> {
         match self.stmt.stmt(self.db) {
             StmtKind::Assignment { var, target } => {
                 let resolved_var = resolve_var_access(self.db, var);

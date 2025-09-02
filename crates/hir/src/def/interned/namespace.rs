@@ -61,7 +61,7 @@ impl From<(&dyn BaseDatabase, &Vec<SpanIdent<'_>>)> for NamespacePath {
 }
 
 /// A [`SpannedPath`] is a wrapper around a [`NamespaceAccess`] that includes a span
-#[derive(Clone, salsa::Update, Debug)]
+#[derive(Debug, Copy, Clone, salsa::Update)]
 pub struct SpanNamespaceAccess<'db> {
     pub id: AstId,
     pub scope_id: FileScopeId<'db>,

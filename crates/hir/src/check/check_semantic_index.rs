@@ -33,7 +33,8 @@ use crate::{
     },
     to_proto::ToProto,
     ty::{
-        expr_resolver::ResolvedExpr,
+        TyInfo,
+        expr_resolver::{ResolvedExpr, ResolvedExprKind},
         name_res::pous_in_scope,
         stmt_resolver::{ResolveStmtCtx, ResolvedStmt, ResolvedStmtKind, resolve_stmt},
         ty::{Ty, TyKind, ty_for_pou, ty_for_variable},
@@ -158,6 +159,7 @@ impl<'db> CheckWithCtx<'db> for ResolvedStmt<'db> {
         errors: &mut Vec<AnalysisError<'db>>,
     ) {
         ctx.mark_and_check(*self);
+
         match self.kind(db) {
             ResolvedStmtKind::For { body, .. } => {
                 body.collect_errors_with_ctx(db, ctx, errors);
@@ -188,9 +190,39 @@ impl<'db> CheckWithCtx<'db> for ResolvedStmt<'db> {
                     .for_each(|(_, s)| s.collect_errors_with_ctx(db, ctx, errors));
                 ctx.finish_block(errors);
             }
+            ResolvedStmtKind::Assignment { var, target } => match var.ty(db) {
+                Some(ty_var) => {
+                    if ty_var.is_callable(db) {
+                        errors.push(AnalysisError::StmtError(StmtError::AssignmentToCallable {
+                            loc: self.get_span(db),
+                            ty: ty_var,
+                        }));
+                    } else if ty_var.is_recursive(db) {
+                        errors.push(AnalysisError::StmtError(StmtError::RecursiveType {
+                            ty: ty_var,
+                        }));
+                    } else if let Err(err) = coerce_ty_expr(db, ty_var, *target) {
+                        errors.push(err);
+                    }
+                }
+                None => {}
+            },
             _ => {
                 ctx.finish_block(errors);
             }
         }
+    }
+}
+
+fn coerce_ty_expr<'db>(
+    db: &'db dyn BaseDatabase,
+    target_ty: Ty<'db>,
+    expr: ResolvedExpr<'db>,
+) -> Result<(), AnalysisError<'db>> {
+    match (target_ty.kind(db), expr.kind(db)) {
+        (TyKind::Simple(elem), ResolvedExprKind::Literal(prim)) => {
+            elem.lit_check(db, *prim).map_err(|err| (err, target_ty, expr).into())
+        }
+        _ => todo!(),
     }
 }

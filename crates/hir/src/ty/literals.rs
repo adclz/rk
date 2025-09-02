@@ -1,35 +1,14 @@
-use std::fmt::Display;
-
 use auto_lsp::default::db::BaseDatabase;
 
-use crate::def::{
+use crate::{check::errors::sem_errors::LitCheckError, def::{
     expressions::{
         expression::{Elementary, Integer, IntegerKind},
         spec::ElementarySpec,
     },
     interned::identifier::Ident,
-};
+}};
 
 use time::{Date, Duration, PrimitiveDateTime, Time, macros::format_description};
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum LitCheckError {
-    TypeMismatch(String),
-    InvalidFormat { kind: &'static str, msg: String },
-    OutOfRange(String),
-}
-
-impl Display for LitCheckError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            LitCheckError::OutOfRange(msg) => write!(f, "Out of range: {msg}"),
-            LitCheckError::TypeMismatch(err) => write!(f, "Type mismatch: {err}"),
-            LitCheckError::InvalidFormat { kind, msg } => {
-                write!(f, "Invalid format for {kind}: {msg}")
-            }
-        }
-    }
-}
 
 impl<'db> ElementarySpec {
     pub fn lit_check(

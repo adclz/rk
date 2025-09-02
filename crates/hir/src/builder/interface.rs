@@ -61,9 +61,9 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         let result = PouDecl::new(
             self.db,
-            Pou::Interface(Interface::new(self.db, extends, vec![], scope_id)),
+            Pou::Interface(Interface::new(self.db, extends, methods, scope_id)),
             name,
-            interface.into(),
+            interface.into(), 
             interface.name.cast(self.ast).into(),
             scope_id,
         );

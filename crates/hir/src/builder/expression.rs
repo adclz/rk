@@ -514,15 +514,14 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::DirectVariable {
             ast::generated::Offset_Partly::Partly(partly) => (None, true),
         };
 
-        Ok(VariableAccess {
-            id: self.into(),
-            scope_id: sema.current_scope,
-            kind: VariableAccessKind::Direct {
+        Ok(VariableAccess::new(sema.db, VariableAccessKind::Direct {
                 adress,
                 partly,
                 offset,
-            },
-        })
+            }, 
+        self.into(),
+        sema.current_scope
+        ))
     }
 }
 
@@ -531,14 +530,13 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::SymbolicVariable {
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<VariableAccess<'db>, AnalysisError<'db>> {
-        Ok(VariableAccess {
-            id: self.into(),
-            scope_id: sema.current_scope,
-            kind: VariableAccessKind::Symbolic(SymbolicVariable {
+        Ok(VariableAccess::new(sema.db, VariableAccessKind::Symbolic(SymbolicVariable {
                 this: self.this.is_some(),
                 kind: self.children.cast(sema.ast).parse(sema)?,
             }),
-        })
+            self.into(),
+            sema.current_scope)
+        )
     }
 }
 

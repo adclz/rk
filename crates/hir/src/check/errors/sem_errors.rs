@@ -2,15 +2,14 @@ use core::panic;
 use std::{collections::HashMap, error::Error, fmt::Display};
 
 use auto_lsp::{
-    core::{
-        errors::PositionError,
-        span::Span,
+    core::{errors::PositionError, span::Span},
+    default::db::{BaseDatabase, file::File},
+    lsp_types::{
+        DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, Location, WorkspaceEdit,
     },
-    default::db::{file::File, BaseDatabase},
-    lsp_types::{DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, Location, WorkspaceEdit},
     tree_sitter,
 };
-use ide_diagnostic::{action, diag, edit, IdeDiagnostic};
+use ide_diagnostic::{IdeDiagnostic, action, diag, edit};
 
 use crate::{
     def::{
@@ -25,7 +24,10 @@ use crate::{
         using::Using,
     },
     to_proto::ToProto,
-    ty::ty::{Ty, TyOrigin},
+    ty::{
+        expr_resolver::ResolvedExpr,
+        ty::{Ty, TyOrigin},
+    },
 };
 
 pub trait ToIdeDiagnostic<'db> {
@@ -46,6 +48,16 @@ pub enum AnalysisError<'db> {
 impl<'db> From<StmtError<'db>> for AnalysisError<'db> {
     fn from(err: StmtError<'db>) -> Self {
         AnalysisError::StmtError(err)
+    }
+}
+
+impl<'db> From<(LitCheckError, Ty<'db>, ResolvedExpr<'db>)> for AnalysisError<'db> {
+    fn from((err, ty, expr): (LitCheckError, Ty<'db>, ResolvedExpr<'db>)) -> Self {
+        AnalysisError::StmtError(StmtError::LitCheckError {
+            ty,
+            literal: expr,
+            err,
+        })
     }
 }
 
@@ -133,6 +145,10 @@ pub enum PathExprError<'db> {
         origin: TyOrigin<'db>,
         expr: PathExpr<'db>,
     },
+    NotAnArray {
+        origin: TyOrigin<'db>,
+        expr: PathExpr<'db>,
+    },
     NotAReference {
         origin: TyOrigin<'db>,
         expr: PathExpr<'db>,
@@ -155,11 +171,33 @@ pub enum StmtError<'db> {
         loc: Span,
         ty: Ty<'db>,
     },
-    LiteralTypeError {
-        expected: Ty<'db>,
-        found: Ty<'db>,
-        err: String,
+    RecursiveType {
+        ty: Ty<'db>,
     },
+    LitCheckError {
+        ty: Ty<'db>,
+        literal: ResolvedExpr<'db>,
+        err: LitCheckError,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LitCheckError {
+    TypeMismatch(String),
+    InvalidFormat { kind: &'static str, msg: String },
+    OutOfRange(String),
+}
+
+impl Display for LitCheckError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LitCheckError::OutOfRange(msg) => write!(f, "Out of range: {msg}"),
+            LitCheckError::TypeMismatch(err) => write!(f, "Type mismatch: {err}"),
+            LitCheckError::InvalidFormat { kind, msg } => {
+                write!(f, "Invalid format for {kind}: {msg}")
+            }
+        }
+    }
 }
 
 impl<'db> ToIdeDiagnostic<'db> for AnalysisError<'db> {
@@ -237,7 +275,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 .message("function call in initialization expression is not allowed".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .range(span.clone())
-                .call(),  
+                .call(),
             Self::MissingNode {
                 file,
                 span,
@@ -280,10 +318,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 };
                 diagnostic
             }
-            Self::SyntaxError {
-                span,
-                err,
-            } => diag()
+            Self::SyntaxError { span, err } => diag()
                 .message(err.to_string())
                 .severity(DiagnosticSeverity::ERROR)
                 .range(span.clone())
@@ -438,7 +473,7 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                     .message("unreachable code".into())
                     .severity(DiagnosticSeverity::WARNING)
                     .tags(vec![DiagnosticTag::UNNECESSARY])
-                    .range(start.clone())
+                    .range(range.clone())
                     .call()
             }
             Self::ExitOutsideLoop { exit_stmt } => diag()
@@ -451,19 +486,30 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 .severity(DiagnosticSeverity::ERROR)
                 .range(continue_stmt.get_span(db))
                 .call(),
-            Self::LiteralTypeError {
-                expected,
-                found,
-                err,
-            } => diag()
+            Self::LitCheckError { ty, literal, err } => match err {
+                LitCheckError::TypeMismatch(err) => diag()
+                    .message(err.to_string())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(literal.get_span(db).clone())
+                    .call(),
+                LitCheckError::InvalidFormat { kind, msg } => diag()
+                    .message(format!("invalid format for literal '{}': {}", kind, msg))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(literal.get_span(db).clone())
+                    .call(),
+                LitCheckError::OutOfRange(err) => diag()
+                    .message(err.to_string())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(literal.get_span(db).clone())
+                    .call(),
+            },
+            Self::RecursiveType { ty } => diag()
                 .message(format!(
-                    "type error: expected '{}', found '{}' ({})",
-                    expected.origin(db).name(db).text(db),
-                    found.origin(db).name(db).text(db),
-                    err
+                    "recursive type detected for '{}'",
+                    ty.origin(db).name(db).text(db)
                 ))
                 .severity(DiagnosticSeverity::ERROR)
-                .range(found.origin(db).name_span(db).unwrap().clone())
+                .range(ty.origin(db).name_span(db).unwrap().clone())
                 .call(),
         }
     }
@@ -495,6 +541,11 @@ impl<'db> ToIdeDiagnostic<'db> for PathExprError<'db> {
                 .call(),
             Self::NotAReference { origin, expr } => diag()
                 .message("type can not be dereferenced".to_string())
+                .severity(DiagnosticSeverity::ERROR)
+                .range(expr.get_span(db).clone())
+                .call(),
+            Self::NotAnArray { origin, expr } => diag()
+                .message("type is not an array".to_string())
                 .severity(DiagnosticSeverity::ERROR)
                 .range(expr.get_span(db).clone())
                 .call(),

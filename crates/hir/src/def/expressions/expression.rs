@@ -208,7 +208,8 @@ pub enum SizeOperator {
     D,
     L,
 }
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+
+#[salsa::tracked(debug)]
 pub struct VariableAccess<'db> {
     pub kind: VariableAccessKind<'db>,
 
@@ -219,11 +220,11 @@ pub struct VariableAccess<'db> {
 
 impl<'db> ToProto<'db> for VariableAccess<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
-        self.id
+        self.id(db)
     }
 
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
-        self.scope_id
+        self.scope_id(db)
     }
 }
 

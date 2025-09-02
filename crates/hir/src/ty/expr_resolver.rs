@@ -7,10 +7,7 @@ use crate::{
     },
     to_proto::{AstId, ToProto},
     ty::{
-        TyResolved,
-        ty::Ty,
-        ty_path_expr_resolver::ResolvedPathResult,
-        ty_var_access_resolver::{ResolvedVarResult, resolve_var_access},
+        ty::{Ty, TyKind, TyOrigin}, ty_path_expr_resolver::ResolvedPathResult, ty_var_access_resolver::{resolve_var_access, ResolvedVarResult}, TyInfo
     },
 };
 
@@ -25,10 +22,7 @@ pub enum Env<'db> {
 }
 
 #[salsa::tracked(no_eq, returns(ref))]
-pub fn resolve_expr<'db>(
-    db: &'db dyn BaseDatabase,
-    expr: Expr<'db>,
-) -> ResolvedExpr<'db> {
+pub fn resolve_expr<'db>(db: &'db dyn BaseDatabase, expr: Expr<'db>) -> ResolvedExpr<'db> {
     ResolveExprCtx::new(db, expr).resolve()
 }
 
@@ -51,14 +45,14 @@ pub enum ResolvedExprKind<'db> {
     // May have Ty (return type)
     FuncCall(Ty<'db>),
 
-    // Does not have Ty - but elmentary literal that has to be resolved
+    // Does not have Ty - but elementary literal that has to be resolved
     Literal(Elementary),
 
     Parenthesized(ResolvedExpr<'db>), // Parenthesized expressions
 
     // Emitted by math expressions
     Math(ResolvedExpr<'db>, ResolvedExpr<'db>), // left, right
-    
+
     // Emitted by boolean expressions
     Bool(ResolvedExpr<'db>, ResolvedExpr<'db>), // left, right
 
@@ -66,7 +60,7 @@ pub enum ResolvedExprKind<'db> {
     Compare(ResolvedExpr<'db>, ResolvedExpr<'db>), // left, right
 }
 
-impl<'db> TyResolved<'db> for ResolvedExpr<'db> {
+impl<'db> TyInfo<'db> for ResolvedExpr<'db> {
     fn ty(&self, db: &'db dyn BaseDatabase) -> Option<Ty<'db>> {
         match &self.kind(db) {
             ResolvedExprKind::PathExpr(path) => path.ty(db),
@@ -74,6 +68,10 @@ impl<'db> TyResolved<'db> for ResolvedExpr<'db> {
             ResolvedExprKind::FuncCall(ty) => Some(*ty),
             _ => None,
         }
+    }
+
+    fn place(&self, db: &'db dyn BaseDatabase) -> AstId {
+        self.id(db)
     }
 }
 
@@ -97,10 +95,7 @@ impl<'db> ResolveExprCtx<'db> {
                     self.db,
                     self.expr.id(self.db),
                     self.expr.scope_id(self.db),
-                    ResolvedExprKind::VarAccess(resolve_var_access(
-                        self.db,
-                        variable,
-                    )),
+                    ResolvedExprKind::VarAccess(resolve_var_access(self.db, variable)),
                 ),
                 PrimaryExpr::Literal(lit) => ResolvedExpr::new(
                     self.db,
