@@ -2,16 +2,16 @@ use std::sync::Arc;
 
 use auto_lsp::default::db::BaseDatabase;
 
-use crate::check::errors::sem_errors::PathExprError;
+use crate::check::errors::sem_errors::{AnalysisError, PathExprError};
 use crate::def::expressions::expression::{PathExprKind, VarAccess};
 use crate::def::interned::namespace::{NamespaceAccess, NamespacePath};
 use crate::def::{
     expressions::expression::PathExpr, interned::identifier::SpanIdent, scope::FileScopeId,
 };
 use crate::to_proto::{AstId, ToProto};
+use crate::ty::TyInfo;
 use crate::ty::name_res::{pous_in_scope, resolve_namespace_access, variables_in_scope};
 use crate::ty::ty::{Ty, ty_for_pou, ty_for_variable};
-use crate::ty::TyInfo;
 
 #[salsa::tracked(no_eq, returns(ref))]
 pub fn resolved_path_expr<'db>(
@@ -36,6 +36,16 @@ impl<'db> TyInfo<'db> for ResolvedPathResult<'db> {
         self.elements(db).last().and_then(|e| match e.kind {
             ResolvedPathElementKind::Ty(ty) => Some(ty),
             ResolvedPathElementKind::Error(_) => None,
+        })
+    }
+
+    fn is_err(
+        &self,
+        db: &'db dyn BaseDatabase,
+    ) -> Option<AnalysisError<'db>> {
+        self.elements(db).last().and_then(|e| match &e.kind {
+            ResolvedPathElementKind::Ty(_) => None,
+            ResolvedPathElementKind::Error(err) => Some(AnalysisError::PathExprError(err.clone())),
         })
     }
 
@@ -155,7 +165,12 @@ impl<'db> ResolvePathExprCtx<'db> {
             }
         }
 
-        ResolvedPathResult::new(self.db, self.expr.id(self.db), self.expr.scope_id(self.db), elements)
+        ResolvedPathResult::new(
+            self.db,
+            self.expr.id(self.db),
+            self.expr.scope_id(self.db),
+            elements,
+        )
     }
 
     fn find_signature(&mut self, identifier: &SpanIdent<'db>) {
@@ -254,9 +269,9 @@ impl<'db> ToProto<'db> for ResolvedPathResult<'db> {
     }
 
     fn declaration(
-            &'db self,
-            db: &'db dyn BaseDatabase,
-        ) -> Option<auto_lsp::lsp_types::request::GotoDeclarationResponse> {
+        &'db self,
+        db: &'db dyn BaseDatabase,
+    ) -> Option<auto_lsp::lsp_types::request::GotoDeclarationResponse> {
         if let Some(ty) = self.ty(db) {
             ty.declaration(db)
         } else {
@@ -265,9 +280,9 @@ impl<'db> ToProto<'db> for ResolvedPathResult<'db> {
     }
 
     fn definition(
-            &'db self,
-            db: &'db dyn BaseDatabase,
-        ) -> Option<auto_lsp::lsp_types::GotoDefinitionResponse> {
+        &'db self,
+        db: &'db dyn BaseDatabase,
+    ) -> Option<auto_lsp::lsp_types::GotoDefinitionResponse> {
         if let Some(ty) = self.ty(db) {
             ty.definition(db)
         } else {

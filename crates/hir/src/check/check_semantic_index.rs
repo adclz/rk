@@ -12,7 +12,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use salsa::Accumulator;
 
 use crate::{
-    check::errors::sem_errors::{AnalysisError, StmtError},
+    check::errors::sem_errors::{AnalysisError, PathExprError, StmtError},
     def::{
         expressions::{
             expression::{
@@ -29,16 +29,11 @@ use crate::{
             variable::VariableDecl,
         },
         scope::FileScopeId,
-        semantic_index::{HirNode, SemanticIndex, semantic_index},
+        semantic_index::{semantic_index, HirNode, SemanticIndex},
     },
     to_proto::ToProto,
     ty::{
-        TyInfo,
-        expr_resolver::{ResolvedExpr, ResolvedExprKind},
-        name_res::pous_in_scope,
-        stmt_resolver::{ResolveStmtCtx, ResolvedStmt, ResolvedStmtKind, resolve_stmt},
-        ty::{Ty, TyKind, ty_for_pou, ty_for_variable},
-        ty_path_expr_resolver::ResolvePathExprCtx,
+        expr_resolver::{ResolvedExpr, ResolvedExprKind}, name_res::pous_in_scope, stmt_resolver::{resolve_stmt, ResolveStmtCtx, ResolvedStmt, ResolvedStmtKind}, ty::{ty_for_pou, ty_for_variable, Ty, TyKind}, ty_path_expr_resolver::{ResolvePathExprCtx, ResolvedPathElementKind, ResolvedPathResult}, ty_var_access_resolver::ResolvedVarKind, TyInfo
     },
     walk::WalkHir,
 };
@@ -197,31 +192,25 @@ impl<'db> CheckWithCtx<'db> for ResolvedStmt<'db> {
                             loc: self.get_span(db),
                             ty: ty_var,
                         }));
-                    } else if ty_var.is_recursive(db) {
-                        errors.push(AnalysisError::StmtError(StmtError::RecursiveType {
-                            ty: ty_var,
-                        }));
+                    } else if let Some(err) = ty_var.as_err(db) {
+                        errors.push(err);
                     } else if let Err(err) = coerce_ty_expr(db, ty_var, *target) {
                         errors.push(err);
                     }
                 }
+                None => if let Some(err) = var.is_err(db) {
+                    errors.push(err);
+                }
+            },
+            ResolvedStmtKind::FuncCall { target, params } => match target.ty(db) {
+                Some(ty_var) => {
+                    if let Some(err) = ty_var.as_err(db) {
+                        errors.push(err);
+                    } else if !ty_var.is_callable(db) {
+                    }
+                }
                 None => {}
             },
-            ResolvedStmtKind::FuncCall { target, params } => {
-                match target.ty(db) {
-                    Some(ty_var) => {
-                        if ty_var.is_recursive(db) {
-                            errors.push(AnalysisError::StmtError(StmtError::RecursiveType {
-                                ty: ty_var,
-                            }));
-                        } else if !ty_var.is_callable(db) {
-
-                        }
-
-                    },
-                    None => {}
-                }
-            }
             _ => {
                 ctx.finish_block(errors);
             }
@@ -236,9 +225,9 @@ fn coerce_ty_expr<'db>(
 ) -> Result<(), AnalysisError<'db>> {
     match (target_ty.kind(db), expr.kind(db)) {
         // Assign a simple literal to an elementary expression
-        (TyKind::Simple(elem), ResolvedExprKind::Literal(prim)) => {
-            elem.lit_check(db, *prim).map_err(|err| (err, target_ty, expr).into())
-        }
+        (TyKind::Simple(elem), ResolvedExprKind::Literal(prim)) => elem
+            .lit_check(db, *prim)
+            .map_err(|err| (err, target_ty, expr).into()),
         _ => todo!(),
     }
 }

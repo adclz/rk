@@ -181,10 +181,8 @@ impl<'db> SemanticIndex<'db> {
     ) -> Option<HirNode<'db>> {
         let mut best_match: Option<HirNode<'db>> = None;
 
-        eprintln!("offset: {}", offset);
         let _ = self.walk_hir(db, &mut |node| {
             let range = node.get_span(db);
-            eprintln!("Visiting node: range {:?}", range);
             // Only consider nodes that contain the offset
             if range.start_byte <= offset && offset <= range.end_byte {
                 // Always update the best match when we find a containing node

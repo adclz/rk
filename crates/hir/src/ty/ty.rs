@@ -6,7 +6,7 @@ use auto_lsp::{
 use rustc_hash::FxHashMap;
 
 use crate::{
-    check::errors::sem_errors::PathExprError,
+    check::errors::sem_errors::{AnalysisError, PathExprError, StmtError},
     def::{
         expressions::spec::{ElementarySpec, Spec, SpecKind},
         interned::{identifier::Ident, namespace::NamespaceAccess},
@@ -46,9 +46,6 @@ impl<'db> ToProto<'db> for Ty<'db> {
         &'db self,
         db: &'db dyn BaseDatabase,
     ) -> Option<GotoDeclarationResponse> {
-        eprintln!("Getting declaration for type");
-        eprintln!("{:?}", self.decl(db));
-        eprintln!("{:?}", self.kind(db));
         Some(GotoDeclarationResponse::Scalar(Location::new(
             self.decl(db).scope_id(db).file(db).url(db).clone(),
             self.decl(db).span(db).into(),
@@ -87,6 +84,16 @@ impl<'db> ToProto<'db> for Ty<'db> {
                 }),
                 range: Some(self.get_span(db).into()),
             })
+    }
+}
+
+impl<'db> Ty<'db> {
+    pub fn as_err(&self, db: &'db dyn BaseDatabase) -> Option<AnalysisError<'db>> {
+        match self.kind(db) {
+            TyKind::Unresolved(path) => todo!(),
+            TyKind::Recursive => Some(AnalysisError::StmtError(StmtError::RecursiveType { ty: *self })),
+            _ => None,
+        }
     }
 }
 

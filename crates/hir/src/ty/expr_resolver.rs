@@ -1,14 +1,12 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    def::{
+    check::errors::sem_errors::AnalysisError, def::{
         expressions::expression::{Elementary, Expr, ExprKind, PrimaryExpr},
         scope::FileScopeId,
-    },
-    to_proto::{AstId, ToProto},
-    ty::{
-        ty::{Ty, TyKind, TyDecl}, ty_path_expr_resolver::ResolvedPathResult, ty_var_access_resolver::{resolve_var_access, ResolvedVarResult}, TyInfo
-    },
+    }, to_proto::{AstId, ToProto}, ty::{
+        ty::{Ty, TyDecl, TyKind}, ty_path_expr_resolver::ResolvedPathResult, ty_var_access_resolver::{resolve_var_access, ResolvedVarResult}, TyInfo
+    }
 };
 
 /// The environment in which the expression is resolved.
@@ -68,6 +66,10 @@ impl<'db> TyInfo<'db> for ResolvedExpr<'db> {
             ResolvedExprKind::FuncCall(ty) => Some(*ty),
             _ => None,
         }
+    }
+
+    fn is_err(&self, db: &'db dyn BaseDatabase) -> Option<AnalysisError<'db>> {
+        None
     }
 
     fn place(&self, db: &'db dyn BaseDatabase) -> AstId {

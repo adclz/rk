@@ -41,6 +41,15 @@ impl<'db> TyInfo<'db> for ResolvedVarResult<'db> {
         }
     }
 
+    fn is_err(&self, db: &'db dyn BaseDatabase) -> Option<AnalysisError<'db>> {
+        match self.kind(db) {
+            ResolvedVarKind::Direct => None, // todo: direct var type
+            ResolvedVarKind::Symbolic(ref path) => {
+                path.is_err(db)
+            },
+        }
+    }
+
     fn place(&self, db: &'db dyn BaseDatabase) -> AstId {
         self.origin(db).id(db)
     }
