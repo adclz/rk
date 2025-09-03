@@ -45,7 +45,6 @@ impl<'db> ToProto<'db> for Ty<'db> {
     fn declaration(
         &'db self,
         db: &'db dyn BaseDatabase,
-        _sema: &'db crate::def::semantic_index::SemanticIndex<'db>,
     ) -> Option<GotoDeclarationResponse> {
         eprintln!("Getting declaration for type");
         eprintln!("{:?}", self.decl(db));
@@ -59,7 +58,6 @@ impl<'db> ToProto<'db> for Ty<'db> {
     fn definition(
         &'db self,
         db: &'db dyn BaseDatabase,
-        _sema: &'db crate::def::semantic_index::SemanticIndex<'db>,
     ) -> Option<GotoDefinitionResponse> {
         match self.def(db) {
             TyDef::Pou(pou) => Some(GotoDefinitionResponse::Scalar(Location::new(
@@ -81,7 +79,6 @@ impl<'db> ToProto<'db> for Ty<'db> {
     fn hover(
             &'db self,
             db: &'db dyn BaseDatabase,
-            _sema: &'db crate::def::semantic_index::SemanticIndex<'db>,
         ) -> Option<auto_lsp::lsp_types::Hover> {
             Some(auto_lsp::lsp_types::Hover {
                 contents: HoverContents::Markup(MarkupContent {

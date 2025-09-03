@@ -86,11 +86,10 @@ impl<'db> ToProto<'db> for ResolvedVarResult<'db> {
 
     fn declaration(
             &'db self,
-            _db: &'db dyn BaseDatabase,
-            _sema: &'db crate::def::semantic_index::SemanticIndex<'db>,
+            db: &'db dyn BaseDatabase,
         ) -> Option<auto_lsp::lsp_types::request::GotoDeclarationResponse> {
-        if let Some(ty) = self.ty(_db) {
-            ty.declaration(_db, _sema)
+        if let Some(ty) = self.ty(db) {
+            ty.declaration(db)
         } else {
             None
         }
@@ -98,11 +97,10 @@ impl<'db> ToProto<'db> for ResolvedVarResult<'db> {
 
     fn definition(
             &'db self,
-            _db: &'db dyn BaseDatabase,
-            _sema: &'db crate::def::semantic_index::SemanticIndex<'db>,
+            db: &'db dyn BaseDatabase,
         ) -> Option<auto_lsp::lsp_types::GotoDefinitionResponse> {
-        if let Some(ty) = self.ty(_db) {
-            ty.definition(_db, _sema)
+        if let Some(ty) = self.ty(db) {
+            ty.definition(db)
         } else {
             None
         }

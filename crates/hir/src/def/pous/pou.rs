@@ -1,4 +1,4 @@
-use crate::{completions, def::expressions::statement::Stmt};
+use crate::{completions, def::{expressions::statement::Stmt, semantic_index::semantic_index}};
 use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{
@@ -87,11 +87,10 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
     fn completion(
         &'db self,
         db: &'db dyn BaseDatabase,
-        sema: &'db SemanticIndex<'db>,
         offset: usize,
     ) -> Option<Vec<CompletionItem>> {
         match self.pou(db) {
-            Pou::Function(f) => f.completion_ctx(db, sema, offset),
+            Pou::Function(f) => f.completion_ctx(db, offset),
             Pou::FunctionBlock(_) => Some(vec![completions::snippets::var_input()]),
             Pou::Class(_) => Some(vec![completions::snippets::var_input()]),
             Pou::Interface(_) => Some(vec![completions::snippets::var_input()]),
@@ -102,7 +101,6 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
     fn inlay_hint(
         &'db self,
         db: &'db dyn BaseDatabase,
-        _sema: &'db SemanticIndex<'db>,
     ) -> Option<InlayHint> {
         Some(InlayHint {
             label: InlayHintLabel::String(format!(
@@ -129,8 +127,8 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
     fn hover(
         &'db self,
         db: &'db dyn BaseDatabase,
-        sema: &'db SemanticIndex<'db>,
     ) -> Option<auto_lsp::lsp_types::Hover> {
+        let sema = semantic_index(db, self.get_scope_id(db).file(db));
         let name_span = self.get_name_span(db)?;
         let comment = comment_index(db, sema.file);
         let comment = comment

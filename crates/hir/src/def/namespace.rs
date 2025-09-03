@@ -7,7 +7,7 @@ use auto_lsp::lsp_types::{
 use crate::def::interned::namespace::NamespacePath;
 use crate::def::pous::pou::PouDecl;
 use crate::def::scope::{FileScopeId, Visibility};
-use crate::def::semantic_index::SemanticIndex;
+use crate::def::semantic_index::{semantic_index, SemanticIndex};
 use crate::to_proto::{AstId, SymbolInfo, ToProto};
 
 #[salsa::tracked(debug)]
@@ -47,8 +47,7 @@ impl<'db> ToProto<'db> for NamespaceDecl<'db> {
 
     fn hover(
         &'db self,
-        db: &'db dyn BaseDatabase,
-        _sema: &'db SemanticIndex<'db>,
+        db: &'db dyn BaseDatabase
     ) -> Option<auto_lsp::lsp_types::Hover> {
         Some(auto_lsp::lsp_types::Hover {
             contents: auto_lsp::lsp_types::HoverContents::Markup(MarkupContent {
@@ -61,8 +60,7 @@ impl<'db> ToProto<'db> for NamespaceDecl<'db> {
 
     fn inlay_hint(
         &'db self,
-        db: &'db dyn BaseDatabase,
-        _sema: &'db SemanticIndex<'db>,
+        db: &'db dyn BaseDatabase
     ) -> Option<auto_lsp::lsp_types::InlayHint> {
         Some(InlayHint {
             label: InlayHintLabel::String(format!("namespace {}", self.path(db).to_string(db))),
@@ -79,9 +77,9 @@ impl<'db> ToProto<'db> for NamespaceDecl<'db> {
     fn completion(
         &'db self,
         db: &'db dyn BaseDatabase,
-        sema: &'db SemanticIndex<'db>,
         offset: usize,
     ) -> Option<Vec<CompletionItem>> {
+        let sema = semantic_index(db, self.scope_id(db).file(db));
         let scope = sema.get_scope(db, self.scope_id(db));
 
         // Don't provide completions between the namespace keyword and the namespace name

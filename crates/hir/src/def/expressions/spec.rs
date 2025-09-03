@@ -115,11 +115,12 @@ impl<'db> ToProto<'db> for Spec<'db> {
         self.scope_id(db)
     }
 
-    fn hover(&'db self, db: &'db dyn BaseDatabase, sema: &'db SemanticIndex<'db>) -> Option<Hover> {
+    fn hover(&'db self, db: &'db dyn BaseDatabase) -> Option<Hover> {
+        let sema = semantic_index(db, self.scope_id(db).file(db));
         match self.kind(db) {
             SpecKind::Target(target) => {
                 match resolve_namespace_access(db, self.scope_id(db), *target) {
-                    Some(pou) => pou.hover(db, sema),
+                    Some(pou) => pou.hover(db),
                     None => None,
                 }
             }
@@ -148,10 +149,10 @@ impl<'db> ToProto<'db> for Spec<'db> {
     fn completion(
         &'db self,
         db: &'db dyn BaseDatabase,
-        sema: &'db SemanticIndex<'db>,
         _offset: usize,
     ) -> Option<Vec<auto_lsp::lsp_types::CompletionItem>> {
         let mut primary = elem_type_names();
+        let sema = semantic_index(db, self.scope_id(db).file(db));
         let finder = sema.pous_in_scope(db, self.scope_id(db));
 
         primary.extend(finder.iter().filter_map(|(name, pou)| match pou.pou(db) {

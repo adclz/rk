@@ -94,7 +94,6 @@ pub trait ToProto<'db> {
     fn completion(
         &'db self,
         _db: &'db dyn BaseDatabase,
-        _sema: &'db SemanticIndex<'db>,
         _offset: usize,
     ) -> Option<Vec<CompletionItem>> {
         None
@@ -103,7 +102,6 @@ pub trait ToProto<'db> {
     fn inlay_hint(
         &'db self,
         _db: &'db dyn BaseDatabase,
-        _sema: &'db SemanticIndex<'db>,
     ) -> Option<InlayHint> {
         None
     }
@@ -111,7 +109,6 @@ pub trait ToProto<'db> {
     fn hover(
         &'db self,
         _db: &'db dyn BaseDatabase,
-        _sema: &'db SemanticIndex<'db>,
     ) -> Option<Hover> {
         None
     }
@@ -119,7 +116,6 @@ pub trait ToProto<'db> {
     fn declaration(
         &'db self,
         _db: &'db dyn BaseDatabase,
-        _sema: &'db SemanticIndex<'db>,
     ) -> Option<GotoDeclarationResponse> {
         None
     }
@@ -127,7 +123,6 @@ pub trait ToProto<'db> {
     fn definition(
         &'db self,
         _db: &'db dyn BaseDatabase,
-        _sema: &'db SemanticIndex<'db>,
     ) -> Option<GotoDefinitionResponse> {
         None
     }

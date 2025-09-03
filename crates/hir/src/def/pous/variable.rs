@@ -88,7 +88,6 @@ impl<'db> ToProto<'db> for VariableDecl<'db> {
     fn hover(
         &'db self,
         db: &'db dyn BaseDatabase,
-        _sema: &'db SemanticIndex<'db>,
     ) -> Option<auto_lsp::lsp_types::Hover> {
         Some(auto_lsp::lsp_types::Hover {
             contents: auto_lsp::lsp_types::HoverContents::Markup(MarkupContent {

@@ -29,7 +29,6 @@ impl<'db> ToProto<'db> for Using<'db> {
     fn hover(
         &'db self,
         db: &'db dyn BaseDatabase,
-        _sema: &'db SemanticIndex<'db>,
     ) -> Option<auto_lsp::lsp_types::Hover> {
         Some(auto_lsp::lsp_types::Hover {
             contents: auto_lsp::lsp_types::HoverContents::Markup(MarkupContent {
@@ -43,7 +42,6 @@ impl<'db> ToProto<'db> for Using<'db> {
     fn completion(
         &'db self,
         db: &'db dyn BaseDatabase,
-        _sema: &'db SemanticIndex<'db>,
         _offset: usize,
     ) -> Option<Vec<CompletionItem>> {
         None

@@ -71,7 +71,7 @@ pub fn use_completion_ctx(
 ) -> anyhow::Result<Option<CompletionResponse>> {
     let sema = semantic_index(db, file);
     if let Some(symbol) = sema.descendant_at(db, offset) {
-        if let Some(ctx) = symbol.as_proto().completion(db, sema, offset) {
+        if let Some(ctx) = symbol.as_proto().completion(db, offset) {
             return Ok(Some(CompletionResponse::Array(ctx)));
         }
     }

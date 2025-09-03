@@ -25,12 +25,7 @@ pub fn go_to_definition(
                 params.text_document_position_params.position
             )
         })?;
-    let sema = semantic_index(db, file);
-
-    let symbol = sema.descendant_at(db, position);
-
-    match symbol.and_then(|s| s.as_proto().definition(db, sema)) {
-        Some(def) => Ok(Some(def)),
-        None => Ok(None),
-    }
+    Ok(semantic_index(db, file)
+        .descendant_at(db, position)
+        .and_then(|s| s.as_proto().definition(db)))
 }

@@ -27,7 +27,7 @@ pub fn inlay_hints(
         if span.lsp().start.line < range.start.line || span.lsp().end.line > range.end.line {
             return ControlFlow::Break(());
         }
-        if let Some(inlay_hint) = node.as_proto().inlay_hint(db, sema) {
+        if let Some(inlay_hint) = node.as_proto().inlay_hint(db) {
             results.push(inlay_hint);
         }
         ControlFlow::Continue(())

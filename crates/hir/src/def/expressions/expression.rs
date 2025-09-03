@@ -321,7 +321,6 @@ impl<'db> ToProto<'db> for Expr<'db> {
     fn completion(
         &'db self,
         _db: &'db dyn BaseDatabase,
-        _sema: &'db SemanticIndex<'db>,
         _offset: usize,
     ) -> Option<Vec<auto_lsp::lsp_types::CompletionItem>> {
         Some(elem_type_names_init())
