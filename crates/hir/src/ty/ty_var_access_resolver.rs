@@ -7,11 +7,9 @@ use crate::{
         expressions::expression::{PathExpr, VariableAccess, VariableAccessKind},
         scope::FileScopeId,
     },
-    to_proto::AstId,
+    to_proto::{AstId, ToProto},
     ty::{
-        TyInfo,
-        ty::{Ty, TyOrigin},
-        ty_path_expr_resolver::{ResolvedPathResult, resolved_path_expr},
+        ty::{Ty, TyDecl}, ty_path_expr_resolver::{resolved_path_expr, ResolvedPathResult}, TyInfo
     },
 };
 
@@ -24,7 +22,6 @@ pub fn resolve_var_access<'db>(
 
 #[salsa::tracked(debug)]
 pub struct ResolvedVarResult<'db> {
-
     pub origin: VariableAccess<'db>,
 
     pub kind: ResolvedVarKind<'db>,
@@ -40,7 +37,7 @@ impl<'db> TyInfo<'db> for ResolvedVarResult<'db> {
     fn ty(&self, db: &'db dyn BaseDatabase) -> Option<Ty<'db>> {
         match self.kind(db) {
             ResolvedVarKind::Direct => None, // todo: direct var type
-            ResolvedVarKind::Symbolic(path) => path.ty(db),
+            ResolvedVarKind::Symbolic(ref path) => path.ty(db),
         }
     }
 
@@ -74,6 +71,40 @@ impl<'db> VarAccessResolverCtx<'db> {
                 *self.access,
                 ResolvedVarKind::Symbolic(*resolved_path_expr(self.db, symbolic.kind)),
             ),
+        }
+    }
+}
+
+impl<'db> ToProto<'db> for ResolvedVarResult<'db> {
+    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
+        self.origin(db).id(db)
+    }
+
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+        self.origin(db).scope_id(db)
+    }
+
+    fn declaration(
+            &'db self,
+            _db: &'db dyn BaseDatabase,
+            _sema: &'db crate::def::semantic_index::SemanticIndex<'db>,
+        ) -> Option<auto_lsp::lsp_types::request::GotoDeclarationResponse> {
+        if let Some(ty) = self.ty(_db) {
+            ty.declaration(_db, _sema)
+        } else {
+            None
+        }
+    }
+
+    fn definition(
+            &'db self,
+            _db: &'db dyn BaseDatabase,
+            _sema: &'db crate::def::semantic_index::SemanticIndex<'db>,
+        ) -> Option<auto_lsp::lsp_types::GotoDefinitionResponse> {
+        if let Some(ty) = self.ty(_db) {
+            ty.definition(_db, _sema)
+        } else {
+            None
         }
     }
 }

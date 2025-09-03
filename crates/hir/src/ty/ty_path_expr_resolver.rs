@@ -252,4 +252,28 @@ impl<'db> ToProto<'db> for ResolvedPathResult<'db> {
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         self.scope_id(db)
     }
+
+    fn declaration(
+            &'db self,
+            _db: &'db dyn BaseDatabase,
+            _sema: &'db crate::def::semantic_index::SemanticIndex<'db>,
+        ) -> Option<auto_lsp::lsp_types::request::GotoDeclarationResponse> {
+        if let Some(ty) = self.ty(_db) {
+            ty.declaration(_db, _sema)
+        } else {
+            None
+        }
+    }
+
+    fn definition(
+            &'db self,
+            _db: &'db dyn BaseDatabase,
+            _sema: &'db crate::def::semantic_index::SemanticIndex<'db>,
+        ) -> Option<auto_lsp::lsp_types::GotoDefinitionResponse> {
+        if let Some(ty) = self.ty(_db) {
+            ty.definition(_db, _sema)
+        } else {
+            None
+        }
+    }
 }

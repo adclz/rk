@@ -207,6 +207,21 @@ impl<'db> CheckWithCtx<'db> for ResolvedStmt<'db> {
                 }
                 None => {}
             },
+            ResolvedStmtKind::FuncCall { target, params } => {
+                match target.ty(db) {
+                    Some(ty_var) => {
+                        if ty_var.is_recursive(db) {
+                            errors.push(AnalysisError::StmtError(StmtError::RecursiveType {
+                                ty: ty_var,
+                            }));
+                        } else if !ty_var.is_callable(db) {
+
+                        }
+
+                    },
+                    None => {}
+                }
+            }
             _ => {
                 ctx.finish_block(errors);
             }
@@ -220,6 +235,7 @@ fn coerce_ty_expr<'db>(
     expr: ResolvedExpr<'db>,
 ) -> Result<(), AnalysisError<'db>> {
     match (target_ty.kind(db), expr.kind(db)) {
+        // Assign a simple literal to an elementary expression
         (TyKind::Simple(elem), ResolvedExprKind::Literal(prim)) => {
             elem.lit_check(db, *prim).map_err(|err| (err, target_ty, expr).into())
         }

@@ -26,7 +26,7 @@ pub fn diagnostics(
                 result_id: None,
                 items: diagnostics_for_file(db, file)
                     .iter()
-                    .map(|d| d.diagnostic.clone())
+                    .map(|d| d.to_lsp_diagnostic(db))
                     .collect::<Vec<_>>(),
             },
         }),
@@ -61,7 +61,7 @@ pub fn workspace_diagnostics(
             let file = *file;
             let errors: Vec<auto_lsp::lsp_types::Diagnostic> = diagnostics_for_file(db, file)
                 .iter()
-                .map(|d| d.diagnostic.clone())
+                .map(|d| d.to_lsp_diagnostic(db))
                 .collect::<Vec<_>>();
 
             WorkspaceDocumentDiagnosticReport::Full(WorkspaceFullDocumentDiagnosticReport {

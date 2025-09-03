@@ -9,7 +9,7 @@ use auto_lsp::{
     },
     tree_sitter,
 };
-use ide_diagnostic::{IdeDiagnostic, action, diag, edit};
+use ide_diagnostic::{IdeDiagnostic, Related, action, diag, edit};
 
 use crate::{
     def::{
@@ -26,7 +26,7 @@ use crate::{
     to_proto::ToProto,
     ty::{
         expr_resolver::ResolvedExpr,
-        ty::{Ty, TyOrigin},
+        ty::{Ty, TyDecl},
     },
 };
 
@@ -138,19 +138,19 @@ pub enum PathExprError<'db> {
         scope: FileScopeId<'db>,
     },
     UnknownField {
-        origin: TyOrigin<'db>,
+        ty: Ty<'db>,
         expr: PathExpr<'db>,
     },
     UnexpectedIndex {
-        origin: TyOrigin<'db>,
+        ty: Ty<'db>,
         expr: PathExpr<'db>,
     },
     NotAnArray {
-        origin: TyOrigin<'db>,
+        ty: Ty<'db>,
         expr: PathExpr<'db>,
     },
     NotAReference {
-        origin: TyOrigin<'db>,
+        ty: Ty<'db>,
         expr: PathExpr<'db>,
     },
 }
@@ -287,14 +287,13 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .message(err.to_string())
                     .source("IEC".into())
                     .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
-                    .related_information(vec![DiagnosticRelatedInformation {
-                        location: auto_lsp::lsp_types::Location {
-                            uri: file.url(db).clone(),
-                            range: span.clone().into(),
-                        },
-                        message: format!("add missing {grammar_name} here"),
-                    }])
                     .call();
+
+                diagnostic.with_related(Related::new(
+                    format!("add missing {grammar_name} here"),
+                    *file,
+                    span.clone(),
+                ));
 
                 // If the grammar name is an identifier, suggest inserting it.
                 if grammar_name.len() == 1 {
@@ -302,7 +301,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                         action()
                             .title(format!("insert missing '{grammar_name}'"))
                             .kind(auto_lsp::lsp_types::CodeActionKind::QUICKFIX)
-                            .diagnostics(vec![diagnostic.diagnostic.clone()])
+                            .diagnostics(vec![diagnostic.inner()])
                             .is_preferred(true)
                             .edit(WorkspaceEdit::new(HashMap::from([(
                                 file.url(db).clone(),
@@ -342,43 +341,49 @@ impl<'db> ToIdeDiagnostic<'db> for NamespaceError<'db> {
                 .range(span.clone())
                 .call(),
 
-            Self::DuplicateUsing { using, other } => diag()
-                .message(format!(
-                    "duplicate `USING` for namespace '{}'",
-                    using.path(db).to_string(db)
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .related_information(vec![DiagnosticRelatedInformation {
-                    location: Location {
-                        uri: other.scope_id(db).file(db).url(db).clone(),
-                        range: other.get_span(db).into(),
-                    },
-                    message: format!(
+            Self::DuplicateUsing { using, other } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "duplicate `USING` for namespace '{}'",
+                        using.path(db).to_string(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(using.get_span(db).clone())
+                    .call();
+
+                diag.with_related(Related::new(
+                    format!(
                         "namespace '{}' is already imported here",
                         other.path(db).to_string(db)
                     ),
-                }])
-                .range(using.get_span(db).clone())
-                .call(),
-            Self::NamespaceAlreadyInScope { using, namespace } => diag()
-                .message(format!(
-                    "'{}' is already in scope",
-                    using.path(db).to_string(db)
-                ))
-                .severity(DiagnosticSeverity::WARNING)
-                .tags(vec![DiagnosticTag::UNNECESSARY])
-                .related_information(vec![DiagnosticRelatedInformation {
-                    location: Location {
-                        uri: namespace.scope_id(db).file(db).url(db).clone(),
-                        range: namespace.get_span(db).into(),
-                    },
-                    message: format!(
+                    other.scope_id(db).file(db),
+                    other.get_span(db),
+                ));
+
+                diag
+            }
+            Self::NamespaceAlreadyInScope { using, namespace } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' is already in scope",
+                        using.path(db).to_string(db)
+                    ))
+                    .severity(DiagnosticSeverity::WARNING)
+                    .tags(vec![DiagnosticTag::UNNECESSARY])
+                    .range(using.get_span(db).clone())
+                    .call();
+
+                diag.with_related(Related::new(
+                    format!(
                         "namespace '{}' is defined here",
                         using.path(db).to_string(db)
                     ),
-                }])
-                .range(using.get_span(db).clone())
-                .call(),
+                    namespace.scope_id(db).file(db),
+                    namespace.get_span(db).into(),
+                ));
+
+                diag
+            }
         }
     }
 }
@@ -386,36 +391,42 @@ impl<'db> ToIdeDiagnostic<'db> for NamespaceError<'db> {
 impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
     fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
         match self {
-            Self::Variable { var1, var2 } => diag()
-                .message(format!(
-                    "variable '{}' is already defined",
-                    var1.name(db).text(db)
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .range(var1.get_span(db).clone())
-                .related_information(vec![DiagnosticRelatedInformation {
-                    location: Location {
-                        uri: var2.scope_id(db).file(db).url(db).clone(),
-                        range: var2.get_span(db).into(),
-                    },
-                    message: format!("variable '{}' is defined here", var2.name(db).text(db)),
-                }])
-                .call(),
-            Self::Pou { pou1, pou2 } => diag()
-                .message(format!(
-                    "POU '{}' is already defined",
-                    pou1.name(db).text(db)
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .range(pou1.get_span(db).clone())
-                .related_information(vec![DiagnosticRelatedInformation {
-                    location: Location {
-                        uri: pou2.scope_id(db).file(db).url(db).clone(),
-                        range: pou2.get_span(db).into(),
-                    },
-                    message: format!("POU '{}' is defined here", pou2.name(db).text(db)),
-                }])
-                .call(),
+            Self::Variable { var1, var2 } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "variable '{}' is already defined",
+                        var1.name(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(var1.get_span(db).clone())
+                    .call();
+
+                diag.with_related(Related::new(
+                    format!("variable '{}' is defined here", var2.name(db).text(db)),
+                    var2.scope_id(db).file(db),
+                    var2.get_span(db).into(),
+                ));
+
+                diag
+            }
+            Self::Pou { pou1, pou2 } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "POU '{}' is already defined",
+                        pou1.name(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(pou1.get_span(db).clone())
+                    .call();
+
+                diag.with_related(Related::new(
+                    format!("POU '{}' is defined here", pou2.name(db).text(db)),
+                    pou2.scope_id(db).file(db),
+                    pou2.get_span(db).into(),
+                ));
+
+                diag
+            }
         }
     }
 }
@@ -424,42 +435,44 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
     fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
         match self {
             Self::AssignmentToCallable { loc, ty } => {
-                if let TyOrigin::FromPou(pou) = ty.origin(db) {
+                if let TyDecl::FromPou(pou) = ty.decl(db) {
                     if let Pou::FunctionBlock(_) | Pou::Class(_) = pou.pou(db) {
-                        return diag()
+                        return {
+                            let mut diag = diag()
                             .message(format!(
                             "POU '{}' can not be assigned\nbut you can declare a variable of same type instead",
                                 pou.name(db).text(db),
                             ))
                             .severity(DiagnosticSeverity::ERROR)
                             .range(loc.clone())
-                            .related_information(vec![DiagnosticRelatedInformation {
-                                location: Location {
-                                    uri: pou.scope_id(db).file(db).url(db).clone(),
-                                    range: pou.get_name_span(db).unwrap().into(),
-                                },
-                                message: format!("POU '{}' is declared here", pou.name(db).text(db))}])
                             .call();
+
+                            diag.with_related(Related::new(
+                                format!("POU '{}' is declared here", pou.name(db).text(db)),
+                                pou.scope_id(db).file(db),
+                                pou.get_span(db).into(),
+                            ));
+
+                            diag
+                        };
                     };
                 };
-                diag()
+                let mut diag = diag()
                     .message(format!(
                         "'{}' can not be assigned",
-                        ty.origin(db).name(db).text(db),
+                        ty.decl(db).name(db).text(db),
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(loc.clone())
-                    .related_information(vec![DiagnosticRelatedInformation {
-                        location: Location {
-                            uri: ty.origin(db).scope_id(db).file(db).url(db).clone(),
-                            range: ty.origin(db).name_span(db).unwrap().into(),
-                        },
-                        message: format!(
-                            "POU '{}' is declared here",
-                            ty.origin(db).name(db).text(db)
-                        ),
-                    }])
-                    .call()
+                    .call();
+
+                diag.with_related(Related::new(
+                    format!("POU '{}' is declared here", ty.decl(db).name(db).text(db)),
+                    ty.decl(db).scope_id(db).file(db),
+                    ty.decl(db).span(db).into(),
+                ));
+
+                diag
             }
             Self::Unreachable { start, end } => {
                 let range = Span::from(tree_sitter::Range {
@@ -487,11 +500,17 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 .range(continue_stmt.get_span(db))
                 .call(),
             Self::LitCheckError { ty, literal, err } => match err {
-                LitCheckError::TypeMismatch(err) => diag()
-                    .message(err.to_string())
-                    .severity(DiagnosticSeverity::ERROR)
-                    .range(literal.get_span(db).clone())
-                    .call(),
+                LitCheckError::TypeMismatch(err) => {
+                    let mut diag = diag()
+                        .message(err.to_string())
+                        .severity(DiagnosticSeverity::ERROR)
+                        .range(literal.get_span(db).clone())
+                        .call();
+
+                    get_decl_and_def_for_ty(db, *ty, &mut diag);
+
+                    diag
+                }
                 LitCheckError::InvalidFormat { kind, msg } => diag()
                     .message(format!("invalid format for literal '{}': {}", kind, msg))
                     .severity(DiagnosticSeverity::ERROR)
@@ -506,10 +525,10 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
             Self::RecursiveType { ty } => diag()
                 .message(format!(
                     "recursive type detected for '{}'",
-                    ty.origin(db).name(db).text(db)
+                    ty.decl(db).name(db).text(db)
                 ))
                 .severity(DiagnosticSeverity::ERROR)
-                .range(ty.origin(db).name_span(db).unwrap().clone())
+                .range(ty.decl(db).name_span(db).clone())
                 .call(),
         }
     }
@@ -526,7 +545,7 @@ impl<'db> ToIdeDiagnostic<'db> for PathExprError<'db> {
                 .severity(DiagnosticSeverity::ERROR)
                 .range(expr.get_span(db).clone())
                 .call(),
-            Self::UnknownField { origin, expr } => diag()
+            Self::UnknownField { ty: origin, expr } => diag()
                 .message(format!(
                     "field {} not found in type",
                     expr.to_string(db).text(db)
@@ -534,21 +553,37 @@ impl<'db> ToIdeDiagnostic<'db> for PathExprError<'db> {
                 .severity(DiagnosticSeverity::ERROR)
                 .range(expr.get_span(db).clone())
                 .call(),
-            Self::UnexpectedIndex { origin, expr } => diag()
+            Self::UnexpectedIndex { ty: origin, expr } => diag()
                 .message("unexpected index expression".to_string())
                 .severity(DiagnosticSeverity::ERROR)
                 .range(expr.get_span(db).clone())
                 .call(),
-            Self::NotAReference { origin, expr } => diag()
+            Self::NotAReference { ty: origin, expr } => diag()
                 .message("type can not be dereferenced".to_string())
                 .severity(DiagnosticSeverity::ERROR)
                 .range(expr.get_span(db).clone())
                 .call(),
-            Self::NotAnArray { origin, expr } => diag()
+            Self::NotAnArray { ty: origin, expr } => diag()
                 .message("type is not an array".to_string())
                 .severity(DiagnosticSeverity::ERROR)
                 .range(expr.get_span(db).clone())
                 .call(),
         }
+    }
+}
+
+pub fn get_decl_and_def_for_ty(db: &dyn BaseDatabase, ty: Ty<'_>, diag: &mut IdeDiagnostic) {
+    diag.with_related(Related::new(
+        format!("'{}' is declared here", ty.decl(db).name(db).text(db),),
+        ty.decl(db).scope_id(db).file(db),
+        ty.decl(db).name_span(db),
+    ));
+
+    if let Some(span) = ty.def(db).get_span(db) {
+        diag.with_related(Related::new(
+            format!("type defined here",),
+            ty.def(db).get_scope_id(db).unwrap().file(db),
+            span.into(),
+        ));
     }
 }

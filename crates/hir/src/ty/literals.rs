@@ -1,12 +1,15 @@
 use auto_lsp::default::db::BaseDatabase;
 
-use crate::{check::errors::sem_errors::LitCheckError, def::{
-    expressions::{
-        expression::{Elementary, Integer, IntegerKind},
-        spec::ElementarySpec,
+use crate::{
+    check::errors::sem_errors::LitCheckError,
+    def::{
+        expressions::{
+            expression::{Elementary, Integer, IntegerKind},
+            spec::ElementarySpec,
+        },
+        interned::identifier::Ident,
     },
-    interned::identifier::Ident,
-}};
+};
 
 use time::{Date, Duration, PrimitiveDateTime, Time, macros::format_description};
 
@@ -45,7 +48,7 @@ impl<'db> ElementarySpec {
                         })
                 }
                 _ => Err(LitCheckError::TypeMismatch(
-                    "Expected a date literal".into(),
+                    "expected a date literal".into(),
                 )),
             },
             ElementarySpec::LDate => match spec {
@@ -59,7 +62,7 @@ impl<'db> ElementarySpec {
                         })
                 }
                 _ => Err(LitCheckError::TypeMismatch(
-                    "Expected a long date literal".into(),
+                    "expected a long date literal".into(),
                 )),
             },
             ElementarySpec::Tod => match spec {
@@ -73,7 +76,7 @@ impl<'db> ElementarySpec {
                         })
                 }
                 _ => Err(LitCheckError::TypeMismatch(
-                    "Expected a time-of-day literal".into(),
+                    "expected a time-of-day literal".into(),
                 )),
             },
             ElementarySpec::LTod => match spec {
@@ -87,7 +90,7 @@ impl<'db> ElementarySpec {
                         })
                 }
                 _ => Err(LitCheckError::TypeMismatch(
-                    "Expected a long time-of-day literal".into(),
+                    "expected a long time-of-day literal".into(),
                 )),
             },
             ElementarySpec::Dt => match spec {
@@ -99,7 +102,7 @@ impl<'db> ElementarySpec {
                     })
                     .map(|_| ()),
                 _ => Err(LitCheckError::TypeMismatch(
-                    "Expected a date-and-time literal".into(),
+                    "expected a date-and-time literal".into(),
                 )),
             },
 
@@ -113,32 +116,32 @@ impl<'db> ElementarySpec {
                     })
                     .map(|_| ()),
                 _ => Err(LitCheckError::TypeMismatch(
-                    "Expected a long date-and-time literal".into(),
+                    "expected a long date-and-time literal".into(),
                 )),
             },
             ElementarySpec::Time => match spec {
                 Elementary::InferIdent(ident) => ident.as_time(db).map(|_| ()),
                 _ => Err(LitCheckError::TypeMismatch(
-                    "Expected a time duration literal".into(),
+                    "expected a time duration literal".into(),
                 )),
             },
             ElementarySpec::LTime => match spec {
                 Elementary::InferIdent(ident) => ident.as_ltime(db).map(|_| ()),
                 _ => Err(LitCheckError::TypeMismatch(
-                    "Expected a long time duration literal".into(),
+                    "expected a long time duration literal".into(),
                 )),
             },
 
             ElementarySpec::String => match spec {
                 Elementary::InferIdent(ident) => ident.as_single_string(db).map(|_| ()),
                 _ => Err(LitCheckError::TypeMismatch(
-                    "Expected a string literal".into(),
+                    "expected a string literal".into(),
                 )),
             },
             ElementarySpec::WString => match spec {
                 Elementary::InferIdent(ident) => ident.as_double_string(db).map(|_| ()),
                 _ => Err(LitCheckError::TypeMismatch(
-                    "Expected a wide string literal".into(),
+                    "expected a wide string literal".into(),
                 )),
             },
             ElementarySpec::Char => todo!(),
@@ -165,96 +168,156 @@ fn check_bool(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckE
 
 fn check_u8(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckError> {
     match value {
-        Elementary::InferInteger(n) => n
+        Elementary::Byte(n)
+        | Elementary::SInt(n)
+        | Elementary::USInt(n)
+        | Elementary::InferInteger(n) => n
             .as_u8(db)
             .map(|_| ())
             .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
         _ => Err(LitCheckError::TypeMismatch(
-            "Expected an unsigned 8-bit integer".into(),
+            "expected an unsigned 8-bit integer".into(),
         )),
     }
 }
 
 fn check_u16(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckError> {
     match value {
-        Elementary::InferInteger(n) => n
+        Elementary::Byte(n)
+        | Elementary::Word(n)
+        | Elementary::SInt(n)
+        | Elementary::USInt(n)
+        | Elementary::Int(n)
+        | Elementary::UInt(n)
+        | Elementary::InferInteger(n) => n
             .as_u16(db)
             .map(|_| ())
             .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
         _ => Err(LitCheckError::TypeMismatch(
-            "Expected an unsigned 16-bit integer".into(),
+            "expected an unsigned 16-bit integer".into(),
         )),
     }
 }
 
 fn check_u32(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckError> {
     match value {
-        Elementary::InferInteger(n) => n
+        Elementary::Byte(n)
+        | Elementary::Word(n)
+        | Elementary::DWord(n)
+        | Elementary::SInt(n)
+        | Elementary::USInt(n)
+        | Elementary::DInt(n)
+        | Elementary::Int(n)
+        | Elementary::UInt(n)
+        | Elementary::UDInt(n)
+        | Elementary::InferInteger(n) => n
             .as_u32(db)
             .map(|_| ())
             .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
         _ => Err(LitCheckError::TypeMismatch(
-            "Expected an unsigned 32-bit integer".into(),
+            "expected an unsigned 32-bit integer".into(),
         )),
     }
 }
 
 fn check_u64(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckError> {
     match value {
-        Elementary::InferInteger(n) => n
+        Elementary::Byte(n) 
+        | Elementary::Word(n)
+        | Elementary::DWord(n)
+        | Elementary::LWord(n)
+        | Elementary::SInt(n)
+        | Elementary::USInt(n)
+        | Elementary::DInt(n)
+        | Elementary::Int(n)
+        | Elementary::LInt(n)
+        | Elementary::UInt(n)
+        | Elementary::UDInt(n)
+        | Elementary::ULInt(n)
+        | Elementary::InferInteger(n) => n
             .as_u64(db)
             .map(|_| ())
             .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
         _ => Err(LitCheckError::TypeMismatch(
-            "Expected an unsigned 64-bit integer".into(),
+            "expected an unsigned 64-bit integer".into(),
         )),
     }
 }
 
 fn check_i8(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckError> {
     match value {
-        Elementary::InferInteger(n) => n
+        Elementary::Byte(n)
+        | Elementary::SInt(n)
+        | Elementary::USInt(n)
+        | Elementary::InferInteger(n) => n
             .as_i8(db)
             .map(|_| ())
             .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
         _ => Err(LitCheckError::TypeMismatch(
-            "Expected a signed 8-bit integer".into(),
+            "expected a signed 8-bit integer".into(),
         )),
     }
 }
 
 fn check_i16(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckError> {
     match value {
-        Elementary::InferInteger(n) => n
+        Elementary::Byte(n)
+        | Elementary::Word(n)
+        | Elementary::SInt(n)
+        | Elementary::USInt(n)
+        | Elementary::Int(n)
+        | Elementary::UInt(n)
+        | Elementary::InferInteger(n) => n
             .as_i16(db)
             .map(|_| ())
             .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
         _ => Err(LitCheckError::TypeMismatch(
-            "Expected a signed 16-bit integer".into(),
+            "expected a signed 16-bit integer".into(),
         )),
     }
 }
 
 fn check_i32(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckError> {
     match value {
-        Elementary::InferInteger(n) => n
+        Elementary::Byte(n)
+        | Elementary::Word(n)
+        | Elementary::DWord(n)
+        | Elementary::SInt(n)
+        | Elementary::USInt(n)
+        | Elementary::DInt(n)
+        | Elementary::Int(n)
+        | Elementary::UInt(n)
+        | Elementary::UDInt(n)
+        | Elementary::InferInteger(n) => n
             .as_i32(db)
             .map(|_| ())
             .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
         _ => Err(LitCheckError::TypeMismatch(
-            "Expected a signed 32-bit integer".into(),
+            "expected a signed 32-bit integer".into(),
         )),
     }
 }
 
 fn check_i64(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckError> {
     match value {
-        Elementary::InferInteger(n) => n
+        Elementary::Byte(n)
+        | Elementary::Word(n)
+        | Elementary::DWord(n)
+        | Elementary::LWord(n)
+        | Elementary::SInt(n)
+        | Elementary::USInt(n)
+        | Elementary::DInt(n)
+        | Elementary::Int(n)
+        | Elementary::LInt(n)
+        | Elementary::UInt(n)
+        | Elementary::UDInt(n)
+        | Elementary::ULInt(n)
+        | Elementary::InferInteger(n) => n
             .as_i64(db)
             .map(|_| ())
             .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
         _ => Err(LitCheckError::TypeMismatch(
-            "Expected a signed 64-bit integer".into(),
+            "expected a signed 64-bit integer".into(),
         )),
     }
 }
@@ -266,7 +329,7 @@ fn check_f32(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckEr
             .map(|_| ())
             .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
         _ => Err(LitCheckError::TypeMismatch(
-            "Expected a 32-bit floating point number".into(),
+            "expected a 32-bit floating point number".into(),
         )),
     }
 }
@@ -278,7 +341,7 @@ fn check_f64(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckEr
             .map(|_| ())
             .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
         _ => Err(LitCheckError::TypeMismatch(
-            "Expected a 64-bit floating point number".into(),
+            "expected a 64-bit floating point number".into(),
         )),
     }
 }

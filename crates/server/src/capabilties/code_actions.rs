@@ -21,13 +21,13 @@ pub fn code_actions(
     let ns = semantic_index(db, file);
 
     diagnostics_for_file(db, file).iter().for_each(|diagnostic| {
-        if diagnostic.fixes.is_empty() {
+        if diagnostic.fixes().is_empty() {
             return;
         }
-        if diagnostic.diagnostic.range.start <= range.end
-            && diagnostic.diagnostic.range.end >= range.start
+        if diagnostic.range().start <= range.end
+            && diagnostic.range().end >= range.start
         {
-            diagnostic.fixes.iter().for_each(|fix| {
+            diagnostic.fixes().iter().for_each(|fix| {
                 results.push(CodeActionOrCommand::CodeAction(fix.clone()));
             });
         }

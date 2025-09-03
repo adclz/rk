@@ -1,17 +1,71 @@
 use ariadne::{ColorGenerator, Label, Report, Source};
 use auto_lsp::{
     core::{errors::ParseErrorAccumulator, span::Span},
-    default::db::{BaseDatabase, file::File},
+    default::db::{file::File, BaseDatabase},
     lsp_types::{
-        self, CodeAction, CodeActionKind, DiagnosticRelatedInformation, DiagnosticSeverity,
-        DiagnosticTag, NumberOrString, TextEdit,
+        self, CodeAction, CodeActionKind, Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, Location, NumberOrString, Range, TextEdit
     },
 };
 
 #[derive(Clone)]
 pub struct IdeDiagnostic {
-    pub diagnostic: auto_lsp::lsp_types::Diagnostic,
-    pub fixes: Vec<auto_lsp::lsp_types::CodeAction>,
+    diagnostic: auto_lsp::lsp_types::Diagnostic,
+    related: Vec<Related>,
+    fixes: Vec<auto_lsp::lsp_types::CodeAction>,
+}
+
+impl IdeDiagnostic {
+    pub fn inner(&self) -> Diagnostic {
+        self.diagnostic.clone()
+    }
+
+    pub fn fixes(&self) -> &[CodeAction] {
+        &self.fixes
+    }
+
+    pub fn range(&self) -> &Range {
+        &self.diagnostic.range
+    }
+
+    pub fn to_lsp_diagnostic(&self, db: &dyn BaseDatabase) -> Diagnostic {
+        let related = self
+            .related
+            .iter()
+            .map(|r| DiagnosticRelatedInformation {
+                message: r.message.clone(),
+                location: Location::new(r.file.url(db).to_owned(), r.range.lsp()),
+            })
+            .collect();
+
+        Diagnostic {
+            range: self.diagnostic.range,
+            severity: self.diagnostic.severity,
+            code: self.diagnostic.code.clone(),
+            code_description: self.diagnostic.code_description.clone(),
+            source: self.diagnostic.source.clone(),
+            message: self.diagnostic.message.clone(),
+            related_information: Some(related),
+            tags: self.diagnostic.tags.clone(),
+            data: self.diagnostic.data.clone(),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct Related {
+    pub message: String,
+    pub file: File,
+    pub range: Span,
+}
+
+impl Related {
+    pub fn new(message: String, file: File, range: Span) -> Self {
+        Self {
+            message,
+            file,
+            range,
+        }
+    }
 }
 
 impl PartialEq for IdeDiagnostic {
@@ -32,8 +86,13 @@ impl IdeDiagnostic {
     pub fn new(diagnostic: auto_lsp::lsp_types::Diagnostic) -> Self {
         Self {
             diagnostic,
+            related: vec![],
             fixes: vec![],
         }
+    }
+
+    pub fn with_related(&mut self, related: Related) {
+        self.related.push(related);
     }
 
     pub fn with_fix(&mut self, fix: auto_lsp::lsp_types::CodeAction) {
@@ -73,7 +132,7 @@ impl IdeDiagnostic {
         config: Option<ariadne::Config>,
     ) -> Report<'db, (&'db str, std::ops::Range<usize>)> {
         let mut colors = ColorGenerator::new();
-        
+
         // fixme: colors should be used *only* when ariadne::Config is None or .color is true
         // The reason is that insta snapshots render incorrectly with colors enabled
         let curr_color = colors.next();
@@ -96,20 +155,24 @@ impl IdeDiagnostic {
         if let Some(config) = config {
             report = report.with_config(config);
         }
-        
+
         report.add_label(
             Label::new((file.url(db).as_str(), start..end))
                 .with_message(self.diagnostic.message.to_owned().to_string()),
         );
 
-        if let Some(related) = &self.diagnostic.related_information {
-            for related in related {
-                report.add_help(related.message.to_owned().to_string())
-            }
+        for related in &self.related {
+            report.add_label(
+                Label::new((
+                    related.file.url(db).as_str(),
+                    related.range.start_byte..related.range.end_byte,
+                ))
+                .with_message(related.message.to_owned().to_string()),
+            )
         }
 
-        if !self.fixes.is_empty() {
-            report.add_note(format!("{} fix(es) available", self.fixes.len()));
+        for fix in &self.fixes {
+            report.add_help(format!("{}", fix.title));
         }
 
         if let Some(code) = &self.diagnostic.code {
@@ -133,8 +196,6 @@ pub fn diag(
     tags: Option<Vec<DiagnosticTag>>,
     code_description: Option<lsp_types::CodeDescription>,
     code: Option<NumberOrString>,
-    related_information: Option<Vec<DiagnosticRelatedInformation>>,
-    fixes: Option<Vec<CodeAction>>,
 ) -> IdeDiagnostic {
     IdeDiagnostic {
         diagnostic: auto_lsp::lsp_types::Diagnostic {
@@ -144,11 +205,12 @@ pub fn diag(
             message,
             code,
             code_description,
-            related_information,
+            related_information: None,
             tags,
             data: None,
         },
-        fixes: fixes.unwrap_or_default(),
+        fixes: vec![],
+        related: vec![],
     }
 }
 

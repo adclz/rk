@@ -21,6 +21,8 @@ use crate::ty::expr_resolver::ResolvedExpr;
 use crate::ty::name_res::pous_in_scope;
 use crate::ty::stmt_resolver::ResolvedStmt;
 use crate::ty::ty::Ty;
+use crate::ty::ty_path_expr_resolver::ResolvedPathResult;
+use crate::ty::ty_var_access_resolver::ResolvedVarResult;
 use crate::walk::WalkHir;
 
 /// Returns the semantic index of a given file
@@ -138,6 +140,8 @@ pub enum HirNode<'db> {
     Namespace(NamespaceDecl<'db>),
     Using(Using<'db>),
     Ty(Ty<'db>),
+    ResolvedPathResult(ResolvedPathResult<'db>),
+    ResolvedVarResult(ResolvedVarResult<'db>),
     ResolvedStmt(ResolvedStmt<'db>),
     ResolvedExpr(ResolvedExpr<'db>),
 }
@@ -148,6 +152,8 @@ impl<'db> HirNode<'db> {
             HirNode::Namespace(n) => n,
             HirNode::Using(u) => u,
             HirNode::Ty(t) => t,
+            HirNode::ResolvedPathResult(p) => p,
+            HirNode::ResolvedVarResult(v) => v,
             HirNode::ResolvedStmt(s) => s,
             HirNode::ResolvedExpr(e) => e,
         }
@@ -158,6 +164,8 @@ impl<'db> HirNode<'db> {
             HirNode::Namespace(n) => n.get_span(db),
             HirNode::Using(u) => u.get_span(db),
             HirNode::Ty(t) => t.get_span(db),
+            HirNode::ResolvedPathResult(p) => p.get_span(db),
+            HirNode::ResolvedVarResult(v) => v.get_span(db),
             HirNode::ResolvedStmt(s) => s.get_span(db),
             HirNode::ResolvedExpr(e) => e.get_span(db),
         }
@@ -173,21 +181,15 @@ impl<'db> SemanticIndex<'db> {
     ) -> Option<HirNode<'db>> {
         let mut best_match: Option<HirNode<'db>> = None;
 
+        eprintln!("offset: {}", offset);
         let _ = self.walk_hir(db, &mut |node| {
             let range = node.get_span(db);
+            eprintln!("Visiting node: range {:?}", range);
             // Only consider nodes that contain the offset
             if range.start_byte <= offset && offset <= range.end_byte {
-                // Compare old best match with new node
-                if let Some(ref a) = best_match {
-                    let a = a.as_proto().get_span(db);
-                    if a.start_byte >= range.start_byte {
-                        return ControlFlow::Continue(());
-                    } else {
-                        best_match = Some(node);
-                    }
-                } else {
-                    best_match = Some(node);
-                }
+                // Always update the best match when we find a containing node
+                // This ensures we get the deepest (last visited) node in the tree
+                best_match = Some(node);
             }
             ControlFlow::Continue(())
         });

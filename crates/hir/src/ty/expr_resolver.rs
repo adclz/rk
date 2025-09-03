@@ -7,7 +7,7 @@ use crate::{
     },
     to_proto::{AstId, ToProto},
     ty::{
-        ty::{Ty, TyKind, TyOrigin}, ty_path_expr_resolver::ResolvedPathResult, ty_var_access_resolver::{resolve_var_access, ResolvedVarResult}, TyInfo
+        ty::{Ty, TyKind, TyDecl}, ty_path_expr_resolver::ResolvedPathResult, ty_var_access_resolver::{resolve_var_access, ResolvedVarResult}, TyInfo
     },
 };
 

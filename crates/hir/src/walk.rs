@@ -1,29 +1,27 @@
 use std::ops::ControlFlow;
 
 use auto_lsp::default::db::BaseDatabase;
+use salsa::SalsaAsRef;
 
 use crate::{
     def::{
         namespace::NamespaceDecl,
-        pous::pou::PouDecl,
-        semantic_index::{HirNode, SemanticIndex},
-    },
-    ty::{
-        expr_resolver::{ResolvedExpr, ResolvedExprKind},
-        stmt_resolver::{ResolvedStmt, ResolvedStmtKind, resolve_stmt},
-        ty::{Ty, ty_for_pou},
-    },
+        pous::pou::{Pou, PouDecl},
+        semantic_index::{semantic_index, HirNode, SemanticIndex},
+    }, to_proto::ToProto, ty::{
+        expr_resolver::{ResolvedExpr, ResolvedExprKind}, stmt_resolver::{resolve_stmt, ResolvedStmt, ResolvedStmtKind}, ty::{ty_for_pou, Ty}, ty_path_expr_resolver::ResolvedPathResult, ty_var_access_resolver::ResolvedVarResult, TyInfo
+    }
 };
 
 pub trait WalkHir<'db> {
-    fn walk_hir<F>(&'db self, db: &'db dyn BaseDatabase, f: &mut F) -> ControlFlow<()>
+    fn walk_hir<F>(&self, db: &'db dyn BaseDatabase, f: &mut F) -> ControlFlow<()>
     where
         F: FnMut(HirNode<'db>) -> ControlFlow<()>;
 }
 
 impl<'db> WalkHir<'db> for SemanticIndex<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         f: &mut F,
     ) -> ControlFlow<()> {
@@ -39,7 +37,7 @@ impl<'db> WalkHir<'db> for SemanticIndex<'db> {
 
 impl<'db> WalkHir<'db> for NamespaceDecl<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         f: &mut F,
     ) -> ControlFlow<()> {
@@ -54,16 +52,20 @@ impl<'db> WalkHir<'db> for NamespaceDecl<'db> {
 
 impl<'db> WalkHir<'db> for PouDecl<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         f: &mut F,
     ) -> ControlFlow<()> {
         f(HirNode::Ty(ty_for_pou(db, *self)))?;
 
-        if let Some(stmts) = self.get_stmts(db) {
-            for stmt in stmts {
-                resolve_stmt(db,  *stmt).walk_hir(db, f)?;
-            }
+        let stmts = match self.pou(db) {
+            Pou::Function(f) => Some(f.statements(db)),
+            Pou::FunctionBlock(fb) => Some(fb.statements(db)),
+            _ => None,
+        };
+
+        for stmt in stmts.as_deref().unwrap_or(&vec![]) {
+            resolve_stmt(db, *stmt).walk_hir(db, f)?;
         }
         ControlFlow::Continue(())
     }
@@ -71,7 +73,7 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
 
 impl<'db> WalkHir<'db> for Ty<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         f: &mut F,
     ) -> ControlFlow<()> {
@@ -80,24 +82,42 @@ impl<'db> WalkHir<'db> for Ty<'db> {
     }
 }
 
+impl<'db> WalkHir<'db> for ResolvedVarResult<'db> {
+    fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
+        &self,
+        db: &'db dyn BaseDatabase,
+        f: &mut F,
+    ) -> ControlFlow<()> {
+        f(HirNode::ResolvedVarResult(*self))?;
+        ControlFlow::Continue(())
+    }
+}
+
+impl<'db> WalkHir<'db> for ResolvedPathResult<'db> {
+    fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
+        &self,
+        db: &'db dyn BaseDatabase,
+        f: &mut F,
+    ) -> ControlFlow<()> {
+        f(HirNode::ResolvedPathResult(*self))?;
+        ControlFlow::Continue(())
+    }
+}
+
 impl<'db> WalkHir<'db> for ResolvedExpr<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         f: &mut F,
     ) -> ControlFlow<()> {
         f(HirNode::ResolvedExpr(*self))?;
-
-        if let ResolvedExprKind::FuncCall(ty) = self.kind(db) {
-            ty.walk_hir(db, f)?;
-        }
         ControlFlow::Continue(())
     }
 }
 
 impl<'db> WalkHir<'db> for ResolvedStmt<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
-        &'db self,
+        &self,
         db: &'db dyn BaseDatabase,
         f: &mut F,
     ) -> ControlFlow<()> {
@@ -105,11 +125,11 @@ impl<'db> WalkHir<'db> for ResolvedStmt<'db> {
 
         match self.kind(db) {
             ResolvedStmtKind::Assignment { target, var } => {
-                //var.walk_hir(db, f)?;
+                var.walk_hir(db, f)?;
                 target.walk_hir(db, f)?;
             }
             ResolvedStmtKind::AssignmentAttempt { var, target } => {
-                //var.walk_hir(db, f)?;
+                var.walk_hir(db, f)?;
                 target.walk_hir(db, f)?;
             }
             ResolvedStmtKind::If {
@@ -159,6 +179,9 @@ impl<'db> WalkHir<'db> for ResolvedStmt<'db> {
                 for stmt in body {
                     stmt.walk_hir(db, f)?;
                 }
+            },
+            ResolvedStmtKind::FuncCall { target, params } => {
+                target.walk_hir(db, f)?;
             }
             // … same for While/Repeat/etc
             _ => {}

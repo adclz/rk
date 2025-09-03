@@ -31,7 +31,10 @@ pub fn go_to_declaration(
     let symbol = sema.descendant_at(db, position);
 
     match symbol.and_then(|s| s.as_proto().declaration(db, sema)) {
-        Some(hover) => Ok(Some(hover)),
+        Some(resp) => {
+            eprintln!("Go to declaration: {:?}", resp);
+            Ok(Some(resp))
+        },
         None => Ok(None),
     }
 }
