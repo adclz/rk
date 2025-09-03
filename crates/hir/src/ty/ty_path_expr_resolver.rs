@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::check::errors::sem_errors::{AnalysisError, PathExprError};
@@ -39,10 +37,7 @@ impl<'db> TyInfo<'db> for ResolvedPathResult<'db> {
         })
     }
 
-    fn is_err(
-        &self,
-        db: &'db dyn BaseDatabase,
-    ) -> Option<AnalysisError<'db>> {
+    fn is_err(&self, db: &'db dyn BaseDatabase) -> Option<AnalysisError<'db>> {
         self.elements(db).last().and_then(|e| match &e.kind {
             ResolvedPathElementKind::Ty(_) => None,
             ResolvedPathElementKind::Error(err) => Some(AnalysisError::PathExprError(err.clone())),

@@ -4,7 +4,7 @@ use auto_lsp::{
 };
 
 use crate::{
-    def::{interned::namespace::NamespacePath, scope::FileScopeId, semantic_index::SemanticIndex},
+    def::{interned::namespace::NamespacePath, scope::FileScopeId},
     to_proto::{AstId, ToProto},
 };
 
@@ -26,10 +26,7 @@ impl<'db> ToProto<'db> for Using<'db> {
         self.scope_id(db)
     }
 
-    fn hover(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-    ) -> Option<auto_lsp::lsp_types::Hover> {
+    fn hover(&'db self, db: &'db dyn BaseDatabase) -> Option<auto_lsp::lsp_types::Hover> {
         Some(auto_lsp::lsp_types::Hover {
             contents: auto_lsp::lsp_types::HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,

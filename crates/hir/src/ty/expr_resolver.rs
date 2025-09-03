@@ -1,12 +1,18 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    check::errors::sem_errors::AnalysisError, def::{
+    check::errors::sem_errors::AnalysisError,
+    def::{
         expressions::expression::{Elementary, Expr, ExprKind, PrimaryExpr},
         scope::FileScopeId,
-    }, to_proto::{AstId, ToProto}, ty::{
-        ty::{Ty, TyDecl, TyKind}, ty_path_expr_resolver::ResolvedPathResult, ty_var_access_resolver::{resolve_var_access, ResolvedVarResult}, TyInfo
-    }
+    },
+    to_proto::{AstId, ToProto},
+    ty::{
+        TyInfo,
+        ty::Ty,
+        ty_path_expr_resolver::ResolvedPathResult,
+        ty_var_access_resolver::{ResolvedVarResult, resolve_var_access},
+    },
 };
 
 /// The environment in which the expression is resolved.

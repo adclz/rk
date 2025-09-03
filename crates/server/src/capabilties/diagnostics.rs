@@ -35,10 +35,10 @@ pub fn diagnostics(
 
 /// fixme:
 /// This code is from [salsa parallel module](https://github.com/salsa-rs/salsa/blob/a0e7a0660c93136f23bf08b4f1604eee3d1f6b11/src/parallel.rs#L25)
-/// 
+///
 /// Both this struct and the par_iter part are vendored because salsa seems to not be able to downcast
 /// the DbView to the actual database type inside the par_iter closure.
-/// 
+///
 /// It seems to have been fixed in salsa > 0.22, but auto_lsp must also be updated to use the newer version of salsa.
 
 struct DbForkOnClone(Box<dyn salsa::Database>);
@@ -57,7 +57,7 @@ pub fn workspace_diagnostics(
         .get_files()
         .into_par_iter()
         .map_with(DbForkOnClone(db.fork_db()), |db, file| {
-            let db= db.0.as_view();
+            let db = db.0.as_view();
             let file = *file;
             let errors: Vec<auto_lsp::lsp_types::Diagnostic> = diagnostics_for_file(db, file)
                 .iter()

@@ -29,11 +29,17 @@ use crate::{
             variable::VariableDecl,
         },
         scope::FileScopeId,
-        semantic_index::{semantic_index, HirNode, SemanticIndex},
+        semantic_index::{HirNode, SemanticIndex, semantic_index},
     },
     to_proto::ToProto,
     ty::{
-        expr_resolver::{ResolvedExpr, ResolvedExprKind}, name_res::pous_in_scope, stmt_resolver::{resolve_stmt, ResolveStmtCtx, ResolvedStmt, ResolvedStmtKind}, ty::{ty_for_pou, ty_for_variable, Ty, TyKind}, ty_path_expr_resolver::{ResolvePathExprCtx, ResolvedPathElementKind, ResolvedPathResult}, ty_var_access_resolver::ResolvedVarKind, TyInfo
+        TyInfo,
+        expr_resolver::{ResolvedExpr, ResolvedExprKind},
+        name_res::pous_in_scope,
+        stmt_resolver::{ResolveStmtCtx, ResolvedStmt, ResolvedStmtKind, resolve_stmt},
+        ty::{Ty, TyKind, ty_for_pou, ty_for_variable},
+        ty_path_expr_resolver::{ResolvePathExprCtx, ResolvedPathElementKind, ResolvedPathResult},
+        ty_var_access_resolver::ResolvedVarKind,
     },
     walk::WalkHir,
 };
@@ -198,19 +204,20 @@ impl<'db> CheckWithCtx<'db> for ResolvedStmt<'db> {
                         errors.push(err);
                     }
                 }
-                None => if let Some(err) = var.is_err(db) {
-                    errors.push(err);
+                None => {
+                    if let Some(err) = var.is_err(db) {
+                        errors.push(err);
+                    }
                 }
             },
-            ResolvedStmtKind::FuncCall { target, params } => match target.ty(db) {
-                Some(ty_var) => {
+            ResolvedStmtKind::FuncCall { target, params } => {
+                if let Some(ty_var) = target.ty(db) {
                     if let Some(err) = ty_var.as_err(db) {
                         errors.push(err);
                     } else if !ty_var.is_callable(db) {
                     }
                 }
-                None => {}
-            },
+            }
             _ => {
                 ctx.finish_block(errors);
             }

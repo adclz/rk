@@ -63,7 +63,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             self.db,
             Pou::Interface(Interface::new(self.db, extends, methods, scope_id)),
             name,
-            interface.into(), 
+            interface.into(),
             interface.name.cast(self.ast).into(),
             scope_id,
         );

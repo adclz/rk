@@ -3,7 +3,7 @@ use auto_lsp::{
     lsp_types,
 };
 
-use hir::def::{pous::pou::Pou, scope::FileScopeId, semantic_index::semantic_index};
+use hir::def::{pous::pou::Pou, semantic_index::semantic_index};
 
 use db::RootDatabase;
 
@@ -50,12 +50,12 @@ fn global_scope() {
         }
         Pou::Class(c) => {
             assert_eq!(pou.name(&db).text(&db), "cl");
-            let scope = sema.get_scope(&db,c.scope_id(&db));
+            let scope = sema.get_scope(&db, c.scope_id(&db));
             assert!(scope.parent.is_some_and(|scope| scope.is_global(&db)));
         }
         Pou::Interface(i) => {
             assert_eq!(pou.name(&db).text(&db), "in");
-            let scope = sema.get_scope(&db,i.scope_id(&db));
+            let scope = sema.get_scope(&db, i.scope_id(&db));
             assert!(scope.parent.is_some_and(|scope| scope.is_global(&db)));
         }
         Pou::DataType(_) => {}

@@ -1,14 +1,6 @@
-use ariadne::CharSet;
-use ariadne::Config;
-use ariadne::Source;
-use auto_lsp::{
-    default::db::{FileManager, file::File},
-    lsp_types::Url,
-};
 use db::RootDatabase;
-use hir::check::diagnostics_for_file;
 use insta::assert_snapshot;
-use rstest::{fixture, rstest};
+use rstest::rstest;
 
 use crate::tests::utils::test_diagnostic;
 use crate::tests::utils::with_db;
@@ -53,7 +45,6 @@ fn missing_end_keyword(mut with_db: RootDatabase) {
     ");
 }
 
-
 #[rstest]
 fn unexpected_symbol(mut with_db: RootDatabase) {
     let source = r#"
@@ -70,7 +61,6 @@ END_NAMESPACE"#;
     ---'
     ");
 }
-
 
 #[rstest]
 fn implements_before_extends(mut with_db: RootDatabase) {

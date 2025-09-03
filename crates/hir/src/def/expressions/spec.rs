@@ -12,7 +12,6 @@ use crate::{
         interned::{identifier::Ident, namespace::NamespaceAccess},
         pous::pou::Pou,
         scope::FileScopeId,
-        semantic_index::SemanticIndex,
     },
     to_proto::ToProto,
 };

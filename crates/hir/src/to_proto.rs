@@ -8,11 +8,11 @@ use auto_lsp::{
 };
 
 use crate::def::{
-        expressions::{expression::InitExpr, spec::Spec},
-        interned::namespace::SpanNamespaceAccess,
-        scope::FileScopeId,
-        semantic_index::{SemanticIndex, semantic_index},
-    };
+    expressions::{expression::InitExpr, spec::Spec},
+    interned::namespace::SpanNamespaceAccess,
+    scope::FileScopeId,
+    semantic_index::semantic_index,
+};
 
 #[derive(bon::Builder, Debug, Clone)]
 pub struct SymbolInfo<'a> {
@@ -69,8 +69,12 @@ pub trait ToProto<'db> {
         semantic_index(db, self.get_scope_id(db).file(db))
             .ast
             .get(self.get_id(db).0)
-            .unwrap_or_else(|| panic!("Invalid ID {} when attempting to retrieve span",
-                self.get_id(db).0))
+            .unwrap_or_else(|| {
+                panic!(
+                    "Invalid ID {} when attempting to retrieve span",
+                    self.get_id(db).0
+                )
+            })
             .get_span()
     }
 
@@ -79,8 +83,12 @@ pub trait ToProto<'db> {
             semantic_index(db, self.get_scope_id(db).file(db))
                 .ast
                 .get(name_id.0)
-                .unwrap_or_else(|| panic!("Invalid name ID {} when attempting to retrieve name span",
-                    name_id.0))
+                .unwrap_or_else(|| {
+                    panic!(
+                        "Invalid name ID {} when attempting to retrieve name span",
+                        name_id.0
+                    )
+                })
                 .get_span()
         })
     }
@@ -99,31 +107,19 @@ pub trait ToProto<'db> {
         None
     }
 
-    fn inlay_hint(
-        &'db self,
-        _db: &'db dyn BaseDatabase,
-    ) -> Option<InlayHint> {
+    fn inlay_hint(&'db self, _db: &'db dyn BaseDatabase) -> Option<InlayHint> {
         None
     }
 
-    fn hover(
-        &'db self,
-        _db: &'db dyn BaseDatabase,
-    ) -> Option<Hover> {
+    fn hover(&'db self, _db: &'db dyn BaseDatabase) -> Option<Hover> {
         None
     }
 
-    fn declaration(
-        &'db self,
-        _db: &'db dyn BaseDatabase,
-    ) -> Option<GotoDeclarationResponse> {
+    fn declaration(&'db self, _db: &'db dyn BaseDatabase) -> Option<GotoDeclarationResponse> {
         None
     }
 
-    fn definition(
-        &'db self,
-        _db: &'db dyn BaseDatabase,
-    ) -> Option<GotoDefinitionResponse> {
+    fn definition(&'db self, _db: &'db dyn BaseDatabase) -> Option<GotoDefinitionResponse> {
         None
     }
 }

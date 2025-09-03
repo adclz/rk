@@ -1,4 +1,4 @@
-use auto_lsp::default::db::{BaseDatabase, file::File};
+use auto_lsp::default::db::BaseDatabase;
 use rustc_hash::FxHashMap;
 
 use crate::def::{
@@ -126,10 +126,7 @@ fn imported_pous_in_scope<'db>(
 
 /// Returns all POU declarations from parent (ancestor) scopes, including shared namespaces the global scope.
 #[salsa::tracked(returns(ref))]
-fn inherited_pous<'db>(
-    db: &'db dyn BaseDatabase,
-    scope_id: FileScopeId<'db>,
-) -> Vec<PouDecl<'db>> {
+fn inherited_pous<'db>(db: &'db dyn BaseDatabase, scope_id: FileScopeId<'db>) -> Vec<PouDecl<'db>> {
     let sema = semantic_index(db, scope_id.file(db));
     let mut result = Vec::new();
 
@@ -191,7 +188,7 @@ pub fn variables_in_scope<'db>(
     scope_id: FileScopeId<'db>,
 ) -> FxHashMap<Ident, VariableDecl<'db>> {
     let sema = semantic_index(db, scope_id.file(db));
-    let scope = sema.get_scope(db,scope_id);
+    let scope = sema.get_scope(db, scope_id);
 
     let mut map = FxHashMap::default();
 

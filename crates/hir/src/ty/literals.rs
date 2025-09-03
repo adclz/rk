@@ -222,7 +222,7 @@ fn check_u32(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckEr
 
 fn check_u64(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckError> {
     match value {
-        Elementary::Byte(n) 
+        Elementary::Byte(n)
         | Elementary::Word(n)
         | Elementary::DWord(n)
         | Elementary::LWord(n)

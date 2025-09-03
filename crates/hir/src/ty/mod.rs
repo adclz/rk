@@ -1,6 +1,6 @@
-use auto_lsp::{default::db::BaseDatabase};
+use auto_lsp::default::db::BaseDatabase;
 
-use crate::{check::errors::sem_errors::AnalysisError, to_proto::AstId, ty::ty::{Ty, TyDecl, TyKind}};
+use crate::{check::errors::sem_errors::AnalysisError, to_proto::AstId, ty::ty::Ty};
 
 pub mod expr_resolver;
 pub mod literals;
@@ -14,7 +14,7 @@ pub trait TyInfo<'db> {
     fn ty(&self, db: &'db dyn BaseDatabase) -> Option<Ty<'db>>;
 
     fn is_err(&self, db: &'db dyn BaseDatabase) -> Option<AnalysisError<'db>>;
-    
+
     // Where the type is being used
     fn place(&self, db: &'db dyn BaseDatabase) -> AstId;
 }

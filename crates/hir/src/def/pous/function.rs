@@ -6,7 +6,6 @@ use crate::{
         expressions::{spec::Spec, statement::Stmt},
         pous::variable::VariableDecl,
         scope::FileScopeId,
-        semantic_index::SemanticIndex,
     },
     to_proto::ToProto,
 };

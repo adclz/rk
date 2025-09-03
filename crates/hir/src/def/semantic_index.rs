@@ -77,7 +77,11 @@ impl<'db> SemanticIndex<'db> {
     /// Get the scope corresponding to the given ID.
     ///
     /// Panics if the scope does not belong to the same file as the semantic index.
-    pub fn get_scope(&'db self, db: &'db dyn BaseDatabase,  id: FileScopeId<'db>) -> &'db Scope<'db> {
+    pub fn get_scope(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        id: FileScopeId<'db>,
+    ) -> &'db Scope<'db> {
         assert!(self.file == id.file(db));
         &self.scopes[&id]
     }
@@ -97,7 +101,11 @@ impl<'db> SemanticIndex<'db> {
     }
 
     /// Returns a [`ScopeIterator`] starting from the given scope.
-    pub fn scope_iterator(&self, db: &'db dyn BaseDatabase, scope: FileScopeId<'db>) -> ScopeIterator {
+    pub fn scope_iterator(
+        &self,
+        db: &'db dyn BaseDatabase,
+        scope: FileScopeId<'db>,
+    ) -> ScopeIterator {
         ScopeIterator::new(&self.scopes, self.get_scope(db, scope))
     }
 
@@ -114,7 +122,10 @@ pub struct ScopeIterator<'db> {
 }
 
 impl<'db> ScopeIterator<'db> {
-    pub fn new(scopes: &'db FxHashMap<FileScopeId<'db>, Scope<'db>>, scope: &'db Scope<'db>) -> Self {
+    pub fn new(
+        scopes: &'db FxHashMap<FileScopeId<'db>, Scope<'db>>,
+        scope: &'db Scope<'db>,
+    ) -> Self {
         Self {
             scopes,
             next_id: Some(scope.id),

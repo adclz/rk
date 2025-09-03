@@ -1,7 +1,10 @@
 use auto_lsp::{
     core::span::Span,
     default::db::BaseDatabase,
-    lsp_types::{request::GotoDeclarationResponse, GotoDefinitionResponse, HoverContents, Location, MarkupContent, MarkupKind},
+    lsp_types::{
+        GotoDefinitionResponse, HoverContents, Location, MarkupContent, MarkupKind,
+        request::GotoDeclarationResponse,
+    },
 };
 use rustc_hash::FxHashMap;
 
@@ -42,20 +45,14 @@ impl<'db> ToProto<'db> for Ty<'db> {
         self.decl(db).scope_id(db)
     }
 
-    fn declaration(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-    ) -> Option<GotoDeclarationResponse> {
+    fn declaration(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDeclarationResponse> {
         Some(GotoDeclarationResponse::Scalar(Location::new(
             self.decl(db).scope_id(db).file(db).url(db).clone(),
             self.decl(db).span(db).into(),
         )))
     }
 
-    fn definition(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-    ) -> Option<GotoDefinitionResponse> {
+    fn definition(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDefinitionResponse> {
         match self.def(db) {
             TyDef::Pou(pou) => Some(GotoDefinitionResponse::Scalar(Location::new(
                 pou.get_scope_id(db).file(db).url(db).clone(),
@@ -73,17 +70,14 @@ impl<'db> ToProto<'db> for Ty<'db> {
         }
     }
 
-    fn hover(
-            &'db self,
-            db: &'db dyn BaseDatabase,
-        ) -> Option<auto_lsp::lsp_types::Hover> {
-            Some(auto_lsp::lsp_types::Hover {
-                contents: HoverContents::Markup(MarkupContent {
-                    kind: MarkupKind::Markdown,
-                    value: format!("{:?}", self.kind(db)),
-                }),
-                range: Some(self.get_span(db).into()),
-            })
+    fn hover(&'db self, db: &'db dyn BaseDatabase) -> Option<auto_lsp::lsp_types::Hover> {
+        Some(auto_lsp::lsp_types::Hover {
+            contents: HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: format!("{:?}", self.kind(db)),
+            }),
+            range: Some(self.get_span(db).into()),
+        })
     }
 }
 
@@ -91,7 +85,9 @@ impl<'db> Ty<'db> {
     pub fn as_err(&self, db: &'db dyn BaseDatabase) -> Option<AnalysisError<'db>> {
         match self.kind(db) {
             TyKind::Unresolved(path) => todo!(),
-            TyKind::Recursive => Some(AnalysisError::StmtError(StmtError::RecursiveType { ty: *self })),
+            TyKind::Recursive => Some(AnalysisError::StmtError(StmtError::RecursiveType {
+                ty: *self,
+            })),
             _ => None,
         }
     }
@@ -557,7 +553,7 @@ impl<'db> Ty<'db> {
             PathExprWalkStep::Field { ident, expr } => match self.kind(db) {
                 TyKind::Struct { elements, spec } => elements
                     .get(&ident.ident)
-                    .ok_or_else(|| PathExprError::UnknownField {
+                    .ok_or(PathExprError::UnknownField {
                         expr: *expr,
                         ty: *self,
                     })
@@ -571,7 +567,7 @@ impl<'db> Ty<'db> {
                     .get(&ident.ident)
                     .or_else(|| output.get(&ident.ident))
                     .or_else(|| in_out.get(&ident.ident))
-                    .ok_or_else(|| PathExprError::UnknownField {
+                    .ok_or(PathExprError::UnknownField {
                         expr: *expr,
                         ty: *self,
                     })
@@ -589,7 +585,7 @@ impl<'db> Ty<'db> {
                     .or_else(|| in_outs.get(&ident.ident))
                     .or_else(|| temps.get(&ident.ident))
                     .or_else(|| ztatic.get(&ident.ident))
-                    .ok_or_else(|| PathExprError::UnknownField {
+                    .ok_or(PathExprError::UnknownField {
                         expr: *expr,
                         ty: *self,
                     })

@@ -1,4 +1,7 @@
-use crate::{completions, def::{expressions::statement::Stmt, semantic_index::semantic_index}};
+use crate::{
+    completions,
+    def::{expressions::statement::Stmt, semantic_index::semantic_index},
+};
 use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{
@@ -15,7 +18,6 @@ use crate::{
             interface::Interface,
         },
         scope::FileScopeId,
-        semantic_index::SemanticIndex,
     },
     to_proto::{AstId, SymbolInfo, ToProto},
 };
@@ -98,10 +100,7 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
         }
     }
 
-    fn inlay_hint(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-    ) -> Option<InlayHint> {
+    fn inlay_hint(&'db self, db: &'db dyn BaseDatabase) -> Option<InlayHint> {
         Some(InlayHint {
             label: InlayHintLabel::String(format!(
                 "{} {}",
@@ -124,10 +123,7 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
         })
     }
 
-    fn hover(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-    ) -> Option<auto_lsp::lsp_types::Hover> {
+    fn hover(&'db self, db: &'db dyn BaseDatabase) -> Option<auto_lsp::lsp_types::Hover> {
         let sema = semantic_index(db, self.get_scope_id(db).file(db));
         let name_span = self.get_name_span(db)?;
         let comment = comment_index(db, sema.file);

@@ -8,7 +8,6 @@ use crate::{
         expressions::{expression::InitExpr, spec::Spec},
         interned::identifier::Ident,
         scope::FileScopeId,
-        semantic_index::SemanticIndex,
     },
     to_proto::{AstId, SymbolInfo, ToProto},
 };
@@ -85,10 +84,7 @@ impl<'db> ToProto<'db> for VariableDecl<'db> {
         )
     }
 
-    fn hover(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-    ) -> Option<auto_lsp::lsp_types::Hover> {
+    fn hover(&'db self, db: &'db dyn BaseDatabase) -> Option<auto_lsp::lsp_types::Hover> {
         Some(auto_lsp::lsp_types::Hover {
             contents: auto_lsp::lsp_types::HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,

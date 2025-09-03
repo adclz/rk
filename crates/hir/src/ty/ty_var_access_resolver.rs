@@ -1,15 +1,16 @@
-use ast::generated::DByteStrSpec_DChar_SByteStrSpec_SChar;
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     check::errors::sem_errors::AnalysisError,
     def::{
-        expressions::expression::{PathExpr, VariableAccess, VariableAccessKind},
+        expressions::expression::{VariableAccess, VariableAccessKind},
         scope::FileScopeId,
     },
     to_proto::{AstId, ToProto},
     ty::{
-        ty::{Ty, TyDecl}, ty_path_expr_resolver::{resolved_path_expr, ResolvedPathResult}, TyInfo
+        TyInfo,
+        ty::Ty,
+        ty_path_expr_resolver::{ResolvedPathResult, resolved_path_expr},
     },
 };
 
@@ -44,9 +45,7 @@ impl<'db> TyInfo<'db> for ResolvedVarResult<'db> {
     fn is_err(&self, db: &'db dyn BaseDatabase) -> Option<AnalysisError<'db>> {
         match self.kind(db) {
             ResolvedVarKind::Direct => None, // todo: direct var type
-            ResolvedVarKind::Symbolic(ref path) => {
-                path.is_err(db)
-            },
+            ResolvedVarKind::Symbolic(ref path) => path.is_err(db),
         }
     }
 
@@ -94,9 +93,9 @@ impl<'db> ToProto<'db> for ResolvedVarResult<'db> {
     }
 
     fn declaration(
-            &'db self,
-            db: &'db dyn BaseDatabase,
-        ) -> Option<auto_lsp::lsp_types::request::GotoDeclarationResponse> {
+        &'db self,
+        db: &'db dyn BaseDatabase,
+    ) -> Option<auto_lsp::lsp_types::request::GotoDeclarationResponse> {
         if let Some(ty) = self.ty(db) {
             ty.declaration(db)
         } else {
@@ -105,9 +104,9 @@ impl<'db> ToProto<'db> for ResolvedVarResult<'db> {
     }
 
     fn definition(
-            &'db self,
-            db: &'db dyn BaseDatabase,
-        ) -> Option<auto_lsp::lsp_types::GotoDefinitionResponse> {
+        &'db self,
+        db: &'db dyn BaseDatabase,
+    ) -> Option<auto_lsp::lsp_types::GotoDefinitionResponse> {
         if let Some(ty) = self.ty(db) {
             ty.definition(db)
         } else {

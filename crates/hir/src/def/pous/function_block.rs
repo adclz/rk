@@ -1,9 +1,7 @@
-
 use crate::def::{
-        expressions::statement::Stmt, interned::namespace::SpanNamespaceAccess,
-        pous::variable::VariableDecl, scope::FileScopeId,
-        visibility::Modifiers,
-    };
+    expressions::statement::Stmt, interned::namespace::SpanNamespaceAccess,
+    pous::variable::VariableDecl, scope::FileScopeId, visibility::Modifiers,
+};
 
 #[salsa::tracked(debug)]
 pub struct FunctionBlock<'db> {

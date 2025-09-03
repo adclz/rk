@@ -1,9 +1,10 @@
 use ariadne::{ColorGenerator, Label, Report, Source};
 use auto_lsp::{
     core::{errors::ParseErrorAccumulator, span::Span},
-    default::db::{file::File, BaseDatabase},
+    default::db::{BaseDatabase, file::File},
     lsp_types::{
-        self, CodeAction, CodeActionKind, Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, Location, NumberOrString, Range, TextEdit
+        self, CodeAction, CodeActionKind, Diagnostic, DiagnosticRelatedInformation,
+        DiagnosticSeverity, DiagnosticTag, Location, NumberOrString, Range, TextEdit,
     },
 };
 
@@ -135,7 +136,7 @@ impl IdeDiagnostic {
 
         // fixme: colors should be used *only* when ariadne::Config is None or .color is true
         // The reason is that insta snapshots render incorrectly with colors enabled
-        let curr_color = colors.next();
+        let _curr_color = colors.next();
 
         let error_kind = match &self.diagnostic.severity {
             Some(auto_lsp::lsp_types::DiagnosticSeverity::ERROR) => ariadne::ReportKind::Error,
@@ -172,7 +173,7 @@ impl IdeDiagnostic {
         }
 
         for fix in &self.fixes {
-            report.add_help(format!("{}", fix.title));
+            report.add_help(fix.title.to_string());
         }
 
         if let Some(code) = &self.diagnostic.code {

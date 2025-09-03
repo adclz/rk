@@ -1,8 +1,7 @@
-
 use crate::def::{
-        expressions::{expression::InitExpr, spec::Spec},
-        scope::FileScopeId,
-    };
+    expressions::{expression::InitExpr, spec::Spec},
+    scope::FileScopeId,
+};
 
 #[salsa::tracked(debug)]
 pub struct DataType<'db> {

@@ -3,7 +3,9 @@ use auto_lsp::core::ast::AstNode;
 
 use crate::{
     builder::{
-        expression::{ParseExpr, ParseExpression, ParseVariableAccess}, semantic_index::SemanticIndexBuilder, ParseSpec, ParseSpecInit, SpecInitResult
+        ParseSpec, ParseSpecInit, SpecInitResult,
+        expression::{ParseExpr, ParseExpression, ParseVariableAccess},
+        semantic_index::SemanticIndexBuilder,
     },
     check::errors::sem_errors::{AnalysisError, SyntaxError},
     def::{
@@ -412,11 +414,9 @@ impl<'db> ParseExpr<'db> for ast::generated::InitElem {
                 scope_id: sema.current_scope,
                 kind: InitExprKind::ConstantExpr(expr.children.cast(sema.ast).to_expr(sema)?),
             }),
-            InitElem::ERRFuncCallInInit(err) => {
-                Err(AnalysisError::SyntaxError(SyntaxError::FUnctionCallInInitExpression(
-                    err.get_span(),
-                )))
-            }
+            InitElem::ERRFuncCallInInit(err) => Err(AnalysisError::SyntaxError(
+                SyntaxError::FUnctionCallInInitExpression(err.get_span()),
+            )),
         }
     }
 }

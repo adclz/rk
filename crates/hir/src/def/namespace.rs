@@ -7,7 +7,7 @@ use auto_lsp::lsp_types::{
 use crate::def::interned::namespace::NamespacePath;
 use crate::def::pous::pou::PouDecl;
 use crate::def::scope::{FileScopeId, Visibility};
-use crate::def::semantic_index::{semantic_index, SemanticIndex};
+use crate::def::semantic_index::semantic_index;
 use crate::to_proto::{AstId, SymbolInfo, ToProto};
 
 #[salsa::tracked(debug)]
@@ -45,10 +45,7 @@ impl<'db> ToProto<'db> for NamespaceDecl<'db> {
         )
     }
 
-    fn hover(
-        &'db self,
-        db: &'db dyn BaseDatabase
-    ) -> Option<auto_lsp::lsp_types::Hover> {
+    fn hover(&'db self, db: &'db dyn BaseDatabase) -> Option<auto_lsp::lsp_types::Hover> {
         Some(auto_lsp::lsp_types::Hover {
             contents: auto_lsp::lsp_types::HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,
@@ -58,10 +55,7 @@ impl<'db> ToProto<'db> for NamespaceDecl<'db> {
         })
     }
 
-    fn inlay_hint(
-        &'db self,
-        db: &'db dyn BaseDatabase
-    ) -> Option<auto_lsp::lsp_types::InlayHint> {
+    fn inlay_hint(&'db self, db: &'db dyn BaseDatabase) -> Option<auto_lsp::lsp_types::InlayHint> {
         Some(InlayHint {
             label: InlayHintLabel::String(format!("namespace {}", self.path(db).to_string(db))),
             position: self.get_span(db).lsp().end,

@@ -7,8 +7,7 @@ use auto_lsp::{
 };
 use db::RootDatabase;
 use hir::check::diagnostics_for_file;
-use insta::assert_snapshot;
-use rstest::{fixture, rstest};
+use rstest::fixture;
 
 #[fixture]
 pub fn with_db() -> RootDatabase {

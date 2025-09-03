@@ -1,15 +1,12 @@
-use crate::check::errors::sem_errors::StmtError;
 use crate::def::expressions::expression::ParamAssign;
 use crate::def::expressions::statement::{Stmt, StmtKind};
 use crate::def::interned::identifier::Ident;
 use crate::def::scope::FileScopeId;
 use crate::to_proto::{AstId, ToProto};
-use crate::ty::expr_resolver::{Env, ResolvedExpr, ResolvedExprKind, resolve_expr};
-use crate::ty::ty::TyKind;
+use crate::ty::expr_resolver::{ResolvedExpr, resolve_expr};
 use crate::ty::ty_path_expr_resolver::{ResolvedPathResult, resolved_path_expr};
 use crate::ty::ty_var_access_resolver::{ResolvedVarResult, resolve_var_access};
 use auto_lsp::default::db::BaseDatabase;
-use rustc_hash::FxHashMap;
 
 #[salsa::tracked(no_eq, returns(ref))]
 pub fn resolve_stmt<'db>(db: &'db dyn BaseDatabase, stmt: Stmt<'db>) -> ResolvedStmt<'db> {
@@ -162,14 +159,26 @@ impl<'db> ResolveStmtCtx<'db> {
                 self.stmt.scope_id(self.db),
                 ResolvedStmtKind::FuncCall {
                     target: *resolved_path_expr(self.db, *target),
-                    params: params.iter().map(|param| match param {
-                        ParamAssign::ParamAssignInput { param, value } => {
-                            ResolvedParam::Input { param: param.clone(), value: *resolve_expr(self.db, *value) }
-                        },
-                        ParamAssign::ParamAssignOutput { not, param, variable } => {
-                            ResolvedParam::Output { not: *not, param: param.clone(), variable: resolve_var_access(self.db, variable) }
-                        } 
-                    }).collect(),
+                    params: params
+                        .iter()
+                        .map(|param| match param {
+                            ParamAssign::ParamAssignInput { param, value } => {
+                                ResolvedParam::Input {
+                                    param: *param,
+                                    value: *resolve_expr(self.db, *value),
+                                }
+                            }
+                            ParamAssign::ParamAssignOutput {
+                                not,
+                                param,
+                                variable,
+                            } => ResolvedParam::Output {
+                                not: *not,
+                                param: *param,
+                                variable: resolve_var_access(self.db, variable),
+                            },
+                        })
+                        .collect(),
                 },
             ),
             StmtKind::For {
@@ -189,7 +198,7 @@ impl<'db> ResolveStmtCtx<'db> {
                     self.stmt.id(self.db),
                     self.stmt.scope_id(self.db),
                     ResolvedStmtKind::For {
-                        control_var: control_var,
+                        control_var,
                         start: *start_expr,
                         end: *end_expr,
                         step: step_expr.copied(),
@@ -262,6 +271,6 @@ pub enum ResolvedParam<'db> {
     Output {
         not: bool,
         param: Ident,
-        variable: ResolvedVarResult<'db>
+        variable: ResolvedVarResult<'db>,
     },
 }

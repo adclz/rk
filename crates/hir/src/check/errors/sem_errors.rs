@@ -4,9 +4,7 @@ use std::{collections::HashMap, error::Error, fmt::Display};
 use auto_lsp::{
     core::{errors::PositionError, span::Span},
     default::db::{BaseDatabase, file::File},
-    lsp_types::{
-        DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, Location, WorkspaceEdit,
-    },
+    lsp_types::{DiagnosticSeverity, DiagnosticTag, WorkspaceEdit},
     tree_sitter,
 };
 use ide_diagnostic::{IdeDiagnostic, Related, action, diag, edit};
@@ -379,7 +377,7 @@ impl<'db> ToIdeDiagnostic<'db> for NamespaceError<'db> {
                         using.path(db).to_string(db)
                     ),
                     namespace.scope_id(db).file(db),
-                    namespace.get_span(db).into(),
+                    namespace.get_span(db),
                 ));
 
                 diag
@@ -404,7 +402,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 diag.with_related(Related::new(
                     format!("variable '{}' is defined here", var2.name(db).text(db)),
                     var2.scope_id(db).file(db),
-                    var2.get_span(db).into(),
+                    var2.get_span(db),
                 ));
 
                 diag
@@ -422,7 +420,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 diag.with_related(Related::new(
                     format!("POU '{}' is defined here", pou2.name(db).text(db)),
                     pou2.scope_id(db).file(db),
-                    pou2.get_span(db).into(),
+                    pou2.get_span(db),
                 ));
 
                 diag
@@ -450,7 +448,7 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                             diag.with_related(Related::new(
                                 format!("POU '{}' is declared here", pou.name(db).text(db)),
                                 pou.scope_id(db).file(db),
-                                pou.get_span(db).into(),
+                                pou.get_span(db),
                             ));
 
                             diag
@@ -469,7 +467,7 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 diag.with_related(Related::new(
                     format!("POU '{}' is declared here", ty.decl(db).name(db).text(db)),
                     ty.decl(db).scope_id(db).file(db),
-                    ty.decl(db).span(db).into(),
+                    ty.decl(db).span(db),
                 ));
 
                 diag
@@ -512,7 +510,7 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                     diag
                 }
                 LitCheckError::InvalidFormat { kind, msg } => diag()
-                    .message(format!("invalid format for literal '{}': {}", kind, msg))
+                    .message(format!("invalid format for literal '{kind}': {msg}"))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(literal.get_span(db).clone())
                     .call(),
@@ -581,9 +579,9 @@ pub fn get_decl_and_def_for_ty(db: &dyn BaseDatabase, ty: Ty<'_>, diag: &mut Ide
 
     if let Some(span) = ty.def(db).get_span(db) {
         diag.with_related(Related::new(
-            format!("type defined here",),
+            "type defined here".to_string(),
             ty.def(db).get_scope_id(db).unwrap().file(db),
-            span.into(),
+            span,
         ));
     }
 }

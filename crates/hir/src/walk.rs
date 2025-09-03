@@ -1,16 +1,20 @@
 use std::ops::ControlFlow;
 
 use auto_lsp::default::db::BaseDatabase;
-use salsa::SalsaAsRef;
 
 use crate::{
     def::{
         namespace::NamespaceDecl,
         pous::pou::{Pou, PouDecl},
-        semantic_index::{semantic_index, HirNode, SemanticIndex},
-    }, to_proto::ToProto, ty::{
-        expr_resolver::{ResolvedExpr, ResolvedExprKind}, stmt_resolver::{resolve_stmt, ResolvedStmt, ResolvedStmtKind}, ty::{ty_for_pou, Ty}, ty_path_expr_resolver::ResolvedPathResult, ty_var_access_resolver::ResolvedVarResult, TyInfo
-    }
+        semantic_index::{HirNode, SemanticIndex},
+    },
+    ty::{
+        expr_resolver::ResolvedExpr,
+        stmt_resolver::{ResolvedStmt, ResolvedStmtKind, resolve_stmt},
+        ty::{Ty, ty_for_pou},
+        ty_path_expr_resolver::ResolvedPathResult,
+        ty_var_access_resolver::ResolvedVarResult,
+    },
 };
 
 pub trait WalkHir<'db> {
@@ -64,7 +68,7 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
             _ => None,
         };
 
-        for stmt in stmts.as_deref().unwrap_or(&vec![]) {
+        for stmt in stmts.unwrap_or(&vec![]) {
             resolve_stmt(db, *stmt).walk_hir(db, f)?;
         }
         ControlFlow::Continue(())
@@ -179,7 +183,7 @@ impl<'db> WalkHir<'db> for ResolvedStmt<'db> {
                 for stmt in body {
                     stmt.walk_hir(db, f)?;
                 }
-            },
+            }
             ResolvedStmtKind::FuncCall { target, params } => {
                 target.walk_hir(db, f)?;
             }

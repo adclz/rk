@@ -1,4 +1,4 @@
-use auto_lsp::default::db::{file::File, BaseDatabase};
+use auto_lsp::default::db::{BaseDatabase, file::File};
 use bitflags::bitflags;
 
 use crate::def::{namespace::NamespaceDecl, pous::pou::PouDecl, using::Using};
