@@ -3,3 +3,5 @@ pub mod lexer;
 pub mod literals;
 pub mod scopes;
 pub mod syntax_errors;
+pub mod stmt_errors;
+pub mod utils;

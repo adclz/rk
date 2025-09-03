@@ -196,8 +196,8 @@ fn tod_valid(with_db: RootDatabase, #[case] lit: &str) {
 }
 
 #[rstest]
-#[case("#TOD#25:00:00.000")] // Invalid hour
-#[case("#TOD#12:60:00.000")] // Invalid minute
+#[case("TOD#25:00:00.000")] // Invalid hour
+#[case("TOD#12:60:00.000")] // Invalid minute
 #[case("not_a_time")] // No prefix
 fn tod_invalid(with_db: RootDatabase, #[case] lit: &str) {
     let spec = ElementarySpec::Tod;

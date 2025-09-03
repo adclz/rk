@@ -10,43 +10,8 @@ use hir::check::diagnostics_for_file;
 use insta::assert_snapshot;
 use rstest::{fixture, rstest};
 
-#[fixture]
-fn with_db() -> RootDatabase {
-    RootDatabase::default()
-}
-
-fn no_color_and_ascii() -> Config {
-    Config::default()
-        .with_color(false)
-        // Using Ascii so that the inline snapshots display correctly
-        // even with fonts where characters like '┬' take up more space.
-        .with_char_set(CharSet::Ascii)
-}
-
-fn test_diagnostic(db: &mut RootDatabase, source: &str) -> String {
-    let url = Url::parse("file:///test.st").unwrap();
-
-    let file = File::from_string()
-        .db(db)
-        .parsers(ast::RK_PARSER.get("structured_text").unwrap())
-        .url(&url)
-        .source(source.to_string())
-        .call()
-        .unwrap();
-
-    db.add_file(file).unwrap();
-
-    let mut cache = vec![];
-    diagnostics_for_file(db, file)[0]
-        .create_report(db, file, Some(no_color_and_ascii()))
-        .write(
-            (url.as_str(), Source::from(file.document(db).as_str())),
-            &mut cache,
-        )
-        .unwrap();
-
-    String::from_utf8(cache).unwrap()
-}
+use crate::tests::utils::test_diagnostic;
+use crate::tests::utils::with_db;
 
 #[rstest]
 fn missing_identifier(mut with_db: RootDatabase) {
@@ -61,8 +26,8 @@ END_NAMESPACE"#;
      2 | NAMESPACE
        |          | 
        |          `- Syntax error: Missing 'identifier'
-       | 
-       | Help: add missing identifier here
+       |          | 
+       |          `- add missing identifier here
     ---'
     ");
 }
@@ -82,8 +47,8 @@ fn missing_end_keyword(mut with_db: RootDatabase) {
      2 |     FUNCTION myFunc : INT
        |                          | 
        |                          `- Syntax error: Missing 'END_FUNCTION'
-       | 
-       | Help: add missing END_FUNCTION here
+       |                          | 
+       |                          `- add missing END_FUNCTION here
     ---'
     ");
 }
