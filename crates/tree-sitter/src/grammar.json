@@ -138,6 +138,19 @@
         "name": "func_call"
       }
     },
+    "ERR_wrong_assignment_sign": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "="
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_expression"
+        }
+      ]
+    },
     "ERR_invocation_in_expr_context": {
       "type": "PREC",
       "value": -1,
@@ -8028,6 +8041,10 @@
               {
                 "type": "SYMBOL",
                 "name": "ERR_empty_right_hand_assignment"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "ERR_wrong_assignment_sign"
               }
             ]
           }
