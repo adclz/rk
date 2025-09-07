@@ -211,6 +211,26 @@ END_FUNCTION_BLOCK"#;
 }
 
 #[rstest]
+fn wrong_assign_sign(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fn
+    a = 0;
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    Error: 
+       ,-[ file:///test.st:3:7 ]
+       |
+     3 |     a = 0;
+       |       ^|^  
+       |        `--- '=' is not a valid assignment sign
+       | 
+       | Help: replace '=' with ':='
+    ---'
+    ");
+}
+
+#[rstest]
 fn function_call_in_init_expression(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK fn
