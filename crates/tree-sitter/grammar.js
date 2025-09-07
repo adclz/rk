@@ -234,6 +234,10 @@ module.exports = grammar({
 
         // Expressions
         ERR_assign_func_call: $ => prec(-1, $.func_call), // A function call cannot be assigned
+        ERR_wrong_assignment_sign: $ => seq(
+            '=',
+            $._expression
+        ),
         ERR_invocation_in_expr_context: $ => prec(-1, $.invocation),
         ERR_unexpected_this_in_path: $ => prec(-1, "THIS"),
 
@@ -1678,6 +1682,7 @@ module.exports = grammar({
                 $.assignment_attempt,
                 $.assignment,
                 $.ERR_empty_right_hand_assignment,
+                $.ERR_wrong_assignment_sign,
             )
             )),
 

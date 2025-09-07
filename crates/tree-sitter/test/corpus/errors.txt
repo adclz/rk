@@ -383,3 +383,31 @@ END_FUNCTION_BLOCK
                                     (path_expression
                                       (var_access
                                         (field)))))))))))))))))))
+
+================================================================================
+Wrong assignment sign
+================================================================================
+
+FUNCTION_BLOCK fn
+    a = 0;
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (fb_decl
+        (identifier)
+        (fb_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (ERR_wrong_assignment_sign
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int)))))))))))
