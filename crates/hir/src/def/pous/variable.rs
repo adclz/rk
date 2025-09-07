@@ -35,6 +35,44 @@ pub struct VariableDecl<'db> {
     pub scope_id: FileScopeId<'db>,
 }
 
+impl<'db> VariableDecl<'db> {
+    pub fn is_input(&self, db: &'db dyn BaseDatabase) -> bool {
+        matches!(self.kind(db), VariableKind::Input)
+    }
+
+    pub fn is_output(&self, db: &'db dyn BaseDatabase) -> bool {
+        matches!(self.kind(db), VariableKind::Output)
+    }
+
+    pub fn is_var(&self, db: &'db dyn BaseDatabase) -> bool {
+        matches!(self.kind(db), VariableKind::Var)
+    }
+
+    pub fn is_in_out(&self, db: &'db dyn BaseDatabase) -> bool {
+        matches!(self.kind(db), VariableKind::InOut)
+    }
+
+    pub fn is_external(&self, db: &'db dyn BaseDatabase) -> bool {
+        matches!(self.kind(db), VariableKind::External)
+    }
+
+    pub fn is_global(&self, db: &'db dyn BaseDatabase) -> bool {
+        matches!(self.kind(db), VariableKind::Global)
+    }
+
+    pub fn is_access(&self, db: &'db dyn BaseDatabase) -> bool {
+        matches!(self.kind(db), VariableKind::Access)
+    }
+
+    pub fn is_temp(&self, db: &'db dyn BaseDatabase) -> bool {
+        matches!(self.kind(db), VariableKind::Temp)
+    }
+
+    pub fn is_config(&self, db: &'db dyn BaseDatabase) -> bool {
+        matches!(self.kind(db), VariableKind::Config)
+    }
+}
+
 // VAR Internal to entity (function, function block, etc.)
 // VAR_INPUT Externally supplied, not modifiable within entity
 // VAR_OUTPUT Supplied by entity to external entities

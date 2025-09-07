@@ -5,7 +5,7 @@ use auto_lsp::{
     core::{errors::PositionError, span::Span},
     default::db::{BaseDatabase, file::File},
     lsp_types::{DiagnosticSeverity, DiagnosticTag, WorkspaceEdit},
-    tree_sitter,
+    tree_sitter::{self, Range},
 };
 use ide_diagnostic::{IdeDiagnostic, Related, action, diag, edit};
 
@@ -14,17 +14,14 @@ use crate::{
         expressions::{expression::PathExpr, statement::Stmt},
         interned::namespace::NamespacePath,
         namespace::NamespaceDecl,
-        pous::{
-            pou::{Pou, PouDecl},
-            variable::VariableDecl,
-        },
+        pous::{pou::PouDecl, variable::VariableDecl},
         scope::FileScopeId,
         using::Using,
     },
     to_proto::ToProto,
     ty::{
-        expr_resolver::ResolvedExpr,
-        ty::{Ty, TyDecl},
+        expr_resolver::ResolvedExpr, ty::Ty, ty_path_expr_resolver::ResolvedPathResult,
+        ty_var_access_resolver::ResolvedVarResult,
     },
 };
 
@@ -86,6 +83,10 @@ pub enum SyntaxError {
     UnexpectedThis(Span),
     AssignToFunctionCall(Span),
     EmptyRightHandSide(Span),
+    WrongAssignmentSign {
+        file: File,
+        span: Span,
+    },
     FUnctionCallInInitExpression(Span),
     // tree-sitter
     MissingNode {
@@ -165,9 +166,26 @@ pub enum StmtError<'db> {
         start: Span,
         end: Span,
     },
-    AssignmentToCallable {
-        loc: Span,
+    InvalidAssignment {
+        var: ResolvedVarResult<'db>,
         ty: Ty<'db>,
+    },
+    VoidAssignmentTarget {
+        ty: Ty<'db>,
+        target: ResolvedPathResult<'db>,
+    },
+    AssignmentToInput {
+        var: ResolvedVarResult<'db>,
+        ty: Ty<'db>,
+    },
+    AssignmentIsNotABool {
+        ty: Ty<'db>,
+        expr: ResolvedExpr<'db>,
+    },
+    TypeMismatch {
+        expr: ResolvedExpr<'db>,
+        ty: Ty<'db>,
+        ty2: Ty<'db>,
     },
     RecursiveType {
         ty: Ty<'db>,
@@ -264,6 +282,39 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 .severity(DiagnosticSeverity::ERROR)
                 .range(span.clone())
                 .call(),
+            Self::WrongAssignmentSign { file, span } => {
+                let mut diag = diag()
+                    .message("'=' is not a valid assignment sign".into())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(span.clone())
+                    .call();
+
+                // only replace '=' with ':='
+                let range = Range {
+                    start_byte: span.start_byte,
+                    end_byte: span.start_byte + 1,
+                    start_point: span.start_point,
+                    end_point: tree_sitter::Point {
+                        row: span.start_point.row,
+                        column: span.start_point.column + 1,
+                    },
+                };
+
+                diag.with_fix(
+                    action()
+                        .title("replace '=' with ':='".into())
+                        .kind(auto_lsp::lsp_types::CodeActionKind::QUICKFIX)
+                        .diagnostics(vec![diag.inner()])
+                        .is_preferred(true)
+                        .edit(WorkspaceEdit::new(HashMap::from([(
+                            file.url(db).clone(),
+                            vec![edit().new_text(":=".to_string()).range(range.into()).call()],
+                        )])))
+                        .call(),
+                );
+
+                diag
+            }
             Self::InvalidPouKeyword(span) => diag()
                 .message("invalid POU keyword".into())
                 .severity(DiagnosticSeverity::ERROR)
@@ -432,43 +483,71 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
 impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
     fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
         match self {
-            Self::AssignmentToCallable { loc, ty } => {
-                if let TyDecl::FromPou(pou) = ty.decl(db) {
-                    if let Pou::FunctionBlock(_) | Pou::Class(_) = pou.pou(db) {
-                        return {
-                            let mut diag = diag()
-                            .message(format!(
-                            "POU '{}' can not be assigned\nbut you can declare a variable of same type instead",
-                                pou.name(db).text(db),
-                            ))
-                            .severity(DiagnosticSeverity::ERROR)
-                            .range(loc.clone())
-                            .call();
-
-                            diag.with_related(Related::new(
-                                format!("POU '{}' is declared here", pou.name(db).text(db)),
-                                pou.scope_id(db).file(db),
-                                pou.get_span(db),
-                            ));
-
-                            diag
-                        };
-                    };
-                };
+            Self::InvalidAssignment { var, ty } => {
                 let mut diag = diag()
                     .message(format!(
-                        "'{}' can not be assigned",
+                        "'{}' is a type and can not be assigned",
                         ty.decl(db).name(db).text(db),
                     ))
                     .severity(DiagnosticSeverity::ERROR)
-                    .range(loc.clone())
+                    .range(var.get_span(db).clone())
                     .call();
 
-                diag.with_related(Related::new(
-                    format!("POU '{}' is declared here", ty.decl(db).name(db).text(db)),
-                    ty.decl(db).scope_id(db).file(db),
-                    ty.decl(db).span(db),
-                ));
+                get_decl_and_def_for_ty(db, *ty, &mut diag);
+
+                diag
+            }
+            Self::AssignmentToInput { var, ty } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' is an input variable and should not be assigned",
+                        ty.decl(db).name(db).text(db),
+                    ))
+                    .severity(DiagnosticSeverity::WARNING)
+                    .range(var.get_span(db).clone())
+                    .call();
+
+                get_decl_for_ty(db, *ty, &mut diag);
+
+                diag
+            }
+            Self::VoidAssignmentTarget { ty, target } => {
+                let mut diag = diag()
+                    .message(format!("target is of void type"))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(target.get_span(db).clone())
+                    .call();
+
+                get_decl_for_ty(db, *ty, &mut diag);
+
+                diag
+            }
+            Self::AssignmentIsNotABool { ty, expr } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "a boolean expression can not be assigned because '{}' is not a boolean",
+                        ty.decl(db).name(db).text(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(expr.get_span(db).clone())
+                    .call();
+
+                get_decl_and_def_for_ty(db, *ty, &mut diag);
+
+                diag
+            }
+            Self::TypeMismatch { expr, ty, ty2 } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "type mismatch: '{}' and '{}'",
+                        ty.decl(db).name(db).text(db),
+                        ty2.decl(db).name(db).text(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(expr.get_span(db).clone())
+                    .call();
+
+                get_decl_and_def_for_ty(db, *ty2, &mut diag);
 
                 diag
             }
@@ -580,8 +659,19 @@ pub fn get_decl_and_def_for_ty(db: &dyn BaseDatabase, ty: Ty<'_>, diag: &mut Ide
     if let Some(span) = ty.def(db).get_span(db) {
         diag.with_related(Related::new(
             "type defined here".to_string(),
-            ty.def(db).get_scope_id(db).unwrap().file(db),
+            ty.def(db)
+                .get_scope_id(db)
+                .expect("A ty definition with a span always has a scope id")
+                .file(db),
             span,
         ));
     }
+}
+
+pub fn get_decl_for_ty(db: &dyn BaseDatabase, ty: Ty<'_>, diag: &mut IdeDiagnostic) {
+    diag.with_related(Related::new(
+        format!("'{}' is declared here", ty.decl(db).name(db).text(db),),
+        ty.decl(db).scope_id(db).file(db),
+        ty.decl(db).name_span(db),
+    ));
 }

@@ -11,9 +11,7 @@ pub mod ty_path_expr_resolver;
 pub mod ty_var_access_resolver;
 
 pub trait TyInfo<'db> {
-    fn ty(&self, db: &'db dyn BaseDatabase) -> Option<Ty<'db>>;
-
-    fn is_err(&self, db: &'db dyn BaseDatabase) -> Option<AnalysisError<'db>>;
+    fn ty(&self, db: &'db dyn BaseDatabase) -> Result<Ty<'db>, AnalysisError<'db>>;
 
     // Where the type is being used
     fn place(&self, db: &'db dyn BaseDatabase) -> AstId;

@@ -13,6 +13,7 @@ pub struct IdeDiagnostic {
     diagnostic: auto_lsp::lsp_types::Diagnostic,
     related: Vec<Related>,
     fixes: Vec<auto_lsp::lsp_types::CodeAction>,
+    notes: Vec<String>,
 }
 
 impl IdeDiagnostic {
@@ -89,11 +90,16 @@ impl IdeDiagnostic {
             diagnostic,
             related: vec![],
             fixes: vec![],
+            notes: vec![]
         }
     }
 
     pub fn with_related(&mut self, related: Related) {
         self.related.push(related);
+    }
+
+    pub fn with_note(&mut self, message: String) {
+        self.notes.push(message);
     }
 
     pub fn with_fix(&mut self, fix: auto_lsp::lsp_types::CodeAction) {
@@ -176,6 +182,10 @@ impl IdeDiagnostic {
             report.add_help(fix.title.to_string());
         }
 
+        for note in self.notes.iter() {
+            report.add_note(note.to_string());
+        }
+
         if let Some(code) = &self.diagnostic.code {
             report.with_code(match code {
                 NumberOrString::Number(n) => n.to_string(),
@@ -212,6 +222,7 @@ pub fn diag(
         },
         fixes: vec![],
         related: vec![],
+        notes: vec![]
     }
 }
 

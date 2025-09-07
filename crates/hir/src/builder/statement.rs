@@ -351,26 +351,32 @@ impl<'db> ParseStatement<'db> for ast::generated::Assign {
         }?;
 
         match self.target.cast(sema.ast) {
-            ast::generated::ERREmptyRightHandAssignment_Assignment_AssignmentAttempt::ERREmptyRightHandAssignment(err) => {
+            ast::generated::ERREmptyRightHandAssignment_ERRWrongAssignmentSign_Assignment_AssignmentAttempt::ERREmptyRightHandAssignment(err) => {
                 Err(AnalysisError::SyntaxError(SyntaxError::EmptyRightHandSide(err.get_span())))
             },
-            ast::generated::ERREmptyRightHandAssignment_Assignment_AssignmentAttempt::Assignment(assign) => Ok(Stmt::new(
+            ast::generated::ERREmptyRightHandAssignment_ERRWrongAssignmentSign_Assignment_AssignmentAttempt::ERRWrongAssignmentSign(err) => {
+                Err(AnalysisError::SyntaxError(SyntaxError::WrongAssignmentSign {
+                    file: sema.file,
+                    span: err.get_span(),
+                }))
+            },
+            ast::generated::ERREmptyRightHandAssignment_ERRWrongAssignmentSign_Assignment_AssignmentAttempt::Assignment(assign) => Ok(Stmt::new(
                 sema.db,
                 StmtKind::Assignment {
                     var,
                     target: assign.children.cast(sema.ast).to_expr(sema)?,
                 },
-                assign.into(),
+                self.into(),
                 sema.current_scope
             )),
-            ast::generated::ERREmptyRightHandAssignment_Assignment_AssignmentAttempt::AssignmentAttempt(attempt) => {
+            ast::generated::ERREmptyRightHandAssignment_ERRWrongAssignmentSign_Assignment_AssignmentAttempt::AssignmentAttempt(attempt) => {
                 Ok(Stmt::new(
                     sema.db,
                     StmtKind::AssignmentAttempt {
                         var,
                         target: attempt.children.cast(sema.ast).to_expr(sema)?,
                     },
-                    attempt.into(),
+                    self.into(),
                     sema.current_scope
                 ))
             }

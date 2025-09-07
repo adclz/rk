@@ -1,7 +1,7 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::check::errors::sem_errors::{AnalysisError, PathExprError};
-use crate::def::expressions::expression::{PathExprKind, VarAccess};
+use crate::def::expressions::expression::{Expr, PathExprKind, VarAccess};
 use crate::def::interned::namespace::{NamespaceAccess, NamespacePath};
 use crate::def::{
     expressions::expression::PathExpr, interned::identifier::SpanIdent, scope::FileScopeId,
@@ -21,8 +21,7 @@ pub fn resolved_path_expr<'db>(
 
 #[salsa::tracked(debug)]
 pub struct ResolvedPathResult<'db> {
-    pub id: AstId,
-    pub scope_id: FileScopeId<'db>,
+    pub expr: PathExpr<'db>,
     #[tracked]
     #[no_eq]
     #[returns(ref)]
@@ -30,22 +29,23 @@ pub struct ResolvedPathResult<'db> {
 }
 
 impl<'db> TyInfo<'db> for ResolvedPathResult<'db> {
-    fn ty(&self, db: &'db dyn BaseDatabase) -> Option<Ty<'db>> {
-        self.elements(db).last().and_then(|e| match e.kind {
-            ResolvedPathElementKind::Ty(ty) => Some(ty),
-            ResolvedPathElementKind::Error(_) => None,
-        })
-    }
-
-    fn is_err(&self, db: &'db dyn BaseDatabase) -> Option<AnalysisError<'db>> {
-        self.elements(db).last().and_then(|e| match &e.kind {
-            ResolvedPathElementKind::Ty(_) => None,
-            ResolvedPathElementKind::Error(err) => Some(AnalysisError::PathExprError(err.clone())),
-        })
+    fn ty(&self, db: &'db dyn BaseDatabase) -> Result<Ty<'db>, AnalysisError<'db>> {
+        match self.elements(db).last() {
+            Some(element) => match &element.kind {
+                ResolvedPathElementKind::Ty(ty) => Ok(*ty),
+                ResolvedPathElementKind::Error(err) => {
+                    Err(AnalysisError::PathExprError(err.clone()))
+                }
+            },
+            None => Err(AnalysisError::PathExprError(PathExprError::NoItemInScope {
+                expr: self.expr(db),
+                scope: self.expr(db).scope_id(db),
+            })),
+        }
     }
 
     fn place(&self, db: &'db dyn BaseDatabase) -> AstId {
-        self.id(db)
+        self.expr(db).id(db)
     }
 }
 
@@ -82,7 +82,7 @@ pub struct ResolvePathExprCtx<'db> {
     db: &'db dyn BaseDatabase,
     expr: PathExpr<'db>,
     fragments: Vec<SpanIdent<'db>>,
-    signature: Option<Ty<'db>>,
+    target: Option<Ty<'db>>,
 }
 
 impl<'db> ResolvePathExprCtx<'db> {
@@ -91,7 +91,7 @@ impl<'db> ResolvePathExprCtx<'db> {
             db,
             expr,
             fragments: vec![],
-            signature: None,
+            target: None,
         }
     }
 
@@ -100,9 +100,9 @@ impl<'db> ResolvePathExprCtx<'db> {
         let current_path = self.expr.flatten_steps(self.db);
 
         'resolve: for (index, step) in current_path.iter().enumerate() {
-            match &self.signature {
-                // Both signature and path are available
-                // We need to resolve the signature step by step
+            match &self.target {
+                // Both target and path are available
+                // We need to resolve the target step by step
                 Some(sig) => {
                     let steps = &current_path[index..];
                     let mut current = *sig;
@@ -116,28 +116,24 @@ impl<'db> ResolvePathExprCtx<'db> {
                                     ResolvedPathElementKind::Ty(current),
                                 ));
                             }
-                            Err(error) => {
-                                return ResolvedPathResult::new(
-                                    self.db,
-                                    self.expr.id(self.db),
-                                    self.expr.scope_id(self.db),
-                                    elements,
-                                );
-                            }
+                            Err(error) => elements.push(ResolvedPathElement::new(
+                                self.expr,
+                                ResolvedPathElementKind::Error(error),
+                            )),
                         }
                     }
                     break 'resolve; // Exit the loop after resolving the path
                 }
-                // No signature yet
+                // No target yet
                 None => {
                     if let PathExprWalkStep::Field { ident, expr } = step {
-                        self.find_signature(ident);
+                        self.find_target(ident);
                     }
                 }
             }
         }
 
-        match self.signature {
+        match self.target {
             Some(sig) => {
                 elements.push(ResolvedPathElement::new(
                     self.expr,
@@ -147,8 +143,7 @@ impl<'db> ResolvePathExprCtx<'db> {
             None => {
                 return ResolvedPathResult::new(
                     self.db,
-                    self.expr.id(self.db),
-                    self.expr.scope_id(self.db),
+                    self.expr,
                     vec![ResolvedPathElement::new(
                         self.expr,
                         ResolvedPathElementKind::Error(PathExprError::NoItemInScope {
@@ -160,26 +155,21 @@ impl<'db> ResolvePathExprCtx<'db> {
             }
         }
 
-        ResolvedPathResult::new(
-            self.db,
-            self.expr.id(self.db),
-            self.expr.scope_id(self.db),
-            elements,
-        )
+        ResolvedPathResult::new(self.db, self.expr, elements)
     }
 
-    fn find_signature(&mut self, identifier: &SpanIdent<'db>) {
+    fn find_target(&mut self, identifier: &SpanIdent<'db>) {
         // Try variables in scope
         if let Some(variable) =
             variables_in_scope(self.db, self.expr.scope_id(self.db)).get(identifier)
         {
-            self.signature = Some(ty_for_variable(self.db, *variable));
+            self.target = Some(ty_for_variable(self.db, *variable));
             return;
         }
 
         // Try POUs in scope
         if let Some(pou) = pous_in_scope(self.db, self.expr.scope_id(self.db)).get(identifier) {
-            self.signature = Some(ty_for_pou(self.db, *pou));
+            self.target = Some(ty_for_pou(self.db, *pou));
             return;
         }
 
@@ -187,7 +177,7 @@ impl<'db> ResolvePathExprCtx<'db> {
         let path = NamespacePath::from((self.db, &self.fragments));
         let access = NamespaceAccess::new(self.db, Some(path), identifier);
         if let Some(pou) = resolve_namespace_access(self.db, self.expr.scope_id(self.db), access) {
-            self.signature = Some(ty_for_pou(self.db, pou));
+            self.target = Some(ty_for_pou(self.db, pou));
             return;
         }
 
@@ -256,18 +246,18 @@ impl<'db> PathExpr<'db> {
 
 impl<'db> ToProto<'db> for ResolvedPathResult<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
-        self.id(db)
+        self.expr(db).id(db)
     }
 
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
-        self.scope_id(db)
+        self.expr(db).scope_id(db)
     }
 
     fn declaration(
         &'db self,
         db: &'db dyn BaseDatabase,
     ) -> Option<auto_lsp::lsp_types::request::GotoDeclarationResponse> {
-        if let Some(ty) = self.ty(db) {
+        if let Ok(ty) = self.ty(db) {
             ty.declaration(db)
         } else {
             None
@@ -278,7 +268,7 @@ impl<'db> ToProto<'db> for ResolvedPathResult<'db> {
         &'db self,
         db: &'db dyn BaseDatabase,
     ) -> Option<auto_lsp::lsp_types::GotoDefinitionResponse> {
-        if let Some(ty) = self.ty(db) {
+        if let Ok(ty) = self.ty(db) {
             ty.definition(db)
         } else {
             None

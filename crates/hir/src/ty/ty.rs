@@ -158,6 +158,18 @@ impl<'db> TyDef<'db> {
         !matches!(self, TyDef::Invalid)
     }
 
+    pub fn is_pou(&self) -> bool {
+        matches!(self, TyDef::Pou(_))
+    }
+
+    pub fn is_method(&self) -> bool {
+        matches!(self, TyDef::Method(_))
+    }
+
+    pub fn is_spec(&self) -> bool {
+        matches!(self, TyDef::Spec(_))
+    }
+
     pub fn get_span(&self, db: &'db dyn BaseDatabase) -> Option<Span> {
         match self {
             TyDef::Pou(pou) => Some(pou.get_span(db)),
@@ -207,6 +219,7 @@ pub enum TyKind<'db> {
     },
 
     RefTo(Ty<'db>),
+    Target(Ty<'db>),
 
     // Callable types
     Function {
@@ -642,8 +655,6 @@ impl<'db> Ty<'db> {
                 let all_inputs = inputs.clone();
                 let all_outputs = outputs.clone();
                 let all_in_outs = in_outs.clone();
-                let all_temps = temps.clone();
-                let all_ztatic = ztatic.clone();
 
                 Some(CallableSignature {
                     inputs: all_inputs,
@@ -657,14 +668,14 @@ impl<'db> Ty<'db> {
     }
 
     pub fn is_simple(&self, db: &'db dyn BaseDatabase) -> bool {
-        if let TyKind::RefTo(sig) = self.kind(db) {
+        if let TyKind::RefTo(sig) | TyKind::Target(sig) = self.kind(db) {
             return sig.is_simple(db);
         };
         matches!(self.kind(db), TyKind::Simple(_))
     }
 
     pub fn is_callable(&self, db: &'db dyn BaseDatabase) -> bool {
-        if let TyKind::RefTo(sig) = self.kind(db) {
+        if let TyKind::RefTo(sig) | TyKind::Target(sig) = self.kind(db) {
             return sig.is_callable(db);
         };
         matches!(
@@ -689,14 +700,14 @@ impl<'db> Ty<'db> {
         matches!(self.decl(db), TyDecl::FromVariable(_))
     }
 
-    pub fn has_return_type(&self, db: &'db dyn BaseDatabase) -> bool {
-        if let TyKind::RefTo(sig) = self.kind(db) {
+    pub fn has_return_type(&self, db: &'db dyn BaseDatabase) -> Option<Ty<'db>> {
+        if let TyKind::RefTo(sig) | TyKind::Target(sig) = self.kind(db) {
             return sig.has_return_type(db);
         };
         if let TyKind::Function { return_type, .. } = self.kind(db) {
-            return return_type.is_some();
+            return return_type;
         }
-        false
+        None
     }
 }
 
@@ -741,7 +752,10 @@ impl<'db> Spec<'db> {
             ),
             SpecKind::Target(target) => {
                 match resolve_namespace_access(db, self.scope_id(db), *target) {
-                    Some(pou) => ty_for_pou(db, pou),
+                    Some(pou) => {
+                        let ty = ty_for_pou(db, pou);
+                        Ty::new(db, origin, ty.def(db), TyKind::Target(ty))
+                    }
                     None => Ty::new(db, origin, TyDef::Spec(*self), TyKind::Unresolved(*target)),
                 }
             }

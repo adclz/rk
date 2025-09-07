@@ -19,7 +19,7 @@ use crate::{
                 Elementary, Expr, ExprKind, InitExprKind, Integer, IntegerKind, PathExpr,
                 PrimaryExpr, VariableAccessKind,
             },
-            spec::{Spec, SpecKind},
+            spec::{ElementarySpec, Spec, SpecKind},
             statement::{Stmt, StmtKind},
         },
         interned::namespace::NamespacePath,
@@ -39,7 +39,7 @@ use crate::{
         stmt_resolver::{ResolveStmtCtx, ResolvedStmt, ResolvedStmtKind, resolve_stmt},
         ty::{Ty, TyKind, ty_for_pou, ty_for_variable},
         ty_path_expr_resolver::{ResolvePathExprCtx, ResolvedPathElementKind, ResolvedPathResult},
-        ty_var_access_resolver::ResolvedVarKind,
+        ty_var_access_resolver::{ResolvedVarKind, ResolvedVarResult},
     },
     walk::WalkHir,
 };
@@ -191,30 +191,15 @@ impl<'db> CheckWithCtx<'db> for ResolvedStmt<'db> {
                     .for_each(|(_, s)| s.collect_errors_with_ctx(db, ctx, errors));
                 ctx.finish_block(errors);
             }
-            ResolvedStmtKind::Assignment { var, target } => match var.ty(db) {
-                Some(ty_var) => {
-                    if ty_var.is_callable(db) {
-                        errors.push(AnalysisError::StmtError(StmtError::AssignmentToCallable {
-                            loc: self.get_span(db),
-                            ty: ty_var,
-                        }));
-                    } else if let Some(err) = ty_var.as_err(db) {
-                        errors.push(err);
-                    } else if let Err(err) = coerce_ty_expr(db, ty_var, *target) {
-                        errors.push(err);
-                    }
+            ResolvedStmtKind::Assignment { var, target } => {
+                if let Err(err) = check_assignment(db, *var, *target) {
+                    errors.push(err);
                 }
-                None => {
-                    if let Some(err) = var.is_err(db) {
-                        errors.push(err);
-                    }
-                }
-            },
+            }
             ResolvedStmtKind::FuncCall { target, params } => {
-                if let Some(ty_var) = target.ty(db) {
+                if let Ok(ty_var) = target.ty(db) {
                     if let Some(err) = ty_var.as_err(db) {
                         errors.push(err);
-                    } else if !ty_var.is_callable(db) {
                     }
                 }
             }
@@ -225,16 +210,93 @@ impl<'db> CheckWithCtx<'db> for ResolvedStmt<'db> {
     }
 }
 
-fn coerce_ty_expr<'db>(
+fn check_assignment<'db>(
     db: &'db dyn BaseDatabase,
-    target_ty: Ty<'db>,
-    expr: ResolvedExpr<'db>,
+    var: ResolvedVarResult<'db>,
+    target: ResolvedExpr<'db>,
 ) -> Result<(), AnalysisError<'db>> {
-    match (target_ty.kind(db), expr.kind(db)) {
+    let ty_var = var.ty(db)?;
+
+    if var.is_input(db) {
+        return Err(AnalysisError::StmtError(StmtError::AssignmentToInput {
+            var,
+            ty: ty_var,
+        }));
+    }
+
+    if ty_var.is_callable(db) {
+        return Err(AnalysisError::StmtError(StmtError::InvalidAssignment {
+            var,
+            ty: ty_var,
+        }));
+    }
+
+    coerce_ty_with_expr(db, ty_var, target)
+}
+
+fn coerce_ty_with_expr<'db>(
+    db: &'db dyn BaseDatabase,
+    ty: Ty<'db>,
+    target_expr: ResolvedExpr<'db>,
+) -> Result<(), AnalysisError<'db>> {
+    if let TyKind::Target(t) = ty.kind(db) {
+        return coerce_ty_with_expr(db, t, target_expr);
+    }
+
+    match (ty.kind(db), target_expr.kind(db)) {
         // Assign a simple literal to an elementary expression
         (TyKind::Simple(elem), ResolvedExprKind::Literal(prim)) => elem
             .lit_check(db, *prim)
-            .map_err(|err| (err, target_ty, expr).into()),
+            .map_err(|err| (err, ty, target_expr).into()),
+        (TyKind::Simple(elem), ResolvedExprKind::FuncCall { target, .. }) => {
+            let tyy = target.ty(db)?;
+            let ret = tyy.has_return_type(db);
+            let ret1 = ret.is_some();
+            if let Some(ret) = target.ty(db)?.has_return_type(db) {
+                coerce_ty_with_ty(db, target_expr, ty, ret)
+            } else {
+                Err(AnalysisError::StmtError(StmtError::VoidAssignmentTarget {
+                    ty,
+                    target: *target,
+                }))
+            }
+        }
+        (TyKind::Simple(elem), ResolvedExprKind::Bool(lhs, rhs)) => {
+            if let ElementarySpec::Bool = elem {
+                Ok(())
+            } else {
+                Err(AnalysisError::StmtError(StmtError::AssignmentIsNotABool {
+                    ty,
+                    expr: target_expr,
+                }))
+            }
+        }
+        _ => todo!(),
+    }
+}
+
+fn coerce_ty_with_ty<'db>(
+    db: &'db dyn BaseDatabase,
+    expr: ResolvedExpr<'db>,
+    target_ty: Ty<'db>,
+    expr_ty: Ty<'db>,
+) -> Result<(), AnalysisError<'db>> {
+    if let TyKind::Target(t) = target_ty.kind(db) {
+        return coerce_ty_with_ty(db, expr, t, expr_ty);
+    }
+
+    match (target_ty.kind(db), expr_ty.kind(db)) {
+        (TyKind::Simple(elem), TyKind::Simple(elem2)) => {
+            if elem == elem2 {
+                Ok(())
+            } else {
+                Err(AnalysisError::StmtError(StmtError::TypeMismatch {
+                    expr: expr,
+                    ty: target_ty,
+                    ty2: expr_ty,
+                }))
+            }
+        }
         _ => todo!(),
     }
 }
