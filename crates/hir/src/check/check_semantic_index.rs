@@ -12,7 +12,10 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use salsa::Accumulator;
 
 use crate::{
-    check::errors::sem_errors::{AnalysisError, PathExprError, StmtError},
+    check::{
+        check_inheritance::check_methods,
+        errors::sem_errors::{AnalysisError, PathExprError, StmtError},
+    },
     def::{
         expressions::{
             expression::{
@@ -120,6 +123,7 @@ impl<'db> StmtCheckCtx<'db> {
 
 impl<'db> Check<'db> for PouDecl<'db> {
     fn collect_errors(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<AnalysisError<'db>>) {
+        check_methods(db, ty_for_pou(db, *self), errors);
         if let Some(stmts) = self.get_stmts(db) {
             let mut stmt_ctx = StmtCheckCtx::new(db);
 

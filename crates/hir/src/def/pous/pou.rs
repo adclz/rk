@@ -1,6 +1,6 @@
 use crate::{
     completions,
-    def::{expressions::statement::Stmt, semantic_index::semantic_index},
+    def::{expressions::statement::Stmt, modifier::Modifier, semantic_index::semantic_index},
 };
 use auto_lsp::{
     default::db::BaseDatabase,
@@ -44,6 +44,14 @@ impl<'db> PouDecl<'db> {
             Pou::Function(f) => Some(f.statements(db)),
             Pou::FunctionBlock(fb) => Some(fb.statements(db)),
             _ => None,
+        }
+    }
+
+    pub fn modifier(&'db self, db: &'db dyn BaseDatabase) -> Modifier {
+        match self.pou(db) {
+            Pou::Class(class) => class.modifier(db),
+            Pou::FunctionBlock(fb) => fb.modifier(db),
+            _ => Modifier::empty(),
         }
     }
 }

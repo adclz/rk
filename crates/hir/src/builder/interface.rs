@@ -118,8 +118,8 @@ impl<'db> SemanticIndexBuilder<'db> {
             name,
             return_type,
             variables,
-            method.name.cast(self.ast).into(),
             method.into(),
+            method.name.cast(self.ast).into(),
             self.current_scope,
         ))
     }

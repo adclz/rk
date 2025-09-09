@@ -4,10 +4,10 @@ use crate::builder::{ParseSpec, ParseVarSection};
 use crate::check::errors::sem_errors::{AnalysisError, SyntaxError};
 use crate::def::interned::identifier::Ident;
 use crate::def::interned::namespace::SpanNamespaceAccess;
+use crate::def::modifier::Modifier;
 use crate::def::pous::class::{Class, MethodDecl};
 use crate::def::pous::pou::{Pou, PouDecl};
 use crate::def::scope::{FileScopeId, Scope, ScopeKind, Visibility};
-use crate::def::visibility::Modifiers;
 use ast::generated::{ClassDecl, ClassVariables};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
@@ -51,10 +51,10 @@ impl<'db> SemanticIndexBuilder<'db> {
             })
             .unwrap_or_default();
 
-        let mut modifiers = Modifiers::empty();
+        let mut modifiers = Modifier::empty();
         class.qualifier.as_ref().map(|q| match q.cast(self.ast) {
-            ast::generated::Operators_2::Token_ABSTRACT(_) => modifiers.insert(Modifiers::ABSTRACT),
-            ast::generated::Operators_2::Token_FINAL(_) => modifiers.insert(Modifiers::FINAL),
+            ast::generated::Operators_2::Token_ABSTRACT(_) => modifiers.insert(Modifier::ABSTRACT),
+            ast::generated::Operators_2::Token_FINAL(_) => modifiers.insert(Modifier::FINAL),
         });
 
         let mut variables = vec![];
@@ -95,11 +95,15 @@ impl<'db> SemanticIndexBuilder<'db> {
                 }
             };
 
-            let modifiers = match m.cast(self.ast).modifier.as_ref().map(|m| m.cast(self.ast)) {
-                Some(ast::generated::Operators_2::Token_ABSTRACT(_)) => Modifiers::ABSTRACT,
-                Some(ast::generated::Operators_2::Token_FINAL(_)) => Modifiers::FINAL,
-                _ => Modifiers::empty(),
+            let mut modifiers = match m.cast(self.ast).modifier.as_ref().map(|m| m.cast(self.ast)) {
+                Some(ast::generated::Operators_2::Token_ABSTRACT(_)) => Modifier::ABSTRACT,
+                Some(ast::generated::Operators_2::Token_FINAL(_)) => Modifier::FINAL,
+                _ => Modifier::empty(),
             };
+
+            if m.cast(&self.ast)._override.is_some() {
+                modifiers |= Modifier::OVERRIDE;
+            }
 
             type MethodBody = ast::generated::ExternalVarDecls_InOutDecls_InputDecls_OutputDecls_TempVarDecls_VarDecls;
             let mut method_variables = vec![];

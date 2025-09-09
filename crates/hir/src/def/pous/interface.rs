@@ -23,6 +23,7 @@ pub struct Interface<'db> {
 
 #[salsa::tracked(debug)]
 pub struct MethodPrototype<'db> {
+    #[returns(ref)]
     pub name: Ident,
 
     #[returns(as_ref)]
@@ -45,5 +46,9 @@ impl<'db> ToProto<'db> for MethodPrototype<'db> {
 
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         self.scope_id(db)
+    }
+
+    fn get_name_id(&'db self, db: &'db dyn BaseDatabase) -> Option<AstId> {
+        Some(self.name_id(db))
     }
 }

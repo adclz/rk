@@ -4,11 +4,11 @@ use crate::builder::statement::ParseStatement;
 use crate::check::errors::sem_errors::{AnalysisError, SyntaxError};
 use crate::def::interned::identifier::Ident;
 use crate::def::interned::namespace::SpanNamespaceAccess;
+use crate::def::modifier::Modifier;
 use crate::def::pous::function_block::FunctionBlock;
 use crate::def::pous::pou::{Pou, PouDecl};
 use crate::def::pous::variable::VariableDecl;
 use crate::def::scope::{FileScopeId, Scope, ScopeKind, Visibility};
-use crate::def::visibility::Modifiers;
 use ast::generated::{FbDecl, FbVariables};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
@@ -86,10 +86,10 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
         });
 
-        let mut modifiers = Modifiers::empty();
+        let mut modifiers = Modifier::empty();
         func.qualifier.as_ref().map(|q| match q.cast(self.ast) {
-            ast::generated::Operators_2::Token_ABSTRACT(_) => modifiers.insert(Modifiers::ABSTRACT),
-            ast::generated::Operators_2::Token_FINAL(_) => modifiers.insert(Modifiers::FINAL),
+            ast::generated::Operators_2::Token_ABSTRACT(_) => modifiers.insert(Modifier::ABSTRACT),
+            ast::generated::Operators_2::Token_FINAL(_) => modifiers.insert(Modifier::FINAL),
         });
 
         let name = Ident::from_node(self.db, self.file, func.name.cast(self.ast))?;

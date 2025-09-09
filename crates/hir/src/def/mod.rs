@@ -8,5 +8,6 @@ pub mod scope;
 pub mod semantic_index;
 pub mod using;
 pub mod visibility;
+pub mod modifier;
 
 pub static COMPLETION_MARKER: &str = "completionZzzzz";

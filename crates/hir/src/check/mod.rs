@@ -15,6 +15,7 @@ use crate::{
 };
 
 pub mod check_semantic_index;
+pub mod check_inheritance;
 pub mod errors;
 
 #[salsa::tracked(no_eq)]

@@ -9,6 +9,7 @@ pub mod stmt_resolver;
 pub mod ty;
 pub mod ty_path_expr_resolver;
 pub mod ty_var_access_resolver;
+pub mod inheritance_solver;
 
 pub trait TyInfo<'db> {
     fn ty(&self, db: &'db dyn BaseDatabase) -> Result<Ty<'db>, AnalysisError<'db>>;

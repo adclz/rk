@@ -415,7 +415,7 @@ impl<'db> ParseExpr<'db> for ast::generated::InitElem {
                 kind: InitExprKind::ConstantExpr(expr.children.cast(sema.ast).to_expr(sema)?),
             }),
             InitElem::ERRFuncCallInInit(err) => Err(AnalysisError::SyntaxError(
-                SyntaxError::FUnctionCallInInitExpression(err.get_span()),
+                SyntaxError::FunctionCallInInitExpression(err.get_span()),
             )),
         }
     }

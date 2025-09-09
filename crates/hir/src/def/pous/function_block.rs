@@ -1,6 +1,6 @@
 use crate::def::{
-    expressions::statement::Stmt, interned::namespace::SpanNamespaceAccess,
-    pous::variable::VariableDecl, scope::FileScopeId, visibility::Modifiers,
+    expressions::statement::Stmt, interned::namespace::SpanNamespaceAccess, modifier::Modifier,
+    pous::variable::VariableDecl, scope::FileScopeId, visibility::Visibility,
 };
 
 #[salsa::tracked(debug)]
@@ -21,7 +21,7 @@ pub struct FunctionBlock<'db> {
     #[returns(ref)]
     pub statements: Vec<Stmt<'db>>,
 
-    pub modifiers: Modifiers,
+    pub modifier: Modifier,
 
     pub scope_id: FileScopeId<'db>,
 }

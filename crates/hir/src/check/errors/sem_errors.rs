@@ -12,7 +12,7 @@ use ide_diagnostic::{IdeDiagnostic, Related, action, diag, edit};
 use crate::{
     def::{
         expressions::{expression::PathExpr, statement::Stmt},
-        interned::namespace::NamespacePath,
+        interned::{identifier::Ident, namespace::NamespacePath},
         namespace::NamespaceDecl,
         pous::{pou::PouDecl, variable::VariableDecl},
         scope::FileScopeId,
@@ -38,6 +38,7 @@ pub enum AnalysisError<'db> {
     DuplicateError(DuplicateError<'db>),
     PathExprError(PathExprError<'db>),
     StmtError(StmtError<'db>),
+    MethodError(MethodError<'db>),
 }
 
 impl<'db> From<StmtError<'db>> for AnalysisError<'db> {
@@ -87,7 +88,7 @@ pub enum SyntaxError {
         file: File,
         span: Span,
     },
-    FUnctionCallInInitExpression(Span),
+    FunctionCallInInitExpression(Span),
     // tree-sitter
     MissingNode {
         file: File,
@@ -197,6 +198,38 @@ pub enum StmtError<'db> {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum MethodError<'db> {
+    OverrideFinalMethod {
+        base_method: Ty<'db>,
+        derived_method: Ty<'db>,
+    },
+    MissingOverride {
+        base_method: Ty<'db>,
+        derived_method: Ty<'db>,
+    },
+    MissingAbstractMethod {
+        implementer: Ty<'db>,
+        base_method: Ty<'db>,
+    },
+    EmptyOverride {
+        base_method: Ty<'db>,
+    },
+    AbstractClassHasNoAbstractMethods {
+        class: Ty<'db>,
+    },
+    UnimplementedInterfaceMethod {
+        implementer: Ty<'db>,
+        method: Ty<'db>,
+    },
+}
+
+impl<'db> From<MethodError<'db>> for AnalysisError<'db> {
+    fn from(err: MethodError<'db>) -> Self {
+        AnalysisError::MethodError(err)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LitCheckError {
     TypeMismatch(String),
@@ -225,6 +258,7 @@ impl<'db> ToIdeDiagnostic<'db> for AnalysisError<'db> {
             Self::DuplicateError(err) => err.to_diagnostic(db),
             Self::PathExprError(err) => err.to_diagnostic(db),
             Self::StmtError(err) => err.to_diagnostic(db),
+            Self::MethodError(err) => err.to_diagnostic(db),
         }
     }
 }
@@ -320,7 +354,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 .severity(DiagnosticSeverity::ERROR)
                 .range(span.clone())
                 .call(),
-            Self::FUnctionCallInInitExpression(span) => diag()
+            Self::FunctionCallInInitExpression(span) => diag()
                 .message("function call in initialization expression is not allowed".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .range(span.clone())
@@ -649,12 +683,114 @@ impl<'db> ToIdeDiagnostic<'db> for PathExprError<'db> {
     }
 }
 
+impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
+    fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
+        match self {
+            Self::MissingOverride {
+                base_method,
+                derived_method,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "missing OVERRIDE keyword for method '{}'",
+                        derived_method.decl(db).name(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(derived_method.decl(db).name_span(db))
+                    .call();
+
+                get_decl_for_ty(db, *base_method, &mut diag);
+                diag.with_note("OVERRIDE keyword must be used even if the base method is not marked as ABSTRACT".into());
+
+                diag
+            }
+            Self::OverrideFinalMethod {
+                base_method,
+                derived_method,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "cannot override FINAL method '{}'",
+                        base_method.decl(db).name(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(derived_method.decl(db).name_span(db))
+                    .call();
+
+                get_decl_for_ty(db, *base_method, &mut diag);
+                diag.with_note("methods marked as FINAL cannot be overridden".into());
+
+                diag
+            }
+            Self::MissingAbstractMethod {
+                implementer,
+                base_method,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "missing implementation for ABSTRACT method '{}'",
+                        base_method.decl(db).name(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(implementer.decl(db).name_span(db))
+                    .call();
+
+                get_decl_for_ty(db, *base_method, &mut diag);
+                diag.with_note("ABSTRACT methods must be implemented by derived POUs".into());
+
+                diag
+            }
+            Self::EmptyOverride { base_method } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "invalid usage of OVERRIDE for method '{}'",
+                        base_method.decl(db).name(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(base_method.decl(db).name_span(db))
+                    .call();
+
+                diag.with_note("OVERRIDE is only valid when the method is inherited".into());
+
+                diag
+            }
+            Self::AbstractClassHasNoAbstractMethods { class } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "ABSTRACT class '{}' has no abstract methods",
+                        class.decl(db).name(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(class.decl(db).name_span(db))
+                    .call();
+
+                diag.with_note("abstract classes must have at least one abstract method".into());
+
+                diag
+            }
+            Self::UnimplementedInterfaceMethod {
+                implementer,
+                method,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "missing implementation for interface method '{}'",
+                        method.decl(db).name(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(implementer.decl(db).name_span(db))
+                    .call();
+
+                get_decl_for_ty(db, *method, &mut diag);
+
+                diag
+            }
+        }
+    }
+}
+
 pub fn get_decl_and_def_for_ty(db: &dyn BaseDatabase, ty: Ty<'_>, diag: &mut IdeDiagnostic) {
-    diag.with_related(Related::new(
-        format!("'{}' is declared here", ty.decl(db).name(db).text(db),),
-        ty.decl(db).scope_id(db).file(db),
-        ty.decl(db).name_span(db),
-    ));
+    get_decl_for_ty(db, ty, diag);
 
     if let Some(span) = ty.def(db).get_span(db) {
         diag.with_related(Related::new(

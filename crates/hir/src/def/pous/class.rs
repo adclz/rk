@@ -4,9 +4,10 @@ use crate::{
     def::{
         expressions::{spec::Spec, statement::Stmt},
         interned::{identifier::Ident, namespace::SpanNamespaceAccess},
+        modifier::Modifier,
         pous::variable::VariableDecl,
         scope::FileScopeId,
-        visibility::Modifiers,
+        visibility::Visibility,
     },
     to_proto::{AstId, ToProto},
 };
@@ -27,7 +28,7 @@ pub struct Class<'db> {
 
     pub methods: Vec<MethodDecl<'db>>,
 
-    pub modifiers: Modifiers,
+    pub modifier: Modifier,
 
     pub scope_id: FileScopeId<'db>,
 }
@@ -45,7 +46,7 @@ pub struct MethodDecl<'db> {
     #[returns(ref)]
     pub return_type: Option<Spec<'db>>,
 
-    pub modifiers: Modifiers,
+    pub modifier: Modifier,
 
     pub _override: bool,
 
