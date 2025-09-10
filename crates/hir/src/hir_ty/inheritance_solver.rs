@@ -71,16 +71,17 @@ pub fn method_table<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>) -> Arc<Methods<
             }
         }
 
-        TyKind::FunctionBlock { extends, .. } => {
-            if let Some(base) = extends {
-                return method_table(db, base).clone();
-            }
+        TyKind::FunctionBlock {
+            extends: Some(base),
+            ..
+        } => {
+            return method_table(db, base).clone();
         }
         _ => {}
     }
 
     Arc::new(Methods {
-        inherited_methods: inherited_methods,
-        declared_methods: declared_methods,
+        inherited_methods,
+        declared_methods,
     })
 }

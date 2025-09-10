@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use auto_lsp::{
-    core::errors::{LexerError, ParseError, ParseErrorAccumulator},
+    core::errors::ParseErrorAccumulator,
     default::db::{BaseDatabase, file::File, tracked::get_ast},
 };
 use ide_diagnostic::IdeDiagnostic;
@@ -14,8 +14,8 @@ use crate::{
     hir_def::semantic_index::semantic_index,
 };
 
-pub mod check_semantic_index;
 pub mod check_inheritance;
+pub mod check_semantic_index;
 pub mod errors;
 
 #[salsa::tracked(no_eq)]
@@ -34,4 +34,3 @@ pub fn diagnostics_for_file(db: &dyn BaseDatabase, file: File) -> Arc<Vec<IdeDia
 
     Arc::new(all_diagnostics)
 }
-

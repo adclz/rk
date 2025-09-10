@@ -1,5 +1,7 @@
 use auto_lsp::{
-    core::document_symbols_builder::DocumentSymbolsBuilder, default::db::BaseDatabase, lsp_types::{MarkupContent, MarkupKind, SymbolKind}
+    core::document_symbols_builder::DocumentSymbolsBuilder,
+    default::db::BaseDatabase,
+    lsp_types::{MarkupContent, MarkupKind, SymbolKind},
 };
 
 use crate::{
@@ -108,11 +110,7 @@ impl<'db> ToProto<'db> for VariableDecl<'db> {
         self.scope_id(db)
     }
 
-    fn document_symbols(
-        &self,
-        db: &'db dyn BaseDatabase,
-        builder: &mut DocumentSymbolsBuilder,
-    ) {
+    fn document_symbols(&self, db: &'db dyn BaseDatabase, builder: &mut DocumentSymbolsBuilder) {
         builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
             name: self.name(db).text(db).to_string(),
             detail: Some("variable".to_string()),

@@ -4,7 +4,7 @@ use auto_lsp::default::db::tracked::ParsedAst;
 use auto_lsp::default::db::{BaseDatabase, file::File};
 use rustc_hash::FxHashMap;
 
-use crate::check::errors::sem_errors::{AnalysisError};
+use crate::check::errors::sem_errors::AnalysisError;
 use crate::check::errors::syntax::SyntaxError;
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::namespace::NamespaceDecl;

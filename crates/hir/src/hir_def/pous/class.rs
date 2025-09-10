@@ -1,4 +1,7 @@
-use auto_lsp::{core::document_symbols_builder::DocumentSymbolsBuilder, default::db::BaseDatabase, lsp_types::SymbolKind};
+use auto_lsp::{
+    core::document_symbols_builder::DocumentSymbolsBuilder, default::db::BaseDatabase,
+    lsp_types::SymbolKind,
+};
 
 use crate::{
     hir_def::{
@@ -7,7 +10,6 @@ use crate::{
         modifier::Modifier,
         pous::variable::VariableDecl,
         scope::FileScopeId,
-        visibility::Visibility,
     },
     to_proto::{AstId, ToProto},
 };
@@ -73,21 +75,20 @@ impl<'db> ToProto<'db> for MethodDecl<'db> {
     }
 
     fn document_symbols(&self, db: &'db dyn BaseDatabase, builder: &mut DocumentSymbolsBuilder) {
-    let mut nested_builder = DocumentSymbolsBuilder::default();
-    self
-        .variables(db)
-        .iter()
-        .for_each(|var| var.document_symbols(db, &mut nested_builder));
+        let mut nested_builder = DocumentSymbolsBuilder::default();
+        self.variables(db)
+            .iter()
+            .for_each(|var| var.document_symbols(db, &mut nested_builder));
 
-    builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
-        name: self.name(db).text(db).to_string(),
-        detail: Some("method".to_string()),
-        kind: SymbolKind::METHOD,
-        deprecated: None,
-        range: self.get_span(db).lsp(),
-        selection_range: self.get_name_span(db).unwrap().lsp(),
-        children: Some(nested_builder.finalize()),
-        tags: None,
-    });
+        builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
+            name: self.name(db).text(db).to_string(),
+            detail: Some("method".to_string()),
+            kind: SymbolKind::METHOD,
+            deprecated: None,
+            range: self.get_span(db).lsp(),
+            selection_range: self.get_name_span(db).unwrap().lsp(),
+            children: Some(nested_builder.finalize()),
+            tags: None,
+        });
     }
 }

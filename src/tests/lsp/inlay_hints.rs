@@ -1,14 +1,11 @@
-use auto_lsp::core::document_symbols_builder::DocumentSymbolsBuilder;
 use auto_lsp::lsp_types::InlayHint;
 use db::RootDatabase;
 use hir::hir_def::semantic_index::semantic_index;
 use hir::to_proto::ToProto;
 use insta::assert_debug_snapshot;
-use insta::assert_snapshot;
 use rstest::rstest;
 
 use crate::tests::utils::make_db_with_source;
-use crate::tests::utils::test_diagnostic;
 use crate::tests::utils::with_db;
 
 #[rstest]
@@ -29,7 +26,8 @@ END_INTERFACE"#;
     let file = make_db_with_source(&mut with_db, source);
 
     let sema = semantic_index(&with_db, file);
-    let result: Vec<InlayHint> = sema.global_pous
+    let result: Vec<InlayHint> = sema
+        .global_pous
         .iter()
         .filter_map(|pou| pou.inlay_hint(&with_db))
         .collect();
@@ -116,7 +114,6 @@ END_INTERFACE"#;
     "#);
 }
 
-
 #[rstest]
 pub fn namespace_inlay_hints(mut with_db: RootDatabase) {
     let source = r#"
@@ -134,7 +131,8 @@ END_NAMESPACE"#;
     let file = make_db_with_source(&mut with_db, source);
 
     let sema = semantic_index(&with_db, file);
-    let result: Vec<InlayHint> = sema.namespaces
+    let result: Vec<InlayHint> = sema
+        .namespaces
         .iter()
         .filter_map(|ns| ns.inlay_hint(&with_db))
         .collect();

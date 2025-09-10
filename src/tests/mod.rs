@@ -1,3 +1,3 @@
-pub mod utils;
 pub mod lsp;
 pub mod semantics;
+pub mod utils;

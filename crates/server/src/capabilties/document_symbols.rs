@@ -1,26 +1,12 @@
 #![allow(deprecated)]
 
-use std::ops::ControlFlow;
-
 use auto_lsp::{
     anyhow,
-    core::{document::Document, document_symbols_builder::DocumentSymbolsBuilder},
+    core::document_symbols_builder::DocumentSymbolsBuilder,
     default::db::BaseDatabase,
-    lsp_types::{
-        DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, SymbolKind, SymbolTag,
-    },
+    lsp_types::{DocumentSymbolParams, DocumentSymbolResponse},
 };
-use hir::{
-    hir_def::{
-        namespace::NamespaceDecl,
-        pous::{
-            class::MethodDecl, interface::MethodPrototype, pou::{Pou, PouDecl}, variable::VariableDecl
-        },
-        semantic_index::{semantic_index, HirNode},
-    },
-    to_proto::ToProto,
-    walk::WalkHir,
-};
+use hir::{hir_def::semantic_index::semantic_index, to_proto::ToProto};
 
 pub fn document_symbols(
     db: &impl BaseDatabase,

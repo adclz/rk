@@ -1,7 +1,13 @@
 use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
-use ide_diagnostic::{diag, IdeDiagnostic};
+use ide_diagnostic::{IdeDiagnostic, diag};
 
-use crate::{check::errors::{sem_errors::{AnalysisError, ToIdeDiagnostic}, utils::get_decl_for_ty}, hir_ty::ty::Ty};
+use crate::{
+    check::errors::{
+        sem_errors::{AnalysisError, ToIdeDiagnostic},
+        utils::get_decl_for_ty,
+    },
+    hir_ty::ty::Ty,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum MethodError<'db> {

@@ -2,16 +2,11 @@ use auto_lsp::{
     core::{ast::AstNode, document_symbols_builder::DocumentSymbolsBuilder, span::Span},
     default::db::BaseDatabase,
     lsp_types::{
-        request::GotoDeclarationResponse, CompletionItem, GotoDefinitionResponse, Hover, InlayHint, SymbolKind
+        CompletionItem, GotoDefinitionResponse, Hover, InlayHint, request::GotoDeclarationResponse,
     },
 };
 
-use crate::hir_def::{
-    expressions::{expression::InitExpr, spec::Spec},
-    interned::namespace::SpanNamespaceAccess,
-    scope::FileScopeId,
-    semantic_index::semantic_index,
-};
+use crate::hir_def::{scope::FileScopeId, semantic_index::semantic_index};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct AstId(pub(crate) usize);
@@ -41,7 +36,7 @@ pub trait ToProto<'db> {
                     self.get_id(db).0
                 )
             })
-              .get_span()
+            .get_span()
     }
 
     fn get_name_span(&'db self, db: &'db dyn BaseDatabase) -> Option<Span> {

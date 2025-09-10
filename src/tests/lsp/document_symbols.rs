@@ -3,11 +3,9 @@ use db::RootDatabase;
 use hir::hir_def::semantic_index::semantic_index;
 use hir::to_proto::ToProto;
 use insta::assert_debug_snapshot;
-use insta::assert_snapshot;
 use rstest::rstest;
 
 use crate::tests::utils::make_db_with_source;
-use crate::tests::utils::test_diagnostic;
 use crate::tests::utils::with_db;
 
 #[rstest]
@@ -582,7 +580,6 @@ END_INTERFACE"#;
     ]
     "#);
 }
-
 
 #[rstest]
 pub fn data_types_document_symbols(mut with_db: RootDatabase) {

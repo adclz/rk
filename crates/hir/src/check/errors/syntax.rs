@@ -1,7 +1,15 @@
 use std::collections::HashMap;
 
-use auto_lsp::{core::{errors::{LexerError, ParseError, ParseErrorAccumulator}, span::Span}, default::db::{file::File, BaseDatabase}, lsp_types::{DiagnosticSeverity, WorkspaceEdit}, tree_sitter::{self, Range}};
-use ide_diagnostic::{action, diag, edit, IdeDiagnostic, Related};
+use auto_lsp::{
+    core::{
+        errors::{LexerError, ParseError, ParseErrorAccumulator},
+        span::Span,
+    },
+    default::db::{BaseDatabase, file::File},
+    lsp_types::{DiagnosticSeverity, WorkspaceEdit},
+    tree_sitter::{self, Range},
+};
+use ide_diagnostic::{IdeDiagnostic, Related, action, diag, edit};
 
 use crate::check::errors::sem_errors::{AnalysisError, ToIdeDiagnostic};
 
@@ -70,7 +78,6 @@ impl<'db> From<(File, &ParseErrorAccumulator)> for AnalysisError<'db> {
         }
     }
 }
-
 
 impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
     fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {

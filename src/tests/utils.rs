@@ -33,7 +33,7 @@ pub fn make_db_with_source(db: &mut RootDatabase, source: &str) -> File {
         .call()
         .unwrap();
 
-    db.add_file(file.clone()).unwrap();
+    db.add_file(file).unwrap();
     file
 }
 
@@ -44,7 +44,10 @@ pub fn test_diagnostic(db: &mut RootDatabase, source: &str) -> String {
     diagnostics_for_file(db, file)[0]
         .create_report(db, file, Some(no_color_and_ascii()))
         .write(
-            (file.url(db).as_str(), Source::from(file.document(db).as_str())),
+            (
+                file.url(db).as_str(),
+                Source::from(file.document(db).as_str()),
+            ),
             &mut cache,
         )
         .unwrap();

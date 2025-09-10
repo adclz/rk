@@ -39,14 +39,9 @@ impl<'db> ToProto<'db> for NamespaceDecl<'db> {
         self.scope_id(db)
     }
 
-    fn document_symbols(
-        &self,
-        db: &'db dyn BaseDatabase,
-        builder: &mut DocumentSymbolsBuilder,
-    ) {
+    fn document_symbols(&self, db: &'db dyn BaseDatabase, builder: &mut DocumentSymbolsBuilder) {
         let mut nested_builder = DocumentSymbolsBuilder::default();
-        self
-            .pous(db)
+        self.pous(db)
             .iter()
             .for_each(|pou| pou.document_symbols(db, &mut nested_builder));
 

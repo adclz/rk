@@ -1,7 +1,7 @@
 use crate::builder::ParseVarSection;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::statement::ParseStatement;
-use crate::check::errors::sem_errors::{AnalysisError};
+use crate::check::errors::sem_errors::AnalysisError;
 use crate::check::errors::syntax::SyntaxError;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
@@ -88,10 +88,14 @@ impl<'db> SemanticIndexBuilder<'db> {
         });
 
         let mut modifiers = Modifier::empty();
-        func.qualifier.as_ref().map(|q| match q.cast(self.ast) {
-            ast::generated::Operators_2::Token_ABSTRACT(_) => modifiers.insert(Modifier::ABSTRACT),
-            ast::generated::Operators_2::Token_FINAL(_) => modifiers.insert(Modifier::FINAL),
-        });
+        if let Some(func_mod) = &func.qualifier {
+            match func_mod.cast(self.ast) {
+                ast::generated::Operators_2::Token_ABSTRACT(_) => {
+                    modifiers.insert(Modifier::ABSTRACT)
+                }
+                ast::generated::Operators_2::Token_FINAL(_) => modifiers.insert(Modifier::FINAL),
+            }
+        }
 
         let name = Ident::from_node(self.db, self.file, func.name.cast(self.ast))?;
         let usings = match self.parse_usings(&func.directives) {

@@ -1,9 +1,8 @@
 use auto_lsp::default::db::BaseDatabase;
-use rustc_hash::FxHashMap;
 
 use crate::{
     check::errors::{inheritance::MethodError, sem_errors::AnalysisError},
-    hir_def::{interned::identifier::Ident, modifier::Modifier},
+    hir_def::modifier::Modifier,
     hir_ty::{
         inheritance_solver::method_table,
         ty::{Ty, TyKind},
@@ -19,22 +18,20 @@ pub fn check_methods<'db>(
 
     if let TyKind::Class { .. } = implementer.kind(db)
         && implementer.modifier(db).contains(Modifier::ABSTRACT)
-    {
-        if !table
+        && !table
             .declared_methods
             .iter()
             .any(|(_, m)| m.modifier(db).contains(Modifier::ABSTRACT))
-        {
-            errors.push(AnalysisError::MethodError(
-                MethodError::AbstractClassHasNoAbstractMethods { class: implementer },
-            ));
-        }
+    {
+        errors.push(AnalysisError::MethodError(
+            MethodError::AbstractClassHasNoAbstractMethods { class: implementer },
+        ));
     }
 
     // look at the inherited methods first
     for (inherited_name, inherited_method) in &table.inherited_methods {
         // method is inherited from a base interface/class
-        if let Some(declared_method) = table.declared_methods.get(&inherited_name) {
+        if let Some(declared_method) = table.declared_methods.get(inherited_name) {
             match (inherited_method.modifier(db), declared_method.modifier(db)) {
                 // Override of a final method
                 (Modifier::FINAL, Modifier::OVERRIDE) => {
@@ -67,17 +64,13 @@ pub fn check_methods<'db>(
                 ));
             }
 
-            match inherited_method.modifier(db) {
-                // Abstract method without implementation
-                Modifier::ABSTRACT => {
-                    errors.push(AnalysisError::MethodError(
-                        MethodError::MissingAbstractMethod {
-                            implementer,
-                            base_method: *inherited_method,
-                        },
-                    ));
-                }
-                _ => {}
+            if let Modifier::ABSTRACT = inherited_method.modifier(db) {
+                errors.push(AnalysisError::MethodError(
+                    MethodError::MissingAbstractMethod {
+                        implementer,
+                        base_method: *inherited_method,
+                    },
+                ));
             }
         }
     }
@@ -85,16 +78,11 @@ pub fn check_methods<'db>(
     let declared = &table.declared_methods;
 
     for (base_name, base_method) in declared {
-        if let Some(_) = table.inherited_methods.get(&base_name) {
-        } else {
-            match base_method.modifier(db) {
-                Modifier::OVERRIDE => {
-                    errors.push(AnalysisError::MethodError(MethodError::EmptyOverride {
-                        base_method: *base_method,
-                    }));
-                }
-                _ => {}
-            }
+        if table.inherited_methods.contains_key(base_name) {
+        } else if base_method.modifier(db) == Modifier::OVERRIDE {
+            errors.push(AnalysisError::MethodError(MethodError::EmptyOverride {
+                base_method: *base_method,
+            }));
         }
     }
 }

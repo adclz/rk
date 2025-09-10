@@ -4,8 +4,8 @@ use auto_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind};
 
 use crate::hir_def::expressions::expression::{InitExpr, VariableAccess};
 use crate::hir_def::semantic_index::semantic_index;
-use crate::to_proto::AstId;
 use crate::hir_ty::name_res::resolve_namespace_access;
+use crate::to_proto::AstId;
 use crate::{
     hir_def::{
         expressions::expression::{Expr, MultibitsPart},

@@ -1,9 +1,11 @@
 use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
-use ide_diagnostic::{diag, IdeDiagnostic, Related};
+use ide_diagnostic::{IdeDiagnostic, Related, diag};
 
-use crate::{check::errors::sem_errors::ToIdeDiagnostic, hir_def::pous::{pou::PouDecl, variable::VariableDecl}, to_proto::ToProto};
-
-
+use crate::{
+    check::errors::sem_errors::ToIdeDiagnostic,
+    hir_def::pous::{pou::PouDecl, variable::VariableDecl},
+    to_proto::ToProto,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum DuplicateError<'db> {

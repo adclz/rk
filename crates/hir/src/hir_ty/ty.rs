@@ -9,7 +9,8 @@ use auto_lsp::{
 use rustc_hash::FxHashMap;
 
 use crate::{
-    check::errors::{path_expr::PathExprError, sem_errors::AnalysisError, stmt::StmtError}, hir_def::{
+    check::errors::{path_expr::PathExprError, sem_errors::AnalysisError, stmt::StmtError},
+    hir_def::{
         expressions::spec::{ElementarySpec, Spec, SpecKind},
         interned::{identifier::Ident, namespace::NamespaceAccess},
         modifier::Modifier,
@@ -20,7 +21,9 @@ use crate::{
             variable::{VariableDecl, VariableKind},
         },
         scope::FileScopeId,
-    }, hir_ty::{name_res::resolve_namespace_access, ty_path_expr_resolver::PathExprWalkStep}, to_proto::{AstId, ToProto}
+    },
+    hir_ty::{name_res::resolve_namespace_access, ty_path_expr_resolver::PathExprWalkStep},
+    to_proto::{AstId, ToProto},
 };
 
 #[salsa::tracked(debug)]
@@ -131,10 +134,7 @@ impl<'db> TyDecl<'db> {
             TyDecl::Method(method) => method.get_name_span(db),
             TyDecl::MethodProt(method) => method.get_name_span(db),
         }
-        .expect(&format!(
-            "All TyDecl variants should have a name span: {:?}",
-            self
-        ))
+        .unwrap_or_else(|| panic!("All TyDecl variants should have a name span: {self:?}"))
     }
 
     pub fn name(&self, db: &'db dyn BaseDatabase) -> Ident {

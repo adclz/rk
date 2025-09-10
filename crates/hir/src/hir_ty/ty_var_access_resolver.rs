@@ -7,12 +7,12 @@ use crate::{
         pous::variable::VariableDecl,
         scope::FileScopeId,
     },
-    to_proto::{AstId, ToProto},
     hir_ty::{
         TyInfo,
-        ty::{Ty, TyDecl, TyKind},
+        ty::{Ty, TyDecl},
         ty_path_expr_resolver::{ResolvedPathResult, resolved_path_expr},
     },
+    to_proto::{AstId, ToProto},
 };
 
 pub fn resolve_var_access<'db>(
@@ -41,39 +41,39 @@ impl<'db> ResolvedVarResult<'db> {
     }
 
     pub fn is_input(&self, db: &'db dyn BaseDatabase) -> bool {
-        self.get_var(db).map_or(false, |var| var.is_input(db))
+        self.get_var(db).is_some_and(|var| var.is_input(db))
     }
 
     pub fn is_output(&self, db: &'db dyn BaseDatabase) -> bool {
-        self.get_var(db).map_or(false, |var| var.is_output(db))
+        self.get_var(db).is_some_and(|var| var.is_output(db))
     }
 
     pub fn is_var(&self, db: &'db dyn BaseDatabase) -> bool {
-        self.get_var(db).map_or(false, |var| var.is_var(db))
+        self.get_var(db).is_some_and(|var| var.is_var(db))
     }
 
     pub fn is_in_out(&self, db: &'db dyn BaseDatabase) -> bool {
-        self.get_var(db).map_or(false, |var| var.is_in_out(db))
+        self.get_var(db).is_some_and(|var| var.is_in_out(db))
     }
 
     pub fn is_external(&self, db: &'db dyn BaseDatabase) -> bool {
-        self.get_var(db).map_or(false, |var| var.is_external(db))
+        self.get_var(db).is_some_and(|var| var.is_external(db))
     }
 
     pub fn is_global(&self, db: &'db dyn BaseDatabase) -> bool {
-        self.get_var(db).map_or(false, |var| var.is_global(db))
+        self.get_var(db).is_some_and(|var| var.is_global(db))
     }
 
     pub fn is_access(&self, db: &'db dyn BaseDatabase) -> bool {
-        self.get_var(db).map_or(false, |var| var.is_access(db))
+        self.get_var(db).is_some_and(|var| var.is_access(db))
     }
 
     pub fn is_temp(&self, db: &'db dyn BaseDatabase) -> bool {
-        self.get_var(db).map_or(false, |var| var.is_temp(db))
+        self.get_var(db).is_some_and(|var| var.is_temp(db))
     }
 
     pub fn is_config(&self, db: &'db dyn BaseDatabase) -> bool {
-        self.get_var(db).map_or(false, |var| var.is_config(db))
+        self.get_var(db).is_some_and(|var| var.is_config(db))
     }
 }
 

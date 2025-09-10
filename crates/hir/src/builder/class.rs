@@ -1,7 +1,7 @@
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::statement::ParseStatement;
 use crate::builder::{ParseSpec, ParseVarSection};
-use crate::check::errors::sem_errors::{AnalysisError};
+use crate::check::errors::sem_errors::AnalysisError;
 use crate::check::errors::syntax::SyntaxError;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
@@ -53,10 +53,15 @@ impl<'db> SemanticIndexBuilder<'db> {
             .unwrap_or_default();
 
         let mut modifiers = Modifier::empty();
-        class.modifier.as_ref().map(|q| match q.cast(self.ast) {
-            ast::generated::Operators_2::Token_ABSTRACT(_) => modifiers.insert(Modifier::ABSTRACT),
-            ast::generated::Operators_2::Token_FINAL(_) => modifiers.insert(Modifier::FINAL),
-        });
+
+        if let Some(class_mod) = &class.modifier {
+            match class_mod.cast(self.ast) {
+                ast::generated::Operators_2::Token_ABSTRACT(_) => {
+                    modifiers.insert(Modifier::ABSTRACT)
+                }
+                ast::generated::Operators_2::Token_FINAL(_) => modifiers.insert(Modifier::FINAL),
+            }
+        }
 
         let mut variables = vec![];
 
@@ -102,7 +107,7 @@ impl<'db> SemanticIndexBuilder<'db> {
                 _ => Modifier::empty(),
             };
 
-            if m.cast(&self.ast)._override.is_some() {
+            if m.cast(self.ast)._override.is_some() {
                 modifiers |= Modifier::OVERRIDE;
             }
 

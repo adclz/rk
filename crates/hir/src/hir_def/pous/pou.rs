@@ -159,7 +159,6 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
                         | ElementarySpec::Ldt
                         | ElementarySpec::Date
                         | ElementarySpec::LDate => SymbolKind::EVENT,
-                        _ => SymbolKind::TYPE_PARAMETER,
                     },
                     _ => SymbolKind::TYPE_PARAMETER,
                 },

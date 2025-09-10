@@ -1,7 +1,15 @@
-use auto_lsp::{core::span::Span, default::db::BaseDatabase, lsp_types::{DiagnosticSeverity, DiagnosticTag}};
-use ide_diagnostic::{diag, IdeDiagnostic, Related};
+use auto_lsp::{
+    core::span::Span,
+    default::db::BaseDatabase,
+    lsp_types::{DiagnosticSeverity, DiagnosticTag},
+};
+use ide_diagnostic::{IdeDiagnostic, Related, diag};
 
-use crate::{check::errors::sem_errors::ToIdeDiagnostic, hir_def::{interned::namespace::NamespacePath, namespace::NamespaceDecl, using::Using}, to_proto::ToProto};
+use crate::{
+    check::errors::sem_errors::ToIdeDiagnostic,
+    hir_def::{interned::namespace::NamespacePath, namespace::NamespaceDecl, using::Using},
+    to_proto::ToProto,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum NamespaceError<'db> {
@@ -18,7 +26,6 @@ pub enum NamespaceError<'db> {
         other: Using<'db>,
     },
 }
-
 
 impl<'db> ToIdeDiagnostic<'db> for NamespaceError<'db> {
     fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {

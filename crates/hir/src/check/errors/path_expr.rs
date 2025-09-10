@@ -1,7 +1,12 @@
 use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
-use ide_diagnostic::{diag, IdeDiagnostic};
+use ide_diagnostic::{IdeDiagnostic, diag};
 
-use crate::{check::errors::sem_errors::{AnalysisError, ToIdeDiagnostic}, hir_def::{expressions::expression::PathExpr, scope::FileScopeId}, hir_ty::ty::Ty, to_proto::ToProto};
+use crate::{
+    check::errors::sem_errors::{AnalysisError, ToIdeDiagnostic},
+    hir_def::{expressions::expression::PathExpr, scope::FileScopeId},
+    hir_ty::ty::Ty,
+    to_proto::ToProto,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum PathExprError<'db> {
@@ -26,7 +31,6 @@ pub enum PathExprError<'db> {
         expr: PathExpr<'db>,
     },
 }
-
 
 impl<'db> From<PathExprError<'db>> for AnalysisError<'db> {
     fn from(err: PathExprError<'db>) -> Self {

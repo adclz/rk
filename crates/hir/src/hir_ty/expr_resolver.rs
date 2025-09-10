@@ -5,15 +5,15 @@ use crate::{
         expressions::expression::{Elementary, Expr, ExprKind, ParamAssign, PrimaryExpr},
         scope::FileScopeId,
     },
-    to_proto::{AstId, ToProto},
     hir_ty::{
         stmt_resolver::ResolvedParam,
         ty::Ty,
         ty_path_expr_resolver::{ResolvedPathResult, resolved_path_expr},
         ty_var_access_resolver::{ResolvedVarResult, resolve_var_access},
     },
+    to_proto::{AstId, ToProto},
 };
-  
+
 /// The environment in which the expression is resolved.
 /// It can be a concrete type or a boolean context.
 ///
@@ -86,11 +86,9 @@ impl<'db> ResolveExprCtx<'db> {
                     self.expr,
                     ResolvedExprKind::VarAccess(resolve_var_access(self.db, variable)),
                 ),
-                PrimaryExpr::Literal(lit) => ResolvedExpr::new(
-                    self.db,
-                    self.expr,
-                    ResolvedExprKind::Literal(*lit),
-                ),
+                PrimaryExpr::Literal(lit) => {
+                    ResolvedExpr::new(self.db, self.expr, ResolvedExprKind::Literal(*lit))
+                }
                 PrimaryExpr::ParenthesizedExpr { expr } => ResolvedExpr::new(
                     self.db,
                     self.expr,

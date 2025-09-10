@@ -1,7 +1,24 @@
-use auto_lsp::{core::span::Span, default::db::BaseDatabase, lsp_types::{DiagnosticSeverity, DiagnosticTag}, tree_sitter};
-use ide_diagnostic::{diag, IdeDiagnostic};
+use auto_lsp::{
+    core::span::Span,
+    default::db::BaseDatabase,
+    lsp_types::{DiagnosticSeverity, DiagnosticTag},
+    tree_sitter,
+};
+use ide_diagnostic::{IdeDiagnostic, diag};
 
-use crate::{check::errors::{literals::LitCheckError, sem_errors::{AnalysisError, ToIdeDiagnostic}, utils::{get_decl_and_def_for_ty, get_decl_for_ty}}, hir_def::expressions::statement::Stmt, hir_ty::{expr_resolver::ResolvedExpr, ty::Ty, ty_path_expr_resolver::ResolvedPathResult, ty_var_access_resolver::ResolvedVarResult}, to_proto::ToProto};
+use crate::{
+    check::errors::{
+        literals::LitCheckError,
+        sem_errors::{AnalysisError, ToIdeDiagnostic},
+        utils::{get_decl_and_def_for_ty, get_decl_for_ty},
+    },
+    hir_def::expressions::statement::Stmt,
+    hir_ty::{
+        expr_resolver::ResolvedExpr, ty::Ty, ty_path_expr_resolver::ResolvedPathResult,
+        ty_var_access_resolver::ResolvedVarResult,
+    },
+    to_proto::ToProto,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum StmtError<'db> {
@@ -52,7 +69,6 @@ impl<'db> From<StmtError<'db>> for AnalysisError<'db> {
     }
 }
 
-
 impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
     fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
         match self {
@@ -86,7 +102,7 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
             }
             Self::VoidAssignmentTarget { ty, target } => {
                 let mut diag = diag()
-                    .message(format!("target is of void type"))
+                    .message("target is of void type".to_string())
                     .severity(DiagnosticSeverity::ERROR)
                     .range(target.get_span(db).clone())
                     .call();

@@ -90,7 +90,7 @@ impl IdeDiagnostic {
             diagnostic,
             related: vec![],
             fixes: vec![],
-            notes: vec![]
+            notes: vec![],
         }
     }
 
@@ -222,7 +222,7 @@ pub fn diag(
         },
         fixes: vec![],
         related: vec![],
-        notes: vec![]
+        notes: vec![],
     }
 }
 

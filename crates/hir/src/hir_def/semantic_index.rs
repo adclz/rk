@@ -16,13 +16,13 @@ use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::PouDecl;
 use crate::hir_def::scope::{FileScopeId, Scope};
 use crate::hir_def::using::Using;
-use crate::to_proto::{AstId, ToProto};
 use crate::hir_ty::expr_resolver::ResolvedExpr;
 use crate::hir_ty::name_res::pous_in_scope;
 use crate::hir_ty::stmt_resolver::ResolvedStmt;
 use crate::hir_ty::ty::Ty;
 use crate::hir_ty::ty_path_expr_resolver::ResolvedPathResult;
 use crate::hir_ty::ty_var_access_resolver::ResolvedVarResult;
+use crate::to_proto::ToProto;
 use crate::walk::WalkHir;
 
 /// Returns the semantic index of a given file

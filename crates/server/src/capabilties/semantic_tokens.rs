@@ -1,12 +1,9 @@
-use std::sync::LazyLock;
-
 use auto_lsp::{
     anyhow,
     core::semantic_tokens_builder::SemanticTokensBuilder,
     default::db::BaseDatabase,
     define_semantic_token_modifiers, define_semantic_token_types,
-    lsp_types::{self, SemanticTokenModifier, SemanticTokensParams, SemanticTokensResult},
-    tree_sitter::{self, StreamingIterator},
+    lsp_types::{SemanticTokensParams, SemanticTokensResult},
 };
 
 define_semantic_token_types![
@@ -55,7 +52,7 @@ pub fn semantic_tokens_full(
         .get_file(&uri)
         .ok_or_else(|| anyhow::format_err!("File not found in workspace"))?;
 
-    let mut builder = SemanticTokensBuilder::new("".into());
+    let builder = SemanticTokensBuilder::new("".into());
 
     Ok(None)
 }

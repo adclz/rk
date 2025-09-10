@@ -40,7 +40,7 @@ pub fn diagnostics(
 /// the DbView to the actual database type inside the par_iter closure.
 ///
 /// It seems to have been fixed in salsa > 0.22, but auto_lsp must also be updated to use the newer version of salsa.
-
+///
 struct DbForkOnClone(Box<dyn salsa::Database>);
 
 impl Clone for DbForkOnClone {

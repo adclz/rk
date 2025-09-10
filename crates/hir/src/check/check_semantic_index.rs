@@ -15,7 +15,8 @@ use crate::{
     check::{
         check_inheritance::check_methods,
         errors::{sem_errors::AnalysisError, stmt::StmtError},
-    }, hir_def::{
+    },
+    hir_def::{
         expressions::{
             expression::{
                 Elementary, Expr, ExprKind, InitExprKind, Integer, IntegerKind, PathExpr,
@@ -31,10 +32,19 @@ use crate::{
             variable::VariableDecl,
         },
         scope::FileScopeId,
-        semantic_index::{semantic_index, HirNode, SemanticIndex},
-    }, hir_ty::{
-        expr_resolver::{ResolvedExpr, ResolvedExprKind}, name_res::pous_in_scope, stmt_resolver::{resolve_stmt, ResolveStmtCtx, ResolvedStmt, ResolvedStmtKind}, ty::{ty_for_pou, ty_for_variable, Ty, TyKind}, ty_path_expr_resolver::{ResolvePathExprCtx, ResolvedPathElementKind, ResolvedPathResult}, ty_var_access_resolver::{ResolvedVarKind, ResolvedVarResult}, TyInfo
-    }, to_proto::ToProto, walk::WalkHir
+        semantic_index::{HirNode, SemanticIndex, semantic_index},
+    },
+    hir_ty::{
+        TyInfo,
+        expr_resolver::{ResolvedExpr, ResolvedExprKind},
+        name_res::pous_in_scope,
+        stmt_resolver::{ResolveStmtCtx, ResolvedStmt, ResolvedStmtKind, resolve_stmt},
+        ty::{Ty, TyKind, ty_for_pou, ty_for_variable},
+        ty_path_expr_resolver::{ResolvePathExprCtx, ResolvedPathElementKind, ResolvedPathResult},
+        ty_var_access_resolver::{ResolvedVarKind, ResolvedVarResult},
+    },
+    to_proto::ToProto,
+    walk::WalkHir,
 };
 
 pub trait Check<'db> {
@@ -285,7 +295,7 @@ fn coerce_ty_with_ty<'db>(
                 Ok(())
             } else {
                 Err(AnalysisError::StmtError(StmtError::TypeMismatch {
-                    expr: expr,
+                    expr,
                     ty: target_ty,
                     ty2: expr_ty,
                 }))

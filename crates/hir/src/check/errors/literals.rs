@@ -1,6 +1,9 @@
 use std::fmt::Display;
 
-use crate::{check::errors::{sem_errors::AnalysisError, stmt::StmtError}, hir_ty::{expr_resolver::ResolvedExpr, ty::Ty}};
+use crate::{
+    check::errors::{sem_errors::AnalysisError, stmt::StmtError},
+    hir_ty::{expr_resolver::ResolvedExpr, ty::Ty},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LitCheckError {
