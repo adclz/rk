@@ -1,13 +1,15 @@
 use auto_lsp::anyhow::{self};
 use auto_lsp::core::ast::AstNode;
 
+use crate::check::errors::syntax::SyntaxError;
+use crate::hir_def::expressions::spec::Array;
 use crate::{
     builder::{
         ParseSpec, ParseSpecInit, SpecInitResult,
         expression::{ParseExpr, ParseExpression, ParseVariableAccess},
         semantic_index::SemanticIndexBuilder,
     },
-    check::errors::sem_errors::{AnalysisError},
+    check::errors::sem_errors::AnalysisError,
     hir_def::{
         expressions::{
             expression::{InitExpr, InitExprKind, Integer, IntegerKind, MultibitsPart},
@@ -18,8 +20,6 @@ use crate::{
         interned::{identifier::Ident, namespace::NamespaceAccess},
     },
 };
-use crate::check::errors::syntax::SyntaxError;
-
 
 // Target
 
@@ -347,12 +347,42 @@ impl<'db> ParseSpec<'db> for ast::generated::ArrayTypeSpec {
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<Spec<'db>, AnalysisError<'db>> {
-        match self.Type.cast(sema.ast) {
+        let mut ranges = vec![];
+
+        for range in &self.ranges.cast(sema.ast).children {
+            let lower = range
+                .cast(sema.ast)
+                .lower
+                .cast(sema.ast)
+                .children
+                .cast(sema.ast)
+                .to_expr(sema)?;
+            let upper = range
+                .cast(sema.ast)
+                .upper
+                .cast(sema.ast)
+                .children
+                .cast(sema.ast)
+                .to_expr(sema)?;
+            ranges.push((lower, upper))
+        }
+
+        let kind = match self.Type.cast(sema.ast) {
             ast::generated::DataTypeAccess::ElemTypeName(elem_type_name) => {
                 elem_type_name.to_spec(sema)
             }
             ast::generated::DataTypeAccess::NamespaceAccess(target) => target.to_spec(sema),
-        }
+        }?;
+
+        Ok(Spec::new(
+            sema.db,
+            SpecKind::Array(Array {
+                subranges: ranges,
+                of_type: Box::new(kind),
+            }),
+            self.into(),
+            sema.current_scope,
+        ))
     }
 }
 

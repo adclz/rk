@@ -202,19 +202,20 @@ END_TYPE
         (type_decl
           (identifier)
           (array_type_spec
-            (subrange
-              (constant_expr
-                (constant
-                  (numeric_literal
-                    (int_literal
-                      (signed_int
-                        (unsigned_int))))))
-              (constant_expr
-                (constant
-                  (numeric_literal
-                    (int_literal
-                      (signed_int
-                        (unsigned_int)))))))
+            (ranges
+              (subrange
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))
             (namespace_access
               (identifier)))
           (array_type_init
@@ -256,19 +257,20 @@ END_TYPE
         (type_decl
           (identifier)
           (array_type_spec
-            (subrange
-              (constant_expr
-                (constant
-                  (numeric_literal
-                    (int_literal
-                      (signed_int
-                        (unsigned_int))))))
-              (constant_expr
-                (constant
-                  (numeric_literal
-                    (int_literal
-                      (signed_int
-                        (unsigned_int)))))))
+            (ranges
+              (subrange
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))
             (namespace_access
               (identifier)))
           (array_type_init

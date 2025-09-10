@@ -621,13 +621,15 @@ module.exports = grammar({
           ":",
           "ARRAY",
           "[",
-          field("ranges", commaSep1($.subrange)),
+          field("ranges", $.ranges),
           "]",
           "OF",
           field("type", $.data_type_access),
         ),
       ($) => seq(":=", "[", commaSep($.init_elem), "]"),
     ),
+
+    ranges: ($) => commaSep1($.subrange),
 
     ...createSpecInit(
       "struct",

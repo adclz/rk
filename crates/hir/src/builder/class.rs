@@ -53,7 +53,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             .unwrap_or_default();
 
         let mut modifiers = Modifier::empty();
-        class.qualifier.as_ref().map(|q| match q.cast(self.ast) {
+        class.modifier.as_ref().map(|q| match q.cast(self.ast) {
             ast::generated::Operators_2::Token_ABSTRACT(_) => modifiers.insert(Modifier::ABSTRACT),
             ast::generated::Operators_2::Token_FINAL(_) => modifiers.insert(Modifier::FINAL),
         });

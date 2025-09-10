@@ -63,32 +63,33 @@ END_FUNCTION
               (identifier))
             (var_decl_init
               (array_type_spec
-                (subrange
-                  (constant_expr
-                    (constant
-                      (numeric_literal
-                        (int_literal
-                          (signed_int
-                            (unsigned_int))))))
-                  (constant_expr
-                    (constant
-                      (numeric_literal
-                        (int_literal
-                          (signed_int
-                            (unsigned_int)))))))
-                (subrange
-                  (constant_expr
-                    (constant
-                      (numeric_literal
-                        (int_literal
-                          (signed_int
-                            (unsigned_int))))))
-                  (constant_expr
-                    (constant
-                      (numeric_literal
-                        (int_literal
-                          (signed_int
-                            (unsigned_int)))))))
+                (ranges
+                  (subrange
+                    (constant_expr
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int))))))
+                    (constant_expr
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int)))))))
+                  (subrange
+                    (constant_expr
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int))))))
+                    (constant_expr
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int))))))))
                 (numeric_type_name
                   (int_type_name
                     (sign_int_type_name
@@ -98,32 +99,33 @@ END_FUNCTION
               (identifier))
             (var_decl_init
               (array_type_spec
-                (subrange
-                  (constant_expr
-                    (constant
-                      (numeric_literal
-                        (int_literal
-                          (signed_int
-                            (unsigned_int))))))
-                  (constant_expr
-                    (constant
-                      (numeric_literal
-                        (int_literal
-                          (signed_int
-                            (unsigned_int)))))))
-                (subrange
-                  (constant_expr
-                    (constant
-                      (numeric_literal
-                        (int_literal
-                          (signed_int
-                            (unsigned_int))))))
-                  (constant_expr
-                    (constant
-                      (numeric_literal
-                        (int_literal
-                          (signed_int
-                            (unsigned_int)))))))
+                (ranges
+                  (subrange
+                    (constant_expr
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int))))))
+                    (constant_expr
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int)))))))
+                  (subrange
+                    (constant_expr
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int))))))
+                    (constant_expr
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int))))))))
                 (numeric_type_name
                   (int_type_name
                     (sign_int_type_name
@@ -133,35 +135,34 @@ END_FUNCTION
               (identifier))
             (var_decl_init
               (array_type_spec
-                (subrange
-                  (constant_expr
-                    (constant
-                      (numeric_literal
-                        (int_literal
-                          (signed_int
-                            (unsigned_int))))))
-                  (constant_expr
-                    (constant
-                      (numeric_literal
-                        (int_literal
-                          (signed_int
-                            (unsigned_int)))))))
-                (subrange
-                  (constant_expr
-                    (constant
-                      (numeric_literal
-                        (int_literal
-                          (signed_int
-                            (unsigned_int))))))
-                  (constant_expr
-                    (constant
-                      (numeric_literal
-                        (int_literal
-                          (signed_int
-                            (unsigned_int)))))))
+                (ranges
+                  (subrange
+                    (constant_expr
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int))))))
+                    (constant_expr
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int)))))))
+                  (subrange
+                    (constant_expr
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int))))))
+                    (constant_expr
+                      (constant
+                        (numeric_literal
+                          (int_literal
+                            (signed_int
+                              (unsigned_int))))))))
                 (numeric_type_name
                   (int_type_name
                     (sign_int_type_name
                       (int_name))))))))))
-
-
