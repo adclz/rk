@@ -1,14 +1,13 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    check::errors::sem_errors::LitCheckError,
-    hir_def::{
+    check::errors::literals::LitCheckError, hir_def::{
         expressions::{
             expression::{Elementary, Integer, IntegerKind},
             spec::ElementarySpec,
         },
         interned::identifier::Ident,
-    },
+    }
 };
 
 use time::{Date, Duration, PrimitiveDateTime, Time, macros::format_description};

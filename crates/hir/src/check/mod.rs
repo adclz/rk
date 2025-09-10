@@ -9,7 +9,7 @@ use ide_diagnostic::IdeDiagnostic;
 use crate::{
     check::{
         check_semantic_index::Check,
-        errors::sem_errors::{AnalysisError, SyntaxError, ToIdeDiagnostic},
+        errors::sem_errors::{AnalysisError, ToIdeDiagnostic},
     },
     hir_def::semantic_index::semantic_index,
 };
@@ -35,30 +35,3 @@ pub fn diagnostics_for_file(db: &dyn BaseDatabase, file: File) -> Arc<Vec<IdeDia
     Arc::new(all_diagnostics)
 }
 
-impl<'db> From<(File, &ParseErrorAccumulator)> for AnalysisError<'db> {
-    fn from((file, err): (File, &ParseErrorAccumulator)) -> Self {
-        match &err.0 {
-            ParseError::LexerError { span, error } => match error {
-                LexerError::Missing {
-                    range,
-                    error,
-                    grammar_name,
-                } => AnalysisError::SyntaxError(SyntaxError::MissingNode {
-                    file,
-                    span: range.into(),
-                    err: error.to_owned(),
-                    grammar_name,
-                }),
-                LexerError::Syntax {
-                    range,
-                    error,
-                    affected,
-                } => AnalysisError::SyntaxError(SyntaxError::SyntaxError {
-                    span: range.into(),
-                    err: error.to_owned(),
-                }),
-            },
-            _ => unreachable!("Only lexer errors should be present here"),
-        }
-    }
-}

@@ -1,7 +1,8 @@
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::statement::ParseStatement;
 use crate::builder::{ParseSpec, ParseVarSection};
-use crate::check::errors::sem_errors::{AnalysisError, SyntaxError};
+use crate::check::errors::sem_errors::{AnalysisError};
+use crate::check::errors::syntax::SyntaxError;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use crate::hir_def::modifier::Modifier;

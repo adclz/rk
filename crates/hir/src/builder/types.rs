@@ -7,7 +7,7 @@ use crate::{
         expression::{ParseExpr, ParseExpression, ParseVariableAccess},
         semantic_index::SemanticIndexBuilder,
     },
-    check::errors::sem_errors::{AnalysisError, SyntaxError},
+    check::errors::sem_errors::{AnalysisError},
     hir_def::{
         expressions::{
             expression::{InitExpr, InitExprKind, Integer, IntegerKind, MultibitsPart},
@@ -18,6 +18,8 @@ use crate::{
         interned::{identifier::Ident, namespace::NamespaceAccess},
     },
 };
+use crate::check::errors::syntax::SyntaxError;
+
 
 // Target
 

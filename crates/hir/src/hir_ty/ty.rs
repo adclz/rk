@@ -9,8 +9,7 @@ use auto_lsp::{
 use rustc_hash::FxHashMap;
 
 use crate::{
-    check::errors::sem_errors::{AnalysisError, PathExprError, StmtError},
-    hir_def::{
+    check::errors::{path_expr::PathExprError, sem_errors::AnalysisError, stmt::StmtError}, hir_def::{
         expressions::spec::{ElementarySpec, Spec, SpecKind},
         interned::{identifier::Ident, namespace::NamespaceAccess},
         modifier::Modifier,
@@ -21,9 +20,7 @@ use crate::{
             variable::{VariableDecl, VariableKind},
         },
         scope::FileScopeId,
-    },
-    to_proto::{AstId, ToProto},
-    hir_ty::{name_res::resolve_namespace_access, ty_path_expr_resolver::PathExprWalkStep},
+    }, hir_ty::{name_res::resolve_namespace_access, ty_path_expr_resolver::PathExprWalkStep}, to_proto::{AstId, ToProto}
 };
 
 #[salsa::tracked(debug)]

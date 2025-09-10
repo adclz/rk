@@ -1,2 +1,10 @@
 pub mod recovery;
 pub mod sem_errors;
+pub mod syntax;
+pub mod stmt;
+pub mod utils;
+pub mod path_expr;
+pub mod inheritance;
+pub mod scope;
+pub mod duplicates;
+pub mod literals;

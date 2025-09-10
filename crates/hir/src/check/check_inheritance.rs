@@ -2,7 +2,7 @@ use auto_lsp::default::db::BaseDatabase;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    check::errors::sem_errors::{AnalysisError, MethodError},
+    check::errors::{inheritance::MethodError, sem_errors::AnalysisError},
     hir_def::{interned::identifier::Ident, modifier::Modifier},
     hir_ty::{
         inheritance_solver::method_table,
