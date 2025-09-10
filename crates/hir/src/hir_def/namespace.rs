@@ -48,7 +48,7 @@ impl<'db> ToProto<'db> for NamespaceDecl<'db> {
         self
             .pous(db)
             .iter()
-            .for_each(|pou| pou.document_symbols(db, builder));
+            .for_each(|pou| pou.document_symbols(db, &mut nested_builder));
 
         builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
             name: self.path(db).to_string(db),

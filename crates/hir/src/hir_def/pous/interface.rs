@@ -57,7 +57,7 @@ impl<'db> ToProto<'db> for MethodPrototype<'db> {
         self
             .variables(db)
             .iter()
-            .for_each(|var| var.document_symbols(db, builder));
+            .for_each(|var| var.document_symbols(db, &mut nested_builder));
 
         builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
             name: self.name(db).text(db).to_string(),

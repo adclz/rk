@@ -84,25 +84,25 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
             Pou::FunctionBlock(fb) => {
                 fb.variables(db)
                     .iter()
-                    .for_each(|var| var.document_symbols(db, builder));
+                    .for_each(|var| var.document_symbols(db, &mut nested_builder));
             }
             Pou::Function(f) => {
                 f.variables(db)
                     .iter()
-                    .for_each(|var| var.document_symbols(db, builder));
+                    .for_each(|var| var.document_symbols(db, &mut nested_builder));
             }
             Pou::Class(c) => {
                 c.variables(db)
                     .iter()
-                    .for_each(|var| var.document_symbols(db, builder));
+                    .for_each(|var| var.document_symbols(db, &mut nested_builder));
                 c.methods(db)
                     .iter()
-                    .for_each(|m| m.document_symbols(db, builder));
+                    .for_each(|m| m.document_symbols(db, &mut nested_builder));
             }
             Pou::Interface(i) => {
                 i.methods(db)
                     .iter()
-                    .for_each(|m| m.document_symbols(db, builder));
+                    .for_each(|m| m.document_symbols(db, &mut nested_builder));
             }
             _ => {}
         }
