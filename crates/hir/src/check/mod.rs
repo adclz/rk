@@ -11,7 +11,7 @@ use crate::{
         check_semantic_index::Check,
         errors::sem_errors::{AnalysisError, SyntaxError, ToIdeDiagnostic},
     },
-    def::semantic_index::semantic_index,
+    hir_def::semantic_index::semantic_index,
 };
 
 pub mod check_semantic_index;

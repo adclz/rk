@@ -3,12 +3,12 @@ use std::ops::ControlFlow;
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    def::{
+    hir_def::{
         namespace::NamespaceDecl,
         pous::pou::{Pou, PouDecl},
         semantic_index::{HirNode, SemanticIndex},
     },
-    ty::{
+    hir_ty::{
         expr_resolver::ResolvedExpr,
         stmt_resolver::{ResolvedStmt, ResolvedStmtKind, resolve_stmt},
         ty::{Ty, ty_for_pou},

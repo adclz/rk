@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use auto_lsp::default::db::{BaseDatabase, file::File};
 
-use crate::def::import_map::{Query, global_symbol_indexes};
+use crate::hir_def::import_map::{Query, global_symbol_indexes};
 
 pub fn pou_recovery(db: &dyn BaseDatabase, file: File, query: &str) -> HashSet<String> {
     query_ident(db, file, query)

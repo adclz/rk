@@ -1,7 +1,7 @@
 use crate::{
     builder::{ParseSpec, expression::ParseExpr, semantic_index::SemanticIndexBuilder},
     check::errors::sem_errors::AnalysisError,
-    def::{
+    hir_def::{
         interned::identifier::Ident,
         pous::{
             data_type::DataType,

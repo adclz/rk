@@ -9,7 +9,7 @@ use std::{hash::Hash, ops::Deref};
 use crate::{
     builder::semantic_index::SemanticIndexBuilder,
     check::errors::sem_errors::AnalysisError,
-    def::scope::FileScopeId,
+    hir_def::scope::FileScopeId,
     to_proto::{AstId, ToProto},
 };
 

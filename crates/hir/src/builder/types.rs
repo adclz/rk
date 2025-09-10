@@ -8,7 +8,7 @@ use crate::{
         semantic_index::SemanticIndexBuilder,
     },
     check::errors::sem_errors::{AnalysisError, SyntaxError},
-    def::{
+    hir_def::{
         expressions::{
             expression::{InitExpr, InitExprKind, Integer, IntegerKind, MultibitsPart},
             spec::{

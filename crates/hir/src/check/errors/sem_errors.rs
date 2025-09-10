@@ -5,12 +5,12 @@ use auto_lsp::{
     core::{errors::PositionError, span::Span},
     default::db::{BaseDatabase, file::File},
     lsp_types::{DiagnosticSeverity, DiagnosticTag, WorkspaceEdit},
-    tree_sitter::{self, Range},
+    tree_sitter::{self, Range}, 
 };
 use ide_diagnostic::{IdeDiagnostic, Related, action, diag, edit};
 
 use crate::{
-    def::{
+    hir_def::{
         expressions::{expression::PathExpr, statement::Stmt},
         interned::{identifier::Ident, namespace::NamespacePath},
         namespace::NamespaceDecl,
@@ -19,7 +19,7 @@ use crate::{
         using::Using,
     },
     to_proto::ToProto,
-    ty::{
+    hir_ty::{
         expr_resolver::ResolvedExpr, ty::Ty, ty_path_expr_resolver::ResolvedPathResult,
         ty_var_access_resolver::ResolvedVarResult,
     },

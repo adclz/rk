@@ -1,7 +1,7 @@
 use auto_lsp::default::db::{BaseDatabase, file::File};
 use bitflags::bitflags;
 
-use crate::def::{namespace::NamespaceDecl, pous::pou::PouDecl, using::Using};
+use crate::hir_def::{namespace::NamespaceDecl, pous::pou::PouDecl, using::Using};
 
 #[salsa::tracked(debug)]
 pub struct FileScopeId<'db> {

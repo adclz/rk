@@ -1,4 +1,4 @@
-use crate::def::{
+use crate::hir_def::{
     expressions::statement::Stmt, interned::namespace::SpanNamespaceAccess, modifier::Modifier,
     pous::variable::VariableDecl, scope::FileScopeId, visibility::Visibility,
 };

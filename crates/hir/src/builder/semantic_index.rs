@@ -5,11 +5,11 @@ use auto_lsp::default::db::{BaseDatabase, file::File};
 use rustc_hash::FxHashMap;
 
 use crate::check::errors::sem_errors::{AnalysisError, SyntaxError};
-use crate::def::interned::identifier::SpanIdent;
-use crate::def::namespace::NamespaceDecl;
-use crate::def::pous::pou::PouDecl;
-use crate::def::scope::{FileScopeId, Scope, ScopeKind, Visibility};
-use crate::def::semantic_index::SemanticIndex;
+use crate::hir_def::interned::identifier::SpanIdent;
+use crate::hir_def::namespace::NamespaceDecl;
+use crate::hir_def::pous::pou::PouDecl;
+use crate::hir_def::scope::{FileScopeId, Scope, ScopeKind, Visibility};
+use crate::hir_def::semantic_index::SemanticIndex;
 
 pub struct SemanticIndexBuilder<'db> {
     pub(crate) source: &'db ast::generated::SourceFile,

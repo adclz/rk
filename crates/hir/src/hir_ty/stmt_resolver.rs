@@ -1,11 +1,11 @@
-use crate::def::expressions::expression::ParamAssign;
-use crate::def::expressions::statement::{Stmt, StmtKind};
-use crate::def::interned::identifier::Ident;
-use crate::def::scope::FileScopeId;
+use crate::hir_def::expressions::expression::ParamAssign;
+use crate::hir_def::expressions::statement::{Stmt, StmtKind};
+use crate::hir_def::interned::identifier::Ident;
+use crate::hir_def::scope::FileScopeId;
 use crate::to_proto::{AstId, ToProto};
-use crate::ty::expr_resolver::{ResolvedExpr, resolve_expr};
-use crate::ty::ty_path_expr_resolver::{ResolvedPathResult, resolved_path_expr};
-use crate::ty::ty_var_access_resolver::{ResolvedVarResult, resolve_var_access};
+use crate::hir_ty::expr_resolver::{ResolvedExpr, resolve_expr};
+use crate::hir_ty::ty_path_expr_resolver::{ResolvedPathResult, resolved_path_expr};
+use crate::hir_ty::ty_var_access_resolver::{ResolvedVarResult, resolve_var_access};
 use auto_lsp::default::db::BaseDatabase;
 
 #[salsa::tracked(no_eq, returns(ref))]

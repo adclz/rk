@@ -1,9 +1,9 @@
 use crate::builder::expression::{ParseExpr, ParseExpression, ParseVariableAccess};
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::sem_errors::{AnalysisError, SyntaxError};
-use crate::def::expressions::expression::{ParamAssign, SymbolicVariable};
-use crate::def::expressions::statement::{CaseKind, Stmt, StmtKind};
-use crate::def::interned::identifier::Ident;
+use crate::hir_def::expressions::expression::{ParamAssign, SymbolicVariable};
+use crate::hir_def::expressions::statement::{CaseKind, Stmt, StmtKind};
+use crate::hir_def::interned::identifier::Ident;
 use auto_lsp::anyhow::{self};
 use auto_lsp::core::ast::AstNode;
 

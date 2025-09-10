@@ -1,6 +1,6 @@
 use crate::{
     completions,
-    def::{expressions::statement::Stmt, modifier::Modifier, semantic_index::semantic_index},
+    hir_def::{expressions::statement::Stmt, modifier::Modifier, semantic_index::semantic_index},
 };
 use auto_lsp::{
     default::db::BaseDatabase,
@@ -10,7 +10,7 @@ use auto_lsp::{
 };
 
 use crate::{
-    def::{
+    hir_def::{
         comment_index::comment_index,
         interned::identifier::Ident,
         pous::{

@@ -4,10 +4,10 @@ use auto_lsp::lsp_types::{
     CompletionItem, InlayHint, InlayHintKind, InlayHintLabel, MarkupContent, MarkupKind,
 };
 
-use crate::def::interned::namespace::NamespacePath;
-use crate::def::pous::pou::PouDecl;
-use crate::def::scope::{FileScopeId, Visibility};
-use crate::def::semantic_index::semantic_index;
+use crate::hir_def::interned::namespace::NamespacePath;
+use crate::hir_def::pous::pou::PouDecl;
+use crate::hir_def::scope::{FileScopeId, Visibility};
+use crate::hir_def::semantic_index::semantic_index;
 use crate::to_proto::{AstId, SymbolInfo, ToProto};
 
 #[salsa::tracked(debug)]

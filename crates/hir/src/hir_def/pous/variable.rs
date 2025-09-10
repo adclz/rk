@@ -4,7 +4,7 @@ use auto_lsp::{
 };
 
 use crate::{
-    def::{
+    hir_def::{
         expressions::{expression::InitExpr, spec::Spec},
         interned::identifier::Ident,
         scope::FileScopeId,

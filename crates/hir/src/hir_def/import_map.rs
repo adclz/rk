@@ -7,9 +7,9 @@ use rustc_hash::FxHashSet;
 use std::{cmp::Ordering, hash::Hash};
 use std::{hash::Hasher, ops::ControlFlow};
 
-use crate::def::scope::FileScopeId;
-use crate::def::semantic_index::semantic_index;
-use crate::ty::name_res::pous_in_scope;
+use crate::hir_def::scope::FileScopeId;
+use crate::hir_def::semantic_index::semantic_index;
+use crate::hir_ty::name_res::pous_in_scope;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum SearchMode {

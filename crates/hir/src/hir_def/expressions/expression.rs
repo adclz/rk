@@ -1,6 +1,6 @@
 use crate::completions::snippets::elem_type_names_init;
-use crate::def::interned::identifier::{Ident, SpanIdent};
-use crate::def::scope::FileScopeId;
+use crate::hir_def::interned::identifier::{Ident, SpanIdent};
+use crate::hir_def::scope::FileScopeId;
 use crate::to_proto::{AstId, ToProto};
 use auto_lsp::default::db::BaseDatabase;
 

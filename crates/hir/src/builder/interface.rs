@@ -1,11 +1,11 @@
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::{ParseSpec, ParseVarSection};
 use crate::check::errors::sem_errors::AnalysisError;
-use crate::def::interned::identifier::Ident;
-use crate::def::interned::namespace::SpanNamespaceAccess;
-use crate::def::pous::interface::{Interface, MethodPrototype};
-use crate::def::pous::pou::{Pou, PouDecl};
-use crate::def::scope::{FileScopeId, Scope, ScopeKind, Visibility};
+use crate::hir_def::interned::identifier::Ident;
+use crate::hir_def::interned::namespace::SpanNamespaceAccess;
+use crate::hir_def::pous::interface::{Interface, MethodPrototype};
+use crate::hir_def::pous::pou::{Pou, PouDecl};
+use crate::hir_def::scope::{FileScopeId, Scope, ScopeKind, Visibility};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 

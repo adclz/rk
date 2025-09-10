@@ -1,7 +1,7 @@
 use auto_lsp::default::db::BaseDatabase;
 use rustc_hash::FxHashMap;
 
-use crate::def::{
+use crate::hir_def::{
     interned::{
         identifier::Ident,
         namespace::{NamespaceAccess, NamespacePath},

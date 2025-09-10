@@ -2,13 +2,13 @@ use crate::builder::ParseVarSection;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::statement::ParseStatement;
 use crate::check::errors::sem_errors::{AnalysisError, SyntaxError};
-use crate::def::interned::identifier::Ident;
-use crate::def::interned::namespace::SpanNamespaceAccess;
-use crate::def::modifier::Modifier;
-use crate::def::pous::function_block::FunctionBlock;
-use crate::def::pous::pou::{Pou, PouDecl};
-use crate::def::pous::variable::VariableDecl;
-use crate::def::scope::{FileScopeId, Scope, ScopeKind, Visibility};
+use crate::hir_def::interned::identifier::Ident;
+use crate::hir_def::interned::namespace::SpanNamespaceAccess;
+use crate::hir_def::modifier::Modifier;
+use crate::hir_def::pous::function_block::FunctionBlock;
+use crate::hir_def::pous::pou::{Pou, PouDecl};
+use crate::hir_def::pous::variable::VariableDecl;
+use crate::hir_def::scope::{FileScopeId, Scope, ScopeKind, Visibility};
 use ast::generated::{FbDecl, FbVariables};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
@@ -164,7 +164,7 @@ mod tests {
     use auto_lsp::{default::db::FileManager, lsp_types};
     use db::RootDatabase;
 
-    use crate::def::semantic_index::semantic_index;
+    use crate::hir_def::semantic_index::semantic_index;
 
     #[test]
     fn variables_in_function_block() {

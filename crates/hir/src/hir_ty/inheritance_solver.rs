@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use crate::{
-    def::interned::identifier::Ident,
-    ty::ty::{Ty, TyDecl, TyKind, ty_for_method_decl, ty_for_method_prot},
+    hir_def::interned::identifier::Ident,
+    hir_ty::ty::{Ty, TyDecl, TyKind, ty_for_method_decl, ty_for_method_prot},
 };
 use auto_lsp::default::db::BaseDatabase;
 use rustc_hash::FxHashMap;

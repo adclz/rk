@@ -7,13 +7,13 @@ use auto_lsp::{
     },
 };
 
-use crate::def::{
+use crate::hir_def::{
     expressions::{expression::InitExpr, spec::Spec},
     interned::namespace::SpanNamespaceAccess,
     scope::FileScopeId,
     semantic_index::semantic_index,
 };
-
+ 
 #[derive(bon::Builder, Debug, Clone)]
 pub struct SymbolInfo<'a> {
     pub range: Span,

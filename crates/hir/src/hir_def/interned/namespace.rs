@@ -1,8 +1,8 @@
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::sem_errors::AnalysisError;
-use crate::def::scope::FileScopeId;
+use crate::hir_def::scope::FileScopeId;
 use crate::to_proto::AstId;
-use crate::{def::interned::identifier::SpanIdent, to_proto::ToProto};
+use crate::{hir_def::interned::identifier::SpanIdent, to_proto::ToProto};
 use auto_lsp::default::db::tracked::get_ast;
 use auto_lsp::{anyhow, default::db::BaseDatabase};
 use std::hash::Hash;

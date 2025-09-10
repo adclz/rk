@@ -1,15 +1,15 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::check::errors::sem_errors::{AnalysisError, PathExprError};
-use crate::def::expressions::expression::{Expr, PathExprKind, VarAccess};
-use crate::def::interned::namespace::{NamespaceAccess, NamespacePath};
-use crate::def::{
+use crate::hir_def::expressions::expression::{Expr, PathExprKind, VarAccess};
+use crate::hir_def::interned::namespace::{NamespaceAccess, NamespacePath};
+use crate::hir_def::{
     expressions::expression::PathExpr, interned::identifier::SpanIdent, scope::FileScopeId,
 };
 use crate::to_proto::{AstId, ToProto};
-use crate::ty::TyInfo;
-use crate::ty::name_res::{pous_in_scope, resolve_namespace_access, variables_in_scope};
-use crate::ty::ty::{Ty, ty_for_pou, ty_for_variable};
+use crate::hir_ty::TyInfo;
+use crate::hir_ty::name_res::{pous_in_scope, resolve_namespace_access, variables_in_scope};
+use crate::hir_ty::ty::{Ty, ty_for_pou, ty_for_variable};
 
 #[salsa::tracked(no_eq, returns(ref))]
 pub fn resolved_path_expr<'db>(

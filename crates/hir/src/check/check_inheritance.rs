@@ -3,8 +3,8 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     check::errors::sem_errors::{AnalysisError, MethodError},
-    def::{interned::identifier::Ident, modifier::Modifier},
-    ty::{
+    hir_def::{interned::identifier::Ident, modifier::Modifier},
+    hir_ty::{
         inheritance_solver::method_table,
         ty::{Ty, TyKind},
     },

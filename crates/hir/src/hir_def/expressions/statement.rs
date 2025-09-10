@@ -1,7 +1,7 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    def::{
+    hir_def::{
         expressions::expression::{Expr, ParamAssign, PathExpr, SymbolicVariable, VariableAccess},
         scope::FileScopeId,
     },

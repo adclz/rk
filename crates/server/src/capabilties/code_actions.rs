@@ -3,7 +3,7 @@ use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{CodeActionOrCommand, CodeActionParams},
 };
-use hir::{check::diagnostics_for_file, def::semantic_index::semantic_index};
+use hir::{check::diagnostics_for_file, hir_def::semantic_index::semantic_index};
 
 pub fn code_actions(
     db: &impl BaseDatabase,

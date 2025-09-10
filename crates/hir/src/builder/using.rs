@@ -4,9 +4,9 @@ use auto_lsp::core::ast::AstNodeId;
 
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::sem_errors::AnalysisError;
-use crate::def::interned::identifier::SpanIdent;
-use crate::def::interned::namespace::NamespacePath;
-use crate::def::using::Using;
+use crate::hir_def::interned::identifier::SpanIdent;
+use crate::hir_def::interned::namespace::NamespacePath;
+use crate::hir_def::using::Using;
 
 impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_using(

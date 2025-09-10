@@ -2,7 +2,7 @@ use crate::completions;
 use auto_lsp::{default::db::BaseDatabase, lsp_types::CompletionItem};
 
 use crate::{
-    def::{
+    hir_def::{
         expressions::{spec::Spec, statement::Stmt},
         pous::variable::VariableDecl,
         scope::FileScopeId,

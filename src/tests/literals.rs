@@ -1,5 +1,5 @@
 use db::RootDatabase;
-use hir::def::{
+use hir::hir_def::{
     expressions::{
         expression::{Elementary, Integer, IntegerKind},
         spec::ElementarySpec,

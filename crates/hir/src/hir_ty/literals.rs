@@ -2,7 +2,7 @@ use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     check::errors::sem_errors::LitCheckError,
-    def::{
+    hir_def::{
         expressions::{
             expression::{Elementary, Integer, IntegerKind},
             spec::ElementarySpec,

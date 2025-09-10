@@ -4,17 +4,17 @@ use auto_lsp::core::ast::AstNode;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::types::ParseMultiBits;
 use crate::check::errors::sem_errors::{AnalysisError, SyntaxError};
-use crate::def::expressions::expression::{
+use crate::hir_def::expressions::expression::{
     FieldExpr, IndexExpr, Integer, IntegerKind, PathExpr, VariableAccessKind,
 };
-use crate::def::interned::identifier::SpanIdent;
+use crate::hir_def::interned::identifier::SpanIdent;
 use crate::{
-    def::expressions::expression::{
+    hir_def::expressions::expression::{
         AddOperatorKind, BooleanOperatorKind, ComparisonOperatorKind, Elementary, Expr, ExprKind,
         MultOperatorKind, ParamAssign, PathExprKind, PrimaryExpr, RefAdress, RefValue,
         SymbolicVariable, UnaryOperatorKind, VarAccess, VariableAccess,
     },
-    def::interned::identifier::Ident,
+    hir_def::interned::identifier::Ident,
 };
 pub trait ParseExpression<'db> {
     fn to_expr(

@@ -2,13 +2,13 @@ use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     check::errors::sem_errors::AnalysisError,
-    def::{
+    hir_def::{
         expressions::expression::{VariableAccess, VariableAccessKind},
         pous::variable::VariableDecl,
         scope::FileScopeId,
     },
     to_proto::{AstId, ToProto},
-    ty::{
+    hir_ty::{
         TyInfo,
         ty::{Ty, TyDecl, TyKind},
         ty_path_expr_resolver::{ResolvedPathResult, resolved_path_expr},

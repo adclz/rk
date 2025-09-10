@@ -4,10 +4,10 @@ use auto_lsp::core::ast::AstNode;
 
 use super::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::sem_errors::{AnalysisError, SyntaxError};
-use crate::def::interned::identifier::SpanIdent;
-use crate::def::interned::namespace::NamespacePath;
-use crate::def::namespace::NamespaceDecl;
-use crate::def::scope::{FileScopeId, Scope, ScopeKind, Visibility};
+use crate::hir_def::interned::identifier::SpanIdent;
+use crate::hir_def::interned::namespace::NamespacePath;
+use crate::hir_def::namespace::NamespaceDecl;
+use crate::hir_def::scope::{FileScopeId, Scope, ScopeKind, Visibility};
 
 impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_namespace(

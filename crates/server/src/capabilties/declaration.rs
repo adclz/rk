@@ -3,7 +3,7 @@ use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::request::{GotoDeclarationParams, GotoDeclarationResponse},
 };
-use hir::def::semantic_index::semantic_index;
+use hir::hir_def::semantic_index::semantic_index;
 
 pub fn go_to_declaration(
     db: &impl BaseDatabase,

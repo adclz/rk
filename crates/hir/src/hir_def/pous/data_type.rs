@@ -1,4 +1,4 @@
-use crate::def::{
+use crate::hir_def::{
     expressions::{expression::InitExpr, spec::Spec},
     scope::FileScopeId,
 };

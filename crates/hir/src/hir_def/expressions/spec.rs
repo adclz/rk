@@ -2,12 +2,12 @@ use crate::completions::snippets::elem_type_names;
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind};
 
-use crate::def::expressions::expression::{InitExpr, VariableAccess};
-use crate::def::semantic_index::semantic_index;
+use crate::hir_def::expressions::expression::{InitExpr, VariableAccess};
+use crate::hir_def::semantic_index::semantic_index;
 use crate::to_proto::AstId;
-use crate::ty::name_res::resolve_namespace_access;
+use crate::hir_ty::name_res::resolve_namespace_access;
 use crate::{
-    def::{
+    hir_def::{
         expressions::expression::{Expr, MultibitsPart},
         interned::{identifier::Ident, namespace::NamespaceAccess},
         pous::pou::Pou,

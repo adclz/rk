@@ -5,7 +5,7 @@ use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{InlayHint, InlayHintParams},
 };
-use hir::{def::semantic_index::semantic_index, walk::WalkHir};
+use hir::{hir_def::semantic_index::semantic_index, walk::WalkHir};
 
 pub fn inlay_hints(
     db: &impl BaseDatabase,

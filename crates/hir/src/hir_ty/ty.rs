@@ -10,7 +10,7 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     check::errors::sem_errors::{AnalysisError, PathExprError, StmtError},
-    def::{
+    hir_def::{
         expressions::spec::{ElementarySpec, Spec, SpecKind},
         interned::{identifier::Ident, namespace::NamespaceAccess},
         modifier::Modifier,
@@ -23,7 +23,7 @@ use crate::{
         scope::FileScopeId,
     },
     to_proto::{AstId, ToProto},
-    ty::{name_res::resolve_namespace_access, ty_path_expr_resolver::PathExprWalkStep},
+    hir_ty::{name_res::resolve_namespace_access, ty_path_expr_resolver::PathExprWalkStep},
 };
 
 #[salsa::tracked(debug)]

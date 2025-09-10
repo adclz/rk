@@ -3,7 +3,7 @@ use auto_lsp::{
     lsp_types,
 };
 
-use hir::def::{pous::pou::Pou, semantic_index::semantic_index};
+use hir::hir_def::{pous::pou::Pou, semantic_index::semantic_index};
 
 use db::RootDatabase;
 

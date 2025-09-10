@@ -4,7 +4,7 @@ use auto_lsp::{
 };
 
 use crate::{
-    def::{interned::namespace::NamespacePath, scope::FileScopeId},
+    hir_def::{interned::namespace::NamespacePath, scope::FileScopeId},
     to_proto::{AstId, ToProto},
 };
 

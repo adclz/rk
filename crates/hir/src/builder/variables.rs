@@ -15,9 +15,9 @@ use crate::builder::expression::ParseExpr;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::{ParseInit, ParseSpec, ParseSpecInit, ParseVarSection, SpecInitResult};
 use crate::check::errors::sem_errors::{AnalysisError, SyntaxError};
-use crate::def::expressions::spec::{ElementarySpec, Spec, SpecKind};
-use crate::def::interned::identifier::Ident;
-use crate::def::pous::variable::{VariableDecl, VariableKind};
+use crate::hir_def::expressions::spec::{ElementarySpec, Spec, SpecKind};
+use crate::hir_def::interned::identifier::Ident;
+use crate::hir_def::pous::variable::{VariableDecl, VariableKind};
 use crate::to_proto::{AstId, ToProto};
 
 impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {

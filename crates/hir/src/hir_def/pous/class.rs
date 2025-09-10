@@ -1,7 +1,7 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    def::{
+    hir_def::{
         expressions::{spec::Spec, statement::Stmt},
         interned::{identifier::Ident, namespace::SpanNamespaceAccess},
         modifier::Modifier,

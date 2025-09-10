@@ -16,7 +16,7 @@ use crate::{
         check_inheritance::check_methods,
         errors::sem_errors::{AnalysisError, PathExprError, StmtError},
     },
-    def::{
+    hir_def::{
         expressions::{
             expression::{
                 Elementary, Expr, ExprKind, InitExprKind, Integer, IntegerKind, PathExpr,
@@ -35,7 +35,7 @@ use crate::{
         semantic_index::{HirNode, SemanticIndex, semantic_index},
     },
     to_proto::ToProto,
-    ty::{
+    hir_ty::{
         TyInfo,
         expr_resolver::{ResolvedExpr, ResolvedExprKind},
         name_res::pous_in_scope,
