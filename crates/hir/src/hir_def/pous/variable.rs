@@ -1,6 +1,5 @@
 use auto_lsp::{
-    default::db::BaseDatabase,
-    lsp_types::{MarkupContent, MarkupKind},
+    core::document_symbols_builder::DocumentSymbolsBuilder, default::db::BaseDatabase, lsp_types::{MarkupContent, MarkupKind, SymbolKind}
 };
 
 use crate::{
@@ -107,6 +106,23 @@ impl<'db> ToProto<'db> for VariableDecl<'db> {
 
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         self.scope_id(db)
+    }
+
+    fn document_symbols(
+        &self,
+        db: &'db dyn BaseDatabase,
+        builder: &mut DocumentSymbolsBuilder,
+    ) {
+        builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
+            name: self.name(db).text(db).to_string(),
+            detail: Some("variable".to_string()),
+            kind: SymbolKind::VARIABLE,
+            deprecated: None,
+            range: self.get_span(db).lsp(),
+            selection_range: self.get_name_span(db).unwrap().lsp(),
+            children: None,
+            tags: None,
+        });
     }
 
     fn hover(&'db self, db: &'db dyn BaseDatabase) -> Option<auto_lsp::lsp_types::Hover> {

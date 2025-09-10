@@ -1,9 +1,8 @@
 use auto_lsp::{
-    core::{ast::AstNode, span::Span},
+    core::{ast::AstNode, document_symbols_builder::DocumentSymbolsBuilder, span::Span},
     default::db::BaseDatabase,
     lsp_types::{
-        CompletionItem, GotoDefinitionResponse, Hover, InlayHint, SymbolKind,
-        request::GotoDeclarationResponse,
+        request::GotoDeclarationResponse, CompletionItem, GotoDefinitionResponse, Hover, InlayHint, SymbolKind
     },
 };
 
@@ -61,6 +60,8 @@ pub trait ToProto<'db> {
     }
 
     // LSP
+
+    fn document_symbols(&self, db: &'db dyn BaseDatabase, _builder: &mut DocumentSymbolsBuilder) {}
 
     fn completion(
         &'db self,

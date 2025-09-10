@@ -1,11 +1,20 @@
 use crate::{
     completions,
-    hir_def::{expressions::statement::Stmt, modifier::Modifier, semantic_index::semantic_index},
+    hir_def::{
+        expressions::{
+            spec::{ElementarySpec, SpecKind},
+            statement::Stmt,
+        },
+        modifier::Modifier,
+        semantic_index::semantic_index,
+    },
 };
 use auto_lsp::{
+    core::document_symbols_builder::DocumentSymbolsBuilder,
     default::db::BaseDatabase,
     lsp_types::{
         CompletionItem, InlayHint, InlayHintKind, InlayHintLabel, MarkupContent, MarkupKind,
+        SymbolKind,
     },
 };
 
@@ -67,6 +76,101 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
 
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         self.scope_id(db)
+    }
+
+    fn document_symbols(&self, db: &'db dyn BaseDatabase, builder: &mut DocumentSymbolsBuilder) {
+        let mut nested_builder = DocumentSymbolsBuilder::default();
+        match self.pou(db) {
+            Pou::FunctionBlock(fb) => {
+                fb.variables(db)
+                    .iter()
+                    .for_each(|var| var.document_symbols(db, builder));
+            }
+            Pou::Function(f) => {
+                f.variables(db)
+                    .iter()
+                    .for_each(|var| var.document_symbols(db, builder));
+            }
+            Pou::Class(c) => {
+                c.variables(db)
+                    .iter()
+                    .for_each(|var| var.document_symbols(db, builder));
+                c.methods(db)
+                    .iter()
+                    .for_each(|m| m.document_symbols(db, builder));
+            }
+            Pou::Interface(i) => {
+                i.methods(db)
+                    .iter()
+                    .for_each(|m| m.document_symbols(db, builder));
+            }
+            _ => {}
+        }
+
+        builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
+            name: self.name(db).text(db).to_string(),
+            detail: Some(
+                match self.pou(db) {
+                    Pou::FunctionBlock(_) => "function block",
+                    Pou::Function(_) => "function",
+                    Pou::Class(_) => "class",
+                    Pou::DataType(_) => "data type",
+                    Pou::Interface(_) => "interface",
+                }
+                .to_string(),
+            ),
+            kind: match self.pou(db) {
+                Pou::FunctionBlock(_) => SymbolKind::FUNCTION,
+                Pou::Function(_) => SymbolKind::FUNCTION,
+                Pou::Class(_) => SymbolKind::CLASS,
+                Pou::DataType(dt) => match dt.spec(db).kind(db) {
+                    SpecKind::Enum(_) => SymbolKind::ENUM,
+                    SpecKind::Struct(_) => SymbolKind::STRUCT,
+                    SpecKind::Array(_) | SpecKind::ArrayConformand(_) | SpecKind::Subrange(_) => {
+                        SymbolKind::ARRAY
+                    }
+                    SpecKind::Simple(simple) => match simple {
+                        ElementarySpec::Bool
+                        | ElementarySpec::FEDGEBool
+                        | ElementarySpec::REDGEBool => SymbolKind::BOOLEAN,
+                        ElementarySpec::Byte
+                        | ElementarySpec::Word
+                        | ElementarySpec::DWord
+                        | ElementarySpec::LWord
+                        | ElementarySpec::SInt
+                        | ElementarySpec::Int
+                        | ElementarySpec::DInt
+                        | ElementarySpec::LInt
+                        | ElementarySpec::USInt
+                        | ElementarySpec::UInt
+                        | ElementarySpec::UDInt
+                        | ElementarySpec::ULInt
+                        | ElementarySpec::Real
+                        | ElementarySpec::LReal => SymbolKind::NUMBER,
+                        ElementarySpec::Char
+                        | ElementarySpec::WChar
+                        | ElementarySpec::String
+                        | ElementarySpec::WString => SymbolKind::STRING,
+                        ElementarySpec::Time
+                        | ElementarySpec::LTime
+                        | ElementarySpec::Tod
+                        | ElementarySpec::LTod
+                        | ElementarySpec::Dt
+                        | ElementarySpec::Ldt
+                        | ElementarySpec::Date
+                        | ElementarySpec::LDate => SymbolKind::EVENT,
+                        _ => SymbolKind::TYPE_PARAMETER,
+                    },
+                    _ => SymbolKind::TYPE_PARAMETER,
+                },
+                Pou::Interface(_) => SymbolKind::INTERFACE,
+            },
+            deprecated: None,
+            range: self.get_span(db).lsp(),
+            selection_range: self.get_name_span(db).unwrap().lsp(),
+            children: Some(nested_builder.finalize()),
+            tags: None,
+        });
     }
 
     fn completion(

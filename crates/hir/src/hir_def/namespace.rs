@@ -1,4 +1,5 @@
 use crate::completions;
+use auto_lsp::core::document_symbols_builder::DocumentSymbolsBuilder;
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::{
     CompletionItem, InlayHint, InlayHintKind, InlayHintLabel, MarkupContent, MarkupKind,
@@ -30,8 +31,35 @@ impl<'db> ToProto<'db> for NamespaceDecl<'db> {
         self.id(db)
     }
 
+    fn get_name_id(&'db self, db: &'db dyn BaseDatabase) -> Option<AstId> {
+        Some(self.name_id(db))
+    }
+
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         self.scope_id(db)
+    }
+
+    fn document_symbols(
+        &self,
+        db: &'db dyn BaseDatabase,
+        builder: &mut DocumentSymbolsBuilder,
+    ) {
+        let mut nested_builder = DocumentSymbolsBuilder::default();
+        self
+            .pous(db)
+            .iter()
+            .for_each(|pou| pou.document_symbols(db, builder));
+
+        builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
+            name: self.path(db).to_string(db),
+            detail: Some("namespace".to_string()),
+            kind: auto_lsp::lsp_types::SymbolKind::NAMESPACE, // Namespace
+            deprecated: None,
+            range: self.get_span(db).lsp(),
+            selection_range: self.get_name_span(db).unwrap().lsp(),
+            children: Some(nested_builder.finalize()),
+            tags: None,
+        });
     }
 
     fn hover(&'db self, db: &'db dyn BaseDatabase) -> Option<auto_lsp::lsp_types::Hover> {

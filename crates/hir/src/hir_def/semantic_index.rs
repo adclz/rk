@@ -16,7 +16,7 @@ use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::PouDecl;
 use crate::hir_def::scope::{FileScopeId, Scope};
 use crate::hir_def::using::Using;
-use crate::to_proto::ToProto;
+use crate::to_proto::{AstId, ToProto};
 use crate::hir_ty::expr_resolver::ResolvedExpr;
 use crate::hir_ty::name_res::pous_in_scope;
 use crate::hir_ty::stmt_resolver::ResolvedStmt;
@@ -155,6 +155,12 @@ pub enum HirNode<'db> {
     ResolvedVarResult(ResolvedVarResult<'db>),
     ResolvedStmt(ResolvedStmt<'db>),
     ResolvedExpr(ResolvedExpr<'db>),
+}
+
+impl<'db> From<&'db HirNode<'db>> for &'db dyn ToProto<'db> {
+    fn from(node: &'db HirNode<'db>) -> Self {
+        node.as_proto()
+    }
 }
 
 impl<'db> HirNode<'db> {
