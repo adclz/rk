@@ -22,7 +22,7 @@ pub fn no_color_and_ascii() -> Config {
         .with_char_set(CharSet::Ascii)
 }
 
-pub fn test_diagnostic(db: &mut RootDatabase, source: &str) -> String {
+pub fn make_db_with_source(db: &mut RootDatabase, source: &str) -> File {
     let url = Url::parse("file:///test.st").unwrap();
 
     let file = File::from_string()
@@ -33,13 +33,18 @@ pub fn test_diagnostic(db: &mut RootDatabase, source: &str) -> String {
         .call()
         .unwrap();
 
-    db.add_file(file).unwrap();
+    db.add_file(file.clone()).unwrap();
+    file
+}
+
+pub fn test_diagnostic(db: &mut RootDatabase, source: &str) -> String {
+    let file = make_db_with_source(db, source);
 
     let mut cache = vec![];
     diagnostics_for_file(db, file)[0]
         .create_report(db, file, Some(no_color_and_ascii()))
         .write(
-            (url.as_str(), Source::from(file.document(db).as_str())),
+            (file.url(db).as_str(), Source::from(file.document(db).as_str())),
             &mut cache,
         )
         .unwrap();
