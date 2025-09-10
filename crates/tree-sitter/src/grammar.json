@@ -1928,29 +1928,8 @@
           "type": "FIELD",
           "name": "ranges",
           "content": {
-            "type": "SEQ",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "subrange"
-              },
-              {
-                "type": "REPEAT",
-                "content": {
-                  "type": "SEQ",
-                  "members": [
-                    {
-                      "type": "STRING",
-                      "value": ","
-                    },
-                    {
-                      "type": "SYMBOL",
-                      "name": "subrange"
-                    }
-                  ]
-                }
-              }
-            ]
+            "type": "SYMBOL",
+            "name": "ranges"
           }
         },
         {
@@ -2018,6 +1997,31 @@
         {
           "type": "STRING",
           "value": "]"
+        }
+      ]
+    },
+    "ranges": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "subrange"
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SEQ",
+            "members": [
+              {
+                "type": "STRING",
+                "value": ","
+              },
+              {
+                "type": "SYMBOL",
+                "name": "subrange"
+              }
+            ]
+          }
         }
       ]
     },
@@ -5159,7 +5163,7 @@
         },
         {
           "type": "FIELD",
-          "name": "qualifier",
+          "name": "modifier",
           "content": {
             "type": "CHOICE",
             "members": [

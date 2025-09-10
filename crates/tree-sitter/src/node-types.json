@@ -1064,15 +1064,11 @@
     "named": true,
     "fields": {
       "ranges": {
-        "multiple": true,
+        "multiple": false,
         "required": true,
         "types": [
           {
-            "type": ",",
-            "named": false
-          },
-          {
-            "type": "subrange",
+            "type": "ranges",
             "named": true
           }
         ]
@@ -1285,6 +1281,7 @@
   {
     "type": "c_style_comment",
     "named": true,
+    "extra": true,
     "fields": {},
     "children": {
       "multiple": false,
@@ -1478,17 +1475,7 @@
           }
         ]
       },
-      "name": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "identifier",
-            "named": true
-          }
-        ]
-      },
-      "qualifier": {
+      "modifier": {
         "multiple": false,
         "required": false,
         "types": [
@@ -1499,6 +1486,16 @@
           {
             "type": "FINAL",
             "named": false
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
           }
         ]
       },
@@ -4066,6 +4063,7 @@
   {
     "type": "pascal_style_comment",
     "named": true,
+    "extra": true,
     "fields": {},
     "children": {
       "multiple": false,
@@ -4130,6 +4128,7 @@
   {
     "type": "pragma",
     "named": true,
+    "extra": true,
     "fields": {}
   },
   {
@@ -4437,6 +4436,21 @@
       "types": [
         {
           "type": "namespace_access",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "ranges",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "subrange",
           "named": true
         }
       ]
