@@ -8,7 +8,7 @@ use crate::hir_def::interned::namespace::NamespacePath;
 use crate::hir_def::pous::pou::PouDecl;
 use crate::hir_def::scope::{FileScopeId, Visibility};
 use crate::hir_def::semantic_index::semantic_index;
-use crate::to_proto::{AstId, SymbolInfo, ToProto};
+use crate::to_proto::{AstId, ToProto};
 
 #[salsa::tracked(debug)]
 pub struct NamespaceDecl<'db> {
@@ -32,17 +32,6 @@ impl<'db> ToProto<'db> for NamespaceDecl<'db> {
 
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         self.scope_id(db)
-    }
-
-    fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> Option<SymbolInfo<'db>> {
-        Some(
-            SymbolInfo::builder()
-                .kind(auto_lsp::lsp_types::SymbolKind::NAMESPACE)
-                .name(self.path(db).to_string(db))
-                .range(self.get_span(db).clone())
-                .name_range(self.get_name_span(db)?.clone())
-                .build(),
-        )
     }
 
     fn hover(&'db self, db: &'db dyn BaseDatabase) -> Option<auto_lsp::lsp_types::Hover> {

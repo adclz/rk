@@ -13,39 +13,6 @@ use crate::hir_def::{
     scope::FileScopeId,
     semantic_index::semantic_index,
 };
- 
-#[derive(bon::Builder, Debug, Clone)]
-pub struct SymbolInfo<'a> {
-    pub range: Span,
-    pub name: String,
-    pub name_range: Span,
-    pub kind: Option<SymbolKind>,
-    pub spec: Option<Spec<'a>>,
-    pub init: Option<InitExpr<'a>>,
-    pub implements: Option<Vec<SpanNamespaceAccess<'a>>>,
-    pub extends: Option<Extends<'a>>,
-}
-
-#[derive(Debug, Clone)]
-pub enum Extends<'a> {
-    Single(SpanNamespaceAccess<'a>),
-    Multiple(&'a Vec<SpanNamespaceAccess<'a>>),
-}
-
-impl SymbolInfo<'_> {
-    pub fn kind_to_string(&self) -> &'static str {
-        match self.kind {
-            Some(SymbolKind::VARIABLE) => "var",
-            Some(SymbolKind::FUNCTION) => "function",
-            Some(SymbolKind::CLASS) => "class",
-            Some(SymbolKind::INTERFACE) => "interface",
-            Some(SymbolKind::TYPE_PARAMETER) => "type",
-            Some(SymbolKind::NAMESPACE) => "namespace",
-            Some(SymbolKind::METHOD) => "method",
-            _ => "unknown",
-        }
-    }
-}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct AstId(pub(crate) usize);
@@ -75,7 +42,7 @@ pub trait ToProto<'db> {
                     self.get_id(db).0
                 )
             })
-            .get_span()
+              .get_span()
     }
 
     fn get_name_span(&'db self, db: &'db dyn BaseDatabase) -> Option<Span> {
@@ -91,10 +58,6 @@ pub trait ToProto<'db> {
                 })
                 .get_span()
         })
-    }
-
-    fn symbol_info(&'db self, _db: &'db dyn BaseDatabase) -> Option<SymbolInfo<'db>> {
-        None
     }
 
     // LSP

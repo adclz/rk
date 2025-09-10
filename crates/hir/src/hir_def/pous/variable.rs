@@ -9,7 +9,7 @@ use crate::{
         interned::identifier::Ident,
         scope::FileScopeId,
     },
-    to_proto::{AstId, SymbolInfo, ToProto},
+    to_proto::{AstId, ToProto},
 };
 
 #[salsa::tracked(debug)]
@@ -107,19 +107,6 @@ impl<'db> ToProto<'db> for VariableDecl<'db> {
 
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         self.scope_id(db)
-    }
-
-    fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> Option<SymbolInfo<'db>> {
-        Some(
-            SymbolInfo::builder()
-                .kind(auto_lsp::lsp_types::SymbolKind::VARIABLE)
-                .name(self.name(db).text(db).to_string())
-                .range(self.get_span(db).clone())
-                .name_range(self.get_name_span(db)?.clone())
-                .spec(*self.spec(db))
-                .maybe_init(self.init(db).cloned())
-                .build(),
-        )
     }
 
     fn hover(&'db self, db: &'db dyn BaseDatabase) -> Option<auto_lsp::lsp_types::Hover> {

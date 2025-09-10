@@ -19,7 +19,7 @@ use crate::{
         },
         scope::FileScopeId,
     },
-    to_proto::{AstId, SymbolInfo, ToProto},
+    to_proto::{AstId, ToProto},
 };
 
 #[salsa::tracked(debug)]
@@ -67,31 +67,6 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
 
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         self.scope_id(db)
-    }
-
-    fn symbol_info(&'db self, db: &'db dyn BaseDatabase) -> Option<SymbolInfo<'db>> {
-        Some(
-            SymbolInfo::builder()
-                .kind(match self.pou(db) {
-                    Pou::Function(_) => auto_lsp::lsp_types::SymbolKind::FUNCTION,
-                    Pou::FunctionBlock(_) => auto_lsp::lsp_types::SymbolKind::FUNCTION,
-                    Pou::Class(_) => auto_lsp::lsp_types::SymbolKind::CLASS,
-                    Pou::Interface(_) => auto_lsp::lsp_types::SymbolKind::INTERFACE,
-                    Pou::DataType(_) => auto_lsp::lsp_types::SymbolKind::TYPE_PARAMETER,
-                })
-                .name(self.name(db).text(db).to_string())
-                .range(self.get_span(db).clone())
-                .name_range(self.get_name_span(db)?.clone())
-                .maybe_spec(match self.pou(db) {
-                    Pou::DataType(d) => Some(d.spec(db)),
-                    _ => None,
-                })
-                .maybe_init(match self.pou(db) {
-                    Pou::DataType(d) => d.init(db),
-                    _ => None,
-                })
-                .build(),
-        )
     }
 
     fn completion(
