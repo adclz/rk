@@ -4,12 +4,15 @@ use fst::{Automaton, Streamer, raw::IndexedValue};
 use rayon::prelude::*;
 use rustc_hash::FxHashSet;
 
+use std::ops::ControlFlow;
 use std::{cmp::Ordering, hash::Hash};
-use std::{hash::Hasher, ops::ControlFlow};
 
+use crate::hir_def::pous::pou::PouDecl;
 use crate::hir_def::scope::FileScopeId;
 use crate::hir_def::semantic_index::semantic_index;
 use crate::hir_ty::name_res::pous_in_scope;
+use crate::hir_ty::ty::{Ty};
+use crate::to_proto::ToProto;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum SearchMode {
@@ -98,8 +101,9 @@ impl Query {
 
     pub fn search<'sym, T>(
         &self,
-        indices: &'sym [&SymbolIndex],
-        cb: impl FnMut(&'sym FileSymbol) -> ControlFlow<T>,
+        db: &'sym dyn BaseDatabase,
+        indices: &'sym [SymbolIndex],
+        cb: impl FnMut(&'sym NamedSymbol) -> ControlFlow<T>,
     ) -> Option<T> {
         let mut op = fst::map::OpBuilder::new();
         match self.mode {
@@ -107,41 +111,42 @@ impl Query {
                 let automaton = fst::automaton::Str::new(&self.lowercased);
 
                 for index in indices.iter() {
-                    op = op.add(index.map.search(&automaton));
+                    op = op.add(index.map(db).search(&automaton));
                 }
-                self.search_maps(indices, op.union(), cb)
+                self.search_maps(db, indices, op.union(), cb)
             }
             SearchMode::Fuzzy => {
                 let automaton = fst::automaton::Subsequence::new(&self.lowercased);
 
                 for index in indices.iter() {
-                    op = op.add(index.map.search(&automaton));
+                    op = op.add(index.map(db).search(&automaton));
                 }
-                self.search_maps(indices, op.union(), cb)
+                self.search_maps(db, indices, op.union(), cb)
             }
             SearchMode::Prefix => {
                 let automaton = fst::automaton::Str::new(&self.lowercased).starts_with();
 
                 for index in indices.iter() {
-                    op = op.add(index.map.search(&automaton));
+                    op = op.add(index.map(db).search(&automaton));
                 }
-                self.search_maps(indices, op.union(), cb)
+                self.search_maps(db, indices, op.union(), cb)
             }
         }
     }
 
     fn search_maps<'sym, T>(
         &self,
-        indices: &'sym [&SymbolIndex],
+        db: &'sym dyn BaseDatabase,
+        indices: &'sym [SymbolIndex],
         mut stream: fst::map::Union<'_>,
-        mut cb: impl FnMut(&'sym FileSymbol) -> ControlFlow<T>,
+        mut cb: impl FnMut(&'sym NamedSymbol) -> ControlFlow<T>,
     ) -> Option<T> {
         while let Some((_, indexed_values)) = stream.next() {
             for &IndexedValue { index, value } in indexed_values {
                 let symbol_index = &indices[index];
                 let (start, end) = SymbolIndex::map_value_to_range(value);
 
-                for symbol in &symbol_index.symbols[start..end] {
+                for symbol in &symbol_index.symbols(db)[start..end] {
                     let symbol_name = symbol.name.as_str();
 
                     if let Some(b) = cb(symbol).break_value() {
@@ -159,29 +164,23 @@ impl Query {
     }
 }
 
-#[derive(Default)]
-pub struct SymbolIndex {
-    symbols: Box<[FileSymbol]>,
+#[salsa::tracked]
+pub struct SymbolIndex<'db> {
+    #[tracked]
+    #[returns(ref)]
+    symbols: Box<[NamedSymbol<'db>]>,
+    #[tracked]
+    #[no_eq]
+    #[returns(ref)]
     map: fst::Map<Vec<u8>>,
 }
 
-impl PartialEq for SymbolIndex {
-    fn eq(&self, other: &SymbolIndex) -> bool {
-        self.symbols == other.symbols
-    }
-}
-
-impl Eq for SymbolIndex {}
-
-impl Hash for SymbolIndex {
-    fn hash<H: Hasher>(&self, hasher: &mut H) {
-        self.symbols.hash(hasher)
-    }
-}
-
-impl SymbolIndex {
-    fn new(mut symbols: Box<[FileSymbol]>) -> SymbolIndex {
-        fn cmp(lhs: &FileSymbol, rhs: &FileSymbol) -> Ordering {
+impl<'db> SymbolIndex<'db> {
+    pub fn create(
+        db: &'db dyn BaseDatabase,
+        mut symbols: Box<[NamedSymbol<'db>]>,
+    ) -> SymbolIndex<'db> {
+        fn cmp(lhs: &NamedSymbol, rhs: &NamedSymbol) -> Ordering {
             let lhs_chars = lhs.name.as_str().chars().map(|c| c.to_ascii_lowercase());
             let rhs_chars = rhs.name.as_str().chars().map(|c| c.to_ascii_lowercase());
             lhs_chars.cmp(rhs_chars)
@@ -219,7 +218,7 @@ impl SymbolIndex {
                 })
             })
             .unwrap();
-        SymbolIndex { symbols, map }
+        SymbolIndex::new(db, symbols, map)
     }
 
     fn range_to_map_value(start: usize, end: usize) -> u64 {
@@ -236,34 +235,53 @@ impl SymbolIndex {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct FileSymbol {
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub struct NamedSymbol<'db> {
     pub name: String,
-    pub is_import: bool,
-    // pub pou: Pou,
+    pub kind: SymbolKind<'db>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum SymbolKind<'db> {
+    Pou(PouDecl<'db>),
+    StructField(Ty<'db>),
+}
+
+impl<'db> ToProto<'db> for NamedSymbol<'db> {
+    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> crate::to_proto::AstId {
+        match self.kind {
+            SymbolKind::Pou(p) => p.get_id(db),
+            SymbolKind::StructField(ty) => ty.get_id(db),
+        }
+    }
+
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+        match self.kind {
+            SymbolKind::Pou(p) => p.get_scope_id(db),
+            SymbolKind::StructField(ty) => ty.get_scope_id(db),
+        }
+    }
 }
 
 #[tracing::instrument(skip_all)]
-#[salsa::tracked(returns(ref))]
-pub fn file_symbol_index<'db>(db: &'db dyn BaseDatabase, file: File) -> SymbolIndex {
+#[salsa::tracked(no_eq)]
+pub fn file_symbol_index<'db>(db: &'db dyn BaseDatabase, file: File) -> SymbolIndex<'db> {
     let mut pous = vec![];
-
     let sema = semantic_index(db, file);
 
     sema.namespaces.iter().for_each(|ns| {
         ns.pous(db).iter().for_each(|pou| {
-            pous.push(FileSymbol {
+            pous.push(NamedSymbol {
                 name: pou.name(db).text(db).to_string(),
-                is_import: false, // This can be set based on some condition
-                                  // pou: Pou::from(pou),
+                kind: SymbolKind::Pou(*pou),
             });
         });
     });
 
-    SymbolIndex::new(pous.into_boxed_slice())
+    SymbolIndex::create(db, pous.into_boxed_slice())
 }
 
-pub fn global_symbol_indexes(db: &dyn BaseDatabase, file_to_omit: File) -> Vec<&SymbolIndex> {
+pub fn global_symbol_indexes(db: &dyn BaseDatabase, file_to_omit: File) -> Vec<SymbolIndex> {
     db.get_files()
         .iter()
         // Filter out the file to omit
@@ -294,7 +312,7 @@ pub fn query_completions(
 
     let mut results = vec![];
 
-    fast_query.search(&indexes, |symbol| {
+    fast_query.search(db, &indexes, |symbol| {
         if locally_visible_names.contains(symbol.name.as_str()) {
             // Skip symbols that are already visible in the current scope
             return ControlFlow::Continue(());

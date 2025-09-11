@@ -1,8 +1,8 @@
 pub mod duplicates;
 pub mod inheritance;
+pub mod init_expr;
 pub mod literals;
 pub mod path_expr;
-pub mod recovery;
 pub mod scope;
 pub mod sem_errors;
 pub mod stmt;

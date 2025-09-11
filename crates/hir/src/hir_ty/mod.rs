@@ -4,6 +4,7 @@ use crate::{check::errors::sem_errors::AnalysisError, hir_ty::ty::Ty, to_proto::
 
 pub mod expr_resolver;
 pub mod inheritance_solver;
+pub mod init_expr_resolver;
 pub mod literals;
 pub mod name_res;
 pub mod stmt_resolver;

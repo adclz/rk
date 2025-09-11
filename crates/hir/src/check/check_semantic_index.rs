@@ -14,6 +14,7 @@ use salsa::Accumulator;
 use crate::{
     check::{
         check_inheritance::check_methods,
+        check_init_expr::check_init_expr,
         errors::{sem_errors::AnalysisError, stmt::StmtError},
     },
     hir_def::{
@@ -37,6 +38,7 @@ use crate::{
     hir_ty::{
         TyInfo,
         expr_resolver::{ResolvedExpr, ResolvedExprKind},
+        init_expr_resolver::{ResolvedInitExpr, resolve_init_expr},
         name_res::pous_in_scope,
         stmt_resolver::{ResolveStmtCtx, ResolvedStmt, ResolvedStmtKind, resolve_stmt},
         ty::{Ty, TyKind, ty_for_pou, ty_for_variable},
@@ -124,7 +126,25 @@ impl<'db> StmtCheckCtx<'db> {
 impl<'db> Check<'db> for PouDecl<'db> {
     fn collect_errors(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<AnalysisError<'db>>) {
         check_methods(db, ty_for_pou(db, *self), errors);
-        if let Some(stmts) = self.get_stmts(db) {
+
+        if let Some(variables) = match self.pou(db) {
+            Pou::Function(f) => Some(f.variables(db)),
+            Pou::FunctionBlock(fb) => Some(fb.variables(db)),
+            _ => None,
+        } {
+            for variable in variables {
+                let var = ty_for_variable(db, *variable);
+                if let Some(init) = variable.init(db) {
+                    check_init_expr(db, var, *resolve_init_expr(db, *init), errors);
+                }
+            }
+        }
+
+        if let Some(stmts) = match self.pou(db) {
+            Pou::Function(f) => Some(f.statements(db)),
+            Pou::FunctionBlock(fb) => Some(fb.statements(db)),
+            _ => None,
+        } {
             let mut stmt_ctx = StmtCheckCtx::new(db);
 
             for stmt in stmts {

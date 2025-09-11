@@ -3,6 +3,7 @@ use auto_lsp::core::ast::AstNode;
 
 use crate::check::errors::syntax::SyntaxError;
 use crate::hir_def::expressions::spec::Array;
+use crate::hir_def::interned::identifier::SpanIdent;
 use crate::{
     builder::{
         ParseSpec, ParseSpecInit, SpecInitResult,
@@ -286,17 +287,18 @@ impl<'db> ParseExpr<'db> for ast::generated::SimpleTypeInit {
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<InitExpr<'db>, AnalysisError<'db>> {
-        Ok(InitExpr {
-            id: self.into(),
-            scope_id: sema.current_scope,
-            kind: InitExprKind::ConstantExpr(
+        Ok(InitExpr::new(
+            sema.db,
+            InitExprKind::ConstantExpr(
                 self.children
                     .cast(sema.ast)
                     .children
                     .cast(sema.ast)
                     .to_expr(sema)?,
             ),
-        })
+            self.into(),
+            sema.current_scope,
+        ))
     }
 }
 
@@ -399,11 +401,12 @@ impl<'db> ParseExpr<'db> for ast::generated::ArrayTypeInit {
             .map(|elem| elem.cast(sema.ast).parse(sema))
             .collect::<anyhow::Result<Vec<InitExpr<'db>>, AnalysisError<'db>>>()?;
 
-        Ok(InitExpr {
-            id: self.into(),
-            scope_id: sema.current_scope,
-            kind: InitExprKind::ArrayInit { values },
-        })
+        Ok(InitExpr::new(
+            sema.db,
+            InitExprKind::ArrayInit { values },
+            self.into(),
+            sema.current_scope,
+        ))
     }
 }
 
@@ -420,11 +423,12 @@ impl<'db> ParseExpr<'db> for ast::generated::StructTypeInit {
             .map(|elem| elem.cast(sema.ast).parse(sema))
             .collect::<anyhow::Result<Vec<InitExpr<'db>>, AnalysisError<'db>>>()?;
 
-        Ok(InitExpr {
-            id: self.into(),
-            scope_id: sema.current_scope,
-            kind: InitExprKind::ArrayInit { values },
-        })
+        Ok(InitExpr::new(
+            sema.db,
+            InitExprKind::StructInit { values },
+            self.into(),
+            sema.current_scope,
+        ))
     }
 }
 
@@ -441,11 +445,12 @@ impl<'db> ParseExpr<'db> for ast::generated::InitElem {
             InitElem::ArrayInit(expr) => expr.parse(sema),
             InitElem::StructElem(struct_elem_init) => struct_elem_init.parse(sema),
             InitElem::StructInit(struct_type_init) => struct_type_init.parse(sema),
-            InitElem::ConstantExpr(expr) => Ok(InitExpr {
-                id: self.into(),
-                scope_id: sema.current_scope,
-                kind: InitExprKind::ConstantExpr(expr.children.cast(sema.ast).to_expr(sema)?),
-            }),
+            InitElem::ConstantExpr(expr) => Ok(InitExpr::new(
+                sema.db,
+                InitExprKind::ConstantExpr(expr.children.cast(sema.ast).to_expr(sema)?),
+                self.into(),
+                sema.current_scope,
+            )),
             InitElem::ERRFuncCallInInit(err) => Err(AnalysisError::SyntaxError(
                 SyntaxError::FunctionCallInInitExpression(err.get_span()),
             )),
@@ -468,11 +473,12 @@ impl<'db> ParseExpr<'db> for ast::generated::ArrayInit {
             .map(|elem| elem.cast(sema.ast).parse(sema))
             .collect::<anyhow::Result<Vec<InitExpr<'db>>, AnalysisError<'db>>>()?;
 
-        Ok(InitExpr {
-            id: self.into(),
-            scope_id: sema.current_scope,
-            kind: InitExprKind::ArrayInit { values },
-        })
+        Ok(InitExpr::new(
+            sema.db,
+            InitExprKind::ArrayInit { values },
+            self.into(),
+            sema.current_scope,
+        ))
     }
 }
 
@@ -497,11 +503,12 @@ impl<'db> ParseExpr<'db> for ast::generated::ArrayIndexElem {
             .map(|elem| elem.cast(sema.ast).parse(sema))
             .collect::<anyhow::Result<Vec<InitExpr<'db>>, AnalysisError<'db>>>()?;
 
-        Ok(InitExpr {
-            id: self.into(),
-            scope_id: sema.current_scope,
-            kind: InitExprKind::ArrayIndexedElement { index, values },
-        })
+        Ok(InitExpr::new(
+            sema.db,
+            InitExprKind::ArrayIndexedElement { index, values },
+            self.into(),
+            sema.current_scope,
+        ))
     }
 }
 
@@ -518,11 +525,12 @@ impl<'db> ParseExpr<'db> for ast::generated::StructInit {
             .map(|elem| elem.cast(sema.ast).parse(sema))
             .collect::<anyhow::Result<Vec<InitExpr<'db>>, AnalysisError<'db>>>()?;
 
-        Ok(InitExpr {
-            id: self.into(),
-            scope_id: sema.current_scope,
-            kind: InitExprKind::StructInit { values },
-        })
+        Ok(InitExpr::new(
+            sema.db,
+            InitExprKind::StructInit { values },
+            self.into(),
+            sema.current_scope,
+        ))
     }
 }
 
@@ -533,14 +541,15 @@ impl<'db> ParseExpr<'db> for ast::generated::StructElem {
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<Self::Output, AnalysisError<'db>> {
-        let name = Ident::from_node(sema.db, sema.file, self.name.cast(sema.ast))?;
+        let name = SpanIdent::from_node(sema.db, sema, self.name.cast(sema.ast))?;
         let value = Box::new(self.value.cast(sema.ast).parse(sema)?);
 
-        Ok(InitExpr {
-            id: self.into(),
-            scope_id: sema.current_scope,
-            kind: InitExprKind::StructElement { name, value },
-        })
+        Ok(InitExpr::new(
+            sema.db,
+            InitExprKind::StructElement { name, value },
+            self.into(),
+            sema.current_scope,
+        ))
     }
 }
 

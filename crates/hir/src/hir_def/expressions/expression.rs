@@ -326,7 +326,7 @@ impl<'db> ToProto<'db> for Expr<'db> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+#[salsa::tracked(debug)]
 pub struct InitExpr<'db> {
     pub kind: InitExprKind<'db>,
 
@@ -348,7 +348,7 @@ pub enum InitExprKind<'db> {
         values: Vec<InitExpr<'db>>,
     },
     StructElement {
-        name: Ident,
+        name: SpanIdent<'db>,
         value: Box<InitExpr<'db>>,
     },
     ConstantExpr(Expr<'db>),
@@ -356,10 +356,10 @@ pub enum InitExprKind<'db> {
 
 impl<'db> ToProto<'db> for InitExpr<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
-        self.id
+        self.id(db)
     }
 
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
-        self.scope_id
+        self.scope_id(db)
     }
 }

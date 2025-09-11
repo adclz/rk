@@ -15,8 +15,10 @@ use crate::{
 };
 
 pub mod check_inheritance;
+pub mod check_init_expr;
 pub mod check_semantic_index;
 pub mod errors;
+pub mod recovery;
 
 #[salsa::tracked(no_eq)]
 pub fn diagnostics_for_file(db: &dyn BaseDatabase, file: File) -> Arc<Vec<IdeDiagnostic>> {

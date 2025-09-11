@@ -39,13 +39,23 @@ impl IdeDiagnostic {
             })
             .collect();
 
+        let message = match self.notes.len() {
+            0 => self.diagnostic.message.clone(),
+            _ => {
+                let mut message = self.diagnostic.message.clone();
+                message.push_str("\n\nNote:");
+                message.push_str(&self.notes.join("\n"));
+                message
+            }
+        };
+
         Diagnostic {
             range: self.diagnostic.range,
             severity: self.diagnostic.severity,
             code: self.diagnostic.code.clone(),
             code_description: self.diagnostic.code_description.clone(),
             source: self.diagnostic.source.clone(),
-            message: self.diagnostic.message.clone(),
+            message,
             related_information: Some(related),
             tags: self.diagnostic.tags.clone(),
             data: self.diagnostic.data.clone(),

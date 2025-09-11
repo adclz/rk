@@ -25,3 +25,28 @@ pub fn get_decl_for_ty(db: &dyn BaseDatabase, ty: Ty<'_>, diag: &mut IdeDiagnost
         ty.decl(db).name_span(db),
     ));
 }
+
+pub fn add_candidates(candidates: &[String], diag: &mut IdeDiagnostic) {
+    let note = match candidates.len() {
+        0 => return,
+        _ => {
+            let mut note = "Did you mean:\n".to_string();
+            let display_count = candidates.len().min(5);
+
+            for (i, candidate) in candidates.iter().take(display_count).enumerate() {
+                if i > 0 {
+                    note.push('\n');
+                }
+                note.push_str(&format!("- {}", candidate));
+            }
+
+            if candidates.len() > 5 {
+                note.push_str("\n  ...");
+            }
+
+            note
+        }
+    };
+
+    diag.with_note(note);
+}

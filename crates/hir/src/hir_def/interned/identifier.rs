@@ -69,7 +69,7 @@ impl<'db> SpanIdent<'db> {
         })
     }
 
-    pub fn to_string(&'db self, db: &'db dyn BaseDatabase) -> &'db str {
+    pub fn as_str(&'db self, db: &'db dyn BaseDatabase) -> &'db str {
         self.ident.text(db)
     }
 }

@@ -2,27 +2,18 @@ use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     hir_def::{
-        expressions::expression::{Elementary, Expr, ExprKind, ParamAssign, PrimaryExpr},
+        expressions::expression::{
+            Elementary, Expr, ExprKind, ParamAssign, PrimaryExpr, RefAdress, RefValue,
+        },
         scope::FileScopeId,
     },
     hir_ty::{
         stmt_resolver::ResolvedParam,
-        ty::Ty,
         ty_path_expr_resolver::{ResolvedPathResult, resolved_path_expr},
         ty_var_access_resolver::{ResolvedVarResult, resolve_var_access},
     },
     to_proto::{AstId, ToProto},
 };
-
-/// The environment in which the expression is resolved.
-/// It can be a concrete type or a boolean context.
-///
-/// Boolean context is used for boolean statements and expressions,
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Env<'db> {
-    Ty(Ty<'db>),
-    Bool,
-}
 
 #[salsa::tracked(no_eq, returns(ref))]
 pub fn resolve_expr<'db>(db: &'db dyn BaseDatabase, expr: Expr<'db>) -> ResolvedExpr<'db> {
@@ -63,6 +54,27 @@ pub enum ResolvedExprKind<'db> {
 
     // Emitted by comparison expressions
     Compare(ResolvedExpr<'db>, ResolvedExpr<'db>), // left, right
+
+    RefValue(ResolvedRefValue), // &value
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+pub enum ResolvedRefValue {
+    Null,
+    Adress,
+}
+
+impl<'db> ResolvedExpr<'db> {
+    pub fn is_constant(&self, db: &'db dyn BaseDatabase) -> bool {
+        match self.kind(db) {
+            ResolvedExprKind::Literal(_) => true,
+            ResolvedExprKind::Parenthesized(expr) => expr.is_constant(db),
+            ResolvedExprKind::Math(left, right) => left.is_constant(db) && right.is_constant(db),
+            ResolvedExprKind::Bool(left, right) => left.is_constant(db) && right.is_constant(db),
+            ResolvedExprKind::Compare(left, right) => left.is_constant(db) && right.is_constant(db),
+            _ => false,
+        }
+    }
 }
 
 pub struct ResolveExprCtx<'db> {
@@ -121,7 +133,19 @@ impl<'db> ResolveExprCtx<'db> {
                             .collect(),
                     },
                 ),
-                _ => todo!(),
+                PrimaryExpr::RefValue { value } => match value {
+                    RefValue::Null => {
+                        ResolvedExpr::new(self.db, self.expr, ResolvedExprKind::RefValue(ResolvedRefValue::Null))
+                    }
+                    RefValue::Address(adress) => match adress {
+                        RefAdress::Instance(instance) => {
+                            todo!()
+                        }
+                        RefAdress::Symbolic(symbolic) => {
+                            todo!()
+                        }
+                    },
+                },
             },
             ExprKind::AddOperator {
                 left,

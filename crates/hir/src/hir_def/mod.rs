@@ -1,6 +1,6 @@
 pub mod comment_index;
 pub mod expressions;
-pub mod import_map;
+pub mod query_string;
 pub mod interned;
 pub mod modifier;
 pub mod namespace;
