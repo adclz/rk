@@ -4,6 +4,7 @@ use auto_lsp::core::ast::AstNode;
 use crate::check::errors::syntax::SyntaxError;
 use crate::hir_def::expressions::spec::Array;
 use crate::hir_def::interned::identifier::SpanIdent;
+use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use crate::{
     builder::{
         ParseSpec, ParseSpecInit, SpecInitResult,
@@ -18,7 +19,7 @@ use crate::{
                 ElementarySpec, Enum, EnumVariant, Spec, SpecKind, Struct, StructElement, SubRange,
             },
         },
-        interned::{identifier::Ident, namespace::NamespaceAccess},
+        interned::{identifier::Ident},
     },
 };
 
@@ -40,7 +41,7 @@ impl<'db> ParseSpec<'db> for ast::generated::NamespaceAccess {
     ) -> anyhow::Result<Spec<'db>, AnalysisError<'db>> {
         Ok(Spec::new(
             sema.db,
-            SpecKind::Target(NamespaceAccess::from_ast(sema.db, sema, self)?),
+            SpecKind::Target(SpanNamespaceAccess::from_ast(sema.db, sema, self)?),
             self.into(),
             sema.current_scope,
         ))
@@ -624,13 +625,17 @@ impl<'db> ParseSpec<'db> for ast::generated::StructTypeSpec {
                 (None, None)
             };
 
-            elements.push(StructElement {
+            elements.push(StructElement::new(
+                sema.db,
                 name,
-                spec,
-                init,
                 located,
                 multibits,
-            });
+                spec,
+                init,
+                elem.cast(sema.ast).into(),
+                elem.cast(sema.ast).name.cast(sema.ast).into(),
+                sema.current_scope,
+            ));
         }
 
         Ok(Spec::new(

@@ -1,4 +1,5 @@
 use crate::completions::snippets::elem_type_names;
+use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind};
 
@@ -9,7 +10,7 @@ use crate::to_proto::AstId;
 use crate::{
     hir_def::{
         expressions::expression::{Expr, MultibitsPart},
-        interned::{identifier::Ident, namespace::NamespaceAccess},
+        interned::{identifier::Ident},
         pous::pou::Pou,
         scope::FileScopeId,
     },
@@ -32,7 +33,7 @@ impl<'db> Spec<'db> {
         match self.kind(db) {
             SpecKind::Target(target) => {
                 let sema = semantic_index(db, self.scope_id(db).file(db));
-                match resolve_namespace_access(db, self.scope_id(db), *target) {
+                match resolve_namespace_access(db, self.scope_id(db), target.path) {
                     Some(pou) => match pou.pou(db) {
                         Pou::Function(dt) => format!("(function) {}", pou.name(db).text(db)),
                         Pou::FunctionBlock(fb) => {
@@ -69,7 +70,7 @@ pub enum SpecKind<'db> {
     Ref(Spec<'db>),
 
     // Targeting a POU or namespace (has to be resolved)
-    Target(NamespaceAccess),
+    Target(SpanNamespaceAccess<'db>),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -118,7 +119,7 @@ impl<'db> ToProto<'db> for Spec<'db> {
         let sema = semantic_index(db, self.scope_id(db).file(db));
         match self.kind(db) {
             SpecKind::Target(target) => {
-                match resolve_namespace_access(db, self.scope_id(db), *target) {
+                match resolve_namespace_access(db, self.scope_id(db), target.path) {
                     Some(pou) => pou.hover(db),
                     None => None,
                 }
@@ -129,7 +130,7 @@ impl<'db> ToProto<'db> for Spec<'db> {
                     kind: MarkupKind::Markdown,
                     value: format!(
                         r#"```typescript
-{} 
+{}
 ```"#,
                         self.shorthand(db)
                     ),
@@ -181,13 +182,35 @@ pub struct Struct<'db> {
     pub elements: Vec<StructElement<'db>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+#[salsa::tracked(debug)]
 pub struct StructElement<'db> {
+    #[returns(ref)]
     pub name: Ident,
+
     pub located: Option<VariableAccess<'db>>,
     pub multibits: Option<MultibitsPart>,
     pub spec: Spec<'db>,
     pub init: Option<InitExpr<'db>>,
+
+    pub id: AstId,
+
+    pub name_id: AstId,
+
+    pub scope_id: FileScopeId<'db>,
+}
+
+impl<'db> ToProto<'db> for StructElement<'db> {
+    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
+        self.id(db)
+    }
+
+    fn get_name_id(&'db self, db: &'db dyn BaseDatabase) -> Option<AstId> {
+        Some(self.name_id(db))
+    }
+
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+        self.scope_id(db)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
