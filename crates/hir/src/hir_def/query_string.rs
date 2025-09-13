@@ -102,7 +102,7 @@ impl Query {
     pub fn search<'sym, T>(
         &self,
         db: &'sym dyn BaseDatabase,
-        indices: &'sym [SymbolIndex],
+        indices: Vec<SymbolIndex<'sym>>,
         cb: impl FnMut(&'sym NamedSymbol) -> ControlFlow<T>,
     ) -> Option<T> {
         let mut op = fst::map::OpBuilder::new();
@@ -137,7 +137,7 @@ impl Query {
     fn search_maps<'sym, T>(
         &self,
         db: &'sym dyn BaseDatabase,
-        indices: &'sym [SymbolIndex],
+        indices: Vec<SymbolIndex<'sym>>,
         mut stream: fst::map::Union<'_>,
         mut cb: impl FnMut(&'sym NamedSymbol) -> ControlFlow<T>,
     ) -> Option<T> {
@@ -245,6 +245,7 @@ pub struct NamedSymbol<'db> {
 pub enum SymbolKind<'db> {
     Pou(PouDecl<'db>),
     StructField(Ty<'db>),
+    Variable(Ty<'db>),
 }
 
 impl<'db> ToProto<'db> for NamedSymbol<'db> {
@@ -252,6 +253,7 @@ impl<'db> ToProto<'db> for NamedSymbol<'db> {
         match self.kind {
             SymbolKind::Pou(p) => p.get_id(db),
             SymbolKind::StructField(ty) => ty.get_id(db),
+            SymbolKind::Variable(ty) => ty.get_id(db),
         }
     }
 
@@ -259,6 +261,7 @@ impl<'db> ToProto<'db> for NamedSymbol<'db> {
         match self.kind {
             SymbolKind::Pou(p) => p.get_scope_id(db),
             SymbolKind::StructField(ty) => ty.get_scope_id(db),
+            SymbolKind::Variable(ty) => ty.get_scope_id(db),
         }
     }
 }
@@ -312,7 +315,7 @@ pub fn query_completions(
 
     let mut results = vec![];
 
-    fast_query.search(db, &indexes, |symbol| {
+    fast_query.search(db, indexes, |symbol| {
         if locally_visible_names.contains(symbol.name.as_str()) {
             // Skip symbols that are already visible in the current scope
             return ControlFlow::Continue(());

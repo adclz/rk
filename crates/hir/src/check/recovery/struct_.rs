@@ -1,17 +1,16 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    hir_def::{
-        query_string::{NamedSymbol, Query, SymbolIndex, SymbolKind},
-    },
-    hir_ty::ty::{Ty, TyKind},
+    check::recovery::pou::FuzzyResult, hir_def::query_string::{NamedSymbol, Query, SymbolIndex, SymbolKind}, hir_ty::ty::{Ty, TyKind}
 };
 
 pub fn fuzzy_struct_fields<'db>(
     db: &'db dyn BaseDatabase,
     ztruct: Ty<'db>,
     query: &str,
-) -> Vec<String> {
+) -> FuzzyResult<'db> {
+    let mut results = FuzzyResult::default();
+
     let mut indexes = vec![];
     if let TyKind::Struct { spec: _, elements } = ztruct.kind(db) {
         elements.iter().for_each(|(name, ty)| {
@@ -27,10 +26,12 @@ pub fn fuzzy_struct_fields<'db>(
     let mut fast_query = Query::new(query.to_string());
     fast_query.fuzzy();
 
-    let mut results = vec![];
-
-    fast_query.search(db, &index, |symbol| {
-        results.push(symbol.name.clone());
+    fast_query.search(db, index, |symbol| {
+         match symbol.kind {
+            SymbolKind::Variable(ty) => results.variables.push(symbol.clone()),
+            SymbolKind::StructField(ty) => results.struct_fields.push(symbol.clone()),
+            _ => results.pou.push(symbol.clone()),
+        }
 
         std::ops::ControlFlow::Continue::<()>(())
     });
