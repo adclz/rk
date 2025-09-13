@@ -9,10 +9,13 @@ use auto_lsp::{
 use rustc_hash::FxHashMap;
 
 use crate::{
-    check::errors::{path_expr::PathExprError, sem_errors::AnalysisError, stmt::StmtError},
+    check::errors::path_expr::PathExprError,
     hir_def::{
-        expressions::spec::{ElementarySpec, Spec, SpecKind},
-        interned::{identifier::Ident, namespace::NamespaceAccess},
+        expressions::{
+            expression::Expr,
+            spec::{ElementarySpec, Spec, SpecKind, StructElement},
+        },
+        interned::{identifier::Ident, namespace::SpanNamespaceAccess},
         modifier::Modifier,
         pous::{
             class::MethodDecl,
@@ -87,18 +90,6 @@ impl<'db> ToProto<'db> for Ty<'db> {
     }
 }
 
-impl<'db> Ty<'db> {
-    pub fn as_err(&self, db: &'db dyn BaseDatabase) -> Option<AnalysisError<'db>> {
-        match self.kind(db) {
-            TyKind::Unresolved(path) => todo!(),
-            TyKind::Recursive => Some(AnalysisError::StmtError(StmtError::RecursiveType {
-                ty: *self,
-            })),
-            _ => None,
-        }
-    }
-}
-
 // Declaration of the type (POU, Variable, Method)
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum TyDecl<'db> {
@@ -106,6 +97,7 @@ pub enum TyDecl<'db> {
     Variable(VariableDecl<'db>),
     Method(MethodDecl<'db>),
     MethodProt(MethodPrototype<'db>),
+    StructElement(StructElement<'db>),
 }
 
 impl<'db> TyDecl<'db> {
@@ -115,6 +107,7 @@ impl<'db> TyDecl<'db> {
             TyDecl::Variable(variable) => ty_for_variable(db, *variable),
             TyDecl::Method(method) => ty_for_method_decl(db, *method),
             TyDecl::MethodProt(method) => ty_for_method_prot(db, *method),
+            TyDecl::StructElement(element) => ty_for_struct_field(db, *element),
         }
     }
 
@@ -124,6 +117,7 @@ impl<'db> TyDecl<'db> {
             TyDecl::Variable(variable) => variable.get_span(db),
             TyDecl::Method(method) => method.get_span(db),
             TyDecl::MethodProt(method) => method.get_span(db),
+            TyDecl::StructElement(element) => element.get_span(db),
         }
     }
 
@@ -133,6 +127,7 @@ impl<'db> TyDecl<'db> {
             TyDecl::Variable(variable) => variable.get_name_span(db),
             TyDecl::Method(method) => method.get_name_span(db),
             TyDecl::MethodProt(method) => method.get_name_span(db),
+            TyDecl::StructElement(element) => element.get_name_span(db),
         }
         .unwrap_or_else(|| panic!("All TyDecl variants should have a name span: {self:?}"))
     }
@@ -143,6 +138,7 @@ impl<'db> TyDecl<'db> {
             TyDecl::Variable(variable) => *variable.name(db),
             TyDecl::Method(method) => *method.name(db),
             TyDecl::MethodProt(method) => *method.name(db),
+            TyDecl::StructElement(element) => *element.name(db),
         }
     }
 
@@ -152,6 +148,7 @@ impl<'db> TyDecl<'db> {
             TyDecl::Variable(variable) => variable.get_id(db),
             TyDecl::Method(method) => method.get_id(db),
             TyDecl::MethodProt(method) => method.get_id(db),
+            TyDecl::StructElement(element) => element.get_id(db),
         }
     }
 
@@ -161,6 +158,7 @@ impl<'db> TyDecl<'db> {
             TyDecl::Variable(variable) => variable.scope_id(db),
             TyDecl::Method(method) => method.scope_id(db),
             TyDecl::MethodProt(method) => method.scope_id(db),
+            TyDecl::StructElement(element) => element.scope_id(db),
         }
     }
 }
@@ -239,9 +237,13 @@ pub enum TyKind<'db> {
         list: Vec<Ident>,
     },
     SubRange(Spec<'db>),
+    RefTo(Ty<'db>),
+    Target(Ty<'db>),
     Array {
-        type_signature: Ty<'db>,
+        ranges: Vec<(Expr<'db>, Expr<'db>)>,
+        typ: Ty<'db>,
     },
+
     Struct {
         spec: Spec<'db>,
         elements: FxHashMap<Ident, Ty<'db>>,
@@ -259,10 +261,6 @@ pub enum TyKind<'db> {
         methods: Vec<MethodDecl<'db>>,
     },
 
-    RefTo(Ty<'db>),
-    Target(Ty<'db>),
-
-    // Could either be Function or Method
     Function {
         input: FxHashMap<Ident, Ty<'db>>,
         output: FxHashMap<Ident, Ty<'db>>,
@@ -285,7 +283,7 @@ pub enum TyKind<'db> {
     },
 
     // Error variants
-    Unresolved(NamespaceAccess),
+    Unresolved(SpanNamespaceAccess<'db>),
     Recursive,
 }
 
@@ -358,7 +356,7 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
                         let ty = ty_for_pou(db, pou);
                         Ty::new(db, decl, ty.def(db), TyKind::Target(ty))
                     }
-                    None => Ty::new(db, decl, def, TyKind::Unresolved(e.path)),
+                    None => Ty::new(db, decl, def, TyKind::Unresolved(e.clone())),
                 }
             });
 
@@ -395,7 +393,7 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
                             let ty = ty_for_pou(db, pou);
                             Ty::new(db, decl, ty.def(db), TyKind::Target(ty))
                         }
-                        None => Ty::new(db, decl, def, TyKind::Unresolved(e.path)),
+                        None => Ty::new(db, decl, def, TyKind::Unresolved(e.clone())),
                     });
 
             let implements = class
@@ -407,7 +405,7 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
                             let ty = ty_for_pou(db, pou);
                             Ty::new(db, decl, ty.def(db), TyKind::Target(ty))
                         }
-                        None => Ty::new(db, decl, def, TyKind::Unresolved(interface.path)),
+                        None => Ty::new(db, decl, def, TyKind::Unresolved(interface.clone())),
                     }
                 })
                 .collect();
@@ -441,7 +439,9 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
                                     let ty = ty_for_pou(db, pou);
                                     Ty::new(db, decl, ty.def(db), TyKind::Target(ty))
                                 }
-                                None => Ty::new(db, decl, def, TyKind::Unresolved(interface.path)),
+                                None => {
+                                    Ty::new(db, decl, def, TyKind::Unresolved(interface.clone()))
+                                }
                             }
                         })
                         .collect()
@@ -566,6 +566,20 @@ pub fn ty_for_variable<'db>(db: &'db dyn BaseDatabase, variable: VariableDecl<'d
     variable.spec(db).to_ty(db, TyDecl::Variable(variable))
 }
 
+fn struct_field_ty_result<'db>(db: &'db dyn BaseDatabase, field: StructElement<'db>) -> Ty<'db> {
+    Ty::new(
+        db,
+        TyDecl::StructElement(field),
+        TyDef::Invalid,
+        TyKind::Recursive,
+    )
+}
+
+#[salsa::tracked(cycle_result = struct_field_ty_result)]
+pub fn ty_for_struct_field<'db>(db: &'db dyn BaseDatabase, field: StructElement<'db>) -> Ty<'db> {
+    field.spec(db).to_ty(db, TyDecl::StructElement(field))
+}
+
 #[salsa::tracked]
 impl<'db> Ty<'db> {
     pub fn linear(
@@ -617,7 +631,7 @@ impl<'db> Ty<'db> {
                 }),
             },
             PathExprWalkStep::Index { expr } => match self.kind(db) {
-                TyKind::Array { type_signature } => Ok(type_signature),
+                TyKind::Array { typ, .. } => Ok(typ),
                 _ => Err(PathExprError::NotAnArray {
                     expr: *expr,
                     ty: *self,
@@ -707,11 +721,21 @@ impl<'db> Ty<'db> {
         false
     }
 
-    pub fn is_invalid(&self, db: &'db dyn BaseDatabase) -> bool {
-        matches!(self.kind(db), TyKind::Unresolved(_) | TyKind::Recursive)
+    pub fn is_unresolved(&self, db: &'db dyn BaseDatabase) -> bool {
+        if let TyKind::Target(sig) = self.kind(db) {
+            return sig.is_unresolved(db);
+        };
+        matches!(self.kind(db), TyKind::Unresolved(_))
+    }
+
+    pub fn is_target(&self, db: &'db dyn BaseDatabase) -> bool {
+        matches!(self.kind(db), TyKind::Target(_))
     }
 
     pub fn is_recursive(&self, db: &'db dyn BaseDatabase) -> bool {
+        if let TyKind::Target(sig) = self.kind(db) {
+            return sig.is_recursive(db);
+        };
         matches!(self.kind(db), TyKind::Recursive)
     }
 
@@ -742,7 +766,12 @@ impl<'db> Spec<'db> {
                 origin,
                 TyDef::Spec(*self),
                 TyKind::Array {
-                    type_signature: array.of_type.to_ty(db, origin),
+                    typ: array.of_type.to_ty(db, origin),
+                    ranges: array
+                        .subranges
+                        .iter()
+                        .map(|(start, end)| (*start, *end))
+                        .collect(),
                 },
             ),
             SpecKind::Enum(enum_spec) => Ty::new(
@@ -769,17 +798,22 @@ impl<'db> Spec<'db> {
                     elements: fields
                         .elements
                         .iter()
-                        .map(|element| (element.name, element.spec.to_ty(db, origin)))
+                        .map(|element| (*element.name(db), { element.spec(db).to_ty(db, origin) }))
                         .collect(),
                 },
             ),
             SpecKind::Target(target) => {
-                match resolve_namespace_access(db, self.scope_id(db), *target) {
+                match resolve_namespace_access(db, self.scope_id(db), target.path) {
                     Some(pou) => {
                         let ty = ty_for_pou(db, pou);
                         Ty::new(db, origin, ty.def(db), TyKind::Target(ty))
                     }
-                    None => Ty::new(db, origin, TyDef::Spec(*self), TyKind::Unresolved(*target)),
+                    None => Ty::new(
+                        db,
+                        origin,
+                        TyDef::Spec(*self),
+                        TyKind::Unresolved(target.clone()),
+                    ),
                 }
             }
             SpecKind::Simple(simple) => {
