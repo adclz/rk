@@ -54,3 +54,22 @@ pub fn test_diagnostic(db: &mut RootDatabase, source: &str) -> String {
 
     String::from_utf8(cache).unwrap()
 }
+
+pub fn test_diagnostics(db: &mut RootDatabase, source: &str) -> String {
+    let file = make_db_with_source(db, source);
+
+    let mut cache = vec![];
+    diagnostics_for_file(db, file).iter().for_each(|d| {
+        d.create_report(db, file, Some(no_color_and_ascii()))
+            .write(
+                (
+                    file.url(db).as_str(),
+                    Source::from(file.document(db).as_str()),
+                ),
+                &mut cache,
+            )
+            .unwrap();
+    });
+
+    String::from_utf8(cache).unwrap()
+}
