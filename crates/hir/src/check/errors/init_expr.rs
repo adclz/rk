@@ -9,16 +9,13 @@ use crate::{
         },
         recovery::struct_::fuzzy_struct_fields,
     },
-    hir_def::{interned::identifier::SpanIdent},
-    hir_ty::{expr_resolver::ResolvedExpr, init_expr_resolver::ResolvedInitExpr, ty::Ty},
+    hir_def::interned::identifier::SpanIdent,
+    hir_ty::{init_expr_resolver::ResolvedInitExpr, ty::Ty},
     to_proto::ToProto,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum InitExprError<'db> {
-    NonConstantExpr {
-        expr: ResolvedExpr<'db>,
-    },
     UnknownStructField {
         ztruct: Ty<'db>,
         field_name: SpanIdent<'db>,
@@ -35,13 +32,6 @@ impl<'db> From<InitExprError<'db>> for AnalysisError<'db> {
 impl<'db> ToIdeDiagnostic<'db> for InitExprError<'db> {
     fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
         match self {
-            InitExprError::NonConstantExpr { expr } => {
-                diag()
-                    .message("non-constant expression in initializer".into())
-                    .severity(DiagnosticSeverity::ERROR)
-                    .range(expr.expr(db).get_span(db))
-                    .call()
-            },
             InitExprError::UnknownStructField {
                 ztruct,
                 field_name,

@@ -2,8 +2,18 @@ use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, diag};
 
 use crate::{
-    check::errors::sem_errors::{AnalysisError, ToIdeDiagnostic},
-    hir_def::{expressions::expression::PathExpr, scope::FileScopeId},
+    check::{
+        errors::{
+            sem_errors::{AnalysisError, ToIdeDiagnostic},
+            utils::add_candidates,
+        },
+        recovery::pou::fuzzy_pou_local_items,
+    },
+    hir_def::{
+        expressions::expression::PathExpr,
+        scope::{FileScopeId, ScopeKind},
+        semantic_index::semantic_index,
+    },
     hir_ty::ty::Ty,
     to_proto::ToProto,
 };
@@ -41,14 +51,25 @@ impl<'db> From<PathExprError<'db>> for AnalysisError<'db> {
 impl<'db> ToIdeDiagnostic<'db> for PathExprError<'db> {
     fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
         match self {
-            Self::NoItemInScope { expr, scope } => diag()
-                .message(format!(
-                    "no item '{}' in scope",
-                    expr.to_string(db).text(db)
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .range(expr.get_span(db).clone())
-                .call(),
+            Self::NoItemInScope { expr, scope } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "no item '{}' in scope",
+                        expr.to_string(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(expr.get_span(db).clone())
+                    .call();
+
+                if let ScopeKind::Pou(pou) = semantic_index(db, scope.file(db))
+                    .get_scope(db, *scope)
+                    .kind
+                {
+                    add_candidates(&fuzzy_pou_local_items(db, pou, expr.to_string(db).as_str(db)), &mut diag);
+                }
+
+                diag
+            }
             Self::UnknownField { ty: origin, expr } => diag()
                 .message(format!(
                     "field {} not found in type",

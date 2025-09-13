@@ -7,4 +7,5 @@ pub mod scope;
 pub mod sem_errors;
 pub mod stmt;
 pub mod syntax;
+pub mod ty;
 pub mod utils;

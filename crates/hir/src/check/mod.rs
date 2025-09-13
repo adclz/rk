@@ -17,6 +17,7 @@ use crate::{
 pub mod check_inheritance;
 pub mod check_init_expr;
 pub mod check_semantic_index;
+pub mod check_ty;
 pub mod errors;
 pub mod recovery;
 

@@ -7,6 +7,7 @@ use ide_diagnostic::IdeDiagnostic;
 use crate::check::errors::{
     duplicates::DuplicateError, inheritance::MethodError, init_expr::InitExprError,
     path_expr::PathExprError, scope::NamespaceError, stmt::StmtError, syntax::SyntaxError,
+    ty::TyError,
 };
 
 pub trait ToIdeDiagnostic<'db> {
@@ -24,6 +25,7 @@ pub enum AnalysisError<'db> {
     StmtError(StmtError<'db>),
     InitExprError(InitExprError<'db>),
     MethodError(MethodError<'db>),
+    TyError(TyError<'db>),
 }
 
 impl Error for AnalysisError<'_> {}
@@ -51,6 +53,7 @@ impl<'db> ToIdeDiagnostic<'db> for AnalysisError<'db> {
             Self::StmtError(err) => err.to_diagnostic(db),
             Self::InitExprError(err) => err.to_diagnostic(db),
             Self::MethodError(err) => err.to_diagnostic(db),
+            Self::TyError(err) => err.to_diagnostic(db),
         }
     }
 }

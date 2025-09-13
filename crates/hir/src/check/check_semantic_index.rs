@@ -15,6 +15,7 @@ use crate::{
     check::{
         check_inheritance::check_methods,
         check_init_expr::check_init_expr,
+        check_ty::check_ty,
         errors::{sem_errors::AnalysisError, stmt::StmtError},
     },
     hir_def::{
@@ -41,7 +42,7 @@ use crate::{
         init_expr_resolver::{ResolvedInitExpr, resolve_init_expr},
         name_res::pous_in_scope,
         stmt_resolver::{ResolveStmtCtx, ResolvedStmt, ResolvedStmtKind, resolve_stmt},
-        ty::{Ty, TyKind, ty_for_pou, ty_for_variable},
+        ty::{Ty, TyKind, ty_for_pou, ty_for_struct_field, ty_for_variable},
         ty_path_expr_resolver::{ResolvePathExprCtx, ResolvedPathElementKind, ResolvedPathResult},
         ty_var_access_resolver::{ResolvedVarKind, ResolvedVarResult},
     },
@@ -126,6 +127,7 @@ impl<'db> StmtCheckCtx<'db> {
 impl<'db> Check<'db> for PouDecl<'db> {
     fn collect_errors(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<AnalysisError<'db>>) {
         check_methods(db, ty_for_pou(db, *self), errors);
+        check_ty(db, ty_for_pou(db, *self), errors);
 
         if let Some(variables) = match self.pou(db) {
             Pou::Function(f) => Some(f.variables(db)),
@@ -134,9 +136,22 @@ impl<'db> Check<'db> for PouDecl<'db> {
         } {
             for variable in variables {
                 let var = ty_for_variable(db, *variable);
+                check_ty(db, var, errors);
                 if let Some(init) = variable.init(db) {
                     check_init_expr(db, var, *resolve_init_expr(db, *init), errors);
                 }
+            }
+        }
+
+        if let Pou::DataType(typ) = self.pou(db) {
+            match typ.spec(db).kind(db) {
+                SpecKind::Struct(st) => {
+                    for field in &st.elements {
+                        let field_ty = ty_for_struct_field(db, *field);
+                        check_ty(db, field_ty, errors);
+                    }
+                }
+                _ => {}
             }
         }
 
@@ -220,13 +235,7 @@ impl<'db> CheckWithCtx<'db> for ResolvedStmt<'db> {
                     errors.push(err);
                 }
             }
-            ResolvedStmtKind::FuncCall { target, params } => {
-                if let Ok(ty_var) = target.ty(db) {
-                    if let Some(err) = ty_var.as_err(db) {
-                        errors.push(err);
-                    }
-                }
-            }
+            ResolvedStmtKind::FuncCall { target, params } => {}
             _ => {
                 ctx.finish_block(errors);
             }
