@@ -8,6 +8,7 @@ pub mod inheritance_solver;
 pub mod init_expr_resolver;
 pub mod literals;
 pub mod name_res;
+pub mod signature;
 pub mod stmt_resolver;
 pub mod ty;
 pub mod ty_path_expr_resolver;
