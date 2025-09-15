@@ -637,6 +637,46 @@
     }
   },
   {
+    "type": "ERR_missing_dot_in_assignment",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "_expression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "ERR_missing_dot_in_for_control",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "ERR_missing_equal_in_assignment",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "_expression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "ERR_missing_equal_in_for_control",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "ERR_unexpected_this_in_path",
     "named": true,
     "fields": {}
@@ -651,21 +691,6 @@
       "types": [
         {
           "type": "identifier",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "ERR_wrong_assignment_sign",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "_expression",
           "named": true
         }
       ]
@@ -1113,7 +1138,11 @@
             "named": true
           },
           {
-            "type": "ERR_wrong_assignment_sign",
+            "type": "ERR_missing_dot_in_assignment",
+            "named": true
+          },
+          {
+            "type": "ERR_missing_equal_in_assignment",
             "named": true
           },
           {
@@ -2410,6 +2439,20 @@
           }
         ]
       }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "ERR_missing_dot_in_for_control",
+          "named": true
+        },
+        {
+          "type": "ERR_missing_equal_in_for_control",
+          "named": true
+        }
+      ]
     }
   },
   {

@@ -138,7 +138,15 @@
         "name": "func_call"
       }
     },
-    "ERR_wrong_assignment_sign": {
+    "ERR_invocation_in_expr_context": {
+      "type": "PREC",
+      "value": -1,
+      "content": {
+        "type": "SYMBOL",
+        "name": "invocation"
+      }
+    },
+    "ERR_missing_dot_in_assignment": {
       "type": "SEQ",
       "members": [
         {
@@ -151,13 +159,30 @@
         }
       ]
     },
-    "ERR_invocation_in_expr_context": {
+    "ERR_missing_equal_in_assignment": {
       "type": "PREC",
       "value": -1,
       "content": {
-        "type": "SYMBOL",
-        "name": "invocation"
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "STRING",
+            "value": ":"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "_expression"
+          }
+        ]
       }
+    },
+    "ERR_missing_dot_in_for_control": {
+      "type": "STRING",
+      "value": "="
+    },
+    "ERR_missing_equal_in_for_control": {
+      "type": "STRING",
+      "value": ":"
     },
     "ERR_unexpected_this_in_path": {
       "type": "PREC",
@@ -8048,7 +8073,11 @@
               },
               {
                 "type": "SYMBOL",
-                "name": "ERR_wrong_assignment_sign"
+                "name": "ERR_missing_dot_in_assignment"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "ERR_missing_equal_in_assignment"
               }
             ]
           }
@@ -8431,10 +8460,6 @@
           }
         },
         {
-          "type": "STRING",
-          "value": ":="
-        },
-        {
           "type": "FIELD",
           "name": "control_list",
           "content": {
@@ -8483,6 +8508,23 @@
     "for_list": {
       "type": "SEQ",
       "members": [
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "STRING",
+              "value": ":="
+            },
+            {
+              "type": "SYMBOL",
+              "name": "ERR_missing_dot_in_for_control"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "ERR_missing_equal_in_for_control"
+            }
+          ]
+        },
         {
           "type": "FIELD",
           "name": "initial_value",

@@ -1,4 +1,4 @@
-use auto_lsp::{default::db::BaseDatabase, lsp_types::{request::{GotoDeclarationResponse, GotoDefinition, GotoTypeDefinition}, GotoDefinitionResponse, Hover}};
+use auto_lsp::{default::db::BaseDatabase, lsp_types::{request::{GotoDeclarationResponse}, GotoDefinitionResponse, Hover}};
 
 use crate::{
     hir_def::{
