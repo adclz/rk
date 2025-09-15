@@ -122,14 +122,4 @@ impl<'db> ToProto<'db> for VariableDecl<'db> {
             tags: None,
         });
     }
-
-    fn hover(&'db self, db: &'db dyn BaseDatabase) -> Option<auto_lsp::lsp_types::Hover> {
-        Some(auto_lsp::lsp_types::Hover {
-            contents: auto_lsp::lsp_types::HoverContents::Markup(MarkupContent {
-                kind: MarkupKind::Markdown,
-                value: format!("Variable {}", self.name(db).text(db)).to_string(),
-            }),
-            range: self.get_name_span(db).map(|s| s.lsp()),
-        })
-    }
 }

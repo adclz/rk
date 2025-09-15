@@ -17,6 +17,10 @@ impl<T: AstNode> From<&T> for AstId {
     }
 }
 
+pub trait TypeInfo<'db> {
+    fn type_name(&self, db: &'db dyn BaseDatabase) -> &'static str;
+}
+
 pub trait ToProto<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId;
 
@@ -70,7 +74,7 @@ pub trait ToProto<'db> {
         None
     }
 
-    fn hover(&'db self, _db: &'db dyn BaseDatabase) -> Option<Hover> {
+    fn hover(&'db self, _db: &'db dyn BaseDatabase, offset: Option<usize>) -> Option<Hover> {
         None
     }
 

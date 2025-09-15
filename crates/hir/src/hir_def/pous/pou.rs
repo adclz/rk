@@ -199,31 +199,6 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
             tooltip: None,
         })
     }
-
-    fn hover(&'db self, db: &'db dyn BaseDatabase) -> Option<auto_lsp::lsp_types::Hover> {
-        let sema = semantic_index(db, self.get_scope_id(db).file(db));
-        let name_span = self.get_name_span(db)?;
-        let comment = comment_index(db, sema.file);
-        let comment = comment
-            .find_nearby_comment(sema.file.document(db), &name_span)
-            .map(|c| format!("{}\n&nbsp;", c.to_string(sema.file.document(db))))
-            .unwrap_or_default();
-
-        Some(auto_lsp::lsp_types::Hover {
-            contents: auto_lsp::lsp_types::HoverContents::Markup(MarkupContent {
-                kind: MarkupKind::Markdown,
-                value: format!(
-                    r#"{comment}
-```typescript
-{}
-```
-"#,
-                    "signature"
-                ),
-            }),
-            range: Some(name_span.lsp()),
-        })
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update, salsa::Supertype)]

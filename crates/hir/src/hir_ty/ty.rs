@@ -2,7 +2,7 @@ use auto_lsp::{
     core::span::Span,
     default::db::BaseDatabase,
     lsp_types::{
-        GotoDefinitionResponse, HoverContents, Location, MarkupContent, MarkupKind,
+        GotoDefinitionResponse, Hover, HoverContents, Location, MarkupContent, MarkupKind,
         request::GotoDeclarationResponse,
     },
 };
@@ -11,6 +11,7 @@ use rustc_hash::FxHashMap;
 use crate::{
     check::errors::path_expr::PathExprError,
     hir_def::{
+        comment_index::comment_index,
         expressions::{
             expression::Expr,
             spec::{ElementarySpec, Spec, SpecKind, StructElement},
@@ -26,7 +27,7 @@ use crate::{
         scope::FileScopeId,
     },
     hir_ty::{name_res::resolve_namespace_access, ty_path_expr_resolver::PathExprWalkStep},
-    to_proto::{AstId, ToProto},
+    to_proto::{AstId, ToProto, TypeInfo},
 };
 
 #[salsa::tracked(debug)]
@@ -37,7 +38,6 @@ pub struct Ty<'db> {
     pub def: TyDef<'db>,
 
     #[tracked]
-    #[no_eq]
     pub kind: TyKind<'db>,
 }
 
@@ -79,13 +79,40 @@ impl<'db> ToProto<'db> for Ty<'db> {
         }
     }
 
-    fn hover(&'db self, db: &'db dyn BaseDatabase) -> Option<auto_lsp::lsp_types::Hover> {
+    fn hover(&'db self, db: &'db dyn BaseDatabase, offset: Option<usize>) -> Option<Hover> {
+        let name_span = self.decl(db).name_span(db);
+
+        // We need to check if the cursor is over the name of the type
+        if let Some(offset) = offset {
+            if name_span.start_byte > offset || name_span.end_byte < offset {
+                return None;
+            }
+        }
+
+        let type_name = self.type_name(db);
+        let name = self.decl(db).name(db).text(db).to_string();
+
+        let comment = match comment_index(db, self.get_scope_id(db).file(db)).find_nearby_comment(
+            self.get_scope_id(db).file(db).document(db),
+            &self.get_span(db),
+        ) {
+            Some(c) => c.to_string(self.get_scope_id(db).file(db).document(db)),
+            None => "".to_string(),
+        };
+
         Some(auto_lsp::lsp_types::Hover {
             contents: HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,
-                value: format!("{:?}", self.kind(db)),
+                value: format!(
+                    r#"
+{comment}
+```iecst
+{type_name} {name}
+```
+"#
+                ),
             }),
-            range: Some(self.get_span(db).into()),
+            range: Some(name_span.into()),
         })
     }
 }
@@ -799,6 +826,28 @@ impl<'db> Spec<'db> {
                 TyDef::Spec(self),
                 TyKind::RefTo(*_ref.to_ty(db, origin)),
             ),
+        }
+    }
+}
+
+impl<'db> TypeInfo<'db> for Ty<'db> {
+    fn type_name(&self, db: &'db dyn BaseDatabase) -> &'static str {
+        match self.kind(db) {
+            TyKind::Simple(elem) => elem.type_name(db),
+            TyKind::Target(t) => t.type_name(db),
+            TyKind::Enum { .. } => "ENUM",
+            TyKind::SubRange(_) => "SUBRANGE",
+            TyKind::RefTo(_) => "REF_TO",
+            TyKind::Array { .. } => "ARRAY",
+            TyKind::ArrayConformand { .. } => "ARRAY*",
+            TyKind::Struct { .. } => "STRUCT",
+            TyKind::Interface { .. } => "INTERFACE",
+            TyKind::Class { .. } => "CLASS",
+            TyKind::Function { .. } => "FUNCTION",
+            TyKind::FunctionBlock { .. } => "FUNCTION_BLOCK",
+            TyKind::Method { .. } => "method",
+            TyKind::Unresolved(_) => "{unknown}",
+            TyKind::Recursive => "{recursive}",
         }
     }
 }

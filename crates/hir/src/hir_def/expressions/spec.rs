@@ -1,12 +1,11 @@
 use crate::completions::snippets::elem_type_names;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use auto_lsp::default::db::BaseDatabase;
-use auto_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind};
 
 use crate::hir_def::expressions::expression::{InitExpr, VariableAccess};
 use crate::hir_def::semantic_index::semantic_index;
 use crate::hir_ty::name_res::resolve_namespace_access;
-use crate::to_proto::AstId;
+use crate::to_proto::{AstId, TypeInfo};
 use crate::{
     hir_def::{
         expressions::expression::{Expr, MultibitsPart},
@@ -106,6 +105,42 @@ pub enum ElementarySpec {
     LTod,
 }
 
+impl<'db> TypeInfo<'db> for ElementarySpec {
+    fn type_name(&self, db: &'db dyn BaseDatabase) -> &'static str {
+        match self {
+            ElementarySpec::Bool => "BOOL",
+            ElementarySpec::REDGEBool => "REDGE_BOOL",
+            ElementarySpec::FEDGEBool => "FEDGE_BOOL",
+            ElementarySpec::Byte => "BYTE",
+            ElementarySpec::Word => "WORD",
+            ElementarySpec::DWord => "DWORD",
+            ElementarySpec::LWord => "LWORD",
+            ElementarySpec::SInt => "SINT",
+            ElementarySpec::USInt => "USINT",
+            ElementarySpec::UInt => "UINT",
+            ElementarySpec::Int => "INT",
+            ElementarySpec::DInt => "DINT",
+            ElementarySpec::UDInt => "UDINT",
+            ElementarySpec::LInt => "LINT",
+            ElementarySpec::ULInt => "ULINT",
+            ElementarySpec::Real => "REAL",
+            ElementarySpec::LReal => "LREAL",
+            ElementarySpec::String => "STRING",
+            ElementarySpec::WString => "WSTRING",
+            ElementarySpec::Char => "CHAR",
+            ElementarySpec::WChar => "WCHAR",
+            ElementarySpec::Date => "DATE",
+            ElementarySpec::LDate => "LDATE",
+            ElementarySpec::Dt => "DT",
+            ElementarySpec::Ldt => "LDT",
+            ElementarySpec::Time => "TIME",
+            ElementarySpec::LTime => "LTIME",
+            ElementarySpec::Tod => "TOD",
+            ElementarySpec::LTod => "LTOD",
+        }
+    }
+}
+
 impl<'db> ToProto<'db> for Spec<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
         self.id(db)
@@ -113,37 +148,6 @@ impl<'db> ToProto<'db> for Spec<'db> {
 
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         self.scope_id(db)
-    }
-
-    fn hover(&'db self, db: &'db dyn BaseDatabase) -> Option<Hover> {
-        let sema = semantic_index(db, self.scope_id(db).file(db));
-        match self.kind(db) {
-            SpecKind::Target(target) => {
-                match resolve_namespace_access(db, self.scope_id(db), target.path) {
-                    Some(pou) => pou.hover(db),
-                    None => None,
-                }
-            }
-            SpecKind::Ref(_) => Some(Hover {
-                range: Some(self.get_span(db).into()),
-                contents: HoverContents::Markup(MarkupContent {
-                    kind: MarkupKind::Markdown,
-                    value: format!(
-                        r#"```typescript
-{}
-```"#,
-                        self.shorthand(db)
-                    ),
-                }),
-            }),
-            _ => Some(Hover {
-                range: Some(self.get_span(db).into()),
-                contents: HoverContents::Markup(MarkupContent {
-                    kind: MarkupKind::Markdown,
-                    value: "".into(),
-                }),
-            }),
-        }
     }
 
     fn completion(

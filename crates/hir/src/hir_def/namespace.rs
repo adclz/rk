@@ -57,16 +57,6 @@ impl<'db> ToProto<'db> for NamespaceDecl<'db> {
         });
     }
 
-    fn hover(&'db self, db: &'db dyn BaseDatabase) -> Option<auto_lsp::lsp_types::Hover> {
-        Some(auto_lsp::lsp_types::Hover {
-            contents: auto_lsp::lsp_types::HoverContents::Markup(MarkupContent {
-                kind: MarkupKind::Markdown,
-                value: format!("Namespace `{}`", self.path(db).to_string(db)),
-            }),
-            range: Some(self.get_span(db).lsp()),
-        })
-    }
-
     fn inlay_hint(&'db self, db: &'db dyn BaseDatabase) -> Option<auto_lsp::lsp_types::InlayHint> {
         Some(InlayHint {
             label: InlayHintLabel::String(format!("namespace {}", self.path(db).to_string(db))),

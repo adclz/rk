@@ -1,4 +1,4 @@
-use auto_lsp::default::db::BaseDatabase;
+use auto_lsp::{default::db::BaseDatabase, lsp_types::Hover};
 
 use crate::{
     check::errors::sem_errors::AnalysisError,
@@ -131,6 +131,14 @@ impl<'db> ToProto<'db> for ResolvedVarResult<'db> {
 
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         self.origin(db).scope_id(db)
+    }
+
+    fn hover(&'db self, db: &'db dyn BaseDatabase, offset: Option<usize>) -> Option<Hover> {
+        if let Ok(ty) = self.ty(db) {
+            ty.hover(db, None)
+        } else {
+            None
+        }
     }
 
     fn declaration(

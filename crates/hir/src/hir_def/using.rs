@@ -26,16 +26,6 @@ impl<'db> ToProto<'db> for Using<'db> {
         self.scope_id(db)
     }
 
-    fn hover(&'db self, db: &'db dyn BaseDatabase) -> Option<auto_lsp::lsp_types::Hover> {
-        Some(auto_lsp::lsp_types::Hover {
-            contents: auto_lsp::lsp_types::HoverContents::Markup(MarkupContent {
-                kind: MarkupKind::Markdown,
-                value: format!("Using namespace `{}`", self.path(db).to_string(db)),
-            }),
-            range: Some(self.get_span(db).lsp()),
-        })
-    }
-
     fn completion(
         &'db self,
         db: &'db dyn BaseDatabase,
