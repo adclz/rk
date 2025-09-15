@@ -32,7 +32,19 @@ pub enum SyntaxError {
     UnexpectedThis(Span),
     AssignToFunctionCall(Span),
     EmptyRightHandSide(Span),
-    WrongAssignmentSign {
+    MissingDotInAssignment {
+        file: File,
+        span: Span,
+    },
+    MissingEqualInAssignment {
+        file: File,
+        span: Span,
+    },
+    MissingDotInForList {
+        file: File,
+        span: Span,
+    },
+    MissingEqualInForList {
         file: File,
         span: Span,
     },
@@ -132,7 +144,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 .severity(DiagnosticSeverity::ERROR)
                 .range(span.clone())
                 .call(),
-            Self::WrongAssignmentSign { file, span } => {
+            Self::MissingDotInAssignment { file, span } => {
                 let mut diag = diag()
                     .message("'=' is not a valid assignment sign".into())
                     .severity(DiagnosticSeverity::ERROR)
@@ -153,6 +165,105 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 diag.with_fix(
                     action()
                         .title("replace '=' with ':='".into())
+                        .kind(auto_lsp::lsp_types::CodeActionKind::QUICKFIX)
+                        .diagnostics(vec![diag.inner()])
+                        .is_preferred(true)
+                        .edit(WorkspaceEdit::new(HashMap::from([(
+                            file.url(db).clone(),
+                            vec![edit().new_text(":=".to_string()).range(range.into()).call()],
+                        )])))
+                        .call(),
+                );
+
+                diag
+            }
+            Self::MissingEqualInAssignment { file, span } => {
+                let mut diag = diag()
+                    .message("':' is not a valid assignment sign".into())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(span.clone())
+                    .call();
+
+                // only replace '=' with ':='
+                let range = Range {
+                    start_byte: span.start_byte,
+                    end_byte: span.start_byte + 1,
+                    start_point: span.start_point,
+                    end_point: tree_sitter::Point {
+                        row: span.start_point.row,
+                        column: span.start_point.column + 1,
+                    },
+                };
+
+                diag.with_fix(
+                    action()
+                        .title("replace ':' with ':='".into())
+                        .kind(auto_lsp::lsp_types::CodeActionKind::QUICKFIX)
+                        .diagnostics(vec![diag.inner()])
+                        .is_preferred(true)
+                        .edit(WorkspaceEdit::new(HashMap::from([(
+                            file.url(db).clone(),
+                            vec![edit().new_text(":=".to_string()).range(range.into()).call()],
+                        )])))
+                        .call(),
+                );
+
+                diag
+            },
+            Self::MissingDotInForList { file, span } => {
+                let mut diag = diag()
+                    .message("'=' is not a valid assignment sign".into())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(span.clone())
+                    .call();
+
+                // only replace '=' with ':='
+                let range = Range {
+                    start_byte: span.start_byte,
+                    end_byte: span.start_byte + 1,
+                    start_point: span.start_point,
+                    end_point: tree_sitter::Point {
+                        row: span.start_point.row,
+                        column: span.start_point.column + 1,
+                    },
+                };
+
+                diag.with_fix(
+                    action()
+                        .title("replace '=' with ':='".into())
+                        .kind(auto_lsp::lsp_types::CodeActionKind::QUICKFIX)
+                        .diagnostics(vec![diag.inner()])
+                        .is_preferred(true)
+                        .edit(WorkspaceEdit::new(HashMap::from([(
+                            file.url(db).clone(),
+                            vec![edit().new_text(":=".to_string()).range(range.into()).call()],
+                        )])))
+                        .call(),
+                );
+
+                diag
+            }
+            Self::MissingEqualInForList { file, span } => {
+                let mut diag = diag()
+                    .message("':' is not a valid assignment sign".into())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(span.clone())
+                    .call();
+
+                // only replace '=' with ':='
+                let range = Range {
+                    start_byte: span.start_byte,
+                    end_byte: span.start_byte + 1,
+                    start_point: span.start_point,
+                    end_point: tree_sitter::Point {
+                        row: span.start_point.row,
+                        column: span.start_point.column + 1,
+                    },
+                };
+
+                diag.with_fix(
+                    action()
+                        .title("replace ':' with ':='".into())
                         .kind(auto_lsp::lsp_types::CodeActionKind::QUICKFIX)
                         .diagnostics(vec![diag.inner()])
                         .is_preferred(true)

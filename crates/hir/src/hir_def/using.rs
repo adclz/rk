@@ -1,6 +1,6 @@
 use auto_lsp::{
     default::db::BaseDatabase,
-    lsp_types::{CompletionItem, MarkupContent, MarkupKind},
+    lsp_types::{CompletionItem},
 };
 
 use crate::{

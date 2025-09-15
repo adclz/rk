@@ -2,7 +2,7 @@ use crate::completions;
 use auto_lsp::core::document_symbols_builder::DocumentSymbolsBuilder;
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::{
-    CompletionItem, InlayHint, InlayHintKind, InlayHintLabel, MarkupContent, MarkupKind,
+    CompletionItem, InlayHint, InlayHintKind, InlayHintLabel
 };
 
 use crate::hir_def::interned::namespace::NamespacePath;

@@ -1,7 +1,7 @@
 use auto_lsp::{
     core::document_symbols_builder::DocumentSymbolsBuilder,
     default::db::BaseDatabase,
-    lsp_types::{MarkupContent, MarkupKind, SymbolKind},
+    lsp_types::{SymbolKind},
 };
 
 use crate::{

@@ -265,8 +265,18 @@ module.exports = grammar({
 
     // Expressions
     ERR_assign_func_call: ($) => prec(-1, $.func_call), // A function call cannot be assigned
-    ERR_wrong_assignment_sign: ($) => seq("=", $._expression),
     ERR_invocation_in_expr_context: ($) => prec(-1, $.invocation),
+
+    // Missing ':' before =
+    ERR_missing_dot_in_assignment: ($) => seq("=", $._expression),
+    // Missing '=' after ':'
+    ERR_missing_equal_in_assignment: ($) => prec(-1, seq(":", $._expression)),
+
+    // Missing ':' before =
+    ERR_missing_dot_in_for_control: ($) => "=",
+    // Missing '=' after ':'
+    ERR_missing_equal_in_for_control: ($) => ":",
+
     ERR_unexpected_this_in_path: ($) => prec(-1, "THIS"),
 
     // Initalisations of arrays and structs are highly permissive,
@@ -1686,7 +1696,8 @@ module.exports = grammar({
             $.assignment_attempt,
             $.assignment,
             $.ERR_empty_right_hand_assignment,
-            $.ERR_wrong_assignment_sign,
+            $.ERR_missing_dot_in_assignment,
+            $.ERR_missing_equal_in_assignment
           ),
         ),
       ),
@@ -1757,7 +1768,6 @@ module.exports = grammar({
       seq(
         "FOR",
         field("control_variable", $.variable),
-        ":=",
         field("control_list", $.for_list),
         optional("DO"),
         field("body", optional($.stmt_list)),
@@ -1768,6 +1778,11 @@ module.exports = grammar({
 
     for_list: ($) =>
       seq(
+        choice(
+            ":=",
+            $.ERR_missing_dot_in_for_control,
+            $.ERR_missing_equal_in_for_control
+        ),
         field("initial_value", $._expression),
         "TO",
         field("end_value", $._expression),

@@ -5,21 +5,19 @@ use crate::{
             spec::{ElementarySpec, SpecKind},
         },
         modifier::Modifier,
-        semantic_index::semantic_index,
     },
 };
 use auto_lsp::{
     core::document_symbols_builder::DocumentSymbolsBuilder,
     default::db::BaseDatabase,
     lsp_types::{
-        CompletionItem, InlayHint, InlayHintKind, InlayHintLabel, MarkupContent, MarkupKind,
+        CompletionItem, InlayHint, InlayHintKind, InlayHintLabel,
         SymbolKind,
     },
 };
 
 use crate::{
     hir_def::{
-        comment_index::comment_index,
         interned::identifier::Ident,
         pous::{
             class::Class, data_type::DataType, function::Function, function_block::FunctionBlock,

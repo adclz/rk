@@ -164,12 +164,31 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
             StmtType::ForStmt(for_stmt) => {
                 let control_variable = for_stmt.control_variable.cast(sema.ast).to_access(sema)?;
 
-                let start = for_stmt
-                    .control_list
-                    .cast(sema.ast)
+                let for_list = for_stmt.control_list.cast(sema.ast);
+
+                for_list.children.as_ref().map(|err| {
+                    match err.cast(&sema.ast) {
+                        ast::generated::ERRMissingDotInForControl_ERRMissingEqualInForControl::ERRMissingDotInForControl(err) => {
+                            sema.errors.push(AnalysisError::SyntaxError(SyntaxError::MissingDotInForList {
+                                file: sema.file,
+                                span: err.get_span(),
+                            }))
+                        }
+                        ast::generated::ERRMissingDotInForControl_ERRMissingEqualInForControl::ERRMissingEqualInForControl(err) => {                 
+                            sema.errors.push(AnalysisError::SyntaxError(SyntaxError::MissingEqualInForList {
+                                file: sema.file,
+                                span: err.get_span(),
+                            }))
+                        }
+                    }
+                });
+
+                let start = for_list
                     .initial_value
                     .cast(sema.ast)
                     .to_expr(sema)?;
+
+
                 let end = for_stmt
                     .control_list
                     .cast(sema.ast)
@@ -351,17 +370,24 @@ impl<'db> ParseStatement<'db> for ast::generated::Assign {
             ast::generated::ERRAssignFuncCall_Variable::Variable(var) => var.to_access(sema),
         }?;
 
+        type TargetType = ast::generated::ERREmptyRightHandAssignment_ERRMissingDotInAssignment_ERRMissingEqualInAssignment_Assignment_AssignmentAttempt;
         match self.target.cast(sema.ast) {
-            ast::generated::ERREmptyRightHandAssignment_ERRWrongAssignmentSign_Assignment_AssignmentAttempt::ERREmptyRightHandAssignment(err) => {
+            TargetType::ERREmptyRightHandAssignment(err) => {
                 Err(AnalysisError::SyntaxError(SyntaxError::EmptyRightHandSide(err.get_span())))
             },
-            ast::generated::ERREmptyRightHandAssignment_ERRWrongAssignmentSign_Assignment_AssignmentAttempt::ERRWrongAssignmentSign(err) => {
-                Err(AnalysisError::SyntaxError(SyntaxError::WrongAssignmentSign {
+            TargetType::ERRMissingDotInAssignment(err) => {
+                Err(AnalysisError::SyntaxError(SyntaxError::MissingDotInAssignment {
                     file: sema.file,
                     span: err.get_span(),
                 }))
             },
-            ast::generated::ERREmptyRightHandAssignment_ERRWrongAssignmentSign_Assignment_AssignmentAttempt::Assignment(assign) => Ok(Stmt::new(
+            TargetType::ERRMissingEqualInAssignment(err) => {
+                Err(AnalysisError::SyntaxError(SyntaxError::MissingEqualInAssignment {
+                    file: sema.file,
+                    span: err.get_span(),
+                }))
+            },
+            TargetType::Assignment(assign) => Ok(Stmt::new(
                 sema.db,
                 StmtKind::Assignment {
                     var,
@@ -370,7 +396,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Assign {
                 self.into(),
                 sema.current_scope
             )),
-            ast::generated::ERREmptyRightHandAssignment_ERRWrongAssignmentSign_Assignment_AssignmentAttempt::AssignmentAttempt(attempt) => {
+            TargetType::AssignmentAttempt(attempt) => {
                 Ok(Stmt::new(
                     sema.db,
                     StmtKind::AssignmentAttempt {
