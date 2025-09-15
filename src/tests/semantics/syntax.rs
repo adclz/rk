@@ -211,7 +211,28 @@ END_FUNCTION_BLOCK"#;
 }
 
 #[rstest]
-fn wrong_assign_sign(mut with_db: RootDatabase) {
+fn function_call_in_init_expression(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fn
+  VAR
+    ml : ARRAY [0..2] OF TON := [10(call(IN := 5, OUT => OUT))]
+  END_VAR    
+    
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    Error: 
+       ,-[ file:///test.st:4:37 ]
+       |
+     4 |     ml : ARRAY [0..2] OF TON := [10(call(IN := 5, OUT => OUT))]
+       |                                     ^^^^^^^^^^^^|^^^^^^^^^^^^  
+       |                                                 `-------------- function call in initialization expression is not allowed
+    ---'
+    ");
+}
+
+#[rstest]
+fn missing_dot_in_assign(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK fn
     a = 0;
@@ -231,22 +252,61 @@ END_FUNCTION_BLOCK"#;
 }
 
 #[rstest]
-fn function_call_in_init_expression(mut with_db: RootDatabase) {
+fn missing_equal_in_assign(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK fn
-  VAR
-    ml : ARRAY [0..2] OF TON := [10(call(IN := 5, OUT => OUT))]
-  END_VAR    
-    
+    a : 0;
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
     Error: 
-       ,-[ file:///test.st:4:37 ]
+       ,-[ file:///test.st:3:7 ]
        |
-     4 |     ml : ARRAY [0..2] OF TON := [10(call(IN := 5, OUT => OUT))]
-       |                                     ^^^^^^^^^^^^|^^^^^^^^^^^^  
-       |                                                 `-------------- function call in initialization expression is not allowed
+     3 |     a : 0;
+       |       ^|^  
+       |        `--- ':' is not a valid assignment sign
+       | 
+       | Help: replace ':' with ':='
+    ---'
+    ");
+}
+
+#[rstest]
+fn missing_dot_in_for_list(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn
+	FOR i = p TO smt END_FOR
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    Error: 
+       ,-[ file:///test.st:3:8 ]
+       |
+     3 |     FOR i = p TO smt END_FOR
+       |           |  
+       |           `-- '=' is not a valid assignment sign
+       | 
+       | Help: replace '=' with ':='
+    ---'
+    ");
+}
+
+#[rstest]
+fn missing_equal_in_for_list(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn
+	FOR i : p TO smt END_FOR
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    Error: 
+       ,-[ file:///test.st:3:8 ]
+       |
+     3 |     FOR i : p TO smt END_FOR
+       |           |  
+       |           `-- ':' is not a valid assignment sign
+       | 
+       | Help: replace ':' with ':='
     ---'
     ");
 }

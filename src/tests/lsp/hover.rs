@@ -1,17 +1,14 @@
 use std::ops::ControlFlow;
 
 use auto_lsp::lsp_types::HoverContents;
-use auto_lsp::lsp_types::InlayHint;
 use db::RootDatabase;
 use hir::hir_def::pous::pou::Pou;
 use hir::hir_def::semantic_index::HirNode;
 use hir::hir_def::semantic_index::semantic_index;
 use hir::hir_ty::ty::TyDecl;
-use hir::hir_ty::ty::TyKind;
 use hir::hir_ty::ty::ty_for_variable;
 use hir::to_proto::ToProto;
 use hir::walk::WalkHir;
-use insta::assert_debug_snapshot;
 use insta::assert_snapshot;
 use rstest::rstest;
 

@@ -386,7 +386,7 @@ END_FUNCTION_BLOCK
                                         (field)))))))))))))))))))
 
 ================================================================================
-Wrong assignment sign
+Missing dot in assignment sign
 ================================================================================
 
 FUNCTION_BLOCK fn
@@ -406,9 +406,109 @@ END_FUNCTION_BLOCK
                   (path_expression
                     (var_access
                       (field)))))
-              (ERR_wrong_assignment_sign
+              (ERR_missing_dot_in_assignment
                 (constant
                   (numeric_literal
                     (int_literal
                       (signed_int
                         (unsigned_int)))))))))))
+
+================================================================================
+Missing equal in assignment sign
+================================================================================
+
+FUNCTION_BLOCK fn
+    a : 0;
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (fb_decl
+        (identifier)
+        (fb_body
+          (stmt_list
+            (assign
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (ERR_missing_equal_in_assignment
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int)))))))))))                        
+
+================================================================================
+Missing dot in for list
+================================================================================
+
+FUNCTION fn
+	FOR i = p TO smt END_FOR
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (for_stmt
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (for_list
+                (ERR_missing_dot_in_for_control)
+                (variable_access
+                  (variable
+                    (symbolic_variable
+                      (path_expression
+                        (var_access
+                          (field))))))
+                (variable_access
+                  (variable
+                    (symbolic_variable
+                      (path_expression
+                        (var_access
+                          (field))))))))))))
+
+================================================================================
+Missing dot in for list
+================================================================================
+
+FUNCTION fn
+	FOR i : p TO smt END_FOR
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (for_stmt
+              (variable
+                (symbolic_variable
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (for_list
+                (ERR_missing_equal_in_for_control)
+                (variable_access
+                  (variable
+                    (symbolic_variable
+                      (path_expression
+                        (var_access
+                          (field))))))
+                (variable_access
+                  (variable
+                    (symbolic_variable
+                      (path_expression
+                        (var_access
+                          (field))))))))))))                          
