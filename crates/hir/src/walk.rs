@@ -5,13 +5,19 @@ use auto_lsp::default::db::BaseDatabase;
 use crate::{
     hir_def::{
         namespace::NamespaceDecl,
-        pous::pou::{Pou, PouDecl},
+        pous::{
+            class::MethodDecl,
+            interface::MethodPrototype,
+            pou::{Pou, PouDecl},
+            variable::VariableDecl,
+        },
         semantic_index::{HirNode, SemanticIndex},
     },
     hir_ty::{
         expr_resolver::ResolvedExpr,
+        init_expr_resolver::{ResolvedInitExpr, ResolvedInitExprKind, resolve_init_expr},
         stmt_resolver::{ResolvedStmt, ResolvedStmtKind, resolve_stmt},
-        ty::{Ty, ty_for_pou},
+        ty::{ty_for_method_decl, ty_for_method_prot, ty_for_pou, ty_for_variable},
         ty_path_expr_resolver::ResolvedPathResult,
         ty_var_access_resolver::ResolvedVarResult,
     },
@@ -62,27 +68,83 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
     ) -> ControlFlow<()> {
         f(HirNode::Ty(ty_for_pou(db, *self)))?;
 
-        let stmts = match self.pou(db) {
-            Pou::Function(f) => Some(f.statements(db)),
-            Pou::FunctionBlock(fb) => Some(fb.statements(db)),
-            _ => None,
-        };
+        match self.pou(db) {
+            Pou::Function(function) => {
+                for var in function.variables(db) {
+                    var.walk_hir(db, f)?;
+                }
 
-        for stmt in stmts.unwrap_or(&vec![]) {
-            resolve_stmt(db, *stmt).walk_hir(db, f)?;
+                for stmt in function.statements(db) {
+                    resolve_stmt(db, *stmt).walk_hir(db, f)?;
+                }
+            }
+            Pou::FunctionBlock(fb) => {
+                for var in fb.variables(db) {
+                    var.walk_hir(db, f)?;
+                }
+
+                for stmt in fb.statements(db) {
+                    resolve_stmt(db, *stmt).walk_hir(db, f)?;
+                }
+            }
+            Pou::Class(class) => {
+                for var in class.variables(db) {
+                    var.walk_hir(db, f)?;
+                }
+                for method in class.methods(db) {
+                    method.walk_hir(db, f)?;
+                }
+            }
+            Pou::Interface(it) => {
+                for method in it.methods(db) {
+                    method.walk_hir(db, f)?;
+                }
+            }
+            Pou::DataType(dt) => {
+                if let Some(init_expr) = dt.init(db) {
+                    f(HirNode::ResolvedInitExpr(*resolve_init_expr(
+                        db, init_expr,
+                    )))?;
+                }
+            }
         }
         ControlFlow::Continue(())
     }
 }
 
-impl<'db> WalkHir<'db> for Ty<'db> {
+impl<'db> WalkHir<'db> for VariableDecl<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
         &self,
         db: &'db dyn BaseDatabase,
         f: &mut F,
     ) -> ControlFlow<()> {
-        f(HirNode::Ty(*self))?;
+        f(HirNode::Ty(ty_for_variable(db, *self)))?;
+        if let Some(init_expr) = self.init(db) {
+            f(HirNode::ResolvedInitExpr(*resolve_init_expr(
+                db, *init_expr,
+            )))?;
+        }
         ControlFlow::Continue(())
+    }
+}
+
+impl<'db> WalkHir<'db> for MethodDecl<'db> {
+    fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
+        &self,
+        db: &'db dyn BaseDatabase,
+        f: &mut F,
+    ) -> ControlFlow<()> {
+        f(HirNode::Ty(ty_for_method_decl(db, *self)))
+    }
+}
+
+impl<'db> WalkHir<'db> for MethodPrototype<'db> {
+    fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
+        &self,
+        db: &'db dyn BaseDatabase,
+        f: &mut F,
+    ) -> ControlFlow<()> {
+        f(HirNode::Ty(ty_for_method_prot(db, *self)))
     }
 }
 
@@ -92,8 +154,7 @@ impl<'db> WalkHir<'db> for ResolvedVarResult<'db> {
         db: &'db dyn BaseDatabase,
         f: &mut F,
     ) -> ControlFlow<()> {
-        f(HirNode::ResolvedVarResult(*self))?;
-        ControlFlow::Continue(())
+        f(HirNode::ResolvedVarResult(*self))
     }
 }
 
@@ -103,8 +164,7 @@ impl<'db> WalkHir<'db> for ResolvedPathResult<'db> {
         db: &'db dyn BaseDatabase,
         f: &mut F,
     ) -> ControlFlow<()> {
-        f(HirNode::ResolvedPathResult(*self))?;
-        ControlFlow::Continue(())
+        f(HirNode::ResolvedPathResult(*self))
     }
 }
 
@@ -114,7 +174,32 @@ impl<'db> WalkHir<'db> for ResolvedExpr<'db> {
         db: &'db dyn BaseDatabase,
         f: &mut F,
     ) -> ControlFlow<()> {
-        f(HirNode::ResolvedExpr(*self))?;
+        f(HirNode::ResolvedExpr(*self))
+    }
+}
+
+impl<'db> WalkHir<'db> for ResolvedInitExpr<'db> {
+    fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
+        &self,
+        db: &'db dyn BaseDatabase,
+        f: &mut F,
+    ) -> ControlFlow<()> {
+        f(HirNode::ResolvedInitExpr(*self))?;
+        match self.kind(db) {
+            ResolvedInitExprKind::ArrayInit { values }
+            | ResolvedInitExprKind::ArrayIndexedElement { values, .. }
+            | ResolvedInitExprKind::StructInit { values } => {
+                for v in values {
+                    v.walk_hir(db, f)?;
+                }
+            }
+            ResolvedInitExprKind::StructElement { value, .. } => {
+                value.walk_hir(db, f)?;
+            }
+            ResolvedInitExprKind::ConstantExpr(expr) => {
+                expr.walk_hir(db, f)?;
+            }
+        }
         ControlFlow::Continue(())
     }
 }
@@ -187,7 +272,7 @@ impl<'db> WalkHir<'db> for ResolvedStmt<'db> {
             ResolvedStmtKind::FuncCall { target, params } => {
                 target.walk_hir(db, f)?;
             }
-            // … same for While/Repeat/etc
+            ResolvedStmtKind::Invocation { .. } => {}
             _ => {}
         }
         ControlFlow::Continue(())

@@ -17,6 +17,7 @@ use crate::hir_def::pous::pou::PouDecl;
 use crate::hir_def::scope::{FileScopeId, Scope};
 use crate::hir_def::using::Using;
 use crate::hir_ty::expr_resolver::ResolvedExpr;
+use crate::hir_ty::init_expr_resolver::ResolvedInitExpr;
 use crate::hir_ty::name_res::pous_in_scope;
 use crate::hir_ty::stmt_resolver::ResolvedStmt;
 use crate::hir_ty::ty::Ty;
@@ -155,6 +156,7 @@ pub enum HirNode<'db> {
     ResolvedVarResult(ResolvedVarResult<'db>),
     ResolvedStmt(ResolvedStmt<'db>),
     ResolvedExpr(ResolvedExpr<'db>),
+    ResolvedInitExpr(ResolvedInitExpr<'db>),
 }
 
 impl<'db> From<&'db HirNode<'db>> for &'db dyn ToProto<'db> {
@@ -173,6 +175,7 @@ impl<'db> HirNode<'db> {
             HirNode::ResolvedVarResult(v) => v,
             HirNode::ResolvedStmt(s) => s,
             HirNode::ResolvedExpr(e) => e,
+            HirNode::ResolvedInitExpr(i) => i,
         }
     }
 
@@ -185,6 +188,7 @@ impl<'db> HirNode<'db> {
             HirNode::ResolvedVarResult(v) => v.get_span(db),
             HirNode::ResolvedStmt(s) => s.get_span(db),
             HirNode::ResolvedExpr(e) => e.get_span(db),
+            HirNode::ResolvedInitExpr(i) => i.get_span(db),
         }
     }
 }
