@@ -7,3 +7,4 @@ pub mod scopes;
 pub mod syntax;
 pub mod ty;
 pub mod recursive;
+pub  mod walk_hir;
