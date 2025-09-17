@@ -13,6 +13,7 @@ members = [
     "crates/tree-sitter",
     "crates/memory_usage",
     "crates/ide-diagnostic",
+    "crates/formatter",
     "vscode/server",
 ]
 
@@ -30,6 +31,7 @@ db = { path = "crates/db" }
 memory_usage = { path = "crates/memory_usage" }
 ide-diagnostic = { path = "crates/ide-diagnostic" }
 hir = { path = "crates/hir" }
+formatter = { path = "crates/formatter" }
 bon = "3.6.4"
 phf = { version = "0.11.3", features = ["macros"] }
 bitflags = "2.9.1"
@@ -72,3 +74,6 @@ hir = { workspace = true }
 rstest = { workspace = true }
 insta = { workspace = true }
 ariadne = { workspace = true }
+tree-sitter-rk = { workspace = true }
+formatter = { workspace = true }
+topiary-core = { workspace = true }

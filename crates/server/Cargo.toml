@@ -10,10 +10,10 @@ publish = false
 auto-lsp = { workspace = true, features = ["lsp_server"] }
 ast = { workspace = true }
 db = { workspace = true }
-hir = { workspace = true}
+hir = { workspace = true }
+formatter = { workspace = true }
 log = { workspace = true }
 tree-sitter-rk = { workspace = true }
-topiary-core = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 serde_json = { workspace = true }
