@@ -1,10 +1,9 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    hir_def::{
-        pous::pou::{Pou, PouDecl}, query_string::{NamedSymbol, Query, SymbolIndex, SymbolKind}
-    },
-    hir_ty::ty::{ty_for_variable},
+    hir_def::pous::pou::{Pou, PouDecl},
+    hir_ty::ty::ty_for_variable,
+    query_string::query::{NamedSymbol, Query, SymbolIndex, SymbolKind},
 };
 
 #[derive(Default)]
@@ -30,7 +29,7 @@ pub fn fuzzy_pou_local_items<'db>(
                     kind: SymbolKind::Variable(ty_for_variable(db, *v)),
                 })
             });
-        },
+        }
         Pou::FunctionBlock(fb) => {
             fb.variables(db).iter().for_each(|v| {
                 indexes.push(NamedSymbol {
@@ -38,10 +37,9 @@ pub fn fuzzy_pou_local_items<'db>(
                     kind: SymbolKind::Variable(ty_for_variable(db, *v)),
                 })
             });
-        },
+        }
         _ => {}
     }
-
 
     let index = vec![SymbolIndex::create(db, indexes.into_boxed_slice())];
 

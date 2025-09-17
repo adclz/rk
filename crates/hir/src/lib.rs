@@ -7,5 +7,6 @@ pub mod check;
 pub mod completions;
 pub mod hir_def;
 pub mod hir_ty;
+pub mod query_string;
 pub mod to_proto;
 pub mod walk;

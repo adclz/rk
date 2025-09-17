@@ -2,7 +2,8 @@ use auto_lsp::{
     core::{ast::AstNode, document_symbols_builder::DocumentSymbolsBuilder, span::Span},
     default::db::BaseDatabase,
     lsp_types::{
-        CompletionItem, GotoDefinitionResponse, Hover, InlayHint, request::GotoDeclarationResponse,
+        CodeLens, CompletionItem, GotoDefinitionResponse, Hover, InlayHint,
+        request::{GotoDeclarationResponse, GotoImplementationResponse},
     },
 };
 
@@ -67,6 +68,14 @@ pub trait ToProto<'db> {
         _db: &'db dyn BaseDatabase,
         _offset: usize,
     ) -> Option<Vec<CompletionItem>> {
+        None
+    }
+
+    fn code_lens(&self, _db: &'db dyn BaseDatabase) -> Option<CodeLens> {
+        None
+    }
+
+    fn implementation(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoImplementationResponse> {
         None
     }
 

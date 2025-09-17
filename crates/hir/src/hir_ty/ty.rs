@@ -2,8 +2,9 @@ use auto_lsp::{
     core::span::Span,
     default::db::BaseDatabase,
     lsp_types::{
-        GotoDefinitionResponse, Hover, HoverContents, Location, MarkupContent, MarkupKind,
-        request::GotoDeclarationResponse,
+        CodeLens, GotoDefinitionResponse, Hover, HoverContents, Location, MarkupContent,
+        MarkupKind,
+        request::{GotoDeclarationResponse, GotoImplementationResponse},
     },
 };
 use rustc_hash::FxHashMap;
@@ -114,6 +115,20 @@ impl<'db> ToProto<'db> for Ty<'db> {
             }),
             range: Some(name_span.into()),
         })
+    }
+
+    fn code_lens(&self, db: &'db dyn BaseDatabase) -> Option<CodeLens> {
+        match self.def(db) {
+            TyDef::Pou(pou) => pou.code_lens(db),
+            _ => None,
+        }
+    }
+
+    fn implementation(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoImplementationResponse> {
+        match self.def(db) {
+            TyDef::Pou(pou) => pou.implementation(db),
+            _ => None,
+        }
     }
 }
 
@@ -386,7 +401,7 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
                         let ty = ty_for_pou(db, pou);
                         Ty::new(db, decl, ty.def(db), TyKind::Target(ty))
                     }
-                    None => Ty::new(db, decl, def, TyKind::Unresolved(e.clone())),
+                    None => Ty::new(db, decl, TyDef::Invalid, TyKind::Unresolved(e.clone())),
                 }
             });
 
@@ -423,7 +438,7 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
                             let ty = ty_for_pou(db, pou);
                             Ty::new(db, decl, ty.def(db), TyKind::Target(ty))
                         }
-                        None => Ty::new(db, decl, def, TyKind::Unresolved(e.clone())),
+                        None => Ty::new(db, decl, TyDef::Invalid, TyKind::Unresolved(e.clone())),
                     });
 
             let implements = class
@@ -435,7 +450,12 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
                             let ty = ty_for_pou(db, pou);
                             Ty::new(db, decl, ty.def(db), TyKind::Target(ty))
                         }
-                        None => Ty::new(db, decl, def, TyKind::Unresolved(interface.clone())),
+                        None => Ty::new(
+                            db,
+                            decl,
+                            TyDef::Invalid,
+                            TyKind::Unresolved(interface.clone()),
+                        ),
                     }
                 })
                 .collect();
@@ -469,9 +489,12 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
                                     let ty = ty_for_pou(db, pou);
                                     Ty::new(db, decl, ty.def(db), TyKind::Target(ty))
                                 }
-                                None => {
-                                    Ty::new(db, decl, def, TyKind::Unresolved(interface.clone()))
-                                }
+                                None => Ty::new(
+                                    db,
+                                    decl,
+                                    TyDef::Invalid,
+                                    TyKind::Unresolved(interface.clone()),
+                                ),
                             }
                         })
                         .collect()

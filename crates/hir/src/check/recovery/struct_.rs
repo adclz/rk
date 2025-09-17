@@ -1,7 +1,9 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    check::recovery::pou::FuzzyResult, hir_def::query_string::{NamedSymbol, Query, SymbolIndex, SymbolKind}, hir_ty::ty::{Ty, TyKind}
+    check::recovery::pou::FuzzyResult,
+    hir_ty::ty::{Ty, TyKind},
+    query_string::query::{NamedSymbol, Query, SymbolIndex, SymbolKind},
 };
 
 pub fn fuzzy_struct_fields<'db>(
@@ -27,7 +29,7 @@ pub fn fuzzy_struct_fields<'db>(
     fast_query.fuzzy();
 
     fast_query.search(db, index, |symbol| {
-         match symbol.kind {
+        match symbol.kind {
             SymbolKind::Variable(ty) => results.variables.push(symbol.clone()),
             SymbolKind::StructField(ty) => results.struct_fields.push(symbol.clone()),
             _ => results.pou.push(symbol.clone()),

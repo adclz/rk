@@ -1,20 +1,22 @@
+use std::fmt::format;
+
 use crate::{
     completions,
     hir_def::{
-        expressions::{
-            spec::{ElementarySpec, SpecKind},
-        },
+        expressions::spec::{ElementarySpec, SpecKind},
         modifier::Modifier,
     },
+    hir_ty::implementation::find_all_implementations,
 };
 use auto_lsp::{
     core::document_symbols_builder::DocumentSymbolsBuilder,
     default::db::BaseDatabase,
     lsp_types::{
-        CompletionItem, InlayHint, InlayHintKind, InlayHintLabel,
-        SymbolKind,
+        CodeLens, Command, CompletionItem, InlayHint, InlayHintKind, InlayHintLabel, LocationLink,
+        SymbolKind, request::GotoImplementationResponse,
     },
 };
+use serde_json::to_value;
 
 use crate::{
     hir_def::{
@@ -161,7 +163,7 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
         });
     }
 
-    fn completion( 
+    fn completion(
         &'db self,
         db: &'db dyn BaseDatabase,
         offset: usize,
@@ -196,6 +198,50 @@ impl<'db> ToProto<'db> for PouDecl<'db> {
             data: None,
             tooltip: None,
         })
+    }
+
+    fn implementation(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoImplementationResponse> {
+        match self.pou(db) {
+            Pou::Class(_) | Pou::Interface(_) => {
+                let links = find_all_implementations(db, *self)
+                    .iter()
+                    .map(|pou| LocationLink {
+                        target_uri: pou.get_scope_id(db).file(db).url(db).clone(),
+                        target_range: pou.get_span(db).lsp(),
+                        target_selection_range: pou.get_span(db).lsp(),
+                        origin_selection_range: Some(self.get_span(db).lsp()),
+                    })
+                    .collect();
+
+                Some(GotoImplementationResponse::Link(links))
+            }
+            _ => None,
+        }
+    }
+
+    fn code_lens(&self, db: &'db dyn BaseDatabase) -> Option<CodeLens> {
+        match self.pou(db) {
+            Pou::Class(_) | Pou::Interface(_) => {
+                let implementations = find_all_implementations(db, *self);
+                if implementations.is_empty() {
+                    None
+                } else {
+                    Some(CodeLens {
+                        range: self.get_span(db).lsp(),
+                        command: Some(Command {
+                            title: format!("{} implementations", implementations.len()),
+                            command: "rk.showImplementations".into(),
+                            arguments: Some(vec![
+                                to_value(self.get_scope_id(db).file(db).url(db).as_str()).unwrap(),
+                                to_value(self.get_name_span(db).unwrap().lsp().start).unwrap()
+                            ]),
+                        }),
+                        data: None,
+                    })
+                }
+            }
+            _ => None,
+        }
     }
 }
 
