@@ -1,12 +1,15 @@
 use ariadne::CharSet;
 use ariadne::Config;
 use ariadne::Source;
+use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::{
     default::db::{FileManager, file::File},
     lsp_types::Url,
 };
 use db::RootDatabase;
 use hir::check::diagnostics_for_file;
+use hir::hir_def::pous::pou::PouDecl;
+use hir::hir_def::semantic_index::semantic_index;
 use rstest::fixture;
 
 #[fixture]
@@ -72,4 +75,25 @@ pub fn test_diagnostics(db: &mut RootDatabase, source: &str) -> String {
     });
 
     String::from_utf8(cache).unwrap()
+}
+
+
+pub fn find_pou_with_name<'db>(db: &'db dyn BaseDatabase, file: File, name: &str) -> Option<PouDecl<'db>> {
+    let sema = semantic_index(db, file);
+
+    for pou in sema.global_pous.iter().copied() {
+        if pou.name(db).text(db).as_str() == name {
+            return Some(pou);
+        }
+    }
+
+    for ns in sema.namespaces.iter() {
+        for pou in ns.pous(db) {
+            if pou.name(db).text(db).as_str() == name {
+                return Some(*pou);
+            }
+        }
+    }
+
+    None
 }
