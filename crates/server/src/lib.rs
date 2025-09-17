@@ -23,6 +23,7 @@ use auto_lsp::lsp_types::DiagnosticOptions;
 use auto_lsp::lsp_types::DiagnosticServerCapabilities;
 use auto_lsp::lsp_types::FoldingRangeProviderCapability;
 use auto_lsp::lsp_types::HoverProviderCapability;
+use auto_lsp::lsp_types::ImplementationProviderCapability;
 use auto_lsp::lsp_types::ServerCapabilities;
 use auto_lsp::lsp_types::WorkDoneProgressOptions;
 use auto_lsp::lsp_types::notification::Cancel;
@@ -42,6 +43,7 @@ use auto_lsp::lsp_types::request::FoldingRangeRequest;
 use auto_lsp::lsp_types::request::Formatting;
 use auto_lsp::lsp_types::request::GotoDeclaration;
 use auto_lsp::lsp_types::request::GotoDefinition;
+use auto_lsp::lsp_types::request::GotoImplementation;
 use auto_lsp::lsp_types::request::HoverRequest;
 use auto_lsp::lsp_types::request::InlayHintRequest;
 use auto_lsp::lsp_types::request::SemanticTokensFullRequest;
@@ -71,6 +73,7 @@ use crate::capabilties::document_symbols::document_symbols;
 use crate::capabilties::folding_ranges::folding_ranges;
 use crate::capabilties::formatting::formatting;
 use crate::capabilties::hover::hover;
+use crate::capabilties::implementation::go_to_implementation;
 use crate::capabilties::inlay_hints::inlay_hints;
 use crate::capabilties::semantic_tokens;
 use crate::capabilties::semantic_tokens::SUPPORTED_MODIFIERS;
@@ -129,6 +132,7 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
                 declaration_provider: Some(DeclarationCapability::Simple(true)),
                 definition_provider: Some(OneOf::Left(true)),
                 document_formatting_provider: Some(OneOf::Left(true)),
+                implementation_provider: Some(ImplementationProviderCapability::Simple(true)),
                 ..Default::default()
             },
             server_info: None,
@@ -167,6 +171,7 @@ fn on_requests<Db: BaseDatabase + Clone + RefUnwindSafe>(
         .on::<Formatting, _>(formatting)
         .on::<GotoDeclaration, _>(go_to_declaration)
         .on::<GotoDefinition, _>(go_to_definition)
+        .on::<GotoImplementation, _>(go_to_implementation)
 }
 
 fn on_notifications<Db: BaseDatabase + Clone + RefUnwindSafe>(
