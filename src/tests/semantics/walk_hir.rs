@@ -3,6 +3,7 @@ use std::ops::ControlFlow;
 use db::RootDatabase;
 use hir::hir_def::semantic_index::semantic_index;
 use hir::walk::WalkHir;
+use insta::assert_debug_snapshot;
 use insta::assert_snapshot;
 use rstest::rstest;
 
@@ -68,8 +69,6 @@ END_CLASS"#;
     Ty(Ty { [salsa id]: Id(1c02) })
     ");
 }
-
-
 
 #[rstest]
 pub fn walk_interface_methods(mut with_db: RootDatabase) {
@@ -150,5 +149,61 @@ END_FUNCTION_BLOCK"#;
     ResolvedStmt(ResolvedStmt { [salsa id]: Id(4407) })
     ResolvedExpr(ResolvedExpr { [salsa id]: Id(400d) })
     ResolvedStmt(ResolvedStmt { [salsa id]: Id(4406) })
+    ");
+}
+
+// Walking the HIR should preserve the order of AST nodes.
+#[rstest]
+pub fn sorted_ast_ids_in_function_block(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    test := fn_vall();
+
+    fn_call(input := 5, output => test);
+
+    IF test > 5 THEN
+    END_IF;
+
+    FOR i := 1 TO 10 BY 1 DO
+    END_FOR;
+
+    REPEAT UNTIL test = 100
+    END_REPEAT;
+
+    WHILE test < 100 DO
+    END_WHILE;
+END_FUNCTION_BLOCK"#;
+
+    let file = make_db_with_source(&mut with_db, source);
+    let sema = semantic_index(&with_db, file);
+
+    let mut nodes = vec![];
+
+    let _ = sema.walk_hir(&with_db, &mut |node| {
+        nodes.push(node.as_proto().get_id(&with_db).id());
+        ControlFlow::Continue(())
+    });
+
+    assert_debug_snapshot!(nodes, @r"
+    [
+        1,
+        5,
+        7,
+        12,
+        16,
+        17,
+        37,
+        39,
+        52,
+        59,
+        64,
+        69,
+        74,
+        78,
+        76,
+        91,
+        93,
+        107,
+    ]
     ");
 }
