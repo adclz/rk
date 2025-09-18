@@ -38,7 +38,7 @@ pub enum MethodError<'db> {
 impl<'db> From<MethodError<'db>> for AnalysisError<'db> {
     fn from(err: MethodError<'db>) -> Self {
         AnalysisError::MethodError(err)
-    }
+    } 
 }
 
 impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {

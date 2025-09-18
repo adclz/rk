@@ -13,7 +13,7 @@ use crate::{
 };
 
 impl<'db> Ty<'db> {
-    pub fn to_signature(&self, db: &'db dyn BaseDatabase) -> Option<CallableSignature> {
+    pub fn to_signature(&self, db: &'db dyn BaseDatabase) -> Option<CallableSignature<'db>> {
         match self.kind(db) {
             TyKind::Function {
                 input,

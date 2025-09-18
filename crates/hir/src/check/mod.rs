@@ -14,10 +14,15 @@ use crate::{
     hir_def::semantic_index::semantic_index,
 };
 
+pub mod check_array;
 pub mod check_inheritance;
 pub mod check_init_expr;
 pub mod check_semantic_index;
+pub mod check_stmt;
+pub mod check_struct;
 pub mod check_ty;
+pub mod check_variables;
+pub mod coerce;
 pub mod errors;
 pub mod recovery;
 
@@ -30,7 +35,7 @@ pub fn diagnostics_for_file(db: &dyn BaseDatabase, file: File) -> Arc<Vec<IdeDia
         .map(|e| (file, e).into())
         .collect::<Vec<_>>();
     let mut errors = vec![];
-    semantic_index(db, file).collect_errors(db, &mut errors);
+    semantic_index(db, file).check(db, &mut errors);
 
     all_diagnostics.extend(lexer_errors.into_iter().map(|e| e.to_diagnostic(db)));
     all_diagnostics.extend(errors.into_iter().map(|d| d.to_diagnostic(db)));

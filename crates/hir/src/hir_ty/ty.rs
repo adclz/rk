@@ -721,8 +721,12 @@ impl<'db> Ty<'db> {
         };
         matches!(
             self.kind(db),
-            TyKind::Function { .. } | TyKind::FunctionBlock { .. }
+            TyKind::Function { .. } | TyKind::FunctionBlock { .. } | TyKind::Method { .. }
         )
+    }
+
+    pub fn is_direct_type(&self, db: &'db dyn BaseDatabase) -> bool {
+        matches!(self.kind(db), TyKind::Target(_))
     }
 
     pub fn is_method_prototype(&self, db: &'db dyn BaseDatabase) -> bool {
@@ -740,10 +744,6 @@ impl<'db> Ty<'db> {
             return sig.is_unresolved(db);
         };
         matches!(self.kind(db), TyKind::Unresolved(_))
-    }
-
-    pub fn is_target(&self, db: &'db dyn BaseDatabase) -> bool {
-        matches!(self.kind(db), TyKind::Target(_))
     }
 
     pub fn is_recursive(&self, db: &'db dyn BaseDatabase) -> bool {

@@ -4,7 +4,7 @@ use auto_lsp::{
     lsp_types::{DiagnosticSeverity, DiagnosticTag},
     tree_sitter,
 };
-use ide_diagnostic::{IdeDiagnostic, diag};
+use ide_diagnostic::{IdeDiagnostic, Related, diag};
 
 use crate::{
     check::errors::{
@@ -12,7 +12,10 @@ use crate::{
         sem_errors::{AnalysisError, ToIdeDiagnostic},
         utils::{get_decl_and_def_for_ty, get_decl_for_ty},
     },
-    hir_def::expressions::statement::Stmt,
+    hir_def::{
+        expressions::statement::Stmt,
+        interned::identifier::{Ident, SpanIdent},
+    },
     hir_ty::{
         expr_resolver::ResolvedExpr, ty::Ty, ty_path_expr_resolver::ResolvedPathResult,
         ty_var_access_resolver::ResolvedVarResult,
@@ -28,25 +31,44 @@ pub enum StmtError<'db> {
     ExitOutsideLoop {
         exit_stmt: Stmt<'db>,
     },
-    Unreachable {
-        start: Span,
-        end: Span,
-    },
-    InvalidAssignment {
-        var: ResolvedVarResult<'db>,
+    AssignementToDirectType {
         ty: Ty<'db>,
+        var: ResolvedVarResult<'db>,
     },
-    VoidAssignmentTarget {
+    AssignementToCallableType {
+        ty: Ty<'db>,
+        var: ResolvedVarResult<'db>,
+    },
+    VoidAssignmentRHS {
         ty: Ty<'db>,
         target: ResolvedPathResult<'db>,
     },
-    AssignmentToInput {
-        var: ResolvedVarResult<'db>,
+    AssignmentToInputVar {
         ty: Ty<'db>,
+        var: ResolvedVarResult<'db>,
     },
-    AssignmentIsNotABool {
+    AssignBoolExpressionToNonBool {
         ty: Ty<'db>,
         expr: ResolvedExpr<'db>,
+    },
+    CallANonCallableType {
+        ty: Ty<'db>,
+        var: ResolvedPathResult<'db>,
+    },
+    UnusedReturnType {
+        ty: Ty<'db>,
+        var: ResolvedPathResult<'db>,
+        ret: Ty<'db>,
+    },
+    UnknownInputParam {
+        ty: Ty<'db>,
+        var: ResolvedPathResult<'db>,
+        param: SpanIdent<'db>,
+    },
+    UnknownOutputParam {
+        ty: Ty<'db>,
+        var: ResolvedPathResult<'db>,
+        param: SpanIdent<'db>,
     },
     TypeMismatch {
         expr: ResolvedExpr<'db>,
@@ -72,10 +94,10 @@ impl<'db> From<StmtError<'db>> for AnalysisError<'db> {
 impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
     fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
         match self {
-            Self::InvalidAssignment { var, ty } => {
+            Self::AssignementToCallableType { var, ty } => {
                 let mut diag = diag()
                     .message(format!(
-                        "'{}' is a type and can not be assigned",
+                        "'{}' is a callable type and can not be assigned",
                         ty.decl(db).name(db).text(db),
                     ))
                     .severity(DiagnosticSeverity::ERROR)
@@ -86,7 +108,23 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
 
                 diag
             }
-            Self::AssignmentToInput { var, ty } => {
+            Self::AssignementToDirectType { var, ty } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' is a type and can not be assigned",
+                        ty.decl(db).name(db).text(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(var.get_span(db).clone())
+                    .call();
+
+                get_decl_and_def_for_ty(db, *ty, &mut diag);
+                diag.with_note(
+                    "types can only be assigned if they are declared in a VAR_* section".into(),
+                );
+                diag
+            }
+            Self::AssignmentToInputVar { var, ty } => {
                 let mut diag = diag()
                     .message(format!(
                         "'{}' is an input variable and should not be assigned",
@@ -100,9 +138,9 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
 
                 diag
             }
-            Self::VoidAssignmentTarget { ty, target } => {
+            Self::VoidAssignmentRHS { ty, target } => {
                 let mut diag = diag()
-                    .message("target is of void type".to_string())
+                    .message("target is of type void".to_string())
                     .severity(DiagnosticSeverity::ERROR)
                     .range(target.get_span(db).clone())
                     .call();
@@ -111,7 +149,7 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
 
                 diag
             }
-            Self::AssignmentIsNotABool { ty, expr } => {
+            Self::AssignBoolExpressionToNonBool { ty, expr } => {
                 let mut diag = diag()
                     .message(format!(
                         "a boolean expression can not be assigned because '{}' is not a boolean",
@@ -140,20 +178,54 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
 
                 diag
             }
-            Self::Unreachable { start, end } => {
-                let range = Span::from(tree_sitter::Range {
-                    start_byte: start.start_byte,
-                    end_byte: end.end_byte,
-                    start_point: start.start_point,
-                    end_point: end.end_point,
-                });
+            Self::CallANonCallableType { ty, var } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "cannot call non-callable type '{}'",
+                        ty.decl(db).name(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(var.get_span(db).clone())
+                    .call();
 
-                diag()
-                    .message("unreachable code".into())
+                get_decl_and_def_for_ty(db, *ty, &mut diag);
+
+                diag.with_note("only functions, function blocks or methods can be called".into());
+
+                diag
+            }
+            Self::UnusedReturnType { ty, var, ret } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "unused return type of '{}'",
+                        ty.decl(db).name(db).text(db)
+                    ))
                     .severity(DiagnosticSeverity::WARNING)
-                    .tags(vec![DiagnosticTag::UNNECESSARY])
-                    .range(range.clone())
-                    .call()
+                    .range(var.get_span(db).clone())
+                    .call();
+
+                get_decl_and_def_for_ty(db, *ret, &mut diag);
+                diag
+            }
+            Self::UnknownInputParam { ty, var, param } => {
+                let mut diag = diag()
+                    .message(format!("unknown input parameter '{}'", param.text(db)))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(param.get_span(db).clone())
+                    .call();
+
+                get_decl_and_def_for_ty(db, *ty, &mut diag);
+                diag
+            }
+            Self::UnknownOutputParam { ty, var, param } => {
+                let mut diag = diag()
+                    .message(format!("unknown output parameter '{}'", param.text(db)))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(param.get_span(db).clone())
+                    .call();
+
+                get_decl_and_def_for_ty(db, *ty, &mut diag);
+                diag
             }
             Self::ExitOutsideLoop { exit_stmt } => diag()
                 .message("exit statement outside of loop".into())

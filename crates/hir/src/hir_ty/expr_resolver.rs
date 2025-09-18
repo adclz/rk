@@ -1,4 +1,7 @@
-use auto_lsp::{default::db::BaseDatabase, lsp_types::{request::{GotoDeclarationResponse}, GotoDefinitionResponse, Hover}};
+use auto_lsp::{
+    default::db::BaseDatabase,
+    lsp_types::{GotoDefinitionResponse, Hover, request::GotoDeclarationResponse},
+};
 
 use crate::{
     hir_def::{
@@ -50,7 +53,7 @@ pub enum ResolvedExprKind<'db> {
     Math(ResolvedExpr<'db>, ResolvedExpr<'db>), // left, right
 
     // Emitted by boolean expressions
-    Bool(ResolvedExpr<'db>, ResolvedExpr<'db>), // left, right
+    BooleanExpression(ResolvedExpr<'db>, ResolvedExpr<'db>), // left, right
 
     // Emitted by comparison expressions
     Compare(ResolvedExpr<'db>, ResolvedExpr<'db>), // left, right
@@ -70,7 +73,9 @@ impl<'db> ResolvedExpr<'db> {
             ResolvedExprKind::Literal(_) => true,
             ResolvedExprKind::Parenthesized(expr) => expr.is_constant(db),
             ResolvedExprKind::Math(left, right) => left.is_constant(db) && right.is_constant(db),
-            ResolvedExprKind::Bool(left, right) => left.is_constant(db) && right.is_constant(db),
+            ResolvedExprKind::BooleanExpression(left, right) => {
+                left.is_constant(db) && right.is_constant(db)
+            }
             ResolvedExprKind::Compare(left, right) => left.is_constant(db) && right.is_constant(db),
             _ => false,
         }
@@ -134,9 +139,11 @@ impl<'db> ResolveExprCtx<'db> {
                     },
                 ),
                 PrimaryExpr::RefValue { value } => match value {
-                    RefValue::Null => {
-                        ResolvedExpr::new(self.db, self.expr, ResolvedExprKind::RefValue(ResolvedRefValue::Null))
-                    }
+                    RefValue::Null => ResolvedExpr::new(
+                        self.db,
+                        self.expr,
+                        ResolvedExprKind::RefValue(ResolvedRefValue::Null),
+                    ),
                     RefValue::Address(adress) => match adress {
                         RefAdress::Instance(instance) => {
                             todo!()
@@ -170,7 +177,7 @@ impl<'db> ResolveExprCtx<'db> {
                 ResolvedExpr::new(
                     self.db,
                     self.expr,
-                    ResolvedExprKind::Bool(*left_resolved, *right_resolved),
+                    ResolvedExprKind::BooleanExpression(*left_resolved, *right_resolved),
                 )
             }
             ExprKind::ComparisonOperator {

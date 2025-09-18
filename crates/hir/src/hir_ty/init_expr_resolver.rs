@@ -83,10 +83,7 @@ impl<'db> ToProto<'db> for ResolvedInitExpr<'db> {
         self.expr(db).scope_id(db)
     }
 
-    fn declaration(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-    ) -> Option<GotoDeclarationResponse> {
+    fn declaration(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDeclarationResponse> {
         if let InitExprKind::ConstantExpr(expr) = self.expr(db).kind(db) {
             expr.declaration(db)
         } else {
@@ -94,7 +91,10 @@ impl<'db> ToProto<'db> for ResolvedInitExpr<'db> {
         }
     }
 
-    fn definition(&'db self, db: &'db dyn BaseDatabase) -> Option<auto_lsp::lsp_types::GotoDefinitionResponse> {
+    fn definition(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+    ) -> Option<auto_lsp::lsp_types::GotoDefinitionResponse> {
         if let InitExprKind::ConstantExpr(expr) = self.expr(db).kind(db) {
             expr.definition(db)
         } else {
@@ -102,7 +102,11 @@ impl<'db> ToProto<'db> for ResolvedInitExpr<'db> {
         }
     }
 
-    fn hover(&'db self, db: &'db dyn BaseDatabase, offset: Option<usize>) -> Option<auto_lsp::lsp_types::Hover> {
+    fn hover(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        offset: Option<usize>,
+    ) -> Option<auto_lsp::lsp_types::Hover> {
         if let InitExprKind::ConstantExpr(expr) = self.expr(db).kind(db) {
             expr.hover(db, None)
         } else {

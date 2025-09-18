@@ -1,10 +1,8 @@
 use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
-use ide_diagnostic::{diag, IdeDiagnostic, Related};
+use ide_diagnostic::{IdeDiagnostic, Related, diag};
 
 use crate::{
-    check::errors::{
-        sem_errors::{AnalysisError, ToIdeDiagnostic},
-    },
+    check::errors::sem_errors::{AnalysisError, ToIdeDiagnostic},
     hir_def::interned::namespace::SpanNamespaceAccess,
     hir_ty::{expr_resolver::ResolvedExpr, ty::Ty},
     to_proto::ToProto,
@@ -24,15 +22,12 @@ pub enum TyError<'db> {
         path: SpanNamespaceAccess<'db>,
     },
     InvalidArrayLowerValue {
-        array: Ty<'db>,
         value: ResolvedExpr<'db>,
     },
     InvalidArrayUpperValue {
-        array: Ty<'db>,
         value: ResolvedExpr<'db>,
     },
     InferiorUpperBound {
-        array: Ty<'db>,
         lower: u64,
         upper: u64,
         upper_expr: ResolvedExpr<'db>,
@@ -55,7 +50,7 @@ impl<'db> ToIdeDiagnostic<'db> for TyError<'db> {
                     .range(path.get_span(db))
                     .call();
                 diag
-            },
+            }
             TyError::Recursive { origin } => {
                 let diag = diag()
                     .message(format!(
@@ -80,7 +75,10 @@ impl<'db> ToIdeDiagnostic<'db> for TyError<'db> {
                     .call();
 
                 diag.with_related(Related::new(
-                    format!("'{}' is originally declared here", target.decl(db).name(db).text(db)),
+                    format!(
+                        "'{}' is originally declared here",
+                        target.decl(db).name(db).text(db)
+                    ),
                     target.decl(db).scope_id(db).file(db),
                     target.decl(db).name_span(db),
                 ));
@@ -93,7 +91,7 @@ impl<'db> ToIdeDiagnostic<'db> for TyError<'db> {
 
                 diag
             }
-            TyError::InvalidArrayLowerValue { array, value } => {
+            TyError::InvalidArrayLowerValue { value } => {
                 let diag = diag()
                     .message(format!("Invalid lower bound value for ARRAY",))
                     .severity(DiagnosticSeverity::ERROR)
@@ -101,7 +99,7 @@ impl<'db> ToIdeDiagnostic<'db> for TyError<'db> {
                     .call();
                 diag
             }
-            TyError::InvalidArrayUpperValue { array, value } => {
+            TyError::InvalidArrayUpperValue { value } => {
                 let diag = diag()
                     .message(format!("Invalid upper bound value for ARRAY",))
                     .severity(DiagnosticSeverity::ERROR)
@@ -110,7 +108,6 @@ impl<'db> ToIdeDiagnostic<'db> for TyError<'db> {
                 diag
             }
             TyError::InferiorUpperBound {
-                array,
                 lower,
                 upper,
                 upper_expr,
