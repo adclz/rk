@@ -35,7 +35,7 @@ END_FUNCTION_BLOCK"#;
 }
 
 #[rstest]
-fn assign_direct_pou(mut with_db: RootDatabase) {
+fn assign_undeclared_pou_type(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK fb2
 
@@ -62,6 +62,40 @@ END_FUNCTION_BLOCK"#;
      8 |         fb2 := ULINT#5;
        |         ^|^  
        |          `--- 'fb2' is a type and can not be assigned
+       | |   
+       | |   Note: types can only be assigned if they are declared in a VAR_* section
+    ---'
+    ");
+}
+
+#[rstest]
+fn assign_undeclared_type(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE
+    T1 : INT;
+END_TYPE
+
+FUNCTION_BLOCK fb1
+
+    T1 := ULINT#5;
+
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    Error: 
+       ,-[ file:///test.st:8:5 ]
+       |
+     3 |     T1 : INT;
+       |     ^|   ^|^  
+       |      `-------- 'T1' is declared here
+       |           |   
+       |           `--- type defined here
+       | 
+     8 |     T1 := ULINT#5;
+       |     ^|  
+       |      `-- 'T1' is a type and can not be assigned
+       | 
+       | Note: types can only be assigned if they are declared in a VAR_* section
     ---'
     ");
 }
@@ -98,7 +132,7 @@ END_FUNCTION_BLOCK"#;
         | 
      11 |         d_fb2 := ULINT#5;
         |         ^^|^^  
-        |           `---- 'd_fb2' is a type and can not be assigned
+        |           `---- 'd_fb2' is a callable type and can not be assigned
     ----'
     ");
 }
@@ -156,7 +190,7 @@ END_FUNCTION_BLOCK"#;
         | 
      11 |     test := fn1();
         |             ^|^  
-        |              `--- target is of void type
+        |              `--- target is of type void
     ----'
     ");
 }
