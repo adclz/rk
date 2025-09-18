@@ -182,12 +182,12 @@ pub enum RefAdress<'db> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ParamAssign<'db> {
     ParamAssignInput {
-        param: Option<Ident>,
+        param: Option<SpanIdent<'db>>,
         value: Expr<'db>,
     },
     ParamAssignOutput {
         not: bool,
-        param: Ident,
+        param: SpanIdent<'db>,
         variable: VariableAccess<'db>,
     },
 }

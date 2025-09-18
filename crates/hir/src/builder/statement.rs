@@ -4,7 +4,7 @@ use crate::check::errors::sem_errors::AnalysisError;
 use crate::check::errors::syntax::SyntaxError;
 use crate::hir_def::expressions::expression::{ParamAssign, SymbolicVariable};
 use crate::hir_def::expressions::statement::{CaseKind, Stmt, StmtKind};
-use crate::hir_def::interned::identifier::Ident;
+use crate::hir_def::interned::identifier::SpanIdent;
 use auto_lsp::anyhow::{self};
 use auto_lsp::core::ast::AstNode;
 
@@ -33,7 +33,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                             match p.children.cast(sema.ast) {
                                     ast::generated::ParamAssignInput_ParamAssignOutput::ParamAssignInput(p) => {
                                         parameters.push(ParamAssign::ParamAssignInput {
-                                            param: p.param.as_ref().map(|p| Ident::from_node(sema.db, sema.file, p.cast(sema.ast))).transpose()?,
+                                            param: p.param.as_ref().map(|p| SpanIdent::from_node(sema.db, sema, p.cast(sema.ast))).transpose()?,
                                             value: p.value.cast(sema.ast).to_expr(sema)?,
                                         })
                                     }
@@ -41,7 +41,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                                         let variable = p.variable.cast(sema.ast).to_access(sema)?;
                                         parameters.push(ParamAssign::ParamAssignOutput {
                                             not: p.not.is_some(),
-                                            param: Ident::from_node(sema.db, sema.file, p.param.cast(sema.ast))?,
+                                            param: SpanIdent::from_node(sema.db, sema, p.param.cast(sema.ast))?,
                                             variable,
                                         })
                                     }
@@ -68,7 +68,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                             match p.children.cast(sema.ast) {
                                     ast::generated::ParamAssignInput_ParamAssignOutput::ParamAssignInput(p) => {
                                         parameters.push(ParamAssign::ParamAssignInput {
-                                            param: p.param.as_ref().map(|p| Ident::from_node(sema.db, sema.file, p.cast(sema.ast))).transpose()?,
+                                            param: p.param.as_ref().map(|p| SpanIdent::from_node(sema.db, sema, p.cast(sema.ast))).transpose()?,
                                             value: p.value.cast(sema.ast).to_expr(sema)?,
                                         })
                                     }
@@ -76,7 +76,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                                         let variable = p.variable.cast(sema.ast).to_access(sema)?;
                                         parameters.push(ParamAssign::ParamAssignOutput {
                                             not: p.not.is_some(),
-                                            param: Ident::from_node(sema.db, sema.file, p.param.cast(sema.ast))?,
+                                            param: SpanIdent::from_node(sema.db, sema, p.param.cast(sema.ast))?,
                                             variable,
                                         })
                                     }
@@ -174,7 +174,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                                 span: err.get_span(),
                             }))
                         }
-                        ast::generated::ERRMissingDotInForControl_ERRMissingEqualInForControl::ERRMissingEqualInForControl(err) => {                 
+                        ast::generated::ERRMissingDotInForControl_ERRMissingEqualInForControl::ERRMissingEqualInForControl(err) => {
                             sema.errors.push(AnalysisError::SyntaxError(SyntaxError::MissingEqualInForList {
                                 file: sema.file,
                                 span: err.get_span(),
@@ -183,11 +183,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                     }
                 });
 
-                let start = for_list
-                    .initial_value
-                    .cast(sema.ast)
-                    .to_expr(sema)?;
-
+                let start = for_list.initial_value.cast(sema.ast).to_expr(sema)?;
 
                 let end = for_stmt
                     .control_list
@@ -372,21 +368,21 @@ impl<'db> ParseStatement<'db> for ast::generated::Assign {
 
         type TargetType = ast::generated::ERREmptyRightHandAssignment_ERRMissingDotInAssignment_ERRMissingEqualInAssignment_Assignment_AssignmentAttempt;
         match self.target.cast(sema.ast) {
-            TargetType::ERREmptyRightHandAssignment(err) => {
-                Err(AnalysisError::SyntaxError(SyntaxError::EmptyRightHandSide(err.get_span())))
-            },
-            TargetType::ERRMissingDotInAssignment(err) => {
-                Err(AnalysisError::SyntaxError(SyntaxError::MissingDotInAssignment {
+            TargetType::ERREmptyRightHandAssignment(err) => Err(AnalysisError::SyntaxError(
+                SyntaxError::EmptyRightHandSide(err.get_span()),
+            )),
+            TargetType::ERRMissingDotInAssignment(err) => Err(AnalysisError::SyntaxError(
+                SyntaxError::MissingDotInAssignment {
                     file: sema.file,
                     span: err.get_span(),
-                }))
-            },
-            TargetType::ERRMissingEqualInAssignment(err) => {
-                Err(AnalysisError::SyntaxError(SyntaxError::MissingEqualInAssignment {
+                },
+            )),
+            TargetType::ERRMissingEqualInAssignment(err) => Err(AnalysisError::SyntaxError(
+                SyntaxError::MissingEqualInAssignment {
                     file: sema.file,
                     span: err.get_span(),
-                }))
-            },
+                },
+            )),
             TargetType::Assignment(assign) => Ok(Stmt::new(
                 sema.db,
                 StmtKind::Assignment {
@@ -394,19 +390,17 @@ impl<'db> ParseStatement<'db> for ast::generated::Assign {
                     target: assign.children.cast(sema.ast).to_expr(sema)?,
                 },
                 self.into(),
-                sema.current_scope
+                sema.current_scope,
             )),
-            TargetType::AssignmentAttempt(attempt) => {
-                Ok(Stmt::new(
-                    sema.db,
-                    StmtKind::AssignmentAttempt {
-                        var,
-                        target: attempt.children.cast(sema.ast).to_expr(sema)?,
-                    },
-                    self.into(),
-                    sema.current_scope
-                ))
-            }
+            TargetType::AssignmentAttempt(attempt) => Ok(Stmt::new(
+                sema.db,
+                StmtKind::AssignmentAttempt {
+                    var,
+                    target: attempt.children.cast(sema.ast).to_expr(sema)?,
+                },
+                self.into(),
+                sema.current_scope,
+            )),
         }
     }
 }

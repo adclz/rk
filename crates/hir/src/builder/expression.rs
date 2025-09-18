@@ -243,7 +243,7 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                             match p.children.cast(sema.ast) {
                                     ast::generated::ParamAssignInput_ParamAssignOutput::ParamAssignInput(p) => {
                                         parameters.push(ParamAssign::ParamAssignInput {
-                                            param: p.param.as_ref().map(|p| Ident::from_node(sema.db, sema.file, p.cast(sema.ast))).transpose()?,
+                                            param: p.param.as_ref().map(|p| SpanIdent::from_node(sema.db, sema, p.cast(sema.ast))).transpose()?,
                                             value: p.value.cast(sema.ast).to_expr(sema)?,
                                         })
                                     }
@@ -251,7 +251,7 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                                         let variable = p.variable.cast(sema.ast).to_access(sema)?;
                                         parameters.push(ParamAssign::ParamAssignOutput {
                                             not: p.not.is_some(),
-                                            param: Ident::from_node(sema.db, sema.file, p.param.cast(sema.ast))?,
+                                            param: SpanIdent::from_node(sema.db, sema, p.param.cast(sema.ast))?,
                                             variable,
                                         })
                                     }

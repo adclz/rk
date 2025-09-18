@@ -13,7 +13,7 @@ use crate::{
     to_proto::{AstId, ToProto},
 };
 
-#[derive(Clone, Eq, salsa::Update, Debug)]
+#[derive(Clone, Copy, Eq, salsa::Update, Debug)]
 pub struct SpanIdent<'db> {
     pub id: AstId,
     pub scope_id: FileScopeId<'db>,
