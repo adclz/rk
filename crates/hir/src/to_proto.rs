@@ -18,6 +18,12 @@ impl<T: AstNode> From<&T> for AstId {
     }
 }
 
+impl AstId {
+    pub fn id(&self) -> usize {
+        self.0
+    }
+}
+
 pub trait TypeInfo<'db> {
     fn type_name(&self, db: &'db dyn BaseDatabase) -> &'static str;
 }
