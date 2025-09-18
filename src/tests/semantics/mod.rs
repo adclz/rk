@@ -1,10 +1,12 @@
 pub mod assignment;
+pub mod duplicates;
+pub mod func_call;
 pub mod inheritance;
 pub mod init_expr;
 pub mod literals;
 pub mod recovery_fuzzy;
+pub mod recursive;
 pub mod scopes;
 pub mod syntax;
 pub mod ty;
-pub mod recursive;
-pub  mod walk_hir;
+pub mod walk_hir;
