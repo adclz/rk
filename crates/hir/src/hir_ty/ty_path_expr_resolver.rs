@@ -10,7 +10,7 @@ use crate::hir_def::{
 use crate::hir_ty::TyInfo;
 use crate::hir_ty::name_res::{pous_in_scope, resolve_namespace_access, variables_in_scope};
 use crate::hir_ty::ty::{Ty, ty_for_pou, ty_for_variable};
-use crate::to_proto::{AstId, ToProto};
+use crate::{AstId, HirNodeInfo};
 
 #[salsa::tracked(no_eq, returns(ref))]
 pub fn resolved_path_expr<'db>(
@@ -183,7 +183,7 @@ impl<'db> ResolvePathExprCtx<'db> {
         }
 
         // Accumulate fragments if not resolved yet
-        self.fragments.push(identifier.clone());
+        self.fragments.push(*identifier);
     }
 }
 
@@ -223,7 +223,7 @@ impl<'db> PathExpr<'db> {
                 match &field_expr.var {
                     VarAccess::Simple(simple) => result.push(PathExprWalkStep::Field {
                         expr: self,
-                        ident: simple.clone(),
+                        ident: *simple,
                     }),
                     VarAccess::Deref(_) => result.push(PathExprWalkStep::Deref { expr: self }),
                 }
@@ -235,7 +235,7 @@ impl<'db> PathExpr<'db> {
             PathExprKind::VarAccess(var_access) => match var_access {
                 VarAccess::Simple(simple) => result.push(PathExprWalkStep::Field {
                     expr: self,
-                    ident: simple.clone(),
+                    ident: simple,
                 }),
                 VarAccess::Deref(_) => result.push(PathExprWalkStep::Deref { expr: self }),
             },
@@ -245,34 +245,12 @@ impl<'db> PathExpr<'db> {
     }
 }
 
-impl<'db> ToProto<'db> for ResolvedPathResult<'db> {
+impl<'db> HirNodeInfo<'db> for ResolvedPathResult<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
         self.expr(db).id(db)
     }
 
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         self.expr(db).scope_id(db)
-    }
-
-    fn declaration(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-    ) -> Option<auto_lsp::lsp_types::request::GotoDeclarationResponse> {
-        if let Ok(ty) = self.ty(db) {
-            ty.declaration(db)
-        } else {
-            None
-        }
-    }
-
-    fn definition(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-    ) -> Option<auto_lsp::lsp_types::GotoDefinitionResponse> {
-        if let Ok(ty) = self.ty(db) {
-            ty.definition(db)
-        } else {
-            None
-        }
     }
 }

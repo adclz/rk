@@ -1,19 +1,18 @@
-use crate::completions::snippets::elem_type_names;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::hir_def::expressions::expression::{InitExpr, VariableAccess};
 use crate::hir_def::semantic_index::semantic_index;
 use crate::hir_ty::name_res::resolve_namespace_access;
-use crate::to_proto::{AstId, TypeInfo};
+use crate::{AstId, TypeInfo};
 use crate::{
+    HirNodeInfo,
     hir_def::{
         expressions::expression::{Expr, MultibitsPart},
-        interned::{identifier::Ident},
+        interned::identifier::Ident,
         pous::pou::Pou,
         scope::FileScopeId,
     },
-    to_proto::ToProto,
 };
 
 #[salsa::tracked(debug)]
@@ -141,42 +140,13 @@ impl<'db> TypeInfo<'db> for ElementarySpec {
     }
 }
 
-impl<'db> ToProto<'db> for Spec<'db> {
+impl<'db> HirNodeInfo<'db> for Spec<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
         self.id(db)
     }
 
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         self.scope_id(db)
-    }
-
-    fn completion(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        _offset: usize,
-    ) -> Option<Vec<auto_lsp::lsp_types::CompletionItem>> {
-        let mut primary = elem_type_names();
-        let sema = semantic_index(db, self.scope_id(db).file(db));
-        let finder = sema.pous_in_scope(db, self.scope_id(db));
-
-        primary.extend(finder.iter().filter_map(|(name, pou)| match pou.pou(db) {
-            Pou::DataType(fb) => Some(auto_lsp::lsp_types::CompletionItem {
-                label: pou.name(db).text(db).to_string(),
-                kind: Some(auto_lsp::lsp_types::CompletionItemKind::TYPE_PARAMETER),
-                detail: Some("TYPE".to_string()),
-                documentation: None,
-                ..Default::default()
-            }),
-            Pou::FunctionBlock(dt) => Some(auto_lsp::lsp_types::CompletionItem {
-                label: pou.name(db).text(db).to_string(),
-                kind: Some(auto_lsp::lsp_types::CompletionItemKind::FUNCTION),
-                detail: Some("FUNCTION_BLOCK".to_string()),
-                documentation: None,
-                ..Default::default()
-            }),
-            _ => None,
-        }));
-        Some(primary)
     }
 }
 
@@ -203,7 +173,7 @@ pub struct StructElement<'db> {
     pub scope_id: FileScopeId<'db>,
 }
 
-impl<'db> ToProto<'db> for StructElement<'db> {
+impl<'db> HirNodeInfo<'db> for StructElement<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
         self.id(db)
     }

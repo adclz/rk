@@ -209,7 +209,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 );
 
                 diag
-            },
+            }
             Self::MissingDotInForList { file, span } => {
                 let mut diag = diag()
                     .message("'=' is not a valid assignment sign".into())

@@ -1,2 +1,2 @@
-pub mod struct_;
 pub mod pou;
+pub mod struct_;

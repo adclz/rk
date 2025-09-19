@@ -1,7 +1,6 @@
-use crate::completions::snippets::elem_type_names_init;
 use crate::hir_def::interned::identifier::{Ident, SpanIdent};
 use crate::hir_def::scope::FileScopeId;
-use crate::to_proto::{AstId, ToProto};
+use crate::{AstId, HirNodeInfo};
 use auto_lsp::default::db::BaseDatabase;
 
 #[salsa::tracked(debug)]
@@ -115,7 +114,7 @@ pub struct PathExpr<'db> {
     pub scope_id: FileScopeId<'db>,
 }
 
-impl<'db> ToProto<'db> for PathExpr<'db> {
+impl<'db> HirNodeInfo<'db> for PathExpr<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
         self.id(db)
     }
@@ -148,13 +147,13 @@ impl<'db> PathExpr<'db> {
     pub fn to_string(&self, db: &'db dyn BaseDatabase) -> SpanIdent<'db> {
         match &self.expr(db) {
             PathExprKind::Field(field_expr) => match field_expr.var {
-                VarAccess::Simple(ref simple) => simple.clone(),
-                VarAccess::Deref(ref deref) => deref.clone(),
+                VarAccess::Simple(ref simple) => *simple,
+                VarAccess::Deref(ref deref) => *deref,
             },
             PathExprKind::Index(index_expr) => index_expr.path.to_string(db),
             PathExprKind::VarAccess(var_access) => match var_access {
-                VarAccess::Simple(simple) => simple.clone(),
-                VarAccess::Deref(deref) => deref.clone(),
+                VarAccess::Simple(simple) => *simple,
+                VarAccess::Deref(deref) => *deref,
             },
         }
     }
@@ -217,7 +216,7 @@ pub struct VariableAccess<'db> {
     pub scope_id: FileScopeId<'db>,
 }
 
-impl<'db> ToProto<'db> for VariableAccess<'db> {
+impl<'db> HirNodeInfo<'db> for VariableAccess<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
         self.id(db)
     }
@@ -308,21 +307,13 @@ pub enum IntegerKind {
     Signed,
 }
 
-impl<'db> ToProto<'db> for Expr<'db> {
+impl<'db> HirNodeInfo<'db> for Expr<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
         self.id(db)
     }
 
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         self.scope_id(db)
-    }
-
-    fn completion(
-        &'db self,
-        _db: &'db dyn BaseDatabase,
-        _offset: usize,
-    ) -> Option<Vec<auto_lsp::lsp_types::CompletionItem>> {
-        Some(elem_type_names_init())
     }
 }
 
@@ -354,7 +345,7 @@ pub enum InitExprKind<'db> {
     ConstantExpr(Expr<'db>),
 }
 
-impl<'db> ToProto<'db> for InitExpr<'db> {
+impl<'db> HirNodeInfo<'db> for InitExpr<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
         self.id(db)
     }

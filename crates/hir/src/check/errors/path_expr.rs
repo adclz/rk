@@ -2,6 +2,7 @@ use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, diag};
 
 use crate::{
+    HirNodeInfo,
     check::{
         errors::{
             sem_errors::{AnalysisError, ToIdeDiagnostic},
@@ -15,7 +16,6 @@ use crate::{
         semantic_index::semantic_index,
     },
     hir_ty::ty::Ty,
-    to_proto::ToProto,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
@@ -65,7 +65,10 @@ impl<'db> ToIdeDiagnostic<'db> for PathExprError<'db> {
                     .get_scope(db, *scope)
                     .kind
                 {
-                    add_candidates(&fuzzy_pou_local_items(db, pou, expr.to_string(db).as_str(db)), &mut diag);
+                    add_candidates(
+                        &fuzzy_pou_local_items(db, pou, expr.to_string(db).as_str(db)),
+                        &mut diag,
+                    );
                 }
 
                 diag

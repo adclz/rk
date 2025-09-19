@@ -1,0 +1,83 @@
+use auto_lsp::{
+    core::document_symbols_builder::DocumentSymbolsBuilder,
+    default::db::BaseDatabase,
+    lsp_types::{CompletionItem, InlayHint, InlayHintKind, InlayHintLabel},
+};
+use hir::{
+    HirNodeInfo,
+    hir_def::{namespace::NamespaceDecl, scope::Visibility, semantic_index::semantic_index},
+};
+
+use crate::{ToProtocol, completions};
+
+impl<'db> ToProtocol<'db> for NamespaceDecl<'db> {
+    fn document_symbols(&self, db: &'db dyn BaseDatabase, builder: &mut DocumentSymbolsBuilder) {
+        let mut nested_builder = DocumentSymbolsBuilder::default();
+        self.pous(db)
+            .iter()
+            .for_each(|pou| pou.document_symbols(db, &mut nested_builder));
+
+        builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
+            name: self.path(db).to_string(db),
+            detail: Some("namespace".to_string()),
+            kind: auto_lsp::lsp_types::SymbolKind::NAMESPACE, // Namespace
+            deprecated: None,
+            range: self.get_span(db).lsp(),
+            selection_range: self.get_name_span(db).unwrap().lsp(),
+            children: Some(nested_builder.finalize()),
+            tags: None,
+        });
+    }
+
+    fn inlay_hint(&'db self, db: &'db dyn BaseDatabase) -> Option<auto_lsp::lsp_types::InlayHint> {
+        Some(InlayHint {
+            label: InlayHintLabel::String(format!("namespace {}", self.path(db).to_string(db))),
+            position: self.get_span(db).lsp().end,
+            kind: Some(InlayHintKind::TYPE),
+            text_edits: None,
+            padding_left: Some(true),
+            padding_right: None,
+            data: None,
+            tooltip: None,
+        })
+    }
+
+    fn completion(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        offset: usize,
+    ) -> Option<Vec<CompletionItem>> {
+        let sema = semantic_index(db, self.scope_id(db).file(db));
+        let scope = sema.get_scope(db, self.scope_id(db));
+
+        // Don't provide completions between the namespace keyword and the namespace name
+        if self.get_name_span(db)?.end_byte > offset {
+            if !scope.visibility == Visibility::PUBLIC {
+                return Some(vec![CompletionItem::new_simple(
+                    "INTERNAL".into(),
+                    "internal".into(),
+                )]);
+            } else {
+                return None;
+            }
+        }
+
+        let mut completions = vec![
+            completions::static_snippets::namespace(),
+            completions::static_snippets::function(),
+            completions::static_snippets::function_block(),
+            completions::static_snippets::type_(),
+            completions::static_snippets::class(),
+            completions::static_snippets::interface(),
+        ];
+        // Using directives can only be added before any POU declarations
+        if let Some(pou) = self.pous(db).first() {
+            if pou.get_span(db).end_byte >= offset {
+                completions.push(completions::static_snippets::using());
+            }
+        } else {
+            completions.push(completions::static_snippets::using());
+        }
+        Some(completions)
+    }
+}

@@ -8,6 +8,7 @@ use auto_lsp::{
     lsp_types::{self, CompletionParams, CompletionResponse},
 };
 use hir::{hir_def::COMPLETION_MARKER, hir_def::semantic_index::semantic_index};
+use ide_proto::AsProtocol;
 use tracing::info_span;
 
 pub fn completions(

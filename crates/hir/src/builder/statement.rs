@@ -167,7 +167,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                 let for_list = for_stmt.control_list.cast(sema.ast);
 
                 for_list.children.as_ref().map(|err| {
-                    match err.cast(&sema.ast) {
+                    match err.cast(sema.ast) {
                         ast::generated::ERRMissingDotInForControl_ERRMissingEqualInForControl::ERRMissingDotInForControl(err) => {
                             sema.errors.push(AnalysisError::SyntaxError(SyntaxError::MissingDotInForList {
                                 file: sema.file,

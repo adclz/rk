@@ -7,8 +7,9 @@ use hir::hir_def::semantic_index::HirNode;
 use hir::hir_def::semantic_index::semantic_index;
 use hir::hir_ty::ty::TyDecl;
 use hir::hir_ty::ty::ty_for_variable;
-use hir::to_proto::ToProto;
 use hir::walk::WalkHir;
+use ide_proto::AsProtocol;
+use ide_proto::ToProtocol;
 use insta::assert_snapshot;
 use rstest::rstest;
 
@@ -90,7 +91,8 @@ END_FUNCTION_BLOCK
     let mut nodes = vec![];
 
     let _ = sema.walk_hir(&with_db, &mut |node| {
-        if let HirNode::Ty(ty) = node && let TyDecl::Pou(pou) = ty.decl(&with_db)
+        if let HirNode::Ty(ty) = node
+            && let TyDecl::Pou(pou) = ty.decl(&with_db)
             && let Pou::FunctionBlock(fb) = pou.pou(&with_db)
         {
             for var in fb.variables(&with_db) {

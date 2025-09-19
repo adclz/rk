@@ -2,6 +2,7 @@ use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, diag};
 
 use crate::{
+    HirNodeInfo,
     check::{
         errors::{
             sem_errors::{AnalysisError, ToIdeDiagnostic},
@@ -11,7 +12,6 @@ use crate::{
     },
     hir_def::interned::identifier::SpanIdent,
     hir_ty::{init_expr_resolver::ResolvedInitExpr, ty::Ty},
-    to_proto::ToProto,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -38,10 +38,7 @@ impl<'db> ToIdeDiagnostic<'db> for InitExprError<'db> {
                 unknown_field,
             } => {
                 let mut diag = diag()
-                    .message(format!(
-                        "No field '{}' in STRUCT",
-                        field_name.text(db).to_string()
-                    ))
+                    .message(format!("No field '{}' in STRUCT", field_name.text(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(field_name.get_span(db))
                     .call();

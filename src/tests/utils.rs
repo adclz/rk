@@ -77,8 +77,11 @@ pub fn test_diagnostics(db: &mut RootDatabase, source: &str) -> String {
     String::from_utf8(cache).unwrap()
 }
 
-
-pub fn find_pou_with_name<'db>(db: &'db dyn BaseDatabase, file: File, name: &str) -> Option<PouDecl<'db>> {
+pub fn find_pou_with_name<'db>(
+    db: &'db dyn BaseDatabase,
+    file: File,
+    name: &str,
+) -> Option<PouDecl<'db>> {
     let sema = semantic_index(db, file);
 
     for pou in sema.global_pous.iter().copied() {

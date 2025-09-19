@@ -6,7 +6,8 @@ use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{DocumentSymbolParams, DocumentSymbolResponse},
 };
-use hir::{hir_def::semantic_index::semantic_index, to_proto::ToProto};
+use hir::hir_def::semantic_index::semantic_index;
+use ide_proto::ToProtocol;
 
 pub fn document_symbols(
     db: &impl BaseDatabase,

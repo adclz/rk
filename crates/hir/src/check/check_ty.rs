@@ -2,11 +2,7 @@ use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     check::errors::{sem_errors::AnalysisError, ty::TyError},
-    hir_ty::{
-        array_resolver::resolve_range,
-        expr_resolver::resolve_expr,
-        ty::{Ty, TyKind},
-    },
+    hir_ty::ty::{Ty, TyKind},
 };
 
 pub fn check_ty<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>, errors: &mut Vec<AnalysisError<'db>>) {
@@ -15,7 +11,7 @@ pub fn check_ty<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>, errors: &mut Vec<An
             errors.push(
                 TyError::UnresolvedType {
                     ty,
-                    path: unresolved.clone(),
+                    path: unresolved,
                 }
                 .into(),
             );

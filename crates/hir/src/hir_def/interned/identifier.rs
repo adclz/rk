@@ -10,7 +10,7 @@ use crate::{
     builder::semantic_index::SemanticIndexBuilder,
     check::errors::sem_errors::AnalysisError,
     hir_def::scope::FileScopeId,
-    to_proto::{AstId, ToProto},
+    {AstId, HirNodeInfo},
 };
 
 #[derive(Clone, Copy, Eq, salsa::Update, Debug)]
@@ -74,7 +74,7 @@ impl<'db> SpanIdent<'db> {
     }
 }
 
-impl<'db> ToProto<'db> for SpanIdent<'db> {
+impl<'db> HirNodeInfo<'db> for SpanIdent<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
         self.id
     }

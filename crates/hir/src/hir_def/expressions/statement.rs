@@ -5,7 +5,7 @@ use crate::{
         expressions::expression::{Expr, ParamAssign, PathExpr, SymbolicVariable, VariableAccess},
         scope::FileScopeId,
     },
-    to_proto::{AstId, ToProto},
+    {AstId, HirNodeInfo},
 };
 
 #[salsa::tracked(debug)]
@@ -18,7 +18,7 @@ pub struct Stmt<'db> {
     pub scope_id: FileScopeId<'db>,
 }
 
-impl<'db> ToProto<'db> for Stmt<'db> {
+impl<'db> HirNodeInfo<'db> for Stmt<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
         self.id(db)
     }

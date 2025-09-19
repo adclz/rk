@@ -3,15 +3,14 @@ use auto_lsp::default::db::BaseDatabase;
 use crate::{
     check::{
         check_semantic_index::Check,
-        coerce::{coerce_ty_with_expr, coerce_ty_with_ty},
+        coerce::coerce_ty_with_expr,
         errors::{sem_errors::AnalysisError, stmt::StmtError},
     },
-    hir_def::expressions::{spec::ElementarySpec, statement::Stmt},
+    hir_def::expressions::statement::Stmt,
     hir_ty::{
         TyInfo,
-        expr_resolver::{ResolvedExpr, ResolvedExprKind},
+        expr_resolver::ResolvedExpr,
         stmt_resolver::{ResolvedParam, ResolvedStmt, ResolvedStmtKind, resolve_stmt},
-        ty::{Ty, TyKind},
         ty_path_expr_resolver::ResolvedPathResult,
         ty_var_access_resolver::ResolvedVarResult,
     },
@@ -117,14 +116,14 @@ fn check_func_call<'db>(
             StmtError::UnusedReturnType {
                 ty: ty_target,
                 var: target,
-                ret: ret,
+                ret,
             }
             .into(),
         )
     }
 
     let signature = ty_target.to_signature(db).unwrap();
-    let mut with_param_name = false;
+    let with_param_name = false;
 
     params.iter().for_each(|p| match p {
         ResolvedParam::Input { param, value } => {

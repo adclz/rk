@@ -1,6 +1,6 @@
 use auto_lsp::default::db::BaseDatabase;
 
-use crate::{check::errors::sem_errors::AnalysisError, hir_ty::ty::Ty, to_proto::AstId};
+use crate::{AstId, check::errors::sem_errors::AnalysisError, hir_ty::ty::Ty};
 
 pub mod array_resolver;
 pub mod expr_resolver;

@@ -1,23 +1,12 @@
 use auto_lsp::default::db::BaseDatabase;
-use rustc_hash::FxHashMap;
 
 use crate::{
     check::{
-        check_init_expr::check_init_expr,
         check_semantic_index::Check,
-        check_ty::check_ty,
-        errors::{duplicates::DuplicateError, sem_errors::AnalysisError, ty::TyError},
+        errors::{sem_errors::AnalysisError, ty::TyError},
     },
-    hir_def::{
-        expressions::spec::{Array, Struct},
-        pous::variable::VariableDecl,
-    },
-    hir_ty::{
-        array_resolver::resolve_range,
-        expr_resolver::resolve_expr,
-        init_expr_resolver::resolve_init_expr,
-        ty::{ty_for_struct_field, ty_for_variable},
-    },
+    hir_def::expressions::spec::Array,
+    hir_ty::{array_resolver::resolve_range, expr_resolver::resolve_expr},
 };
 
 impl<'db> Check<'db> for Array<'db> {
@@ -32,7 +21,7 @@ impl<'db> Check<'db> for Array<'db> {
                         errors.push(
                             TyError::InferiorUpperBound {
                                 lower: lower_range,
-                                upper: upper_range,
+                                upper: upper_range, 
                                 upper_expr: *upper,
                             }
                             .into(),

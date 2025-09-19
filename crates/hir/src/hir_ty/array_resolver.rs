@@ -1,12 +1,8 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    hir_def::expressions::{
-        expression::{Elementary, Expr},
-    },
-    hir_ty::{
-        expr_resolver::{ResolvedExprKind, resolve_expr},
-    },
+    hir_def::expressions::expression::{Elementary, Expr},
+    hir_ty::expr_resolver::{ResolvedExprKind, resolve_expr},
 };
 
 #[salsa::tracked]

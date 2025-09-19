@@ -21,11 +21,11 @@ impl<'db> Ty<'db> {
                 in_out,
                 return_type,
             } => Some(CallableSignature {
-                origin: self.clone(),
+                origin: *self,
                 inputs: input.clone(),
                 in_outs: in_out.clone(),
                 outputs: output.clone(),
-                return_type: return_type.clone(),
+                return_type,
             }),
             TyKind::FunctionBlock {
                 extends,
@@ -33,7 +33,7 @@ impl<'db> Ty<'db> {
                 outputs,
                 in_outs,
             } => Some(CallableSignature {
-                origin: self.clone(),
+                origin: *self,
                 inputs: inputs.clone(),
                 in_outs: in_outs.clone(),
                 outputs: outputs.clone(),
@@ -45,7 +45,7 @@ impl<'db> Ty<'db> {
                 output,
                 in_out,
             } => Some(CallableSignature {
-                origin: self.clone(),
+                origin: *self,
                 inputs: input.clone(),
                 in_outs: in_out.clone(),
                 outputs: output.clone(),
@@ -97,7 +97,7 @@ impl<'db> CallableSignature<'db> {
                 _ => CompletionItemKind::METHOD,
             }),
             insert_text_format: Some(InsertTextFormat::SNIPPET),
-            insert_text: Some(format!(r#"{name}(${params});"#).into()),
+            insert_text: Some(format!(r#"{name}(${params});"#)),
             ..Default::default()
         }
     }

@@ -1,7 +1,7 @@
 use auto_lsp::lsp_types::InlayHint;
 use db::RootDatabase;
 use hir::hir_def::semantic_index::semantic_index;
-use hir::to_proto::ToProto;
+use ide_proto::ToProtocol;
 use insta::assert_debug_snapshot;
 use rstest::rstest;
 

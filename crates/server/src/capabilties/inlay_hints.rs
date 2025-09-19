@@ -6,6 +6,7 @@ use auto_lsp::{
     lsp_types::{InlayHint, InlayHintParams},
 };
 use hir::{hir_def::semantic_index::semantic_index, walk::WalkHir};
+use ide_proto::AsProtocol;
 
 pub fn inlay_hints(
     db: &impl BaseDatabase,

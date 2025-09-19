@@ -1,11 +1,8 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    check::{
-        check_semantic_index::Check,
-        errors::{inheritance::MethodError, sem_errors::AnalysisError},
-    },
-    hir_def::{modifier::Modifier, pous::class::Class},
+    check::errors::{inheritance::MethodError, sem_errors::AnalysisError},
+    hir_def::modifier::Modifier,
     hir_ty::{
         inheritance_solver::method_table,
         ty::{Ty, TyKind},

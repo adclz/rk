@@ -1,8 +1,8 @@
+use crate::AstId;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::sem_errors::AnalysisError;
 use crate::hir_def::scope::FileScopeId;
-use crate::to_proto::AstId;
-use crate::{hir_def::interned::identifier::SpanIdent, to_proto::ToProto};
+use crate::{HirNodeInfo, hir_def::interned::identifier::SpanIdent};
 use auto_lsp::default::db::tracked::get_ast;
 use auto_lsp::{anyhow, default::db::BaseDatabase};
 use std::hash::Hash;
@@ -38,7 +38,7 @@ impl NamespacePath {
 
 impl From<(&dyn BaseDatabase, &SpanIdent<'_>)> for NamespacePath {
     fn from(from: (&dyn BaseDatabase, &SpanIdent<'_>)) -> Self {
-        NamespacePath::new(from.0, vec![from.1.clone()])
+        NamespacePath::new(from.0, vec![*from.1])
     }
 }
 
@@ -80,7 +80,7 @@ impl Hash for SpanNamespaceAccess<'_> {
     }
 }
 
-impl<'db> ToProto<'db> for SpanNamespaceAccess<'db> {
+impl<'db> HirNodeInfo<'db> for SpanNamespaceAccess<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
         self.id
     }

@@ -1,4 +1,4 @@
-use auto_lsp::{default::db::BaseDatabase, lsp_types::Hover};
+use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     check::errors::sem_errors::AnalysisError,
@@ -12,7 +12,7 @@ use crate::{
         ty::{Ty, TyDecl},
         ty_path_expr_resolver::{ResolvedPathResult, resolved_path_expr},
     },
-    to_proto::{AstId, ToProto},
+    {AstId, HirNodeInfo},
 };
 
 pub fn resolve_var_access<'db>(
@@ -124,42 +124,12 @@ impl<'db> VarAccessResolverCtx<'db> {
     }
 }
 
-impl<'db> ToProto<'db> for ResolvedVarResult<'db> {
+impl<'db> HirNodeInfo<'db> for ResolvedVarResult<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
         self.origin(db).id(db)
     }
 
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         self.origin(db).scope_id(db)
-    }
-
-    fn hover(&'db self, db: &'db dyn BaseDatabase, offset: Option<usize>) -> Option<Hover> {
-        if let Ok(ty) = self.ty(db) {
-            ty.hover(db, None)
-        } else {
-            None
-        }
-    }
-
-    fn declaration(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-    ) -> Option<auto_lsp::lsp_types::request::GotoDeclarationResponse> {
-        if let Ok(ty) = self.ty(db) {
-            ty.declaration(db)
-        } else {
-            None
-        }
-    }
-
-    fn definition(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-    ) -> Option<auto_lsp::lsp_types::GotoDefinitionResponse> {
-        if let Ok(ty) = self.ty(db) {
-            ty.definition(db)
-        } else {
-            None
-        }
     }
 }

@@ -3,7 +3,7 @@ use auto_lsp::default::db::BaseDatabase;
 use crate::{
     check::errors::{init_expr::InitExprError, sem_errors::AnalysisError},
     hir_ty::{
-        expr_resolver::{ResolvedExprKind},
+        expr_resolver::ResolvedExprKind,
         init_expr_resolver::{ResolvedInitExpr, ResolvedInitExprKind},
         ty::{Ty, TyKind},
     },
@@ -29,7 +29,7 @@ pub fn check_init_expr<'db>(
                             errors.push(
                                 InitExprError::UnknownStructField {
                                     ztruct: ty,
-                                    field_name: name.clone(),
+                                    field_name: *name,
                                     unknown_field: **value,
                                 }
                                 .into(),

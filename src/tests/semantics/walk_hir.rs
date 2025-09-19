@@ -3,6 +3,7 @@ use std::ops::ControlFlow;
 use db::RootDatabase;
 use hir::hir_def::semantic_index::semantic_index;
 use hir::walk::WalkHir;
+use ide_proto::AsProtocol;
 use insta::assert_debug_snapshot;
 use insta::assert_snapshot;
 use rstest::rstest;

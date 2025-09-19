@@ -1,0 +1,36 @@
+use auto_lsp::{default::db::BaseDatabase, lsp_types::Hover};
+use hir::hir_ty::{TyInfo, ty_var_access_resolver::ResolvedVarResult};
+
+use crate::ToProtocol;
+
+impl<'db> ToProtocol<'db> for ResolvedVarResult<'db> {
+    fn hover(&'db self, db: &'db dyn BaseDatabase, offset: Option<usize>) -> Option<Hover> {
+        if let Ok(ty) = self.ty(db) {
+            ty.hover(db, None)
+        } else {
+            None
+        }
+    }
+
+    fn declaration(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+    ) -> Option<auto_lsp::lsp_types::request::GotoDeclarationResponse> {
+        if let Ok(ty) = self.ty(db) {
+            ty.declaration(db)
+        } else {
+            None
+        }
+    }
+
+    fn definition(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+    ) -> Option<auto_lsp::lsp_types::GotoDefinitionResponse> {
+        if let Ok(ty) = self.ty(db) {
+            ty.definition(db)
+        } else {
+            None
+        }
+    }
+}

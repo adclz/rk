@@ -12,6 +12,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use salsa::Accumulator;
 
 use crate::{
+    HirNodeInfo,
     check::{
         check_inheritance::check_methods,
         check_init_expr::check_init_expr,
@@ -46,7 +47,6 @@ use crate::{
         ty_path_expr_resolver::{ResolvePathExprCtx, ResolvedPathElementKind, ResolvedPathResult},
         ty_var_access_resolver::{ResolvedVarKind, ResolvedVarResult},
     },
-    to_proto::ToProto,
     walk::WalkHir,
 };
 

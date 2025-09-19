@@ -19,7 +19,7 @@ use crate::check::errors::syntax::SyntaxError;
 use crate::hir_def::expressions::spec::{ElementarySpec, Spec, SpecKind};
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::pous::variable::{VariableDecl, VariableKind};
-use crate::to_proto::{AstId, ToProto};
+use crate::{AstId, HirNodeInfo};
 
 impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
     fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<VariableDecl<'db>>) {

@@ -7,12 +7,12 @@ use rustc_hash::FxHashSet;
 use std::ops::ControlFlow;
 use std::{cmp::Ordering, hash::Hash};
 
+use crate::HirNodeInfo;
 use crate::hir_def::pous::pou::PouDecl;
 use crate::hir_def::scope::FileScopeId;
 use crate::hir_def::semantic_index::semantic_index;
 use crate::hir_ty::name_res::pous_in_scope;
-use crate::hir_ty::ty::{Ty};
-use crate::to_proto::ToProto;
+use crate::hir_ty::ty::Ty;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum SearchMode {
@@ -248,8 +248,8 @@ pub enum SymbolKind<'db> {
     Variable(Ty<'db>),
 }
 
-impl<'db> ToProto<'db> for NamedSymbol<'db> {
-    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> crate::to_proto::AstId {
+impl<'db> HirNodeInfo<'db> for NamedSymbol<'db> {
+    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> crate::AstId {
         match self.kind {
             SymbolKind::Pou(p) => p.get_id(db),
             SymbolKind::StructField(ty) => ty.get_id(db),

@@ -1,11 +1,10 @@
 use crate::tests::utils::{make_db_with_source, with_db};
 use auto_lsp::core::document::Document;
-use auto_lsp::tree_sitter;
 use db::RootDatabase;
-use formatter::{TOPIARY_LANG, format};
+use formatter::TOPIARY_LANG;
 use insta::assert_snapshot;
 use rstest::rstest;
-use topiary_core::{Language, Operation, formatter};
+use topiary_core::{Operation, formatter};
 
 pub fn fmt(document: &Document) -> String {
     let mut output = vec![];
@@ -47,7 +46,7 @@ END_FUNCTION_BLOCK
     let file = make_db_with_source(&mut with_db, source);
     let document = file.document(&with_db);
 
-    assert_snapshot!(fmt(&document), @r"
+    assert_snapshot!(fmt(document), @r"
     FUNCTION_BLOCK myFB
 
     	VAR_INPUT
@@ -121,7 +120,7 @@ pub fn class_definition(mut with_db: RootDatabase) {
     let file = make_db_with_source(&mut with_db, source);
     let document = file.document(&with_db);
 
-    assert_snapshot!(fmt(&document), @r"
+    assert_snapshot!(fmt(document), @r"
     CLASS CCounter
     	VAR
     		m_iCurrentValue : INT; (* Default = 0 *)
@@ -178,7 +177,7 @@ END_FUNCTION
     let file = make_db_with_source(&mut with_db, source);
     let document = file.document(&with_db);
 
-    assert_snapshot!(fmt(&document), @r"
+    assert_snapshot!(fmt(document), @r"
     FUNCTION fn
     	TW := WORD_BCD_TO_INT(THUMBWHEEL);
 
@@ -216,7 +215,7 @@ END_FUNCTION
     let file = make_db_with_source(&mut with_db, source);
     let document = file.document(&with_db);
 
-    assert_snapshot!(fmt(&document), @r"
+    assert_snapshot!(fmt(document), @r"
     FUNCTION fn
     	J := 1;
     	WHILE J <= 100 DO
@@ -243,7 +242,7 @@ END_FUNCTION
     let file = make_db_with_source(&mut with_db, source);
     let document = file.document(&with_db);
 
-    assert_snapshot!(fmt(&document), @r"
+    assert_snapshot!(fmt(document), @r"
     FUNCTION fn
     	J := 101;
     	FOR I := 1 TO 100 BY 2 DO
@@ -270,7 +269,7 @@ END_FUNCTION
     let file = make_db_with_source(&mut with_db, source);
     let document = file.document(&with_db);
 
-    assert_snapshot!(fmt(&document), @r"
+    assert_snapshot!(fmt(document), @r"
     FUNCTION fn
     	J := - 1;
     	REPEAT

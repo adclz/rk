@@ -13,6 +13,7 @@ members = [
     "crates/tree-sitter",
     "crates/memory_usage",
     "crates/ide-diagnostic",
+    "crates/ide_proto",
     "crates/formatter",
     "vscode/server",
 ]
@@ -30,6 +31,7 @@ server = { path = "crates/server" }
 db = { path = "crates/db" }
 memory_usage = { path = "crates/memory_usage" }
 ide-diagnostic = { path = "crates/ide-diagnostic" }
+ide_proto = { path = "crates/ide_proto" }
 hir = { path = "crates/hir" }
 formatter = { path = "crates/formatter" }
 bon = "3.6.4"
@@ -69,6 +71,7 @@ auto-lsp = { workspace = true }
 ast = { workspace = true }
 db = { workspace = true }
 hir = { workspace = true }
+ide_proto = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }

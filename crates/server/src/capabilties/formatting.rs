@@ -1,5 +1,3 @@
-use std::sync::LazyLock;
-
 use auto_lsp::{
     anyhow,
     default::db::BaseDatabase,

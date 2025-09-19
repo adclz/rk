@@ -19,7 +19,7 @@ use crate::{
                 ElementarySpec, Enum, EnumVariant, Spec, SpecKind, Struct, StructElement, SubRange,
             },
         },
-        interned::{identifier::Ident},
+        interned::identifier::Ident,
     },
 };
 

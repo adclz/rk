@@ -9,6 +9,7 @@ use auto_lsp::default::db::{BaseDatabase, file::File};
 use rustc_hash::FxHashMap;
 use tracing::info_span;
 
+use crate::HirNodeInfo;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::sem_errors::AnalysisError;
 use crate::hir_def::interned::identifier::Ident;
@@ -23,7 +24,6 @@ use crate::hir_ty::stmt_resolver::ResolvedStmt;
 use crate::hir_ty::ty::Ty;
 use crate::hir_ty::ty_path_expr_resolver::ResolvedPathResult;
 use crate::hir_ty::ty_var_access_resolver::ResolvedVarResult;
-use crate::to_proto::ToProto;
 use crate::walk::WalkHir;
 
 /// Returns the semantic index of a given file
@@ -163,26 +163,7 @@ pub enum HirNode<'db> {
     ResolvedInitExpr(ResolvedInitExpr<'db>),
 }
 
-impl<'db> From<&'db HirNode<'db>> for &'db dyn ToProto<'db> {
-    fn from(node: &'db HirNode<'db>) -> Self {
-        node.as_proto()
-    }
-}
-
 impl<'db> HirNode<'db> {
-    pub fn as_proto(&'db self) -> &'db dyn ToProto<'db> {
-        match self {
-            HirNode::Namespace(n) => n,
-            HirNode::Using(u) => u,
-            HirNode::Ty(t) => t,
-            HirNode::ResolvedPathResult(p) => p,
-            HirNode::ResolvedVarResult(v) => v,
-            HirNode::ResolvedStmt(s) => s,
-            HirNode::ResolvedExpr(e) => e,
-            HirNode::ResolvedInitExpr(i) => i,
-        }
-    }
-
     pub fn get_span(&'db self, db: &'db dyn BaseDatabase) -> Span {
         match self {
             HirNode::Namespace(n) => n.get_span(db),

@@ -4,6 +4,7 @@ use auto_lsp::{
     lsp_types::{GotoDefinitionParams, GotoDefinitionResponse},
 };
 use hir::hir_def::semantic_index::semantic_index;
+use ide_proto::AsProtocol;
 
 pub fn go_to_definition(
     db: &impl BaseDatabase,

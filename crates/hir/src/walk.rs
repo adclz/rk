@@ -102,9 +102,7 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
             }
             Pou::DataType(dt) => {
                 if let Some(init_expr) = dt.init(db) {
-                    f(HirNode::ResolvedInitExpr(*resolve_init_expr(
-                        db, init_expr,
-                    )))?;
+                    f(HirNode::ResolvedInitExpr(*resolve_init_expr(db, init_expr)))?;
                 }
             }
         }

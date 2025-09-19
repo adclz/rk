@@ -2,10 +2,9 @@ use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, Related, diag};
 
 use crate::{
+    HirNodeInfo,
     check::errors::sem_errors::{AnalysisError, ToIdeDiagnostic},
-    hir_def::pous::{pou::PouDecl, variable::VariableDecl},
     hir_ty::ty::Ty,
-    to_proto::ToProto,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]

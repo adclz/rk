@@ -1,14 +1,10 @@
-use std::ops::ControlFlow;
-
 use auto_lsp::{
     anyhow,
     default::db::BaseDatabase,
-    lsp_types::{
-        CodeLens, CodeLensParams,
-        request::{GotoImplementationParams, GotoImplementationResponse},
-    },
+    lsp_types::request::{GotoImplementationParams, GotoImplementationResponse},
 };
-use hir::{hir_def::semantic_index::semantic_index, walk::WalkHir};
+use hir::hir_def::semantic_index::semantic_index;
+use ide_proto::AsProtocol;
 
 pub fn go_to_implementation(
     db: &impl BaseDatabase,

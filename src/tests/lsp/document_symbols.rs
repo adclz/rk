@@ -1,7 +1,7 @@
 use auto_lsp::core::document_symbols_builder::DocumentSymbolsBuilder;
 use db::RootDatabase;
 use hir::hir_def::semantic_index::semantic_index;
-use hir::to_proto::ToProto;
+use ide_proto::ToProtocol;
 use insta::assert_debug_snapshot;
 use rstest::rstest;
 

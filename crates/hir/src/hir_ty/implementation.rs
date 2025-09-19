@@ -1,13 +1,8 @@
 use auto_lsp::default::db::{BaseDatabase, file::File};
 
 use crate::{
-    hir_def::{
-        pous::pou::{Pou, PouDecl},
-        semantic_index::semantic_index,
-    },
+    hir_def::{pous::pou::PouDecl, semantic_index::semantic_index},
     hir_ty::ty::{Ty, TyKind, ty_for_pou},
-    query_string::query::{NamedSymbol, Query, SymbolIndex, SymbolKind},
-    to_proto::ToProto,
 };
 
 // todo
@@ -65,8 +60,7 @@ fn check_implementations<'db>(
                 pous.push(pou);
             } else if implements
                 .iter()
-                .find(|ipl| ipl.def(db).def_as_ty(db) == Some(implemented))
-                .is_some()
+                .any(|ipl| ipl.def(db).def_as_ty(db) == Some(implemented))
             {
                 pous.push(pou);
             }
@@ -79,8 +73,7 @@ fn check_implementations<'db>(
         TyKind::Interface { implements, .. } => {
             if implements
                 .iter()
-                .find(|ipl| ipl.def(db).def_as_ty(db) == Some(implemented))
-                .is_some()
+                .any(|ipl| ipl.def(db).def_as_ty(db) == Some(implemented))
             {
                 pous.push(pou);
             }

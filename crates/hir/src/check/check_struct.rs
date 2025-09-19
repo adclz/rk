@@ -3,16 +3,12 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     check::{
-        check_init_expr::check_init_expr,
         check_semantic_index::Check,
         check_ty::check_ty,
         errors::{duplicates::DuplicateError, sem_errors::AnalysisError},
     },
-    hir_def::{expressions::spec::Struct, pous::variable::VariableDecl},
-    hir_ty::{
-        init_expr_resolver::resolve_init_expr,
-        ty::{ty_for_struct_field, ty_for_variable},
-    },
+    hir_def::expressions::spec::Struct,
+    hir_ty::ty::ty_for_struct_field,
 };
 
 impl<'db> Check<'db> for Struct<'db> {

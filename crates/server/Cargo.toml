@@ -12,6 +12,7 @@ ast = { workspace = true }
 db = { workspace = true }
 hir = { workspace = true }
 formatter = { workspace = true }
+ide_proto = { workspace = true }
 log = { workspace = true }
 tree-sitter-rk = { workspace = true }
 tracing = { workspace = true }

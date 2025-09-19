@@ -6,9 +6,9 @@ use auto_lsp::{
 use ide_diagnostic::{IdeDiagnostic, Related, diag};
 
 use crate::{
+    HirNodeInfo,
     check::errors::sem_errors::ToIdeDiagnostic,
     hir_def::{interned::namespace::NamespacePath, namespace::NamespaceDecl, using::Using},
-    to_proto::ToProto,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]

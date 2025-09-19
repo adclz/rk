@@ -2,10 +2,10 @@ use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, Related, diag};
 
 use crate::{
+    HirNodeInfo,
     check::errors::sem_errors::{AnalysisError, ToIdeDiagnostic},
     hir_def::interned::namespace::SpanNamespaceAccess,
     hir_ty::{expr_resolver::ResolvedExpr, ty::Ty},
-    to_proto::ToProto,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -43,26 +43,19 @@ impl<'db> From<TyError<'db>> for AnalysisError<'db> {
 impl<'db> ToIdeDiagnostic<'db> for TyError<'db> {
     fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
         match self {
-            TyError::UnresolvedType { ty, path } => {
-                let diag = diag()
-                    .message(format!("unknown item '{}'", path.path.to_string(db)))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .range(path.get_span(db))
-                    .call();
-                diag
-            }
-            TyError::Recursive { origin } => {
-                let diag = diag()
-                    .message(format!(
-                        "'{}' is recursive",
-                        origin.decl(db).name(db).text(db),
-                    ))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .range(origin.decl(db).name_span(db))
-                    .call();
-
-                diag
-            }
+            TyError::UnresolvedType { ty, path } => diag()
+                .message(format!("unknown item '{}'", path.path.to_string(db)))
+                .severity(DiagnosticSeverity::ERROR)
+                .range(path.get_span(db))
+                .call(),
+            TyError::Recursive { origin } => diag()
+                .message(format!(
+                    "'{}' is recursive",
+                    origin.decl(db).name(db).text(db),
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .range(origin.decl(db).name_span(db))
+                .call(),
             TyError::ReferenceRecursive { origin, target } => {
                 let mut diag = diag()
                     .message(format!(
@@ -84,43 +77,32 @@ impl<'db> ToIdeDiagnostic<'db> for TyError<'db> {
                 ));
 
                 diag.with_related(Related::new(
-                    format!("... and recurse at this location"),
+                    "... and recurse at this location".to_string(),
                     origin.decl(db).scope_id(db).file(db),
                     origin.decl(db).name_span(db),
                 ));
 
                 diag
             }
-            TyError::InvalidArrayLowerValue { value } => {
-                let diag = diag()
-                    .message(format!("Invalid lower bound value for ARRAY",))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .range(value.expr(db).get_span(db))
-                    .call();
-                diag
-            }
-            TyError::InvalidArrayUpperValue { value } => {
-                let diag = diag()
-                    .message(format!("Invalid upper bound value for ARRAY",))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .range(value.expr(db).get_span(db))
-                    .call();
-                diag
-            }
+            TyError::InvalidArrayLowerValue { value } => diag()
+                .message("Invalid lower bound value for ARRAY".to_string())
+                .severity(DiagnosticSeverity::ERROR)
+                .range(value.expr(db).get_span(db))
+                .call(),
+            TyError::InvalidArrayUpperValue { value } => diag()
+                .message("Invalid upper bound value for ARRAY".to_string())
+                .severity(DiagnosticSeverity::ERROR)
+                .range(value.expr(db).get_span(db))
+                .call(),
             TyError::InferiorUpperBound {
                 lower,
                 upper,
                 upper_expr,
-            } => {
-                let diag = diag()
-                    .message(format!(
-                        "Upper bound value must be greater than lower bound value",
-                    ))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .range(upper_expr.get_span(db))
-                    .call();
-                diag
-            }
+            } => diag()
+                .message("Upper bound value must be greater than lower bound value".to_string())
+                .severity(DiagnosticSeverity::ERROR)
+                .range(upper_expr.get_span(db))
+                .call(),
         }
     }
 }

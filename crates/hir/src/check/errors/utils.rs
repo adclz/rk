@@ -1,10 +1,7 @@
 use auto_lsp::default::db::BaseDatabase;
 use ide_diagnostic::{IdeDiagnostic, Related};
 
-use crate::{
-    check::recovery::pou::FuzzyResult,
-    hir_ty::ty::Ty,
-};
+use crate::{check::recovery::pou::FuzzyResult, hir_ty::ty::Ty};
 
 pub fn get_decl_and_def_for_ty(db: &dyn BaseDatabase, ty: Ty<'_>, diag: &mut IdeDiagnostic) {
     get_decl_for_ty(db, ty, diag);

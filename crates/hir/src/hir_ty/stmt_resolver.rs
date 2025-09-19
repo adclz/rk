@@ -1,11 +1,11 @@
 use crate::hir_def::expressions::expression::ParamAssign;
 use crate::hir_def::expressions::statement::{Stmt, StmtKind};
-use crate::hir_def::interned::identifier::{Ident, SpanIdent};
+use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::scope::FileScopeId;
 use crate::hir_ty::expr_resolver::{ResolvedExpr, resolve_expr};
 use crate::hir_ty::ty_path_expr_resolver::{ResolvedPathResult, resolved_path_expr};
 use crate::hir_ty::ty_var_access_resolver::{ResolvedVarResult, resolve_var_access};
-use crate::to_proto::{AstId, ToProto};
+use crate::{AstId, HirNodeInfo};
 use auto_lsp::default::db::BaseDatabase;
 
 #[salsa::tracked(no_eq, returns(ref))]
@@ -252,7 +252,7 @@ impl<'db> ResolveStmtCtx<'db> {
     }
 }
 
-impl<'db> ToProto<'db> for ResolvedStmt<'db> {
+impl<'db> HirNodeInfo<'db> for ResolvedStmt<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
         self.id(db)
     }

@@ -1,11 +1,6 @@
-use std::ops::ControlFlow;
-
 use auto_lsp::lsp_types::request::GotoImplementationResponse;
 use db::RootDatabase;
-use hir::hir_def::semantic_index::HirNode;
-use hir::hir_def::semantic_index::semantic_index;
-use hir::to_proto::ToProto;
-use hir::walk::WalkHir;
+use ide_proto::ToProtocol;
 use insta::assert_debug_snapshot;
 use rstest::rstest;
 

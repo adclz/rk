@@ -5,9 +5,9 @@ use crate::{
         scope::FileScopeId,
     },
     hir_ty::expr_resolver::{ResolvedExpr, resolve_expr},
-    to_proto::{AstId, ToProto},
+    {AstId, HirNodeInfo},
 };
-use auto_lsp::{default::db::BaseDatabase, lsp_types::request::GotoDeclarationResponse};
+use auto_lsp::default::db::BaseDatabase;
 
 use crate::hir_def::expressions::expression::InitExpr;
 
@@ -35,7 +35,7 @@ pub fn resolve_init_expr<'db>(
         InitExprKind::StructElement { name, value } => {
             let resolved = Box::new(*resolve_init_expr(db, *value));
             ResolvedInitExprKind::StructElement {
-                name: name.clone(),
+                name,
                 value: resolved,
             }
         }
@@ -74,43 +74,12 @@ pub enum ResolvedInitExprKind<'db> {
     ConstantExpr(ResolvedExpr<'db>),
 }
 
-impl<'db> ToProto<'db> for ResolvedInitExpr<'db> {
+impl<'db> HirNodeInfo<'db> for ResolvedInitExpr<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
         self.expr(db).id(db)
     }
 
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         self.expr(db).scope_id(db)
-    }
-
-    fn declaration(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDeclarationResponse> {
-        if let InitExprKind::ConstantExpr(expr) = self.expr(db).kind(db) {
-            expr.declaration(db)
-        } else {
-            None
-        }
-    }
-
-    fn definition(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-    ) -> Option<auto_lsp::lsp_types::GotoDefinitionResponse> {
-        if let InitExprKind::ConstantExpr(expr) = self.expr(db).kind(db) {
-            expr.definition(db)
-        } else {
-            None
-        }
-    }
-
-    fn hover(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        offset: Option<usize>,
-    ) -> Option<auto_lsp::lsp_types::Hover> {
-        if let InitExprKind::ConstantExpr(expr) = self.expr(db).kind(db) {
-            expr.hover(db, None)
-        } else {
-            None
-        }
     }
 }
