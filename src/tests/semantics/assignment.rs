@@ -29,7 +29,9 @@ END_FUNCTION_BLOCK"#;
        | 
      7 |     test := ULINT#5;
        |             ^^^|^^^  
-       |                `----- expected a signed 16-bit integer
+       |                `----- invalid INT literal
+       | 
+       | Note: An INT literal must be an integer between -32768 and 32767
     ---'
     ");
 }

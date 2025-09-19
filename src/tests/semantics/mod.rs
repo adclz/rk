@@ -1,9 +1,10 @@
 pub mod assignment;
+pub mod check_literals;
 pub mod duplicates;
 pub mod func_call;
 pub mod inheritance;
 pub mod init_expr;
-pub mod literals;
+pub mod integer_literals;
 pub mod recovery_fuzzy;
 pub mod recursive;
 pub mod scopes;

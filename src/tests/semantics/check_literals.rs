@@ -24,7 +24,7 @@ fn bool_integer_valid(with_db: RootDatabase, #[case] lit: &str) {
         Ident::from_slice(&with_db, lit),
         IntegerKind::Signed,
     ));
-    assert!(spec.lit_check(&with_db, value).is_ok());
+    assert!(spec.check_literal(&with_db, value).is_ok());
 }
 
 #[rstest]
@@ -33,7 +33,7 @@ fn bool_integer_valid(with_db: RootDatabase, #[case] lit: &str) {
 fn bool_ident_valid(with_db: RootDatabase, #[case] lit: &str) {
     let spec = ElementarySpec::Bool;
     let value = Elementary::InferIdent(Ident::from_slice(&with_db, lit));
-    assert!(spec.lit_check(&with_db, value).is_ok());
+    assert!(spec.check_literal(&with_db, value).is_ok());
 }
 
 #[rstest]
@@ -47,7 +47,7 @@ fn bool_invalid(with_db: RootDatabase, #[case] lit: &str) {
         Ident::from_slice(&with_db, lit),
         IntegerKind::Signed,
     ));
-    assert!(spec.lit_check(&with_db, value).is_err());
+    assert!(spec.check_literal(&with_db, value).is_err());
 }
 
 // Byte tests (0-255)
@@ -67,7 +67,7 @@ fn byte_valid(with_db: RootDatabase, #[case] lit: &str, #[case] kind: IntegerKin
         Ident::from_slice(&with_db, lit),
         kind,
     ));
-    assert!(spec.lit_check(&with_db, value).is_ok());
+    assert!(spec.check_literal(&with_db, value).is_ok());
 }
 
 #[rstest]
@@ -81,7 +81,7 @@ fn byte_invalid(with_db: RootDatabase, #[case] lit: &str, #[case] kind: IntegerK
         Ident::from_slice(&with_db, lit),
         kind,
     ));
-    assert!(spec.lit_check(&with_db, value).is_err());
+    assert!(spec.check_literal(&with_db, value).is_err());
 }
 
 // Word tests (0-65535)
@@ -98,7 +98,7 @@ fn word_valid(with_db: RootDatabase, #[case] lit: &str, #[case] kind: IntegerKin
         Ident::from_slice(&with_db, lit),
         kind,
     ));
-    assert!(spec.lit_check(&with_db, value).is_ok());
+    assert!(spec.check_literal(&with_db, value).is_ok());
 }
 
 #[rstest]
@@ -111,7 +111,7 @@ fn word_invalid(with_db: RootDatabase, #[case] lit: &str, #[case] kind: IntegerK
         Ident::from_slice(&with_db, lit),
         kind,
     ));
-    assert!(spec.lit_check(&with_db, value).is_err());
+    assert!(spec.check_literal(&with_db, value).is_err());
 }
 
 // Signed integer tests
@@ -126,7 +126,7 @@ fn sint_valid(with_db: RootDatabase, #[case] lit: &str, #[case] kind: IntegerKin
         Ident::from_slice(&with_db, lit),
         kind,
     ));
-    assert!(spec.lit_check(&with_db, value).is_ok());
+    assert!(spec.check_literal(&with_db, value).is_ok());
 }
 
 #[rstest]
@@ -139,7 +139,7 @@ fn sint_invalid(with_db: RootDatabase, #[case] lit: &str, #[case] kind: IntegerK
         Ident::from_slice(&with_db, lit),
         kind,
     ));
-    assert!(spec.lit_check(&with_db, value).is_err());
+    assert!(spec.check_literal(&with_db, value).is_err());
 }
 
 // Floating point tests
@@ -152,7 +152,7 @@ fn sint_invalid(with_db: RootDatabase, #[case] lit: &str, #[case] kind: IntegerK
 fn real_valid(with_db: RootDatabase, #[case] lit: &str) {
     let spec = ElementarySpec::Real;
     let value = Elementary::InferIdent(Ident::from_slice(&with_db, lit));
-    assert!(spec.lit_check(&with_db, value).is_ok());
+    assert!(spec.check_literal(&with_db, value).is_ok());
 }
 
 #[rstest]
@@ -162,7 +162,7 @@ fn real_valid(with_db: RootDatabase, #[case] lit: &str) {
 fn real_invalid(with_db: RootDatabase, #[case] lit: &str) {
     let spec = ElementarySpec::Real;
     let value = Elementary::InferIdent(Ident::from_slice(&with_db, lit));
-    assert!(spec.lit_check(&with_db, value).is_err());
+    assert!(spec.check_literal(&with_db, value).is_err());
 }
 
 // Date tests
@@ -172,7 +172,7 @@ fn real_invalid(with_db: RootDatabase, #[case] lit: &str) {
 fn date_valid(with_db: RootDatabase, #[case] lit: &str) {
     let spec = ElementarySpec::Date;
     let value = Elementary::InferIdent(Ident::from_slice(&with_db, lit));
-    spec.lit_check(&with_db, value).unwrap();
+    spec.check_literal(&with_db, value).unwrap();
 }
 
 #[rstest]
@@ -182,7 +182,7 @@ fn date_valid(with_db: RootDatabase, #[case] lit: &str) {
 fn date_invalid(with_db: RootDatabase, #[case] lit: &str) {
     let spec = ElementarySpec::Date;
     let value = Elementary::InferIdent(Ident::from_slice(&with_db, lit));
-    assert!(spec.lit_check(&with_db, value).is_err());
+    assert!(spec.check_literal(&with_db, value).is_err());
 }
 
 // Time of day tests
@@ -192,7 +192,7 @@ fn date_invalid(with_db: RootDatabase, #[case] lit: &str) {
 fn tod_valid(with_db: RootDatabase, #[case] lit: &str) {
     let spec = ElementarySpec::Tod;
     let value = Elementary::InferIdent(Ident::from_slice(&with_db, lit));
-    assert!(spec.lit_check(&with_db, value).is_ok());
+    assert!(spec.check_literal(&with_db, value).is_ok());
 }
 
 #[rstest]
@@ -202,7 +202,7 @@ fn tod_valid(with_db: RootDatabase, #[case] lit: &str) {
 fn tod_invalid(with_db: RootDatabase, #[case] lit: &str) {
     let spec = ElementarySpec::Tod;
     let value = Elementary::InferIdent(Ident::from_slice(&with_db, lit));
-    assert!(spec.lit_check(&with_db, value).is_err());
+    assert!(spec.check_literal(&with_db, value).is_err());
 }
 
 // Date and time tests
@@ -212,7 +212,7 @@ fn tod_invalid(with_db: RootDatabase, #[case] lit: &str) {
 fn dt_valid(with_db: RootDatabase, #[case] lit: &str) {
     let spec = ElementarySpec::Dt;
     let value = Elementary::InferIdent(Ident::from_slice(&with_db, lit));
-    assert!(spec.lit_check(&with_db, value).is_ok());
+    assert!(spec.check_literal(&with_db, value).is_ok());
 }
 
 #[rstest]
@@ -222,7 +222,7 @@ fn dt_valid(with_db: RootDatabase, #[case] lit: &str) {
 fn dt_invalid(with_db: RootDatabase, #[case] lit: &str) {
     let spec = ElementarySpec::Dt;
     let value = Elementary::InferIdent(Ident::from_slice(&with_db, lit));
-    assert!(spec.lit_check(&with_db, value).is_err());
+    assert!(spec.check_literal(&with_db, value).is_err());
 }
 
 // String tests
@@ -234,7 +234,7 @@ fn dt_invalid(with_db: RootDatabase, #[case] lit: &str) {
 fn string_valid(with_db: RootDatabase, #[case] lit: &str) {
     let spec = ElementarySpec::String;
     let value = Elementary::InferIdent(Ident::from_slice(&with_db, lit));
-    assert!(spec.lit_check(&with_db, value).is_ok());
+    assert!(spec.check_literal(&with_db, value).is_ok());
 }
 
 #[rstest]
@@ -243,7 +243,7 @@ fn string_valid(with_db: RootDatabase, #[case] lit: &str) {
 fn string_invalid(with_db: RootDatabase, #[case] lit: &str) {
     let spec = ElementarySpec::String;
     let value = Elementary::InferIdent(Ident::from_slice(&with_db, lit));
-    assert!(spec.lit_check(&with_db, value).is_err());
+    assert!(spec.check_literal(&with_db, value).is_err());
 }
 
 // Wide string tests
@@ -255,7 +255,7 @@ fn string_invalid(with_db: RootDatabase, #[case] lit: &str) {
 fn wstring_valid(with_db: RootDatabase, #[case] lit: &str) {
     let spec = ElementarySpec::WString;
     let value = Elementary::InferIdent(Ident::from_slice(&with_db, lit));
-    assert!(spec.lit_check(&with_db, value).is_ok());
+    assert!(spec.check_literal(&with_db, value).is_ok());
 }
 
 #[rstest]
@@ -264,7 +264,7 @@ fn wstring_valid(with_db: RootDatabase, #[case] lit: &str) {
 fn wstring_invalid(with_db: RootDatabase, #[case] lit: &str) {
     let spec = ElementarySpec::WString;
     let value = Elementary::InferIdent(Ident::from_slice(&with_db, lit));
-    assert!(spec.lit_check(&with_db, value).is_err());
+    assert!(spec.check_literal(&with_db, value).is_err());
 }
 
 // Time tests
@@ -286,7 +286,7 @@ fn time_cases(with_db: RootDatabase, #[case] lit: &str) {
     let spec = ElementarySpec::Time;
     let value = Elementary::InferIdent(Ident::from_slice(&with_db, lit));
 
-    assert!(spec.lit_check(&with_db, value).is_ok());
+    assert!(spec.check_literal(&with_db, value).is_ok());
 }
 
 // LTime tests
@@ -303,7 +303,7 @@ fn ltime_cases(with_db: RootDatabase, #[case] lit: &str) {
     let spec = ElementarySpec::LTime;
     let value = Elementary::InferIdent(Ident::from_slice(&with_db, lit));
 
-    assert!(spec.lit_check(&with_db, value).is_ok());
+    assert!(spec.check_literal(&with_db, value).is_ok());
 }
 
 // LTIME i64 boundaries (ns resolution)
@@ -313,7 +313,7 @@ fn ltime_cases(with_db: RootDatabase, #[case] lit: &str) {
 fn ltime_boundaries(with_db: RootDatabase, #[case] lit: &str) {
     let spec = ElementarySpec::LTime;
     let value = Elementary::InferIdent(Ident::from_slice(&with_db, lit));
-    assert!(spec.lit_check(&with_db, value).is_ok());
+    assert!(spec.check_literal(&with_db, value).is_ok());
 }
 
 // Overflow (just beyond i64 bounds)
@@ -323,7 +323,7 @@ fn ltime_boundaries(with_db: RootDatabase, #[case] lit: &str) {
 fn ltime_overflow(with_db: RootDatabase, #[case] lit: &str) {
     let spec = ElementarySpec::LTime;
     let value = Elementary::InferIdent(Ident::from_slice(&with_db, lit));
-    assert!(spec.lit_check(&with_db, value).is_err());
+    assert!(spec.check_literal(&with_db, value).is_err());
 }
 
 #[rstest]
@@ -338,7 +338,7 @@ fn decimal_unit_rules(with_db: RootDatabase, #[case] lit: &str) {
         ElementarySpec::Time
     };
     let value = Elementary::InferIdent(Ident::from_slice(&with_db, lit));
-    assert!(spec.lit_check(&with_db, value).is_ok() || spec.lit_check(&with_db, value).is_err());
+    assert!(spec.check_literal(&with_db, value).is_ok() || spec.check_literal(&with_db, value).is_err());
 }
 
 // Invalid time tests
@@ -348,5 +348,5 @@ fn decimal_unit_rules(with_db: RootDatabase, #[case] lit: &str) {
 fn time_invalid(with_db: RootDatabase, #[case] lit: &str) {
     let spec = ElementarySpec::Time;
     let value = Elementary::InferIdent(Ident::from_slice(&with_db, lit));
-    assert!(spec.lit_check(&with_db, value).is_err());
+    assert!(spec.check_literal(&with_db, value).is_err());
 }
