@@ -4,7 +4,6 @@ use ide_diagnostic::{IdeDiagnostic, diag};
 use crate::{
     HirNodeInfo,
     check::errors::{
-        literals::LitCheckError,
         sem_errors::{AnalysisError, ToIdeDiagnostic},
         utils::{get_decl_and_def_for_ty, get_decl_for_ty},
     },
@@ -69,11 +68,6 @@ pub enum StmtError<'db> {
     },
     RecursiveType {
         ty: Ty<'db>,
-    },
-    LitCheckError {
-        ty: Ty<'db>,
-        literal: ResolvedExpr<'db>,
-        err: LitCheckError,
     },
 }
 
@@ -229,29 +223,6 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 .severity(DiagnosticSeverity::ERROR)
                 .range(continue_stmt.get_span(db))
                 .call(),
-            Self::LitCheckError { ty, literal, err } => match err {
-                LitCheckError::TypeMismatch(err) => {
-                    let mut diag = diag()
-                        .message(err.to_string())
-                        .severity(DiagnosticSeverity::ERROR)
-                        .range(literal.get_span(db).clone())
-                        .call();
-
-                    get_decl_and_def_for_ty(db, *ty, &mut diag);
-
-                    diag
-                }
-                LitCheckError::InvalidFormat { kind, msg } => diag()
-                    .message(format!("invalid format for literal '{kind}': {msg}"))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .range(literal.get_span(db).clone())
-                    .call(),
-                LitCheckError::OutOfRange(err) => diag()
-                    .message(err.to_string())
-                    .severity(DiagnosticSeverity::ERROR)
-                    .range(literal.get_span(db).clone())
-                    .call(),
-            },
             Self::RecursiveType { ty } => diag()
                 .message(format!(
                     "recursive type detected for '{}'",

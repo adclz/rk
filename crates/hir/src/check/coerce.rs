@@ -1,12 +1,10 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    check::errors::{sem_errors::AnalysisError, stmt::StmtError},
+    check::errors::{literals::LiteralError, sem_errors::AnalysisError, stmt::StmtError},
     hir_def::expressions::spec::ElementarySpec,
     hir_ty::{
-        TyInfo,
-        expr_resolver::{ResolvedExpr, ResolvedExprKind},
-        ty::{Ty, TyKind},
+        expr_resolver::{ResolvedExpr, ResolvedExprKind}, ty::{Ty, TyKind}, TyInfo
     },
 };
 
@@ -23,8 +21,8 @@ pub fn coerce_ty_with_expr<'db>(
     match (ty.kind(db), target_expr.kind(db)) {
         // Compare an elementary type with a literal
         (TyKind::Simple(elem), ResolvedExprKind::Literal(prim)) => elem
-            .lit_check(db, *prim)
-            .map_err(|err| (err, ty, target_expr).into()),
+            .check_literal(db, *prim)
+            .map_err(|err| LiteralError::new(ty, target_expr, err).into()),
         // Compare an elementary type with a function call
         (TyKind::Simple(elem), ResolvedExprKind::FuncCall { target, .. }) => {
             // Check if the function call has a return type

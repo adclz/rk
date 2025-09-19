@@ -1,7 +1,7 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    check::errors::literals::LitCheckError,
+    check::errors::literals::LiteralErrorKind,
     hir_def::{
         expressions::{
             expression::{Elementary, Integer, IntegerKind},
@@ -14,11 +14,11 @@ use crate::{
 use time::{Date, Duration, PrimitiveDateTime, Time, macros::format_description};
 
 impl<'db> ElementarySpec {
-    pub fn lit_check(
+    pub fn check_literal(
         &self,
         db: &'db dyn BaseDatabase,
         spec: Elementary,
-    ) -> Result<(), LitCheckError> {
+    ) -> Result<(), LiteralErrorKind> {
         match self {
             ElementarySpec::Bool | ElementarySpec::REDGEBool | ElementarySpec::FEDGEBool => {
                 check_bool(db, &spec)
@@ -38,111 +38,65 @@ impl<'db> ElementarySpec {
             ElementarySpec::Real => check_f32(db, &spec),
             ElementarySpec::LReal => check_f64(db, &spec),
             ElementarySpec::Date => match spec {
-                Elementary::InferIdent(ident) => {
-                    ident
-                        .as_date(db)
-                        .map(|_| ())
-                        .map_err(|e| LitCheckError::InvalidFormat {
-                            kind: "DATE",
-                            msg: e.to_string(),
-                        })
-                }
-                _ => Err(LitCheckError::TypeMismatch(
-                    "expected a date literal".into(),
-                )),
+                Elementary::InferIdent(ident) => ident
+                    .as_date(db)
+                    .map(|_| ())
+                    .map_err(|e| LiteralErrorKind::Invalid_DATE_Format(e.to_string())),
+                _ => Err(LiteralErrorKind::Invalid_DATE_Literal),
             },
             ElementarySpec::LDate => match spec {
-                Elementary::InferIdent(ident) => {
-                    ident
-                        .as_long_date(db)
-                        .map(|_| ())
-                        .map_err(|e| LitCheckError::InvalidFormat {
-                            kind: "LDATE",
-                            msg: e.to_string(),
-                        })
-                }
-                _ => Err(LitCheckError::TypeMismatch(
-                    "expected a long date literal".into(),
-                )),
+                Elementary::InferIdent(ident) => ident
+                    .as_long_date(db)
+                    .map(|_| ())
+                    .map_err(|e| LiteralErrorKind::Invalid_LDATE_Format(e.to_string())),
+                _ => Err(LiteralErrorKind::Invalid_LDATE_Literal),
             },
             ElementarySpec::Tod => match spec {
-                Elementary::InferIdent(ident) => {
-                    ident
-                        .as_tod(db)
-                        .map(|_| ())
-                        .map_err(|e| LitCheckError::InvalidFormat {
-                            kind: "TIME_OF_DAY",
-                            msg: e.to_string(),
-                        })
-                }
-                _ => Err(LitCheckError::TypeMismatch(
-                    "expected a time-of-day literal".into(),
-                )),
+                Elementary::InferIdent(ident) => ident
+                    .as_tod(db)
+                    .map(|_| ())
+                    .map_err(|e| LiteralErrorKind::Invalid_TOD_Format(e.to_string())),
+                _ => Err(LiteralErrorKind::Invalid_TOD_Literal),
             },
             ElementarySpec::LTod => match spec {
-                Elementary::InferIdent(ident) => {
-                    ident
-                        .as_long_tod(db)
-                        .map(|_| ())
-                        .map_err(|e| LitCheckError::InvalidFormat {
-                            kind: "LTIME_OF_DAY",
-                            msg: e.to_string(),
-                        })
-                }
-                _ => Err(LitCheckError::TypeMismatch(
-                    "expected a long time-of-day literal".into(),
-                )),
+                Elementary::InferIdent(ident) => ident
+                    .as_long_tod(db)
+                    .map(|_| ())
+                    .map_err(|e| LiteralErrorKind::Invalid_LTOD_Format(e.to_string())),
+                _ => Err(LiteralErrorKind::Invalid_LTOD_Literal),
             },
             ElementarySpec::Dt => match spec {
                 Elementary::InferIdent(ident) => ident
                     .as_date_time(db)
-                    .map_err(|e| LitCheckError::InvalidFormat {
-                        kind: "DATE_AND_TIME",
-                        msg: e.to_string(),
-                    })
+                    .map_err(|e| LiteralErrorKind::Invalid_DT_Format(e.to_string()))
                     .map(|_| ()),
-                _ => Err(LitCheckError::TypeMismatch(
-                    "expected a date-and-time literal".into(),
-                )),
+                _ => Err(LiteralErrorKind::Invalid_DT_Literal),
             },
 
             // 6a/b LDT / LDATE_AND_TIME
             ElementarySpec::Ldt => match spec {
                 Elementary::InferIdent(ident) => ident
                     .as_long_date_time(db)
-                    .map_err(|e| LitCheckError::InvalidFormat {
-                        kind: "LDATE_AND_TIME",
-                        msg: e.to_string(),
-                    })
+                    .map_err(|e| LiteralErrorKind::Invalid_LDT_Format(e.to_string()))
                     .map(|_| ()),
-                _ => Err(LitCheckError::TypeMismatch(
-                    "expected a long date-and-time literal".into(),
-                )),
+                _ => Err(LiteralErrorKind::Invalid_LDT_Literal),
             },
             ElementarySpec::Time => match spec {
                 Elementary::InferIdent(ident) => ident.as_time(db).map(|_| ()),
-                _ => Err(LitCheckError::TypeMismatch(
-                    "expected a time duration literal".into(),
-                )),
+                _ => Err(LiteralErrorKind::Invalid_TIME_Literal),
             },
             ElementarySpec::LTime => match spec {
                 Elementary::InferIdent(ident) => ident.as_ltime(db).map(|_| ()),
-                _ => Err(LitCheckError::TypeMismatch(
-                    "expected a long time duration literal".into(),
-                )),
+                _ => Err(LiteralErrorKind::Invalid_LTIME_Literal),
             },
 
             ElementarySpec::String => match spec {
                 Elementary::InferIdent(ident) => ident.as_single_string(db).map(|_| ()),
-                _ => Err(LitCheckError::TypeMismatch(
-                    "expected a string literal".into(),
-                )),
+                _ => Err(LiteralErrorKind::Invalid_STRING_Literal),
             },
             ElementarySpec::WString => match spec {
                 Elementary::InferIdent(ident) => ident.as_double_string(db).map(|_| ()),
-                _ => Err(LitCheckError::TypeMismatch(
-                    "expected a wide string literal".into(),
-                )),
+                _ => Err(LiteralErrorKind::Invalid_WSTRING_Literal),
             },
             ElementarySpec::Char => todo!(),
             ElementarySpec::WChar => todo!(),
@@ -150,23 +104,21 @@ impl<'db> ElementarySpec {
     }
 }
 
-fn check_bool(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckError> {
+fn check_bool(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LiteralErrorKind> {
     match value {
         Elementary::InferIdent(n) => n
             .as_bool(db)
             .map(|_| ())
-            .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
+            .map_err(|err| LiteralErrorKind::Invalid_BOOL_Literal),
         Elementary::InferInteger(n) => n
             .as_bool(db)
             .map(|_| ())
-            .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
-        _ => Err(LitCheckError::TypeMismatch(
-            "Expected one of '0' | '1' | 'TRUE' | 'FALSE'".into(),
-        )),
+            .map_err(|err| LiteralErrorKind::Invalid_BOOL_Literal),
+        _ => Err(LiteralErrorKind::Invalid_BOOL_Literal),
     }
 }
 
-fn check_u8(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckError> {
+fn check_u8(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LiteralErrorKind> {
     match value {
         Elementary::Byte(n)
         | Elementary::SInt(n)
@@ -174,14 +126,12 @@ fn check_u8(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckErr
         | Elementary::InferInteger(n) => n
             .as_u8(db)
             .map(|_| ())
-            .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
-        _ => Err(LitCheckError::TypeMismatch(
-            "expected an unsigned 8-bit integer".into(),
-        )),
+            .map_err(|err| LiteralErrorKind::TypeMismatch(err.to_string())),
+        _ => Err(LiteralErrorKind::Invalid_UNSIGNED_8_BITS_Literal),
     }
 }
 
-fn check_u16(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckError> {
+fn check_u16(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LiteralErrorKind> {
     match value {
         Elementary::Byte(n)
         | Elementary::Word(n)
@@ -192,14 +142,12 @@ fn check_u16(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckEr
         | Elementary::InferInteger(n) => n
             .as_u16(db)
             .map(|_| ())
-            .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
-        _ => Err(LitCheckError::TypeMismatch(
-            "expected an unsigned 16-bit integer".into(),
-        )),
+            .map_err(|err| LiteralErrorKind::TypeMismatch(err.to_string())),
+        _ => Err(LiteralErrorKind::Invalid_UNSIGNED_16_BITS_Literal),
     }
 }
 
-fn check_u32(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckError> {
+fn check_u32(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LiteralErrorKind> {
     match value {
         Elementary::Byte(n)
         | Elementary::Word(n)
@@ -213,14 +161,12 @@ fn check_u32(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckEr
         | Elementary::InferInteger(n) => n
             .as_u32(db)
             .map(|_| ())
-            .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
-        _ => Err(LitCheckError::TypeMismatch(
-            "expected an unsigned 32-bit integer".into(),
-        )),
+            .map_err(|err| LiteralErrorKind::TypeMismatch(err.to_string())),
+        _ => Err(LiteralErrorKind::Invalid_UNSIGNED_32_BITS_Literal),
     }
 }
 
-fn check_u64(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckError> {
+fn check_u64(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LiteralErrorKind> {
     match value {
         Elementary::Byte(n)
         | Elementary::Word(n)
@@ -237,14 +183,12 @@ fn check_u64(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckEr
         | Elementary::InferInteger(n) => n
             .as_u64(db)
             .map(|_| ())
-            .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
-        _ => Err(LitCheckError::TypeMismatch(
-            "expected an unsigned 64-bit integer".into(),
-        )),
+            .map_err(|err| LiteralErrorKind::TypeMismatch(err.to_string())),
+        _ => Err(LiteralErrorKind::Invalid_UNSIGNED_64_BITS_Literal),
     }
 }
 
-fn check_i8(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckError> {
+fn check_i8(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LiteralErrorKind> {
     match value {
         Elementary::Byte(n)
         | Elementary::SInt(n)
@@ -252,14 +196,12 @@ fn check_i8(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckErr
         | Elementary::InferInteger(n) => n
             .as_i8(db)
             .map(|_| ())
-            .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
-        _ => Err(LitCheckError::TypeMismatch(
-            "expected a signed 8-bit integer".into(),
-        )),
+            .map_err(|err| LiteralErrorKind::TypeMismatch(err.to_string())),
+        _ => Err(LiteralErrorKind::Invalid_SIGNED_8_BITS_Literal),
     }
 }
 
-fn check_i16(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckError> {
+fn check_i16(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LiteralErrorKind> {
     match value {
         Elementary::Byte(n)
         | Elementary::Word(n)
@@ -270,14 +212,12 @@ fn check_i16(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckEr
         | Elementary::InferInteger(n) => n
             .as_i16(db)
             .map(|_| ())
-            .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
-        _ => Err(LitCheckError::TypeMismatch(
-            "expected a signed 16-bit integer".into(),
-        )),
+            .map_err(|err| LiteralErrorKind::TypeMismatch(err.to_string())),
+        _ => Err(LiteralErrorKind::Invalid_SIGNED_16_BITS_Literal),
     }
 }
 
-fn check_i32(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckError> {
+fn check_i32(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LiteralErrorKind> {
     match value {
         Elementary::Byte(n)
         | Elementary::Word(n)
@@ -291,14 +231,12 @@ fn check_i32(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckEr
         | Elementary::InferInteger(n) => n
             .as_i32(db)
             .map(|_| ())
-            .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
-        _ => Err(LitCheckError::TypeMismatch(
-            "expected a signed 32-bit integer".into(),
-        )),
+            .map_err(|err| LiteralErrorKind::TypeMismatch(err.to_string())),
+        _ => Err(LiteralErrorKind::Invalid_SIGNED_32_BITS_Literal),
     }
 }
 
-fn check_i64(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckError> {
+fn check_i64(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LiteralErrorKind> {
     match value {
         Elementary::Byte(n)
         | Elementary::Word(n)
@@ -315,32 +253,30 @@ fn check_i64(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckEr
         | Elementary::InferInteger(n) => n
             .as_i64(db)
             .map(|_| ())
-            .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
-        _ => Err(LitCheckError::TypeMismatch(
-            "expected a signed 64-bit integer".into(),
-        )),
+            .map_err(|err| LiteralErrorKind::TypeMismatch(err.to_string())),
+        _ => Err(LiteralErrorKind::Invalid_SIGNED_64_BITS_Literal),
     }
 }
 
-fn check_f32(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckError> {
+fn check_f32(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LiteralErrorKind> {
     match value {
         Elementary::InferIdent(ident) => ident
             .as_f32(db)
             .map(|_| ())
-            .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
-        _ => Err(LitCheckError::TypeMismatch(
+            .map_err(|err| LiteralErrorKind::TypeMismatch(err.to_string())),
+        _ => Err(LiteralErrorKind::TypeMismatch(
             "expected a 32-bit floating point number".into(),
         )),
     }
 }
 
-fn check_f64(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LitCheckError> {
+fn check_f64(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LiteralErrorKind> {
     match value {
         Elementary::InferIdent(ident) => ident
             .as_f64(db)
             .map(|_| ())
-            .map_err(|err| LitCheckError::TypeMismatch(err.to_string())),
-        _ => Err(LitCheckError::TypeMismatch(
+            .map_err(|err| LiteralErrorKind::TypeMismatch(err.to_string())),
+        _ => Err(LiteralErrorKind::TypeMismatch(
             "expected a 64-bit floating point number".into(),
         )),
     }
@@ -454,17 +390,17 @@ impl Ident {
     }
 
     #[salsa::tracked]
-    pub fn as_single_string(self, db: &dyn BaseDatabase) -> Result<Vec<u8>, LitCheckError> {
+    pub fn as_single_string(self, db: &dyn BaseDatabase) -> Result<Vec<u8>, LiteralErrorKind> {
         parse_single_byte_string(&self.text(db).replace("STRING#", ""))
     }
 
     #[salsa::tracked]
-    pub fn as_double_string(self, db: &dyn BaseDatabase) -> Result<Vec<char>, LitCheckError> {
+    pub fn as_double_string(self, db: &dyn BaseDatabase) -> Result<Vec<char>, LiteralErrorKind> {
         parse_double_byte_string(&self.text(db).replace("WSTRING#", ""))
     }
 
     #[salsa::tracked]
-    pub fn as_time(self, db: &dyn BaseDatabase) -> Result<Duration, LitCheckError> {
+    pub fn as_time(self, db: &dyn BaseDatabase) -> Result<Duration, LiteralErrorKind> {
         parse_duration_components(
             self.text(db)
                 .to_uppercase()
@@ -476,7 +412,7 @@ impl Ident {
     }
 
     #[salsa::tracked]
-    pub fn as_ltime(self, db: &dyn BaseDatabase) -> Result<Duration, LitCheckError> {
+    pub fn as_ltime(self, db: &dyn BaseDatabase) -> Result<Duration, LiteralErrorKind> {
         parse_duration_components(
             &self
                 .text(db)
@@ -637,34 +573,27 @@ impl Integer {
     }
 }
 
-pub fn parse_single_byte_string(s: &str) -> Result<Vec<u8>, LitCheckError> {
+pub fn parse_single_byte_string(s: &str) -> Result<Vec<u8>, LiteralErrorKind> {
     let inner = &s[1..s.len() - 1];
     let mut result = Vec::new();
     let mut chars = inner.chars().peekable();
 
     while let Some(c) = chars.next() {
         if c == '$' {
-            let h1 = chars.next().ok_or_else(|| LitCheckError::InvalidFormat {
-                kind: "STRING",
-                msg: "Incomplete $xx escape".into(),
-            })?;
-            let h2 = chars.next().ok_or_else(|| LitCheckError::InvalidFormat {
-                kind: "STRING",
-                msg: "Incomplete $xx escape".into(),
-            })?;
+            let h1 = chars
+                .next()
+                .ok_or_else(|| LiteralErrorKind::Incomplete_STRING_XX_Escape)?;
+            let h2 = chars
+                .next()
+                .ok_or_else(|| LiteralErrorKind::Incomplete_STRING_XX_Escape)?;
             let hex = format!("{h1}{h2}");
-            let byte = u8::from_str_radix(&hex, 16).map_err(|_| LitCheckError::InvalidFormat {
-                kind: "STRING",
-                msg: format!("Invalid hex escape ${hex}"),
-            })?;
+            let byte = u8::from_str_radix(&hex, 16)
+                .map_err(|_| LiteralErrorKind::Incomplete_STRING_XX_Escape)?;
             result.push(byte);
         } else {
             // Regular single-byte character
             if (c as u32) > 0xFF {
-                return Err(LitCheckError::InvalidFormat {
-                    kind: "STRING",
-                    msg: format!("Character {c} not allowed in single-byte string"),
-                });
+                return Err(LiteralErrorKind::Invalid_STRING_CHAR(c.to_string()));
             }
             result.push(c as u8);
         }
@@ -672,39 +601,30 @@ pub fn parse_single_byte_string(s: &str) -> Result<Vec<u8>, LitCheckError> {
     Ok(result)
 }
 
-pub fn parse_double_byte_string(s: &str) -> Result<Vec<char>, LitCheckError> {
+pub fn parse_double_byte_string(s: &str) -> Result<Vec<char>, LiteralErrorKind> {
     let inner = &s[1..s.len() - 1];
     let mut result = Vec::new();
     let mut chars = inner.chars().peekable();
 
     while let Some(c) = chars.next() {
         if c == '$' {
-            let h1 = chars.next().ok_or_else(|| LitCheckError::InvalidFormat {
-                kind: "WSTRING",
-                msg: "Incomplete $xxxx escape".into(),
-            })?;
-            let h2 = chars.next().ok_or_else(|| LitCheckError::InvalidFormat {
-                kind: "WSTRING",
-                msg: "Incomplete $xxxx escape".into(),
-            })?;
-            let h3 = chars.next().ok_or_else(|| LitCheckError::InvalidFormat {
-                kind: "WSTRING",
-                msg: "Incomplete $xxxx escape".into(),
-            })?;
-            let h4 = chars.next().ok_or_else(|| LitCheckError::InvalidFormat {
-                kind: "WSTRING",
-                msg: "Incomplete $xxxx escape".into(),
-            })?;
+            let h1 = chars
+                .next()
+                .ok_or_else(|| LiteralErrorKind::Incomplete_WSTRING_XXXX_Escape)?;
+            let h2 = chars
+                .next()
+                .ok_or_else(|| LiteralErrorKind::Incomplete_WSTRING_XXXX_Escape)?;
+            let h3 = chars
+                .next()
+                .ok_or_else(|| LiteralErrorKind::Incomplete_WSTRING_XXXX_Escape)?;
+            let h4 = chars
+                .next()
+                .ok_or_else(|| LiteralErrorKind::Incomplete_WSTRING_XXXX_Escape)?;
             let hex = format!("{h1}{h2}{h3}{h4}");
-            let code = u16::from_str_radix(&hex, 16).map_err(|_| LitCheckError::InvalidFormat {
-                kind: "WSTRING",
-                msg: format!("Invalid hex escape ${hex}"),
-            })?;
+            let code = u16::from_str_radix(&hex, 16)
+                .map_err(|_| LiteralErrorKind::Invalid_WSTRING_Hex_Escape(hex.to_string()))?;
             result.push(char::from_u32(code as u32).ok_or_else(|| {
-                LitCheckError::InvalidFormat {
-                    kind: "WSTRING",
-                    msg: format!("Invalid Unicode scalar: ${hex}"),
-                }
+                LiteralErrorKind::Invalid_WSTRING_Unicode_Scalar(hex.to_string())
             })?);
         } else {
             result.push(c);
@@ -713,7 +633,7 @@ pub fn parse_double_byte_string(s: &str) -> Result<Vec<char>, LitCheckError> {
     Ok(result)
 }
 
-fn parse_duration_components(s: &str, kind: &'static str) -> Result<Duration, LitCheckError> {
+fn parse_duration_components(s: &str, kind: &'static str) -> Result<Duration, LiteralErrorKind> {
     let mut total_nanos = 0i64;
     let mut remaining = s;
 
@@ -739,26 +659,20 @@ fn parse_duration_components(s: &str, kind: &'static str) -> Result<Duration, Li
                 "us" | "US" => value * 1_000,
                 "ns" | "NS" => value,
                 _ => {
-                    return Err(LitCheckError::InvalidFormat {
-                        kind,
-                        msg: format!("Invalid time unit: {unit}"),
-                    });
+                    return Err(LiteralErrorKind::Invalid_TIME_Unit(unit.to_string()));
                 }
             }
         };
 
         total_nanos = total_nanos
             .checked_add(nanos)
-            .ok_or_else(|| LitCheckError::OutOfRange("Duration overflow".into()))?;
+            .ok_or_else(|| LiteralErrorKind::DurationOverflow)?;
 
         remaining = rest;
     }
 
     if total_nanos == 0 && !s.is_empty() {
-        return Err(LitCheckError::InvalidFormat {
-            kind,
-            msg: "No valid time components found".into(),
-        });
+        return Err(LiteralErrorKind::Invalid_TIME_Components);
     }
 
     Ok(Duration::nanoseconds(total_nanos))
@@ -767,7 +681,7 @@ fn parse_duration_components(s: &str, kind: &'static str) -> Result<Duration, Li
 fn parse_next_component<'a>(
     s: &'a str,
     kind: &'static str,
-) -> Result<(i64, &'a str, &'a str, bool), LitCheckError> {
+) -> Result<(i64, &'a str, &'a str, bool), LiteralErrorKind> {
     let mut number_end = 0;
     let mut found_decimal = false;
 
@@ -787,10 +701,7 @@ fn parse_next_component<'a>(
     }
 
     if number_end == 0 {
-        return Err(LitCheckError::InvalidFormat {
-            kind,
-            msg: "Expected number".into(),
-        });
+        return Err(LiteralErrorKind::ExpectedNumber);
     }
 
     let number_str = &s[..number_end];
@@ -807,10 +718,7 @@ fn parse_next_component<'a>(
     }
 
     if unit_end == 0 {
-        return Err(LitCheckError::InvalidFormat {
-            kind,
-            msg: "Expected time unit".into(),
-        });
+        return Err(LiteralErrorKind::Invalid_TIME_Unit(kind.to_string()));
     }
 
     let unit = &remainder[..unit_end];
@@ -820,10 +728,7 @@ fn parse_next_component<'a>(
     let value_nanos = if found_decimal {
         let float_val: f64 = number_str
             .parse()
-            .map_err(|_| LitCheckError::InvalidFormat {
-                kind,
-                msg: format!("Invalid number: {number_str}"),
-            })?;
+            .map_err(|_| LiteralErrorKind::InvalidNumber(number_str.to_string()))?;
 
         // Convert to nanoseconds based on unit, then truncate to u64
         let nanos = match unit.to_uppercase().as_str() {
@@ -835,10 +740,7 @@ fn parse_next_component<'a>(
             "US" => float_val * 1_000.0,
             "NS" => float_val,
             _ => {
-                return Err(LitCheckError::InvalidFormat {
-                    kind,
-                    msg: format!("Invalid time unit: {unit}"),
-                });
+                return Err(LiteralErrorKind::Invalid_TIME_Unit(unit.to_string()));
             }
         };
 
@@ -846,10 +748,7 @@ fn parse_next_component<'a>(
     } else {
         let int_val: i64 = number_str
             .parse()
-            .map_err(|_| LitCheckError::InvalidFormat {
-                kind,
-                msg: format!("Invalid number: {number_str}"),
-            })?;
+            .map_err(|_| LiteralErrorKind::InvalidNumber(number_str.to_string()))?;
         int_val
     };
 

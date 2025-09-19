@@ -5,9 +5,7 @@ use auto_lsp::{core::errors::PositionError, default::db::BaseDatabase};
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::check::errors::{
-    duplicates::DuplicateError, inheritance::MethodError, init_expr::InitExprError,
-    path_expr::PathExprError, scope::NamespaceError, stmt::StmtError, syntax::SyntaxError,
-    ty::TyError,
+    duplicates::DuplicateError, inheritance::MethodError, init_expr::InitExprError, literals::LiteralError, path_expr::PathExprError, scope::NamespaceError, stmt::StmtError, syntax::SyntaxError, ty::TyError
 };
 
 pub trait ToIdeDiagnostic<'db> {
@@ -26,6 +24,7 @@ pub enum AnalysisError<'db> {
     InitExprError(InitExprError<'db>),
     MethodError(MethodError<'db>),
     TyError(TyError<'db>),
+    LiteralError(LiteralError<'db>),
 }
 
 impl Error for AnalysisError<'_> {}
@@ -54,6 +53,7 @@ impl<'db> ToIdeDiagnostic<'db> for AnalysisError<'db> {
             Self::InitExprError(err) => err.to_diagnostic(db),
             Self::MethodError(err) => err.to_diagnostic(db),
             Self::TyError(err) => err.to_diagnostic(db),
+            Self::LiteralError(err) => err.to_diagnostic(db),
         }
     }
 }

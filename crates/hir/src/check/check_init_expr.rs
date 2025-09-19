@@ -1,7 +1,7 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    check::errors::{init_expr::InitExprError, sem_errors::AnalysisError},
+    check::{coerce::coerce_ty_with_expr, errors::{init_expr::InitExprError, sem_errors::AnalysisError}},
     hir_ty::{
         expr_resolver::ResolvedExprKind,
         init_expr_resolver::{ResolvedInitExpr, ResolvedInitExprKind},
@@ -19,13 +19,13 @@ pub fn check_init_expr<'db>(
         check_init_expr(db, target, expr, errors);
     }
 
-    match ty.kind(db) {
-        TyKind::Array { typ, ranges } => {}
-        TyKind::Struct { spec, elements } => {
-            if let ResolvedInitExprKind::StructInit { values } = expr.kind(db) {
-                for field in values {
-                    if let ResolvedInitExprKind::StructElement { name, value } = field.kind(db) {
-                        if !elements.contains_key(name) {
+    match (ty.kind(db), expr.kind(db)) {
+        // Check that all fields in struct init exist in struct definition
+        (TyKind::Struct { spec, elements }, ResolvedInitExprKind::StructInit { values }) => {
+            for field in values {
+                if let ResolvedInitExprKind::StructElement { name, value } = field.kind(db) {
+                    match elements.get(name) {
+                        None => {
                             errors.push(
                                 InitExprError::UnknownStructField {
                                     ztruct: ty,
@@ -35,15 +35,16 @@ pub fn check_init_expr<'db>(
                                 .into(),
                             );
                         }
+                        Some(elem) => check_init_expr(db, *elem, **value, errors),
                     }
                 }
             }
         }
-        TyKind::Enum { typ, list } => {
-            if let ResolvedInitExprKind::ConstantExpr(expr) = expr.kind(db) {
-                if let ResolvedExprKind::VarAccess(var) = expr.kind(db) {}
+        (_, ResolvedInitExprKind::ConstantExpr(expr)) => {
+            if let Err(err) = coerce_ty_with_expr(db, ty, *expr) {
+                errors.push(err)
             }
-        }
+        },
         _ => {}
     }
 }
