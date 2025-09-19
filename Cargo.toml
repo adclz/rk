@@ -12,7 +12,7 @@ members = [
     "crates/server",
     "crates/tree-sitter",
     "crates/memory_usage",
-    "crates/ide-diagnostic",
+    "crates/ide_diagnostic",
     "crates/ide_proto",
     "crates/formatter",
     "vscode/server",
@@ -30,7 +30,7 @@ tree-sitter-rk = { path = "crates/tree-sitter" }
 server = { path = "crates/server" }
 db = { path = "crates/db" }
 memory_usage = { path = "crates/memory_usage" }
-ide-diagnostic = { path = "crates/ide-diagnostic" }
+ide_diagnostic = { path = "crates/ide_diagnostic" }
 ide_proto = { path = "crates/ide_proto" }
 hir = { path = "crates/hir" }
 formatter = { path = "crates/formatter" }
