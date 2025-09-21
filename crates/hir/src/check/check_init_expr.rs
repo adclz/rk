@@ -1,9 +1,13 @@
+use crate::hir_def::expressions::expression::Expr;
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    check::{coerce::coerce_ty_with_expr, errors::{init_expr::InitExprError, sem_errors::AnalysisError}},
+    check::{
+        coerce::coerce_ty_with_expr,
+        errors::{init_expr::InitExprError, sem_errors::AnalysisError},
+    },
     hir_ty::{
-        expr_resolver::ResolvedExprKind,
+        array_resolver::resolve_range,
         init_expr_resolver::{ResolvedInitExpr, ResolvedInitExprKind},
         ty::{Ty, TyKind},
     },
@@ -20,7 +24,7 @@ pub fn check_init_expr<'db>(
     }
 
     match (ty.kind(db), expr.kind(db)) {
-        // Check that all fields in struct init exist in struct definition
+        // Struct definition <-> Struct init expression
         (TyKind::Struct { spec, elements }, ResolvedInitExprKind::StructInit { values }) => {
             for field in values {
                 if let ResolvedInitExprKind::StructElement { name, value } = field.kind(db) {
@@ -40,11 +44,122 @@ pub fn check_init_expr<'db>(
                 }
             }
         }
+        // Struct type with Array initialization - check array elements for struct content
+        (TyKind::Struct { elements, .. }, ResolvedInitExprKind::ArrayInit { values }) => {
+            for value in values {
+                match value.kind(db) {
+                    ResolvedInitExprKind::StructInit { .. } => {
+                        // Found struct initialization inside array - check it against struct type
+                        check_init_expr(db, ty, *value, errors);
+                    }
+                    _ => {
+                        // Could be other types in the array - check them too
+                        check_init_expr(db, ty, *value, errors);
+                    }
+                }
+            }
+        }
+        // Array definition <-> Array init expression
+        (TyKind::Array { ranges, typ }, ResolvedInitExprKind::ArrayInit { values }) => {
+            // Check multidimensional arrays by validating each dimension
+            check_array_dimensions(db, &ranges, typ, values, errors);
+        }
+        // Struct/Array <-> Constant expression
         (_, ResolvedInitExprKind::ConstantExpr(expr)) => {
             if let Err(err) = coerce_ty_with_expr(db, ty, *expr) {
                 errors.push(err)
             }
-        },
+        }
         _ => {}
     }
+}
+
+fn check_array_dimensions<'db>(
+    db: &'db dyn BaseDatabase,
+    ranges: &[(Expr<'db>, Expr<'db>)],
+    element_type: Ty<'db>,
+    values: &[ResolvedInitExpr<'db>],
+    errors: &mut Vec<AnalysisError<'db>>,
+) {
+    if let Some((first_range, remaining_ranges)) = ranges.split_first() {
+        match (
+            resolve_range(db, first_range.0),
+            resolve_range(db, first_range.1),
+        ) {
+            (Some(v1), Some(v2)) => {
+                let dimension_capacity = v2 - v1 + 1;
+                if let Err(err) = count_elements_at_dimension(db, values, dimension_capacity) {
+                    errors.push(
+                        InitExprError::ArrayTooManyElements {
+                            array: element_type,
+                            provided_count: err.0,
+                            max_capacity: dimension_capacity,
+                            init_expr: err.1,
+                        }
+                        .into(),
+                    );
+                }
+
+                // Recursively check inner dimensions
+                for value in values {
+                    if let ResolvedInitExprKind::ArrayIndexedElement {
+                        values: inner_values,
+                        ..
+                    } = value.kind(db)
+                    {
+                        if remaining_ranges.is_empty() {
+                            // Last dimension - check the values against element type
+                            for inner_value in inner_values {
+                                check_init_expr(db, element_type, *inner_value, errors);
+                            }
+                        } else {
+                            // More dimensions - recurse
+                            check_array_dimensions(
+                                db,
+                                remaining_ranges,
+                                element_type,
+                                inner_values,
+                                errors,
+                            );
+                        }
+                    } else if remaining_ranges.is_empty() {
+                        // Single value at last dimension
+                        check_init_expr(db, element_type, *value, errors);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn count_elements_at_dimension<'db>(
+    db: &'db dyn BaseDatabase,
+    values: &[ResolvedInitExpr<'db>],
+    max_capacity: u64,
+) -> Result<(), (u64, ResolvedInitExpr<'db>)> {
+    let mut count = 0u64;
+
+    for value in values {
+        match value.kind(db) {
+            ResolvedInitExprKind::ArrayIndexedElement { size, .. } => {
+                // The size indicates how many elements at this dimension level
+                if let Ok(repeat_count) = size.as_u64(db) {
+                    count += repeat_count;
+                }
+                if count > max_capacity {
+                    return Err((count, *value));
+                }
+            }
+            _ => {
+                // Single element without repetition count
+                count += 1;
+                if count > max_capacity {
+                    return Err((count, *value));
+                }
+            }
+        }
+    }
+
+    Ok(())
 }

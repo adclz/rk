@@ -720,7 +720,11 @@ impl<'db> Spec<'db> {
                     elements: fields
                         .elements
                         .iter()
-                        .map(|element| (*element.name(db), { *element.spec(db).to_ty(db, origin) }))
+                        .map(|element| {
+                            (*element.name(db), {
+                                *element.spec(db).to_ty(db, TyDecl::StructElement(*element))
+                            })
+                        })
                         .collect(),
                 },
             ),

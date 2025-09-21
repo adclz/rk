@@ -490,11 +490,7 @@ impl<'db> ParseExpr<'db> for ast::generated::ArrayIndexElem {
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<Self::Output, AnalysisError<'db>> {
-        let index = Integer::new(
-            sema.db,
-            Ident::from_node(sema.db, sema.file, self.index.cast(sema.ast))?,
-            IntegerKind::Signed,
-        );
+        let index = SpanIdent::from_node(sema.db, sema, self.index.cast(sema.ast))?;
 
         let values = self
             .values
@@ -506,7 +502,10 @@ impl<'db> ParseExpr<'db> for ast::generated::ArrayIndexElem {
 
         Ok(InitExpr::new(
             sema.db,
-            InitExprKind::ArrayIndexedElement { index, values },
+            InitExprKind::ArrayIndexedElement {
+                size: index,
+                values,
+            },
             self.into(),
             sema.current_scope,
         ))

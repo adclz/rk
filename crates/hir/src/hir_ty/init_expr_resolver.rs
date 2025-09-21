@@ -1,8 +1,6 @@
 use crate::{
     hir_def::{
-        expressions::expression::{InitExprKind, Integer},
-        interned::identifier::SpanIdent,
-        scope::FileScopeId,
+        expressions::expression::InitExprKind, interned::identifier::SpanIdent, scope::FileScopeId,
     },
     hir_ty::expr_resolver::{ResolvedExpr, resolve_expr},
     {AstId, HirNodeInfo},
@@ -21,10 +19,10 @@ pub fn resolve_init_expr<'db>(
             let resolved = values.iter().map(|v| *resolve_init_expr(db, *v)).collect();
             ResolvedInitExprKind::ArrayInit { values: resolved }
         }
-        InitExprKind::ArrayIndexedElement { index, values } => {
+        InitExprKind::ArrayIndexedElement { size, values } => {
             let resolved = values.iter().map(|v| *resolve_init_expr(db, *v)).collect();
             ResolvedInitExprKind::ArrayIndexedElement {
-                index,
+                size,
                 values: resolved,
             }
         }
@@ -61,7 +59,7 @@ pub enum ResolvedInitExprKind<'db> {
         values: Vec<ResolvedInitExpr<'db>>,
     },
     ArrayIndexedElement {
-        index: Integer,
+        size: SpanIdent<'db>,
         values: Vec<ResolvedInitExpr<'db>>,
     },
     StructInit {

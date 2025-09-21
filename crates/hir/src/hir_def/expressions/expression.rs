@@ -332,7 +332,7 @@ pub enum InitExprKind<'db> {
         values: Vec<InitExpr<'db>>,
     },
     ArrayIndexedElement {
-        index: Integer,
+        size: SpanIdent<'db>,
         values: Vec<InitExpr<'db>>,
     },
     StructInit {

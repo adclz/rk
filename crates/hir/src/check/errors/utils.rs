@@ -5,7 +5,10 @@ use crate::{check::recovery::pou::FuzzyResult, hir_ty::ty::Ty};
 
 pub fn get_decl_and_def_for_ty(db: &dyn BaseDatabase, ty: Ty<'_>, diag: &mut IdeDiagnostic) {
     get_decl_for_ty(db, ty, diag);
+    get_def_for_ty(db, ty, diag);
+}
 
+pub fn get_def_for_ty(db: &dyn BaseDatabase, ty: Ty<'_>, diag: &mut IdeDiagnostic) {
     if let Some(span) = ty.def(db).get_span(db) {
         diag.with_related(Related::new(
             "type defined here".to_string(),

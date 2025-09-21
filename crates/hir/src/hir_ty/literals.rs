@@ -290,6 +290,11 @@ impl Ident {
     }
 
     #[salsa::tracked]
+    pub fn as_u64(self, db: &dyn BaseDatabase) -> Result<u64, std::num::ParseIntError> {
+        self.text(db).parse()
+    }
+
+    #[salsa::tracked]
     pub fn as_f32(self, db: &dyn BaseDatabase) -> Result<f32, std::num::ParseFloatError> {
         self.text(db).parse()
     }
