@@ -2,7 +2,7 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::test_diagnostic;
+use crate::tests::utils::test_diagnostics;
 use crate::tests::utils::with_db;
 
 #[rstest]
@@ -24,9 +24,9 @@ fn unknown_struct_field(mut with_db: RootDatabase) {
         END_FUNCTION
         "#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-        ,-[ file:///test.st:12:49 ]
+        ,-[ file:///test0.st:12:49 ]
         |
       2 |         TYPE Engine:
         |              ^^^|^^  
@@ -58,9 +58,9 @@ fn invalid_struct_value(mut with_db: RootDatabase) {
 
         "#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-        ,-[ file:///test.st:11:44 ]
+        ,-[ file:///test0.st:11:44 ]
         |
       4 |                 power : INT;
         |                 ^^|^^   ^|^  
@@ -73,6 +73,17 @@ fn invalid_struct_value(mut with_db: RootDatabase) {
         |                                              `--- invalid INT literal
         | 
         | Note: An INT literal must be an integer between -32768 and 32767
+    ----'
+    Error: 
+        ,-[ file:///test0.st:11:50 ]
+        |
+      2 |         TYPE Engine:
+        |              ^^^|^^  
+        |                 `---- 'Engine' is declared here
+        | 
+     11 |                 Base : Engine := (power := 10.5, fuel := 10.0);
+        |                                                  ^^|^  
+        |                                                    `--- No field 'fuel' in STRUCT
     ----'
     ");
 }
@@ -93,9 +104,9 @@ fn array_initializer_out_of_bounds(mut with_db: RootDatabase) {
 
         "#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:8:35 ]
+       ,-[ file:///test0.st:8:35 ]
        |
      3 |             Engine: ARRAY[0..3] OF INT;
        |             ^^^|^^  
@@ -124,9 +135,9 @@ fn array_initializer_out_of_bounds_with_single_values(mut with_db: RootDatabase)
         END_FUNCTION
         "#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:9:45 ]
+       ,-[ file:///test0.st:9:45 ]
        |
      3 |             Engine: ARRAY[0..3] OF INT;
        |             ^^^|^^  
@@ -155,9 +166,9 @@ fn multi_dimensional_array_initializer_out_of_bounds(mut with_db: RootDatabase) 
 
         "#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:8:37 ]
+       ,-[ file:///test0.st:8:37 ]
        |
      3 |             Engine: ARRAY[0..3, 0..6] OF INT;
        |             ^^^|^^  
@@ -186,9 +197,9 @@ fn invalid_array_value(mut with_db: RootDatabase) {
 
         "#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:8:37 ]
+       ,-[ file:///test0.st:8:37 ]
        |
      3 |             Engine: ARRAY[0..3] OF INT;
        |             ^^^|^^                 ^|^  
@@ -221,9 +232,9 @@ fn multi_dimensional_invalid_array_value(mut with_db: RootDatabase) {
 
         "#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:8:39 ]
+       ,-[ file:///test0.st:8:39 ]
        |
      3 |             Engine: ARRAY[0..3, 0..6] OF INT;
        |             ^^^|^^                       ^|^  
@@ -259,9 +270,9 @@ fn invalid_value_in_array_of_struct(mut with_db: RootDatabase) {
         END_FUNCTION
         "#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-        ,-[ file:///test.st:12:64 ]
+        ,-[ file:///test0.st:12:64 ]
         |
       5 |                 Torque: INT;
         |                 ^^^|^^  ^|^  
@@ -296,9 +307,9 @@ fn invalid_value_in_struct_with_array(mut with_db: RootDatabase) {
         END_FUNCTION
         "#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-        ,-[ file:///test.st:11:50 ]
+        ,-[ file:///test0.st:11:50 ]
         |
       4 |                 Power: ARRAY[0..2] OF INT;
         |                 ^^|^^                 ^|^  
@@ -309,6 +320,21 @@ fn invalid_value_in_struct_with_array(mut with_db: RootDatabase) {
      11 |                 Base : Engine := [(Power := [10, 5.3], Torque := 10.0)];
         |                                                  ^|^  
         |                                                   `--- invalid INT literal
+        | 
+        | Note: An INT literal must be an integer between -32768 and 32767
+    ----'
+    Error: 
+        ,-[ file:///test0.st:11:66 ]
+        |
+      5 |                 Torque: INT;
+        |                 ^^^|^^  ^|^  
+        |                    `--------- 'Torque' is declared here
+        |                          |   
+        |                          `--- type defined here
+        | 
+     11 |                 Base : Engine := [(Power := [10, 5.3], Torque := 10.0)];
+        |                                                                  ^^|^  
+        |                                                                    `--- invalid INT literal
         | 
         | Note: An INT literal must be an integer between -32768 and 32767
     ----'

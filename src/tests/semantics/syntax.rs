@@ -2,7 +2,7 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::test_diagnostic;
+use crate::tests::utils::test_diagnostics;
 use crate::tests::utils::with_db;
 
 #[rstest]
@@ -11,9 +11,9 @@ fn missing_identifier(mut with_db: RootDatabase) {
 NAMESPACE 
 END_NAMESPACE"#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:2:10 ]
+       ,-[ file:///test0.st:2:10 ]
        |
      2 | NAMESPACE
        |          | 
@@ -32,9 +32,9 @@ fn missing_end_keyword(mut with_db: RootDatabase) {
 
     "#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:2:26 ]
+       ,-[ file:///test0.st:2:26 ]
        |
      2 |     FUNCTION myFunc : INT
        |                          | 
@@ -51,9 +51,9 @@ fn unexpected_symbol(mut with_db: RootDatabase) {
 NAMESPACE test ;
 END_NAMESPACE"#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:2:16 ]
+       ,-[ file:///test0.st:2:16 ]
        |
      2 | NAMESPACE test ;
        |                |  
@@ -69,9 +69,9 @@ FUNCTION_BLOCK fn IMPLEMENTS a EXTENDS b
     
 END_FUNCTION_BLOCK"#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:2:19 ]
+       ,-[ file:///test0.st:2:19 ]
        |
      2 | FUNCTION_BLOCK fn IMPLEMENTS a EXTENDS b
        |                   ^^^^^^|^^^^^  
@@ -87,9 +87,9 @@ FUNCTION_BLOCK fn IMPLEMENTS a IMPLEMENTS b
     
 END_FUNCTION_BLOCK"#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:2:32 ]
+       ,-[ file:///test0.st:2:32 ]
        |
      2 | FUNCTION_BLOCK fn IMPLEMENTS a IMPLEMENTS b
        |                                ^^^^^^|^^^^^  
@@ -105,9 +105,9 @@ FUNCTION_BLOCK fn EXTENDS a EXTENDS b
     
 END_FUNCTION_BLOCK"#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:2:29 ]
+       ,-[ file:///test0.st:2:29 ]
        |
      2 | FUNCTION_BLOCK fn EXTENDS a EXTENDS b
        |                             ^^^^|^^^^  
@@ -126,9 +126,9 @@ FUNCTION_BLOCK fn
     
 END_FUNCTION_BLOCK"#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:4:9 ]
+       ,-[ file:///test0.st:4:9 ]
        |
      4 |         empty
        |         ^^|^^  
@@ -144,9 +144,9 @@ FUNCTION_BLOCK fn
     fn() := 0;   
 END_FUNCTION_BLOCK"#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:3:5 ]
+       ,-[ file:///test0.st:3:5 ]
        |
      3 |     fn() := 0;
        |     ^^|^  
@@ -162,9 +162,9 @@ FUNCTION_BLOCK fn
     fn.m.p := THIS.m^()   
 END_FUNCTION_BLOCK"#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:3:15 ]
+       ,-[ file:///test0.st:3:15 ]
        |
      3 |     fn.m.p := THIS.m^()
        |               ^^^^|^^^^  
@@ -181,13 +181,20 @@ FUNCTION_BLOCK fn
     fn.THIS.p := 5
 END_FUNCTION_BLOCK"#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:4:8 ]
+       ,-[ file:///test0.st:4:8 ]
        |
      4 |     fn.THIS.p := 5
        |        ^^|^  
        |          `--- 'this' is not valid in this context
+    ---'
+    Error: 
+       ,-[ file:///test0.st:3:10 ]
+       |
+     3 |     THIS.a := 0
+       |          |  
+       |          `-- no item 'a' in scope
     ---'
     ");
 }
@@ -199,9 +206,9 @@ FUNCTION_BLOCK fn
     a := 
 END_FUNCTION_BLOCK"#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:3:7 ]
+       ,-[ file:///test0.st:3:7 ]
        |
      3 |     a :=
        |       ^|  
@@ -220,9 +227,9 @@ FUNCTION_BLOCK fn
     
 END_FUNCTION_BLOCK"#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:4:37 ]
+       ,-[ file:///test0.st:4:37 ]
        |
      4 |     ml : ARRAY [0..2] OF TON := [10(call(IN := 5, OUT => OUT))]
        |                                     ^^^^^^^^^^^^|^^^^^^^^^^^^  
@@ -238,9 +245,9 @@ FUNCTION_BLOCK fn
     a = 0;
 END_FUNCTION_BLOCK"#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:3:7 ]
+       ,-[ file:///test0.st:3:7 ]
        |
      3 |     a = 0;
        |       ^|^  
@@ -258,9 +265,9 @@ FUNCTION_BLOCK fn
     a : 0;
 END_FUNCTION_BLOCK"#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:3:7 ]
+       ,-[ file:///test0.st:3:7 ]
        |
      3 |     a : 0;
        |       ^|^  
@@ -278,9 +285,9 @@ FUNCTION fn
 	FOR i = p TO smt END_FOR
 END_FUNCTION"#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:3:8 ]
+       ,-[ file:///test0.st:3:8 ]
        |
      3 |     FOR i = p TO smt END_FOR
        |           |  
@@ -298,9 +305,9 @@ FUNCTION fn
 	FOR i : p TO smt END_FOR
 END_FUNCTION"#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:3:8 ]
+       ,-[ file:///test0.st:3:8 ]
        |
      3 |     FOR i : p TO smt END_FOR
        |           |  

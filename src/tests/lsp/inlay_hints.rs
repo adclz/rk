@@ -4,8 +4,9 @@ use hir::hir_def::semantic_index::semantic_index;
 use ide_proto::ToProtocol;
 use insta::assert_debug_snapshot;
 use rstest::rstest;
+use auto_lsp::default::db::BaseDatabase;
 
-use crate::tests::utils::make_db_with_source;
+use crate::tests::utils::add_sources;
 use crate::tests::utils::with_db;
 
 #[rstest]
@@ -23,9 +24,9 @@ END_CLASS
 INTERFACE in1
 END_INTERFACE"#;
 
-    let file = make_db_with_source(&mut with_db, source);
+    let file = add_sources(&mut with_db, &[source]);
 
-    let sema = semantic_index(&with_db, file);
+    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
     let result: Vec<InlayHint> = sema
         .global_pous
         .iter()
@@ -128,9 +129,8 @@ NAMESPACE ns2
 
 END_NAMESPACE"#;
 
-    let file = make_db_with_source(&mut with_db, source);
-
-    let sema = semantic_index(&with_db, file);
+    add_sources(&mut with_db, &[source]);
+    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
     let result: Vec<InlayHint> = sema
         .namespaces
         .iter()

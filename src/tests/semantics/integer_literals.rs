@@ -2,7 +2,7 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::test_diagnostic;
+use crate::tests::utils::test_diagnostics;
 use crate::tests::utils::with_db;
 
 #[rstest]
@@ -15,9 +15,9 @@ FUNCTION_BLOCK fb1
 
 END_FUNCTION_BLOCK"#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:4:23 ]
+       ,-[ file:///test0.st:4:23 ]
        |
      4 |         test: BOOL := 256;
        |         ^^|^  ^^|^    ^|^  
@@ -42,9 +42,9 @@ FUNCTION_BLOCK fb1
 
 END_FUNCTION_BLOCK"#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:4:24 ]
+       ,-[ file:///test0.st:4:24 ]
        |
      4 |         test: USINT := ULINT#2;
        |         ^^|^  ^^|^^    ^^^|^^^  
@@ -69,9 +69,9 @@ FUNCTION_BLOCK fb1
 
 END_FUNCTION_BLOCK"#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:4:23 ]
+       ,-[ file:///test0.st:4:23 ]
        |
      4 |         test: UINT := ULINT#2;
        |         ^^|^  ^^|^    ^^^|^^^  
@@ -96,9 +96,9 @@ FUNCTION_BLOCK fb1
 
 END_FUNCTION_BLOCK"#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:4:24 ]
+       ,-[ file:///test0.st:4:24 ]
        |
      4 |         test: UDINT := ULINT#2;
        |         ^^|^  ^^|^^    ^^^|^^^  
@@ -123,9 +123,9 @@ FUNCTION_BLOCK fb1
 
 END_FUNCTION_BLOCK"#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:4:24 ]
+       ,-[ file:///test0.st:4:24 ]
        |
      4 |         test: ULINT := REAL#0.0;
        |         ^^|^  ^^|^^    ^^^^|^^^  
@@ -150,9 +150,9 @@ FUNCTION_BLOCK fb1
 
 END_FUNCTION_BLOCK"#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:4:23 ]
+       ,-[ file:///test0.st:4:23 ]
        |
      4 |         test: SINT := REAL#0.0;
        |         ^^|^  ^^|^    ^^^^|^^^  
@@ -177,9 +177,9 @@ FUNCTION_BLOCK fb1
 
 END_FUNCTION_BLOCK"#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:4:22 ]
+       ,-[ file:///test0.st:4:22 ]
        |
      4 |         test: INT := REAL#0.0;
        |         ^^|^  ^|^    ^^^^|^^^  
@@ -204,9 +204,9 @@ FUNCTION_BLOCK fb1
 
 END_FUNCTION_BLOCK"#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:4:23 ]
+       ,-[ file:///test0.st:4:23 ]
        |
      4 |         test: DINT := REAL#0.0;
        |         ^^|^  ^^|^    ^^^^|^^^  
@@ -231,9 +231,9 @@ FUNCTION_BLOCK fb1
 
 END_FUNCTION_BLOCK"#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:4:23 ]
+       ,-[ file:///test0.st:4:23 ]
        |
      4 |         test: LINT := REAL#0.0;
        |         ^^|^  ^^|^    ^^^^|^^^  

@@ -3,9 +3,10 @@ use db::RootDatabase;
 use ide_proto::ToProtocol;
 use insta::assert_debug_snapshot;
 use rstest::rstest;
+use auto_lsp::default::db::BaseDatabase;
 
 use crate::tests::utils::find_pou_with_name;
-use crate::tests::utils::make_db_with_source;
+use crate::tests::utils::add_sources;
 use crate::tests::utils::with_db;
 
 #[rstest]
@@ -18,8 +19,8 @@ pub fn class_extends_class(mut with_db: RootDatabase) {
         END_CLASS
 "#;
 
-    let file = make_db_with_source(&mut with_db, source);
-    let cl = find_pou_with_name(&with_db, file, "Base").unwrap();
+    add_sources(&mut with_db, &[source]);
+    let cl = find_pou_with_name(&with_db, *with_db.get_files().iter().last().unwrap(), "Base").unwrap();
 
     assert_debug_snapshot!(if let GotoImplementationResponse::Link(link) = cl.implementation(&with_db).unwrap() {
             link.iter().map(|link| {
@@ -44,8 +45,8 @@ pub fn function_block_extends(mut with_db: RootDatabase) {
         END_FUNCTION_BLOCK
 "#;
 
-    let file = make_db_with_source(&mut with_db, source);
-    let cl = find_pou_with_name(&with_db, file, "Base").unwrap();
+    add_sources(&mut with_db, &[source]);
+    let cl = find_pou_with_name(&with_db, *with_db.get_files().iter().last().unwrap(), "Base").unwrap();
 
     assert_debug_snapshot!(if let GotoImplementationResponse::Link(link) = cl.implementation(&with_db).unwrap() {
             link.iter().map(|link| {
@@ -70,8 +71,8 @@ pub fn interface_implements_interface(mut with_db: RootDatabase) {
         END_INTERFACE
 "#;
 
-    let file = make_db_with_source(&mut with_db, source);
-    let cl = find_pou_with_name(&with_db, file, "I1").unwrap();
+    let file = add_sources(&mut with_db, &[source]);
+    let cl = find_pou_with_name(&with_db, *with_db.get_files().iter().last().unwrap(), "I1").unwrap();
 
     assert_debug_snapshot!(if let GotoImplementationResponse::Link(link) = cl.implementation(&with_db).unwrap() {
             link.iter().map(|link| {
@@ -98,8 +99,8 @@ pub fn class_implements_multiple_interfaces(mut with_db: RootDatabase) {
         END_CLASS
 "#;
 
-    let file = make_db_with_source(&mut with_db, source);
-    let i1 = find_pou_with_name(&with_db, file, "I1").unwrap();
+    add_sources(&mut with_db, &[source]);
+    let i1 = find_pou_with_name(&with_db, *with_db.get_files().iter().last().unwrap(), "I1").unwrap();
 
     assert_debug_snapshot!(if let GotoImplementationResponse::Link(link) = i1.implementation(&with_db).unwrap() {
             link.iter().map(|link| {
@@ -113,7 +114,7 @@ pub fn class_implements_multiple_interfaces(mut with_db: RootDatabase) {
     ]
     "#);
 
-    let i2 = find_pou_with_name(&with_db, file, "I2").unwrap();
+    let i2 = find_pou_with_name(&with_db, *with_db.get_files().iter().last().unwrap(), "I2").unwrap();
 
     assert_debug_snapshot!(if let GotoImplementationResponse::Link(link) = i2.implementation(&with_db).unwrap() {
             link.iter().map(|link| {
@@ -127,7 +128,7 @@ pub fn class_implements_multiple_interfaces(mut with_db: RootDatabase) {
     ]
     "#);
 
-    let i3 = find_pou_with_name(&with_db, file, "I3").unwrap();
+    let i3 = find_pou_with_name(&with_db, *with_db.get_files().iter().last().unwrap(), "I3").unwrap();
 
     assert_debug_snapshot!(if let GotoImplementationResponse::Link(link) = i3.implementation(&with_db).unwrap() {
             link.iter().map(|link| {

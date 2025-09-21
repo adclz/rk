@@ -2,7 +2,7 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::test_diagnostic;
+use crate::tests::utils::test_diagnostics;
 use crate::tests::utils::with_db;
 
 #[rstest]
@@ -17,9 +17,9 @@ fn missing_override(mut with_db: RootDatabase) {
             METHOD Tick : INT END_METHOD
         END_CLASS"#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:8:20 ]
+       ,-[ file:///test0.st:8:20 ]
        |
      3 |             METHOD Tick : INT END_METHOD
        |                    ^^|^  
@@ -46,9 +46,9 @@ fn override_final_method(mut with_db: RootDatabase) {
             METHOD OVERRIDE Tick : INT END_METHOD
         END_CLASS"#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:8:29 ]
+       ,-[ file:///test0.st:8:29 ]
        |
      3 |             METHOD FINAL Tick : INT END_METHOD
        |                          ^^|^  
@@ -74,9 +74,9 @@ fn missing_abstract_method(mut with_db: RootDatabase) {
             // missing implementation of method
         END_CLASS"#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:6:15 ]
+       ,-[ file:///test0.st:6:15 ]
        |
      3 |             METHOD ABSTRACT Tick : INT END_METHOD
        |                             ^^|^  
@@ -98,9 +98,9 @@ fn empty_override(mut with_db: RootDatabase) {
             METHOD OVERRIDE Tick : INT END_METHOD
         END_CLASS"#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:3:29 ]
+       ,-[ file:///test0.st:3:29 ]
        |
      3 |             METHOD OVERRIDE Tick : INT END_METHOD
        |                             ^^|^  
@@ -119,9 +119,9 @@ fn abstract_class_has_no_abstract_methods(mut with_db: RootDatabase) {
             METHOD Tick2 : INT END_METHOD
         END_CLASS"#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:2:24 ]
+       ,-[ file:///test0.st:2:24 ]
        |
      2 |         CLASS ABSTRACT Base
        |                        ^^|^  
@@ -143,9 +143,9 @@ fn interface_methods_not_implemented(mut with_db: RootDatabase) {
         END_CLASS
         "#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:6:15 ]
+       ,-[ file:///test0.st:6:15 ]
        |
      3 |             METHOD DAYTIME END_METHOD
        |                    ^^^|^^^  

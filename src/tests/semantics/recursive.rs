@@ -17,16 +17,16 @@ fn self_referential(mut with_db: RootDatabase) {
 
         "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:2:22 ]
+       ,-[ file:///test0.st:2:22 ]
        |
      2 |       FUNCTION_BLOCK fb
        |                      ^|  
        |                       `-- 'fb' is recursive
     ---'
     Error: 
-       ,-[ file:///test.st:4:17 ]
+       ,-[ file:///test0.st:4:17 ]
        |
      2 |       FUNCTION_BLOCK fb
        |                      ^|  
@@ -59,16 +59,16 @@ fn recursive_function_blocks(mut with_db: RootDatabase) {
         END_FUNCTION_BLOCK
         "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:2:24 ]
+       ,-[ file:///test0.st:2:24 ]
        |
      2 |         FUNCTION_BLOCK fb1
        |                        ^|^  
        |                         `--- 'fb1' is recursive
     ---'
     Error: 
-       ,-[ file:///test.st:4:19 ]
+       ,-[ file:///test0.st:4:19 ]
        |
      4 |                   invalid : fb2;
        |                   ^^^|^^|^^^^^^  
@@ -81,14 +81,14 @@ fn recursive_function_blocks(mut with_db: RootDatabase) {
        |                         `--- 'fb2' is originally declared here
     ---'
     Error: 
-       ,-[ file:///test.st:9:24 ]
+       ,-[ file:///test0.st:9:24 ]
        |
      9 |         FUNCTION_BLOCK fb2
        |                        ^|^  
        |                         `--- 'fb2' is recursive
     ---'
     Error: 
-        ,-[ file:///test.st:11:19 ]
+        ,-[ file:///test0.st:11:19 ]
         |
       2 |         FUNCTION_BLOCK fb1
         |                        ^|^  
@@ -112,16 +112,16 @@ fn self_referential_struct(mut with_db: RootDatabase) {
         END_TYPE
         "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:2:14 ]
+       ,-[ file:///test0.st:2:14 ]
        |
      2 |         TYPE Engine: STRUCT
        |              ^^^|^^  
        |                 `---- 'Engine' is recursive
     ---'
     Error: 
-       ,-[ file:///test.st:3:17 ]
+       ,-[ file:///test0.st:3:17 ]
        |
      2 |         TYPE Engine: STRUCT
        |              ^^^|^^  

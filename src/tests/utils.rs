@@ -25,54 +25,39 @@ pub fn no_color_and_ascii() -> Config {
         .with_char_set(CharSet::Ascii)
 }
 
-pub fn make_db_with_source(db: &mut RootDatabase, source: &str) -> File {
-    let url = Url::parse("file:///test.st").unwrap();
+pub fn add_sources<'db>(db: &'db mut RootDatabase, sources: &[&str]) {
+    for (i, source) in sources.iter().enumerate() {
+        let url = Url::parse(&format!("file:///test{i}.st")).unwrap();
 
-    let file = File::from_string()
-        .db(db)
-        .parsers(ast::RK_PARSER.get("structured_text").unwrap())
-        .url(&url)
-        .source(source.to_string())
-        .call()
-        .unwrap();
-
-    db.add_file(file).unwrap();
-    file
-}
-
-pub fn test_diagnostic(db: &mut RootDatabase, source: &str) -> String {
-    let file = make_db_with_source(db, source);
-
-    let mut cache = vec![];
-    diagnostics_for_file(db, file)[0]
-        .create_report(db, file, Some(no_color_and_ascii()))
-        .write(
-            (
-                file.url(db).as_str(),
-                Source::from(file.document(db).as_str()),
-            ),
-            &mut cache,
-        )
-        .unwrap();
-
-    String::from_utf8(cache).unwrap()
-}
-
-pub fn test_diagnostics(db: &mut RootDatabase, source: &str) -> String {
-    let file = make_db_with_source(db, source);
-
-    let mut cache = vec![];
-    diagnostics_for_file(db, file).iter().for_each(|d| {
-        d.create_report(db, file, Some(no_color_and_ascii()))
-            .write(
-                (
-                    file.url(db).as_str(),
-                    Source::from(file.document(db).as_str()),
-                ),
-                &mut cache,
-            )
+        let file = File::from_string()
+            .db(db)
+            .parsers(ast::RK_PARSER.get("structured_text").unwrap())
+            .url(&url)
+            .source(source.to_string())
+            .call()
             .unwrap();
-    });
+
+        db.add_file(file).unwrap();
+    }
+}
+
+pub fn test_diagnostics(db: &mut RootDatabase, source: &[&str]) -> String {
+    add_sources(db, source);
+        let mut cache = vec![];
+
+    for file in db.get_files().iter() {
+        diagnostics_for_file(db, *file).iter().for_each(|d| {
+            d.create_report(db, *file, Some(no_color_and_ascii()))
+                .write(
+                    (
+                        file.url(db).as_str(),
+                        Source::from(file.document(db).as_str()),
+                    ),
+                    &mut cache,
+                )
+                .unwrap();
+        });
+    }
 
     String::from_utf8(cache).unwrap()
 }

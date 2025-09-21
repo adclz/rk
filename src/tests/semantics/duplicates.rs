@@ -2,7 +2,7 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::test_diagnostic;
+use crate::tests::utils::test_diagnostics;
 use crate::tests::utils::with_db;
 
 #[rstest]
@@ -17,9 +17,9 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK
 "#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:6:16 ]
+       ,-[ file:///test0.st:6:16 ]
        |
      2 | FUNCTION_BLOCK fb1
        |                ^|^  
@@ -46,9 +46,9 @@ NAMESPACE ns1
 END_NAMESPACE
 "#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:7:20 ]
+       ,-[ file:///test0.st:7:20 ]
        |
      3 |     FUNCTION_BLOCK fb1
        |                    ^|^  
@@ -72,9 +72,9 @@ FUNCTION_BLOCK fb1
 
 END_FUNCTION_BLOCK"#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:5:9 ]
+       ,-[ file:///test0.st:5:9 ]
        |
      4 |         test: INT;
        |         ^^|^  
@@ -96,9 +96,9 @@ FUNCTION_BLOCK fb1
 
 END_FUNCTION_BLOCK"#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:4:15 ]
+       ,-[ file:///test0.st:4:15 ]
        |
      4 |         test, test: INT;
        |         ^^|^  ^^|^  
@@ -119,9 +119,9 @@ TYPE
     END_STRUCT;
 END_TYPE"#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:5:9 ]
+       ,-[ file:///test0.st:5:9 ]
        |
      4 |         test: INT;
        |         ^^|^  

@@ -2,7 +2,7 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::test_diagnostic;
+use crate::tests::utils::test_diagnostics;
 use crate::tests::utils::with_db;
 
 #[rstest]
@@ -28,9 +28,9 @@ fn fuzzy_struct_fields(mut with_db: RootDatabase) {
 
         "#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-        ,-[ file:///test.st:15:49 ]
+        ,-[ file:///test0.st:15:49 ]
         |
       2 |         TYPE Engine:
         |              ^^^|^^  
@@ -64,9 +64,9 @@ fn fuzzy_local_variables(mut with_db: RootDatabase) {
         END_FUNCTION_BLOCK
         "#;
 
-    assert_snapshot!(test_diagnostic(&mut with_db, source), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test.st:9:13 ]
+       ,-[ file:///test0.st:9:13 ]
        |
      9 |             engine := ULINT#5;
        |             ^^^|^^  

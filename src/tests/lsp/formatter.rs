@@ -1,10 +1,11 @@
-use crate::tests::utils::{make_db_with_source, with_db};
+use crate::tests::utils::{add_sources, with_db};
 use auto_lsp::core::document::Document;
 use db::RootDatabase;
 use formatter::TOPIARY_LANG;
 use insta::assert_snapshot;
 use rstest::rstest;
 use topiary_core::{Operation, formatter};
+use auto_lsp::default::db::BaseDatabase;
 
 pub fn fmt(document: &Document) -> String {
     let mut output = vec![];
@@ -43,8 +44,8 @@ VAR_EXTERNAL CONSTANT B: REAL; END_VAR
 END_FUNCTION_BLOCK
 "#;
 
-    let file = make_db_with_source(&mut with_db, source);
-    let document = file.document(&with_db);
+    add_sources(&mut with_db, &[source]);
+    let document = with_db.get_files().iter().last().unwrap().document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     FUNCTION_BLOCK myFB
@@ -117,8 +118,8 @@ pub fn class_definition(mut with_db: RootDatabase) {
         END_CLASS
 "#;
 
-    let file = make_db_with_source(&mut with_db, source);
-    let document = file.document(&with_db);
+    add_sources(&mut with_db, &[source]);
+    let document = with_db.get_files().iter().last().unwrap().document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     CLASS CCounter
@@ -174,8 +175,8 @@ QW100:= INT_TO_BCD(DISPLAY);
 END_FUNCTION
 "#;
 
-    let file = make_db_with_source(&mut with_db, source);
-    let document = file.document(&with_db);
+    add_sources(&mut with_db, &[source]);
+    let document = with_db.get_files().iter().last().unwrap().document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     FUNCTION fn
@@ -212,8 +213,8 @@ END_WHILE
 END_FUNCTION
 "#;
 
-    let file = make_db_with_source(&mut with_db, source);
-    let document = file.document(&with_db);
+    add_sources(&mut with_db, &[source]);
+    let document = with_db.get_files().iter().last().unwrap().document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     FUNCTION fn
@@ -239,8 +240,8 @@ END_FOR;
 END_FUNCTION
 "#;
 
-    let file = make_db_with_source(&mut with_db, source);
-    let document = file.document(&with_db);
+    add_sources(&mut with_db, &[source]);
+    let document = with_db.get_files().iter().last().unwrap().document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     FUNCTION fn
@@ -266,8 +267,8 @@ END_REPEAT;
 END_FUNCTION
 "#;
 
-    let file = make_db_with_source(&mut with_db, source);
-    let document = file.document(&with_db);
+    add_sources(&mut with_db, &[source]);
+    let document = with_db.get_files().iter().last().unwrap().document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     FUNCTION fn

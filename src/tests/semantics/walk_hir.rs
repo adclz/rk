@@ -7,8 +7,9 @@ use ide_proto::AsProtocol;
 use insta::assert_debug_snapshot;
 use insta::assert_snapshot;
 use rstest::rstest;
+use auto_lsp::default::db::BaseDatabase;
 
-use crate::tests::utils::make_db_with_source;
+use crate::tests::utils::add_sources;
 use crate::tests::utils::with_db;
 
 #[rstest]
@@ -21,8 +22,8 @@ FUNCTION_BLOCK fb1
 
 END_FUNCTION_BLOCK"#;
 
-    let file = make_db_with_source(&mut with_db, source);
-    let sema = semantic_index(&with_db, file);
+    add_sources(&mut with_db, &[source]);
+    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
 
     let mut nodes = vec![];
 
@@ -50,8 +51,8 @@ CLASS C2
    METHOD PUBLIC myPublicMethod: INT  END_METHOD
 END_CLASS"#;
 
-    let file = make_db_with_source(&mut with_db, source);
-    let sema = semantic_index(&with_db, file);
+    add_sources(&mut with_db, &[source]);
+    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
 
     let mut nodes = vec![];
 
@@ -79,8 +80,8 @@ INTERFACE ROOM
     METHOD NIGHTTIME END_METHOD // in night-time
 END_INTERFACE "#;
 
-    let file = make_db_with_source(&mut with_db, source);
-    let sema = semantic_index(&with_db, file);
+    add_sources(&mut with_db, &[source]);
+    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
 
     let mut nodes = vec![];
 
@@ -121,8 +122,8 @@ FUNCTION_BLOCK fb1
     END_WHILE;
 END_FUNCTION_BLOCK"#;
 
-    let file = make_db_with_source(&mut with_db, source);
-    let sema = semantic_index(&with_db, file);
+    add_sources(&mut with_db, &[source]);
+    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
 
     let mut nodes = vec![];
 
@@ -175,8 +176,8 @@ FUNCTION_BLOCK fb1
     END_WHILE;
 END_FUNCTION_BLOCK"#;
 
-    let file = make_db_with_source(&mut with_db, source);
-    let sema = semantic_index(&with_db, file);
+    add_sources(&mut with_db, &[source]);
+    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
 
     let mut nodes = vec![];
 

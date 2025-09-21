@@ -12,8 +12,9 @@ use ide_proto::AsProtocol;
 use ide_proto::ToProtocol;
 use insta::assert_snapshot;
 use rstest::rstest;
+use auto_lsp::default::db::BaseDatabase;
 
-use crate::tests::utils::make_db_with_source;
+use crate::tests::utils::add_sources;
 use crate::tests::utils::with_db;
 
 #[rstest]
@@ -31,8 +32,8 @@ CLASS class1
 END_CLASS
 "#;
 
-    let file = make_db_with_source(&mut with_db, source);
-    let sema = semantic_index(&with_db, file);
+    add_sources(&mut with_db, &[source]);
+    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
 
     let mut nodes = vec![];
 
@@ -85,8 +86,8 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK
 "#;
 
-    let file = make_db_with_source(&mut with_db, source);
-    let sema = semantic_index(&with_db, file);
+    add_sources(&mut with_db, &[source]);
+    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
 
     let mut nodes = vec![];
 
