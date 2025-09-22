@@ -133,24 +133,28 @@ END_FUNCTION_BLOCK"#;
     });
 
     assert_snapshot!(nodes.join("\n"), @r"
-    Ty(Ty { [salsa id]: Id(2800) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4400) })
-    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(3c00) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4000) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4401) })
-    ResolvedPathResult(ResolvedPathResult { [salsa id]: Id(3802) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4402) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4004) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4403) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4005) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4006) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4007) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4405) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(400a) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4404) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4407) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(400d) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4406) })
+    Ty(Ty { [salsa id]: Id(2c00) })
+    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4800) })
+    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(4000) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4400) })
+    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4801) })
+    ResolvedPathResult(ResolvedPathResult { [salsa id]: Id(3c02) })
+    ResolvedParam(ResolvedParam { [salsa id]: Id(4c00) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4401) })
+    ResolvedParam(ResolvedParam { [salsa id]: Id(4c01) })
+    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(4001) })
+    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4802) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4404) })
+    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4803) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4405) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4406) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4407) })
+    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4805) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(440a) })
+    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4804) })
+    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4807) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(440d) })
+    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4806) })
     ");
 }
 
@@ -194,6 +198,10 @@ END_FUNCTION_BLOCK"#;
         12,
         16,
         17,
+        21,
+        23,
+        30,
+        33,
         37,
         39,
         52,

@@ -11,4 +11,3 @@ pub mod scopes;
 pub mod syntax;
 pub mod ty;
 pub mod walk_hir;
-pub mod merged_namespace;
