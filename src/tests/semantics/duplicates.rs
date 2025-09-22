@@ -6,62 +6,6 @@ use crate::tests::utils::test_diagnostics;
 use crate::tests::utils::with_db;
 
 #[rstest]
-fn duplicate_pous(mut with_db: RootDatabase) {
-    let source = r#"
-FUNCTION_BLOCK fb1
-
-END_FUNCTION_BLOCK
-
-FUNCTION_BLOCK fb1
-
-END_FUNCTION_BLOCK
-"#;
-
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
-       ,-[ file:///test0.st:6:16 ]
-       |
-     2 | FUNCTION_BLOCK fb1
-       |                ^|^  
-       |                 `--- POU 'fb1' is already defined here
-       | 
-     6 | FUNCTION_BLOCK fb1
-       |                ^|^  
-       |                 `--- duplicate POU 'fb1'
-    ---'
-    ");
-}
-
-#[rstest]
-fn duplicate_pous_in_namespace(mut with_db: RootDatabase) {
-    let source = r#"
-NAMESPACE ns1
-    FUNCTION_BLOCK fb1
-
-    END_FUNCTION_BLOCK
-
-    FUNCTION_BLOCK fb1
-
-    END_FUNCTION_BLOCK
-END_NAMESPACE
-"#;
-
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
-       ,-[ file:///test0.st:7:20 ]
-       |
-     3 |     FUNCTION_BLOCK fb1
-       |                    ^|^  
-       |                     `--- POU 'fb1' is already defined here
-       | 
-     7 |     FUNCTION_BLOCK fb1
-       |                    ^|^  
-       |                     `--- duplicate POU 'fb1'
-    ---'
-    ");
-}
-
-#[rstest]
 fn duplicate_variables(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK fb1
@@ -132,3 +76,140 @@ END_TYPE"#;
     ---'
     ");
 }
+
+#[rstest]
+fn duplicate_pous(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK fb1
+
+END_FUNCTION_BLOCK
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    Error: 
+       ,-[ file:///test0.st:6:16 ]
+       |
+     2 | FUNCTION_BLOCK fb1
+       |                ^|^  
+       |                 `--- POU 'fb1' is already defined here
+       | 
+     6 | FUNCTION_BLOCK fb1
+       |                ^|^  
+       |                 `--- duplicate POU 'fb1'
+    ---'
+    ");
+}
+
+#[rstest]
+fn duplicate_pous_in_namespace(mut with_db: RootDatabase) {
+    let source = r#"
+NAMESPACE ns1
+    FUNCTION_BLOCK fb1
+
+    END_FUNCTION_BLOCK
+
+    FUNCTION_BLOCK fb1
+
+    END_FUNCTION_BLOCK
+END_NAMESPACE
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    Error: 
+       ,-[ file:///test0.st:7:20 ]
+       |
+     3 |     FUNCTION_BLOCK fb1
+       |                    ^|^  
+       |                     `--- POU 'fb1' is already defined here
+       | 
+     7 |     FUNCTION_BLOCK fb1
+       |                    ^|^  
+       |                     `--- duplicate POU 'fb1'
+    ---'
+    ");
+}
+
+#[rstest]
+fn cross_file_global_duplicates(mut with_db: RootDatabase) {
+    let source1 = r#"
+    FUNCTION_BLOCK fb1
+
+    END_FUNCTION_BLOCK
+"#;
+
+    let source2 = r#"
+
+    FUNCTION_BLOCK fb1
+    
+    END_FUNCTION_BLOCK
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source1, source2]), @r"
+    Error: 
+       ,-[ file:///test0.st:2:20 ]
+       |
+     2 |     FUNCTION_BLOCK fb1
+       |                    ^|^  
+       |                     `--- duplicate POU 'fb1'
+       |
+       |-[ file:///test1.st:3:20 ]
+       |
+     3 |     FUNCTION_BLOCK fb1
+       |                    ^|^  
+       |                     `--- POU 'fb1' is already defined here
+    ---'
+    ");
+}
+
+
+
+#[rstest]
+fn cross_file_namespace_duplicates(mut with_db: RootDatabase) {
+    let source1 = r#"
+NAMESPACE ns1
+    FUNCTION_BLOCK fb1
+
+    END_FUNCTION_BLOCK
+END_NAMESPACE"#;
+
+    let source2 = r#"
+NAMESPACE ns1
+    FUNCTION_BLOCK fb1
+    
+    END_FUNCTION_BLOCK
+END_NAMESPACE"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source1, source2]), @r"
+    Error: 
+       ,-[ file:///test0.st:3:20 ]
+       |
+     3 |     FUNCTION_BLOCK fb1
+       |                    ^|^  
+       |                     `--- duplicate POU 'fb1'
+       |
+       |-[ file:///test1.st:3:20 ]
+       |
+     3 |     FUNCTION_BLOCK fb1
+       |                    ^|^  
+       |                     `--- POU 'fb1' is already defined here
+    ---'
+    Error: 
+       ,-[ file:///test1.st:3:20 ]
+       |
+     3 |     FUNCTION_BLOCK fb1
+       |                    ^|^  
+       |                     `--- duplicate POU 'fb1'
+       |
+       |-[ file:///test0.st:3:20 ]
+       |
+     3 |     FUNCTION_BLOCK fb1
+       |                    ^|^  
+       |                     `--- POU 'fb1' is already defined here
+    ---'
+    ");
+}
+
