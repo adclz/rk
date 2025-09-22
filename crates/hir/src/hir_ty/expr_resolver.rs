@@ -9,10 +9,10 @@ use crate::{
     },
     hir_ty::{
         stmt_resolver::ResolvedParam,
-        ty_path_expr_resolver::{ResolvedPathResult, resolved_path_expr},
-        ty_var_access_resolver::{ResolvedVarResult, resolve_var_access},
+        ty_path_expr_resolver::{resolved_path_expr, ResolvedPathResult},
+        ty_var_access_resolver::{resolve_var_access, ResolvedVarResult}, TyInfo,
     },
-    {AstId, HirNodeInfo},
+    AstId, HirNodeInfo,
 };
 
 #[salsa::tracked(no_eq, returns(ref))]
@@ -108,17 +108,31 @@ impl<'db> ResolveExprCtx<'db> {
                     self.expr,
                     ResolvedExprKind::Parenthesized(*resolve_expr(self.db, *expr)),
                 ),
-                PrimaryExpr::FuncCall { path, params } => ResolvedExpr::new(
+                PrimaryExpr::FuncCall { path, params } => {
+                    let target = *resolved_path_expr(self.db, *path);
+                    let target_ty = target.ty(self.db).ok();
+                    
+                    ResolvedExpr::new(
                     self.db,
                     self.expr,
                     ResolvedExprKind::FuncCall {
-                        target: *resolved_path_expr(self.db, *path),
+                        target,
                         params: params
                             .iter()
                             .map(|param| match param {
                                 ParamAssign::ParamAssignInput { param, value } => {
                                     ResolvedParam::Input {
                                         param: *param,
+                                        resolved_param: target_ty.and_then(|target| {
+                                            target.to_signature(self.db).and_then(|signature| {
+                                                let param = (*param)?;
+                                                signature
+                                                    .inputs
+                                                    .get(&param.ident)
+                                                    .or_else(|| signature.in_outs.get(&param.ident))
+                                                    .copied()
+                                            })
+                                        }),
                                         value: *resolve_expr(self.db, *value),
                                     }
                                 }
@@ -129,12 +143,17 @@ impl<'db> ResolveExprCtx<'db> {
                                 } => ResolvedParam::Output {
                                     not: *not,
                                     param: *param,
+                                    resolved_param: target_ty.and_then(|target| {
+                                        target.to_signature(self.db).and_then(|signature| {
+                                            signature.outputs.get(&param.ident).copied()
+                                        })
+                                    }),
                                     variable: resolve_var_access(self.db, variable),
                                 },
                             })
                             .collect(),
                     },
-                ),
+                )},
                 PrimaryExpr::RefValue { value } => match value {
                     RefValue::Null => ResolvedExpr::new(
                         self.db,

@@ -126,30 +126,34 @@ fn check_func_call<'db>(
     let with_param_name = false;
 
     params.iter().for_each(|p| match p {
-        ResolvedParam::Input { param, value } => {
-            if let Some(name) = param {
-                if let Some(other_p) = signature.inputs.get(name) {
-                    if let Err(err) = coerce_ty_with_expr(db, *other_p, *value) {
-                        errors.push(err);
-                    }
-                } else {
-                    errors.push(
-                        StmtError::UnknownInputParam {
-                            ty: ty_target,
-                            var: target,
-                            param: *name,
-                        }
-                        .into(),
-                    )
+        ResolvedParam::Input {
+            param,
+            resolved_param,
+            value,
+        } => {
+            if let Some(other_param) = resolved_param {
+                if let Err(err) = coerce_ty_with_expr(db, *other_param, *value) {
+                    errors.push(err);
                 }
+            } else {
+                errors.push(
+                    StmtError::UnknownInputParam {
+                        ty: ty_target,
+                        var: target,
+                        param: param.unwrap(),
+                    }
+                    .into(),
+                )
             }
         }
         ResolvedParam::Output {
             not,
             param,
+            resolved_param,
             variable,
         } => {
-            if let Some(other_p) = signature.outputs.get(param) {
+            if let Some(other_param) = resolved_param {
+                // todo! check output
             } else {
                 errors.push(
                     StmtError::UnknownOutputParam {
