@@ -1,10 +1,15 @@
+use std::ops::ControlFlow;
+
+use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::InlayHint;
 use db::RootDatabase;
+use hir::HirNodeInfo;
+use hir::hir_def::semantic_index::HirNode;
 use hir::hir_def::semantic_index::semantic_index;
+use hir::walk::WalkHir;
 use ide_proto::ToProtocol;
 use insta::assert_debug_snapshot;
 use rstest::rstest;
-use auto_lsp::default::db::BaseDatabase;
 
 use crate::tests::utils::add_sources;
 use crate::tests::utils::with_db;
@@ -194,6 +199,106 @@ END_NAMESPACE"#;
                 true,
             ),
             padding_right: None,
+            data: None,
+        },
+    ]
+    "#);
+}
+
+#[rstest]
+pub fn func_call_input_params_inlay_hints(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn
+    VAR_INPUT
+        param1 : BYTE,
+        param2 : INT,
+        param3 : REAL
+    END_VAR
+END_FUNCTION
+
+FUNCTION_BLOCK fb1
+    fn(
+        param1 := 0,
+        param2 := 0,
+        param3 := 0.0
+    );
+END_FUNCTION_BLOCK"#;
+
+    add_sources(&mut with_db, &[source]);
+    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let mut result = vec![];
+    let _ = sema.walk_hir(&with_db, &mut |n| {
+        if let HirNode::ResolvedParam(stmt) = n {
+            if let Some(inlay_hint) = stmt.inlay_hint(&with_db) {
+                result.push(inlay_hint);
+            }
+        }
+        ControlFlow::Continue(())
+    });
+
+    assert_debug_snapshot!(&result, @r#"
+    [
+        InlayHint {
+            position: Position {
+                line: 11,
+                character: 14,
+            },
+            label: String(
+                ": BYTE",
+            ),
+            kind: Some(
+                Parameter,
+            ),
+            text_edits: None,
+            tooltip: None,
+            padding_left: Some(
+                false,
+            ),
+            padding_right: Some(
+                false,
+            ),
+            data: None,
+        },
+        InlayHint {
+            position: Position {
+                line: 12,
+                character: 14,
+            },
+            label: String(
+                ": INT",
+            ),
+            kind: Some(
+                Parameter,
+            ),
+            text_edits: None,
+            tooltip: None,
+            padding_left: Some(
+                false,
+            ),
+            padding_right: Some(
+                false,
+            ),
+            data: None,
+        },
+        InlayHint {
+            position: Position {
+                line: 13,
+                character: 14,
+            },
+            label: String(
+                ": REAL",
+            ),
+            kind: Some(
+                Parameter,
+            ),
+            text_edits: None,
+            tooltip: None,
+            padding_left: Some(
+                false,
+            ),
+            padding_right: Some(
+                false,
+            ),
             data: None,
         },
     ]
