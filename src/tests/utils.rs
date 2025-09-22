@@ -1,5 +1,7 @@
+use ariadne::Cache;
 use ariadne::CharSet;
 use ariadne::Config;
+use ariadne::FnCache;
 use ariadne::Source;
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::{
@@ -41,20 +43,37 @@ pub fn add_sources<'db>(db: &'db mut RootDatabase, sources: &[&str]) {
     }
 }
 
-pub fn test_diagnostics(db: &mut RootDatabase, source: &[&str]) -> String {
-    add_sources(db, source);
-        let mut cache = vec![];
+pub fn sources<Id, S, I>(iter: I) -> impl Cache<Id>
+where
+    Id: std::fmt::Display + std::hash::Hash + PartialEq + Eq + Clone,
+    I: IntoIterator<Item = (Id, S)>,
+    S: AsRef<str>,
+{
+    FnCache::new((move |id| Err(format!("Failed to fetch source '{}'", id))) as fn(&_) -> _)
+        .with_sources(
+            iter.into_iter()
+                .map(|(id, s)| (id, Source::from(s)))
+                .collect(),
+        )
+}
 
-    for file in db.get_files().iter() {
-        diagnostics_for_file(db, *file).iter().for_each(|d| {
-            d.create_report(db, *file, Some(no_color_and_ascii()))
-                .write(
-                    (
-                        file.url(db).as_str(),
-                        Source::from(file.document(db).as_str()),
-                    ),
-                    &mut cache,
-                )
+pub fn test_diagnostics<'db>(db: &'db mut RootDatabase, source: &'db [&'db str]) -> String {
+    add_sources(db, source);
+    let mut cache = vec![];
+
+    // we need to sort the files by their URL
+    let mut files = db.get_files().iter().map(|file| *file).collect::<Vec<_>>();
+    files.sort_by_key(|file| file.url(db).as_str());
+
+    let file_sources = files
+        .iter()
+        .map(|file| (file.url(db).as_str(), file.document(db).as_str()))
+        .collect::<Vec<_>>();
+
+    for file in files {
+        diagnostics_for_file(db, file).iter().for_each(|d| {
+            d.create_report(db, file, Some(no_color_and_ascii()))
+                .write(sources(file_sources.clone()), &mut cache)
                 .unwrap();
         });
     }

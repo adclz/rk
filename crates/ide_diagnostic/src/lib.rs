@@ -142,12 +142,12 @@ impl From<&ParseErrorAccumulator> for IdeDiagnostic {
 }
 
 impl IdeDiagnostic {
-    pub fn create_report<'db>(
+    pub fn create_report<'report>(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'report dyn BaseDatabase,
         file: File,
         config: Option<ariadne::Config>,
-    ) -> Report<'db, (&'db str, std::ops::Range<usize>)> {
+    ) -> Report<'report, (&'report str, std::ops::Range<usize>)> {
         let mut colors = ColorGenerator::new();
 
         // fixme: colors should be used *only* when ariadne::Config is None or .color is true
@@ -175,7 +175,7 @@ impl IdeDiagnostic {
 
         report.add_label(
             Label::new((file.url(db).as_str(), start..end))
-                .with_message(self.diagnostic.message.to_owned().to_string()),
+                .with_message(self.diagnostic.message.as_str()),
         );
 
         for related in &self.related {
@@ -184,10 +184,10 @@ impl IdeDiagnostic {
                     related.file.url(db).as_str(),
                     related.range.start_byte..related.range.end_byte,
                 ))
-                .with_message(related.message.to_owned().to_string()),
+                .with_message(related.message.as_str()),
             )
         }
-
+ 
         for fix in &self.fixes {
             report.add_help(fix.title.to_string());
         }
