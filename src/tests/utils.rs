@@ -63,7 +63,14 @@ pub fn test_diagnostics<'db>(db: &'db mut RootDatabase, source: &'db [&'db str])
 
     // we need to sort the files by their URL
     let mut files = db.get_files().iter().map(|file| *file).collect::<Vec<_>>();
-    files.sort_by_key(|file| file.url(db).as_str());
+    files.sort_by_key(|file| {
+        let url_str = file.url(db).as_str();
+        // Extract number from "file:///testN.st" format
+        url_str.strip_prefix("file:///test")
+            .and_then(|s| s.strip_suffix(".st"))
+            .and_then(|s| s.parse::<u32>().ok())
+            .unwrap_or(0)
+    });
 
     let file_sources = files
         .iter()
