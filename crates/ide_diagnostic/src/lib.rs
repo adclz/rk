@@ -43,7 +43,7 @@ impl IdeDiagnostic {
             0 => self.diagnostic.message.clone(),
             _ => {
                 let mut message = self.diagnostic.message.clone();
-                message.push_str("\n\nNote:");
+                message.push_str("\n\nNote: ");
                 message.push_str(&self.notes.join("\n"));
                 message
             }
