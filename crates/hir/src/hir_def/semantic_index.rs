@@ -19,8 +19,7 @@ use crate::hir_def::scope::{FileScopeId, Scope};
 use crate::hir_def::using::Using;
 use crate::hir_ty::expr_resolver::ResolvedExpr;
 use crate::hir_ty::init_expr_resolver::ResolvedInitExpr;
-use crate::hir_ty::name_res::pous_in_scope;
-use crate::hir_ty::stmt_resolver::ResolvedStmt;
+use crate::hir_ty::stmt_resolver::{ResolvedParam, ResolvedStmt};
 use crate::hir_ty::ty::Ty;
 use crate::hir_ty::ty_path_expr_resolver::ResolvedPathResult;
 use crate::hir_ty::ty_var_access_resolver::ResolvedVarResult;
@@ -87,20 +86,6 @@ impl<'db> SemanticIndex<'db> {
         &self.scopes[&id]
     }
 
-    /// Returns all POUs available in a given scope
-    ///
-    /// This includes:
-    /// - Locally declared POUs
-    /// - Imported POUs via USING directives
-    /// - Inherited POUs from ancestor scopes (including the global scope)
-    pub fn pous_in_scope(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        scope: FileScopeId<'db>,
-    ) -> &'db FxHashMap<Ident, PouDecl<'db>> {
-        pous_in_scope(db, scope)
-    }
-
     pub fn pous(&'db self, db: &'db dyn BaseDatabase) -> &'db Vec<PouDecl<'db>> {
         &self.global_pous
     }
@@ -159,6 +144,7 @@ pub enum HirNode<'db> {
     ResolvedPathResult(ResolvedPathResult<'db>),
     ResolvedVarResult(ResolvedVarResult<'db>),
     ResolvedStmt(ResolvedStmt<'db>),
+    ResolvedParam(ResolvedParam<'db>), 
     ResolvedExpr(ResolvedExpr<'db>),
     ResolvedInitExpr(ResolvedInitExpr<'db>),
 }
@@ -172,6 +158,7 @@ impl<'db> HirNode<'db> {
             HirNode::ResolvedPathResult(p) => p.get_span(db),
             HirNode::ResolvedVarResult(v) => v.get_span(db),
             HirNode::ResolvedStmt(s) => s.get_span(db),
+            HirNode::ResolvedParam(p) => p.get_span(db),
             HirNode::ResolvedExpr(e) => e.get_span(db),
             HirNode::ResolvedInitExpr(i) => i.get_span(db),
         }

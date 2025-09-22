@@ -7,11 +7,11 @@ use rustc_hash::FxHashSet;
 use std::ops::ControlFlow;
 use std::{cmp::Ordering, hash::Hash};
 
+use crate::hir_ty::name_res::pou_names_res;
 use crate::HirNodeInfo;
 use crate::hir_def::pous::pou::PouDecl;
 use crate::hir_def::scope::FileScopeId;
 use crate::hir_def::semantic_index::semantic_index;
-use crate::hir_ty::name_res::pous_in_scope;
 use crate::hir_ty::ty::Ty;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -302,13 +302,6 @@ pub fn query_completions(
     scope_id: FileScopeId<'_>,
     query: &str,
 ) -> Vec<CompletionItem> {
-    let scoped_map = pous_in_scope(db, scope_id);
-
-    let locally_visible_names: FxHashSet<&str> = scoped_map
-        .keys()
-        .map(|ident| ident.text(db).as_str())
-        .collect();
-
     let indexes = global_symbol_indexes(db, file);
     let mut fast_query = Query::new(query.to_string());
     fast_query.fuzzy();
@@ -316,11 +309,6 @@ pub fn query_completions(
     let mut results = vec![];
 
     fast_query.search(db, indexes, |symbol| {
-        if locally_visible_names.contains(symbol.name.as_str()) {
-            // Skip symbols that are already visible in the current scope
-            return ControlFlow::Continue(());
-        }
-
         results.push(CompletionItem {
             label: symbol.name.clone(),
             kind: Some(CompletionItemKind::MODULE),

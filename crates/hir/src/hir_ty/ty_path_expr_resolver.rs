@@ -8,7 +8,7 @@ use crate::hir_def::{
     expressions::expression::PathExpr, interned::identifier::SpanIdent, scope::FileScopeId,
 };
 use crate::hir_ty::TyInfo;
-use crate::hir_ty::name_res::{pous_in_scope, resolve_namespace_access, variables_in_scope};
+use crate::hir_ty::name_res::{pou_names_res, resolve_namespace_access, variables_in_scope};
 use crate::hir_ty::ty::{Ty, ty_for_pou, ty_for_variable};
 use crate::{AstId, HirNodeInfo};
 
@@ -169,8 +169,8 @@ impl<'db> ResolvePathExprCtx<'db> {
         }
 
         // Try POUs in scope
-        if let Some(pou) = pous_in_scope(self.db, self.expr.scope_id(self.db)).get(identifier) {
-            self.target = Some(ty_for_pou(self.db, *pou));
+        if let Some(pou) = pou_names_res(self.db, identifier, self.expr.scope_id(self.db)) {
+            self.target = Some(ty_for_pou(self.db, pou));
             return;
         }
 

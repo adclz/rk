@@ -75,68 +75,74 @@ pub fn resolve_namespace_access<'db>(
                 .copied()
         }),
         // None, look for the POU in the current scope
-        None => pous_in_scope(db, scope).get(&target.ident).copied(),
+        None => pou_names_res(db, &target.ident, scope),
     }
 }
 
 /// Returns all POU declarations *globally declared*.
 #[salsa::tracked(returns(ref))]
-fn global_pous<'db>(db: &'db dyn BaseDatabase) -> Vec<PouDecl<'db>> {
+pub fn all_global_pous<'db>(db: &'db dyn BaseDatabase) -> FxHashMap<Ident, PouDecl<'db>> {
     db.get_files()
         .iter()
-        .flat_map(|file| semantic_index(db, *file).global_pous.clone())
+        .flat_map(|file| {
+            semantic_index(db, *file)
+                .global_pous
+                .iter()
+                .map(|p| (*p.name(db), *p))
+        })
         .collect()
 }
 
-/// Returns all POU declarations *locally declared* in this scope.
+/// Returns all POU declarations *globally declared*.
 #[salsa::tracked(returns(ref))]
-fn local_pous_in_scope<'db>(
+pub fn all_local_pous<'db>(
     db: &'db dyn BaseDatabase,
     scope_id: FileScopeId<'db>,
-) -> Vec<PouDecl<'db>> {
+) -> FxHashMap<Ident, PouDecl<'db>> {
     let sema = semantic_index(db, scope_id.file(db));
     let scope = sema.get_scope(db, scope_id);
 
     match scope.kind {
-        ScopeKind::Namespace(ns) => ns.pous(db).to_vec(),
-        _ => Vec::new(),
+        ScopeKind::Namespace(ns) => ns.pous(db).iter().map(|p| (*p.name(db), *p)).collect(),
+        _ => FxHashMap::default(),
     }
 }
 
-/// Returns all POU declarations *imported* into this scope via USING directives.
+/// Returns all POU declarations *globally declared*.
 #[salsa::tracked(returns(ref))]
-fn imported_pous_in_scope<'db>(
+pub fn all_imported_pous<'db>(
     db: &'db dyn BaseDatabase,
     scope_id: FileScopeId<'db>,
-) -> Vec<PouDecl<'db>> {
-    let sema = semantic_index(db, scope_id.file(db));
+) -> FxHashMap<Ident, PouDecl<'db>> {
+   let sema = semantic_index(db, scope_id.file(db));
     let scope = sema.get_scope(db, scope_id);
 
-    let mut result = Vec::new();
+    let mut result = FxHashMap::default();
 
     for using in &scope.usings {
         let namespaces = imported_namespaces(db, *using);
         for (_, ns) in namespaces {
-            result.extend_from_slice(ns.pous(db));
+            result.extend(ns.pous(db).iter().map(|p| (*p.name(db), *p)));
         }
     }
 
     result
 }
 
-/// Returns all POU declarations from parent (ancestor) scopes, including shared namespaces the global scope.
+// Returns all POU declarations *globally declared*.
 #[salsa::tracked(returns(ref))]
-fn inherited_pous<'db>(db: &'db dyn BaseDatabase, scope_id: FileScopeId<'db>) -> Vec<PouDecl<'db>> {
+pub fn all_inherited_pous<'db>(
+    db: &'db dyn BaseDatabase,
+    scope_id: FileScopeId<'db>,
+) -> FxHashMap<Ident, PouDecl<'db>> {
     let sema = semantic_index(db, scope_id.file(db));
-    let mut result = Vec::new();
+    let mut result = FxHashMap::default();
 
     let it = sema.scope_iterator(db, scope_id);
     for scope in it {
-        if scope.is_global() {
-            result.extend_from_slice(&sema.global_pous);
-        } else if let ScopeKind::Namespace(ns) = scope.kind {
+        if let ScopeKind::Namespace(ns) = scope.kind {
             shared_namespaces(db, *ns.path(db)).iter().for_each(|ns| {
-                result.extend_from_slice(ns.pous(db));
+                result.extend(ns.pous(db).iter().map(|p| (*p.name(db), *p)));
             });
         }
     }
@@ -144,42 +150,16 @@ fn inherited_pous<'db>(db: &'db dyn BaseDatabase, scope_id: FileScopeId<'db>) ->
     result
 }
 
-/// Returns all visible POU declarations in the given scope:
-/// - Imported via USING
-/// - Locally declared
-/// - Inherited from ancestor scopes
-#[salsa::tracked(returns(ref))]
-pub fn pous_in_scope<'db>(
+pub fn pou_names_res<'db>(
     db: &'db dyn BaseDatabase,
+    pou: &Ident,
     scope_id: FileScopeId<'db>,
-) -> FxHashMap<Ident, PouDecl<'db>> {
-    let mut map = FxHashMap::default();
-
-    // Note that the order of these calls matters:
-    // 1 Global POU declarations
-    // 2 Inherited POU declarations
-    // 3 Imported POU declarations
-    // 4 Local POU declarations
-
-    // If a same name is found in multiple sources, the last one will shadow the previous ones.
-
-    for pou in global_pous(db) {
-        map.insert(*pou.name(db), *pou);
-    }
-
-    for pou in inherited_pous(db, scope_id) {
-        map.insert(*pou.name(db), *pou);
-    }
-
-    for pou in imported_pous_in_scope(db, scope_id) {
-        map.insert(*pou.name(db), *pou);
-    }
-
-    for pou in local_pous_in_scope(db, scope_id) {
-        map.insert(*pou.name(db), *pou);
-    }
-
-    map
+) -> Option<PouDecl<'db>> {
+    all_local_pous(db, scope_id).get(pou)
+        .or_else(|| all_imported_pous(db, scope_id).get(pou))
+        .or_else(|| all_inherited_pous(db, scope_id).get(pou))
+        .or_else(|| all_global_pous(db).get(pou))
+        .copied()
 }
 
 #[salsa::tracked(returns(ref))]
