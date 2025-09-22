@@ -260,6 +260,7 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
             let mut in_outs = FxHashMap::default();
 
             for v in func.variables(db) {
+                let decl = TyDecl::Variable(*v);
                 match v.kind(db) {
                     VariableKind::Input => {
                         inputs.insert(*v.name(db), *v.spec(db).to_ty(db, decl));
@@ -292,6 +293,7 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
             let mut in_outs = FxHashMap::default();
 
             for variable in fb.variables(db) {
+                let decl = TyDecl::Variable(*variable);
                 match variable.kind(db) {
                     VariableKind::Input => {
                         inputs.insert(*variable.name(db), *variable.spec(db).to_ty(db, decl));
@@ -334,6 +336,7 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
             let mut class_methods = vec![];
 
             for v in class.variables(db) {
+                let decl = TyDecl::Variable(*v);
                 class_variables.insert(*v.name(db), *v.spec(db).to_ty(db, decl));
             }
 
@@ -773,7 +776,7 @@ impl<'db> TypeInfo<'db> for Ty<'db> {
             TyKind::Class { .. } => "CLASS",
             TyKind::Function { .. } => "FUNCTION",
             TyKind::FunctionBlock { .. } => "FUNCTION_BLOCK",
-            TyKind::Method { .. } => "method",
+            TyKind::Method { .. } => "METHOD",
             TyKind::Unresolved(_) => "{unknown}",
             TyKind::Recursive => "{recursive}",
         }
