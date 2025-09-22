@@ -178,10 +178,24 @@ pub enum RefAdress<'db> {
     Instance(Ident),
 }
 
+#[salsa::tracked(debug)]
+pub struct ParamAssign<'db> {
+    pub id: AstId,
+
+    pub scope_id: FileScopeId<'db>,
+
+    #[tracked]
+    #[no_eq]
+    pub kind: ParamAssignKind<'db>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum ParamAssign<'db> {
+pub enum ParamAssignKind<'db> {
+    UnnamedParamInput {
+        value: Expr<'db>,
+    },
     ParamAssignInput {
-        param: Option<SpanIdent<'db>>,
+        param: SpanIdent<'db>,
         value: Expr<'db>,
     },
     ParamAssignOutput {

@@ -10,7 +10,9 @@ use crate::{
     hir_ty::{
         TyInfo,
         expr_resolver::ResolvedExpr,
-        stmt_resolver::{ResolvedParam, ResolvedStmt, ResolvedStmtKind, resolve_stmt},
+        stmt_resolver::{
+            ResolvedParam, ResolvedParamKind, ResolvedStmt, ResolvedStmtKind, resolve_stmt,
+        },
         ty_path_expr_resolver::ResolvedPathResult,
         ty_var_access_resolver::ResolvedVarResult,
     },
@@ -125,14 +127,23 @@ fn check_func_call<'db>(
     let signature = ty_target.to_signature(db).unwrap();
     let with_param_name = false;
 
-    params.iter().for_each(|p| match p {
-        ResolvedParam::Input {
+    params.iter().for_each(|p| match p.kind(db) {
+        ResolvedParamKind::UnnamedInput {
+            resolved_param,
+            value,
+        } => {
+            todo!()
+        }
+        ResolvedParamKind::Input {
             param,
             resolved_param,
             value,
         } => {
             if let Some(other_param) = resolved_param {
-                if let Err(err) = coerce_ty_with_expr(db, *other_param, *value) {
+                if let Err(err) = other_param.ty(db) {
+                    errors.push(err);
+                } else if let Err(err) = coerce_ty_with_expr(db, other_param.ty(db).unwrap(), value)
+                {
                     errors.push(err);
                 }
             } else {
@@ -140,13 +151,13 @@ fn check_func_call<'db>(
                     StmtError::UnknownInputParam {
                         ty: ty_target,
                         var: target,
-                        param: param.unwrap(),
+                        param,
                     }
                     .into(),
                 )
             }
         }
-        ResolvedParam::Output {
+        ResolvedParamKind::Output {
             not,
             param,
             resolved_param,
@@ -159,7 +170,7 @@ fn check_func_call<'db>(
                     StmtError::UnknownOutputParam {
                         ty: ty_target,
                         var: target,
-                        param: *param,
+                        param,
                     }
                     .into(),
                 )

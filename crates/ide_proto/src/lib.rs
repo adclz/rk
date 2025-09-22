@@ -18,12 +18,13 @@ pub mod resolved_init_expr;
 pub mod resolved_path_expr;
 pub mod resolved_stmt;
 pub mod resolved_var_access;
+pub mod resolved_param;
 pub mod ty;
 pub mod using;
 pub mod variable;
 
 pub trait ToProtocol<'db>: HirNodeInfo<'db> {
-    fn document_symbols(&self, db: &'db dyn BaseDatabase, _builder: &mut DocumentSymbolsBuilder) {}
+    fn document_symbols(&self, _db: &'db dyn BaseDatabase, _builder: &mut DocumentSymbolsBuilder) {}
 
     fn completion(
         &'db self,
@@ -37,7 +38,7 @@ pub trait ToProtocol<'db>: HirNodeInfo<'db> {
         None
     }
 
-    fn implementation(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoImplementationResponse> {
+    fn implementation(&'db self, _db: &'db dyn BaseDatabase) -> Option<GotoImplementationResponse> {
         None
     }
 
@@ -72,7 +73,8 @@ impl<'db> AsProtocol<'db> for HirNode<'db> {
             HirNode::ResolvedPathResult(p) => p,
             HirNode::ResolvedInitExpr(i) => i,
             HirNode::ResolvedExpr(e) => e,
-            HirNode::ResolvedStmt(s) => s,
+            HirNode::ResolvedParam(p) => p,
+            HirNode::ResolvedStmt(s) => s, 
         }
     }
 }

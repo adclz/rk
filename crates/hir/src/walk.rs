@@ -15,12 +15,12 @@ use crate::{
     },
     hir_ty::{
         expr_resolver::ResolvedExpr,
-        init_expr_resolver::{ResolvedInitExpr, ResolvedInitExprKind, resolve_init_expr},
-        stmt_resolver::{ResolvedStmt, ResolvedStmtKind, resolve_stmt},
+        init_expr_resolver::{resolve_init_expr, ResolvedInitExpr, ResolvedInitExprKind},
+        stmt_resolver::{resolve_stmt, ResolvedParam, ResolvedParamKind, ResolvedStmt, ResolvedStmtKind},
         ty::{ty_for_method_decl, ty_for_method_prot, ty_for_pou, ty_for_variable},
         ty_path_expr_resolver::ResolvedPathResult,
         ty_var_access_resolver::ResolvedVarResult,
-    },
+    }, TypeInfo,
 };
 
 pub trait WalkHir<'db> {
@@ -176,6 +176,36 @@ impl<'db> WalkHir<'db> for ResolvedExpr<'db> {
     }
 }
 
+impl<'db> WalkHir<'db> for ResolvedParam<'db> {
+    fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
+        &self,
+        db: &'db dyn BaseDatabase,
+        f: &mut F,
+    ) -> ControlFlow<()> {
+        f(HirNode::ResolvedParam(*self))?;
+        match self.kind(db) {
+            ResolvedParamKind::UnnamedInput { resolved_param, value } => {
+                if let Some(ty) = resolved_param {
+                    ty.walk_hir(db, f)?;
+                }
+                value.walk_hir(db, f)
+            }
+            ResolvedParamKind::Input { param, resolved_param, value } => {
+                if let Some(ty) = resolved_param {
+                    ty.walk_hir(db, f)?;
+                }
+                value.walk_hir(db, f)
+            },
+            ResolvedParamKind::Output { not, param, resolved_param, variable } => {
+                if let Some(ty) = resolved_param {
+                    ty.walk_hir(db, f)?;
+                }
+                variable.walk_hir(db, f)
+            },
+        }
+    }
+}
+
 impl<'db> WalkHir<'db> for ResolvedInitExpr<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
         &self,
@@ -269,6 +299,9 @@ impl<'db> WalkHir<'db> for ResolvedStmt<'db> {
             }
             ResolvedStmtKind::FuncCall { target, params } => {
                 target.walk_hir(db, f)?;
+                for param in params {
+                    param.walk_hir(db, f)?;
+                }
             }
             ResolvedStmtKind::Invocation { .. } => {}
             _ => {}

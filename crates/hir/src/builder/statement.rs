@@ -2,7 +2,7 @@ use crate::builder::expression::{ParseExpr, ParseExpression, ParseVariableAccess
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::sem_errors::AnalysisError;
 use crate::check::errors::syntax::SyntaxError;
-use crate::hir_def::expressions::expression::{ParamAssign, SymbolicVariable};
+use crate::hir_def::expressions::expression::{ParamAssign, ParamAssignKind, SymbolicVariable};
 use crate::hir_def::expressions::statement::{CaseKind, Stmt, StmtKind};
 use crate::hir_def::interned::identifier::SpanIdent;
 use auto_lsp::anyhow::{self};
@@ -32,18 +32,21 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                         ast::generated::Comma_ParamAssign::ParamAssign(p) => {
                             match p.children.cast(sema.ast) {
                                     ast::generated::ParamAssignInput_ParamAssignOutput::ParamAssignInput(p) => {
-                                        parameters.push(ParamAssign::ParamAssignInput {
-                                            param: p.param.as_ref().map(|p| SpanIdent::from_node(sema.db, sema, p.cast(sema.ast))).transpose()?,
-                                            value: p.value.cast(sema.ast).to_expr(sema)?,
-                                        })
+                                        parameters.push(ParamAssign::new(sema.db, p.into(), sema.current_scope, match p.param.as_ref() {
+                                            Some(param) => {
+                                                ParamAssignKind::ParamAssignInput { param: SpanIdent::from_node(sema.db, sema, param.cast(sema.ast))?, value: p.value.cast(sema.ast).to_expr(sema)? }
+                                            },
+                                            None => {
+                                                ParamAssignKind::UnnamedParamInput { value: p.value.cast(sema.ast).to_expr(sema)? }
+                                            }
+                                        }))
                                     }
                                     ast::generated::ParamAssignInput_ParamAssignOutput::ParamAssignOutput(p) => {
                                         let variable = p.variable.cast(sema.ast).to_access(sema)?;
-                                        parameters.push(ParamAssign::ParamAssignOutput {
-                                            not: p.not.is_some(),
-                                            param: SpanIdent::from_node(sema.db, sema, p.param.cast(sema.ast))?,
-                                            variable,
-                                        })
+
+                                        parameters.push(ParamAssign::new(sema.db, p.into(), sema.current_scope, 
+                                            ParamAssignKind::ParamAssignOutput { not: p.not.is_some() , param: SpanIdent::from_node(sema.db, sema, p.param.cast(sema.ast))?, variable })
+                                    )
                                     }
                                 }
                         }
@@ -67,18 +70,21 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                         ast::generated::Comma_ParamAssign::ParamAssign(p) => {
                             match p.children.cast(sema.ast) {
                                     ast::generated::ParamAssignInput_ParamAssignOutput::ParamAssignInput(p) => {
-                                        parameters.push(ParamAssign::ParamAssignInput {
-                                            param: p.param.as_ref().map(|p| SpanIdent::from_node(sema.db, sema, p.cast(sema.ast))).transpose()?,
-                                            value: p.value.cast(sema.ast).to_expr(sema)?,
-                                        })
+                                        parameters.push(ParamAssign::new(sema.db, p.into(), sema.current_scope, match p.param.as_ref() {
+                                            Some(param) => {
+                                                ParamAssignKind::ParamAssignInput { param: SpanIdent::from_node(sema.db, sema, param.cast(sema.ast))?, value: p.value.cast(sema.ast).to_expr(sema)? }
+                                            },
+                                            None => {
+                                                ParamAssignKind::UnnamedParamInput { value: p.value.cast(sema.ast).to_expr(sema)? }
+                                            }
+                                        }))
                                     }
                                     ast::generated::ParamAssignInput_ParamAssignOutput::ParamAssignOutput(p) => {
                                         let variable = p.variable.cast(sema.ast).to_access(sema)?;
-                                        parameters.push(ParamAssign::ParamAssignOutput {
-                                            not: p.not.is_some(),
-                                            param: SpanIdent::from_node(sema.db, sema, p.param.cast(sema.ast))?,
-                                            variable,
-                                        })
+
+                                        parameters.push(ParamAssign::new(sema.db, p.into(), sema.current_scope, 
+                                            ParamAssignKind::ParamAssignOutput { not: p.not.is_some() , param: SpanIdent::from_node(sema.db, sema, p.param.cast(sema.ast))?, variable })
+                                    )
                                     }
                                 }
                         }

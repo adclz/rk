@@ -3,30 +3,32 @@ use auto_lsp::default::db::BaseDatabase;
 use crate::{
     check::errors::sem_errors::AnalysisError,
     hir_def::{
-        expressions::expression::{VariableAccess, VariableAccessKind},
-        pous::variable::VariableDecl,
-        scope::FileScopeId,
+        expressions::expression::{VariableAccess, VariableAccessKind}, interned::identifier::SpanIdent, pous::variable::VariableDecl, scope::FileScopeId
     },
     hir_ty::{
-        TyInfo,
-        ty::{Ty, TyDecl},
-        ty_path_expr_resolver::{ResolvedPathResult, resolved_path_expr},
+        ty::{Ty, TyDecl}, ty_path_expr_resolver::{resolved_path_expr, ResolvedPathResult}, TyInfo
     },
-    {AstId, HirNodeInfo},
+    AstId, HirNodeInfo,
 };
 
 pub fn resolve_var_access<'db>(
     db: &'db dyn BaseDatabase,
-    access: &'db VariableAccess<'db>,
+    access: VariableAccess<'db>,
 ) -> ResolvedVarResult<'db> {
     VarAccessResolverCtx::new(db, access).resolve()
 }
 
 #[salsa::tracked(debug)]
 pub struct ResolvedVarResult<'db> {
-    pub origin: VariableAccess<'db>,
+    pub origin: ResolvedVarOrigin<'db>,
 
     pub kind: ResolvedVarKind<'db>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum ResolvedVarOrigin<'db> {
+    Access(VariableAccess<'db>),
+    Param(SpanIdent<'db>)
 }
 
 impl<'db> ResolvedVarResult<'db> {
@@ -81,6 +83,7 @@ impl<'db> ResolvedVarResult<'db> {
 pub enum ResolvedVarKind<'db> {
     Direct,
     Symbolic(ResolvedPathResult<'db>),
+    Param(Ty<'db>),
 }
 
 impl<'db> TyInfo<'db> for ResolvedVarResult<'db> {
@@ -88,20 +91,25 @@ impl<'db> TyInfo<'db> for ResolvedVarResult<'db> {
         match self.kind(db) {
             ResolvedVarKind::Direct => todo!(), // todo: direct var type
             ResolvedVarKind::Symbolic(ref path) => path.ty(db),
+            ResolvedVarKind::Param(ty) => Ok(ty),
         }
     }
+
     fn place(&self, db: &'db dyn BaseDatabase) -> AstId {
-        self.origin(db).id(db)
+        match self.origin(db) {
+            ResolvedVarOrigin::Access(access) => access.get_id(db),
+            ResolvedVarOrigin::Param(param) => param.get_id(db)
+        }
     }
 }
 
 pub struct VarAccessResolverCtx<'db> {
     db: &'db dyn BaseDatabase,
-    access: &'db VariableAccess<'db>,
+    access: VariableAccess<'db>,
 }
 
 impl<'db> VarAccessResolverCtx<'db> {
-    pub fn new(db: &'db dyn BaseDatabase, access: &'db VariableAccess<'db>) -> Self {
+    pub fn new(db: &'db dyn BaseDatabase, access: VariableAccess<'db>) -> Self {
         Self { db, access }
     }
 
@@ -117,7 +125,7 @@ impl<'db> VarAccessResolverCtx<'db> {
             }
             VariableAccessKind::Symbolic(symbolic) => ResolvedVarResult::new(
                 self.db,
-                *self.access,
+                ResolvedVarOrigin::Access(self.access),
                 ResolvedVarKind::Symbolic(*resolved_path_expr(self.db, symbolic.kind)),
             ),
         }
@@ -126,10 +134,16 @@ impl<'db> VarAccessResolverCtx<'db> {
 
 impl<'db> HirNodeInfo<'db> for ResolvedVarResult<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
-        self.origin(db).id(db)
+        match self.origin(db) {
+            ResolvedVarOrigin::Access(access) => access.get_id(db),
+            ResolvedVarOrigin::Param(param) => param.get_id(db)
+        }
     }
 
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
-        self.origin(db).scope_id(db)
+        match self.origin(db) {
+            ResolvedVarOrigin::Access(access) => access.get_scope_id(db),
+            ResolvedVarOrigin::Param(param) => param.get_scope_id(db)
+        }
     }
 }

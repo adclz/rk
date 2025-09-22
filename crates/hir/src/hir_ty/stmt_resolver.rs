@@ -1,12 +1,12 @@
-use crate::hir_def::expressions::expression::ParamAssign;
+use crate::hir_def::expressions::expression::{Expr, ParamAssign, ParamAssignKind};
 use crate::hir_def::expressions::statement::{Stmt, StmtKind};
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::scope::FileScopeId;
 use crate::hir_ty::TyInfo;
 use crate::hir_ty::expr_resolver::{ResolvedExpr, resolve_expr};
-use crate::hir_ty::ty::Ty;
+use crate::hir_ty::ty::{Ty, TyDecl};
 use crate::hir_ty::ty_path_expr_resolver::{ResolvedPathResult, resolved_path_expr};
-use crate::hir_ty::ty_var_access_resolver::{ResolvedVarResult, resolve_var_access};
+use crate::hir_ty::ty_var_access_resolver::{resolve_var_access, ResolvedVarKind, ResolvedVarOrigin, ResolvedVarResult};
 use crate::{AstId, HirNodeInfo};
 use auto_lsp::core::span::Span;
 use auto_lsp::default::db::BaseDatabase;
@@ -83,7 +83,7 @@ impl<'db> ResolveStmtCtx<'db> {
     pub fn resolve(self) -> ResolvedStmt<'db> {
         match self.stmt.stmt(self.db) {
             StmtKind::Assignment { var, target } => {
-                let resolved_var = resolve_var_access(self.db, var);
+                let resolved_var = resolve_var_access(self.db, *var);
                 let resolved_target = resolve_expr(self.db, *target);
 
                 ResolvedStmt::new(
@@ -97,7 +97,7 @@ impl<'db> ResolveStmtCtx<'db> {
                 )
             }
             StmtKind::AssignmentAttempt { var, target } => {
-                let resolved_var = resolve_var_access(self.db, var);
+                let resolved_var = resolve_var_access(self.db, *var);
                 let resolved_target = resolve_expr(self.db, *target);
 
                 ResolvedStmt::new(
@@ -167,37 +167,53 @@ impl<'db> ResolveStmtCtx<'db> {
                         target,
                         params: params
                             .iter()
-                            .map(|param| match param {
-                                ParamAssign::ParamAssignInput { param, value } => {
-                                    ResolvedParam::Input {
-                                        param: *param,
-                                        resolved_param: target_ty.and_then(|target| {
-                                            target.to_signature(self.db).and_then(|signature| {
-                                                let param = (*param)?;
-                                                signature
-                                                    .inputs
-                                                    .get(&param.ident)
-                                                    .or_else(|| signature.in_outs.get(&param.ident))
-                                                    .copied()
-                                            })
-                                        }),
-                                        value: *resolve_expr(self.db, *value),
-                                    }
+                            .map(|param_assign| match param_assign.kind(self.db) {
+                                ParamAssignKind::UnnamedParamInput { value } => {
+                                    todo!()
                                 }
-                                ParamAssign::ParamAssignOutput {
+                                ParamAssignKind::ParamAssignInput { param, value } => {
+                                    ResolvedParam::new(
+                                        self.db,
+                                        *param_assign,
+                                        ResolvedParamKind::Input {
+                                            param,
+                                            resolved_param: target_ty.and_then(|target| {
+                                                target.to_signature(self.db).and_then(|signature| {
+                                                    signature
+                                                        .inputs
+                                                        .get(&param.ident)
+                                                        .or_else(|| {
+                                                            signature.in_outs.get(&param.ident)
+                                                        })
+                                                        .map(|p| {
+                                                            ResolvedVarResult::new(self.db, ResolvedVarOrigin::Param(param), ResolvedVarKind::Param(*p))
+                                                        })
+                                                })
+                                            }),
+                                            value: *resolve_expr(self.db, value),
+                                        },
+                                    )
+                                }
+                                ParamAssignKind::ParamAssignOutput {
                                     not,
                                     param,
                                     variable,
-                                } => ResolvedParam::Output {
-                                    not: *not,
-                                    param: *param,
-                                    resolved_param: target_ty.and_then(|target| {
-                                        target.to_signature(self.db).and_then(|signature| {
-                                            signature.outputs.get(&param.ident).copied()
-                                        })
-                                    }),
-                                    variable: resolve_var_access(self.db, variable),
-                                },
+                                } => ResolvedParam::new(
+                                    self.db,
+                                    *param_assign,
+                                    ResolvedParamKind::Output {
+                                        not,
+                                        param,
+                                        resolved_param: target_ty.and_then(|target| {
+                                            target.to_signature(self.db).and_then(|signature| {
+                                                signature.outputs.get(&param.ident).map(|p| {
+                                                    ResolvedVarResult::new(self.db, ResolvedVarOrigin::Param(param), ResolvedVarKind::Param(*p))
+                                                })
+                                            })
+                                        }),
+                                        variable: resolve_var_access(self.db, variable),
+                                    },
+                                ),
                             })
                             .collect(),
                     },
@@ -210,7 +226,7 @@ impl<'db> ResolveStmtCtx<'db> {
                 step,
                 body,
             } => {
-                let control_var = resolve_var_access(self.db, control_variable);
+                let control_var = resolve_var_access(self.db, *control_variable);
                 let start_expr = resolve_expr(self.db, *start);
                 let end_expr = resolve_expr(self.db, *end);
                 let step_expr = step.as_ref().map(|s| resolve_expr(self.db, *s));
@@ -284,17 +300,37 @@ impl<'db> HirNodeInfo<'db> for ResolvedStmt<'db> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
-pub enum ResolvedParam<'db> {
+#[salsa::tracked(debug)]
+pub struct ResolvedParam<'db> {
+    pub param: ParamAssign<'db>,
+    pub kind: ResolvedParamKind<'db>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum ResolvedParamKind<'db> {
+    UnnamedInput {
+        resolved_param: Option<ResolvedVarResult<'db>>,
+        value: ResolvedExpr<'db>,
+    },
     Input {
-        param: Option<SpanIdent<'db>>,
-        resolved_param: Option<Ty<'db>>,
+        param: SpanIdent<'db>,
+        resolved_param: Option<ResolvedVarResult<'db>>,
         value: ResolvedExpr<'db>,
     },
     Output {
         not: bool,
         param: SpanIdent<'db>,
-        resolved_param: Option<Ty<'db>>,
+        resolved_param: Option<ResolvedVarResult<'db>>,
         variable: ResolvedVarResult<'db>,
     },
+}
+
+impl<'db> HirNodeInfo<'db> for ResolvedParam<'db> {
+    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
+        self.param(db).id(db)
+    }
+
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+        self.param(db).scope_id(db)
+    }
 }
