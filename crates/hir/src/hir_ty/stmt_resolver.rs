@@ -21,8 +21,7 @@ pub fn resolve_stmt<'db>(db: &'db dyn BaseDatabase, stmt: Stmt<'db>) -> Resolved
 
 #[salsa::tracked(debug)]
 pub struct ResolvedStmt<'db> {
-    pub id: AstId,
-    pub scope_id: FileScopeId<'db>,
+    pub stmt: Stmt<'db>,
     #[tracked]
     #[no_eq]
     #[returns(ref)]
@@ -91,8 +90,7 @@ impl<'db> ResolveStmtCtx<'db> {
 
                 ResolvedStmt::new(
                     self.db,
-                    self.stmt.id(self.db),
-                    self.stmt.scope_id(self.db),
+                    self.stmt,
                     ResolvedStmtKind::Assignment {
                         var: resolved_var,
                         target: *resolved_target,
@@ -105,8 +103,7 @@ impl<'db> ResolveStmtCtx<'db> {
 
                 ResolvedStmt::new(
                     self.db,
-                    self.stmt.id(self.db),
-                    self.stmt.scope_id(self.db),
+                    self.stmt,
                     ResolvedStmtKind::AssignmentAttempt {
                         var: resolved_var,
                         target: *resolved_target,
@@ -120,8 +117,7 @@ impl<'db> ResolveStmtCtx<'db> {
                 else_,
             } => ResolvedStmt::new(
                 self.db,
-                self.stmt.id(self.db),
-                self.stmt.scope_id(self.db),
+                self.stmt,
                 ResolvedStmtKind::If {
                     condition: *resolve_expr(self.db, *condition),
                     then: then
@@ -149,22 +145,19 @@ impl<'db> ResolveStmtCtx<'db> {
                 else_,
             } => ResolvedStmt::new(
                 self.db,
-                self.stmt.id(self.db),
-                self.stmt.scope_id(self.db),
+                self.stmt,
                 ResolvedStmtKind::Case {},
             ),
             StmtKind::Invocation { target, params } => ResolvedStmt::new(
                 self.db,
-                self.stmt.id(self.db),
-                self.stmt.scope_id(self.db),
+                self.stmt,
                 ResolvedStmtKind::Invocation {},
             ),
             StmtKind::FuncCall(func_call) => {
                 let resolved_func_call = func_call.resolve_func_call(self.db);
                 ResolvedStmt::new(
                     self.db,
-                    self.stmt.id(self.db),
-                    self.stmt.scope_id(self.db),
+                    self.stmt,
                     ResolvedStmtKind::FuncCall {
                         target: resolved_func_call.target,
                         params: resolved_func_call.params,
@@ -185,8 +178,7 @@ impl<'db> ResolveStmtCtx<'db> {
 
                 ResolvedStmt::new(
                     self.db,
-                    self.stmt.id(self.db),
-                    self.stmt.scope_id(self.db),
+                    self.stmt,
                     ResolvedStmtKind::For {
                         control_var,
                         start: *start_expr,
@@ -198,8 +190,7 @@ impl<'db> ResolveStmtCtx<'db> {
             }
             StmtKind::Repeat { body, condition } => ResolvedStmt::new(
                 self.db,
-                self.stmt.id(self.db),
-                self.stmt.scope_id(self.db),
+                self.stmt,
                 ResolvedStmtKind::Repeat {
                     condition: *resolve_expr(self.db, *condition),
                     body: body.iter().map(|s| *resolve_stmt(self.db, *s)).collect(),
@@ -207,8 +198,7 @@ impl<'db> ResolveStmtCtx<'db> {
             ),
             StmtKind::While { condition, body } => ResolvedStmt::new(
                 self.db,
-                self.stmt.id(self.db),
-                self.stmt.scope_id(self.db),
+                self.stmt,
                 ResolvedStmtKind::While {
                     condition: *resolve_expr(self.db, *condition),
                     body: body.iter().map(|s| *resolve_stmt(self.db, *s)).collect(),
@@ -216,26 +206,22 @@ impl<'db> ResolveStmtCtx<'db> {
             ),
             StmtKind::Continue => ResolvedStmt::new(
                 self.db,
-                self.stmt.id(self.db),
-                self.stmt.scope_id(self.db),
+                self.stmt,
                 ResolvedStmtKind::Continue,
             ),
             StmtKind::Exit => ResolvedStmt::new(
                 self.db,
-                self.stmt.id(self.db),
-                self.stmt.scope_id(self.db),
+                self.stmt,
                 ResolvedStmtKind::Exit,
             ),
             StmtKind::Return => ResolvedStmt::new(
                 self.db,
-                self.stmt.id(self.db),
-                self.stmt.scope_id(self.db),
+                self.stmt,
                 ResolvedStmtKind::Return,
             ),
             StmtKind::Super => ResolvedStmt::new(
                 self.db,
-                self.stmt.id(self.db),
-                self.stmt.scope_id(self.db),
+                self.stmt,
                 ResolvedStmtKind::Super,
             ),
         }
@@ -244,10 +230,10 @@ impl<'db> ResolveStmtCtx<'db> {
 
 impl<'db> HirNodeInfo<'db> for ResolvedStmt<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
-        self.id(db)
+        self.stmt(db).id(db)
     }
 
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
-        self.scope_id(db)
+        self.stmt(db).scope_id(db)
     }
 }
