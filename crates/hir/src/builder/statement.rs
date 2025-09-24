@@ -2,7 +2,7 @@ use crate::builder::expression::{ParseExpr, ParseExpression, ParseVariableAccess
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::sem_errors::AnalysisError;
 use crate::check::errors::syntax::SyntaxError;
-use crate::hir_def::expressions::expression::{ParamAssign, ParamAssignKind, SymbolicVariable};
+use crate::hir_def::expressions::expression::{FuncCall, ParamAssign, ParamAssignKind, SymbolicVariable};
 use crate::hir_def::expressions::statement::{CaseKind, Stmt, StmtKind};
 use crate::hir_def::interned::identifier::SpanIdent;
 use auto_lsp::anyhow::{self};
@@ -54,10 +54,10 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                 }
                 Ok(Stmt::new(
                     sema.db,
-                    StmtKind::FuncCall {
-                        target,
+                    StmtKind::FuncCall(FuncCall {
+                        path: target,
                         params: parameters,
-                    },
+                    }),
                     call.into(),
                     sema.current_scope,
                 ))

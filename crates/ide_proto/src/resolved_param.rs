@@ -1,5 +1,5 @@
 use auto_lsp::{default::db::BaseDatabase, lsp_types::{Hover, InlayHint, InlayHintKind, InlayHintLabel, Position}};
-use hir::{hir_ty::{stmt_resolver::{ResolvedParam, ResolvedParamKind}, ty::Ty, TyInfo}, HirNodeInfo, TypeInfo};
+use hir::{hir_ty::{fucn_call_resolver::{ResolvedParam, ResolvedParamKind}, ty::Ty, TyInfo}, HirNodeInfo, TypeInfo};
 
 use crate::ToProtocol;
 

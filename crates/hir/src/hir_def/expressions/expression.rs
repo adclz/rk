@@ -92,16 +92,19 @@ pub enum PrimaryExpr<'db> {
         variable: VariableAccess<'db>,
         multibits: Option<MultibitsPart>,
     },
-    FuncCall {
-        path: PathExpr<'db>,
-        params: Vec<ParamAssign<'db>>,
-    },
+    FuncCall(FuncCall<'db>),
     RefValue {
         value: RefValue<'db>,
     },
     ParenthesizedExpr {
         expr: Expr<'db>,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub struct FuncCall<'db> {
+    pub path: PathExpr<'db>,
+    pub params: Vec<ParamAssign<'db>>,
 }
 
 #[salsa::tracked(debug)]

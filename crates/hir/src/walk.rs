@@ -14,12 +14,7 @@ use crate::{
         semantic_index::{HirNode, SemanticIndex},
     },
     hir_ty::{
-        expr_resolver::ResolvedExpr,
-        init_expr_resolver::{resolve_init_expr, ResolvedInitExpr, ResolvedInitExprKind},
-        stmt_resolver::{resolve_stmt, ResolvedParam, ResolvedParamKind, ResolvedStmt, ResolvedStmtKind},
-        ty::{ty_for_method_decl, ty_for_method_prot, ty_for_pou, ty_for_variable},
-        ty_path_expr_resolver::ResolvedPathResult,
-        ty_var_access_resolver::ResolvedVarResult,
+        expr_resolver::ResolvedExpr, fucn_call_resolver::{ResolvedParam, ResolvedParamKind}, init_expr_resolver::{resolve_init_expr, ResolvedInitExpr, ResolvedInitExprKind}, stmt_resolver::{resolve_stmt, ResolvedStmt, ResolvedStmtKind}, ty::{ty_for_method_decl, ty_for_method_prot, ty_for_pou, ty_for_variable}, ty_path_expr_resolver::ResolvedPathResult, ty_var_access_resolver::ResolvedVarResult
     }, TypeInfo,
 };
 

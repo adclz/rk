@@ -2,10 +2,10 @@ use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     hir_def::{
-        expressions::expression::{Expr, ParamAssign, PathExpr, SymbolicVariable, VariableAccess},
+        expressions::expression::{Expr, FuncCall, ParamAssign, PathExpr, SymbolicVariable, VariableAccess},
         scope::FileScopeId,
     },
-    {AstId, HirNodeInfo},
+    AstId, HirNodeInfo,
 };
 
 #[salsa::tracked(debug)]
@@ -38,10 +38,7 @@ pub enum StmtKind<'db> {
         var: VariableAccess<'db>,
         target: Expr<'db>, // todo: replace with ref or identifier
     },
-    FuncCall {
-        target: PathExpr<'db>,
-        params: Vec<ParamAssign<'db>>, // parameter_list
-    },
+    FuncCall(FuncCall<'db>),
     Invocation {
         target: SymbolicVariable<'db>,
         params: Vec<ParamAssign<'db>>, // parameter_list

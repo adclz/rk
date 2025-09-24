@@ -9,13 +9,9 @@ use crate::{
     },
     hir_def::expressions::statement::Stmt,
     hir_ty::{
-        TyInfo,
-        expr_resolver::ResolvedExpr,
-        stmt_resolver::{
-            ResolvedParam, ResolvedParamKind, ResolvedStmt, ResolvedStmtKind, resolve_stmt,
-        },
-        ty_path_expr_resolver::ResolvedPathResult,
-        ty_var_access_resolver::ResolvedVarResult,
+        expr_resolver::ResolvedExpr, fucn_call_resolver::{ResolvedParam, ResolvedParamKind}, stmt_resolver::{
+            resolve_stmt, ResolvedStmt, ResolvedStmtKind
+        }, ty_path_expr_resolver::ResolvedPathResult, ty_var_access_resolver::ResolvedVarResult, TyInfo
     },
 };
 

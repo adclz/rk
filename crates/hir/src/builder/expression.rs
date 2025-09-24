@@ -6,7 +6,7 @@ use crate::builder::types::ParseMultiBits;
 use crate::check::errors::sem_errors::AnalysisError;
 use crate::check::errors::syntax::SyntaxError;
 use crate::hir_def::expressions::expression::{
-    FieldExpr, IndexExpr, Integer, IntegerKind, ParamAssignKind, PathExpr, VariableAccessKind,
+    FieldExpr, FuncCall, IndexExpr, Integer, IntegerKind, ParamAssignKind, PathExpr, VariableAccessKind
 };
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::{
@@ -264,10 +264,10 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                 }
                 Ok(Expr::new(
                     sema.db,
-                    ExprKind::PrimaryExpr(PrimaryExpr::FuncCall {
+                    ExprKind::PrimaryExpr(PrimaryExpr::FuncCall(FuncCall {
                         path: target,
                         params: parameters,
-                    }),
+                    })),
                     func.into(),
                     sema.current_scope,
                 ))
