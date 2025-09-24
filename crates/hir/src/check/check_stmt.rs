@@ -1,10 +1,11 @@
 use auto_lsp::default::db::BaseDatabase;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     check::{
         check_semantic_index::Check,
-        coerce::coerce_ty_with_expr,
-        errors::{sem_errors::AnalysisError, stmt::StmtError},
+        coerce::{coerce_ty_with_expr, coerce_ty_with_ty},
+        errors::{coerce::CoerceError, sem_errors::AnalysisError, stmt::StmtError},
     },
     hir_def::expressions::statement::Stmt,
     hir_ty::{
@@ -64,7 +65,7 @@ impl<'db> Check<'db> for ResolvedStmt<'db> {
                 }
             }
             ResolvedStmtKind::FuncCall { target, params } => {
-                if let Err(err) = check_func_call(db, *target, params, errors) {
+                if let Err(err) = check_func_call(db, *self, *target, params, errors) {
                     errors.push(err);
                 }
             }
@@ -98,8 +99,40 @@ fn check_assignment<'db>(
     coerce_ty_with_expr(db, ty_var, target)
 }
 
+#[derive(Clone, Copy)]
+enum FormalCall {
+    Unset,
+    Formal,
+    NonFormal,
+}
+
+impl FormalCall {
+    fn check_consistency(&mut self, kind: &ResolvedParamKind) -> bool {
+        match (*self, kind) {
+            (
+                FormalCall::Unset,
+                ResolvedParamKind::FormalInput { .. } | ResolvedParamKind::FormalOutput { .. },
+            ) => {
+                *self = FormalCall::Formal;
+                true
+            }
+            (FormalCall::Unset, ResolvedParamKind::NonFormal { .. }) => {
+                *self = FormalCall::NonFormal;
+                true
+            }
+            (
+                FormalCall::Formal,
+                ResolvedParamKind::FormalInput { .. } | ResolvedParamKind::FormalOutput { .. },
+            ) => true,
+            (FormalCall::NonFormal, ResolvedParamKind::NonFormal { .. }) => true,
+            _ => false, // Mixed formal/non-formal
+        }
+    }
+}
+
 fn check_func_call<'db>(
     db: &'db dyn BaseDatabase,
+    stmt: ResolvedStmt<'db>,
     target: ResolvedPathResult<'db>,
     params: &Vec<ResolvedParam<'db>>,
     errors: &mut Vec<AnalysisError<'db>>,
@@ -124,59 +157,158 @@ fn check_func_call<'db>(
         )
     }
 
+    // SAFETY: unwrap is safe because is_callable was checked before
     let signature = ty_target.to_signature(db).unwrap();
-    let with_param_name = false;
+    let mut format = FormalCall::Unset;
 
-    params.iter().for_each(|p| match p.kind(db) {
-        ResolvedParamKind::UnnamedInput {
-            resolved_param,
-            value,
-        } => {
-            todo!()
-        }
-        ResolvedParamKind::Input {
-            param,
-            resolved_param,
-            value,
-        } => {
-            if let Some(other_param) = resolved_param {
-                if let Err(err) = other_param.ty(db) {
-                    errors.push(err);
-                } else if let Err(err) = coerce_ty_with_expr(db, other_param.ty(db).unwrap(), value)
-                {
-                    errors.push(err);
+    let too_many_params = params.len() > signature.length();
+    if too_many_params {
+        errors.push(
+            StmtError::TooManyParameters {
+                stmt,
+                target: ty_target,
+                expected: signature.length(),
+                found: params.len(),
+            }
+            .into(),
+        );
+    }
+
+    let mut seen = FxHashMap::default();
+
+    for p in params.iter() {
+        if !format.check_consistency(&p.kind(db)) {
+            errors.push(
+                StmtError::MixedFormalNonFormalParams {
+                    ty: ty_target,
+                    var: target,
                 }
-            } else {
-                errors.push(
-                    StmtError::UnknownInputParam {
-                        ty: ty_target,
-                        var: target,
-                        param,
+                .into(),
+            );
+            break;
+        }
+
+        match p.kind(db) {
+            ResolvedParamKind::NonFormal {
+                resolved_param,
+                value,
+            } => match resolved_param {
+                Some(other_param) => match other_param.ty(db) {
+                    Ok(p_ty) => {
+                        let _ =
+                            coerce_ty_with_expr(db, p_ty, value).map_err(|err| errors.push(err));
                     }
-                    .into(),
-                )
+                    Err(err) => errors.push(err),
+                },
+                None => {
+                    if !too_many_params {
+                        errors.push(
+                            StmtError::UnknownNonFormalParam {
+                                ty: ty_target,
+                                var: target,
+                            }
+                            .into(),
+                        );
+                    }
+                }
+            },
+            ResolvedParamKind::FormalInput {
+                param,
+                resolved_param,
+                value,
+            } => {
+                match seen.get(&param.ident) {
+                    None => {
+                        seen.insert(param.ident, param);
+                    }
+                    Some(prev) => errors.push(
+                        StmtError::DuplicateParameter {
+                            param1: param,
+                            param2: *prev,
+                        }
+                        .into(),
+                    ),
+                }
+                match resolved_param {
+                    Some(other_param) => match other_param.ty(db) {
+                        Ok(p_ty) => {
+                            let _ = coerce_ty_with_expr(db, p_ty, value)
+                                .map_err(|err| errors.push(err));
+                        }
+                        Err(err) => errors.push(err),
+                    },
+                    None => errors.push(
+                        StmtError::UnknownFormalInputParam {
+                            ty: ty_target,
+                            var: target,
+                            param,
+                        }
+                        .into(),
+                    ),
+                }
+            }
+            ResolvedParamKind::FormalOutput {
+                not,
+                param,
+                resolved_param,
+                variable,
+            } => {
+                match seen.get(&param.ident) {
+                    None => {
+                        seen.insert(param.ident, param);
+                    }
+                    Some(prev) => errors.push(
+                        StmtError::DuplicateParameter {
+                            param1: param,
+                            param2: *prev,
+                        }
+                        .into(),
+                    ),
+                }
+                match resolved_param {
+                    Some(other_param) => match other_param.ty(db) {
+                        Ok(p_ty) => match variable.ty(db) {
+                            Ok(var_ty) => {
+                                if variable.is_input(db) {
+                                    errors.push(
+                                        StmtError::AssignmentToInputVar {
+                                            ty: var_ty,
+                                            var: variable,
+                                        }
+                                        .into(),
+                                    );
+                                } else if !var_ty.is_variable(db) {
+                                    errors.push(
+                                        StmtError::AssignementToDirectType {
+                                            ty: var_ty,
+                                            var: variable,
+                                        }
+                                        .into(),
+                                    );
+                                } else {
+                                    let _ = coerce_ty_with_ty(db, p_ty, var_ty).map_err(|err| {
+                                        errors.push(
+                                            CoerceError::new_param_type_mismatch(param, err).into(),
+                                        )
+                                    });
+                                }
+                            }
+                            Err(err) => errors.push(err),
+                        },
+                        Err(err) => errors.push(err),
+                    },
+                    None => errors.push(
+                        StmtError::UnknownFormalOutputParam {
+                            ty: ty_target,
+                            var: target,
+                            param,
+                        }
+                        .into(),
+                    ),
+                }
             }
         }
-        ResolvedParamKind::Output {
-            not,
-            param,
-            resolved_param,
-            variable,
-        } => {
-            if let Some(other_param) = resolved_param {
-                // todo! check output
-            } else {
-                errors.push(
-                    StmtError::UnknownOutputParam {
-                        ty: ty_target,
-                        var: target,
-                        param,
-                    }
-                    .into(),
-                )
-            }
-        }
-    });
+    }
 
     Ok(())
 }

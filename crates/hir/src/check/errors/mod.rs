@@ -9,3 +9,4 @@ pub mod stmt;
 pub mod syntax;
 pub mod ty;
 pub mod utils;
+pub mod coerce;
