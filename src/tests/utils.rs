@@ -66,7 +66,8 @@ pub fn test_diagnostics<'db>(db: &'db mut RootDatabase, source: &'db [&'db str])
     files.sort_by_key(|file| {
         let url_str = file.url(db).as_str();
         // Extract number from "file:///testN.st" format
-        url_str.strip_prefix("file:///test")
+        url_str
+            .strip_prefix("file:///test")
             .and_then(|s| s.strip_suffix(".st"))
             .and_then(|s| s.parse::<u32>().ok())
             .unwrap_or(0)

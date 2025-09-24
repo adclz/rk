@@ -187,7 +187,7 @@ impl IdeDiagnostic {
                 .with_message(related.message.as_str()),
             )
         }
- 
+
         for fix in &self.fixes {
             report.add_help(fix.title.to_string());
         }
