@@ -6,7 +6,9 @@ use crate::hir_ty::TyInfo;
 use crate::hir_ty::expr_resolver::{ResolvedExpr, resolve_expr};
 use crate::hir_ty::ty::{Ty, TyDecl};
 use crate::hir_ty::ty_path_expr_resolver::{ResolvedPathResult, resolved_path_expr};
-use crate::hir_ty::ty_var_access_resolver::{resolve_var_access, ResolvedVarKind, ResolvedVarOrigin, ResolvedVarResult};
+use crate::hir_ty::ty_var_access_resolver::{
+    ResolvedVarKind, ResolvedVarOrigin, ResolvedVarResult, resolve_var_access,
+};
 use crate::{AstId, HirNodeInfo};
 use auto_lsp::core::span::Span;
 use auto_lsp::default::db::BaseDatabase;
@@ -159,6 +161,8 @@ impl<'db> ResolveStmtCtx<'db> {
             StmtKind::FuncCall { target, params } => {
                 let target = *resolved_path_expr(self.db, *target);
                 let target_ty = target.ty(self.db).ok();
+                let mut formal_index = 0;
+
                 ResolvedStmt::new(
                     self.db,
                     self.stmt.id(self.db),
@@ -168,25 +172,62 @@ impl<'db> ResolveStmtCtx<'db> {
                         params: params
                             .iter()
                             .map(|param_assign| match param_assign.kind(self.db) {
-                                ParamAssignKind::UnnamedParamInput { value } => {
-                                    todo!()
-                                }
-                                ParamAssignKind::ParamAssignInput { param, value } => {
+                                ParamAssignKind::NonFormal { value } => {
                                     ResolvedParam::new(
                                         self.db,
                                         *param_assign,
-                                        ResolvedParamKind::Input {
+                                        ResolvedParamKind::NonFormal {
+                                            resolved_param: target
+                                                .ty(self.db)
+                                                .ok()
+                                                .and_then(|target| target.to_signature(self.db))
+                                                .and_then(|signature| {
+                                                    // Try to get the param by index
+                                                    let param = signature
+                                                        .variables
+                                                        .values()
+                                                        .nth(formal_index);
+                                                    formal_index += 1;
+                                                    param.map(|p| {
+                                                        ResolvedVarResult::new(
+                                                            self.db,
+                                                            ResolvedVarOrigin::NonFormal(value),
+                                                            ResolvedVarKind::Param(*p),
+                                                        )
+                                                    })
+                                                }),
+                                            value: *resolve_expr(self.db, value),
+                                        },
+                                    )
+                                }
+                                ParamAssignKind::FormalInput { param, value } => {
+                                    ResolvedParam::new(
+                                        self.db,
+                                        *param_assign,
+                                        ResolvedParamKind::FormalInput {
                                             param,
                                             resolved_param: target_ty.and_then(|target| {
                                                 target.to_signature(self.db).and_then(|signature| {
                                                     signature
-                                                        .inputs
+                                                        .variables
                                                         .get(&param.ident)
                                                         .or_else(|| {
-                                                            signature.in_outs.get(&param.ident)
+                                                            signature
+                                                                .variables
+                                                                .get(&param.ident)
+                                                                .filter(|v| {
+                                                                    v.is_variable_input(self.db)
+                                                                        || v.is_variable_inout(
+                                                                            self.db,
+                                                                        )
+                                                                })
                                                         })
                                                         .map(|p| {
-                                                            ResolvedVarResult::new(self.db, ResolvedVarOrigin::Param(param), ResolvedVarKind::Param(*p))
+                                                            ResolvedVarResult::new(
+                                                                self.db,
+                                                                ResolvedVarOrigin::Formal(param),
+                                                                ResolvedVarKind::Param(*p),
+                                                            )
                                                         })
                                                 })
                                             }),
@@ -194,21 +235,29 @@ impl<'db> ResolveStmtCtx<'db> {
                                         },
                                     )
                                 }
-                                ParamAssignKind::ParamAssignOutput {
+                                ParamAssignKind::FormalOutput {
                                     not,
                                     param,
                                     variable,
                                 } => ResolvedParam::new(
                                     self.db,
                                     *param_assign,
-                                    ResolvedParamKind::Output {
+                                    ResolvedParamKind::FormalOutput {
                                         not,
                                         param,
                                         resolved_param: target_ty.and_then(|target| {
                                             target.to_signature(self.db).and_then(|signature| {
-                                                signature.outputs.get(&param.ident).map(|p| {
-                                                    ResolvedVarResult::new(self.db, ResolvedVarOrigin::Param(param), ResolvedVarKind::Param(*p))
-                                                })
+                                                signature
+                                                    .variables
+                                                    .get(&param.ident)
+                                                    .filter(|v| v.is_variable_output(self.db))
+                                                    .map(|p| {
+                                                        ResolvedVarResult::new(
+                                                            self.db,
+                                                            ResolvedVarOrigin::Formal(param),
+                                                            ResolvedVarKind::Param(*p),
+                                                        )
+                                                    })
                                             })
                                         }),
                                         variable: resolve_var_access(self.db, variable),
@@ -308,16 +357,16 @@ pub struct ResolvedParam<'db> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ResolvedParamKind<'db> {
-    UnnamedInput {
+    NonFormal {
         resolved_param: Option<ResolvedVarResult<'db>>,
         value: ResolvedExpr<'db>,
     },
-    Input {
+    FormalInput {
         param: SpanIdent<'db>,
         resolved_param: Option<ResolvedVarResult<'db>>,
         value: ResolvedExpr<'db>,
     },
-    Output {
+    FormalOutput {
         not: bool,
         param: SpanIdent<'db>,
         resolved_param: Option<ResolvedVarResult<'db>>,

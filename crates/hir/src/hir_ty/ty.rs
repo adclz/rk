@@ -670,6 +670,27 @@ impl<'db> Ty<'db> {
         matches!(self.decl(db), TyDecl::Variable(_))
     }
 
+    pub fn is_variable_input(&self, db: &'db dyn BaseDatabase) -> bool {
+        if let TyDecl::Variable(var) = self.decl(db) {
+            return var.kind(db) == VariableKind::Input;
+        }
+        false
+    }
+
+    pub fn is_variable_inout(&self, db: &'db dyn BaseDatabase) -> bool {
+        if let TyDecl::Variable(var) = self.decl(db) {
+            return var.kind(db) == VariableKind::InOut;
+        }
+        false
+    }
+
+    pub fn is_variable_output(&self, db: &'db dyn BaseDatabase) -> bool {
+        if let TyDecl::Variable(var) = self.decl(db) {
+            return var.kind(db) == VariableKind::Output;
+        }
+        false
+    }
+
     pub fn has_return_type(&self, db: &'db dyn BaseDatabase) -> Option<Ty<'db>> {
         if let TyKind::Target(sig) = self.kind(db) {
             return sig.has_return_type(db);

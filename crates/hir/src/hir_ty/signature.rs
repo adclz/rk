@@ -20,37 +20,46 @@ impl<'db> Ty<'db> {
                 output,
                 in_out,
                 return_type,
-            } => Some(CallableSignature {
-                origin: *self,
-                inputs: input.clone(),
-                in_outs: in_out.clone(),
-                outputs: output.clone(),
-                return_type,
-            }),
+            } => {
+                let mut variables = input.clone();
+                variables.extend(in_out.clone());
+                variables.extend(output.clone());
+                Some(CallableSignature {
+                    origin: *self,
+                    variables,
+                    return_type,
+                })
+            }
             TyKind::FunctionBlock {
                 extends,
                 inputs,
                 outputs,
                 in_outs,
-            } => Some(CallableSignature {
-                origin: *self,
-                inputs: inputs.clone(),
-                in_outs: in_outs.clone(),
-                outputs: outputs.clone(),
-                return_type: None,
-            }),
+            } => {
+                let mut variables = inputs.clone();
+                variables.extend(in_outs.clone());
+                variables.extend(outputs.clone());
+                Some(CallableSignature {
+                    origin: *self,
+                    variables,
+                    return_type: None,
+                })
+            }
             TyKind::Method {
                 is_prototype,
                 input,
                 output,
                 in_out,
-            } => Some(CallableSignature {
-                origin: *self,
-                inputs: input.clone(),
-                in_outs: in_out.clone(),
-                outputs: output.clone(),
-                return_type: None,
-            }),
+            } => {
+                let mut variables = input.clone();
+                variables.extend(in_out.clone());
+                variables.extend(output.clone());
+                Some(CallableSignature {
+                    origin: *self,
+                    variables,
+                    return_type: None,
+                })
+            }
             _ => None,
         }
     }
@@ -59,30 +68,19 @@ impl<'db> Ty<'db> {
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub struct CallableSignature<'db> {
     pub origin: Ty<'db>,
-    pub inputs: FxHashMap<Ident, Ty<'db>>,
-    pub in_outs: FxHashMap<Ident, Ty<'db>>,
-    pub outputs: FxHashMap<Ident, Ty<'db>>,
+    pub variables: FxHashMap<Ident, Ty<'db>>,
     pub return_type: Option<Ty<'db>>,
 }
 
 impl<'db> CallableSignature<'db> {
-    pub fn get_param(&self, ident: &Ident) -> Option<&Ty<'db>> {
-        self.inputs
-            .get(ident)
-            .or_else(|| self.outputs.get(ident))
-            .or_else(|| self.in_outs.get(ident))
-    }
-
     pub fn to_completion_item(&self, db: &'db dyn BaseDatabase) -> CompletionItem {
         let mut params = vec![];
-        for (name, ty) in &self.inputs {
-            params.push(format!("{} := $", name.text(db)));
-        }
-        for (name, ty) in &self.in_outs {
-            params.push(format!("{} := $", name.text(db)));
-        }
-        for (name, ty) in &self.outputs {
-            params.push(format!("{} => $", name.text(db)));
+        for (name, ty) in &self.variables {
+            if ty.is_variable_input(db) || ty.is_variable_inout(db) {
+                params.push(format!("{} := $", name.text(db)));
+            } else if ty.is_variable_output(db) {
+                params.push(format!("{} => $", name.text(db)));
+            }
         }
 
         let name = self.origin.decl(db).name(db).text(db).to_string();
@@ -102,11 +100,15 @@ impl<'db> CallableSignature<'db> {
         }
     }
 
+    pub fn length(&self) -> usize {
+        self.variables.len()
+    }
+
     pub fn to_signature(&self, db: &'db dyn BaseDatabase) -> SignatureHelp {
         let sig = SignatureInformation {
             label: self.origin.decl(db).name(db).text(db).to_string(),
             parameters: Some(
-                self.inputs
+                self.variables
                     .iter()
                     .map(|(name, ty)| ParameterInformation {
                         label: ParameterLabel::Simple(name.text(db).to_string()),

@@ -3,7 +3,7 @@ use auto_lsp::default::db::BaseDatabase;
 use crate::{
     check::errors::sem_errors::AnalysisError,
     hir_def::{
-        expressions::expression::{VariableAccess, VariableAccessKind}, interned::identifier::SpanIdent, pous::variable::VariableDecl, scope::FileScopeId
+        expressions::expression::{Expr, VariableAccess, VariableAccessKind}, interned::identifier::SpanIdent, pous::variable::VariableDecl, scope::FileScopeId
     },
     hir_ty::{
         ty::{Ty, TyDecl}, ty_path_expr_resolver::{resolved_path_expr, ResolvedPathResult}, TyInfo
@@ -28,7 +28,8 @@ pub struct ResolvedVarResult<'db> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ResolvedVarOrigin<'db> {
     Access(VariableAccess<'db>),
-    Param(SpanIdent<'db>)
+    NonFormal(Expr<'db>),
+    Formal(SpanIdent<'db>)
 }
 
 impl<'db> ResolvedVarResult<'db> {
@@ -98,7 +99,8 @@ impl<'db> TyInfo<'db> for ResolvedVarResult<'db> {
     fn place(&self, db: &'db dyn BaseDatabase) -> AstId {
         match self.origin(db) {
             ResolvedVarOrigin::Access(access) => access.get_id(db),
-            ResolvedVarOrigin::Param(param) => param.get_id(db)
+            ResolvedVarOrigin::NonFormal(expr) => expr.get_id(db),
+            ResolvedVarOrigin::Formal(param) => param.get_id(db)
         }
     }
 }
@@ -136,14 +138,16 @@ impl<'db> HirNodeInfo<'db> for ResolvedVarResult<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
         match self.origin(db) {
             ResolvedVarOrigin::Access(access) => access.get_id(db),
-            ResolvedVarOrigin::Param(param) => param.get_id(db)
+            ResolvedVarOrigin::NonFormal(expr) => expr.get_id(db),
+            ResolvedVarOrigin::Formal(param) => param.get_id(db)
         }
     }
 
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         match self.origin(db) {
             ResolvedVarOrigin::Access(access) => access.get_scope_id(db),
-            ResolvedVarOrigin::Param(param) => param.get_scope_id(db)
+            ResolvedVarOrigin::NonFormal(expr) => expr.get_scope_id(db),
+            ResolvedVarOrigin::Formal(param) => param.get_scope_id(db)
         }
     }
 }

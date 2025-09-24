@@ -191,14 +191,14 @@ pub struct ParamAssign<'db> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ParamAssignKind<'db> {
-    UnnamedParamInput {
+    NonFormal {
         value: Expr<'db>,
     },
-    ParamAssignInput {
+    FormalInput {
         param: SpanIdent<'db>,
         value: Expr<'db>,
     },
-    ParamAssignOutput {
+    FormalOutput {
         not: bool,
         param: SpanIdent<'db>,
         variable: VariableAccess<'db>,

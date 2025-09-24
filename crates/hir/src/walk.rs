@@ -184,19 +184,19 @@ impl<'db> WalkHir<'db> for ResolvedParam<'db> {
     ) -> ControlFlow<()> {
         f(HirNode::ResolvedParam(*self))?;
         match self.kind(db) {
-            ResolvedParamKind::UnnamedInput { resolved_param, value } => {
+            ResolvedParamKind::NonFormal { resolved_param, value } => {
                 if let Some(ty) = resolved_param {
                     ty.walk_hir(db, f)?;
                 }
                 value.walk_hir(db, f)
             }
-            ResolvedParamKind::Input { param, resolved_param, value } => {
+            ResolvedParamKind::FormalInput { param, resolved_param, value } => {
                 if let Some(ty) = resolved_param {
                     ty.walk_hir(db, f)?;
                 }
                 value.walk_hir(db, f)
             },
-            ResolvedParamKind::Output { not, param, resolved_param, variable } => {
+            ResolvedParamKind::FormalOutput { not, param, resolved_param, variable } => {
                 if let Some(ty) = resolved_param {
                     ty.walk_hir(db, f)?;
                 }

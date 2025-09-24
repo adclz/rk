@@ -244,10 +244,10 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                                     ast::generated::ParamAssignInput_ParamAssignOutput::ParamAssignInput(p) => {
                                         parameters.push(ParamAssign::new(sema.db, p.into(), sema.current_scope, match p.param.as_ref() {
                                             Some(param) => {
-                                                ParamAssignKind::ParamAssignInput { param: SpanIdent::from_node(sema.db, sema, param.cast(sema.ast))?, value: p.value.cast(sema.ast).to_expr(sema)? }
+                                                ParamAssignKind::FormalInput { param: SpanIdent::from_node(sema.db, sema, param.cast(sema.ast))?, value: p.value.cast(sema.ast).to_expr(sema)? }
                                             },
                                             None => {
-                                                ParamAssignKind::UnnamedParamInput { value: p.value.cast(sema.ast).to_expr(sema)? }
+                                                ParamAssignKind::NonFormal { value: p.value.cast(sema.ast).to_expr(sema)? }
                                             }
                                         }))
                                     }
@@ -255,7 +255,7 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                                         let variable = p.variable.cast(sema.ast).to_access(sema)?;
 
                                         parameters.push(ParamAssign::new(sema.db, p.into(), sema.current_scope, 
-                                            ParamAssignKind::ParamAssignOutput { not: p.not.is_some() , param: SpanIdent::from_node(sema.db, sema, p.param.cast(sema.ast))?, variable })
+                                            ParamAssignKind::FormalOutput { not: p.not.is_some() , param: SpanIdent::from_node(sema.db, sema, p.param.cast(sema.ast))?, variable })
                                     )
                                     }
                                 }

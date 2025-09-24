@@ -114,7 +114,7 @@ pub fn all_imported_pous<'db>(
     db: &'db dyn BaseDatabase,
     scope_id: FileScopeId<'db>,
 ) -> FxHashMap<Ident, PouDecl<'db>> {
-   let sema = semantic_index(db, scope_id.file(db));
+    let sema = semantic_index(db, scope_id.file(db));
     let scope = sema.get_scope(db, scope_id);
 
     let mut result = FxHashMap::default();
@@ -155,7 +155,8 @@ pub fn pou_names_res<'db>(
     pou: &Ident,
     scope_id: FileScopeId<'db>,
 ) -> Option<PouDecl<'db>> {
-    all_local_pous(db, scope_id).get(pou)
+    all_local_pous(db, scope_id)
+        .get(pou)
         .or_else(|| all_imported_pous(db, scope_id).get(pou))
         .or_else(|| all_inherited_pous(db, scope_id).get(pou))
         .or_else(|| all_global_pous(db).get(pou))

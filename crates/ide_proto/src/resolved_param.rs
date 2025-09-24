@@ -26,16 +26,16 @@ impl<'db> ToProtocol<'db> for ResolvedParam<'db> {
 
 pub fn get_param_inlay_hint_position(db: &dyn BaseDatabase, param: &ResolvedParam) -> Option<Position> {
     match param.kind(db) {
-        ResolvedParamKind::UnnamedInput { .. } => None,
-        ResolvedParamKind::Input { param, .. } => Some(param.get_span(db).lsp().end),
-        ResolvedParamKind::Output { param, .. } => Some(param.get_span(db).lsp().end),
+        ResolvedParamKind::NonFormal { .. } => None,
+        ResolvedParamKind::FormalInput { param, .. } => Some(param.get_span(db).lsp().end),
+        ResolvedParamKind::FormalOutput { param, .. } => Some(param.get_span(db).lsp().end),
     }
 }
 
 pub fn get_param_ty<'db>(db: &'db dyn BaseDatabase, param: &'db ResolvedParam) -> Option<Ty<'db>> {    
     match param.kind(db) {
-        ResolvedParamKind::UnnamedInput { .. } => None,
-        ResolvedParamKind::Input { resolved_param, .. } => resolved_param.map(|p| p.ty(db).ok()).flatten(),
-        ResolvedParamKind::Output { resolved_param, .. } => resolved_param.map(|p| p.ty(db).ok()).flatten(),
+        ResolvedParamKind::NonFormal { .. } => None,
+        ResolvedParamKind::FormalInput { resolved_param, .. } => resolved_param.map(|p| p.ty(db).ok()).flatten(),
+        ResolvedParamKind::FormalOutput { resolved_param, .. } => resolved_param.map(|p| p.ty(db).ok()).flatten(),
     }
 }
