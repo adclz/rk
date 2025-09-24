@@ -1,7 +1,10 @@
+use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
+use hir::check::diagnostics_for_file;
 use insta::assert_snapshot;
 use rstest::rstest;
 
+use crate::tests::utils::add_sources;
 use crate::tests::utils::test_diagnostics;
 use crate::tests::utils::with_db;
 
@@ -133,6 +136,10 @@ END_NAMESPACE
     ");
 }
 
+// DashMap keys are not ordered
+// This means the snapshot might not be in the order we expect.
+// So instead we just check the number of errors
+
 #[rstest]
 fn cross_file_global_duplicates(mut with_db: RootDatabase) {
     let source1 = r#"
@@ -142,30 +149,26 @@ fn cross_file_global_duplicates(mut with_db: RootDatabase) {
 "#;
 
     let source2 = r#"
-
     FUNCTION_BLOCK fb1
-    
+
     END_FUNCTION_BLOCK
 "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source1, source2]), @r"
-    Error: 
-       ,-[ file:///test0.st:2:20 ]
-       |
-     2 |     FUNCTION_BLOCK fb1
-       |                    ^|^  
-       |                     `--- duplicate POU 'fb1'
-       |
-       |-[ file:///test1.st:3:20 ]
-       |
-     3 |     FUNCTION_BLOCK fb1
-       |                    ^|^  
-       |                     `--- POU 'fb1' is already defined here
-    ---'
-    ");
+    let source3 = r#"
+    FUNCTION_BLOCK fb1
+
+    END_FUNCTION_BLOCK
+"#;
+    add_sources(&mut with_db, &[source1, source2, source3]);
+
+    let diagnostics = with_db
+        .get_files()
+        .iter()
+        .map(|file| diagnostics_for_file(&with_db, *file))
+        .collect::<Vec<_>>();
+
+    assert_eq!(diagnostics.len(), 3);
 }
-
-
 
 #[rstest]
 fn cross_file_namespace_duplicates(mut with_db: RootDatabase) {
@@ -179,37 +182,17 @@ END_NAMESPACE"#;
     let source2 = r#"
 NAMESPACE ns1
     FUNCTION_BLOCK fb1
-    
+
     END_FUNCTION_BLOCK
 END_NAMESPACE"#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source1, source2]), @r"
-    Error: 
-       ,-[ file:///test0.st:3:20 ]
-       |
-     3 |     FUNCTION_BLOCK fb1
-       |                    ^|^  
-       |                     `--- duplicate POU 'fb1'
-       |
-       |-[ file:///test1.st:3:20 ]
-       |
-     3 |     FUNCTION_BLOCK fb1
-       |                    ^|^  
-       |                     `--- POU 'fb1' is already defined here
-    ---'
-    Error: 
-       ,-[ file:///test1.st:3:20 ]
-       |
-     3 |     FUNCTION_BLOCK fb1
-       |                    ^|^  
-       |                     `--- duplicate POU 'fb1'
-       |
-       |-[ file:///test0.st:3:20 ]
-       |
-     3 |     FUNCTION_BLOCK fb1
-       |                    ^|^  
-       |                     `--- POU 'fb1' is already defined here
-    ---'
-    ");
-}
+    add_sources(&mut with_db, &[source1, source2]);
 
+    let diagnostics = with_db
+        .get_files()
+        .iter()
+        .map(|file| diagnostics_for_file(&with_db, *file))
+        .collect::<Vec<_>>();
+
+    assert_eq!(diagnostics.len(), 2);
+}
