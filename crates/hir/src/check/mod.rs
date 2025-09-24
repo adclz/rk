@@ -8,6 +8,7 @@ use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
     check::{
+        check_global_pous::check_duplicate_pous,
         check_semantic_index::Check,
         errors::sem_errors::{AnalysisError, ToIdeDiagnostic},
     },
@@ -15,8 +16,10 @@ use crate::{
 };
 
 pub mod check_array;
+pub mod check_global_pous;
 pub mod check_inheritance;
 pub mod check_init_expr;
+pub mod check_namespaces;
 pub mod check_semantic_index;
 pub mod check_stmt;
 pub mod check_struct;
@@ -36,6 +39,10 @@ pub fn diagnostics_for_file(db: &dyn BaseDatabase, file: File) -> Arc<Vec<IdeDia
         .collect::<Vec<_>>();
     let mut errors = vec![];
     semantic_index(db, file).check(db, &mut errors);
+
+    if let Some(global_errors) = check_duplicate_pous(db).get(&file) {
+        all_diagnostics.extend(global_errors.into_iter().map(|e| e.to_diagnostic(db)));
+    }
 
     all_diagnostics.extend(lexer_errors.into_iter().map(|e| e.to_diagnostic(db)));
     all_diagnostics.extend(errors.into_iter().map(|d| d.to_diagnostic(db)));
