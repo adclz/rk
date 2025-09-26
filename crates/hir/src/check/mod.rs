@@ -10,7 +10,7 @@ use crate::{
     check::{
         check_global_pous::check_duplicate_pous,
         check_semantic_index::Check,
-        errors::sem_errors::{AnalysisError, ToIdeDiagnostic},
+        errors::analysis_error::{AnalysisError, ToIdeDiagnostic},
     },
     hir_def::semantic_index::semantic_index,
 };

@@ -2,9 +2,8 @@ use crate::hir_def::expressions::expression::{Expr, ParamAssign, ParamAssignKind
 use crate::hir_def::expressions::statement::{Stmt, StmtKind};
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::scope::FileScopeId;
-use crate::hir_ty::fucn_call_resolver::ResolvedParam;
-use crate::hir_ty::TyInfo;
 use crate::hir_ty::expr_resolver::{ResolvedExpr, resolve_expr};
+use crate::hir_ty::func_call_resolver::ResolvedParam;
 use crate::hir_ty::ty::{Ty, TyDecl};
 use crate::hir_ty::ty_path_expr_resolver::{ResolvedPathResult, resolved_path_expr};
 use crate::hir_ty::ty_var_access_resolver::{
@@ -143,16 +142,10 @@ impl<'db> ResolveStmtCtx<'db> {
                 condition,
                 cases,
                 else_,
-            } => ResolvedStmt::new(
-                self.db,
-                self.stmt,
-                ResolvedStmtKind::Case {},
-            ),
-            StmtKind::Invocation { target, params } => ResolvedStmt::new(
-                self.db,
-                self.stmt,
-                ResolvedStmtKind::Invocation {},
-            ),
+            } => ResolvedStmt::new(self.db, self.stmt, ResolvedStmtKind::Case {}),
+            StmtKind::Invocation { target, params } => {
+                ResolvedStmt::new(self.db, self.stmt, ResolvedStmtKind::Invocation {})
+            }
             StmtKind::FuncCall(func_call) => {
                 let resolved_func_call = func_call.resolve_func_call(self.db);
                 ResolvedStmt::new(
@@ -204,26 +197,10 @@ impl<'db> ResolveStmtCtx<'db> {
                     body: body.iter().map(|s| *resolve_stmt(self.db, *s)).collect(),
                 },
             ),
-            StmtKind::Continue => ResolvedStmt::new(
-                self.db,
-                self.stmt,
-                ResolvedStmtKind::Continue,
-            ),
-            StmtKind::Exit => ResolvedStmt::new(
-                self.db,
-                self.stmt,
-                ResolvedStmtKind::Exit,
-            ),
-            StmtKind::Return => ResolvedStmt::new(
-                self.db,
-                self.stmt,
-                ResolvedStmtKind::Return,
-            ),
-            StmtKind::Super => ResolvedStmt::new(
-                self.db,
-                self.stmt,
-                ResolvedStmtKind::Super,
-            ),
+            StmtKind::Continue => ResolvedStmt::new(self.db, self.stmt, ResolvedStmtKind::Continue),
+            StmtKind::Exit => ResolvedStmt::new(self.db, self.stmt, ResolvedStmtKind::Exit),
+            StmtKind::Return => ResolvedStmt::new(self.db, self.stmt, ResolvedStmtKind::Return),
+            StmtKind::Super => ResolvedStmt::new(self.db, self.stmt, ResolvedStmtKind::Super),
         }
     }
 }

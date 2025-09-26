@@ -1,16 +1,20 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
+    AstId, HirNodeInfo,
     hir_def::{
         expressions::expression::{
             Elementary, Expr, ExprKind, ParamAssignKind, PrimaryExpr, RefAdress, RefValue,
         },
         scope::FileScopeId,
-    }, hir_ty::{
-        fucn_call_resolver::ResolvedParam, ty_path_expr_resolver::{resolved_path_expr, ResolvedPathResult}, ty_var_access_resolver::{
-            resolve_var_access, ResolvedVarKind, ResolvedVarOrigin, ResolvedVarResult
-        }, TyInfo
-    }, AstId, HirNodeInfo
+    },
+    hir_ty::{
+        func_call_resolver::ResolvedParam,
+        ty_path_expr_resolver::{ResolvedPathResult, resolved_path_expr},
+        ty_var_access_resolver::{
+            ResolvedVarKind, ResolvedVarOrigin, ResolvedVarResult, resolve_var_access,
+        },
+    },
 };
 
 #[salsa::tracked(no_eq, returns(ref))]

@@ -2,7 +2,7 @@ use auto_lsp::anyhow;
 
 use crate::{
     builder::semantic_index::SemanticIndexBuilder,
-    check::errors::sem_errors::AnalysisError,
+    check::errors::analysis_error::AnalysisError,
     hir_def::{
         expressions::{expression::InitExpr, spec::Spec},
         pous::variable::VariableDecl,

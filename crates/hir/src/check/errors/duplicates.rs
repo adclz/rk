@@ -3,7 +3,7 @@ use ide_diagnostic::{IdeDiagnostic, Related, diag};
 
 use crate::{
     HirNodeInfo,
-    check::errors::sem_errors::{AnalysisError, ToIdeDiagnostic},
+    check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic},
     hir_ty::ty::Ty,
 };
 

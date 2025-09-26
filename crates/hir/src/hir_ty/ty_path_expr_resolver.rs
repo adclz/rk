@@ -1,13 +1,12 @@
 use auto_lsp::default::db::BaseDatabase;
 
-use crate::check::errors::path_expr::PathExprError;
-use crate::check::errors::sem_errors::AnalysisError;
+use crate::check::errors::path_expr::PathResolveError;
+use crate::check::errors::analysis_error::AnalysisError;
 use crate::hir_def::expressions::expression::{PathExprKind, VarAccess};
 use crate::hir_def::interned::namespace::{NamespaceAccess, NamespacePath};
 use crate::hir_def::{
     expressions::expression::PathExpr, interned::identifier::SpanIdent, scope::FileScopeId,
 };
-use crate::hir_ty::TyInfo;
 use crate::hir_ty::name_res::{pou_names_res, resolve_namespace_access, variables_in_scope};
 use crate::hir_ty::ty::{Ty, ty_for_pou, ty_for_variable};
 use crate::{AstId, HirNodeInfo};
@@ -29,19 +28,17 @@ pub struct ResolvedPathResult<'db> {
     pub elements: Vec<ResolvedPathElement<'db>>,
 }
 
-impl<'db> TyInfo<'db> for ResolvedPathResult<'db> {
-    fn ty(&self, db: &'db dyn BaseDatabase) -> Result<Ty<'db>, AnalysisError<'db>> {
+impl<'db> ResolvedPathResult<'db> {
+    pub fn ty(&self, db: &'db dyn BaseDatabase) -> Result<Ty<'db>, PathResolveError<'db>> {
         match self.elements(db).last() {
             Some(element) => match &element.kind {
                 ResolvedPathElementKind::Ty(ty) => Ok(*ty),
-                ResolvedPathElementKind::Error(err) => {
-                    Err(AnalysisError::PathExprError(err.clone()))
-                }
+                ResolvedPathElementKind::Error(err) => Err(err.clone()),
             },
-            None => Err(AnalysisError::PathExprError(PathExprError::NoItemInScope {
+            None => Err(PathResolveError::NoItemInScope {
                 expr: self.expr(db),
                 scope: self.expr(db).scope_id(db),
-            })),
+            }),
         }
     }
 
@@ -63,7 +60,7 @@ pub struct ResolvedPathElement<'db> {
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum ResolvedPathElementKind<'db> {
     Ty(Ty<'db>),
-    Error(PathExprError<'db>),
+    Error(PathResolveError<'db>),
 }
 
 impl<'db> ResolvedPathElement<'db> {
@@ -147,7 +144,7 @@ impl<'db> ResolvePathExprCtx<'db> {
                     self.expr,
                     vec![ResolvedPathElement::new(
                         self.expr,
-                        ResolvedPathElementKind::Error(PathExprError::NoItemInScope {
+                        ResolvedPathElementKind::Error(PathResolveError::NoItemInScope {
                             expr: self.expr,
                             scope: self.expr.scope_id(self.db),
                         }),

@@ -11,7 +11,7 @@ use auto_lsp::{
 };
 use ide_diagnostic::{IdeDiagnostic, Related, action, diag, edit};
 
-use crate::check::errors::sem_errors::{AnalysisError, ToIdeDiagnostic};
+use crate::check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic};
 
 impl From<SyntaxError> for AnalysisError<'_> {
     fn from(err: SyntaxError) -> Self {

@@ -4,7 +4,7 @@ use auto_lsp::default::db::BaseDatabase;
 use crate::{
     check::{
         coerce::coerce_ty_with_expr,
-        errors::{init_expr::InitExprError, sem_errors::AnalysisError},
+        errors::{init_expr::InitExprError, analysis_error::AnalysisError},
     },
     hir_ty::{
         array_resolver::resolve_range,
@@ -67,7 +67,13 @@ pub fn check_init_expr<'db>(
         // Struct/Array <-> Constant expression
         (_, ResolvedInitExprKind::ConstantExpr(expr)) => {
             if let Err(err) = coerce_ty_with_expr(db, ty, *expr) {
-                errors.push(err)
+                errors.push(
+                    InitExprError::InitExprTypeExprMismatch {
+                        err: err,
+                        init_expr: *expr,
+                    }
+                    .into(),
+                )
             }
         }
         _ => {}

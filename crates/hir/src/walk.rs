@@ -3,6 +3,7 @@ use std::ops::ControlFlow;
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
+    TypeInfo,
     hir_def::{
         namespace::NamespaceDecl,
         pous::{
@@ -14,8 +15,14 @@ use crate::{
         semantic_index::{HirNode, SemanticIndex},
     },
     hir_ty::{
-        expr_resolver::ResolvedExpr, fucn_call_resolver::{ResolvedParam, ResolvedParamKind}, init_expr_resolver::{resolve_init_expr, ResolvedInitExpr, ResolvedInitExprKind}, stmt_resolver::{resolve_stmt, ResolvedStmt, ResolvedStmtKind}, ty::{ty_for_method_decl, ty_for_method_prot, ty_for_pou, ty_for_variable}, ty_path_expr_resolver::ResolvedPathResult, ty_var_access_resolver::ResolvedVarResult
-    }, TypeInfo,
+        expr_resolver::ResolvedExpr,
+        func_call_resolver::{ResolvedParam, ResolvedParamKind},
+        init_expr_resolver::{ResolvedInitExpr, ResolvedInitExprKind, resolve_init_expr},
+        stmt_resolver::{ResolvedStmt, ResolvedStmtKind, resolve_stmt},
+        ty::{ty_for_method_decl, ty_for_method_prot, ty_for_pou, ty_for_variable},
+        ty_path_expr_resolver::ResolvedPathResult,
+        ty_var_access_resolver::ResolvedVarResult,
+    },
 };
 
 pub trait WalkHir<'db> {
@@ -179,24 +186,36 @@ impl<'db> WalkHir<'db> for ResolvedParam<'db> {
     ) -> ControlFlow<()> {
         f(HirNode::ResolvedParam(*self))?;
         match self.kind(db) {
-            ResolvedParamKind::NonFormal { resolved_param, value } => {
+            ResolvedParamKind::NonFormal {
+                resolved_param,
+                value,
+            } => {
                 if let Some(ty) = resolved_param {
                     ty.walk_hir(db, f)?;
                 }
                 value.walk_hir(db, f)
             }
-            ResolvedParamKind::FormalInput { param, resolved_param, value } => {
+            ResolvedParamKind::FormalInput {
+                param,
+                resolved_param,
+                value,
+            } => {
                 if let Some(ty) = resolved_param {
                     ty.walk_hir(db, f)?;
                 }
                 value.walk_hir(db, f)
-            },
-            ResolvedParamKind::FormalOutput { not, param, resolved_param, variable } => {
+            }
+            ResolvedParamKind::FormalOutput {
+                not,
+                param,
+                resolved_param,
+                variable,
+            } => {
                 if let Some(ty) = resolved_param {
                     ty.walk_hir(db, f)?;
                 }
                 variable.walk_hir(db, f)
-            },
+            }
         }
     }
 }

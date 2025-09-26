@@ -2,7 +2,7 @@ use auto_lsp::{core::span::Span, default::db::BaseDatabase};
 use rustc_hash::FxHashMap;
 
 use crate::{
-    check::errors::path_expr::PathExprError,
+    check::errors::path_expr::PathResolveError,
     hir_def::{
         expressions::{
             expression::Expr,
@@ -548,12 +548,12 @@ impl<'db> Ty<'db> {
         &self,
         db: &'db dyn BaseDatabase,
         step: &PathExprWalkStep<'db>,
-    ) -> Result<Ty<'db>, PathExprError<'db>> {
+    ) -> Result<Ty<'db>, PathResolveError<'db>> {
         match &step {
             PathExprWalkStep::Field { ident, expr } => match self.kind(db) {
                 TyKind::Struct { elements, spec } => elements
                     .get(&ident.ident)
-                    .ok_or(PathExprError::UnknownField {
+                    .ok_or(PathResolveError::UnknownField {
                         expr: *expr,
                         ty: *self,
                     })
@@ -567,7 +567,7 @@ impl<'db> Ty<'db> {
                     .get(&ident.ident)
                     .or_else(|| output.get(&ident.ident))
                     .or_else(|| in_out.get(&ident.ident))
-                    .ok_or(PathExprError::UnknownField {
+                    .ok_or(PathResolveError::UnknownField {
                         expr: *expr,
                         ty: *self,
                     })
@@ -581,27 +581,27 @@ impl<'db> Ty<'db> {
                     .get(&ident.ident)
                     .or_else(|| outputs.get(&ident.ident))
                     .or_else(|| in_outs.get(&ident.ident))
-                    .ok_or(PathExprError::UnknownField {
+                    .ok_or(PathResolveError::UnknownField {
                         expr: *expr,
                         ty: *self,
                     })
                     .cloned(),
                 TyKind::RefTo(inner) => inner.linear(db, step),
-                _ => Err(PathExprError::UnknownField {
+                _ => Err(PathResolveError::UnknownField {
                     expr: *expr,
                     ty: *self,
                 }),
             },
             PathExprWalkStep::Index { expr } => match self.kind(db) {
                 TyKind::Array { typ, .. } => Ok(typ),
-                _ => Err(PathExprError::NotAnArray {
+                _ => Err(PathResolveError::NotAnArray {
                     expr: *expr,
                     ty: *self,
                 }),
             },
             PathExprWalkStep::Deref { expr } => match self.kind(db) {
                 TyKind::RefTo(inner) => Ok(inner),
-                _ => Err(PathExprError::NotAReference {
+                _ => Err(PathResolveError::NotAReference {
                     expr: *expr,
                     ty: *self,
                 }),

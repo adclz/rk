@@ -4,7 +4,7 @@ use auto_lsp::default::db::{BaseDatabase, file::File};
 use rustc_hash::FxHashMap;
 
 use crate::{
-    check::errors::{duplicates::DuplicateError, sem_errors::AnalysisError},
+    check::errors::{duplicates::DuplicateError, analysis_error::AnalysisError},
     hir_def::{interned::identifier::Ident, namespace::NamespaceDecl, pous::pou::PouDecl},
     hir_ty::{name_res::shared_namespaces, ty::ty_for_pou},
 };

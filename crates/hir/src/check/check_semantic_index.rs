@@ -18,7 +18,7 @@ use crate::{
         check_init_expr::check_init_expr,
         check_namespaces::check_duplicate_namespaces,
         check_ty::check_ty,
-        errors::{duplicates::DuplicateError, sem_errors::AnalysisError, stmt::StmtError},
+        errors::{duplicates::DuplicateError, analysis_error::AnalysisError, stmt::StmtError},
     },
     hir_def::{
         expressions::{
@@ -39,7 +39,6 @@ use crate::{
         semantic_index::{HirNode, SemanticIndex, semantic_index},
     },
     hir_ty::{
-        TyInfo,
         expr_resolver::{ResolvedExpr, ResolvedExprKind},
         init_expr_resolver::{ResolvedInitExpr, resolve_init_expr},
         name_res::{all_global_pous, all_local_pous, shared_namespaces},

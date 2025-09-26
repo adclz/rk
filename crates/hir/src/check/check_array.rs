@@ -3,7 +3,7 @@ use auto_lsp::default::db::BaseDatabase;
 use crate::{
     check::{
         check_semantic_index::Check,
-        errors::{sem_errors::AnalysisError, ty::TyError},
+        errors::{analysis_error::AnalysisError, ty::TyError},
     },
     hir_def::expressions::spec::Array,
     hir_ty::{array_resolver::resolve_range, expr_resolver::resolve_expr},

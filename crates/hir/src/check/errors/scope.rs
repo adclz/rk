@@ -7,7 +7,7 @@ use ide_diagnostic::{IdeDiagnostic, Related, diag};
 
 use crate::{
     HirNodeInfo,
-    check::errors::sem_errors::ToIdeDiagnostic,
+    check::errors::analysis_error::ToIdeDiagnostic,
     hir_def::{interned::namespace::NamespacePath, namespace::NamespaceDecl, using::Using},
 };
 

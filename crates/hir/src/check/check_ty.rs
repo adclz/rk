@@ -1,7 +1,7 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    check::errors::{sem_errors::AnalysisError, ty::TyError},
+    check::errors::{analysis_error::AnalysisError, ty::TyError},
     hir_ty::ty::{Ty, TyKind},
 };
 
@@ -9,7 +9,7 @@ pub fn check_ty<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>, errors: &mut Vec<An
     match ty.kind(db) {
         TyKind::Unresolved(unresolved) => {
             errors.push(
-                TyError::UnresolvedType {
+                TyError::UnresolvedNamespace {
                     ty,
                     path: unresolved,
                 }

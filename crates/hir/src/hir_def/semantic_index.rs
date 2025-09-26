@@ -9,18 +9,18 @@ use auto_lsp::default::db::{BaseDatabase, file::File};
 use rustc_hash::FxHashMap;
 use tracing::info_span;
 
-use crate::hir_ty::fucn_call_resolver::ResolvedParam;
 use crate::HirNodeInfo;
 use crate::builder::semantic_index::SemanticIndexBuilder;
-use crate::check::errors::sem_errors::AnalysisError;
+use crate::check::errors::analysis_error::AnalysisError;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::PouDecl;
 use crate::hir_def::scope::{FileScopeId, Scope};
 use crate::hir_def::using::Using;
 use crate::hir_ty::expr_resolver::ResolvedExpr;
+use crate::hir_ty::func_call_resolver::ResolvedParam;
 use crate::hir_ty::init_expr_resolver::ResolvedInitExpr;
-use crate::hir_ty::stmt_resolver::{ResolvedStmt};
+use crate::hir_ty::stmt_resolver::ResolvedStmt;
 use crate::hir_ty::ty::Ty;
 use crate::hir_ty::ty_path_expr_resolver::ResolvedPathResult;
 use crate::hir_ty::ty_var_access_resolver::ResolvedVarResult;
@@ -145,7 +145,7 @@ pub enum HirNode<'db> {
     ResolvedPathResult(ResolvedPathResult<'db>),
     ResolvedVarResult(ResolvedVarResult<'db>),
     ResolvedStmt(ResolvedStmt<'db>),
-    ResolvedParam(ResolvedParam<'db>), 
+    ResolvedParam(ResolvedParam<'db>),
     ResolvedExpr(ResolvedExpr<'db>),
     ResolvedInitExpr(ResolvedInitExpr<'db>),
 }

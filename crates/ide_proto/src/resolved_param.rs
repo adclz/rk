@@ -1,5 +1,14 @@
-use auto_lsp::{default::db::BaseDatabase, lsp_types::{Hover, InlayHint, InlayHintKind, InlayHintLabel, Position}};
-use hir::{hir_ty::{fucn_call_resolver::{ResolvedParam, ResolvedParamKind}, ty::Ty, TyInfo}, HirNodeInfo, TypeInfo};
+use auto_lsp::{
+    default::db::BaseDatabase,
+    lsp_types::{Hover, InlayHint, InlayHintKind, InlayHintLabel, Position},
+};
+use hir::{
+    HirNodeInfo, TypeInfo,
+    hir_ty::{
+        func_call_resolver::{ResolvedParam, ResolvedParamKind},
+        ty::Ty,
+    },
+};
 
 use crate::ToProtocol;
 
@@ -24,7 +33,10 @@ impl<'db> ToProtocol<'db> for ResolvedParam<'db> {
     }
 }
 
-pub fn get_param_inlay_hint_position(db: &dyn BaseDatabase, param: &ResolvedParam) -> Option<Position> {
+pub fn get_param_inlay_hint_position(
+    db: &dyn BaseDatabase,
+    param: &ResolvedParam,
+) -> Option<Position> {
     match param.kind(db) {
         ResolvedParamKind::NonFormal { .. } => None,
         ResolvedParamKind::FormalInput { param, .. } => Some(param.get_span(db).lsp().end),
@@ -32,10 +44,14 @@ pub fn get_param_inlay_hint_position(db: &dyn BaseDatabase, param: &ResolvedPara
     }
 }
 
-pub fn get_param_ty<'db>(db: &'db dyn BaseDatabase, param: &'db ResolvedParam) -> Option<Ty<'db>> {    
+pub fn get_param_ty<'db>(db: &'db dyn BaseDatabase, param: &'db ResolvedParam) -> Option<Ty<'db>> {
     match param.kind(db) {
         ResolvedParamKind::NonFormal { .. } => None,
-        ResolvedParamKind::FormalInput { resolved_param, .. } => resolved_param.map(|p| p.ty(db).ok()).flatten(),
-        ResolvedParamKind::FormalOutput { resolved_param, .. } => resolved_param.map(|p| p.ty(db).ok()).flatten(),
+        ResolvedParamKind::FormalInput { resolved_param, .. } => {
+            resolved_param.map(|p| p.ty(db).ok()).flatten()
+        }
+        ResolvedParamKind::FormalOutput { resolved_param, .. } => {
+            resolved_param.map(|p| p.ty(db).ok()).flatten()
+        }
     }
 }

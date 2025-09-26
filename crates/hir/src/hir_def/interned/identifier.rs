@@ -8,7 +8,7 @@ use std::{hash::Hash, ops::Deref};
 
 use crate::{
     builder::semantic_index::SemanticIndexBuilder,
-    check::errors::sem_errors::AnalysisError,
+    check::errors::analysis_error::AnalysisError,
     hir_def::scope::FileScopeId,
     {AstId, HirNodeInfo},
 };

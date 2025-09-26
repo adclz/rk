@@ -5,7 +5,9 @@ use auto_lsp::{core::errors::PositionError, default::db::BaseDatabase};
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::check::errors::{
-    coerce::CoerceError, duplicates::DuplicateError, inheritance::MethodError, init_expr::InitExprError, literals::LiteralError, path_expr::PathExprError, scope::NamespaceError, stmt::StmtError, syntax::SyntaxError, ty::TyError
+    duplicates::DuplicateError, inheritance::MethodError, init_expr::InitExprError,
+    literals::LiteralError, path_expr::PathResolveError, scope::NamespaceError, stmt::StmtError,
+    syntax::SyntaxError, ty::TyError,
 };
 
 pub trait ToIdeDiagnostic<'db> {
@@ -19,13 +21,10 @@ pub enum AnalysisError<'db> {
     SyntaxError(SyntaxError),
     NamespaceError(NamespaceError<'db>),
     DuplicateError(DuplicateError<'db>),
-    PathExprError(PathExprError<'db>),
     StmtError(StmtError<'db>),
     InitExprError(InitExprError<'db>),
     MethodError(MethodError<'db>),
     TyError(TyError<'db>),
-    LiteralError(LiteralError<'db>),
-    CoerceError(CoerceError<'db>)
 }
 
 impl Error for AnalysisError<'_> {}
@@ -49,13 +48,10 @@ impl<'db> ToIdeDiagnostic<'db> for AnalysisError<'db> {
             Self::SyntaxError(err) => err.to_diagnostic(db),
             Self::NamespaceError(err) => err.to_diagnostic(db),
             Self::DuplicateError(err) => err.to_diagnostic(db),
-            Self::PathExprError(err) => err.to_diagnostic(db),
             Self::StmtError(err) => err.to_diagnostic(db),
             Self::InitExprError(err) => err.to_diagnostic(db),
             Self::MethodError(err) => err.to_diagnostic(db),
             Self::TyError(err) => err.to_diagnostic(db),
-            Self::LiteralError(err) => err.to_diagnostic(db),
-            Self::CoerceError(err) => err.to_diagnostic(db),
         }
     }
 }

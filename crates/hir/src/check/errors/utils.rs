@@ -29,7 +29,9 @@ pub fn get_decl_for_ty(db: &dyn BaseDatabase, ty: Ty<'_>, diag: &mut IdeDiagnost
     ));
 }
 
-pub fn add_candidates(candidates: &FuzzyResult, diag: &mut IdeDiagnostic) {
+pub fn get_candidates(candidates: &FuzzyResult) -> String {
+    let mut result = String::new();
+
     if !candidates.variables.is_empty() {
         let mut note = "local variable(s) with similar(s) name exist:\n".to_string();
         let display_count = candidates.variables.len().min(5);
@@ -45,7 +47,7 @@ pub fn add_candidates(candidates: &FuzzyResult, diag: &mut IdeDiagnostic) {
             note.push_str("\n  ...");
         }
 
-        diag.with_note(note);
+        result.push_str(&note);
     };
 
     if !candidates.struct_fields.is_empty() {
@@ -68,7 +70,7 @@ pub fn add_candidates(candidates: &FuzzyResult, diag: &mut IdeDiagnostic) {
             note.push_str("\n  ...");
         }
 
-        diag.with_note(note);
+        result.push_str(&note);
     };
 
     if !candidates.pou.is_empty() {
@@ -86,6 +88,7 @@ pub fn add_candidates(candidates: &FuzzyResult, diag: &mut IdeDiagnostic) {
             note.push_str("\n  ...");
         }
 
-        diag.with_note(note);
+        result.push_str(&note);
     };
+    result
 }

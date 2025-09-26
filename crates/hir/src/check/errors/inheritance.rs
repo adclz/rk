@@ -3,7 +3,7 @@ use ide_diagnostic::{IdeDiagnostic, diag};
 
 use crate::{
     check::errors::{
-        sem_errors::{AnalysisError, ToIdeDiagnostic},
+        analysis_error::{AnalysisError, ToIdeDiagnostic},
         utils::get_decl_for_ty,
     },
     hir_ty::ty::Ty,

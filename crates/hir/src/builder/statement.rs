@@ -1,6 +1,6 @@
 use crate::builder::expression::{ParseExpr, ParseExpression, ParseVariableAccess};
 use crate::builder::semantic_index::SemanticIndexBuilder;
-use crate::check::errors::sem_errors::AnalysisError;
+use crate::check::errors::analysis_error::AnalysisError;
 use crate::check::errors::syntax::SyntaxError;
 use crate::hir_def::expressions::expression::{FuncCall, ParamAssign, ParamAssignKind, SymbolicVariable};
 use crate::hir_def::expressions::statement::{CaseKind, Stmt, StmtKind};

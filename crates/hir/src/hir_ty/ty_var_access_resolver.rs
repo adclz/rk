@@ -1,14 +1,18 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    check::errors::sem_errors::AnalysisError,
+    AstId, HirNodeInfo,
+    check::errors::{path_expr::PathResolveError, analysis_error::AnalysisError},
     hir_def::{
-        expressions::expression::{Expr, VariableAccess, VariableAccessKind}, interned::identifier::SpanIdent, pous::variable::VariableDecl, scope::FileScopeId
+        expressions::expression::{Expr, VariableAccess, VariableAccessKind},
+        interned::identifier::SpanIdent,
+        pous::variable::VariableDecl,
+        scope::FileScopeId,
     },
     hir_ty::{
-        ty::{Ty, TyDecl}, ty_path_expr_resolver::{resolved_path_expr, ResolvedPathResult}, TyInfo
+        ty::{Ty, TyDecl},
+        ty_path_expr_resolver::{ResolvedPathResult, resolved_path_expr},
     },
-    AstId, HirNodeInfo,
 };
 
 pub fn resolve_var_access<'db>(
@@ -29,7 +33,7 @@ pub struct ResolvedVarResult<'db> {
 pub enum ResolvedVarOrigin<'db> {
     Access(VariableAccess<'db>),
     NonFormal(Expr<'db>),
-    Formal(SpanIdent<'db>)
+    Formal(SpanIdent<'db>),
 }
 
 impl<'db> ResolvedVarResult<'db> {
@@ -87,11 +91,20 @@ pub enum ResolvedVarKind<'db> {
     Param(Ty<'db>),
 }
 
-impl<'db> TyInfo<'db> for ResolvedVarResult<'db> {
-    fn ty(&self, db: &'db dyn BaseDatabase) -> Result<Ty<'db>, AnalysisError<'db>> {
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum VarResolveError<'db> {
+    NotFound,
+    InvalidType,
+    PathResolveError { err: PathResolveError<'db> },
+}
+
+impl<'db> ResolvedVarResult<'db> {
+    pub fn ty(&self, db: &'db dyn BaseDatabase) -> Result<Ty<'db>, VarResolveError<'db>> {
         match self.kind(db) {
             ResolvedVarKind::Direct => todo!(), // todo: direct var type
-            ResolvedVarKind::Symbolic(ref path) => path.ty(db),
+            ResolvedVarKind::Symbolic(path) => path
+                .ty(db)
+                .map_err(|err| VarResolveError::PathResolveError { err }),
             ResolvedVarKind::Param(ty) => Ok(ty),
         }
     }
@@ -100,7 +113,7 @@ impl<'db> TyInfo<'db> for ResolvedVarResult<'db> {
         match self.origin(db) {
             ResolvedVarOrigin::Access(access) => access.get_id(db),
             ResolvedVarOrigin::NonFormal(expr) => expr.get_id(db),
-            ResolvedVarOrigin::Formal(param) => param.get_id(db)
+            ResolvedVarOrigin::Formal(param) => param.get_id(db),
         }
     }
 }
@@ -139,7 +152,7 @@ impl<'db> HirNodeInfo<'db> for ResolvedVarResult<'db> {
         match self.origin(db) {
             ResolvedVarOrigin::Access(access) => access.get_id(db),
             ResolvedVarOrigin::NonFormal(expr) => expr.get_id(db),
-            ResolvedVarOrigin::Formal(param) => param.get_id(db)
+            ResolvedVarOrigin::Formal(param) => param.get_id(db),
         }
     }
 
@@ -147,7 +160,7 @@ impl<'db> HirNodeInfo<'db> for ResolvedVarResult<'db> {
         match self.origin(db) {
             ResolvedVarOrigin::Access(access) => access.get_scope_id(db),
             ResolvedVarOrigin::NonFormal(expr) => expr.get_scope_id(db),
-            ResolvedVarOrigin::Formal(param) => param.get_scope_id(db)
+            ResolvedVarOrigin::Formal(param) => param.get_scope_id(db),
         }
     }
 }

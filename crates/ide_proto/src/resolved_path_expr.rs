@@ -1,5 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
-use hir::hir_ty::{TyInfo, ty_path_expr_resolver::ResolvedPathResult};
+use hir::hir_ty::{ty_path_expr_resolver::ResolvedPathResult};
 
 use crate::ToProtocol;
 

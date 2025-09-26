@@ -5,8 +5,8 @@ use crate::{
     HirNodeInfo,
     check::{
         errors::{
-            sem_errors::{AnalysisError, ToIdeDiagnostic},
-            utils::add_candidates,
+            analysis_error::{AnalysisError, ToIdeDiagnostic},
+            utils::get_candidates,
         },
         recovery::pou::fuzzy_pou_local_items,
     },
@@ -18,8 +18,8 @@ use crate::{
     hir_ty::ty::Ty,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
-pub enum PathExprError<'db> {
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum PathResolveError<'db> {
     NoItemInScope {
         expr: PathExpr<'db>,
         scope: FileScopeId<'db>,
@@ -40,62 +40,4 @@ pub enum PathExprError<'db> {
         ty: Ty<'db>,
         expr: PathExpr<'db>,
     },
-}
-
-impl<'db> From<PathExprError<'db>> for AnalysisError<'db> {
-    fn from(err: PathExprError<'db>) -> Self {
-        AnalysisError::PathExprError(err)
-    }
-}
-
-impl<'db> ToIdeDiagnostic<'db> for PathExprError<'db> {
-    fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
-        match self {
-            Self::NoItemInScope { expr, scope } => {
-                let mut diag = diag()
-                    .message(format!(
-                        "no item '{}' in scope",
-                        expr.to_string(db).text(db)
-                    ))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .range(expr.get_span(db).clone())
-                    .call();
-
-                if let ScopeKind::Pou(pou) = semantic_index(db, scope.file(db))
-                    .get_scope(db, *scope)
-                    .kind
-                {
-                    add_candidates(
-                        &fuzzy_pou_local_items(db, pou, expr.to_string(db).as_str(db)),
-                        &mut diag,
-                    );
-                }
-
-                diag
-            }
-            Self::UnknownField { ty: origin, expr } => diag()
-                .message(format!(
-                    "field {} not found in type",
-                    expr.to_string(db).text(db)
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .range(expr.get_span(db).clone())
-                .call(),
-            Self::UnexpectedIndex { ty: origin, expr } => diag()
-                .message("unexpected index expression".to_string())
-                .severity(DiagnosticSeverity::ERROR)
-                .range(expr.get_span(db).clone())
-                .call(),
-            Self::NotAReference { ty: origin, expr } => diag()
-                .message("type can not be dereferenced".to_string())
-                .severity(DiagnosticSeverity::ERROR)
-                .range(expr.get_span(db).clone())
-                .call(),
-            Self::NotAnArray { ty: origin, expr } => diag()
-                .message("type is not an array".to_string())
-                .severity(DiagnosticSeverity::ERROR)
-                .range(expr.get_span(db).clone())
-                .call(),
-        }
-    }
 }

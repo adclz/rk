@@ -1,6 +1,6 @@
 use crate::AstId;
 use crate::builder::semantic_index::SemanticIndexBuilder;
-use crate::check::errors::sem_errors::AnalysisError;
+use crate::check::errors::analysis_error::AnalysisError;
 use crate::hir_def::scope::FileScopeId;
 use crate::{HirNodeInfo, hir_def::interned::identifier::SpanIdent};
 use auto_lsp::default::db::tracked::get_ast;

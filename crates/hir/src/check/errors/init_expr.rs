@@ -2,16 +2,14 @@ use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, diag};
 
 use crate::{
-    HirNodeInfo,
     check::{
         errors::{
-            sem_errors::{AnalysisError, ToIdeDiagnostic},
-            utils::{add_candidates, get_decl_for_ty, get_def_for_ty},
+            coerce::{DiagnosticDescription, ExprMismatch},
+            analysis_error::{AnalysisError, ToIdeDiagnostic},
+            utils::{get_candidates, get_decl_for_ty, get_def_for_ty},
         },
         recovery::struct_::fuzzy_struct_fields,
-    },
-    hir_def::interned::identifier::SpanIdent,
-    hir_ty::{init_expr_resolver::ResolvedInitExpr, ty::Ty},
+    }, hir_def::interned::identifier::SpanIdent, hir_ty::{expr_resolver::ResolvedExpr, init_expr_resolver::ResolvedInitExpr, ty::Ty}, HirNodeInfo
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -26,6 +24,10 @@ pub enum InitExprError<'db> {
         provided_count: u64,
         max_capacity: u64,
         init_expr: ResolvedInitExpr<'db>,
+    },
+    InitExprTypeExprMismatch {
+        err: ExprMismatch<'db>,
+        init_expr: ResolvedExpr<'db>,
     },
 }
 
@@ -44,7 +46,7 @@ impl<'db> ToIdeDiagnostic<'db> for InitExprError<'db> {
                 unknown_field,
             } => {
                 let mut diag = diag()
-                    .message(format!("No field '{}' in STRUCT", field_name.text(db)))
+                    .message(format!("no field '{}' in STRUCT", field_name.text(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(field_name.get_span(db))
                     .call();
@@ -52,7 +54,7 @@ impl<'db> ToIdeDiagnostic<'db> for InitExprError<'db> {
                 get_decl_for_ty(db, *ztruct, &mut diag);
 
                 let candidates = fuzzy_struct_fields(db, *ztruct, field_name.as_str(db));
-                add_candidates(&candidates, &mut diag);
+                diag.with_note(get_candidates(&candidates));
                 diag
             }
             InitExprError::ArrayTooManyElements {
@@ -71,6 +73,17 @@ impl<'db> ToIdeDiagnostic<'db> for InitExprError<'db> {
                     .call();
 
                 get_decl_for_ty(db, *array, &mut diag);
+                diag
+            }
+            InitExprError::InitExprTypeExprMismatch { err, init_expr } => {
+                let mut diag = diag()
+                    .message(format!("invalid value initializer: {}", err.description(db)))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(init_expr.get_span(db))
+                    .call();
+
+                err.note(db, &mut diag);
+                err.related(db, &mut diag);
                 diag
             }
         }

@@ -1,12 +1,12 @@
+pub mod coerce;
 pub mod duplicates;
 pub mod inheritance;
 pub mod init_expr;
 pub mod literals;
 pub mod path_expr;
 pub mod scope;
-pub mod sem_errors;
+pub mod analysis_error;
 pub mod stmt;
 pub mod syntax;
 pub mod ty;
 pub mod utils;
-pub mod coerce;

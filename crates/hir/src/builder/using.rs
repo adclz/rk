@@ -3,7 +3,7 @@ use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNodeId;
 
 use crate::builder::semantic_index::SemanticIndexBuilder;
-use crate::check::errors::sem_errors::AnalysisError;
+use crate::check::errors::analysis_error::AnalysisError;
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::interned::namespace::NamespacePath;
 use crate::hir_def::using::Using;

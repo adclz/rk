@@ -3,7 +3,7 @@ use ide_diagnostic::{IdeDiagnostic, Related, diag};
 
 use crate::{
     HirNodeInfo,
-    check::errors::sem_errors::{AnalysisError, ToIdeDiagnostic},
+    check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic},
     hir_def::interned::namespace::SpanNamespaceAccess,
     hir_ty::{expr_resolver::ResolvedExpr, ty::Ty},
 };
@@ -17,7 +17,7 @@ pub enum TyError<'db> {
         origin: Ty<'db>,
         target: Ty<'db>,
     },
-    UnresolvedType {
+    UnresolvedNamespace {
         ty: Ty<'db>,
         path: SpanNamespaceAccess<'db>,
     },
@@ -43,7 +43,7 @@ impl<'db> From<TyError<'db>> for AnalysisError<'db> {
 impl<'db> ToIdeDiagnostic<'db> for TyError<'db> {
     fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
         match self {
-            TyError::UnresolvedType { ty, path } => diag()
+            TyError::UnresolvedNamespace { ty, path } => diag()
                 .message(format!("unknown item '{}'", path.path.to_string(db)))
                 .severity(DiagnosticSeverity::ERROR)
                 .range(path.get_span(db))

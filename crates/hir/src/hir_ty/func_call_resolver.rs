@@ -8,7 +8,6 @@ use crate::{
         scope::FileScopeId,
     },
     hir_ty::{
-        TyInfo,
         expr_resolver::{ResolvedExpr, resolve_expr},
         ty::Ty,
         ty_path_expr_resolver::{ResolvedPathResult, resolved_path_expr},
