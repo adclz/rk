@@ -49,7 +49,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                                     )
                                     }
                                 }
-                        }
+                        } 
                     }
                 }
                 Ok(Stmt::new(
@@ -301,11 +301,16 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
             StmtType::RepeatStmt(repeat) => {
                 let body = repeat
                     .repeat_body
-                    .cast(sema.ast)
-                    .children
-                    .iter()
-                    .map(|stmt| stmt.cast(sema.ast).to_statement(sema))
-                    .collect::<Result<Vec<_>, AnalysisError<'db>>>()?;
+                    .as_ref()
+                    .map(|body| {
+                        body.cast(sema.ast)
+                            .children
+                            .iter()
+                            .map(|stmt| stmt.cast(sema.ast).to_statement(sema))
+                            .collect::<Result<Vec<_>, AnalysisError<'db>>>()
+                    })
+                    .transpose()?
+                    .unwrap_or_else(std::vec::Vec::new);
 
                 let condition = repeat.repeat_cond.cast(sema.ast).to_expr(sema)?;
                 Ok(Stmt::new(
@@ -319,11 +324,16 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                 let condition = while_stmt.while_cond.cast(sema.ast).to_expr(sema)?;
                 let body = while_stmt
                     .while_body
-                    .cast(sema.ast)
-                    .children
-                    .iter()
-                    .map(|stmt| stmt.cast(sema.ast).to_statement(sema))
-                    .collect::<Result<Vec<_>, AnalysisError<'db>>>()?;
+                    .as_ref()
+                    .map(|body| {
+                        body.cast(sema.ast)
+                            .children
+                            .iter()
+                            .map(|stmt| stmt.cast(sema.ast).to_statement(sema))
+                            .collect::<Result<Vec<_>, AnalysisError<'db>>>()
+                    })
+                    .transpose()?
+                    .unwrap_or_else(std::vec::Vec::new);
 
                 Ok(Stmt::new(
                     sema.db,

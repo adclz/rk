@@ -1794,14 +1794,14 @@ module.exports = grammar({
         "WHILE",
         field("while_cond", $._expression),
         "DO",
-        field("while_body", $.stmt_list),
+        field("while_body", optional($.stmt_list)),
         "END_WHILE",
       ),
 
     repeat_stmt: ($) =>
       seq(
         "REPEAT",
-        field("repeat_body", $.stmt_list),
+        field("repeat_body", optional($.stmt_list)),
         "UNTIL",
         field("repeat_cond", $._expression),
         "END_REPEAT",
