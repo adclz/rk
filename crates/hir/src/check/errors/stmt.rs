@@ -127,6 +127,9 @@ pub enum StmtError<'db> {
     WhileConditionIsNotABool {
         condition: ResolvedExpr<'db>,
     },
+    RepeatConditionIsNotABool {
+        condition: ResolvedExpr<'db>,
+    },
 }
 
 impl<'db> From<StmtError<'db>> for AnalysisError<'db> {
@@ -436,6 +439,14 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
             Self::WhileConditionIsNotABool { condition } => {
                 let mut diag = diag()
                     .message("WHILE condition is not returning a boolean".into())
+                    .range(condition.get_span(db))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .call();
+                diag
+            }
+            Self::RepeatConditionIsNotABool { condition } => {
+                let mut diag = diag()
+                    .message("REPEAT condition is not returning a boolean".into())
                     .range(condition.get_span(db))
                     .severity(DiagnosticSeverity::ERROR)
                     .call();

@@ -93,6 +93,21 @@ impl<'db> Check<'db> for ResolvedStmt<'db> {
 
                 body.check(db, errors);
             }
+            ResolvedStmtKind::Repeat { condition, body } => {
+                match coerce_bool_with_expr(db, *condition) {
+                    Ok(is_valid) => {
+                        if !is_valid {
+                            errors.push(
+                                StmtError::RepeatConditionIsNotABool {
+                                    condition: *condition,
+                                }
+                                .into(),
+                            );
+                        }
+                    }
+                    Err(err) => errors.push(err),
+                }
+            }
             ResolvedStmtKind::Case {} => {}
             ResolvedStmtKind::Invocation {} => {
                 // todo
