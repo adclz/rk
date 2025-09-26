@@ -71,6 +71,10 @@ fn fuzzy_local_variables(mut with_db: RootDatabase) {
      9 |             engine := ULINT#5;
        |             ^^^|^^  
        |                `---- invalid assignment: no item 'engine' in scope
+       | 
+       | Note: local variable(s) with similar(s) name exist:
+       |       - engine2
+       |       - no_engine
     ---'
     ");
 }

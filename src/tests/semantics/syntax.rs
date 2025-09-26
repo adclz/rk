@@ -195,6 +195,7 @@ END_FUNCTION_BLOCK"#;
      3 |     THIS.a := 0
        |     ^^^|^^  
        |        `---- invalid assignment: no item 'a' in scope
+       | 
     ---'
     ");
 }
