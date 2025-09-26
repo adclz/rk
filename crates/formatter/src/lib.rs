@@ -36,7 +36,7 @@ static SURROUND_SPACES: &str = r#"
     "RETURN"
     "EXIT"
     "CONTINUE"
-    ":=" "=" ":" "<=" "<" ">=" ">" "<>" "+" "-" "*" "/" "%" "^"
+    ":=" "=" "<=" "<" ">=" ">" "<>" "+" "-" "*" "/" "%" "^"
     "&" "AND" "OR"
     (identifier)
     (line_comment)
@@ -44,8 +44,10 @@ static SURROUND_SPACES: &str = r#"
     (pascal_style_comment)
 ] @prepend_space @append_space
 
-";" @prepend_antispace
-"NOT" @append_space
+"(" @append_antispace
+")" @prepend_antispace
+[":" ";"] @prepend_antispace
+["NOT" ":"] @append_space
 "#;
 
 static NEW_LINES: &str = r#"
@@ -72,22 +74,13 @@ static NEW_LINES: &str = r#"
     "END_VAR"
     "END_METHOD"
 
-    "RETURN"
-    "CONTINUE"
     "END_IF"
     "END_WHILE"
     "END_FOR"
     "UNTIL"
     "END_REPEAT"
     "END_CASE"
-
-    (assign)
-    (if_stmt)
-    (case_stmt)
     (case_selection)
-    (for_stmt)
-    (while_stmt)
-    (repeat_stmt)
 
     (var_decl_init_list)
     (input_var) (fb_input_var)
@@ -100,12 +93,48 @@ static NEW_LINES: &str = r#"
     (global_var_decl)
 ] @prepend_hardline
 
+
 [
+    (assign)
+    (func_call)
+    (invocation)
+    (super_stmt)
+    "RETURN"
+    (if_stmt)
+    (case_stmt)
+    (for_stmt)
+    (while_stmt)
+    (repeat_stmt)
+    "EXIT"
+    "CONTINUE"
+] @prepend_spaced_softline
+
+(
+  "," @append_spaced_softline
+  .
+  [(line_comment) (c_style_comment) (pascal_style_comment)]* @do_nothing
+)
+
+(
+  [";"] @append_hardline
+  .
+  [(line_comment) (c_style_comment) (pascal_style_comment)]* @do_nothing
+)
+
+[
+    (line_comment)
     "THEN"
     "ELSE"
     "DO"
     "OF"
 ] @append_hardline
+"#;
+
+static BLOCKS: &str = r#"
+(func_call
+  "(" @append_spaced_softline @append_indent_start
+  ")" @prepend_spaced_softline @prepend_indent_end
+)
 "#;
 
 static INDENTATIONS: &str = r#"
@@ -178,18 +207,11 @@ static ALLOW_BLANK_LINE: &str = r#"
     (func_body)
     (fb_body)
 
-    ; Statements
-    (assign)
-    (if_stmt)
-    (case_stmt)
-    (for_stmt)
-    (func_call)
-    (invocation)
-    (while_stmt)
-    (repeat_stmt)
     "RETURN"
     "CONTINUE"
 ] @allow_blank_line_before
+
+(stmt_list . (_) @allow_blank_line_before)
 "#;
 
 static LEAF: &str = r#"
@@ -212,20 +234,16 @@ static SEMI_COLONS: &str = r#"
     (loc_partly_var)
     (external_decl)
     (global_var_decl)
-
-    ; Statements
-    (assign)
-    (if_stmt)
-    (case_stmt)
-    (for_stmt)
-    (while_stmt)
-    (repeat_stmt)
-    "RETURN"
-    "CONTINUE"
   ] @append_delimiter
   .
   ";"* @do_nothing
   (#delimiter! ";")
+)
+
+(stmt_list . (_) @append_delimiter 
+    . 
+    ";"* @do_nothing
+    (#delimiter! ";")
 )
 
 ; case selection
@@ -245,6 +263,7 @@ pub static TOPIARY_LANG: LazyLock<Language> = LazyLock::new(|| Language {
     {ALLOW_BLANK_LINE}
     {LEAF}
     {SEMI_COLONS}
+    {BLOCKS}
 "#
         ),
     )
