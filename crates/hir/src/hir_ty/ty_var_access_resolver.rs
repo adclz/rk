@@ -1,18 +1,15 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    AstId, HirNodeInfo,
-    check::errors::{path_expr::PathResolveError, analysis_error::AnalysisError},
-    hir_def::{
+    check::errors::{analysis_error::AnalysisError, path_error::PathResolveError, var_error::VarResolveError}, hir_def::{
         expressions::expression::{Expr, VariableAccess, VariableAccessKind},
         interned::identifier::SpanIdent,
         pous::variable::VariableDecl,
         scope::FileScopeId,
-    },
-    hir_ty::{
+    }, hir_ty::{
         ty::{Ty, TyDecl},
-        ty_path_expr_resolver::{ResolvedPathResult, resolved_path_expr},
-    },
+        ty_path_expr_resolver::{resolved_path_expr, ResolvedPathResult},
+    }, AstId, HirNodeInfo
 };
 
 pub fn resolve_var_access<'db>(
@@ -91,13 +88,6 @@ pub enum ResolvedVarKind<'db> {
     Param(Ty<'db>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum VarResolveError<'db> {
-    NotFound,
-    InvalidType,
-    PathResolveError { err: PathResolveError<'db> },
-}
-
 impl<'db> ResolvedVarResult<'db> {
     pub fn ty(&self, db: &'db dyn BaseDatabase) -> Result<Ty<'db>, VarResolveError<'db>> {
         match self.kind(db) {
@@ -106,14 +96,6 @@ impl<'db> ResolvedVarResult<'db> {
                 .ty(db)
                 .map_err(|err| VarResolveError::PathResolveError { err }),
             ResolvedVarKind::Param(ty) => Ok(ty),
-        }
-    }
-
-    fn place(&self, db: &'db dyn BaseDatabase) -> AstId {
-        match self.origin(db) {
-            ResolvedVarOrigin::Access(access) => access.get_id(db),
-            ResolvedVarOrigin::NonFormal(expr) => expr.get_id(db),
-            ResolvedVarOrigin::Formal(param) => param.get_id(db),
         }
     }
 }

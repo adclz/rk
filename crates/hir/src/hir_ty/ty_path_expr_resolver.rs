@@ -1,6 +1,6 @@
 use auto_lsp::default::db::BaseDatabase;
 
-use crate::check::errors::path_expr::PathResolveError;
+use crate::check::errors::path_error::PathResolveError;
 use crate::check::errors::analysis_error::AnalysisError;
 use crate::hir_def::expressions::expression::{PathExprKind, VarAccess};
 use crate::hir_def::interned::namespace::{NamespaceAccess, NamespacePath};

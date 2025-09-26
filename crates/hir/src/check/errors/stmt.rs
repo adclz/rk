@@ -2,20 +2,15 @@ use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, Related, diag};
 
 use crate::{
-    HirNodeInfo,
     check::errors::{
-        coerce::{DiagnosticDescription, ExprMismatch, TypeMismatch},
-        analysis_error::{AnalysisError, ToIdeDiagnostic},
-        utils::{get_decl_and_def_for_ty, get_decl_for_ty},
-    },
-    hir_def::interned::identifier::SpanIdent,
-    hir_ty::{
+        analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic}, coerce::{ExprMismatch, TypeMismatch}, utils::{get_decl_and_def_for_ty, get_decl_for_ty}, var_error::VarResolveError
+    }, hir_def::interned::identifier::SpanIdent, hir_ty::{
         expr_resolver::ResolvedExpr,
         stmt_resolver::ResolvedStmt,
         ty::Ty,
         ty_path_expr_resolver::ResolvedPathResult,
-        ty_var_access_resolver::{ResolvedVarResult, VarResolveError},
-    },
+        ty_var_access_resolver::ResolvedVarResult,
+    }, HirNodeInfo
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]

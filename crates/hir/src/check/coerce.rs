@@ -6,7 +6,7 @@ use crate::{
     check::errors::{
         coerce::{ExprMismatch, TypeMismatch},
         literals::{LiteralError, LiteralErrorKind},
-        path_expr::PathResolveError,
+        path_error::PathResolveError,
         analysis_error::AnalysisError,
         stmt::StmtError,
     },
@@ -15,7 +15,7 @@ use crate::{
         expr_resolver::{ResolvedExpr, ResolvedExprKind},
         ty::{Ty, TyKind},
         ty_path_expr_resolver::ResolvedPathResult,
-        ty_var_access_resolver::{ResolvedVarResult, VarResolveError},
+        ty_var_access_resolver::{ResolvedVarResult},
     },
 };
 

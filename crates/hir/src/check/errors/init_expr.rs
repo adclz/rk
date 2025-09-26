@@ -4,9 +4,7 @@ use ide_diagnostic::{IdeDiagnostic, diag};
 use crate::{
     check::{
         errors::{
-            coerce::{DiagnosticDescription, ExprMismatch},
-            analysis_error::{AnalysisError, ToIdeDiagnostic},
-            utils::{get_candidates, get_decl_for_ty, get_def_for_ty},
+            analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic}, coerce::ExprMismatch, utils::{get_candidates, get_decl_for_ty, get_def_for_ty}
         },
         recovery::struct_::fuzzy_struct_fields,
     }, hir_def::interned::identifier::SpanIdent, hir_ty::{expr_resolver::ResolvedExpr, init_expr_resolver::ResolvedInitExpr, ty::Ty}, HirNodeInfo

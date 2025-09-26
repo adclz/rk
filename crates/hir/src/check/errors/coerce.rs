@@ -2,27 +2,15 @@ use auto_lsp::default::db::BaseDatabase;
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
-    TypeInfo,
     check::{
         errors::{
-            literals::{LiteralError, LiteralErrorKind},
-            path_expr::PathResolveError,
-            utils::{get_candidates, get_decl_and_def_for_ty},
+            analysis_error::DiagnosticDescription, literals::{LiteralError, LiteralErrorKind}, path_error::PathResolveError, utils::{get_candidates, get_decl_and_def_for_ty}, var_error::VarResolveError
         },
         recovery::pou::fuzzy_pou_local_items,
-    },
-    hir_def::{scope::ScopeKind, semantic_index::semantic_index},
-    hir_ty::{
+    }, hir_def::{scope::ScopeKind, semantic_index::semantic_index}, hir_ty::{
         expr_resolver::ResolvedExpr, ty::Ty, ty_path_expr_resolver::ResolvedPathResult,
-        ty_var_access_resolver::VarResolveError,
-    },
+    }, TypeInfo
 };
-
-pub trait DiagnosticDescription<'db> {
-    fn description(&self, db: &'db dyn BaseDatabase) -> String;
-    fn note(&self, db: &'db dyn BaseDatabase, diag: &mut IdeDiagnostic) {}
-    fn related(&self, db: &'db dyn BaseDatabase, diag: &mut IdeDiagnostic) {}
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct TypeMismatch<'db> {
@@ -287,59 +275,5 @@ impl<'db> DiagnosticDescription<'db> for TypeMismatch<'db> {
     fn related(&self, db: &'db dyn BaseDatabase, diag: &mut IdeDiagnostic) {
         get_decl_and_def_for_ty(db, self.ty1, diag);
         get_decl_and_def_for_ty(db, self.ty2, diag);
-    }
-}
-
-impl<'db> DiagnosticDescription<'db> for PathResolveError<'db> {
-    fn description(&self, db: &'db dyn BaseDatabase) -> String {
-        match self {
-            PathResolveError::NoItemInScope { expr, scope } => {
-                format!("no item '{}' in scope", expr.to_string(db).text(db))
-            }
-            PathResolveError::UnknownField { ty, expr } => {
-                format!("field '{}' not found", expr.to_string(db).text(db))
-            }
-            PathResolveError::UnexpectedIndex { ty, expr } => {
-                format!("'{}' cannot be indexed", ty.type_name(db))
-            }
-            PathResolveError::NotAReference { ty, expr } => {
-                format!("'{}' is not a reference", ty.type_name(db))
-            }
-            PathResolveError::NotAnArray { ty, expr } => {
-                format!("'{}' is not an array", ty.type_name(db))
-            }
-        }
-    }
-
-    fn note(&self, db: &'db dyn BaseDatabase, diag: &mut IdeDiagnostic) {
-        match self {
-            PathResolveError::NoItemInScope { expr, scope } => {
-                if let ScopeKind::Pou(pou) = semantic_index(db, scope.file(db))
-                    .get_scope(db, *scope)
-                    .kind
-                {
-                    diag.with_note(get_candidates(&fuzzy_pou_local_items(
-                        db,
-                        pou,
-                        expr.to_string(db).as_str(db),
-                    )));
-                }
-            }
-            _ => {}
-        }
-    }
-}
-
-impl<'db> DiagnosticDescription<'db> for VarResolveError<'db> {
-    fn description(&self, db: &'db dyn BaseDatabase) -> String {
-        match self {
-            VarResolveError::PathResolveError { err } => err.description(db),
-            VarResolveError::InvalidType => {
-                format!("type not found")
-            }
-            VarResolveError::NotFound => {
-                format!("variable not found")
-            }
-        }
     }
 }

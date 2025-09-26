@@ -6,7 +6,7 @@ use ide_diagnostic::IdeDiagnostic;
 
 use crate::check::errors::{
     duplicates::DuplicateError, inheritance::MethodError, init_expr::InitExprError,
-    literals::LiteralError, path_expr::PathResolveError, scope::NamespaceError, stmt::StmtError,
+    literals::LiteralError, path_error::PathResolveError, scope::NamespaceError, stmt::StmtError,
     syntax::SyntaxError, ty::TyError,
 };
 
@@ -54,4 +54,10 @@ impl<'db> ToIdeDiagnostic<'db> for AnalysisError<'db> {
             Self::TyError(err) => err.to_diagnostic(db),
         }
     }
+}
+
+pub trait DiagnosticDescription<'db> {
+    fn description(&self, db: &'db dyn BaseDatabase) -> String;
+    fn note(&self, db: &'db dyn BaseDatabase, diag: &mut IdeDiagnostic) {}
+    fn related(&self, db: &'db dyn BaseDatabase, diag: &mut IdeDiagnostic) {}
 }

@@ -2,7 +2,7 @@ use auto_lsp::{core::span::Span, default::db::BaseDatabase};
 use rustc_hash::FxHashMap;
 
 use crate::{
-    check::errors::path_expr::PathResolveError,
+    check::errors::path_error::PathResolveError,
     hir_def::{
         expressions::{
             expression::Expr,
