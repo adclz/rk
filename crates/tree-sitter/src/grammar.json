@@ -8595,8 +8595,16 @@
           "type": "FIELD",
           "name": "while_body",
           "content": {
-            "type": "SYMBOL",
-            "name": "stmt_list"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "stmt_list"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
           }
         },
         {
@@ -8616,8 +8624,16 @@
           "type": "FIELD",
           "name": "repeat_body",
           "content": {
-            "type": "SYMBOL",
-            "name": "stmt_list"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "stmt_list"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
           }
         },
         {
