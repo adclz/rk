@@ -190,11 +190,11 @@ END_FUNCTION_BLOCK"#;
        |          `--- 'this' is not valid in this context
     ---'
     Error: 
-       ,-[ file:///test0.st:3:10 ]
+       ,-[ file:///test0.st:3:5 ]
        |
      3 |     THIS.a := 0
-       |          |  
-       |          `-- no item 'a' in scope
+       |     ^^^|^^  
+       |        `---- invalid assignment: no item 'a' in scope
     ---'
     ");
 }
@@ -282,14 +282,15 @@ END_FUNCTION_BLOCK"#;
 fn missing_dot_in_for_list(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION fn
-	FOR i = p TO smt END_FOR
+  VAR i : INT END_VAR
+	FOR i = 0 TO 10 END_FOR
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test0.st:3:8 ]
+       ,-[ file:///test0.st:4:8 ]
        |
-     3 |     FOR i = p TO smt END_FOR
+     4 |     FOR i = 0 TO 10 END_FOR
        |           |  
        |           `-- '=' is not a valid assignment sign
        | 
@@ -302,14 +303,15 @@ END_FUNCTION"#;
 fn missing_equal_in_for_list(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION fn
-	FOR i : p TO smt END_FOR
+	VAR i : INT END_VAR
+	FOR i : 0 TO 10 END_FOR
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test0.st:3:8 ]
+       ,-[ file:///test0.st:4:8 ]
        |
-     3 |     FOR i : p TO smt END_FOR
+     4 |     FOR i : 0 TO 10 END_FOR
        |           |  
        |           `-- ':' is not a valid assignment sign
        | 

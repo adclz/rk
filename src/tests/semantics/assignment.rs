@@ -29,9 +29,7 @@ END_FUNCTION_BLOCK"#;
        | 
      7 |     test := ULINT#5;
        |             ^^^|^^^  
-       |                `----- invalid INT literal
-       | 
-       | Note: An INT literal must be an integer between -32768 and 32767
+       |                `----- invalid assignment: invalid INT literal
     ---'
     ");
 }
@@ -135,6 +133,8 @@ END_FUNCTION_BLOCK"#;
      11 |         d_fb2 := ULINT#5;
         |         ^^|^^  
         |           `---- 'd_fb2' is a callable type and can not be assigned
+        | |   
+        | |   Note: only functions with return types can be assigned
     ----'
     ");
 }
@@ -187,12 +187,14 @@ END_FUNCTION_BLOCK"#;
         ,-[ file:///test0.st:11:13 ]
         |
       8 |         test: INT;
-        |         ^^|^  
-        |           `--- 'test' is declared here
+        |         ^^|^  ^|^  
+        |           `-------- 'test' is declared here
+        |                |   
+        |                `--- type defined here
         | 
      11 |     test := fn1();
-        |             ^|^  
-        |              `--- target is of type void
+        |             ^^|^^  
+        |               `---- invalid assignment: right-hand side is void
     ----'
     ");
 }
@@ -223,9 +225,15 @@ END_FUNCTION_BLOCK"#;
         |                  |   
         |                  `--- type defined here
         | 
+      8 |         test: INT;
+        |         ^^|^  ^|^  
+        |           `-------- 'test' is declared here
+        |                |   
+        |                `--- type defined here
+        | 
      11 |     test := fn1();
         |             ^^|^^  
-        |               `---- type mismatch: 'test' and 'fn1'
+        |               `---- invalid assignment: type mismatch: expected INT, found BOOL
     ----'
     ");
 }
@@ -254,7 +262,7 @@ END_FUNCTION_BLOCK"#;
        | 
      7 |     test := TRUE AND FALSE;
        |             ^^^^^^^|^^^^^^  
-       |                    `-------- a boolean expression can not be assigned because 'test' is not a boolean
+       |                    `-------- invalid assignment: left-hand side is not a boolean
     ---'
     ");
 }

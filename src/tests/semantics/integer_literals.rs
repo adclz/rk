@@ -25,9 +25,7 @@ END_FUNCTION_BLOCK"#;
        |                 |      |   
        |                 `---------- type defined here
        |                        |   
-       |                        `--- invalid BOOL literal
-       | 
-       | Note: A BOOL literal must be either 0, 1, TRUE or FALSE
+       |                        `--- invalid value initializer: invalid BOOL literal
     ---'
     ");
 }
@@ -52,9 +50,7 @@ END_FUNCTION_BLOCK"#;
        |                 |         |     
        |                 `--------------- type defined here
        |                           |     
-       |                           `----- invalid USINT literal
-       | 
-       | Note: A USINT literal must be an integer between 0 and 255
+       |                           `----- invalid value initializer: invalid USINT literal
     ---'
     ");
 }
@@ -79,9 +75,7 @@ END_FUNCTION_BLOCK"#;
        |                 |        |     
        |                 `-------------- type defined here
        |                          |     
-       |                          `----- invalid UINT literal
-       | 
-       | Note: A UINT literal must be an integer between 0 and 65535
+       |                          `----- invalid value initializer: invalid UINT literal
     ---'
     ");
 }
@@ -106,9 +100,7 @@ END_FUNCTION_BLOCK"#;
        |                 |         |     
        |                 `--------------- type defined here
        |                           |     
-       |                           `----- invalid UDINT literal
-       | 
-       | Note: A UDINT literal must be an integer between 0 and 4294967295
+       |                           `----- invalid value initializer: invalid UDINT literal
     ---'
     ");
 }
@@ -133,9 +125,7 @@ END_FUNCTION_BLOCK"#;
        |                 |          |     
        |                 `---------------- type defined here
        |                            |     
-       |                            `----- invalid ULINT literal
-       | 
-       | Note: A ULINT literal must be an integer between 0 and 18446744073709551615
+       |                            `----- invalid value initializer: invalid ULINT literal
     ---'
     ");
 }
@@ -160,9 +150,7 @@ END_FUNCTION_BLOCK"#;
        |                 |         |     
        |                 `--------------- type defined here
        |                           |     
-       |                           `----- invalid SINT literal
-       | 
-       | Note: A SINT literal must be an integer between -128 and 127
+       |                           `----- invalid value initializer: invalid SINT literal
     ---'
     ");
 }
@@ -187,9 +175,7 @@ END_FUNCTION_BLOCK"#;
        |                |         |     
        |                `--------------- type defined here
        |                          |     
-       |                          `----- invalid INT literal
-       | 
-       | Note: An INT literal must be an integer between -32768 and 32767
+       |                          `----- invalid value initializer: invalid INT literal
     ---'
     ");
 }
@@ -214,9 +200,7 @@ END_FUNCTION_BLOCK"#;
        |                 |         |     
        |                 `--------------- type defined here
        |                           |     
-       |                           `----- invalid DINT literal
-       | 
-       | Note: A DINT literal must be an integer between -2147483648 and 2147483647
+       |                           `----- invalid value initializer: invalid DINT literal
     ---'
     ");
 }
@@ -241,9 +225,7 @@ END_FUNCTION_BLOCK"#;
        |                 |         |     
        |                 `--------------- type defined here
        |                           |     
-       |                           `----- invalid LINT literal
-       | 
-       | Note: A LINT literal must be an integer between -9223372036854775808 and 9223372036854775807
+       |                           `----- invalid value initializer: invalid LINT literal
     ---'
     ");
 }

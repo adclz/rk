@@ -38,7 +38,7 @@ fn fuzzy_struct_fields(mut with_db: RootDatabase) {
         | 
      15 |                 Base : Engine := (power := 100, fuel := 10.0);
         |                                                 ^^|^  
-        |                                                   `--- No field 'fuel' in STRUCT
+        |                                                   `--- no field 'fuel' in STRUCT
         | 
         | Note: STRUCT field(s) with similar name(s) exist:
         |       - fuel1
@@ -70,11 +70,7 @@ fn fuzzy_local_variables(mut with_db: RootDatabase) {
        |
      9 |             engine := ULINT#5;
        |             ^^^|^^  
-       |                `---- no item 'engine' in scope
-       | 
-       | Note: local variable(s) with similar(s) name exist:
-       |       - engine2
-       |       - no_engine
+       |                `---- invalid assignment: no item 'engine' in scope
     ---'
     ");
 }

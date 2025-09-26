@@ -177,9 +177,7 @@ END_FUNCTION_BLOCK"#;
         | 
      11 |         param1 := 5.5,
         |                   ^|^  
-        |                    `--- invalid INT literal
-        | 
-        | Note: An INT literal must be an integer between -32768 and 32767
+        |                    `--- parameter expression mismatch: invalid INT literal
     ----'
     Error: 
         ,-[ file:///test0.st:12:19 ]
@@ -192,7 +190,7 @@ END_FUNCTION_BLOCK"#;
         | 
      12 |         param2 := 10
         |                   ^|  
-        |                    `-- expected a 32-bit floating point number
+        |                    `-- parameter expression mismatch: expected a 32-bit floating point number
     ----'
     ");
 }
@@ -226,8 +224,14 @@ END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-        ,-[ file:///test0.st:21:9 ]
+        ,-[ file:///test0.st:21:19 ]
         |
+      9 |     param3: INT;
+        |     ^^^|^^  ^|^  
+        |        `--------- 'param3' is declared here
+        |              |   
+        |              `--- type defined here
+        | 
      15 |         variable1: BOOL;
         |         ^^^^|^^^^  ^^|^  
         |             `------------ 'variable1' is declared here
@@ -235,8 +239,8 @@ END_FUNCTION_BLOCK"#;
         |                      `--- type defined here
         | 
      21 |         param3 => variable1
-        |         ^^^|^^  
-        |            `---- type mismatch for parameter 'param3': 'param3' and 'variable1'
+        |                   ^^^^|^^^^  
+        |                       `------ invalid output assignment: type mismatch: expected INT, found BOOL
     ----'
     ");
 }
@@ -366,7 +370,6 @@ END_FUNCTION_BLOCK"#;
     ----'
     ");
 }
-
 
 #[rstest]
 fn output_assignment_is_not_a_variable(mut with_db: RootDatabase) {

@@ -34,7 +34,8 @@ fn unknown_struct_field(mut with_db: RootDatabase) {
         | 
      12 |                 Base : Engine := (power := 100, fuel := 10.0);
         |                                                 ^^|^  
-        |                                                   `--- No field 'fuel' in STRUCT
+        |                                                   `--- no field 'fuel' in STRUCT
+        | 
     ----'
     ");
 }
@@ -70,9 +71,7 @@ fn invalid_struct_value(mut with_db: RootDatabase) {
         | 
      11 |                 Base : Engine := (power := 10.5, fuel := 10.0);
         |                                            ^^|^  
-        |                                              `--- invalid INT literal
-        | 
-        | Note: An INT literal must be an integer between -32768 and 32767
+        |                                              `--- invalid value initializer: invalid INT literal
     ----'
     Error: 
         ,-[ file:///test0.st:11:50 ]
@@ -83,7 +82,8 @@ fn invalid_struct_value(mut with_db: RootDatabase) {
         | 
      11 |                 Base : Engine := (power := 10.5, fuel := 10.0);
         |                                                  ^^|^  
-        |                                                    `--- No field 'fuel' in STRUCT
+        |                                                    `--- no field 'fuel' in STRUCT
+        | 
     ----'
     ");
 }
@@ -209,9 +209,7 @@ fn invalid_array_value(mut with_db: RootDatabase) {
        | 
      8 |                 Base : Engine := [3(10.5)];
        |                                     ^^|^  
-       |                                       `--- invalid INT literal
-       | 
-       | Note: An INT literal must be an integer between -32768 and 32767
+       |                                       `--- invalid value initializer: invalid INT literal
     ---'
     ");
 }
@@ -244,9 +242,7 @@ fn multi_dimensional_invalid_array_value(mut with_db: RootDatabase) {
        | 
      8 |                 Base : Engine := [3(5(10.5))];
        |                                       ^^|^  
-       |                                         `--- invalid INT literal
-       | 
-       | Note: An INT literal must be an integer between -32768 and 32767
+       |                                         `--- invalid value initializer: invalid INT literal
     ---'
     ");
 }
@@ -282,9 +278,7 @@ fn invalid_value_in_array_of_struct(mut with_db: RootDatabase) {
         | 
      12 |                 Base : EngineArray := [(Power := 10, Torque := 10.0)];
         |                                                                ^^|^  
-        |                                                                  `--- invalid INT literal
-        | 
-        | Note: An INT literal must be an integer between -32768 and 32767
+        |                                                                  `--- invalid value initializer: invalid INT literal
     ----'
     ");
 }
@@ -319,9 +313,7 @@ fn invalid_value_in_struct_with_array(mut with_db: RootDatabase) {
         | 
      11 |                 Base : Engine := [(Power := [10, 5.3], Torque := 10.0)];
         |                                                  ^|^  
-        |                                                   `--- invalid INT literal
-        | 
-        | Note: An INT literal must be an integer between -32768 and 32767
+        |                                                   `--- invalid value initializer: invalid INT literal
     ----'
     Error: 
         ,-[ file:///test0.st:11:66 ]
@@ -334,9 +326,7 @@ fn invalid_value_in_struct_with_array(mut with_db: RootDatabase) {
         | 
      11 |                 Base : Engine := [(Power := [10, 5.3], Torque := 10.0)];
         |                                                                  ^^|^  
-        |                                                                    `--- invalid INT literal
-        | 
-        | Note: An INT literal must be an integer between -32768 and 32767
+        |                                                                    `--- invalid value initializer: invalid INT literal
     ----'
     ");
 }

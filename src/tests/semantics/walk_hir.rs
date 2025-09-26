@@ -149,12 +149,10 @@ END_FUNCTION_BLOCK"#;
     ResolvedExpr(ResolvedExpr { [salsa id]: Id(4405) })
     ResolvedExpr(ResolvedExpr { [salsa id]: Id(4406) })
     ResolvedExpr(ResolvedExpr { [salsa id]: Id(4407) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4805) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(440a) })
     ResolvedStmt(ResolvedStmt { [salsa id]: Id(4804) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4807) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(440a) })
+    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4805) })
     ResolvedExpr(ResolvedExpr { [salsa id]: Id(440d) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4806) })
     ");
 }
 
@@ -209,11 +207,9 @@ END_FUNCTION_BLOCK"#;
         64,
         69,
         74,
-        78,
         76,
+        89,
         91,
-        93,
-        107,
     ]
     ");
 }

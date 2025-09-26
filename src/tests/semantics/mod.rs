@@ -5,6 +5,7 @@ pub mod func_call;
 pub mod inheritance;
 pub mod init_expr;
 pub mod integer_literals;
+pub mod loops;
 pub mod recovery_fuzzy;
 pub mod recursive;
 pub mod scopes;
