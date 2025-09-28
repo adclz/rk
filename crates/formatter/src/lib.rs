@@ -46,7 +46,7 @@ static SURROUND_SPACES: &str = r#"
 
 "(" @append_antispace
 ")" @prepend_antispace
-[":" ";"] @prepend_antispace
+[":" ";" ","] @prepend_antispace
 ["NOT" ":"] @append_space
 "#;
 
@@ -92,7 +92,6 @@ static NEW_LINES: &str = r#"
     (external_decl)
     (global_var_decl)
 ] @prepend_hardline
-
 
 [
     (assign)
@@ -240,8 +239,8 @@ static SEMI_COLONS: &str = r#"
   (#delimiter! ";")
 )
 
-(stmt_list . (_) @append_delimiter 
-    . 
+(stmt_list . (_) @append_delimiter
+    .
     ";"* @do_nothing
     (#delimiter! ";")
 )

@@ -384,3 +384,31 @@ END_FUNCTION
     END_FUNCTION
     ");
 }
+
+#[rstest]
+pub fn implements_extends(mut with_db: RootDatabase) {
+    let source = r#"
+CLASS Mid IMPLEMENTS I1 , I2 , I3
+END_CLASS
+
+FUNCTION_BLOCK Mid IMPLEMENTS I1 , I2 , I3
+    EXTENDS Base
+END_FUNCTION_BLOCK
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    CLASS Mid IMPLEMENTS I1, I2, I3
+    END_CLASS
+
+    FUNCTION_BLOCK Mid IMPLEMENTS I1, I2, I3 EXTENDS Base
+    END_FUNCTION_BLOCK
+    ");
+}
