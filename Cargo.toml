@@ -19,8 +19,8 @@ members = [
 ]
 
 [workspace.dependencies]
-auto-lsp = { git = "https://github.com/adclz/auto-lsp", rev = "be245971c4c335e607bd3aa82925ea1a91e5f248" }
-auto-lsp-codegen = { git = "https://github.com/adclz/auto-lsp", rev = "be245971c4c335e607bd3aa82925ea1a91e5f248" }
+auto-lsp = { git = "https://github.com/adclz/auto-lsp", rev = "f8e8cd7f329e6ce1ccaf0e5014c01a5387d1b2c2" }
+auto-lsp-codegen = { git = "https://github.com/adclz/auto-lsp", rev = "f8e8cd7f329e6ce1ccaf0e5014c01a5387d1b2c2" }
 log = "0.4.27"
 dashmap = "6.1.0"
 rustc-hash = "2.1.0"
@@ -53,7 +53,7 @@ insta = "1.13.1"
 serde_json = "1.0.109"
 stderrlog = "0.6.0"
 # salsa version must be kept in sync with auto-lsp's one
-salsa = "0.22.0"
+salsa = "0.23.0"
 
 [package]
 name = "rk-tests"
