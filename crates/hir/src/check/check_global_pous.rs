@@ -4,57 +4,50 @@ use auto_lsp::default::db::{BaseDatabase, file::File};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
-    check::errors::{duplicates::DuplicateError, analysis_error::AnalysisError},
+    check::errors::{analysis_error::AnalysisError, duplicates::DuplicateError},
     hir_def::{interned::identifier::Ident, pous::pou::PouDecl, semantic_index::semantic_index},
     hir_ty::ty::ty_for_pou,
 };
 
 #[salsa::tracked(returns(ref), no_eq)]
-pub fn check_duplicate_pous<'db>(
-    db: &'db dyn BaseDatabase,
-) -> FxHashMap<File, Vec<AnalysisError<'db>>> {
-    let mut errors: FxHashMap<File, Vec<AnalysisError<'db>>> = FxHashMap::default();
-    let mut seen_pous: FxHashMap<Ident, PouDecl<'db>> = FxHashMap::default();
+pub fn check_duplicate_pous<'db>(db: &'db dyn BaseDatabase, file: File) -> Vec<AnalysisError<'db>> {
+    let mut errors: Vec<AnalysisError<'db>> = vec![];
+    let self_pous = global_pous_in_file(db, file);
 
     // Collect POUs and process duplicates in a single pass
-    db.get_files().iter().for_each(|file| {
-        semantic_index(db, *file)
-            .global_pous
-            .iter()
-            .for_each(|decl| {
-                let name = *decl.name(db);
-                match seen_pous.entry(name) {
-                    Entry::Occupied(entry) => {
-                        // Found a duplicate - create error
-                        let original = *entry.get();
-                        match errors.entry(decl.scope_id(db).file(db)) {
-                            Entry::Occupied(mut err_entry) => {
-                                err_entry.get_mut().push(
-                                    DuplicateError::Pou {
-                                        pou1: ty_for_pou(db, *decl),
-                                        pou2: ty_for_pou(db, original),
-                                    }
-                                    .into(),
-                                );
-                            }
-                            Entry::Vacant(err_entry) => {
-                                err_entry.insert(vec![
-                                    DuplicateError::Pou {
-                                        pou1: ty_for_pou(db, *decl),
-                                        pou2: ty_for_pou(db, original),
-                                    }
-                                    .into(),
-                                ]);
-                            }
-                        };
-                    }
-                    Entry::Vacant(entry) => {
-                        // First time seeing this POU name
-                        entry.insert(*decl);
+    db.get_files()
+        .iter()
+        .filter(|f| (**f) != file)
+        .for_each(|file| {
+            for (name, pous) in global_pous_in_file(db, *file) {
+                if let Some(self_pous) = self_pous.get(&name) {
+                    // We have a duplicate POU name
+                    for self_pou in self_pous {
+                        for pou in pous {
+                            errors.push(
+                                DuplicateError::Pou {
+                                    pou1: ty_for_pou(db, *self_pou),
+                                    pou2: ty_for_pou(db, *pou),
+                                }
+                                .into(),
+                            );
+                        }
                     }
                 }
-            });
-    });
-
+            }
+        });
     errors
+}
+
+#[salsa::tracked(returns(ref), no_eq)]
+pub fn global_pous_in_file<'db>(
+    db: &'db dyn BaseDatabase,
+    file: File,
+) -> FxHashMap<Ident, Vec<PouDecl<'db>>> {
+    let mut map: std::collections::HashMap<Ident, Vec<PouDecl<'db>>, rustc_hash::FxBuildHasher> =
+        FxHashMap::default();
+    semantic_index(db, file).global_pous.iter().for_each(|pou| {
+        map.entry(*pou.name(db)).or_default().push(*pou);
+    });
+    map
 }

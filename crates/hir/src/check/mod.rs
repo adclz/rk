@@ -40,10 +40,7 @@ pub fn diagnostics_for_file(db: &dyn BaseDatabase, file: File) -> Arc<Vec<IdeDia
     let mut errors = vec![];
     semantic_index(db, file).check(db, &mut errors);
 
-    if let Some(global_errors) = check_duplicate_pous(db).get(&file) {
-        all_diagnostics.extend(global_errors.into_iter().map(|e| e.to_diagnostic(db)));
-    }
-
+    all_diagnostics.extend(check_duplicate_pous(db, file).into_iter().map(|e| e.to_diagnostic(db)));
     all_diagnostics.extend(lexer_errors.into_iter().map(|e| e.to_diagnostic(db)));
     all_diagnostics.extend(errors.into_iter().map(|d| d.to_diagnostic(db)));
 
