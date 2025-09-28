@@ -11,6 +11,7 @@ pub struct Function<'db> {
     pub variables: Vec<VariableDecl<'db>>,
 
     #[tracked]
+    #[no_eq]
     #[returns(ref)]
     pub statements: Vec<Stmt<'db>>,
 
@@ -19,4 +20,4 @@ pub struct Function<'db> {
     pub return_type: Option<Spec<'db>>,
 
     pub scope_id: FileScopeId<'db>,
-}
+} 

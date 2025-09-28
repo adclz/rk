@@ -11,6 +11,7 @@ use crate::{
 
 #[salsa::tracked(debug)]
 pub struct VariableDecl<'db> {
+    #[tracked]
     #[returns(ref)]
     pub name: Ident,
 

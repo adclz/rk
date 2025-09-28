@@ -169,6 +169,7 @@ pub struct SymbolIndex<'db> {
     #[tracked]
     #[returns(ref)]
     symbols: Box<[NamedSymbol<'db>]>,
+    
     #[tracked]
     #[no_eq]
     #[returns(ref)]

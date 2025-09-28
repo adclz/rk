@@ -22,9 +22,10 @@ pub fn resolved_path_expr<'db>(
 #[salsa::tracked(debug)]
 pub struct ResolvedPathResult<'db> {
     pub expr: PathExpr<'db>,
+    
     #[tracked]
-    #[no_eq]
     #[returns(ref)]
+    #[no_eq]
     pub elements: Vec<ResolvedPathElement<'db>>,
 }
 

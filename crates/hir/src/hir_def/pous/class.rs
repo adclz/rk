@@ -25,6 +25,8 @@ pub struct Class<'db> {
     #[returns(ref)]
     pub variables: Vec<VariableDecl<'db>>,
 
+    #[tracked]
+    #[returns(ref)]
     pub methods: Vec<MethodDecl<'db>>,
 
     pub modifier: Modifier,
@@ -38,6 +40,7 @@ pub struct MethodDecl<'db> {
     #[returns(ref)]
     pub variables: Vec<VariableDecl<'db>>,
 
+    #[tracked]
     #[returns(ref)]
     pub name: Ident,
 
@@ -45,10 +48,14 @@ pub struct MethodDecl<'db> {
     #[returns(ref)]
     pub return_type: Option<Spec<'db>>,
 
+    #[tracked]
     pub modifier: Modifier,
 
     pub _override: bool,
 
+    #[tracked]
+    #[no_eq]
+    #[returns(ref)]
     pub body: Vec<Stmt<'db>>,
 
     pub id: AstId,

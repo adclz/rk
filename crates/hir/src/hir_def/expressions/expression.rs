@@ -110,6 +110,7 @@ pub struct FuncCall<'db> {
 #[salsa::tracked(debug)]
 pub struct PathExpr<'db> {
     #[tracked]
+    #[no_eq]
     pub expr: PathExprKind<'db>,
 
     pub id: AstId,

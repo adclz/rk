@@ -341,7 +341,7 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
             }
 
             for m in class.methods(db) {
-                class_methods.push(m);
+                class_methods.push(*m);
             }
 
             let extends =

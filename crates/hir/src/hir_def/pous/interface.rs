@@ -12,9 +12,11 @@ use crate::{
 
 #[salsa::tracked(debug)]
 pub struct Interface<'db> {
+    #[tracked]
     #[returns(as_ref)]
     pub extends: Option<Vec<SpanNamespaceAccess<'db>>>,
 
+    #[tracked]
     #[returns(ref)]
     pub methods: Vec<MethodPrototype<'db>>,
 
@@ -23,12 +25,15 @@ pub struct Interface<'db> {
 
 #[salsa::tracked(debug)]
 pub struct MethodPrototype<'db> {
+    #[tracked]
     #[returns(ref)]
     pub name: Ident,
 
+    #[tracked]
     #[returns(as_ref)]
     pub return_type: Option<Spec<'db>>,
 
+    #[tracked]
     #[returns(ref)]
     pub variables: Vec<VariableDecl<'db>>,
 

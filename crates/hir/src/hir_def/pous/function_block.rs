@@ -18,6 +18,7 @@ pub struct FunctionBlock<'db> {
     pub variables: Vec<VariableDecl<'db>>,
 
     #[tracked]
+    #[no_eq]
     #[returns(ref)]
     pub statements: Vec<Stmt<'db>>,
 

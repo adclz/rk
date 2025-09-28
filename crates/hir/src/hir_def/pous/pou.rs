@@ -19,6 +19,7 @@ pub struct PouDecl<'db> {
     #[returns(ref)]
     pub pou: Pou<'db>,
 
+    #[tracked]
     #[returns(ref)]
     pub name: Ident,
 
@@ -26,6 +27,7 @@ pub struct PouDecl<'db> {
 
     pub name_id: AstId,
 
+    #[tracked]
     pub scope_id: FileScopeId<'db>,
 }
 
