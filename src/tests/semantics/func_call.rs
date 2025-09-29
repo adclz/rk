@@ -85,17 +85,14 @@ END_FUNCTION_BLOCK"#;
     Error: 
         ,-[ file:///test0.st:10:9 ]
         |
-      2 | ,-> FUNCTION fn
-        | |            ^|  
-        | |             `-- 'fn' is declared here
-        : :   
-      6 | |-> END_FUNCTION
-        | |                  
-        | `------------------ type defined here
+      2 | FUNCTION fn
+        |          ^|  
+        |           `-- 'fn' is declared here
         | 
-     10 |             unknown := TRUE
-        |             ^^^|^^^  
-        |                `----- unknown input parameter 'unknown'
+     10 |         unknown := TRUE
+        |         ^^^|^^^  
+        |            `----- unknown input parameter 'unknown'
+        | 
     ----'
     ");
 }
@@ -133,16 +130,14 @@ END_FUNCTION_BLOCK"#;
     Error: 
        ,-[ file:///test0.st:7:9 ]
        |
-     2 | ,-> FUNCTION fn
-       | |            ^|  
-       | |             `-- 'fn' is declared here
-     3 | |-> END_FUNCTION
-       | |                  
-       | `------------------ type defined here
+     2 | FUNCTION fn
+       |          ^|  
+       |           `-- 'fn' is declared here
        | 
-     7 |             unknown => TRUE
-       |             ^^^|^^^  
-       |                `----- unknown output parameter 'unknown'
+     7 |         unknown => TRUE
+       |         ^^^|^^^  
+       |            `----- unknown output parameter 'unknown'
+       | 
     ---'
     ");
 }

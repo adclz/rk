@@ -50,7 +50,7 @@ fn fuzzy_struct_fields(mut with_db: RootDatabase) {
 }
 
 #[rstest]
-fn fuzzy_local_variables(mut with_db: RootDatabase) {
+fn fuzzy_pou_local_variables(mut with_db: RootDatabase) {
     let source = r#"
         FUNCTION_BLOCK fb1
             VAR
@@ -76,5 +76,79 @@ fn fuzzy_local_variables(mut with_db: RootDatabase) {
        |       - engine2
        |       - no_engine
     ---'
+    ");
+}
+
+#[rstest]
+fn fuzzy_func_call_input_variables(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn
+	VAR_INPUT
+		param1: INT;
+		param2: REAL;
+	END_VAR
+END_FUNCTION
+
+FUNCTION_BLOCK fb1
+
+	fn(param := 0);
+END_FUNCTION_BLOCK
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    Error: 
+        ,-[ file:///test0.st:11:5 ]
+        |
+      2 | FUNCTION fn
+        |          ^|  
+        |           `-- 'fn' is declared here
+        | 
+     11 |     fn(param := 0);
+        |        ^^|^^  
+        |          `---- unknown input parameter 'param'
+        | 
+        | Note: local variable(s) with similar(s) name exist:
+        |       - param1
+        |       - param2
+    ----'
+    ");
+}
+
+
+#[rstest]
+fn fuzzy_func_call_output_variables(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn
+	VAR_OUTPUT
+		param1: INT;
+		param2: REAL;
+	END_VAR
+END_FUNCTION
+
+FUNCTION_BLOCK fb1
+    VAR_OUTPUT
+        param_out: INT;
+    END_VAR
+
+	fn(param => param_out);
+END_FUNCTION_BLOCK
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    Error: 
+        ,-[ file:///test0.st:14:5 ]
+        |
+      2 | FUNCTION fn
+        |          ^|  
+        |           `-- 'fn' is declared here
+        | 
+     14 |     fn(param => param_out);
+        |        ^^|^^  
+        |          `---- unknown output parameter 'param'
+        | 
+        | Note: local variable(s) with similar(s) name exist:
+        |       - param1
+        |       - param2
+    ----'
     ");
 }
