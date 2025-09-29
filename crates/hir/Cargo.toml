@@ -28,3 +28,4 @@ ide_diagnostic = { workspace = true }
 time = { workspace = true, features = ["macros", "parsing"] }
 salsa = { workspace = true }
 serde_json = { workspace = true }
+indexmap = { workspace = true }

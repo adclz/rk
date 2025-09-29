@@ -1,4 +1,5 @@
 use auto_lsp::{core::span::Span, default::db::BaseDatabase};
+use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
 
 use crate::{
@@ -213,29 +214,23 @@ pub enum TyKind<'db> {
     Class {
         extends: Option<Ty<'db>>,
         implements: Vec<Ty<'db>>,
-        variables: FxHashMap<Ident, Ty<'db>>,
+        variables: IndexMap<Ident, Ty<'db>>,
         methods: Vec<MethodDecl<'db>>,
     },
 
     Function {
-        input: FxHashMap<Ident, Ty<'db>>,
-        output: FxHashMap<Ident, Ty<'db>>,
-        in_out: FxHashMap<Ident, Ty<'db>>,
+        variables: IndexMap<Ident, Ty<'db>>,
         return_type: Option<Ty<'db>>,
     },
 
     FunctionBlock {
         extends: Option<Ty<'db>>,
-        inputs: FxHashMap<Ident, Ty<'db>>,
-        outputs: FxHashMap<Ident, Ty<'db>>,
-        in_outs: FxHashMap<Ident, Ty<'db>>,
+        variables: IndexMap<Ident, Ty<'db>>,
     },
 
     Method {
         is_prototype: bool,
-        input: FxHashMap<Ident, Ty<'db>>,
-        output: FxHashMap<Ident, Ty<'db>>,
-        in_out: FxHashMap<Ident, Ty<'db>>,
+        variables: IndexMap<Ident, Ty<'db>>,
     },
 
     // Error variants
@@ -255,21 +250,19 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
 
     match pou.pou(db) {
         Pou::Function(func) => {
-            let mut inputs = FxHashMap::default();
-            let mut outputs = FxHashMap::default();
-            let mut in_outs = FxHashMap::default();
+            let mut variables = IndexMap::default();
 
             for v in func.variables(db) {
                 let decl = TyDecl::Variable(*v);
                 match v.kind(db) {
                     VariableKind::Input => {
-                        inputs.insert(*v.name(db), *v.spec(db).to_ty(db, decl));
+                        variables.insert(*v.name(db), *v.spec(db).to_ty(db, decl));
                     }
                     VariableKind::Output => {
-                        outputs.insert(*v.name(db), *v.spec(db).to_ty(db, decl));
+                        variables.insert(*v.name(db), *v.spec(db).to_ty(db, decl));
                     }
                     VariableKind::InOut => {
-                        in_outs.insert(*v.name(db), *v.spec(db).to_ty(db, decl));
+                        variables.insert(*v.name(db), *v.spec(db).to_ty(db, decl));
                     }
                     _ => continue,
                 };
@@ -280,29 +273,25 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
                 decl,
                 def,
                 TyKind::Function {
-                    input: inputs,
-                    output: outputs,
-                    in_out: in_outs,
+                    variables,
                     return_type: func.return_type(db).map(|rt| rt.to_ty(db, decl)).copied(),
                 },
             )
         }
         Pou::FunctionBlock(fb) => {
-            let mut inputs = FxHashMap::default();
-            let mut outputs = FxHashMap::default();
-            let mut in_outs = FxHashMap::default();
+            let mut variables = IndexMap::default();
 
             for variable in fb.variables(db) {
                 let decl = TyDecl::Variable(*variable);
                 match variable.kind(db) {
                     VariableKind::Input => {
-                        inputs.insert(*variable.name(db), *variable.spec(db).to_ty(db, decl));
+                        variables.insert(*variable.name(db), *variable.spec(db).to_ty(db, decl));
                     }
                     VariableKind::Output => {
-                        outputs.insert(*variable.name(db), *variable.spec(db).to_ty(db, decl));
+                        variables.insert(*variable.name(db), *variable.spec(db).to_ty(db, decl));
                     }
                     VariableKind::InOut => {
-                        in_outs.insert(*variable.name(db), *variable.spec(db).to_ty(db, decl));
+                        variables.insert(*variable.name(db), *variable.spec(db).to_ty(db, decl));
                     }
                     _ => continue,
                 };
@@ -324,15 +313,13 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
                 def,
                 TyKind::FunctionBlock {
                     extends,
-                    inputs,
-                    outputs,
-                    in_outs,
+                    variables
                 },
             )
         }
         Pou::DataType(dt) => *dt.spec(db).to_ty(db, TyDecl::Pou(pou)),
         Pou::Class(class) => {
-            let mut class_variables = FxHashMap::default();
+            let mut class_variables = IndexMap::default();
             let mut class_methods = vec![];
 
             for v in class.variables(db) {
@@ -437,20 +424,18 @@ pub fn ty_for_method_decl<'db>(db: &'db dyn BaseDatabase, method: MethodDecl<'db
     let decl = TyDecl::Method(method);
     let def = TyDef::Method(method);
 
-    let mut inputs = FxHashMap::default();
-    let mut outputs = FxHashMap::default();
-    let mut in_outs = FxHashMap::default();
+    let mut variables = IndexMap::default();
 
     for v in method.variables(db) {
         match v.kind(db) {
             VariableKind::Input => {
-                inputs.insert(*v.name(db), *v.spec(db).to_ty(db, decl));
+                variables.insert(*v.name(db), *v.spec(db).to_ty(db, decl));
             }
             VariableKind::Output => {
-                outputs.insert(*v.name(db), *v.spec(db).to_ty(db, decl));
+                variables.insert(*v.name(db), *v.spec(db).to_ty(db, decl));
             }
             VariableKind::InOut => {
-                in_outs.insert(*v.name(db), *v.spec(db).to_ty(db, decl));
+                variables.insert(*v.name(db), *v.spec(db).to_ty(db, decl));
             }
             _ => continue,
         };
@@ -462,9 +447,7 @@ pub fn ty_for_method_decl<'db>(db: &'db dyn BaseDatabase, method: MethodDecl<'db
         def,
         TyKind::Method {
             is_prototype: false,
-            input: inputs,
-            output: outputs,
-            in_out: in_outs,
+            variables
         },
     )
 }
@@ -483,20 +466,18 @@ pub fn ty_for_method_prot<'db>(db: &'db dyn BaseDatabase, method: MethodPrototyp
     let decl = TyDecl::MethodProt(method);
     let def = TyDef::MethodProt(method);
 
-    let mut inputs = FxHashMap::default();
-    let mut outputs = FxHashMap::default();
-    let mut in_outs = FxHashMap::default();
+    let mut variables = IndexMap::default();
 
     for v in method.variables(db) {
         match v.kind(db) {
             VariableKind::Input => {
-                inputs.insert(*v.name(db), *v.spec(db).to_ty(db, decl));
+                variables.insert(*v.name(db), *v.spec(db).to_ty(db, decl));
             }
             VariableKind::Output => {
-                outputs.insert(*v.name(db), *v.spec(db).to_ty(db, decl));
+                variables.insert(*v.name(db), *v.spec(db).to_ty(db, decl));
             }
             VariableKind::InOut => {
-                in_outs.insert(*v.name(db), *v.spec(db).to_ty(db, decl));
+                variables.insert(*v.name(db), *v.spec(db).to_ty(db, decl));
             }
             _ => continue,
         };
@@ -508,9 +489,7 @@ pub fn ty_for_method_prot<'db>(db: &'db dyn BaseDatabase, method: MethodPrototyp
         def,
         TyKind::Method {
             is_prototype: true,
-            input: inputs,
-            output: outputs,
-            in_out: in_outs,
+            variables
         },
     )
 }
@@ -559,14 +538,10 @@ impl<'db> Ty<'db> {
                     })
                     .cloned(),
                 TyKind::Function {
-                    input,
-                    output,
-                    in_out,
+                    variables,
                     ..
-                } => input
+                } => variables
                     .get(&ident.ident)
-                    .or_else(|| output.get(&ident.ident))
-                    .or_else(|| in_out.get(&ident.ident))
                     .ok_or(PathResolveError::UnknownField {
                         expr: *expr,
                         ty: *self,
@@ -574,13 +549,9 @@ impl<'db> Ty<'db> {
                     .cloned(),
                 TyKind::FunctionBlock {
                     extends,
-                    inputs,
-                    outputs,
-                    in_outs,
-                } => inputs
+                    variables,
+                } => variables
                     .get(&ident.ident)
-                    .or_else(|| outputs.get(&ident.ident))
-                    .or_else(|| in_outs.get(&ident.ident))
                     .ok_or(PathResolveError::UnknownField {
                         expr: *expr,
                         ty: *self,

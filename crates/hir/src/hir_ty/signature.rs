@@ -5,58 +5,43 @@ use auto_lsp::{
         SignatureHelp, SignatureInformation,
     },
 };
+use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    hir_def::interned::identifier::Ident,
-    hir_ty::ty::{Ty, TyKind},
+    builder::variables, hir_def::interned::identifier::Ident, hir_ty::ty::{Ty, TyKind}
 };
 
 impl<'db> Ty<'db> {
     pub fn to_signature(&self, db: &'db dyn BaseDatabase) -> Option<CallableSignature<'db>> {
         match self.kind(db) {
             TyKind::Function {
-                input,
-                output,
-                in_out,
+                variables,
                 return_type,
             } => {
-                let mut variables = input.clone();
-                variables.extend(in_out.clone());
-                variables.extend(output.clone());
                 Some(CallableSignature {
                     origin: *self,
-                    variables,
+                    variables: variables.clone(),
                     return_type,
                 })
             }
             TyKind::FunctionBlock {
                 extends,
-                inputs,
-                outputs,
-                in_outs,
+                variables
             } => {
-                let mut variables = inputs.clone();
-                variables.extend(in_outs.clone());
-                variables.extend(outputs.clone());
                 Some(CallableSignature {
                     origin: *self,
-                    variables,
+                    variables: variables.clone(),
                     return_type: None,
                 })
             }
             TyKind::Method {
                 is_prototype,
-                input,
-                output,
-                in_out,
+                variables
             } => {
-                let mut variables = input.clone();
-                variables.extend(in_out.clone());
-                variables.extend(output.clone());
                 Some(CallableSignature {
                     origin: *self,
-                    variables,
+                    variables: variables.clone(),
                     return_type: None,
                 })
             }
@@ -65,11 +50,13 @@ impl<'db> Ty<'db> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CallableSignature<'db> {
     pub origin: Ty<'db>,
-    pub variables: FxHashMap<Ident, Ty<'db>>,
-    pub return_type: Option<Ty<'db>>,
+    // We use IndexMap here to preserve the order of parameters.
+    // Otherwise it'd be complicated to resolve non-formal parameters.
+    pub variables: IndexMap<Ident, Ty<'db>>,
+    pub return_type: Option<Ty<'db>>, 
 }
 
 impl<'db> CallableSignature<'db> {

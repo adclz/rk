@@ -21,6 +21,7 @@ pub fn resolve_stmt<'db>(db: &'db dyn BaseDatabase, stmt: Stmt<'db>) -> Resolved
 #[salsa::tracked(debug)]
 pub struct ResolvedStmt<'db> {
     pub stmt: Stmt<'db>,
+    
     #[tracked]
     #[no_eq]
     #[returns(ref)]

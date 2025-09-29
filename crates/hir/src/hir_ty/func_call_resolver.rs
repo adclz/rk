@@ -9,7 +9,6 @@ use crate::{
     },
     hir_ty::{
         expr_resolver::{ResolvedExpr, resolve_expr},
-        ty::Ty,
         ty_path_expr_resolver::{ResolvedPathResult, resolved_path_expr},
         ty_var_access_resolver::{
             ResolvedVarKind, ResolvedVarOrigin, ResolvedVarResult, resolve_var_access,

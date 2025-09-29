@@ -25,6 +25,7 @@ pub fn resolve_expr<'db>(db: &'db dyn BaseDatabase, expr: Expr<'db>) -> Resolved
 #[salsa::tracked(debug)]
 pub struct ResolvedExpr<'db> {
     pub expr: Expr<'db>,
+    
     #[tracked]
     #[no_eq]
     #[returns(ref)]
