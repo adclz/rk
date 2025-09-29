@@ -14,6 +14,23 @@ pub fn check_duplicate_pous<'db>(db: &'db dyn BaseDatabase, file: File) -> Vec<A
     let mut errors: Vec<AnalysisError<'db>> = vec![];
     let self_pous = global_pous_in_file(db, file);
 
+    // Multiple local POUs with the same name in this file
+    for (name, pous) in global_pous_in_file(db, file) {
+        if pous.len() > 1 {
+            for i in 0..pous.len() {
+                for j in (i + 1)..pous.len() {
+                    errors.push(
+                        DuplicateError::Pou {
+                            pou1: ty_for_pou(db, pous[j]),
+                            pou2: ty_for_pou(db, pous[0]),
+                        }
+                        .into(),
+                    );
+                }
+            }
+        }
+    }
+
     // Collect POUs and process duplicates in a single pass
     db.get_files()
         .iter()
