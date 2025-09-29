@@ -213,3 +213,48 @@ END_FUNCTION_BLOCK"#;
     ]
     ");
 }
+
+#[rstest]
+pub fn sorted_ast_ids_in_non_formal_func_call(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn
+	VAR_INPUT
+		param1: INT;
+		param2: REAL;
+	END_VAR
+END_FUNCTION
+
+FUNCTION_BLOCK fb1
+
+	fn(0, 1.5, 5);
+END_FUNCTION_BLOCK"#;
+
+    add_sources(&mut with_db, &[source]);
+    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+
+    let mut nodes = vec![];
+
+    let _ = sema.walk_hir(&with_db, &mut |node| {
+        nodes.push(node.as_proto().get_id(&with_db).id());
+        ControlFlow::Continue(())
+    });
+
+    assert_debug_snapshot!(nodes, @r"
+    [
+        1,
+        4,
+        13,
+        21,
+        25,
+        26,
+        30,
+        31,
+        31,
+        38,
+        39,
+        39,
+        45,
+        46,
+    ]
+    ");
+}

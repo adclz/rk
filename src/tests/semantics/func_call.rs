@@ -278,21 +278,20 @@ END_FUNCTION_BLOCK"#;
 fn too_many_parameters(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION fn
-    VAR_INPUT
-        param1: INT;
-        param2: REAL;
-    END_VAR
+	VAR_INPUT
+		param1: INT;
+		param2: REAL;
+	END_VAR
 END_FUNCTION
 
 FUNCTION_BLOCK fb1
 
-    fn(0, 1.2, 3);
-
+	fn(0, 1.5, 5);
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-        ,-[ file:///test0.st:11:5 ]
+        ,-[ file:///test0.st:11:2 ]
         |
       2 | ,-> FUNCTION fn
         | |            ^|  
@@ -302,7 +301,7 @@ END_FUNCTION_BLOCK"#;
         | |                  
         | `------------------ type defined here
         | 
-     11 |         fn(0, 1.2, 3);
+     11 |         fn(0, 1.5, 5);
         |         ^^^^^^|^^^^^^  
         |               `-------- 'fn' expected 2 parameters, but got 3
     ----'
