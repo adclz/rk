@@ -331,7 +331,8 @@ module.exports = grammar({
     real_literal: ($) =>
       seq(
         optional(seq(field("type", $.real_type_name), "#")),
-        field("value", $.real_value),
+        // Same as Unsigned int, but with a dot and optional exponent
+        prec(RK_PREC.unary + 1, seq(optional(choice("+", "-")), field("value", $.real_value))),
       ),
 
     real_value: ($) =>
