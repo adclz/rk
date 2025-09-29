@@ -11,6 +11,8 @@ use crate::{
     },
 };
 
+use std::{num::ParseIntError, u8};
+
 use time::{Date, Duration, PrimitiveDateTime, Time, macros::format_description};
 
 impl<'db> ElementarySpec {
@@ -52,14 +54,14 @@ impl<'db> ElementarySpec {
                 _ => Err(LiteralErrorKind::Invalid_LDATE_Literal),
             },
             ElementarySpec::Tod => match spec {
-                Elementary::InferIdent(ident) => ident
+                Elementary::InferIdent(ident) | Elementary::TimeOfDay(ident) => ident
                     .as_tod(db)
                     .map(|_| ())
                     .map_err(|e| LiteralErrorKind::Invalid_TOD_Format(e.to_string())),
                 _ => Err(LiteralErrorKind::Invalid_TOD_Literal),
             },
             ElementarySpec::LTod => match spec {
-                Elementary::InferIdent(ident) => ident
+                Elementary::InferIdent(ident) | Elementary::LTod(ident) => ident
                     .as_long_tod(db)
                     .map(|_| ())
                     .map_err(|e| LiteralErrorKind::Invalid_LTOD_Format(e.to_string())),
@@ -82,11 +84,15 @@ impl<'db> ElementarySpec {
                 _ => Err(LiteralErrorKind::Invalid_LDT_Literal),
             },
             ElementarySpec::Time => match spec {
-                Elementary::InferIdent(ident) => ident.as_time(db).map(|_| ()),
+                Elementary::InferIdent(ident) | Elementary::Time(ident) => {
+                    ident.as_time(db).map(|_| ())
+                }
                 _ => Err(LiteralErrorKind::Invalid_TIME_Literal),
             },
             ElementarySpec::LTime => match spec {
-                Elementary::InferIdent(ident) => ident.as_ltime(db).map(|_| ()),
+                Elementary::InferIdent(ident) | Elementary::LTime(ident) => {
+                    ident.as_ltime(db).map(|_| ())
+                }
                 _ => Err(LiteralErrorKind::Invalid_LTIME_Literal),
             },
 
@@ -106,6 +112,7 @@ impl<'db> ElementarySpec {
 
 fn check_bool(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LiteralErrorKind> {
     match value {
+        Elementary::Bool(bool) => Ok(()),
         Elementary::InferIdent(n) => n
             .as_bool(db)
             .map(|_| ())
@@ -260,6 +267,10 @@ fn check_i64(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LiteralErr
 
 fn check_f32(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LiteralErrorKind> {
     match value {
+        Elementary::Real(real) => real
+            .as_f32(db)
+            .map(|_| ())
+            .map_err(|err| LiteralErrorKind::TypeMismatch(err.to_string())),
         Elementary::InferIdent(ident) => ident
             .as_f32(db)
             .map(|_| ())
@@ -272,6 +283,10 @@ fn check_f32(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LiteralErr
 
 fn check_f64(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LiteralErrorKind> {
     match value {
+        Elementary::Real(real) | Elementary::LReal(real) => real
+            .as_f64(db)
+            .map(|_| ())
+            .map_err(|err| LiteralErrorKind::TypeMismatch(err.to_string())),
         Elementary::InferIdent(ident) => ident
             .as_f64(db)
             .map(|_| ())
@@ -286,7 +301,11 @@ fn check_f64(db: &dyn BaseDatabase, value: &Elementary) -> Result<(), LiteralErr
 impl Ident {
     #[salsa::tracked]
     pub fn as_bool(self, db: &dyn BaseDatabase) -> Result<bool, std::str::ParseBoolError> {
-        self.text(db).to_lowercase().parse()
+        match self.text(db).to_lowercase().as_str() {
+            "true" | "1" => Ok(true),
+            "false" | "0" => Ok(false),
+            other => other.parse(),
+        }
     }
 
     #[salsa::tracked]
@@ -429,79 +448,125 @@ impl Ident {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum UnsignedIntError {
+    ParseIntError(ParseIntError),
+    NegativeSign,
+}
+
+impl From<ParseIntError> for UnsignedIntError {
+    fn from(err: ParseIntError) -> Self {
+        UnsignedIntError::ParseIntError(err)
+    }
+}
+
+impl std::error::Error for UnsignedIntError {}
+impl std::fmt::Display for UnsignedIntError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UnsignedIntError::ParseIntError(err) => write!(f, "{}", err),
+            UnsignedIntError::NegativeSign => write!(f, "literal can not be negative"),
+        }
+    }
+}
+
+fn check_sign(s: &str) -> Result<&str, UnsignedIntError> {
+    if s.starts_with('-') {
+        Err(UnsignedIntError::NegativeSign)
+    } else {
+        Ok(s)
+    }
+}
+
 #[salsa::tracked]
 impl Integer {
     #[salsa::tracked]
     pub fn as_bool(self, db: &dyn BaseDatabase) -> Result<bool, std::str::ParseBoolError> {
         match self.ident(db).text(db).to_lowercase().as_str() {
-            "1" => Ok(true),
-            "0" => Ok(false),
+            "true" | "1" => Ok(true),
+            "false" | "0" => Ok(false),
             other => other.parse(),
         }
     }
 
     #[salsa::tracked]
-    pub fn as_u8(self, db: &dyn BaseDatabase) -> Result<u8, std::num::ParseIntError> {
+    pub fn as_u8(self, db: &dyn BaseDatabase) -> Result<u8, UnsignedIntError> {
         match self.kind(db) {
-            IntegerKind::Binary => {
-                u8::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2)
-            }
-            IntegerKind::Octal => {
-                u8::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8)
-            }
-            IntegerKind::Hex => {
-                u8::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16)
-            }
-            IntegerKind::Signed => self.ident(db).text(db).parse(),
+            IntegerKind::Binary => u8::from_str_radix(
+                check_sign(self.ident(db).text(db).trim_start_matches("2#"))?,
+                2,
+            ),
+            IntegerKind::Octal => u8::from_str_radix(
+                check_sign(self.ident(db).text(db).trim_start_matches("8#"))?,
+                8,
+            ),
+            IntegerKind::Hex => u8::from_str_radix(
+                check_sign(self.ident(db).text(db).trim_start_matches("16#"))?,
+                16,
+            ),
+            IntegerKind::Signed => check_sign(self.ident(db).text(db))?.parse(),
         }
+        .map_err(|err| err.into())
     }
 
     #[salsa::tracked]
-    pub fn as_u16(self, db: &dyn BaseDatabase) -> Result<u16, std::num::ParseIntError> {
+    pub fn as_u16(self, db: &dyn BaseDatabase) -> Result<u16, UnsignedIntError> {
         match self.kind(db) {
-            IntegerKind::Binary => {
-                u16::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2)
-            }
-            IntegerKind::Octal => {
-                u16::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8)
-            }
-            IntegerKind::Hex => {
-                u16::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16)
-            }
-            IntegerKind::Signed => self.ident(db).text(db).parse(),
+            IntegerKind::Binary => u16::from_str_radix(
+                check_sign(self.ident(db).text(db).trim_start_matches("2#"))?,
+                2,
+            ),
+            IntegerKind::Octal => u16::from_str_radix(
+                check_sign(self.ident(db).text(db).trim_start_matches("8#"))?,
+                8,
+            ),
+            IntegerKind::Hex => u16::from_str_radix(
+                check_sign(self.ident(db).text(db).trim_start_matches("16#"))?,
+                16,
+            ),
+            IntegerKind::Signed => check_sign(self.ident(db).text(db))?.parse(),
         }
+        .map_err(|err| err.into())
     }
 
     #[salsa::tracked]
-    pub fn as_u32(self, db: &dyn BaseDatabase) -> Result<u32, std::num::ParseIntError> {
+    pub fn as_u32(self, db: &dyn BaseDatabase) -> Result<u32, UnsignedIntError> {
         match self.kind(db) {
-            IntegerKind::Binary => {
-                u32::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2)
-            }
-            IntegerKind::Octal => {
-                u32::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8)
-            }
-            IntegerKind::Hex => {
-                u32::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16)
-            }
-            IntegerKind::Signed => self.ident(db).text(db).parse(),
+            IntegerKind::Binary => u32::from_str_radix(
+                check_sign(self.ident(db).text(db).trim_start_matches("2#"))?,
+                2,
+            ),
+            IntegerKind::Octal => u32::from_str_radix(
+                check_sign(self.ident(db).text(db).trim_start_matches("8#"))?,
+                8,
+            ),
+            IntegerKind::Hex => u32::from_str_radix(
+                check_sign(self.ident(db).text(db).trim_start_matches("16#"))?,
+                16,
+            ),
+            IntegerKind::Signed => check_sign(self.ident(db).text(db))?.parse(),
         }
+        .map_err(|err| err.into())
     }
 
     #[salsa::tracked]
-    pub fn as_u64(self, db: &dyn BaseDatabase) -> Result<u64, std::num::ParseIntError> {
+    pub fn as_u64(self, db: &dyn BaseDatabase) -> Result<u64, UnsignedIntError> {
         match self.kind(db) {
-            IntegerKind::Binary => {
-                u64::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2)
-            }
-            IntegerKind::Octal => {
-                u64::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8)
-            }
-            IntegerKind::Hex => {
-                u64::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16)
-            }
-            IntegerKind::Signed => self.ident(db).text(db).parse(),
+            IntegerKind::Binary => u64::from_str_radix(
+                check_sign(self.ident(db).text(db).trim_start_matches("2#"))?,
+                2,
+            ),
+            IntegerKind::Octal => u64::from_str_radix(
+                check_sign(self.ident(db).text(db).trim_start_matches("8#"))?,
+                8,
+            ),
+            IntegerKind::Hex => u64::from_str_radix(
+                check_sign(self.ident(db).text(db).trim_start_matches("16#"))?,
+                16,
+            ),
+            IntegerKind::Signed => check_sign(self.ident(db).text(db))?.parse(),
         }
+        .map_err(|err| err.into())
     }
 
     #[salsa::tracked]
@@ -676,7 +741,7 @@ fn parse_duration_components(s: &str, kind: &'static str) -> Result<Duration, Li
         remaining = rest;
     }
 
-    if total_nanos == 0 && !s.is_empty() {
+    if s.is_empty() {
         return Err(LiteralErrorKind::Invalid_TIME_Components);
     }
 
