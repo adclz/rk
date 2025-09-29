@@ -61,9 +61,35 @@ END_FUNCTION_BLOCK"#;
        | 
      8 |         fb2 := ULINT#5;
        |         ^|^  
-       |          `--- 'fb2' is a type and can not be assigned
+       |          `--- 'fb2' is a callable type and can not be assigned
        | |   
-       | |   Note: types can only be assigned if they are declared in a VAR_* section
+       | |   Note: only functions with return types can be assigned
+    ---'
+    ");
+}
+
+#[rstest]
+fn assign_function_return_type(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1 : INT
+
+    fn1 := ULINT#5;
+
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    Error: 
+       ,-[ file:///test0.st:4:12 ]
+       |
+     2 | FUNCTION fn1 : INT
+       |          ^|^   ^|^  
+       |           `--------- 'fn1' is declared here
+       |                 |   
+       |                 `--- type defined here
+       | 
+     4 |     fn1 := ULINT#5;
+       |            ^^^|^^^  
+       |               `----- invalid assignment: invalid INT literal
     ---'
     ");
 }

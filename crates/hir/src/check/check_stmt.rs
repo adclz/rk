@@ -131,23 +131,28 @@ fn check_assignment<'db>(
         return Err(StmtError::AssignmentToInputVar { var, ty: ty_var }.into());
     }
 
-    // Direct type
-    if !ty_var.is_variable(db) {
-        return Err(StmtError::AssignementToDirectType { var, ty: ty_var }.into());
-    }
-
-    // POUs can not be mutated
-    // Except for functions if they have a return type
-    if ty_var.is_callable(db) {
-        if let TyDef::Pou(pou) = ty_var.def(db)
-            && let Pou::Function(func) = pou.pou(db)
-            && let Some(ret) = ty_var.has_return_type(db)
-        {
-            return coerce_ty_with_expr(db, ret, target)
-                .map_err(|err| StmtError::AssignmentTypeMismatch { err }.into());
-        } else {
+    match (ty_var.is_variable(db), ty_var.is_callable(db)) {
+        // is not a variable but callable 
+        (false, true) => {
+            // Special case: assigning to function with return type
+            if let TyDef::Pou(pou) = ty_var.def(db)
+                && let Pou::Function(func) = pou.pou(db)
+                && let Some(ret) = ty_var.has_return_type(db)
+            {
+                return coerce_ty_with_expr(db, ret, target)
+                    .map_err(|err| StmtError::AssignmentTypeMismatch { err }.into());
+            } else {
+                return Err(StmtError::AssignementToCallableType { var, ty: ty_var }.into());
+            }
+        }
+        // is a variable and callable (trying to assign to a POU)
+        (true, true) => {
             return Err(StmtError::AssignementToCallableType { var, ty: ty_var }.into());
         }
+        (false, _) => {
+            return Err(StmtError::AssignementToDirectType { var, ty: ty_var }.into());
+        }
+        _ => {}
     }
 
     coerce_ty_with_expr(db, ty_var, target)
