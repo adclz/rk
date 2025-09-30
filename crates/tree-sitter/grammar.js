@@ -217,7 +217,6 @@ module.exports = grammar({
 
     [$.constant_expr, $.parenthesized_expression],
     [$.symbolic_variable, $.field_expression],
-    [$.symbolic_variable, $.func_call],
   ],
 
   word: ($) => $.identifier,
@@ -265,7 +264,6 @@ module.exports = grammar({
 
     // Expressions
     ERR_assign_func_call: ($) => prec(-1, $.func_call), // A function call cannot be assigned
-    ERR_invocation_in_expr_context: ($) => prec(-1, $.invocation),
 
     // Missing ':' before =
     ERR_missing_dot_in_assignment: ($) => seq("=", $._expression),
@@ -278,6 +276,7 @@ module.exports = grammar({
     ERR_missing_equal_in_for_control: ($) => ":",
 
     ERR_unexpected_this_in_path: ($) => prec(-1, "THIS"),
+    ERR_unexpected_super_in_path: ($) => prec(-1, "SUPER"),
 
     // Initalisations of arrays and structs are highly permissive,
     // so permissive that it is fine to call functions inside.
@@ -768,15 +767,17 @@ module.exports = grammar({
 
     variable: ($) => choice($.symbolic_variable, $.direct_variable),
 
-    symbolic_variable: ($) =>
-      seq(field("this", optional($.this)), $.path_expression),
+    symbolic_variable: ($) => $.path_expression,
 
-    this: ($) => seq("THIS", "."),
+    this_invocation: ($) => seq("THIS", ".", $.path_expression),
+    super_invocation: ($) => seq("SUPER", ".", $.path_expression),
+    super_body_invocation: ($) => seq("SUPER", "(", ")", ".", $.path_expression),
 
     // Var_Access : Variable_Name | Ref_Deref;
     var_access: ($) =>
       choice(
         $.ERR_unexpected_this_in_path,
+        $.ERR_unexpected_super_in_path,
         alias($.identifier, $.field),
         $.ref_deref,
       ),
@@ -1513,14 +1514,15 @@ module.exports = grammar({
       ),
 
     // Primary_Expr : Constant | Enum_Value | Variable_Access | Func_Call | Ref_Value| '(' Expression ')';
+    // Invocation is not in the grammar but examples in the standard show it being used.
     _primary_expression: ($) =>
       choice(
         $.constant,
         $.variable_access,
         $.func_call,
+        $.invocation,
         $.ref_value,
         $.parenthesized_expression,
-        $.ERR_invocation_in_expr_context,
       ),
 
     parenthesized_expression: ($) => seq("(", $._expression, ")"),
@@ -1628,12 +1630,16 @@ module.exports = grammar({
 
     invocation: ($) =>
       seq(
-        field("invocation", $.symbolic_variable),
+        field("invocation", choice(
+          $.this_invocation,
+          $.super_invocation,
+          $.super_body_invocation
+        )),
         "(",
-        prec(
-          RK_PREC.parameter_list,
-          field("params", commaSep($.param_assign)),
-        ),
+          prec(
+            RK_PREC.parameter_list,
+            field("params", commaSep($.param_assign)),
+          ),
         ")",
       ),
 
@@ -1657,9 +1663,8 @@ module.exports = grammar({
         $.assign,
         // subprog
         $.func_call,
-        // invocation can only be used in a statement context
+        // invocations (THIS, SUPER, SUPER())
         $.invocation,
-        $.super_stmt,
         "RETURN",
         // selection
         $.if_stmt,
@@ -1671,8 +1676,6 @@ module.exports = grammar({
         "EXIT",
         "CONTINUE",
       ),
-
-    super_stmt: ($) => seq("SUPER", "(", ")"),
 
     // assignment: $ => seq(
     //    $.variable,
