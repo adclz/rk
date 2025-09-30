@@ -386,13 +386,10 @@ END_FUNCTION
 }
 
 #[rstest]
-pub fn implements_extends(mut with_db: RootDatabase) {
+pub fn invocation_single_line(mut with_db: RootDatabase) {
     let source = r#"
-CLASS Mid IMPLEMENTS I1 , I2 , I3
-END_CLASS
-
-FUNCTION_BLOCK Mid IMPLEMENTS I1 , I2 , I3
-    EXTENDS Base
+FUNCTION_BLOCK fb1
+	THIS.dfgdfg(a := 1,      b:=2,    c:=3)
 END_FUNCTION_BLOCK
 "#;
 
@@ -405,10 +402,141 @@ END_FUNCTION_BLOCK
         .document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
-    CLASS Mid IMPLEMENTS I1, I2, I3
-    END_CLASS
-
-    FUNCTION_BLOCK Mid IMPLEMENTS I1, I2, I3 EXTENDS Base
+    FUNCTION_BLOCK fb1 THIS.dfgdfg(a := 1, b := 2, c := 3);
     END_FUNCTION_BLOCK
+    ");
+}
+
+#[rstest]
+pub fn invocation_multi_line(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+	THIS.dfgdfg(
+	    a := 1,
+					b:=2,
+				c:=3)
+END_FUNCTION_BLOCK
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    FUNCTION_BLOCK fb1
+    	THIS.dfgdfg(
+    		a := 1,
+    		b := 2,
+    		c := 3
+    	);
+    END_FUNCTION_BLOCK
+    ");
+}
+
+#[rstest]
+pub fn init_expr_single_line(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Engine: STRUCT
+		power: INT;
+		oil: REAL;
+	END_STRUCT
+        END_TYPE
+
+        FUNCTION StartEngine
+	VAR Base: Engine := (power := 100, oil := 10.0); END_VAR END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    TYPE Engine: STRUCT
+    		power: INT;
+    		oil: REAL;
+    	END_STRUCT
+    END_TYPE
+
+    FUNCTION StartEngine
+    	VAR
+    		Base: Engine := (power := 100, oil := 10.0);
+    	END_VAR
+    END_FUNCTION
+    ");
+}
+
+#[rstest]
+pub fn init_expr_multi_line(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Engine: STRUCT
+		power: INT;
+		oil: REAL;
+	END_STRUCT
+        END_TYPE
+
+        FUNCTION StartEngine
+	VAR
+		Base: Engine := (power := 100,
+		oil := 10.0);
+	END_VAR
+        END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    TYPE Engine: STRUCT
+    		power: INT;
+    		oil: REAL;
+    	END_STRUCT
+    END_TYPE
+
+    FUNCTION StartEngine
+    	VAR
+    		Base: Engine := (
+    			power := 100,
+    			oil := 10.0
+    		);
+    	END_VAR
+    END_FUNCTION
+    ");
+}
+
+#[rstest]
+pub fn struct_init(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Engine: STRUCT 		power: INT;  oil: REAL;
+END_STRUCT
+        END_TYPE
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    TYPE Engine: STRUCT
+    		power: INT;
+    		oil: REAL;
+    	END_STRUCT
+    END_TYPE
     ");
 }

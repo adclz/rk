@@ -63,6 +63,8 @@ static NEW_LINES: &str = r#"
     "ELSE"
 ] @prepend_hardline @append_hardline
 
+"STRUCT" @append_hardline
+
 [
     "END_NAMESPACE"
     "END_FUNCTION"
@@ -80,6 +82,7 @@ static NEW_LINES: &str = r#"
     "UNTIL"
     "END_REPEAT"
     "END_CASE"
+    "END_STRUCT"
     (case_selection)
 
     (var_decl_init_list)
@@ -97,7 +100,6 @@ static NEW_LINES: &str = r#"
     (assign)
     (func_call)
     (invocation)
-    (super_stmt)
     "RETURN"
     (if_stmt)
     (case_stmt)
@@ -134,6 +136,21 @@ static BLOCKS: &str = r#"
   "(" @append_spaced_softline @append_indent_start
   ")" @prepend_spaced_softline @prepend_indent_end
 )
+
+(invocation
+  "(" @append_spaced_softline @append_indent_start
+  ")" @prepend_spaced_softline @prepend_indent_end
+)
+
+(struct_type_init
+  "(" @append_spaced_softline @append_indent_start
+  ")" @prepend_spaced_softline @prepend_indent_end
+)
+
+(array_type_init
+  "[" @append_spaced_softline @append_indent_start
+  "]" @prepend_spaced_softline @prepend_indent_end
+)
 "#;
 
 static INDENTATIONS: &str = r#"
@@ -152,6 +169,7 @@ static INDENTATIONS: &str = r#"
     "VAR_TEMP"
     "VAR_EXTERNAL"
     "VAR_GLOBAL"
+    "STRUCT"
 
     "THEN"
     "ELSE"
@@ -175,6 +193,7 @@ static INDENTATIONS: &str = r#"
     "END_INTERFACE"
     "END_METHOD"
     "END_VAR"
+    "END_STRUCT"
 
     "END_IF"
     "END_WHILE"
