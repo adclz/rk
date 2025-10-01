@@ -217,6 +217,8 @@ module.exports = grammar({
 
     [$.constant_expr, $.parenthesized_expression],
     [$.symbolic_variable, $.field_expression],
+    [$.symbolic_variable, $.func_call],
+    [$.case_selection]
   ],
 
   word: ($) => $.identifier,
@@ -331,7 +333,10 @@ module.exports = grammar({
       seq(
         optional(seq(field("type", $.real_type_name), "#")),
         // Same as Unsigned int, but with a dot and optional exponent
-        prec(RK_PREC.unary + 1, seq(optional(choice("+", "-")), field("value", $.real_value))),
+        prec(
+          RK_PREC.unary + 1,
+          seq(optional(choice("+", "-")), field("value", $.real_value)),
+        ),
       ),
 
     real_value: ($) =>
@@ -769,9 +774,9 @@ module.exports = grammar({
 
     symbolic_variable: ($) => $.path_expression,
 
-    this_invocation: ($) => seq("THIS", ".", $.path_expression),
-    super_invocation: ($) => seq("SUPER", ".", $.path_expression),
-    super_body_invocation: ($) => seq("SUPER", "(", ")", ".", $.path_expression),
+    this_invocation: ($) => seq(field("THIS", "THIS"), ".", $.path_expression),
+    super_invocation: ($) => seq(field("SUPER", "SUPER"), ".", $.path_expression),
+    super_body_invocation: ($) => seq(field("SUPER", "SUPER"), "(", ")"),
 
     // Var_Access : Variable_Name | Ref_Deref;
     var_access: ($) =>
@@ -1274,7 +1279,7 @@ module.exports = grammar({
         "INITIAL_STEP",
         $.step_name,
         ":",
-        repeat(seq($.action_association, ";")),
+        repeat(seq($.action_association, optional(";"))),
         "END_STEP",
       ),
 
@@ -1283,7 +1288,7 @@ module.exports = grammar({
         "STEP",
         $.step_name,
         ":",
-        repeat(seq($.action_association, ";")),
+        repeat(seq($.action_association, optional(";"))),
         "END_STEP",
       ),
 
@@ -1294,7 +1299,7 @@ module.exports = grammar({
         $.action_name,
         "(",
         optional($.action_qualifier),
-        repeat(seq(field("variable_name", $.identifier), ";")),
+        repeat(seq(field("variable_name", $.identifier), optional(";"))),
         ")",
       ),
 
@@ -1336,7 +1341,7 @@ module.exports = grammar({
 
     transition_cond: ($) =>
       choice(
-        seq(":=", $._expression, ";"),
+        seq(":=", $._expression, optional(";")),
         seq(":", choice($.fbd_network, $.ld_rung)),
       ),
 
@@ -1630,16 +1635,12 @@ module.exports = grammar({
 
     invocation: ($) =>
       seq(
-        field("invocation", choice(
-          $.this_invocation,
-          $.super_invocation,
-          $.super_body_invocation
-        )),
+        field("invocation", choice($.this_invocation, $.super_invocation)),
         "(",
-          prec(
-            RK_PREC.parameter_list,
-            field("params", commaSep($.param_assign)),
-          ),
+        prec(
+          RK_PREC.parameter_list,
+          field("params", commaSep($.param_assign)),
+        ),
         ")",
       ),
 
@@ -1663,8 +1664,10 @@ module.exports = grammar({
         $.assign,
         // subprog
         $.func_call,
-        // invocations (THIS, SUPER, SUPER())
+        // invocations (THIS, SUPER)
         $.invocation,
+        // SUPER()
+        $.super_body_invocation,
         "RETURN",
         // selection
         $.if_stmt,
@@ -1701,7 +1704,7 @@ module.exports = grammar({
             $.assignment,
             $.ERR_empty_right_hand_assignment,
             $.ERR_missing_dot_in_assignment,
-            $.ERR_missing_equal_in_assignment
+            $.ERR_missing_equal_in_assignment,
           ),
         ),
       ),
@@ -1750,7 +1753,7 @@ module.exports = grammar({
         "CASE",
         field("case_cond", $._expression),
         "OF",
-        field("case_selection", repeat1($.case_selection)),
+        field("case_selection", repeat($.case_selection)),
         optional(seq("ELSE", field("default", $.stmt_list))),
         "END_CASE",
       ),
@@ -1760,7 +1763,7 @@ module.exports = grammar({
         field("case_of", $.case_list),
         ":",
         field("case_do", optional($.stmt_list)),
-        ";",
+        optional(";"),
       ),
 
     //Case_List : Case_List_Elem ( ',' Case_List_Elem )*;
@@ -1783,9 +1786,9 @@ module.exports = grammar({
     for_list: ($) =>
       seq(
         choice(
-            ":=",
-            $.ERR_missing_dot_in_for_control,
-            $.ERR_missing_equal_in_for_control
+          ":=",
+          $.ERR_missing_dot_in_for_control,
+          $.ERR_missing_equal_in_for_control,
         ),
         field("initial_value", $._expression),
         "TO",
