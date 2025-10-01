@@ -31,6 +31,7 @@ pub struct Ty<'db> {
     pub def: TyDef<'db>,
 
     #[tracked]
+    #[returns(ref)]
     pub kind: TyKind<'db>,
 }
 
@@ -226,6 +227,7 @@ pub enum TyKind<'db> {
     FunctionBlock {
         extends: Option<Ty<'db>>,
         variables: IndexMap<Ident, Ty<'db>>,
+        methods: Vec<MethodDecl<'db>>,
     },
 
     Method {
@@ -307,13 +309,16 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
                 }
             });
 
+            let methods = fb.methods(db).to_vec();
+
             Ty::new(
                 db,
                 decl,
                 def,
                 TyKind::FunctionBlock {
                     extends,
-                    variables
+                    variables,
+                    methods,
                 },
             )
         }
@@ -447,7 +452,7 @@ pub fn ty_for_method_decl<'db>(db: &'db dyn BaseDatabase, method: MethodDecl<'db
         def,
         TyKind::Method {
             is_prototype: false,
-            variables
+            variables,
         },
     )
 }
@@ -489,7 +494,7 @@ pub fn ty_for_method_prot<'db>(db: &'db dyn BaseDatabase, method: MethodPrototyp
         def,
         TyKind::Method {
             is_prototype: true,
-            variables
+            variables,
         },
     )
 }
@@ -537,10 +542,7 @@ impl<'db> Ty<'db> {
                         ty: *self,
                     })
                     .cloned(),
-                TyKind::Function {
-                    variables,
-                    ..
-                } => variables
+                TyKind::Function { variables, .. } => variables
                     .get(&ident.ident)
                     .ok_or(PathResolveError::UnknownField {
                         expr: *expr,
@@ -548,8 +550,7 @@ impl<'db> Ty<'db> {
                     })
                     .cloned(),
                 TyKind::FunctionBlock {
-                    extends,
-                    variables,
+                    extends, variables, ..
                 } => variables
                     .get(&ident.ident)
                     .ok_or(PathResolveError::UnknownField {
@@ -564,19 +565,30 @@ impl<'db> Ty<'db> {
                 }),
             },
             PathExprWalkStep::Index { expr } => match self.kind(db) {
-                TyKind::Array { typ, .. } => Ok(typ),
+                TyKind::Array { typ, .. } => Ok(*typ),
                 _ => Err(PathResolveError::NotAnArray {
                     expr: *expr,
                     ty: *self,
                 }),
             },
             PathExprWalkStep::Deref { expr } => match self.kind(db) {
-                TyKind::RefTo(inner) => Ok(inner),
+                TyKind::RefTo(inner) => Ok(*inner),
                 _ => Err(PathResolveError::NotAReference {
                     expr: *expr,
                     ty: *self,
                 }),
             },
+        }
+    }
+
+    pub fn variables(&self, db: &'db dyn BaseDatabase) -> Option<&'db IndexMap<Ident, Ty<'db>>> {
+        match self.kind(db) {
+            TyKind::Target(inner) => inner.variables(db),
+            TyKind::Function { variables, .. } => Some(&variables),
+            TyKind::FunctionBlock { variables, .. } => Some(&variables),
+            TyKind::Class { variables, .. } => Some(&variables),
+            TyKind::Method { variables, .. } => Some(&variables),
+            _ => None,
         }
     }
 
@@ -614,7 +626,7 @@ impl<'db> Ty<'db> {
             return sig.is_method_prototype(db);
         };
         if let TyKind::Method { is_prototype, .. } = self.kind(db) {
-            return is_prototype;
+            return *is_prototype;
         }
         false
     }
@@ -667,7 +679,7 @@ impl<'db> Ty<'db> {
             return sig.has_return_type(db);
         };
         if let TyKind::Function { return_type, .. } = self.kind(db) {
-            return return_type;
+            return *return_type;
         }
         None
     }
