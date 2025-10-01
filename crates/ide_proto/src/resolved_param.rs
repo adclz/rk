@@ -1,6 +1,6 @@
 use auto_lsp::{
     default::db::BaseDatabase,
-    lsp_types::{Hover, InlayHint, InlayHintKind, InlayHintLabel, Position},
+    lsp_types::{request::GotoDeclarationResponse, GotoDefinitionResponse, Hover, InlayHint, InlayHintKind, InlayHintLabel, Position},
 };
 use hir::{
     HirNodeInfo, TypeInfo,
@@ -30,6 +30,24 @@ impl<'db> ToProtocol<'db> for ResolvedParam<'db> {
             tooltip: None,
             data: None,
         })
+    }
+
+    fn hover(&'db self, db: &'db dyn BaseDatabase, offset: Option<usize>) -> Option<Hover> {
+        get_param_ty(db, self).and_then(|ty| ty.hover(db, offset))
+    }
+
+    fn declaration(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+    ) -> Option<GotoDeclarationResponse> {
+        get_param_ty(db, self).and_then(|ty| ty.declaration(db))
+    }
+
+    fn definition(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+    ) -> Option<GotoDefinitionResponse> {
+        get_param_ty(db, self).and_then(|ty| ty.definition(db))
     }
 }
 

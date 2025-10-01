@@ -6,9 +6,9 @@ license = { workspace = true }
 edition = { workspace = true }
 publish = false
 
-
 [dependencies]
 auto-lsp = { workspace = true }
 hir = { workspace = true }
+ast = { workspace = true}
 serde_json = { workspace = true }
 camelpaste = { workspace = true }

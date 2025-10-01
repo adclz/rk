@@ -4,7 +4,7 @@ use hir::hir_ty::{ty_var_access_resolver::ResolvedVarResult};
 use crate::ToProtocol;
 
 impl<'db> ToProtocol<'db> for ResolvedVarResult<'db> {
-    fn hover(&'db self, db: &'db dyn BaseDatabase, offset: Option<usize>) -> Option<Hover> {
+    fn hover(&'db self, db: &'db dyn BaseDatabase, _offset: Option<usize>) -> Option<Hover> {
         if let Ok(ty) = self.ty(db) {
             ty.hover(db, None)
         } else {
