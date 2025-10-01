@@ -1,3 +1,4 @@
+use crate::hir_def::expressions::invocation::Invocation;
 use crate::hir_def::interned::identifier::{Ident, SpanIdent};
 use crate::hir_def::scope::FileScopeId;
 use crate::{AstId, HirNodeInfo};
@@ -93,6 +94,7 @@ pub enum PrimaryExpr<'db> {
         multibits: Option<MultibitsPart>,
     },
     FuncCall(FuncCall<'db>),
+    Invocation(Invocation<'db>),
     RefValue {
         value: RefValue<'db>,
     },
@@ -256,7 +258,6 @@ pub enum VariableAccessKind<'db> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct SymbolicVariable<'db> {
-    pub this: bool,
     pub kind: PathExpr<'db>,
 }
 

@@ -1,9 +1,12 @@
 use crate::hir_def::expressions::expression::{Expr, ParamAssign, ParamAssignKind};
+use crate::hir_def::expressions::invocation::InvocationKind;
 use crate::hir_def::expressions::statement::{Stmt, StmtKind};
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::scope::FileScopeId;
+use crate::hir_def::semantic_index::semantic_index;
 use crate::hir_ty::expr_resolver::{ResolvedExpr, resolve_expr};
-use crate::hir_ty::func_call_resolver::ResolvedParam;
+use crate::hir_ty::func_call_resolver::{ResolvedFuncCall, ResolvedParam};
+use crate::hir_ty::invocation_resolver::{ResolvedInvocation, ResolvedInvocationResult, ResolvedMethodKind};
 use crate::hir_ty::ty::{Ty, TyDecl};
 use crate::hir_ty::ty_path_expr_resolver::{ResolvedPathResult, resolved_path_expr};
 use crate::hir_ty::ty_var_access_resolver::{
@@ -21,7 +24,7 @@ pub fn resolve_stmt<'db>(db: &'db dyn BaseDatabase, stmt: Stmt<'db>) -> Resolved
 #[salsa::tracked(debug)]
 pub struct ResolvedStmt<'db> {
     pub stmt: Stmt<'db>,
-    
+
     #[tracked]
     #[no_eq]
     #[returns(ref)]
@@ -38,11 +41,8 @@ pub enum ResolvedStmtKind<'db> {
         var: ResolvedVarResult<'db>,
         target: ResolvedExpr<'db>,
     },
-    Invocation {},
-    FuncCall {
-        target: ResolvedPathResult<'db>,
-        params: Vec<ResolvedParam<'db>>,
-    },
+    Invocation(ResolvedInvocationResult<'db>),
+    FuncCall(ResolvedFuncCall<'db>),
     If {
         condition: ResolvedExpr<'db>,
         then: Vec<ResolvedStmt<'db>>,
@@ -144,18 +144,23 @@ impl<'db> ResolveStmtCtx<'db> {
                 cases,
                 else_,
             } => ResolvedStmt::new(self.db, self.stmt, ResolvedStmtKind::Case {}),
-            StmtKind::Invocation { target, params } => {
-                ResolvedStmt::new(self.db, self.stmt, ResolvedStmtKind::Invocation {})
+            StmtKind::Invocation(invocation) => {
+                let scope = semantic_index(self.db, self.stmt.scope_id(self.db).file(self.db))
+                    .get_scope(self.db, self.stmt.scope_id(self.db));
+                let resolved_invocation = invocation.resolve_invocation(self.db, scope);
+
+                ResolvedStmt::new(
+                    self.db,
+                    self.stmt,
+                    ResolvedStmtKind::Invocation(resolved_invocation),
+                )
             }
             StmtKind::FuncCall(func_call) => {
                 let resolved_func_call = func_call.resolve_func_call(self.db);
                 ResolvedStmt::new(
                     self.db,
                     self.stmt,
-                    ResolvedStmtKind::FuncCall {
-                        target: resolved_func_call.target,
-                        params: resolved_func_call.params,
-                    },
+                    ResolvedStmtKind::FuncCall(resolved_func_call),
                 )
             }
             StmtKind::For {
@@ -201,7 +206,6 @@ impl<'db> ResolveStmtCtx<'db> {
             StmtKind::Continue => ResolvedStmt::new(self.db, self.stmt, ResolvedStmtKind::Continue),
             StmtKind::Exit => ResolvedStmt::new(self.db, self.stmt, ResolvedStmtKind::Exit),
             StmtKind::Return => ResolvedStmt::new(self.db, self.stmt, ResolvedStmtKind::Return),
-            StmtKind::Super => ResolvedStmt::new(self.db, self.stmt, ResolvedStmtKind::Super),
         }
     }
 }

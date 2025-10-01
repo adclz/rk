@@ -30,6 +30,7 @@ pub fn check_methods<'db>(
 
     // look at the inherited methods first
     for (inherited_name, inherited_method) in &table.inherited_methods {
+        let inherited_method = inherited_method.method;
         // method is inherited from a base interface/class
         if let Some(declared_method) = table.declared_methods.get(inherited_name) {
             match (inherited_method.modifier(db), declared_method.modifier(db)) {
@@ -37,7 +38,7 @@ pub fn check_methods<'db>(
                 (Modifier::FINAL, Modifier::OVERRIDE) => {
                     errors.push(AnalysisError::MethodError(
                         MethodError::OverrideFinalMethod {
-                            base_method: *inherited_method,
+                            base_method: inherited_method,
                             derived_method: *declared_method,
                         },
                     ));
@@ -45,7 +46,7 @@ pub fn check_methods<'db>(
                 // Override of method without override
                 (_, Modifier::EMPTY) => {
                     errors.push(AnalysisError::MethodError(MethodError::MissingOverride {
-                        base_method: *inherited_method,
+                        base_method: inherited_method,
                         derived_method: *declared_method,
                     }));
                 }
@@ -59,7 +60,7 @@ pub fn check_methods<'db>(
                 errors.push(AnalysisError::MethodError(
                     MethodError::UnimplementedInterfaceMethod {
                         implementer,
-                        method: *inherited_method,
+                        method: inherited_method,
                     },
                 ));
             }
@@ -68,7 +69,7 @@ pub fn check_methods<'db>(
                 errors.push(AnalysisError::MethodError(
                     MethodError::MissingAbstractMethod {
                         implementer,
-                        base_method: *inherited_method,
+                        base_method: inherited_method,
                     },
                 ));
             }

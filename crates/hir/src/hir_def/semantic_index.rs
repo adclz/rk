@@ -9,6 +9,7 @@ use auto_lsp::default::db::{BaseDatabase, file::File};
 use rustc_hash::FxHashMap;
 use tracing::info_span;
 
+use crate::hir_ty::invocation_resolver::ResolvedInvocation;
 use crate::HirNodeInfo;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::analysis_error::AnalysisError;

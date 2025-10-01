@@ -75,7 +75,6 @@ impl<'db> ExprMismatch<'db> {
     pub fn expr_void(
         expr: ResolvedExpr<'db>,
         ty: Ty<'db>,
-        result: ResolvedPathResult<'db>,
     ) -> Self {
         Self {
             expr,

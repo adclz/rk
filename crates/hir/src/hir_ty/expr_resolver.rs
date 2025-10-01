@@ -1,20 +1,19 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    AstId, HirNodeInfo,
     hir_def::{
         expressions::expression::{
             Elementary, Expr, ExprKind, ParamAssignKind, PrimaryExpr, RefAdress, RefValue,
         },
-        scope::FileScopeId,
-    },
-    hir_ty::{
-        func_call_resolver::ResolvedParam,
-        ty_path_expr_resolver::{ResolvedPathResult, resolved_path_expr},
+        scope::FileScopeId, semantic_index::semantic_index,
+    }, hir_ty::{
+        func_call_resolver::{ResolvedFuncCall, ResolvedParam},
+        invocation_resolver::{ResolvedInvocation, ResolvedInvocationResult, ResolvedMethodKind},
+        ty_path_expr_resolver::{resolved_path_expr, ResolvedPathResult},
         ty_var_access_resolver::{
-            ResolvedVarKind, ResolvedVarOrigin, ResolvedVarResult, resolve_var_access,
+            resolve_var_access, ResolvedVarKind, ResolvedVarOrigin, ResolvedVarResult
         },
-    },
+    }, AstId, HirNodeInfo
 };
 
 #[salsa::tracked(no_eq, returns(ref))]
@@ -25,7 +24,7 @@ pub fn resolve_expr<'db>(db: &'db dyn BaseDatabase, expr: Expr<'db>) -> Resolved
 #[salsa::tracked(debug)]
 pub struct ResolvedExpr<'db> {
     pub expr: Expr<'db>,
-    
+
     #[tracked]
     #[no_eq]
     #[returns(ref)]
@@ -38,11 +37,10 @@ pub enum ResolvedExprKind<'db> {
     PathExpr(ResolvedPathResult<'db>),
     VarAccess(ResolvedVarResult<'db>),
 
+    Invocation(ResolvedInvocationResult<'db>),
+
     // May have Ty (return type)
-    FuncCall {
-        target: ResolvedPathResult<'db>,
-        params: Vec<ResolvedParam<'db>>,
-    },
+    FuncCall(ResolvedFuncCall<'db>),
 
     // Does not have Ty - but elementary literal that has to be resolved
     Literal(Elementary),
@@ -111,15 +109,23 @@ impl<'db> ResolveExprCtx<'db> {
                     self.expr,
                     ResolvedExprKind::Parenthesized(*resolve_expr(self.db, *expr)),
                 ),
+                PrimaryExpr::Invocation(invocation) => {
+                    let scope = semantic_index(self.db, self.expr.scope_id(self.db).file(self.db))
+                        .get_scope(self.db, self.expr.scope_id(self.db));
+                    let resolved_invocation = invocation.resolve_invocation(self.db, scope);
+
+                    ResolvedExpr::new(
+                        self.db,
+                        self.expr,
+                        ResolvedExprKind::Invocation(resolved_invocation),
+                    )
+                }
                 PrimaryExpr::FuncCall(func_call) => {
                     let resolved_func_call = func_call.resolve_func_call(self.db);
                     ResolvedExpr::new(
                         self.db,
                         self.expr,
-                        ResolvedExprKind::FuncCall {
-                            target: resolved_func_call.target,
-                            params: resolved_func_call.params,
-                        },
+                        ResolvedExprKind::FuncCall(resolved_func_call),
                     )
                 }
                 PrimaryExpr::RefValue { value } => match value {

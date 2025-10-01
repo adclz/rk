@@ -1,8 +1,12 @@
 use crate::builder::expression::{ParseExpr, ParseExpression, ParseVariableAccess};
+use crate::builder::invocation::ParseInvocation;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::analysis_error::AnalysisError;
 use crate::check::errors::syntax::SyntaxError;
-use crate::hir_def::expressions::expression::{FuncCall, ParamAssign, ParamAssignKind, SymbolicVariable};
+use crate::hir_def::expressions::expression::{
+    FuncCall, ParamAssign, ParamAssignKind, SymbolicVariable,
+};
+use crate::hir_def::expressions::invocation::Invocation;
 use crate::hir_def::expressions::statement::{CaseKind, Stmt, StmtKind};
 use crate::hir_def::interned::identifier::SpanIdent;
 use auto_lsp::anyhow::{self};
@@ -44,12 +48,12 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                                     ast::generated::ParamAssignInput_ParamAssignOutput::ParamAssignOutput(p) => {
                                         let variable = p.variable.cast(sema.ast).to_access(sema)?;
 
-                                        parameters.push(ParamAssign::new(sema.db, p.into(), sema.current_scope, 
+                                        parameters.push(ParamAssign::new(sema.db, p.into(), sema.current_scope,
                                             ParamAssignKind::FormalOutput { not: p.not.is_some() , param: SpanIdent::from_node(sema.db, sema, p.param.cast(sema.ast))?, variable })
                                     )
                                     }
                                 }
-                        } 
+                        }
                     }
                 }
                 Ok(Stmt::new(
@@ -62,52 +66,18 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                     sema.current_scope,
                 ))
             }
-            StmtType::Invocation(invocation) => {
-                let mut parameters = vec![];
-                for params in invocation.params.iter() {
-                    match params.cast(sema.ast) {
-                        ast::generated::Comma_ParamAssign::Token_Comma(_) => {}
-                        ast::generated::Comma_ParamAssign::ParamAssign(p) => {
-                            match p.children.cast(sema.ast) {
-                                    ast::generated::ParamAssignInput_ParamAssignOutput::ParamAssignInput(p) => {
-                                        parameters.push(ParamAssign::new(sema.db, p.into(), sema.current_scope, match p.param.as_ref() {
-                                            Some(param) => {
-                                                ParamAssignKind::FormalInput { param: SpanIdent::from_node(sema.db, sema, param.cast(sema.ast))?, value: p.value.cast(sema.ast).to_expr(sema)? }
-                                            },
-                                            None => {
-                                                ParamAssignKind::NonFormal { value: p.value.cast(sema.ast).to_expr(sema)? }
-                                            }
-                                        }))
-                                    }
-                                    ast::generated::ParamAssignInput_ParamAssignOutput::ParamAssignOutput(p) => {
-                                        let variable = p.variable.cast(sema.ast).to_access(sema)?;
-
-                                        parameters.push(ParamAssign::new(sema.db, p.into(), sema.current_scope, 
-                                            ParamAssignKind::FormalOutput { not: p.not.is_some() , param: SpanIdent::from_node(sema.db, sema, p.param.cast(sema.ast))?, variable })
-                                    )
-                                    }
-                                }
-                        }
-                    }
-                }
-                Ok(Stmt::new(
-                    sema.db,
-                    StmtKind::Invocation {
-                        target: SymbolicVariable {
-                            this: invocation.invocation.cast(sema.ast).this.is_some(),
-                            kind: invocation
-                                .invocation
-                                .cast(sema.ast)
-                                .children
-                                .cast(sema.ast)
-                                .parse(sema)?,
-                        },
-                        params: parameters,
-                    },
-                    invocation.into(),
-                    sema.current_scope,
-                ))
-            }
+            StmtType::SuperBodyInvocation(super_invocation) => Ok(Stmt::new(
+                sema.db,
+                StmtKind::Invocation(super_invocation.to_invocation(sema)?),
+                super_invocation.into(),
+                sema.current_scope,
+            )),
+            StmtType::Invocation(invocation) => Ok(Stmt::new(
+                sema.db,
+                StmtKind::Invocation(invocation.to_invocation(sema)?),
+                invocation.into(),
+                sema.current_scope,
+            )),
             StmtType::IfStmt(if_stmt) => {
                 let condition = if_stmt.if_cond.cast(sema.ast).to_expr(sema)?;
                 let then = if_stmt
@@ -342,12 +312,6 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                     sema.current_scope,
                 ))
             }
-            StmtType::SuperStmt(super_stmt) => Ok(Stmt::new(
-                sema.db,
-                StmtKind::Super,
-                super_stmt.into(),
-                sema.current_scope,
-            )),
             StmtType::Token_RETURN(return_stmt) => Ok(Stmt::new(
                 sema.db,
                 StmtKind::Return,

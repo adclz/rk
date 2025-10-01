@@ -2,14 +2,21 @@ use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, Related, diag};
 
 use crate::{
-    check::errors::{
-        analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic}, coerce::{ExprMismatch, TypeMismatch}, utils::{get_decl_and_def_for_ty, get_decl_for_ty}, var_error::VarResolveError
-    }, hir_def::interned::identifier::SpanIdent, hir_ty::{
-        expr_resolver::ResolvedExpr,
-        stmt_resolver::ResolvedStmt,
-        ty::Ty,
-        ty_path_expr_resolver::ResolvedPathResult,
-        ty_var_access_resolver::ResolvedVarResult,
+    check::{
+        errors::{
+            analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic},
+            coerce::{ExprMismatch, TypeMismatch},
+            utils::{get_candidates, get_decl_and_def_for_ty, get_decl_for_ty, get_def_for_ty},
+            var_error::VarResolveError,
+        },
+        recovery::{
+            func_call::fuzzy_func_local_items, pou::fuzzy_pou_local_items,
+            struct_::fuzzy_struct_fields,
+        },
+    }, hir_def::{
+        expressions::expression::PathExpr, interned::identifier::SpanIdent, pous::pou::{Pou, PouDecl}, scope::ScopeKind, semantic_index::semantic_index
+    }, hir_ty::{
+        expr_resolver::ResolvedExpr, inheritance_solver::method_table, invocation_resolver::ResolvedInvocation, stmt_resolver::ResolvedStmt, ty::{ty_for_pou, Ty, TyDef, TyKind}, ty_path_expr_resolver::ResolvedPathResult, ty_var_access_resolver::ResolvedVarResult
     }, HirNodeInfo
 };
 
@@ -37,42 +44,38 @@ pub enum StmtError<'db> {
     },
     // Function Calls
     UnresolvedFuncCall {
-        stmt: ResolvedStmt<'db>,
+        call: ResolvedVarResult<'db>,
     },
     CallANonCallableType {
         ty: Ty<'db>,
-        var: ResolvedPathResult<'db>,
+        call: ResolvedVarResult<'db>,
     },
     UnusedReturnType {
         ty: Ty<'db>,
-        var: ResolvedPathResult<'db>,
+        call: ResolvedVarResult<'db>,
         ret: Ty<'db>,
     },
     TooManyParameters {
-        stmt: ResolvedStmt<'db>,
-        target: Ty<'db>,
+        call: ResolvedVarResult<'db>,
         expected: usize,
         found: usize,
     },
     MixedFormalNonFormalParams {
-        ty: Ty<'db>,
-        var: ResolvedPathResult<'db>,
+        call: ResolvedVarResult<'db>,
     },
     DuplicateParameter {
         param1: SpanIdent<'db>,
         param2: SpanIdent<'db>,
     },
     UnknownNonFormalParam {
-        ty: Ty<'db>,
-        var: ResolvedPathResult<'db>,
+        call: ResolvedVarResult<'db>,
     },
     UnresolvedNonFormalParam {
         var: ResolvedVarResult<'db>,
         err: VarResolveError<'db>,
     },
     UnknownFormalInputParam {
-        ty: Ty<'db>,
-        var: ResolvedPathResult<'db>,
+        call: ResolvedVarResult<'db>,
         param: SpanIdent<'db>,
     },
     UnresolvedInputParam {
@@ -80,8 +83,7 @@ pub enum StmtError<'db> {
         err: VarResolveError<'db>,
     },
     UnknownFormalOutputParam {
-        ty: Ty<'db>,
-        var: ResolvedPathResult<'db>,
+        call: ResolvedVarResult<'db>,
         param: SpanIdent<'db>,
     },
     UnresolvedOutputParam {
@@ -205,22 +207,22 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
 
                 diag
             }
-            Self::UnresolvedFuncCall { stmt } => {
+            Self::UnresolvedFuncCall { call }=> {
                 let mut diag = diag()
                     .message("unresolved function call".into())
                     .severity(DiagnosticSeverity::ERROR)
-                    .range(stmt.get_span(db).clone())
+                    .range(call.get_span(db).clone())
                     .call();
                 diag
             }
-            Self::CallANonCallableType { ty, var } => {
+            Self::CallANonCallableType { ty, call } => {
                 let mut diag = diag()
                     .message(format!(
                         "cannot call non-callable type '{}'",
                         ty.decl(db).name(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
-                    .range(var.get_span(db).clone())
+                    .range(call.get_span(db).clone())
                     .call();
 
                 get_decl_and_def_for_ty(db, *ty, &mut diag);
@@ -229,35 +231,34 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
 
                 diag
             }
-            Self::UnusedReturnType { ty, var, ret } => {
+            Self::UnusedReturnType { ty, call, ret } => {
                 let mut diag = diag()
                     .message(format!(
                         "unused return type of '{}'",
                         ty.decl(db).name(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::WARNING)
-                    .range(var.get_span(db).clone())
+                    .range(call.get_span(db).clone())
                     .call();
 
                 get_decl_and_def_for_ty(db, *ret, &mut diag);
                 diag
             }
             Self::TooManyParameters {
-                stmt,
-                target,
+                call,
                 expected,
                 found,
             } => {
                 let mut diag = diag()
                     .message(format!(
                         "'{}' expected {expected} parameters, but got {found}",
-                        target.decl(db).name(db).text(db)
+                        call.ty(db).unwrap().decl(db).name(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
-                    .range(stmt.get_span(db).clone())
+                    .range(call.get_span(db).clone())
                     .call();
 
-                get_decl_and_def_for_ty(db, *target, &mut diag);
+                get_decl_and_def_for_ty(db, call.ty(db).unwrap(), &mut diag);
                 diag
             }
             Self::DuplicateParameter { param1, param2 } => {
@@ -275,17 +276,17 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
 
                 diag
             }
-            Self::UnknownNonFormalParam { ty, var } => {
+            Self::UnknownNonFormalParam { call } => {
                 let mut diag = diag()
                     .message(format!(
                         "unknown non-formal parameter in call to '{}'",
-                        ty.decl(db).name(db).text(db)
+                        call.ty(db).unwrap().decl(db).name(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
-                    .range(var.get_span(db).clone())
+                    .range(call.ty(db).unwrap().get_span(db).clone())
                     .call();
 
-                get_decl_and_def_for_ty(db, *ty, &mut diag);
+                get_decl_and_def_for_ty(db, call.ty(db).unwrap(), &mut diag);
                 diag
             }
             Self::UnresolvedInputParam { var, err } => {
@@ -297,26 +298,38 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                     .severity(DiagnosticSeverity::ERROR)
                     .range(var.get_span(db).clone())
                     .call();
+
+                err.related(db, &mut diag);
+                err.note(db, &mut diag);
                 diag
             }
-            Self::UnknownFormalInputParam { ty, var, param } => {
+            Self::UnknownFormalInputParam { call, param } => {
                 let mut diag = diag()
                     .message(format!("unknown input parameter '{}'", param.text(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(param.get_span(db).clone())
                     .call();
 
-                get_decl_and_def_for_ty(db, *ty, &mut diag);
+                get_decl_for_ty(db, call.ty(db).unwrap(), &mut diag);
+                if let TyDef::Pou(pou) = call.ty(db).unwrap().def(db) {
+                    let candidates = fuzzy_func_local_items(db, pou, param.ident.text(db).as_str());
+                    diag.with_note(get_candidates(&candidates));
+                }
+
                 diag
             }
-            Self::UnknownFormalOutputParam { ty, var, param } => {
+            Self::UnknownFormalOutputParam { call, param } => {
                 let mut diag = diag()
                     .message(format!("unknown output parameter '{}'", param.text(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(param.get_span(db).clone())
                     .call();
 
-                get_decl_and_def_for_ty(db, *ty, &mut diag);
+                get_decl_for_ty(db, call.ty(db).unwrap(), &mut diag);
+                if let TyDef::Pou(pou) = call.ty(db).unwrap().def(db) {
+                    let candidates = fuzzy_func_local_items(db, pou, param.ident.text(db).as_str());
+                    diag.with_note(get_candidates(&candidates));
+                }
                 diag
             }
             Self::UnresolvedOutputParam { var, err } => {
@@ -380,14 +393,14 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 err.related(db, &mut diag);
                 diag
             }
-            Self::MixedFormalNonFormalParams { ty, var } => {
+            Self::MixedFormalNonFormalParams { call } => {
                 let mut diag = diag()
                     .message(format!(
                         "mixed formal and non-formal parameters in call to '{}'",
-                        ty.decl(db).name(db).text(db)
+                        call.ty(db).unwrap().decl(db).name(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
-                    .range(var.get_span(db).clone())
+                    .range(call.get_span(db).clone())
                     .call();
 
                 diag.with_note("parameters must be either all formal or all non-formal".into());
@@ -450,3 +463,4 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
         }
     }
 }
+

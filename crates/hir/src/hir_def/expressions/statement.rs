@@ -2,7 +2,7 @@ use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     hir_def::{
-        expressions::expression::{Expr, FuncCall, ParamAssign, PathExpr, SymbolicVariable, VariableAccess},
+        expressions::{expression::{Expr, FuncCall, ParamAssign, PathExpr, SymbolicVariable, VariableAccess}, invocation::Invocation},
         scope::FileScopeId,
     },
     AstId, HirNodeInfo,
@@ -39,11 +39,7 @@ pub enum StmtKind<'db> {
         target: Expr<'db>, // todo: replace with ref or identifier
     },
     FuncCall(FuncCall<'db>),
-    Invocation {
-        target: SymbolicVariable<'db>,
-        params: Vec<ParamAssign<'db>>, // parameter_list
-    },
-    Super,
+    Invocation(Invocation<'db>),
     Return,
     If {
         condition: Expr<'db>,

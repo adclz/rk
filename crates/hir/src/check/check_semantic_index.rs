@@ -87,6 +87,10 @@ impl<'db> Check<'db> for PouDecl<'db> {
                 check_ty(db, ty_for_pou(db, *self), errors);
                 fb.variables(db).check(db, errors);
                 fb.statements(db).check(db, errors);
+                fb.methods(db).iter().for_each(|m| {
+                    m.variables(db).check(db, errors);
+                    m.stmts(db).check(db, errors);
+                });
             }
             Pou::DataType(dt) => {
                 check_ty(db, ty_for_pou(db, *self), errors);
@@ -95,6 +99,10 @@ impl<'db> Check<'db> for PouDecl<'db> {
                 check_ty(db, ty_for_pou(db, *self), errors);
                 check_methods(db, ty_for_pou(db, *self), errors);
                 cl.variables(db).check(db, errors);
+                cl.methods(db).iter().for_each(|m| {
+                    m.variables(db).check(db, errors);
+                    m.stmts(db).check(db, errors);
+                });
             }
             Pou::Interface(it) => {
                 check_ty(db, ty_for_pou(db, *self), errors);

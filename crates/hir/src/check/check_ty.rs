@@ -11,7 +11,7 @@ pub fn check_ty<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>, errors: &mut Vec<An
             errors.push(
                 TyError::UnresolvedNamespace {
                     ty,
-                    path: unresolved,
+                    path: *unresolved,
                 }
                 .into(),
             );
@@ -19,9 +19,9 @@ pub fn check_ty<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>, errors: &mut Vec<An
         TyKind::Target(target) => {
             // Check infinite recursion
             if let TyKind::Recursive = target.kind(db) {
-                errors.push(TyError::ReferenceRecursive { origin: ty, target }.into());
+                errors.push(TyError::ReferenceRecursive { origin: ty, target: *target }.into());
             } else {
-                check_ty(db, target, errors);
+                check_ty(db, *target, errors);
             }
         }
         TyKind::Recursive => {

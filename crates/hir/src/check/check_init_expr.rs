@@ -20,7 +20,7 @@ pub fn check_init_expr<'db>(
     errors: &mut Vec<AnalysisError<'db>>,
 ) {
     if let TyKind::Target(target) = ty.kind(db) {
-        check_init_expr(db, target, expr, errors);
+        check_init_expr(db, *target, expr, errors);
     }
 
     match (ty.kind(db), expr.kind(db)) {
@@ -62,7 +62,7 @@ pub fn check_init_expr<'db>(
         // Array definition <-> Array init expression
         (TyKind::Array { ranges, typ }, ResolvedInitExprKind::ArrayInit { values }) => {
             // Check multidimensional arrays by validating each dimension
-            check_array_dimensions(db, &ranges, typ, values, errors);
+            check_array_dimensions(db, &ranges, *typ, values, errors);
         }
         // Struct/Array <-> Constant expression
         (_, ResolvedInitExprKind::ConstantExpr(expr)) => {

@@ -21,6 +21,7 @@ pub mod statement;
 pub mod types;
 pub mod using;
 pub mod variables;
+pub mod invocation;
 
 pub trait ParseVarSection<'db> {
     fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<VariableDecl<'db>>);

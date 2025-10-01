@@ -1,12 +1,21 @@
 use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
-use ide_diagnostic::{IdeDiagnostic, diag};
+use ide_diagnostic::{diag, IdeDiagnostic, Related};
 
 use crate::{
+    HirNodeInfo,
     check::errors::{
         analysis_error::{AnalysisError, ToIdeDiagnostic},
-        utils::get_decl_for_ty,
+        utils::{get_decl_for_ty, get_def_for_ty},
     },
-    hir_ty::ty::Ty,
+    hir_def::{
+        expressions::{expression::PathExpr, invocation::Invocation},
+        scope::ScopeKind,
+        semantic_index::semantic_index,
+    },
+    hir_ty::{
+        invocation_resolver::ResolvedInvocation,
+        ty::{Ty, TyKind, ty_for_pou},
+    },
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -32,6 +41,29 @@ pub enum MethodError<'db> {
     UnimplementedInterfaceMethod {
         implementer: Ty<'db>,
         method: Ty<'db>,
+    },
+    // Invocations
+    UnresolvedThisMethod {
+        ctx: Ty<'db>,
+        path: PathExpr<'db>,
+        method: Invocation<'db>,
+    },
+    UnresolvedSuperMethod {
+        ctx: Option<Ty<'db>>,
+        path: PathExpr<'db>,
+        method: Invocation<'db>,
+    },
+    ThisOnIncompatiblePou {
+        path: PathExpr<'db>,
+        method: Invocation<'db>,
+    },
+    SuperOnIncompatiblePou {
+        path: PathExpr<'db>,
+        method: Invocation<'db>,
+    },
+    SuperBodyOnIncompatiblePou {
+        ctx: Ty<'db>,
+        method: Invocation<'db>,
     },
 }
 
@@ -143,6 +175,89 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
 
                 diag
             }
+            Self::UnresolvedThisMethod { ctx, path, method } => diag()
+                .message(
+                    format!(
+                        "no method '{}' in declared methods of '{}'",
+                        path.to_string(db).ident.text(db).to_string(),
+                        ctx.decl(db).name(db).text(db)
+                    )
+                    .into(),
+                )
+                .severity(DiagnosticSeverity::ERROR)
+                .range(method.get_span(db).clone())
+                .call(),
+            Self::UnresolvedSuperMethod { ctx, path, method } => {
+                let mut diag = diag()
+                    .message(
+                        format!(
+                            "no method '{}' in inherited methods of '{}'",
+                            path.to_string(db).ident.text(db).to_string(),
+                            ctx.map(|c| c.decl(db).name(db).text(db).to_string())
+                                .unwrap_or_else(|| "<unknown>".into())
+                        )
+                        .into(),
+                    )
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(method.get_span(db).clone())
+                    .call();
+
+                if let Some(caller) = ctx {
+                    if let Some(span) = caller.def(db).get_span(db) {
+                        let origin = caller.def(db).def_as_ty(db).unwrap();
+
+                        diag.with_related(Related::new(
+                            format!("methods are inherited from '{}' here", origin.decl(db).name(db).text(db),),
+                            caller
+                                .def(db)
+                                .get_scope_id(db)
+                                .expect("A ty definition with a span always has a scope id")
+                                .file(db),
+                            span,
+                        ));
+                    }
+                }
+                diag
+            }
+            Self::ThisOnIncompatiblePou { path, method } => {
+                let mut diag = diag()
+                    .message("THIS can only be used in in FUNCTION_BLOCK or CLASS POUs".into())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(method.get_span(db).clone())
+                    .call();
+
+                diag
+            }
+            Self::SuperOnIncompatiblePou { path, method } => {
+                let mut diag = diag()
+                    .message("SUPER can only be used in FUNCTION_BLOCK or CLASS POUs".into())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(method.get_span(db).clone())
+                    .call();
+
+                diag
+            }
+            Self::SuperBodyOnIncompatiblePou { ctx, method } => {
+                let mut diag = diag()
+                    .message("SUPER() can only be called in FUNCTION_BLOCK POUs".into())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(method.get_span(db).clone())
+                    .call();
+
+                get_decl_for_ty(db, *ctx, &mut diag);
+
+                diag
+            }
         }
+    }
+}
+
+fn get_self<'db>(db: &'db dyn BaseDatabase, method: ResolvedInvocation<'db>) -> Option<Ty<'db>> {
+    let origin = method.invocation;
+    let sema = semantic_index(db, origin.scope_id(db).file(db));
+    let scope = sema.get_scope(db, origin.scope_id(db));
+    match scope.kind {
+        ScopeKind::Pou(pou) => Some(ty_for_pou(db, pou)),
+        _ => None,
     }
 }

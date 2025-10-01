@@ -1,18 +1,25 @@
 use auto_lsp::default::db::BaseDatabase;
+use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
 
 use crate::{
     check::{
         check_semantic_index::Check,
         coerce::{coerce_bool_with_expr, coerce_ty_with_expr, coerce_ty_with_ty},
-        errors::{analysis_error::AnalysisError, stmt::StmtError},
+        errors::{analysis_error::AnalysisError, inheritance::MethodError, stmt::StmtError},
+        recovery::func_call,
     },
-    hir_def::{expressions::statement::Stmt, pous::pou::Pou},
+    hir_def::{
+        expressions::{invocation::InvocationKind, statement::Stmt},
+        interned::identifier::Ident,
+        pous::pou::Pou,
+    },
     hir_ty::{
         expr_resolver::ResolvedExpr,
-        func_call_resolver::{ResolvedParam, ResolvedParamKind},
+        func_call_resolver::{ResolvedFuncCall, ResolvedParam, ResolvedParamKind},
+        invocation_resolver::{ResolvedInvocationResult, ResolvedMethodKind},
         stmt_resolver::{ResolvedStmt, ResolvedStmtKind, resolve_stmt},
-        ty::TyDef,
+        ty::{Ty, TyDef},
         ty_path_expr_resolver::ResolvedPathResult,
         ty_var_access_resolver::ResolvedVarResult,
     },
@@ -59,8 +66,8 @@ impl<'db> Check<'db> for ResolvedStmt<'db> {
                     errors.push(err);
                 }
             }
-            ResolvedStmtKind::FuncCall { target, params } => {
-                if let Err(err) = check_func_call(db, *self, *target, params, errors) {
+            ResolvedStmtKind::FuncCall(call) => {
+                if let Err(err) = check_func_call(db, call, errors) {
                     errors.push(err);
                 }
             }
@@ -95,8 +102,8 @@ impl<'db> Check<'db> for ResolvedStmt<'db> {
             }
             ResolvedStmtKind::Repeat { condition, body } => {
                 match coerce_bool_with_expr(db, *condition) {
-                    Ok(is_valid) => {
-                        if !is_valid {
+                    Ok(is_bool) => {
+                        if !is_bool {
                             errors.push(
                                 StmtError::RepeatConditionIsNotABool {
                                     condition: *condition,
@@ -108,10 +115,12 @@ impl<'db> Check<'db> for ResolvedStmt<'db> {
                     Err(err) => errors.push(err),
                 }
             }
-            ResolvedStmtKind::Case {} => {}
-            ResolvedStmtKind::Invocation {} => {
-                // todo
+            ResolvedStmtKind::Invocation(invocation) => {
+                if let Err(err) = check_invocation(db, invocation, errors) {
+                    errors.push(err);
+                }
             }
+            ResolvedStmtKind::Case {} => {}
             _ => {}
         }
     }
@@ -132,7 +141,7 @@ fn check_assignment<'db>(
     }
 
     match (ty_var.is_variable(db), ty_var.is_callable(db)) {
-        // is not a variable but callable 
+        // is not a variable but callable
         (false, true) => {
             // Special case: assigning to function with return type
             if let TyDef::Pou(pou) = ty_var.def(db)
@@ -157,6 +166,74 @@ fn check_assignment<'db>(
 
     coerce_ty_with_expr(db, ty_var, target)
         .map_err(|err| StmtError::AssignmentTypeMismatch { err }.into())
+}
+
+fn check_func_call<'db>(
+    db: &'db dyn BaseDatabase,
+    fun_call: &ResolvedFuncCall<'db>,
+    errors: &mut Vec<AnalysisError<'db>>,
+) -> Result<(), AnalysisError<'db>> {
+    let ty_target = fun_call
+        .target
+        .ty(db)
+        .map_err(|err| StmtError::UnresolvedFuncCall {
+            call: fun_call.target.clone(),
+        })?;
+
+    if !ty_target.is_callable(db) {
+        return Err(StmtError::CallANonCallableType {
+            ty: ty_target,
+            call: fun_call.target.clone(),
+        }
+        .into());
+    }
+
+    if let Some(ret) = ty_target.has_return_type(db) {
+        errors.push(
+            StmtError::UnusedReturnType {
+                ty: ty_target,
+                call: fun_call.target.clone(),
+                ret,
+            }
+            .into(),
+        )
+    }
+
+    if let Some(signature) = ty_target.variables(db) {
+        check_parameters(db, fun_call.target, &signature, &fun_call.params, errors);
+    }
+    Ok(())
+}
+
+fn check_invocation<'db>(
+    db: &'db dyn BaseDatabase,
+    invocation: &ResolvedInvocationResult<'db>,
+    errors: &mut Vec<AnalysisError<'db>>,
+) -> Result<(), AnalysisError<'db>> {
+    match &invocation.target.kind {
+        ResolvedMethodKind::Unresolved(err) => {
+            return Err(err.clone().into());
+        }
+        ResolvedMethodKind::InheritedMethod { target, method }
+        | ResolvedMethodKind::DeclaredMethod { target, method } => {
+            let ty_target = method.ty(db).map_err(|err| StmtError::UnresolvedFuncCall {
+                call: target.clone(),
+            })?;
+
+            let k = format!("{:?}", ty_target.kind(db));
+
+            if let Some(signature) = ty_target.variables(db) {
+                check_parameters(db, *method, &signature, &invocation.params, errors);
+            }
+        }
+        ResolvedMethodKind::FunctionBlockBody { target } => {
+            let ty_target = target.ty(db).map_err(|err| StmtError::UnresolvedFuncCall {
+                call: target.clone(),
+            })?;
+        }
+    }
+
+    Ok(())
 }
 
 #[derive(Clone, Copy)]
@@ -190,48 +267,21 @@ impl FormalCall {
     }
 }
 
-fn check_func_call<'db>(
+fn check_parameters<'db>(
     db: &'db dyn BaseDatabase,
-    stmt: ResolvedStmt<'db>,
-    target: ResolvedPathResult<'db>,
+    target: ResolvedVarResult<'db>,
+    signature: &IndexMap<Ident, Ty<'db>>,
     params: &Vec<ResolvedParam<'db>>,
     errors: &mut Vec<AnalysisError<'db>>,
-) -> Result<(), AnalysisError<'db>> {
-    let ty_target = target
-        .ty(db)
-        .map_err(|err| StmtError::UnresolvedFuncCall { stmt })?;
-
-    if !ty_target.is_callable(db) {
-        return Err(StmtError::CallANonCallableType {
-            ty: ty_target,
-            var: target,
-        }
-        .into());
-    }
-
-    if let Some(ret) = ty_target.has_return_type(db) {
-        errors.push(
-            StmtError::UnusedReturnType {
-                ty: ty_target,
-                var: target,
-                ret,
-            }
-            .into(),
-        )
-    }
-
-    // SAFETY: unwrap is safe because is_callable was checked before
-    // // todo: check if Default can not be implemented
-    let signature = ty_target.to_signature(db).unwrap();
+) {
     let mut format = FormalCall::Unset;
 
-    let too_many_params = params.len() > signature.length();
+    let too_many_params = params.len() > signature.len();
     if too_many_params {
         errors.push(
             StmtError::TooManyParameters {
-                stmt,
-                target: ty_target,
-                expected: signature.length(),
+                call: target,
+                expected: signature.len(),
                 found: params.len(),
             }
             .into(),
@@ -244,8 +294,7 @@ fn check_func_call<'db>(
         if !format.check_consistency(&p.kind(db)) {
             errors.push(
                 StmtError::MixedFormalNonFormalParams {
-                    ty: ty_target,
-                    var: target,
+                    call: target.clone(),
                 }
                 .into(),
             );
@@ -282,8 +331,7 @@ fn check_func_call<'db>(
                     if !too_many_params {
                         errors.push(
                             StmtError::UnknownNonFormalParam {
-                                ty: ty_target,
-                                var: target,
+                                call: target.clone(),
                             }
                             .into(),
                         );
@@ -331,8 +379,7 @@ fn check_func_call<'db>(
                     },
                     None => errors.push(
                         StmtError::UnknownFormalInputParam {
-                            ty: ty_target,
-                            var: target,
+                            call: target.clone(),
                             param,
                         }
                         .into(),
@@ -408,8 +455,7 @@ fn check_func_call<'db>(
                     },
                     None => errors.push(
                         StmtError::UnknownFormalOutputParam {
-                            ty: ty_target,
-                            var: target,
+                            call: target.clone(),
                             param,
                         }
                         .into(),
@@ -418,8 +464,6 @@ fn check_func_call<'db>(
             }
         }
     }
-
-    Ok(())
 }
 
 fn check_for<'db>(

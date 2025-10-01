@@ -25,7 +25,7 @@ pub fn coerce_ty_with_ty<'db>(
     ty2: Ty<'db>,
 ) -> Result<(), TypeMismatch<'db>> {
     if let TyKind::Target(target) = ty1.kind(db) {
-        return coerce_ty_with_ty(db, target, ty2);
+        return coerce_ty_with_ty(db, *target, ty2);
     }
 
     match (ty1.kind(db), ty2.kind(db)) {
@@ -46,7 +46,7 @@ pub fn coerce_ty_with_expr<'db>(
 ) -> Result<(), ExprMismatch<'db>> {
     // If Type is Target, recurse
     if let TyKind::Target(t) = ty.kind(db) {
-        return coerce_ty_with_expr(db, t, target_expr);
+        return coerce_ty_with_expr(db, *t, target_expr);
     }
 
     match (ty.kind(db), target_expr.kind(db)) {
@@ -55,16 +55,16 @@ pub fn coerce_ty_with_expr<'db>(
             .check_literal(db, *prim)
             .map_err(|err| ExprMismatch::literal(target_expr, ty, err).into()),
         // Compare an elementary type with a function call
-        (TyKind::Simple(elem), ResolvedExprKind::FuncCall { target, .. }) => {
+        (TyKind::Simple(elem), ResolvedExprKind::FuncCall(call)) => {
             // Check if the function call has a return type
-            match target
+            match call.target
                 .ty(db)
-                .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?
+                .map_err(|err| ExprMismatch::unresolved_var(target_expr, err))?
                 .has_return_type(db)
             {
                 Some(ret) => coerce_ty_with_ty(db, ty, ret)
                     .map_err(|err| ExprMismatch::type_mismatch(target_expr, err).into()),
-                None => Err(ExprMismatch::expr_void(target_expr, ty, *target)),
+                None => Err(ExprMismatch::expr_void(target_expr, ty)),
             }
         }
         // Compare an elementary type with a variable access
@@ -97,7 +97,7 @@ pub fn coerce_ty_with_expr<'db>(
         // Check if the PathExpr result type matches the array element type
         (TyKind::Array { ranges, typ }, ResolvedExprKind::PathExpr(result)) => coerce_ty_with_ty(
             db,
-            typ,
+            *typ,
             result
                 .ty(db)
                 .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?,
@@ -112,7 +112,7 @@ pub fn coerce_bool_with_ty<'db>(
     ty: Ty<'db>,
 ) -> Result<bool, AnalysisError<'db>> {
     match ty.kind(db) {
-        TyKind::Target(target) => coerce_bool_with_ty(db, target),
+        TyKind::Target(target) => coerce_bool_with_ty(db, *target),
         TyKind::Simple(simple) => match simple {
             ElementarySpec::Bool => Ok(true),
             _ => Ok(false),

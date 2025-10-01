@@ -1,4 +1,4 @@
-use crate::builder::ParseVarSection;
+use crate::builder::{ParseSpec, ParseVarSection};
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::statement::ParseStatement;
 use crate::check::errors::analysis_error::AnalysisError;
@@ -6,6 +6,7 @@ use crate::check::errors::syntax::SyntaxError;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use crate::hir_def::modifier::Modifier;
+use crate::hir_def::pous::class::MethodDecl;
 use crate::hir_def::pous::function_block::FunctionBlock;
 use crate::hir_def::pous::pou::{Pou, PouDecl};
 use crate::hir_def::pous::variable::VariableDecl;
@@ -87,6 +88,83 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
         });
 
+        let methods = func.method
+            .iter()
+            .filter_map(|m| {
+            let name = match Ident::from_node(self.db, self.file, m.cast(self.ast).name.cast(self.ast)) {
+                Ok(name) => name,
+                Err(error) => {
+                self.errors.push(error);
+                return None;
+                }
+            };
+
+            let mut modifiers = match m.cast(self.ast).modifier.as_ref().map(|m| m.cast(self.ast)) {
+                Some(ast::generated::Operators_2::Token_ABSTRACT(_)) => Modifier::ABSTRACT,
+                Some(ast::generated::Operators_2::Token_FINAL(_)) => Modifier::FINAL,
+                _ => Modifier::empty(),
+            };
+
+            if m.cast(self.ast)._override.is_some() {
+                modifiers |= Modifier::OVERRIDE;
+            }
+
+            type MethodBody = ast::generated::ExternalVarDecls_InOutDecls_InputDecls_OutputDecls_TempVarDecls_VarDecls;
+            let mut method_variables = vec![];
+            for v in m.cast(self.ast).variables.iter() {
+                match v.cast(self.ast) {
+                MethodBody::ExternalVarDecls(decls) => decls.parse(self, &mut method_variables),
+                MethodBody::InOutDecls(decls) => decls.parse(self, &mut method_variables),
+                MethodBody::InputDecls(decls) => decls.parse(self, &mut method_variables),
+                MethodBody::OutputDecls(decls) => decls.parse(self, &mut method_variables),
+                MethodBody::TempVarDecls(decls) => decls.parse(self, &mut method_variables),
+                MethodBody::VarDecls(decls) => decls.parse(self, &mut method_variables),
+                }
+            }
+
+            let mut body = vec![];
+            if let Some(body_node) = m.cast(self.ast).body.as_ref() {
+                if let ast::generated::FbDiagram_LadderDiagram_StmtList::StmtList(stmts) = body_node.cast(self.ast).children.cast(self.ast) {
+                for stmt in stmts.children.iter() {
+                    match stmt.cast(self.ast).to_statement(self) {
+                    Ok(statement) => body.push(statement),
+                    Err(error) => self.errors.push(error),
+                    }
+                }
+                }
+            }
+
+            let return_type: Option<_> = m
+                .cast(self.ast)
+                .return_type
+                .as_ref()
+                .and_then(|rt| {
+                match rt.cast(self.ast).to_spec(self) {
+                    Ok(spec) => Some(spec),
+                    Err(error) => {
+                    self.errors.push(error);
+                    None
+                    }
+                }
+                });
+
+            let _override = m.cast(self.ast)._override.is_some();
+
+            Some(MethodDecl::new(
+                self.db,
+                method_variables,
+                name,
+                return_type,
+                modifiers,
+                _override,
+                body,
+                m.cast(self.ast).into(),
+                m.cast(self.ast).name.cast(self.ast).into(),
+                scope_id
+            ))
+        }).collect::<Vec<_>>();
+
+
         let mut modifiers = Modifier::empty();
         if let Some(func_mod) = &func.qualifier {
             match func_mod.cast(self.ast) {
@@ -108,7 +186,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         let result = PouDecl::new(
             self.db,
             Pou::FunctionBlock(FunctionBlock::new(
-                self.db, extends, implements, variables, statements, modifiers, scope_id,
+                self.db, extends, implements, variables, methods, statements, modifiers, scope_id,
             )),
             name,
             func.into(),

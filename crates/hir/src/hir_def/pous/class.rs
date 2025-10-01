@@ -56,7 +56,7 @@ pub struct MethodDecl<'db> {
     #[tracked]
     #[no_eq]
     #[returns(ref)]
-    pub body: Vec<Stmt<'db>>,
+    pub stmts: Vec<Stmt<'db>>,
 
     pub id: AstId,
 

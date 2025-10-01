@@ -1,7 +1,6 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::check::errors::path_error::PathResolveError;
-use crate::check::errors::analysis_error::AnalysisError;
 use crate::hir_def::expressions::expression::{PathExprKind, VarAccess};
 use crate::hir_def::interned::namespace::{NamespaceAccess, NamespacePath};
 use crate::hir_def::{
@@ -41,10 +40,6 @@ impl<'db> ResolvedPathResult<'db> {
                 scope: self.expr(db).scope_id(db),
             }),
         }
-    }
-
-    fn place(&self, db: &'db dyn BaseDatabase) -> AstId {
-        self.expr(db).id(db)
     }
 }
 

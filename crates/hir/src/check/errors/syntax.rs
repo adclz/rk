@@ -28,8 +28,8 @@ pub enum SyntaxError {
     MissingVarType(Span),
     UnexpectedVarInit(Span),
     IncompleteEdgeQualifier(Span),
-    InvocationInExpression(Span),
     UnexpectedThis(Span),
+    UnexpectedSuper(Span),
     AssignToFunctionCall(Span),
     EmptyRightHandSide(Span),
     MissingDotInAssignment {
@@ -124,13 +124,13 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 .severity(DiagnosticSeverity::ERROR)
                 .range(span.clone())
                 .call(),
-            Self::InvocationInExpression(span) => diag()
-                .message("invocation in expression is not allowed".into())
+            Self::UnexpectedThis(span) => diag()
+                .message("'THIS' is not valid in this context".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .range(span.clone())
                 .call(),
-            Self::UnexpectedThis(span) => diag()
-                .message("'this' is not valid in this context".into())
+            Self::UnexpectedSuper(span) => diag()
+                .message("'SUPER' is not valid in this context".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .range(span.clone())
                 .call(),
