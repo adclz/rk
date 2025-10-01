@@ -59,6 +59,7 @@ static NEW_LINES: &str = r#"
     "VAR_TEMP"
     "VAR_EXTERNAL"
     "VAR_GLOBAL"
+    "METHOD"
 
     "ELSE"
 ] @prepend_hardline @append_hardline
@@ -71,7 +72,6 @@ static NEW_LINES: &str = r#"
     "END_CLASS"
     "END_FUNCTION_BLOCK"
     "END_TYPE"
-    "END_CLASS"
     "END_INTERFACE"
     "END_VAR"
     "END_METHOD"
@@ -100,6 +100,7 @@ static NEW_LINES: &str = r#"
     (assign)
     (func_call)
     (invocation)
+    (super_body_invocation)
     "RETURN"
     (if_stmt)
     (case_stmt)
@@ -189,7 +190,6 @@ static INDENTATIONS: &str = r#"
     "END_CLASS"
     "END_FUNCTION_BLOCK"
     "END_TYPE"
-    "END_CLASS"
     "END_INTERFACE"
     "END_METHOD"
     "END_VAR"
@@ -258,13 +258,22 @@ static SEMI_COLONS: &str = r#"
   (#delimiter! ";")
 )
 
-(stmt_list . (_) @append_delimiter
+([
+    (assign)
+    (invocation)
+    (super_body_invocation)
+    "RETURN"
+    (if_stmt)
+    (for_stmt)
+    (case_stmt)
+    (while_stmt)
+    (repeat_stmt)
+] @append_delimiter
     .
     ";"* @do_nothing
     (#delimiter! ";")
 )
 
-; case selection
 (case_selection ";" @delete)
 "#;
 

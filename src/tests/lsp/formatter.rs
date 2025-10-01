@@ -144,16 +144,18 @@ pub fn class_definition(mut with_db: RootDatabase) {
     		m_iLowerLimit: INT := - 10000;
     	END_VAR
 
-    	METHOD Count (* Only body *)
+    	METHOD
+    		Count (* Only body *)
     		IF (m_bCountUp AND m_iCurrentValue < m_iUpperLimit) THEN
     			m_iCurrentValue := m_iCurrentValue + 1;
     		END_IF;
     		IF (NOT m_bCountUp AND m_iCurrentValue > m_iLowerLimit) THEN
     			m_iCurrentValue := m_iCurrentValue - 1;
-    		END_IF
+    		END_IF;
     	END_METHOD
 
-    	METHOD SetDirection
+    	METHOD
+    		SetDirection
 
     		VAR_INPUT
     			bCountUp: BOOL;
@@ -169,18 +171,18 @@ pub fn class_definition(mut with_db: RootDatabase) {
 pub fn case_statement(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION fn
-	TW:= WORD_BCD_TO_INT(THUMBWHEEL);
+	TW:= WORD_BCD_TO_INT(THUMBWHEEL)
 
-	TW_ERROR:= 0;
+	TW_ERROR:= 0
 
-CASE TW OF 1,5: DISPLAY:= OVEN_TEMP;
-2: DISPLAY:= MOTOR_SPEED;
-3: DISPLAY:= GROSS - TARE;
-4,6..10: DISPLAY:= STATUS(TW - 4);
-ELSE DISPLAY := 0;
-TW_ERROR:= 1;
-END_CASE;
-QW100:= INT_TO_BCD(DISPLAY);
+CASE TW OF 1,5: DISPLAY:= OVEN_TEMP
+2: DISPLAY:= MOTOR_SPEED
+3: DISPLAY:= GROSS - TARE
+4,6..10: DISPLAY:= STATUS(TW - 4)
+ELSE DISPLAY := 0
+TW_ERROR:= 1
+END_CASE
+QW100:= INT_TO_BCD(DISPLAY)
 END_FUNCTION
 "#;
 
@@ -204,7 +206,7 @@ END_FUNCTION
     		ELSE
     			DISPLAY := 0;
     			TW_ERROR := 1;
-    		END_CASE;
+    		END_CASE ;
     		QW100 := INT_TO_BCD(DISPLAY);
     	END_FUNCTION
     ");
@@ -234,7 +236,7 @@ END_FUNCTION
     	J := 1;
     	WHILE J <= 100 DO
     		J := J + 2;
-    	END_WHILE
+    	END_WHILE;
     END_FUNCTION
     ");
 }
@@ -350,7 +352,7 @@ END_FUNCTION
         .document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
-    FUNCTION fn dfgdfg(a := 1, b := 2, c := 3);
+    FUNCTION fn dfgdfg(a := 1, b := 2, c := 3)
     END_FUNCTION
     ");
 }
@@ -380,7 +382,7 @@ END_FUNCTION
     		a := 1,
     		b := 2,
     		c := 3
-    	);
+    	)
     END_FUNCTION
     ");
 }
@@ -540,3 +542,51 @@ END_STRUCT
     END_TYPE
     ");
 }
+
+#[rstest]
+pub fn class_and_fb_with_invocations(mut with_db: RootDatabase) {
+    let source = r#"
+CLASS base METHOD super_method
+		VAR_INPUT
+			test: INT;
+		END_VAR
+	END_METHOD
+END_CLASS
+
+FUNCTION_BLOCK fb1 EXTENDS base METHOD decl
+	END_METHOD
+
+	THIS.decl();
+	SUPER.super_method(test := 0);
+END_FUNCTION_BLOCK
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    CLASS base
+    	METHOD
+    		super_method
+    		VAR_INPUT
+    			test: INT;
+    		END_VAR
+    	END_METHOD
+    END_CLASS
+
+    FUNCTION_BLOCK fb1 EXTENDS base
+    	METHOD
+    		decl
+    	END_METHOD
+
+    	THIS.decl();
+    	SUPER.super_method(test := 0);
+    END_FUNCTION_BLOCK
+    ");
+}
+
