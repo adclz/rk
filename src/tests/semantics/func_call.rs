@@ -114,18 +114,16 @@ END_FUNCTION_BLOCK"#;
     Error: 
        ,-[ file:///test0.st:6:5 ]
        |
-     2 |   ,-> FUNCTION fn
-       |   |            ^|  
-       |   |             `-- 'fn' is declared here
-     3 |   |-> END_FUNCTION
-       |   |                  
-       |   `------------------ type defined here
+     2 | ,-> FUNCTION fn
+       | |            ^|  
+       | |             `-- 'fn' is declared here
+     3 | |-> END_FUNCTION
+       | |                  
+       | `------------------ type defined here
        | 
-     6 | ,--->     fn(
-       : :     
-     8 | |--->     );
-       | |              
-       | `-------------- 'fn' expected 0 parameters, but got 1
+     6 |         fn(
+       |         ^|  
+       |          `-- 'fn' expected 0 parameters, but got 1
     ---'
     Error: 
        ,-[ file:///test0.st:7:9 ]
@@ -297,8 +295,8 @@ END_FUNCTION_BLOCK"#;
         | `------------------ type defined here
         | 
      11 |         fn(0, 1.5, 5);
-        |         ^^^^^^|^^^^^^  
-        |               `-------- 'fn' expected 2 parameters, but got 3
+        |         ^|  
+        |          `-- 'fn' expected 2 parameters, but got 3
     ----'
     ");
 }

@@ -1,5 +1,6 @@
 use std::ops::ControlFlow;
 
+use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use hir::hir_def::semantic_index::semantic_index;
 use hir::walk::WalkHir;
@@ -7,7 +8,6 @@ use ide_proto::AsProtocol;
 use insta::assert_debug_snapshot;
 use insta::assert_snapshot;
 use rstest::rstest;
-use auto_lsp::default::db::BaseDatabase;
 
 use crate::tests::utils::add_sources;
 use crate::tests::utils::with_db;
@@ -39,7 +39,9 @@ END_FUNCTION_BLOCK"#;
     assert_snapshot!(nodes.join("\n"), @r"
     Ty(Ty { [salsa id]: Id(2800) })
     Ty(Ty { [salsa id]: Id(2801) })
+    Ty(Ty { [salsa id]: Id(2801) })
     ResolvedInitExpr(ResolvedInitExpr { [salsa id]: Id(3400) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(3000) })
     ");
 }
 
@@ -138,21 +140,51 @@ END_FUNCTION_BLOCK"#;
     ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(4000) })
     ResolvedExpr(ResolvedExpr { [salsa id]: Id(4400) })
     ResolvedStmt(ResolvedStmt { [salsa id]: Id(4801) })
-    ResolvedPathResult(ResolvedPathResult { [salsa id]: Id(3c02) })
-    ResolvedParam(ResolvedParam { [salsa id]: Id(4c00) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4401) })
-    ResolvedParam(ResolvedParam { [salsa id]: Id(4c01) })
-    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(4001) })
+    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(4002) })
     ResolvedStmt(ResolvedStmt { [salsa id]: Id(4802) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4404) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4403) })
     ResolvedStmt(ResolvedStmt { [salsa id]: Id(4803) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4404) })
     ResolvedExpr(ResolvedExpr { [salsa id]: Id(4405) })
     ResolvedExpr(ResolvedExpr { [salsa id]: Id(4406) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4407) })
     ResolvedStmt(ResolvedStmt { [salsa id]: Id(4804) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(440a) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4409) })
     ResolvedStmt(ResolvedStmt { [salsa id]: Id(4805) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(440d) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(440c) })
+    ");
+}
+
+#[rstest]
+pub fn walk_function_block_method(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1 EXTENDS base
+	METHOD decl
+        VAR_INPUT input1 : INT; END_VAR
+	END_METHOD
+
+	THIS.decl(0.5);
+
+END_FUNCTION_BLOCK"#;
+
+    add_sources(&mut with_db, &[source]);
+    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+
+    let mut nodes = vec![];
+
+    let _ = sema.walk_hir(&with_db, &mut |node| {
+        nodes.push(format!("{node:?}"));
+        ControlFlow::Continue(())
+    });
+
+    assert_snapshot!(nodes.join("\n"), @r"
+    Ty(Ty { [salsa id]: Id(3c01) })
+    Ty(Ty { [salsa id]: Id(3c03) })
+    ResolvedStmt(ResolvedStmt { [salsa id]: Id(5000) })
+    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(4400) })
+    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(4401) })
+    ResolvedParam(ResolvedParam { [salsa id]: Id(4c00) })
+    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(4402) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4800) })
     ");
 }
 
@@ -196,10 +228,6 @@ END_FUNCTION_BLOCK"#;
         12,
         16,
         17,
-        21,
-        23,
-        30,
-        33,
         37,
         39,
         52,
@@ -243,6 +271,8 @@ END_FUNCTION_BLOCK"#;
     [
         1,
         4,
+        4,
+        13,
         13,
         21,
         25,

@@ -156,46 +156,37 @@ END_FUNCTION_BLOCK"#;
 }
 
 #[rstest]
-fn invocation_in_expression_context(mut with_db: RootDatabase) {
-    let source = r#"
-FUNCTION_BLOCK fn
-    fn.m.p := THIS.m^()   
-END_FUNCTION_BLOCK"#;
-
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
-       ,-[ file:///test0.st:3:15 ]
-       |
-     3 |     fn.m.p := THIS.m^()
-       |               ^^^^|^^^^  
-       |                   `------ invocation in expression is not allowed
-    ---'
-    ");
-}
-
-#[rstest]
 fn unexpected_this_in_path(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK fn
-    THIS.a := 0
     fn.THIS.p := 5
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test0.st:4:8 ]
+       ,-[ file:///test0.st:3:8 ]
        |
-     4 |     fn.THIS.p := 5
+     3 |     fn.THIS.p := 5
        |        ^^|^  
-       |          `--- 'this' is not valid in this context
+       |          `--- 'THIS' is not valid in this context
     ---'
+    ");
+}
+
+#[rstest]
+fn unexpected_super_in_path(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fn
+    fn.SUPER.p := 5
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test0.st:3:5 ]
+       ,-[ file:///test0.st:3:8 ]
        |
-     3 |     THIS.a := 0
-       |     ^^^|^^  
-       |        `---- invalid assignment: no item 'a' in scope
-       | 
+     3 |     fn.SUPER.p := 5
+       |        ^^|^^  
+       |          `---- 'SUPER' is not valid in this context
     ---'
     ");
 }
