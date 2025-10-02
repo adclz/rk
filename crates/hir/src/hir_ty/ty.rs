@@ -432,6 +432,7 @@ pub fn ty_for_method_decl<'db>(db: &'db dyn BaseDatabase, method: MethodDecl<'db
     let mut variables = IndexMap::default();
 
     for v in method.variables(db) {
+        let decl = TyDecl::Variable(*v);
         match v.kind(db) {
             VariableKind::Input => {
                 variables.insert(*v.name(db), *v.spec(db).to_ty(db, decl));
@@ -474,6 +475,8 @@ pub fn ty_for_method_prot<'db>(db: &'db dyn BaseDatabase, method: MethodPrototyp
     let mut variables = IndexMap::default();
 
     for v in method.variables(db) {
+        let decl = TyDecl::Variable(*v);
+
         match v.kind(db) {
             VariableKind::Input => {
                 variables.insert(*v.name(db), *v.spec(db).to_ty(db, decl));
