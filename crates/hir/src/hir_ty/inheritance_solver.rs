@@ -12,11 +12,11 @@ pub struct Methods<'db> {
     pub inherited_methods: FxHashMap<Ident, InheritedMethod<'db>>,
     pub declared_methods: FxHashMap<Ident, Ty<'db>>,
 
-    pub inherited_duplicates: Vec<(Ty<'db>, Ty<'db>)>,
+    pub inherited_duplicates: Vec<(InheritedMethod<'db>, InheritedMethod<'db>)>,
     pub declared_duplicates: Vec<(Ty<'db>, Ty<'db>)>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, salsa::Update)]
 pub struct InheritedMethod<'db> {
     pub source: Ty<'db>,
     pub method: Ty<'db>,
@@ -48,8 +48,9 @@ pub fn method_table<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>) -> Arc<Methods<
             if let Some(base) = extends {
                 let table2 = method_table(db, *base);
                 for (name, entry) in &method_table(db, *base).declared_methods {
-                    if let Some(m) = inherited_methods.insert(*name, InheritedMethod::new(*base, *entry)) {
-                        inherited_duplicates.push((m.method, *entry));
+                    let method = InheritedMethod::new(*base, *entry);
+                    if let Some(m) = inherited_methods.insert(*name, method) {
+                        inherited_duplicates.push((m, method));
                     }
                 }
             }
@@ -57,8 +58,9 @@ pub fn method_table<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>) -> Arc<Methods<
             // Inherit interfaces (abstract signatures only)
             for iface in implements {
                 for (name, entry) in &method_table(db, *iface).declared_methods {
-                    if let Some(m) = inherited_methods.insert(*name, InheritedMethod::new(*iface, *entry)) {
-                        inherited_duplicates.push((m.method, *entry));
+                    let method = InheritedMethod::new(*iface, *entry);
+                    if let Some(m) = inherited_methods.insert(*name, method) {
+                        inherited_duplicates.push((m, method));
                     }
                 }
             }
@@ -67,11 +69,8 @@ pub fn method_table<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>) -> Arc<Methods<
             for m in methods {
                 let ty = ty_for_method_decl(db, *m);
                 let target = Ty::new(db, TyDecl::Method(*m), ty.def(db), TyKind::Target(ty));
-                
-                if let Some(m) = declared_methods.insert(
-                    *m.name(db),
-                    target,
-                ) {
+
+                if let Some(m) = declared_methods.insert(*m.name(db), target) {
                     declared_duplicates.push((m, target));
                 }
             }
@@ -86,18 +85,16 @@ pub fn method_table<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>) -> Arc<Methods<
                 let ty = ty_for_method_prot(db, *m);
                 let target = Ty::new(db, TyDecl::MethodProt(*m), ty.def(db), TyKind::Target(ty));
 
-                if let Some(m) = declared_methods.insert(
-                    *m.name(db),
-                    target,
-                ) {
+                if let Some(m) = declared_methods.insert(*m.name(db), target) {
                     declared_duplicates.push((m, target));
                 }
             }
 
             for iface in implements {
                 for (name, entry) in &method_table(db, *iface).declared_methods {
-                    if let Some(m) = inherited_methods.insert(*name, InheritedMethod::new(*iface, *entry)) {
-                        inherited_duplicates.push((m.method, *entry));
+                    let method = InheritedMethod::new(*iface, *entry);
+                    if let Some(m) = inherited_methods.insert(*name, method) {
+                        inherited_duplicates.push((m, method));
                     }
                 }
             }
@@ -110,18 +107,16 @@ pub fn method_table<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>) -> Arc<Methods<
                 let ty = ty_for_method_decl(db, *m);
                 let target = Ty::new(db, TyDecl::Method(*m), ty.def(db), TyKind::Target(ty));
 
-                if let Some(m) = declared_methods.insert(
-                    *m.name(db),
-                    target,
-                ) {
+                if let Some(m) = declared_methods.insert(*m.name(db), target) {
                     declared_duplicates.push((m, target));
                 }
             }
 
             if let Some(base) = extends {
                 for (name, entry) in &method_table(db, *base).declared_methods {
-                    if let Some(m) = inherited_methods.insert(*name, InheritedMethod::new(*base, *entry)) {
-                        inherited_duplicates.push((m.method, *entry));
+                    let method = InheritedMethod::new(*base, *entry);
+                    if let Some(m) = inherited_methods.insert(*name, method) {
+                        inherited_duplicates.push((m, method));
                     }
                 }
             }

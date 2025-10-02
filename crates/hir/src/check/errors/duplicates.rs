@@ -4,15 +4,31 @@ use ide_diagnostic::{IdeDiagnostic, Related, diag};
 use crate::{
     HirNodeInfo,
     check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic},
-    hir_ty::ty::Ty,
+    hir_ty::{inheritance_solver::InheritedMethod, ty::Ty},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum DuplicateError<'db> {
-    Pou { pou1: Ty<'db>, pou2: Ty<'db> },
-    Variable { var1: Ty<'db>, var2: Ty<'db> },
-    StructField { field1: Ty<'db>, field2: Ty<'db> },
-    Method { method1: Ty<'db>, method2: Ty<'db> },
+    Pou {
+        pou1: Ty<'db>,
+        pou2: Ty<'db>,
+    },
+    Variable {
+        var1: Ty<'db>,
+        var2: Ty<'db>,
+    },
+    StructField {
+        field1: Ty<'db>,
+        field2: Ty<'db>,
+    },
+    Method {
+        method1: Ty<'db>,
+        method2: Ty<'db>,
+    },
+    InheritedMethod {
+        method1: InheritedMethod<'db>,
+        method2: InheritedMethod<'db>,
+    },
 }
 
 impl<'db> From<DuplicateError<'db>> for AnalysisError<'db> {
@@ -104,6 +120,34 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                     ),
                     method2.get_scope_id(db).file(db),
                     method2.decl(db).name_span(db),
+                ));
+
+                diag
+            }
+            Self::InheritedMethod { method1, method2 } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "duplicate method '{}'",
+                        method1.method.decl(db).name(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(method1.method.decl(db).name_span(db))
+                    .call();
+
+                diag.with_related(Related::new(
+                    format!(
+                        "method '{}' is already defined here",
+                        method2.method.decl(db).name(db).text(db)
+                    ),
+                    method2.method.get_scope_id(db).file(db),
+                    method2.method.decl(db).name_span(db),
+                ));
+
+                diag.with_note(format!(
+                    "this error happens because both interfaces '{}' and '{}' define a method '{}'",
+                    method1.source.decl(db).name(db).text(db),
+                    method2.source.decl(db).name(db).text(db),
+                    method1.method.decl(db).name(db).text(db)
                 ));
 
                 diag

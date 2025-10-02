@@ -8,11 +8,7 @@ use crate::{
         coerce::{coerce_bool_with_expr, coerce_ty_with_expr, coerce_ty_with_ty},
         errors::{analysis_error::AnalysisError, stmt::StmtError},
     },
-    hir_def::{
-        expressions::statement::Stmt,
-        interned::identifier::Ident,
-        pous::pou::Pou,
-    },
+    hir_def::{expressions::statement::Stmt, interned::identifier::Ident, pous::pou::Pou},
     hir_ty::{
         expr_resolver::ResolvedExpr,
         func_call_resolver::{ResolvedFuncCall, ResolvedParam, ResolvedParamKind},
@@ -214,9 +210,9 @@ fn check_invocation<'db>(
         }
         ResolvedMethodKind::InheritedMethod { target, method }
         | ResolvedMethodKind::DeclaredMethod { target, method } => {
-            let ty_target = method.ty(db).map_err(|err| StmtError::UnresolvedFuncCall {
-                call: *target,
-            })?;
+            let ty_target = method
+                .ty(db)
+                .map_err(|err| StmtError::UnresolvedFuncCall { call: *target })?;
 
             let k = format!("{:?}", ty_target.kind(db));
 
@@ -225,9 +221,9 @@ fn check_invocation<'db>(
             }
         }
         ResolvedMethodKind::FunctionBlockBody { target } => {
-            let ty_target = target.ty(db).map_err(|err| StmtError::UnresolvedFuncCall {
-                call: *target,
-            })?;
+            let ty_target = target
+                .ty(db)
+                .map_err(|err| StmtError::UnresolvedFuncCall { call: *target })?;
         }
     }
 
@@ -290,12 +286,7 @@ fn check_parameters<'db>(
 
     for p in params.iter() {
         if !format.check_consistency(&p.kind(db)) {
-            errors.push(
-                StmtError::MixedFormalNonFormalParams {
-                    call: target,
-                }
-                .into(),
-            );
+            errors.push(StmtError::MixedFormalNonFormalParams { call: target }.into());
             break;
         }
 
@@ -327,12 +318,7 @@ fn check_parameters<'db>(
                 },
                 None => {
                     if !too_many_params {
-                        errors.push(
-                            StmtError::UnknownNonFormalParam {
-                                call: target,
-                            }
-                            .into(),
-                        );
+                        errors.push(StmtError::UnknownNonFormalParam { call: target }.into());
                     }
                 }
             },

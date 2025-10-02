@@ -4,15 +4,12 @@ use ide_diagnostic::{IdeDiagnostic, Related, diag};
 use crate::{
     HirNodeInfo,
     check::errors::{
-        analysis_error::{AnalysisError, ToIdeDiagnostic},
+        analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic},
+        coerce::TypeMismatch,
         utils::get_decl_for_ty,
     },
-    hir_def::{
-        expressions::{expression::PathExpr, invocation::Invocation}
-    },
-    hir_ty::{
-        ty::{Ty},
-    },
+    hir_def::expressions::{expression::PathExpr, invocation::Invocation},
+    hir_ty::ty::Ty,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -61,6 +58,17 @@ pub enum MethodError<'db> {
     SuperBodyOnIncompatiblePou {
         ctx: Ty<'db>,
         method: Invocation<'db>,
+    },
+    // Signatures
+    SignatureParametersCountMismatch {
+        m1: Ty<'db>,
+        expected: usize,
+        m2: Ty<'db>,
+        got: usize,
+    },
+    SignatureParametersTypeMismatch {
+        err: TypeMismatch<'db>,
+        param: Ty<'db>,
     },
 }
 
@@ -173,26 +181,22 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                 diag
             }
             Self::UnresolvedThisMethod { ctx, path, method } => diag()
-                .message(
-                    format!(
-                        "no method '{}' in declared methods of '{}'",
-                        path.to_string(db).ident.text(db),
-                        ctx.decl(db).name(db).text(db)
-                    ),
-                )
+                .message(format!(
+                    "no method '{}' in declared methods of '{}'",
+                    path.to_string(db).ident.text(db),
+                    ctx.decl(db).name(db).text(db)
+                ))
                 .severity(DiagnosticSeverity::ERROR)
                 .range(method.get_span(db).clone())
                 .call(),
             Self::UnresolvedSuperMethod { ctx, path, method } => {
                 let mut diag = diag()
-                    .message(
-                        format!(
-                            "no method '{}' in inherited methods of '{}'",
-                            path.to_string(db).ident.text(db),
-                            ctx.map(|c| c.decl(db).name(db).text(db).to_string())
-                                .unwrap_or_else(|| "<unknown>".into())
-                        ),
-                    )
+                    .message(format!(
+                        "no method '{}' in inherited methods of '{}'",
+                        path.to_string(db).ident.text(db),
+                        ctx.map(|c| c.decl(db).name(db).text(db).to_string())
+                            .unwrap_or_else(|| "<unknown>".into())
+                    ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(method.get_span(db).clone())
                     .call();
@@ -217,24 +221,16 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                 }
                 diag
             }
-            Self::ThisOnIncompatiblePou { path, method } => {
-                
-
-                diag()
-                    .message("THIS can only be used in in FUNCTION_BLOCK or CLASS POUs".into())
-                    .severity(DiagnosticSeverity::ERROR)
-                    .range(method.get_span(db).clone())
-                    .call()
-            }
-            Self::SuperOnIncompatiblePou { path, method } => {
-                
-
-                diag()
-                    .message("SUPER can only be used in FUNCTION_BLOCK or CLASS POUs".into())
-                    .severity(DiagnosticSeverity::ERROR)
-                    .range(method.get_span(db).clone())
-                    .call()
-            }
+            Self::ThisOnIncompatiblePou { path, method } => diag()
+                .message("THIS can only be used in in FUNCTION_BLOCK or CLASS POUs".into())
+                .severity(DiagnosticSeverity::ERROR)
+                .range(method.get_span(db).clone())
+                .call(),
+            Self::SuperOnIncompatiblePou { path, method } => diag()
+                .message("SUPER can only be used in FUNCTION_BLOCK or CLASS POUs".into())
+                .severity(DiagnosticSeverity::ERROR)
+                .range(method.get_span(db).clone())
+                .call(),
             Self::SuperBodyOnIncompatiblePou { ctx, method } => {
                 let mut diag = diag()
                     .message("SUPER() can only be called in FUNCTION_BLOCK POUs".into())
@@ -243,6 +239,42 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                     .call();
 
                 get_decl_for_ty(db, *ctx, &mut diag);
+
+                diag
+            }
+            Self::SignatureParametersCountMismatch {
+                m1,
+                expected,
+                m2,
+                got,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "invalid number of parameters for inherited method '{}': expected {}, got {}",
+                        m1.decl(db).name(db).text(db),
+                        expected,
+                        got
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(m2.decl(db).name_span(db).clone())
+                    .call();
+
+                get_decl_for_ty(db, *m1, &mut diag);
+
+                diag
+            }
+            Self::SignatureParametersTypeMismatch { err, param } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "invalid parameter in method signature: {}",
+                        err.description(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(param.decl(db).name_span(db).clone())
+                    .call();
+
+                err.related(db, &mut diag);
+                err.note(db, &mut diag);
 
                 diag
             }
