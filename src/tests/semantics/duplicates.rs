@@ -294,6 +294,8 @@ END_CLASS
      7 |     METHOD m1 END_METHOD
        |            ^|  
        |             `-- method 'm1' is already defined here
+       | 
+       | Note: this error happens because both interfaces 'it1' and 'it1' define a method 'm1'
     ---'
     ");
 }

@@ -170,11 +170,10 @@ END_FUNCTION_BLOCK"#;
     Error: 
        ,-[ file:///test0.st:7:12 ]
        |
-     3 |     METHOD decl
-       |            ^^|^  
-       |              `--- 'decl' is declared here
      4 |         VAR_INPUT input1 : INT; END_VAR
-       |                            ^|^  
+       |                   ^^^|^^   ^|^  
+       |                      `---------- 'input1' is declared here
+       |                             |   
        |                             `--- type defined here
        | 
      7 |     THIS.decl(0.5);
@@ -206,11 +205,10 @@ END_CLASS
     Error: 
         ,-[ file:///test0.st:10:17 ]
         |
-      3 |     METHOD decl
-        |            ^^|^  
-        |              `--- 'decl' is declared here
       4 |         VAR_INPUT input1 : INT; END_VAR
-        |                            ^|^  
+        |                   ^^^|^^   ^|^  
+        |                      `---------- 'input1' is declared here
+        |                             |   
         |                             `--- type defined here
         | 
      10 |         SUPER.decl(0.5);
@@ -242,11 +240,10 @@ END_FUNCTION_BLOCK
     Error: 
         ,-[ file:///test0.st:10:17 ]
         |
-      3 |     METHOD decl
-        |            ^^|^  
-        |              `--- 'decl' is declared here
       4 |         VAR_INPUT input1 : INT; END_VAR
-        |                            ^|^  
+        |                   ^^^|^^   ^|^  
+        |                      `---------- 'input1' is declared here
+        |                             |   
         |                             `--- type defined here
         | 
      10 |         SUPER.decl(0.5);
