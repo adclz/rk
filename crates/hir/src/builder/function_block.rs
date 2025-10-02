@@ -1,6 +1,6 @@
-use crate::builder::{ParseSpec, ParseVarSection};
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::statement::ParseStatement;
+use crate::builder::{ParseSpec, ParseVarSection};
 use crate::check::errors::analysis_error::AnalysisError;
 use crate::check::errors::syntax::SyntaxError;
 use crate::hir_def::interned::identifier::Ident;
@@ -163,7 +163,6 @@ impl<'db> SemanticIndexBuilder<'db> {
                 scope_id
             ))
         }).collect::<Vec<_>>();
-
 
         let mut modifiers = Modifier::empty();
         if let Some(func_mod) = &func.qualifier {

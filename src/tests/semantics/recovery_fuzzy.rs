@@ -114,7 +114,6 @@ END_FUNCTION_BLOCK
     ");
 }
 
-
 #[rstest]
 fn fuzzy_func_call_output_variables(mut with_db: RootDatabase) {
     let source = r#"

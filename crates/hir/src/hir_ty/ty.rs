@@ -584,10 +584,10 @@ impl<'db> Ty<'db> {
     pub fn variables(&self, db: &'db dyn BaseDatabase) -> Option<&'db IndexMap<Ident, Ty<'db>>> {
         match self.kind(db) {
             TyKind::Target(inner) => inner.variables(db),
-            TyKind::Function { variables, .. } => Some(&variables),
-            TyKind::FunctionBlock { variables, .. } => Some(&variables),
-            TyKind::Class { variables, .. } => Some(&variables),
-            TyKind::Method { variables, .. } => Some(&variables),
+            TyKind::Function { variables, .. } => Some(variables),
+            TyKind::FunctionBlock { variables, .. } => Some(variables),
+            TyKind::Class { variables, .. } => Some(variables),
+            TyKind::Method { variables, .. } => Some(variables),
             _ => None,
         }
     }

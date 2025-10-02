@@ -1,15 +1,21 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    check::errors::{analysis_error::AnalysisError, path_error::PathResolveError, var_error::VarResolveError}, hir_def::{
-        expressions::{expression::{Expr, PathExpr, VariableAccess, VariableAccessKind}, invocation::{Invocation, InvocationKind}},
+    AstId, HirNodeInfo,
+    check::errors::var_error::VarResolveError,
+    hir_def::{
+        expressions::{
+            expression::{Expr, PathExpr, VariableAccess, VariableAccessKind},
+            invocation::{Invocation, InvocationKind},
+        },
         interned::identifier::SpanIdent,
         pous::variable::VariableDecl,
         scope::FileScopeId,
-    }, hir_ty::{
+    },
+    hir_ty::{
         ty::{Ty, TyDecl},
-        ty_path_expr_resolver::{resolved_path_expr, ResolvedPathResult},
-    }, AstId, HirNodeInfo
+        ty_path_expr_resolver::{ResolvedPathResult, resolved_path_expr},
+    },
 };
 
 pub fn resolve_var_access<'db>(
@@ -147,7 +153,7 @@ impl<'db> HirNodeInfo<'db> for ResolvedVarResult<'db> {
                 InvocationKind::This { path } => path.get_id(db),
                 InvocationKind::Super { path } => path.get_id(db),
                 InvocationKind::SuperBody => ty.get_id(db),
-            }
+            },
             ResolvedVarOrigin::InvocationKeyword(id, _) => id,
             ResolvedVarOrigin::PathExpr(path) => path.get_id(db),
         }

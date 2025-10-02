@@ -1,15 +1,12 @@
 #![allow(deprecated)]
 
-use std::sync::Arc;
 
 use auto_lsp::{
     anyhow,
-    default::db::{BaseDatabase, file::File},
-    lsp_types::{self, CompletionParams, CompletionResponse},
+    default::db::BaseDatabase,
+    lsp_types::{CompletionParams, CompletionResponse},
 };
-use hir::{hir_def::COMPLETION_MARKER, hir_def::semantic_index::semantic_index};
-use ide_proto::{completions::reparse::use_completion_marker, AsProtocol};
-use tracing::info_span;
+use ide_proto::completions::reparse::use_completion_marker;
 
 pub fn completions(
     db: &impl BaseDatabase,

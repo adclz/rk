@@ -5,7 +5,7 @@ use crate::{
     check::{
         check_semantic_index::Check,
         check_ty::check_ty,
-        errors::{duplicates::DuplicateError, analysis_error::AnalysisError},
+        errors::{analysis_error::AnalysisError, duplicates::DuplicateError},
     },
     hir_def::expressions::spec::Struct,
     hir_ty::ty::ty_for_struct_field,

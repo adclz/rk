@@ -1,21 +1,15 @@
-use std::hash::Hash;
 
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     check::errors::{
-        coerce::{ExprMismatch, TypeMismatch},
-        literals::{LiteralError, LiteralErrorKind},
-        path_error::PathResolveError,
         analysis_error::AnalysisError,
-        stmt::StmtError,
+        coerce::{ExprMismatch, TypeMismatch},
     },
-    hir_def::expressions::{expression::Expr, spec::ElementarySpec},
+    hir_def::expressions::spec::ElementarySpec,
     hir_ty::{
         expr_resolver::{ResolvedExpr, ResolvedExprKind},
         ty::{Ty, TyKind},
-        ty_path_expr_resolver::ResolvedPathResult,
-        ty_var_access_resolver::{ResolvedVarResult},
     },
 };
 
@@ -32,10 +26,10 @@ pub fn coerce_ty_with_ty<'db>(
         // Simple equality check between 2 elementary types
         (TyKind::Simple(elem), TyKind::Simple(elem2)) => match elem == elem2 {
             true => Ok(()),
-            false => Err(TypeMismatch { ty1, ty2 }.into()),
+            false => Err(TypeMismatch { ty1, ty2 }),
         },
         // Type mismatch
-        _ => Err(TypeMismatch { ty1, ty2 }.into()),
+        _ => Err(TypeMismatch { ty1, ty2 }),
     }
 }
 
@@ -53,17 +47,18 @@ pub fn coerce_ty_with_expr<'db>(
         // Compare an elementary type with a literal
         (TyKind::Simple(elem), ResolvedExprKind::Literal(prim)) => elem
             .check_literal(db, *prim)
-            .map_err(|err| ExprMismatch::literal(target_expr, ty, err).into()),
+            .map_err(|err| ExprMismatch::literal(target_expr, ty, err)),
         // Compare an elementary type with a function call
         (TyKind::Simple(elem), ResolvedExprKind::FuncCall(call)) => {
             // Check if the function call has a return type
-            match call.target
+            match call
+                .target
                 .ty(db)
                 .map_err(|err| ExprMismatch::unresolved_var(target_expr, err))?
                 .has_return_type(db)
             {
                 Some(ret) => coerce_ty_with_ty(db, ty, ret)
-                    .map_err(|err| ExprMismatch::type_mismatch(target_expr, err).into()),
+                    .map_err(|err| ExprMismatch::type_mismatch(target_expr, err)),
                 None => Err(ExprMismatch::expr_void(target_expr, ty)),
             }
         }
@@ -76,7 +71,7 @@ pub fn coerce_ty_with_expr<'db>(
                 var.ty(db)
                     .map_err(|err| ExprMismatch::unresolved_var(target_expr, err))?,
             )
-            .map_err(|err| ExprMismatch::type_mismatch(target_expr, err).into())
+            .map_err(|err| ExprMismatch::type_mismatch(target_expr, err))
         }
         // Compare an elementary with a boolean expression (AND ...)
         (TyKind::Simple(elem), ResolvedExprKind::BooleanExpression(lhs, rhs)) => {
@@ -102,8 +97,8 @@ pub fn coerce_ty_with_expr<'db>(
                 .ty(db)
                 .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?,
         )
-        .map_err(|err| ExprMismatch::type_mismatch(target_expr, err).into()),
-        _ => Err(ExprMismatch::expr_mismatch(target_expr, ty).into()),
+        .map_err(|err| ExprMismatch::type_mismatch(target_expr, err)),
+        _ => Err(ExprMismatch::expr_mismatch(target_expr, ty)),
     }
 }
 

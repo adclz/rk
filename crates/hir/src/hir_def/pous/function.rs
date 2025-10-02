@@ -20,4 +20,4 @@ pub struct Function<'db> {
     pub return_type: Option<Spec<'db>>,
 
     pub scope_id: FileScopeId<'db>,
-} 
+}

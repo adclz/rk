@@ -20,7 +20,8 @@ fn try_get_completions_for_node<T: AstNode>(
     node: &T,
     offset: usize,
 ) -> anyhow::Result<Option<Vec<auto_lsp::lsp_types::CompletionItem>>> {
-    if let Some(hir_node) = semantic_index(db, file).descendant_at(db, node.get_range().start_byte) {
+    if let Some(hir_node) = semantic_index(db, file).descendant_at(db, node.get_range().start_byte)
+    {
         if let Some(completions) = hir_node.as_proto().completion(db, offset) {
             return Ok(Some(completions));
         }

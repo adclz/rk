@@ -1,7 +1,7 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    check::errors::{inheritance::MethodError, analysis_error::AnalysisError},
+    check::errors::{analysis_error::AnalysisError, inheritance::MethodError},
     hir_def::modifier::Modifier,
     hir_ty::{
         inheritance_solver::method_table,

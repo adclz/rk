@@ -15,13 +15,13 @@ pub mod expression;
 pub mod function;
 pub mod function_block;
 pub mod interface;
+pub mod invocation;
 pub mod namespace;
 pub mod semantic_index;
 pub mod statement;
 pub mod types;
 pub mod using;
 pub mod variables;
-pub mod invocation;
 
 pub trait ParseVarSection<'db> {
     fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<VariableDecl<'db>>);

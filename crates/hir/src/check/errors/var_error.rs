@@ -14,10 +14,10 @@ impl<'db> DiagnosticDescription<'db> for VarResolveError<'db> {
         match self {
             VarResolveError::PathResolveError { err } => err.description(db),
             VarResolveError::InvalidType => {
-                format!("type not found")
+                "type not found".to_string()
             }
             VarResolveError::NotFound => {
-                format!("variable not found")
+                "variable not found".to_string()
             }
         }
     }

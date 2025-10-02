@@ -1,3 +1,4 @@
+pub mod analysis_error;
 pub mod coerce;
 pub mod duplicates;
 pub mod inheritance;
@@ -5,7 +6,6 @@ pub mod init_expr;
 pub mod literals;
 pub mod path_error;
 pub mod scope;
-pub mod analysis_error;
 pub mod stmt;
 pub mod syntax;
 pub mod ty;

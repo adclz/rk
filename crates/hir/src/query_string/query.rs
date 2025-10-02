@@ -2,12 +2,10 @@ use auto_lsp::default::db::{BaseDatabase, file::File};
 use auto_lsp::lsp_types::{CompletionItem, CompletionItemKind};
 use fst::{Automaton, Streamer, raw::IndexedValue};
 use rayon::prelude::*;
-use rustc_hash::FxHashSet;
 
 use std::ops::ControlFlow;
 use std::{cmp::Ordering, hash::Hash};
 
-use crate::hir_ty::name_res::pou_names_res;
 use crate::HirNodeInfo;
 use crate::hir_def::pous::pou::PouDecl;
 use crate::hir_def::scope::FileScopeId;
@@ -169,7 +167,7 @@ pub struct SymbolIndex<'db> {
     #[tracked]
     #[returns(ref)]
     symbols: Box<[NamedSymbol<'db>]>,
-    
+
     #[tracked]
     #[no_eq]
     #[returns(ref)]

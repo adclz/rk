@@ -1,18 +1,21 @@
-use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
-use ide_diagnostic::{IdeDiagnostic, diag};
+use auto_lsp::default::db::BaseDatabase;
+use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
+    TypeInfo,
     check::{
         errors::{
-            analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic},
+            analysis_error::DiagnosticDescription,
             utils::get_candidates,
         },
         recovery::pou::fuzzy_pou_local_items,
-    }, hir_def::{
+    },
+    hir_def::{
         expressions::expression::PathExpr,
         scope::{FileScopeId, ScopeKind},
         semantic_index::semantic_index,
-    }, hir_ty::ty::Ty, HirNodeInfo, TypeInfo
+    },
+    hir_ty::ty::Ty,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -61,20 +64,17 @@ impl<'db> DiagnosticDescription<'db> for PathResolveError<'db> {
     }
 
     fn note(&self, db: &'db dyn BaseDatabase, diag: &mut IdeDiagnostic) {
-        match self {
-            PathResolveError::NoItemInScope { expr, scope } => {
-                if let ScopeKind::Pou(pou) = semantic_index(db, scope.file(db))
-                    .get_scope(db, *scope)
-                    .kind
-                {
-                    diag.with_note(get_candidates(&fuzzy_pou_local_items(
-                        db,
-                        pou,
-                        expr.to_string(db).as_str(db),
-                    )));
-                }
+        if let PathResolveError::NoItemInScope { expr, scope } = self {
+            if let ScopeKind::Pou(pou) = semantic_index(db, scope.file(db))
+                .get_scope(db, *scope)
+                .kind
+            {
+                diag.with_note(get_candidates(&fuzzy_pou_local_items(
+                    db,
+                    pou,
+                    expr.to_string(db).as_str(db),
+                )));
             }
-            _ => {}
         }
     }
 }

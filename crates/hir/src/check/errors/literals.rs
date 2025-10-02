@@ -1,17 +1,6 @@
-use std::{error::Error, fmt::Display, sync::Arc};
 
-use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
-use ide_diagnostic::{IdeDiagnostic, diag};
 
-use crate::{
-    HirNodeInfo,
-    check::errors::{
-        analysis_error::{AnalysisError, ToIdeDiagnostic},
-        stmt::StmtError,
-        utils::get_decl_and_def_for_ty,
-    },
-    hir_ty::{expr_resolver::ResolvedExpr, ty::Ty},
-};
+use crate::hir_ty::{expr_resolver::ResolvedExpr, ty::Ty};
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub struct LiteralError<'db> {

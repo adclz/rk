@@ -1,7 +1,10 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    check::recovery::pou::FuzzyResult, hir_def::pous::pou::{Pou, PouDecl}, hir_ty::ty::{ty_for_variable, Ty, TyKind}, query_string::query::{NamedSymbol, Query, SymbolIndex, SymbolKind}
+    check::recovery::pou::FuzzyResult,
+    hir_def::pous::pou::{Pou, PouDecl},
+    hir_ty::ty::ty_for_variable,
+    query_string::query::{NamedSymbol, Query, SymbolIndex, SymbolKind},
 };
 
 pub fn fuzzy_func_local_items<'db>(
@@ -38,8 +41,9 @@ pub fn fuzzy_func_local_items<'db>(
     fast_query.fuzzy();
 
     fast_query.search(db, index, |symbol| {
-        if let SymbolKind::Variable(ty) = symbol.kind &&
-            (ty.is_variable_input(db) || ty.is_variable_inout(db) || ty.is_variable_output(db)){
+        if let SymbolKind::Variable(ty) = symbol.kind
+            && (ty.is_variable_input(db) || ty.is_variable_inout(db) || ty.is_variable_output(db))
+        {
             results.variables.push(symbol.clone())
         }
 

@@ -464,7 +464,7 @@ impl std::error::Error for UnsignedIntError {}
 impl std::fmt::Display for UnsignedIntError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            UnsignedIntError::ParseIntError(err) => write!(f, "{}", err),
+            UnsignedIntError::ParseIntError(err) => write!(f, "{err}"),
             UnsignedIntError::NegativeSign => write!(f, "literal can not be negative"),
         }
     }
@@ -652,10 +652,10 @@ pub fn parse_single_byte_string(s: &str) -> Result<Vec<u8>, LiteralErrorKind> {
         if c == '$' {
             let h1 = chars
                 .next()
-                .ok_or_else(|| LiteralErrorKind::Incomplete_STRING_XX_Escape)?;
+                .ok_or(LiteralErrorKind::Incomplete_STRING_XX_Escape)?;
             let h2 = chars
                 .next()
-                .ok_or_else(|| LiteralErrorKind::Incomplete_STRING_XX_Escape)?;
+                .ok_or(LiteralErrorKind::Incomplete_STRING_XX_Escape)?;
             let hex = format!("{h1}{h2}");
             let byte = u8::from_str_radix(&hex, 16)
                 .map_err(|_| LiteralErrorKind::Incomplete_STRING_XX_Escape)?;
@@ -680,16 +680,16 @@ pub fn parse_double_byte_string(s: &str) -> Result<Vec<char>, LiteralErrorKind> 
         if c == '$' {
             let h1 = chars
                 .next()
-                .ok_or_else(|| LiteralErrorKind::Incomplete_WSTRING_XXXX_Escape)?;
+                .ok_or(LiteralErrorKind::Incomplete_WSTRING_XXXX_Escape)?;
             let h2 = chars
                 .next()
-                .ok_or_else(|| LiteralErrorKind::Incomplete_WSTRING_XXXX_Escape)?;
+                .ok_or(LiteralErrorKind::Incomplete_WSTRING_XXXX_Escape)?;
             let h3 = chars
                 .next()
-                .ok_or_else(|| LiteralErrorKind::Incomplete_WSTRING_XXXX_Escape)?;
+                .ok_or(LiteralErrorKind::Incomplete_WSTRING_XXXX_Escape)?;
             let h4 = chars
                 .next()
-                .ok_or_else(|| LiteralErrorKind::Incomplete_WSTRING_XXXX_Escape)?;
+                .ok_or(LiteralErrorKind::Incomplete_WSTRING_XXXX_Escape)?;
             let hex = format!("{h1}{h2}{h3}{h4}");
             let code = u16::from_str_radix(&hex, 16)
                 .map_err(|_| LiteralErrorKind::Invalid_WSTRING_Hex_Escape(hex.to_string()))?;
@@ -736,7 +736,7 @@ fn parse_duration_components(s: &str, kind: &'static str) -> Result<Duration, Li
 
         total_nanos = total_nanos
             .checked_add(nanos)
-            .ok_or_else(|| LiteralErrorKind::DurationOverflow)?;
+            .ok_or(LiteralErrorKind::DurationOverflow)?;
 
         remaining = rest;
     }

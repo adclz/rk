@@ -1,19 +1,13 @@
-use crate::hir_def::expressions::expression::{Expr, ParamAssign, ParamAssignKind};
-use crate::hir_def::expressions::invocation::InvocationKind;
 use crate::hir_def::expressions::statement::{Stmt, StmtKind};
-use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::scope::FileScopeId;
 use crate::hir_def::semantic_index::semantic_index;
 use crate::hir_ty::expr_resolver::{ResolvedExpr, resolve_expr};
-use crate::hir_ty::func_call_resolver::{ResolvedFuncCall, ResolvedParam};
-use crate::hir_ty::invocation_resolver::{ResolvedInvocation, ResolvedInvocationResult, ResolvedMethodKind};
-use crate::hir_ty::ty::{Ty, TyDecl};
-use crate::hir_ty::ty_path_expr_resolver::{ResolvedPathResult, resolved_path_expr};
+use crate::hir_ty::func_call_resolver::ResolvedFuncCall;
+use crate::hir_ty::invocation_resolver::ResolvedInvocationResult;
 use crate::hir_ty::ty_var_access_resolver::{
-    ResolvedVarKind, ResolvedVarOrigin, ResolvedVarResult, resolve_var_access,
+    ResolvedVarResult, resolve_var_access,
 };
 use crate::{AstId, HirNodeInfo};
-use auto_lsp::core::span::Span;
 use auto_lsp::default::db::BaseDatabase;
 
 #[salsa::tracked(no_eq, returns(ref))]

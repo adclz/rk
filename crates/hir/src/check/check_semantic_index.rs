@@ -18,7 +18,7 @@ use crate::{
         check_init_expr::check_init_expr,
         check_namespaces::check_duplicate_namespaces,
         check_ty::check_ty,
-        errors::{duplicates::DuplicateError, analysis_error::AnalysisError, stmt::StmtError},
+        errors::{analysis_error::AnalysisError, duplicates::DuplicateError, stmt::StmtError},
     },
     hir_def::{
         expressions::{

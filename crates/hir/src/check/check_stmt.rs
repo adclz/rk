@@ -6,11 +6,10 @@ use crate::{
     check::{
         check_semantic_index::Check,
         coerce::{coerce_bool_with_expr, coerce_ty_with_expr, coerce_ty_with_ty},
-        errors::{analysis_error::AnalysisError, inheritance::MethodError, stmt::StmtError},
-        recovery::func_call,
+        errors::{analysis_error::AnalysisError, stmt::StmtError},
     },
     hir_def::{
-        expressions::{invocation::InvocationKind, statement::Stmt},
+        expressions::statement::Stmt,
         interned::identifier::Ident,
         pous::pou::Pou,
     },
@@ -20,7 +19,6 @@ use crate::{
         invocation_resolver::{ResolvedInvocationResult, ResolvedMethodKind},
         stmt_resolver::{ResolvedStmt, ResolvedStmtKind, resolve_stmt},
         ty::{Ty, TyDef},
-        ty_path_expr_resolver::ResolvedPathResult,
         ty_var_access_resolver::ResolvedVarResult,
     },
 };
@@ -177,13 +175,13 @@ fn check_func_call<'db>(
         .target
         .ty(db)
         .map_err(|err| StmtError::UnresolvedFuncCall {
-            call: fun_call.target.clone(),
+            call: fun_call.target,
         })?;
 
     if !ty_target.is_callable(db) {
         return Err(StmtError::CallANonCallableType {
             ty: ty_target,
-            call: fun_call.target.clone(),
+            call: fun_call.target,
         }
         .into());
     }
@@ -192,7 +190,7 @@ fn check_func_call<'db>(
         errors.push(
             StmtError::UnusedReturnType {
                 ty: ty_target,
-                call: fun_call.target.clone(),
+                call: fun_call.target,
                 ret,
             }
             .into(),
@@ -200,7 +198,7 @@ fn check_func_call<'db>(
     }
 
     if let Some(signature) = ty_target.variables(db) {
-        check_parameters(db, fun_call.target, &signature, &fun_call.params, errors);
+        check_parameters(db, fun_call.target, signature, &fun_call.params, errors);
     }
     Ok(())
 }
@@ -217,18 +215,18 @@ fn check_invocation<'db>(
         ResolvedMethodKind::InheritedMethod { target, method }
         | ResolvedMethodKind::DeclaredMethod { target, method } => {
             let ty_target = method.ty(db).map_err(|err| StmtError::UnresolvedFuncCall {
-                call: target.clone(),
+                call: *target,
             })?;
 
             let k = format!("{:?}", ty_target.kind(db));
 
             if let Some(signature) = ty_target.variables(db) {
-                check_parameters(db, *method, &signature, &invocation.params, errors);
+                check_parameters(db, *method, signature, &invocation.params, errors);
             }
         }
         ResolvedMethodKind::FunctionBlockBody { target } => {
             let ty_target = target.ty(db).map_err(|err| StmtError::UnresolvedFuncCall {
-                call: target.clone(),
+                call: *target,
             })?;
         }
     }
@@ -294,7 +292,7 @@ fn check_parameters<'db>(
         if !format.check_consistency(&p.kind(db)) {
             errors.push(
                 StmtError::MixedFormalNonFormalParams {
-                    call: target.clone(),
+                    call: target,
                 }
                 .into(),
             );
@@ -331,7 +329,7 @@ fn check_parameters<'db>(
                     if !too_many_params {
                         errors.push(
                             StmtError::UnknownNonFormalParam {
-                                call: target.clone(),
+                                call: target,
                             }
                             .into(),
                         );
@@ -379,7 +377,7 @@ fn check_parameters<'db>(
                     },
                     None => errors.push(
                         StmtError::UnknownFormalInputParam {
-                            call: target.clone(),
+                            call: target,
                             param,
                         }
                         .into(),
@@ -455,7 +453,7 @@ fn check_parameters<'db>(
                     },
                     None => errors.push(
                         StmtError::UnknownFormalOutputParam {
-                            call: target.clone(),
+                            call: target,
                             param,
                         }
                         .into(),

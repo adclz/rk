@@ -2,14 +2,15 @@ use auto_lsp::default::db::BaseDatabase;
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
-    check::{
-        errors::{
-            analysis_error::DiagnosticDescription, literals::{LiteralError, LiteralErrorKind}, path_error::PathResolveError, utils::{get_candidates, get_decl_and_def_for_ty}, var_error::VarResolveError
+    TypeInfo,
+    check::errors::{
+            analysis_error::DiagnosticDescription,
+            literals::LiteralErrorKind,
+            path_error::PathResolveError,
+            utils::get_decl_and_def_for_ty,
+            var_error::VarResolveError,
         },
-        recovery::pou::fuzzy_pou_local_items,
-    }, hir_def::{scope::ScopeKind, semantic_index::semantic_index}, hir_ty::{
-        expr_resolver::ResolvedExpr, ty::Ty, ty_path_expr_resolver::ResolvedPathResult,
-    }, TypeInfo
+    hir_ty::{expr_resolver::ResolvedExpr, ty::Ty},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -72,10 +73,7 @@ impl<'db> ExprMismatch<'db> {
         }
     }
 
-    pub fn expr_void(
-        expr: ResolvedExpr<'db>,
-        ty: Ty<'db>,
-    ) -> Self {
+    pub fn expr_void(expr: ResolvedExpr<'db>, ty: Ty<'db>) -> Self {
         Self {
             expr,
             kind: ExprMismatchKind::VoidRhs { ty },
@@ -109,101 +107,101 @@ impl<'db> DiagnosticDescription<'db> for ExprMismatch<'db> {
         match &self.kind {
             ExprMismatchKind::Literal { literal, ty } => match literal {
                 LiteralErrorKind::Invalid_BOOL_Literal => {
-                    format!("invalid BOOL literal")
+                    "invalid BOOL literal".to_string()
                 }
                 LiteralErrorKind::Invalid_UNSIGNED_8_BITS_Literal => {
-                    format!("invalid USINT literal")
+                    "invalid USINT literal".to_string()
                 }
                 LiteralErrorKind::Invalid_UNSIGNED_16_BITS_Literal => {
-                    format!("invalid UINT literal")
+                    "invalid UINT literal".to_string()
                 }
                 LiteralErrorKind::Invalid_UNSIGNED_32_BITS_Literal => {
-                    format!("invalid UDINT literal")
+                    "invalid UDINT literal".to_string()
                 }
                 LiteralErrorKind::Invalid_UNSIGNED_64_BITS_Literal => {
-                    format!("invalid ULINT literal")
+                    "invalid ULINT literal".to_string()
                 }
                 LiteralErrorKind::Invalid_SIGNED_8_BITS_Literal => {
-                    format!("invalid SINT literal")
+                    "invalid SINT literal".to_string()
                 }
                 LiteralErrorKind::Invalid_SIGNED_16_BITS_Literal => {
-                    format!("invalid INT literal")
+                    "invalid INT literal".to_string()
                 }
                 LiteralErrorKind::Invalid_SIGNED_32_BITS_Literal => {
-                    format!("invalid DINT literal")
+                    "invalid DINT literal".to_string()
                 }
                 LiteralErrorKind::Invalid_SIGNED_64_BITS_Literal => {
-                    format!("invalid LINT literal")
+                    "invalid LINT literal".to_string()
                 }
                 LiteralErrorKind::Invalid_REAL_Literal => {
-                    format!("invalid REAL literal")
+                    "invalid REAL literal".to_string()
                 }
                 LiteralErrorKind::Invalid_LREAL_Literal => {
-                    format!("invalid LREAL literal")
+                    "invalid LREAL literal".to_string()
                 }
                 LiteralErrorKind::Invalid_TIME_Literal => {
-                    format!("invalid TIME literal")
+                    "invalid TIME literal".to_string()
                 }
                 LiteralErrorKind::Invalid_LTIME_Literal => {
-                    format!("invalid LTIME literal")
+                    "invalid LTIME literal".to_string()
                 }
                 LiteralErrorKind::Invalid_TOD_Literal => {
-                    format!("invalid TOD literal")
+                    "invalid TOD literal".to_string()
                 }
                 LiteralErrorKind::Invalid_LTOD_Literal => {
-                    format!("invalid LTOD literal")
+                    "invalid LTOD literal".to_string()
                 }
                 LiteralErrorKind::Invalid_DATE_Literal => {
-                    format!("invalid DATE literal")
+                    "invalid DATE literal".to_string()
                 }
                 LiteralErrorKind::Invalid_LDATE_Literal => {
-                    format!("invalid LDATE literal")
+                    "invalid LDATE literal".to_string()
                 }
                 LiteralErrorKind::Invalid_DT_Literal => {
-                    format!("invalid DT literal")
+                    "invalid DT literal".to_string()
                 }
                 LiteralErrorKind::Invalid_LDT_Literal => {
-                    format!("invalid LDT literal")
+                    "invalid LDT literal".to_string()
                 }
                 LiteralErrorKind::Invalid_STRING_Literal => {
-                    format!("invalid DSTRINGT literal")
+                    "invalid DSTRINGT literal".to_string()
                 }
                 LiteralErrorKind::Invalid_WSTRING_Literal => {
-                    format!("invalid WSTRING literal")
+                    "invalid WSTRING literal".to_string()
                 }
                 LiteralErrorKind::TypeMismatch(err) => err.to_owned(),
-                LiteralErrorKind::DurationOverflow => format!("duration overflow"),
-                LiteralErrorKind::ExpectedNumber => format!("expected a number"),
-                LiteralErrorKind::InvalidNumber(err) => format!("invalid number: {}", err),
+                LiteralErrorKind::DurationOverflow => "duration overflow".to_string(),
+                LiteralErrorKind::ExpectedNumber => "expected a number".to_string(),
+                LiteralErrorKind::InvalidNumber(err) => format!("invalid number: {err}"),
                 LiteralErrorKind::Invalid_TIME_Components => {
-                    format!("invalid TIME components")
+                    "invalid TIME components".to_string()
                 }
                 LiteralErrorKind::Invalid_TIME_Unit(err) => {
-                    format!("invalid TIME unit: {}", err)
+                    format!("invalid TIME unit: {err}")
                 }
                 LiteralErrorKind::Invalid_DATE_Format(err) => {
-                    format!("invalid DATE format: {}", err)
+                    format!("invalid DATE format: {err}")
                 }
                 LiteralErrorKind::Invalid_LDATE_Format(err) => {
-                    format!("invalid DATE format: {}", err)
+                    format!("invalid DATE format: {err}")
                 }
                 LiteralErrorKind::Invalid_TOD_Format(err) => {
-                    format!("invalid TOD format: {}", err)
+                    format!("invalid TOD format: {err}")
                 }
                 LiteralErrorKind::Invalid_LTOD_Format(err) => {
-                    format!("invalid LTOD format: {}", err)
+                    format!("invalid LTOD format: {err}")
                 }
                 LiteralErrorKind::Invalid_DT_Format(err) => {
-                    format!("invalid DT format: {}", err)
+                    format!("invalid DT format: {err}")
                 }
                 LiteralErrorKind::Invalid_LDT_Format(err) => {
-                    format!("invalid LDT format: {}", err)
+                    format!("invalid LDT format: {err}")
                 }
                 LiteralErrorKind::Incomplete_STRING_XX_Escape => {
-                    format!("incomplete escape sequence in STRING literal")
+                    "incomplete escape sequence in STRING literal".to_string()
                 }
                 LiteralErrorKind::Invalid_STRING_Hex_Escape => {
-                    format!("invalid hex escape sequence in STRING literal")
+                    "invalid hex escape sequence in STRING literal".to_string()
                 }
                 LiteralErrorKind::Invalid_STRING_CHAR(err) => {
                     format!("invalid escape sequence in STRING literal: {err}")
@@ -215,7 +213,7 @@ impl<'db> DiagnosticDescription<'db> for ExprMismatch<'db> {
                     format!("invalid escape sequence in STRING literal: {err}")
                 }
                 LiteralErrorKind::Incomplete_WSTRING_XXXX_Escape => {
-                    format!("invalid escape sequence in STRING literal")
+                    "invalid escape sequence in STRING literal".to_string()
                 }
             },
             ExprMismatchKind::TypeMismatch { err } => {
@@ -229,12 +227,12 @@ impl<'db> DiagnosticDescription<'db> for ExprMismatch<'db> {
                 format!("type mismatch: expected {}", ty.type_name(db))
             }
             ExprMismatchKind::VoidRhs { ty } => {
-                format!("right-hand side is void")
+                "right-hand side is void".to_string()
             }
             ExprMismatchKind::UnresolvedPathError { err } => err.description(db),
             ExprMismatchKind::UnresolvedVarError { err } => err.description(db),
             ExprMismatchKind::LhsIsNotABool { ty } => {
-                format!("left-hand side is not a boolean")
+                "left-hand side is not a boolean".to_string()
             }
         }
     }

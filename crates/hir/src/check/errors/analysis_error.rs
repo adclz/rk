@@ -5,8 +5,7 @@ use auto_lsp::{core::errors::PositionError, default::db::BaseDatabase};
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::check::errors::{
-    duplicates::DuplicateError, inheritance::MethodError, init_expr::InitExprError,
-    literals::LiteralError, path_error::PathResolveError, scope::NamespaceError, stmt::StmtError,
+    duplicates::DuplicateError, inheritance::MethodError, init_expr::InitExprError, scope::NamespaceError, stmt::StmtError,
     syntax::SyntaxError, ty::TyError,
 };
 

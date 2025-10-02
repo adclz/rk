@@ -4,7 +4,7 @@ use auto_lsp::default::db::BaseDatabase;
 use crate::{
     check::{
         coerce::coerce_ty_with_expr,
-        errors::{init_expr::InitExprError, analysis_error::AnalysisError},
+        errors::{analysis_error::AnalysisError, init_expr::InitExprError},
     },
     hir_ty::{
         array_resolver::resolve_range,
@@ -62,14 +62,14 @@ pub fn check_init_expr<'db>(
         // Array definition <-> Array init expression
         (TyKind::Array { ranges, typ }, ResolvedInitExprKind::ArrayInit { values }) => {
             // Check multidimensional arrays by validating each dimension
-            check_array_dimensions(db, &ranges, *typ, values, errors);
+            check_array_dimensions(db, ranges, *typ, values, errors);
         }
         // Struct/Array <-> Constant expression
         (_, ResolvedInitExprKind::ConstantExpr(expr)) => {
             if let Err(err) = coerce_ty_with_expr(db, ty, *expr) {
                 errors.push(
                     InitExprError::InitExprTypeExprMismatch {
-                        err: err,
+                        err,
                         init_expr: *expr,
                     }
                     .into(),
@@ -88,53 +88,50 @@ fn check_array_dimensions<'db>(
     errors: &mut Vec<AnalysisError<'db>>,
 ) {
     if let Some((first_range, remaining_ranges)) = ranges.split_first() {
-        match (
+        if let (Some(v1), Some(v2)) = (
             resolve_range(db, first_range.0),
             resolve_range(db, first_range.1),
         ) {
-            (Some(v1), Some(v2)) => {
-                let dimension_capacity = v2 - v1 + 1;
-                if let Err(err) = count_elements_at_dimension(db, values, dimension_capacity) {
-                    errors.push(
-                        InitExprError::ArrayTooManyElements {
-                            array: element_type,
-                            provided_count: err.0,
-                            max_capacity: dimension_capacity,
-                            init_expr: err.1,
-                        }
-                        .into(),
-                    );
-                }
-
-                // Recursively check inner dimensions
-                for value in values {
-                    if let ResolvedInitExprKind::ArrayIndexedElement {
-                        values: inner_values,
-                        ..
-                    } = value.kind(db)
-                    {
-                        if remaining_ranges.is_empty() {
-                            // Last dimension - check the values against element type
-                            for inner_value in inner_values {
-                                check_init_expr(db, element_type, *inner_value, errors);
-                            }
-                        } else {
-                            // More dimensions - recurse
-                            check_array_dimensions(
-                                db,
-                                remaining_ranges,
-                                element_type,
-                                inner_values,
-                                errors,
-                            );
-                        }
-                    } else if remaining_ranges.is_empty() {
-                        // Single value at last dimension
-                        check_init_expr(db, element_type, *value, errors);
+            let dimension_capacity = v2 - v1 + 1;
+            if let Err(err) = count_elements_at_dimension(db, values, dimension_capacity) {
+                errors.push(
+                    InitExprError::ArrayTooManyElements {
+                        array: element_type,
+                        provided_count: err.0,
+                        max_capacity: dimension_capacity,
+                        init_expr: err.1,
                     }
+                    .into(),
+                );
+            }
+
+            // Recursively check inner dimensions
+            for value in values {
+                if let ResolvedInitExprKind::ArrayIndexedElement {
+                    values: inner_values,
+                    ..
+                } = value.kind(db)
+                {
+                    if remaining_ranges.is_empty() {
+                        // Last dimension - check the values against element type
+                        for inner_value in inner_values {
+                            check_init_expr(db, element_type, *inner_value, errors);
+                        }
+                    } else {
+                        // More dimensions - recurse
+                        check_array_dimensions(
+                            db,
+                            remaining_ranges,
+                            element_type,
+                            inner_values,
+                            errors,
+                        );
+                    }
+                } else if remaining_ranges.is_empty() {
+                    // Single value at last dimension
+                    check_init_expr(db, element_type, *value, errors);
                 }
             }
-            _ => {}
         }
     }
 }

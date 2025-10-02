@@ -1,7 +1,6 @@
-use std::collections::hash_map::Entry;
 
 use auto_lsp::default::db::{BaseDatabase, file::File};
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 
 use crate::{
     check::errors::{analysis_error::AnalysisError, duplicates::DuplicateError},
@@ -37,7 +36,7 @@ pub fn check_duplicate_pous<'db>(db: &'db dyn BaseDatabase, file: File) -> Vec<A
         .filter(|f| (**f) != file)
         .for_each(|file| {
             for (name, pous) in global_pous_in_file(db, *file) {
-                if let Some(self_pous) = self_pous.get(&name) {
+                if let Some(self_pous) = self_pous.get(name) {
                     // We have a duplicate POU name
                     for self_pou in self_pous {
                         for pou in pous {

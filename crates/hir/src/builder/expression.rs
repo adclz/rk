@@ -7,7 +7,8 @@ use crate::builder::types::ParseMultiBits;
 use crate::check::errors::analysis_error::AnalysisError;
 use crate::check::errors::syntax::SyntaxError;
 use crate::hir_def::expressions::expression::{
-    FieldExpr, FuncCall, IndexExpr, Integer, IntegerKind, ParamAssignKind, PathExpr, VariableAccessKind
+    FieldExpr, FuncCall, IndexExpr, Integer, IntegerKind, ParamAssignKind, PathExpr,
+    VariableAccessKind,
 };
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::{
@@ -230,16 +231,12 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                     sema.current_scope,
                 ))
             }
-            ast::generated::PrimaryExpression::Invocation(invocation) => {
-                Ok(Expr::new(
-                    sema.db,
-                    ExprKind::PrimaryExpr(PrimaryExpr::Invocation(
-                        invocation.to_invocation(sema)?,
-                    )),
-                    invocation.into(),
-                    sema.current_scope,
-                ))
-            }
+            ast::generated::PrimaryExpression::Invocation(invocation) => Ok(Expr::new(
+                sema.db,
+                ExprKind::PrimaryExpr(PrimaryExpr::Invocation(invocation.to_invocation(sema)?)),
+                invocation.into(),
+                sema.current_scope,
+            )),
             ast::generated::PrimaryExpression::FuncCall(func) => {
                 let target = func.function.cast(sema.ast).parse(sema)?;
 
@@ -262,7 +259,7 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                                     ast::generated::ParamAssignInput_ParamAssignOutput::ParamAssignOutput(p) => {
                                         let variable = p.variable.cast(sema.ast).to_access(sema)?;
 
-                                        parameters.push(ParamAssign::new(sema.db, p.into(), sema.current_scope, 
+                                        parameters.push(ParamAssign::new(sema.db, p.into(), sema.current_scope,
                                             ParamAssignKind::FormalOutput { not: p.not.is_some() , param: SpanIdent::from_node(sema.db, sema, p.param.cast(sema.ast))?, variable })
                                     )
                                     }
@@ -308,7 +305,7 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                                 .cast(sema.ast)
                                 .parse(sema)?,
                         })),
-                    }), 
+                    }),
                     a.into(),
                     sema.current_scope,
                 )),

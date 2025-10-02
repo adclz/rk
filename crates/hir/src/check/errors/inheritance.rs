@@ -1,20 +1,17 @@
 use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
-use ide_diagnostic::{diag, IdeDiagnostic, Related};
+use ide_diagnostic::{IdeDiagnostic, Related, diag};
 
 use crate::{
     HirNodeInfo,
     check::errors::{
         analysis_error::{AnalysisError, ToIdeDiagnostic},
-        utils::{get_decl_for_ty, get_def_for_ty},
+        utils::get_decl_for_ty,
     },
     hir_def::{
-        expressions::{expression::PathExpr, invocation::Invocation},
-        scope::ScopeKind,
-        semantic_index::semantic_index,
+        expressions::{expression::PathExpr, invocation::Invocation}
     },
     hir_ty::{
-        invocation_resolver::ResolvedInvocation,
-        ty::{Ty, TyKind, ty_for_pou},
+        ty::{Ty},
     },
 };
 
@@ -179,10 +176,9 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                 .message(
                     format!(
                         "no method '{}' in declared methods of '{}'",
-                        path.to_string(db).ident.text(db).to_string(),
+                        path.to_string(db).ident.text(db),
                         ctx.decl(db).name(db).text(db)
-                    )
-                    .into(),
+                    ),
                 )
                 .severity(DiagnosticSeverity::ERROR)
                 .range(method.get_span(db).clone())
@@ -192,11 +188,10 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                     .message(
                         format!(
                             "no method '{}' in inherited methods of '{}'",
-                            path.to_string(db).ident.text(db).to_string(),
+                            path.to_string(db).ident.text(db),
                             ctx.map(|c| c.decl(db).name(db).text(db).to_string())
                                 .unwrap_or_else(|| "<unknown>".into())
-                        )
-                        .into(),
+                        ),
                     )
                     .severity(DiagnosticSeverity::ERROR)
                     .range(method.get_span(db).clone())
@@ -207,7 +202,10 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                         let origin = caller.def(db).def_as_ty(db).unwrap();
 
                         diag.with_related(Related::new(
-                            format!("methods are inherited from '{}' here", origin.decl(db).name(db).text(db),),
+                            format!(
+                                "methods are inherited from '{}' here",
+                                origin.decl(db).name(db).text(db),
+                            ),
                             caller
                                 .def(db)
                                 .get_scope_id(db)
@@ -220,22 +218,22 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                 diag
             }
             Self::ThisOnIncompatiblePou { path, method } => {
-                let mut diag = diag()
+                
+
+                diag()
                     .message("THIS can only be used in in FUNCTION_BLOCK or CLASS POUs".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .range(method.get_span(db).clone())
-                    .call();
-
-                diag
+                    .call()
             }
             Self::SuperOnIncompatiblePou { path, method } => {
-                let mut diag = diag()
+                
+
+                diag()
                     .message("SUPER can only be used in FUNCTION_BLOCK or CLASS POUs".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .range(method.get_span(db).clone())
-                    .call();
-
-                diag
+                    .call()
             }
             Self::SuperBodyOnIncompatiblePou { ctx, method } => {
                 let mut diag = diag()
@@ -249,15 +247,5 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                 diag
             }
         }
-    }
-}
-
-fn get_self<'db>(db: &'db dyn BaseDatabase, method: ResolvedInvocation<'db>) -> Option<Ty<'db>> {
-    let origin = method.invocation;
-    let sema = semantic_index(db, origin.scope_id(db).file(db));
-    let scope = sema.get_scope(db, origin.scope_id(db));
-    match scope.kind {
-        ScopeKind::Pou(pou) => Some(ty_for_pou(db, pou)),
-        _ => None,
     }
 }

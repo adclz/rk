@@ -1,5 +1,5 @@
 use auto_lsp::{default::db::BaseDatabase, lsp_types::Hover};
-use hir::hir_ty::{ty_var_access_resolver::ResolvedVarResult};
+use hir::hir_ty::ty_var_access_resolver::ResolvedVarResult;
 
 use crate::ToProtocol;
 

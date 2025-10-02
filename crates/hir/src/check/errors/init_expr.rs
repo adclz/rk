@@ -2,12 +2,17 @@ use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, diag};
 
 use crate::{
+    HirNodeInfo,
     check::{
         errors::{
-            analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic}, coerce::ExprMismatch, utils::{get_candidates, get_decl_for_ty, get_def_for_ty}
+            analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic},
+            coerce::ExprMismatch,
+            utils::{get_candidates, get_decl_for_ty},
         },
         recovery::struct_::fuzzy_struct_fields,
-    }, hir_def::interned::identifier::SpanIdent, hir_ty::{expr_resolver::ResolvedExpr, init_expr_resolver::ResolvedInitExpr, ty::Ty}, HirNodeInfo
+    },
+    hir_def::interned::identifier::SpanIdent,
+    hir_ty::{expr_resolver::ResolvedExpr, init_expr_resolver::ResolvedInitExpr, ty::Ty},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -63,8 +68,7 @@ impl<'db> ToIdeDiagnostic<'db> for InitExprError<'db> {
             } => {
                 let mut diag = diag()
                     .message(format!(
-                        "too many array elements: provided {}, but array capacity is {}",
-                        provided_count, max_capacity
+                        "too many array elements: provided {provided_count}, but array capacity is {max_capacity}"
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(init_expr.get_span(db))
@@ -75,7 +79,10 @@ impl<'db> ToIdeDiagnostic<'db> for InitExprError<'db> {
             }
             InitExprError::InitExprTypeExprMismatch { err, init_expr } => {
                 let mut diag = diag()
-                    .message(format!("invalid value initializer: {}", err.description(db)))
+                    .message(format!(
+                        "invalid value initializer: {}",
+                        err.description(db)
+                    ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(init_expr.get_span(db))
                     .call();

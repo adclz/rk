@@ -1,5 +1,6 @@
 use std::ops::ControlFlow;
 
+use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::HoverContents;
 use db::RootDatabase;
 use hir::hir_def::pous::pou::Pou;
@@ -12,7 +13,6 @@ use ide_proto::AsProtocol;
 use ide_proto::ToProtocol;
 use insta::assert_snapshot;
 use rstest::rstest;
-use auto_lsp::default::db::BaseDatabase;
 
 use crate::tests::utils::add_sources;
 use crate::tests::utils::with_db;

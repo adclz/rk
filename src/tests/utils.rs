@@ -27,7 +27,7 @@ pub fn no_color_and_ascii() -> Config {
         .with_char_set(CharSet::Ascii)
 }
 
-pub fn add_sources<'db>(db: &'db mut RootDatabase, sources: &[&str]) {
+pub fn add_sources(db: &mut RootDatabase, sources: &[&str]) {
     for (i, source) in sources.iter().enumerate() {
         let url = Url::parse(&format!("file:///test{i}.st")).unwrap();
 
@@ -49,7 +49,7 @@ where
     I: IntoIterator<Item = (Id, S)>,
     S: AsRef<str>,
 {
-    FnCache::new((move |id| Err(format!("Failed to fetch source '{}'", id))) as fn(&_) -> _)
+    FnCache::new((move |id| Err(format!("Failed to fetch source '{id}'"))) as fn(&_) -> _)
         .with_sources(
             iter.into_iter()
                 .map(|(id, s)| (id, Source::from(s)))

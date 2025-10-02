@@ -21,7 +21,7 @@ impl<'db> Check<'db> for Array<'db> {
                         errors.push(
                             TyError::InferiorUpperBound {
                                 lower: lower_range,
-                                upper: upper_range, 
+                                upper: upper_range,
                                 upper_expr: *upper,
                             }
                             .into(),

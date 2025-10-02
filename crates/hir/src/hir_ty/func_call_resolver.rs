@@ -3,16 +3,16 @@ use auto_lsp::default::db::BaseDatabase;
 use crate::{
     AstId, HirNodeInfo,
     hir_def::{
-        expressions::expression::{FuncCall, ParamAssign, ParamAssignKind},
+        expressions::expression::{FuncCall, ParamAssign},
         interned::identifier::SpanIdent,
         scope::FileScopeId,
     },
     hir_ty::{
-        expr_resolver::{ResolvedExpr, resolve_expr},
+        expr_resolver::ResolvedExpr,
         param_resolver::resolve_parameters,
-        ty_path_expr_resolver::{ResolvedPathResult, resolved_path_expr},
+        ty_path_expr_resolver::resolved_path_expr,
         ty_var_access_resolver::{
-            ResolvedVarKind, ResolvedVarOrigin, ResolvedVarResult, resolve_var_access,
+            ResolvedVarKind, ResolvedVarOrigin, ResolvedVarResult,
         },
     },
 };

@@ -4,21 +4,17 @@ use crate::{
     AstId, HirNodeInfo,
     check::errors::inheritance::MethodError,
     hir_def::{
-        expressions::{
-            expression::{FuncCall, ParamAssignKind, PathExpr},
-            invocation::{Invocation, InvocationKind},
-        },
-        pous::pou::{Pou, PouDecl},
+        expressions::invocation::{Invocation, InvocationKind},
+        pous::pou::Pou,
         scope::{FileScopeId, Scope, ScopeKind},
     },
     hir_ty::{
-        expr_resolver::resolve_expr,
-        func_call_resolver::{ResolvedParam, ResolvedParamKind},
+        func_call_resolver::ResolvedParam,
         inheritance_solver::method_table,
         param_resolver::resolve_parameters,
-        ty::{Ty, TyDecl, TyKind, ty_for_pou},
+        ty::{TyKind, ty_for_pou},
         ty_var_access_resolver::{
-            ResolvedVarKind, ResolvedVarOrigin, ResolvedVarResult, resolve_var_access,
+            ResolvedVarKind, ResolvedVarOrigin, ResolvedVarResult,
         },
     },
 };

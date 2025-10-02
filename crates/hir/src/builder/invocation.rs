@@ -30,10 +30,10 @@ impl<'db> ParseInvocation<'db> for ast::generated::SuperBodyInvocation {
         Ok(Invocation::new(
             sema.db,
             self.into(),
-            self.SUPER.cast(&sema.ast).into(),
+            self.SUPER.cast(sema.ast).into(),
             sema.current_scope,
             InvocationKind::SuperBody,
-            vec![], 
+            vec![],
         ))
     }
 }
@@ -44,19 +44,19 @@ impl<'db> ParseInvocation<'db> for ast::generated::Invocation {
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<Invocation<'db>, AnalysisError<'db>> {
         let keyword_id;
-        let kind = match &self.invocation.cast(&sema.ast) {
+        let kind = match &self.invocation.cast(sema.ast) {
             ast::generated::SuperInvocation_ThisInvocation::ThisInvocation(func_call) => {
-                keyword_id = func_call.THIS.cast(&sema.ast).into();
+                keyword_id = func_call.THIS.cast(sema.ast).into();
                 InvocationKind::This {
-                    path: func_call.children.cast(&sema.ast).parse(sema)?,
+                    path: func_call.children.cast(sema.ast).parse(sema)?,
                 }
             }
             ast::generated::SuperInvocation_ThisInvocation::SuperInvocation(func_call) => {
-                keyword_id = func_call.SUPER.cast(&sema.ast).into();
+                keyword_id = func_call.SUPER.cast(sema.ast).into();
                 InvocationKind::Super {
                     path: func_call.children.cast(sema.ast).parse(sema)?,
                 }
-            } 
+            }
         };
 
         let mut parameters = vec![];

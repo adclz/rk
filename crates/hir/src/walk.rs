@@ -17,7 +17,7 @@ use crate::{
         expr_resolver::ResolvedExpr,
         func_call_resolver::{ResolvedFuncCall, ResolvedParam, ResolvedParamKind},
         init_expr_resolver::{ResolvedInitExpr, ResolvedInitExprKind, resolve_init_expr},
-        invocation_resolver::{ResolvedInvocation, ResolvedInvocationResult, ResolvedMethodKind},
+        invocation_resolver::{ResolvedInvocationResult, ResolvedMethodKind},
         stmt_resolver::{ResolvedStmt, ResolvedStmtKind, resolve_stmt},
         ty::{ty_for_method_decl, ty_for_method_prot, ty_for_pou, ty_for_variable},
         ty_path_expr_resolver::ResolvedPathResult,

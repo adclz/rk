@@ -7,8 +7,7 @@ use crate::tests::utils::with_db;
 
 #[rstest]
 fn valid_time_cases(mut with_db: RootDatabase) {
-    let source = format!(
-        r#"
+    let source = r#"
 FUNCTION_BLOCK fb1
     VAR
         test1: TIME := time#0s;
@@ -16,16 +15,14 @@ FUNCTION_BLOCK fb1
         test3: TIME := T#0h0m0s;
         test4: TIME := TIME#0s;
     END_VAR
-END_FUNCTION_BLOCK"#
-    );
+END_FUNCTION_BLOCK"#.to_string();
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[&source]), @"");
 }
 
 #[rstest]
 fn valid_l_time_cases(mut with_db: RootDatabase) {
-    let source = format!(
-        r#"
+    let source = r#"
 FUNCTION_BLOCK fb1
     VAR
         test1: LTIME := ltime#0s;
@@ -33,8 +30,7 @@ FUNCTION_BLOCK fb1
         test3: LTIME := LT#0h0m0s;
         test4: LTIME := LTIME#0s;
     END_VAR
-END_FUNCTION_BLOCK"#
-    );
+END_FUNCTION_BLOCK"#.to_string();
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[&source]), @"");
 }

@@ -1,7 +1,9 @@
-
 use crate::hir_def::{
-    expressions::statement::Stmt, interned::namespace::SpanNamespaceAccess, modifier::Modifier,
-    pous::{class::MethodDecl, variable::VariableDecl}, scope::FileScopeId,
+    expressions::statement::Stmt,
+    interned::namespace::SpanNamespaceAccess,
+    modifier::Modifier,
+    pous::{class::MethodDecl, variable::VariableDecl},
+    scope::FileScopeId,
 };
 
 #[salsa::tracked(debug)]

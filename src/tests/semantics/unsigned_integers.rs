@@ -46,7 +46,8 @@ END_FUNCTION_BLOCK"#
 #[case("WORD")]
 #[case("UINT")]
 fn valid_u16_cases(mut with_db: RootDatabase, #[case] typ: &str) {
-    let source = format!(r#"
+    let source = format!(
+        r#"
 FUNCTION_BLOCK fb1
     VAR
         test1: {typ} := 0;
@@ -59,7 +60,8 @@ FUNCTION_BLOCK fb1
         test8: {typ} := WORD#10
         test9: {typ} := UINT#10
     END_VAR
-END_FUNCTION_BLOCK"#);
+END_FUNCTION_BLOCK"#
+    );
 
     insta::allow_duplicates! { assert_snapshot!(test_diagnostics(&mut with_db, &[&source]), @""); }
 }
@@ -67,8 +69,9 @@ END_FUNCTION_BLOCK"#);
 #[rstest]
 #[case("DWORD")]
 #[case("UDINT")]
-fn valid_u32_cases(mut with_db: RootDatabase, #[case] typ: &str)  {
-    let source = format!(r#"
+fn valid_u32_cases(mut with_db: RootDatabase, #[case] typ: &str) {
+    let source = format!(
+        r#"
 FUNCTION_BLOCK fb1
     VAR
         test1: {typ} := 0;
@@ -80,7 +83,8 @@ FUNCTION_BLOCK fb1
         test7: {typ} := DWORD#10
         test8: {typ} := UDINT#10
     END_VAR
-END_FUNCTION_BLOCK"#);
+END_FUNCTION_BLOCK"#
+    );
 
     insta::allow_duplicates! { assert_snapshot!(test_diagnostics(&mut with_db, &[&source]), @""); }
 }
@@ -88,8 +92,9 @@ END_FUNCTION_BLOCK"#);
 #[rstest]
 #[case("LWORD")]
 #[case("ULINT")]
-fn valid_u64_cases(mut with_db: RootDatabase, #[case] typ: &str)  {
-    let source = format!(r#"
+fn valid_u64_cases(mut with_db: RootDatabase, #[case] typ: &str) {
+    let source = format!(
+        r#"
 FUNCTION_BLOCK fb1
     VAR
         test1: {typ} := 0;
@@ -101,7 +106,8 @@ FUNCTION_BLOCK fb1
         test7: {typ} := LWORD#10
         test8: {typ} := ULINT#10
     END_VAR
-END_FUNCTION_BLOCK"#);
+END_FUNCTION_BLOCK"#
+    );
 
     insta::allow_duplicates! { assert_snapshot!(test_diagnostics(&mut with_db, &[&source]), @""); }
 }

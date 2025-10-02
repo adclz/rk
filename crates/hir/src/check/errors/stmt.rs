@@ -2,22 +2,22 @@ use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, Related, diag};
 
 use crate::{
+    HirNodeInfo,
     check::{
         errors::{
             analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic},
             coerce::{ExprMismatch, TypeMismatch},
-            utils::{get_candidates, get_decl_and_def_for_ty, get_decl_for_ty, get_def_for_ty},
+            utils::{get_candidates, get_decl_and_def_for_ty, get_decl_for_ty},
             var_error::VarResolveError,
         },
-        recovery::{
-            func_call::fuzzy_func_local_items, pou::fuzzy_pou_local_items,
-            struct_::fuzzy_struct_fields,
-        },
-    }, hir_def::{
-        expressions::expression::PathExpr, interned::identifier::SpanIdent, pous::pou::{Pou, PouDecl}, scope::ScopeKind, semantic_index::semantic_index
-    }, hir_ty::{
-        expr_resolver::ResolvedExpr, inheritance_solver::method_table, invocation_resolver::ResolvedInvocation, stmt_resolver::ResolvedStmt, ty::{ty_for_pou, Ty, TyDef, TyKind}, ty_path_expr_resolver::ResolvedPathResult, ty_var_access_resolver::ResolvedVarResult
-    }, HirNodeInfo
+        recovery::func_call::fuzzy_func_local_items,
+    },
+    hir_def::interned::identifier::SpanIdent,
+    hir_ty::{
+        expr_resolver::ResolvedExpr,
+        ty::{Ty, TyDef},
+        ty_var_access_resolver::ResolvedVarResult,
+    },
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
@@ -207,13 +207,13 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
 
                 diag
             }
-            Self::UnresolvedFuncCall { call }=> {
-                let mut diag = diag()
+            Self::UnresolvedFuncCall { call } => {
+                
+                diag()
                     .message("unresolved function call".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .range(call.get_span(db).clone())
-                    .call();
-                diag
+                    .call()
             }
             Self::CallANonCallableType { ty, call } => {
                 let mut diag = diag()
@@ -333,37 +333,37 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 diag
             }
             Self::UnresolvedOutputParam { var, err } => {
-                let mut diag = diag()
+                
+                diag()
                     .message(format!(
                         "unresolved output parameter: {}",
                         err.description(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(var.get_span(db).clone())
-                    .call();
-                diag
+                    .call()
             }
             Self::UnresolvedOutputParamTarget { var, err } => {
-                let mut diag = diag()
+                
+                diag()
                     .message(format!(
                         "unresolved output parameter target: {}",
                         err.description(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(var.get_span(db).clone())
-                    .call();
-                diag
+                    .call()
             }
             Self::UnresolvedNonFormalParam { var, err } => {
-                let mut diag = diag()
+                
+                diag()
                     .message(format!(
                         "unresolved non-formal parameter: {}",
                         err.description(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(var.get_span(db).clone())
-                    .call();
-                diag
+                    .call()
             }
             Self::ParameterTypeMismatch { var, param, err } => {
                 let mut diag = diag()
@@ -408,59 +408,58 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 diag
             }
             Self::UnresolvedControlVar { control, err } => {
-                let mut diag = diag()
+                
+                diag()
                     .message(format!(
                         "unresolved control variable: {}",
                         err.description(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(control.get_span(db).clone())
-                    .call();
-                diag
+                    .call()
             }
             Self::ForLoopStartTypeMismatch { start, err } => {
-                let mut diag = diag()
+                
+                diag()
                     .message(format!("invalid FOR loop start: {}", err.description(db)))
                     .range(start.get_span(db))
                     .severity(DiagnosticSeverity::ERROR)
-                    .call();
-                diag
+                    .call()
             }
             Self::ForLoopEndTypeMismatch { end, err } => {
-                let mut diag = diag()
+                
+
+                diag()
                     .message(format!("invalid FOR loop end: {}", err.description(db)))
                     .range(end.get_span(db))
                     .severity(DiagnosticSeverity::ERROR)
-                    .call();
-
-                diag
+                    .call()
             }
             Self::ForLoopStepTypeMismatch { step, err } => {
-                let mut diag = diag()
+                
+
+                diag()
                     .message(format!("invalid FOR loop step: {}", err.description(db)))
                     .range(step.get_span(db))
                     .severity(DiagnosticSeverity::ERROR)
-                    .call();
-
-                diag
+                    .call()
             }
             Self::WhileConditionIsNotABool { condition } => {
-                let mut diag = diag()
+                
+                diag()
                     .message("WHILE condition is not returning a boolean".into())
                     .range(condition.get_span(db))
                     .severity(DiagnosticSeverity::ERROR)
-                    .call();
-                diag
+                    .call()
             }
             Self::RepeatConditionIsNotABool { condition } => {
-                let mut diag = diag()
+                
+                diag()
                     .message("REPEAT condition is not returning a boolean".into())
                     .range(condition.get_span(db))
                     .severity(DiagnosticSeverity::ERROR)
-                    .call();
-                diag
+                    .call()
             }
         }
     }
 }
-

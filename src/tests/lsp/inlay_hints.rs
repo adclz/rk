@@ -3,7 +3,6 @@ use std::ops::ControlFlow;
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::InlayHint;
 use db::RootDatabase;
-use hir::HirNodeInfo;
 use hir::hir_def::semantic_index::HirNode;
 use hir::hir_def::semantic_index::semantic_index;
 use hir::walk::WalkHir;
@@ -29,7 +28,7 @@ END_CLASS
 INTERFACE in1
 END_INTERFACE"#;
 
-    let file = add_sources(&mut with_db, &[source]);
+    add_sources(&mut with_db, &[source]);
 
     let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
     let result: Vec<InlayHint> = sema
