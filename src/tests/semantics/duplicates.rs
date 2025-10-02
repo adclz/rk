@@ -108,6 +108,27 @@ END_FUNCTION_BLOCK
 }
 
 #[rstest]
+fn duplicate_enum_variants(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE 
+    E1 : (A, B, A);
+END_TYPE
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    Error: 
+       ,-[ file:///test0.st:3:11 ]
+       |
+     3 |     E1 : (A, B, A);
+       |           |     |  
+       |           `-------- duplicate enum variant 'A'
+       |                 |  
+       |                 `-- enum variant 'A' is already defined here
+    ---'
+    ");
+}
+
+#[rstest]
 fn duplicate_pous_in_namespace(mut with_db: RootDatabase) {
     let source = r#"
 NAMESPACE ns1

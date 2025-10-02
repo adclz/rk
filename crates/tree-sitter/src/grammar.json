@@ -1964,6 +1964,27 @@
         }
       ]
     },
+    "enum_value": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "FIELD",
+          "name": "enum_path",
+          "content": {
+            "type": "SYMBOL",
+            "name": "path_expression"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": "#"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "identifier"
+        }
+      ]
+    },
     "array_type_spec": {
       "type": "SEQ",
       "members": [
@@ -7369,6 +7390,10 @@
         {
           "type": "SYMBOL",
           "name": "constant"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "enum_value"
         },
         {
           "type": "SYMBOL",

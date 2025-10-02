@@ -25,6 +25,7 @@ pub mod check_stmt;
 pub mod check_struct;
 pub mod check_ty;
 pub mod check_variables;
+pub mod check_enum;
 pub mod coerce;
 pub mod errors;
 pub mod recovery;

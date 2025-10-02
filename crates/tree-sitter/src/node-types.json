@@ -276,6 +276,10 @@
         "named": true
       },
       {
+        "type": "enum_value",
+        "named": true
+      },
+      {
         "type": "func_call",
         "named": true
       },
@@ -1980,6 +1984,32 @@
       "types": [
         {
           "type": "enum_spec",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "enum_value",
+    "named": true,
+    "fields": {
+      "enum_path": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "path_expression",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "identifier",
           "named": true
         }
       ]

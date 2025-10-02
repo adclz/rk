@@ -207,6 +207,19 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<Expr<'db>, AnalysisError<'db>> {
         match self {
+            ast::generated::PrimaryExpression::EnumValue(enum_) => {
+                let name = enum_.enum_path.cast(&sema.ast).parse(sema)?;
+                let variant = SpanIdent::from_node(sema.db, sema, enum_.children.cast(sema.ast))?;
+
+                Ok(Expr::new(
+                    sema.db,
+                    ExprKind::PrimaryExpr(PrimaryExpr::EnumValue 
+                        { name, variant }
+                    ),
+                    enum_.into(),
+                    sema.current_scope,
+                ))
+            }
             ast::generated::PrimaryExpression::Constant(c) => c.to_expr(sema),
             ast::generated::PrimaryExpression::VariableAccess(v) => {
                 let variable = v.variable.cast(sema.ast).to_access(sema)?;

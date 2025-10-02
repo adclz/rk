@@ -95,6 +95,10 @@ pub enum PrimaryExpr<'db> {
     },
     FuncCall(FuncCall<'db>),
     Invocation(Invocation<'db>),
+    EnumValue {
+        name: PathExpr<'db>,
+        variant: SpanIdent<'db>,
+    },
     RefValue {
         value: RefValue<'db>,
     },

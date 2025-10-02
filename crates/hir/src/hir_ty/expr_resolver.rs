@@ -3,8 +3,9 @@ use auto_lsp::default::db::BaseDatabase;
 use crate::{
     AstId, HirNodeInfo,
     hir_def::{
-        expressions::expression::{
-            Elementary, Expr, ExprKind, PrimaryExpr, RefAdress, RefValue,
+        expressions::{
+            expression::{Elementary, Expr, ExprKind, PrimaryExpr, RefAdress, RefValue},
+            spec::EnumVariant,
         },
         scope::FileScopeId,
         semantic_index::semantic_index,
@@ -12,10 +13,9 @@ use crate::{
     hir_ty::{
         func_call_resolver::ResolvedFuncCall,
         invocation_resolver::ResolvedInvocationResult,
-        ty_path_expr_resolver::ResolvedPathResult,
-        ty_var_access_resolver::{
-            ResolvedVarResult, resolve_var_access,
-        },
+        ty::TyKind,
+        ty_path_expr_resolver::{ResolvedPathResult, resolved_path_expr},
+        ty_var_access_resolver::{ResolvedVarResult, resolve_var_access},
     },
 };
 
@@ -58,6 +58,12 @@ pub enum ResolvedExprKind<'db> {
 
     // Emitted by comparison expressions
     Compare(ResolvedExpr<'db>, ResolvedExpr<'db>), // left, right
+
+    // Enum value (#variant)
+    EnumValue {
+        name: ResolvedPathResult<'db>,
+        variant: Option<EnumVariant<'db>>,
+    },
 
     RefValue(ResolvedRefValue), // &value
 }
@@ -129,6 +135,29 @@ impl<'db> ResolveExprCtx<'db> {
                         self.db,
                         self.expr,
                         ResolvedExprKind::FuncCall(resolved_func_call),
+                    )
+                }
+                PrimaryExpr::EnumValue { name, variant } => {
+                    let resolved_path = *resolved_path_expr(self.db, *name);
+
+                    let variant = if let Ok(TyKind::Enum { typ, spec }) =
+                        resolved_path.ty(self.db).map(|r| r.kind(self.db))
+                    {
+                        spec.variants
+                            .iter()
+                            .find(|v| v.name == variant.ident)
+                            .cloned()
+                    } else {
+                        None
+                    };
+
+                    ResolvedExpr::new(
+                        self.db,
+                        self.expr,
+                        ResolvedExprKind::EnumValue {
+                            name: resolved_path,
+                            variant,
+                        },
                     )
                 }
                 PrimaryExpr::RefValue { value } => match value {

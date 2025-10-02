@@ -2,9 +2,7 @@ use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, Related, diag};
 
 use crate::{
-    HirNodeInfo,
-    check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic},
-    hir_ty::{inheritance_solver::InheritedMethod, ty::Ty},
+    check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic}, hir_def::interned::identifier::SpanIdent, hir_ty::{inheritance_solver::InheritedMethod, ty::Ty}, HirNodeInfo
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
@@ -20,6 +18,10 @@ pub enum DuplicateError<'db> {
     StructField {
         field1: Ty<'db>,
         field2: Ty<'db>,
+    },
+    EnumVariant {
+        variant1: SpanIdent<'db>,
+        variant2: SpanIdent<'db>,
     },
     Method {
         method1: Ty<'db>,
@@ -78,6 +80,27 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                     ),
                     var2.get_scope_id(db).file(db),
                     var2.decl(db).name_span(db),
+                ));
+
+                diag
+            }
+            Self::EnumVariant { variant1, variant2 } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "duplicate enum variant '{}'",
+                        variant1.ident.text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(variant1.get_span(db))
+                    .call();
+
+                diag.with_related(Related::new(
+                    format!(
+                        "enum variant '{}' is already defined here",
+                        variant2.ident.text(db)
+                    ),
+                    variant2.get_scope_id(db).file(db),
+                    variant2.get_span(db),
                 ));
 
                 diag

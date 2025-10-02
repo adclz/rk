@@ -3,16 +3,16 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     check::{
-        check_semantic_index::Check,
+        check_semantic_index::{Check, DataTypeCheck},
         check_ty::check_ty,
         errors::{analysis_error::AnalysisError, duplicates::DuplicateError},
     },
     hir_def::expressions::spec::Struct,
-    hir_ty::ty::ty_for_struct_field,
+    hir_ty::ty::{ty_for_struct_field, Ty},
 };
 
-impl<'db> Check<'db> for Struct<'db> {
-    fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<AnalysisError<'db>>) {
+impl<'db> DataTypeCheck<'db> for Struct<'db> {
+    fn check(&'db self, db: &'db dyn BaseDatabase, ty: Ty<'db>, errors: &mut Vec<AnalysisError<'db>>) {
         let mut seen = FxHashMap::default();
         for field in &self.elements {
             match seen.get(field.name(db)) {

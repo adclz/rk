@@ -629,6 +629,9 @@ module.exports = grammar({
     enum_value_spec: ($) =>
       seq(field("value", $.identifier), optional(seq(":=", $._expression))),
 
+    enum_value : ($) =>
+        seq(field("enum_path", $.path_expression), "#", $.identifier),
+
     ...createSpecInit(
       "array",
       ($) =>
@@ -1523,6 +1526,7 @@ module.exports = grammar({
     _primary_expression: ($) =>
       choice(
         $.constant,
+        $.enum_value,
         $.variable_access,
         $.func_call,
         $.invocation,

@@ -727,7 +727,7 @@ impl<'db> ParseSpec<'db> for ast::generated::EnumTypeSpec {
         let mut variants = vec![];
         for spec in &self.children.cast(sema.ast).children {
             let name =
-                Ident::from_node(sema.db, sema.file, spec.cast(sema.ast).value.cast(sema.ast))?;
+                SpanIdent::from_node(sema.db, sema, spec.cast(sema.ast).value.cast(sema.ast))?;
             let value = spec
                 .cast(sema.ast)
                 .children

@@ -1,3 +1,4 @@
+use ast::generated::EnumSpec;
 use auto_lsp::{core::span::Span, default::db::BaseDatabase};
 use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
@@ -7,7 +8,7 @@ use crate::{
     hir_def::{
         expressions::{
             expression::Expr,
-            spec::{ElementarySpec, Spec, SpecKind, StructElement},
+            spec::{ElementarySpec, Enum, Spec, SpecKind, StructElement},
         },
         interned::{identifier::Ident, namespace::SpanNamespaceAccess},
         modifier::Modifier,
@@ -20,7 +21,7 @@ use crate::{
         scope::FileScopeId,
     },
     hir_ty::{name_res::resolve_namespace_access, ty_path_expr_resolver::PathExprWalkStep},
-    {AstId, HirNodeInfo, TypeInfo},
+    AstId, HirNodeInfo, TypeInfo,
 };
 
 #[salsa::tracked(debug)]
@@ -189,7 +190,7 @@ pub enum TyKind<'db> {
     Simple(ElementarySpec),
     Enum {
         typ: Option<Ty<'db>>,
-        list: Vec<Ident>,
+        spec: Enum<'db>,
     },
     SubRange(Spec<'db>),
     RefTo(Ty<'db>),
@@ -712,7 +713,7 @@ impl<'db> Spec<'db> {
                 TyDef::Spec(self),
                 TyKind::Enum {
                     typ: enum_spec.typ.as_ref().map(|t| t.to_ty(db, origin)).copied(),
-                    list: enum_spec.variants.iter().map(|v| v.name).collect(),
+                    spec: enum_spec.clone()
                 },
             ),
             SpecKind::Subrange(subrange) => Ty::new(

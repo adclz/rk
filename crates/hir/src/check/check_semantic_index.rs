@@ -54,6 +54,10 @@ pub trait Check<'db> {
     fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<AnalysisError<'db>>);
 }
 
+pub trait DataTypeCheck<'db> {
+    fn check(&'db self, db: &'db dyn BaseDatabase, ty: Ty<'db>, errors: &mut Vec<AnalysisError<'db>>);
+}
+
 impl<'db> Check<'db> for SemanticIndex<'db> {
     fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<AnalysisError<'db>>) {
         // Get syntax errors
@@ -77,14 +81,14 @@ impl<'db> Check<'db> for NamespaceDecl<'db> {
 
 impl<'db> Check<'db> for PouDecl<'db> {
     fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<AnalysisError<'db>>) {
+        check_ty(db, ty_for_pou(db, *self), errors);
+
         match self.pou(db) {
             Pou::Function(f) => {
-                check_ty(db, ty_for_pou(db, *self), errors);
                 f.variables(db).check(db, errors);
                 f.statements(db).check(db, errors);
             }
             Pou::FunctionBlock(fb) => {
-                check_ty(db, ty_for_pou(db, *self), errors);
                 check_methods(db, ty_for_pou(db, *self), errors);
                 fb.variables(db).check(db, errors);
                 fb.statements(db).check(db, errors);
@@ -93,11 +97,7 @@ impl<'db> Check<'db> for PouDecl<'db> {
                     m.stmts(db).check(db, errors);
                 });
             }
-            Pou::DataType(dt) => {
-                check_ty(db, ty_for_pou(db, *self), errors);
-            }
             Pou::Class(cl) => {
-                check_ty(db, ty_for_pou(db, *self), errors);
                 check_methods(db, ty_for_pou(db, *self), errors);
                 cl.variables(db).check(db, errors);
                 cl.methods(db).iter().for_each(|m| {
@@ -106,21 +106,20 @@ impl<'db> Check<'db> for PouDecl<'db> {
                 });
             }
             Pou::Interface(it) => {
-                check_ty(db, ty_for_pou(db, *self), errors);
                 check_methods(db, ty_for_pou(db, *self), errors);
             }
-        }
-
-        if let Pou::DataType(typ) = self.pou(db) {
-            match typ.spec(db).kind(db) {
-                SpecKind::Struct(st) => {
-                    st.check(db, errors);
-                }
+            Pou::DataType(typ) => match typ.spec(db).kind(db) {
                 SpecKind::Array(arr) => {
-                    arr.check(db, errors);
+                    arr.check(db, ty_for_pou(db, *self), errors);
+                }
+                SpecKind::Struct(st) => {
+                    st.check(db, ty_for_pou(db, *self), errors);
+                }
+                SpecKind::Enum(en) => {
+                    en.check(db, ty_for_pou(db, *self), errors);
                 }
                 _ => {}
-            }
+            },
         }
     }
 }

@@ -2,15 +2,15 @@ use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     check::{
-        check_semantic_index::Check,
+        check_semantic_index::{Check, DataTypeCheck},
         errors::{analysis_error::AnalysisError, ty::TyError},
     },
     hir_def::expressions::spec::Array,
-    hir_ty::{array_resolver::resolve_range, expr_resolver::resolve_expr},
+    hir_ty::{array_resolver::resolve_range, expr_resolver::resolve_expr, ty::Ty},
 };
 
-impl<'db> Check<'db> for Array<'db> {
-    fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<AnalysisError<'db>>) {
+impl<'db> DataTypeCheck<'db> for Array<'db> {
+    fn check(&'db self, db: &'db dyn BaseDatabase, ty: Ty<'db>, errors: &mut Vec<AnalysisError<'db>>) {
         for range in &self.subranges {
             let lower = resolve_expr(db, range.0);
             let upper = resolve_expr(db, range.1);

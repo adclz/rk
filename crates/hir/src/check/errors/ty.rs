@@ -2,10 +2,7 @@ use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, Related, diag};
 
 use crate::{
-    HirNodeInfo,
-    check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic},
-    hir_def::interned::namespace::SpanNamespaceAccess,
-    hir_ty::{expr_resolver::ResolvedExpr, ty::Ty},
+    check::errors::{analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic}, coerce::{ExprMismatch, TypeMismatch}}, hir_def::interned::{identifier::SpanIdent, namespace::SpanNamespaceAccess}, hir_ty::{expr_resolver::ResolvedExpr, ty::Ty}, HirNodeInfo, TypeInfo
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -21,6 +18,7 @@ pub enum TyError<'db> {
         ty: Ty<'db>,
         path: SpanNamespaceAccess<'db>,
     },
+    // Arrays
     InvalidArrayLowerValue {
         value: ResolvedExpr<'db>,
     },
@@ -31,6 +29,14 @@ pub enum TyError<'db> {
         lower: u64,
         upper: u64,
         upper_expr: ResolvedExpr<'db>,
+    },
+    // Enums
+    InvalidEnumType {
+        value: Ty<'db>,
+    },
+    InvalidEnumVariantValue {
+        variant: SpanIdent<'db>,
+        err: ExprMismatch<'db>
     },
 }
 
@@ -103,6 +109,36 @@ impl<'db> ToIdeDiagnostic<'db> for TyError<'db> {
                 .severity(DiagnosticSeverity::ERROR)
                 .range(upper_expr.get_span(db))
                 .call(),
+            TyError::InvalidEnumType { value } => {
+                let mut diag = diag()
+                .message(format!(
+                    "invalid enum type '{}'",
+                    value.type_name(db)
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .range(value.decl(db).name_span(db))
+                .call();
+            
+                diag.with_note("only numeric integer types are allowed for ENUM".to_string());
+
+                diag
+            },    
+            TyError::InvalidEnumVariantValue { variant, err } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "invalid value for enum variant '{}': {}",
+                        variant.ident.text(db),
+                        err.description(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(variant.get_span(db))
+                    .call();
+
+                err.related(db, &mut diag);
+                err.note(db, &mut diag);
+
+                diag
+            }    
         }
     }
 }

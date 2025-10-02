@@ -1,3 +1,4 @@
+use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use auto_lsp::default::db::BaseDatabase;
 
@@ -195,7 +196,7 @@ pub struct Enum<'db> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct EnumVariant<'db> {
-    pub name: Ident,
+    pub name: SpanIdent<'db>,
     pub value: Option<Expr<'db>>,
 }
 
