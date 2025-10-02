@@ -272,15 +272,15 @@
     "named": true,
     "subtypes": [
       {
-        "type": "ERR_invocation_in_expr_context",
-        "named": true
-      },
-      {
         "type": "constant",
         "named": true
       },
       {
         "type": "func_call",
+        "named": true
+      },
+      {
+        "type": "invocation",
         "named": true
       },
       {
@@ -342,7 +342,7 @@
         "named": true
       },
       {
-        "type": "super_stmt",
+        "type": "super_body_invocation",
         "named": true
       },
       {
@@ -622,21 +622,6 @@
     }
   },
   {
-    "type": "ERR_invocation_in_expr_context",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "invocation",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
     "type": "ERR_missing_dot_in_assignment",
     "named": true,
     "fields": {},
@@ -673,6 +658,11 @@
   },
   {
     "type": "ERR_missing_equal_in_for_control",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "ERR_unexpected_super_in_path",
     "named": true,
     "fields": {}
   },
@@ -1399,7 +1389,7 @@
       },
       "case_selection": {
         "multiple": true,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "case_selection",
@@ -3099,7 +3089,11 @@
         "required": true,
         "types": [
           {
-            "type": "symbolic_variable",
+            "type": "super_invocation",
+            "named": true
+          },
+          {
+            "type": "this_invocation",
             "named": true
           }
         ]
@@ -5329,25 +5323,51 @@
     }
   },
   {
-    "type": "super_stmt",
-    "named": true,
-    "fields": {}
-  },
-  {
-    "type": "symbolic_variable",
+    "type": "super_body_invocation",
     "named": true,
     "fields": {
-      "this": {
+      "SUPER": {
         "multiple": false,
-        "required": false,
+        "required": true,
         "types": [
           {
-            "type": "this",
-            "named": true
+            "type": "SUPER",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "super_invocation",
+    "named": true,
+    "fields": {
+      "SUPER": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "SUPER",
+            "named": false
           }
         ]
       }
     },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "path_expression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "symbolic_variable",
+    "named": true,
+    "fields": {},
     "children": {
       "multiple": false,
       "required": true,
@@ -5467,9 +5487,30 @@
     }
   },
   {
-    "type": "this",
+    "type": "this_invocation",
     "named": true,
-    "fields": {}
+    "fields": {
+      "THIS": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "THIS",
+            "named": false
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "path_expression",
+          "named": true
+        }
+      ]
+    }
   },
   {
     "type": "time",
@@ -5792,6 +5833,10 @@
       "multiple": false,
       "required": true,
       "types": [
+        {
+          "type": "ERR_unexpected_super_in_path",
+          "named": true
+        },
         {
           "type": "ERR_unexpected_this_in_path",
           "named": true
