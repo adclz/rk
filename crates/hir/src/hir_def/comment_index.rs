@@ -86,7 +86,19 @@ impl CommentIndex {
         // First: check lines above
         for row in (0..line).rev() {
             if let Some(comment) = self.map.get(&row) {
-                return Some(comment);
+                // Check if the comment is actually above the line (not to the right)
+                let text = document
+                    .as_str()
+                    .get(comment.range.start_byte..comment.range.end_byte)
+                    .unwrap_or("");
+
+                if match comment.kind {
+                    CommentKind::C => text.starts_with("/*"),
+                    CommentKind::Pascal => text.starts_with("(*"),
+                    CommentKind::Line => text.starts_with("//"),
+                } {
+                    return Some(comment);
+                }
             }
             if let Some(line_content) = document.texter.get_row(row) {
                 if !line_content.is_empty() {

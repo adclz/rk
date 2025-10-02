@@ -229,3 +229,33 @@ END_FUNCTION
     let comment = index.find_nearby_comment(document, &range).unwrap();
     assert_eq!(comment.to_string(document), "NOT NESTED\n  (* NESTED *)");
 }
+
+#[test]
+fn avoid_top_right_comment() {
+    let mut db = RootDatabase::default();
+    let url = lsp_types::Url::parse("file:///right.st").unwrap();
+    let source = r#"
+FUNCTION test 
+    VAR
+        x : INT; //right side comment
+        y : INT;
+    END_VAR
+END_FUNCTION
+"#;
+    let file = File::from_string()
+        .db(&db)
+        .parsers(ast::RK_PARSER.get("structured_text").unwrap())
+        .url(&url)
+        .source(source.to_string())
+        .call()
+        .unwrap();
+
+    db.add_file(file).unwrap();
+
+    let index = comment_index(&db, file);
+
+    // Comment should only be picked *once* for x
+    // y should not pick it up because the comment is to the right of x
+    assert!(index.map.len() == 1, "Expected one comment in the index");
+
+}
