@@ -157,3 +157,111 @@ fn interface_methods_not_implemented(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+#[rstest]
+fn method_signature_count_mismatch_in_implementer(mut with_db: RootDatabase) {
+    let source = r#"
+        INTERFACE ROOM1
+            METHOD DAYTIME
+                VAR_INPUT
+                    value: INT
+                END_VAR
+            END_METHOD
+        END_INTERFACE
+
+        CLASS Mid IMPLEMENTS ROOM1
+            METHOD OVERRIDE DAYTIME
+
+            END_METHOD
+        END_CLASS
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    Error: 
+        ,-[ file:///test0.st:11:29 ]
+        |
+      3 |             METHOD DAYTIME
+        |                    ^^^|^^^  
+        |                       `----- 'DAYTIME' is declared here
+        | 
+     11 |             METHOD OVERRIDE DAYTIME
+        |                             ^^^|^^^  
+        |                                `----- invalid number of parameters for inherited method 'DAYTIME': expected 1, got 0
+    ----'
+    ");
+}
+
+#[rstest]
+fn method_signature_count_mismatch_in_base(mut with_db: RootDatabase) {
+    let source = r#"
+        INTERFACE ROOM1
+            METHOD DAYTIME
+            END_METHOD
+        END_INTERFACE
+
+        CLASS Mid IMPLEMENTS ROOM1
+            METHOD OVERRIDE DAYTIME
+                VAR_INPUT
+                    value: INT
+                END_VAR
+            END_METHOD
+        END_CLASS
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    Error: 
+       ,-[ file:///test0.st:8:29 ]
+       |
+     3 |             METHOD DAYTIME
+       |                    ^^^|^^^  
+       |                       `----- 'DAYTIME' is declared here
+       | 
+     8 |             METHOD OVERRIDE DAYTIME
+       |                             ^^^|^^^  
+       |                                `----- invalid number of parameters for inherited method 'DAYTIME': expected 0, got 1
+    ---'
+    ");
+}
+
+#[rstest]
+fn method_signature_type_mismatch(mut with_db: RootDatabase) {
+    let source = r#"
+        INTERFACE ROOM1
+            METHOD DAYTIME
+                VAR_INPUT
+                    value: INT;
+                    value2: INT;
+                END_VAR
+            END_METHOD
+        END_INTERFACE
+
+        CLASS Mid IMPLEMENTS ROOM1
+            METHOD OVERRIDE DAYTIME
+                VAR_INPUT
+                    value: INT;
+                    value2: REAL; // should be INT
+                END_VAR
+            END_METHOD
+        END_CLASS
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    Error: 
+        ,-[ file:///test0.st:15:21 ]
+        |
+      6 |                     value2: INT;
+        |                     ^^^|^^  ^|^  
+        |                        `--------- 'value2' is declared here
+        |                              |   
+        |                              `--- type defined here
+        | 
+     15 |                     value2: REAL; // should be INT
+        |                     ^^^|^^  ^^|^  
+        |                        `---------- invalid parameter in method signature: type mismatch: expected INT, found REAL
+        |                        |      |   
+        |                        `---------- 'value2' is declared here
+        |                               |   
+        |                               `--- type defined here
+    ----'
+    ");
+}
