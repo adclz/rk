@@ -11,6 +11,9 @@ use rustc_hash::FxHashMap;
 pub struct Methods<'db> {
     pub inherited_methods: FxHashMap<Ident, InheritedMethod<'db>>,
     pub declared_methods: FxHashMap<Ident, Ty<'db>>,
+
+    pub inherited_duplicates: Vec<(Ty<'db>, Ty<'db>)>,
+    pub declared_duplicates: Vec<(Ty<'db>, Ty<'db>)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
@@ -30,6 +33,9 @@ pub fn method_table<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>) -> Arc<Methods<
     let mut inherited_methods = FxHashMap::default();
     let mut declared_methods = FxHashMap::default();
 
+    let mut inherited_duplicates = vec![];
+    let mut declared_duplicates = vec![];
+
     match ty.kind(db) {
         TyKind::Target(target) => return method_table(db, *target),
         TyKind::Class {
@@ -42,24 +48,32 @@ pub fn method_table<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>) -> Arc<Methods<
             if let Some(base) = extends {
                 let table2 = method_table(db, *base);
                 for (name, entry) in &method_table(db, *base).declared_methods {
-                    inherited_methods.insert(*name, InheritedMethod::new(*base, *entry));
+                    if let Some(m) = inherited_methods.insert(*name, InheritedMethod::new(*base, *entry)) {
+                        inherited_duplicates.push((m.method, *entry));
+                    }
                 }
             }
 
             // Inherit interfaces (abstract signatures only)
             for iface in implements {
                 for (name, entry) in &method_table(db, *iface).declared_methods {
-                    inherited_methods.insert(*name, InheritedMethod::new(*iface, *entry));
+                    if let Some(m) = inherited_methods.insert(*name, InheritedMethod::new(*iface, *entry)) {
+                        inherited_duplicates.push((m.method, *entry));
+                    }
                 }
             }
 
             // Add this class’s own methods
             for m in methods {
                 let ty = ty_for_method_decl(db, *m);
-                declared_methods.insert(
+                let target = Ty::new(db, TyDecl::Method(*m), ty.def(db), TyKind::Target(ty));
+                
+                if let Some(m) = declared_methods.insert(
                     *m.name(db),
-                    Ty::new(db, TyDecl::Method(*m), ty.def(db), TyKind::Target(ty)),
-                );
+                    target,
+                ) {
+                    declared_duplicates.push((m, target));
+                }
             }
         }
 
@@ -70,15 +84,21 @@ pub fn method_table<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>) -> Arc<Methods<
             // Methods = abstract signatures
             for m in methods {
                 let ty = ty_for_method_prot(db, *m);
-                declared_methods.insert(
+                let target = Ty::new(db, TyDecl::MethodProt(*m), ty.def(db), TyKind::Target(ty));
+
+                if let Some(m) = declared_methods.insert(
                     *m.name(db),
-                    Ty::new(db, TyDecl::MethodProt(*m), ty.def(db), TyKind::Target(ty)),
-                );
+                    target,
+                ) {
+                    declared_duplicates.push((m, target));
+                }
             }
 
             for iface in implements {
                 for (name, entry) in &method_table(db, *iface).declared_methods {
-                    inherited_methods.insert(*name, InheritedMethod::new(*iface, *entry));
+                    if let Some(m) = inherited_methods.insert(*name, InheritedMethod::new(*iface, *entry)) {
+                        inherited_duplicates.push((m.method, *entry));
+                    }
                 }
             }
         }
@@ -88,24 +108,31 @@ pub fn method_table<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>) -> Arc<Methods<
         } => {
             for m in methods {
                 let ty = ty_for_method_decl(db, *m);
-                declared_methods.insert(
+                let target = Ty::new(db, TyDecl::Method(*m), ty.def(db), TyKind::Target(ty));
+
+                if let Some(m) = declared_methods.insert(
                     *m.name(db),
-                    Ty::new(db, TyDecl::Method(*m), ty.def(db), TyKind::Target(ty)),
-                );
+                    target,
+                ) {
+                    declared_duplicates.push((m, target));
+                }
             }
 
             if let Some(base) = extends {
                 for (name, entry) in &method_table(db, *base).declared_methods {
-                    inherited_methods.insert(*name, InheritedMethod::new(*base, *entry));
+                    if let Some(m) = inherited_methods.insert(*name, InheritedMethod::new(*base, *entry)) {
+                        inherited_duplicates.push((m.method, *entry));
+                    }
                 }
             }
         }
         _ => {}
     }
 
-    let kind = format!("{:?}", ty.kind(db));
     Arc::new(Methods {
         inherited_methods,
         declared_methods,
+        inherited_duplicates,
+        declared_duplicates,
     })
 }

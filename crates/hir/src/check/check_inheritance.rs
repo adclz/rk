@@ -1,8 +1,10 @@
 use auto_lsp::default::db::BaseDatabase;
+use indexmap::IndexMap;
+use rustc_hash::FxHashMap;
 
 use crate::{
-    check::errors::{analysis_error::AnalysisError, inheritance::MethodError},
-    hir_def::modifier::Modifier,
+    check::errors::{analysis_error::AnalysisError, duplicates::DuplicateError, inheritance::MethodError},
+    hir_def::{interned::identifier::Ident, modifier::Modifier},
     hir_ty::{
         inheritance_solver::method_table,
         ty::{Ty, TyKind},
@@ -16,6 +18,7 @@ pub fn check_methods<'db>(
 ) {
     let table = method_table(db, implementer);
 
+    // If the class is abstract, it must have at least one abstract method
     if let TyKind::Class { .. } = implementer.kind(db)
         && implementer.modifier(db).contains(Modifier::ABSTRACT)
         && !table
@@ -28,11 +31,30 @@ pub fn check_methods<'db>(
         ));
     }
 
+    // check dups in declared methods
+    for (m1, m2) in &table.declared_duplicates {
+        errors.push(DuplicateError::Method {
+            method1: *m1,
+            method2: *m2,
+        }.into());
+    }
+
+    // check dups in inherited methods
+    for (m1, m2) in &table.inherited_duplicates {
+        errors.push(DuplicateError::Method {
+            method1: *m1,
+            method2: *m2,
+        }.into());
+    }
+
     // look at the inherited methods first
     for (inherited_name, inherited_method) in &table.inherited_methods {
         let inherited_method = inherited_method.method;
         // method is inherited from a base interface/class
         if let Some(declared_method) = table.declared_methods.get(inherited_name) {
+            
+            check_signature(db, inherited_method.variables(db), declared_method.variables(db), errors);
+            
             match (inherited_method.modifier(db), declared_method.modifier(db)) {
                 // Override of a final method
                 (Modifier::FINAL, Modifier::OVERRIDE) => {
@@ -86,4 +108,13 @@ pub fn check_methods<'db>(
             }));
         }
     }
+}
+
+fn check_signature<'db>(
+    db: &'db dyn BaseDatabase,
+    m1: Option<&IndexMap<Ident, Ty<'db>>>,
+    m2: Option<&IndexMap<Ident, Ty<'db>>>,
+    errors: &mut Vec<AnalysisError<'db>>,
+)  {
+    todo!()
 }

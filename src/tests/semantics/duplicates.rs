@@ -196,3 +196,104 @@ END_NAMESPACE"#;
 
     assert_eq!(diagnostics.len(), 2);
 }
+
+#[rstest]
+fn duplicate_methods_in_interface(mut with_db: RootDatabase) {
+    let source = r#"
+INTERFACE it1
+    METHOD m1 END_METHOD
+    METHOD m1 END_METHOD
+END_INTERFACE
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    Error: 
+       ,-[ file:///test0.st:3:12 ]
+       |
+     3 |     METHOD m1 END_METHOD
+       |            ^|  
+       |             `-- duplicate method 'm1'
+     4 |     METHOD m1 END_METHOD
+       |            ^|  
+       |             `-- method 'm1' is already defined here
+    ---'
+    ");
+}
+
+
+#[rstest]
+fn duplicate_methods_in_class(mut with_db: RootDatabase) {
+    let source = r#"
+CLASS it1
+    METHOD m1 END_METHOD
+    METHOD m1 END_METHOD
+END_CLASS
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    Error: 
+       ,-[ file:///test0.st:3:12 ]
+       |
+     3 |     METHOD m1 END_METHOD
+       |            ^|  
+       |             `-- duplicate method 'm1'
+     4 |     METHOD m1 END_METHOD
+       |            ^|  
+       |             `-- method 'm1' is already defined here
+    ---'
+    ");
+}
+
+#[rstest]
+fn duplicate_methods_in_fb(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK it1
+    METHOD m1 END_METHOD
+    METHOD m1 END_METHOD
+END_FUNCTION_BLOCK
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    Error: 
+       ,-[ file:///test0.st:3:12 ]
+       |
+     3 |     METHOD m1 END_METHOD
+       |            ^|  
+       |             `-- duplicate method 'm1'
+     4 |     METHOD m1 END_METHOD
+       |            ^|  
+       |             `-- method 'm1' is already defined here
+    ---'
+    ");
+}
+
+#[rstest]
+fn duplicate_methods_in_inherited_methods(mut with_db: RootDatabase) {
+    let source = r#"
+INTERFACE I1
+    METHOD m1 END_METHOD
+END_INTERFACE
+
+INTERFACE I2
+    METHOD m1 END_METHOD
+END_INTERFACE
+
+CLASS it1 IMPLEMENTS I1, I2
+    METHOD OVERRIDE m1 END_METHOD
+END_CLASS
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    Error: 
+       ,-[ file:///test0.st:3:12 ]
+       |
+     3 |     METHOD m1 END_METHOD
+       |            ^|  
+       |             `-- duplicate method 'm1'
+       | 
+     7 |     METHOD m1 END_METHOD
+       |            ^|  
+       |             `-- method 'm1' is already defined here
+    ---'
+    ");
+}
