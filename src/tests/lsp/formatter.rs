@@ -461,7 +461,8 @@ pub fn init_expr_single_line(mut with_db: RootDatabase) {
         .document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
-    TYPE Engine: STRUCT
+    TYPE
+    	Engine: STRUCT
     		power: INT;
     		oil: REAL;
     	END_STRUCT
@@ -501,7 +502,8 @@ pub fn init_expr_multi_line(mut with_db: RootDatabase) {
         .document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
-    TYPE Engine: STRUCT
+    TYPE
+    	Engine: STRUCT
     		power: INT;
     		oil: REAL;
     	END_STRUCT
@@ -515,6 +517,37 @@ pub fn init_expr_multi_line(mut with_db: RootDatabase) {
     		);
     	END_VAR
     END_FUNCTION
+    ");
+}
+
+#[rstest]
+pub fn type_declarations(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE  Typ :BOOL;
+Type2: ARRAY [0..10, 1..5] OF INT;
+Type1: INT
+Engine: STRUCT 		power: INT;  oil: REAL;
+END_STRUCT
+        END_TYPE
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    TYPE
+    	Typ: BOOL;
+    	Type2: ARRAY[0..10, 1..5] OF INT;
+    	Type1: INT Engine: STRUCT
+    		power: INT;
+    		oil: REAL;
+    	END_STRUCT
+    END_TYPE
     ");
 }
 
@@ -535,7 +568,8 @@ END_STRUCT
         .document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
-    TYPE Engine: STRUCT
+    TYPE
+    	Engine: STRUCT
     		power: INT;
     		oil: REAL;
     	END_STRUCT

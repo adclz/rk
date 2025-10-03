@@ -64,7 +64,7 @@ static NEW_LINES: &str = r#"
     "ELSE"
 ] @prepend_hardline @append_hardline
 
-"STRUCT" @append_hardline
+["TYPE" "STRUCT"] @append_hardline
 
 [
     "END_NAMESPACE"
@@ -128,8 +128,9 @@ static NEW_LINES: &str = r#"
     "THEN"
     "ELSE"
     "DO"
-    "OF"
 ] @append_hardline
+
+(case_stmt "OF" @append_hardline)
 "#;
 
 static BLOCKS: &str = r#"
@@ -176,8 +177,9 @@ static INDENTATIONS: &str = r#"
     "ELSE"
     "DO"
     "REPEAT"
-    "OF"
 ] @append_indent_start
+
+(case_stmt "OF" @append_indent_start)
 
 ; case selection
 (case_selection
