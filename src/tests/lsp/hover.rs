@@ -43,7 +43,7 @@ END_CLASS
     });
 
     assert_snapshot!(nodes.iter().map(|n|{
-        if let HoverContents::Markup(d) = n.as_proto().hover(&with_db, None).unwrap().contents {
+        if let HoverContents::Markup(d) = n.as_proto().hover(&with_db, 0).unwrap().contents {
             d.value
         } else {
             panic!("Unexpected hover content")
@@ -52,19 +52,19 @@ END_CLASS
         .join("\n"), @r"
     # fn1 comment
     ```iecst
-    FUNCTION fn1
+    fn1: FUNCTION
     ```
 
 
     # fb1 comment
     ```iecst
-    FUNCTION_BLOCK fb1
+    fb1: FUNCTION_BLOCK
     ```
 
 
     # class1 comment
     ```iecst
-    CLASS class1
+    class1: CLASS
     ```
     ");
 }
@@ -104,7 +104,7 @@ END_FUNCTION_BLOCK
     });
 
     assert_snapshot!(nodes.iter().map(|n|{
-        if let HoverContents::Markup(d) = n.hover(&with_db, None).unwrap().contents {
+        if let HoverContents::Markup(d) = n.hover(&with_db, 0).unwrap().contents {
             d.value
         } else {
             panic!("Unexpected hover content")
@@ -113,19 +113,19 @@ END_FUNCTION_BLOCK
         .join("\n"), @r"
     # var1 comment
     ```iecst
-    INT var1
+    (VAR) var1: INT
     ```
 
 
     # var2 comment
     ```iecst
-    INT var2
+    (VAR) var2: INT
     ```
 
 
     # var3 comment
     ```iecst
-    INT var3
+    (VAR) var3: INT
     ```
     ");
 }

@@ -7,10 +7,10 @@ use hir::hir_ty::expr_resolver::{ResolvedExpr, ResolvedExprKind};
 use crate::ToProtocol;
 
 impl<'db> ToProtocol<'db> for ResolvedExpr<'db> {
-    fn hover(&'db self, db: &'db dyn BaseDatabase, offset: Option<usize>) -> Option<Hover> {
+    fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Hover> {
         match self.kind(db) {
-            ResolvedExprKind::PathExpr(resolved) => resolved.hover(db, None),
-            ResolvedExprKind::VarAccess(resolved) => resolved.hover(db, None),
+            ResolvedExprKind::PathExpr(resolved) => resolved.hover(db, offset),
+            ResolvedExprKind::VarAccess(resolved) => resolved.hover(db, offset),
             _ => None,
         }
     }

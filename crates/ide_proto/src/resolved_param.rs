@@ -32,7 +32,7 @@ impl<'db> ToProtocol<'db> for ResolvedParam<'db> {
         })
     }
 
-    fn hover(&'db self, db: &'db dyn BaseDatabase, offset: Option<usize>) -> Option<Hover> {
+    fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Hover> {
         get_param_ty(db, self).and_then(|ty| ty.hover(db, offset))
     }
 

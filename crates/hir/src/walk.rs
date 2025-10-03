@@ -4,22 +4,20 @@ use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     hir_def::{
-        namespace::NamespaceDecl,
-        pous::{
+        expressions::spec::{SpecKind, Struct}, namespace::NamespaceDecl, pous::{
             class::MethodDecl,
             interface::MethodPrototype,
             pou::{Pou, PouDecl},
             variable::VariableDecl,
-        },
-        semantic_index::{HirNode, SemanticIndex},
+        }, semantic_index::{HirNode, SemanticIndex}
     },
     hir_ty::{
         expr_resolver::ResolvedExpr,
         func_call_resolver::{ResolvedFuncCall, ResolvedParam, ResolvedParamKind},
-        init_expr_resolver::{ResolvedInitExpr, ResolvedInitExprKind, resolve_init_expr},
+        init_expr_resolver::{resolve_init_expr, ResolvedInitExpr, ResolvedInitExprKind},
         invocation_resolver::{ResolvedInvocationResult, ResolvedMethodKind},
-        stmt_resolver::{ResolvedStmt, ResolvedStmtKind, resolve_stmt},
-        ty::{ty_for_method_decl, ty_for_method_prot, ty_for_pou, ty_for_variable},
+        stmt_resolver::{resolve_stmt, ResolvedStmt, ResolvedStmtKind},
+        ty::{ty_for_method_decl, ty_for_method_prot, ty_for_pou, ty_for_struct_field, ty_for_variable},
         ty_path_expr_resolver::ResolvedPathResult,
         ty_var_access_resolver::ResolvedVarResult,
     },
@@ -107,6 +105,15 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
                 }
             }
             Pou::DataType(dt) => {
+                match dt.spec(db).kind(db) {
+                    SpecKind::Struct(st) => {
+                        for field in &st.elements {
+                            f(HirNode::Ty(ty_for_struct_field(db, *field)))?;
+                        }
+                    }
+                    _ => {}
+                }
+
                 if let Some(init_expr) = dt.init(db) {
                     f(HirNode::ResolvedInitExpr(*resolve_init_expr(db, init_expr)))?;
                 }

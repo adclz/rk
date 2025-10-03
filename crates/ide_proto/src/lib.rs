@@ -46,7 +46,7 @@ pub trait ToProtocol<'db>: HirNodeInfo<'db> {
         None
     }
 
-    fn hover(&'db self, _db: &'db dyn BaseDatabase, _offset: Option<usize>) -> Option<Hover> {
+    fn hover(&'db self, _db: &'db dyn BaseDatabase, _offset: usize) -> Option<Hover> {
         None
     }
 
