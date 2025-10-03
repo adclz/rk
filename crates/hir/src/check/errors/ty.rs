@@ -2,7 +2,13 @@ use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, Related, diag};
 
 use crate::{
-    check::errors::{analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic}, coerce::{ExprMismatch, TypeMismatch}}, hir_def::interned::{identifier::SpanIdent, namespace::SpanNamespaceAccess}, hir_ty::{expr_resolver::ResolvedExpr, ty::Ty}, HirNodeInfo, TypeInfo
+    HirNodeInfo, TypeInfo,
+    check::errors::{
+        analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic},
+        coerce::{ExprMismatch, TypeMismatch},
+    },
+    hir_def::interned::{identifier::SpanIdent, namespace::SpanNamespaceAccess},
+    hir_ty::{expr_resolver::ResolvedExpr, ty::Ty},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -36,7 +42,19 @@ pub enum TyError<'db> {
     },
     InvalidEnumVariantValue {
         variant: SpanIdent<'db>,
-        err: ExprMismatch<'db>
+        err: ExprMismatch<'db>,
+    },
+    // Subrange
+    InvalidSubrangeType {
+        value: Ty<'db>,
+    },
+    InvalidSubrangeStart {
+        expr: ResolvedExpr<'db>,
+        err: ExprMismatch<'db>,
+    },
+    InvalidSubrangeEnd {
+        expr: ResolvedExpr<'db>,
+        err: ExprMismatch<'db>,
     },
 }
 
@@ -111,18 +129,15 @@ impl<'db> ToIdeDiagnostic<'db> for TyError<'db> {
                 .call(),
             TyError::InvalidEnumType { value } => {
                 let mut diag = diag()
-                .message(format!(
-                    "invalid enum type '{}'",
-                    value.type_name(db)
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .range(value.decl(db).name_span(db))
-                .call();
-            
+                    .message(format!("invalid enum type '{}'", value.type_name(db)))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(value.decl(db).name_span(db))
+                    .call();
+
                 diag.with_note("only numeric integer types are allowed for ENUM".to_string());
 
                 diag
-            },    
+            }
             TyError::InvalidEnumVariantValue { variant, err } => {
                 let mut diag = diag()
                     .message(format!(
@@ -138,7 +153,48 @@ impl<'db> ToIdeDiagnostic<'db> for TyError<'db> {
                 err.note(db, &mut diag);
 
                 diag
-            }    
+            }
+            TyError::InvalidSubrangeType { value } => {
+                let mut diag = diag()
+                    .message(format!("invalid subrange type '{}'", value.type_name(db)))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(value.decl(db).name_span(db))
+                    .call();
+
+                diag.with_note("only numeric integer types are allowed for SUBRANGE".to_string());
+
+                diag
+            }
+            TyError::InvalidSubrangeStart { expr, err } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "invalid start value for subrange: {}",
+                        err.description(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(expr.get_span(db))
+                    .call();
+
+                err.related(db, &mut diag);
+                err.note(db, &mut diag);
+
+                diag
+            }
+            TyError::InvalidSubrangeEnd { expr, err } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "invalid end value for subrange: {}",
+                        err.description(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(expr.get_span(db))
+                    .call();
+
+                err.related(db, &mut diag);
+                err.note(db, &mut diag);
+
+                diag
+            }
         }
     }
 }

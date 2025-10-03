@@ -4,6 +4,7 @@ use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
 
 use crate::{
+    AstId, HirNodeInfo, TypeInfo,
     check::errors::path_error::PathResolveError,
     hir_def::{
         expressions::{
@@ -21,7 +22,6 @@ use crate::{
         scope::FileScopeId,
     },
     hir_ty::{name_res::resolve_namespace_access, ty_path_expr_resolver::PathExprWalkStep},
-    AstId, HirNodeInfo, TypeInfo,
 };
 
 #[salsa::tracked(debug)]
@@ -192,7 +192,11 @@ pub enum TyKind<'db> {
         typ: Option<Ty<'db>>,
         spec: Enum<'db>,
     },
-    SubRange(Spec<'db>),
+    SubRange {
+        typ: Ty<'db>,
+        min: Expr<'db>,
+        max: Expr<'db>,
+    },
     RefTo(Ty<'db>),
     Target(Ty<'db>),
     Array {
@@ -713,14 +717,18 @@ impl<'db> Spec<'db> {
                 TyDef::Spec(self),
                 TyKind::Enum {
                     typ: enum_spec.typ.as_ref().map(|t| t.to_ty(db, origin)).copied(),
-                    spec: enum_spec.clone()
+                    spec: enum_spec.clone(),
                 },
             ),
             SpecKind::Subrange(subrange) => Ty::new(
                 db,
                 origin,
                 TyDef::Spec(self),
-                TyKind::SubRange(*subrange._type),
+                TyKind::SubRange {
+                    typ: *subrange._type.to_ty(db, origin),
+                    min: subrange.lower,
+                    max: subrange.upper,
+                },
             ),
             SpecKind::Struct(fields) => Ty::new(
                 db,
@@ -775,7 +783,7 @@ impl<'db> TypeInfo<'db> for Ty<'db> {
             TyKind::Simple(elem) => elem.type_name(db),
             TyKind::Target(t) => t.type_name(db),
             TyKind::Enum { .. } => "ENUM",
-            TyKind::SubRange(_) => "SUBRANGE",
+            TyKind::SubRange { .. } => "SUBRANGE",
             TyKind::RefTo(_) => "REF_TO",
             TyKind::Array { .. } => "ARRAY",
             TyKind::ArrayConformand { .. } => "ARRAY*",
@@ -783,10 +791,30 @@ impl<'db> TypeInfo<'db> for Ty<'db> {
             TyKind::Interface { .. } => "INTERFACE",
             TyKind::Class { .. } => "CLASS",
             TyKind::Function { .. } => "FUNCTION",
-            TyKind::FunctionBlock { .. } => "FUNCTION_BLOCK",
+            TyKind::FunctionBlock { .. } => "FUNCTION_BLOCK", 
             TyKind::Method { .. } => "METHOD",
             TyKind::Unresolved(_) => "{unknown}",
             TyKind::Recursive => "{recursive}",
+        }
+    }
+
+    fn decl_name(&self, db: &'db dyn BaseDatabase) -> String {
+        match self.decl(db)  {
+            TyDecl::Pou(pou) => "".to_string(),
+            TyDecl::Variable(var) => match var.kind(db) {
+                VariableKind::Input => "VAR_INPUT".to_string(),
+                VariableKind::Output => "VAR_OUTPUT".to_string(),
+                VariableKind::InOut => "VAR_IN_OUT".to_string(),
+                VariableKind::Var => "VAR".to_string(),
+                VariableKind::Temp => "VAR_TEMP".to_string(),
+                VariableKind::Global => "VAR_GLOBAL".to_string(),
+                VariableKind::External => "VAR_EXTERNAL".to_string(),
+                VariableKind::Access => "VAR_ACCESS".to_string(),
+                VariableKind::Config => "VAR_CONFIG".to_string(),
+            },
+            TyDecl::Method(m) => "METHOD".to_string(),
+            TyDecl::MethodProt(m) => "METHOD (prototype)".to_string(),
+            TyDecl::StructElement(e) => "struct field".to_string(),
         }
     }
 }

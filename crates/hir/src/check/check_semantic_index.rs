@@ -55,7 +55,12 @@ pub trait Check<'db> {
 }
 
 pub trait DataTypeCheck<'db> {
-    fn check(&'db self, db: &'db dyn BaseDatabase, ty: Ty<'db>, errors: &mut Vec<AnalysisError<'db>>);
+    fn check(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        ty: Ty<'db>,
+        errors: &mut Vec<AnalysisError<'db>>,
+    );
 }
 
 impl<'db> Check<'db> for SemanticIndex<'db> {
@@ -117,6 +122,9 @@ impl<'db> Check<'db> for PouDecl<'db> {
                 }
                 SpecKind::Enum(en) => {
                     en.check(db, ty_for_pou(db, *self), errors);
+                }
+                SpecKind::Subrange(sub) => {
+                    sub.check(db, ty_for_pou(db, *self), errors);
                 }
                 _ => {}
             },

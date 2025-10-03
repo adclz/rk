@@ -211,14 +211,10 @@ module.exports = grammar({
   ],
 
   conflicts: ($) => [
-    // Subrange declarations always start with a number,
-    // but the initialization will always be tightly bound to the type
-    [$.subrange_type_spec, $.numeric_type_name],
-
     [$.constant_expr, $.parenthesized_expression],
     [$.symbolic_variable, $.field_expression],
     [$.symbolic_variable, $.func_call],
-    [$.case_selection]
+    [$.case_selection],
   ],
 
   word: ($) => $.identifier,
@@ -592,7 +588,7 @@ module.exports = grammar({
       ($) =>
         seq(
           ":",
-          field("type", $.int_type_name),
+          field("type", $._elem_type_name),
           "(",
           field("range", $.subrange),
           ")",
@@ -629,8 +625,8 @@ module.exports = grammar({
     enum_value_spec: ($) =>
       seq(field("value", $.identifier), optional(seq(":=", $._expression))),
 
-    enum_value : ($) =>
-        seq(field("enum_path", $.path_expression), "#", $.identifier),
+    enum_value: ($) =>
+      seq(field("enum_path", $.path_expression), "#", $.identifier),
 
     ...createSpecInit(
       "array",
@@ -778,7 +774,8 @@ module.exports = grammar({
     symbolic_variable: ($) => $.path_expression,
 
     this_invocation: ($) => seq(field("THIS", "THIS"), ".", $.path_expression),
-    super_invocation: ($) => seq(field("SUPER", "SUPER"), ".", $.path_expression),
+    super_invocation: ($) =>
+      seq(field("SUPER", "SUPER"), ".", $.path_expression),
     super_body_invocation: ($) => seq(field("SUPER", "SUPER"), "(", ")"),
 
     // Var_Access : Variable_Name | Ref_Deref;

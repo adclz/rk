@@ -4,7 +4,7 @@ Enumerated data types with initialization
 
 NAMESPACE ns
     TYPE
-        ANALOG_SIGNAL_RANGE: 
+        ANALOG_SIGNAL_RANGE:
             (BIPOLAR_10V,
             UNIPOLAR_10V,
             UNIPOLAR_1_5V,
@@ -13,7 +13,7 @@ NAMESPACE ns
             UNIPOLAR_0_20_MA)
                 := UNIPOLAR_1_5V;
     END_TYPE
-END_NAMESPACE    
+END_NAMESPACE
 
 --------------------------------------------------------------------------------
 
@@ -60,7 +60,7 @@ TYPE
         White:= Red OR Green OR Blue,
         Black:= Red AND Green AND Blue)
     := Green;
-END_TYPE    
+END_TYPE
 
 --------------------------------------------------------------------------------
 
@@ -154,7 +154,7 @@ Subrange data types
 
 TYPE
     ANALOG_DATA: INT(-4095 .. 4095):= 0;
-END_TYPE    
+END_TYPE
 
 --------------------------------------------------------------------------------
 
@@ -163,9 +163,10 @@ END_TYPE
         (type_decl
           (identifier)
           (subrange_type_spec
-            (int_type_name
-              (sign_int_type_name
-                (int_name)))
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))
             (subrange
               (constant_expr
                 (constant
@@ -191,9 +192,9 @@ END_TYPE
 Array data types
 ================================================================================
 
-TYPE 
+TYPE
     ANALOG_16_INPUT_DATA: ARRAY [1..16] OF ANALOG_DATA := [8(-4095), 8(4095)];
-END_TYPE   
+END_TYPE
 
 --------------------------------------------------------------------------------
 
@@ -248,7 +249,7 @@ FB types and classes as array elements
 
 TYPE
     TONs: ARRAY[1..50] OF TON := [50(PT:=T#100ms)];
-END_TYPE  
+END_TYPE
 
 --------------------------------------------------------------------------------
 
@@ -294,13 +295,13 @@ END_TYPE
 Structured data type
 ================================================================================
 
-TYPE ANALOG_CHANNEL_CONFIGURATION: 
+TYPE ANALOG_CHANNEL_CONFIGURATION:
   STRUCT
     RANGE: ANALOG_SIGNAL_RANGE;
     MIN_SCALE: ANALOG_DATA:= -4095;
     MAX_SCALE: ANALOG_DATA:= 4095;
     END_STRUCT;
-END_TYPE  
+END_TYPE
 
 --------------------------------------------------------------------------------
 
@@ -347,8 +348,8 @@ TYPE
   Cooler: STRUCT
     Temp: INT;
     Cooling: TOF:= (PT:=T#100ms);
-  END_STRUCT;  
-END_TYPE 
+  END_STRUCT;
+END_TYPE
 
 --------------------------------------------------------------------------------
 
@@ -390,8 +391,8 @@ TYPE
   Cooler: STRUCT
     Temp: INT;
     Cooling: TOF:= (PT:=T#100ms);
-  END_STRUCT;  
-END_TYPE 
+  END_STRUCT;
+END_TYPE
 
 --------------------------------------------------------------------------------
 
@@ -506,7 +507,7 @@ END_TYPE
                     (byte_name)))))))))
 
 ================================================================================
-Structured data type with relative addressing AT and OVERLAP 
+Structured data type with relative addressing AT and OVERLAP
 ================================================================================
 
 TYPE
@@ -614,7 +615,7 @@ TYPE
     OUT_VAR AT %Q*: WORD:= 200;
     ITNL_VAR: REAL:= 123.0; // not located
   END_STRUCT;
-END_TYPE 
+END_TYPE
 
 --------------------------------------------------------------------------------
 
@@ -666,7 +667,7 @@ END_TYPE
             (line_comment)))))
 
 ================================================================================
-Directly derived data types 
+Directly derived data types
 ================================================================================
 
 TYPE
@@ -674,7 +675,7 @@ TYPE
   FREQ: REAL:= 50.0;
   ANALOG_CHANNEL_CONFIG: ANALOG_CHANNEL_CONFIGURATION
       := (MIN_SCALE:= 0, MAX_SCALE:= 4000);
-END_TYPE 
+END_TYPE
 
 --------------------------------------------------------------------------------
 
@@ -727,12 +728,12 @@ END_TYPE
                             (unsigned_int)))))))))))))
 
 ================================================================================
-Initialization using constant expressions 
+Initialization using constant expressions
 ================================================================================
 
 TYPE
   PIx2: REAL:= 2 * 3.1416;
-END_TYPE 
+END_TYPE
 
 --------------------------------------------------------------------------------
 
