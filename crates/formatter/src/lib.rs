@@ -44,9 +44,8 @@ static SURROUND_SPACES: &str = r#"
     (pascal_style_comment)
 ] @prepend_space @append_space
 
-"(" @append_antispace
-")" @prepend_antispace
-[":" ";" ","] @prepend_antispace
+["(" "[" ] @append_antispace
+[")" "]" ":" ";" ","] @prepend_antispace
 ["NOT" ":"] @append_space
 "#;
 
@@ -59,12 +58,13 @@ static NEW_LINES: &str = r#"
     "VAR_TEMP"
     "VAR_EXTERNAL"
     "VAR_GLOBAL"
-    "METHOD"
 
     "ELSE"
 ] @prepend_hardline @append_hardline
 
+["USING" "METHOD"] @prepend_hardline
 ["TYPE" "STRUCT"] @append_hardline
+(namespace_decl . (namespace_h_name) @append_hardline)
 
 [
     "END_NAMESPACE"
@@ -153,6 +153,12 @@ static BLOCKS: &str = r#"
   "[" @append_spaced_softline @append_indent_start
   "]" @prepend_spaced_softline @prepend_indent_end
 )
+
+(using_directive 
+    . (_) "," @append_spaced_softline @append_indent_start
+	(namespace_h_name) @prepend_spaced_softline @append_indent_end
+	. 
+)
 "#;
 
 static INDENTATIONS: &str = r#"
@@ -229,6 +235,15 @@ static ALLOW_BLANK_LINE: &str = r#"
 
     "RETURN"
     "CONTINUE"
+    "END_NAMESPACE"
+    "END_FUNCTION"
+    "END_CLASS"
+    "END_FUNCTION_BLOCK"
+    "END_TYPE"
+    "END_INTERFACE"
+    "END_METHOD"
+    "END_VAR"
+    "END_STRUCT"
 ] @allow_blank_line_before
 
 (stmt_list . (_) @allow_blank_line_before)
@@ -254,27 +269,28 @@ static SEMI_COLONS: &str = r#"
     (loc_partly_var)
     (external_decl)
     (global_var_decl)
+
+    (assign)
+    (invocation)
+    (super_body_invocation)
+    "RETURN"
+    "CONTINUE"
+    (if_stmt)
+    (for_stmt)
+    (case_stmt)
+    (while_stmt)
+    (repeat_stmt)
   ] @append_delimiter
   .
   ";"* @do_nothing
   (#delimiter! ";")
 )
 
-([
-    (assign)
-    (invocation)
-    (super_body_invocation)
-    "RETURN"
-    (if_stmt)
-    (for_stmt)
-    (case_stmt)
-    (while_stmt)
-    (repeat_stmt)
-] @append_delimiter
-    .
+(using_directive
+ "USING" (_) 
+	.
     ";"* @do_nothing
-    (#delimiter! ";")
-)
+    (#delimiter! ";")) @append_delimiter
 
 (case_selection ";" @delete)
 "#;

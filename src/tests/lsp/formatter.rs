@@ -144,8 +144,7 @@ pub fn class_definition(mut with_db: RootDatabase) {
     		m_iLowerLimit: INT := - 10000;
     	END_VAR
 
-    	METHOD
-    		Count (* Only body *)
+    	METHOD Count (* Only body *)
     		IF (m_bCountUp AND m_iCurrentValue < m_iUpperLimit) THEN
     			m_iCurrentValue := m_iCurrentValue + 1;
     		END_IF;
@@ -154,14 +153,14 @@ pub fn class_definition(mut with_db: RootDatabase) {
     		END_IF;
     	END_METHOD
 
-    	METHOD
-    		SetDirection
+    	METHOD SetDirection
 
     		VAR_INPUT
     			bCountUp: BOOL;
     		END_VAR
 
     		m_bCountUp := bCountUp;
+
     	END_METHOD
     END_CLASS
     ");
@@ -605,8 +604,7 @@ END_FUNCTION_BLOCK
 
     assert_snapshot!(fmt(document), @r"
     CLASS base
-    	METHOD
-    		super_method
+    	METHOD super_method
     		VAR_INPUT
     			test: INT;
     		END_VAR
@@ -614,12 +612,55 @@ END_FUNCTION_BLOCK
     END_CLASS
 
     FUNCTION_BLOCK fb1 EXTENDS base
-    	METHOD
-    		decl
+    	METHOD decl
     	END_METHOD
 
     	THIS.decl();
     	SUPER.super_method(test := 0);
     END_FUNCTION_BLOCK
+    ");
+}
+
+
+#[rstest]
+pub fn namespaces_and_using_directives(mut with_db: RootDatabase) {
+    let source = r#"
+NAMESPACE ns1 NAMESPACE nested 
+	USING nh, llkn
+    USING ng,
+    	  	        df
+    USING j;
+	FUNCTION dffd: BOOL
+		END_FUNCTION
+	END_NAMESPACE
+END_NAMESPACE
+
+NAMESPACE ns2
+END_NAMESPACE
+
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    NAMESPACE ns1
+    	NAMESPACE nested
+    		USING nh, llkn;
+    		USING ng,
+    			df;
+    		USING j;
+    		FUNCTION dffd: BOOL
+    		END_FUNCTION
+    	END_NAMESPACE
+    END_NAMESPACE
+
+    NAMESPACE ns2
+    END_NAMESPACE
     ");
 }
