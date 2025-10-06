@@ -1,9 +1,7 @@
 use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{
-        CodeLens, GotoDefinitionResponse, Hover, HoverContents, Location, MarkupContent,
-        MarkupKind,
-        request::{GotoDeclarationResponse, GotoImplementationResponse},
+        request::{GotoDeclarationResponse, GotoImplementationResponse}, CodeLens, GotoDefinitionResponse, Hover, HoverContents, InlayHint, Location, MarkupContent, MarkupKind
     },
 };
 use hir::{
@@ -47,11 +45,18 @@ impl<'db> ToProtocol<'db> for Ty<'db> {
         }
     }
 
+    fn inlay_hint(&'db self, db: &'db dyn BaseDatabase) -> Option<InlayHint> {
+        match self.def(db) {
+            TyDef::Pou(pou) => pou.inlay_hint(db),
+            _ => None,
+        }
+    }
+
     fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Hover> {
-        let name_span = self.decl(db).name_span(db);
+        /*let name_span = self.decl(db).name_span(db);
         let span = self.get_span(db);
         // Check if the offset is within the span of the whole type
-        /*if offset < name_span.start_byte || offset > name_span.end_byte {
+        if offset < name_span.start_byte || offset > name_span.end_byte {
             eprintln!("Offset {offset} not in span {span:?}");
             return None;
         }*/
