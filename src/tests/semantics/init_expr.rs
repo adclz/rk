@@ -101,7 +101,6 @@ fn array_initializer_out_of_bounds(mut with_db: RootDatabase) {
             END_VAR
 
         END_FUNCTION
-
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
@@ -295,7 +294,7 @@ fn invalid_value_in_struct_with_array(mut with_db: RootDatabase) {
 
         FUNCTION StartEngine
             VAR
-                Base : Engine := [(Power := [10, 5.3], Torque := 10.0)];
+                Base : Engine := (Power := [10, 5.3], Torque := 10.0);
             END_VAR
 
         END_FUNCTION
@@ -303,7 +302,7 @@ fn invalid_value_in_struct_with_array(mut with_db: RootDatabase) {
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-        ,-[ file:///test0.st:11:50 ]
+        ,-[ file:///test0.st:11:49 ]
         |
       4 |                 Power: ARRAY[0..2] OF INT;
         |                 ^^|^^                 ^|^  
@@ -311,12 +310,12 @@ fn invalid_value_in_struct_with_array(mut with_db: RootDatabase) {
         |                                        |   
         |                                        `--- type defined here
         | 
-     11 |                 Base : Engine := [(Power := [10, 5.3], Torque := 10.0)];
-        |                                                  ^|^  
-        |                                                   `--- invalid value initializer: invalid INT literal
+     11 |                 Base : Engine := (Power := [10, 5.3], Torque := 10.0);
+        |                                                 ^|^  
+        |                                                  `--- invalid value initializer: invalid INT literal
     ----'
     Error: 
-        ,-[ file:///test0.st:11:66 ]
+        ,-[ file:///test0.st:11:65 ]
         |
       5 |                 Torque: INT;
         |                 ^^^|^^  ^|^  
@@ -324,9 +323,72 @@ fn invalid_value_in_struct_with_array(mut with_db: RootDatabase) {
         |                          |   
         |                          `--- type defined here
         | 
-     11 |                 Base : Engine := [(Power := [10, 5.3], Torque := 10.0)];
-        |                                                                  ^^|^  
-        |                                                                    `--- invalid value initializer: invalid INT literal
+     11 |                 Base : Engine := (Power := [10, 5.3], Torque := 10.0);
+        |                                                                 ^^|^  
+        |                                                                   `--- invalid value initializer: invalid INT literal
     ----'
+    ");
+}
+
+#[rstest]
+fn unexpected_struct_field(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE
+            Engine: ARRAY[0..3] OF INT;
+        END_TYPE
+
+        FUNCTION StartEngine
+            VAR
+                Base : Engine := [2(param1 := 0)];
+            END_VAR
+
+        END_FUNCTION
+
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    Error: 
+       ,-[ file:///test0.st:8:37 ]
+       |
+     3 |             Engine: ARRAY[0..3] OF INT;
+       |             ^^^|^^  
+       |                `---- 'Engine' is declared here
+       | 
+     8 |                 Base : Engine := [2(param1 := 0)];
+       |                                     ^^^^^|^^^^^  
+       |                                          `------- invalid value initializer: expected type 'INT', found 'STRUCT field'
+    ---'
+    ");
+}
+
+
+#[rstest]
+fn unexpected_array(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE
+            Engine: INT;
+        END_TYPE
+
+        FUNCTION StartEngine
+            VAR
+                Base : Engine := [2];
+            END_VAR
+
+        END_FUNCTION
+
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    Error: 
+       ,-[ file:///test0.st:8:31 ]
+       |
+     3 |             Engine: INT;
+       |             ^^^|^^  
+       |                `---- 'Engine' is declared here
+       | 
+     8 |                 Base : Engine := [2];
+       |                               ^^^|^^  
+       |                                  `---- invalid value initializer: expected type 'INT', found 'ARRAY init'
+    ---'
     ");
 }
