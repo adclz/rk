@@ -1,3 +1,5 @@
+use std::panic::RefUnwindSafe;
+
 use auto_lsp::anyhow;
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::{
@@ -9,8 +11,8 @@ use auto_lsp::lsp_types::{
 use hir::check::diagnostics_for_file;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
-pub fn diagnostics(
-    db: &impl BaseDatabase,
+pub fn diagnostics<Db: BaseDatabase + Clone + RefUnwindSafe>(
+    db: &Db,
     params: DocumentDiagnosticParams,
 ) -> anyhow::Result<DocumentDiagnosticReportResult> {
     let uri = params.text_document.uri;
@@ -33,36 +35,28 @@ pub fn diagnostics(
     ))
 }
 
-/// fixme:
-/// This code is from [salsa parallel module](https://github.com/salsa-rs/salsa/blob/a0e7a0660c93136f23bf08b4f1604eee3d1f6b11/src/parallel.rs#L25)
-///
-/// Both this struct and the par_iter part are vendored because salsa seems to not be able to downcast
-/// the DbView to the actual database type inside the par_iter closure.
-///
-/// It seems to have been fixed in salsa > 0.22, but auto_lsp must also be updated to use the newer version of salsa.
-///
-struct DbForkOnClone(Box<dyn salsa::Database>);
-
-impl Clone for DbForkOnClone {
-    fn clone(&self) -> Self {
-        DbForkOnClone(self.0.fork_db())
-    }
-}
-
-pub fn workspace_diagnostics(
-    db: &impl BaseDatabase,
+pub fn workspace_diagnostics<Db: BaseDatabase + Clone + RefUnwindSafe>(
+    db: &Db,
     _params: WorkspaceDiagnosticParams,
 ) -> anyhow::Result<WorkspaceDiagnosticReportResult> {
     let result = db
         .get_files()
         .into_par_iter()
-        .map_with(DbForkOnClone(db.fork_db()), |db, file| {
-            let db = db.0.as_view();
+        .map_with(db.clone(), |db, file| {
             let file = *file;
-            let errors: Vec<auto_lsp::lsp_types::Diagnostic> = diagnostics_for_file(db, file)
-                .iter()
-                .map(|d| d.to_lsp_diagnostic(db))
-                .collect::<Vec<_>>();
+
+            let errors = match salsa::Cancelled::catch(|| {
+                diagnostics_for_file(db, file)
+                    .iter()
+                    .map(|d| d.to_lsp_diagnostic(db))
+                    .collect::<Vec<_>>()
+            })
+            // ignore salsa errors
+            .ok()
+            {
+                Some(errors) => errors,
+                None => vec![],
+            };
 
             WorkspaceDocumentDiagnosticReport::Full(WorkspaceFullDocumentDiagnosticReport {
                 version: file.version(db).map(|i| i.into()),
