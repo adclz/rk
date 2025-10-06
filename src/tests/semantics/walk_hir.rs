@@ -40,8 +40,8 @@ END_FUNCTION_BLOCK"#;
     Ty(Ty { [salsa id]: Id(2800) })
     Ty(Ty { [salsa id]: Id(2801) })
     Ty(Ty { [salsa id]: Id(2801) })
-    ResolvedInitExpr(ResolvedInitExpr { [salsa id]: Id(3400) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(3000) })
+    ResolvedInitExpr(ResolvedInitExpr { [salsa id]: Id(3800) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(3400) })
     ");
 }
 
