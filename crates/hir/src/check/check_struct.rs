@@ -3,12 +3,10 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     check::{
-        check_semantic_index::{Check, DataTypeCheck},
-        check_ty::check_ty,
-        errors::{analysis_error::AnalysisError, duplicates::DuplicateError},
+        check_init_expr::check_init_expr, check_semantic_index::{Check, DataTypeCheck}, check_ty::check_ty, errors::{analysis_error::AnalysisError, duplicates::DuplicateError, init_expr}
     },
-    hir_def::expressions::spec::Struct,
-    hir_ty::ty::{ty_for_struct_field, Ty},
+    hir_def::expressions::spec::{Struct, StructElement},
+    hir_ty::{init_expr_resolver::resolve_init_expr, ty::{ty_for_struct_field, Ty}},
 };
 
 impl<'db> DataTypeCheck<'db> for Struct<'db> {
@@ -32,6 +30,9 @@ impl<'db> DataTypeCheck<'db> for Struct<'db> {
 
             let field_ty = ty_for_struct_field(db, *field);
             check_ty(db, field_ty, errors);
+            if let Some(init_expr) = field.init(db) {
+                check_init_expr(db, field_ty, *resolve_init_expr(db, field_ty, init_expr), errors);
+            }
         }
     }
 }

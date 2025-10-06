@@ -115,7 +115,7 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
                 }
 
                 if let Some(init_expr) = dt.init(db) {
-                    f(HirNode::ResolvedInitExpr(*resolve_init_expr(db, init_expr)))?;
+                    f(HirNode::ResolvedInitExpr(*resolve_init_expr(db, ty_for_pou(db, *self), init_expr)))?;
                 }
             }
         }
@@ -134,7 +134,7 @@ impl<'db> WalkHir<'db> for VariableDecl<'db> {
             *self.spec(db).to_ty(db, ty_for_variable(db, *self).decl(db)),
         ))?;
         if let Some(init_expr) = self.init(db) {
-            resolve_init_expr(db, *init_expr).walk_hir(db, f)?;
+            resolve_init_expr(db, ty_for_variable(db, *self), *init_expr).walk_hir(db, f)?;
         }
         ControlFlow::Continue(())
     }
@@ -210,7 +210,8 @@ impl<'db> WalkHir<'db> for ResolvedInitExpr<'db> {
             }
             ResolvedInitExprKind::ConstantExpr(expr) => {
                 expr.walk_hir(db, f)?;
-            }
+            },
+            ResolvedInitExprKind::Error(_) => {}
         }
         ControlFlow::Continue(())
     }

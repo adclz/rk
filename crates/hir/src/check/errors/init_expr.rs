@@ -2,7 +2,6 @@ use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, diag};
 
 use crate::{
-    HirNodeInfo,
     check::{
         errors::{
             analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic},
@@ -10,9 +9,7 @@ use crate::{
             utils::{get_candidates, get_decl_for_ty},
         },
         recovery::struct_::fuzzy_struct_fields,
-    },
-    hir_def::interned::identifier::SpanIdent,
-    hir_ty::{expr_resolver::ResolvedExpr, init_expr_resolver::ResolvedInitExpr, ty::Ty},
+    }, hir_def::{expressions::expression::InitExpr, interned::identifier::SpanIdent}, hir_ty::{expr_resolver::ResolvedExpr, init_expr_resolver::ResolvedInitExpr, ty::Ty}, HirNodeInfo, TypeInfo
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -32,6 +29,10 @@ pub enum InitExprError<'db> {
         err: ExprMismatch<'db>,
         init_expr: ResolvedExpr<'db>,
     },
+    TypeInitExprMismatch {
+        expected: Ty<'db>,
+        found: InitExpr<'db>,
+    }
 }
 
 impl<'db> From<InitExprError<'db>> for AnalysisError<'db> {
@@ -89,6 +90,20 @@ impl<'db> ToIdeDiagnostic<'db> for InitExprError<'db> {
 
                 err.note(db, &mut diag);
                 err.related(db, &mut diag);
+                diag
+            }
+            InitExprError::TypeInitExprMismatch { expected, found } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "invalid value initializer: expected type '{}', found '{}'",
+                        expected.type_name(db),
+                        found.to_string(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(found.get_span(db))
+                    .call();
+
+                get_decl_for_ty(db, *expected, &mut diag);
                 diag
             }
         }

@@ -21,62 +21,58 @@ pub fn check_init_expr<'db>(
 ) {
     if let TyKind::Target(target) = ty.kind(db) {
         check_init_expr(db, *target, expr, errors);
+        return;
     }
 
-    match (ty.kind(db), expr.kind(db)) {
-        // Struct definition <-> Struct init expression
-        (TyKind::Struct { spec, elements }, ResolvedInitExprKind::StructInit { values }) => {
-            for field in values {
-                if let ResolvedInitExprKind::StructElement { name, value } = field.kind(db) {
-                    match elements.get(name) {
-                        None => {
-                            errors.push(
-                                InitExprError::UnknownStructField {
-                                    ztruct: ty,
-                                    field_name: *name,
-                                    unknown_field: **value,
-                                }
-                                .into(),
-                            );
-                        }
-                        Some(elem) => check_init_expr(db, *elem, **value, errors),
-                    }
-                }
-            }
+    match expr.kind(db) {
+        // Process resolver errors first
+        ResolvedInitExprKind::Error(err) => {
+            errors.push(err.clone().into());
         }
-        // Struct type with Array initialization - check array elements for struct content
-        (TyKind::Struct { elements, .. }, ResolvedInitExprKind::ArrayInit { values }) => {
-            for value in values {
-                match value.kind(db) {
-                    ResolvedInitExprKind::StructInit { .. } => {
-                        // Found struct initialization inside array - check it against struct type
-                        check_init_expr(db, ty, *value, errors);
-                    }
-                    _ => {
-                        // Could be other types in the array - check them too
-                        check_init_expr(db, ty, *value, errors);
-                    }
-                }
-            }
-        }
-        // Array definition <-> Array init expression
-        (TyKind::Array { ranges, typ }, ResolvedInitExprKind::ArrayInit { values }) => {
-            // Check multidimensional arrays by validating each dimension
-            check_array_dimensions(db, ranges, *typ, values, errors);
-        }
-        // Struct/Array <-> Constant expression
-        (_, ResolvedInitExprKind::ConstantExpr(expr)) => {
-            if let Err(err) = coerce_ty_with_expr(db, ty, *expr) {
+        // Handle constant expressions - only case that needs original type for coercion
+        ResolvedInitExprKind::ConstantExpr(expr_val) => {
+            if let Err(err) = coerce_ty_with_expr(db, ty, expr_val) {
                 errors.push(
                     InitExprError::InitExprTypeExprMismatch {
                         err,
-                        init_expr: *expr,
+                        init_expr: expr_val,
                     }
                     .into(),
                 )
             }
         }
-        _ => {}
+        // Recursively check nested structures - resolver has already validated types
+        ResolvedInitExprKind::StructInit { values } => {
+            for field_expr in values {
+                check_init_expr(db, ty, field_expr, errors);
+            }
+        }
+        ResolvedInitExprKind::StructElement { field, value } => {
+            match field.ty(db) {
+                Err(_err) => {
+                    // Field resolution error - already handled by resolver
+                }
+                Ok(field_ty) => {
+                    check_init_expr(db, field_ty, *value, errors);
+                }
+            }
+        }
+        ResolvedInitExprKind::ArrayInit { values } => {
+            // For arrays, validate bounds if we have array type info
+            if let TyKind::Array { ranges, typ } = ty.kind(db) {
+                check_array_dimensions(db, ranges, *typ, &values, errors);
+            } else {
+                // Just recursively check the values - resolver has already validated types
+                for value in values {
+                    check_init_expr(db, ty, value, errors);
+                }
+            }
+        }
+        ResolvedInitExprKind::ArrayIndexedElement { values, .. } => {
+            for value in values {
+                check_init_expr(db, ty, value, errors);
+            }
+        }
     }
 }
 
@@ -115,7 +111,7 @@ fn check_array_dimensions<'db>(
                     if remaining_ranges.is_empty() {
                         // Last dimension - check the values against element type
                         for inner_value in inner_values {
-                            check_init_expr(db, element_type, *inner_value, errors);
+                            check_init_expr(db, element_type, inner_value, errors);
                         }
                     } else {
                         // More dimensions - recurse
@@ -123,7 +119,7 @@ fn check_array_dimensions<'db>(
                             db,
                             remaining_ranges,
                             element_type,
-                            inner_values,
+                            &inner_values,
                             errors,
                         );
                     }

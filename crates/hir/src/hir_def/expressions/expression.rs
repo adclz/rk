@@ -349,6 +349,18 @@ pub struct InitExpr<'db> {
     pub scope_id: FileScopeId<'db>,
 }
 
+impl<'db> InitExpr<'db> {
+    pub fn to_string(&self, db: &'db dyn BaseDatabase) -> &str {
+        match self.kind(db) {
+            InitExprKind::StructInit { .. } => "STRUCT init",
+            InitExprKind::ArrayInit { .. } => "ARRAY init",
+            InitExprKind::ArrayIndexedElement { size, .. } => "ARRAY element",
+            InitExprKind::StructElement { name, .. } => "STRUCT field",
+            InitExprKind::ConstantExpr(expr) => "<expression>",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum InitExprKind<'db> {
     ArrayInit {

@@ -34,7 +34,7 @@ impl<'db> Check<'db> for Vec<VariableDecl<'db>> {
             let var = ty_for_variable(db, *variable);
             check_ty(db, var, errors);
             if let Some(init) = variable.init(db) {
-                check_init_expr(db, var, *resolve_init_expr(db, *init), errors);
+                check_init_expr(db, var, *resolve_init_expr(db, ty_for_variable(db, *variable), *init), errors);
             }
         }
     }

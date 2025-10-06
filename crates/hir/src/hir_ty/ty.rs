@@ -33,6 +33,7 @@ pub struct Ty<'db> {
 
     #[tracked]
     #[returns(ref)]
+    #[no_eq]
     pub kind: TyKind<'db>,
 }
 
