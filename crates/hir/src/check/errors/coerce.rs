@@ -224,7 +224,7 @@ impl<'db> DiagnosticDescription<'db> for ExprMismatch<'db> {
                 )
             }
             ExprMismatchKind::ExprTypeMismatch { ty } => {
-                format!("type mismatch: expected {}", ty.type_name(db))
+                format!("type mismatch: expected {}, got {}", ty.type_name(db), self.expr.expr(db).to_string(db))
             }
             ExprMismatchKind::VoidRhs { ty } => {
                 "right-hand side is void".to_string()

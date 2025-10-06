@@ -1,4 +1,4 @@
-use crate::hir_def::expressions::invocation::Invocation;
+use crate::hir_def::expressions::invocation::{Invocation, InvocationKind};
 use crate::hir_def::interned::identifier::{Ident, SpanIdent};
 use crate::hir_def::scope::FileScopeId;
 use crate::{AstId, HirNodeInfo};
@@ -349,18 +349,6 @@ pub struct InitExpr<'db> {
     pub scope_id: FileScopeId<'db>,
 }
 
-impl<'db> InitExpr<'db> {
-    pub fn to_string(&self, db: &'db dyn BaseDatabase) -> &str {
-        match self.kind(db) {
-            InitExprKind::StructInit { .. } => "STRUCT init",
-            InitExprKind::ArrayInit { .. } => "ARRAY init",
-            InitExprKind::ArrayIndexedElement { size, .. } => "ARRAY element",
-            InitExprKind::StructElement { name, .. } => "STRUCT field",
-            InitExprKind::ConstantExpr(expr) => "<expression>",
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum InitExprKind<'db> {
     ArrayInit {
@@ -387,5 +375,83 @@ impl<'db> HirNodeInfo<'db> for InitExpr<'db> {
 
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         self.scope_id(db)
+    }
+}
+
+impl<'db> InitExpr<'db> {
+    pub fn to_string(&self, db: &'db dyn BaseDatabase) -> &str {
+        match self.kind(db) {
+            InitExprKind::StructInit { .. } => "STRUCT init",
+            InitExprKind::ArrayInit { .. } => "ARRAY init",
+            InitExprKind::ArrayIndexedElement { size, .. } => "ARRAY element",
+            InitExprKind::StructElement { name, .. } => "STRUCT field",
+            InitExprKind::ConstantExpr(expr) => "<expression>",
+        }
+    }
+}
+
+impl<'db> Expr<'db> {
+    pub fn to_string(&self, db: &'db dyn BaseDatabase) -> &str {
+        match self.expr(db) {
+            ExprKind::PrimaryExpr(primary_expr) => primary_expr.to_string(db),
+            ExprKind::AddOperator { left, operator, right } => "<arithmetic expression>",
+            ExprKind::BooleanOperator { left, operator, right } => "<boolean expression>",
+            ExprKind::ComparisonOperator { left, operator, right } => "<comparison expression>",
+            ExprKind::MultOperator { left, operator, right } => "<multiplicative expression>",
+            ExprKind::PowerOperator { left, right } => "<power expression>",
+            ExprKind::UnaryOperator { expr, operator } => "<unary expression>",
+        }
+    }
+}
+
+impl<'db> PrimaryExpr<'db> {
+    pub fn to_string(&self, db: &'db dyn BaseDatabase) -> &str {
+        match self {
+            PrimaryExpr::Literal(lit) => match lit {
+                Elementary::Bool(_) => "BOOL literal",
+                Elementary::Byte(_) => "BYTE literal",
+                Elementary::Word(_) => "WORD literal",
+                Elementary::DWord(_) => "DWORD literal",
+                Elementary::LWord(_) => "LWORD literal",
+                Elementary::SInt(_) => "SINT literal",
+                Elementary::Int(_) => "INT literal",
+                Elementary::DInt(_) => "DINT literal",
+                Elementary::LInt(_) => "LINT literal",
+                Elementary::USInt(_) => "USINT literal",
+                Elementary::UInt(_) => "UINT literal",
+                Elementary::UDInt(_) => "UDINT literal",
+                Elementary::ULInt(_) => "ULINT literal",
+                Elementary::Time(_) => "TIME literal",
+                Elementary::LTime(_) => "LTIME literal",
+                Elementary::Real(_) => "REAL literal",
+                Elementary::LReal(_) => "LREAL literal",
+                Elementary::DateAndTime(_) => "DATE_AND_TIME literal",
+                Elementary::LDateTime(_) => "LDATE_AND_TIME literal",
+                Elementary::LDate(_) => "LDATE literal",
+                Elementary::Date(_) => "DATE literal",
+                Elementary::TimeOfDay(_) => "TIME_OF_DAY literal",
+                Elementary::LTod(_) => "LTOD literal",
+                Elementary::AnyString(_) => "STRING literal",
+                Elementary::AnyChar(_) => "CHAR literal",
+                Elementary::InferInteger(_) => "<integer>",
+                Elementary::InferIdent(_) => "<identifier>",
+            },
+            PrimaryExpr::VariableAccess { variable, multibits } => "<variable access>",
+            PrimaryExpr::FuncCall(func_call) => func_call.path.to_string(db).text(db),
+            PrimaryExpr::Invocation(invocation) => match invocation.kind(db) {
+                InvocationKind::Super { path } => "<SUPER invocation>",
+                InvocationKind::This { path } => "<THIS invocation>",
+                InvocationKind::SuperBody { .. } => "<SUPER.BODY invocation>",
+            },
+            PrimaryExpr::EnumValue { name, variant } => variant.text(db),
+            PrimaryExpr::RefValue { value } => match value {
+                RefValue::Address(addr) => match addr {
+                    RefAdress::Symbolic(sym) => "<symbolic address>",
+                    RefAdress::Instance(ident) => ident.text(db),
+                },
+                RefValue::Null => "NULL",
+            },
+            PrimaryExpr::ParenthesizedExpr { expr } => expr.to_string(db),
+        }
     }
 }
