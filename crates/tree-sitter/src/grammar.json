@@ -1800,7 +1800,7 @@
           "name": "type",
           "content": {
             "type": "SYMBOL",
-            "name": "int_type_name"
+            "name": "_elem_type_name"
           }
         },
         {

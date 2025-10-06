@@ -5345,7 +5345,7 @@
         "required": true,
         "types": [
           {
-            "type": "int_type_name",
+            "type": "_elem_type_name",
             "named": true
           }
         ]
