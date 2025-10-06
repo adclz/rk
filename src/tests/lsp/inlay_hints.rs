@@ -303,3 +303,80 @@ END_FUNCTION_BLOCK"#;
     ]
     "#);
 }
+
+
+#[rstest]
+pub fn init_expr_inlay_hints(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE
+	Engine: STRUCT
+		Power: ARRAY[0..2] OF INT;
+		Torque: INT;
+	END_STRUCT;
+END_TYPE
+
+FUNCTION fn1
+	VAR
+		Base: Engine := (Power := [0], Torque := 10.0);
+	END_VAR
+END_FUNCTION"#;
+
+    add_sources(&mut with_db, &[source]);
+    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let mut result = vec![];
+    let _ = sema.walk_hir(&with_db, &mut |n| {
+        if let HirNode::ResolvedInitExpr(stmt) = n {
+            if let Some(inlay_hint) = stmt.inlay_hint(&with_db) {
+                result.push(inlay_hint);
+            }
+        }
+        ControlFlow::Continue(())
+    });
+
+    assert_debug_snapshot!(&result, @r#"
+    [
+        InlayHint {
+            position: Position {
+                line: 10,
+                character: 24,
+            },
+            label: String(
+                ": ARRAY",
+            ),
+            kind: Some(
+                Type,
+            ),
+            text_edits: None,
+            tooltip: None,
+            padding_left: Some(
+                false,
+            ),
+            padding_right: Some(
+                false,
+            ),
+            data: None,
+        },
+        InlayHint {
+            position: Position {
+                line: 10,
+                character: 39,
+            },
+            label: String(
+                ": INT",
+            ),
+            kind: Some(
+                Type,
+            ),
+            text_edits: None,
+            tooltip: None,
+            padding_left: Some(
+                false,
+            ),
+            padding_right: Some(
+                false,
+            ),
+            data: None,
+        },
+    ]
+    "#);
+}
