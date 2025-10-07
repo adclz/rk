@@ -9,6 +9,7 @@ use hir::hir_def::semantic_index::semantic_index;
 use hir::hir_ty::ty::TyDecl;
 use hir::hir_ty::ty::ty_for_variable;
 use hir::walk::WalkHir;
+use ide_proto::ty::TyHover;
 use ide_proto::AsProtocol;
 use ide_proto::ToProtocol;
 use insta::assert_snapshot;
@@ -42,11 +43,17 @@ END_CLASS
         ControlFlow::Continue(())
     });
 
-    assert_snapshot!(nodes.iter().map(|n|{
-        if let HoverContents::Markup(d) = n.as_proto().hover(&with_db, 0).unwrap().contents {
-            d.value
+    assert_snapshot!(nodes.iter().filter_map(|node|{
+        if let HirNode::Ty(ty) = node
+            && let TyDecl::Pou(pou) = ty.decl(&with_db)
+        {
+            if let HoverContents::Markup(d) = ty.force_hover(&with_db)?.contents {
+                Some(d.value)
+            } else {
+                None
+            }
         } else {
-            panic!("Unexpected hover content")
+            None
         }})
         .collect::<Vec<String>>()
         .join("\n"), @r"
@@ -103,11 +110,11 @@ END_FUNCTION_BLOCK
         ControlFlow::Continue(())
     });
 
-    assert_snapshot!(nodes.iter().map(|n|{
-        if let HoverContents::Markup(d) = n.hover(&with_db, 0).unwrap().contents {
-            d.value
+    assert_snapshot!(nodes.iter().filter_map(|n|{
+        if let HoverContents::Markup(d) = n.force_hover(&with_db)?.contents {
+            Some(d.value)
         } else {
-            panic!("Unexpected hover content")
+            None
         }})
         .collect::<Vec<String>>()
         .join("\n"), @r"

@@ -15,7 +15,7 @@ use crate::{ToProtocol, ty::TyHover};
 impl<'db> ToProtocol<'db> for ResolvedPathElement<'db> {
     fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Hover> {
         match self.kind {
-            ResolvedPathElementKind::Ty(ty) => ty.hover(db, offset),
+            ResolvedPathElementKind::Ty(ty) => ty.force_hover(db),
             _ => None,
         }
     }

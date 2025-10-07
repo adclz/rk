@@ -5,7 +5,7 @@ use crate::{ToProtocol, ty::TyHover};
 
 impl<'db> ToProtocol<'db> for ResolvedVarResult<'db> {
     fn hover(&'db self, db: &'db dyn BaseDatabase, _offset: usize) -> Option<Hover> {
-        self.ty(db).ok().and_then(|ty| ty.hover_decl(db))
+        self.ty(db).ok().and_then(|ty| ty.force_hover(db))
     }
 
     fn declaration(

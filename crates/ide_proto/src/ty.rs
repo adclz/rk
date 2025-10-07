@@ -53,15 +53,29 @@ impl<'db> ToProtocol<'db> for Ty<'db> {
     }
 
     fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Hover> {
-        /*let name_span = self.decl(db).name_span(db);
-        let span = self.get_span(db);
+        let name_span = self.decl(db).name_span(db);
+
         // Check if the offset is within the span of the whole type
         if offset < name_span.start_byte || offset > name_span.end_byte {
-            eprintln!("Offset {offset} not in span {span:?}");
-            return None;
-        }*/
+            // type name not hovered
+            // if target type, hover the target type
+            if let TyKind::Target(target) = self.kind(db) {
+                return target.force_hover(db);
+            }
+            // we check if we're not hovering the definition of this type (could be a Pou body)
+            match self.def(db).def_as_ty(db) {
+                Some(ty) => {
+                    // we are hovering the definition but no the name, therefore return None
+                    if ty == *self {
+                        return None;
+                    }
+                    return ty.force_hover(db);
+                },
+                None => return None,
+            }
+        }
 
-        self.hover_decl(db)
+        self.force_hover(db)
     }
 
     fn code_lens(&self, db: &'db dyn BaseDatabase) -> Option<CodeLens> {
@@ -79,13 +93,15 @@ impl<'db> ToProtocol<'db> for Ty<'db> {
     }
 }
 
-pub(crate) trait TyHover<'ty> {
-    fn hover_decl(&self, db: &'ty dyn BaseDatabase) -> Option<Hover>;
+pub trait TyHover<'ty> {
+    /// Force a hover for this type, even if the offset is not on the type name.
+    /// This is mostly used by resolved structs in statements and expressions.
+    fn force_hover(&self, db: &'ty dyn BaseDatabase) -> Option<Hover>;
     fn get_comment(&self, db: &'ty dyn BaseDatabase) -> String;
 }
 
 impl<'ty> TyHover<'ty> for Ty<'ty> {
-    fn hover_decl(&self, db: &'ty dyn BaseDatabase) -> Option<Hover> {
+    fn force_hover(&self, db: &'ty dyn BaseDatabase) -> Option<Hover> {
         let name_span = self.decl(db).name_span(db);
         let name = self.decl(db).name(db).text(db).to_string();
         let comment = self.get_comment(db);
