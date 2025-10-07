@@ -9,7 +9,6 @@ use crate::ToProtocol;
 impl<'db> ToProtocol<'db> for ResolvedExpr<'db> {
     fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Hover> {
         match self.kind(db) {
-            ResolvedExprKind::PathExpr(resolved) => resolved.hover(db, offset),
             ResolvedExprKind::VarAccess(resolved) => resolved.hover(db, offset),
             _ => None,
         }
@@ -17,7 +16,6 @@ impl<'db> ToProtocol<'db> for ResolvedExpr<'db> {
 
     fn declaration(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDeclarationResponse> {
         match self.kind(db) {
-            ResolvedExprKind::PathExpr(resolved) => resolved.declaration(db),
             ResolvedExprKind::VarAccess(resolved) => resolved.declaration(db),
             _ => None,
         }
@@ -25,7 +23,6 @@ impl<'db> ToProtocol<'db> for ResolvedExpr<'db> {
 
     fn definition(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDefinitionResponse> {
         match self.kind(db) {
-            ResolvedExprKind::PathExpr(resolved) => resolved.definition(db),
             ResolvedExprKind::VarAccess(resolved) => resolved.definition(db),
             _ => None,
         }

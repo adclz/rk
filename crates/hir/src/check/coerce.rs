@@ -98,6 +98,25 @@ pub fn coerce_ty_with_expr<'db>(
                 .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?,
         )
         .map_err(|err| ExprMismatch::type_mismatch(target_expr, err)),
+        (TyKind::Struct { spec, elements }, ResolvedExprKind::PathExpr(result)) => {
+            // Check if the PathExpr type matches the struct type
+            match result
+                .ty(db)
+                .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?
+                .kind(db)
+            {
+                TyKind::Struct { spec: s, elements: e } if s == spec && e == elements => Ok(()),
+                _ => Err(ExprMismatch::type_mismatch(
+                    target_expr,
+                    TypeMismatch {
+                        ty1: ty,
+                        ty2: result
+                            .ty(db)
+                            .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?,
+                    },
+                )),
+            }
+        }
         _ => Err(ExprMismatch::expr_mismatch(target_expr, ty)),
     }
 }

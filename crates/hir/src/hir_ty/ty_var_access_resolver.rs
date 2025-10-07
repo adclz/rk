@@ -1,9 +1,7 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    AstId, HirNodeInfo,
-    check::errors::var_error::VarResolveError,
-    hir_def::{
+    check::errors::var_error::VarResolveError, hir_def::{
         expressions::{
             expression::{Expr, PathExpr, VariableAccess, VariableAccessKind},
             invocation::{Invocation, InvocationKind},
@@ -11,11 +9,10 @@ use crate::{
         interned::identifier::SpanIdent,
         pous::variable::VariableDecl,
         scope::FileScopeId,
-    },
-    hir_ty::{
+    }, hir_ty::{
         ty::{Ty, TyDecl},
-        ty_path_expr_resolver::{ResolvedPathResult, resolved_path_expr},
-    },
+        ty_path_expr_resolver::{resolved_local_path_expr, resolved_path_expr, ResolvedPathResult},
+    }, AstId, HirNodeInfo
 };
 
 pub fn resolve_var_access<'db>(
@@ -137,7 +134,7 @@ impl<'db> VarAccessResolverCtx<'db> {
             VariableAccessKind::Symbolic(symbolic) => ResolvedVarResult::new(
                 self.db,
                 ResolvedVarOrigin::Access(self.access),
-                ResolvedVarKind::Symbolic(*resolved_path_expr(self.db, symbolic.kind)),
+                ResolvedVarKind::Symbolic(*resolved_local_path_expr(self.db, symbolic.kind)),
             ),
         }
     }

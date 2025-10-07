@@ -6,7 +6,7 @@ use crate::{
     check::{
         errors::{
             analysis_error::DiagnosticDescription,
-            utils::get_candidates,
+            utils::{get_candidates, get_decl_and_def_for_ty},
         },
         recovery::pou::fuzzy_pou_local_items,
     },
@@ -28,7 +28,7 @@ pub enum PathResolveError<'db> {
         ty: Ty<'db>,
         expr: PathExpr<'db>,
     },
-    UnexpectedIndex {
+    NoField {
         ty: Ty<'db>,
         expr: PathExpr<'db>,
     },
@@ -46,34 +46,48 @@ impl<'db> DiagnosticDescription<'db> for PathResolveError<'db> {
     fn description(&self, db: &'db dyn BaseDatabase) -> String {
         match self {
             PathResolveError::NoItemInScope { expr, scope } => {
-                format!("no item '{}' in scope", expr.to_string(db).text(db))
+                format!("no item '{}' in scope", expr.ident(db).text(db))
             }
             PathResolveError::UnknownField { ty, expr } => {
-                format!("field '{}' not found", expr.to_string(db).text(db))
+                format!("field '{}' not found", expr.ident(db).text(db))
             }
-            PathResolveError::UnexpectedIndex { ty, expr } => {
-                format!("'{}' cannot be indexed", ty.type_name(db))
+            PathResolveError::NoField { ty, expr } => {
+                format!("type '{}' does not have fields", ty.type_name(db))
             }
             PathResolveError::NotAReference { ty, expr } => {
-                format!("'{}' is not a reference", ty.type_name(db))
+                format!("type '{}' is not a reference", ty.type_name(db))
             }
             PathResolveError::NotAnArray { ty, expr } => {
-                format!("'{}' is not an array", ty.type_name(db))
+                format!("type '{}' cannot be indexed", ty.type_name(db))
             }
         }
     }
 
     fn note(&self, db: &'db dyn BaseDatabase, diag: &mut IdeDiagnostic) {
-        if let PathResolveError::NoItemInScope { expr, scope } = self {
-            if let ScopeKind::Pou(pou) = semantic_index(db, scope.file(db))
-                .get_scope(db, *scope)
-                .kind
-            {
-                diag.with_note(get_candidates(&fuzzy_pou_local_items(
-                    db,
-                    pou,
-                    expr.to_string(db).as_str(db),
-                )));
+        match self {
+            PathResolveError::NoItemInScope { expr, scope } => {
+                if let ScopeKind::Pou(pou) = semantic_index(db, scope.file(db))
+                    .get_scope(db, *scope)
+                    .kind
+                {
+                    diag.with_note(get_candidates(&fuzzy_pou_local_items(
+                        db,
+                        pou,
+                        expr.ident(db).as_str(db),
+                    )));
+                }
+            }
+            PathResolveError::NoField { ty, expr } => {
+                get_decl_and_def_for_ty(db, *ty, diag);
+            }
+            PathResolveError::UnknownField { ty, expr } => {
+                get_decl_and_def_for_ty(db, *ty, diag);
+            }
+            PathResolveError::NotAnArray { ty, expr } => {
+                get_decl_and_def_for_ty(db, *ty, diag);
+            }
+            PathResolveError::NotAReference { ty, expr } => {
+                get_decl_and_def_for_ty(db, *ty, diag);
             }
         }
     }

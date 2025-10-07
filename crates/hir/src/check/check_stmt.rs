@@ -145,17 +145,18 @@ fn check_assignment<'db>(
                 return coerce_ty_with_expr(db, ret, target)
                     .map_err(|err| StmtError::AssignmentTypeMismatch { err }.into());
             } else {
-                return Err(StmtError::AssignementToCallableType { var, ty: ty_var }.into());
+                return Err(StmtError::AssignmentToCallableType { var, ty: ty_var }.into());
             }
         }
         // is a variable and callable (trying to assign to a POU)
         (true, true) => {
-            return Err(StmtError::AssignementToCallableType { var, ty: ty_var }.into());
+            return Err(StmtError::AssignmentToCallableType { var, ty: ty_var }.into());
         }
-        (false, _) => {
-            return Err(StmtError::AssignementToDirectType { var, ty: ty_var }.into());
+        _ => {
+            if ty_var.is_direct_type(db) {
+                return Err(StmtError::AssignmentToDirectType { var, ty: ty_var }.into());
+            }
         }
-        _ => {}
     }
 
     coerce_ty_with_expr(db, ty_var, target)
@@ -402,7 +403,7 @@ fn check_parameters<'db>(
                                     );
                                 } else if !var_ty.is_variable(db) {
                                     errors.push(
-                                        StmtError::AssignementToDirectType {
+                                        StmtError::AssignmentToDirectType {
                                             ty: var_ty,
                                             var: variable,
                                         }
@@ -476,7 +477,7 @@ fn check_for<'db>(
 
     // Direct type
     if !control_var_ty.is_variable(db) {
-        return Err(StmtError::AssignementToDirectType {
+        return Err(StmtError::AssignmentToDirectType {
             var: control_var,
             ty: control_var_ty,
         }
@@ -485,7 +486,7 @@ fn check_for<'db>(
 
     // POUs can not be mutated
     if control_var_ty.is_callable(db) {
-        return Err(StmtError::AssignementToCallableType {
+        return Err(StmtError::AssignmentToCallableType {
             var: control_var,
             ty: control_var_ty,
         }

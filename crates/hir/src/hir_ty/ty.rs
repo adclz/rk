@@ -544,6 +544,7 @@ impl<'db> Ty<'db> {
     ) -> Result<Ty<'db>, PathResolveError<'db>> {
         match &step {
             PathExprWalkStep::Field { ident, expr } => match self.kind(db) {
+                TyKind::Target(target) => target.linear(db, step),
                 TyKind::Struct { elements, spec } => elements
                     .get(&ident.ident)
                     .ok_or(PathResolveError::UnknownField {
@@ -568,7 +569,7 @@ impl<'db> Ty<'db> {
                     })
                     .cloned(),
                 TyKind::RefTo(inner) => inner.linear(db, step),
-                _ => Err(PathResolveError::UnknownField {
+                _ => Err(PathResolveError::NoField {
                     expr: *expr,
                     ty: *self,
                 }),
@@ -792,7 +793,7 @@ impl<'db> TypeInfo<'db> for Ty<'db> {
             TyKind::Interface { .. } => "INTERFACE",
             TyKind::Class { .. } => "CLASS",
             TyKind::Function { .. } => "FUNCTION",
-            TyKind::FunctionBlock { .. } => "FUNCTION_BLOCK", 
+            TyKind::FunctionBlock { .. } => "FUNCTION_BLOCK",
             TyKind::Method { .. } => "METHOD",
             TyKind::Unresolved(_) => "{unknown}",
             TyKind::Recursive => "{recursive}",
@@ -800,7 +801,7 @@ impl<'db> TypeInfo<'db> for Ty<'db> {
     }
 
     fn decl_name(&self, db: &'db dyn BaseDatabase) -> String {
-        match self.decl(db)  {
+        match self.decl(db) {
             TyDecl::Pou(pou) => "".to_string(),
             TyDecl::Variable(var) => match var.kind(db) {
                 VariableKind::Input => "VAR_INPUT".to_string(),

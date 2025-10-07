@@ -16,7 +16,7 @@ pub mod pou;
 pub mod resolved_expr;
 pub mod resolved_init_expr;
 pub mod resolved_param;
-pub mod resolved_path_expr;
+pub mod resolved_path_element;
 pub mod resolved_stmt;
 pub mod resolved_var_access;
 pub mod ty;
@@ -70,7 +70,7 @@ impl<'db> AsProtocol<'db> for HirNode<'db> {
             HirNode::Ty(ty) => ty,
             HirNode::Using(u) => u,
             HirNode::ResolvedVarResult(v) => v,
-            HirNode::ResolvedPathResult(p) => p,
+            HirNode::ResolvedPathElementResult(p) => p,
             HirNode::ResolvedInitExpr(i) => i,
             HirNode::ResolvedExpr(e) => e,
             HirNode::ResolvedParam(p) => p,

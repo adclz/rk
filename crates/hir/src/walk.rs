@@ -4,12 +4,15 @@ use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     hir_def::{
-        expressions::spec::{SpecKind, Struct}, namespace::NamespaceDecl, pous::{
+        expressions::spec::{SpecKind, Struct},
+        namespace::NamespaceDecl,
+        pous::{
             class::MethodDecl,
             interface::MethodPrototype,
             pou::{Pou, PouDecl},
             variable::VariableDecl,
-        }, semantic_index::{HirNode, SemanticIndex}
+        },
+        semantic_index::{HirNode, SemanticIndex},
     },
     hir_ty::{
         expr_resolver::ResolvedExpr,
@@ -17,9 +20,12 @@ use crate::{
         init_expr_resolver::{resolve_init_expr, ResolvedInitExpr, ResolvedInitExprKind},
         invocation_resolver::{ResolvedInvocationResult, ResolvedMethodKind},
         stmt_resolver::{resolve_stmt, ResolvedStmt, ResolvedStmtKind},
-        ty::{ty_for_method_decl, ty_for_method_prot, ty_for_pou, ty_for_struct_field, ty_for_variable},
-        ty_path_expr_resolver::ResolvedPathResult,
-        ty_var_access_resolver::ResolvedVarResult,
+        ty::{
+            ty_for_method_decl, ty_for_method_prot, ty_for_pou, ty_for_struct_field,
+            ty_for_variable,
+        },
+        ty_path_expr_resolver::{ResolvedPathElement, ResolvedPathResult},
+        ty_var_access_resolver::{ResolvedVarKind, ResolvedVarResult},
     },
 };
 
@@ -115,7 +121,11 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
                 }
 
                 if let Some(init_expr) = dt.init(db) {
-                    f(HirNode::ResolvedInitExpr(*resolve_init_expr(db, ty_for_pou(db, *self), init_expr)))?;
+                    f(HirNode::ResolvedInitExpr(*resolve_init_expr(
+                        db,
+                        ty_for_pou(db, *self),
+                        init_expr,
+                    )))?;
                 }
             }
         }
@@ -166,17 +176,28 @@ impl<'db> WalkHir<'db> for ResolvedVarResult<'db> {
         db: &'db dyn BaseDatabase,
         f: &mut F,
     ) -> ControlFlow<()> {
-        f(HirNode::ResolvedVarResult(*self))
+        f(HirNode::ResolvedVarResult(*self))?;
+        match &self.kind(db) {
+            ResolvedVarKind::Symbolic(path) => {
+                for e in path.elements(db) {
+                    e.walk_hir(db, f)?;
+                }
+                ControlFlow::Continue(())
+            },
+            _ => ControlFlow::Continue(()),
+        }
     }
 }
 
-impl<'db> WalkHir<'db> for ResolvedPathResult<'db> {
+impl<'db> WalkHir<'db> for ResolvedPathElement<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
         &self,
         db: &'db dyn BaseDatabase,
         f: &mut F,
     ) -> ControlFlow<()> {
-        f(HirNode::ResolvedPathResult(*self))
+        // A path element does not derive Copy, but it is small enough to be cheaply cloned.
+        f(HirNode::ResolvedPathElementResult(self.clone()))
+
     }
 }
 
@@ -210,7 +231,7 @@ impl<'db> WalkHir<'db> for ResolvedInitExpr<'db> {
             }
             ResolvedInitExprKind::ConstantExpr(expr) => {
                 expr.walk_hir(db, f)?;
-            },
+            }
             ResolvedInitExprKind::Error(_) => {}
         }
         ControlFlow::Continue(())

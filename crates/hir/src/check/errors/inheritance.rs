@@ -183,7 +183,7 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
             Self::UnresolvedThisMethod { ctx, path, method } => diag()
                 .message(format!(
                     "no method '{}' in declared methods of '{}'",
-                    path.to_string(db).ident.text(db),
+                    path.ident(db).ident.text(db),
                     ctx.decl(db).name(db).text(db)
                 ))
                 .severity(DiagnosticSeverity::ERROR)
@@ -193,7 +193,7 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "no method '{}' in inherited methods of '{}'",
-                        path.to_string(db).ident.text(db),
+                        path.ident(db).ident.text(db),
                         ctx.map(|c| c.decl(db).name(db).text(db).to_string())
                             .unwrap_or_else(|| "<unknown>".into())
                     ))

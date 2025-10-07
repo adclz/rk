@@ -27,11 +27,11 @@ pub enum StmtError<'db> {
         var: ResolvedVarResult<'db>,
         err: VarResolveError<'db>,
     },
-    AssignementToDirectType {
+    AssignmentToDirectType {
         ty: Ty<'db>,
         var: ResolvedVarResult<'db>,
     },
-    AssignementToCallableType {
+    AssignmentToCallableType {
         ty: Ty<'db>,
         var: ResolvedVarResult<'db>,
     },
@@ -138,7 +138,7 @@ impl<'db> From<StmtError<'db>> for AnalysisError<'db> {
 impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
     fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
         match self {
-            Self::AssignementToCallableType { var, ty } => {
+            Self::AssignmentToCallableType { var, ty } => {
                 let mut diag = diag()
                     .message(format!(
                         "'{}' is a callable type and can not be assigned",
@@ -177,7 +177,7 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 diag
             }
 
-            Self::AssignementToDirectType { var, ty } => {
+            Self::AssignmentToDirectType { var, ty } => {
                 let mut diag = diag()
                     .message(format!(
                         "'{}' is a type and can not be assigned",

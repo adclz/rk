@@ -13,9 +13,7 @@ use crate::{
         inheritance_solver::method_table,
         param_resolver::resolve_parameters,
         ty::{TyKind, ty_for_pou},
-        ty_var_access_resolver::{
-            ResolvedVarKind, ResolvedVarOrigin, ResolvedVarResult,
-        },
+        ty_var_access_resolver::{ResolvedVarKind, ResolvedVarOrigin, ResolvedVarResult},
     },
 };
 
@@ -134,7 +132,7 @@ impl<'db> Invocation<'db> {
                 match self.kind(db) {
                     InvocationKind::This { path } => methods
                         .declared_methods
-                        .get(&path.to_string(db).ident)
+                        .get(&path.ident(db).ident)
                         .map(|ty| ResolvedInvocationResult {
                             target: ResolvedInvocation::new(
                                 *self,
@@ -169,7 +167,7 @@ impl<'db> Invocation<'db> {
                         }),
                     InvocationKind::Super { path } => methods
                         .inherited_methods
-                        .get(&path.to_string(db).ident)
+                        .get(&path.ident(db).ident)
                         .map(|ty| ResolvedInvocationResult {
                             target: ResolvedInvocation::new(
                                 *self,

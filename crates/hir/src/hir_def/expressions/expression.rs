@@ -126,11 +126,37 @@ pub struct PathExpr<'db> {
 
 impl<'db> HirNodeInfo<'db> for PathExpr<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
-        self.id(db)
+        match &self.expr(db) {
+            PathExprKind::Field(field_expr) => match field_expr.var {
+                VarAccess::Simple(ref simple) => simple.id,
+                VarAccess::Deref(ref deref) => deref.id,
+            },
+            PathExprKind::Index(index_expr) => index_expr.path.get_id(db),
+            PathExprKind::VarAccess(var_access) => match var_access {
+                VarAccess::Simple(simple) => simple.id,
+                VarAccess::Deref(deref) => deref.id,
+            },
+        }
     }
 
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         self.scope_id(db)
+    }
+}
+
+impl<'db> PathExpr<'db> {
+    pub fn ident(&self, db: &'db dyn BaseDatabase) -> SpanIdent<'db> {
+        match &self.expr(db) {
+            PathExprKind::Field(field_expr) => match field_expr.var {
+                VarAccess::Simple(ref simple) => *simple,
+                VarAccess::Deref(ref deref) => *deref,
+            },
+            PathExprKind::Index(index_expr) => index_expr.path.ident(db),
+            PathExprKind::VarAccess(var_access) => match var_access {
+                VarAccess::Simple(simple) => *simple,
+                VarAccess::Deref(deref) => *deref,
+            },
+        }
     }
 }
 
@@ -151,22 +177,6 @@ pub struct FieldExpr<'db> {
 pub struct IndexExpr<'db> {
     pub path: PathExpr<'db>,
     pub index: Vec<Expr<'db>>,
-}
-
-impl<'db> PathExpr<'db> {
-    pub fn to_string(&self, db: &'db dyn BaseDatabase) -> SpanIdent<'db> {
-        match &self.expr(db) {
-            PathExprKind::Field(field_expr) => match field_expr.var {
-                VarAccess::Simple(ref simple) => *simple,
-                VarAccess::Deref(ref deref) => *deref,
-            },
-            PathExprKind::Index(index_expr) => index_expr.path.to_string(db),
-            PathExprKind::VarAccess(var_access) => match var_access {
-                VarAccess::Simple(simple) => *simple,
-                VarAccess::Deref(deref) => *deref,
-            },
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -394,10 +404,26 @@ impl<'db> Expr<'db> {
     pub fn to_string(&self, db: &'db dyn BaseDatabase) -> &str {
         match self.expr(db) {
             ExprKind::PrimaryExpr(primary_expr) => primary_expr.to_string(db),
-            ExprKind::AddOperator { left, operator, right } => "<arithmetic expression>",
-            ExprKind::BooleanOperator { left, operator, right } => "<boolean expression>",
-            ExprKind::ComparisonOperator { left, operator, right } => "<comparison expression>",
-            ExprKind::MultOperator { left, operator, right } => "<multiplicative expression>",
+            ExprKind::AddOperator {
+                left,
+                operator,
+                right,
+            } => "<arithmetic expression>",
+            ExprKind::BooleanOperator {
+                left,
+                operator,
+                right,
+            } => "<boolean expression>",
+            ExprKind::ComparisonOperator {
+                left,
+                operator,
+                right,
+            } => "<comparison expression>",
+            ExprKind::MultOperator {
+                left,
+                operator,
+                right,
+            } => "<multiplicative expression>",
             ExprKind::PowerOperator { left, right } => "<power expression>",
             ExprKind::UnaryOperator { expr, operator } => "<unary expression>",
         }
@@ -436,8 +462,11 @@ impl<'db> PrimaryExpr<'db> {
                 Elementary::InferInteger(_) => "<integer>",
                 Elementary::InferIdent(_) => "<identifier>",
             },
-            PrimaryExpr::VariableAccess { variable, multibits } => "<variable access>",
-            PrimaryExpr::FuncCall(func_call) => func_call.path.to_string(db).text(db),
+            PrimaryExpr::VariableAccess {
+                variable,
+                multibits,
+            } => "<variable access>",
+            PrimaryExpr::FuncCall(func_call) => func_call.path.ident(db).text(db),
             PrimaryExpr::Invocation(invocation) => match invocation.kind(db) {
                 InvocationKind::Super { path } => "<SUPER invocation>",
                 InvocationKind::This { path } => "<THIS invocation>",
