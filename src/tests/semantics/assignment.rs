@@ -51,19 +51,10 @@ END_FUNCTION_BLOCK"#;
     Error: 
        ,-[ file:///test0.st:8:5 ]
        |
-     2 | ,-> FUNCTION_BLOCK fb2
-       | |                  ^|^  
-       | |                   `--- 'fb2' is declared here
-       : :   
-     4 | |-> END_FUNCTION_BLOCK
-       | |                        
-       | `------------------------ type defined here
+     8 |     fb2 := ULINT#5;
+       |     ^|^  
+       |      `--- invalid assignment: no item 'fb2' in scope
        | 
-     8 |         fb2 := ULINT#5;
-       |         ^|^  
-       |          `--- 'fb2' is a callable type and can not be assigned
-       | |   
-       | |   Note: only functions with return types can be assigned
     ---'
     ");
 }
@@ -111,17 +102,10 @@ END_FUNCTION_BLOCK"#;
     Error: 
        ,-[ file:///test0.st:8:5 ]
        |
-     3 |     T1 : INT;
-       |     ^|   ^|^  
-       |      `-------- 'T1' is declared here
-       |           |   
-       |           `--- type defined here
-       | 
      8 |     T1 := ULINT#5;
        |     ^|  
-       |      `-- 'T1' is a type and can not be assigned
+       |      `-- invalid assignment: no item 'T1' in scope
        | 
-       | Note: types can only be assigned if they are declared in a VAR_* section
     ---'
     ");
 }

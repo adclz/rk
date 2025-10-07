@@ -383,19 +383,11 @@ END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-        ,-[ file:///test0.st:13:18 ]
+        ,-[ file:///test0.st:13:8 ]
         |
-      2 | TYPE b1 : INT
-        |      ^|   ^|^  
-        |       `-------- 'b1' is declared here
-        |            |   
-        |            `--- type defined here
-        | 
      13 |     fn(param1 => b1);
-        |                  ^|  
-        |                   `-- 'b1' is a type and can not be assigned
-        | 
-        | Note: types can only be assigned if they are declared in a VAR_* section
+        |        ^^^|^^  
+        |           `---- unresolved output parameter target: no item 'b1' in scope
     ----'
     ");
 }

@@ -137,10 +137,12 @@ END_FUNCTION_BLOCK"#;
     assert_snapshot!(nodes.join("\n"), @r"
     Ty(Ty { [salsa id]: Id(2c00) })
     ResolvedStmt(ResolvedStmt { [salsa id]: Id(4800) })
-    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(4000) })
+    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(3400) })
+    ResolvedPathElementResult(ResolvedPathElement { expr: PathExpr { [salsa id]: Id(c00) }, kind: Error(NoItemInScope { expr: PathExpr { [salsa id]: Id(c00) }, scope: FileScopeId { [salsa id]: Id(402) } }) })
     ResolvedExpr(ResolvedExpr { [salsa id]: Id(4400) })
     ResolvedStmt(ResolvedStmt { [salsa id]: Id(4801) })
-    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(4002) })
+    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(3402) })
+    ResolvedPathElementResult(ResolvedPathElement { expr: PathExpr { [salsa id]: Id(c02) }, kind: Error(NoItemInScope { expr: PathExpr { [salsa id]: Id(c02) }, scope: FileScopeId { [salsa id]: Id(402) } }) })
     ResolvedStmt(ResolvedStmt { [salsa id]: Id(4802) })
     ResolvedExpr(ResolvedExpr { [salsa id]: Id(4403) })
     ResolvedStmt(ResolvedStmt { [salsa id]: Id(4803) })
@@ -225,9 +227,11 @@ END_FUNCTION_BLOCK"#;
         1,
         5,
         7,
+        10,
         12,
         16,
-        17,
+        19,
+        19,
         37,
         39,
         52,
@@ -276,7 +280,8 @@ END_FUNCTION_BLOCK"#;
         13,
         21,
         25,
-        26,
+        28,
+        28,
         30,
         31,
         31,
