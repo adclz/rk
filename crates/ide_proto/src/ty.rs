@@ -46,6 +46,10 @@ impl<'db> ToProtocol<'db> for Ty<'db> {
     }
 
     fn inlay_hint(&'db self, db: &'db dyn BaseDatabase) -> Option<InlayHint> {
+        if let TyKind::Target(_) = self.kind(db) {
+            // don't show inlay hints for target types
+            return None;
+        }
         match self.def(db) {
             TyDef::Pou(pou) => pou.inlay_hint(db),
             _ => None,
