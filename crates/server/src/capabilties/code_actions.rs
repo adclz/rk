@@ -12,9 +12,10 @@ pub fn code_actions(
     let uri = &params.text_document.uri;
     let range = params.range;
 
-    let file = db
-        .get_file(uri)
-        .ok_or_else(|| anyhow::format_err!("File not found in workspace"))?;
+    let file = match db.get_file(uri) {
+        Some(file) => file,
+        None => return Ok(None),
+    };
 
     let mut results = vec![];
 

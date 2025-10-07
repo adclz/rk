@@ -17,9 +17,17 @@ pub fn diagnostics<Db: BaseDatabase + Clone + RefUnwindSafe>(
 ) -> anyhow::Result<DocumentDiagnosticReportResult> {
     let uri = params.text_document.uri;
 
-    let file = db
-        .get_file(&uri)
-        .ok_or_else(|| anyhow::format_err!("File not found in workspace"))?;
+    let file = match db.get_file(&uri) {
+        Some(file) => file,
+        None => {
+            return Ok(DocumentDiagnosticReportResult::Report(
+                DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
+                    related_documents: None,
+                    full_document_diagnostic_report: FullDocumentDiagnosticReport { result_id: None, items: vec![] },
+                }),
+            ));
+        }
+    };
 
     Ok(DocumentDiagnosticReportResult::Report(
         DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {

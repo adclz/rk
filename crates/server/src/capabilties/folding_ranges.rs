@@ -45,9 +45,10 @@ pub fn folding_ranges(
 ) -> anyhow::Result<Option<Vec<FoldingRange>>> {
     let uri = params.text_document.uri;
 
-    let file = db
-        .get_file(&uri)
-        .ok_or_else(|| anyhow::format_err!("File not found in workspace"))?;
+   let file = match db.get_file(&uri) {
+        Some(file) => file,
+        None => return Ok(None),
+    };
 
     let document = file.document(db);
 

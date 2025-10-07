@@ -1,6 +1,5 @@
 #![allow(deprecated)]
 
-
 use auto_lsp::{
     anyhow,
     default::db::BaseDatabase,
@@ -14,9 +13,10 @@ pub fn completions(
 ) -> anyhow::Result<Option<CompletionResponse>> {
     let uri = &params.text_document_position.text_document.uri;
 
-    let file = db
-        .get_file(uri)
-        .ok_or_else(|| anyhow::format_err!("File not found in workspace"))?;
+    let file = match db.get_file(uri) {
+        Some(file) => file,
+        None => return Ok(None),
+    };
 
     let doc = file.document(db);
 
