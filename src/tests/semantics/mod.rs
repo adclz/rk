@@ -16,3 +16,4 @@ pub mod tod;
 pub mod ty;
 pub mod unsigned_integers;
 pub mod walk_hir;
+pub mod path_expr;
