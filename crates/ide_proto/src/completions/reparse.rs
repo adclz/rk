@@ -48,7 +48,7 @@ pub fn use_completion_marker(
 
     doc.update(&mut file.parsers(db).parser.write(), &changes)?;
 
-    let file = File::new(
+    let new_file = File::new(
         db,
         file.url(db).clone(),
         file.parsers(db),
@@ -56,24 +56,25 @@ pub fn use_completion_marker(
         None,
     );
 
-    use_completion_ctx(db, file, offset)
+    use_completion_ctx(db, file, new_file, offset)
 }
 
 pub fn use_completion_ctx(
     db: &impl BaseDatabase,
-    file: File,
+    old_file: File,
+    new_file: File,
     offset: usize,
 ) -> anyhow::Result<Option<CompletionResponse>> {
-    let ast = get_ast(db, file);
+    let ast = get_ast(db, new_file);
     if let Some(mut node) = ast.descendant_at(offset) {
         loop {
             // Try different node types and get completions if found
             let completions = if let Some(ns) = node.lower().downcast_ref::<NamespaceDecl>() {
-                try_get_completions_for_node(db, file, ns, offset)?
+                try_get_completions_for_node(db, old_file, ns, offset)?
             } else if let Some(func) = node.lower().downcast_ref::<FuncDecl>() {
-                try_get_completions_for_node(db, file, func, offset)?
+                try_get_completions_for_node(db, old_file, func, offset)?
             } else if let Some(fb) = node.lower().downcast_ref::<FbDecl>() {
-                try_get_completions_for_node(db, file, fb, offset)?
+                try_get_completions_for_node(db, old_file, fb, offset)?
             } else {
                 None
             };
