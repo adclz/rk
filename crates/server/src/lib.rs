@@ -174,12 +174,31 @@ fn on_requests<Db: BaseDatabase + Clone + RefUnwindSafe>(
         .on::<GotoImplementation, _>(go_to_implementation)
 }
 
+
 fn on_notifications<Db: BaseDatabase + Clone + RefUnwindSafe>(
     registry: &mut NotificationRegistry<Db>,
 ) -> &mut NotificationRegistry<Db> {
     registry
-        .on_mut::<DidOpenTextDocument, _>(|s, p| Ok(open_text_document(s, p)?))
-        .on_mut::<DidChangeTextDocument, _>(|s, p| Ok(change_text_document(s, p)?))
+        // DidOpenTextDocument events are also emitted when a LLM / Agent creates temporary files.
+        // We only want to process files with the .st extension that are part of the workspace.
+        .on_mut::<DidOpenTextDocument, _>(|s, p| {
+            match p.text_document.uri.as_str().ends_with(".st") {
+                true => Ok(open_text_document(s, p)?),
+                false => {
+                    log::warn!("Ignored opening file: {}", p.text_document.uri);
+                    return Ok(());
+                }
+            }
+        })
+        .on_mut::<DidChangeTextDocument, _>(|s, p| {
+            match p.text_document.uri.as_str().ends_with(".st") {
+                true => Ok(change_text_document(s, p)?),
+                false => {
+                    log::warn!("Ignored opening file: {}", p.text_document.uri);
+                    return Ok(());
+                }
+            }
+        })
         .on_mut::<DidChangeWatchedFiles, _>(|s, p| {
             changed_watched_files(s, p)?;
             send_request::<lsp_types::request::WorkspaceDiagnosticRefresh>(s, ())
