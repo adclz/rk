@@ -1,4 +1,3 @@
-use ast::generated::EnumSpec;
 use auto_lsp::{core::span::Span, default::db::BaseDatabase};
 use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
@@ -24,16 +23,25 @@ use crate::{
     hir_ty::{name_res::resolve_namespace_access, ty_path_expr_resolver::PathExprWalkStep},
 };
 
+// fixme: we currently use no_eq for each ty_for_* query because salsa uses the HIR definition to knows if something has to be recomputed.
+// the problem is that a recursive type won't be recomputed, because the recursion is not coming from the HIR definition.
+//
+// so for now we use no_eq to force recomputation, but ideally we should find a better way to handle this.
+// ... or even completly get rid of the Recursive TyKind variant, use fixed-point iteration and check recursion at the type-checking phase.
+
+/// The  resolved type of a variable, POU, or method
+/// [`Ty`] is the most fundamental unit of type information in the HIR.
 #[salsa::tracked(debug)]
 pub struct Ty<'db> {
     // Where the type is declared (POU, Variable, Method)
     pub decl: TyDecl<'db>,
+    
     // Where the type is defined (POU, Spec, Method)
     pub def: TyDef<'db>,
 
+    // The actual kind of the type
     #[tracked]
     #[returns(ref)]
-    #[no_eq]
     pub kind: TyKind<'db>,
 }
 
@@ -48,7 +56,7 @@ impl<'db> HirNodeInfo<'db> for Ty<'db> {
 }
 
 // Declaration of the type (POU, Variable, Method)
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update, salsa::Supertype)]
 pub enum TyDecl<'db> {
     Pou(PouDecl<'db>),
     Variable(VariableDecl<'db>),
@@ -251,7 +259,7 @@ fn pou_ty_result<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> {
 }
 
 #[tracing::instrument(skip_all, name = "query_type_signature")]
-#[salsa::tracked(cycle_result = pou_ty_result)]
+#[salsa::tracked(cycle_result = pou_ty_result, no_eq)]
 pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> {
     let decl = TyDecl::Pou(pou);
     let def = TyDef::Pou(pou);
@@ -264,13 +272,13 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
                 let decl = TyDecl::Variable(*v);
                 match v.kind(db) {
                     VariableKind::Input => {
-                        variables.insert(*v.name(db), *v.spec(db).to_ty(db, decl));
+                        variables.insert(*v.name(db), v.spec(db).spec_to_ty(db, decl));
                     }
                     VariableKind::Output => {
-                        variables.insert(*v.name(db), *v.spec(db).to_ty(db, decl));
+                        variables.insert(*v.name(db), v.spec(db).spec_to_ty(db, decl));
                     }
                     VariableKind::InOut => {
-                        variables.insert(*v.name(db), *v.spec(db).to_ty(db, decl));
+                        variables.insert(*v.name(db), v.spec(db).spec_to_ty(db, decl));
                     }
                     _ => continue,
                 };
@@ -282,7 +290,7 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
                 def,
                 TyKind::Function {
                     variables,
-                    return_type: func.return_type(db).map(|rt| rt.to_ty(db, decl)).copied(),
+                    return_type: func.return_type(db).map(|rt| rt.spec_to_ty(db, decl)),
                 },
             )
         }
@@ -293,13 +301,13 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
                 let decl = TyDecl::Variable(*variable);
                 match variable.kind(db) {
                     VariableKind::Input => {
-                        variables.insert(*variable.name(db), *variable.spec(db).to_ty(db, decl));
+                        variables.insert(*variable.name(db), variable.spec(db).spec_to_ty(db, decl));
                     }
                     VariableKind::Output => {
-                        variables.insert(*variable.name(db), *variable.spec(db).to_ty(db, decl));
+                        variables.insert(*variable.name(db), variable.spec(db).spec_to_ty(db, decl));
                     }
                     VariableKind::InOut => {
-                        variables.insert(*variable.name(db), *variable.spec(db).to_ty(db, decl));
+                        variables.insert(*variable.name(db), variable.spec(db).spec_to_ty(db, decl));
                     }
                     _ => continue,
                 };
@@ -328,14 +336,14 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
                 },
             )
         }
-        Pou::DataType(dt) => *dt.spec(db).to_ty(db, TyDecl::Pou(pou)),
+        Pou::DataType(dt) => dt.spec(db).spec_to_ty(db, TyDecl::Pou(pou)),
         Pou::Class(class) => {
             let mut class_variables = IndexMap::default();
             let mut class_methods = vec![];
 
             for v in class.variables(db) {
                 let decl = TyDecl::Variable(*v);
-                class_variables.insert(*v.name(db), *v.spec(db).to_ty(db, decl));
+                class_variables.insert(*v.name(db), v.spec(db).spec_to_ty(db, decl));
             }
 
             for m in class.methods(db) {
@@ -430,7 +438,7 @@ fn method_ty_result<'db>(db: &'db dyn BaseDatabase, method: MethodDecl<'db>) -> 
     )
 }
 
-#[salsa::tracked(cycle_result = method_ty_result)]
+#[salsa::tracked(cycle_result = method_ty_result, no_eq)]
 pub fn ty_for_method_decl<'db>(db: &'db dyn BaseDatabase, method: MethodDecl<'db>) -> Ty<'db> {
     let decl = TyDecl::Method(method);
     let def = TyDef::Method(method);
@@ -441,13 +449,13 @@ pub fn ty_for_method_decl<'db>(db: &'db dyn BaseDatabase, method: MethodDecl<'db
         let decl = TyDecl::Variable(*v);
         match v.kind(db) {
             VariableKind::Input => {
-                variables.insert(*v.name(db), *v.spec(db).to_ty(db, decl));
+                variables.insert(*v.name(db), v.spec(db).spec_to_ty(db, decl));
             }
             VariableKind::Output => {
-                variables.insert(*v.name(db), *v.spec(db).to_ty(db, decl));
+                variables.insert(*v.name(db), v.spec(db).spec_to_ty(db, decl));
             }
             VariableKind::InOut => {
-                variables.insert(*v.name(db), *v.spec(db).to_ty(db, decl));
+                variables.insert(*v.name(db), v.spec(db).spec_to_ty(db, decl));
             }
             _ => continue,
         };
@@ -473,7 +481,7 @@ fn method_prot_ty_result<'db>(db: &'db dyn BaseDatabase, method: MethodPrototype
     )
 }
 
-#[salsa::tracked(cycle_result = method_prot_ty_result)]
+#[salsa::tracked(cycle_result = method_prot_ty_result, no_eq)]
 pub fn ty_for_method_prot<'db>(db: &'db dyn BaseDatabase, method: MethodPrototype<'db>) -> Ty<'db> {
     let decl = TyDecl::MethodProt(method);
     let def = TyDef::MethodProt(method);
@@ -485,13 +493,13 @@ pub fn ty_for_method_prot<'db>(db: &'db dyn BaseDatabase, method: MethodPrototyp
 
         match v.kind(db) {
             VariableKind::Input => {
-                variables.insert(*v.name(db), *v.spec(db).to_ty(db, decl));
+                variables.insert(*v.name(db), v.spec(db).spec_to_ty(db, decl));
             }
             VariableKind::Output => {
-                variables.insert(*v.name(db), *v.spec(db).to_ty(db, decl));
+                variables.insert(*v.name(db), v.spec(db).spec_to_ty(db, decl));
             }
             VariableKind::InOut => {
-                variables.insert(*v.name(db), *v.spec(db).to_ty(db, decl));
+                variables.insert(*v.name(db), v.spec(db).spec_to_ty(db, decl));
             }
             _ => continue,
         };
@@ -516,9 +524,9 @@ fn variable_ty_result<'db>(db: &'db dyn BaseDatabase, variable: VariableDecl<'db
         TyKind::Recursive,
     )
 }
-#[salsa::tracked(cycle_result = variable_ty_result)]
+#[salsa::tracked(cycle_result = variable_ty_result, no_eq)]
 pub fn ty_for_variable<'db>(db: &'db dyn BaseDatabase, variable: VariableDecl<'db>) -> Ty<'db> {
-    *variable.spec(db).to_ty(db, TyDecl::Variable(variable))
+    variable.spec(db).spec_to_ty(db, TyDecl::Variable(variable))
 }
 
 fn struct_field_ty_result<'db>(db: &'db dyn BaseDatabase, field: StructElement<'db>) -> Ty<'db> {
@@ -530,9 +538,9 @@ fn struct_field_ty_result<'db>(db: &'db dyn BaseDatabase, field: StructElement<'
     )
 }
 
-#[salsa::tracked(cycle_result = struct_field_ty_result)]
+#[salsa::tracked(cycle_result = struct_field_ty_result, no_eq)]
 pub fn ty_for_struct_field<'db>(db: &'db dyn BaseDatabase, field: StructElement<'db>) -> Ty<'db> {
-    *field.spec(db).to_ty(db, TyDecl::StructElement(field))
+    field.spec(db).spec_to_ty(db, TyDecl::StructElement(field))
 }
 
 #[salsa::tracked]
@@ -695,17 +703,15 @@ impl<'db> Ty<'db> {
     }
 }
 
-#[salsa::tracked]
 impl<'db> Spec<'db> {
-    #[salsa::tracked(returns(ref))]
-    pub fn to_ty(self, db: &'db dyn BaseDatabase, origin: TyDecl<'db>) -> Ty<'db> {
+    pub fn spec_to_ty(self, db: &'db dyn BaseDatabase, origin: TyDecl<'db>) -> Ty<'db> {
         match self.kind(db) {
             SpecKind::Array(array) => Ty::new(
                 db,
                 origin,
                 TyDef::Spec(self),
                 TyKind::Array {
-                    typ: *array.of_type.to_ty(db, origin),
+                    typ: array.of_type.spec_to_ty(db, origin),
                     ranges: array
                         .subranges
                         .iter()
@@ -718,7 +724,7 @@ impl<'db> Spec<'db> {
                 origin,
                 TyDef::Spec(self),
                 TyKind::Enum {
-                    typ: enum_spec.typ.as_ref().map(|t| t.to_ty(db, origin)).copied(),
+                    typ: enum_spec.typ.as_ref().map(|t| t.spec_to_ty(db, origin)),
                     spec: enum_spec.clone(),
                 },
             ),
@@ -727,7 +733,7 @@ impl<'db> Spec<'db> {
                 origin,
                 TyDef::Spec(self),
                 TyKind::SubRange {
-                    typ: *subrange._type.to_ty(db, origin),
+                    typ: subrange._type.spec_to_ty(db, origin),
                     min: subrange.lower,
                     max: subrange.upper,
                 },
@@ -743,7 +749,7 @@ impl<'db> Spec<'db> {
                         .iter()
                         .map(|element| {
                             (*element.name(db), {
-                                *element.spec(db).to_ty(db, TyDecl::StructElement(*element))
+                                element.spec(db).spec_to_ty(db, TyDecl::StructElement(*element))
                             })
                         })
                         .collect(),
@@ -766,16 +772,16 @@ impl<'db> Spec<'db> {
                 origin,
                 TyDef::Spec(self),
                 TyKind::ArrayConformand {
-                    typ: *array.to_ty(db, origin),
+                    typ: array.spec_to_ty(db, origin),
                 },
             ),
             SpecKind::Ref(_ref) => Ty::new(
                 db,
                 origin,
                 TyDef::Spec(self),
-                TyKind::RefTo(*_ref.to_ty(db, origin)),
+                TyKind::RefTo(_ref.spec_to_ty(db, origin)),
             ),
-        }
+        } 
     }
 }
 
