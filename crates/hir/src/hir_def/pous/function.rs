@@ -6,16 +6,12 @@ use crate::hir_def::{
 
 #[salsa::tracked(debug)]
 pub struct Function<'db> {
-    #[tracked]
     #[returns(ref)]
     pub variables: Vec<VariableDecl<'db>>,
 
-    #[tracked]
-    #[no_eq]
     #[returns(ref)]
     pub statements: Vec<Stmt<'db>>,
 
-    #[tracked]
     #[returns(as_ref)]
     pub return_type: Option<Spec<'db>>,
 

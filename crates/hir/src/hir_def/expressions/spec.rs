@@ -18,7 +18,6 @@ use crate::{
 
 #[salsa::tracked(debug)]
 pub struct Spec<'db> {
-    #[tracked]
     #[returns(ref)]
     pub kind: SpecKind<'db>,
 

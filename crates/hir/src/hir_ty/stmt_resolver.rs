@@ -19,13 +19,12 @@ pub fn resolve_stmt<'db>(db: &'db dyn BaseDatabase, stmt: Stmt<'db>) -> Resolved
 pub struct ResolvedStmt<'db> {
     pub stmt: Stmt<'db>,
 
-    #[tracked]
-    #[no_eq]
+
     #[returns(ref)]
     pub kind: ResolvedStmtKind<'db>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ResolvedStmtKind<'db> {
     Assignment {
         var: ResolvedVarResult<'db>,

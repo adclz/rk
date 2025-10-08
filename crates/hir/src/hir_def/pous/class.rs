@@ -13,19 +13,15 @@ use crate::{
 
 #[salsa::tracked(debug)]
 pub struct Class<'db> {
-    #[tracked]
     #[returns(as_ref)]
     pub extends: Option<SpanNamespaceAccess<'db>>,
 
-    #[tracked]
     #[returns(ref)]
     pub implements: Vec<SpanNamespaceAccess<'db>>,
 
-    #[tracked]
     #[returns(ref)]
     pub variables: Vec<VariableDecl<'db>>,
 
-    #[tracked]
     #[returns(ref)]
     pub methods: Vec<MethodDecl<'db>>,
 
@@ -36,24 +32,19 @@ pub struct Class<'db> {
 
 #[salsa::tracked(debug)]
 pub struct MethodDecl<'db> {
-    #[tracked]
     #[returns(ref)]
     pub variables: Vec<VariableDecl<'db>>,
 
-    #[tracked]
     #[returns(ref)]
     pub name: Ident,
 
-    #[tracked]
     #[returns(ref)]
     pub return_type: Option<Spec<'db>>,
 
-    #[tracked]
     pub modifier: Modifier,
 
     pub _override: bool,
 
-    #[tracked]
     #[no_eq]
     #[returns(ref)]
     pub stmts: Vec<Stmt<'db>>,

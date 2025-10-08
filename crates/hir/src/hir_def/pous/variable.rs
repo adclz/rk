@@ -11,18 +11,13 @@ use crate::{
 
 #[salsa::tracked(debug)]
 pub struct VariableDecl<'db> {
-    #[tracked]
     #[returns(ref)]
     pub name: Ident,
 
-    #[tracked]
     pub kind: VariableKind,
 
-    #[tracked]
-    #[returns(ref)]
     pub spec: Spec<'db>,
 
-    #[tracked]
     #[returns(as_ref)]
     pub init: Option<InitExpr<'db>>,
 

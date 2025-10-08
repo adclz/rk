@@ -28,13 +28,11 @@ pub fn resolve_expr<'db>(db: &'db dyn BaseDatabase, expr: Expr<'db>) -> Resolved
 pub struct ResolvedExpr<'db> {
     pub expr: Expr<'db>,
 
-    #[tracked]
-    #[no_eq]
     #[returns(ref)]
     pub kind: ResolvedExprKind<'db>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ResolvedExprKind<'db> {
     // Should have Ty
     PathExpr(ResolvedPathResult<'db>),
@@ -68,7 +66,7 @@ pub enum ResolvedExprKind<'db> {
     RefValue(ResolvedRefValue), // &value
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ResolvedRefValue {
     Null,
     Adress,

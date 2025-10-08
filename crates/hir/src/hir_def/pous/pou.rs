@@ -15,11 +15,9 @@ use crate::{
 
 #[salsa::tracked(debug)]
 pub struct PouDecl<'db> {
-    #[tracked]
     #[returns(ref)]
     pub pou: Pou<'db>,
 
-    #[tracked]
     #[returns(ref)]
     pub name: Ident,
 
@@ -27,7 +25,6 @@ pub struct PouDecl<'db> {
 
     pub name_id: AstId,
 
-    #[tracked]
     pub scope_id: FileScopeId<'db>,
 }
 
@@ -55,7 +52,7 @@ impl<'db> HirNodeInfo<'db> for PouDecl<'db> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update, salsa::Supertype)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update, salsa::Supertype)]
 pub enum Pou<'db> {
     Function(Function<'db>),
     FunctionBlock(FunctionBlock<'db>),

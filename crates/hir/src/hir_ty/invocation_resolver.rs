@@ -17,7 +17,7 @@ use crate::{
     },
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct ResolvedInvocationResult<'db> {
     pub target: ResolvedInvocation<'db>,
     pub params: Vec<ResolvedParam<'db>>,

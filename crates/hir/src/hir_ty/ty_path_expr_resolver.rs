@@ -44,9 +44,7 @@ pub fn resolved_local_path_expr<'db>(
 pub struct ResolvedPathResult<'db> {
     pub expr: PathExpr<'db>,
 
-    #[tracked]
     #[returns(ref)]
-    #[no_eq]
     pub elements: Vec<ResolvedPathElement<'db>>,
 }
 
@@ -67,7 +65,7 @@ impl<'db> ResolvedPathResult<'db> {
 
 /// Represents a resolved element in a path expression.
 /// Contains the expression and its type.
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+#[derive(Debug, Clone, PartialEq, Hash, Eq, salsa::Update)]
 pub struct ResolvedPathElement<'db> {
     // The expression that was resolved
     pub expr: PathExpr<'db>,
@@ -75,7 +73,7 @@ pub struct ResolvedPathElement<'db> {
     pub kind: ResolvedPathElementKind<'db>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+#[derive(Debug, Clone, PartialEq, Hash, Eq, salsa::Update)]
 pub enum ResolvedPathElementKind<'db> {
     Ty(Ty<'db>),
     Error(PathResolveError<'db>),

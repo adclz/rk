@@ -115,7 +115,6 @@ pub struct FuncCall<'db> {
 
 #[salsa::tracked(debug)]
 pub struct PathExpr<'db> {
-    #[tracked]
     #[no_eq]
     pub expr: PathExprKind<'db>,
 
@@ -204,7 +203,6 @@ pub struct ParamAssign<'db> {
 
     pub scope_id: FileScopeId<'db>,
 
-    #[tracked]
     #[no_eq]
     pub kind: ParamAssignKind<'db>,
 }
