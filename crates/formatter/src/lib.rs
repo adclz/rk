@@ -44,8 +44,8 @@ static SURROUND_SPACES: &str = r#"
     (pascal_style_comment)
 ] @prepend_space @append_space
 
-["(" "[" ] @append_antispace
-[")" "]" ":" ";" ","] @prepend_antispace
+["(" "[" "."] @append_antispace
+[")" "]" ":" ";" "," "."] @prepend_antispace
 ["NOT" ":"] @append_space
 "#;
 
@@ -95,6 +95,17 @@ static NEW_LINES: &str = r#"
     (external_decl)
     (global_var_decl)
 ] @prepend_hardline
+
+ [
+    "END_NAMESPACE"
+    "END_FUNCTION"
+    "END_CLASS"
+    "END_FUNCTION_BLOCK"
+    "END_TYPE"
+    "END_INTERFACE"
+    "END_VAR"
+    "END_METHOD"
+] @append_hardline
 
 [
     (assign)
@@ -219,8 +230,8 @@ static ALLOW_BLANK_LINE: &str = r#"
     (type_decl)
     (class_decl)
     (interface_decl)
-
     (method_decl)
+    (using_directive)
 
     (var_decls)
     (input_decls) (fb_input_decls)
@@ -235,15 +246,15 @@ static ALLOW_BLANK_LINE: &str = r#"
 
     "RETURN"
     "CONTINUE"
-    "END_NAMESPACE"
-    "END_FUNCTION"
-    "END_CLASS"
-    "END_FUNCTION_BLOCK"
-    "END_TYPE"
-    "END_INTERFACE"
-    "END_METHOD"
-    "END_VAR"
-    "END_STRUCT"
+    "NAMESPACE" "END_NAMESPACE"
+    "FUNCTION" "END_FUNCTION"
+    "CLASS" "END_CLASS"
+    "FUNCTION_BLOCK" "END_FUNCTION_BLOCK"
+    "TYPE" "END_TYPE"
+    "INTERFACE" "END_INTERFACE"
+    "METHOD" "END_METHOD"
+    "VAR" "END_VAR"
+    "STRUCT" "END_STRUCT"
 ] @allow_blank_line_before
 
 (stmt_list . (_) @allow_blank_line_before)

@@ -621,7 +621,6 @@ END_FUNCTION_BLOCK
     ");
 }
 
-
 #[rstest]
 pub fn namespaces_and_using_directives(mut with_db: RootDatabase) {
     let source = r#"
@@ -662,5 +661,32 @@ END_NAMESPACE
 
     NAMESPACE ns2
     END_NAMESPACE
+    ");
+}
+
+#[rstest]
+pub fn single_line_path_expression(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION dffd: BOOL
+
+    test . sdf . sdf   [   0 ] . dd
+
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    FUNCTION dffd: BOOL
+
+    	test.sdf.sdf[0].dd
+
+    END_FUNCTION
     ");
 }
