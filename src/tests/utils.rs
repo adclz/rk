@@ -10,6 +10,7 @@ use auto_lsp::{
 };
 use db::RootDatabase;
 use hir::check::diagnostics_for_file;
+use hir::hir_def::namespace::NamespaceDecl;
 use hir::hir_def::pous::pou::PouDecl;
 use hir::hir_def::semantic_index::semantic_index;
 use rstest::fixture;
@@ -107,6 +108,22 @@ pub fn find_pou_with_name<'db>(
             if pou.name(db).text(db).as_str() == name {
                 return Some(*pou);
             }
+        }
+    }
+
+    None
+}
+
+pub fn find_namespace_with_name<'db>(
+    db: &'db dyn BaseDatabase,
+    file: File,
+    name: &str,
+) -> Option<NamespaceDecl<'db>> {
+    let sema = semantic_index(db, file);
+
+    for ns in sema.global_namespaces.iter() {
+        if ns.path(db).to_string(db) == name {
+            return Some(*ns);
         }
     }
 

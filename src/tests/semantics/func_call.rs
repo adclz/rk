@@ -37,6 +37,38 @@ END_FUNCTION_BLOCK"#;
 }
 
 #[rstest]
+fn uninstantied_fb_call(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    fb2();
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK fb2
+END_FUNCTION_BLOCK
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    Error: 
+       ,-[ file:///test0.st:3:5 ]
+       |
+     3 |         fb2();
+       |         ^|^  
+       |          `--- 'fb2' is a direct type and can not be called
+       | 
+     6 | ,-> FUNCTION_BLOCK fb2
+       | |                  ^|^  
+       | |                   `--- 'fb2' is declared here
+     7 | |-> END_FUNCTION_BLOCK
+       | |                        
+       | `------------------------ type defined here
+       |     
+       |     Note: only FUNCTIONS and METHODS or body from declared CLASS/FUNCTIOn_BLOCKS can called
+    ---'
+    ");
+}
+
+
+#[rstest]
 fn unused_return_type(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION fn: BOOL

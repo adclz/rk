@@ -39,9 +39,8 @@ END_FUNCTION_BLOCK"#;
     assert_snapshot!(nodes.join("\n"), @r"
     Ty(Ty { [salsa id]: Id(2800) })
     Ty(Ty { [salsa id]: Id(2801) })
-    Ty(Ty { [salsa id]: Id(2801) })
-    ResolvedInitExpr(ResolvedInitExpr { [salsa id]: Id(3800) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(3400) })
+    ResolvedInitExpr(ResolvedInitExpr { [salsa id]: Id(3400) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(3000) })
     ");
 }
 
@@ -181,12 +180,12 @@ END_FUNCTION_BLOCK"#;
     assert_snapshot!(nodes.join("\n"), @r"
     Ty(Ty { [salsa id]: Id(3c01) })
     Ty(Ty { [salsa id]: Id(3c03) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(5000) })
-    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(4400) })
-    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(4401) })
-    ResolvedParam(ResolvedParam { [salsa id]: Id(4c00) })
-    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(4402) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4800) })
+    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4c00) })
+    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(4000) })
+    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(4001) })
+    ResolvedParam(ResolvedParam { [salsa id]: Id(4800) })
+    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(4002) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4400) })
     ");
 }
 
@@ -275,8 +274,6 @@ END_FUNCTION_BLOCK"#;
     [
         1,
         4,
-        4,
-        13,
         13,
         21,
         25,

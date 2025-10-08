@@ -145,25 +145,6 @@ END_NAMESPACE"#;
     [
         InlayHint {
             position: Position {
-                line: 4,
-                character: 17,
-            },
-            label: String(
-                "namespace ns1.nested",
-            ),
-            kind: Some(
-                Type,
-            ),
-            text_edits: None,
-            tooltip: None,
-            padding_left: Some(
-                true,
-            ),
-            padding_right: None,
-            data: None,
-        },
-        InlayHint {
-            position: Position {
                 line: 6,
                 character: 13,
             },
