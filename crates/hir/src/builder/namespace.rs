@@ -11,11 +11,12 @@ use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::scope::{FileScopeId, Scope, ScopeKind, Visibility};
 
 impl<'db> SemanticIndexBuilder<'db> {
+    #[must_use]
     pub fn parse_namespace(
         &mut self,
         parent_path: &[SpanIdent],
         nested: &ast::generated::NamespaceDecl,
-    ) -> anyhow::Result<(), AnalysisError<'db>> {
+    ) -> anyhow::Result<NamespaceDecl<'db>, AnalysisError<'db>> {
         type Decl =
             ERRInvalidPouKeyword_ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl;
 
@@ -29,6 +30,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
         };
 
+        let mut namespaces = vec![];
         let mut pous = vec![];
 
         let previous_scope = self.current_scope;
@@ -44,7 +46,8 @@ impl<'db> SemanticIndexBuilder<'db> {
                             path.extend(self.get_namespace_path(namespace)?);
                             path
                         };
-                        self.parse_namespace(&nested_path, namespace)?;
+                        let ns = self.parse_namespace(&nested_path, namespace)?;
+                        namespaces.push(ns);
                     }
                     Decl::FuncDecl(func) => {
                         pous.push(self.parse_function(func)?);
@@ -76,6 +79,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             self.db,
             path,
             pous.clone(),
+            namespaces,
             nested.into(),
             nested.name.cast(self.ast).into(),
             scope_id,
@@ -96,8 +100,8 @@ impl<'db> SemanticIndexBuilder<'db> {
         self.scope_keys.insert(scope_id, scope);
 
         // Then insert it into the map with its ID
-        self.namespaces.push(result);
+        self.global_namespaces.push(result);
 
-        Ok(())
+        Ok(result)
     }
 }

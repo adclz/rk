@@ -50,6 +50,10 @@ pub enum StmtError<'db> {
         ty: Ty<'db>,
         call: ResolvedVarResult<'db>,
     },
+    CallADirectType {
+        ty: Ty<'db>,
+        call: ResolvedVarResult<'db>,
+    },
     UnusedReturnType {
         ty: Ty<'db>,
         call: ResolvedVarResult<'db>,
@@ -208,7 +212,6 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 diag
             }
             Self::UnresolvedFuncCall { call } => {
-                
                 diag()
                     .message("unresolved function call".into())
                     .severity(DiagnosticSeverity::ERROR)
@@ -231,6 +234,22 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
 
                 diag
             }
+            Self::CallADirectType { ty, call } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' is a direct type and can not be called",
+                        ty.decl(db).name(db).text(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(call.get_span(db).clone())
+                    .call();
+
+                get_decl_and_def_for_ty(db, *ty, &mut diag);
+
+                diag.with_note("only FUNCTIONS and METHODS or body from declared CLASS/FUNCTIOn_BLOCKS can called".into());
+
+                diag
+            } 
             Self::UnusedReturnType { ty, call, ret } => {
                 let mut diag = diag()
                     .message(format!(

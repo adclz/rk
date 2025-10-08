@@ -13,8 +13,8 @@ use crate::{
         expr_resolver::ResolvedExpr,
         func_call_resolver::{ResolvedFuncCall, ResolvedParam, ResolvedParamKind},
         invocation_resolver::{ResolvedInvocationResult, ResolvedMethodKind},
-        stmt_resolver::{ResolvedStmt, ResolvedStmtKind, resolve_stmt},
-        ty::{Ty, TyDef},
+        stmt_resolver::{resolve_stmt, ResolvedStmt, ResolvedStmtKind},
+        ty::{Ty, TyDef, TyKind},
         ty_var_access_resolver::ResolvedVarResult,
     },
 };
@@ -183,6 +183,15 @@ fn check_func_call<'db>(
         .into());
     }
 
+    // Only functions can be called directly
+    if !ty_target.is_variable(db) && !matches!(ty_target.kind(db), TyKind::Function { .. }) {
+        return Err(StmtError::CallADirectType {
+            ty: ty_target,
+            call: fun_call.target,
+        }
+        .into());
+    }
+
     if let Some(ret) = ty_target.has_return_type(db) {
         errors.push(
             StmtError::UnusedReturnType {
@@ -214,8 +223,6 @@ fn check_invocation<'db>(
             let ty_target = method
                 .ty(db)
                 .map_err(|err| StmtError::UnresolvedFuncCall { call: *target })?;
-
-            let k = format!("{:?}", ty_target.kind(db));
 
             if let Some(signature) = ty_target.variables(db) {
                 check_parameters(db, *method, signature, &invocation.params, errors);

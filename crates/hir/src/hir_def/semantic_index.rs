@@ -12,9 +12,10 @@ use tracing::info_span;
 use crate::HirNodeInfo;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::analysis_error::AnalysisError;
+use crate::hir_def::interned::namespace::NamespacePath;
 use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::PouDecl;
-use crate::hir_def::scope::{FileScopeId, Scope};
+use crate::hir_def::scope::{FileScopeId, Scope, ScopeKind};
 use crate::hir_def::using::Using;
 use crate::hir_ty::expr_resolver::ResolvedExpr;
 use crate::hir_ty::func_call_resolver::ResolvedParam;
@@ -23,6 +24,7 @@ use crate::hir_ty::stmt_resolver::ResolvedStmt;
 use crate::hir_ty::ty::Ty;
 use crate::hir_ty::ty_path_expr_resolver::{ResolvedPathElement, ResolvedPathResult};
 use crate::hir_ty::ty_var_access_resolver::ResolvedVarResult;
+use crate::hir_ty::using_resolver::ResolvedUsing;
 use crate::walk::WalkHir;
 
 /// Returns the semantic index of a given file
@@ -52,10 +54,13 @@ pub struct SemanticIndex<'db> {
     /// Map of scope IDs to their corresponding scopes
     pub(crate) scopes: FxHashMap<FileScopeId<'db>, Scope<'db>>,
 
+    /// All *global* namespaces in the file
+    pub global_namespaces: Vec<NamespaceDecl<'db>>,
+
     /// All *global* POU declarations in the file
     pub global_pous: Vec<PouDecl<'db>>,
 
-    /// All namespaces in the file
+    /// All  namespaces in the file
     pub namespaces: Vec<NamespaceDecl<'db>>,
 
     /// A list of errors encountered during semantic analysis
@@ -68,6 +73,7 @@ impl<'db> SemanticIndex<'db> {
             file,
             ast,
             scopes: FxHashMap::default(),
+            global_namespaces: vec![],
             global_pous: vec![],
             namespaces: vec![],
             errors: vec![],
@@ -139,8 +145,8 @@ impl FusedIterator for ScopeIterator<'_> {}
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum HirNode<'db> {
     Namespace(NamespaceDecl<'db>),
-    Using(Using<'db>),
     Ty(Ty<'db>),
+    ResolvedUsing(ResolvedUsing<'db>),
     ResolvedVarResult(ResolvedVarResult<'db>),
     ResolvedPathElementResult(ResolvedPathElement<'db>),
     ResolvedStmt(ResolvedStmt<'db>),
@@ -153,7 +159,7 @@ impl<'db> HirNode<'db> {
     pub fn get_span(&'db self, db: &'db dyn BaseDatabase) -> Span {
         match self {
             HirNode::Namespace(n) => n.get_span(db),
-            HirNode::Using(u) => u.get_span(db),
+            HirNode::ResolvedUsing(u) => u.get_span(db),
             HirNode::Ty(t) => t.get_span(db),
             HirNode::ResolvedPathElementResult(p) => p.get_span(db),
             HirNode::ResolvedVarResult(v) => v.get_span(db),

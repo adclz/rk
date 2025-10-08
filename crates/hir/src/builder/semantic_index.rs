@@ -7,6 +7,7 @@ use rustc_hash::FxHashMap;
 use crate::check::errors::analysis_error::AnalysisError;
 use crate::check::errors::syntax::SyntaxError;
 use crate::hir_def::interned::identifier::SpanIdent;
+use crate::hir_def::interned::namespace::NamespacePath;
 use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::PouDecl;
 use crate::hir_def::scope::{FileScopeId, Scope, ScopeKind, Visibility};
@@ -22,10 +23,11 @@ pub struct SemanticIndexBuilder<'db> {
     /// Maps scope IDs to their corresponding scopes.
     pub(crate) scope_keys: FxHashMap<FileScopeId<'db>, Scope<'db>>,
 
+    pub(crate) global_namespaces: Vec<NamespaceDecl<'db>>,
+    pub(crate) global_pous: Vec<PouDecl<'db>>,
+
     /// Maps scope IDs to their corresponding namespaces.
     pub(crate) namespaces: Vec<NamespaceDecl<'db>>,
-
-    pub(crate) global_pous: Vec<PouDecl<'db>>,
 
     /// The current scope ID being processed (by default, the global scope).
     pub(crate) current_scope: FileScopeId<'db>,
@@ -46,6 +48,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             ast,
             source,
             scope_keys: FxHashMap::default(),
+            global_namespaces: vec![],
             global_pous: vec![],
             namespaces: vec![],
             current_scope: FileScopeId::global(db, file),
@@ -66,19 +69,16 @@ impl<'db> SemanticIndexBuilder<'db> {
             .collect::<Result<Vec<_>, AnalysisError<'db>>>()
     }
 
-    pub fn create_pou_id(&self, node: &impl AstNode) -> FileScopeId {
-        FileScopeId::from((self.db, self.file, node.get_id()))
-    }
-
     // Fix me: This function should not panic, but handle errors gracefully.
     #[tracing::instrument(skip_all, name = "build HIR")]
     pub fn build(mut self) -> SemanticIndex<'db> {
         let mut usings = vec![];
+        let global_scope = FileScopeId::global(self.db, self.file);
 
         for child in self.source.children.iter() {
             type SourceFileDecl = ast::generated::ERRInvalidPouKeyword_ClassDecl_ConfigDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl_ProgDecl_UsingDirective;
 
-            self.current_scope = FileScopeId::global(self.db, self.file);
+            self.current_scope = global_scope;
             match child.cast(self.ast) {
                 SourceFileDecl::ERRInvalidPouKeyword(err) => {
                     self.errors
@@ -95,9 +95,14 @@ impl<'db> SemanticIndexBuilder<'db> {
                         }
                     };
 
-                    if let Err(err) = self.parse_namespace(&path, namespace) {
-                        self.errors.push(err);
-                        continue;
+                    match self.parse_namespace(&path, namespace) {
+                        Ok(ns) => {
+                            self.namespaces.push(ns);
+                        }
+                        Err(err) => {
+                            self.errors.push(err);
+                            continue;
+                        }
                     }
                 }
                 SourceFileDecl::UsingDirective(directive) => {
@@ -141,12 +146,13 @@ impl<'db> SemanticIndexBuilder<'db> {
         );
 
         self.scope_keys
-            .insert(FileScopeId::global(self.db, self.file), scope);
+            .insert(global_scope, scope);
 
         SemanticIndex {
             file: self.file,
             ast: self.ast.nodes.clone(),
             scopes: self.scope_keys,
+            global_namespaces: self.global_namespaces,
             namespaces: self.namespaces,
             global_pous: self.global_pous,
             errors: self.errors,

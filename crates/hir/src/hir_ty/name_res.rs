@@ -1,19 +1,21 @@
 use auto_lsp::default::db::BaseDatabase;
 use rustc_hash::FxHashMap;
 
-use crate::hir_def::{
-    interned::{
-        identifier::Ident,
-        namespace::{NamespaceAccess, NamespacePath},
+use crate::{
+    hir_def::{
+        interned::{
+            identifier::{Ident, SpanIdent},
+            namespace::{NamespaceAccess, NamespacePath},
+        },
+        namespace::NamespaceDecl,
+        pous::{
+            pou::{Pou, PouDecl},
+            variable::VariableDecl,
+        },
+        scope::{FileScopeId, ScopeKind},
+        semantic_index::semantic_index,
     },
-    namespace::NamespaceDecl,
-    pous::{
-        pou::{Pou, PouDecl},
-        variable::VariableDecl,
-    },
-    scope::{FileScopeId, ScopeKind},
-    semantic_index::semantic_index,
-    using::Using,
+    hir_ty::using_resolver::resolve_using,
 };
 
 /// Find all namespaces in all files that match a given namespace path.
@@ -26,36 +28,49 @@ pub fn shared_namespaces<'db>(
         .iter()
         .flat_map(|file| {
             semantic_index(db, *file)
-                .namespaces
+                .global_namespaces
                 .iter()
                 .filter_map(move |ns| (ns.path(db) == &path).then_some(*ns))
         })
         .collect()
 }
 
-/// Rules for resolving USING directives
-///
-/// We first search if the namespace matches any of the namespaces declared in all files (via [`shared_namespaces`]).
-#[tracing::instrument(skip_all, name = "imported_namespaces_for_using")]
-fn imported_namespaces<'db>(
+/*
+// 1: find namespaces matching the first fragment
+pub fn initial<'db>(db: &'db dyn BaseDatabase, path: NamespacePath) -> Vec<NamespaceDecl<'db>> {
+        db.get_files()
+        .iter()
+        .flat_map(|file| {
+            semantic_index(db, *file)
+                .global_namespaces
+                .iter()
+                .filter_map(move |ns| (ns.path(db).fragments(db)[0] == path.fragments(db)[0]).then_some(*ns))
+        })
+        .collect()
+}
+
+// 2: for each namespace, find child namespaces matching the next fragment
+// 3: repeat until all fragments are processed
+// 4: return all matching namespaces
+pub fn next<'db>(
     db: &'db dyn BaseDatabase,
-    using: Using<'db>,
-) -> FxHashMap<NamespacePath, NamespaceDecl<'db>> {
-    let mut result = FxHashMap::default();
-    let path = using.path(db);
+    namespaces: Vec<NamespaceDecl<'db>>,
+    fragment: &SpanIdent,
+) -> Vec<NamespaceDecl<'db>> {
+    let mut result = Vec::new();
 
-    let matching_namespaces = shared_namespaces(db, path);
-
-    if matching_namespaces.is_empty() {
-        return result;
-    }
-
-    for ns in matching_namespaces {
-        result.insert(*ns.path(db), *ns);
+    for ns in namespaces {
+        let child_namespaces = ns.namespaces(db);
+        for child in child_namespaces {
+            if child.path(db).fragments(db).first() == Some(fragment) {
+                result.push(*child);
+            }
+        }
     }
 
     result
 }
+*/
 
 #[tracing::instrument(skip_all)]
 /// Resolve a namespace access to a POU declaration.
@@ -114,14 +129,42 @@ pub fn all_imported_pous<'db>(
     db: &'db dyn BaseDatabase,
     scope_id: FileScopeId<'db>,
 ) -> FxHashMap<Ident, PouDecl<'db>> {
-    let sema = semantic_index(db, scope_id.file(db));
-    let scope = sema.get_scope(db, scope_id);
-
     let mut result = FxHashMap::default();
+    let sema = semantic_index(db, scope_id.file(db));
+
+    // A scope always refers to the current scope of the element.
+    // But in the case of NAMESPACE, POUs have access to the USING directives of the parent namespace.
+    // It is then necessary to check both the POU's directives AND the parent's directives.
+    let scope = match sema.get_scope(db, scope_id).kind {
+        // Inside Global Scope, just check the current scope.
+        ScopeKind::Global => sema.get_scope(db, scope_id),
+        // Same, NAMESPACES do not have access to the USING directives of the parent namespace.
+        ScopeKind::Namespace(_) => sema.get_scope(db, scope_id),
+        // POUs must check both their own USING directives and the USING directives of their parent namespace.
+        ScopeKind::Pou(_) => {
+            let scope = sema.get_scope(db, scope_id);
+            for using in &scope.usings {
+                let namespaces = resolve_using(db, *using);
+                for ns in namespaces.namespaces(db) {
+                    result.extend(ns.pous(db).iter().map(|p| (*p.name(db), *p)));
+                }
+            }
+            if let Some(parent) = scope.parent {
+                let parent_scope = sema.get_scope(db, parent);
+                for using in &parent_scope.usings {
+                    let namespaces = resolve_using(db, *using);
+                    for ns in namespaces.namespaces(db) {
+                        result.extend(ns.pous(db).iter().map(|p| (*p.name(db), *p)));
+                    }
+                }
+            }
+            return result;
+        }
+    };
 
     for using in &scope.usings {
-        let namespaces = imported_namespaces(db, *using);
-        for (_, ns) in namespaces {
+        let namespaces = resolve_using(db, *using);
+        for ns in namespaces.namespaces(db) {
             result.extend(ns.pous(db).iter().map(|p| (*p.name(db), *p)));
         }
     }

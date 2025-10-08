@@ -1,7 +1,7 @@
 use auto_lsp::{
     core::document_symbols_builder::DocumentSymbolsBuilder,
     default::db::BaseDatabase,
-    lsp_types::{CompletionItem, InlayHint, InlayHintKind, InlayHintLabel},
+    lsp_types::{CompletionItem, Hover, HoverContents, InlayHint, InlayHintKind, InlayHintLabel, MarkedString},
 };
 use hir::{
     HirNodeInfo,
@@ -11,8 +11,29 @@ use hir::{
 use crate::{ToProtocol, completions};
 
 impl<'db> ToProtocol<'db> for NamespaceDecl<'db> {
+    fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Hover> {
+        let ns = self.path(db).to_string(db);
+        Some(Hover {
+            contents: HoverContents::Scalar(MarkedString::from_markdown(
+                format!(
+                    r#"
+```iecst
+NAMESPACE {ns}
+```
+                    "#
+                )
+                .to_string(),
+            )),
+            range: None,
+        })
+    }
+
     fn document_symbols(&self, db: &'db dyn BaseDatabase, builder: &mut DocumentSymbolsBuilder) {
         let mut nested_builder = DocumentSymbolsBuilder::default();
+        self.namespaces(db)
+            .iter()
+            .for_each(|ns| ns.document_symbols(db, &mut nested_builder));
+        
         self.pous(db)
             .iter()
             .for_each(|pou| pou.document_symbols(db, &mut nested_builder));

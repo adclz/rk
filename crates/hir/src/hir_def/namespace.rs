@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use rustc_hash::FxHashMap;
 
 use crate::hir_def::interned::namespace::NamespacePath;
 use crate::hir_def::pous::pou::PouDecl;
@@ -12,6 +13,9 @@ pub struct NamespaceDecl<'db> {
 
     #[returns(ref)]
     pub pous: Vec<PouDecl<'db>>,
+
+    #[returns(ref)]
+    pub namespaces: Vec<NamespaceDecl<'db>>,
 
     pub id: AstId,
 

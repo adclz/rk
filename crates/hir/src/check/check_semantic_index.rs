@@ -41,7 +41,7 @@ use crate::{
     hir_ty::{
         expr_resolver::{ResolvedExpr, ResolvedExprKind},
         init_expr_resolver::{ResolvedInitExpr, resolve_init_expr},
-        name_res::{all_global_pous, all_local_pous, shared_namespaces},
+        name_res::{all_global_pous, all_local_pous},
         stmt_resolver::{ResolveStmtCtx, ResolvedStmt, ResolvedStmtKind, resolve_stmt},
         ty::{Ty, TyKind, ty_for_pou, ty_for_struct_field, ty_for_variable},
         ty_path_expr_resolver::{ResolvePathExprCtx, ResolvedPathElementKind, ResolvedPathResult},
@@ -69,7 +69,7 @@ impl<'db> Check<'db> for SemanticIndex<'db> {
         self.errors.iter().for_each(|err| errors.push(err.clone()));
         self.pous(db).iter().for_each(|pou| pou.check(db, errors));
         // Namespaces
-        self.namespaces.iter().for_each(|n| n.check(db, errors));
+        self.namespaces.iter().for_each(|ns| ns.check(db, errors));
     }
 }
 

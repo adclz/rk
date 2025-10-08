@@ -12,7 +12,7 @@ use crate::{
             pou::{Pou, PouDecl},
             variable::VariableDecl,
         },
-        semantic_index::{HirNode, SemanticIndex},
+        semantic_index::{semantic_index, HirNode, SemanticIndex}, using::Using,
     },
     hir_ty::{
         expr_resolver::ResolvedExpr,
@@ -25,7 +25,7 @@ use crate::{
             ty_for_variable,
         },
         ty_path_expr_resolver::{ResolvedPathElement, ResolvedPathResult},
-        ty_var_access_resolver::{ResolvedVarKind, ResolvedVarResult},
+        ty_var_access_resolver::{ResolvedVarKind, ResolvedVarResult}, using_resolver::{resolve_using, ResolvedUsing},
     },
 };
 
@@ -51,6 +51,16 @@ impl<'db> WalkHir<'db> for SemanticIndex<'db> {
     }
 }
 
+impl<'db> WalkHir<'db> for Using<'db> {
+    fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
+        &self,
+        db: &'db dyn BaseDatabase,
+        f: &mut F,
+    ) -> ControlFlow<()> {
+        f(HirNode::ResolvedUsing(*resolve_using(db, *self)))
+    }
+}
+
 impl<'db> WalkHir<'db> for NamespaceDecl<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
         &self,
@@ -58,6 +68,17 @@ impl<'db> WalkHir<'db> for NamespaceDecl<'db> {
         f: &mut F,
     ) -> ControlFlow<()> {
         f(HirNode::Namespace(*self))?;
+
+        let sema = semantic_index(db, self.scope_id(db).file(db));
+        let scope = sema.get_scope(db, self.scope_id(db));
+
+        for using in &scope.usings {
+            using.walk_hir(db, f)?;
+        }
+
+        for namespace in self.namespaces(db) {
+            namespace.walk_hir(db, f)?;
+        }
 
         for pou in self.pous(db) {
             pou.walk_hir(db, f)?;
@@ -73,6 +94,11 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
         f: &mut F,
     ) -> ControlFlow<()> {
         f(HirNode::Ty(ty_for_pou(db, *self)))?;
+
+        let scope = semantic_index(db, self.scope_id(db).file(db)).get_scope(db, self.scope_id(db));
+        for using in &scope.usings {
+            using.walk_hir(db, f)?;
+        }
 
         match self.pou(db) {
             Pou::Function(function) => {
@@ -140,9 +166,6 @@ impl<'db> WalkHir<'db> for VariableDecl<'db> {
         f: &mut F,
     ) -> ControlFlow<()> {
         f(HirNode::Ty(ty_for_variable(db, *self)))?;
-        f(HirNode::Ty(
-            *self.spec(db).to_ty(db, ty_for_variable(db, *self).decl(db)),
-        ))?;
         if let Some(init_expr) = self.init(db) {
             resolve_init_expr(db, ty_for_variable(db, *self), *init_expr).walk_hir(db, f)?;
         }

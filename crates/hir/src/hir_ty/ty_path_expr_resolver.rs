@@ -193,9 +193,9 @@ impl<'db> ResolvePathExprCtx<'db> {
         match self.search_mode {
             SearchMode::Local => {
                 // Try variables in scope
-                if self.seatch_variables_in_scope(identifier).is_break() {
+                if self.search_variables_in_scope(identifier).is_break() {
                     return;
-                }
+                } 
 
                 // Special case: FUNCTION can access its own name as a variable
                 // This is only valid in FUNCTION POUs and if we are at the first fragment
@@ -207,7 +207,7 @@ impl<'db> ResolvePathExprCtx<'db> {
             }
             SearchMode::Global => {
                 // Try variables in scope
-                if self.seatch_variables_in_scope(identifier).is_break() {
+                if self.search_variables_in_scope(identifier).is_break() {
                     return;
                 }
 
@@ -233,7 +233,7 @@ impl<'db> ResolvePathExprCtx<'db> {
         self.fragments.push(*identifier);
     }
 
-    fn seatch_variables_in_scope(&mut self, identifier: &SpanIdent<'db>) -> ControlFlow<()> {
+    fn search_variables_in_scope(&mut self, identifier: &SpanIdent<'db>) -> ControlFlow<()> {
         if let Some(variable) =
             variables_in_scope(self.db, self.expr.scope_id(self.db)).get(identifier)
         {
