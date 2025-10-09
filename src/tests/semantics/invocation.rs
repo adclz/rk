@@ -46,7 +46,7 @@ END_FUNCTION_BLOCK"#;
 fn unresolved_super_method_in_fb(mut with_db: RootDatabase) {
     let source = r#"
 CLASS base
-	METHOD super_method END_METHOD
+	METHOD PUBLIC super_method END_METHOD
 END_CLASS
 
 FUNCTION_BLOCK fb1 EXTENDS base
@@ -189,7 +189,7 @@ END_FUNCTION_BLOCK"#;
 fn type_check_super_method_in_class_method(mut with_db: RootDatabase) {
     let source = r#"
 CLASS base
-	METHOD decl
+	METHOD PUBLIC decl
         VAR_INPUT input1 : INT; END_VAR
 	END_METHOD
 END_CLASS
@@ -224,7 +224,7 @@ END_CLASS
 fn type_check_super_method_in_fb_method(mut with_db: RootDatabase) {
     let source = r#"
 CLASS base
-	METHOD decl
+	METHOD PUBLIC decl
         VAR_INPUT input1 : INT; END_VAR
 	END_METHOD
 END_CLASS

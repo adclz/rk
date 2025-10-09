@@ -85,10 +85,8 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:7:5 ]
        |
      2 | FUNCTION fn: BOOL
-       |          ^|  ^^|^  
-       |           `-------- 'fn' is declared here
-       |                |   
-       |                `--- type defined here
+       |          ^|  
+       |           `-- 'fn' is declared here
        | 
      7 |     fn();
        |     ^|  

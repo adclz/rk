@@ -59,19 +59,19 @@ END_CLASS
         .join("\n"), @r"
     # fn1 comment
     ```iecst
-    fn1: FUNCTION
+    (FUNCTION) fn1
     ```
 
 
     # fb1 comment
     ```iecst
-    fb1: FUNCTION_BLOCK
+    (FUNCTION_BLOCK) fb1
     ```
 
 
     # class1 comment
     ```iecst
-    class1: CLASS
+    (CLASS) class1
     ```
     ");
 }
@@ -120,19 +120,19 @@ END_FUNCTION_BLOCK
         .join("\n"), @r"
     # var1 comment
     ```iecst
-    (VAR) var1: INT
+    (VAR) var1
     ```
 
 
     # var2 comment
     ```iecst
-    (VAR) var2: INT
+    (VAR) var2
     ```
 
 
     # var3 comment
     ```iecst
-    (VAR) var3: INT
+    (VAR) var3
     ```
     ");
 }

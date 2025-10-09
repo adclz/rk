@@ -68,8 +68,8 @@ END_CLASS"#;
 
     assert_snapshot!(nodes.join("\n"), @r"
     Ty(Ty { [salsa id]: Id(1c00) })
-    Ty(Ty { [salsa id]: Id(1c01) })
     Ty(Ty { [salsa id]: Id(1c02) })
+    Ty(Ty { [salsa id]: Id(1c04) })
     ");
 }
 
@@ -135,23 +135,37 @@ END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(nodes.join("\n"), @r"
     Ty(Ty { [salsa id]: Id(2c00) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4800) })
+    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4c00) })
     ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(3400) })
     ResolvedPathElementResult(ResolvedPathElement { expr: PathExpr { [salsa id]: Id(c00) }, kind: Error(NoItemInScope { expr: PathExpr { [salsa id]: Id(c00) }, scope: FileScopeId { [salsa id]: Id(402) } }) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4400) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4801) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4800) })
+    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(3401) })
+    ResolvedPathElementResult(ResolvedPathElement { expr: PathExpr { [salsa id]: Id(c01) }, kind: Error(NoItemInScope { expr: PathExpr { [salsa id]: Id(c01) }, scope: FileScopeId { [salsa id]: Id(402) } }) })
+    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4c01) })
     ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(3402) })
     ResolvedPathElementResult(ResolvedPathElement { expr: PathExpr { [salsa id]: Id(c02) }, kind: Error(NoItemInScope { expr: PathExpr { [salsa id]: Id(c02) }, scope: FileScopeId { [salsa id]: Id(402) } }) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4802) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4403) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4803) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4404) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4405) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4406) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4804) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4409) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4805) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(440c) })
+    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4c02) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4803) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4801) })
+    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(3403) })
+    ResolvedPathElementResult(ResolvedPathElement { expr: PathExpr { [salsa id]: Id(c04) }, kind: Error(NoItemInScope { expr: PathExpr { [salsa id]: Id(c04) }, scope: FileScopeId { [salsa id]: Id(402) } }) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4802) })
+    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4c03) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4804) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4805) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4806) })
+    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4c04) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4809) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4807) })
+    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(3405) })
+    ResolvedPathElementResult(ResolvedPathElement { expr: PathExpr { [salsa id]: Id(c06) }, kind: Error(NoItemInScope { expr: PathExpr { [salsa id]: Id(c06) }, scope: FileScopeId { [salsa id]: Id(402) } }) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4808) })
+    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4c05) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(480c) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(480a) })
+    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(3406) })
+    ResolvedPathElementResult(ResolvedPathElement { expr: PathExpr { [salsa id]: Id(c07) }, kind: Error(NoItemInScope { expr: PathExpr { [salsa id]: Id(c07) }, scope: FileScopeId { [salsa id]: Id(402) } }) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(480b) })
     ");
 }
 
@@ -178,14 +192,14 @@ END_FUNCTION_BLOCK"#;
     });
 
     assert_snapshot!(nodes.join("\n"), @r"
-    Ty(Ty { [salsa id]: Id(3c01) })
-    Ty(Ty { [salsa id]: Id(3c03) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4c00) })
-    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(4000) })
-    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(4001) })
-    ResolvedParam(ResolvedParam { [salsa id]: Id(4800) })
-    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(4002) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4400) })
+    Ty(Ty { [salsa id]: Id(4001) })
+    Ty(Ty { [salsa id]: Id(4002) })
+    ResolvedStmt(ResolvedStmt { [salsa id]: Id(5000) })
+    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(4400) })
+    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(4401) })
+    ResolvedParam(ResolvedParam { [salsa id]: Id(4c00) })
+    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(4402) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4800) })
     ");
 }
 
@@ -228,19 +242,33 @@ END_FUNCTION_BLOCK"#;
         7,
         10,
         12,
+        15,
+        15,
         16,
         19,
         19,
         37,
         39,
+        40,
+        42,
+        45,
+        47,
         52,
         59,
         64,
         69,
         74,
         76,
+        77,
+        79,
+        82,
+        84,
         89,
         91,
+        92,
+        94,
+        97,
+        99,
     ]
     ");
 }
