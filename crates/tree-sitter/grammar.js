@@ -1219,7 +1219,12 @@ module.exports = grammar({
 
     interface_name: ($) => $.identifier,
 
-    access_spec: ($) => choice("PUBLIC", "PROTECTED", "PRIVATE", "INTERNAL"),
+    access_spec: ($) => choice(
+        alias("PUBLIC", $.public),
+        alias("PROTECTED", $.protected),
+        alias("PRIVATE", $.private), 
+        alias("INTERNAL", $.internal)
+      ),
 
     // Table 47 - Program declaration
 
