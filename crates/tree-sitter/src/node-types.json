@@ -837,7 +837,29 @@
   {
     "type": "access_spec",
     "named": true,
-    "fields": {}
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "internal",
+          "named": true
+        },
+        {
+          "type": "private",
+          "named": true
+        },
+        {
+          "type": "protected",
+          "named": true
+        },
+        {
+          "type": "public",
+          "named": true
+        }
+      ]
+    }
   },
   {
     "type": "action",
@@ -6632,19 +6654,7 @@
     "named": false
   },
   {
-    "type": "PRIVATE",
-    "named": false
-  },
-  {
     "type": "PROGRAM",
-    "named": false
-  },
-  {
-    "type": "PROTECTED",
-    "named": false
-  },
-  {
-    "type": "PUBLIC",
     "named": false
   },
   {
@@ -6904,6 +6914,10 @@
     "named": true
   },
   {
+    "type": "internal",
+    "named": true
+  },
+  {
     "type": "l_date_and_time_type_name",
     "named": true
   },
@@ -6950,6 +6964,18 @@
   },
   {
     "type": "partly",
+    "named": true
+  },
+  {
+    "type": "private",
+    "named": true
+  },
+  {
+    "type": "protected",
+    "named": true
+  },
+  {
+    "type": "public",
     "named": true
   },
   {

@@ -5675,20 +5675,40 @@
       "type": "CHOICE",
       "members": [
         {
-          "type": "STRING",
-          "value": "PUBLIC"
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "PUBLIC"
+          },
+          "named": true,
+          "value": "public"
         },
         {
-          "type": "STRING",
-          "value": "PROTECTED"
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "PROTECTED"
+          },
+          "named": true,
+          "value": "protected"
         },
         {
-          "type": "STRING",
-          "value": "PRIVATE"
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "PRIVATE"
+          },
+          "named": true,
+          "value": "private"
         },
         {
-          "type": "STRING",
-          "value": "INTERNAL"
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "INTERNAL"
+          },
+          "named": true,
+          "value": "internal"
         }
       ]
     },
@@ -9034,10 +9054,6 @@
     }
   ],
   "conflicts": [
-    [
-      "subrange_type_spec",
-      "numeric_type_name"
-    ],
     [
       "constant_expr",
       "parenthesized_expression"
