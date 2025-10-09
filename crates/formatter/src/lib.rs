@@ -25,7 +25,7 @@ static SURROUND_SPACES: &str = r#"
     "END_VAR"
     "USING"
     "FINAL" "ABSTRACT" "OVERRIDE"
-    "PUBLIC" "PROTECTED" "PRIVATE" "INTERNAL"
+    (public) (protected) (private) (internal)
     "IMPLEMENTS" "EXTENDS"
     "METHOD" "END_METHOD"
     "IF" "THEN" "ELSE" "ELSIF"
