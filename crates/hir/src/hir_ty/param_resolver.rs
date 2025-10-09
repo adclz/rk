@@ -51,11 +51,7 @@ pub fn resolve_parameters<'db>(
                     resolved_param: callee.variables(db).and_then(|signature| {
                         signature
                             .get(&param.ident)
-                            .or_else(|| {
-                                signature
-                                    .get(&param.ident)
-                                    .filter(|v| v.is_variable_input(db) || v.is_variable_inout(db))
-                            })
+                            .filter(|v| v.is_variable_input(db) || v.is_variable_inout(db))
                             .map(|p| {
                                 ResolvedVarResult::new(
                                     db,

@@ -4,8 +4,7 @@ use auto_lsp::{
     lsp_types::{CompletionItem, Hover, HoverContents, InlayHint, InlayHintKind, InlayHintLabel, MarkedString},
 };
 use hir::{
-    HirNodeInfo,
-    hir_def::{namespace::NamespaceDecl, scope::Visibility, semantic_index::semantic_index},
+    hir_def::{namespace::NamespaceDecl, semantic_index::semantic_index, visibility::Visibility}, HirNodeInfo
 };
 
 use crate::{ToProtocol, completions};

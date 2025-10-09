@@ -2,22 +2,19 @@ use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, Related, diag};
 
 use crate::{
-    HirNodeInfo,
     check::{
         errors::{
             analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic},
             coerce::{ExprMismatch, TypeMismatch},
-            utils::{get_candidates, get_decl_and_def_for_ty, get_decl_for_ty},
+            utils::{get_candidates, get_decl_and_def_for_ty, get_decl_for_ty, get_def_for_ty},
             var_error::VarResolveError,
         },
         recovery::func_call::fuzzy_func_local_items,
-    },
-    hir_def::interned::identifier::SpanIdent,
-    hir_ty::{
+    }, hir_def::interned::identifier::SpanIdent, hir_ty::{
         expr_resolver::ResolvedExpr,
         ty::{Ty, TyDef},
         ty_var_access_resolver::ResolvedVarResult,
-    },
+    }, HirNodeInfo
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
@@ -47,7 +44,7 @@ pub enum StmtError<'db> {
         call: ResolvedVarResult<'db>,
     },
     CallANonCallableType {
-        ty: Ty<'db>,
+        ty: Ty<'db>, 
         call: ResolvedVarResult<'db>,
     },
     CallADirectType {
@@ -211,13 +208,11 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
 
                 diag
             }
-            Self::UnresolvedFuncCall { call } => {
-                diag()
-                    .message("unresolved function call".into())
-                    .severity(DiagnosticSeverity::ERROR)
-                    .range(call.get_span(db).clone())
-                    .call()
-            }
+            Self::UnresolvedFuncCall { call } => diag()
+                .message("unresolved function call".into())
+                .severity(DiagnosticSeverity::ERROR)
+                .range(call.get_span(db).clone())
+                .call(),
             Self::CallANonCallableType { ty, call } => {
                 let mut diag = diag()
                     .message(format!(
@@ -249,7 +244,7 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 diag.with_note("only FUNCTIONS and METHODS or body from declared CLASS/FUNCTIOn_BLOCKS can called".into());
 
                 diag
-            } 
+            }
             Self::UnusedReturnType { ty, call, ret } => {
                 let mut diag = diag()
                     .message(format!(
@@ -260,7 +255,7 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                     .range(call.get_span(db).clone())
                     .call();
 
-                get_decl_and_def_for_ty(db, *ret, &mut diag);
+                get_decl_for_ty(db, *ret, &mut diag);
                 diag
             }
             Self::TooManyParameters {
@@ -351,39 +346,30 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 }
                 diag
             }
-            Self::UnresolvedOutputParam { var, err } => {
-                
-                diag()
-                    .message(format!(
-                        "unresolved output parameter: {}",
-                        err.description(db)
-                    ))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .range(var.get_span(db).clone())
-                    .call()
-            }
-            Self::UnresolvedOutputParamTarget { var, err } => {
-                
-                diag()
-                    .message(format!(
-                        "unresolved output parameter target: {}",
-                        err.description(db)
-                    ))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .range(var.get_span(db).clone())
-                    .call()
-            }
-            Self::UnresolvedNonFormalParam { var, err } => {
-                
-                diag()
-                    .message(format!(
-                        "unresolved non-formal parameter: {}",
-                        err.description(db)
-                    ))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .range(var.get_span(db).clone())
-                    .call()
-            }
+            Self::UnresolvedOutputParam { var, err } => diag()
+                .message(format!(
+                    "unresolved output parameter: {}",
+                    err.description(db)
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .range(var.get_span(db).clone())
+                .call(),
+            Self::UnresolvedOutputParamTarget { var, err } => diag()
+                .message(format!(
+                    "unresolved output parameter target: {}",
+                    err.description(db)
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .range(var.get_span(db).clone())
+                .call(),
+            Self::UnresolvedNonFormalParam { var, err } => diag()
+                .message(format!(
+                    "unresolved non-formal parameter: {}",
+                    err.description(db)
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .range(var.get_span(db).clone())
+                .call(),
             Self::ParameterTypeMismatch { var, param, err } => {
                 let mut diag = diag()
                     .message(format!(
@@ -426,59 +412,39 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
 
                 diag
             }
-            Self::UnresolvedControlVar { control, err } => {
-                
-                diag()
-                    .message(format!(
-                        "unresolved control variable: {}",
-                        err.description(db)
-                    ))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .range(control.get_span(db).clone())
-                    .call()
-            }
-            Self::ForLoopStartTypeMismatch { start, err } => {
-                
-                diag()
-                    .message(format!("invalid FOR loop start: {}", err.description(db)))
-                    .range(start.get_span(db))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .call()
-            }
-            Self::ForLoopEndTypeMismatch { end, err } => {
-                
-
-                diag()
-                    .message(format!("invalid FOR loop end: {}", err.description(db)))
-                    .range(end.get_span(db))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .call()
-            }
-            Self::ForLoopStepTypeMismatch { step, err } => {
-                
-
-                diag()
-                    .message(format!("invalid FOR loop step: {}", err.description(db)))
-                    .range(step.get_span(db))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .call()
-            }
-            Self::WhileConditionIsNotABool { condition } => {
-                
-                diag()
-                    .message("WHILE condition is not returning a boolean".into())
-                    .range(condition.get_span(db))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .call()
-            }
-            Self::RepeatConditionIsNotABool { condition } => {
-                
-                diag()
-                    .message("REPEAT condition is not returning a boolean".into())
-                    .range(condition.get_span(db))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .call()
-            }
+            Self::UnresolvedControlVar { control, err } => diag()
+                .message(format!(
+                    "unresolved control variable: {}",
+                    err.description(db)
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .range(control.get_span(db).clone())
+                .call(),
+            Self::ForLoopStartTypeMismatch { start, err } => diag()
+                .message(format!("invalid FOR loop start: {}", err.description(db)))
+                .range(start.get_span(db))
+                .severity(DiagnosticSeverity::ERROR)
+                .call(),
+            Self::ForLoopEndTypeMismatch { end, err } => diag()
+                .message(format!("invalid FOR loop end: {}", err.description(db)))
+                .range(end.get_span(db))
+                .severity(DiagnosticSeverity::ERROR)
+                .call(),
+            Self::ForLoopStepTypeMismatch { step, err } => diag()
+                .message(format!("invalid FOR loop step: {}", err.description(db)))
+                .range(step.get_span(db))
+                .severity(DiagnosticSeverity::ERROR)
+                .call(),
+            Self::WhileConditionIsNotABool { condition } => diag()
+                .message("WHILE condition is not returning a boolean".into())
+                .range(condition.get_span(db))
+                .severity(DiagnosticSeverity::ERROR)
+                .call(),
+            Self::RepeatConditionIsNotABool { condition } => diag()
+                .message("REPEAT condition is not returning a boolean".into())
+                .range(condition.get_span(db))
+                .severity(DiagnosticSeverity::ERROR)
+                .call(),
         }
     }
 }

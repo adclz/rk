@@ -1,7 +1,7 @@
 use auto_lsp::default::db::{BaseDatabase, file::File};
 use bitflags::bitflags;
 
-use crate::hir_def::{namespace::NamespaceDecl, pous::pou::PouDecl, using::Using};
+use crate::hir_def::{namespace::NamespaceDecl, pous::pou::PouDecl, using::Using, visibility::Visibility};
 
 #[salsa::tracked(debug)]
 pub struct FileScopeId<'db> {
@@ -75,23 +75,6 @@ impl<'db> Scope<'db> {
 
     pub fn is_pou(&self) -> bool {
         matches!(self.kind, ScopeKind::Pou(_))
-    }
-}
-
-bitflags! {
-    #[repr(transparent)]
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub struct Visibility: u16 {
-        const PUBLIC = 1 << 0;
-        const PROTECTED = 1 << 1;
-        const INTERNAL = 1 << 2;
-        const PRIVATE = 1 << 3;
-    }
-}
-
-impl Default for Visibility {
-    fn default() -> Self {
-        Visibility::PUBLIC
     }
 }
 

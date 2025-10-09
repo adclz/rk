@@ -8,7 +8,7 @@ use crate::{
         coerce::TypeMismatch,
         utils::get_decl_for_ty,
     },
-    hir_def::expressions::{expression::PathExpr, invocation::Invocation},
+    hir_def::{expressions::{expression::PathExpr, invocation::Invocation}, scope::FileScopeId},
     hir_ty::ty::Ty,
 };
 

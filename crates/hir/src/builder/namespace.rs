@@ -8,7 +8,8 @@ use crate::check::errors::syntax::SyntaxError;
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::interned::namespace::NamespacePath;
 use crate::hir_def::namespace::NamespaceDecl;
-use crate::hir_def::scope::{FileScopeId, Scope, ScopeKind, Visibility};
+use crate::hir_def::scope::{FileScopeId, Scope, ScopeKind};
+use crate::hir_def::visibility::Visibility;
 
 impl<'db> SemanticIndexBuilder<'db> {
     #[must_use]

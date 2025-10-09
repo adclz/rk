@@ -7,11 +7,11 @@ use rustc_hash::FxHashMap;
 use crate::check::errors::analysis_error::AnalysisError;
 use crate::check::errors::syntax::SyntaxError;
 use crate::hir_def::interned::identifier::SpanIdent;
-use crate::hir_def::interned::namespace::NamespacePath;
 use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::PouDecl;
-use crate::hir_def::scope::{FileScopeId, Scope, ScopeKind, Visibility};
+use crate::hir_def::scope::{FileScopeId, Scope, ScopeKind};
 use crate::hir_def::semantic_index::SemanticIndex;
+use crate::hir_def::visibility::Visibility;
 
 pub struct SemanticIndexBuilder<'db> {
     pub(crate) source: &'db ast::generated::SourceFile,

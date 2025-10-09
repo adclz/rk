@@ -6,9 +6,9 @@ use crate::{
         interned::{identifier::Ident, namespace::SpanNamespaceAccess},
         modifier::Modifier,
         pous::variable::VariableDecl,
-        scope::FileScopeId,
+        scope::FileScopeId, visibility::Visibility,
     },
-    {AstId, HirNodeInfo},
+    AstId, HirNodeInfo,
 };
 
 #[salsa::tracked(debug)]
@@ -42,6 +42,8 @@ pub struct MethodDecl<'db> {
     pub return_type: Option<Spec<'db>>,
 
     pub modifier: Modifier,
+
+    pub visibility: Visibility,
 
     pub _override: bool,
 

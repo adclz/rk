@@ -8,7 +8,8 @@ use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use crate::hir_def::modifier::Modifier;
 use crate::hir_def::pous::class::{Class, MethodDecl};
 use crate::hir_def::pous::pou::{Pou, PouDecl};
-use crate::hir_def::scope::{FileScopeId, Scope, ScopeKind, Visibility};
+use crate::hir_def::scope::{FileScopeId, Scope, ScopeKind};
+use crate::hir_def::visibility::Visibility;
 use ast::generated::{ClassDecl, ClassVariables};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
@@ -157,7 +158,16 @@ impl<'db> SemanticIndexBuilder<'db> {
                 method_variables,
                 name,
                 return_type,
-                modifiers,
+                modifiers, 
+                match &m.cast(self.ast).access {
+                    Some(access) => match access.cast(self.ast).children.cast(self.ast) {
+                        ast::generated::Internal_Private_Protected_Public::Private(_) => Visibility::PRIVATE,
+                        ast::generated::Internal_Private_Protected_Public::Protected(_) => Visibility::PROTECTED,
+                        ast::generated::Internal_Private_Protected_Public::Public(_) => Visibility::PUBLIC,
+                        ast::generated::Internal_Private_Protected_Public::Internal(_) => Visibility::INTERNAL,
+                    },
+                    None => Visibility::PROTECTED,
+                },
                 _override,
                 body,
                 m.cast(self.ast).into(),

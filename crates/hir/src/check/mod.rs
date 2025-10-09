@@ -30,6 +30,7 @@ pub mod check_variables;
 pub mod coerce;
 pub mod errors;
 pub mod recovery;
+pub mod check_visibility;
 
 
 #[salsa::tracked(returns(ref), no_eq)]

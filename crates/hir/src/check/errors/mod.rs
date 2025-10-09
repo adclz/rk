@@ -11,3 +11,4 @@ pub mod syntax;
 pub mod ty;
 pub mod utils;
 pub mod var_error;
+pub mod visibility;

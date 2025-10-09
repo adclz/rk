@@ -5,7 +5,8 @@ use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use crate::hir_def::pous::interface::{Interface, MethodPrototype};
 use crate::hir_def::pous::pou::{Pou, PouDecl};
-use crate::hir_def::scope::{FileScopeId, Scope, ScopeKind, Visibility};
+use crate::hir_def::scope::{FileScopeId, Scope, ScopeKind};
+use crate::hir_def::visibility::Visibility;
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 

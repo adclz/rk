@@ -35,44 +35,8 @@ pub fn shared_namespaces<'db>(
         .collect()
 }
 
-/*
-// 1: find namespaces matching the first fragment
-pub fn initial<'db>(db: &'db dyn BaseDatabase, path: NamespacePath) -> Vec<NamespaceDecl<'db>> {
-        db.get_files()
-        .iter()
-        .flat_map(|file| {
-            semantic_index(db, *file)
-                .global_namespaces
-                .iter()
-                .filter_map(move |ns| (ns.path(db).fragments(db)[0] == path.fragments(db)[0]).then_some(*ns))
-        })
-        .collect()
-}
-
-// 2: for each namespace, find child namespaces matching the next fragment
-// 3: repeat until all fragments are processed
-// 4: return all matching namespaces
-pub fn next<'db>(
-    db: &'db dyn BaseDatabase,
-    namespaces: Vec<NamespaceDecl<'db>>,
-    fragment: &SpanIdent,
-) -> Vec<NamespaceDecl<'db>> {
-    let mut result = Vec::new();
-
-    for ns in namespaces {
-        let child_namespaces = ns.namespaces(db);
-        for child in child_namespaces {
-            if child.path(db).fragments(db).first() == Some(fragment) {
-                result.push(*child);
-            }
-        }
-    }
-
-    result
-}
-*/
-
 #[tracing::instrument(skip_all)]
+#[salsa::tracked]
 /// Resolve a namespace access to a POU declaration.
 pub fn resolve_namespace_access<'db>(
     db: &'db dyn BaseDatabase,

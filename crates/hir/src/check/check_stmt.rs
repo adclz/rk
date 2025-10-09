@@ -5,6 +5,7 @@ use rustc_hash::FxHashMap;
 use crate::{
     check::{
         check_semantic_index::Check,
+        check_visibility::check_call_visibility,
         coerce::{coerce_bool_with_expr, coerce_ty_with_expr, coerce_ty_with_ty},
         errors::{analysis_error::AnalysisError, stmt::StmtError},
     },
@@ -13,7 +14,7 @@ use crate::{
         expr_resolver::ResolvedExpr,
         func_call_resolver::{ResolvedFuncCall, ResolvedParam, ResolvedParamKind},
         invocation_resolver::{ResolvedInvocationResult, ResolvedMethodKind},
-        stmt_resolver::{resolve_stmt, ResolvedStmt, ResolvedStmtKind},
+        stmt_resolver::{ResolvedStmt, ResolvedStmtKind, resolve_stmt},
         ty::{Ty, TyDef, TyKind},
         ty_var_access_resolver::ResolvedVarResult,
     },
@@ -165,7 +166,7 @@ fn check_assignment<'db>(
 
 fn check_func_call<'db>(
     db: &'db dyn BaseDatabase,
-    fun_call: &ResolvedFuncCall<'db>,
+    fun_call: &'db ResolvedFuncCall<'db>,
     errors: &mut Vec<AnalysisError<'db>>,
 ) -> Result<(), AnalysisError<'db>> {
     let ty_target = fun_call
@@ -184,13 +185,20 @@ fn check_func_call<'db>(
     }
 
     // Only functions can be called directly
-    if !ty_target.is_variable(db) && !matches!(ty_target.kind(db), TyKind::Function { .. }) {
+    if !ty_target.is_variable(db)
+        && !matches!(
+            ty_target.kind(db),
+            TyKind::Function { .. } | TyKind::Method { .. } | TyKind::Target(_)
+        )
+    {
         return Err(StmtError::CallADirectType {
             ty: ty_target,
             call: fun_call.target,
         }
         .into());
     }
+
+    check_call_visibility(db, ty_target, &fun_call.target, errors);
 
     if let Some(ret) = ty_target.has_return_type(db) {
         errors.push(
@@ -211,7 +219,7 @@ fn check_func_call<'db>(
 
 fn check_invocation<'db>(
     db: &'db dyn BaseDatabase,
-    invocation: &ResolvedInvocationResult<'db>,
+    invocation: &'db ResolvedInvocationResult<'db>,
     errors: &mut Vec<AnalysisError<'db>>,
 ) -> Result<(), AnalysisError<'db>> {
     match &invocation.target.kind {
@@ -224,6 +232,8 @@ fn check_invocation<'db>(
                 .ty(db)
                 .map_err(|err| StmtError::UnresolvedFuncCall { call: *target })?;
 
+            // Check visibility
+            check_call_visibility(db, ty_target, &invocation.target.invocation, errors);
             if let Some(signature) = ty_target.variables(db) {
                 check_parameters(db, *method, signature, &invocation.params, errors);
             }

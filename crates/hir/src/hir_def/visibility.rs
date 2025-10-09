@@ -2,7 +2,7 @@ use bitflags::bitflags;
 
 bitflags! {
     #[repr(transparent)]
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct Visibility: u16 {
         const PUBLIC = 1 << 0;
         const PROTECTED = 1 << 1;
