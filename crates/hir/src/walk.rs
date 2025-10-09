@@ -15,7 +15,7 @@ use crate::{
         semantic_index::{semantic_index, HirNode, SemanticIndex}, using::Using,
     },
     hir_ty::{
-        expr_resolver::ResolvedExpr,
+        expr_resolver::{ResolvedExpr, ResolvedExprKind},
         func_call_resolver::{ResolvedFuncCall, ResolvedParam, ResolvedParamKind},
         init_expr_resolver::{resolve_init_expr, ResolvedInitExpr, ResolvedInitExprKind},
         invocation_resolver::{ResolvedInvocationResult, ResolvedMethodKind},
@@ -230,7 +230,40 @@ impl<'db> WalkHir<'db> for ResolvedExpr<'db> {
         db: &'db dyn BaseDatabase,
         f: &mut F,
     ) -> ControlFlow<()> {
-        f(HirNode::ResolvedExpr(*self))
+        f(HirNode::ResolvedExpr(*self))?;
+        match self.kind(db) {
+            ResolvedExprKind::BooleanExpression(lhs, rhs) => {
+                lhs.walk_hir(db, f)?;
+                rhs.walk_hir(db, f)?;
+            }
+            ResolvedExprKind::Compare(lhs, rhs) => {
+                lhs.walk_hir(db, f)?;
+                rhs.walk_hir(db, f)?;
+            }
+            ResolvedExprKind::Math(lhs, rhs) => {
+                lhs.walk_hir(db, f)?;
+                rhs.walk_hir(db, f)?;
+            }
+            ResolvedExprKind::Parenthesized(expr) => {
+                expr.walk_hir(db, f)?;
+            }
+            ResolvedExprKind::FuncCall(func) => {
+                func.walk_hir(db, f)?;
+            }
+            ResolvedExprKind::Invocation(inv) => {
+                inv.walk_hir(db, f)?;   
+            }
+            ResolvedExprKind::PathExpr(path) => {
+                for e in path.elements(db) {
+                    e.walk_hir(db, f)?;
+                }
+            }
+            ResolvedExprKind::VarAccess(var) => {
+                var.walk_hir(db, f)?;   
+            }
+            _ => {}
+        }
+        ControlFlow::Continue(())
     }
 }
 
