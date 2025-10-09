@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use auto_lsp::{core::span::Span, default::db::BaseDatabase};
 use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
@@ -19,15 +21,13 @@ use crate::{
             variable::{VariableDecl, VariableKind},
         },
         scope::FileScopeId,
+        visibility::Visibility,
     },
-    hir_ty::{name_res::resolve_namespace_access, ty_path_expr_resolver::PathExprWalkStep},
+    hir_ty::{
+        inheritance_solver::method_table, name_res::resolve_namespace_access,
+        ty_path_expr_resolver::PathExprWalkStep,
+    },
 };
-
-// fixme: we currently use no_eq for each ty_for_* query because salsa uses the HIR definition to knows if something has to be recomputed.
-// the problem is that a recursive type won't be recomputed, because the recursion is not coming from the HIR definition.
-//
-// so for now we use no_eq to force recomputation, but ideally we should find a better way to handle this.
-// ... or even completly get rid of the Recursive TyKind variant, use fixed-point iteration and check recursion at the type-checking phase.
 
 /// The  resolved type of a variable, POU, or method
 /// [`Ty`] is the most fundamental unit of type information in the HIR.
@@ -35,12 +35,13 @@ use crate::{
 pub struct Ty<'db> {
     // Where the type is declared (POU, Variable, Method)
     pub decl: TyDecl<'db>,
-    
+
     // Where the type is defined (POU, Spec, Method)
     pub def: TyDef<'db>,
 
     // The actual kind of the type
     #[tracked]
+    #[no_eq]
     #[returns(ref)]
     pub kind: TyKind<'db>,
 }
@@ -229,24 +230,21 @@ pub enum TyKind<'db> {
     Class {
         extends: Option<Ty<'db>>,
         implements: Vec<Ty<'db>>,
-        variables: IndexMap<Ident, Ty<'db>>,
         methods: Vec<MethodDecl<'db>>,
     },
 
     Function {
-        variables: IndexMap<Ident, Ty<'db>>,
         return_type: Option<Ty<'db>>,
     },
 
     FunctionBlock {
         extends: Option<Ty<'db>>,
-        variables: IndexMap<Ident, Ty<'db>>,
         methods: Vec<MethodDecl<'db>>,
     },
 
     Method {
         is_prototype: bool,
-        variables: IndexMap<Ident, Ty<'db>>,
+        return_type: Option<Ty<'db>>,
     },
 
     // Error variants
@@ -254,65 +252,22 @@ pub enum TyKind<'db> {
     Recursive,
 }
 
-fn pou_ty_result<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> {
-    Ty::new(db, TyDecl::Pou(pou), TyDef::Invalid, TyKind::Recursive)
-}
-
 #[tracing::instrument(skip_all, name = "query_type_signature")]
-#[salsa::tracked(cycle_result = pou_ty_result, no_eq)]
+#[salsa::tracked]
 pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> {
     let decl = TyDecl::Pou(pou);
     let def = TyDef::Pou(pou);
 
     match pou.pou(db) {
-        Pou::Function(func) => {
-            let mut variables = IndexMap::default();
-
-            for v in func.variables(db) {
-                let decl = TyDecl::Variable(*v);
-                match v.kind(db) {
-                    VariableKind::Input => {
-                        variables.insert(*v.name(db), v.spec(db).spec_to_ty(db, decl));
-                    }
-                    VariableKind::Output => {
-                        variables.insert(*v.name(db), v.spec(db).spec_to_ty(db, decl));
-                    }
-                    VariableKind::InOut => {
-                        variables.insert(*v.name(db), v.spec(db).spec_to_ty(db, decl));
-                    }
-                    _ => continue,
-                };
-            }
-
-            Ty::new(
-                db,
-                decl,
-                def,
-                TyKind::Function {
-                    variables,
-                    return_type: func.return_type(db).map(|rt| rt.spec_to_ty(db, decl)),
-                },
-            )
-        }
+        Pou::Function(func) => Ty::new(
+            db,
+            decl,
+            def,
+            TyKind::Function {
+                return_type: func.return_type(db).map(|rt| rt.spec_to_ty(db, decl)),
+            },
+        ),
         Pou::FunctionBlock(fb) => {
-            let mut variables = IndexMap::default();
-
-            for variable in fb.variables(db) {
-                let decl = TyDecl::Variable(*variable);
-                match variable.kind(db) {
-                    VariableKind::Input => {
-                        variables.insert(*variable.name(db), variable.spec(db).spec_to_ty(db, decl));
-                    }
-                    VariableKind::Output => {
-                        variables.insert(*variable.name(db), variable.spec(db).spec_to_ty(db, decl));
-                    }
-                    VariableKind::InOut => {
-                        variables.insert(*variable.name(db), variable.spec(db).spec_to_ty(db, decl));
-                    }
-                    _ => continue,
-                };
-            }
-
             let extends = fb.extends(db).map(|e| {
                 match resolve_namespace_access(db, e.get_scope_id(db), e.path) {
                     Some(pou) => {
@@ -325,26 +280,11 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
 
             let methods = fb.methods(db).to_vec();
 
-            Ty::new(
-                db,
-                decl,
-                def,
-                TyKind::FunctionBlock {
-                    extends,
-                    variables,
-                    methods,
-                },
-            )
+            Ty::new(db, decl, def, TyKind::FunctionBlock { extends, methods })
         }
         Pou::DataType(dt) => dt.spec(db).spec_to_ty(db, TyDecl::Pou(pou)),
         Pou::Class(class) => {
-            let mut class_variables = IndexMap::default();
             let mut class_methods = vec![];
-
-            for v in class.variables(db) {
-                let decl = TyDecl::Variable(*v);
-                class_variables.insert(*v.name(db), v.spec(db).spec_to_ty(db, decl));
-            }
 
             for m in class.methods(db) {
                 class_methods.push(*m);
@@ -382,7 +322,6 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
                 TyKind::Class {
                     extends,
                     implements,
-                    variables: class_variables,
                     methods: class_methods,
                 },
             )
@@ -429,37 +368,10 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
     }
 }
 
-fn method_ty_result<'db>(db: &'db dyn BaseDatabase, method: MethodDecl<'db>) -> Ty<'db> {
-    Ty::new(
-        db,
-        TyDecl::Method(method),
-        TyDef::Invalid,
-        TyKind::Recursive,
-    )
-}
-
-#[salsa::tracked(cycle_result = method_ty_result, no_eq)]
+#[salsa::tracked]
 pub fn ty_for_method_decl<'db>(db: &'db dyn BaseDatabase, method: MethodDecl<'db>) -> Ty<'db> {
     let decl = TyDecl::Method(method);
     let def = TyDef::Method(method);
-
-    let mut variables = IndexMap::default();
-
-    for v in method.variables(db) {
-        let decl = TyDecl::Variable(*v);
-        match v.kind(db) {
-            VariableKind::Input => {
-                variables.insert(*v.name(db), v.spec(db).spec_to_ty(db, decl));
-            }
-            VariableKind::Output => {
-                variables.insert(*v.name(db), v.spec(db).spec_to_ty(db, decl));
-            }
-            VariableKind::InOut => {
-                variables.insert(*v.name(db), v.spec(db).spec_to_ty(db, decl));
-            }
-            _ => continue,
-        };
-    }
 
     Ty::new(
         db,
@@ -467,43 +379,15 @@ pub fn ty_for_method_decl<'db>(db: &'db dyn BaseDatabase, method: MethodDecl<'db
         def,
         TyKind::Method {
             is_prototype: false,
-            variables,
+            return_type: method.return_type(db).map(|rt| rt.spec_to_ty(db, decl)),
         },
     )
 }
 
-fn method_prot_ty_result<'db>(db: &'db dyn BaseDatabase, method: MethodPrototype<'db>) -> Ty<'db> {
-    Ty::new(
-        db,
-        TyDecl::MethodProt(method),
-        TyDef::Invalid,
-        TyKind::Recursive,
-    )
-}
-
-#[salsa::tracked(cycle_result = method_prot_ty_result, no_eq)]
+#[salsa::tracked]
 pub fn ty_for_method_prot<'db>(db: &'db dyn BaseDatabase, method: MethodPrototype<'db>) -> Ty<'db> {
     let decl = TyDecl::MethodProt(method);
     let def = TyDef::MethodProt(method);
-
-    let mut variables = IndexMap::default();
-
-    for v in method.variables(db) {
-        let decl = TyDecl::Variable(*v);
-
-        match v.kind(db) {
-            VariableKind::Input => {
-                variables.insert(*v.name(db), v.spec(db).spec_to_ty(db, decl));
-            }
-            VariableKind::Output => {
-                variables.insert(*v.name(db), v.spec(db).spec_to_ty(db, decl));
-            }
-            VariableKind::InOut => {
-                variables.insert(*v.name(db), v.spec(db).spec_to_ty(db, decl));
-            }
-            _ => continue,
-        };
-    }
 
     Ty::new(
         db,
@@ -511,34 +395,17 @@ pub fn ty_for_method_prot<'db>(db: &'db dyn BaseDatabase, method: MethodPrototyp
         def,
         TyKind::Method {
             is_prototype: true,
-            variables,
+            return_type: method.return_type(db).map(|rt| rt.spec_to_ty(db, decl)),
         },
     )
 }
 
-fn variable_ty_result<'db>(db: &'db dyn BaseDatabase, variable: VariableDecl<'db>) -> Ty<'db> {
-    Ty::new(
-        db,
-        TyDecl::Variable(variable),
-        TyDef::Invalid,
-        TyKind::Recursive,
-    )
-}
-#[salsa::tracked(cycle_result = variable_ty_result, no_eq)]
+#[salsa::tracked]
 pub fn ty_for_variable<'db>(db: &'db dyn BaseDatabase, variable: VariableDecl<'db>) -> Ty<'db> {
     variable.spec(db).spec_to_ty(db, TyDecl::Variable(variable))
 }
 
-fn struct_field_ty_result<'db>(db: &'db dyn BaseDatabase, field: StructElement<'db>) -> Ty<'db> {
-    Ty::new(
-        db,
-        TyDecl::StructElement(field),
-        TyDef::Invalid,
-        TyKind::Recursive,
-    )
-}
-
-#[salsa::tracked(cycle_result = struct_field_ty_result, no_eq)]
+#[salsa::tracked]
 pub fn ty_for_struct_field<'db>(db: &'db dyn BaseDatabase, field: StructElement<'db>) -> Ty<'db> {
     field.spec(db).spec_to_ty(db, TyDecl::StructElement(field))
 }
@@ -553,6 +420,7 @@ impl<'db> Ty<'db> {
         match &step {
             PathExprWalkStep::Field { ident, expr } => match self.kind(db) {
                 TyKind::Target(target) => target.linear(db, step),
+                // Look for a struct field
                 TyKind::Struct { elements, spec } => elements
                     .get(&ident.ident)
                     .ok_or(PathResolveError::UnknownField {
@@ -560,27 +428,30 @@ impl<'db> Ty<'db> {
                         ty: *self,
                     })
                     .cloned(),
-                TyKind::Function { variables, .. } => variables
+                // Look for a method name (only in declared methods)
+                TyKind::Class { .. } | TyKind::FunctionBlock { .. } => method_table(db, *self)
+                    .declared_methods
                     .get(&ident.ident)
+                    .cloned()
                     .ok_or(PathResolveError::UnknownField {
                         expr: *expr,
                         ty: *self,
-                    })
-                    .cloned(),
-                TyKind::FunctionBlock {
-                    extends, variables, ..
-                } => variables
-                    .get(&ident.ident)
-                    .ok_or(PathResolveError::UnknownField {
+                    }),
+                // Otherwise, look for a variable
+                _ => match self.variables(db) {
+                    Some(vars) => {
+                        vars.get(&ident.ident)
+                            .cloned()
+                            .ok_or(PathResolveError::UnknownField {
+                                expr: *expr,
+                                ty: *self,
+                            })
+                    }
+                    None => Err(PathResolveError::NoField {
                         expr: *expr,
                         ty: *self,
-                    })
-                    .cloned(),
-                TyKind::RefTo(inner) => inner.linear(db, step),
-                _ => Err(PathResolveError::NoField {
-                    expr: *expr,
-                    ty: *self,
-                }),
+                    }),
+                },
             },
             PathExprWalkStep::Index { expr } => match self.kind(db) {
                 TyKind::Array { typ, .. } => Ok(*typ),
@@ -599,13 +470,85 @@ impl<'db> Ty<'db> {
         }
     }
 
-    pub fn variables(&self, db: &'db dyn BaseDatabase) -> Option<&'db IndexMap<Ident, Ty<'db>>> {
+    pub fn inheritors(&self, db: &'db dyn BaseDatabase) -> Vec<Ty<'db>> {
         match self.kind(db) {
-            TyKind::Target(inner) => inner.variables(db),
-            TyKind::Function { variables, .. } => Some(variables),
-            TyKind::FunctionBlock { variables, .. } => Some(variables),
-            TyKind::Class { variables, .. } => Some(variables),
-            TyKind::Method { variables, .. } => Some(variables),
+            TyKind::Target(target) => target.inheritors(db),
+            TyKind::Class {
+                extends,
+                implements,
+                ..
+            } => {
+                let mut inheritors = vec![];
+                if let Some(base) = extends {
+                    inheritors.push(*base);
+                }
+                for iface in implements {
+                    inheritors.push(*iface);
+                }
+                inheritors
+            }
+            TyKind::Interface { implements, .. } => {
+                let mut inheritors = vec![];
+                for iface in implements {
+                    inheritors.push(*iface);
+                }
+                inheritors
+            }
+            TyKind::FunctionBlock { extends, .. } => {
+                let mut inheritors = vec![];
+                if let Some(base) = extends {
+                    inheritors.push(*base);
+                }
+                inheritors
+            }
+            _ => vec![],
+        }
+    }
+
+    #[salsa::tracked(returns(as_ref))]
+    pub fn variables(self, db: &'db dyn BaseDatabase) -> Option<Arc<IndexMap<Ident, Ty<'db>>>> {
+        match self.kind(db) {
+            TyKind::Target(inner) => inner.variables(db).cloned(),
+            _ => match self.def(db) {
+                TyDef::Pou(pou) => match pou.pou(db) {
+                    Pou::Function(f) => Some(self.fetch_variables(db, &f.variables(db))),
+                    Pou::FunctionBlock(fb) => Some(self.fetch_variables(db, &fb.variables(db))),
+                    _ => None,
+                },
+                TyDef::Method(method) => Some(self.fetch_variables(db, &method.variables(db))),
+                TyDef::MethodProt(method) => Some(self.fetch_variables(db, &method.variables(db))),
+                _ => None,
+            },
+        }
+    }
+
+    fn fetch_variables(
+        &self,
+        db: &'db dyn BaseDatabase,
+        vars: &[VariableDecl<'db>],
+    ) -> Arc<IndexMap<Ident, Ty<'db>>> {
+        let mut variables = IndexMap::default();
+        for v in vars {
+            let decl = TyDecl::Variable(*v);
+            match v.kind(db) {
+                VariableKind::Input => {
+                    variables.insert(*v.name(db), v.spec(db).spec_to_ty(db, decl));
+                }
+                VariableKind::Output => {
+                    variables.insert(*v.name(db), v.spec(db).spec_to_ty(db, decl));
+                }
+                VariableKind::InOut => {
+                    variables.insert(*v.name(db), v.spec(db).spec_to_ty(db, decl));
+                }
+                _ => continue,
+            };
+        }
+        Arc::new(variables)
+    }
+
+    pub fn visibility(&self, db: &'db dyn BaseDatabase) -> Option<Visibility> {
+        match self.def(db) {
+            TyDef::Method(method) => Some(method.visibility(db)),
             _ => None,
         }
     }
@@ -696,10 +639,11 @@ impl<'db> Ty<'db> {
         if let TyKind::Target(sig) = self.kind(db) {
             return sig.has_return_type(db);
         };
-        if let TyKind::Function { return_type, .. } = self.kind(db) {
-            return *return_type;
+        match self.kind(db) {
+            TyKind::Function { return_type } => *return_type,
+            TyKind::Method { return_type, .. } => *return_type,
+            _ => None,
         }
-        None
     }
 }
 
@@ -749,7 +693,9 @@ impl<'db> Spec<'db> {
                         .iter()
                         .map(|element| {
                             (*element.name(db), {
-                                element.spec(db).spec_to_ty(db, TyDecl::StructElement(*element))
+                                element
+                                    .spec(db)
+                                    .spec_to_ty(db, TyDecl::StructElement(*element))
                             })
                         })
                         .collect(),
@@ -781,7 +727,7 @@ impl<'db> Spec<'db> {
                 TyDef::Spec(self),
                 TyKind::RefTo(_ref.spec_to_ty(db, origin)),
             ),
-        } 
+        }
     }
 }
 
@@ -808,7 +754,22 @@ impl<'db> TypeInfo<'db> for Ty<'db> {
 
     fn decl_name(&self, db: &'db dyn BaseDatabase) -> String {
         match self.decl(db) {
-            TyDecl::Pou(pou) => "".to_string(),
+            TyDecl::Pou(pou) => match pou.pou(db) {
+                Pou::Function(_) => "FUNCTION".to_string(),
+                Pou::FunctionBlock(_) => "FUNCTION_BLOCK".to_string(),
+                Pou::DataType(dt) => match dt.spec(db).kind(db) {
+                    SpecKind::Array(_) => "ARRAY".to_string(),
+                    SpecKind::Enum { .. } => "ENUM".to_string(),
+                    SpecKind::Subrange { .. } => "SUBRANGE".to_string(),
+                    SpecKind::Struct { .. } => "STRUCT".to_string(),
+                    SpecKind::Target(_) => "TYPE".to_string(),
+                    SpecKind::Simple(_) => "TYPE".to_string(),
+                    SpecKind::ArrayConformand { .. } => "ARRAY*".to_string(),
+                    SpecKind::Ref { .. } => "REF_TO".to_string(),
+                },
+                Pou::Class(_) => "CLASS".to_string(),
+                Pou::Interface(_) => "INTERFACE".to_string(),
+            },
             TyDecl::Variable(var) => match var.kind(db) {
                 VariableKind::Input => "VAR_INPUT".to_string(),
                 VariableKind::Output => "VAR_OUTPUT".to_string(),
@@ -822,7 +783,7 @@ impl<'db> TypeInfo<'db> for Ty<'db> {
             },
             TyDecl::Method(m) => "METHOD".to_string(),
             TyDecl::MethodProt(m) => "METHOD (prototype)".to_string(),
-            TyDecl::StructElement(e) => "struct field".to_string(),
+            TyDecl::StructElement(e) => "STRUCT field".to_string(),
         }
     }
 }
