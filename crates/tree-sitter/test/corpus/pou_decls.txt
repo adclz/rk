@@ -133,7 +133,8 @@ END_CLASS
           (namespace_access
             (identifier)))
         (method_decl
-          (access_spec)
+          (access_spec
+            (public))
           (identifier)
           (func_body
             (stmt_list
@@ -148,7 +149,8 @@ END_CLASS
                     (bool_literal
                       (bool_literal_with_string))))))))
         (method_decl
-          (access_spec)
+          (access_spec
+            (public))
           (identifier)
           (func_body
             (stmt_list

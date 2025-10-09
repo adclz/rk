@@ -76,7 +76,8 @@ END_CLASS
                     (bool_literal
                       (bool_literal_with_string))))))))
         (var_decls
-          (access_spec)
+          (access_spec
+            (public))
           (var_decl_init_list
             (variable_list
               (identifier))

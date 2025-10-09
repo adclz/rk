@@ -43,7 +43,8 @@ END_CLASS
       (class_decl
         (identifier)
         (var_decls
-          (access_spec)
+          (access_spec
+            (internal))
           (var_decl_init_list
             (variable_list
               (identifier))
@@ -54,7 +55,8 @@ END_CLASS
                     (sign_int_type_name
                       (int_name))))))))
         (var_decls
-          (access_spec)
+          (access_spec
+            (public))
           (var_decl_init_list
             (variable_list
               (identifier))
@@ -80,14 +82,16 @@ END_CLASS
       (class_decl
         (identifier)
         (method_decl
-          (access_spec)
+          (access_spec
+            (internal))
           (identifier)
           (numeric_type_name
             (int_type_name
               (sign_int_type_name
                 (int_name)))))
         (method_decl
-          (access_spec)
+          (access_spec
+            (public))
           (identifier)
           (numeric_type_name
             (int_type_name
