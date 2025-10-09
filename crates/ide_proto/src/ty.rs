@@ -1,7 +1,9 @@
 use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{
-        request::{GotoDeclarationResponse, GotoImplementationResponse}, CodeLens, GotoDefinitionResponse, Hover, HoverContents, InlayHint, Location, MarkupContent, MarkupKind
+        CodeLens, GotoDefinitionResponse, Hover, HoverContents, InlayHint, Location, MarkupContent,
+        MarkupKind,
+        request::{GotoDeclarationResponse, GotoImplementationResponse},
     },
 };
 use hir::{
@@ -69,12 +71,12 @@ impl<'db> ToProtocol<'db> for Ty<'db> {
             // we check if we're not hovering the definition of this type (could be a Pou body)
             match self.def(db).def_as_ty(db) {
                 Some(ty) => {
-                    // we are hovering the definition but no the name, therefore return None
+                    // we are hovering the definition but not the name, therefore return None
                     if ty == *self {
                         return None;
                     }
                     return ty.force_hover(db);
-                },
+                }
                 None => return None,
             }
         }
@@ -113,15 +115,18 @@ impl<'ty> TyHover<'ty> for Ty<'ty> {
             s if s.is_empty() => "".to_string(),
             s => format!("({s}) "),
         };
-        let def_name = match self.kind(db) {
-            TyKind::Target(target) => target.decl(db).name(db).text(db).to_string(),
-            _ => self.type_name(db).to_string(),
+        let def_name = match self.has_return_type(db) {
+            Some(ret) => format!(": {}", ret.type_name(db).to_string()),
+            None => match self.kind(db) {
+                TyKind::Target(target) => format!(": {}", target.decl(db).name(db).text(db).to_string()),
+                _ => "".to_string(),
+            },
         };
         let value = format!(
             r#"
 {comment}
 ```iecst
-{decl}{name}: {def_name}
+{decl}{name}{def_name}
 ```
 "#
         );

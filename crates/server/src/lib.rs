@@ -185,7 +185,7 @@ fn on_notifications<Db: BaseDatabase + Clone + RefUnwindSafe>(
             match p.text_document.uri.as_str().ends_with(".st") {
                 true => Ok(open_text_document(s, p)?),
                 false => {
-                    log::warn!("Ignored opening file: {}", p.text_document.uri);
+                    //log::warn!("Ignored opening file: {}", p.text_document.uri);
                     return Ok(());
                 }
             }
@@ -194,7 +194,7 @@ fn on_notifications<Db: BaseDatabase + Clone + RefUnwindSafe>(
             match p.text_document.uri.as_str().ends_with(".st") {
                 true => Ok(change_text_document(s, p)?),
                 false => {
-                    log::warn!("Ignored opening file: {}", p.text_document.uri);
+                    //log::warn!("Ignored opening file: {}", p.text_document.uri);
                     return Ok(());
                 }
             }

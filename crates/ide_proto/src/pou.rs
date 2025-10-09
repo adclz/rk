@@ -123,7 +123,6 @@ impl<'db> ToProtocol<'db> for PouDecl<'db> {
     }
 
     fn inlay_hint(&'db self, db: &'db dyn BaseDatabase) -> Option<InlayHint> {
-        eprintln!("CALLING INLAY HINT {}", self.name(db).text(db).to_string());
         Some(InlayHint {
             label: InlayHintLabel::String(format!(
                 "{} {}",
