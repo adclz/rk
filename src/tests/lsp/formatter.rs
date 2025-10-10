@@ -442,8 +442,8 @@ END_FUNCTION_BLOCK
 pub fn init_expr_single_line(mut with_db: RootDatabase) {
     let source = r#"
         TYPE Engine: STRUCT
-		power: INT;
-		oil: REAL;
+		power: INT
+		oil: REAL
 	END_STRUCT
         END_TYPE
 

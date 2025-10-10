@@ -38,12 +38,12 @@ static SURROUND_SPACES: &str = r#"
     "CONTINUE"
     ":=" "=" "<=" "<" ">=" ">" "<>" "+" "-" "*" "/" "%" "^"
     "&" "AND" "OR"
-    (identifier)
     (line_comment)
     (c_style_comment)
     (pascal_style_comment)
 ] @prepend_space @append_space
 
+(identifier) @prepend_space
 ["(" "[" "."] @append_antispace
 [")" "]" ":" ";" "," "."] @prepend_antispace
 ["NOT" ":"] @append_space
@@ -94,6 +94,7 @@ static NEW_LINES: &str = r#"
     (loc_partly_var)
     (external_decl)
     (global_var_decl)
+    (struct_elem_decl)
 ] @prepend_hardline
 
  [
@@ -129,7 +130,7 @@ static NEW_LINES: &str = r#"
 )
 
 (
-  [";"] @append_hardline
+  ";" @append_hardline
   .
   [(line_comment) (c_style_comment) (pascal_style_comment)]* @do_nothing
 )
@@ -227,7 +228,7 @@ static ALLOW_BLANK_LINE: &str = r#"
     (namespace_decl)
     (func_decl)
     (fb_decl)
-    (type_decl)
+    (data_type_decl)
     (class_decl)
     (interface_decl)
     (method_decl)
@@ -303,6 +304,13 @@ static SEMI_COLONS: &str = r#"
     ";"* @do_nothing
     (#delimiter! ";")) @append_delimiter
 
+( 
+    (struct_elem_decl) @append_delimiter
+    .
+    ";"* @do_nothing
+    (#delimiter! ";") 
+)
+
 (case_selection ";" @delete)
 "#;
 
@@ -314,12 +322,12 @@ pub static TOPIARY_LANG: LazyLock<Language> = LazyLock::new(|| Language {
         &format!(
             r#"
     {SURROUND_SPACES}
-    {NEW_LINES}
     {INDENTATIONS}
     {ALLOW_BLANK_LINE}
     {LEAF}
     {SEMI_COLONS}
     {BLOCKS}
+    {NEW_LINES}
 "#
         ),
     )
