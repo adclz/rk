@@ -20,3 +20,4 @@ pub mod path_expr;
 pub mod visibility;
 pub mod enums;
 pub mod subrange;
+pub mod references;

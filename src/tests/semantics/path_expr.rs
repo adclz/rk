@@ -226,14 +226,12 @@ END_FUNCTION
         ,-[ file:///test0.st:14:2 ]
         |
       2 | ,-> TYPE Engine:
+        | |        ^^^|^^  
+        | |           `---- 'Engine' is declared here
         : :   
       6 | |->     END_STRUCT
         | |                    
         | `-------------------- type defined here
-        | 
-     11 |            test: Engine;
-        |            ^^|^  
-        |              `--- 'test' is declared here
         | 
      14 |         test[0] := 0.2;
         |         ^^^|^^^  
