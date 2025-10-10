@@ -690,3 +690,64 @@ END_FUNCTION
     END_FUNCTION
     ");
 }
+
+#[rstest]
+pub fn references(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE
+S1: STRUCT
+SC1: INT;
+SC2: REAL;
+END_STRUCT;
+A1: ARRAY[1..99] OF INT;
+END_TYPE
+
+FUNCTION_BLOCK fb1
+VAR
+myS1: S1;
+myA1: A1;
+myRefS1: REF_TO S1:= REF(myS1);
+myRefA1: REF_TO A1:= REF(myA1);
+myRefInt: REF_TO INT:= REF(myA1[1]);
+END_VAR
+myRefS1^.SC1:= myRefA1^[12]; // in this case, equivalent to S1.SC1:= A1[12];
+myRefInt:= REF(A1[11]);
+S1.SC1:= myRefInt^; // assigns the value of A1[11] to S1.SC1
+
+END_FUNCTION_BLOCK
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    TYPE
+    	S1: STRUCT
+    		SC1: INT;
+    		SC2: REAL;
+    	END_STRUCT;
+    	A1: ARRAY[1..99] OF INT;
+    END_TYPE
+
+    FUNCTION_BLOCK fb1
+    	VAR
+    		myS1: S1;
+    		myA1: A1;
+    		myRefS1: REF_TO S1 := REF(myS1);
+    		myRefA1: REF_TO A1 := REF(myA1);
+    		myRefInt: REF_TO INT := REF(myA1[1]);
+    	END_VAR
+    	myRefS1^.SC1 := myRefA1^[12]; // in this case, equivalent to S1.SC1:= A1[12];
+    	myRefInt := REF(A1[11]);
+    	S1.SC1 := myRefInt^;
+    	// assigns the value of A1[11] to S1.SC1
+
+
+    END_FUNCTION_BLOCK
+    ");
+}

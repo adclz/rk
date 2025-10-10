@@ -36,7 +36,8 @@ static SURROUND_SPACES: &str = r#"
     "RETURN"
     "EXIT"
     "CONTINUE"
-    ":=" "=" "<=" "<" ">=" ">" "<>" "+" "-" "*" "/" "%" "^"
+    "REF_TO"
+    ":=" "=" "<=" "<" ">=" ">" "<>" "+" "-" "*" "/" "%"
     "&" "AND" "OR"
     (line_comment)
     (c_style_comment)
@@ -45,7 +46,7 @@ static SURROUND_SPACES: &str = r#"
 
 (identifier) @prepend_space
 ["(" "[" "."] @append_antispace
-[")" "]" ":" ";" "," "."] @prepend_antispace
+[")" "]" ":" ";" "," "." "^"] @prepend_antispace
 ["NOT" ":"] @append_space
 "#;
 
