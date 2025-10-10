@@ -18,3 +18,4 @@ pub mod unsigned_integers;
 pub mod walk_hir;
 pub mod path_expr;
 pub mod visibility;
+pub mod enums;
