@@ -23,9 +23,6 @@ impl<'db> ToProtocol<'db> for Ty<'db> {
     }
 
     fn definition(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDefinitionResponse> {
-        if let TyKind::Target(target) = self.kind(db) {
-            return target.definition(db);
-        }
         match self.def(db) {
             TyDef::Pou(pou) => Some(GotoDefinitionResponse::Scalar(Location::new(
                 pou.get_scope_id(db).file(db).url(db).clone(),
@@ -48,10 +45,6 @@ impl<'db> ToProtocol<'db> for Ty<'db> {
     }
 
     fn inlay_hint(&'db self, db: &'db dyn BaseDatabase) -> Option<InlayHint> {
-        if let TyKind::Target(_) = self.kind(db) {
-            // don't show inlay hints for target types
-            return None;
-        }
         match self.def(db) {
             TyDef::Pou(pou) => pou.inlay_hint(db),
             _ => None,
@@ -63,11 +56,6 @@ impl<'db> ToProtocol<'db> for Ty<'db> {
 
         // Check if the offset is within the span of the whole type
         if offset < name_span.start_byte || offset > name_span.end_byte {
-            // type name not hovered
-            // if target type, hover the target type
-            if let TyKind::Target(target) = self.kind(db) {
-                return target.force_hover(db);
-            }
             // we check if we're not hovering the definition of this type (could be a Pou body)
             match self.def(db).def_as_ty(db) {
                 Some(ty) => {
@@ -118,7 +106,6 @@ impl<'ty> TyHover<'ty> for Ty<'ty> {
         let def_name = match self.has_return_type(db) {
             Some(ret) => format!(": {}", ret.type_name(db).to_string()),
             None => match self.kind(db) {
-                TyKind::Target(target) => format!(": {}", target.decl(db).name(db).text(db).to_string()),
                 TyKind::RefTo(ref_) => format!(": REF_TO {}", ref_.spec_to_ty(db, self.decl(db)).type_name(db).to_string()),
                 _ => "".to_string(),
             },

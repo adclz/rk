@@ -51,7 +51,6 @@ pub fn method_table<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>) -> Arc<Methods<
     let mut declared_duplicates = vec![];
 
     match ty.kind(db) {
-        TyKind::Target(target) => return method_table(db, *target),
         TyKind::Class {
             extends,
             implements,
@@ -84,10 +83,9 @@ pub fn method_table<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>) -> Arc<Methods<
             // Add this class’s own methods
             for m in methods {
                 let ty = ty_for_method_decl(db, *m);
-                let target = Ty::new(db, TyDecl::Method(*m), ty.def(db), TyKind::Target(ty));
 
-                if let Some(m) = declared_methods.insert(*m.name(db), target) {
-                    declared_duplicates.push((m, target));
+                if let Some(m) = declared_methods.insert(*m.name(db), ty) {
+                    declared_duplicates.push((m, ty));
                 }
             }
         }
@@ -99,10 +97,9 @@ pub fn method_table<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>) -> Arc<Methods<
             // Methods = abstract signatures
             for m in methods {
                 let ty = ty_for_method_prot(db, *m);
-                let target = Ty::new(db, TyDecl::MethodProt(*m), ty.def(db), TyKind::Target(ty));
 
-                if let Some(m) = declared_methods.insert(*m.name(db), target) {
-                    declared_duplicates.push((m, target));
+                if let Some(m) = declared_methods.insert(*m.name(db), ty) {
+                    declared_duplicates.push((m, ty));
                 }
             }
 
@@ -122,10 +119,9 @@ pub fn method_table<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>) -> Arc<Methods<
         } => {
             for m in methods {
                 let ty = ty_for_method_decl(db, *m);
-                let target = Ty::new(db, TyDecl::Method(*m), ty.def(db), TyKind::Target(ty));
 
-                if let Some(m) = declared_methods.insert(*m.name(db), target) {
-                    declared_duplicates.push((m, target));
+                if let Some(m) = declared_methods.insert(*m.name(db), ty) {
+                    declared_duplicates.push((m, ty));
                 }
             }
 

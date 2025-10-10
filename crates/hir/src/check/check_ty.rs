@@ -16,20 +16,6 @@ pub fn check_ty<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>, errors: &mut Vec<An
                 .into(),
             );
         }
-        TyKind::Target(target) => {
-            // Check infinite recursion
-            if let TyKind::Recursive = target.kind(db) {
-                errors.push(
-                    TyError::ReferenceRecursive {
-                        origin: ty,
-                        target: *target,
-                    }
-                    .into(),
-                );
-            } else {
-                check_ty(db, *target, errors);
-            }
-        }
         TyKind::Recursive => {
             errors.push(TyError::Recursive { origin: ty }.into());
         }

@@ -208,7 +208,6 @@ pub enum TyKind<'db> {
         max: Expr<'db>,
     },
     RefTo(Spec<'db>),
-    Target(Ty<'db>),
     Array {
         ranges: Vec<(Expr<'db>, Expr<'db>)>,
         typ: Spec<'db>,
@@ -387,9 +386,6 @@ impl<'db> Ty<'db> {
         db: &'db dyn BaseDatabase,
         step: &PathExprWalkStep<'db>,
     ) -> Result<Ty<'db>, PathResolveError<'db>> {
-        if let TyKind::Target(target) = self.kind(db) {
-            return target.linear(db, step);
-        }
         match &step {
             PathExprWalkStep::Field { ident, expr } => {
                 let field = ident.text(db).to_string();
@@ -443,7 +439,6 @@ impl<'db> Ty<'db> {
 
     pub fn inheritors(&self, db: &'db dyn BaseDatabase) -> Vec<Ty<'db>> {
         match self.kind(db) {
-            TyKind::Target(target) => target.inheritors(db),
             TyKind::Class {
                 extends,
                 implements,
@@ -479,7 +474,6 @@ impl<'db> Ty<'db> {
     #[salsa::tracked(returns(ref))]
     pub fn variables(self, db: &'db dyn BaseDatabase) -> IndexMap<Ident, Ty<'db>> {
         match self.kind(db) {
-            TyKind::Target(inner) => inner.variables(db).clone(),
             _ => match self.def(db) {
                 TyDef::Pou(pou) => match pou.pou(db) {
                     Pou::Function(f) => self.fetch_variables(db, &f.variables(db)),
@@ -525,9 +519,6 @@ impl<'db> Ty<'db> {
     }
 
     pub fn is_simple(&self, db: &'db dyn BaseDatabase) -> bool {
-        if let TyKind::Target(sig) = self.kind(db) {
-            return sig.is_simple(db);
-        };
         matches!(self.kind(db), TyKind::Simple(_))
     }
 
@@ -540,23 +531,14 @@ impl<'db> Ty<'db> {
     }
 
     pub fn is_callable(&self, db: &'db dyn BaseDatabase) -> bool {
-        if let TyKind::Target(sig) = self.kind(db) {
-            return sig.is_callable(db);
-        };
         matches!(
             self.kind(db),
             TyKind::Function { .. } | TyKind::FunctionBlock { .. } | TyKind::Method { .. }
         )
     }
 
-    pub fn is_target(&self, db: &'db dyn BaseDatabase) -> bool {
-        matches!(self.kind(db), TyKind::Target(_))
-    }
 
     pub fn is_method_prototype(&self, db: &'db dyn BaseDatabase) -> bool {
-        if let TyKind::Target(sig) = self.kind(db) {
-            return sig.is_method_prototype(db);
-        };
         if let TyKind::Method { is_prototype, .. } = self.kind(db) {
             return *is_prototype;
         }
@@ -564,16 +546,10 @@ impl<'db> Ty<'db> {
     }
 
     pub fn is_unresolved(&self, db: &'db dyn BaseDatabase) -> bool {
-        if let TyKind::Target(sig) = self.kind(db) {
-            return sig.is_unresolved(db);
-        };
         matches!(self.kind(db), TyKind::Unresolved(_))
     }
 
     pub fn is_recursive(&self, db: &'db dyn BaseDatabase) -> bool {
-        if let TyKind::Target(sig) = self.kind(db) {
-            return sig.is_recursive(db);
-        };
         matches!(self.kind(db), TyKind::Recursive)
     }
 
@@ -607,9 +583,6 @@ impl<'db> Ty<'db> {
     }
 
     pub fn has_return_type(&self, db: &'db dyn BaseDatabase) -> Option<Ty<'db>> {
-        if let TyKind::Target(sig) = self.kind(db) {
-            return sig.has_return_type(db);
-        };
         match self.kind(db) {
             TyKind::Function { return_type } => {
                 return_type.map(|rt| rt.spec_to_ty(db, self.decl(db)))
@@ -655,8 +628,7 @@ impl<'db> Spec<'db> {
             SpecKind::Target(target) => {
                 match resolve_namespace_access(db, self.scope_id(db), target.path) {
                     Some(pou) => {
-                        let ty = ty_for_pou(db, pou);
-                        TyKind::Target(ty)
+                        ty_for_pou(db, pou).kind(db).clone()
                     }
                     None => TyKind::Unresolved(*target),
                 }
@@ -672,7 +644,6 @@ impl<'db> Spec<'db> {
         let kind = self.spec_to_ty_kind(db);
         let def = match kind {
             TyKind::Unresolved(_) => TyDef::Invalid,
-            TyKind::Target(target) => target.def(db),
             _ => TyDef::Spec(self),
         };
         Ty::new(db, origin, def, kind)
@@ -683,7 +654,6 @@ impl<'db> TypeInfo<'db> for Ty<'db> {
     fn type_name(&self, db: &'db dyn BaseDatabase) -> String {
         match self.kind(db) {
             TyKind::Simple(elem) => elem.type_name(db),
-            TyKind::Target(t) => t.type_name(db),
             TyKind::Enum { .. } => "ENUM".into(),
             TyKind::SubRange { .. } => "SUBRANGE".into(),
             TyKind::RefTo(ref_) => format!(

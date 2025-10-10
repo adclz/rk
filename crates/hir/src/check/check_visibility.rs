@@ -130,11 +130,6 @@ fn is_derived_pou<'db>(
                 .inheritors(db)
                 .iter()
                 .any(|inheritor| {
-                    let inheritor = if let TyKind::Target(target) = inheritor.kind(db) {
-                        target
-                    } else {
-                        inheritor
-                    };
                     *inheritor == ty_for_pou(db, parent)
                 })
         }

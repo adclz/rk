@@ -19,11 +19,6 @@ pub fn check_init_expr<'db>(
     expr: ResolvedInitExpr<'db>,
     errors: &mut Vec<AnalysisError<'db>>,
 ) {
-    if let TyKind::Target(target) = ty.kind(db) {
-        check_init_expr(db, *target, expr, errors);
-        return;
-    }
-
     match expr.kind(db) {
         // Process resolver errors first
         ResolvedInitExprKind::Error(err) => {

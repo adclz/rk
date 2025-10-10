@@ -155,11 +155,7 @@ fn check_assignment<'db>(
         }
          // is a variable and not callable, valid case
         (true, false) => {}
-        _ => {
-            if ty_var.is_target(db) {
-                return Err(StmtError::AssignmentToDirectType { var, ty: ty_var }.into());
-            }
-        }
+        _ => {}
     }
 
     coerce_ty_with_expr(db, ty_var, target)
@@ -190,7 +186,7 @@ fn check_func_call<'db>(
     if !ty_target.is_variable(db)
         && !matches!(
             ty_target.kind(db),
-            TyKind::Function { .. } | TyKind::Method { .. } | TyKind::Target(_)
+            TyKind::Function { .. } | TyKind::Method { .. }
         )
     {
         return Err(StmtError::CallADirectType {

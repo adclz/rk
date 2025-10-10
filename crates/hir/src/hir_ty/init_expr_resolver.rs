@@ -79,11 +79,6 @@ pub fn resolve_init_expr<'db>(
 }
 
 fn resolve_unresolved<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>, init: UnResolvedInitExpr<'db>) -> ResolvedInitExpr<'db> {
-    // Handle Target wrapper
-    if let TyKind::Target(target) = ty.kind(db) {
-        return resolve_unresolved(db, *target, init);
-    }
-
     let kind = match init.kind {
         UnResolvedInitExprKind::ArrayInit { values } => {
             match ty.kind(db) {

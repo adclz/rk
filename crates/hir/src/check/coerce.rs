@@ -18,14 +18,6 @@ pub fn coerce_ty_with_ty<'db>(
     ty1: Ty<'db>,
     ty2: Ty<'db>,
 ) -> Result<(), TypeMismatch<'db>> {
-    if let TyKind::Target(target) = ty1.kind(db) {
-        return coerce_ty_with_ty(db, *target, ty2);
-    }
-
-    if let TyKind::Target(target) = ty2.kind(db) {
-        return coerce_ty_with_ty(db, ty1, *target);
-    }
-
     match (ty1.kind(db), ty2.kind(db)) {
         // Simple equality check between 2 elementary types
         (TyKind::Simple(elem), TyKind::Simple(elem2)) => match elem == elem2 {
@@ -49,11 +41,6 @@ pub fn coerce_ty_with_expr<'db>(
     ty: Ty<'db>,
     target_expr: ResolvedExpr<'db>,
 ) -> Result<(), ExprMismatch<'db>> {
-    // If Type is Target, recurse
-    if let TyKind::Target(t) = ty.kind(db) {
-        return coerce_ty_with_expr(db, *t, target_expr);
-    }
-
     match (ty.kind(db), target_expr.kind(db)) {
         // Compare an elementary type with a literal
         (TyKind::Simple(elem), ResolvedExprKind::Literal(prim)) => elem
@@ -238,7 +225,6 @@ pub fn coerce_bool_with_ty<'db>(
     ty: Ty<'db>,
 ) -> Result<bool, AnalysisError<'db>> {
     match ty.kind(db) {
-        TyKind::Target(target) => coerce_bool_with_ty(db, *target),
         TyKind::Simple(simple) => match simple {
             ElementarySpec::Bool => Ok(true),
             _ => Ok(false),
