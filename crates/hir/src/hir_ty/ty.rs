@@ -41,7 +41,6 @@ pub struct Ty<'db> {
 
     // The actual kind of the type
     #[tracked]
-    #[no_eq]
     #[returns(ref)]
     pub kind: TyKind<'db>,
 }
@@ -248,7 +247,6 @@ pub enum TyKind<'db> {
 
     // Error variants
     Unresolved(SpanNamespaceAccess<'db>),
-    Recursive,
 }
 
 #[tracing::instrument(skip_all, name = "query_type_signature")]
@@ -549,10 +547,6 @@ impl<'db> Ty<'db> {
         matches!(self.kind(db), TyKind::Unresolved(_))
     }
 
-    pub fn is_recursive(&self, db: &'db dyn BaseDatabase) -> bool {
-        matches!(self.kind(db), TyKind::Recursive)
-    }
-
     pub fn is_reference(&self, db: &'db dyn BaseDatabase) -> bool {
         matches!(self.kind(db), TyKind::RefTo(_))
     }
@@ -669,7 +663,6 @@ impl<'db> TypeInfo<'db> for Ty<'db> {
             TyKind::FunctionBlock { .. } => "FUNCTION_BLOCK".into(),
             TyKind::Method { .. } => "METHOD".into(),
             TyKind::Unresolved(_) => "{unknown}".into(),
-            TyKind::Recursive => "{recursive}".into(),
         }
     }
 

@@ -16,9 +16,6 @@ pub fn check_ty<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>, errors: &mut Vec<An
                 .into(),
             );
         }
-        TyKind::Recursive => {
-            errors.push(TyError::Recursive { origin: ty }.into());
-        }
         _ => {}
     }
 }
