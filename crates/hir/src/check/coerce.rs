@@ -7,7 +7,9 @@ use crate::{
     },
     hir_def::expressions::spec::ElementarySpec,
     hir_ty::{
-        array_resolver::resolve_range, expr_resolver::{ResolvedExpr, ResolvedExprKind}, ty::{Ty, TyKind}
+        array_resolver::resolve_range,
+        expr_resolver::{ResolvedExpr, ResolvedExprKind, ResolvedRefValue},
+        ty::{Ty, TyDecl, TyKind},
     },
 };
 
@@ -20,14 +22,25 @@ pub fn coerce_ty_with_ty<'db>(
         return coerce_ty_with_ty(db, *target, ty2);
     }
 
+    if let TyKind::Target(target) = ty2.kind(db) {
+        return coerce_ty_with_ty(db, ty1, *target);
+    }
+
     match (ty1.kind(db), ty2.kind(db)) {
         // Simple equality check between 2 elementary types
         (TyKind::Simple(elem), TyKind::Simple(elem2)) => match elem == elem2 {
             true => Ok(()),
             false => Err(TypeMismatch { ty1, ty2 }),
         },
+        // For all other types, we check for exact equality of the HIR def node
         // Type mismatch
-        _ => Err(TypeMismatch { ty1, ty2 }),
+        _ => {
+            if ty1.def(db) == ty2.def(db) {
+                Ok(())
+            } else {
+                Err(TypeMismatch { ty1, ty2 })
+            }
+        }
     }
 }
 
@@ -149,43 +162,73 @@ pub fn coerce_ty_with_expr<'db>(
         // Compare a Subrange with any expression
         // todo: check that the expression is within the subrange
         // for that, we could
-        (TyKind::SubRange { typ, min, max }, _) => 
-            {
-                // We do not return an error in case of failure to resolve the range bounds
-                // as the error will be reported when checking the subrange type itself
-                let min = match resolve_range(db, *min) {
-                    Some(v) => v,
-                    None => return  Ok(()),
-                };
+        (TyKind::SubRange { typ, min, max }, _) => {
+            // We do not return an error in case of failure to resolve the range bounds
+            // as the error will be reported when checking the subrange type itself
+            let min = match resolve_range(db, *min) {
+                Some(v) => v,
+                None => return Ok(()),
+            };
 
-                let max = match resolve_range(db, *max) {
-                    Some(v) => v,
-                    None => return  Ok(()),
-                };
+            let max = match resolve_range(db, *max) {
+                Some(v) => v,
+                None => return Ok(()),
+            };
 
-                match coerce_ty_with_expr(db, typ.spec_to_ty(db, ty.decl(db)), target_expr) {
-                    Ok(()) => {
-                        match resolve_range(db, target_expr.expr(db)) {
-                            Some(integer) => {
-                                if integer >= min && integer <= max {
-                                    Ok(())
-                                } else {
-                                    Err(ExprMismatch::subrange_value_out_of_bounds(
-                                        target_expr,
-                                        ty,
-                                        min,
-                                        max,
-                                        integer,
-                                    ))
-                                }
-                            },
-                            None => Ok(())
+            match coerce_ty_with_expr(db, typ.spec_to_ty(db, ty.decl(db)), target_expr) {
+                Ok(()) => match resolve_range(db, target_expr.expr(db)) {
+                    Some(integer) => {
+                        if integer >= min && integer <= max {
+                            Ok(())
+                        } else {
+                            Err(ExprMismatch::subrange_value_out_of_bounds(
+                                target_expr,
+                                ty,
+                                min,
+                                max,
+                                integer,
+                            ))
                         }
-                    },
-                    Err(err) => return Err(err),
+                    }
+                    None => Ok(()),
+                },
+                Err(err) => return Err(err),
+            }
+        }
+        (TyKind::RefTo(ref_), ResolvedExprKind::RefValue(inner)) => {
+            let ref_to = ref_.spec_to_ty(db, ty.decl(db));
+
+            match inner {
+                // A NULL reference can be assigned to any reference type
+                ResolvedRefValue::Null => return Ok(()),
+                ResolvedRefValue::Adress(v) => {
+                    // Retrives the element that the reference points to
+                    let var_ty = v
+                        .ty(db)
+                        .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?;
+
+                    // Check that the type of the variable is the same as the type the reference points to
+                    coerce_ty_with_ty(db, ref_to, var_ty)
+                        .map_err(|err| ExprMismatch::type_mismatch(target_expr, err))?;
+
+                    Ok(())
                 }
-            
-            },
+            }
+        }
+        (TyKind::RefTo(ref_), ResolvedExprKind::VarAccess(var_access)) => {
+            let ref_to = ref_.spec_to_ty(db, ty.decl(db));
+
+            // Retrives the element that the reference points to
+            let var_ty = var_access
+                .ty(db)
+                .map_err(|err| ExprMismatch::unresolved_var(target_expr, err))?;
+
+            // Check that the type of the variable is the same as the type the reference points to
+            coerce_ty_with_ty(db, ref_to, var_ty)
+                .map_err(|err| ExprMismatch::type_mismatch(target_expr, err))?;
+
+            Ok(())
+        }
         _ => Err(ExprMismatch::expr_mismatch(target_expr, ty)),
     }
 }

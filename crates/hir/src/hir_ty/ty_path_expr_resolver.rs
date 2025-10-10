@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 use std::ops::ControlFlow;
 
 use auto_lsp::default::db::BaseDatabase;
@@ -13,7 +13,7 @@ use crate::hir_def::{
     expressions::expression::PathExpr, interned::identifier::SpanIdent, scope::FileScopeId,
 };
 use crate::hir_ty::name_res::{pou_names_res, resolve_namespace_access, variables_in_scope};
-use crate::hir_ty::ty::{Ty, ty_for_pou, ty_for_variable};
+use crate::hir_ty::ty::{Ty, TyKind, ty_for_pou, ty_for_variable};
 use crate::{AstId, HirNodeInfo, TypeInfo};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -115,8 +115,12 @@ impl<'db> ResolvePathExprCtx<'db> {
 
     pub fn resolve_path_expr(mut self) -> ResolvedPathResult<'db> {
         let current_path = self.expr.flatten_steps(self.db);
+        for p in current_path {
+            eprintln!("{:?}", p.debug_with_db(self.db));
+        }
 
         'resolve: for (index, step) in current_path.iter().enumerate() {
+            let p = step.debug_with_db(self.db);
             match &self.target {
                 // Both target and path are available
                 // We need to resolve the target step by step
@@ -154,11 +158,39 @@ impl<'db> ResolvePathExprCtx<'db> {
                     break 'resolve; // Exit the loop after resolving the path
                 }
                 // No target yet
-                None => {
-                    if let PathExprWalkStep::Field { ident, expr } = step {
+                None => match step {
+                    PathExprWalkStep::Field { ident, expr } => {
                         self.find_target(ident);
+                        // If we found a target and this is the last step, we need to process it immediately
+                        if self.target.is_some() && index == current_path.len() - 1 {
+                            // This is a simple field access with no further steps, continue to the next iteration
+                            // to process it in the Some(sig) branch
+                            continue 'resolve;
+                        }
                     }
-                }
+                    PathExprWalkStep::Deref { target, expr } => {
+                        self.find_target(target);
+                        // If we found a target, we need to process the dereference immediately
+                        if let Some(sig) = self.target {
+                            match sig.linear(self.db, step) {
+                                Ok(dereferenced_sig) => {
+                                    self.elements.push(ResolvedPathElement::new(
+                                        *step.get_expr(),
+                                        ResolvedPathElementKind::Ty(dereferenced_sig),
+                                    ));
+                                }
+                                Err(error) => {
+                                    self.elements.push(ResolvedPathElement::new(
+                                        *step.get_expr(),
+                                        ResolvedPathElementKind::Error(error),
+                                    ));
+                                }
+                            }
+                            break 'resolve; // We've processed the dereference, we're done
+                        }
+                    }
+                    _ => (),
+                },
             }
         }
 
@@ -195,7 +227,7 @@ impl<'db> ResolvePathExprCtx<'db> {
                 // Try variables in scope
                 if self.search_variables_in_scope(identifier).is_break() {
                     return;
-                } 
+                }
 
                 // Special case: FUNCTION can access its own name as a variable
                 // This is only valid in FUNCTION POUs and if we are at the first fragment
@@ -286,16 +318,31 @@ pub enum PathExprWalkStep<'db> {
         expr: PathExpr<'db>,
     }, // By index
     Deref {
+        target: SpanIdent<'db>,
         expr: PathExpr<'db>,
-    }, // For pointers or references
+    }, // For pointers
 }
 
 impl PathExprWalkStep<'_> {
+    pub fn debug_with_db(&self, db: &dyn BaseDatabase) -> String {
+        match self {
+            PathExprWalkStep::Field { ident, expr } => {
+                format!("Field - {}", ident.text(db).to_string())
+            }
+            PathExprWalkStep::Index { expr } => {
+                format!("Index")
+            }
+            PathExprWalkStep::Deref { target, expr } => {
+                format!("Deref - {}", target.text(db).to_string())
+            }
+        }
+    }
+
     pub fn get_expr(&self) -> &PathExpr<'_> {
         match self {
             PathExprWalkStep::Field { expr, .. } => expr,
             PathExprWalkStep::Index { expr } => expr,
-            PathExprWalkStep::Deref { expr } => expr,
+            PathExprWalkStep::Deref { expr, .. } => expr,
         }
     }
 }
@@ -314,7 +361,10 @@ impl<'db> PathExpr<'db> {
                         expr: self,
                         ident: *simple,
                     }),
-                    VarAccess::Deref(_) => result.push(PathExprWalkStep::Deref { expr: self }),
+                    VarAccess::Deref(target) => result.push(PathExprWalkStep::Deref {
+                        expr: self,
+                        target: *target,
+                    }),
                 }
             }
             PathExprKind::Index(index_expr) => {
@@ -326,7 +376,10 @@ impl<'db> PathExpr<'db> {
                     expr: self,
                     ident: simple,
                 }),
-                VarAccess::Deref(_) => result.push(PathExprWalkStep::Deref { expr: self }),
+                VarAccess::Deref(target) => result.push(PathExprWalkStep::Deref {
+                    expr: self,
+                    target: target,
+                }),
             },
         }
 

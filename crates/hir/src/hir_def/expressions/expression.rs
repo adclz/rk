@@ -187,14 +187,8 @@ pub enum MultibitsPart {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum RefValue<'db> {
-    Address(RefAdress<'db>),
+    Address(SymbolicVariable<'db>),
     Null,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum RefAdress<'db> {
-    Symbolic(SymbolicVariable<'db>),
-    Instance(Ident),
 }
 
 #[salsa::tracked(debug)]
@@ -203,7 +197,6 @@ pub struct ParamAssign<'db> {
 
     pub scope_id: FileScopeId<'db>,
 
-    #[no_eq]
     pub kind: ParamAssignKind<'db>,
 }
 
@@ -472,10 +465,7 @@ impl<'db> PrimaryExpr<'db> {
             },
             PrimaryExpr::EnumValue { name, variant } => variant.text(db),
             PrimaryExpr::RefValue { value } => match value {
-                RefValue::Address(addr) => match addr {
-                    RefAdress::Symbolic(sym) => "<symbolic address>",
-                    RefAdress::Instance(ident) => ident.text(db),
-                },
+                RefValue::Address(addr) => "<DEREF>",
                 RefValue::Null => "NULL",
             },
             PrimaryExpr::ParenthesizedExpr { expr } => expr.to_string(db),

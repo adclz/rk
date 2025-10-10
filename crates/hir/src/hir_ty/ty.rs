@@ -387,37 +387,43 @@ impl<'db> Ty<'db> {
         db: &'db dyn BaseDatabase,
         step: &PathExprWalkStep<'db>,
     ) -> Result<Ty<'db>, PathResolveError<'db>> {
+        if let TyKind::Target(target) = self.kind(db) {
+            return target.linear(db, step);
+        }
         match &step {
-            PathExprWalkStep::Field { ident, expr } => match self.kind(db) {
-                TyKind::Target(target) => target.linear(db, step),
-                // Look for a struct field
-                TyKind::Struct { elements, spec } => elements
-                    .get(&ident.ident)
-                    .map(|f| ty_for_struct_field(db, *f))
-                    .ok_or(PathResolveError::UnknownField {
-                        expr: *expr,
+            PathExprWalkStep::Field { ident, expr } => {
+                let field = ident.text(db).to_string();
+                match self.kind(db) {
+                    // Look for a struct field
+                    TyKind::Struct { elements, spec } => elements
+                        .get(&ident.ident)
+                        .map(|f| ty_for_struct_field(db, *f))
+                        .ok_or(PathResolveError::UnknownField {
+                            expr: *expr,
+                            ty: *self,
+                        }),
+                    // Look for a method name (only in declared methods)
+                    TyKind::Class { .. } | TyKind::FunctionBlock { .. } => method_table(db, *self)
+                        .declared_methods
+                        .get(&ident.ident)
+                        .cloned()
+                        .ok_or(PathResolveError::UnknownField {
+                            expr: *expr,
+                            ty: *self,
+                        }),
+                    TyKind::Array { ranges, typ } => Err(PathResolveError::NoField {
                         ty: *self,
+                        expr: *expr,
                     }),
-                // Look for a method name (only in declared methods)
-                TyKind::Class { .. } | TyKind::FunctionBlock { .. } => method_table(db, *self)
-                    .declared_methods
-                    .get(&ident.ident)
-                    .cloned()
-                    .ok_or(PathResolveError::UnknownField {
-                        expr: *expr,
-                        ty: *self,
-                    }),
-                    TyKind::Array { ranges, typ } => {
-                        Err(PathResolveError::NoField { ty: *self, expr: *expr })
-                    }
-                // Otherwise, look for a variable
-                _ => self.variables(db).get(&ident.ident).cloned().ok_or(
-                    PathResolveError::UnknownField {
-                        expr: *expr,
-                        ty: *self,
-                    },
-                ),
-            },
+                    // Otherwise, look for a variable
+                    _ => self.variables(db).get(&ident.ident).cloned().ok_or(
+                        PathResolveError::UnknownField {
+                            expr: *expr,
+                            ty: *self,
+                        },
+                    ),
+                }
+            }
             PathExprWalkStep::Index { expr } => match self.kind(db) {
                 TyKind::Array { typ, .. } => Ok(typ.spec_to_ty(db, self.decl(db))),
                 _ => Err(PathResolveError::NotAnArray {
@@ -425,7 +431,7 @@ impl<'db> Ty<'db> {
                     ty: *self,
                 }),
             },
-            PathExprWalkStep::Deref { expr } => match self.kind(db) {
+            PathExprWalkStep::Deref { expr, target } => match self.kind(db) {
                 TyKind::RefTo(inner) => Ok(inner.spec_to_ty(db, self.decl(db))),
                 _ => Err(PathResolveError::NotAReference {
                     expr: *expr,
@@ -674,23 +680,26 @@ impl<'db> Spec<'db> {
 }
 
 impl<'db> TypeInfo<'db> for Ty<'db> {
-    fn type_name(&self, db: &'db dyn BaseDatabase) -> &'static str {
+    fn type_name(&self, db: &'db dyn BaseDatabase) -> String {
         match self.kind(db) {
             TyKind::Simple(elem) => elem.type_name(db),
             TyKind::Target(t) => t.type_name(db),
-            TyKind::Enum { .. } => "ENUM",
-            TyKind::SubRange { .. } => "SUBRANGE",
-            TyKind::RefTo(_) => "REF_TO",
-            TyKind::Array { .. } => "ARRAY",
-            TyKind::ArrayConformand { .. } => "ARRAY*",
-            TyKind::Struct { .. } => "STRUCT",
-            TyKind::Interface { .. } => "INTERFACE",
-            TyKind::Class { .. } => "CLASS",
-            TyKind::Function { .. } => "FUNCTION",
-            TyKind::FunctionBlock { .. } => "FUNCTION_BLOCK",
-            TyKind::Method { .. } => "METHOD",
-            TyKind::Unresolved(_) => "{unknown}",
-            TyKind::Recursive => "{recursive}",
+            TyKind::Enum { .. } => "ENUM".into(),
+            TyKind::SubRange { .. } => "SUBRANGE".into(),
+            TyKind::RefTo(ref_) => format!(
+                "REF_TO {}",
+                ref_.spec_to_ty(db, self.decl(db)).type_name(db)
+            ),
+            TyKind::Array { .. } => "ARRAY".into(),
+            TyKind::ArrayConformand { .. } => "ARRAY*".into(),
+            TyKind::Struct { .. } => "STRUCT".into(),
+            TyKind::Interface { .. } => "INTERFACE".into(),
+            TyKind::Class { .. } => "CLASS".into(),
+            TyKind::Function { .. } => "FUNCTION".into(),
+            TyKind::FunctionBlock { .. } => "FUNCTION_BLOCK".into(),
+            TyKind::Method { .. } => "METHOD".into(),
+            TyKind::Unresolved(_) => "{unknown}".into(),
+            TyKind::Recursive => "{recursive}".into(),
         }
     }
 

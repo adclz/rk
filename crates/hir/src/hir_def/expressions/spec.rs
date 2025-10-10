@@ -105,7 +105,7 @@ pub enum ElementarySpec {
 }
 
 impl<'db> TypeInfo<'db> for ElementarySpec {
-    fn type_name(&self, db: &'db dyn BaseDatabase) -> &'static str {
+    fn type_name(&self, db: &'db dyn BaseDatabase) -> String {
         match self {
             ElementarySpec::Bool => "BOOL",
             ElementarySpec::REDGEBool => "REDGE_BOOL",
@@ -136,7 +136,7 @@ impl<'db> TypeInfo<'db> for ElementarySpec {
             ElementarySpec::LTime => "LTIME",
             ElementarySpec::Tod => "TOD",
             ElementarySpec::LTod => "LTOD",
-        }
+        }.into()
     }
 }
 

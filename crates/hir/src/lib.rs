@@ -35,7 +35,7 @@ pub trait TypeInfo<'db> {
     fn decl_name(&self, db: &'db dyn BaseDatabase) -> String {
         Default::default()
     }
-    fn type_name(&self, db: &'db dyn BaseDatabase) -> &'static str;
+    fn type_name(&self, db: &'db dyn BaseDatabase) -> String;
 }
 
 pub trait HirNodeInfo<'db> {

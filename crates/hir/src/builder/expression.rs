@@ -14,7 +14,7 @@ use crate::hir_def::interned::identifier::SpanIdent;
 use crate::{
     hir_def::expressions::expression::{
         AddOperatorKind, BooleanOperatorKind, ComparisonOperatorKind, Elementary, Expr, ExprKind,
-        MultOperatorKind, ParamAssign, PathExprKind, PrimaryExpr, RefAdress, RefValue,
+        MultOperatorKind, ParamAssign, PathExprKind, PrimaryExpr, RefValue,
         SymbolicVariable, UnaryOperatorKind, VarAccess, VariableAccess,
     },
     hir_def::interned::identifier::Ident,
@@ -310,14 +310,14 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                 ast::generated::Null_RefAddr::RefAddr(a) => Ok(Expr::new(
                     sema.db,
                     ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
-                        value: RefValue::Address(RefAdress::Symbolic(SymbolicVariable {
+                        value: RefValue::Address(SymbolicVariable {
                             kind: a
                                 .children
                                 .cast(sema.ast)
                                 .children
                                 .cast(sema.ast)
                                 .parse(sema)?,
-                        })),
+                        }),
                     }),
                     a.into(),
                     sema.current_scope,

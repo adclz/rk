@@ -119,6 +119,7 @@ impl<'ty> TyHover<'ty> for Ty<'ty> {
             Some(ret) => format!(": {}", ret.type_name(db).to_string()),
             None => match self.kind(db) {
                 TyKind::Target(target) => format!(": {}", target.decl(db).name(db).text(db).to_string()),
+                TyKind::RefTo(ref_) => format!(": REF_TO {}", ref_.spec_to_ty(db, self.decl(db)).type_name(db).to_string()),
                 _ => "".to_string(),
             },
         };

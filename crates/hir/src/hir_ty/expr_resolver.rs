@@ -3,7 +3,7 @@ use auto_lsp::default::db::BaseDatabase;
 use crate::{
     hir_def::{
         expressions::{
-            expression::{Elementary, Expr, ExprKind, PrimaryExpr, RefAdress, RefValue},
+            expression::{Elementary, Expr, ExprKind, PathExpr, PrimaryExpr, RefValue},
             spec::EnumVariant,
         }, interned::identifier::SpanIdent, scope::FileScopeId, semantic_index::semantic_index
     }, hir_ty::{
@@ -60,13 +60,13 @@ pub enum ResolvedExprKind<'db> {
         variant: Option<EnumVariant<'db>>,
     },
 
-    RefValue(ResolvedRefValue), // &value
+    RefValue(ResolvedRefValue<'db>), // &value
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum ResolvedRefValue {
+pub enum ResolvedRefValue<'db> {
     Null,
-    Adress,
+    Adress(ResolvedPathResult<'db>),
 }
 
 impl<'db> ResolvedExpr<'db> {
@@ -164,14 +164,11 @@ impl<'db> ResolveExprCtx<'db> {
                         self.expr,
                         ResolvedExprKind::RefValue(ResolvedRefValue::Null),
                     ),
-                    RefValue::Address(adress) => match adress {
-                        RefAdress::Instance(instance) => {
-                            todo!()
-                        }
-                        RefAdress::Symbolic(symbolic) => {
-                            todo!()
-                        }
-                    },
+                    RefValue::Address(adress) => ResolvedExpr::new(
+                        self.db,
+                        self.expr,
+                        ResolvedExprKind::RefValue(ResolvedRefValue::Adress(*resolved_path_expr(self.db, adress.kind))),
+                    ),
                 },
             },
             ExprKind::AddOperator {
