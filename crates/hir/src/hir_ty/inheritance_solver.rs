@@ -2,12 +2,12 @@ use std::sync::Arc;
 
 use crate::{
     hir_def::interned::identifier::Ident,
-    hir_ty::ty::{Ty, TyDecl, TyKind, ty_for_method_decl, ty_for_method_prot},
+    hir_ty::ty::{ty_for_method_decl, ty_for_method_prot, ty_for_pou, Ty, TyDecl, TyKind},
 };
 use auto_lsp::default::db::BaseDatabase;
 use rustc_hash::FxHashMap;
 
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub struct Methods<'db> {
     pub inherited_methods: FxHashMap<Ident, InheritedMethod<'db>>,
     pub declared_methods: FxHashMap<Ident, Ty<'db>>,
@@ -28,7 +28,21 @@ impl<'db> InheritedMethod<'db> {
     }
 }
 
-#[salsa::tracked]
+fn method_initial<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>) -> Arc<Methods<'db>> {
+    Arc::new(Methods::default())
+}
+
+fn method_cycle<'db>(
+    db: &'db dyn BaseDatabase,
+    value: &Arc<Methods<'db>>,
+    count: u32,
+    ty: Ty<'db>,
+) -> salsa::CycleRecoveryAction<Arc<Methods<'db>>> {
+    salsa::CycleRecoveryAction::Iterate
+}
+
+
+#[salsa::tracked(cycle_initial = method_initial, cycle_fn=method_cycle)]
 pub fn method_table<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>) -> Arc<Methods<'db>> {
     let mut inherited_methods = FxHashMap::default();
     let mut declared_methods = FxHashMap::default();
@@ -46,9 +60,10 @@ pub fn method_table<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>) -> Arc<Methods<
         } => {
             // Inherit base
             if let Some(base) = extends {
-                let table2 = method_table(db, *base);
-                for (name, entry) in &method_table(db, *base).declared_methods {
-                    let method = InheritedMethod::new(*base, *entry);
+                let base = ty_for_pou(db, *base);
+                let table2 = method_table(db, base);
+                for (name, entry) in &method_table(db, base).declared_methods {
+                    let method = InheritedMethod::new(base, *entry);
                     if let Some(m) = inherited_methods.insert(*name, method) {
                         inherited_duplicates.push((m, method));
                     }
@@ -57,8 +72,9 @@ pub fn method_table<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>) -> Arc<Methods<
 
             // Inherit interfaces (abstract signatures only)
             for iface in implements {
-                for (name, entry) in &method_table(db, *iface).declared_methods {
-                    let method = InheritedMethod::new(*iface, *entry);
+                let iface = ty_for_pou(db, *iface);
+                for (name, entry) in &method_table(db, iface).declared_methods {
+                    let method = InheritedMethod::new(iface, *entry);
                     if let Some(m) = inherited_methods.insert(*name, method) {
                         inherited_duplicates.push((m, method));
                     }
@@ -91,8 +107,9 @@ pub fn method_table<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>) -> Arc<Methods<
             }
 
             for iface in implements {
-                for (name, entry) in &method_table(db, *iface).declared_methods {
-                    let method = InheritedMethod::new(*iface, *entry);
+                let iface = ty_for_pou(db, *iface);
+                for (name, entry) in &method_table(db, iface).declared_methods {
+                    let method = InheritedMethod::new(iface, *entry);
                     if let Some(m) = inherited_methods.insert(*name, method) {
                         inherited_duplicates.push((m, method));
                     }
@@ -113,8 +130,9 @@ pub fn method_table<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>) -> Arc<Methods<
             }
 
             if let Some(base) = extends {
-                for (name, entry) in &method_table(db, *base).declared_methods {
-                    let method = InheritedMethod::new(*base, *entry);
+                let base: Ty<'_> = ty_for_pou(db, *base);
+                for (name, entry) in &method_table(db, base).declared_methods {
+                    let method = InheritedMethod::new(base, *entry);
                     if let Some(m) = inherited_methods.insert(*name, method) {
                         inherited_duplicates.push((m, method));
                     }
