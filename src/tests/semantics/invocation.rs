@@ -66,7 +66,7 @@ END_FUNCTION_BLOCK"#;
        | 
      8 |         SUPER.super_method1()
        |         ^^^^^^^^^^|^^^^^^^^^^  
-       |                   `------------ no method 'super_method1' in inherited methods of 'fb1'
+       |                   `------------ no method 'super_method1' in inherited methods of 'base'
     ---'
     ");
 }

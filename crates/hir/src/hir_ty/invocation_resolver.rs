@@ -195,8 +195,8 @@ impl<'db> Invocation<'db> {
                                 ResolvedMethodKind::Unresolved(
                                     MethodError::UnresolvedSuperMethod {
                                         ctx: match ty_for_pou(db, pou).kind(db) {
-                                            TyKind::Class { extends, .. } => *extends,
-                                            TyKind::FunctionBlock { extends, .. } => *extends,
+                                            TyKind::Class { extends, .. } => extends.map(|e| ty_for_pou(db, e)),
+                                            TyKind::FunctionBlock { extends, .. } => extends.map(|e| ty_for_pou(db, e)),
                                             _ => None,
                                         },
                                         path,

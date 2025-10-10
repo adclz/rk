@@ -24,7 +24,8 @@ impl<'db> DataTypeCheck<'db> for Enum<'db> {
             TyKind::Enum { typ, .. } => {
                 // Check underlying type
                 if let Some(typ) = typ {
-                    check_ty(db, *typ, errors);
+                    let typ = typ.spec_to_ty(db, ty.decl(db));
+                    check_ty(db, typ, errors);
                     match typ.kind(db) {
                         TyKind::Simple(elementary) => match elementary {
                             ElementarySpec::Byte
@@ -40,10 +41,10 @@ impl<'db> DataTypeCheck<'db> for Enum<'db> {
                             | ElementarySpec::LInt
                             | ElementarySpec::ULInt => {}
                             _ => {
-                                errors.push(TyError::InvalidEnumType { value: *typ }.into())
+                                errors.push(TyError::InvalidEnumType { value: typ }.into())
                             }
                         },
-                        _ => errors.push(TyError::InvalidEnumType { value: *typ }.into()),
+                        _ => errors.push(TyError::InvalidEnumType { value: typ }.into()),
                     }
                 }
                 *typ
@@ -71,7 +72,7 @@ impl<'db> DataTypeCheck<'db> for Enum<'db> {
             match (variant.value, enum_typ) {
                 (Some(value), Some(typ)) => {
                     let value_expr = *resolve_expr(db, value);
-                    if let Err(err) = coerce_ty_with_expr(db, typ, value_expr) {
+                    if let Err(err) = coerce_ty_with_expr(db, typ.spec_to_ty(db, ty.decl(db)), value_expr) {
                         errors.push(TyError::InvalidEnumVariantValue { variant: variant.name, err }.into())
                     }
                 }

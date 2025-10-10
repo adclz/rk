@@ -126,50 +126,23 @@ fn check_signature<'db>(
     m2: Ty<'db>,
     errors: &mut Vec<AnalysisError<'db>>,
 ) {
-    match (m1.variables(db), m2.variables(db)) {
-        (None, Some(m)) => {
-            errors.push(
-                MethodError::SignatureParametersCountMismatch {
-                    m1,
-                    expected: 0,
-                    m2,
-                    got: m.len(),
-                }
-                .into(),
-            );
-        }
-        (Some(m), None) => {
-            errors.push(
-                MethodError::SignatureParametersCountMismatch {
-                    m1,
-                    expected: m.len(),
-                    m2,
-                    got: 0,
-                }
-                .into(),
-            );
-        }
-        (Some(sig1), Some(sig2)) => {
-            if sig1.len() != sig2.len() {
-                errors.push(
-                    MethodError::SignatureParametersCountMismatch {
-                        m1,
-                        expected: sig1.len(),
-                        m2,
-                        got: sig2.len(),
-                    }
-                    .into(),
-                );
+    let sig1 = m1.variables(db);
+    let sig2 = m2.variables(db);
+    if sig1.len() != sig2.len() {
+        errors.push(
+            MethodError::SignatureParametersCountMismatch {
+                m1,
+                expected: sig1.len(),
+                m2,
+                got: sig2.len(),
             }
+            .into(),
+        );
+    }
 
-            sig1.iter().zip(sig2.iter()).for_each(|(m1, m2)| {
-                if let Err(err) = coerce_ty_with_ty(db, *m1.1, *m2.1) {
-                    errors.push(
-                        MethodError::SignatureParametersTypeMismatch { param: *m2.1, err }.into(),
-                    );
-                }
-            });
+    sig1.iter().zip(sig2.iter()).for_each(|(m1, m2)| {
+        if let Err(err) = coerce_ty_with_ty(db, *m1.1, *m2.1) {
+            errors.push(MethodError::SignatureParametersTypeMismatch { param: *m2.1, err }.into());
         }
-        _ => {}
-    };
+    });
 }

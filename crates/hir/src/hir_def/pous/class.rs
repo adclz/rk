@@ -38,7 +38,7 @@ pub struct MethodDecl<'db> {
     #[returns(ref)]
     pub name: Ident,
 
-    #[returns(ref)]
+    #[returns(as_ref)]
     pub return_type: Option<Spec<'db>>,
 
     pub modifier: Modifier,

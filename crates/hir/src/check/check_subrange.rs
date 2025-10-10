@@ -25,7 +25,8 @@ impl<'db> DataTypeCheck<'db> for SubRange<'db> {
     ) {
         match ty.kind(db) {
             TyKind::SubRange { typ, min, max } => {
-                check_ty(db, *typ, errors);
+                let typ = typ.spec_to_ty(db, ty.decl(db));
+                check_ty(db, typ, errors);
                 match typ.kind(db) {
                     TyKind::Simple(elementary) => match elementary {
                         ElementarySpec::Byte
@@ -41,23 +42,23 @@ impl<'db> DataTypeCheck<'db> for SubRange<'db> {
                         | ElementarySpec::LInt
                         | ElementarySpec::ULInt => {}
                         _ => {
-                            errors.push(TyError::InvalidSubrangeType { value: *typ }.into());
+                            errors.push(TyError::InvalidSubrangeType { value: typ }.into());
                             return;
                         },
                     },
                     _ => {
-                        errors.push(TyError::InvalidSubrangeType { value: *typ }.into());
+                        errors.push(TyError::InvalidSubrangeType { value: typ }.into());
                         return;
                     }
                 }
 
                 let min = *resolve_expr(db, *min);
                 let max = *resolve_expr(db, *max);
-                if let Err(err) = coerce_ty_with_expr(db, *typ, min) {
+                if let Err(err) = coerce_ty_with_expr(db, typ, min) {
                     errors.push(TyError::InvalidSubrangeStart { expr: min, err }.into())
                 }
 
-                if let Err(err) = coerce_ty_with_expr(db, *typ, max) {
+                if let Err(err) = coerce_ty_with_expr(db, typ, max) {
                     errors.push(TyError::InvalidSubrangeEnd { expr: max, err }.into())
                 }
             }

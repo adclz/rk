@@ -27,9 +27,9 @@ pub fn resolve_parameters<'db>(
                     db,
                     *param_assign,
                     ResolvedParamKind::NonFormal {
-                        resolved_param: callee.variables(db).and_then(|signature| {
+                        resolved_param: {
                             // Try to get the param by index
-                            let param = signature.values().nth(formal_index);
+                            let param = callee.variables(db).values().nth(formal_index);
                             formal_index += 1;
                             param.map(|p| {
                                 ResolvedVarResult::new(
@@ -38,7 +38,7 @@ pub fn resolve_parameters<'db>(
                                     ResolvedVarKind::Param(*p),
                                 )
                             })
-                        }),
+                        },
                         value: *resolve_expr(db, value),
                     },
                 )
@@ -48,8 +48,9 @@ pub fn resolve_parameters<'db>(
                 *param_assign,
                 ResolvedParamKind::FormalInput {
                     param,
-                    resolved_param: callee.variables(db).and_then(|signature| {
-                        signature
+                    resolved_param: {
+                        callee
+                            .variables(db)
                             .get(&param.ident)
                             .filter(|v| v.is_variable_input(db) || v.is_variable_inout(db))
                             .map(|p| {
@@ -59,7 +60,7 @@ pub fn resolve_parameters<'db>(
                                     ResolvedVarKind::Param(*p),
                                 )
                             })
-                    }),
+                    },
                     value: *resolve_expr(db, value),
                 },
             ),
@@ -73,8 +74,9 @@ pub fn resolve_parameters<'db>(
                 ResolvedParamKind::FormalOutput {
                     not,
                     param,
-                    resolved_param: callee.variables(db).and_then(|signature| {
-                        signature
+                    resolved_param: {
+                        callee
+                            .variables(db)
                             .get(&param.ident)
                             .filter(|v| v.is_variable_output(db))
                             .map(|p| {
@@ -84,7 +86,7 @@ pub fn resolve_parameters<'db>(
                                     ResolvedVarKind::Param(*p),
                                 )
                             })
-                    }),
+                    },
                     variable: resolve_var_access(db, variable),
                 },
             ),

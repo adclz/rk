@@ -56,24 +56,28 @@ fn check_implementations<'db>(
             implements,
             ..
         } => {
-            if extends.is_some_and(|ext| ext.def(db).def_as_ty(db) == Some(implemented)) {
+            if extends
+                .is_some_and(|ext| ty_for_pou(db, ext).def(db).def_as_ty(db) == Some(implemented))
+            {
                 pous.push(pou);
             } else if implements
                 .iter()
-                .any(|ipl| ipl.def(db).def_as_ty(db) == Some(implemented))
+                .any(|ipl| ty_for_pou(db, *ipl).def(db).def_as_ty(db) == Some(implemented))
             {
                 pous.push(pou);
             }
         }
         TyKind::FunctionBlock { extends, .. } => {
-            if extends.is_some_and(|ext| ext.def(db).def_as_ty(db) == Some(implemented)) {
+            if extends
+                .is_some_and(|ext| ty_for_pou(db, ext).def(db).def_as_ty(db) == Some(implemented))
+            {
                 pous.push(pou);
             }
         }
         TyKind::Interface { implements, .. } => {
             if implements
                 .iter()
-                .any(|ipl| ipl.def(db).def_as_ty(db) == Some(implemented))
+                .any(|ipl| ty_for_pou(db, *ipl).def(db).def_as_ty(db) == Some(implemented))
             {
                 pous.push(pou);
             }

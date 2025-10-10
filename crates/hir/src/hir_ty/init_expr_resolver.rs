@@ -1,14 +1,11 @@
 use crate::{
-    AstId, HirNodeInfo,
-    check::errors::init_expr::InitExprError,
-    hir_def::{
+    check::errors::init_expr::InitExprError, hir_def::{
         expressions::expression::InitExprKind, interned::identifier::SpanIdent, scope::FileScopeId,
-    },
-    hir_ty::{
-        expr_resolver::{ResolvedExpr, resolve_expr},
-        ty::{Ty, TyKind},
+    }, hir_ty::{
+        expr_resolver::{resolve_expr, ResolvedExpr},
+        ty::{ty_for_struct_field, Ty, TyKind},
         ty_var_access_resolver::{ResolvedVarKind, ResolvedVarOrigin, ResolvedVarResult},
-    },
+    }, AstId, HirNodeInfo
 };
 use auto_lsp::default::db::BaseDatabase;
 
@@ -94,7 +91,7 @@ fn resolve_unresolved<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>, init: UnResol
                     // Valid: Array type with ArrayInit
                     let resolved = values
                         .into_iter()
-                        .map(|v| resolve_unresolved(db, *typ, v))
+                        .map(|v| resolve_unresolved(db, typ.spec_to_ty(db, ty.decl(db)), v))
                         .collect();
                     ResolvedInitExprKind::ArrayInit { values: resolved }
                 }
@@ -116,7 +113,7 @@ fn resolve_unresolved<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>, init: UnResol
                 .into_iter()
                 .map(|v| match ty.kind(db) {
                     // For array types, resolve values with element type
-                    TyKind::Array { typ, .. } => resolve_unresolved(db, *typ, v),
+                    TyKind::Array { typ, .. } => resolve_unresolved(db, typ.spec_to_ty(db, ty.decl(db)), v),
                     // For simple types (multidimensional case), resolve with same type
                     _ => resolve_unresolved(db, ty, v),
                 })
@@ -154,11 +151,11 @@ fn resolve_unresolved<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>, init: UnResol
                 TyKind::Struct { elements, .. } => {
                     if let Some(element_ty) = elements.get(&name) {
                         // Valid field - resolve with field type
-                        let resolved_value = Box::new(resolve_unresolved(db, *element_ty, *value));
+                        let resolved_value = Box::new(resolve_unresolved(db, ty_for_struct_field(db, *element_ty), *value));
                         let field = ResolvedVarResult::new(
                             db,
                             ResolvedVarOrigin::Formal(name),
-                            ResolvedVarKind::Param(*element_ty),
+                            ResolvedVarKind::Param(ty_for_struct_field(db, *element_ty)),
                         );
 
                         ResolvedInitExprKind::StructElement {

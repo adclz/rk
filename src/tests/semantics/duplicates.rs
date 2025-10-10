@@ -316,7 +316,7 @@ END_CLASS
        |            ^|  
        |             `-- method 'm1' is already defined here
        | 
-       | Note: this error happens because both interfaces 'it1' and 'it1' define a method 'm1'
+       | Note: this error happens because both interfaces 'I1' and 'I2' define a method 'm1'
     ---'
     ");
 }

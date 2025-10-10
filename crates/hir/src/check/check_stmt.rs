@@ -211,9 +211,7 @@ fn check_func_call<'db>(
         )
     }
 
-    if let Some(signature) = ty_target.variables(db) {
-        check_parameters(db, fun_call.target, signature, &fun_call.params, errors);
-    }
+    check_parameters(db, fun_call.target, ty_target.variables(db), &fun_call.params, errors);
     Ok(())
 }
 
@@ -234,9 +232,7 @@ fn check_invocation<'db>(
 
             // Check visibility
             check_call_visibility(db, ty_target, &invocation.target.invocation, errors);
-            if let Some(signature) = ty_target.variables(db) {
-                check_parameters(db, *method, signature, &invocation.params, errors);
-            }
+            check_parameters(db, *method, ty_target.variables(db), &invocation.params, errors);
         }
         ResolvedMethodKind::FunctionBlockBody { target } => {
             let ty_target = target

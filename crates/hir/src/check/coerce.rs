@@ -92,7 +92,7 @@ pub fn coerce_ty_with_expr<'db>(
         // Check if the PathExpr result type matches the array element type
         (TyKind::Array { ranges, typ }, ResolvedExprKind::PathExpr(result)) => coerce_ty_with_ty(
             db,
-            *typ,
+            typ.spec_to_ty(db, ty.decl(db)),
             result
                 .ty(db)
                 .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?,
