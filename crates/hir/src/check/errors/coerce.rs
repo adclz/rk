@@ -51,6 +51,13 @@ pub enum ExprMismatchKind<'db> {
         enum_ty: Ty<'db>,
         variant: SpanIdent<'db>,
     },
+    SubRangeValueOutOfBounds {
+        expr: ResolvedExpr<'db>,
+        subrange_ty: Ty<'db>,
+        min: u64,
+        max: u64,
+        value: u64,
+    },
 }
 
 impl<'db> ExprMismatch<'db> {
@@ -111,6 +118,19 @@ impl<'db> ExprMismatch<'db> {
         Self {
             expr,
             kind: ExprMismatchKind::InvalidEnumVariant { enum_ty, variant },
+        }
+    }
+
+    pub fn subrange_value_out_of_bounds(
+        expr: ResolvedExpr<'db>,
+        subrange_ty: Ty<'db>,
+        min: u64,
+        max: u64,
+        value: u64,
+    ) -> Self {
+        Self {
+            expr,
+            kind: ExprMismatchKind::SubRangeValueOutOfBounds { expr, subrange_ty, min, max, value },
         }
     }
 }
@@ -254,6 +274,15 @@ impl<'db> DiagnosticDescription<'db> for ExprMismatch<'db> {
                     variant.text(db)
                 )
             }
+            ExprMismatchKind::SubRangeValueOutOfBounds { expr, subrange_ty, min, max, value } => {
+                format!(
+                    "value {} is out of bounds for SUBRANGE {} (expected between {} and {})",
+                    value,
+                    subrange_ty.decl(db).name(db).text(db),
+                    min,
+                    max
+                )
+            }
         }
     }
 
@@ -274,6 +303,12 @@ impl<'db> DiagnosticDescription<'db> for ExprMismatch<'db> {
             }
             ExprMismatchKind::LhsIsNotABool { ty } => {
                 get_decl_and_def_for_ty(db, *ty, diag);
+            }
+            ExprMismatchKind::InvalidEnumVariant { enum_ty, variant } => {
+                get_decl_and_def_for_ty(db, *enum_ty, diag);
+            }
+            ExprMismatchKind::SubRangeValueOutOfBounds { expr, subrange_ty, min, max, value } => {
+                get_decl_and_def_for_ty(db, *subrange_ty, diag);
             }
             _ => {}
         }

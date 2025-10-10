@@ -1,4 +1,3 @@
-
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
@@ -8,8 +7,7 @@ use crate::{
     },
     hir_def::expressions::spec::ElementarySpec,
     hir_ty::{
-        expr_resolver::{ResolvedExpr, ResolvedExprKind},
-        ty::{Ty, TyKind},
+        array_resolver::resolve_range, expr_resolver::{ResolvedExpr, ResolvedExprKind}, ty::{Ty, TyKind}
     },
 };
 
@@ -98,14 +96,17 @@ pub fn coerce_ty_with_expr<'db>(
                 .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?,
         )
         .map_err(|err| ExprMismatch::type_mismatch(target_expr, err)),
-            // Compare a Struct with PathExpr (PathExpr should be a field access)
+        // Compare a Struct with PathExpr (PathExpr should be a field access)
         (TyKind::Struct { spec, elements }, ResolvedExprKind::PathExpr(result)) => {
             match result
                 .ty(db)
                 .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?
                 .kind(db)
             {
-                TyKind::Struct { spec: s, elements: e } if s == spec && e == elements => Ok(()),
+                TyKind::Struct {
+                    spec: s,
+                    elements: e,
+                } if s == spec && e == elements => Ok(()),
                 _ => Err(ExprMismatch::type_mismatch(
                     target_expr,
                     TypeMismatch {
@@ -118,19 +119,73 @@ pub fn coerce_ty_with_expr<'db>(
             }
         }
         // Compare an Enum with EnumValue
-        (TyKind::Enum { typ, spec }, ResolvedExprKind::EnumValue { name, variant, v_text }) => {
+        (
+            TyKind::Enum { typ, spec },
+            ResolvedExprKind::EnumValue {
+                name,
+                variant,
+                v_text,
+            },
+        ) => {
             // Check if the EnumValue type matches the enum type
-            match name.ty(db).map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?.kind(db)
+            match name
+                .ty(db)
+                .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?
+                .kind(db)
             {
-                TyKind::Enum { typ: t, spec: s } => {
-                    match variant {
-                        Some(variant) => Ok(()),
-                        None => return Err(ExprMismatch::invalid_enum_variant(target_expr, ty, v_text.clone())),
+                TyKind::Enum { typ: t, spec: s } => match variant {
+                    Some(variant) => Ok(()),
+                    None => {
+                        return Err(ExprMismatch::invalid_enum_variant(
+                            target_expr,
+                            ty,
+                            v_text.clone(),
+                        ));
                     }
                 },
                 _ => unreachable!("resolver should ensure enum value matches enum type"),
             }
         }
+        // Compare a Subrange with any expression
+        // todo: check that the expression is within the subrange
+        // for that, we could
+        (TyKind::SubRange { typ, min, max }, _) => 
+            {
+                // We do not return an error in case of failure to resolve the range bounds
+                // as the error will be reported when checking the subrange type itself
+                let min = match resolve_range(db, *min) {
+                    Some(v) => v,
+                    None => return  Ok(()),
+                };
+
+                let max = match resolve_range(db, *max) {
+                    Some(v) => v,
+                    None => return  Ok(()),
+                };
+
+                match coerce_ty_with_expr(db, typ.spec_to_ty(db, ty.decl(db)), target_expr) {
+                    Ok(()) => {
+                        match resolve_range(db, target_expr.expr(db)) {
+                            Some(integer) => {
+                                if integer >= min && integer <= max {
+                                    Ok(())
+                                } else {
+                                    Err(ExprMismatch::subrange_value_out_of_bounds(
+                                        target_expr,
+                                        ty,
+                                        min,
+                                        max,
+                                        integer,
+                                    ))
+                                }
+                            },
+                            None => Ok(())
+                        }
+                    },
+                    Err(err) => return Err(err),
+                }
+            
+            },
         _ => Err(ExprMismatch::expr_mismatch(target_expr, ty)),
     }
 }

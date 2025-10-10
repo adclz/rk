@@ -70,6 +70,12 @@ fn unknown_enum_variant(mut with_db: RootDatabase) {
     Error: 
         ,-[ file:///test0.st:11:21 ]
         |
+      3 |             List: UINT (A, B, C);
+        |             ^^|^^^^^^^^^|^^^^^^^  
+        |               `------------------- 'List' is declared here
+        |                         |         
+        |                         `--------- type defined here
+        | 
      11 |             test := List#D; // D is not a valid enum variant
         |                     ^^^|^^  
         |                        `---- invalid assignment: ENUM 'List' has no variant named 'D'
