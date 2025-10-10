@@ -1,22 +1,18 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    AstId, HirNodeInfo,
     hir_def::{
         expressions::{
             expression::{Elementary, Expr, ExprKind, PrimaryExpr, RefAdress, RefValue},
             spec::EnumVariant,
-        },
-        scope::FileScopeId,
-        semantic_index::semantic_index,
-    },
-    hir_ty::{
+        }, interned::identifier::SpanIdent, scope::FileScopeId, semantic_index::semantic_index
+    }, hir_ty::{
         func_call_resolver::ResolvedFuncCall,
         invocation_resolver::ResolvedInvocationResult,
         ty::TyKind,
-        ty_path_expr_resolver::{ResolvedPathResult, resolved_path_expr},
-        ty_var_access_resolver::{ResolvedVarResult, resolve_var_access},
-    },
+        ty_path_expr_resolver::{resolved_path_expr, ResolvedPathResult},
+        ty_var_access_resolver::{resolve_var_access, ResolvedVarResult},
+    }, AstId, HirNodeInfo
 };
 
 #[salsa::tracked(no_eq, returns(ref))]
@@ -60,6 +56,7 @@ pub enum ResolvedExprKind<'db> {
     // Enum value (#variant)
     EnumValue {
         name: ResolvedPathResult<'db>,
+        v_text: SpanIdent<'db>,
         variant: Option<EnumVariant<'db>>,
     },
 
@@ -136,9 +133,11 @@ impl<'db> ResolveExprCtx<'db> {
                     )
                 }
                 PrimaryExpr::EnumValue { name, variant } => {
+                    // Find the target enum type
                     let resolved_path = *resolved_path_expr(self.db, *name);
 
-                    let variant = if let Ok(TyKind::Enum { typ, spec }) =
+                    // Find the variant in the enum type
+                    let resolved_variant = if let Ok(TyKind::Enum { typ, spec }) =
                         resolved_path.ty(self.db).map(|r| r.kind(self.db))
                     {
                         spec.variants
@@ -154,7 +153,8 @@ impl<'db> ResolveExprCtx<'db> {
                         self.expr,
                         ResolvedExprKind::EnumValue {
                             name: resolved_path,
-                            variant,
+                            v_text: variant.clone(),
+                            variant: resolved_variant,
                         },
                     )
                 }

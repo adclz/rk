@@ -149,12 +149,14 @@ fn check_assignment<'db>(
                 return Err(StmtError::AssignmentToCallableType { var, ty: ty_var }.into());
             }
         }
-        // is a variable and callable (trying to assign to a POU)
+        // is a variable and callable (trying to assign to a FUNCTION_BLOCK, CLASS, ...)
         (true, true) => {
             return Err(StmtError::AssignmentToCallableType { var, ty: ty_var }.into());
         }
+         // is a variable and not callable, valid case
+        (true, false) => {}
         _ => {
-            if ty_var.is_direct_type(db) {
+            if ty_var.is_target(db) {
                 return Err(StmtError::AssignmentToDirectType { var, ty: ty_var }.into());
             }
         }

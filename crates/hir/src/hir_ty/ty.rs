@@ -543,7 +543,7 @@ impl<'db> Ty<'db> {
         )
     }
 
-    pub fn is_direct_type(&self, db: &'db dyn BaseDatabase) -> bool {
+    pub fn is_target(&self, db: &'db dyn BaseDatabase) -> bool {
         matches!(self.kind(db), TyKind::Target(_))
     }
 

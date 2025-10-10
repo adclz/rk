@@ -2,15 +2,13 @@ use auto_lsp::default::db::BaseDatabase;
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
-    TypeInfo,
     check::errors::{
             analysis_error::DiagnosticDescription,
             literals::LiteralErrorKind,
             path_error::PathResolveError,
             utils::get_decl_and_def_for_ty,
             var_error::VarResolveError,
-        },
-    hir_ty::{expr_resolver::ResolvedExpr, ty::Ty},
+        }, hir_def::interned::identifier::SpanIdent, hir_ty::{expr_resolver::ResolvedExpr, ty::Ty}, TypeInfo
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -48,6 +46,10 @@ pub enum ExprMismatchKind<'db> {
     },
     LhsIsNotABool {
         ty: Ty<'db>,
+    },
+    InvalidEnumVariant {
+        enum_ty: Ty<'db>,
+        variant: SpanIdent<'db>,
     },
 }
 
@@ -98,6 +100,17 @@ impl<'db> ExprMismatch<'db> {
         Self {
             expr,
             kind: ExprMismatchKind::LhsIsNotABool { ty },
+        }
+    }
+
+    pub fn invalid_enum_variant(
+        expr: ResolvedExpr<'db>,
+        enum_ty: Ty<'db>,
+        variant: SpanIdent<'db>,
+    ) -> Self {
+        Self {
+            expr,
+            kind: ExprMismatchKind::InvalidEnumVariant { enum_ty, variant },
         }
     }
 }
@@ -233,6 +246,13 @@ impl<'db> DiagnosticDescription<'db> for ExprMismatch<'db> {
             ExprMismatchKind::UnresolvedVarError { err } => err.description(db),
             ExprMismatchKind::LhsIsNotABool { ty } => {
                 "left-hand side is not a boolean".to_string()
+            }
+            ExprMismatchKind::InvalidEnumVariant { enum_ty, variant } => {
+                format!(
+                    "ENUM '{}' has no variant named '{}'",
+                    enum_ty.decl(db).name(db).text(db),
+                    variant.text(db)
+                )
             }
         }
     }

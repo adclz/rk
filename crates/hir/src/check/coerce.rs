@@ -89,7 +89,7 @@ pub fn coerce_ty_with_expr<'db>(
                 _ => Err(ExprMismatch::lhs_is_not_abool(target_expr, ty)),
             }
         }
-        // Check if the PathExpr result type matches the array element type
+        // Compare an Array with PathExpr (PathExpr should be an indexed access)
         (TyKind::Array { ranges, typ }, ResolvedExprKind::PathExpr(result)) => coerce_ty_with_ty(
             db,
             typ.spec_to_ty(db, ty.decl(db)),
@@ -98,8 +98,8 @@ pub fn coerce_ty_with_expr<'db>(
                 .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?,
         )
         .map_err(|err| ExprMismatch::type_mismatch(target_expr, err)),
+            // Compare a Struct with PathExpr (PathExpr should be a field access)
         (TyKind::Struct { spec, elements }, ResolvedExprKind::PathExpr(result)) => {
-            // Check if the PathExpr type matches the struct type
             match result
                 .ty(db)
                 .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?
@@ -115,6 +115,20 @@ pub fn coerce_ty_with_expr<'db>(
                             .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?,
                     },
                 )),
+            }
+        }
+        // Compare an Enum with EnumValue
+        (TyKind::Enum { typ, spec }, ResolvedExprKind::EnumValue { name, variant, v_text }) => {
+            // Check if the EnumValue type matches the enum type
+            match name.ty(db).map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?.kind(db)
+            {
+                TyKind::Enum { typ: t, spec: s } => {
+                    match variant {
+                        Some(variant) => Ok(()),
+                        None => return Err(ExprMismatch::invalid_enum_variant(target_expr, ty, v_text.clone())),
+                    }
+                },
+                _ => unreachable!("resolver should ensure enum value matches enum type"),
             }
         }
         _ => Err(ExprMismatch::expr_mismatch(target_expr, ty)),

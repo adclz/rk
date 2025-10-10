@@ -127,7 +127,7 @@ pub enum StmtError<'db> {
     },
     RepeatConditionIsNotABool {
         condition: ResolvedExpr<'db>,
-    },
+    },    
 }
 
 impl<'db> From<StmtError<'db>> for AnalysisError<'db> {
