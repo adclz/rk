@@ -3,11 +3,7 @@ use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
     check::errors::{
-            analysis_error::DiagnosticDescription,
-            literals::LiteralErrorKind,
-            path_error::PathResolveError,
-            utils::get_decl_and_def_for_ty,
-            var_error::VarResolveError,
+            analysis_error::DiagnosticDescription, literals::LiteralErrorKind, path_error::PathResolveError, utils::get_def_for_ty, var_error::VarResolveError
         }, hir_def::interned::identifier::SpanIdent, hir_ty::{expr_resolver::ResolvedExpr, ty::Ty}, TypeInfo
 };
 
@@ -270,7 +266,7 @@ impl<'db> DiagnosticDescription<'db> for ExprMismatch<'db> {
             ExprMismatchKind::InvalidEnumVariant { enum_ty, variant } => {
                 format!(
                     "ENUM '{}' has no variant named '{}'",
-                    enum_ty.decl(db).name(db).text(db),
+                    enum_ty.def(db).name(db),
                     variant.text(db)
                 )
             }
@@ -278,7 +274,7 @@ impl<'db> DiagnosticDescription<'db> for ExprMismatch<'db> {
                 format!(
                     "value {} is out of bounds for SUBRANGE {} (expected between {} and {})",
                     value,
-                    subrange_ty.decl(db).name(db).text(db),
+                    subrange_ty.def(db).name(db),
                     min,
                     max
                 )
@@ -289,26 +285,26 @@ impl<'db> DiagnosticDescription<'db> for ExprMismatch<'db> {
     fn related(&self, db: &'db dyn BaseDatabase, diag: &mut IdeDiagnostic) {
         match &self.kind {
             ExprMismatchKind::TypeMismatch { err } => {
-                get_decl_and_def_for_ty(db, err.ty1, diag);
-                get_decl_and_def_for_ty(db, err.ty2, diag);
+                get_def_for_ty(db, err.ty1, diag);
+                get_def_for_ty(db, err.ty2, diag);
             }
             ExprMismatchKind::ExprTypeMismatch { ty } => {
-                get_decl_and_def_for_ty(db, *ty, diag);
+                get_def_for_ty(db, *ty, diag);
             }
             ExprMismatchKind::Literal { ty, literal } => {
-                get_decl_and_def_for_ty(db, *ty, diag);
+                get_def_for_ty(db, *ty, diag);
             }
             ExprMismatchKind::VoidRhs { ty } => {
-                get_decl_and_def_for_ty(db, *ty, diag);
+                get_def_for_ty(db, *ty, diag);
             }
             ExprMismatchKind::LhsIsNotABool { ty } => {
-                get_decl_and_def_for_ty(db, *ty, diag);
+                get_def_for_ty(db, *ty, diag);
             }
             ExprMismatchKind::InvalidEnumVariant { enum_ty, variant } => {
-                get_decl_and_def_for_ty(db, *enum_ty, diag);
+                get_def_for_ty(db, *enum_ty, diag);
             }
             ExprMismatchKind::SubRangeValueOutOfBounds { expr, subrange_ty, min, max, value } => {
-                get_decl_and_def_for_ty(db, *subrange_ty, diag);
+                get_def_for_ty(db, *subrange_ty, diag);
             }
             _ => {}
         }
@@ -325,7 +321,7 @@ impl<'db> DiagnosticDescription<'db> for TypeMismatch<'db> {
     }
 
     fn related(&self, db: &'db dyn BaseDatabase, diag: &mut IdeDiagnostic) {
-        get_decl_and_def_for_ty(db, self.ty1, diag);
-        get_decl_and_def_for_ty(db, self.ty2, diag);
+        get_def_for_ty(db, self.ty1, diag);
+        get_def_for_ty(db, self.ty2, diag);
     }
 }

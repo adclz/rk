@@ -2,20 +2,17 @@ use auto_lsp::default::db::BaseDatabase;
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
-    TypeInfo,
     check::{
         errors::{
             analysis_error::DiagnosticDescription,
-            utils::{get_candidates, get_decl_and_def_for_ty},
+            utils::{get_candidates, get_def_for_ty},
         },
         recovery::pou::fuzzy_pou_local_items,
-    },
-    hir_def::{
+    }, hir_def::{
         expressions::expression::PathExpr,
         scope::{FileScopeId, ScopeKind},
         semantic_index::semantic_index,
-    },
-    hir_ty::ty::Ty,
+    }, hir_ty::ty::Ty, TypeInfo
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -78,16 +75,16 @@ impl<'db> DiagnosticDescription<'db> for PathResolveError<'db> {
                 }
             }
             PathResolveError::NoField { ty, expr } => {
-                get_decl_and_def_for_ty(db, *ty, diag);
+                get_def_for_ty(db, *ty, diag);
             }
             PathResolveError::UnknownField { ty, expr } => {
-                get_decl_and_def_for_ty(db, *ty, diag);
+                get_def_for_ty(db, *ty, diag);
             }
             PathResolveError::NotAnArray { ty, expr } => {
-                get_decl_and_def_for_ty(db, *ty, diag);
+                get_def_for_ty(db, *ty, diag);
             }
             PathResolveError::NotAReference { ty, expr } => {
-                get_decl_and_def_for_ty(db, *ty, diag);
+                get_def_for_ty(db, *ty, diag);
             }
         }
     }

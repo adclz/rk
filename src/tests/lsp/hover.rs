@@ -6,8 +6,8 @@ use db::RootDatabase;
 use hir::hir_def::pous::pou::Pou;
 use hir::hir_def::semantic_index::HirNode;
 use hir::hir_def::semantic_index::semantic_index;
-use hir::hir_ty::ty::TyDecl;
 use hir::hir_ty::ty::ty_for_variable;
+use hir::hir_ty::ty::TyDef;
 use hir::walk::WalkHir;
 use ide_proto::ty::TyHover;
 use ide_proto::AsProtocol;
@@ -45,7 +45,7 @@ END_CLASS
 
     assert_snapshot!(nodes.iter().filter_map(|node|{
         if let HirNode::Ty(ty) = node
-            && let TyDecl::Pou(pou) = ty.decl(&with_db)
+            && let TyDef::Pou(pou) = ty.def(&with_db)
         {
             if let HoverContents::Markup(d) = ty.force_hover(&with_db)?.contents {
                 Some(d.value)
@@ -100,7 +100,7 @@ END_FUNCTION_BLOCK
 
     let _ = sema.walk_hir(&with_db, &mut |node| {
         if let HirNode::Ty(ty) = node
-            && let TyDecl::Pou(pou) = ty.decl(&with_db)
+            && let TyDef::Pou(pou) = ty.def(&with_db)
             && let Pou::FunctionBlock(fb) = pou.pou(&with_db)
         {
             for var in fb.variables(&with_db) {

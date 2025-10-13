@@ -46,19 +46,19 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "duplicate POU '{}'",
-                        pou1.decl(db).name(db).text(db)
+                        pou1.name(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
-                    .range(pou1.decl(db).name_span(db))
+                    .range(pou1.name_span(db))
                     .call();
 
                 diag.with_related(Related::new(
                     format!(
                         "POU '{}' is already defined here",
-                        pou2.decl(db).name(db).text(db)
+                        pou2.name(db)
                     ),
                     pou2.get_scope_id(db).file(db),
-                    pou2.decl(db).name_span(db),
+                    pou2.name_span(db),
                 ));
 
                 diag
@@ -67,19 +67,19 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "duplicate variable '{}'",
-                        var1.decl(db).name(db).text(db)
+                        var1.name(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
-                    .range(var1.decl(db).name_span(db))
+                    .range(var1.name_span(db))
                     .call();
 
                 diag.with_related(Related::new(
                     format!(
                         "variable '{}' is already defined here",
-                        var2.decl(db).name(db).text(db)
+                        var2.name(db)
                     ),
                     var2.get_scope_id(db).file(db),
-                    var2.decl(db).name_span(db),
+                    var2.name_span(db),
                 ));
 
                 diag
@@ -109,19 +109,19 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "duplicate field '{}'",
-                        field1.decl(db).name(db).text(db)
+                        field1.name(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
-                    .range(field1.decl(db).name_span(db))
+                    .range(field1.name_span(db))
                     .call();
 
                 diag.with_related(Related::new(
                     format!(
                         "field '{}' is already defined here",
-                        field2.decl(db).name(db).text(db)
+                        field2.name(db)
                     ),
                     field2.get_scope_id(db).file(db),
-                    field2.decl(db).name_span(db),
+                    field2.name_span(db),
                 ));
 
                 diag
@@ -130,19 +130,19 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "duplicate method '{}'",
-                        method1.decl(db).name(db).text(db)
+                        method1.name(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
-                    .range(method1.decl(db).name_span(db))
+                    .range(method1.name_span(db))
                     .call();
 
                 diag.with_related(Related::new(
                     format!(
                         "method '{}' is already defined here",
-                        method2.decl(db).name(db).text(db)
+                        method2.name(db)
                     ),
                     method2.get_scope_id(db).file(db),
-                    method2.decl(db).name_span(db),
+                    method2.name_span(db),
                 ));
 
                 diag
@@ -151,26 +151,26 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "duplicate method '{}'",
-                        method1.method.decl(db).name(db).text(db)
+                        method1.method.name(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
-                    .range(method1.method.decl(db).name_span(db))
+                    .range(method1.method.name_span(db))
                     .call();
 
                 diag.with_related(Related::new(
                     format!(
                         "method '{}' is already defined here",
-                        method2.method.decl(db).name(db).text(db)
+                        method2.method.name(db)
                     ),
                     method2.method.get_scope_id(db).file(db),
-                    method2.method.decl(db).name_span(db),
+                    method2.method.name_span(db),
                 ));
 
                 diag.with_note(format!(
                     "this error happens because both interfaces '{}' and '{}' define a method '{}'",
-                    method1.source.decl(db).name(db).text(db),
-                    method2.source.decl(db).name(db).text(db),
-                    method1.method.decl(db).name(db).text(db)
+                    method1.source.name(db),
+                    method2.source.name(db),
+                    method1.method.name(db)
                 ));
 
                 diag

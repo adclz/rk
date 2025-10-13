@@ -52,7 +52,7 @@ pub fn resolve_parameters<'db>(
                         callee
                             .variables(db)
                             .get(&param.ident)
-                            .filter(|v| v.is_variable_input(db) || v.is_variable_inout(db))
+                            // todo: check if it's input / in_out
                             .map(|p| {
                                 ResolvedVarResult::new(
                                     db,
@@ -78,7 +78,7 @@ pub fn resolve_parameters<'db>(
                         callee
                             .variables(db)
                             .get(&param.ident)
-                            .filter(|v| v.is_variable_output(db))
+                            // todo: check if it's output
                             .map(|p| {
                                 ResolvedVarResult::new(
                                     db,

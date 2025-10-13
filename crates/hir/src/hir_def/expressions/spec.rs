@@ -1,5 +1,6 @@
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
+use crate::hir_ty::ty::ty_for_pou;
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::hir_def::expressions::expression::{InitExpr, VariableAccess};
@@ -32,22 +33,25 @@ impl<'db> Spec<'db> {
             SpecKind::Target(target) => {
                 let sema = semantic_index(db, self.scope_id(db).file(db));
                 match resolve_namespace_access(db, self.scope_id(db), target.path) {
-                    Some(pou) => match pou.pou(db) {
-                        Pou::Function(dt) => format!("(function) {}", pou.name(db).text(db)),
-                        Pou::FunctionBlock(fb) => {
-                            format!("(function_block) {}", pou.name(db).text(db))
-                        }
-                        Pou::DataType(dt) => dt.spec(db).shorthand(db),
-                        Pou::Class(class) => format!("(class) {}", pou.name(db).text(db)),
-                        Pou::Interface(it) => format!("(interface) {}", pou.name(db).text(db)),
-                    },
+                    Some(pou) =>  ty_for_pou(db, pou).type_name(db),
                     None => "{unknown}".to_string(),
                 }
             }
             SpecKind::Ref(ref_name) => {
-                format!("(*ref*) {}", ref_name.shorthand(db))
+                format!("REF_TO {}", ref_name.shorthand(db))
             }
-            _ => "".into(),
+            SpecKind::Simple(el) => el.type_name(db),
+            SpecKind::Struct(s) => format!("STRUCT"),
+            SpecKind::Array(a) => format!("ARRAY OF {}", a.of_type.shorthand(db)),
+            SpecKind::ArrayConformand(a) => format!("ARRAY[*] OF {}", a.shorthand(db)),
+            SpecKind::Subrange(sr) => format!("SUBRANGE"),
+            SpecKind::Enum(e) => {
+                if let Some(typ) = &e.typ {
+                    format!("ENUM {}", typ.shorthand(db))
+                } else {
+                    "ENUM".to_string()
+                }
+            }
         }
     }
 }

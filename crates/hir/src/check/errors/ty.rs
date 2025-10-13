@@ -75,17 +75,17 @@ impl<'db> ToIdeDiagnostic<'db> for TyError<'db> {
             TyError::Recursive { origin } => diag()
                 .message(format!(
                     "'{}' is recursive",
-                    origin.decl(db).name(db).text(db),
+                    origin.name(db),
                 ))
                 .severity(DiagnosticSeverity::ERROR)
-                .range(origin.decl(db).name_span(db))
+                .range(origin.name_span(db))
                 .call(),
             TyError::ReferenceRecursive { origin, target } => {
                 let mut diag = diag()
                     .message(format!(
                         "'{}' creates a recursion with '{}'",
-                        origin.decl(db).name(db).text(db),
-                        target.decl(db).name(db).text(db)
+                        origin.name(db),
+                        target.name(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(origin.get_span(db))
@@ -94,16 +94,16 @@ impl<'db> ToIdeDiagnostic<'db> for TyError<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "'{}' is originally declared here",
-                        target.decl(db).name(db).text(db)
+                        target.name(db)
                     ),
-                    target.decl(db).scope_id(db).file(db),
-                    target.decl(db).name_span(db),
+                    target.get_scope_id(db).file(db),
+                    target.name_span(db),
                 ));
 
                 diag.with_related(Related::new(
                     "... and recurse at this location".to_string(),
-                    origin.decl(db).scope_id(db).file(db),
-                    origin.decl(db).name_span(db),
+                    origin.get_scope_id(db).file(db),
+                    origin.name_span(db),
                 ));
 
                 diag
@@ -131,7 +131,7 @@ impl<'db> ToIdeDiagnostic<'db> for TyError<'db> {
                 let mut diag = diag()
                     .message(format!("invalid enum type '{}'", value.type_name(db)))
                     .severity(DiagnosticSeverity::ERROR)
-                    .range(value.decl(db).name_span(db))
+                    .range(value.name_span(db))
                     .call();
 
                 diag.with_note("only numeric integer types are allowed for ENUM".to_string());
@@ -158,7 +158,7 @@ impl<'db> ToIdeDiagnostic<'db> for TyError<'db> {
                 let mut diag = diag()
                     .message(format!("invalid subrange type '{}'", value.type_name(db)))
                     .severity(DiagnosticSeverity::ERROR)
-                    .range(value.decl(db).name_span(db))
+                    .range(value.name_span(db))
                     .call();
 
                 diag.with_note("only numeric integer types are allowed for SUBRANGE".to_string());

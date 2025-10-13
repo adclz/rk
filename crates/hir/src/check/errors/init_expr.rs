@@ -6,7 +6,7 @@ use crate::{
         errors::{
             analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic},
             coerce::ExprMismatch,
-            utils::{get_candidates, get_decl_for_ty},
+            utils::{get_candidates},
         },
         recovery::struct_::fuzzy_struct_fields,
     }, hir_def::{expressions::expression::InitExpr, interned::identifier::SpanIdent}, hir_ty::{expr_resolver::ResolvedExpr, init_expr_resolver::ResolvedInitExpr, ty::Ty}, HirNodeInfo, TypeInfo
@@ -55,8 +55,6 @@ impl<'db> ToIdeDiagnostic<'db> for InitExprError<'db> {
                     .range(field_name.get_span(db))
                     .call();
 
-                get_decl_for_ty(db, *ztruct, &mut diag);
-
                 let candidates = fuzzy_struct_fields(db, *ztruct, field_name.as_str(db));
                 diag.with_note(get_candidates(&candidates));
                 diag
@@ -75,7 +73,6 @@ impl<'db> ToIdeDiagnostic<'db> for InitExprError<'db> {
                     .range(init_expr.get_span(db))
                     .call();
 
-                get_decl_for_ty(db, *array, &mut diag);
                 diag
             }
             InitExprError::InitExprTypeExprMismatch { err, init_expr } => {
@@ -103,7 +100,6 @@ impl<'db> ToIdeDiagnostic<'db> for InitExprError<'db> {
                     .range(found.get_span(db))
                     .call();
 
-                get_decl_for_ty(db, *expected, &mut diag);
                 diag
             }
         }

@@ -12,7 +12,7 @@ use crate::{
     hir_ty::{
         array_resolver::resolve_range,
         expr_resolver::resolve_expr,
-        ty::{Ty, TyDecl, TyKind},
+        ty::{Ty, TyKind},
     },
 };
 
@@ -25,7 +25,7 @@ impl<'db> DataTypeCheck<'db> for SubRange<'db> {
     ) {
         match ty.kind(db) {
             TyKind::SubRange { typ, min, max } => {
-                let typ = typ.spec_to_ty(db, ty.decl(db));
+                let typ = typ.spec_to_ty(db);
                 check_ty(db, typ, errors);
                 match typ.kind(db) {
                     TyKind::Simple(elementary) => match elementary {

@@ -45,7 +45,7 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "can not access PRIVATE METHOD '{}'",
-                        method.decl(db).name(db).text(db)
+                        method.name(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(call_site.clone())
@@ -66,7 +66,7 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "can not access INTERNAL METHOD '{}'",
-                        method.decl(db).name(db).text(db)
+                        method.name(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(call_site.clone())
@@ -100,7 +100,7 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "can not access PROTECTED METHOD '{}'",
-                        method.decl(db).name(db).text(db)
+                        method.name(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(call_site.clone())

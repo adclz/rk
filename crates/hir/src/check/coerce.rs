@@ -9,7 +9,7 @@ use crate::{
     hir_ty::{
         array_resolver::resolve_range,
         expr_resolver::{ResolvedExpr, ResolvedExprKind, ResolvedRefValue},
-        ty::{Ty, TyDecl, TyKind},
+        ty::{Ty, TyKind},
     },
 };
 
@@ -90,7 +90,7 @@ pub fn coerce_ty_with_expr<'db>(
         // Compare an Array with PathExpr (PathExpr should be an indexed access)
         (TyKind::Array { ranges, typ }, ResolvedExprKind::PathExpr(result)) => coerce_ty_with_ty(
             db,
-            typ.spec_to_ty(db, ty.decl(db)),
+            typ.spec_to_ty(db),
             result
                 .ty(db)
                 .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?,
@@ -162,7 +162,7 @@ pub fn coerce_ty_with_expr<'db>(
                 None => return Ok(()),
             };
 
-            match coerce_ty_with_expr(db, typ.spec_to_ty(db, ty.decl(db)), target_expr) {
+            match coerce_ty_with_expr(db, typ.spec_to_ty(db), target_expr) {
                 Ok(()) => match resolve_range(db, target_expr.expr(db)) {
                     Some(integer) => {
                         if integer >= min && integer <= max {
@@ -183,7 +183,7 @@ pub fn coerce_ty_with_expr<'db>(
             }
         }
         (TyKind::RefTo(ref_), ResolvedExprKind::RefValue(inner)) => {
-            let ref_to = ref_.spec_to_ty(db, ty.decl(db));
+            let ref_to = ref_.spec_to_ty(db);
 
             match inner {
                 // A NULL reference can be assigned to any reference type
@@ -203,7 +203,7 @@ pub fn coerce_ty_with_expr<'db>(
             }
         }
         (TyKind::RefTo(ref_), ResolvedExprKind::VarAccess(var_access)) => {
-            let ref_to = ref_.spec_to_ty(db, ty.decl(db));
+            let ref_to = ref_.spec_to_ty(db);
 
             // Retrives the element that the reference points to
             let var_ty = var_access

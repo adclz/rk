@@ -6,7 +6,6 @@ use crate::{
     check::errors::{
         analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic},
         coerce::TypeMismatch,
-        utils::get_decl_for_ty,
     },
     hir_def::{expressions::{expression::PathExpr, invocation::Invocation}, scope::FileScopeId},
     hir_ty::ty::Ty,
@@ -88,13 +87,12 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "missing OVERRIDE keyword for method '{}'",
-                        derived_method.decl(db).name(db).text(db)
+                        derived_method.name(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
-                    .range(derived_method.decl(db).name_span(db))
+                    .range(derived_method.name_span(db))
                     .call();
 
-                get_decl_for_ty(db, *base_method, &mut diag);
                 diag.with_note("OVERRIDE keyword must be used even if the base method is not marked as ABSTRACT".into());
 
                 diag
@@ -106,13 +104,12 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "cannot override FINAL method '{}'",
-                        base_method.decl(db).name(db).text(db)
+                        base_method.name(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
-                    .range(derived_method.decl(db).name_span(db))
+                    .range(derived_method.name_span(db))
                     .call();
 
-                get_decl_for_ty(db, *base_method, &mut diag);
                 diag.with_note("methods marked as FINAL cannot be overridden".into());
 
                 diag
@@ -124,13 +121,12 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "missing implementation for ABSTRACT method '{}'",
-                        base_method.decl(db).name(db).text(db)
+                        base_method.name(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
-                    .range(implementer.decl(db).name_span(db))
+                    .range(implementer.name_span(db))
                     .call();
 
-                get_decl_for_ty(db, *base_method, &mut diag);
                 diag.with_note("ABSTRACT methods must be implemented by derived POUs".into());
 
                 diag
@@ -139,10 +135,10 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "invalid usage of OVERRIDE for method '{}'",
-                        base_method.decl(db).name(db).text(db)
+                        base_method.name(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
-                    .range(base_method.decl(db).name_span(db))
+                    .range(base_method.name_span(db))
                     .call();
 
                 diag.with_note("OVERRIDE is only valid when the method is inherited".into());
@@ -153,10 +149,10 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "ABSTRACT class '{}' has no abstract methods",
-                        class.decl(db).name(db).text(db)
+                        class.name(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
-                    .range(class.decl(db).name_span(db))
+                    .range(class.name_span(db))
                     .call();
 
                 diag.with_note("abstract classes must have at least one abstract method".into());
@@ -170,13 +166,11 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "missing implementation for interface method '{}'",
-                        method.decl(db).name(db).text(db)
+                        method.name(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
-                    .range(implementer.decl(db).name_span(db))
+                    .range(implementer.name_span(db))
                     .call();
-
-                get_decl_for_ty(db, *method, &mut diag);
 
                 diag
             }
@@ -184,7 +178,7 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                 .message(format!(
                     "no method '{}' in declared methods of '{}'",
                     path.ident(db).ident.text(db),
-                    ctx.decl(db).name(db).text(db)
+                    ctx.name(db)
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .range(method.get_span(db).clone())
@@ -192,10 +186,8 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
             Self::UnresolvedSuperMethod { ctx, path, method } => {
                 let mut diag = diag()
                     .message(format!(
-                        "no method '{}' in inherited methods of '{}'",
+                        "no method '{}' in inherited methods",
                         path.ident(db).ident.text(db),
-                        ctx.map(|c| c.decl(db).name(db).text(db).to_string())
-                            .unwrap_or_else(|| "<unknown>".into())
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(method.get_span(db).clone())
@@ -208,12 +200,11 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                         diag.with_related(Related::new(
                             format!(
                                 "methods are inherited from '{}' here",
-                                origin.decl(db).name(db).text(db),
+                                origin.name(db),
                             ),
                             caller
                                 .def(db)
                                 .get_scope_id(db)
-                                .expect("A ty definition with a span always has a scope id")
                                 .file(db),
                             span,
                         ));
@@ -238,8 +229,6 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                     .range(method.get_span(db).clone())
                     .call();
 
-                get_decl_for_ty(db, *ctx, &mut diag);
-
                 diag
             }
             Self::SignatureParametersCountMismatch {
@@ -251,15 +240,13 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "invalid number of parameters for inherited method '{}': expected {}, got {}",
-                        m1.decl(db).name(db).text(db),
+                        m1.name(db),
                         expected,
                         got
                     ))
                     .severity(DiagnosticSeverity::ERROR)
-                    .range(m2.decl(db).name_span(db).clone())
+                    .range(m2.name_span(db).clone())
                     .call();
-
-                get_decl_for_ty(db, *m1, &mut diag);
 
                 diag
             }
@@ -270,7 +257,7 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                         err.description(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
-                    .range(param.decl(db).name_span(db).clone())
+                    .range(param.name_span(db).clone())
                     .call();
 
                 err.related(db, &mut diag);

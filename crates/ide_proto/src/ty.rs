@@ -15,13 +15,6 @@ use hir::{
 use crate::ToProtocol;
 
 impl<'db> ToProtocol<'db> for Ty<'db> {
-    fn declaration(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDeclarationResponse> {
-        Some(GotoDeclarationResponse::Scalar(Location::new(
-            self.decl(db).scope_id(db).file(db).url(db).clone(),
-            self.decl(db).span(db).into(),
-        )))
-    }
-
     fn definition(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDefinitionResponse> {
         match self.def(db) {
             TyDef::Pou(pou) => Some(GotoDefinitionResponse::Scalar(Location::new(
@@ -40,7 +33,6 @@ impl<'db> ToProtocol<'db> for Ty<'db> {
                 spec.scope_id(db).file(db).url(db).clone(),
                 spec.get_span(db).into(),
             ))),
-            TyDef::Invalid => None,
         }
     }
 
@@ -52,23 +44,6 @@ impl<'db> ToProtocol<'db> for Ty<'db> {
     }
 
     fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Hover> {
-        let name_span = self.decl(db).name_span(db);
-
-        // Check if the offset is within the span of the whole type
-        if offset < name_span.start_byte || offset > name_span.end_byte {
-            // we check if we're not hovering the definition of this type (could be a Pou body)
-            match self.def(db).def_as_ty(db) {
-                Some(ty) => {
-                    // we are hovering the definition but not the name, therefore return None
-                    if ty == *self {
-                        return None;
-                    }
-                    return ty.force_hover(db);
-                }
-                None => return None,
-            }
-        }
-
         self.force_hover(db)
     }
 
@@ -96,8 +71,7 @@ pub trait TyHover<'ty> {
 
 impl<'ty> TyHover<'ty> for Ty<'ty> {
     fn force_hover(&self, db: &'ty dyn BaseDatabase) -> Option<Hover> {
-        let name_span = self.decl(db).name_span(db);
-        let name = self.decl(db).name(db).text(db).to_string();
+        let name = self.name(db);
         let comment = self.get_comment(db);
         let decl = match self.decl_name(db) {
             s if s.is_empty() => "".to_string(),
@@ -106,7 +80,7 @@ impl<'ty> TyHover<'ty> for Ty<'ty> {
         let def_name = match self.has_return_type(db) {
             Some(ret) => format!(": {}", ret.type_name(db).to_string()),
             None => match self.kind(db) {
-                TyKind::RefTo(ref_) => format!(": REF_TO {}", ref_.spec_to_ty(db, self.decl(db)).type_name(db).to_string()),
+                TyKind::RefTo(ref_) => format!(": REF_TO {}", ref_.spec_to_ty(db).type_name(db).to_string()),
                 _ => "".to_string(),
             },
         };
@@ -124,7 +98,7 @@ impl<'ty> TyHover<'ty> for Ty<'ty> {
                 kind: MarkupKind::Markdown,
                 value,
             }),
-            range: Some(name_span.into()),
+            range: Some(self.name_span(db).into()),
         })
     }
 

@@ -6,7 +6,7 @@ use crate::{
         errors::{
             analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic},
             coerce::{ExprMismatch, TypeMismatch},
-            utils::{get_candidates, get_decl_and_def_for_ty, get_decl_for_ty, get_def_for_ty},
+            utils::{get_candidates, get_def_for_ty},
             var_error::VarResolveError,
         },
         recovery::func_call::fuzzy_func_local_items,
@@ -143,13 +143,13 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "'{}' is a callable type and can not be assigned",
-                        ty.decl(db).name(db).text(db),
+                        ty.name(db),
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(var.get_span(db).clone())
                     .call();
 
-                get_decl_and_def_for_ty(db, *ty, &mut diag);
+                get_def_for_ty(db, *ty, &mut diag);
 
                 diag.with_note("only functions with return types can be assigned".into());
 
@@ -182,13 +182,13 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "'{}' is a type and can not be assigned",
-                        ty.decl(db).name(db).text(db),
+                        ty.name(db),
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(var.get_span(db).clone())
                     .call();
 
-                get_decl_and_def_for_ty(db, *ty, &mut diag);
+                get_def_for_ty(db, *ty, &mut diag);
                 diag.with_note(
                     "types can only be assigned if they are declared in a VAR_* section".into(),
                 );
@@ -198,13 +198,11 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "'{}' is an input variable and should not be assigned",
-                        ty.decl(db).name(db).text(db),
+                        ty.name(db),
                     ))
                     .severity(DiagnosticSeverity::WARNING)
                     .range(var.get_span(db).clone())
                     .call();
-
-                get_decl_for_ty(db, *ty, &mut diag);
 
                 diag
             }
@@ -217,13 +215,13 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "cannot call non-callable type '{}'",
-                        ty.decl(db).name(db).text(db)
+                        ty.name(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(call.get_span(db).clone())
                     .call();
 
-                get_decl_and_def_for_ty(db, *ty, &mut diag);
+                get_def_for_ty(db, *ty, &mut diag);
 
                 diag.with_note("only functions, function blocks or methods can be called".into());
 
@@ -233,13 +231,13 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "'{}' is a direct type and can not be called",
-                        ty.decl(db).name(db).text(db),
+                        ty.name(db),
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(call.get_span(db).clone())
                     .call();
 
-                get_decl_and_def_for_ty(db, *ty, &mut diag);
+                get_def_for_ty(db, *ty, &mut diag);
 
                 diag.with_note("only FUNCTIONS and METHODS or body from declared CLASS/FUNCTIOn_BLOCKS can called".into());
 
@@ -249,13 +247,12 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "unused return type of '{}'",
-                        ty.decl(db).name(db).text(db)
+                        ty.name(db)
                     ))
                     .severity(DiagnosticSeverity::WARNING)
                     .range(call.get_span(db).clone())
                     .call();
 
-                get_decl_for_ty(db, *ret, &mut diag);
                 diag
             }
             Self::TooManyParameters {
@@ -266,13 +263,13 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "'{}' expected {expected} parameters, but got {found}",
-                        call.ty(db).unwrap().decl(db).name(db).text(db)
+                        call.ty(db).unwrap().name(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(call.get_span(db).clone())
                     .call();
 
-                get_decl_and_def_for_ty(db, call.ty(db).unwrap(), &mut diag);
+                get_def_for_ty(db, call.ty(db).unwrap(), &mut diag);
                 diag
             }
             Self::DuplicateParameter { param1, param2 } => {
@@ -294,13 +291,13 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "unknown non-formal parameter in call to '{}'",
-                        call.ty(db).unwrap().decl(db).name(db).text(db)
+                        call.ty(db).unwrap().name(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(call.ty(db).unwrap().get_span(db).clone())
                     .call();
 
-                get_decl_and_def_for_ty(db, call.ty(db).unwrap(), &mut diag);
+                get_def_for_ty(db, call.ty(db).unwrap(), &mut diag);
                 diag
             }
             Self::UnresolvedInputParam { var, err } => {
@@ -324,7 +321,6 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                     .range(param.get_span(db).clone())
                     .call();
 
-                get_decl_for_ty(db, call.ty(db).unwrap(), &mut diag);
                 if let TyDef::Pou(pou) = call.ty(db).unwrap().def(db) {
                     let candidates = fuzzy_func_local_items(db, pou, param.ident.text(db).as_str());
                     diag.with_note(get_candidates(&candidates));
@@ -339,7 +335,6 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                     .range(param.get_span(db).clone())
                     .call();
 
-                get_decl_for_ty(db, call.ty(db).unwrap(), &mut diag);
                 if let TyDef::Pou(pou) = call.ty(db).unwrap().def(db) {
                     let candidates = fuzzy_func_local_items(db, pou, param.ident.text(db).as_str());
                     diag.with_note(get_candidates(&candidates));
@@ -402,7 +397,7 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "mixed formal and non-formal parameters in call to '{}'",
-                        call.ty(db).unwrap().decl(db).name(db).text(db)
+                        call.ty(db).unwrap().name(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(call.get_span(db).clone())

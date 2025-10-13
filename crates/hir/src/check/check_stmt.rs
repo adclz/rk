@@ -135,7 +135,7 @@ fn check_assignment<'db>(
         return Err(StmtError::AssignmentToInputVar { var, ty: ty_var }.into());
     }
 
-    match (ty_var.is_variable(db), ty_var.is_callable(db)) {
+    /*match (ty_var.is_variable(db), ty_var.is_callable(db)) {
         // is not a variable but callable
         (false, true) => {
             // Special case: assigning to function with return type
@@ -156,7 +156,7 @@ fn check_assignment<'db>(
          // is a variable and not callable, valid case
         (true, false) => {}
         _ => {}
-    }
+    }*/
 
     coerce_ty_with_expr(db, ty_var, target)
         .map_err(|err| StmtError::AssignmentTypeMismatch { err }.into())
@@ -183,7 +183,7 @@ fn check_func_call<'db>(
     }
 
     // Only functions can be called directly
-    if !ty_target.is_variable(db)
+    /*if !ty_target.is_variable(db)
         && !matches!(
             ty_target.kind(db),
             TyKind::Function { .. } | TyKind::Method { .. }
@@ -194,7 +194,7 @@ fn check_func_call<'db>(
             call: fun_call.target,
         }
         .into());
-    }
+    }*/
 
     check_call_visibility(db, ty_target, &fun_call.target, errors);
 
@@ -412,7 +412,8 @@ fn check_parameters<'db>(
                                         }
                                         .into(),
                                     );
-                                } else if !var_ty.is_variable(db) {
+                                    // use is_variable from resolved var result when updated
+                                } /*else if !var_ty.is_variable(db) {
                                     errors.push(
                                         StmtError::AssignmentToDirectType {
                                             ty: var_ty,
@@ -420,7 +421,7 @@ fn check_parameters<'db>(
                                         }
                                         .into(),
                                     );
-                                } else {
+                                }*/ else {
                                     let _ = coerce_ty_with_ty(db, p_ty, var_ty).map_err(|err| {
                                         errors.push(
                                             StmtError::ParameterTypeMismatch {
@@ -487,13 +488,14 @@ fn check_for<'db>(
     }
 
     // Direct type
-    if !control_var_ty.is_variable(db) {
+    // todo: check if input is variable when resolved var has been updated
+    /*if !control_var_ty.is_variable(db) {
         return Err(StmtError::AssignmentToDirectType {
             var: control_var,
             ty: control_var_ty,
         }
         .into());
-    }
+    }*/
 
     // POUs can not be mutated
     if control_var_ty.is_callable(db) {

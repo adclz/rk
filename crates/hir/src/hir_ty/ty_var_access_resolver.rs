@@ -10,7 +10,7 @@ use crate::{
         pous::variable::VariableDecl,
         scope::FileScopeId,
     }, hir_ty::{
-        ty::{Ty, TyDecl},
+        ty::{Ty},
         ty_path_expr_resolver::{resolved_local_path_expr, resolved_path_expr, ResolvedPathResult},
     }, AstId, HirNodeInfo
 };
@@ -51,13 +51,8 @@ pub enum ResolvedVarKind<'db> {
 
 impl<'db> ResolvedVarResult<'db> {
     fn get_var(&self, db: &'db dyn BaseDatabase) -> Option<VariableDecl<'db>> {
-        self.ty(db).ok().and_then(|ty| {
-            if let TyDecl::Variable(var) = ty.decl(db) {
-                Some(var)
-            } else {
-                None
-            }
-        })
+        // todo: update var resolver tp be the SOT of type declarations
+        None
     }
 
     pub fn is_input(&self, db: &'db dyn BaseDatabase) -> bool {

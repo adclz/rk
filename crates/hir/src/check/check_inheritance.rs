@@ -21,7 +21,7 @@ pub fn check_methods<'db>(
     implementer: Ty<'db>,
     errors: &mut Vec<AnalysisError<'db>>,
 ) {
-    let table = method_table(db, implementer);
+    /*let table = method_table(db, implementer);
 
     // If the class is abstract, it must have at least one abstract method
     if let TyKind::Class { .. } = implementer.kind(db)
@@ -144,5 +144,5 @@ fn check_signature<'db>(
         if let Err(err) = coerce_ty_with_ty(db, *m1.1, *m2.1) {
             errors.push(MethodError::SignatureParametersTypeMismatch { param: *m2.1, err }.into());
         }
-    });
+    });*/
 }

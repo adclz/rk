@@ -9,7 +9,7 @@ use crate::{
     hir_ty::{
         array_resolver::resolve_range,
         expr_resolver::resolve_expr,
-        ty::{Ty, TyDecl, TyKind},
+        ty::{Ty, TyKind},
     },
 };
 
@@ -24,7 +24,7 @@ impl<'db> DataTypeCheck<'db> for Enum<'db> {
             TyKind::Enum { typ, .. } => {
                 // Check underlying type
                 if let Some(typ) = typ {
-                    let typ = typ.spec_to_ty(db, ty.decl(db));
+                    let typ = typ.spec_to_ty(db);
                     check_ty(db, typ, errors);
                     match typ.kind(db) {
                         TyKind::Simple(elementary) => match elementary {
@@ -72,7 +72,7 @@ impl<'db> DataTypeCheck<'db> for Enum<'db> {
             match (variant.value, enum_typ) {
                 (Some(value), Some(typ)) => {
                     let value_expr = *resolve_expr(db, value);
-                    if let Err(err) = coerce_ty_with_expr(db, typ.spec_to_ty(db, ty.decl(db)), value_expr) {
+                    if let Err(err) = coerce_ty_with_expr(db, typ.spec_to_ty(db), value_expr) {
                         errors.push(TyError::InvalidEnumVariantValue { variant: variant.name, err }.into())
                     }
                 }

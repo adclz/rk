@@ -55,7 +55,7 @@ pub fn check_init_expr<'db>(
         ResolvedInitExprKind::ArrayInit { values } => {
             // For arrays, validate bounds if we have array type info
             if let TyKind::Array { ranges, typ } = ty.kind(db) {
-                check_array_dimensions(db, ranges, typ.spec_to_ty(db, ty.decl(db)), &values, errors);
+                check_array_dimensions(db, ranges, typ.spec_to_ty(db), &values, errors);
             } else {
                 // Just recursively check the values - resolver has already validated types
                 for value in values {

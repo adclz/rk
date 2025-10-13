@@ -86,7 +86,7 @@ fn resolve_unresolved<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>, init: UnResol
                     // Valid: Array type with ArrayInit
                     let resolved = values
                         .into_iter()
-                        .map(|v| resolve_unresolved(db, typ.spec_to_ty(db, ty.decl(db)), v))
+                        .map(|v| resolve_unresolved(db, typ.spec_to_ty(db), v))
                         .collect();
                     ResolvedInitExprKind::ArrayInit { values: resolved }
                 }
@@ -108,7 +108,7 @@ fn resolve_unresolved<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>, init: UnResol
                 .into_iter()
                 .map(|v| match ty.kind(db) {
                     // For array types, resolve values with element type
-                    TyKind::Array { typ, .. } => resolve_unresolved(db, typ.spec_to_ty(db, ty.decl(db)), v),
+                    TyKind::Array { typ, .. } => resolve_unresolved(db, typ.spec_to_ty(db), v),
                     // For simple types (multidimensional case), resolve with same type
                     _ => resolve_unresolved(db, ty, v),
                 })

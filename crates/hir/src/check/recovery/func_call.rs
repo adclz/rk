@@ -42,7 +42,7 @@ pub fn fuzzy_func_local_items<'db>(
 
     fast_query.search(db, index, |symbol| {
         if let SymbolKind::Variable(ty) = symbol.kind
-            && (ty.is_variable_input(db) || ty.is_variable_inout(db) || ty.is_variable_output(db))
+            //&& (ty.is_variable_input(db) || ty.is_variable_inout(db) || ty.is_variable_output(db))
         {
             results.variables.push(symbol.clone())
         }
