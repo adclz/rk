@@ -3,7 +3,9 @@ use auto_lsp::default::db::BaseDatabase;
 use crate::{
     check::errors::{path_error::PathResolveError, var_error::VarResolveError}, hir_def::{
         expressions::{
-            expression::{Expr, PathExpr, PathExprKind, VarAccess, VariableAccess, VariableAccessKind},
+            expression::{
+                Expr, PathExpr, PathExprKind, VarAccess, VariableAccess, VariableAccessKind,
+            },
             invocation::{Invocation, InvocationKind},
         },
         interned::{
@@ -14,8 +16,8 @@ use crate::{
         scope::{FileScopeId, ScopeKind},
         semantic_index::semantic_index,
     }, hir_ty::{
-        name_res::{pou_names_res, resolve_namespace_access, variables_in_scope},
-        ty::{ty_for_pou, Ty},
+        name_res::{pou_names_res, resolve_namespace_access},
+        ty::{ty_for_pou, SearchMode, Ty},
     }, AstId, HirNodeInfo
 };
 
@@ -103,6 +105,7 @@ pub enum Place<'db> {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum SymbolicTarget<'db> {
+    /// Direct access to a declared variable
     Variable(VariableDecl<'db>),
     Pou(Ty<'db>),
     Method(Ty<'db>),
@@ -140,39 +143,39 @@ impl<'db> ResolvedAccess<'db> {
         }
     }
 
-    pub fn is_input(&self, db: &'db dyn BaseDatabase) -> bool {
-        self.as_var(db).is_some_and(|var| var.is_input(db))
-    }
-
-    pub fn is_output(&self, db: &'db dyn BaseDatabase) -> bool {
-        self.as_var(db).is_some_and(|var| var.is_output(db))
-    }
-
-    pub fn is_var(&self, db: &'db dyn BaseDatabase) -> bool {
+    pub fn is_variable(&self, db: &'db dyn BaseDatabase) -> bool {
         self.as_var(db).is_some_and(|var| var.is_var(db))
     }
 
-    pub fn is_in_out(&self, db: &'db dyn BaseDatabase) -> bool {
+    pub fn is_var_input(&self, db: &'db dyn BaseDatabase) -> bool {
+        self.as_var(db).is_some_and(|var| var.is_input(db))
+    }
+
+    pub fn is_var_output(&self, db: &'db dyn BaseDatabase) -> bool {
+        self.as_var(db).is_some_and(|var| var.is_output(db))
+    }
+
+    pub fn is_var_in_out(&self, db: &'db dyn BaseDatabase) -> bool {
         self.as_var(db).is_some_and(|var| var.is_in_out(db))
     }
 
-    pub fn is_external(&self, db: &'db dyn BaseDatabase) -> bool {
+    pub fn is_var_external(&self, db: &'db dyn BaseDatabase) -> bool {
         self.as_var(db).is_some_and(|var| var.is_external(db))
     }
 
-    pub fn is_global(&self, db: &'db dyn BaseDatabase) -> bool {
+    pub fn is_var_global(&self, db: &'db dyn BaseDatabase) -> bool {
         self.as_var(db).is_some_and(|var| var.is_global(db))
     }
 
-    pub fn is_access(&self, db: &'db dyn BaseDatabase) -> bool {
+    pub fn is_var_access(&self, db: &'db dyn BaseDatabase) -> bool {
         self.as_var(db).is_some_and(|var| var.is_access(db))
     }
 
-    pub fn is_temp(&self, db: &'db dyn BaseDatabase) -> bool {
+    pub fn is_var_temp(&self, db: &'db dyn BaseDatabase) -> bool {
         self.as_var(db).is_some_and(|var| var.is_temp(db))
     }
 
-    pub fn is_config(&self, db: &'db dyn BaseDatabase) -> bool {
+    pub fn is_var_config(&self, db: &'db dyn BaseDatabase) -> bool {
         self.as_var(db).is_some_and(|var| var.is_config(db))
     }
 }
@@ -328,65 +331,68 @@ fn find_primary_target<'db>(
                 PathExprWalkStep::Index { expr } => return None, // cannot start with index
             };
 
-                // Search for variables in scope
-                if let Some(variable) = variables_in_scope(db, expr.scope_id(db)).get(ident) {
+            let sema = semantic_index(db, expr.scope_id(db).file(db));
+            let scope = sema.get_scope(db, expr.scope_id(db));
+
+            // Search for variables in scope
+            if let ScopeKind::Pou(pou) = scope.kind {
+                let ty = ty_for_pou(db, pou);
+                
+                if let Ok(ty) = ty.linear(db, first, SearchMode::Global) {
                     return Some((
-                        SymbolicTarget::Variable(*variable),
-                        variable.spec(db).spec_to_ty(db),
+                        SymbolicTarget::Pou(ty),
+                        ty,
                         flatten[1..].as_ref(),
                     ));
                 }
 
                 // Special case: if the first element is the same as the current POU, it's a self-reference
-                let sema = semantic_index(db, expr.scope_id(db).file(db));
-                let scope = sema.get_scope(db, expr.scope_id(db));
-                if let ScopeKind::Pou(pou) = scope.kind {
-                    if pou.name(db) == &ident.ident {
-                        return Some((
-                            SymbolicTarget::Pou(ty_for_pou(db, pou)),
-                            ty_for_pou(db, pou),
-                            flatten[1..].as_ref(),
-                        ));
-                    }
-                }
-
-                // Try local POU names
-                if let Some(pou) = pou_names_res(db, ident, expr.scope_id(db)) {
+                if pou.name(db) == &ident.ident {
                     return Some((
                         SymbolicTarget::Pou(ty_for_pou(db, pou)),
                         ty_for_pou(db, pou),
                         flatten[1..].as_ref(),
                     ));
                 }
+            }
 
-                // Try Namespaces
-                // Since the IEC standard states that both namespaces and path expressions should be dotted,
-                // we need to loop through all steps until we find a matching namespace
-                // this is not very efficient, but should work for now
+            // Try local POU names
+            if let Some(pou) = pou_names_res(db, ident, expr.scope_id(db)) {
+                return Some((
+                    SymbolicTarget::Pou(ty_for_pou(db, pou)),
+                    ty_for_pou(db, pou),
+                    flatten[1..].as_ref(),
+                ));
+            }
 
-                // first get all fragments that could look like a namespace
-                // we just iterate through all steps until we find a non-Field step
-                let mut fragments = vec![];
-                for step in flatten {
-                    match step {
-                        PathExprWalkStep::Field { ident, .. } => {
-                            fragments.push(ident.clone());
-                        }
-                        _ => break,
+            // Try Namespaces
+            // Since the IEC standard states that both namespaces and path expressions should be dotted,
+            // we need to loop through all steps until we find a matching namespace
+            // this is not very efficient, but should work for now
+
+            // first get all fragments that could look like a namespace
+            // we just iterate through all steps until we find a non-Field step
+            let mut fragments = vec![];
+            for step in flatten {
+                match step {
+                    PathExprWalkStep::Field { ident, .. } => {
+                        fragments.push(ident.clone());
                     }
+                    _ => break,
                 }
+            }
 
-                let path = NamespacePath::from((db, &fragments));
-                let access = NamespaceAccess::new(db, Some(path), ident);
-                if let Some(pou) = resolve_namespace_access(db, expr.scope_id(db), access) {
-                    return Some((
-                        SymbolicTarget::Pou(ty_for_pou(db, pou)),
-                        ty_for_pou(db, pou),
-                        flatten[fragments.len() - 1..].as_ref(),
-                    ));
-                }
-                None
-        },
+            let path = NamespacePath::from((db, &fragments));
+            let access = NamespaceAccess::new(db, Some(path), ident);
+            if let Some(pou) = resolve_namespace_access(db, expr.scope_id(db), access) {
+                return Some((
+                    SymbolicTarget::Pou(ty_for_pou(db, pou)),
+                    ty_for_pou(db, pou),
+                    flatten[fragments.len() - 1..].as_ref(),
+                ));
+            }
+            None
+        }
         None => None,
     }
 }
@@ -402,7 +408,7 @@ fn resolve_path_rest<'db>(
     }
 
     for step in rest {
-        match ty.linear(db, step) {
+        match ty.linear(db, step, SearchMode::Global) {
             Ok(resolved) => result.push(ResolvedPathElement {
                 expr: *step.get_expr(),
                 kind: ResolvedPathElementKind::Ty(resolved),
@@ -446,7 +452,6 @@ impl<'db> HirNodeInfo<'db> for ResolvedAccess<'db> {
         }
     }
 }
-
 
 /// Represents a resolved element in a path expression.
 /// Contains the expression and its type.

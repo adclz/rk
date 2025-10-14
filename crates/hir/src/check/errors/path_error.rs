@@ -25,7 +25,11 @@ pub enum PathResolveError<'db> {
         ty: Ty<'db>,
         expr: PathExpr<'db>,
     },
-    NoField {
+    TypeHasNoField {
+        ty: Ty<'db>,
+        expr: PathExpr<'db>,
+    },
+    MissingDeref {
         ty: Ty<'db>,
         expr: PathExpr<'db>,
     },
@@ -48,11 +52,14 @@ impl<'db> DiagnosticDescription<'db> for PathResolveError<'db> {
             PathResolveError::UnknownField { ty, expr } => {
                 format!("field '{}' not found in '{}'", expr.ident(db).text(db), ty.type_name(db))
             }
-            PathResolveError::NoField { ty, expr } => {
+            PathResolveError::TypeHasNoField { ty, expr } => {
                 format!("type '{}' does not have fields", ty.type_name(db))
             }
+            PathResolveError::MissingDeref { ty, expr } => {
+                format!("type '{}' is a reference, maybe you forgot to dereference it ?", ty.type_name(db))
+            }
             PathResolveError::NotAReference { ty, expr } => {
-                format!("type '{}' is not a reference", ty.type_name(db))
+                format!("type '{}' can not be dereferenced", ty.type_name(db))
             }
             PathResolveError::NotAnArray { ty, expr } => {
                 format!("type '{}' cannot be indexed", ty.type_name(db))
@@ -74,7 +81,10 @@ impl<'db> DiagnosticDescription<'db> for PathResolveError<'db> {
                     )));
                 }
             }
-            PathResolveError::NoField { ty, expr } => {
+            PathResolveError::TypeHasNoField { ty, expr } => {
+                get_def_for_ty(db, *ty, diag);
+            }
+            PathResolveError::MissingDeref { ty, expr } => {
                 get_def_for_ty(db, *ty, diag);
             }
             PathResolveError::UnknownField { ty, expr } => {

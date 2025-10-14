@@ -170,7 +170,7 @@ pub fn pou_names_res<'db>(
         .copied()
 }
 
-#[salsa::tracked(returns(ref))]
+/*#[salsa::tracked(returns(ref))]
 pub fn variables_in_scope<'db>(
     db: &'db dyn BaseDatabase,
     scope_id: FileScopeId<'db>,
@@ -198,3 +198,4 @@ pub fn variables_in_scope<'db>(
 
     map
 }
+*/

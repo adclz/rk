@@ -26,7 +26,6 @@ pub fn coerce_ty_with_ty<'db>(
             false => Err(TypeMismatch { ty1, ty2 }),
         },
         // For all other types, we check for exact equality of the HIR def node
-        // Type mismatch
         _ => {
             if ty1.def(db) == ty2.def(db) {
                 Ok(())

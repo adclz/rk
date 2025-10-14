@@ -32,9 +32,6 @@ impl AstId {
 }
 
 pub trait TypeInfo<'db> {
-    fn decl_name(&self, db: &'db dyn BaseDatabase) -> String {
-        Default::default()
-    }
     fn type_name(&self, db: &'db dyn BaseDatabase) -> String;
 }
 

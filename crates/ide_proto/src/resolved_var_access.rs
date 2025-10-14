@@ -22,10 +22,7 @@ impl<'db> ToProtocol<'db> for ResolvedAccess<'db> {
             .ok()
             .and_then(|s| Some(match s.has_return_type(db) {
                 Some(ret) => format!(": {}", ret.type_name(db)),
-                None => match s.kind(db) {
-                    TyKind::RefTo(ref_) => format!(": REF_TO {}", ref_.spec_to_ty(db).type_name(db)),
-                    _ => format!(": {}", s.type_name(db)),
-                }
+                None => format!(": {}", s.type_name(db))
             }))
             .unwrap_or_default();
         Some(Hover {

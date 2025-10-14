@@ -131,11 +131,11 @@ fn check_assignment<'db>(
         .map_err(|err| StmtError::UnresolvedAssignmentTarget { var, err })?;
 
     // Variables in VAR_INPUT can not be mutated
-    if var.is_input(db) {
+    if var.is_var_input(db) {
         return Err(StmtError::AssignmentToInputVar { var, ty: ty_var }.into());
     }
 
-    match (var.is_var(db), ty_var.is_callable(db)) {
+    match (var.is_variable(db), ty_var.is_callable(db)) {
         // is not a variable but callable
         (false, true) => {
             // Special case: assigning to function with return type
@@ -183,7 +183,7 @@ fn check_func_call<'db>(
     }
 
     // Only functions can be called directly
-    if !fun_call.target.is_var(db)
+    if !fun_call.target.is_variable(db)
         && !matches!(
             ty_target.kind(db),
             TyKind::Function { .. } | TyKind::Method { .. }
@@ -212,7 +212,7 @@ fn check_func_call<'db>(
     check_parameters(
         db,
         fun_call.target,
-        ty_target.variables(db),
+        ty_target.local_variables(db),
         &fun_call.params,
         errors,
     );
@@ -239,7 +239,7 @@ fn check_invocation<'db>(
             check_parameters(
                 db,
                 *method,
-                ty_target.variables(db),
+                ty_target.local_variables(db),
                 &invocation.params,
                 errors,
             );
@@ -416,7 +416,7 @@ fn check_parameters<'db>(
                     Some(other_param) => match other_param.ty(db) {
                         Ok(p_ty) => match variable.ty(db) {
                             Ok(var_ty) => {
-                                if variable.is_input(db) {
+                                if variable.is_var_input(db) {
                                     errors.push(
                                         StmtError::AssignmentToInputVar {
                                             ty: var_ty,
@@ -493,7 +493,7 @@ fn check_for<'db>(
         })?;
 
     // Variables in VAR_INPUT can not be mutated
-    if control_var.is_input(db) {
+    if control_var.is_var_input(db) {
         errors.push(StmtError::AssignmentToInputVar {
             var: control_var,
             ty: control_var_ty,
@@ -502,7 +502,7 @@ fn check_for<'db>(
     }
 
     // Direct type
-    if !control_var.is_var(db) {
+    if !control_var.is_variable(db) {
         return Err(StmtError::AssignmentToDirectType {
             var: control_var,
             ty: control_var_ty,

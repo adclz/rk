@@ -110,8 +110,8 @@ pub enum ElementarySpec {
     LTod,
 }
 
-impl<'db> TypeInfo<'db> for ElementarySpec {
-    fn type_name(&self, db: &'db dyn BaseDatabase) -> String {
+impl<'db> ElementarySpec {
+    pub fn type_name(&self, db: &'db dyn BaseDatabase) -> String {
         match self {
             ElementarySpec::Bool => "BOOL",
             ElementarySpec::REDGEBool => "REDGE_BOOL",
