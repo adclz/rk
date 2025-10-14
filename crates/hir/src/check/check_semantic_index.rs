@@ -43,7 +43,7 @@ use crate::{
         init_expr_resolver::{ResolvedInitExpr, resolve_init_expr},
         name_res::{all_global_pous, all_local_pous},
         stmt_resolver::{ResolveStmtCtx, ResolvedStmt, ResolvedStmtKind, resolve_stmt},
-        ty::{Ty, TyKind, ty_for_pou, ty_for_struct_field, ty_for_variable},
+        ty::{Ty, TyKind, ty_for_pou},
         ty_var_access_resolver::{Place, ResolvedAccess},
     },
     walk::WalkHir,

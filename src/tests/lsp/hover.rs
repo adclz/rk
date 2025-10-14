@@ -6,7 +6,6 @@ use db::RootDatabase;
 use hir::hir_def::pous::pou::Pou;
 use hir::hir_def::semantic_index::HirNode;
 use hir::hir_def::semantic_index::semantic_index;
-use hir::hir_ty::ty::ty_for_variable;
 use hir::hir_ty::ty::TyDef;
 use hir::walk::WalkHir;
 use ide_proto::ty::TyHover;
@@ -104,7 +103,7 @@ END_FUNCTION_BLOCK
             && let Pou::FunctionBlock(fb) = pou.pou(&with_db)
         {
             for var in fb.variables(&with_db) {
-                nodes.push(ty_for_variable(&with_db, *var));
+                nodes.push(var.spec(&with_db).spec_to_ty(&with_db));
             }
         }
         ControlFlow::Continue(())

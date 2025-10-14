@@ -313,16 +313,6 @@ pub fn ty_for_method_prot<'db>(db: &'db dyn BaseDatabase, method: MethodPrototyp
     )
 }
 
-#[salsa::tracked]
-pub fn ty_for_variable<'db>(db: &'db dyn BaseDatabase, variable: VariableDecl<'db>) -> Ty<'db> {
-    variable.spec(db).spec_to_ty(db)
-}
-
-#[salsa::tracked]
-pub fn ty_for_struct_field<'db>(db: &'db dyn BaseDatabase, field: StructElement<'db>) -> Ty<'db> {
-    field.spec(db).spec_to_ty(db)
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SearchMode {
     Local,
@@ -331,7 +321,7 @@ pub enum SearchMode {
 
 #[salsa::tracked]
 impl<'db> Ty<'db> {
-    pub fn linear(
+    pub fn walk(
         &self,
         db: &'db dyn BaseDatabase,
         step: &PathExprWalkStep<'db>,
@@ -344,7 +334,7 @@ impl<'db> Ty<'db> {
                 // first, try struct fields (highest priority)
                 if let TyKind::Struct { elements, .. } = self.kind(db) {
                     if let Some(field) = elements.get(&ident.ident) {
-                        return Ok(ty_for_struct_field(db, *field));
+                        return Ok(field.spec(db).spec_to_ty(db));
                     }
                 }
                 
@@ -396,7 +386,7 @@ impl<'db> Ty<'db> {
                     // Look for a struct field
                     TyKind::Struct { elements, spec } => elements
                         .get(&target.ident)
-                        .map(|f| ty_for_struct_field(db, *f))
+                        .map(|f| f.spec(db).spec_to_ty(db))
                         .ok_or(PathResolveError::UnknownField {
                             expr: *expr,
                             ty: *self,

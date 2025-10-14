@@ -8,33 +8,33 @@ use crate::{
         check_ty::check_ty,
         errors::{analysis_error::AnalysisError, duplicates::DuplicateError},
     },
-    hir_def::pous::variable::VariableDecl,
-    hir_ty::{init_expr_resolver::resolve_init_expr, ty::ty_for_variable},
+    hir_def::{interned::identifier::Ident, pous::variable::VariableDecl},
+    hir_ty::init_expr_resolver::resolve_init_expr,
 };
 
 impl<'db> Check<'db> for Vec<VariableDecl<'db>> {
     fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<AnalysisError<'db>>) {
-        let mut seen = FxHashMap::default();
+        let mut seen: FxHashMap<Ident, VariableDecl<'db>> = FxHashMap::default();
         for variable in self {
             match seen.get(variable.name(db)) {
                 Some(prev) => {
                     errors.push(
                         DuplicateError::Variable {
-                            var1: ty_for_variable(db, *variable),
-                            var2: ty_for_variable(db, *prev),
+                            var1: variable.spec(db).spec_to_ty(db),
+                            var2: prev.spec(db).spec_to_ty(db),
                         }
                         .into(),
                     );
                 }
                 None => {
-                    seen.insert(variable.name(db), *variable);
+                    seen.insert(*variable.name(db), *variable);
                 }
             }
 
-            let var = ty_for_variable(db, *variable);
+            let var = variable.spec(db).spec_to_ty(db);
             check_ty(db, var, errors);
             if let Some(init) = variable.init(db) {
-                check_init_expr(db, var, *resolve_init_expr(db, ty_for_variable(db, *variable), *init), errors);
+                check_init_expr(db, var, *resolve_init_expr(db, var, *init), errors);
             }
         }
     }

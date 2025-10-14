@@ -338,7 +338,7 @@ fn find_primary_target<'db>(
             if let ScopeKind::Pou(pou) = scope.kind {
                 let ty = ty_for_pou(db, pou);
                 
-                if let Ok(ty) = ty.linear(db, first, SearchMode::Global) {
+                if let Ok(ty) = ty.walk(db, first, SearchMode::Global) {
                     return Some((
                         SymbolicTarget::Pou(ty),
                         ty,
@@ -408,7 +408,7 @@ fn resolve_path_rest<'db>(
     }
 
     for step in rest {
-        match ty.linear(db, step, SearchMode::Global) {
+        match ty.walk(db, step, SearchMode::Global) {
             Ok(resolved) => result.push(ResolvedPathElement {
                 expr: *step.get_expr(),
                 kind: ResolvedPathElementKind::Ty(resolved),

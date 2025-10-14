@@ -21,8 +21,7 @@ use crate::{
         invocation_resolver::{ResolvedInvocationResult, ResolvedMethodKind},
         stmt_resolver::{resolve_stmt, ResolvedStmt, ResolvedStmtKind},
         ty::{
-            ty_for_method_decl, ty_for_method_prot, ty_for_pou, ty_for_struct_field,
-            ty_for_variable,
+            ty_for_method_decl, ty_for_method_prot, ty_for_pou,
         },
         ty_var_access_resolver::{Place, ResolvedAccess, ResolvedPathElement}, using_resolver::{resolve_using, ResolvedUsing},
     },
@@ -139,7 +138,7 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
                 match dt.spec(db).kind(db) {
                     SpecKind::Struct(st) => {
                         for field in &st.elements {
-                            f(HirNode::Ty(ty_for_struct_field(db, *field)))?;
+                            f(HirNode::Ty(field.spec(db).spec_to_ty(db)))?;
                         }
                     }
                     _ => {}
@@ -164,9 +163,9 @@ impl<'db> WalkHir<'db> for VariableDecl<'db> {
         db: &'db dyn BaseDatabase,
         f: &mut F,
     ) -> ControlFlow<()> {
-        f(HirNode::Ty(ty_for_variable(db, *self)))?;
+        f(HirNode::Ty(self.spec(db).spec_to_ty(db)))?;
         if let Some(init_expr) = self.init(db) {
-            resolve_init_expr(db, ty_for_variable(db, *self), *init_expr).walk_hir(db, f)?;
+            resolve_init_expr(db, self.spec(db).spec_to_ty(db), *init_expr).walk_hir(db, f)?;
         }
         ControlFlow::Continue(())
     }

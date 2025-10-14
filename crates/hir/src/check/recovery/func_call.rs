@@ -3,7 +3,6 @@ use auto_lsp::default::db::BaseDatabase;
 use crate::{
     check::recovery::pou::FuzzyResult,
     hir_def::pous::pou::{Pou, PouDecl},
-    hir_ty::ty::ty_for_variable,
     query_string::query::{NamedSymbol, Query, SymbolIndex, SymbolKind},
 };
 
@@ -20,7 +19,7 @@ pub fn fuzzy_func_local_items<'db>(
             f.variables(db).iter().for_each(|v| {
                 indexes.push(NamedSymbol {
                     name: v.name(db).text(db).to_string(),
-                    kind: SymbolKind::Variable(ty_for_variable(db, *v)),
+                    kind: SymbolKind::Variable(v.spec(db).spec_to_ty(db)),
                 })
             });
         }
@@ -28,7 +27,7 @@ pub fn fuzzy_func_local_items<'db>(
             fb.variables(db).iter().for_each(|v| {
                 indexes.push(NamedSymbol {
                     name: v.name(db).text(db).to_string(),
-                    kind: SymbolKind::Variable(ty_for_variable(db, *v)),
+                    kind: SymbolKind::Variable(v.spec(db).spec_to_ty(db)),
                 })
             });
         }
