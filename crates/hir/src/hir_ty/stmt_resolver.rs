@@ -5,7 +5,7 @@ use crate::hir_ty::expr_resolver::{ResolvedExpr, resolve_expr};
 use crate::hir_ty::func_call_resolver::ResolvedFuncCall;
 use crate::hir_ty::invocation_resolver::ResolvedInvocationResult;
 use crate::hir_ty::ty_var_access_resolver::{
-    ResolvedVarResult, resolve_var_access,
+    ResolvedAccess, resolve_var_access,
 };
 use crate::{AstId, HirNodeInfo};
 use auto_lsp::default::db::BaseDatabase;
@@ -21,17 +21,19 @@ pub struct ResolvedStmt<'db> {
 
 
     #[returns(ref)]
+    #[tracked]
+    #[no_eq]
     pub kind: ResolvedStmtKind<'db>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ResolvedStmtKind<'db> {
     Assignment {
-        var: ResolvedVarResult<'db>,
+        var: ResolvedAccess<'db>,
         target: ResolvedExpr<'db>,
     },
     AssignmentAttempt {
-        var: ResolvedVarResult<'db>,
+        var: ResolvedAccess<'db>,
         target: ResolvedExpr<'db>,
     },
     Invocation(ResolvedInvocationResult<'db>),
@@ -44,7 +46,7 @@ pub enum ResolvedStmtKind<'db> {
     },
     Case {},
     For {
-        control_var: ResolvedVarResult<'db>,
+        control_var: ResolvedAccess<'db>,
         start: ResolvedExpr<'db>,
         end: ResolvedExpr<'db>,
         step: Option<ResolvedExpr<'db>>,

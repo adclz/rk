@@ -12,6 +12,6 @@ pub mod name_res;
 pub mod param_resolver;
 pub mod stmt_resolver;
 pub mod ty;
-pub mod ty_path_expr_resolver;
 pub mod ty_var_access_resolver;
 pub mod using_resolver;
+pub mod signatures;

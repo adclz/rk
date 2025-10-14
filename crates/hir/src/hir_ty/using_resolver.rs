@@ -7,8 +7,6 @@ use crate::{hir_def::{interned::{identifier::SpanIdent, namespace::NamespacePath
 pub struct ResolvedUsing<'db> {
     pub using: Using<'db>,
 
-    #[tracked]
-    #[no_eq]
     #[returns(ref)]
     pub namespaces: Vec<NamespaceDecl<'db>>,
 }

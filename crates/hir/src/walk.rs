@@ -24,8 +24,7 @@ use crate::{
             ty_for_method_decl, ty_for_method_prot, ty_for_pou, ty_for_struct_field,
             ty_for_variable,
         },
-        ty_path_expr_resolver::{ResolvedPathElement, ResolvedPathResult},
-        ty_var_access_resolver::{ResolvedVarKind, ResolvedVarResult}, using_resolver::{resolve_using, ResolvedUsing},
+        ty_var_access_resolver::{Place, ResolvedAccess, ResolvedPathElement}, using_resolver::{resolve_using, ResolvedUsing},
     },
 };
 
@@ -193,16 +192,16 @@ impl<'db> WalkHir<'db> for MethodPrototype<'db> {
     }
 }
 
-impl<'db> WalkHir<'db> for ResolvedVarResult<'db> {
+impl<'db> WalkHir<'db> for ResolvedAccess<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
         &self,
         db: &'db dyn BaseDatabase,
         f: &mut F,
     ) -> ControlFlow<()> {
-        f(HirNode::ResolvedVarResult(*self))?;
+        f(HirNode::ResolvedAccess(*self))?;
         match &self.kind(db) {
-            ResolvedVarKind::Symbolic(path) => {
-                for e in path.elements(db) {
+            Place::Symbolic { rest, target}=> {
+                for e in rest {
                     e.walk_hir(db, f)?;
                 }
                 ControlFlow::Continue(())
@@ -219,7 +218,7 @@ impl<'db> WalkHir<'db> for ResolvedPathElement<'db> {
         f: &mut F,
     ) -> ControlFlow<()> {
         // A path element does not derive Copy, but it is small enough to be cheaply cloned.
-        f(HirNode::ResolvedPathElementResult(self.clone()))
+        f(HirNode::ResolvedPathElement(self.clone()))
 
     }
 }
@@ -253,13 +252,8 @@ impl<'db> WalkHir<'db> for ResolvedExpr<'db> {
             ResolvedExprKind::Invocation(inv) => {
                 inv.walk_hir(db, f)?;   
             }
-            ResolvedExprKind::PathExpr(path) => {
-                for e in path.elements(db) {
-                    e.walk_hir(db, f)?;
-                }
-            }
             ResolvedExprKind::VarAccess(var) => {
-                var.walk_hir(db, f)?;   
+                var.walk_hir(db, f);  
             }
             _ => {}
         }

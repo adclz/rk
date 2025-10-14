@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use salsa::tracked;
 
 use crate::{
     check::errors::{
@@ -36,6 +37,7 @@ pub fn coerce_ty_with_ty<'db>(
     }
 }
 
+#[salsa::tracked]
 pub fn coerce_ty_with_expr<'db>(
     db: &'db dyn BaseDatabase,
     ty: Ty<'db>,
@@ -44,7 +46,7 @@ pub fn coerce_ty_with_expr<'db>(
     match (ty.kind(db), target_expr.kind(db)) {
         // Compare an elementary type with a literal
         (TyKind::Simple(elem), ResolvedExprKind::Literal(prim)) => elem
-            .check_literal(db, *prim)
+            .check_literal(db, prim)
             .map_err(|err| ExprMismatch::literal(target_expr, ty, err)),
         // Compare an elementary type with a function call
         (TyKind::Simple(elem), ResolvedExprKind::FuncCall(call)) => {
@@ -88,19 +90,19 @@ pub fn coerce_ty_with_expr<'db>(
             }
         }
         // Compare an Array with PathExpr (PathExpr should be an indexed access)
-        (TyKind::Array { ranges, typ }, ResolvedExprKind::PathExpr(result)) => coerce_ty_with_ty(
+        (TyKind::Array { ranges, typ }, ResolvedExprKind::VarAccess(result)) => coerce_ty_with_ty(
             db,
             typ.spec_to_ty(db),
             result
                 .ty(db)
-                .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?,
+                .map_err(|err| ExprMismatch::unresolved_var(target_expr, err))?,
         )
         .map_err(|err| ExprMismatch::type_mismatch(target_expr, err)),
         // Compare a Struct with PathExpr (PathExpr should be a field access)
-        (TyKind::Struct { spec, elements }, ResolvedExprKind::PathExpr(result)) => {
+        (TyKind::Struct { spec, elements }, ResolvedExprKind::VarAccess(result)) => {
             match result
                 .ty(db)
-                .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?
+                .map_err(|err| ExprMismatch::unresolved_var(target_expr, err))?
                 .kind(db)
             {
                 TyKind::Struct {
@@ -113,7 +115,7 @@ pub fn coerce_ty_with_expr<'db>(
                         ty1: ty,
                         ty2: result
                             .ty(db)
-                            .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?,
+                            .map_err(|err| ExprMismatch::unresolved_var(target_expr, err))?,
                     },
                 )),
             }
@@ -130,7 +132,7 @@ pub fn coerce_ty_with_expr<'db>(
             // Check if the EnumValue type matches the enum type
             match name
                 .ty(db)
-                .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?
+                .map_err(|err| ExprMismatch::unresolved_var(target_expr, err))?
                 .kind(db)
             {
                 TyKind::Enum { typ: t, spec: s } => match variant {
@@ -192,7 +194,7 @@ pub fn coerce_ty_with_expr<'db>(
                     // Retrives the element that the reference points to
                     let var_ty = v
                         .ty(db)
-                        .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?;
+                        .map_err(|err| ExprMismatch::unresolved_var(target_expr, err))?;
 
                     // Check that the type of the variable is the same as the type the reference points to
                     coerce_ty_with_ty(db, ref_to, var_ty)

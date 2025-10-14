@@ -246,14 +246,10 @@ impl<'db> DiagnosticDescription<'db> for ExprMismatch<'db> {
                 }
             },
             ExprMismatchKind::TypeMismatch { err } => {
-                format!(
-                    "type mismatch: expected {}, found {}",
-                    err.ty1.type_name(db),
-                    err.ty2.type_name(db)
-                )
+                err.description(db)
             }
             ExprMismatchKind::ExprTypeMismatch { ty } => {
-                format!("type mismatch: expected {}, got {}", ty.type_name(db), self.expr.expr(db).to_string(db))
+                format!("expected {}, got {}", ty.type_name(db), self.expr.expr(db).to_string(db))
             }
             ExprMismatchKind::VoidRhs { ty } => {
                 "right-hand side is void".to_string()
@@ -314,7 +310,7 @@ impl<'db> DiagnosticDescription<'db> for ExprMismatch<'db> {
 impl<'db> DiagnosticDescription<'db> for TypeMismatch<'db> {
     fn description(&self, db: &'db dyn BaseDatabase) -> String {
         format!(
-            "type mismatch: expected {}, found {}",
+            "expected {}, found {}",
             self.ty1.type_name(db),
             self.ty2.type_name(db)
         )

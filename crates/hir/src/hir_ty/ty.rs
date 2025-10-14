@@ -5,9 +5,7 @@ use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    AstId, HirNodeInfo, TypeInfo,
-    check::errors::path_error::PathResolveError,
-    hir_def::{
+    check::errors::path_error::PathResolveError, hir_def::{
         expressions::{
             expression::Expr,
             spec::{ElementarySpec, Enum, Spec, SpecKind, StructElement},
@@ -22,11 +20,9 @@ use crate::{
         },
         scope::FileScopeId,
         visibility::Visibility,
-    },
-    hir_ty::{
-        inheritance_solver::method_table, name_res::resolve_namespace_access,
-        ty_path_expr_resolver::PathExprWalkStep,
-    },
+    }, hir_ty::{
+        inheritance_solver::method_table, name_res::resolve_namespace_access, ty_var_access_resolver::PathExprWalkStep,
+    }, AstId, HirNodeInfo, TypeInfo
 };
 
 /// The  resolved type of a variable, POU, or method
@@ -504,8 +500,8 @@ impl<'db> Ty<'db> {
 #[salsa::tracked]
 impl<'db> Spec<'db> {
     #[salsa::tracked]
-    pub fn spec_to_ty_kind(self, db: &'db dyn BaseDatabase) -> TyKind<'db> {
-        match self.kind(db) {
+    pub fn spec_to_ty(self, db: &'db dyn BaseDatabase) -> Ty<'db> {
+        let kind = match self.kind(db) {
             SpecKind::Array(array) => TyKind::Array {
                 typ: *array.of_type,
                 ranges: array
@@ -542,12 +538,7 @@ impl<'db> Spec<'db> {
             SpecKind::Simple(simple) => TyKind::Simple(*simple),
             SpecKind::ArrayConformand(array) => TyKind::ArrayConformand { typ: *array },
             SpecKind::Ref(_ref) => TyKind::RefTo(*_ref),
-        }
-    }
-
-    #[salsa::tracked]
-    pub fn spec_to_ty(self, db: &'db dyn BaseDatabase) -> Ty<'db> {
-        let kind = self.spec_to_ty_kind(db);
+        };
         Ty::new(db, TyDef::Spec(self), kind)
     }
 }

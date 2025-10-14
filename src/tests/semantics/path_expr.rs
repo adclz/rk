@@ -2,12 +2,12 @@ use std::ops::ControlFlow;
 
 use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
+use hir::hir_ty::ty_var_access_resolver::ResolvedPathElementKind;
 use hir::HirNodeInfo;
 use hir::TypeInfo;
 use hir::hir_def::semantic_index::HirNode;
 use hir::hir_def::semantic_index::SemanticIndex;
 use hir::hir_def::semantic_index::semantic_index;
-use hir::hir_ty::ty_path_expr_resolver::ResolvedPathElementKind;
 use hir::walk::WalkHir;
 use insta::assert_snapshot;
 use rstest::rstest;
@@ -22,7 +22,7 @@ use crate::tests::utils::with_db;
 fn collect_path_expressions(db: &dyn BaseDatabase, sema: &SemanticIndex) -> String {
     let mut result = vec![];
     let _ = sema.walk_hir(db, &mut |n| {
-        if let HirNode::ResolvedPathElementResult(path) = n {
+        if let HirNode::ResolvedPathElement(path) = n {
             result.push(path);
         }
         ControlFlow::Continue(())

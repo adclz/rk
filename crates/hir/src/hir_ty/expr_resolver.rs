@@ -10,8 +10,7 @@ use crate::{
         func_call_resolver::ResolvedFuncCall,
         invocation_resolver::ResolvedInvocationResult,
         ty::TyKind,
-        ty_path_expr_resolver::{resolved_path_expr, ResolvedPathResult},
-        ty_var_access_resolver::{resolve_var_access, ResolvedVarResult},
+        ty_var_access_resolver::{resolve_path_expr, resolve_var_access, ResolvedAccess},
     }, AstId, HirNodeInfo
 };
 
@@ -24,15 +23,13 @@ pub fn resolve_expr<'db>(db: &'db dyn BaseDatabase, expr: Expr<'db>) -> Resolved
 pub struct ResolvedExpr<'db> {
     pub expr: Expr<'db>,
 
-    #[returns(ref)]
     pub kind: ResolvedExprKind<'db>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ResolvedExprKind<'db> {
     // Should have Ty
-    PathExpr(ResolvedPathResult<'db>),
-    VarAccess(ResolvedVarResult<'db>),
+    VarAccess(ResolvedAccess<'db>),
 
     Invocation(ResolvedInvocationResult<'db>),
 
@@ -55,7 +52,7 @@ pub enum ResolvedExprKind<'db> {
 
     // Enum value (#variant)
     EnumValue {
-        name: ResolvedPathResult<'db>,
+        name: ResolvedAccess<'db>,
         v_text: SpanIdent<'db>,
         variant: Option<EnumVariant<'db>>,
     },
@@ -66,7 +63,7 @@ pub enum ResolvedExprKind<'db> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ResolvedRefValue<'db> {
     Null,
-    Adress(ResolvedPathResult<'db>),
+    Adress(ResolvedAccess<'db>),
 }
 
 impl<'db> ResolvedExpr<'db> {
@@ -134,7 +131,7 @@ impl<'db> ResolveExprCtx<'db> {
                 }
                 PrimaryExpr::EnumValue { name, variant } => {
                     // Find the target enum type
-                    let resolved_path = *resolved_path_expr(self.db, *name);
+                    let resolved_path = resolve_path_expr(self.db, *name);
 
                     // Find the variant in the enum type
                     let resolved_variant = if let Ok(TyKind::Enum { typ, spec }) =
@@ -167,7 +164,7 @@ impl<'db> ResolveExprCtx<'db> {
                     RefValue::Address(adress) => ResolvedExpr::new(
                         self.db,
                         self.expr,
-                        ResolvedExprKind::RefValue(ResolvedRefValue::Adress(*resolved_path_expr(self.db, adress.kind))),
+                        ResolvedExprKind::RefValue(ResolvedRefValue::Adress(resolve_path_expr(self.db, adress.kind))),
                     ),
                 },
             },

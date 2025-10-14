@@ -16,7 +16,7 @@ use crate::{
         invocation_resolver::{ResolvedInvocationResult, ResolvedMethodKind},
         stmt_resolver::{ResolvedStmt, ResolvedStmtKind, resolve_stmt},
         ty::{Ty, TyDef, TyKind},
-        ty_var_access_resolver::ResolvedVarResult,
+        ty_var_access_resolver::ResolvedAccess,
     },
 };
 
@@ -123,7 +123,7 @@ impl<'db> Check<'db> for ResolvedStmt<'db> {
 
 fn check_assignment<'db>(
     db: &'db dyn BaseDatabase,
-    var: ResolvedVarResult<'db>,
+    var: ResolvedAccess<'db>,
     target: ResolvedExpr<'db>,
 ) -> Result<(), AnalysisError<'db>> {
     let ty_var = var
@@ -135,7 +135,7 @@ fn check_assignment<'db>(
         return Err(StmtError::AssignmentToInputVar { var, ty: ty_var }.into());
     }
 
-    /*match (ty_var.is_variable(db), ty_var.is_callable(db)) {
+    match (var.is_var(db), ty_var.is_callable(db)) {
         // is not a variable but callable
         (false, true) => {
             // Special case: assigning to function with return type
@@ -153,10 +153,10 @@ fn check_assignment<'db>(
         (true, true) => {
             return Err(StmtError::AssignmentToCallableType { var, ty: ty_var }.into());
         }
-         // is a variable and not callable, valid case
+        // is a variable and not callable, valid case
         (true, false) => {}
         _ => {}
-    }*/
+    }
 
     coerce_ty_with_expr(db, ty_var, target)
         .map_err(|err| StmtError::AssignmentTypeMismatch { err }.into())
@@ -183,7 +183,7 @@ fn check_func_call<'db>(
     }
 
     // Only functions can be called directly
-    /*if !ty_target.is_variable(db)
+    if !fun_call.target.is_var(db)
         && !matches!(
             ty_target.kind(db),
             TyKind::Function { .. } | TyKind::Method { .. }
@@ -194,7 +194,7 @@ fn check_func_call<'db>(
             call: fun_call.target,
         }
         .into());
-    }*/
+    }
 
     check_call_visibility(db, ty_target, &fun_call.target, errors);
 
@@ -209,7 +209,13 @@ fn check_func_call<'db>(
         )
     }
 
-    check_parameters(db, fun_call.target, ty_target.variables(db), &fun_call.params, errors);
+    check_parameters(
+        db,
+        fun_call.target,
+        ty_target.variables(db),
+        &fun_call.params,
+        errors,
+    );
     Ok(())
 }
 
@@ -230,7 +236,13 @@ fn check_invocation<'db>(
 
             // Check visibility
             check_call_visibility(db, ty_target, &invocation.target.invocation, errors);
-            check_parameters(db, *method, ty_target.variables(db), &invocation.params, errors);
+            check_parameters(
+                db,
+                *method,
+                ty_target.variables(db),
+                &invocation.params,
+                errors,
+            );
         }
         ResolvedMethodKind::FunctionBlockBody { target } => {
             let ty_target = target
@@ -275,7 +287,7 @@ impl FormalCall {
 
 fn check_parameters<'db>(
     db: &'db dyn BaseDatabase,
-    target: ResolvedVarResult<'db>,
+    target: ResolvedAccess<'db>,
     signature: &IndexMap<Ident, Ty<'db>>,
     params: &Vec<ResolvedParam<'db>>,
     errors: &mut Vec<AnalysisError<'db>>,
@@ -413,7 +425,8 @@ fn check_parameters<'db>(
                                         .into(),
                                     );
                                     // use is_variable from resolved var result when updated
-                                } /*else if !var_ty.is_variable(db) {
+                                }
+                                /*else if !var_ty.is_variable(db) {
                                     errors.push(
                                         StmtError::AssignmentToDirectType {
                                             ty: var_ty,
@@ -421,7 +434,8 @@ fn check_parameters<'db>(
                                         }
                                         .into(),
                                     );
-                                }*/ else {
+                                }*/
+                                else {
                                     let _ = coerce_ty_with_ty(db, p_ty, var_ty).map_err(|err| {
                                         errors.push(
                                             StmtError::ParameterTypeMismatch {
@@ -465,7 +479,7 @@ fn check_parameters<'db>(
 
 fn check_for<'db>(
     db: &'db dyn BaseDatabase,
-    control_var: ResolvedVarResult<'db>,
+    control_var: ResolvedAccess<'db>,
     start: ResolvedExpr<'db>,
     end: ResolvedExpr<'db>,
     step: Option<ResolvedExpr<'db>>,
@@ -480,7 +494,7 @@ fn check_for<'db>(
 
     // Variables in VAR_INPUT can not be mutated
     if control_var.is_input(db) {
-        return Err(StmtError::AssignmentToInputVar {
+        errors.push(StmtError::AssignmentToInputVar {
             var: control_var,
             ty: control_var_ty,
         }
@@ -488,14 +502,13 @@ fn check_for<'db>(
     }
 
     // Direct type
-    // todo: check if input is variable when resolved var has been updated
-    /*if !control_var_ty.is_variable(db) {
+    if !control_var.is_var(db) {
         return Err(StmtError::AssignmentToDirectType {
             var: control_var,
             ty: control_var_ty,
         }
         .into());
-    }*/
+    }
 
     // POUs can not be mutated
     if control_var_ty.is_callable(db) {

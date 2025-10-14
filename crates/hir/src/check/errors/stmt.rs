@@ -13,7 +13,7 @@ use crate::{
     }, hir_def::interned::identifier::SpanIdent, hir_ty::{
         expr_resolver::ResolvedExpr,
         ty::{Ty, TyDef},
-        ty_var_access_resolver::ResolvedVarResult,
+        ty_var_access_resolver::ResolvedAccess,
     }, HirNodeInfo
 };
 
@@ -21,93 +21,93 @@ use crate::{
 pub enum StmtError<'db> {
     // Assignments
     UnresolvedAssignmentTarget {
-        var: ResolvedVarResult<'db>,
+        var: ResolvedAccess<'db>,
         err: VarResolveError<'db>,
     },
     AssignmentToDirectType {
         ty: Ty<'db>,
-        var: ResolvedVarResult<'db>,
+        var: ResolvedAccess<'db>,
     },
     AssignmentToCallableType {
         ty: Ty<'db>,
-        var: ResolvedVarResult<'db>,
+        var: ResolvedAccess<'db>,
     },
     AssignmentToInputVar {
         ty: Ty<'db>,
-        var: ResolvedVarResult<'db>,
+        var: ResolvedAccess<'db>,
     },
     AssignmentTypeMismatch {
         err: ExprMismatch<'db>,
     },
     // Function Calls
     UnresolvedFuncCall {
-        call: ResolvedVarResult<'db>,
+        call: ResolvedAccess<'db>,
     },
     CallANonCallableType {
         ty: Ty<'db>, 
-        call: ResolvedVarResult<'db>,
+        call: ResolvedAccess<'db>,
     },
     CallADirectType {
         ty: Ty<'db>,
-        call: ResolvedVarResult<'db>,
+        call: ResolvedAccess<'db>,
     },
     UnusedReturnType {
         ty: Ty<'db>,
-        call: ResolvedVarResult<'db>,
+        call: ResolvedAccess<'db>,
         ret: Ty<'db>,
     },
     TooManyParameters {
-        call: ResolvedVarResult<'db>,
+        call: ResolvedAccess<'db>,
         expected: usize,
         found: usize,
     },
     MixedFormalNonFormalParams {
-        call: ResolvedVarResult<'db>,
+        call: ResolvedAccess<'db>,
     },
     DuplicateParameter {
         param1: SpanIdent<'db>,
         param2: SpanIdent<'db>,
     },
     UnknownNonFormalParam {
-        call: ResolvedVarResult<'db>,
+        call: ResolvedAccess<'db>,
     },
     UnresolvedNonFormalParam {
-        var: ResolvedVarResult<'db>,
+        var: ResolvedAccess<'db>,
         err: VarResolveError<'db>,
     },
     UnknownFormalInputParam {
-        call: ResolvedVarResult<'db>,
+        call: ResolvedAccess<'db>,
         param: SpanIdent<'db>,
     },
     UnresolvedInputParam {
-        var: ResolvedVarResult<'db>,
+        var: ResolvedAccess<'db>,
         err: VarResolveError<'db>,
     },
     UnknownFormalOutputParam {
-        call: ResolvedVarResult<'db>,
+        call: ResolvedAccess<'db>,
         param: SpanIdent<'db>,
     },
     UnresolvedOutputParam {
-        var: ResolvedVarResult<'db>,
+        var: ResolvedAccess<'db>,
         err: VarResolveError<'db>,
     },
     UnresolvedOutputParamTarget {
-        var: ResolvedVarResult<'db>,
+        var: ResolvedAccess<'db>,
         err: VarResolveError<'db>,
     },
     ParameterTypeMismatch {
         param: SpanIdent<'db>,
-        var: ResolvedVarResult<'db>,
+        var: ResolvedAccess<'db>,
         err: TypeMismatch<'db>,
     },
     ParameterExprMismatch {
-        var: ResolvedVarResult<'db>,
+        var: ResolvedAccess<'db>,
         expr: ResolvedExpr<'db>,
         err: ExprMismatch<'db>,
     },
     // For and While loops
     UnresolvedControlVar {
-        control: ResolvedVarResult<'db>,
+        control: ResolvedAccess<'db>,
         err: VarResolveError<'db>,
     },
     ForLoopStartTypeMismatch {
@@ -197,10 +197,10 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
             Self::AssignmentToInputVar { var, ty } => {
                 let mut diag = diag()
                     .message(format!(
-                        "'{}' is an input variable and should not be assigned",
-                        ty.name(db),
+                        "'{}' is an input variable and can not be assigned",
+                        var.decl_name(db),
                     ))
-                    .severity(DiagnosticSeverity::WARNING)
+                    .severity(DiagnosticSeverity::ERROR)
                     .range(var.get_span(db).clone())
                     .call();
 

@@ -13,7 +13,7 @@ use crate::{
         inheritance_solver::method_table,
         param_resolver::resolve_parameters,
         ty::{TyKind, ty_for_pou},
-        ty_var_access_resolver::{ResolvedVarKind, ResolvedVarOrigin, ResolvedVarResult},
+        ty_var_access_resolver::{Place, CallSite, ResolvedAccess},
     },
 };
 
@@ -38,15 +38,15 @@ impl<'db> ResolvedInvocation<'db> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ResolvedMethodKind<'db> {
     InheritedMethod {
-        target: ResolvedVarResult<'db>,
-        method: ResolvedVarResult<'db>,
+        target: ResolvedAccess<'db>,
+        method: ResolvedAccess<'db>,
     },
     DeclaredMethod {
-        target: ResolvedVarResult<'db>,
-        method: ResolvedVarResult<'db>,
+        target: ResolvedAccess<'db>,
+        method: ResolvedAccess<'db>,
     },
     FunctionBlockBody {
-        target: ResolvedVarResult<'db>,
+        target: ResolvedAccess<'db>,
     },
     Unresolved(MethodError<'db>),
 }
@@ -137,18 +137,18 @@ impl<'db> Invocation<'db> {
                             target: ResolvedInvocation::new(
                                 *self,
                                 ResolvedMethodKind::DeclaredMethod {
-                                    target: ResolvedVarResult::new(
+                                    target: ResolvedAccess::new(
                                         db,
-                                        ResolvedVarOrigin::InvocationKeyword(
+                                        CallSite::InvocationKeyword(
                                             self.keyword_id(db),
                                             *self,
                                         ),
-                                        ResolvedVarKind::Method(ty_for_pou(db, pou)),
+                                        Place::Method(ty_for_pou(db, pou)),
                                     ),
-                                    method: ResolvedVarResult::new(
+                                    method: ResolvedAccess::new(
                                         db,
-                                        ResolvedVarOrigin::Invocation(*self),
-                                        ResolvedVarKind::Method(*ty),
+                                        CallSite::Invocation(*self),
+                                        Place::Method(*ty),
                                     ),
                                 },
                             ),
@@ -172,18 +172,18 @@ impl<'db> Invocation<'db> {
                             target: ResolvedInvocation::new(
                                 *self,
                                 ResolvedMethodKind::InheritedMethod {
-                                    target: ResolvedVarResult::new(
+                                    target: ResolvedAccess::new(
                                         db,
-                                        ResolvedVarOrigin::InvocationKeyword(
+                                        CallSite::InvocationKeyword(
                                             self.keyword_id(db),
                                             *self,
                                         ),
-                                        ResolvedVarKind::Pou(ty.source),
+                                        Place::SelfRef(ty.source),
                                     ),
-                                    method: ResolvedVarResult::new(
+                                    method: ResolvedAccess::new(
                                         db,
-                                        ResolvedVarOrigin::Invocation(*self),
-                                        ResolvedVarKind::Method(ty.method),
+                                        CallSite::Invocation(*self),
+                                        Place::Method(ty.method),
                                     ),
                                 },
                             ),
@@ -213,10 +213,10 @@ impl<'db> Invocation<'db> {
                                 target: ResolvedInvocation::new(
                                     *self,
                                     ResolvedMethodKind::FunctionBlockBody {
-                                        target: ResolvedVarResult::new(
+                                        target: ResolvedAccess::new(
                                             db,
-                                            ResolvedVarOrigin::Invocation(*self),
-                                            ResolvedVarKind::Method(ty_for_pou(db, pou)),
+                                            CallSite::Invocation(*self),
+                                            Place::Method(ty_for_pou(db, pou)),
                                         ),
                                     },
                                 ),

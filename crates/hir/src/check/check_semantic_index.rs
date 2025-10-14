@@ -44,8 +44,7 @@ use crate::{
         name_res::{all_global_pous, all_local_pous},
         stmt_resolver::{ResolveStmtCtx, ResolvedStmt, ResolvedStmtKind, resolve_stmt},
         ty::{Ty, TyKind, ty_for_pou, ty_for_struct_field, ty_for_variable},
-        ty_path_expr_resolver::{ResolvePathExprCtx, ResolvedPathElementKind, ResolvedPathResult},
-        ty_var_access_resolver::{ResolvedVarKind, ResolvedVarResult},
+        ty_var_access_resolver::{Place, ResolvedAccess},
     },
     walk::WalkHir,
 };

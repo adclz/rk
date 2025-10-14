@@ -7,7 +7,7 @@ use crate::{
         func_call_resolver::{ResolvedParam, ResolvedParamKind},
         ty::Ty,
         ty_var_access_resolver::{
-            ResolvedVarKind, ResolvedVarOrigin, ResolvedVarResult, resolve_var_access,
+            Place, CallSite, ResolvedAccess, resolve_var_access,
         },
     },
 };
@@ -32,10 +32,10 @@ pub fn resolve_parameters<'db>(
                             let param = callee.variables(db).values().nth(formal_index);
                             formal_index += 1;
                             param.map(|p| {
-                                ResolvedVarResult::new(
+                                ResolvedAccess::new(
                                     db,
-                                    ResolvedVarOrigin::NonFormal(value),
-                                    ResolvedVarKind::Param(*p),
+                                    CallSite::NonFormal(value),
+                                    Place::Param(*p),
                                 )
                             })
                         },
@@ -54,10 +54,10 @@ pub fn resolve_parameters<'db>(
                             .get(&param.ident)
                             // todo: check if it's input / in_out
                             .map(|p| {
-                                ResolvedVarResult::new(
+                                ResolvedAccess::new(
                                     db,
-                                    ResolvedVarOrigin::Formal(param),
-                                    ResolvedVarKind::Param(*p),
+                                    CallSite::Formal(param),
+                                    Place::Param(*p),
                                 )
                             })
                     },
@@ -80,10 +80,10 @@ pub fn resolve_parameters<'db>(
                             .get(&param.ident)
                             // todo: check if it's output
                             .map(|p| {
-                                ResolvedVarResult::new(
+                                ResolvedAccess::new(
                                     db,
-                                    ResolvedVarOrigin::Formal(param),
-                                    ResolvedVarKind::Param(*p),
+                                    CallSite::Formal(param),
+                                    Place::Param(*p),
                                 )
                             })
                     },

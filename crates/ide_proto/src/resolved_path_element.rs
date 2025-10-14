@@ -3,11 +3,9 @@ use auto_lsp::{
     lsp_types::{Hover, InlayHint, InlayHintKind, InlayHintLabel, Position},
 };
 use hir::{
-    HirNodeInfo, TypeInfo,
     hir_ty::{
-        ty::Ty,
-        ty_path_expr_resolver::{ResolvedPathElement, ResolvedPathElementKind, ResolvedPathResult},
-    },
+        ty::Ty, ty_var_access_resolver::{ResolvedPathElement, ResolvedPathElementKind},
+    }, HirNodeInfo, TypeInfo
 };
 
 use crate::{ToProtocol, ty::TyHover};

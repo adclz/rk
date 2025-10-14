@@ -46,7 +46,7 @@ impl<'db> DiagnosticDescription<'db> for PathResolveError<'db> {
                 format!("no item '{}' in scope", expr.ident(db).text(db))
             }
             PathResolveError::UnknownField { ty, expr } => {
-                format!("field '{}' not found", expr.ident(db).text(db))
+                format!("field '{}' not found in '{}'", expr.ident(db).text(db), ty.type_name(db))
             }
             PathResolveError::NoField { ty, expr } => {
                 format!("type '{}' does not have fields", ty.type_name(db))

@@ -22,8 +22,7 @@ use crate::hir_ty::func_call_resolver::ResolvedParam;
 use crate::hir_ty::init_expr_resolver::ResolvedInitExpr;
 use crate::hir_ty::stmt_resolver::ResolvedStmt;
 use crate::hir_ty::ty::Ty;
-use crate::hir_ty::ty_path_expr_resolver::{ResolvedPathElement, ResolvedPathResult};
-use crate::hir_ty::ty_var_access_resolver::ResolvedVarResult;
+use crate::hir_ty::ty_var_access_resolver::{ResolvedAccess, ResolvedPathElement};
 use crate::hir_ty::using_resolver::ResolvedUsing;
 use crate::walk::WalkHir;
 
@@ -147,8 +146,8 @@ pub enum HirNode<'db> {
     Namespace(NamespaceDecl<'db>),
     Ty(Ty<'db>),
     ResolvedUsing(ResolvedUsing<'db>),
-    ResolvedVarResult(ResolvedVarResult<'db>),
-    ResolvedPathElementResult(ResolvedPathElement<'db>),
+    ResolvedAccess(ResolvedAccess<'db>),
+    ResolvedPathElement(ResolvedPathElement<'db>),
     ResolvedStmt(ResolvedStmt<'db>),
     ResolvedParam(ResolvedParam<'db>),
     ResolvedExpr(ResolvedExpr<'db>),
@@ -161,8 +160,8 @@ impl<'db> HirNode<'db> {
             HirNode::Namespace(n) => n.get_span(db),
             HirNode::ResolvedUsing(u) => u.get_span(db),
             HirNode::Ty(t) => t.get_span(db),
-            HirNode::ResolvedPathElementResult(p) => p.get_span(db),
-            HirNode::ResolvedVarResult(v) => v.get_span(db),
+            HirNode::ResolvedPathElement(p) => p.get_span(db),
+            HirNode::ResolvedAccess(v) => v.get_span(db),
             HirNode::ResolvedStmt(s) => s.get_span(db),
             HirNode::ResolvedParam(p) => p.get_span(db),
             HirNode::ResolvedExpr(e) => e.get_span(db),

@@ -4,7 +4,7 @@ use crate::{
     }, hir_ty::{
         expr_resolver::{resolve_expr, ResolvedExpr},
         ty::{ty_for_struct_field, Ty, TyKind},
-        ty_var_access_resolver::{ResolvedVarKind, ResolvedVarOrigin, ResolvedVarResult},
+        ty_var_access_resolver::{Place, CallSite, ResolvedAccess},
     }, AstId, HirNodeInfo
 };
 use auto_lsp::default::db::BaseDatabase;
@@ -147,10 +147,10 @@ fn resolve_unresolved<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>, init: UnResol
                     if let Some(element_ty) = elements.get(&name) {
                         // Valid field - resolve with field type
                         let resolved_value = Box::new(resolve_unresolved(db, ty_for_struct_field(db, *element_ty), *value));
-                        let field = ResolvedVarResult::new(
+                        let field = ResolvedAccess::new(
                             db,
-                            ResolvedVarOrigin::Formal(name),
-                            ResolvedVarKind::Param(ty_for_struct_field(db, *element_ty)),
+                            CallSite::Formal(name),
+                            Place::Param(ty_for_struct_field(db, *element_ty)),
                         );
 
                         ResolvedInitExprKind::StructElement {
@@ -206,7 +206,7 @@ pub enum ResolvedInitExprKind<'db> {
         values: Vec<ResolvedInitExpr<'db>>,
     },
     StructElement {
-        field: ResolvedVarResult<'db>,
+        field: ResolvedAccess<'db>,
         value: Box<ResolvedInitExpr<'db>>,
     },
     ConstantExpr(ResolvedExpr<'db>),
