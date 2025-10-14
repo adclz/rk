@@ -1,20 +1,13 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    AstId, HirNodeInfo,
-    check::errors::inheritance::MethodError,
-    hir_def::{
+    check::errors::inheritance::MethodError, hir_def::{
         expressions::invocation::{Invocation, InvocationKind},
         pous::pou::Pou,
         scope::{FileScopeId, Scope, ScopeKind},
-    },
-    hir_ty::{
-        func_call_resolver::ResolvedParam,
-        inheritance_solver::method_table,
-        param_resolver::resolve_parameters,
-        ty::{TyKind, ty_for_pou},
-        ty_var_access_resolver::{Place, CallSite, ResolvedAccess},
-    },
+    }, hir_ty::{
+        func_call_resolver::ResolvedParam, inheritance_solver::method_table, name_res::resolve_namespace_access, param_resolver::resolve_parameters, ty::{ty_for_pou, TyKind}, ty_var_access_resolver::{CallSite, Place, ResolvedAccess}
+    }, AstId, HirNodeInfo
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -195,8 +188,12 @@ impl<'db> Invocation<'db> {
                                 ResolvedMethodKind::Unresolved(
                                     MethodError::UnresolvedSuperMethod {
                                         ctx: match ty_for_pou(db, pou).kind(db) {
-                                            TyKind::Class { extends, .. } => extends.map(|e| ty_for_pou(db, e)),
-                                            TyKind::FunctionBlock { extends, .. } => extends.map(|e| ty_for_pou(db, e)),
+                                            TyKind::Class(class) => class.extends(db).and_then(|e| {
+                                                resolve_namespace_access(db, e.scope_id, e.path).map(|p| ty_for_pou(db, p))
+                                            }),
+                                            TyKind::FunctionBlock(fb) => fb.extends(db).and_then(|e| {
+                                                resolve_namespace_access(db, e.scope_id, e.path).map(|p| ty_for_pou(db, p))
+                                            }),
                                             _ => None,
                                         },
                                         path,

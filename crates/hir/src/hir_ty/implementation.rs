@@ -50,38 +50,11 @@ fn check_implementations<'db>(
     implemented: Ty<'db>,
     pous: &mut Vec<PouDecl<'db>>,
 ) {
-    match ty_for_pou(db, pou).kind(db) {
-        TyKind::Class {
-            extends,
-            implements,
-            ..
-        } => {
-            if extends
-                .is_some_and(|ext| ty_for_pou(db, ext).def(db).def_as_ty(db) == Some(implemented))
-            {
-                pous.push(pou);
-            } else if implements
-                .iter()
-                .any(|ipl| ty_for_pou(db, *ipl).def(db).def_as_ty(db) == Some(implemented))
-            {
-                pous.push(pou);
-            }
+
+    for candidate in ty_for_pou(db, pou).inheritors(db) {
+        if *candidate == implemented {
+            pous.push(pou);
+            return;
         }
-        TyKind::FunctionBlock { extends, .. } => {
-            if extends
-                .is_some_and(|ext| ty_for_pou(db, ext).def(db).def_as_ty(db) == Some(implemented))
-            {
-                pous.push(pou);
-            }
-        }
-        TyKind::Interface { implements, .. } => {
-            if implements
-                .iter()
-                .any(|ipl| ty_for_pou(db, *ipl).def(db).def_as_ty(db) == Some(implemented))
-            {
-                pous.push(pou);
-            }
-        }
-        _ => {}
     }
 }

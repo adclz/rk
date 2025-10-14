@@ -1,7 +1,20 @@
 use std::sync::Arc;
 
 use crate::{
-    hir_def::{expressions::spec::Spec, interned::identifier::{Ident, SpanIdent}, pous::{class::MethodDecl, interface::MethodPrototype, pou::PouDecl, variable::VariableDecl}, scope::FileScopeId, visibility::Visibility}, hir_ty::ty::{ty_for_pou, Ty, TyKind}, AstId, HirNodeInfo
+    AstId, HirNodeInfo,
+    hir_def::{
+        expressions::spec::Spec,
+        interned::identifier::{Ident, SpanIdent},
+        pous::{
+            class::MethodDecl, interface::MethodPrototype, pou::PouDecl, variable::VariableDecl,
+        },
+        scope::FileScopeId,
+        visibility::Visibility,
+    },
+    hir_ty::{
+        name_res::resolve_namespace_access,
+        ty::{Ty, TyKind, ty_for_pou},
+    },
 };
 use auto_lsp::{core::span::Span, default::db::BaseDatabase};
 use rustc_hash::FxHashMap;
@@ -123,26 +136,30 @@ fn method_cycle<'db>(
     salsa::CycleRecoveryAction::Iterate
 }
 
-
 #[salsa::tracked(cycle_initial = method_initial, cycle_fn=method_cycle)]
 pub fn method_table<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>) -> Arc<Methods<'db>> {
-    let mut inherited_methods: std::collections::HashMap<Ident, InheritedMethod<'_>, rustc_hash::FxBuildHasher> = FxHashMap::default();
-    let mut declared_methods: std::collections::HashMap<Ident, MethodRef<'db>, rustc_hash::FxBuildHasher> = FxHashMap::default();
+    let mut inherited_methods: std::collections::HashMap<
+        Ident,
+        InheritedMethod<'_>,
+        rustc_hash::FxBuildHasher,
+    > = FxHashMap::default();
+    let mut declared_methods: std::collections::HashMap<
+        Ident,
+        MethodRef<'db>,
+        rustc_hash::FxBuildHasher,
+    > = FxHashMap::default();
 
     let mut inherited_duplicates: Vec<(InheritedMethod<'_>, InheritedMethod<'_>)> = vec![];
     let mut declared_duplicates: Vec<(MethodRef<'db>, MethodRef<'_>)> = vec![];
 
     match ty.kind(db) {
-        TyKind::Class {
-            extends,
-            implements,
-            methods,
-            ..
-        } => {
+        TyKind::Class(class) => {
             // Inherit base
-            if let Some(base) = extends {
-                for (name, entry) in &method_table(db, ty_for_pou(db, *base)).declared_methods {
-                    let method = InheritedMethod::new(*base, *entry);
+            if let Some(base) = class.extends(db)
+                && let Some(base) = resolve_namespace_access(db, base.scope_id, base.path)
+            {
+                for (name, entry) in &method_table(db, ty_for_pou(db, base)).declared_methods {
+                    let method = InheritedMethod::new(base, *entry);
                     if let Some(m) = inherited_methods.insert(*name, method) {
                         inherited_duplicates.push((m, method));
                     }
@@ -150,58 +167,63 @@ pub fn method_table<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>) -> Arc<Methods<
             }
 
             // Inherit interfaces (abstract signatures only)
-            for iface in implements {
-                for (name, entry) in &method_table(db, ty_for_pou(db, *iface)).declared_methods {
-                    let method = InheritedMethod::new(*iface, *entry);
-                    if let Some(m) = inherited_methods.insert(*name, method) {
-                        inherited_duplicates.push((m, method));
+            for iface in class.implements(db) {
+                if let Some(iface) = resolve_namespace_access(db, iface.scope_id, iface.path) {
+                    for (name, entry) in &method_table(db, ty_for_pou(db, iface)).declared_methods {
+                        let method = InheritedMethod::new(iface, *entry);
+                        if let Some(m) = inherited_methods.insert(*name, method) {
+                            inherited_duplicates.push((m, method));
+                        }
                     }
                 }
             }
 
             // Add this class’s own methods
-            for m in methods {
+            for m in class.methods(db) {
                 if let Some(dup) = declared_methods.insert(*m.name(db), m.into()) {
                     declared_duplicates.push((dup, m.into()));
                 }
             }
         }
 
-        TyKind::Interface {
-            implements,
-            methods,
-        } => {
+        TyKind::Interface(interface) => {
             // Methods = abstract signatures
-            for m in methods {
+            for m in interface.methods(db) {
                 if let Some(dup) = declared_methods.insert(*m.name(db), m.into()) {
                     declared_duplicates.push((dup, m.into()));
                 }
             }
 
-            for iface in implements {
-                for (name, entry) in &method_table(db, ty_for_pou(db, *iface)).declared_methods {
-                    let method = InheritedMethod::new(*iface, *entry);
-                    if let Some(m) = inherited_methods.insert(*name, method) {
-                        inherited_duplicates.push((m, method));
+            if let Some(iface) = interface.extends(db) {
+                for iface in iface {
+                    if let Some(iface) = resolve_namespace_access(db, iface.scope_id, iface.path) {
+                        for (name, entry) in
+                            &method_table(db, ty_for_pou(db, iface)).declared_methods
+                        {
+                            let method = InheritedMethod::new(iface, *entry);
+                            if let Some(m) = inherited_methods.insert(*name, method) {
+                                inherited_duplicates.push((m, method));
+                            }
+                        }
                     }
                 }
             }
         }
 
-        TyKind::FunctionBlock {
-            extends, methods, ..
-        } => {
-            for m in methods {
+        TyKind::FunctionBlock(fb) => {
+            for m in fb.methods(db) {
                 if let Some(dup) = declared_methods.insert(*m.name(db), m.into()) {
                     declared_duplicates.push((dup, m.into()));
                 }
             }
 
-            if let Some(base) = extends {
-                for (name, entry) in &method_table(db, ty_for_pou(db, *base)).declared_methods {
-                    let method = InheritedMethod::new(*base, *entry);
-                    if let Some(m) = inherited_methods.insert(*name, method) {
-                        inherited_duplicates.push((m, method));
+            if let Some(base) = fb.extends(db) {
+                if let Some(base) = resolve_namespace_access(db, base.scope_id, base.path) {
+                    for (name, entry) in &method_table(db, ty_for_pou(db, base)).declared_methods {
+                        let method = InheritedMethod::new(base, *entry);
+                        if let Some(m) = inherited_methods.insert(*name, method) {
+                            inherited_duplicates.push((m, method));
+                        }
                     }
                 }
             }

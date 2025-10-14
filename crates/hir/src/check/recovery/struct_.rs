@@ -14,8 +14,8 @@ pub fn fuzzy_struct_fields<'db>(
     let mut results = FuzzyResult::default();
 
     let mut indexes = vec![];
-    if let TyKind::Struct { spec: _, elements } = ztruct.kind(db) {
-        elements.iter().for_each(|(name, ty)| {
+    if let TyKind::Struct(ztruct) = ztruct.kind(db) {
+        ztruct.resolve_elements(db).iter().for_each(|(name, ty)| {
             indexes.push(NamedSymbol {
                 name: name.text(db).to_string(),
                 kind: SymbolKind::StructField(ty.spec(db).spec_to_ty(db)),

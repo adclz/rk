@@ -89,25 +89,22 @@ pub fn coerce_ty_with_expr<'db>(
             }
         }
         // Compare an Array with PathExpr (PathExpr should be an indexed access)
-        (TyKind::Array { ranges, typ }, ResolvedExprKind::VarAccess(result)) => coerce_ty_with_ty(
+        (TyKind::Array(array), ResolvedExprKind::VarAccess(result)) => coerce_ty_with_ty(
             db,
-            typ.spec_to_ty(db),
+            array.of_type.spec_to_ty(db),
             result
                 .ty(db)
                 .map_err(|err| ExprMismatch::unresolved_var(target_expr, err))?,
         )
         .map_err(|err| ExprMismatch::type_mismatch(target_expr, err)),
         // Compare a Struct with PathExpr (PathExpr should be a field access)
-        (TyKind::Struct { spec, elements }, ResolvedExprKind::VarAccess(result)) => {
+        (TyKind::Struct(ztruct), ResolvedExprKind::VarAccess(result)) => {
             match result
                 .ty(db)
                 .map_err(|err| ExprMismatch::unresolved_var(target_expr, err))?
                 .kind(db)
             {
-                TyKind::Struct {
-                    spec: s,
-                    elements: e,
-                } if s == spec && e == elements => Ok(()),
+                TyKind::Struct(ztruct_2) if ztruct == ztruct_2 => Ok(()),
                 _ => Err(ExprMismatch::type_mismatch(
                     target_expr,
                     TypeMismatch {
@@ -121,7 +118,7 @@ pub fn coerce_ty_with_expr<'db>(
         }
         // Compare an Enum with EnumValue
         (
-            TyKind::Enum { typ, spec },
+            TyKind::Enum(enum_),
             ResolvedExprKind::EnumValue {
                 name,
                 variant,
@@ -134,7 +131,7 @@ pub fn coerce_ty_with_expr<'db>(
                 .map_err(|err| ExprMismatch::unresolved_var(target_expr, err))?
                 .kind(db)
             {
-                TyKind::Enum { typ: t, spec: s } => match variant {
+                TyKind::Enum(enum_2)=> match variant {
                     Some(variant) => Ok(()),
                     None => {
                         return Err(ExprMismatch::invalid_enum_variant(
@@ -150,20 +147,20 @@ pub fn coerce_ty_with_expr<'db>(
         // Compare a Subrange with any expression
         // todo: check that the expression is within the subrange
         // for that, we could
-        (TyKind::SubRange { typ, min, max }, _) => {
+        (TyKind::SubRange(subrange), _) => {
             // We do not return an error in case of failure to resolve the range bounds
             // as the error will be reported when checking the subrange type itself
-            let min = match resolve_range(db, *min) {
+            let min = match resolve_range(db, subrange.lower) {
                 Some(v) => v,
                 None => return Ok(()),
             };
 
-            let max = match resolve_range(db, *max) {
+            let max = match resolve_range(db, subrange.upper) {
                 Some(v) => v,
                 None => return Ok(()),
             };
 
-            match coerce_ty_with_expr(db, typ.spec_to_ty(db), target_expr) {
+            match coerce_ty_with_expr(db, subrange._type.spec_to_ty(db), target_expr) {
                 Ok(()) => match resolve_range(db, target_expr.expr(db)) {
                     Some(integer) => {
                         if integer >= min && integer <= max {

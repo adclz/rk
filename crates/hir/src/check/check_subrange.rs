@@ -24,8 +24,8 @@ impl<'db> DataTypeCheck<'db> for SubRange<'db> {
         errors: &mut Vec<AnalysisError<'db>>,
     ) {
         match ty.kind(db) {
-            TyKind::SubRange { typ, min, max } => {
-                let typ = typ.spec_to_ty(db);
+            TyKind::SubRange(subrange) => {
+                let typ = subrange._type.spec_to_ty(db);
                 check_ty(db, typ, errors);
                 match typ.kind(db) {
                     TyKind::Simple(elementary) => match elementary {
@@ -52,8 +52,8 @@ impl<'db> DataTypeCheck<'db> for SubRange<'db> {
                     }
                 }
 
-                let min = resolve_expr(db, *min);
-                let max = resolve_expr(db, *max);
+                let min = resolve_expr(db, subrange.lower);
+                let max = resolve_expr(db, subrange.upper);
                 if let Err(err) = coerce_ty_with_expr(db, typ, min) {
                     errors.push(TyError::InvalidSubrangeStart { expr: min, err }.into())
                 }

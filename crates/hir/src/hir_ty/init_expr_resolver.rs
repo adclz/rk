@@ -82,11 +82,11 @@ fn resolve_unresolved<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>, init: UnResol
     let kind = match init.kind {
         UnResolvedInitExprKind::ArrayInit { values } => {
             match ty.kind(db) {
-                TyKind::Array { typ, .. } => {
+                TyKind::Array(array) => {
                     // Valid: Array type with ArrayInit
                     let resolved = values
                         .into_iter()
-                        .map(|v| resolve_unresolved(db, typ.spec_to_ty(db), v))
+                        .map(|v| resolve_unresolved(db, array.of_type.spec_to_ty(db), v))
                         .collect();
                     ResolvedInitExprKind::ArrayInit { values: resolved }
                 }
@@ -108,7 +108,7 @@ fn resolve_unresolved<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>, init: UnResol
                 .into_iter()
                 .map(|v| match ty.kind(db) {
                     // For array types, resolve values with element type
-                    TyKind::Array { typ, .. } => resolve_unresolved(db, typ.spec_to_ty(db), v),
+                    TyKind::Array(array)=> resolve_unresolved(db, array.of_type.spec_to_ty(db), v),
                     // For simple types (multidimensional case), resolve with same type
                     _ => resolve_unresolved(db, ty, v),
                 })
@@ -143,8 +143,8 @@ fn resolve_unresolved<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>, init: UnResol
         }
         UnResolvedInitExprKind::StructElement { name, value } => {
             match ty.kind(db) {
-                TyKind::Struct { elements, .. } => {
-                    if let Some(element_ty) = elements.get(&name) {
+                TyKind::Struct(ztruct) => {
+                    if let Some(element_ty) = ztruct.resolve_elements(db).get(&name) {
                         // Valid field - resolve with field type
                         let resolved_value = Box::new(resolve_unresolved(db, element_ty.spec(db).spec_to_ty(db), *value));
                         let field = ResolvedAccess::new(

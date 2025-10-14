@@ -21,9 +21,9 @@ impl<'db> DataTypeCheck<'db> for Enum<'db> {
         errors: &mut Vec<AnalysisError<'db>>,
     ) {
         let enum_typ = match ty.kind(db) {
-            TyKind::Enum { typ, .. } => {
+            TyKind::Enum(enum_) => {
                 // Check underlying type
-                if let Some(typ) = typ {
+                if let Some(typ) = enum_.typ {
                     let typ = typ.spec_to_ty(db);
                     check_ty(db, typ, errors);
                     match typ.kind(db) {
@@ -47,7 +47,7 @@ impl<'db> DataTypeCheck<'db> for Enum<'db> {
                         _ => errors.push(TyError::InvalidEnumType { value: typ }.into()),
                     }
                 }
-                *typ
+                enum_.typ
             }
             _ => None,
         };

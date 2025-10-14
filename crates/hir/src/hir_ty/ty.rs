@@ -1,38 +1,38 @@
-use std::sync::Arc;
-
 use auto_lsp::{core::span::Span, default::db::BaseDatabase};
 use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    check::errors::path_error::PathResolveError, hir_def::{
+    AstId, HirNodeInfo, TypeInfo,
+    check::errors::path_error::PathResolveError,
+    hir_def::{
         expressions::{
-            expression::Expr,
-            spec::{ElementarySpec, Enum, Spec, SpecKind, StructElement},
+            spec::{Array, ElementarySpec, Enum, Spec, SpecKind, Struct, StructElement, SubRange},
         },
         interned::{identifier::Ident, namespace::SpanNamespaceAccess},
         modifier::Modifier,
         pous::{
-            class::MethodDecl,
-            interface::MethodPrototype,
+            class::{Class},
+            function::Function,
+            function_block::FunctionBlock,
+            interface::{Interface},
             pou::{Pou, PouDecl},
             variable::{VariableDecl, VariableKind},
         },
         scope::FileScopeId,
         visibility::Visibility,
-    }, hir_ty::{
-        inheritance_solver::{method_table, MethodRef}, name_res::resolve_namespace_access,
+    },
+    hir_ty::{
+        inheritance_solver::{MethodRef, method_table},
+        name_res::resolve_namespace_access,
         ty_var_access_resolver::PathExprWalkStep,
-    }, AstId, HirNodeInfo, TypeInfo
+    },
 };
 
 /// The  resolved type of a variable, POU, or method
 /// [`Ty`] is the most fundamental unit of type information in the HIR.
 #[salsa::tracked(debug)]
 pub struct Ty<'db> {
-    // Where the type is declared (POU, Variable, Method)
-    //pub decl: TyDecl<'db>,
-
     // Where the type is defined (POU, Spec, Method)
     pub def: TyDef<'db>,
 
@@ -132,51 +132,21 @@ impl<'db> HirNodeInfo<'db> for TyDef<'db> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
-pub enum TyKind<'db> { 
-    // Literal types
+pub enum TyKind<'db> {
+    // Specs
     Simple(ElementarySpec),
-    Enum {
-        typ: Option<Spec<'db>>,
-        spec: Enum<'db>,
-    },
-    SubRange {
-        typ: Spec<'db>,
-        min: Expr<'db>,
-        max: Expr<'db>,
-    },
+    Enum(Enum<'db>),
+    SubRange(SubRange<'db>),
     RefTo(Spec<'db>),
-    Array {
-        ranges: Vec<(Expr<'db>, Expr<'db>)>,
-        typ: Spec<'db>,
-    },
-    ArrayConformand {
-        typ: Spec<'db>,
-    },
+    Array(Array<'db>),
+    ArrayConformand(Spec<'db>), // todo
+    Struct(Struct<'db>),
 
-    Struct {
-        spec: Spec<'db>,
-        elements: FxHashMap<Ident, StructElement<'db>>,
-    },
-
-    Interface {
-        implements: Vec<PouDecl<'db>>,
-        methods: Vec<MethodPrototype<'db>>,
-    },
-
-    Class {
-        extends: Option<PouDecl<'db>>,
-        implements: Vec<PouDecl<'db>>,
-        methods: Vec<MethodDecl<'db>>,
-    },
-
-    Function {
-        return_type: Option<Spec<'db>>,
-    },
-
-    FunctionBlock {
-        extends: Option<PouDecl<'db>>,
-        methods: Vec<MethodDecl<'db>>,
-    },
+    // Pous
+    Interface(Interface<'db>),
+    Class(Class<'db>),
+    Function(Function<'db>),
+    FunctionBlock(FunctionBlock<'db>),
     MethodRef(MethodRef<'db>),
 
     // Error variants
@@ -189,79 +159,11 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
     let def = TyDef::Pou(pou);
 
     match pou.pou(db) {
-        Pou::Function(func) => Ty::new(
-            db,
-            def,
-            TyKind::Function {
-                return_type: func.return_type(db).copied(),
-            },
-        ),
-        Pou::FunctionBlock(fb) => {
-            let extends = fb
-                .extends(db)
-                .and_then(|e| resolve_namespace_access(db, e.get_scope_id(db), e.path));
-
-            let methods = fb.methods(db).to_vec();
-
-            Ty::new(db, def, TyKind::FunctionBlock { extends, methods })
-        }
+        Pou::Function(func) => Ty::new(db, def, TyKind::Function(*func)),
+        Pou::FunctionBlock(fb) => Ty::new(db, def, TyKind::FunctionBlock(*fb)),
         Pou::DataType(dt) => dt.spec(db).spec_to_ty(db),
-        Pou::Class(class) => {
-            let mut class_methods = vec![];
-
-            for m in class.methods(db) {
-                class_methods.push(*m);
-            }
-
-            let extends = class
-                .extends(db)
-                .and_then(|e| resolve_namespace_access(db, e.scope_id, e.path));
-
-            let implements = class
-                .implements(db)
-                .iter()
-                .filter_map(|interface| {
-                    resolve_namespace_access(db, interface.scope_id, interface.path)
-                })
-                .collect();
-
-            Ty::new(
-                db,
-                def,
-                TyKind::Class {
-                    extends,
-                    implements,
-                    methods: class_methods,
-                },
-            )
-        }
-        Pou::Interface(interface) => {
-            let mut interface_methods = vec![];
-
-            for m in interface.methods(db) {
-                interface_methods.push(*m);
-            }
-
-            let implements = interface
-                .extends(db)
-                .map(|e| {
-                    e.iter()
-                        .filter_map(|interface| {
-                            resolve_namespace_access(db, interface.scope_id, interface.path)
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
-
-            Ty::new(
-                db,
-                def,
-                TyKind::Interface {
-                    implements,
-                    methods: interface_methods,
-                },
-            )
-        }
+        Pou::Class(class) => Ty::new(db, def, TyKind::Class(*class)),
+        Pou::Interface(interface) => Ty::new(db, def, TyKind::Interface(*interface)),
     }
 }
 
@@ -269,6 +171,18 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
 pub enum SearchMode {
     Local,
     Global,
+}
+
+impl<'db> Struct<'db> {
+    pub fn resolve_elements(
+        &self,
+        db: &'db dyn BaseDatabase,
+    ) -> FxHashMap<Ident, StructElement<'db>> {
+        self.elements
+            .iter()
+            .map(|element| (*element.name(db), *element))
+            .collect()
+    }
 }
 
 #[salsa::tracked]
@@ -282,24 +196,27 @@ impl<'db> Ty<'db> {
         match &step {
             PathExprWalkStep::Field { ident, expr } => {
                 // Try different lookup strategies in order, falling through to the next if not found
-                
+
                 // first, try struct fields (highest priority)
-                if let TyKind::Struct { elements, .. } = self.kind(db) {
+                if let TyKind::Struct(ztruct) = self.kind(db) {
+                    let elements = ztruct.resolve_elements(db);
                     if let Some(field) = elements.get(&ident.ident) {
                         return Ok(field.spec(db).spec_to_ty(db));
                     }
                 }
-                
+
                 // try methods for Class and FunctionBlock types
                 match self.kind(db) {
                     TyKind::Class { .. } | TyKind::FunctionBlock { .. } => {
-                        if let Some(method) = method_table(db, *self).declared_methods.get(&ident.ident) {
+                        if let Some(method) =
+                            method_table(db, *self).declared_methods.get(&ident.ident)
+                        {
                             return Ok(method.to_ty(db));
                         }
                     }
                     _ => {}
                 }
-                
+
                 // arrays cannot have fields (return error immediately)
                 if matches!(self.kind(db), TyKind::Array { .. }) {
                     return Err(PathResolveError::TypeHasNoField {
@@ -314,7 +231,7 @@ impl<'db> Ty<'db> {
                         expr: *expr,
                     });
                 }
-                
+
                 // last resort: look for variables
                 match search_mode {
                     SearchMode::Global => self.all_variables(db).get(&ident.ident).cloned(),
@@ -326,7 +243,7 @@ impl<'db> Ty<'db> {
                 })
             }
             PathExprWalkStep::Index { expr } => match self.kind(db) {
-                TyKind::Array { typ, .. } => Ok(typ.spec_to_ty(db)),
+                TyKind::Array(array) => Ok(array.of_type.spec_to_ty(db)),
                 _ => Err(PathResolveError::NotAnArray {
                     expr: *expr,
                     ty: *self,
@@ -335,7 +252,8 @@ impl<'db> Ty<'db> {
             PathExprWalkStep::Deref { expr, target } => {
                 let target = match self.kind(db) {
                     // Look for a struct field
-                    TyKind::Struct { elements, spec } => elements
+                    TyKind::Struct(ztruct) => ztruct
+                        .resolve_elements(db)
                         .get(&target.ident)
                         .map(|f| f.spec(db).spec_to_ty(db))
                         .ok_or(PathResolveError::UnknownField {
@@ -364,33 +282,40 @@ impl<'db> Ty<'db> {
         }
     }
 
-    pub fn inheritors(&self, db: &'db dyn BaseDatabase) -> Vec<Ty<'db>> {
+    #[salsa::tracked(returns(ref))]
+    pub fn inheritors(self, db: &'db dyn BaseDatabase) -> Vec<Ty<'db>> {
         match self.kind(db) {
-            TyKind::Class {
-                extends,
-                implements,
-                ..
-            } => {
+            TyKind::Class(class) => {
                 let mut inheritors = vec![];
-                if let Some(base) = extends {
-                    inheritors.push(ty_for_pou(db, *base));
+                if let Some(base) = class.extends(db)
+                    && let Some(base) = resolve_namespace_access(db, base.scope_id, base.path)
+                {
+                    inheritors.push(ty_for_pou(db, base));
                 }
-                for iface in implements {
-                    inheritors.push(ty_for_pou(db, *iface));
-                }
-                inheritors
-            }
-            TyKind::Interface { implements, .. } => {
-                let mut inheritors = vec![];
-                for iface in implements {
-                    inheritors.push(ty_for_pou(db, *iface));
+                for iface in class.implements(db) {
+                    resolve_namespace_access(db, iface.scope_id, iface.path).map(|iface| {
+                        inheritors.push(ty_for_pou(db, iface));
+                    });
                 }
                 inheritors
             }
-            TyKind::FunctionBlock { extends, .. } => {
+            TyKind::Interface(interface) => {
                 let mut inheritors = vec![];
-                if let Some(base) = extends {
-                    inheritors.push(ty_for_pou(db, *base));
+                if let Some(extends) = interface.extends(db) {
+                    for iface in extends {
+                        resolve_namespace_access(db, iface.scope_id, iface.path).map(|iface| {
+                            inheritors.push(ty_for_pou(db, iface));
+                        });
+                    }
+                }
+                inheritors
+            }
+            TyKind::FunctionBlock(fb) => {
+                let mut inheritors = vec![];
+                if let Some(base) = fb.extends(db)
+                    && let Some(base) = resolve_namespace_access(db, base.scope_id, base.path)
+                {
+                    inheritors.push(ty_for_pou(db, base));
                 }
                 inheritors
             }
@@ -475,7 +400,7 @@ impl<'db> Ty<'db> {
     pub fn is_callable(&self, db: &'db dyn BaseDatabase) -> bool {
         matches!(
             self.kind(db),
-            TyKind::Function { .. } | TyKind::FunctionBlock { .. } 
+            TyKind::Function { .. } | TyKind::FunctionBlock { .. }
         )
     }
 
@@ -489,7 +414,7 @@ impl<'db> Ty<'db> {
 
     pub fn has_return_type(&self, db: &'db dyn BaseDatabase) -> Option<Ty<'db>> {
         match self.kind(db) {
-            TyKind::Function { return_type } => return_type.map(|rt| rt.spec_to_ty(db)),
+            TyKind::Function(f) => f.return_type(db).map(|rt| rt.spec_to_ty(db)),
             TyKind::MethodRef(m) => m.return_type(db).map(|rt| rt.spec_to_ty(db)),
             _ => None,
         }
@@ -509,31 +434,10 @@ impl<'db> Spec<'db> {
     #[salsa::tracked]
     pub fn spec_to_ty(self, db: &'db dyn BaseDatabase) -> Ty<'db> {
         let kind = match self.kind(db) {
-            SpecKind::Array(array) => TyKind::Array {
-                typ: *array.of_type,
-                ranges: array
-                    .subranges
-                    .iter()
-                    .map(|(start, end)| (*start, *end))
-                    .collect(),
-            },
-            SpecKind::Enum(enum_spec) => TyKind::Enum {
-                typ: enum_spec.typ,
-                spec: enum_spec.clone(),
-            },
-            SpecKind::Subrange(subrange) => TyKind::SubRange {
-                typ: *subrange._type,
-                min: subrange.lower,
-                max: subrange.upper,
-            },
-            SpecKind::Struct(fields) => TyKind::Struct {
-                spec: self,
-                elements: fields
-                    .elements
-                    .iter()
-                    .map(|element| (*element.name(db), *element))
-                    .collect(),
-            },
+            SpecKind::Array(array) => TyKind::Array(array.clone()),
+            SpecKind::Enum(enum_spec) => TyKind::Enum(enum_spec.clone()),
+            SpecKind::Subrange(subrange) => TyKind::SubRange(subrange.clone()),
+            SpecKind::Struct(ztruct) => TyKind::Struct(ztruct.clone()),
             SpecKind::Target(target) => {
                 match resolve_namespace_access(db, self.scope_id(db), target.path) {
                     Some(pou) => ty_for_pou(db, pou).kind(db).clone(),
@@ -541,7 +445,7 @@ impl<'db> Spec<'db> {
                 }
             }
             SpecKind::Simple(simple) => TyKind::Simple(*simple),
-            SpecKind::ArrayConformand(array) => TyKind::ArrayConformand { typ: *array },
+            SpecKind::ArrayConformand(array) => TyKind::ArrayConformand(*array),
             SpecKind::Ref(_ref) => TyKind::RefTo(*_ref),
         };
         Ty::new(db, TyDef::Spec(self), kind)
@@ -558,7 +462,7 @@ impl<'db> TypeInfo<'db> for Ty<'db> {
             TyKind::Array { .. } => "ARRAY".into(),
             TyKind::ArrayConformand { .. } => "ARRAY*".into(),
             TyKind::Struct { .. } => "STRUCT".into(),
-            TyKind::Interface { .. } => "INTERFACE".into(), 
+            TyKind::Interface { .. } => "INTERFACE".into(),
             TyKind::Class { .. } => "CLASS".into(),
             TyKind::Function { .. } => "FUNCTION".into(),
             TyKind::FunctionBlock { .. } => "FUNCTION_BLOCK".into(),

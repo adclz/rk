@@ -134,10 +134,10 @@ impl<'db> ResolveExprCtx<'db> {
                     let resolved_path = resolve_path_expr(self.db, *name);
 
                     // Find the variant in the enum type
-                    let resolved_variant = if let Ok(TyKind::Enum { typ, spec }) =
+                    let resolved_variant = if let Ok(TyKind::Enum(enum_)) =
                         resolved_path.ty(self.db).map(|r| r.kind(self.db))
                     {
-                        spec.variants
+                        enum_.variants
                             .iter()
                             .find(|v| v.name == variant.ident)
                             .cloned()
