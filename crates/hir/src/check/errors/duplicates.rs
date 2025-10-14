@@ -151,7 +151,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "duplicate method '{}'",
-                        method1.method.name(db)
+                        method1.method.name(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(method1.method.name_span(db))
@@ -160,7 +160,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "method '{}' is already defined here",
-                        method2.method.name(db)
+                        method2.method.name(db).text(db)
                     ),
                     method2.method.get_scope_id(db).file(db),
                     method2.method.name_span(db),
@@ -168,9 +168,9 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
 
                 diag.with_note(format!(
                     "this error happens because both interfaces '{}' and '{}' define a method '{}'",
-                    method1.source.name(db),
-                    method2.source.name(db),
-                    method1.method.name(db)
+                    method1.source.name(db).text(db),
+                    method2.source.name(db).text(db),
+                    method1.method.name(db).text(db)
                 ));
 
                 diag

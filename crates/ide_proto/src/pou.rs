@@ -3,7 +3,7 @@ use hir::{
         expressions::spec::{ElementarySpec, SpecKind},
         pous::pou::{Pou, PouDecl},
     },
-    hir_ty::implementation::find_all_implementations,
+    hir_ty::{implementation::find_all_implementations, inheritance_solver::MethodRef},
 };
 
 use auto_lsp::{
@@ -27,6 +27,9 @@ impl<'db> ToProtocol<'db> for PouDecl<'db> {
                 fb.variables(db)
                     .iter()
                     .for_each(|var| var.document_symbols(db, &mut nested_builder));
+                fb.methods(db)
+                    .iter()
+                    .for_each(|m| MethodRef::from(m).document_symbols(db, &mut nested_builder));
             }
             Pou::Function(f) => {
                 f.variables(db)
@@ -39,12 +42,12 @@ impl<'db> ToProtocol<'db> for PouDecl<'db> {
                     .for_each(|var| var.document_symbols(db, &mut nested_builder));
                 c.methods(db)
                     .iter()
-                    .for_each(|m| m.document_symbols(db, &mut nested_builder));
+                    .for_each(|m| MethodRef::from(m).document_symbols(db, &mut nested_builder));
             }
             Pou::Interface(i) => {
                 i.methods(db)
                     .iter()
-                    .for_each(|m| m.document_symbols(db, &mut nested_builder));
+                    .for_each(|m| MethodRef::from(m).document_symbols(db, &mut nested_builder));
             }
             _ => {}
         }

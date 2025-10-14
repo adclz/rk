@@ -16,7 +16,7 @@ use crate::{
     },
     hir_ty::{
         invocation_resolver::ResolvedInvocation,
-        ty::{Ty, TyKind, ty_for_method_decl, ty_for_pou},
+        ty::{Ty, TyKind, ty_for_pou},
     },
 };
 

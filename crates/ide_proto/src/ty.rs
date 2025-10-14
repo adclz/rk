@@ -21,11 +21,7 @@ impl<'db> ToProtocol<'db> for Ty<'db> {
                 pou.get_scope_id(db).file(db).url(db).clone(),
                 pou.get_span(db).into(),
             ))),
-            TyDef::Method(method) => Some(GotoDefinitionResponse::Scalar(Location::new(
-                method.get_scope_id(db).file(db).url(db).clone(),
-                method.get_span(db).into(),
-            ))),
-            TyDef::MethodProt(method) => Some(GotoDefinitionResponse::Scalar(Location::new(
+            TyDef::MethodRef(method) => Some(GotoDefinitionResponse::Scalar(Location::new(
                 method.get_scope_id(db).file(db).url(db).clone(),
                 method.get_span(db).into(),
             ))),

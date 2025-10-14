@@ -15,15 +15,7 @@ use crate::{
         semantic_index::{semantic_index, HirNode, SemanticIndex}, using::Using,
     },
     hir_ty::{
-        expr_resolver::{ResolvedExpr, ResolvedExprKind},
-        func_call_resolver::{ResolvedFuncCall, ResolvedParam, ResolvedParamKind},
-        init_expr_resolver::{resolve_init_expr, ResolvedInitExpr, ResolvedInitExprKind},
-        invocation_resolver::{ResolvedInvocationResult, ResolvedMethodKind},
-        stmt_resolver::{resolve_stmt, ResolvedStmt, ResolvedStmtKind},
-        ty::{
-            ty_for_method_decl, ty_for_method_prot, ty_for_pou,
-        },
-        ty_var_access_resolver::{Place, ResolvedAccess, ResolvedPathElement}, using_resolver::{resolve_using, ResolvedUsing},
+        expr_resolver::{ResolvedExpr, ResolvedExprKind}, func_call_resolver::{ResolvedFuncCall, ResolvedParam, ResolvedParamKind}, inheritance_solver::MethodRef, init_expr_resolver::{resolve_init_expr, ResolvedInitExpr, ResolvedInitExprKind}, invocation_resolver::{ResolvedInvocationResult, ResolvedMethodKind}, stmt_resolver::{resolve_stmt, ResolvedStmt, ResolvedStmtKind}, ty::ty_for_pou, ty_var_access_resolver::{Place, ResolvedAccess, ResolvedPathElement}, using_resolver::{resolve_using, ResolvedUsing}
     },
 };
 
@@ -114,7 +106,7 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
                 }
 
                 for method in fb.methods(db) {
-                    method.walk_hir(db, f)?;
+                    MethodRef::from(method).walk_hir(db, f)?;
                 }
 
                 for stmt in fb.statements(db) {
@@ -126,12 +118,12 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
                     var.walk_hir(db, f)?;
                 }
                 for method in class.methods(db) {
-                    method.walk_hir(db, f)?;
+                    MethodRef::from(method).walk_hir(db, f)?;
                 }
             }
             Pou::Interface(it) => {
                 for method in it.methods(db) {
-                    method.walk_hir(db, f)?;
+                    MethodRef::from(method).walk_hir(db, f)?;
                 }
             }
             Pou::DataType(dt) => {
@@ -171,23 +163,13 @@ impl<'db> WalkHir<'db> for VariableDecl<'db> {
     }
 }
 
-impl<'db> WalkHir<'db> for MethodDecl<'db> {
+impl<'db> WalkHir<'db> for MethodRef<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
         &self,
         db: &'db dyn BaseDatabase,
         f: &mut F,
     ) -> ControlFlow<()> {
-        f(HirNode::Ty(ty_for_method_decl(db, *self)))
-    }
-}
-
-impl<'db> WalkHir<'db> for MethodPrototype<'db> {
-    fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
-        &self,
-        db: &'db dyn BaseDatabase,
-        f: &mut F,
-    ) -> ControlFlow<()> {
-        f(HirNode::Ty(ty_for_method_prot(db, *self)))
+        f(HirNode::Ty(self.to_ty(db)))
     }
 }
 

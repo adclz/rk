@@ -186,7 +186,7 @@ fn check_func_call<'db>(
     if !fun_call.target.is_variable(db)
         && !matches!(
             ty_target.kind(db),
-            TyKind::Function { .. } | TyKind::Method { .. }
+            TyKind::Function { .. } | TyKind::MethodRef { .. }
         )
     {
         return Err(StmtError::CallADirectType {

@@ -9,8 +9,7 @@ use auto_lsp::{
 use hir::{HirNodeInfo, hir_def::semantic_index::HirNode};
 
 pub mod completions;
-pub mod method_decl;
-pub mod method_prot;
+pub mod method_ref; 
 pub mod namespace;
 pub mod pou;
 pub mod resolved_expr;

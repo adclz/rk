@@ -5,9 +5,9 @@ use crate::{
         expressions::spec::Spec,
         interned::{identifier::Ident, namespace::SpanNamespaceAccess},
         pous::variable::VariableDecl,
-        scope::FileScopeId,
+        scope::FileScopeId, visibility::Visibility,
     },
-    {AstId, HirNodeInfo},
+    AstId, HirNodeInfo,
 };
 
 #[salsa::tracked(debug)]

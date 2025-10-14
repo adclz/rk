@@ -133,7 +133,7 @@ impl<'db> Invocation<'db> {
                     InvocationKind::This { path } => methods
                         .declared_methods
                         .get(&path.ident(db).ident)
-                        .map(|ty| ResolvedInvocationResult {
+                        .map(|method| ResolvedInvocationResult {
                             target: ResolvedInvocation::new(
                                 *self,
                                 ResolvedMethodKind::DeclaredMethod {
@@ -143,16 +143,16 @@ impl<'db> Invocation<'db> {
                                             self.keyword_id(db),
                                             *self,
                                         ),
-                                        Place::Method(ty_for_pou(db, pou)),
+                                        Place::SelfRef(pou),
                                     ),
                                     method: ResolvedAccess::new(
                                         db,
                                         CallSite::Invocation(*self),
-                                        Place::Method(*ty),
+                                        Place::Method(*method),
                                     ),
                                 },
                             ),
-                            params: resolve_parameters(db, *ty, &self.params(db)),
+                            params: resolve_parameters(db, *method, &self.params(db)),
                         })
                         .unwrap_or_else(|| ResolvedInvocationResult {
                             target: ResolvedInvocation::new(
@@ -207,7 +207,7 @@ impl<'db> Invocation<'db> {
                             params: vec![],
                         }),
                     InvocationKind::SuperBody => {
-                        let params = resolve_parameters(db, ty_for_pou(db, pou), &self.params(db));
+                        let params = resolve_parameters(db, pou, &self.params(db));
                         if let Pou::FunctionBlock { .. } = pou.pou(db) {
                             ResolvedInvocationResult {
                                 target: ResolvedInvocation::new(
@@ -216,7 +216,7 @@ impl<'db> Invocation<'db> {
                                         target: ResolvedAccess::new(
                                             db,
                                             CallSite::Invocation(*self),
-                                            Place::Method(ty_for_pou(db, pou)),
+                                            Place::SelfRef(pou),
                                         ),
                                     },
                                 ),

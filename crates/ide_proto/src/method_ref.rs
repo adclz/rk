@@ -2,11 +2,11 @@ use auto_lsp::{
     core::document_symbols_builder::DocumentSymbolsBuilder, default::db::BaseDatabase,
     lsp_types::SymbolKind,
 };
-use hir::{HirNodeInfo, hir_def::pous::class::MethodDecl};
+use hir::{hir_def::pous::interface::MethodPrototype, hir_ty::inheritance_solver::MethodRef, HirNodeInfo};
 
 use crate::ToProtocol;
 
-impl<'db> ToProtocol<'db> for MethodDecl<'db> {
+impl<'db> ToProtocol<'db> for MethodRef<'db> {
     fn document_symbols(&self, db: &'db dyn BaseDatabase, builder: &mut DocumentSymbolsBuilder) {
         let mut nested_builder = DocumentSymbolsBuilder::default();
         self.variables(db)

@@ -12,12 +12,11 @@ use crate::{
             identifier::SpanIdent,
             namespace::{NamespaceAccess, NamespacePath},
         },
-        pous::variable::{VariableDecl, VariableKind},
+        pous::{pou::PouDecl, variable::{VariableDecl, VariableKind}},
         scope::{FileScopeId, ScopeKind},
         semantic_index::semantic_index,
     }, hir_ty::{
-        name_res::{pou_names_res, resolve_namespace_access},
-        ty::{ty_for_pou, SearchMode, Ty},
+        inheritance_solver::MethodRef, name_res::{pou_names_res, resolve_namespace_access}, ty::{ty_for_pou, SearchMode, Ty}
     }, AstId, HirNodeInfo
 };
 
@@ -91,9 +90,8 @@ impl<'db> CallSite<'db> {
 pub enum Place<'db> {
     Direct, // todo
     /// In case of self-reference (THIS, SUPER) - usually refer to the POU itself
-    SelfRef(Ty<'db>),
-    /// Usually refer to a declared method
-    Method(Ty<'db>),
+    SelfRef(PouDecl<'db>),
+    Method(MethodRef<'db>),
     /// Symbolic access and path expression
     Symbolic {
         target: SymbolicTarget<'db>,
@@ -184,8 +182,8 @@ impl<'db> ResolvedAccess<'db> {
     pub fn ty(&self, db: &'db dyn BaseDatabase) -> Result<Ty<'db>, VarResolveError<'db>> {
         match self.kind(db) {
             Place::Direct => todo!(), // todo: direct var type
-            Place::SelfRef(ty) => Ok(*ty),
-            Place::Method(ty) => Ok(*ty),
+            Place::SelfRef(pou) => Ok(ty_for_pou(db, *pou)),
+            Place::Method(m) => Ok(m.to_ty(db)),
             Place::Symbolic { rest, target } => match rest.last() {
                 Some(element) => match &element.kind {
                     ResolvedPathElementKind::Ty(ty) => Ok(*ty),
@@ -216,8 +214,8 @@ impl<'db> ResolvedAccess<'db> {
                 SymbolicTarget::Param(ty) => ty.name(db).to_string(),
             },
             Place::Param(ty) => ty.name(db).to_string(),
-            Place::SelfRef(ty) => ty.name(db).to_string(),
-            Place::Method(ty) => ty.name(db).to_string(),
+            Place::SelfRef(ty) => ty.name(db).text(db).to_string(),
+            Place::Method(ty) => ty.name(db).text(db).to_string(),
             Place::Direct => "direct".to_string(),
             Place::Unknown => "{unknown}".to_string(),
         }

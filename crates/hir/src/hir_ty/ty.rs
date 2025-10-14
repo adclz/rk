@@ -5,9 +5,7 @@ use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    AstId, HirNodeInfo, TypeInfo,
-    check::errors::path_error::PathResolveError,
-    hir_def::{
+    check::errors::path_error::PathResolveError, hir_def::{
         expressions::{
             expression::Expr,
             spec::{ElementarySpec, Enum, Spec, SpecKind, StructElement},
@@ -22,11 +20,10 @@ use crate::{
         },
         scope::FileScopeId,
         visibility::Visibility,
-    },
-    hir_ty::{
-        inheritance_solver::method_table, name_res::resolve_namespace_access,
+    }, hir_ty::{
+        inheritance_solver::{method_table, MethodRef}, name_res::resolve_namespace_access,
         ty_var_access_resolver::PathExprWalkStep,
-    },
+    }, AstId, HirNodeInfo, TypeInfo
 };
 
 /// The  resolved type of a variable, POU, or method
@@ -53,8 +50,7 @@ impl<'db> Ty<'db> {
     pub fn name_span(&self, db: &'db dyn BaseDatabase) -> Span {
         match self.def(db) {
             TyDef::Pou(pou) => pou.get_name_span(db).unwrap(),
-            TyDef::Method(method) => method.get_name_span(db).unwrap(),
-            TyDef::MethodProt(method) => method.get_name_span(db).unwrap(),
+            TyDef::MethodRef(m) => m.get_name_span(db).unwrap(),
             TyDef::Spec(spec) => spec.get_span(db),
         }
     }
@@ -74,8 +70,7 @@ impl<'db> HirNodeInfo<'db> for Ty<'db> {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum TyDef<'db> {
     Pou(PouDecl<'db>),
-    Method(MethodDecl<'db>),
-    MethodProt(MethodPrototype<'db>),
+    MethodRef(MethodRef<'db>),
     Spec(Spec<'db>),
 }
 
@@ -83,23 +78,19 @@ impl<'db> TyDef<'db> {
     pub fn name(&self, db: &'db dyn BaseDatabase) -> String {
         match self {
             TyDef::Pou(pou) => pou.name(db).text(db).to_string(),
-            TyDef::Method(method) => method.name(db).text(db).to_string(),
-            TyDef::MethodProt(method) => method.name(db).text(db).to_string(),
+            TyDef::MethodRef(m) => m.name(db).text(db).to_string(),
             TyDef::Spec(spec) => spec.shorthand(db),
         }
     }
     pub fn def_as_ty(&self, db: &'db dyn BaseDatabase) -> Option<Ty<'db>> {
         match self {
             Self::Pou(pou) => Some(ty_for_pou(db, *pou)),
-            Self::Method(method) => Some(ty_for_method_decl(db, *method)),
-            Self::MethodProt(method) => Some(ty_for_method_prot(db, *method)),
             _ => None,
         }
     }
 
     pub fn modifier(&self, db: &'db dyn BaseDatabase) -> Modifier {
         match self {
-            TyDef::Method(m) => m.modifier(db),
             TyDef::Pou(p) => p.modifier(db),
             _ => Modifier::empty(),
         }
@@ -109,10 +100,6 @@ impl<'db> TyDef<'db> {
         matches!(self, TyDef::Pou(_))
     }
 
-    pub fn is_method(&self) -> bool {
-        matches!(self, TyDef::Method(_))
-    }
-
     pub fn is_spec(&self) -> bool {
         matches!(self, TyDef::Spec(_))
     }
@@ -120,8 +107,7 @@ impl<'db> TyDef<'db> {
     pub fn get_span(&self, db: &'db dyn BaseDatabase) -> Option<Span> {
         match self {
             TyDef::Pou(pou) => Some(pou.get_span(db)),
-            TyDef::Method(method) => Some(method.get_span(db)),
-            TyDef::MethodProt(method) => Some(method.get_span(db)),
+            TyDef::MethodRef(m) => Some(m.get_span(db)),
             TyDef::Spec(spec) => Some(spec.get_span(db)),
         }
     }
@@ -131,8 +117,7 @@ impl<'db> HirNodeInfo<'db> for TyDef<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
         match self {
             TyDef::Pou(pou) => pou.get_id(db),
-            TyDef::Method(method) => method.get_id(db),
-            TyDef::MethodProt(method) => method.get_id(db),
+            TyDef::MethodRef(m) => m.get_id(db),
             TyDef::Spec(spec) => spec.get_id(db),
         }
     }
@@ -140,15 +125,14 @@ impl<'db> HirNodeInfo<'db> for TyDef<'db> {
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         match self {
             TyDef::Pou(pou) => pou.get_scope_id(db),
-            TyDef::Method(method) => method.get_scope_id(db),
-            TyDef::MethodProt(method) => method.get_scope_id(db),
+            TyDef::MethodRef(m) => m.get_scope_id(db),
             TyDef::Spec(spec) => spec.get_scope_id(db),
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
-pub enum TyKind<'db> {
+pub enum TyKind<'db> { 
     // Literal types
     Simple(ElementarySpec),
     Enum {
@@ -193,11 +177,7 @@ pub enum TyKind<'db> {
         extends: Option<PouDecl<'db>>,
         methods: Vec<MethodDecl<'db>>,
     },
-
-    Method {
-        is_prototype: bool,
-        return_type: Option<Spec<'db>>,
-    },
+    MethodRef(MethodRef<'db>),
 
     // Error variants
     Unresolved(SpanNamespaceAccess<'db>),
@@ -285,34 +265,6 @@ pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> 
     }
 }
 
-#[salsa::tracked]
-pub fn ty_for_method_decl<'db>(db: &'db dyn BaseDatabase, method: MethodDecl<'db>) -> Ty<'db> {
-    let def = TyDef::Method(method);
-
-    Ty::new(
-        db,
-        def,
-        TyKind::Method {
-            is_prototype: false,
-            return_type: method.return_type(db).copied(),
-        },
-    )
-}
-
-#[salsa::tracked]
-pub fn ty_for_method_prot<'db>(db: &'db dyn BaseDatabase, method: MethodPrototype<'db>) -> Ty<'db> {
-    let def = TyDef::MethodProt(method);
-
-    Ty::new(
-        db,
-        def,
-        TyKind::Method {
-            is_prototype: true,
-            return_type: method.return_type(db).copied(),
-        },
-    )
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SearchMode {
     Local,
@@ -342,9 +294,8 @@ impl<'db> Ty<'db> {
                 match self.kind(db) {
                     TyKind::Class { .. } | TyKind::FunctionBlock { .. } => {
                         if let Some(method) = method_table(db, *self).declared_methods.get(&ident.ident) {
-                            return Ok(method.clone());
+                            return Ok(method.to_ty(db));
                         }
-                        // Fall through to variable lookup
                     }
                     _ => {}
                 }
@@ -456,8 +407,6 @@ impl<'db> Ty<'db> {
                     Pou::FunctionBlock(fb) => self.fetch_all_variables(db, &fb.variables(db)),
                     _ => Default::default(),
                 },
-                TyDef::Method(method) => self.fetch_all_variables(db, &method.variables(db)),
-                TyDef::MethodProt(method) => self.fetch_all_variables(db, &method.variables(db)),
                 _ => Default::default(),
             },
         }
@@ -472,8 +421,6 @@ impl<'db> Ty<'db> {
                     Pou::FunctionBlock(fb) => self.fetch_local_variables(db, &fb.variables(db)),
                     _ => Default::default(),
                 },
-                TyDef::Method(method) => self.fetch_local_variables(db, &method.variables(db)),
-                TyDef::MethodProt(method) => self.fetch_local_variables(db, &method.variables(db)),
                 _ => Default::default(),
             },
         }
@@ -516,7 +463,7 @@ impl<'db> Ty<'db> {
 
     pub fn visibility(&self, db: &'db dyn BaseDatabase) -> Option<Visibility> {
         match self.def(db) {
-            TyDef::Method(method) => Some(method.visibility(db)),
+            TyDef::MethodRef(method) => Some(method.visibility(db)),
             _ => None,
         }
     }
@@ -528,15 +475,8 @@ impl<'db> Ty<'db> {
     pub fn is_callable(&self, db: &'db dyn BaseDatabase) -> bool {
         matches!(
             self.kind(db),
-            TyKind::Function { .. } | TyKind::FunctionBlock { .. } | TyKind::Method { .. }
+            TyKind::Function { .. } | TyKind::FunctionBlock { .. } 
         )
-    }
-
-    pub fn is_method_prototype(&self, db: &'db dyn BaseDatabase) -> bool {
-        if let TyKind::Method { is_prototype, .. } = self.kind(db) {
-            return *is_prototype;
-        }
-        false
     }
 
     pub fn is_unresolved(&self, db: &'db dyn BaseDatabase) -> bool {
@@ -550,9 +490,17 @@ impl<'db> Ty<'db> {
     pub fn has_return_type(&self, db: &'db dyn BaseDatabase) -> Option<Ty<'db>> {
         match self.kind(db) {
             TyKind::Function { return_type } => return_type.map(|rt| rt.spec_to_ty(db)),
-            TyKind::Method { return_type, .. } => return_type.map(|rt| rt.spec_to_ty(db)),
+            TyKind::MethodRef(m) => m.return_type(db).map(|rt| rt.spec_to_ty(db)),
             _ => None,
         }
+    }
+}
+
+// temporary, until we have proper method declarations
+#[salsa::tracked]
+impl<'db> MethodRef<'db> {
+    pub fn to_ty(self, db: &'db dyn BaseDatabase) -> Ty<'db> {
+        Ty::new(db, TyDef::MethodRef(self), TyKind::MethodRef(self))
     }
 }
 
@@ -614,7 +562,7 @@ impl<'db> TypeInfo<'db> for Ty<'db> {
             TyKind::Class { .. } => "CLASS".into(),
             TyKind::Function { .. } => "FUNCTION".into(),
             TyKind::FunctionBlock { .. } => "FUNCTION_BLOCK".into(),
-            TyKind::Method { .. } => "METHOD".into(),
+            TyKind::MethodRef(m) => "METHOD".to_string(),
             TyKind::Unresolved(_) => "{unknown}".into(),
         }
     }
