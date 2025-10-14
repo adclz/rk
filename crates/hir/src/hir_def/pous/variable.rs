@@ -21,8 +21,12 @@ pub struct VariableDecl<'db> {
     #[returns(as_ref)]
     pub init: Option<InitExpr<'db>>,
 
+    #[tracked]
+    #[no_eq]
     pub id: AstId,
 
+    #[tracked]
+    #[no_eq]
     pub name_id: AstId,
 
     pub scope_id: FileScopeId<'db>,

@@ -14,7 +14,7 @@ use crate::{
     }, AstId, HirNodeInfo
 };
 
-#[salsa::tracked(no_eq, returns(ref))]
+#[salsa::tracked]
 pub fn resolve_expr<'db>(db: &'db dyn BaseDatabase, expr: Expr<'db>) -> ResolvedExpr<'db> {
     ResolveExprCtx::new(db, expr).resolve()
 }
@@ -108,7 +108,7 @@ impl<'db> ResolveExprCtx<'db> {
                 PrimaryExpr::ParenthesizedExpr { expr } => ResolvedExpr::new(
                     self.db,
                     self.expr,
-                    ResolvedExprKind::Parenthesized(*resolve_expr(self.db, *expr)),
+                    ResolvedExprKind::Parenthesized(resolve_expr(self.db, *expr)),
                 ),
                 PrimaryExpr::Invocation(invocation) => {
                     let scope = semantic_index(self.db, self.expr.scope_id(self.db).file(self.db))
@@ -178,7 +178,7 @@ impl<'db> ResolveExprCtx<'db> {
                 ResolvedExpr::new(
                     self.db,
                     self.expr,
-                    ResolvedExprKind::Math(*left_resolved, *right_resolved),
+                    ResolvedExprKind::Math(left_resolved, right_resolved),
                 )
             }
             ExprKind::BooleanOperator {
@@ -191,7 +191,7 @@ impl<'db> ResolveExprCtx<'db> {
                 ResolvedExpr::new(
                     self.db,
                     self.expr,
-                    ResolvedExprKind::BooleanExpression(*left_resolved, *right_resolved),
+                    ResolvedExprKind::BooleanExpression(left_resolved, right_resolved),
                 )
             }
             ExprKind::ComparisonOperator {
@@ -204,7 +204,7 @@ impl<'db> ResolveExprCtx<'db> {
                 ResolvedExpr::new(
                     self.db,
                     self.expr,
-                    ResolvedExprKind::Compare(*left_resolved, *right_resolved),
+                    ResolvedExprKind::Compare(left_resolved, right_resolved),
                 )
             }
             _ => todo!(),

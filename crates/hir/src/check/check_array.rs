@@ -22,17 +22,17 @@ impl<'db> DataTypeCheck<'db> for Array<'db> {
                             TyError::InferiorUpperBound {
                                 lower: lower_range,
                                 upper: upper_range,
-                                upper_expr: *upper,
+                                upper_expr: upper,
                             }
                             .into(),
                         );
                     }
                 }
                 (None, _) => {
-                    errors.push(TyError::InvalidArrayLowerValue { value: *lower }.into());
+                    errors.push(TyError::InvalidArrayLowerValue { value: lower }.into());
                 }
                 (_, None) => {
-                    errors.push(TyError::InvalidArrayUpperValue { value: *upper }.into());
+                    errors.push(TyError::InvalidArrayUpperValue { value: upper }.into());
                 }
             }
         }

@@ -16,6 +16,8 @@ pub struct Stmt<'db> {
     #[returns(ref)]
     pub stmt: StmtKind<'db>,
 
+    #[tracked]
+    #[no_eq]
     pub id: AstId,
 
     pub scope_id: FileScopeId<'db>,

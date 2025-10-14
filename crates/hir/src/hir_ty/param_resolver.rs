@@ -39,7 +39,7 @@ pub fn resolve_parameters<'db>(
                                 )
                             })
                         },
-                        value: *resolve_expr(db, value),
+                        value: resolve_expr(db, value),
                     },
                 )
             }
@@ -61,7 +61,7 @@ pub fn resolve_parameters<'db>(
                                 )
                             })
                     },
-                    value: *resolve_expr(db, value),
+                    value: resolve_expr(db, value),
                 },
             ),
             ParamAssignKind::FormalOutput {

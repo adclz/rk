@@ -17,8 +17,12 @@ pub struct NamespaceDecl<'db> {
     #[returns(ref)]
     pub namespaces: Vec<NamespaceDecl<'db>>,
 
+    #[tracked]
+    #[no_eq]
     pub id: AstId,
 
+    #[tracked]
+    #[no_eq]
     pub name_id: AstId,
 
     pub scope_id: FileScopeId<'db>,

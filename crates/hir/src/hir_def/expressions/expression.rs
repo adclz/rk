@@ -9,6 +9,8 @@ pub struct Expr<'db> {
     #[returns(ref)]
     pub expr: ExprKind<'db>,
 
+    #[tracked]
+    #[no_eq]
     pub id: AstId,
 
     pub scope_id: FileScopeId<'db>,
@@ -115,9 +117,10 @@ pub struct FuncCall<'db> {
 
 #[salsa::tracked(debug)]
 pub struct PathExpr<'db> {
-    #[no_eq]
     pub expr: PathExprKind<'db>,
 
+    #[tracked]
+    #[no_eq]
     pub id: AstId,
 
     pub scope_id: FileScopeId<'db>,
@@ -193,6 +196,8 @@ pub enum RefValue<'db> {
 
 #[salsa::tracked(debug)]
 pub struct ParamAssign<'db> {
+    #[tracked]
+    #[no_eq]
     pub id: AstId,
 
     pub scope_id: FileScopeId<'db>,
@@ -236,6 +241,8 @@ pub enum SizeOperator {
 pub struct VariableAccess<'db> {
     pub kind: VariableAccessKind<'db>,
 
+    #[tracked]
+    #[no_eq]
     pub id: AstId,
 
     pub scope_id: FileScopeId<'db>,
@@ -345,6 +352,8 @@ impl<'db> HirNodeInfo<'db> for Expr<'db> {
 pub struct InitExpr<'db> {
     pub kind: InitExprKind<'db>,
 
+    #[tracked]
+    #[no_eq]
     pub id: AstId,
 
     pub scope_id: FileScopeId<'db>,

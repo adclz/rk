@@ -10,7 +10,7 @@ use crate::hir_ty::ty_var_access_resolver::{
 use crate::{AstId, HirNodeInfo};
 use auto_lsp::default::db::BaseDatabase;
 
-#[salsa::tracked(no_eq, returns(ref))]
+#[salsa::tracked(returns(ref))]
 pub fn resolve_stmt<'db>(db: &'db dyn BaseDatabase, stmt: Stmt<'db>) -> ResolvedStmt<'db> {
     ResolveStmtCtx::new(db, stmt).resolve()
 }
@@ -19,10 +19,7 @@ pub fn resolve_stmt<'db>(db: &'db dyn BaseDatabase, stmt: Stmt<'db>) -> Resolved
 pub struct ResolvedStmt<'db> {
     pub stmt: Stmt<'db>,
 
-
     #[returns(ref)]
-    #[tracked]
-    #[no_eq]
     pub kind: ResolvedStmtKind<'db>,
 }
 
@@ -88,7 +85,7 @@ impl<'db> ResolveStmtCtx<'db> {
                     self.stmt,
                     ResolvedStmtKind::Assignment {
                         var: resolved_var,
-                        target: *resolved_target,
+                        target: resolved_target,
                     },
                 )
             }
@@ -101,7 +98,7 @@ impl<'db> ResolveStmtCtx<'db> {
                     self.stmt,
                     ResolvedStmtKind::AssignmentAttempt {
                         var: resolved_var,
-                        target: *resolved_target,
+                        target: resolved_target,
                     },
                 )
             }
@@ -114,7 +111,7 @@ impl<'db> ResolveStmtCtx<'db> {
                 self.db,
                 self.stmt,
                 ResolvedStmtKind::If {
-                    condition: *resolve_expr(self.db, *condition),
+                    condition: resolve_expr(self.db, *condition),
                     then: then
                         .as_ref()
                         .map(|then| then.iter().map(|s| *resolve_stmt(self.db, *s)).collect())
@@ -123,7 +120,7 @@ impl<'db> ResolveStmtCtx<'db> {
                         .iter()
                         .map(|(cond, stmts)| {
                             (
-                                *resolve_expr(self.db, *cond),
+                                resolve_expr(self.db, *cond),
                                 stmts.iter().map(|s| *resolve_stmt(self.db, *s)).collect(),
                             )
                         })
@@ -175,9 +172,9 @@ impl<'db> ResolveStmtCtx<'db> {
                     self.stmt,
                     ResolvedStmtKind::For {
                         control_var,
-                        start: *start_expr,
-                        end: *end_expr,
-                        step: step_expr.copied(),
+                        start: start_expr,
+                        end: end_expr,
+                        step: step_expr,
                         body: body.iter().map(|s| *resolve_stmt(self.db, *s)).collect(),
                     },
                 )
@@ -186,7 +183,7 @@ impl<'db> ResolveStmtCtx<'db> {
                 self.db,
                 self.stmt,
                 ResolvedStmtKind::Repeat {
-                    condition: *resolve_expr(self.db, *condition),
+                    condition: resolve_expr(self.db, *condition),
                     body: body.iter().map(|s| *resolve_stmt(self.db, *s)).collect(),
                 },
             ),
@@ -194,7 +191,7 @@ impl<'db> ResolveStmtCtx<'db> {
                 self.db,
                 self.stmt,
                 ResolvedStmtKind::While {
-                    condition: *resolve_expr(self.db, *condition),
+                    condition: resolve_expr(self.db, *condition),
                     body: body.iter().map(|s| *resolve_stmt(self.db, *s)).collect(),
                 },
             ),

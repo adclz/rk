@@ -32,8 +32,12 @@ pub struct MethodPrototype<'db> {
     #[returns(ref)]
     pub variables: Vec<VariableDecl<'db>>,
 
+    #[tracked]
+    #[no_eq]
     pub id: AstId,
 
+    #[tracked]
+    #[no_eq]
     pub name_id: AstId,
 
     pub scope_id: FileScopeId<'db>,

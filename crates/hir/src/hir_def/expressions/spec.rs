@@ -22,6 +22,8 @@ pub struct Spec<'db> {
     #[returns(ref)]
     pub kind: SpecKind<'db>,
 
+    #[tracked]
+    #[no_eq]
     pub id: AstId,
 
     pub scope_id: FileScopeId<'db>,
@@ -170,8 +172,12 @@ pub struct StructElement<'db> {
     pub spec: Spec<'db>,
     pub init: Option<InitExpr<'db>>,
 
+    #[tracked]
+    #[no_eq]
     pub id: AstId,
 
+    #[tracked]
+    #[no_eq]
     pub name_id: AstId,
 
     pub scope_id: FileScopeId<'db>,

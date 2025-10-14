@@ -9,6 +9,8 @@ use crate::{
 pub struct Using<'db> {
     pub path: NamespacePath,
 
+    #[tracked]
+    #[no_eq]    
     pub id: AstId,
 
     pub scope_id: FileScopeId<'db>,

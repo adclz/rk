@@ -71,7 +71,7 @@ impl<'db> DataTypeCheck<'db> for Enum<'db> {
             // Check variant value type
             match (variant.value, enum_typ) {
                 (Some(value), Some(typ)) => {
-                    let value_expr = *resolve_expr(db, value);
+                    let value_expr = resolve_expr(db, value);
                     if let Err(err) = coerce_ty_with_expr(db, typ.spec_to_ty(db), value_expr) {
                         errors.push(TyError::InvalidEnumVariantValue { variant: variant.name, err }.into())
                     }

@@ -38,7 +38,7 @@ impl<'db> Check<'db> for Vec<ResolvedStmt<'db>> {
 
 impl<'db> Check<'db> for ResolvedStmt<'db> {
     fn check(&self, db: &'db dyn BaseDatabase, errors: &mut Vec<AnalysisError<'db>>) {
-        match self.kind(db) {
+        match &self.kind(db) {
             ResolvedStmtKind::If {
                 then,
                 else_,

@@ -10,8 +10,12 @@ use crate::{
 
 #[salsa::tracked(debug)]
 pub struct Invocation<'db> {
+    #[tracked]
+    #[no_eq]
     pub id: AstId,
 
+    #[tracked]
+    #[no_eq]
     pub keyword_id: AstId,
 
     pub scope_id: FileScopeId<'db>,

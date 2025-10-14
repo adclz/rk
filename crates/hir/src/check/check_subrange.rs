@@ -52,8 +52,8 @@ impl<'db> DataTypeCheck<'db> for SubRange<'db> {
                     }
                 }
 
-                let min = *resolve_expr(db, *min);
-                let max = *resolve_expr(db, *max);
+                let min = resolve_expr(db, *min);
+                let max = resolve_expr(db, *max);
                 if let Err(err) = coerce_ty_with_expr(db, typ, min) {
                     errors.push(TyError::InvalidSubrangeStart { expr: min, err }.into())
                 }

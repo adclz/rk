@@ -1,43 +1,43 @@
 use crate::{
     check::errors::init_expr::InitExprError, hir_def::{
-        expressions::expression::InitExprKind, interned::identifier::SpanIdent, scope::FileScopeId,
+        expressions::expression::{Expr, InitExprKind}, interned::identifier::SpanIdent, scope::FileScopeId,
     }, hir_ty::{
         expr_resolver::{resolve_expr, ResolvedExpr},
         ty::{ty_for_struct_field, Ty, TyKind},
-        ty_var_access_resolver::{Place, CallSite, ResolvedAccess},
+        ty_var_access_resolver::{CallSite, Place, ResolvedAccess},
     }, AstId, HirNodeInfo
 };
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::hir_def::expressions::expression::InitExpr;
 
-#[salsa::tracked(no_eq)]
-pub fn order<'db>(db: &'db dyn BaseDatabase, expr: InitExpr<'db>) -> UnResolvedInitExpr<'db> {
+#[salsa::tracked]
+pub fn flatten<'db>(db: &'db dyn BaseDatabase, expr: InitExpr<'db>) -> UnResolvedInitExpr<'db> {
     let kind = match expr.kind(db) {
         InitExprKind::ArrayInit { values } => {
-            let resolved = values.iter().map(|v| order(db, *v)).collect();
+            let resolved = values.iter().map(|v| flatten(db, *v)).collect();
             UnResolvedInitExprKind::ArrayInit { values: resolved }
         }
         InitExprKind::ArrayIndexedElement { size, values } => {
-            let resolved = values.iter().map(|v| order(db, *v)).collect();
+            let resolved = values.iter().map(|v| flatten(db, *v)).collect();
             UnResolvedInitExprKind::ArrayIndexedElement {
                 size,
                 values: resolved,
             }
         }
         InitExprKind::StructInit { values } => {
-            let resolved = values.iter().map(|v| order(db, *v)).collect();
+            let resolved = values.iter().map(|v| flatten(db, *v)).collect();
             UnResolvedInitExprKind::StructInit { values: resolved }
         }
         InitExprKind::StructElement { name, value } => {
-            let resolved = Box::new(order(db, *value));
+            let resolved = Box::new(flatten(db, *value));
             UnResolvedInitExprKind::StructElement {
                 name,
                 value: resolved,
             }
         }
         InitExprKind::ConstantExpr(expr) => {
-            UnResolvedInitExprKind::ConstantExpr(*resolve_expr(db, expr))
+            UnResolvedInitExprKind::ConstantExpr(expr)
         }
     };
     UnResolvedInitExpr { expr, kind }
@@ -65,16 +65,16 @@ pub enum UnResolvedInitExprKind<'db> {
         name: SpanIdent<'db>,
         value: Box<UnResolvedInitExpr<'db>>,
     },
-    ConstantExpr(ResolvedExpr<'db>),
+    ConstantExpr(Expr<'db>),
 }
 
-#[salsa::tracked(no_eq, returns(ref))]
+#[salsa::tracked(returns(ref))]
 pub fn resolve_init_expr<'db>(
     db: &'db dyn BaseDatabase,
     ty: Ty<'db>,
     init: InitExpr<'db>,
 ) -> ResolvedInitExpr<'db> {
-    let unordered = order(db, init);
+    let unordered = flatten(db, init);
     resolve_unresolved(db, ty, unordered)
 }
 
@@ -180,7 +180,7 @@ fn resolve_unresolved<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>, init: UnResol
             }
         }
         UnResolvedInitExprKind::ConstantExpr(expr) => {
-            ResolvedInitExprKind::ConstantExpr(*resolve_expr(db, expr.expr(db)))
+            ResolvedInitExprKind::ConstantExpr(resolve_expr(db, expr))
         }
     };
 
