@@ -150,7 +150,8 @@ fn resolve_unresolved<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>, init: UnResol
                         let field = ResolvedAccess::new(
                             db,
                             CallSite::Formal(name),
-                            Place::Param(element_ty.spec(db).spec_to_ty(db)),
+                            Place::StructElement(*element_ty),
+                            vec![]
                         );
 
                         ResolvedInitExprKind::StructElement {

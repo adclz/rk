@@ -136,16 +136,18 @@ impl<'db> Invocation<'db> {
                                             self.keyword_id(db),
                                             *self,
                                         ),
-                                        Place::SelfRef(pou),
+                                        Place::Pou(pou),
+                                        vec![],
                                     ),
                                     method: ResolvedAccess::new(
                                         db,
                                         CallSite::Invocation(*self),
                                         Place::Method(*method),
+                                        vec![],
                                     ),
                                 },
                             ),
-                            params: resolve_parameters(db, *method, &self.params(db)),
+                            params: resolve_parameters(db, method.to_ty(db), &self.params(db)),
                         })
                         .unwrap_or_else(|| ResolvedInvocationResult {
                             target: ResolvedInvocation::new(
@@ -171,16 +173,18 @@ impl<'db> Invocation<'db> {
                                             self.keyword_id(db),
                                             *self,
                                         ),
-                                        Place::SelfRef(ty.source),
+                                        Place::Pou(ty.source),
+                                        vec![]
                                     ),
                                     method: ResolvedAccess::new(
                                         db,
                                         CallSite::Invocation(*self),
                                         Place::Method(ty.method),
+                                        vec![]
                                     ),
                                 },
                             ),
-                            params: resolve_parameters(db, ty.method, &self.params(db)),
+                            params: resolve_parameters(db, ty.method.to_ty(db), &self.params(db)),
                         })
                         .unwrap_or_else(|| ResolvedInvocationResult {
                             target: ResolvedInvocation::new(
@@ -204,7 +208,7 @@ impl<'db> Invocation<'db> {
                             params: vec![],
                         }),
                     InvocationKind::SuperBody => {
-                        let params = resolve_parameters(db, pou, &self.params(db));
+                        let params = resolve_parameters(db, ty_for_pou(db, pou), &self.params(db));
                         if let Pou::FunctionBlock { .. } = pou.pou(db) {
                             ResolvedInvocationResult {
                                 target: ResolvedInvocation::new(
@@ -213,7 +217,8 @@ impl<'db> Invocation<'db> {
                                         target: ResolvedAccess::new(
                                             db,
                                             CallSite::Invocation(*self),
-                                            Place::SelfRef(pou),
+                                            Place::Pou(pou),
+                                            vec![]
                                         ),
                                     },
                                 ),

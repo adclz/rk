@@ -6,17 +6,22 @@ use crate::{
             expression::{
                 Expr, PathExpr, PathExprKind, VarAccess, VariableAccess, VariableAccessKind,
             },
-            invocation::{Invocation, InvocationKind},
+            invocation::{Invocation, InvocationKind}, spec::StructElement,
         },
         interned::{
             identifier::SpanIdent,
             namespace::{NamespaceAccess, NamespacePath},
         },
-        pous::{pou::PouDecl, variable::{VariableDecl, VariableKind}},
+        pous::{
+            pou::PouDecl,
+            variable::{VariableDecl, VariableKind},
+        },
         scope::{FileScopeId, ScopeKind},
         semantic_index::semantic_index,
     }, hir_ty::{
-        inheritance_solver::MethodRef, name_res::{pou_names_res, resolve_namespace_access}, ty::{ty_for_pou, SearchMode, Ty}
+        inheritance_solver::MethodRef,
+        name_res::{pou_names_res, resolve_namespace_access},
+        ty::{ty_for_pou, SearchMode, Ty},
     }, AstId, HirNodeInfo
 };
 
@@ -38,12 +43,13 @@ pub fn resolve_path_expr<'db>(
 
 #[salsa::tracked(debug)]
 pub struct ResolvedAccess<'db> {
-    // where the access was made
+    // Where the access was made
     pub call_site: CallSite<'db>,
 
     // Where the variable is stored / how it is accessed
-    #[returns(ref)]
     pub kind: Place<'db>,
+
+    pub elements: Vec<ResolvedPathElement<'db>>,
 }
 
 /// Represents where a variable or method is accessed from.
@@ -85,58 +91,19 @@ impl<'db> CallSite<'db> {
     }
 }
 
-/// Represents a place where something is stored or accessed from.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum Place<'db> {
-    Direct, // todo
-    /// In case of self-reference (THIS, SUPER) - usually refer to the POU itself
-    SelfRef(PouDecl<'db>),
-    Method(MethodRef<'db>),
-    /// Symbolic access and path expression
-    Symbolic {
-        target: SymbolicTarget<'db>,
-        rest: Vec<ResolvedPathElement<'db>>,
-    },
-    Param(Ty<'db>),
-    Unknown,
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum SymbolicTarget<'db> {
-    /// Direct access to a declared variable
     Variable(VariableDecl<'db>),
-    Pou(Ty<'db>),
-    Method(Ty<'db>),
-    Param(Ty<'db>),
-}
-
-impl<'db> HirNodeInfo<'db> for SymbolicTarget<'db> {
-    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
-        match self {
-            SymbolicTarget::Variable(v) => v.get_id(db),
-            SymbolicTarget::Pou(p) => p.get_id(db),
-            SymbolicTarget::Method(m) => m.get_id(db),
-            SymbolicTarget::Param(p) => p.get_id(db),
-        }
-    }
-
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
-        match self {
-            SymbolicTarget::Variable(v) => v.get_scope_id(db),
-            SymbolicTarget::Pou(p) => p.get_scope_id(db),
-            SymbolicTarget::Method(m) => m.get_scope_id(db),
-            SymbolicTarget::Param(p) => p.get_scope_id(db),
-        }
-    }
+    Pou(PouDecl<'db>),
+    Method(MethodRef<'db>),
+    StructElement(StructElement<'db>), // A field in a struct
+    Invalid,
 }
 
 impl<'db> ResolvedAccess<'db> {
     fn as_var(&self, db: &'db dyn BaseDatabase) -> Option<VariableDecl<'db>> {
         match self.kind(db) {
-            Place::Symbolic { target, rest } => match &target {
-                SymbolicTarget::Variable(v) => Some(*v),
-                _ => None,
-            },
+            Place::Variable(v) => Some(v),
             _ => None,
         }
     }
@@ -181,25 +148,11 @@ impl<'db> ResolvedAccess<'db> {
 impl<'db> ResolvedAccess<'db> {
     pub fn ty(&self, db: &'db dyn BaseDatabase) -> Result<Ty<'db>, VarResolveError<'db>> {
         match self.kind(db) {
-            Place::Direct => todo!(), // todo: direct var type
-            Place::SelfRef(pou) => Ok(ty_for_pou(db, *pou)),
+            Place::Variable(v) => Ok(v.spec(db).spec_to_ty(db)),
             Place::Method(m) => Ok(m.to_ty(db)),
-            Place::Symbolic { rest, target } => match rest.last() {
-                Some(element) => match &element.kind {
-                    ResolvedPathElementKind::Ty(ty) => Ok(*ty),
-                    ResolvedPathElementKind::Error(err) => {
-                        Err(VarResolveError::PathResolveError { err: err.clone() })
-                    }
-                },
-                None => match &target {
-                    SymbolicTarget::Variable(var) => Ok(var.spec(db).spec_to_ty(db)),
-                    SymbolicTarget::Pou(ty) => Ok(*ty),
-                    SymbolicTarget::Method(ty) => Ok(*ty),
-                    SymbolicTarget::Param(ty) => Ok(*ty),
-                },
-            },
-            Place::Param(ty) => Ok(*ty),
-            Place::Unknown => Err(VarResolveError::Unknown {
+            Place::Pou(p) => Ok(ty_for_pou(db, p)),
+            Place::StructElement(e) => Ok(e.spec(db).spec_to_ty(db)),
+            Place::Invalid => Err(VarResolveError::Unknown {
                 call_site: self.call_site(db),
             }),
         }
@@ -207,43 +160,28 @@ impl<'db> ResolvedAccess<'db> {
 
     pub fn decl_name(&self, db: &'db dyn BaseDatabase) -> String {
         match self.kind(db) {
-            Place::Symbolic { target, .. } => match target {
-                SymbolicTarget::Variable(v) => v.name(db).text(db).to_string(),
-                SymbolicTarget::Pou(ty) => ty.name(db).to_string(),
-                SymbolicTarget::Method(ty) => ty.name(db).to_string(),
-                SymbolicTarget::Param(ty) => ty.name(db).to_string(),
-            },
-            Place::Param(ty) => ty.name(db).to_string(),
-            Place::SelfRef(ty) => ty.name(db).text(db).to_string(),
-            Place::Method(ty) => ty.name(db).text(db).to_string(),
-            Place::Direct => "direct".to_string(),
-            Place::Unknown => "{unknown}".to_string(),
+            Place::Variable(v) => v.name(db).text(db).to_string(),
+            Place::Pou(p) => p.name(db).text(db).to_string(),
+            Place::Method(m) => m.name(db).text(db).to_string(),
+            Place::StructElement(e) => e.name(db).text(db).to_string(),
+            Place::Invalid => "{unknown}".to_string(),
         }
     }
 
     pub fn decl_kind(&self, db: &'db dyn BaseDatabase) -> String {
         match self.kind(db) {
-            Place::Symbolic { target, .. } => match target {
-                SymbolicTarget::Variable(v) => match v.kind(db) {
-                    VariableKind::Input => "VAR_INPUT".to_string(),
-                    VariableKind::Output => "VAR_OUTPUT".to_string(),
-                    VariableKind::InOut => "VAR_IN_OUT".to_string(),
-                    VariableKind::Var => "VAR".to_string(),
-                    VariableKind::Temp => "VAR_TEMP".to_string(),
-                    VariableKind::Access => "VAR_ACCESS".to_string(),
-                    VariableKind::External => "VAR_EXTERNAL".to_string(),
-                    VariableKind::Global => "VAR_GLOBAL".to_string(),
-                    VariableKind::Config => "VAR_CONFIG".to_string(),
-                },
-                SymbolicTarget::Pou(ty) => "POU".to_string(),
-                SymbolicTarget::Method(ty) => "METHOD".to_string(),
-                SymbolicTarget::Param(ty) => "PARAM".to_string(),
+            Place::Variable(v) => match v.kind(db) {
+                VariableKind::Var => "VAR".to_string(),
+                VariableKind::Input => "VAR_INPUT".to_string(),
+                VariableKind::Output => "VAR_OUPUT".to_string(),
+                VariableKind::InOut => "VAR_INOUT".to_string(),
+                VariableKind::Temp => "VAR_TEMP".to_string(),
+                VariableKind::Access => "VAR_ACCESS".to_string(),
+                VariableKind::Global => "VAR_GLOBAL".to_string(),
+                VariableKind::External => "VAR_EXTERNAL".to_string(),
+                VariableKind::Config => "VAR_CONFIG".to_string(),
             },
-            Place::Param(ty) => "PARAM".to_string(),
-            Place::SelfRef(ty) => "POU".to_string(),
-            Place::Method(ty) => "METHOD".to_string(),
-            Place::Direct => "DIRECT".to_string(),
-            Place::Unknown => "".to_string(),
+            _ => "".to_string(),
         }
     }
 }
@@ -271,17 +209,34 @@ impl<'db> VarAccessResolverCtx<'db> {
             VariableAccessKind::Symbolic(symbolic) => {
                 let target = find_primary_target(self.db, symbolic.kind);
                 match target {
-                    Some((place, ty, rest)) => ResolvedAccess::new(
+                    Some((place, rest)) => {
+                        let ty = match &place {
+                            Place::Variable(v) => v.spec(self.db).spec_to_ty(self.db),
+                            Place::Pou(p) => ty_for_pou(self.db, *p),
+                            Place::Method(m) => m.to_ty(self.db),
+                            Place::StructElement(e) => e.spec(self.db).spec_to_ty(self.db),
+                            Place::Invalid => {
+                                return ResolvedAccess::new(
+                                    self.db,
+                                    CallSite::Access(self.access),
+                                    Place::Invalid,
+                                    vec![],
+                                );
+                            }
+                        };
+                        ResolvedAccess::new(
+                            self.db,
+                            CallSite::Access(self.access),
+                            place,
+                            resolve_path_rest(self.db, ty, rest),
+                        )
+                    }
+                    None => ResolvedAccess::new(
                         self.db,
                         CallSite::Access(self.access),
-                        Place::Symbolic {
-                            target: place,
-                            rest: resolve_path_rest(self.db, ty, rest),
-                        },
+                        Place::Invalid,
+                        vec![],
                     ),
-                    None => {
-                        ResolvedAccess::new(self.db, CallSite::Access(self.access), Place::Unknown)
-                    }
                 }
             }
         }
@@ -301,17 +256,34 @@ impl<'db> GlobalResolverCtx<'db> {
     pub fn resolve(&self) -> ResolvedAccess<'db> {
         let target = find_primary_target(self.db, self.path_expr);
         match target {
-            Some((place, ty, rest)) => ResolvedAccess::new(
+            Some((place, rest)) => {
+                let ty = match &place {
+                    Place::Variable(v) => v.spec(self.db).spec_to_ty(self.db),
+                    Place::Pou(p) => ty_for_pou(self.db, *p),
+                    Place::Method(m) => m.to_ty(self.db),
+                    Place::StructElement(e) => e.spec(self.db).spec_to_ty(self.db),
+                    Place::Invalid => {
+                        return ResolvedAccess::new(
+                            self.db,
+                            CallSite::PathExpr(self.path_expr),
+                            Place::Invalid,
+                            vec![],
+                        );
+                    }
+                };
+                ResolvedAccess::new(
+                    self.db,
+                    CallSite::PathExpr(self.path_expr),
+                    place,
+                    resolve_path_rest(self.db, ty, rest),
+                )
+            }
+            None => ResolvedAccess::new(
                 self.db,
                 CallSite::PathExpr(self.path_expr),
-                Place::Symbolic {
-                    target: place,
-                    rest: resolve_path_rest(self.db, ty, rest),
-                },
+                Place::Invalid,
+                vec![],
             ),
-            None => {
-                ResolvedAccess::new(self.db, CallSite::PathExpr(self.path_expr), Place::Unknown)
-            }
         }
     }
 }
@@ -319,7 +291,7 @@ impl<'db> GlobalResolverCtx<'db> {
 fn find_primary_target<'db>(
     db: &'db dyn BaseDatabase,
     path_expr: PathExpr<'db>,
-) -> Option<(SymbolicTarget<'db>, Ty<'db>, &'db [PathExprWalkStep<'db>])> {
+) -> Option<(Place<'db>, &'db [PathExprWalkStep<'db>])> {
     let flatten = path_expr.flatten_steps(db);
     match flatten.first() {
         Some(first) => {
@@ -335,32 +307,21 @@ fn find_primary_target<'db>(
             // Search for variables in scope
             if let ScopeKind::Pou(pou) = scope.kind {
                 let ty = ty_for_pou(db, pou);
-                
+
                 if let Ok(ty) = ty.walk(db, first, SearchMode::Global) {
-                    return Some((
-                        SymbolicTarget::Pou(ty),
-                        ty,
-                        flatten[1..].as_ref(),
-                    ));
+                    todo!()
+                    //return Some((flatten[1..].as_ref()));
                 }
 
                 // Special case: if the first element is the same as the current POU, it's a self-reference
                 if pou.name(db) == &ident.ident {
-                    return Some((
-                        SymbolicTarget::Pou(ty_for_pou(db, pou)),
-                        ty_for_pou(db, pou),
-                        flatten[1..].as_ref(),
-                    ));
+                    return Some((Place::Pou(pou), flatten[1..].as_ref()));
                 }
             }
 
             // Try local POU names
             if let Some(pou) = pou_names_res(db, ident, expr.scope_id(db)) {
-                return Some((
-                    SymbolicTarget::Pou(ty_for_pou(db, pou)),
-                    ty_for_pou(db, pou),
-                    flatten[1..].as_ref(),
-                ));
+                return Some((Place::Pou(pou), flatten[1..].as_ref()));
             }
 
             // Try Namespaces
@@ -383,11 +344,7 @@ fn find_primary_target<'db>(
             let path = NamespacePath::from((db, &fragments));
             let access = NamespaceAccess::new(db, Some(path), ident);
             if let Some(pou) = resolve_namespace_access(db, expr.scope_id(db), access) {
-                return Some((
-                    SymbolicTarget::Pou(ty_for_pou(db, pou)),
-                    ty_for_pou(db, pou),
-                    flatten[fragments.len() - 1..].as_ref(),
-                ));
+                return Some((Place::Pou(pou), flatten[fragments.len() - 1..].as_ref()));
             }
             None
         }

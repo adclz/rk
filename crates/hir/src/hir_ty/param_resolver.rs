@@ -3,7 +3,7 @@ use auto_lsp::default::db::BaseDatabase;
 use crate::{
     hir_def::expressions::expression::{ParamAssign, ParamAssignKind},
     hir_ty::{
-        expr_resolver::resolve_expr, func_call_resolver::{ResolvedParam, ResolvedParamKind}, signatures::HasSignature, ty::Ty, ty_var_access_resolver::{
+        expr_resolver::resolve_expr, func_call_resolver::{ResolvedParam, ResolvedParamKind}, ty::Ty, ty_var_access_resolver::{
             resolve_var_access, CallSite, Place, ResolvedAccess
         }
     },
@@ -11,7 +11,7 @@ use crate::{
 
 pub fn resolve_parameters<'db>(
     db: &'db dyn BaseDatabase,
-    callee: impl HasSignature<'db>,
+    callee: Ty<'db>,
     caller: &[ParamAssign<'db>],
 ) -> Vec<ResolvedParam<'db>> {
     let mut formal_index = 0;
@@ -26,13 +26,14 @@ pub fn resolve_parameters<'db>(
                     ResolvedParamKind::NonFormal {
                         resolved_param: {
                             // Try to get the param by index
-                            let param = callee.signature(db).values().nth(formal_index);
+                            let param = callee.local_variables2(db).values().nth(formal_index);
                             formal_index += 1;
                             param.map(|p| {
                                 ResolvedAccess::new(
                                     db,
                                     CallSite::NonFormal(value),
-                                    Place::Param(*p),
+                                    Place::Variable(*p),
+                                    vec![]
                                 )
                             })
                         },
@@ -47,14 +48,15 @@ pub fn resolve_parameters<'db>(
                     param,
                     resolved_param: {
                         callee
-                            .signature(db)
+                            .local_variables2(db)
                             .get(&param.ident)
                             // todo: check if it's input / in_out
                             .map(|p| {
                                 ResolvedAccess::new(
                                     db,
                                     CallSite::Formal(param),
-                                    Place::Param(*p),
+                                    Place::Variable(*p),
+                                    vec![]
                                 )
                             })
                     },
@@ -73,14 +75,15 @@ pub fn resolve_parameters<'db>(
                     param,
                     resolved_param: {
                         callee 
-                            .signature(db)
+                            .local_variables2(db)
                             .get(&param.ident)
                             // todo: check if it's output
                             .map(|p| {
                                 ResolvedAccess::new(
                                     db,
                                     CallSite::Formal(param),
-                                    Place::Param(*p),
+                                    Place::Variable(*p),
+                                    vec![]
                                 )
                             })
                     },

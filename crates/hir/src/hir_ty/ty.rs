@@ -351,6 +351,43 @@ impl<'db> Ty<'db> {
         }
     }
 
+    #[salsa::tracked(returns(ref))]
+    pub fn local_variables2(self, db: &'db dyn BaseDatabase) -> IndexMap<Ident, VariableDecl<'db>> {
+        match self.kind(db) {
+            _ => match self.def(db) {
+                TyDef::Pou(pou) => match pou.pou(db) {
+                    Pou::Function(f) => self.fetch_local_variables_2(db, &f.variables(db)),
+                    Pou::FunctionBlock(fb) => self.fetch_local_variables_2(db, &fb.variables(db)),
+                    _ => Default::default(),
+                },
+                _ => Default::default(),
+            },
+        }
+    }
+
+    fn fetch_local_variables_2(
+        &self,
+        db: &'db dyn BaseDatabase,
+        vars: &[VariableDecl<'db>],
+    ) -> IndexMap<Ident, VariableDecl<'db>> {
+        let mut variables = IndexMap::default();
+        for v in vars {
+            match v.kind(db) {
+                VariableKind::Input => {
+                    variables.insert(*v.name(db), *v);
+                }
+                VariableKind::Output => {
+                    variables.insert(*v.name(db), *v);
+                }
+                VariableKind::InOut => {
+                    variables.insert(*v.name(db), *v);
+                }
+                _ => continue,
+            };
+        }
+        variables
+    }
+
     fn fetch_local_variables(
         &self,
         db: &'db dyn BaseDatabase,

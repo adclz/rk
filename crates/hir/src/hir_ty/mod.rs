@@ -14,4 +14,3 @@ pub mod stmt_resolver;
 pub mod ty;
 pub mod ty_var_access_resolver;
 pub mod using_resolver;
-pub mod signatures;

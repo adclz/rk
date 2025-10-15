@@ -1,5 +1,6 @@
 use std::fmt::format;
 
+use ast::generated::Target;
 use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{Hover, HoverContents, Location, MarkupContent, MarkupKind},
@@ -45,7 +46,7 @@ impl<'db> ToProtocol<'db> for ResolvedAccess<'db> {
         db: &'db dyn BaseDatabase,
     ) -> Option<auto_lsp::lsp_types::request::GotoDeclarationResponse> {
         match self.kind(db) {
-            Place::Symbolic { target, .. } => Some(
+            Place::Variable(target)=> Some(
                 auto_lsp::lsp_types::request::GotoDeclarationResponse::Scalar(Location::new(
                     target.get_scope_id(db).file(db).url(db).to_owned(),
                     target.get_span(db).into(),

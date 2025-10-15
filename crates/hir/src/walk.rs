@@ -180,15 +180,10 @@ impl<'db> WalkHir<'db> for ResolvedAccess<'db> {
         f: &mut F,
     ) -> ControlFlow<()> {
         f(HirNode::ResolvedAccess(*self))?;
-        match &self.kind(db) {
-            Place::Symbolic { rest, target}=> {
-                for e in rest {
-                    e.walk_hir(db, f)?;
-                }
-                ControlFlow::Continue(())
-            },
-            _ => ControlFlow::Continue(()),
+        for elem in &self.elements(db) {
+            elem.walk_hir(db, f)?;
         }
+        ControlFlow::Continue(())
     }
 }
 
