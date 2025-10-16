@@ -6,6 +6,8 @@ use rayon::prelude::*;
 use std::ops::ControlFlow;
 use std::{cmp::Ordering, hash::Hash};
 
+use crate::hir_def::expressions::spec::StructElement;
+use crate::hir_def::pous::variable::VariableDecl;
 use crate::HirNodeInfo;
 use crate::hir_def::pous::pou::PouDecl;
 use crate::hir_def::scope::FileScopeId;
@@ -243,8 +245,8 @@ pub struct NamedSymbol<'db> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum SymbolKind<'db> {
     Pou(PouDecl<'db>),
-    StructField(Ty<'db>),
-    Variable(Ty<'db>),
+    StructField(StructElement<'db>),
+    Variable(VariableDecl<'db>),
 }
 
 impl<'db> HirNodeInfo<'db> for NamedSymbol<'db> {

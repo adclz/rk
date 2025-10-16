@@ -31,18 +31,6 @@ impl<'db> ToProtocol<'db> for ResolvedParam<'db> {
             data: None,
         })
     }
-
-    fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Hover> {
-        get_param_ty(db, self).and_then(|ty| ty.hover(db, offset))
-    }
-
-    fn declaration(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDeclarationResponse> {
-        get_param_ty(db, self).and_then(|ty| ty.declaration(db))
-    }
-
-    fn definition(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDefinitionResponse> {
-        get_param_ty(db, self).and_then(|ty| ty.definition(db))
-    }
 }
 
 pub fn get_param_inlay_hint_position(

@@ -25,7 +25,7 @@ pub fn fuzzy_pou_local_items<'db>(
             f.variables(db).iter().for_each(|v| {
                 indexes.push(NamedSymbol {
                     name: v.name(db).text(db).to_string(),
-                    kind: SymbolKind::Variable(v.spec(db).spec_to_ty(db)),
+                    kind: SymbolKind::Variable(*v),
                 })
             });
         }
@@ -33,7 +33,7 @@ pub fn fuzzy_pou_local_items<'db>(
             fb.variables(db).iter().for_each(|v| {
                 indexes.push(NamedSymbol {
                     name: v.name(db).text(db).to_string(),
-                    kind: SymbolKind::Variable(v.spec(db).spec_to_ty(db)),
+                    kind: SymbolKind::Variable(*v),
                 })
             });
         }

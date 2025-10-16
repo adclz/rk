@@ -251,7 +251,7 @@ impl<'db> DiagnosticDescription<'db> for ExprMismatch<'db> {
             ExprMismatchKind::InvalidEnumVariant { enum_ty, variant } => {
                 format!(
                     "ENUM '{}' has no variant named '{}'",
-                    enum_ty.def(db).name(db),
+                    enum_ty.type_name(db),
                     variant.text(db)
                 )
             }
@@ -259,7 +259,7 @@ impl<'db> DiagnosticDescription<'db> for ExprMismatch<'db> {
                 format!(
                     "value {} is out of bounds for SUBRANGE {} (expected between {} and {})",
                     value,
-                    subrange_ty.def(db).name(db),
+                    subrange_ty.type_name(db),
                     min,
                     max
                 )

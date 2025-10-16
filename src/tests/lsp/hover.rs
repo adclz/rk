@@ -6,9 +6,7 @@ use db::RootDatabase;
 use hir::hir_def::pous::pou::Pou;
 use hir::hir_def::semantic_index::HirNode;
 use hir::hir_def::semantic_index::semantic_index;
-use hir::hir_ty::ty::TyDef;
 use hir::walk::WalkHir;
-use ide_proto::ty::TyHover;
 use ide_proto::AsProtocol;
 use ide_proto::ToProtocol;
 use insta::assert_snapshot;
@@ -43,10 +41,9 @@ END_CLASS
     });
 
     assert_snapshot!(nodes.iter().filter_map(|node|{
-        if let HirNode::Ty(ty) = node
-            && let TyDef::Pou(pou) = ty.def(&with_db)
+        if let HirNode::PouDecl(ty) = node
         {
-            if let HoverContents::Markup(d) = ty.force_hover(&with_db)?.contents {
+            if let HoverContents::Markup(d) = ty.hover(&with_db, 0)?.contents {
                 Some(d.value)
             } else {
                 None
@@ -98,19 +95,15 @@ END_FUNCTION_BLOCK
     let mut nodes = vec![];
 
     let _ = sema.walk_hir(&with_db, &mut |node| {
-        if let HirNode::Ty(ty) = node
-            && let TyDef::Pou(pou) = ty.def(&with_db)
-            && let Pou::FunctionBlock(fb) = pou.pou(&with_db)
+        if let HirNode::VariableDecl(var) = node
         {
-            for var in fb.variables(&with_db) {
-                nodes.push(var.spec(&with_db).spec_to_ty(&with_db));
-            }
+            nodes.push(var);
         }
         ControlFlow::Continue(())
     });
 
     assert_snapshot!(nodes.iter().filter_map(|n|{
-        if let HoverContents::Markup(d) = n.force_hover(&with_db)?.contents {
+        if let HoverContents::Markup(d) = n.hover(&with_db, 0)?.contents {
             Some(d.value)
         } else {
             None

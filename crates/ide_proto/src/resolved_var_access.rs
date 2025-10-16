@@ -9,7 +9,7 @@ use hir::{
     hir_def::comment_index::comment_index, hir_ty::{ty::TyKind, ty_var_access_resolver::{ResolvedAccess}}, HirNodeInfo, TypeInfo
 };
 
-use crate::{ToProtocol, ty::TyHover};
+use crate::{ToProtocol};
 
 impl<'db> ToProtocol<'db> for ResolvedAccess<'db> {
     fn hover(&'db self, db: &'db dyn BaseDatabase, _offset: usize) -> Option<Hover> {

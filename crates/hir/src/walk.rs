@@ -138,18 +138,18 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
                 match dt.spec(db).kind(db) {
                     SpecKind::Struct(st) => {
                         for field in &st.elements {
-                            f(HirNode::Ty(field.spec(db).spec_to_ty(db)))?;
+                            f(HirNode::StructElement(*field))?;
                         }
                     }
                     _ => {}
                 }
 
                 if let Some(init_expr) = dt.init(db) {
-                    /*f(HirNode::ResolvedInitExpr(*resolve_init_expr(
+                    f(HirNode::ResolvedInitExpr(*resolve_init_expr(
                         db,
-                        ty_for_pou(db, *self),
+                        dt.spec(db).spec_to_ty(db),
                         init_expr,
-                    )))?;*/
+                    )))?;
                 }
             }
         }
@@ -163,7 +163,7 @@ impl<'db> WalkHir<'db> for VariableDecl<'db> {
         db: &'db dyn BaseDatabase,
         f: &mut F,
     ) -> ControlFlow<()> {
-        f(HirNode::Ty(self.spec(db).spec_to_ty(db)))?;
+        f(HirNode::VariableDecl(*self))?;
         if let Some(init_expr) = self.init(db) {
             resolve_init_expr(db, self.spec(db).spec_to_ty(db), *init_expr).walk_hir(db, f)?;
         }

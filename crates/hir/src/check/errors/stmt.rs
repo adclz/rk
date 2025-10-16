@@ -9,7 +9,7 @@ use crate::{
         recovery::func_call::fuzzy_func_local_items,
     }, hir_def::interned::identifier::SpanIdent, hir_ty::{
         expr_resolver::ResolvedExpr,
-        ty::{Ty, TyDef},
+        ty::{Ty},
         ty_var_access_resolver::ResolvedAccess,
     }, HirNodeInfo
 };
@@ -47,9 +47,7 @@ pub enum StmtError<'db> {
         call: ResolvedAccess<'db>,
     },
     UnusedReturnType {
-        ty: Ty<'db>,
         call: ResolvedAccess<'db>,
-        ret: Ty<'db>,
     },
     TooManyParameters {
         call: ResolvedAccess<'db>,
@@ -240,11 +238,11 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
 
                 diag
             }
-            Self::UnusedReturnType { ty, call, ret } => {
+            Self::UnusedReturnType { call } => {
                 let mut diag = diag()
                     .message(format!(
                         "unused return type of '{}'",
-                        ty.name(db)
+                        call.decl_name(db)
                     ))
                     .severity(DiagnosticSeverity::WARNING)
                     .range(call.get_span(db).clone())

@@ -2,7 +2,7 @@ use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, Related, diag};
 
 use crate::{
-    check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic}, hir_def::{interned::identifier::SpanIdent, pous::pou::PouDecl}, hir_ty::{inheritance_solver::{InheritedMethod, MethodRef}, ty::Ty}, HirNodeInfo
+    check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic}, hir_def::{expressions::spec::StructElement, interned::identifier::SpanIdent, pous::{pou::PouDecl, variable::VariableDecl}}, hir_ty::{inheritance_solver::{InheritedMethod, MethodRef}, ty::Ty}, HirNodeInfo
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
@@ -12,12 +12,12 @@ pub enum DuplicateError<'db> {
         pou2: PouDecl<'db>,
     },
     Variable {
-        var1: Ty<'db>,
-        var2: Ty<'db>,
+        var1: VariableDecl<'db>,
+        var2: VariableDecl<'db>,
     },
     StructField {
-        field1: Ty<'db>,
-        field2: Ty<'db>,
+        field1: StructElement<'db>,
+        field2: StructElement<'db>,
     },
     EnumVariant {
         variant1: SpanIdent<'db>,
@@ -67,19 +67,19 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "duplicate variable '{}'",
-                        var1.name(db)
+                        var1.name(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
-                    .range(var1.name_span(db))
+                    .range(var1.get_name_span(db).unwrap())
                     .call();
 
                 diag.with_related(Related::new(
                     format!(
                         "variable '{}' is already defined here",
-                        var2.name(db)
+                        var2.name(db).text(db)
                     ),
                     var2.get_scope_id(db).file(db),
-                    var2.name_span(db),
+                    var2.get_name_span(db).unwrap(),
                 ));
 
                 diag
@@ -109,19 +109,19 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "duplicate field '{}'",
-                        field1.name(db)
+                        field1.name(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
-                    .range(field1.name_span(db))
+                    .range(field1.get_name_span(db).unwrap())
                     .call();
 
                 diag.with_related(Related::new(
                     format!(
                         "field '{}' is already defined here",
-                        field2.name(db)
+                        field2.name(db).text(db)
                     ),
                     field2.get_scope_id(db).file(db),
-                    field2.name_span(db),
+                    field2.get_name_span(db).unwrap(),
                 ));
 
                 diag

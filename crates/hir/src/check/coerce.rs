@@ -27,7 +27,7 @@ pub fn coerce_ty_with_ty<'db>(
         },
         // For all other types, we check for exact equality of the HIR def node
         _ => {
-            if ty1.def(db) == ty2.def(db) {
+            if ty1.kind(db) == ty2.kind(db) {
                 Ok(())
             } else {
                 Err(TypeMismatch { ty1, ty2 })

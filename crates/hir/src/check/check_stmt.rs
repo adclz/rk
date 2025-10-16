@@ -15,8 +15,8 @@ use crate::{
         func_call_resolver::{ResolvedFuncCall, ResolvedParam, ResolvedParamKind},
         invocation_resolver::{ResolvedInvocationResult, ResolvedMethodKind},
         stmt_resolver::{resolve_stmt, ResolvedStmt, ResolvedStmtKind},
-        ty::{Ty, TyDef, TyKind},
-        ty_var_access_resolver::ResolvedAccess, walk::ResolvedPath,
+        ty::{Ty, TyKind},
+        ty_var_access_resolver::ResolvedAccess, walk::{ResolvedPath, ResolvedPathElement, ResolvedPathResult},
     },
 };
 
@@ -141,15 +141,17 @@ fn check_assignment<'db>(
         // is not a variable but callable
         (false, true) => {
             // Special case: assigning to function with return type
-            if let TyDef::Pou(pou) = access_type.def(db)
-                && let Pou::Function(func) = pou.pou(db)
-                && let Some(ret) = access.with_return_type(db)
-            {
-                return coerce_ty_with_expr(db, ret.spec_to_ty(db), target)
+            if let ResolvedPathResult::Ok(ResolvedPath::Pou(pou))  = access.kind(db)
+                && let Pou::Function(f) = pou.pou(db) 
+                && let Some(ret) = f.return_type(db){
+                
+            return coerce_ty_with_expr(db, ret.spec_to_ty(db), target)
                     .map_err(|err| StmtError::AssignmentTypeMismatch { err }.into());
             } else {
                 return Err(StmtError::AssignmentToCallableType { var: access }.into());
             }
+            
+                
         }
         // is a variable and callable (trying to assign to a FUNCTION_BLOCK, CLASS, ...)
         (true, true) => {

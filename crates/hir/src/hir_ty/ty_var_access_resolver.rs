@@ -2,7 +2,9 @@ use auto_lsp::default::db::BaseDatabase;
 use indexmap::IndexMap;
 
 use crate::{
-    check::errors::path_error::PathResolveError, hir_def::{
+    AstId, HirNodeInfo, TypeInfo,
+    check::errors::path_error::PathResolveError,
+    hir_def::{
         expressions::{
             expression::{
                 Expr, PathExpr, PathExprKind, VarAccess, VariableAccess, VariableAccessKind,
@@ -19,10 +21,16 @@ use crate::{
             variable::{VariableDecl, VariableKind},
         },
         scope::{FileScopeId, ScopeKind},
-        semantic_index::semantic_index, visibility::Visibility,
-    }, hir_ty::{
-        inheritance_solver::MethodRef, name_res::{pou_names_res, resolve_namespace_access}, signatures::LocalVariables, ty::{SearchMode, Ty}, walk::{ResolvedPath, ResolvedPathResult}
-    }, AstId, HirNodeInfo, TypeInfo
+        semantic_index::semantic_index,
+        visibility::Visibility,
+    },
+    hir_ty::{
+        inheritance_solver::MethodRef,
+        name_res::{pou_names_res, resolve_namespace_access},
+        signatures::LocalVariables,
+        ty::Ty,
+        walk::{ResolvedPath, ResolvedPathResult},
+    },
 };
 
 #[salsa::tracked]
@@ -92,7 +100,10 @@ impl<'db> CallSite<'db> {
 }
 
 impl<'db> ResolvedAccess<'db> {
-    pub fn resolved(&self, db: &'db dyn BaseDatabase) -> Result<ResolvedPath<'db>, PathResolveError<'db>> {
+    pub fn resolved(
+        &self,
+        db: &'db dyn BaseDatabase,
+    ) -> Result<ResolvedPath<'db>, PathResolveError<'db>> {
         match self.elements(db).last() {
             Some(ResolvedPathResult::Ok(ok)) => Ok(ok.clone()),
             Some(ResolvedPathResult::Err(err)) => Err(err.clone()),
@@ -103,7 +114,10 @@ impl<'db> ResolvedAccess<'db> {
         }
     }
 
-    pub fn to_ty(&self, db: &'db dyn BaseDatabase) -> Result<Option<Ty<'db>>, PathResolveError<'db>> {
+    pub fn to_ty(
+        &self,
+        db: &'db dyn BaseDatabase,
+    ) -> Result<Option<Ty<'db>>, PathResolveError<'db>> {
         match self.resolved(db) {
             Ok(r) => Ok(r.to_ty(db)),
             Err(err) => Err(err),
@@ -143,11 +157,14 @@ impl<'db> ResolvedAccess<'db> {
         self.is_function(db) || self.is_function_block(db) || self.is_method(db)
     }
 
-    pub fn callable(&self, db: &'db dyn BaseDatabase) -> Option<&'db IndexMap<Ident, VariableDecl<'db>>> {
+    pub fn callable(
+        &self,
+        db: &'db dyn BaseDatabase,
+    ) -> Option<&'db IndexMap<Ident, VariableDecl<'db>>> {
         Some(match self.kind(db) {
             ResolvedPathResult::Ok(ResolvedPath::Pou(p)) => p.local_variables(db),
             ResolvedPathResult::Ok(ResolvedPath::Method(m)) => m.local_variables(db),
-            _ => None?
+            _ => None?,
         })
     }
 
@@ -165,7 +182,7 @@ impl<'db> ResolvedAccess<'db> {
     pub fn visibility(&self, db: &'db dyn BaseDatabase) -> Visibility {
         match self.kind(db) {
             ResolvedPathResult::Ok(ResolvedPath::Method(m)) => m.visibility(db),
-            _ => Visibility::PUBLIC
+            _ => Visibility::PUBLIC,
         }
     }
 

@@ -1,18 +1,10 @@
 use auto_lsp::default::db::BaseDatabase;
 use ide_diagnostic::{IdeDiagnostic, Related};
 
-use crate::{check::recovery::pou::FuzzyResult, hir_ty::ty::Ty, HirNodeInfo};
+use crate::{HirNodeInfo, check::recovery::pou::FuzzyResult, hir_ty::ty::Ty};
 
 pub fn get_def_for_ty(db: &dyn BaseDatabase, ty: Ty<'_>, diag: &mut IdeDiagnostic) {
-    if let Some(span) = ty.def(db).get_span(db) {
-        diag.with_related(Related::new(
-            format!("'{}' defined here", ty.name(db)),
-            ty.def(db)
-                .get_scope_id(db)
-                .file(db),
-            span,
-        ));
-    }
+    
 }
 
 pub fn get_candidates(candidates: &FuzzyResult) -> String {

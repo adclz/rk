@@ -20,8 +20,8 @@ impl<'db> Check<'db> for Vec<VariableDecl<'db>> {
                 Some(prev) => {
                     errors.push(
                         DuplicateError::Variable {
-                            var1: variable.spec(db).spec_to_ty(db),
-                            var2: prev.spec(db).spec_to_ty(db),
+                            var1: *variable,
+                            var2: *prev
                         }
                         .into(),
                     );

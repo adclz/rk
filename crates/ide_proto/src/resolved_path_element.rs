@@ -8,7 +8,7 @@ use hir::{
     }, HirNodeInfo, TypeInfo
 };
 
-use crate::{ToProtocol, ty::TyHover};
+use crate::{ToProtocol};
 
 impl<'db> ToProtocol<'db> for ResolvedPath<'db> {
     fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Hover> {

@@ -18,10 +18,10 @@ pub mod resolved_param;
 pub mod resolved_path_element;
 pub mod resolved_stmt;
 pub mod resolved_var_access;
-pub mod ty;
 pub mod using;
 pub mod variable;
 pub mod resolved_using;
+pub mod struct_element;
 
 pub trait ToProtocol<'db>: HirNodeInfo<'db> {
     fn document_symbols(&self, _db: &'db dyn BaseDatabase, _builder: &mut DocumentSymbolsBuilder) {}
@@ -67,7 +67,10 @@ impl<'db> AsProtocol<'db> for HirNode<'db> {
     fn as_proto(&'db self) -> &'db dyn ToProtocol<'db> {
         match self {
             HirNode::Namespace(ns) => ns,
-            HirNode::Ty(ty) => ty,
+            HirNode::PouDecl(p) => p,
+            HirNode::VariableDecl(v) => v,
+            HirNode::StructElement(s) => s,
+            HirNode::MethodRef(m) => m,
             HirNode::ResolvedUsing(u) => u,
             HirNode::ResolvedAccess(v) => v,
             HirNode::ResolvedPath(p) => p,

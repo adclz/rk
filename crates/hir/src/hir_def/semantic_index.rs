@@ -9,6 +9,9 @@ use auto_lsp::default::db::{BaseDatabase, file::File};
 use rustc_hash::FxHashMap;
 use tracing::info_span;
 
+use crate::hir_def::expressions::spec::StructElement;
+use crate::hir_def::pous::variable::VariableDecl;
+use crate::hir_ty::inheritance_solver::MethodRef;
 use crate::hir_ty::walk::ResolvedPath;
 use crate::HirNodeInfo;
 use crate::builder::semantic_index::SemanticIndexBuilder;
@@ -145,7 +148,10 @@ impl FusedIterator for ScopeIterator<'_> {}
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum HirNode<'db> {
     Namespace(NamespaceDecl<'db>),
-    Ty(Ty<'db>),
+    PouDecl(PouDecl<'db>),
+    VariableDecl(VariableDecl<'db>),
+    StructElement(StructElement<'db>),
+    MethodRef(MethodRef<'db>),
     ResolvedUsing(ResolvedUsing<'db>),
     ResolvedAccess(ResolvedAccess<'db>),
     ResolvedPath(ResolvedPath<'db>),
@@ -159,8 +165,11 @@ impl<'db> HirNode<'db> {
     pub fn get_span(&'db self, db: &'db dyn BaseDatabase) -> Span {
         match self {
             HirNode::Namespace(n) => n.get_span(db),
+            HirNode::PouDecl(p) => p.get_span(db),
+            HirNode::VariableDecl(v) => v.get_span(db),
+            HirNode::StructElement(s) => s.get_span(db),
+            HirNode::MethodRef(m) => m.get_span(db),
             HirNode::ResolvedUsing(u) => u.get_span(db),
-            HirNode::Ty(t) => t.get_span(db),
             HirNode::ResolvedPath(p) => p.get_span(db),
             HirNode::ResolvedAccess(v) => v.get_span(db),
             HirNode::ResolvedStmt(s) => s.get_span(db),

@@ -13,13 +13,6 @@ use crate::{
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum TyError<'db> {
-    Recursive {
-        origin: Ty<'db>,
-    },
-    ReferenceRecursive {
-        origin: Ty<'db>,
-        target: Ty<'db>,
-    },
     UnresolvedNamespace {
         ty: Ty<'db>,
         path: SpanNamespaceAccess<'db>,
@@ -72,42 +65,6 @@ impl<'db> ToIdeDiagnostic<'db> for TyError<'db> {
                 .severity(DiagnosticSeverity::ERROR)
                 .range(path.get_span(db))
                 .call(),
-            TyError::Recursive { origin } => diag()
-                .message(format!(
-                    "'{}' is recursive",
-                    origin.name(db),
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .range(origin.name_span(db))
-                .call(),
-            TyError::ReferenceRecursive { origin, target } => {
-                let mut diag = diag()
-                    .message(format!(
-                        "'{}' creates a recursion with '{}'",
-                        origin.name(db),
-                        target.name(db)
-                    ))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .range(origin.get_span(db))
-                    .call();
-
-                diag.with_related(Related::new(
-                    format!(
-                        "'{}' is originally declared here",
-                        target.name(db)
-                    ),
-                    target.get_scope_id(db).file(db),
-                    target.name_span(db),
-                ));
-
-                diag.with_related(Related::new(
-                    "... and recurse at this location".to_string(),
-                    origin.get_scope_id(db).file(db),
-                    origin.name_span(db),
-                ));
-
-                diag
-            }
             TyError::InvalidArrayLowerValue { value } => diag()
                 .message("Invalid lower bound value for ARRAY".to_string())
                 .severity(DiagnosticSeverity::ERROR)
@@ -128,15 +85,16 @@ impl<'db> ToIdeDiagnostic<'db> for TyError<'db> {
                 .range(upper_expr.get_span(db))
                 .call(),
             TyError::InvalidEnumType { value } => {
-                let mut diag = diag()
+                todo!();
+                /*let mut diag = diag()
                     .message(format!("invalid enum type '{}'", value.type_name(db)))
                     .severity(DiagnosticSeverity::ERROR)
-                    .range(value.name_span(db))
+                    .range(value.span(db))
                     .call();
 
                 diag.with_note("only numeric integer types are allowed for ENUM".to_string());
 
-                diag
+                diag*/
             }
             TyError::InvalidEnumVariantValue { variant, err } => {
                 let mut diag = diag()
@@ -155,7 +113,8 @@ impl<'db> ToIdeDiagnostic<'db> for TyError<'db> {
                 diag
             }
             TyError::InvalidSubrangeType { value } => {
-                let mut diag = diag()
+                todo!();
+                /*let mut diag = diag()
                     .message(format!("invalid subrange type '{}'", value.type_name(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(value.name_span(db))
@@ -163,7 +122,7 @@ impl<'db> ToIdeDiagnostic<'db> for TyError<'db> {
 
                 diag.with_note("only numeric integer types are allowed for SUBRANGE".to_string());
 
-                diag
+                diag*/
             }
             TyError::InvalidSubrangeStart { expr, err } => {
                 let mut diag = diag()

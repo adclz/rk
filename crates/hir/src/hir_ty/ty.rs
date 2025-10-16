@@ -33,96 +33,9 @@ use crate::{
 /// [`Ty`] is the most fundamental unit of type information in the HIR.
 #[salsa::tracked(debug)]
 pub struct Ty<'db> {
-    // Where the type is defined (POU, Spec, Method)
-    pub def: TyDef<'db>,
-
-    // The actual kind of the type
     #[tracked]
     #[returns(ref)]
     pub kind: TyKind<'db>,
-}
-
-impl<'db> Ty<'db> {
-    pub fn name(&self, db: &'db dyn BaseDatabase) -> String {
-        self.def(db).name(db)
-    }
-
-    pub fn name_span(&self, db: &'db dyn BaseDatabase) -> Span {
-        match self.def(db) {
-            TyDef::Pou(pou) => pou.get_name_span(db).unwrap(),
-            TyDef::MethodRef(m) => m.get_name_span(db).unwrap(),
-            TyDef::Spec(spec) => spec.get_span(db),
-        }
-    }
-}
-
-impl<'db> HirNodeInfo<'db> for Ty<'db> {
-    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
-        self.def(db).get_id(db)
-    }
-
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
-        self.def(db).get_scope_id(db)
-    }
-}
-
-// Definition of the type (POU or Spec)
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum TyDef<'db> {
-    Pou(PouDecl<'db>),
-    MethodRef(MethodRef<'db>),
-    Spec(Spec<'db>),
-}
-
-impl<'db> TyDef<'db> {
-    pub fn name(&self, db: &'db dyn BaseDatabase) -> String {
-        match self {
-            TyDef::Pou(pou) => pou.name(db).text(db).to_string(),
-            TyDef::MethodRef(m) => m.name(db).text(db).to_string(),
-            TyDef::Spec(spec) => spec.shorthand(db),
-        }
-    }
-
-    pub fn modifier(&self, db: &'db dyn BaseDatabase) -> Modifier {
-        match self {
-            TyDef::Pou(p) => p.modifier(db),
-            _ => Modifier::empty(),
-        }
-    }
-
-    pub fn is_pou(&self) -> bool {
-        matches!(self, TyDef::Pou(_))
-    }
-
-    pub fn is_spec(&self) -> bool {
-        matches!(self, TyDef::Spec(_))
-    }
-
-    pub fn get_span(&self, db: &'db dyn BaseDatabase) -> Option<Span> {
-        match self {
-            TyDef::Pou(pou) => Some(pou.get_span(db)),
-            TyDef::MethodRef(m) => Some(m.get_span(db)),
-            TyDef::Spec(spec) => Some(spec.get_span(db)),
-        }
-    }
-}
-
-impl<'db> HirNodeInfo<'db> for TyDef<'db> {
-    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
-        match self {
-            TyDef::Pou(pou) => pou.get_id(db),
-            TyDef::MethodRef(m) => m.get_id(db),
-            TyDef::Spec(spec) => spec.get_id(db),
-        }
-    }
-
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
-        match self {
-            TyDef::Pou(pou) => pou.get_scope_id(db),
-            TyDef::MethodRef(m) => m.get_scope_id(db),
-            TyDef::Spec(spec) => spec.get_scope_id(db),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
@@ -141,12 +54,6 @@ pub enum TyKind<'db> {
     Unresolved(SpanNamespaceAccess<'db>),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum SearchMode {
-    Local,
-    Global,
-}
-
 impl<'db> Struct<'db> {
     pub fn resolve_elements(
         &self,
@@ -161,13 +68,6 @@ impl<'db> Struct<'db> {
 
 #[salsa::tracked]
 impl<'db> Ty<'db> {
-    pub fn visibility(&self, db: &'db dyn BaseDatabase) -> Option<Visibility> {
-        match self.def(db) {
-            TyDef::MethodRef(method) => Some(method.visibility(db)),
-            _ => None,
-        }
-    }
-
     pub fn is_simple(&self, db: &'db dyn BaseDatabase) -> bool {
         matches!(self.kind(db), TyKind::Simple(_))
     }
@@ -200,7 +100,7 @@ impl<'db> Spec<'db> {
             SpecKind::ArrayConformand(array) => TyKind::ArrayConformand(*array),
             SpecKind::Ref(_ref) => TyKind::RefTo(*_ref),
         };
-        Ty::new(db, TyDef::Spec(self), kind)
+        Ty::new(db, kind)
     }
 }
 

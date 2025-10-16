@@ -17,8 +17,8 @@ impl<'db> DataTypeCheck<'db> for Struct<'db> {
                 Some(prev) => {
                     errors.push(
                         DuplicateError::StructField {
-                            field1: field.spec(db).spec_to_ty(db),
-                            field2: prev.spec(db).spec_to_ty(db),
+                            field1: *field,
+                            field2: *prev
                         }
                         .into(),
                     );
