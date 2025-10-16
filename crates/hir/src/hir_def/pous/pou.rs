@@ -1,5 +1,5 @@
 use crate::hir_def::modifier::Modifier;
-use auto_lsp::default::db::BaseDatabase;
+use auto_lsp::{core::span::Span, default::db::BaseDatabase};
 
 use crate::{
     hir_def::{
@@ -39,6 +39,10 @@ impl<'db> PouDecl<'db> {
             Pou::FunctionBlock(fb) => fb.modifier(db),
             _ => Modifier::empty(),
         }
+    }
+
+    pub fn name_span(&self, db: &'db dyn BaseDatabase) -> Span {
+        self.get_name_span(db).unwrap()
     }
 }
 

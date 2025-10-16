@@ -3,15 +3,15 @@ use auto_lsp::default::db::BaseDatabase;
 use crate::{
     hir_def::expressions::expression::{ParamAssign, ParamAssignKind},
     hir_ty::{
-        expr_resolver::resolve_expr, func_call_resolver::{ResolvedParam, ResolvedParamKind}, ty::Ty, ty_var_access_resolver::{
-            resolve_var_access, CallSite, Place, ResolvedAccess
-        }
+        expr_resolver::resolve_expr, func_call_resolver::{ResolvedParam, ResolvedParamKind}, signatures::LocalVariables, ty::Ty, ty_var_access_resolver::{
+            resolve_var_access, CallSite, ResolvedAccess
+        }, walk::{ResolvedPath, ResolvedPathElement, ResolvedPathResult}
     },
 };
 
 pub fn resolve_parameters<'db>(
     db: &'db dyn BaseDatabase,
-    callee: Ty<'db>,
+    callee: impl LocalVariables<'db>,
     caller: &[ParamAssign<'db>],
 ) -> Vec<ResolvedParam<'db>> {
     let mut formal_index = 0;
@@ -26,13 +26,13 @@ pub fn resolve_parameters<'db>(
                     ResolvedParamKind::NonFormal {
                         resolved_param: {
                             // Try to get the param by index
-                            let param = callee.local_variables2(db).values().nth(formal_index);
+                            let param = callee.local_variables(db).values().nth(formal_index);
                             formal_index += 1;
                             param.map(|p| {
                                 ResolvedAccess::new(
                                     db,
                                     CallSite::NonFormal(value),
-                                    Place::Variable(*p),
+                                    ResolvedPathResult::Ok(ResolvedPath::Variable(*p)),
                                     vec![]
                                 )
                             })
@@ -48,14 +48,14 @@ pub fn resolve_parameters<'db>(
                     param,
                     resolved_param: {
                         callee
-                            .local_variables2(db)
+                            .local_variables(db)
                             .get(&param.ident)
                             // todo: check if it's input / in_out
                             .map(|p| {
                                 ResolvedAccess::new(
                                     db,
                                     CallSite::Formal(param),
-                                    Place::Variable(*p),
+                                    ResolvedPathResult::Ok(ResolvedPath::Variable(*p)),
                                     vec![]
                                 )
                             })
@@ -75,14 +75,14 @@ pub fn resolve_parameters<'db>(
                     param,
                     resolved_param: {
                         callee 
-                            .local_variables2(db)
+                            .local_variables(db)
                             .get(&param.ident)
                             // todo: check if it's output
                             .map(|p| {
                                 ResolvedAccess::new(
                                     db,
                                     CallSite::Formal(param),
-                                    Place::Variable(*p),
+                                    ResolvedPathResult::Ok(ResolvedPath::Variable(*p)),
                                     vec![]
                                 )
                             })

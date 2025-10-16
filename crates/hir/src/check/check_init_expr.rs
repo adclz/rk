@@ -43,13 +43,11 @@ pub fn check_init_expr<'db>(
             }
         }
         ResolvedInitExprKind::StructElement { field, value } => {
-            match field.ty(db) {
-                Err(_err) => {
-                    // Field resolution error - already handled by resolver
-                }
-                Ok(field_ty) => {
+            match field.to_ty(db) {
+                Ok(Some(field_ty)) => {
                     check_init_expr(db, field_ty, *value, errors);
-                }
+                },
+                _ => ()
             }
         }
         ResolvedInitExprKind::ArrayInit { values } => {

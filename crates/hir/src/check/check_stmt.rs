@@ -7,16 +7,16 @@ use crate::{
         check_semantic_index::Check,
         check_visibility::check_call_visibility,
         coerce::{coerce_bool_with_expr, coerce_ty_with_expr, coerce_ty_with_ty},
-        errors::{analysis_error::AnalysisError, stmt::StmtError},
+        errors::{analysis_error::AnalysisError, stmt::StmtError}, recovery::func_call,
     },
-    hir_def::{expressions::statement::Stmt, interned::identifier::Ident, pous::pou::Pou},
+    hir_def::{expressions::statement::Stmt, interned::identifier::Ident, pous::{pou::Pou, variable::VariableDecl}},
     hir_ty::{
         expr_resolver::ResolvedExpr,
         func_call_resolver::{ResolvedFuncCall, ResolvedParam, ResolvedParamKind},
         invocation_resolver::{ResolvedInvocationResult, ResolvedMethodKind},
-        stmt_resolver::{ResolvedStmt, ResolvedStmtKind, resolve_stmt},
+        stmt_resolver::{resolve_stmt, ResolvedStmt, ResolvedStmtKind},
         ty::{Ty, TyDef, TyKind},
-        ty_var_access_resolver::ResolvedAccess,
+        ty_var_access_resolver::ResolvedAccess, walk::ResolvedPath,
     },
 };
 
@@ -123,42 +123,42 @@ impl<'db> Check<'db> for ResolvedStmt<'db> {
 
 fn check_assignment<'db>(
     db: &'db dyn BaseDatabase,
-    var: ResolvedAccess<'db>,
+    access: ResolvedAccess<'db>,
     target: ResolvedExpr<'db>,
 ) -> Result<(), AnalysisError<'db>> {
-    let ty_var = var
-        .ty(db)
-        .map_err(|err| StmtError::UnresolvedAssignmentTarget { var, err })?;
+    let access_type = match access.to_ty(db) {
+        Ok(Some(ty)) => ty,
+        Ok(None) => return Err(StmtError::InvalidAssignmentTarget { var: access }.into()),
+        Err(err) => return Err(StmtError::UnresolvedAssignmentTarget { var: access, err }.into()),
+    };
 
     // Variables in VAR_INPUT can not be mutated
-    if var.is_var_input(db) {
-        return Err(StmtError::AssignmentToInputVar { var, ty: ty_var }.into());
+    if access.is_var_input(db) {
+        return Err(StmtError::AssignmentToInputVar { var: access }.into());
     }
 
-    match (var.is_variable(db), ty_var.is_callable(db)) {
+    match (access.is_variable(db), access.is_callable(db)) {
         // is not a variable but callable
         (false, true) => {
             // Special case: assigning to function with return type
-            if let TyDef::Pou(pou) = ty_var.def(db)
+            if let TyDef::Pou(pou) = access_type.def(db)
                 && let Pou::Function(func) = pou.pou(db)
-                && let Some(ret) = ty_var.has_return_type(db)
+                && let Some(ret) = access.with_return_type(db)
             {
-                return coerce_ty_with_expr(db, ret, target)
+                return coerce_ty_with_expr(db, ret.spec_to_ty(db), target)
                     .map_err(|err| StmtError::AssignmentTypeMismatch { err }.into());
             } else {
-                return Err(StmtError::AssignmentToCallableType { var, ty: ty_var }.into());
+                return Err(StmtError::AssignmentToCallableType { var: access }.into());
             }
         }
         // is a variable and callable (trying to assign to a FUNCTION_BLOCK, CLASS, ...)
         (true, true) => {
-            return Err(StmtError::AssignmentToCallableType { var, ty: ty_var }.into());
+            return Err(StmtError::AssignmentToCallableType { var: access }.into());
         }
-        // is a variable and not callable, valid case
-        (true, false) => {}
         _ => {}
     }
 
-    coerce_ty_with_expr(db, ty_var, target)
+    coerce_ty_with_expr(db, access_type, target)
         .map_err(|err| StmtError::AssignmentTypeMismatch { err }.into())
 }
 
@@ -167,52 +167,14 @@ fn check_func_call<'db>(
     fun_call: &'db ResolvedFuncCall<'db>,
     errors: &mut Vec<AnalysisError<'db>>,
 ) -> Result<(), AnalysisError<'db>> {
-    let ty_target = fun_call
-        .target
-        .ty(db)
-        .map_err(|err| StmtError::UnresolvedFuncCall {
-            call: fun_call.target,
-        })?;
-
-    if !ty_target.is_callable(db) {
-        return Err(StmtError::CallANonCallableType {
-            ty: ty_target,
-            call: fun_call.target,
-        }
-        .into());
-    }
-
-    // Only functions can be called directly
-    if !fun_call.target.is_variable(db)
-        && !matches!(
-            ty_target.kind(db),
-            TyKind::Function { .. } | TyKind::MethodRef { .. }
-        )
-    {
-        return Err(StmtError::CallADirectType {
-            ty: ty_target,
-            call: fun_call.target,
-        }
-        .into());
-    }
-
-    check_call_visibility(db, ty_target, &fun_call.target, errors);
-
-    if let Some(ret) = ty_target.has_return_type(db) {
-        errors.push(
-            StmtError::UnusedReturnType {
-                ty: ty_target,
-                call: fun_call.target,
-                ret,
-            }
-            .into(),
-        )
-    }
+    let sig = fun_call
+        .callable(db)
+        .ok_or(StmtError::CallANonCallableType { call: fun_call.target })?;
 
     check_parameters(
         db,
         fun_call.target,
-        ty_target.local_variables(db),
+        sig,
         &fun_call.params,
         errors,
     );
@@ -230,23 +192,23 @@ fn check_invocation<'db>(
         }
         ResolvedMethodKind::InheritedMethod { target, method }
         | ResolvedMethodKind::DeclaredMethod { target, method } => {
-            let ty_target = method
-                .ty(db)
-                .map_err(|err| StmtError::UnresolvedFuncCall { call: *target })?;
+            let variables = method.callable(db).ok_or(
+                StmtError::UnresolvedFuncCall { call: *target }
+            )?;
 
             // Check visibility
-            check_call_visibility(db, ty_target, &invocation.target.invocation, errors);
+            check_call_visibility(db, method, &invocation.target, errors);
             check_parameters(
                 db,
                 *method,
-                ty_target.local_variables(db),
+                variables,
                 &invocation.params,
                 errors,
             );
         }
         ResolvedMethodKind::FunctionBlockBody { target } => {
             let ty_target = target
-                .ty(db)
+                .to_ty(db)
                 .map_err(|err| StmtError::UnresolvedFuncCall { call: *target })?;
         }
     }
@@ -288,7 +250,7 @@ impl FormalCall {
 fn check_parameters<'db>(
     db: &'db dyn BaseDatabase,
     target: ResolvedAccess<'db>,
-    signature: &IndexMap<Ident, Ty<'db>>,
+    signature: &IndexMap<Ident, VariableDecl<'db>>,
     params: &Vec<ResolvedParam<'db>>,
     errors: &mut Vec<AnalysisError<'db>>,
 ) {
@@ -319,8 +281,8 @@ fn check_parameters<'db>(
                 resolved_param,
                 value,
             } => match resolved_param {
-                Some(other_param) => match other_param.ty(db) {
-                    Ok(p_ty) => {
+                Some(other_param) => match other_param.to_ty(db) {
+                    Ok(Some(p_ty)) => {
                         let _ = coerce_ty_with_expr(db, p_ty, value).map_err(|err| {
                             errors.push(
                                 StmtError::ParameterExprMismatch {
@@ -332,6 +294,7 @@ fn check_parameters<'db>(
                             )
                         });
                     }
+                    Ok(None) => unreachable!(""),
                     Err(err) => errors.push(
                         StmtError::UnresolvedNonFormalParam {
                             var: other_param,
@@ -364,8 +327,8 @@ fn check_parameters<'db>(
                     ),
                 }
                 match resolved_param {
-                    Some(other_param) => match other_param.ty(db) {
-                        Ok(p_ty) => {
+                    Some(other_param) => match other_param.to_ty(db) {
+                        Ok(Some(p_ty)) => {
                             let _ = coerce_ty_with_expr(db, p_ty, value).map_err(|err| {
                                 errors.push(
                                     StmtError::ParameterExprMismatch {
@@ -376,6 +339,9 @@ fn check_parameters<'db>(
                                     .into(),
                                 )
                             });
+                        }
+                        Ok(None) => {
+                            // Handle case where type resolution returns None
                         }
                         Err(err) => errors.push(
                             StmtError::UnresolvedInputParam {
@@ -413,28 +379,25 @@ fn check_parameters<'db>(
                     ),
                 }
                 match resolved_param {
-                    Some(other_param) => match other_param.ty(db) {
-                        Ok(p_ty) => match variable.ty(db) {
-                            Ok(var_ty) => {
+                    Some(other_param) => match other_param.to_ty(db) {
+                        Ok(Some(p_ty)) => match variable.to_ty(db) {
+                            Ok(Some(var_ty)) => {
                                 if variable.is_var_input(db) {
                                     errors.push(
                                         StmtError::AssignmentToInputVar {
-                                            ty: var_ty,
                                             var: variable,
                                         }
                                         .into(),
                                     );
-                                    // use is_variable from resolved var result when updated
                                 }
-                                /*else if !var_ty.is_variable(db) {
+                                else if !other_param.is_variable(db) {
                                     errors.push(
                                         StmtError::AssignmentToDirectType {
-                                            ty: var_ty,
                                             var: variable,
                                         }
                                         .into(),
                                     );
-                                }*/
+                                }
                                 else {
                                     let _ = coerce_ty_with_ty(db, p_ty, var_ty).map_err(|err| {
                                         errors.push(
@@ -448,6 +411,9 @@ fn check_parameters<'db>(
                                     });
                                 }
                             }
+                            Ok(None) => {
+                                // Handle case where type resolution returns None
+                            }
                             Err(err) => errors.push(
                                 StmtError::UnresolvedOutputParamTarget {
                                     var: other_param,
@@ -456,6 +422,9 @@ fn check_parameters<'db>(
                                 .into(),
                             ),
                         },
+                        Ok(None) => {
+                            // Handle case where type resolution returns None
+                        }
                         Err(err) => errors.push(
                             StmtError::UnresolvedOutputParam {
                                 var: other_param,
@@ -485,18 +454,16 @@ fn check_for<'db>(
     step: Option<ResolvedExpr<'db>>,
     errors: &mut Vec<AnalysisError<'db>>,
 ) -> Result<(), AnalysisError<'db>> {
-    let control_var_ty = control_var
-        .ty(db)
-        .map_err(|err| StmtError::UnresolvedControlVar {
-            control: control_var,
-            err,
-        })?;
+    let control_var_ty = match control_var.to_ty(db) {
+        Ok(Some(ty)) => ty,
+        Ok(None) => return Err(StmtError::InvalidAssignmentTarget { var: control_var }.into()),
+        Err(err) => return Err(StmtError::UnresolvedAssignmentTarget { var: control_var, err }.into()),
+    };
 
     // Variables in VAR_INPUT can not be mutated
     if control_var.is_var_input(db) {
         errors.push(StmtError::AssignmentToInputVar {
             var: control_var,
-            ty: control_var_ty,
         }
         .into());
     }
@@ -505,16 +472,14 @@ fn check_for<'db>(
     if !control_var.is_variable(db) {
         return Err(StmtError::AssignmentToDirectType {
             var: control_var,
-            ty: control_var_ty,
         }
         .into());
     }
 
     // POUs can not be mutated
-    if control_var_ty.is_callable(db) {
+    if control_var.is_callable(db) {
         return Err(StmtError::AssignmentToCallableType {
             var: control_var,
-            ty: control_var_ty,
         }
         .into());
     }

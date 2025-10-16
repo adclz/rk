@@ -10,7 +10,7 @@ use crate::{
 };
 
 impl<'db> DataTypeCheck<'db> for Struct<'db> {
-    fn check(&'db self, db: &'db dyn BaseDatabase, ty: Ty<'db>, errors: &mut Vec<AnalysisError<'db>>) {
+    fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<AnalysisError<'db>>) {
         let mut seen: FxHashMap<Ident, StructElement> = FxHashMap::default();
         for field in &self.elements {
             match seen.get(field.name(db)) {

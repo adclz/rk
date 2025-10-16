@@ -1,8 +1,8 @@
 use auto_lsp::default::db::{BaseDatabase, file::File};
 
 use crate::{
-    hir_def::{pous::pou::PouDecl, semantic_index::semantic_index},
-    hir_ty::ty::{Ty, TyKind, ty_for_pou},
+    hir_def::{pous::pou::{Pou, PouDecl}, semantic_index::semantic_index},
+    hir_ty::{name_res::resolve_namespace_access},
 };
 
 // todo
@@ -14,9 +14,8 @@ pub fn find_all_implementations<'db>(
     pou: PouDecl<'db>,
 ) -> Vec<PouDecl<'db>> {
     let mut results = vec![];
-    let ty = ty_for_pou(db, pou);
     db.get_files().iter().for_each(|file| {
-        results.extend(find_implementations(db, *file, ty));
+        results.extend(find_implementations(db, *file, pou));
     });
     results
 }
@@ -26,7 +25,7 @@ pub fn find_all_implementations<'db>(
 fn find_implementations<'db>(
     db: &'db dyn BaseDatabase,
     file: File,
-    implemented: Ty<'db>,
+    implemented: PouDecl<'db>,
 ) -> Vec<PouDecl<'db>> {
     let mut pous = vec![];
     let sema = semantic_index(db, file);
@@ -47,14 +46,55 @@ fn find_implementations<'db>(
 fn check_implementations<'db>(
     db: &'db dyn BaseDatabase,
     pou: PouDecl<'db>,
-    implemented: Ty<'db>,
+    implemented: PouDecl<'db>,
     pous: &mut Vec<PouDecl<'db>>,
 ) {
-
-    for candidate in ty_for_pou(db, pou).inheritors(db) {
-        if *candidate == implemented {
+    for candidate in pou.inheritors(db) {
+        if candidate == implemented {
             pous.push(pou);
             return;
+        }
+    }
+}
+
+impl<'db> PouDecl<'db> {
+    pub fn inheritors(&self, db: &'db dyn BaseDatabase) -> Vec<PouDecl<'db>> {
+        match self.pou(db) {
+            Pou::Class(class) => {
+                let mut inheritors = vec![];
+                if let Some(base) = class.extends(db)
+                    && let Some(base) = resolve_namespace_access(db, base.scope_id, base.path)
+                {
+                    inheritors.push(base);
+                }
+                for iface in class.implements(db) {
+                    resolve_namespace_access(db, iface.scope_id, iface.path).map(|iface| {
+                        inheritors.push(iface);
+                    });
+                }
+                inheritors
+            }
+            Pou::Interface(interface) => {
+                let mut inheritors = vec![];
+                if let Some(extends) = interface.extends(db) {
+                    for iface in extends {
+                        resolve_namespace_access(db, iface.scope_id, iface.path).map(|iface| {
+                            inheritors.push(iface);
+                        });
+                    }
+                }
+                inheritors
+            }
+            Pou::FunctionBlock(fb) => {
+                let mut inheritors = vec![];
+                if let Some(base) = fb.extends(db)
+                    && let Some(base) = resolve_namespace_access(db, base.scope_id, base.path)
+                {
+                    inheritors.push(base);
+                }
+                inheritors
+            }
+            _ => vec![],
         }
     }
 }

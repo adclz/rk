@@ -6,7 +6,7 @@ use rustc_hash::FxHashMap;
 use crate::{
     check::errors::{analysis_error::AnalysisError, duplicates::DuplicateError},
     hir_def::{interned::identifier::Ident, namespace::NamespaceDecl, pous::pou::PouDecl},
-    hir_ty::{name_res::shared_namespaces, ty::ty_for_pou},
+    hir_ty::{name_res::shared_namespaces},
 };
 
 #[salsa::tracked(returns(ref), no_eq)]
@@ -31,8 +31,8 @@ pub fn check_duplicate_namespaces<'db>(
                             Entry::Occupied(mut err_entry) => {
                                 err_entry.get_mut().push(
                                     DuplicateError::Pou {
-                                        pou1: ty_for_pou(db, *decl),
-                                        pou2: ty_for_pou(db, original),
+                                        pou1: *decl,
+                                        pou2: original,
                                     }
                                     .into(),
                                 );
@@ -40,8 +40,8 @@ pub fn check_duplicate_namespaces<'db>(
                             Entry::Vacant(err_entry) => {
                                 err_entry.insert(vec![
                                     DuplicateError::Pou {
-                                        pou1: ty_for_pou(db, *decl),
-                                        pou2: ty_for_pou(db, original),
+                                        pou1: *decl,
+                                        pou2: original,
                                     }
                                     .into(),
                                 ]);

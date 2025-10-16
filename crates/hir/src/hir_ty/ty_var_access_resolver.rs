@@ -1,28 +1,28 @@
 use auto_lsp::default::db::BaseDatabase;
+use indexmap::IndexMap;
 
 use crate::{
-    check::errors::{path_error::PathResolveError, var_error::VarResolveError}, hir_def::{
+    check::errors::path_error::PathResolveError, hir_def::{
         expressions::{
             expression::{
                 Expr, PathExpr, PathExprKind, VarAccess, VariableAccess, VariableAccessKind,
             },
-            invocation::{Invocation, InvocationKind}, spec::StructElement,
+            invocation::{Invocation, InvocationKind},
+            spec::{Spec, StructElement},
         },
         interned::{
-            identifier::SpanIdent,
+            identifier::{Ident, SpanIdent},
             namespace::{NamespaceAccess, NamespacePath},
         },
         pous::{
-            pou::PouDecl,
+            pou::{Pou, PouDecl},
             variable::{VariableDecl, VariableKind},
         },
         scope::{FileScopeId, ScopeKind},
-        semantic_index::semantic_index,
+        semantic_index::semantic_index, visibility::Visibility,
     }, hir_ty::{
-        inheritance_solver::MethodRef,
-        name_res::{pou_names_res, resolve_namespace_access},
-        ty::{ty_for_pou, SearchMode, Ty},
-    }, AstId, HirNodeInfo
+        inheritance_solver::MethodRef, name_res::{pou_names_res, resolve_namespace_access}, signatures::LocalVariables, ty::{SearchMode, Ty}, walk::{ResolvedPath, ResolvedPathResult}
+    }, AstId, HirNodeInfo, TypeInfo
 };
 
 #[salsa::tracked]
@@ -47,9 +47,9 @@ pub struct ResolvedAccess<'db> {
     pub call_site: CallSite<'db>,
 
     // Where the variable is stored / how it is accessed
-    pub kind: Place<'db>,
+    pub kind: ResolvedPathResult<'db>,
 
-    pub elements: Vec<ResolvedPathElement<'db>>,
+    pub elements: Vec<ResolvedPathResult<'db>>,
 }
 
 /// Represents where a variable or method is accessed from.
@@ -91,20 +91,81 @@ impl<'db> CallSite<'db> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum Place<'db> {
-    Variable(VariableDecl<'db>),
-    Pou(PouDecl<'db>),
-    Method(MethodRef<'db>),
-    StructElement(StructElement<'db>), // A field in a struct
-    Invalid,
-}
-
 impl<'db> ResolvedAccess<'db> {
+    pub fn resolved(&self, db: &'db dyn BaseDatabase) -> Result<ResolvedPath<'db>, PathResolveError<'db>> {
+        match self.elements(db).last() {
+            Some(ResolvedPathResult::Ok(ok)) => Ok(ok.clone()),
+            Some(ResolvedPathResult::Err(err)) => Err(err.clone()),
+            _ => match &self.kind(db) {
+                ResolvedPathResult::Ok(ok) => Ok(ok.clone()),
+                ResolvedPathResult::Err(err) => Err(err.clone()),
+            },
+        }
+    }
+
+    pub fn to_ty(&self, db: &'db dyn BaseDatabase) -> Result<Option<Ty<'db>>, PathResolveError<'db>> {
+        match self.resolved(db) {
+            Ok(r) => Ok(r.to_ty(db)),
+            Err(err) => Err(err),
+        }
+    }
+
     fn as_var(&self, db: &'db dyn BaseDatabase) -> Option<VariableDecl<'db>> {
         match self.kind(db) {
-            Place::Variable(v) => Some(v),
+            ResolvedPathResult::Ok(ResolvedPath::Variable(v)) => Some(v),
             _ => None,
+        }
+    }
+
+    pub fn is_method(&self, db: &'db dyn BaseDatabase) -> bool {
+        matches!(
+            self.kind(db),
+            ResolvedPathResult::Ok(ResolvedPath::Method(_))
+        )
+    }
+
+    pub fn is_struct_field(&self, db: &'db dyn BaseDatabase) -> bool {
+        matches!(
+            self.kind(db),
+            ResolvedPathResult::Ok(ResolvedPath::StructElement(_))
+        )
+    }
+
+    pub fn is_function(&self, db: &'db dyn BaseDatabase) -> bool {
+        matches!(self.kind(db), ResolvedPathResult::Ok(ResolvedPath::Pou(p)) if matches!(p.pou(db), Pou::Function(_)))
+    }
+
+    pub fn is_function_block(&self, db: &'db dyn BaseDatabase) -> bool {
+        matches!(self.kind(db), ResolvedPathResult::Ok(ResolvedPath::Pou(p)) if matches!(p.pou(db), Pou::FunctionBlock(_)))
+    }
+
+    pub fn is_callable(&self, db: &'db dyn BaseDatabase) -> bool {
+        self.is_function(db) || self.is_function_block(db) || self.is_method(db)
+    }
+
+    pub fn callable(&self, db: &'db dyn BaseDatabase) -> Option<&'db IndexMap<Ident, VariableDecl<'db>>> {
+        Some(match self.kind(db) {
+            ResolvedPathResult::Ok(ResolvedPath::Pou(p)) => p.local_variables(db),
+            ResolvedPathResult::Ok(ResolvedPath::Method(m)) => m.local_variables(db),
+            _ => None?
+        })
+    }
+
+    pub fn with_return_type(&self, db: &'db dyn BaseDatabase) -> Option<Spec<'db>> {
+        match self.kind(db) {
+            ResolvedPathResult::Ok(ResolvedPath::Pou(p)) => match p.pou(db) {
+                Pou::Function(f) => f.return_type(db).copied(),
+                _ => None,
+            },
+            ResolvedPathResult::Ok(ResolvedPath::Method(m)) => m.return_type(db).copied(),
+            _ => None,
+        }
+    }
+
+    pub fn visibility(&self, db: &'db dyn BaseDatabase) -> Visibility {
+        match self.kind(db) {
+            ResolvedPathResult::Ok(ResolvedPath::Method(m)) => m.visibility(db),
+            _ => Visibility::PUBLIC
         }
     }
 
@@ -143,34 +204,17 @@ impl<'db> ResolvedAccess<'db> {
     pub fn is_var_config(&self, db: &'db dyn BaseDatabase) -> bool {
         self.as_var(db).is_some_and(|var| var.is_config(db))
     }
-}
-
-impl<'db> ResolvedAccess<'db> {
-    pub fn ty(&self, db: &'db dyn BaseDatabase) -> Result<Ty<'db>, VarResolveError<'db>> {
-        match self.kind(db) {
-            Place::Variable(v) => Ok(v.spec(db).spec_to_ty(db)),
-            Place::Method(m) => Ok(m.to_ty(db)),
-            Place::Pou(p) => Ok(ty_for_pou(db, p)),
-            Place::StructElement(e) => Ok(e.spec(db).spec_to_ty(db)),
-            Place::Invalid => Err(VarResolveError::Unknown {
-                call_site: self.call_site(db),
-            }),
-        }
-    }
 
     pub fn decl_name(&self, db: &'db dyn BaseDatabase) -> String {
-        match self.kind(db) {
-            Place::Variable(v) => v.name(db).text(db).to_string(),
-            Place::Pou(p) => p.name(db).text(db).to_string(),
-            Place::Method(m) => m.name(db).text(db).to_string(),
-            Place::StructElement(e) => e.name(db).text(db).to_string(),
-            Place::Invalid => "{unknown}".to_string(),
+        match &self.kind(db) {
+            ResolvedPathResult::Ok(ok) => ok.decl_name(db),
+            ResolvedPathResult::Err(err) => "{unknown}".to_string(),
         }
     }
 
     pub fn decl_kind(&self, db: &'db dyn BaseDatabase) -> String {
         match self.kind(db) {
-            Place::Variable(v) => match v.kind(db) {
+            ResolvedPathResult::Ok(ResolvedPath::Variable(v)) => match v.kind(db) {
                 VariableKind::Var => "VAR".to_string(),
                 VariableKind::Input => "VAR_INPUT".to_string(),
                 VariableKind::Output => "VAR_OUPUT".to_string(),
@@ -185,7 +229,6 @@ impl<'db> ResolvedAccess<'db> {
         }
     }
 }
-
 pub struct VarAccessResolverCtx<'db> {
     db: &'db dyn BaseDatabase,
     access: VariableAccess<'db>,
@@ -209,32 +252,19 @@ impl<'db> VarAccessResolverCtx<'db> {
             VariableAccessKind::Symbolic(symbolic) => {
                 let target = find_primary_target(self.db, symbolic.kind);
                 match target {
-                    Some((place, rest)) => {
-                        let ty = match &place {
-                            Place::Variable(v) => v.spec(self.db).spec_to_ty(self.db),
-                            Place::Pou(p) => ty_for_pou(self.db, *p),
-                            Place::Method(m) => m.to_ty(self.db),
-                            Place::StructElement(e) => e.spec(self.db).spec_to_ty(self.db),
-                            Place::Invalid => {
-                                return ResolvedAccess::new(
-                                    self.db,
-                                    CallSite::Access(self.access),
-                                    Place::Invalid,
-                                    vec![],
-                                );
-                            }
-                        };
-                        ResolvedAccess::new(
-                            self.db,
-                            CallSite::Access(self.access),
-                            place,
-                            resolve_path_rest(self.db, ty, rest),
-                        )
-                    }
+                    Some((place, rest)) => ResolvedAccess::new(
+                        self.db,
+                        CallSite::Access(self.access),
+                        ResolvedPathResult::Ok(place.clone()),
+                        resolve_path_rest(self.db, place, rest),
+                    ),
                     None => ResolvedAccess::new(
                         self.db,
                         CallSite::Access(self.access),
-                        Place::Invalid,
+                        ResolvedPathResult::Err(PathResolveError::NoItemInScope {
+                            expr: symbolic.kind,
+                            scope: symbolic.kind.scope_id(self.db),
+                        }),
                         vec![],
                     ),
                 }
@@ -256,32 +286,19 @@ impl<'db> GlobalResolverCtx<'db> {
     pub fn resolve(&self) -> ResolvedAccess<'db> {
         let target = find_primary_target(self.db, self.path_expr);
         match target {
-            Some((place, rest)) => {
-                let ty = match &place {
-                    Place::Variable(v) => v.spec(self.db).spec_to_ty(self.db),
-                    Place::Pou(p) => ty_for_pou(self.db, *p),
-                    Place::Method(m) => m.to_ty(self.db),
-                    Place::StructElement(e) => e.spec(self.db).spec_to_ty(self.db),
-                    Place::Invalid => {
-                        return ResolvedAccess::new(
-                            self.db,
-                            CallSite::PathExpr(self.path_expr),
-                            Place::Invalid,
-                            vec![],
-                        );
-                    }
-                };
-                ResolvedAccess::new(
-                    self.db,
-                    CallSite::PathExpr(self.path_expr),
-                    place,
-                    resolve_path_rest(self.db, ty, rest),
-                )
-            }
+            Some((place, rest)) => ResolvedAccess::new(
+                self.db,
+                CallSite::PathExpr(self.path_expr),
+                ResolvedPathResult::Ok(place.clone()),
+                resolve_path_rest(self.db, place, rest),
+            ),
             None => ResolvedAccess::new(
                 self.db,
                 CallSite::PathExpr(self.path_expr),
-                Place::Invalid,
+                ResolvedPathResult::Err(PathResolveError::NoItemInScope {
+                    expr: self.path_expr,
+                    scope: self.path_expr.scope_id(self.db),
+                }),
                 vec![],
             ),
         }
@@ -291,7 +308,7 @@ impl<'db> GlobalResolverCtx<'db> {
 fn find_primary_target<'db>(
     db: &'db dyn BaseDatabase,
     path_expr: PathExpr<'db>,
-) -> Option<(Place<'db>, &'db [PathExprWalkStep<'db>])> {
+) -> Option<(ResolvedPath<'db>, &'db [PathExprWalkStep<'db>])> {
     let flatten = path_expr.flatten_steps(db);
     match flatten.first() {
         Some(first) => {
@@ -306,22 +323,14 @@ fn find_primary_target<'db>(
 
             // Search for variables in scope
             if let ScopeKind::Pou(pou) = scope.kind {
-                let ty = ty_for_pou(db, pou);
-
-                if let Ok(ty) = ty.walk(db, first, SearchMode::Global) {
-                    todo!()
-                    //return Some((flatten[1..].as_ref()));
-                }
-
-                // Special case: if the first element is the same as the current POU, it's a self-reference
-                if pou.name(db) == &ident.ident {
-                    return Some((Place::Pou(pou), flatten[1..].as_ref()));
+                if let Ok(resolved) = pou.walk(db, first) {
+                    return Some((resolved, flatten[1..].as_ref()));
                 }
             }
 
             // Try local POU names
             if let Some(pou) = pou_names_res(db, ident, expr.scope_id(db)) {
-                return Some((Place::Pou(pou), flatten[1..].as_ref()));
+                return Some((ResolvedPath::Pou(pou), flatten[1..].as_ref()));
             }
 
             // Try Namespaces
@@ -344,7 +353,10 @@ fn find_primary_target<'db>(
             let path = NamespacePath::from((db, &fragments));
             let access = NamespaceAccess::new(db, Some(path), ident);
             if let Some(pou) = resolve_namespace_access(db, expr.scope_id(db), access) {
-                return Some((Place::Pou(pou), flatten[fragments.len() - 1..].as_ref()));
+                return Some((
+                    ResolvedPath::Pou(pou),
+                    flatten[fragments.len() - 1..].as_ref(),
+                ));
             }
             None
         }
@@ -354,27 +366,26 @@ fn find_primary_target<'db>(
 
 fn resolve_path_rest<'db>(
     db: &'db dyn BaseDatabase,
-    ty: Ty<'db>,
+    fragment: ResolvedPath<'db>,
     rest: &'db [PathExprWalkStep],
-) -> Vec<ResolvedPathElement<'db>> {
+) -> Vec<ResolvedPathResult<'db>> {
     let mut result = vec![];
     if rest.is_empty() {
         return result;
     }
 
+    let mut fragment = fragment;
+
     for step in rest {
-        match ty.walk(db, step, SearchMode::Global) {
-            Ok(resolved) => result.push(ResolvedPathElement {
-                expr: *step.get_expr(),
-                kind: ResolvedPathElementKind::Ty(resolved),
-            }),
+        match fragment.walk(db, step) {
             Err(err) => {
-                result.push(ResolvedPathElement {
-                    expr: *step.get_expr(),
-                    kind: ResolvedPathElementKind::Error(err),
-                });
+                result.push(ResolvedPathResult::Err(err));
                 break;
-            } // stop on first error
+            }
+            Ok(r) => {
+                result.push(ResolvedPathResult::Ok(r.clone()));
+                fragment = r;
+            }
         }
     }
     result
@@ -408,32 +419,6 @@ impl<'db> HirNodeInfo<'db> for ResolvedAccess<'db> {
     }
 }
 
-/// Represents a resolved element in a path expression.
-/// Contains the expression and its type.
-#[derive(Debug, Clone, PartialEq, Hash, Eq, salsa::Update)]
-pub struct ResolvedPathElement<'db> {
-    // The expression that was resolved
-    pub expr: PathExpr<'db>,
-    // The type of the resolved element
-    pub kind: ResolvedPathElementKind<'db>,
-}
-
-#[derive(Debug, Clone, PartialEq, Hash, Eq, salsa::Update)]
-pub enum ResolvedPathElementKind<'db> {
-    Ty(Ty<'db>),
-    Error(PathResolveError<'db>),
-}
-
-impl<'db> ResolvedPathElement<'db> {
-    pub fn new(expr: PathExpr<'db>, kind: ResolvedPathElementKind<'db>) -> Self {
-        Self { expr, kind }
-    }
-
-    pub fn get_expr(&self) -> &PathExpr<'db> {
-        &self.expr
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum PathExprWalkStep<'db> {
     Field {
@@ -462,7 +447,7 @@ impl PathExprWalkStep<'_> {
 #[salsa::tracked]
 impl<'db> PathExpr<'db> {
     #[salsa::tracked(returns(ref))]
-    pub fn flatten_steps(self, db: &'db dyn BaseDatabase) -> Vec<PathExprWalkStep<'db>> {
+    fn flatten_steps(self, db: &'db dyn BaseDatabase) -> Vec<PathExprWalkStep<'db>> {
         let mut result = Vec::new();
 
         match self.expr(db) {
@@ -495,17 +480,5 @@ impl<'db> PathExpr<'db> {
             },
         }
         result
-    }
-}
-
-impl<'db> HirNodeInfo<'db> for ResolvedPathElement<'db> {
-    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
-        // We do not use the id field of the expression because of the way PathExpr are built from the AST.
-        // Instead, get_id method will return the id of *this* specific path element.
-        self.expr.get_id(db)
-    }
-
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
-        self.expr.scope_id(db)
     }
 }

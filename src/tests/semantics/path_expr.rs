@@ -2,7 +2,6 @@ use std::ops::ControlFlow;
 
 use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
-use hir::hir_ty::ty_var_access_resolver::ResolvedPathElementKind;
 use hir::HirNodeInfo;
 use hir::TypeInfo;
 use hir::hir_def::semantic_index::HirNode;
@@ -22,7 +21,7 @@ use crate::tests::utils::with_db;
 fn collect_path_expressions(db: &dyn BaseDatabase, sema: &SemanticIndex) -> String {
     let mut result = vec![];
     let _ = sema.walk_hir(db, &mut |n| {
-        if let HirNode::ResolvedPathElement(path) = n {
+        if let HirNode::ResolvedPath(path) = n {
             result.push(path);
         }
         ControlFlow::Continue(())
@@ -30,15 +29,7 @@ fn collect_path_expressions(db: &dyn BaseDatabase, sema: &SemanticIndex) -> Stri
 
     result
         .iter()
-        .flat_map(|r| match &r.kind {
-            ResolvedPathElementKind::Ty(sig) => Some(format!(
-                "{} {} {}",
-                r.get_span(db).start_byte,
-                r.expr.ident(db).text(db).to_string(),
-                sig.type_name(db)
-            )),
-            ResolvedPathElementKind::Error(_err) => Some("err".into()),
-        })
+        .map(|r| format!("{} {}", r.get_span(db).start_byte, r.decl_name(db),))
         .collect::<Vec<String>>()
         .join("\n")
 }

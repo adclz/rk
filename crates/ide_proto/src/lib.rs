@@ -70,7 +70,7 @@ impl<'db> AsProtocol<'db> for HirNode<'db> {
             HirNode::Ty(ty) => ty,
             HirNode::ResolvedUsing(u) => u,
             HirNode::ResolvedAccess(v) => v,
-            HirNode::ResolvedPathElement(p) => p,
+            HirNode::ResolvedPath(p) => p,
             HirNode::ResolvedInitExpr(i) => i,
             HirNode::ResolvedExpr(e) => e,
             HirNode::ResolvedParam(p) => p,

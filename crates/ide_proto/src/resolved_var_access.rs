@@ -6,7 +6,7 @@ use auto_lsp::{
     lsp_types::{Hover, HoverContents, Location, MarkupContent, MarkupKind},
 };
 use hir::{
-    hir_def::comment_index::comment_index, hir_ty::{ty::TyKind, ty_var_access_resolver::{Place, ResolvedAccess}}, HirNodeInfo, TypeInfo
+    hir_def::comment_index::comment_index, hir_ty::{ty::TyKind, ty_var_access_resolver::{ResolvedAccess}}, HirNodeInfo, TypeInfo
 };
 
 use crate::{ToProtocol, ty::TyHover};
@@ -18,14 +18,7 @@ impl<'db> ToProtocol<'db> for ResolvedAccess<'db> {
             s if s.is_empty() => "".to_string(),
             s => format!("({s}) "),
         };
-        let def_name = self
-            .ty(db)
-            .ok()
-            .and_then(|s| Some(match s.has_return_type(db) {
-                Some(ret) => format!(": {}", ret.type_name(db)),
-                None => format!(": {}", s.type_name(db))
-            }))
-            .unwrap_or_default();
+        let def_name = "";
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,
@@ -45,21 +38,13 @@ impl<'db> ToProtocol<'db> for ResolvedAccess<'db> {
         &'db self,
         db: &'db dyn BaseDatabase,
     ) -> Option<auto_lsp::lsp_types::request::GotoDeclarationResponse> {
-        match self.kind(db) {
-            Place::Variable(target)=> Some(
-                auto_lsp::lsp_types::request::GotoDeclarationResponse::Scalar(Location::new(
-                    target.get_scope_id(db).file(db).url(db).to_owned(),
-                    target.get_span(db).into(),
-                )),
-            ),
-            _ => None,
-        }
+        None
     }
 
     fn definition(
         &'db self,
         db: &'db dyn BaseDatabase,
     ) -> Option<auto_lsp::lsp_types::GotoDefinitionResponse> {
-        self.ty(db).ok().and_then(|ty| ty.definition(db))
+        None
     }
 }

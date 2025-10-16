@@ -1,20 +1,14 @@
 use std::sync::Arc;
 
 use crate::{
-    AstId, HirNodeInfo,
     hir_def::{
-        expressions::spec::Spec,
-        interned::identifier::{Ident, SpanIdent},
-        pous::{
-            class::MethodDecl, interface::MethodPrototype, pou::PouDecl, variable::VariableDecl,
-        },
-        scope::FileScopeId,
-        visibility::Visibility,
-    },
-    hir_ty::{
+        expressions::spec::Spec, interned::identifier::{Ident, SpanIdent}, modifier::Modifier, pous::{
+            class::MethodDecl, interface::MethodPrototype, pou::{Pou, PouDecl}, variable::VariableDecl,
+        }, scope::FileScopeId, visibility::Visibility
+    }, hir_ty::{
         name_res::resolve_namespace_access,
-        ty::{Ty, TyKind, ty_for_pou},
-    },
+        ty::{Ty, TyKind},
+    }, AstId, HirNodeInfo
 };
 use auto_lsp::{core::span::Span, default::db::BaseDatabase};
 use rustc_hash::FxHashMap;
@@ -54,11 +48,27 @@ impl<'db> MethodRef<'db> {
         }
     }
 
+    pub fn modifier(&self, db: &'db dyn BaseDatabase) -> Modifier {
+        match self {
+            MethodRef::Prototype(p) => Modifier::EMPTY,
+            MethodRef::Declared(d) => d.modifier(db),
+        }
+    }
+
     pub fn variables(&self, db: &'db dyn BaseDatabase) -> &'db Vec<VariableDecl<'db>> {
         match self {
             MethodRef::Prototype(p) => p.variables(db),
             MethodRef::Declared(d) => d.variables(db),
         }
+    }
+
+
+    pub fn is_prototype(&self) -> bool {
+        matches!(self, MethodRef::Prototype(_))
+    }
+
+    pub fn is_declared(&self) -> bool {
+        matches!(self, MethodRef::Declared(_))
     }
 }
 
@@ -123,7 +133,7 @@ impl<'db> InheritedMethod<'db> {
     }
 }
 
-fn method_initial<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>) -> Arc<Methods<'db>> {
+fn method_initial<'db>(db: &'db dyn BaseDatabase, ty: PouDecl<'db>) -> Arc<Methods<'db>> {
     Arc::new(Methods::default())
 }
 
@@ -131,13 +141,13 @@ fn method_cycle<'db>(
     db: &'db dyn BaseDatabase,
     value: &Arc<Methods<'db>>,
     count: u32,
-    ty: Ty<'db>,
+    ty: PouDecl<'db>,
 ) -> salsa::CycleRecoveryAction<Arc<Methods<'db>>> {
     salsa::CycleRecoveryAction::Iterate
 }
 
 #[salsa::tracked(cycle_initial = method_initial, cycle_fn=method_cycle)]
-pub fn method_table<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>) -> Arc<Methods<'db>> {
+pub fn method_table<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Arc<Methods<'db>> {
     let mut inherited_methods: std::collections::HashMap<
         Ident,
         InheritedMethod<'_>,
@@ -152,13 +162,13 @@ pub fn method_table<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>) -> Arc<Methods<
     let mut inherited_duplicates: Vec<(InheritedMethod<'_>, InheritedMethod<'_>)> = vec![];
     let mut declared_duplicates: Vec<(MethodRef<'db>, MethodRef<'_>)> = vec![];
 
-    match ty.kind(db) {
-        TyKind::Class(class) => {
+    match pou.pou(db) {
+        Pou::Class(class) => {
             // Inherit base
             if let Some(base) = class.extends(db)
                 && let Some(base) = resolve_namespace_access(db, base.scope_id, base.path)
             {
-                for (name, entry) in &method_table(db, ty_for_pou(db, base)).declared_methods {
+                for (name, entry) in &method_table(db, base).declared_methods {
                     let method = InheritedMethod::new(base, *entry);
                     if let Some(m) = inherited_methods.insert(*name, method) {
                         inherited_duplicates.push((m, method));
@@ -169,7 +179,7 @@ pub fn method_table<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>) -> Arc<Methods<
             // Inherit interfaces (abstract signatures only)
             for iface in class.implements(db) {
                 if let Some(iface) = resolve_namespace_access(db, iface.scope_id, iface.path) {
-                    for (name, entry) in &method_table(db, ty_for_pou(db, iface)).declared_methods {
+                    for (name, entry) in &method_table(db, iface).declared_methods {
                         let method = InheritedMethod::new(iface, *entry);
                         if let Some(m) = inherited_methods.insert(*name, method) {
                             inherited_duplicates.push((m, method));
@@ -186,7 +196,7 @@ pub fn method_table<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>) -> Arc<Methods<
             }
         }
 
-        TyKind::Interface(interface) => {
+        Pou::Interface(interface) => {
             // Methods = abstract signatures
             for m in interface.methods(db) {
                 if let Some(dup) = declared_methods.insert(*m.name(db), m.into()) {
@@ -198,7 +208,7 @@ pub fn method_table<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>) -> Arc<Methods<
                 for iface in iface {
                     if let Some(iface) = resolve_namespace_access(db, iface.scope_id, iface.path) {
                         for (name, entry) in
-                            &method_table(db, ty_for_pou(db, iface)).declared_methods
+                            &method_table(db, iface).declared_methods
                         {
                             let method = InheritedMethod::new(iface, *entry);
                             if let Some(m) = inherited_methods.insert(*name, method) {
@@ -210,7 +220,7 @@ pub fn method_table<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>) -> Arc<Methods<
             }
         }
 
-        TyKind::FunctionBlock(fb) => {
+        Pou::FunctionBlock(fb) => {
             for m in fb.methods(db) {
                 if let Some(dup) = declared_methods.insert(*m.name(db), m.into()) {
                     declared_duplicates.push((dup, m.into()));
@@ -219,7 +229,7 @@ pub fn method_table<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>) -> Arc<Methods<
 
             if let Some(base) = fb.extends(db) {
                 if let Some(base) = resolve_namespace_access(db, base.scope_id, base.path) {
-                    for (name, entry) in &method_table(db, ty_for_pou(db, base)).declared_methods {
+                    for (name, entry) in &method_table(db, base).declared_methods {
                         let method = InheritedMethod::new(base, *entry);
                         if let Some(m) = inherited_methods.insert(*name, method) {
                             inherited_duplicates.push((m, method));

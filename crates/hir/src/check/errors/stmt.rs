@@ -4,10 +4,7 @@ use ide_diagnostic::{IdeDiagnostic, Related, diag};
 use crate::{
     check::{
         errors::{
-            analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic},
-            coerce::{ExprMismatch, TypeMismatch},
-            utils::{get_candidates, get_def_for_ty},
-            var_error::VarResolveError,
+            analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic}, coerce::{ExprMismatch, TypeMismatch}, path_error::PathResolveError, utils::{get_candidates, get_def_for_ty}
         },
         recovery::func_call::fuzzy_func_local_items,
     }, hir_def::interned::identifier::SpanIdent, hir_ty::{
@@ -22,18 +19,18 @@ pub enum StmtError<'db> {
     // Assignments
     UnresolvedAssignmentTarget {
         var: ResolvedAccess<'db>,
-        err: VarResolveError<'db>,
+        err: PathResolveError<'db>,
+    },
+    InvalidAssignmentTarget {
+        var: ResolvedAccess<'db>,
     },
     AssignmentToDirectType {
-        ty: Ty<'db>,
         var: ResolvedAccess<'db>,
     },
     AssignmentToCallableType {
-        ty: Ty<'db>,
         var: ResolvedAccess<'db>,
     },
     AssignmentToInputVar {
-        ty: Ty<'db>,
         var: ResolvedAccess<'db>,
     },
     AssignmentTypeMismatch {
@@ -44,11 +41,9 @@ pub enum StmtError<'db> {
         call: ResolvedAccess<'db>,
     },
     CallANonCallableType {
-        ty: Ty<'db>, 
         call: ResolvedAccess<'db>,
     },
     CallADirectType {
-        ty: Ty<'db>,
         call: ResolvedAccess<'db>,
     },
     UnusedReturnType {
@@ -73,7 +68,7 @@ pub enum StmtError<'db> {
     },
     UnresolvedNonFormalParam {
         var: ResolvedAccess<'db>,
-        err: VarResolveError<'db>,
+        err: PathResolveError<'db>,
     },
     UnknownFormalInputParam {
         call: ResolvedAccess<'db>,
@@ -81,7 +76,7 @@ pub enum StmtError<'db> {
     },
     UnresolvedInputParam {
         var: ResolvedAccess<'db>,
-        err: VarResolveError<'db>,
+        err: PathResolveError<'db>,
     },
     UnknownFormalOutputParam {
         call: ResolvedAccess<'db>,
@@ -89,11 +84,11 @@ pub enum StmtError<'db> {
     },
     UnresolvedOutputParam {
         var: ResolvedAccess<'db>,
-        err: VarResolveError<'db>,
+        err: PathResolveError<'db>,
     },
     UnresolvedOutputParamTarget {
         var: ResolvedAccess<'db>,
-        err: VarResolveError<'db>,
+        err: PathResolveError<'db>,
     },
     ParameterTypeMismatch {
         param: SpanIdent<'db>,
@@ -108,7 +103,7 @@ pub enum StmtError<'db> {
     // For and While loops
     UnresolvedControlVar {
         control: ResolvedAccess<'db>,
-        err: VarResolveError<'db>,
+        err: PathResolveError<'db>,
     },
     ForLoopStartTypeMismatch {
         start: ResolvedExpr<'db>,
@@ -139,17 +134,15 @@ impl<'db> From<StmtError<'db>> for AnalysisError<'db> {
 impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
     fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
         match self {
-            Self::AssignmentToCallableType { var, ty } => {
+            Self::AssignmentToCallableType { var } => {
                 let mut diag = diag()
                     .message(format!(
                         "'{}' is a callable type and can not be assigned",
-                        ty.name(db),
+                        var.decl_name(db),
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(var.get_span(db).clone())
                     .call();
-
-                get_def_for_ty(db, *ty, &mut diag);
 
                 diag.with_note("only functions with return types can be assigned".into());
 
@@ -178,23 +171,31 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 diag
             }
 
-            Self::AssignmentToDirectType { var, ty } => {
+            Self::InvalidAssignmentTarget { var } => diag()
+                .message(format!(
+                    "'{}' is not a valid assignment target",
+                    var.decl_name(db),
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .range(var.get_span(db).clone())
+                .call(),
+
+            Self::AssignmentToDirectType { var } => {
                 let mut diag = diag()
                     .message(format!(
                         "'{}' is a type and can not be assigned",
-                        ty.name(db),
+                        var.decl_name(db),
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(var.get_span(db).clone())
                     .call();
 
-                get_def_for_ty(db, *ty, &mut diag);
                 diag.with_note(
                     "types can only be assigned if they are declared in a VAR_* section".into(),
                 );
                 diag
             }
-            Self::AssignmentToInputVar { var, ty } => {
+            Self::AssignmentToInputVar { var } => {
                 let mut diag = diag()
                     .message(format!(
                         "'{}' is an input variable and can not be assigned",
@@ -211,33 +212,29 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 .severity(DiagnosticSeverity::ERROR)
                 .range(call.get_span(db).clone())
                 .call(),
-            Self::CallANonCallableType { ty, call } => {
-                let mut diag = diag()
+            Self::CallANonCallableType {call } => {
+                let mut diag: IdeDiagnostic = diag()
                     .message(format!(
                         "cannot call non-callable type '{}'",
-                        ty.name(db)
+                        call.decl_name(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(call.get_span(db).clone())
                     .call();
-
-                get_def_for_ty(db, *ty, &mut diag);
 
                 diag.with_note("only functions, function blocks or methods can be called".into());
 
                 diag
             }
-            Self::CallADirectType { ty, call } => {
+            Self::CallADirectType { call } => {
                 let mut diag = diag()
                     .message(format!(
                         "'{}' is a direct type and can not be called",
-                        ty.name(db),
+                        call.decl_name(db),
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(call.get_span(db).clone())
                     .call();
-
-                get_def_for_ty(db, *ty, &mut diag);
 
                 diag.with_note("only FUNCTIONS and METHODS or body from declared CLASS/FUNCTIOn_BLOCKS can called".into());
 
@@ -263,13 +260,13 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "'{}' expected {expected} parameters, but got {found}",
-                        call.ty(db).unwrap().name(db)
+                        call.decl_name(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(call.get_span(db).clone())
                     .call();
 
-                get_def_for_ty(db, call.ty(db).unwrap(), &mut diag);
+                //get_def_for_ty(db, call.ty(db).unwrap(), &mut diag);
                 diag
             }
             Self::DuplicateParameter { param1, param2 } => {
@@ -291,13 +288,12 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "unknown non-formal parameter in call to '{}'",
-                        call.ty(db).unwrap().name(db)
+                        call.decl_name(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
-                    .range(call.ty(db).unwrap().get_span(db).clone())
+                    .range(call.get_span(db).clone())
                     .call();
 
-                get_def_for_ty(db, call.ty(db).unwrap(), &mut diag);
                 diag
             }
             Self::UnresolvedInputParam { var, err } => {
@@ -321,10 +317,10 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                     .range(param.get_span(db).clone())
                     .call();
 
-                if let TyDef::Pou(pou) = call.ty(db).unwrap().def(db) {
+                /*if let TyDef::Pou(pou) = call.ty(db).unwrap().def(db) {
                     let candidates = fuzzy_func_local_items(db, pou, param.ident.text(db).as_str());
                     diag.with_note(get_candidates(&candidates));
-                }
+                }*/
 
                 diag
             }
@@ -335,10 +331,10 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                     .range(param.get_span(db).clone())
                     .call();
 
-                if let TyDef::Pou(pou) = call.ty(db).unwrap().def(db) {
+                /*if let TyDef::Pou(pou) = call.ty(db).unwrap().def(db) {
                     let candidates = fuzzy_func_local_items(db, pou, param.ident.text(db).as_str());
                     diag.with_note(get_candidates(&candidates));
-                }
+                }*/
                 diag
             }
             Self::UnresolvedOutputParam { var, err } => diag()
@@ -397,7 +393,7 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "mixed formal and non-formal parameters in call to '{}'",
-                        call.ty(db).unwrap().name(db)
+                        call.decl_name(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(call.get_span(db).clone())

@@ -69,18 +69,11 @@ impl<'ty> TyHover<'ty> for Ty<'ty> {
     fn force_hover(&self, db: &'ty dyn BaseDatabase) -> Option<Hover> {
         let name = self.name(db);
         let comment = self.get_comment(db);
-        let def_name = match self.has_return_type(db) {
-            Some(ret) => format!(": {}", ret.type_name(db).to_string()),
-            None => match self.kind(db) {
-                TyKind::RefTo(ref_) => format!(": REF_TO {}", ref_.spec_to_ty(db).type_name(db).to_string()),
-                _ => "".to_string(),
-            },
-        };
         let value = format!(
             r#"
 {comment}
 ```iecst
-{name}{def_name}
+{name}
 ```
 "#
         );

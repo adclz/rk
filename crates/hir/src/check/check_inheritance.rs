@@ -9,23 +9,23 @@ use crate::{
             analysis_error::AnalysisError, duplicates::DuplicateError, inheritance::MethodError,
         },
     },
-    hir_def::{interned::identifier::Ident, modifier::Modifier},
+    hir_def::{interned::identifier::Ident, modifier::Modifier, pous::pou::{Pou, PouDecl}},
     hir_ty::{
-        inheritance_solver::method_table,
+        inheritance_solver::{method_table, MethodRef},
         ty::{Ty, TyKind},
     },
 };
 
 pub fn check_methods<'db>(
     db: &'db dyn BaseDatabase,
-    implementer: Ty<'db>,
+    implementer: PouDecl<'db>,
     errors: &mut Vec<AnalysisError<'db>>,
 ) {
-    /*let table = method_table(db, implementer);
+    let table = method_table(db, implementer);
 
     // If the class is abstract, it must have at least one abstract method
-    if let TyKind::Class { .. } = implementer.kind(db)
-        && implementer.modifier(db).contains(Modifier::ABSTRACT)
+    if let Pou::Class(class) = implementer.pou(db)
+        && class.modifier(db).contains(Modifier::ABSTRACT)
         && !table
             .declared_methods
             .iter()
@@ -88,7 +88,7 @@ pub fn check_methods<'db>(
             // inherited method is not present
 
             // method is from an interface
-            if inherited_method.is_method_prototype(db) {
+            if inherited_method.is_prototype() {
                 errors.push(AnalysisError::MethodError(
                     MethodError::UnimplementedInterfaceMethod {
                         implementer,
@@ -122,8 +122,8 @@ pub fn check_methods<'db>(
 
 fn check_signature<'db>(
     db: &'db dyn BaseDatabase,
-    m1: Ty<'db>,
-    m2: Ty<'db>,
+    m1: MethodRef<'db>,
+    m2: MethodRef<'db>,
     errors: &mut Vec<AnalysisError<'db>>,
 ) {
     let sig1 = m1.variables(db);
@@ -140,9 +140,9 @@ fn check_signature<'db>(
         );
     }
 
-    sig1.iter().zip(sig2.iter()).for_each(|(m1, m2)| {
-        if let Err(err) = coerce_ty_with_ty(db, *m1.1, *m2.1) {
-            errors.push(MethodError::SignatureParametersTypeMismatch { param: *m2.1, err }.into());
+    sig1.iter().zip(sig2.iter()).for_each(|(var1, var2)| {
+        if let Err(err) = coerce_ty_with_ty(db, var1.spec(db).spec_to_ty(db), var2.spec(db).spec_to_ty(db)) {
+            errors.push(MethodError::SignatureParametersTypeMismatch { param: *var2, err }.into());
         }
-    });*/
+    });
 }

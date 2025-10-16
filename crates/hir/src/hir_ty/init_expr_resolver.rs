@@ -4,7 +4,7 @@ use crate::{
     }, hir_ty::{
         expr_resolver::{resolve_expr, ResolvedExpr},
         ty::{Ty, TyKind},
-        ty_var_access_resolver::{CallSite, Place, ResolvedAccess},
+        ty_var_access_resolver::{CallSite, ResolvedAccess}, walk::{ResolvedPath, ResolvedPathResult},
     }, AstId, HirNodeInfo
 };
 use auto_lsp::default::db::BaseDatabase;
@@ -150,7 +150,7 @@ fn resolve_unresolved<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>, init: UnResol
                         let field = ResolvedAccess::new(
                             db,
                             CallSite::Formal(name),
-                            Place::StructElement(*element_ty),
+                            ResolvedPathResult::Ok(ResolvedPath::StructElement(*element_ty)),
                             vec![]
                         );
 

@@ -3,31 +3,28 @@ use ide_diagnostic::{IdeDiagnostic, diag};
 use serde_json::to_string;
 
 use crate::{
-    HirNodeInfo,
     check::{
         check_visibility::SameNamespaceResult,
         errors::{
             analysis_error::{AnalysisError, ToIdeDiagnostic},
             utils::get_def_for_ty,
         },
-    },
-    hir_def::{expressions::invocation::Invocation, scope::FileScopeId},
-    hir_ty::{invocation_resolver::ResolvedInvocation, ty::Ty},
+    }, hir_def::{expressions::invocation::Invocation, scope::FileScopeId}, hir_ty::{invocation_resolver::ResolvedInvocation, ty::Ty, ty_var_access_resolver::ResolvedAccess}, HirNodeInfo
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum VisibilityError<'db> {
     PrivateMethod {
-        method: Ty<'db>,
+        method: ResolvedAccess<'db>,
         call_site: Span,
     },
     InternalMethod {
-        method: Ty<'db>,
+        method: ResolvedAccess<'db>,
         result: SameNamespaceResult<'db>,
         call_site: Span,
     },
     ProtectedMethod {
-        method: Ty<'db>,
+        method: ResolvedAccess<'db>,
         call_site: Span,
     },
 }
@@ -45,13 +42,12 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "can not access PRIVATE METHOD '{}'",
-                        method.name(db)
+                        method.decl_name(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(call_site.clone())
                     .call();
 
-                get_def_for_ty(db, *method, &mut diag);
                 diag.with_note(
                     "METHODS marked PRIVATE can only be accessed from within the same POU".into(),
                 );
@@ -66,7 +62,7 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "can not access INTERNAL METHOD '{}'",
-                        method.name(db)
+                        method.decl_name(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(call_site.clone())
@@ -100,7 +96,7 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "can not access PROTECTED METHOD '{}'",
-                        method.name(db)
+                        method.decl_name(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(call_site.clone())

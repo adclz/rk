@@ -12,10 +12,18 @@ use crate::{
             pou::{Pou, PouDecl},
             variable::VariableDecl,
         },
-        semantic_index::{semantic_index, HirNode, SemanticIndex}, using::Using,
+        semantic_index::{semantic_index, HirNode, SemanticIndex},
+        using::Using,
     },
     hir_ty::{
-        expr_resolver::{ResolvedExpr, ResolvedExprKind}, func_call_resolver::{ResolvedFuncCall, ResolvedParam, ResolvedParamKind}, inheritance_solver::MethodRef, init_expr_resolver::{resolve_init_expr, ResolvedInitExpr, ResolvedInitExprKind}, invocation_resolver::{ResolvedInvocationResult, ResolvedMethodKind}, stmt_resolver::{resolve_stmt, ResolvedStmt, ResolvedStmtKind}, ty::ty_for_pou, ty_var_access_resolver::{Place, ResolvedAccess, ResolvedPathElement}, using_resolver::{resolve_using, ResolvedUsing}
+        expr_resolver::{ResolvedExpr, ResolvedExprKind},
+        func_call_resolver::{ResolvedFuncCall, ResolvedParam, ResolvedParamKind},
+        inheritance_solver::MethodRef,
+        init_expr_resolver::{resolve_init_expr, ResolvedInitExpr, ResolvedInitExprKind},
+        invocation_resolver::{ResolvedInvocationResult, ResolvedMethodKind},
+        stmt_resolver::{resolve_stmt, ResolvedStmt, ResolvedStmtKind},
+        ty_var_access_resolver::ResolvedAccess,
+        using_resolver::{resolve_using, ResolvedUsing}, walk::{ResolvedPath, ResolvedPathResult},
     },
 };
 
@@ -83,7 +91,7 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
         db: &'db dyn BaseDatabase,
         f: &mut F,
     ) -> ControlFlow<()> {
-        f(HirNode::Ty(ty_for_pou(db, *self)))?;
+        // f(HirNode::Ty(ty_for_pou(db, *self)))?;
 
         let scope = semantic_index(db, self.scope_id(db).file(db)).get_scope(db, self.scope_id(db));
         for using in &scope.usings {
@@ -106,7 +114,7 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
                 }
 
                 for method in fb.methods(db) {
-                    MethodRef::from(method).walk_hir(db, f)?;
+                    //MethodRef::from(method).walk_hir(db, f)?;
                 }
 
                 for stmt in fb.statements(db) {
@@ -118,12 +126,12 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
                     var.walk_hir(db, f)?;
                 }
                 for method in class.methods(db) {
-                    MethodRef::from(method).walk_hir(db, f)?;
+                    //MethodRef::from(method).walk_hir(db, f)?;
                 }
             }
             Pou::Interface(it) => {
                 for method in it.methods(db) {
-                    MethodRef::from(method).walk_hir(db, f)?;
+                    //MethodRef::from(method).walk_hir(db, f)?;
                 }
             }
             Pou::DataType(dt) => {
@@ -137,11 +145,11 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
                 }
 
                 if let Some(init_expr) = dt.init(db) {
-                    f(HirNode::ResolvedInitExpr(*resolve_init_expr(
+                    /*f(HirNode::ResolvedInitExpr(*resolve_init_expr(
                         db,
                         ty_for_pou(db, *self),
                         init_expr,
-                    )))?;
+                    )))?;*/
                 }
             }
         }
@@ -163,16 +171,6 @@ impl<'db> WalkHir<'db> for VariableDecl<'db> {
     }
 }
 
-impl<'db> WalkHir<'db> for MethodRef<'db> {
-    fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
-        &self,
-        db: &'db dyn BaseDatabase,
-        f: &mut F,
-    ) -> ControlFlow<()> {
-        f(HirNode::Ty(self.to_ty(db)))
-    }
-}
-
 impl<'db> WalkHir<'db> for ResolvedAccess<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
         &self,
@@ -181,21 +179,22 @@ impl<'db> WalkHir<'db> for ResolvedAccess<'db> {
     ) -> ControlFlow<()> {
         f(HirNode::ResolvedAccess(*self))?;
         for elem in &self.elements(db) {
-            elem.walk_hir(db, f)?;
+            if let ResolvedPathResult::Ok(path) = &elem {
+                path.walk_hir(db, f)?;
+            }
         }
         ControlFlow::Continue(())
     }
 }
 
-impl<'db> WalkHir<'db> for ResolvedPathElement<'db> {
+impl<'db> WalkHir<'db> for ResolvedPath<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
         &self,
         db: &'db dyn BaseDatabase,
         f: &mut F,
     ) -> ControlFlow<()> {
         // A path element does not derive Copy, but it is small enough to be cheaply cloned.
-        f(HirNode::ResolvedPathElement(self.clone()))
-
+        f(HirNode::ResolvedPath(self.clone()))
     }
 }
 
@@ -226,10 +225,10 @@ impl<'db> WalkHir<'db> for ResolvedExpr<'db> {
                 func.walk_hir(db, f)?;
             }
             ResolvedExprKind::Invocation(inv) => {
-                inv.walk_hir(db, f)?;   
+                inv.walk_hir(db, f)?;
             }
             ResolvedExprKind::VarAccess(var) => {
-                var.walk_hir(db, f);  
+                var.walk_hir(db, f);
             }
             _ => {}
         }

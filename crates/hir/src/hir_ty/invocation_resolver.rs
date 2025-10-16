@@ -6,7 +6,7 @@ use crate::{
         pous::pou::Pou,
         scope::{FileScopeId, Scope, ScopeKind},
     }, hir_ty::{
-        func_call_resolver::ResolvedParam, inheritance_solver::method_table, name_res::resolve_namespace_access, param_resolver::resolve_parameters, ty::{ty_for_pou, TyKind}, ty_var_access_resolver::{CallSite, Place, ResolvedAccess}
+        func_call_resolver::ResolvedParam, inheritance_solver::method_table, name_res::resolve_namespace_access, param_resolver::resolve_parameters, ty_var_access_resolver::{CallSite, ResolvedAccess}, walk::{ResolvedPath, ResolvedPathResult}
     }, AstId, HirNodeInfo
 };
 
@@ -108,7 +108,7 @@ impl<'db> Invocation<'db> {
                                     }
                                     InvocationKind::SuperBody => {
                                         MethodError::SuperBodyOnIncompatiblePou {
-                                            ctx: ty_for_pou(db, pou),
+                                            ctx: pou,
                                             method: *self,
                                         }
                                     }
@@ -119,7 +119,7 @@ impl<'db> Invocation<'db> {
                     }
                 }
 
-                let methods = method_table(db, ty_for_pou(db, pou));
+                let methods = method_table(db, pou);
                 let len = methods.declared_methods.len();
 
                 match self.kind(db) {
@@ -136,24 +136,24 @@ impl<'db> Invocation<'db> {
                                             self.keyword_id(db),
                                             *self,
                                         ),
-                                        Place::Pou(pou),
+                                        ResolvedPathResult::Ok(ResolvedPath::Pou(pou)),
                                         vec![],
                                     ),
                                     method: ResolvedAccess::new(
                                         db,
                                         CallSite::Invocation(*self),
-                                        Place::Method(*method),
+                                        ResolvedPathResult::Ok(ResolvedPath::Method(*method)),
                                         vec![],
                                     ),
                                 },
                             ),
-                            params: resolve_parameters(db, method.to_ty(db), &self.params(db)),
+                            params: resolve_parameters(db, *method, &self.params(db)),
                         })
                         .unwrap_or_else(|| ResolvedInvocationResult {
                             target: ResolvedInvocation::new(
                                 *self,
                                 ResolvedMethodKind::Unresolved(MethodError::UnresolvedThisMethod {
-                                    ctx: ty_for_pou(db, pou),
+                                    ctx: pou,
                                     path,
                                     method: *self,
                                 }),
@@ -173,30 +173,30 @@ impl<'db> Invocation<'db> {
                                             self.keyword_id(db),
                                             *self,
                                         ),
-                                        Place::Pou(ty.source),
+                                        ResolvedPathResult::Ok(ResolvedPath::Pou(ty.source)),
                                         vec![]
                                     ),
                                     method: ResolvedAccess::new(
                                         db,
                                         CallSite::Invocation(*self),
-                                        Place::Method(ty.method),
+                                        ResolvedPathResult::Ok(ResolvedPath::Method(ty.method)),
                                         vec![]
                                     ),
                                 },
                             ),
-                            params: resolve_parameters(db, ty.method.to_ty(db), &self.params(db)),
+                            params: resolve_parameters(db, ty.method, &self.params(db)),
                         })
                         .unwrap_or_else(|| ResolvedInvocationResult {
                             target: ResolvedInvocation::new(
                                 *self,
                                 ResolvedMethodKind::Unresolved(
                                     MethodError::UnresolvedSuperMethod {
-                                        ctx: match ty_for_pou(db, pou).kind(db) {
-                                            TyKind::Class(class) => class.extends(db).and_then(|e| {
-                                                resolve_namespace_access(db, e.scope_id, e.path).map(|p| ty_for_pou(db, p))
+                                        ctx: match pou.pou(db) {
+                                            Pou::Class(class) => class.extends(db).and_then(|e| {
+                                                resolve_namespace_access(db, e.scope_id, e.path)
                                             }),
-                                            TyKind::FunctionBlock(fb) => fb.extends(db).and_then(|e| {
-                                                resolve_namespace_access(db, e.scope_id, e.path).map(|p| ty_for_pou(db, p))
+                                            Pou::FunctionBlock(fb) => fb.extends(db).and_then(|e| {
+                                                resolve_namespace_access(db, e.scope_id, e.path)
                                             }),
                                             _ => None,
                                         },
@@ -208,7 +208,7 @@ impl<'db> Invocation<'db> {
                             params: vec![],
                         }),
                     InvocationKind::SuperBody => {
-                        let params = resolve_parameters(db, ty_for_pou(db, pou), &self.params(db));
+                        let params = resolve_parameters(db, pou, &self.params(db));
                         if let Pou::FunctionBlock { .. } = pou.pou(db) {
                             ResolvedInvocationResult {
                                 target: ResolvedInvocation::new(
@@ -217,7 +217,7 @@ impl<'db> Invocation<'db> {
                                         target: ResolvedAccess::new(
                                             db,
                                             CallSite::Invocation(*self),
-                                            Place::Pou(pou),
+                                            ResolvedPathResult::Ok(ResolvedPath::Pou(pou)),
                                             vec![]
                                         ),
                                     },
@@ -230,7 +230,7 @@ impl<'db> Invocation<'db> {
                                     *self,
                                     ResolvedMethodKind::Unresolved(
                                         MethodError::SuperBodyOnIncompatiblePou {
-                                            ctx: ty_for_pou(db, pou),
+                                            ctx: pou,
                                             method: *self,
                                         },
                                     ),

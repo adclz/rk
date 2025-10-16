@@ -3,7 +3,7 @@ use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
     check::errors::{
-            analysis_error::DiagnosticDescription, literals::LiteralErrorKind, path_error::PathResolveError, utils::get_def_for_ty, var_error::VarResolveError
+            analysis_error::DiagnosticDescription, literals::LiteralErrorKind, path_error::PathResolveError, utils::get_def_for_ty,
         }, hir_def::interned::identifier::SpanIdent, hir_ty::{expr_resolver::ResolvedExpr, ty::Ty}, TypeInfo
 };
 
@@ -36,9 +36,6 @@ pub enum ExprMismatchKind<'db> {
     },
     UnresolvedPathError {
         err: PathResolveError<'db>,
-    },
-    UnresolvedVarError {
-        err: VarResolveError<'db>,
     },
     LhsIsNotABool {
         ty: Ty<'db>,
@@ -89,13 +86,6 @@ impl<'db> ExprMismatch<'db> {
         Self {
             expr,
             kind: ExprMismatchKind::UnresolvedPathError { err },
-        }
-    }
-
-    pub fn unresolved_var(expr: ResolvedExpr<'db>, err: VarResolveError<'db>) -> Self {
-        Self {
-            expr,
-            kind: ExprMismatchKind::UnresolvedVarError { err },
         }
     }
 
@@ -255,7 +245,6 @@ impl<'db> DiagnosticDescription<'db> for ExprMismatch<'db> {
                 "right-hand side is void".to_string()
             }
             ExprMismatchKind::UnresolvedPathError { err } => err.description(db),
-            ExprMismatchKind::UnresolvedVarError { err } => err.description(db),
             ExprMismatchKind::LhsIsNotABool { ty } => {
                 "left-hand side is not a boolean".to_string()
             }

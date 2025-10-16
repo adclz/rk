@@ -6,16 +6,16 @@ use crate::{
     AstId, HirNodeInfo, TypeInfo,
     check::errors::path_error::PathResolveError,
     hir_def::{
-        expressions::{
-            spec::{Array, ElementarySpec, Enum, Spec, SpecKind, Struct, StructElement, SubRange},
+        expressions::spec::{
+            Array, ElementarySpec, Enum, Spec, SpecKind, Struct, StructElement, SubRange,
         },
         interned::{identifier::Ident, namespace::SpanNamespaceAccess},
         modifier::Modifier,
         pous::{
-            class::{Class},
+            class::Class,
             function::Function,
             function_block::FunctionBlock,
-            interface::{Interface},
+            interface::Interface,
             pou::{Pou, PouDecl},
             variable::{VariableDecl, VariableKind},
         },
@@ -82,12 +82,6 @@ impl<'db> TyDef<'db> {
             TyDef::Spec(spec) => spec.shorthand(db),
         }
     }
-    pub fn def_as_ty(&self, db: &'db dyn BaseDatabase) -> Option<Ty<'db>> {
-        match self {
-            Self::Pou(pou) => Some(ty_for_pou(db, *pou)),
-            _ => None,
-        }
-    }
 
     pub fn modifier(&self, db: &'db dyn BaseDatabase) -> Modifier {
         match self {
@@ -141,30 +135,10 @@ pub enum TyKind<'db> {
     Array(Array<'db>),
     ArrayConformand(Spec<'db>), // todo
     Struct(Struct<'db>),
-
-    // Pous
-    Interface(Interface<'db>),
-    Class(Class<'db>),
-    Function(Function<'db>),
-    FunctionBlock(FunctionBlock<'db>),
-    MethodRef(MethodRef<'db>),
+    Pou(PouDecl<'db>),
 
     // Error variants
     Unresolved(SpanNamespaceAccess<'db>),
-}
-
-#[tracing::instrument(skip_all, name = "query_type_signature")]
-#[salsa::tracked]
-pub fn ty_for_pou<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Ty<'db> {
-    let def = TyDef::Pou(pou);
-
-    match pou.pou(db) {
-        Pou::Function(func) => Ty::new(db, def, TyKind::Function(*func)),
-        Pou::FunctionBlock(fb) => Ty::new(db, def, TyKind::FunctionBlock(*fb)),
-        Pou::DataType(dt) => dt.spec(db).spec_to_ty(db),
-        Pou::Class(class) => Ty::new(db, def, TyKind::Class(*class)),
-        Pou::Interface(interface) => Ty::new(db, def, TyKind::Interface(*interface)),
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -187,242 +161,6 @@ impl<'db> Struct<'db> {
 
 #[salsa::tracked]
 impl<'db> Ty<'db> {
-    pub fn walk(
-        &self,
-        db: &'db dyn BaseDatabase,
-        step: &PathExprWalkStep<'db>,
-        search_mode: SearchMode,
-    ) -> Result<Ty<'db>, PathResolveError<'db>> {
-        match &step {
-            PathExprWalkStep::Field { ident, expr } => {
-                // Try different lookup strategies in order, falling through to the next if not found
-
-                // first, try struct fields (highest priority)
-                if let TyKind::Struct(ztruct) = self.kind(db) {
-                    let elements = ztruct.resolve_elements(db);
-                    if let Some(field) = elements.get(&ident.ident) {
-                        return Ok(field.spec(db).spec_to_ty(db));
-                    }
-                }
-
-                // try methods for Class and FunctionBlock types
-                match self.kind(db) {
-                    TyKind::Class { .. } | TyKind::FunctionBlock { .. } => {
-                        if let Some(method) =
-                            method_table(db, *self).declared_methods.get(&ident.ident)
-                        {
-                            return Ok(method.to_ty(db));
-                        }
-                    }
-                    _ => {}
-                }
-
-                // arrays cannot have fields (return error immediately)
-                if matches!(self.kind(db), TyKind::Array { .. }) {
-                    return Err(PathResolveError::TypeHasNoField {
-                        ty: *self,
-                        expr: *expr,
-                    });
-                }
-
-                if matches!(self.kind(db), TyKind::RefTo(_)) {
-                    return Err(PathResolveError::MissingDeref {
-                        ty: *self,
-                        expr: *expr,
-                    });
-                }
-
-                // last resort: look for variables
-                match search_mode {
-                    SearchMode::Global => self.all_variables(db).get(&ident.ident).cloned(),
-                    SearchMode::Local => self.local_variables(db).get(&ident.ident).cloned(),
-                }
-                .ok_or(PathResolveError::UnknownField {
-                    expr: *expr,
-                    ty: *self,
-                })
-            }
-            PathExprWalkStep::Index { expr } => match self.kind(db) {
-                TyKind::Array(array) => Ok(array.of_type.spec_to_ty(db)),
-                _ => Err(PathResolveError::NotAnArray {
-                    expr: *expr,
-                    ty: *self,
-                }),
-            },
-            PathExprWalkStep::Deref { expr, target } => {
-                let target = match self.kind(db) {
-                    // Look for a struct field
-                    TyKind::Struct(ztruct) => ztruct
-                        .resolve_elements(db)
-                        .get(&target.ident)
-                        .map(|f| f.spec(db).spec_to_ty(db))
-                        .ok_or(PathResolveError::UnknownField {
-                            expr: *expr,
-                            ty: *self,
-                        }),
-                    // Otherwise, look for a variable
-                    _ => match search_mode {
-                        SearchMode::Global => self.all_variables(db).get(&target.ident).cloned(),
-                        SearchMode::Local => self.local_variables(db).get(&target.ident).cloned(),
-                    }
-                    .ok_or(PathResolveError::UnknownField {
-                        expr: *expr,
-                        ty: *self,
-                    }),
-                }?;
-
-                match target.kind(db) {
-                    TyKind::RefTo(inner) => Ok(inner.spec_to_ty(db)),
-                    _ => Err(PathResolveError::NotAReference {
-                        expr: *expr,
-                        ty: *self,
-                    }),
-                }
-            }
-        }
-    }
-
-    #[salsa::tracked(returns(ref))]
-    pub fn inheritors(self, db: &'db dyn BaseDatabase) -> Vec<Ty<'db>> {
-        match self.kind(db) {
-            TyKind::Class(class) => {
-                let mut inheritors = vec![];
-                if let Some(base) = class.extends(db)
-                    && let Some(base) = resolve_namespace_access(db, base.scope_id, base.path)
-                {
-                    inheritors.push(ty_for_pou(db, base));
-                }
-                for iface in class.implements(db) {
-                    resolve_namespace_access(db, iface.scope_id, iface.path).map(|iface| {
-                        inheritors.push(ty_for_pou(db, iface));
-                    });
-                }
-                inheritors
-            }
-            TyKind::Interface(interface) => {
-                let mut inheritors = vec![];
-                if let Some(extends) = interface.extends(db) {
-                    for iface in extends {
-                        resolve_namespace_access(db, iface.scope_id, iface.path).map(|iface| {
-                            inheritors.push(ty_for_pou(db, iface));
-                        });
-                    }
-                }
-                inheritors
-            }
-            TyKind::FunctionBlock(fb) => {
-                let mut inheritors = vec![];
-                if let Some(base) = fb.extends(db)
-                    && let Some(base) = resolve_namespace_access(db, base.scope_id, base.path)
-                {
-                    inheritors.push(ty_for_pou(db, base));
-                }
-                inheritors
-            }
-            _ => vec![],
-        }
-    }
-
-    #[salsa::tracked(returns(ref))]
-    pub fn all_variables(self, db: &'db dyn BaseDatabase) -> IndexMap<Ident, Ty<'db>> {
-        match self.kind(db) {
-            _ => match self.def(db) {
-                TyDef::Pou(pou) => match pou.pou(db) {
-                    Pou::Function(f) => self.fetch_all_variables(db, &f.variables(db)),
-                    Pou::FunctionBlock(fb) => self.fetch_all_variables(db, &fb.variables(db)),
-                    _ => Default::default(),
-                },
-                _ => Default::default(),
-            },
-        }
-    }
-
-    #[salsa::tracked(returns(ref))]
-    pub fn local_variables(self, db: &'db dyn BaseDatabase) -> IndexMap<Ident, Ty<'db>> {
-        match self.kind(db) {
-            _ => match self.def(db) {
-                TyDef::Pou(pou) => match pou.pou(db) {
-                    Pou::Function(f) => self.fetch_local_variables(db, &f.variables(db)),
-                    Pou::FunctionBlock(fb) => self.fetch_local_variables(db, &fb.variables(db)),
-                    _ => Default::default(),
-                },
-                _ => Default::default(),
-            },
-        }
-    }
-
-    #[salsa::tracked(returns(ref))]
-    pub fn local_variables2(self, db: &'db dyn BaseDatabase) -> IndexMap<Ident, VariableDecl<'db>> {
-        match self.kind(db) {
-            _ => match self.def(db) {
-                TyDef::Pou(pou) => match pou.pou(db) {
-                    Pou::Function(f) => self.fetch_local_variables_2(db, &f.variables(db)),
-                    Pou::FunctionBlock(fb) => self.fetch_local_variables_2(db, &fb.variables(db)),
-                    _ => Default::default(),
-                },
-                _ => Default::default(),
-            },
-        }
-    }
-
-    fn fetch_local_variables_2(
-        &self,
-        db: &'db dyn BaseDatabase,
-        vars: &[VariableDecl<'db>],
-    ) -> IndexMap<Ident, VariableDecl<'db>> {
-        let mut variables = IndexMap::default();
-        for v in vars {
-            match v.kind(db) {
-                VariableKind::Input => {
-                    variables.insert(*v.name(db), *v);
-                }
-                VariableKind::Output => {
-                    variables.insert(*v.name(db), *v);
-                }
-                VariableKind::InOut => {
-                    variables.insert(*v.name(db), *v);
-                }
-                _ => continue,
-            };
-        }
-        variables
-    }
-
-    fn fetch_local_variables(
-        &self,
-        db: &'db dyn BaseDatabase,
-        vars: &[VariableDecl<'db>],
-    ) -> IndexMap<Ident, Ty<'db>> {
-        let mut variables = IndexMap::default();
-        for v in vars {
-            match v.kind(db) {
-                VariableKind::Input => {
-                    variables.insert(*v.name(db), v.spec(db).spec_to_ty(db));
-                }
-                VariableKind::Output => {
-                    variables.insert(*v.name(db), v.spec(db).spec_to_ty(db));
-                }
-                VariableKind::InOut => {
-                    variables.insert(*v.name(db), v.spec(db).spec_to_ty(db));
-                }
-                _ => continue,
-            };
-        }
-        variables
-    }
-
-    fn fetch_all_variables(
-        &self,
-        db: &'db dyn BaseDatabase,
-        vars: &[VariableDecl<'db>],
-    ) -> IndexMap<Ident, Ty<'db>> {
-        let mut variables = IndexMap::default();
-        for v in vars {
-            variables.insert(*v.name(db), v.spec(db).spec_to_ty(db));
-        }
-        variables
-    }
-
     pub fn visibility(&self, db: &'db dyn BaseDatabase) -> Option<Visibility> {
         match self.def(db) {
             TyDef::MethodRef(method) => Some(method.visibility(db)),
@@ -434,35 +172,12 @@ impl<'db> Ty<'db> {
         matches!(self.kind(db), TyKind::Simple(_))
     }
 
-    pub fn is_callable(&self, db: &'db dyn BaseDatabase) -> bool {
-        matches!(
-            self.kind(db),
-            TyKind::Function { .. } | TyKind::FunctionBlock { .. }
-        )
-    }
-
     pub fn is_unresolved(&self, db: &'db dyn BaseDatabase) -> bool {
         matches!(self.kind(db), TyKind::Unresolved(_))
     }
 
     pub fn is_reference(&self, db: &'db dyn BaseDatabase) -> bool {
         matches!(self.kind(db), TyKind::RefTo(_))
-    }
-
-    pub fn has_return_type(&self, db: &'db dyn BaseDatabase) -> Option<Ty<'db>> {
-        match self.kind(db) {
-            TyKind::Function(f) => f.return_type(db).map(|rt| rt.spec_to_ty(db)),
-            TyKind::MethodRef(m) => m.return_type(db).map(|rt| rt.spec_to_ty(db)),
-            _ => None,
-        }
-    }
-}
-
-// temporary, until we have proper method declarations
-#[salsa::tracked]
-impl<'db> MethodRef<'db> {
-    pub fn to_ty(self, db: &'db dyn BaseDatabase) -> Ty<'db> {
-        Ty::new(db, TyDef::MethodRef(self), TyKind::MethodRef(self))
     }
 }
 
@@ -477,7 +192,7 @@ impl<'db> Spec<'db> {
             SpecKind::Struct(ztruct) => TyKind::Struct(ztruct.clone()),
             SpecKind::Target(target) => {
                 match resolve_namespace_access(db, self.scope_id(db), target.path) {
-                    Some(pou) => ty_for_pou(db, pou).kind(db).clone(),
+                    Some(pou) => TyKind::Pou(pou),
                     None => TyKind::Unresolved(*target),
                 }
             }
@@ -499,11 +214,7 @@ impl<'db> TypeInfo<'db> for Ty<'db> {
             TyKind::Array { .. } => "ARRAY".into(),
             TyKind::ArrayConformand { .. } => "ARRAY*".into(),
             TyKind::Struct { .. } => "STRUCT".into(),
-            TyKind::Interface { .. } => "INTERFACE".into(),
-            TyKind::Class { .. } => "CLASS".into(),
-            TyKind::Function { .. } => "FUNCTION".into(),
-            TyKind::FunctionBlock { .. } => "FUNCTION_BLOCK".into(),
-            TyKind::MethodRef(m) => "METHOD".to_string(),
+            TyKind::Pou(pou) => pou.name(db).text(db).to_string(),
             TyKind::Unresolved(_) => "{unknown}".into(),
         }
     }

@@ -3,7 +3,10 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     check::{
-        check_semantic_index::{Check, DataTypeCheck}, check_ty::check_ty, coerce::coerce_ty_with_expr, errors::{analysis_error::AnalysisError, duplicates::DuplicateError, ty::TyError}
+        check_semantic_index::{Check, DataTypeCheck},
+        check_ty::check_ty,
+        coerce::coerce_ty_with_expr,
+        errors::{analysis_error::AnalysisError, duplicates::DuplicateError, ty::TyError},
     },
     hir_def::expressions::spec::{ElementarySpec, Enum},
     hir_ty::{
@@ -14,42 +17,29 @@ use crate::{
 };
 
 impl<'db> DataTypeCheck<'db> for Enum<'db> {
-    fn check(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        ty: Ty<'db>,
-        errors: &mut Vec<AnalysisError<'db>>,
-    ) {
-        let enum_typ = match ty.kind(db) {
-            TyKind::Enum(enum_) => {
-                // Check underlying type
-                if let Some(typ) = enum_.typ {
-                    let typ = typ.spec_to_ty(db);
-                    check_ty(db, typ, errors);
-                    match typ.kind(db) {
-                        TyKind::Simple(elementary) => match elementary {
-                            ElementarySpec::Byte
-                            | ElementarySpec::Word
-                            | ElementarySpec::DWord
-                            | ElementarySpec::LWord
-                            | ElementarySpec::SInt
-                            | ElementarySpec::USInt
-                            | ElementarySpec::Int
-                            | ElementarySpec::UInt
-                            | ElementarySpec::DInt
-                            | ElementarySpec::UDInt
-                            | ElementarySpec::LInt
-                            | ElementarySpec::ULInt => {}
-                            _ => {
-                                errors.push(TyError::InvalidEnumType { value: typ }.into())
-                            }
-                        },
-                        _ => errors.push(TyError::InvalidEnumType { value: typ }.into()),
-                    }
-                }
-                enum_.typ
+    fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<AnalysisError<'db>>) {
+        // Check underlying type
+        if let Some(typ) = self.typ {
+            let typ = typ.spec_to_ty(db);
+            check_ty(db, typ, errors);
+            match typ.kind(db) {
+                TyKind::Simple(elementary) => match elementary {
+                    ElementarySpec::Byte
+                    | ElementarySpec::Word
+                    | ElementarySpec::DWord
+                    | ElementarySpec::LWord
+                    | ElementarySpec::SInt
+                    | ElementarySpec::USInt
+                    | ElementarySpec::Int
+                    | ElementarySpec::UInt
+                    | ElementarySpec::DInt
+                    | ElementarySpec::UDInt
+                    | ElementarySpec::LInt
+                    | ElementarySpec::ULInt => {}
+                    _ => errors.push(TyError::InvalidEnumType { value: typ }.into()),
+                },
+                _ => errors.push(TyError::InvalidEnumType { value: typ }.into()),
             }
-            _ => None,
         };
 
         let mut seen = FxHashMap::default();
@@ -69,11 +59,17 @@ impl<'db> DataTypeCheck<'db> for Enum<'db> {
             }
 
             // Check variant value type
-            match (variant.value, enum_typ) {
+            match (variant.value, self.typ) {
                 (Some(value), Some(typ)) => {
                     let value_expr = resolve_expr(db, value);
                     if let Err(err) = coerce_ty_with_expr(db, typ.spec_to_ty(db), value_expr) {
-                        errors.push(TyError::InvalidEnumVariantValue { variant: variant.name, err }.into())
+                        errors.push(
+                            TyError::InvalidEnumVariantValue {
+                                variant: variant.name,
+                                err,
+                            }
+                            .into(),
+                        )
                     }
                 }
                 _ => {}

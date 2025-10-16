@@ -5,7 +5,6 @@ use rustc_hash::FxHashMap;
 use crate::{
     check::errors::{analysis_error::AnalysisError, duplicates::DuplicateError},
     hir_def::{interned::identifier::Ident, pous::pou::PouDecl, semantic_index::semantic_index},
-    hir_ty::ty::ty_for_pou,
 };
 
 #[salsa::tracked(returns(ref), no_eq)]
@@ -20,8 +19,8 @@ pub fn check_duplicate_pous<'db>(db: &'db dyn BaseDatabase, file: File) -> Vec<A
                 for j in (i + 1)..pous.len() {
                     errors.push(
                         DuplicateError::Pou {
-                            pou1: ty_for_pou(db, pous[j]),
-                            pou2: ty_for_pou(db, pous[0]),
+                            pou1:  pous[j],
+                            pou2:  pous[0],
                         }
                         .into(),
                     );
@@ -42,8 +41,8 @@ pub fn check_duplicate_pous<'db>(db: &'db dyn BaseDatabase, file: File) -> Vec<A
                         for pou in pous {
                             errors.push(
                                 DuplicateError::Pou {
-                                    pou1: ty_for_pou(db, *self_pou),
-                                    pou2: ty_for_pou(db, *pou),
+                                    pou1: *self_pou,
+                                    pou2: *pou,
                                 }
                                 .into(),
                             );

@@ -43,8 +43,8 @@ use crate::{
         init_expr_resolver::{ResolvedInitExpr, resolve_init_expr},
         name_res::{all_global_pous, all_local_pous},
         stmt_resolver::{ResolveStmtCtx, ResolvedStmt, ResolvedStmtKind, resolve_stmt},
-        ty::{Ty, TyKind, ty_for_pou},
-        ty_var_access_resolver::{Place, ResolvedAccess},
+        ty::{Ty, TyKind},
+        ty_var_access_resolver::{ResolvedAccess},
     },
     walk::WalkHir,
 };
@@ -57,7 +57,6 @@ pub trait DataTypeCheck<'db> {
     fn check(
         &'db self,
         db: &'db dyn BaseDatabase,
-        ty: Ty<'db>,
         errors: &mut Vec<AnalysisError<'db>>,
     );
 }
@@ -85,15 +84,13 @@ impl<'db> Check<'db> for NamespaceDecl<'db> {
 
 impl<'db> Check<'db> for PouDecl<'db> {
     fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<AnalysisError<'db>>) {
-        check_ty(db, ty_for_pou(db, *self), errors);
-
         match self.pou(db) {
             Pou::Function(f) => {
                 f.variables(db).check(db, errors);
                 f.statements(db).check(db, errors);
             }
             Pou::FunctionBlock(fb) => {
-                check_methods(db, ty_for_pou(db, *self), errors);
+                check_methods(db, *self, errors);
                 fb.variables(db).check(db, errors);
                 fb.statements(db).check(db, errors);
                 fb.methods(db).iter().for_each(|m| {
@@ -102,7 +99,7 @@ impl<'db> Check<'db> for PouDecl<'db> {
                 });
             }
             Pou::Class(cl) => {
-                check_methods(db, ty_for_pou(db, *self), errors);
+                check_methods(db, *self, errors);
                 cl.variables(db).check(db, errors);
                 cl.methods(db).iter().for_each(|m| {
                     m.variables(db).check(db, errors);
@@ -110,20 +107,20 @@ impl<'db> Check<'db> for PouDecl<'db> {
                 });
             }
             Pou::Interface(it) => {
-                check_methods(db, ty_for_pou(db, *self), errors);
+                check_methods(db, *self, errors);
             }
             Pou::DataType(typ) => match typ.spec(db).kind(db) {
                 SpecKind::Array(arr) => {
-                    arr.check(db, ty_for_pou(db, *self), errors);
+                    arr.check(db, errors);
                 }
                 SpecKind::Struct(st) => {
-                    st.check(db, ty_for_pou(db, *self), errors);
+                    st.check(db, errors);
                 }
                 SpecKind::Enum(en) => {
-                    en.check(db, ty_for_pou(db, *self), errors);
+                    en.check(db, errors);
                 }
                 SpecKind::Subrange(sub) => {
-                    sub.check(db, ty_for_pou(db, *self), errors);
+                    sub.check(db, errors);
                 }
                 _ => {}
             },

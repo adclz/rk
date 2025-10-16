@@ -9,6 +9,7 @@ use auto_lsp::default::db::{BaseDatabase, file::File};
 use rustc_hash::FxHashMap;
 use tracing::info_span;
 
+use crate::hir_ty::walk::ResolvedPath;
 use crate::HirNodeInfo;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::analysis_error::AnalysisError;
@@ -22,7 +23,7 @@ use crate::hir_ty::func_call_resolver::ResolvedParam;
 use crate::hir_ty::init_expr_resolver::ResolvedInitExpr;
 use crate::hir_ty::stmt_resolver::ResolvedStmt;
 use crate::hir_ty::ty::Ty;
-use crate::hir_ty::ty_var_access_resolver::{ResolvedAccess, ResolvedPathElement};
+use crate::hir_ty::ty_var_access_resolver::{ResolvedAccess};
 use crate::hir_ty::using_resolver::ResolvedUsing;
 use crate::walk::WalkHir;
 
@@ -147,7 +148,7 @@ pub enum HirNode<'db> {
     Ty(Ty<'db>),
     ResolvedUsing(ResolvedUsing<'db>),
     ResolvedAccess(ResolvedAccess<'db>),
-    ResolvedPathElement(ResolvedPathElement<'db>),
+    ResolvedPath(ResolvedPath<'db>),
     ResolvedStmt(ResolvedStmt<'db>),
     ResolvedParam(ResolvedParam<'db>),
     ResolvedExpr(ResolvedExpr<'db>),
@@ -160,7 +161,7 @@ impl<'db> HirNode<'db> {
             HirNode::Namespace(n) => n.get_span(db),
             HirNode::ResolvedUsing(u) => u.get_span(db),
             HirNode::Ty(t) => t.get_span(db),
-            HirNode::ResolvedPathElement(p) => p.get_span(db),
+            HirNode::ResolvedPath(p) => p.get_span(db),
             HirNode::ResolvedAccess(v) => v.get_span(db),
             HirNode::ResolvedStmt(s) => s.get_span(db),
             HirNode::ResolvedParam(p) => p.get_span(db),

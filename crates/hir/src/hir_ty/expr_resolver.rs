@@ -1,17 +1,23 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
+    AstId, HirNodeInfo,
     hir_def::{
         expressions::{
             expression::{Elementary, Expr, ExprKind, PathExpr, PrimaryExpr, RefValue},
             spec::EnumVariant,
-        }, interned::identifier::SpanIdent, scope::FileScopeId, semantic_index::semantic_index
-    }, hir_ty::{
+        },
+        interned::identifier::SpanIdent,
+        scope::FileScopeId,
+        semantic_index::semantic_index,
+    },
+    hir_ty::{
         func_call_resolver::ResolvedFuncCall,
         invocation_resolver::ResolvedInvocationResult,
         ty::TyKind,
-        ty_var_access_resolver::{resolve_path_expr, resolve_var_access, ResolvedAccess},
-    }, AstId, HirNodeInfo
+        ty_var_access_resolver::{ResolvedAccess, resolve_path_expr, resolve_var_access},
+        walk::ResolvedPath,
+    },
 };
 
 #[salsa::tracked]
@@ -134,10 +140,12 @@ impl<'db> ResolveExprCtx<'db> {
                     let resolved_path = resolve_path_expr(self.db, *name);
 
                     // Find the variant in the enum type
-                    let resolved_variant = if let Ok(TyKind::Enum(enum_)) =
-                        resolved_path.ty(self.db).map(|r| r.kind(self.db))
+                    let resolved_variant = if let Ok(Some(TyKind::Enum(enum_))) = resolved_path
+                        .resolved(self.db)
+                        .map(|p| p.to_ty(self.db).map(|t| t.kind(self.db)))
                     {
-                        enum_.variants
+                        enum_
+                            .variants
                             .iter()
                             .find(|v| v.name == variant.ident)
                             .cloned()
@@ -164,7 +172,10 @@ impl<'db> ResolveExprCtx<'db> {
                     RefValue::Address(adress) => ResolvedExpr::new(
                         self.db,
                         self.expr,
-                        ResolvedExprKind::RefValue(ResolvedRefValue::Adress(resolve_path_expr(self.db, adress.kind))),
+                        ResolvedExprKind::RefValue(ResolvedRefValue::Adress(resolve_path_expr(
+                            self.db,
+                            adress.kind,
+                        ))),
                     ),
                 },
             },

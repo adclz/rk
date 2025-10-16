@@ -2,47 +2,44 @@ use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, Related, diag};
 
 use crate::{
-    HirNodeInfo,
     check::errors::{
         analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic},
         coerce::TypeMismatch,
-    },
-    hir_def::{expressions::{expression::PathExpr, invocation::Invocation}, scope::FileScopeId},
-    hir_ty::ty::Ty,
+    }, hir_def::{expressions::{expression::PathExpr, invocation::Invocation}, pous::{pou::{Pou, PouDecl}, variable::VariableDecl}, scope::FileScopeId}, hir_ty::{inheritance_solver::MethodRef, ty::Ty}, HirNodeInfo
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum MethodError<'db> {
     OverrideFinalMethod {
-        base_method: Ty<'db>,
-        derived_method: Ty<'db>,
+        base_method: MethodRef<'db>,
+        derived_method: MethodRef<'db>,
     },
     MissingOverride {
-        base_method: Ty<'db>,
-        derived_method: Ty<'db>,
+        base_method: MethodRef<'db>,
+        derived_method: MethodRef<'db>,
     },
     MissingAbstractMethod {
-        implementer: Ty<'db>,
-        base_method: Ty<'db>,
+        implementer: PouDecl<'db>,
+        base_method: MethodRef<'db>,
     },
     EmptyOverride {
-        base_method: Ty<'db>,
+        base_method: MethodRef<'db>,
     },
     AbstractClassHasNoAbstractMethods {
-        class: Ty<'db>,
+        class: PouDecl<'db>,
     },
     UnimplementedInterfaceMethod {
-        implementer: Ty<'db>,
-        method: Ty<'db>,
+        implementer: PouDecl<'db>,
+        method: MethodRef<'db>,
     },
     // Invocations
     UnresolvedThisMethod {
-        ctx: Ty<'db>,
+        ctx: PouDecl<'db>,
         path: PathExpr<'db>,
         method: Invocation<'db>,
     },
     UnresolvedSuperMethod {
-        ctx: Option<Ty<'db>>,
+        ctx: Option<PouDecl<'db>>,
         path: PathExpr<'db>,
         method: Invocation<'db>,
     },
@@ -55,19 +52,19 @@ pub enum MethodError<'db> {
         method: Invocation<'db>,
     },
     SuperBodyOnIncompatiblePou {
-        ctx: Ty<'db>,
+        ctx: PouDecl<'db>,
         method: Invocation<'db>,
     },
     // Signatures
     SignatureParametersCountMismatch {
-        m1: Ty<'db>,
+        m1: MethodRef<'db>,
         expected: usize,
-        m2: Ty<'db>,
+        m2: MethodRef<'db>,
         got: usize,
     },
     SignatureParametersTypeMismatch {
         err: TypeMismatch<'db>,
-        param: Ty<'db>,
+        param: VariableDecl<'db>,
     },
 }
 
@@ -87,7 +84,7 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "missing OVERRIDE keyword for method '{}'",
-                        derived_method.name(db)
+                        derived_method.name(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(derived_method.name_span(db))
@@ -104,7 +101,7 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "cannot override FINAL method '{}'",
-                        base_method.name(db)
+                        base_method.name(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(derived_method.name_span(db))
@@ -121,7 +118,7 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "missing implementation for ABSTRACT method '{}'",
-                        base_method.name(db)
+                        base_method.name(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(implementer.name_span(db))
@@ -135,7 +132,7 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "invalid usage of OVERRIDE for method '{}'",
-                        base_method.name(db)
+                        base_method.name(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(base_method.name_span(db))
@@ -149,7 +146,7 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "ABSTRACT class '{}' has no abstract methods",
-                        class.name(db)
+                        class.name(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(class.name_span(db))
@@ -166,7 +163,7 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "missing implementation for interface method '{}'",
-                        method.name(db)
+                        method.name(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(implementer.name_span(db))
@@ -178,7 +175,7 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                 .message(format!(
                     "no method '{}' in declared methods of '{}'",
                     path.ident(db).ident.text(db),
-                    ctx.name(db)
+                    ctx.name(db).text(db)
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .range(method.get_span(db).clone())
@@ -193,7 +190,7 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                     .range(method.get_span(db).clone())
                     .call();
 
-                if let Some(caller) = ctx {
+                /*if let Some(caller) = ctx {
                     if let Some(span) = caller.def(db).get_span(db) {
                         let origin = caller.def(db).def_as_ty(db).unwrap();
 
@@ -209,7 +206,7 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                             span,
                         ));
                     }
-                }
+                }*/
                 diag
             }
             Self::ThisOnIncompatiblePou { path, method } => diag()
@@ -240,7 +237,7 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "invalid number of parameters for inherited method '{}': expected {}, got {}",
-                        m1.name(db),
+                        m1.name(db).text(db),
                         expected,
                         got
                     ))
@@ -257,7 +254,7 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                         err.description(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
-                    .range(param.name_span(db).clone())
+                    .range(param.get_name_span(db).unwrap())
                     .call();
 
                 err.related(db, &mut diag);

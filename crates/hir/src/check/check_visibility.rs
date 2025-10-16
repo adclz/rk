@@ -1,23 +1,19 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    HirNodeInfo,
-    builder::invocation,
-    check::errors::{
+    builder::invocation, check::errors::{
         analysis_error::AnalysisError, inheritance::MethodError, visibility::VisibilityError,
-    },
-    hir_def::{
+    }, hir_def::{
         expressions::invocation::Invocation,
         namespace::NamespaceDecl,
         pous::{class::MethodDecl, pou::Pou},
         scope::{FileScopeId, ScopeKind},
         semantic_index::semantic_index,
         visibility::Visibility,
-    },
-    hir_ty::{
+    }, hir_ty::{
         invocation_resolver::ResolvedInvocation,
-        ty::{Ty, TyKind, ty_for_pou},
-    },
+        ty::{Ty, TyKind}, ty_var_access_resolver::ResolvedAccess,
+    }, HirNodeInfo
 };
 
 /*
@@ -43,16 +39,13 @@ and its derivations (default).
 */
 pub fn check_call_visibility<'db>(
     db: &'db dyn BaseDatabase,
-    ty: Ty<'db>,
+    accessed: &'db ResolvedAccess<'db>,
     call_site: &'db impl HirNodeInfo<'db>,
     errors: &mut Vec<AnalysisError<'db>>,
 ) {
     let calling_scope = call_site.get_scope_id(db);
-    let method_visibility = match ty.visibility(db) {
-        Some(vis) => vis,
-        None => return,
-    };
-    let method_scope = ty.get_scope_id(db);
+    let method_visibility =  accessed.visibility(db);
+    let method_scope = accessed.get_scope_id(db);
 
     // PUBLIC methods can be called from anywhere
     if method_visibility.contains(Visibility::PUBLIC) {
@@ -64,7 +57,7 @@ pub fn check_call_visibility<'db>(
         if calling_scope != method_scope {
             errors.push(
                 VisibilityError::PrivateMethod {
-                    method: ty,
+                    method: *accessed,
                     call_site: call_site.get_span(db),
                 }
                 .into(),
@@ -81,7 +74,7 @@ pub fn check_call_visibility<'db>(
             _ => {
                 errors.push(
                     VisibilityError::InternalMethod {
-                        method: ty,
+                        method: *accessed,
                         result,
                         call_site: call_site.get_span(db),
                     }
@@ -97,7 +90,7 @@ pub fn check_call_visibility<'db>(
         if !is_derived_pou(db, calling_scope, method_scope) {
             errors.push(
                 VisibilityError::ProtectedMethod {
-                    method: ty,
+                    method: *accessed,
                     call_site: call_site.get_span(db),
                 }
                 .into(),
@@ -126,11 +119,11 @@ fn is_derived_pou<'db>(
                 return true;
             }
             // In case of SUPER
-            ty_for_pou(db, child)
+            child
                 .inheritors(db)
                 .iter()
                 .any(|inheritor| {
-                    *inheritor == ty_for_pou(db, parent)
+                    *inheritor == parent
                 })
         }
         _ => return false, // One or both are not POUs
