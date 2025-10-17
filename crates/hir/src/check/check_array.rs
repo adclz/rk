@@ -3,7 +3,7 @@ use auto_lsp::default::db::BaseDatabase;
 use crate::{
     check::{
         check_semantic_index::{Check, DataTypeCheck},
-        errors::{analysis_error::AnalysisError, ty::TyError},
+        errors::{analysis_error::AnalysisError, array::ArrayError},
     },
     hir_def::expressions::spec::Array,
     hir_ty::{array_resolver::resolve_range, expr_resolver::resolve_expr, ty::Ty},
@@ -19,7 +19,7 @@ impl<'db> DataTypeCheck<'db> for Array<'db> {
                 (Some(lower_range), Some(upper_range)) => {
                     if lower_range > upper_range {
                         errors.push(
-                            TyError::InferiorUpperBound {
+                            ArrayError::InferiorUpperBound {
                                 lower: lower_range,
                                 upper: upper_range,
                                 upper_expr: upper,
@@ -29,10 +29,10 @@ impl<'db> DataTypeCheck<'db> for Array<'db> {
                     }
                 }
                 (None, _) => {
-                    errors.push(TyError::InvalidArrayLowerValue { value: lower }.into());
+                    errors.push(ArrayError::InvalidArrayLowerValue { value: lower }.into());
                 }
                 (_, None) => {
-                    errors.push(TyError::InvalidArrayUpperValue { value: upper }.into());
+                    errors.push(ArrayError::InvalidArrayUpperValue { value: upper }.into());
                 }
             }
         }

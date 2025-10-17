@@ -16,7 +16,7 @@ use crate::{
     },
 };
 
-pub fn check_methods<'db>(
+pub fn check_inheritance<'db>(
     db: &'db dyn BaseDatabase,
     implementer: PouDecl<'db>,
     errors: &mut Vec<AnalysisError<'db>>,

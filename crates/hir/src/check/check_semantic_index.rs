@@ -14,10 +14,9 @@ use salsa::Accumulator;
 use crate::{
     HirNodeInfo,
     check::{
-        check_inheritance::check_methods,
+        check_inheritance::check_inheritance,
         check_init_expr::check_init_expr,
         check_namespaces::check_duplicate_namespaces,
-        check_ty::check_ty,
         errors::{analysis_error::AnalysisError, duplicates::DuplicateError, stmt::StmtError},
     },
     hir_def::{
@@ -90,7 +89,7 @@ impl<'db> Check<'db> for PouDecl<'db> {
                 f.statements(db).check(db, errors);
             }
             Pou::FunctionBlock(fb) => {
-                check_methods(db, *self, errors);
+                check_inheritance(db, *self, errors);
                 fb.variables(db).check(db, errors);
                 fb.statements(db).check(db, errors);
                 fb.methods(db).iter().for_each(|m| {
@@ -99,7 +98,7 @@ impl<'db> Check<'db> for PouDecl<'db> {
                 });
             }
             Pou::Class(cl) => {
-                check_methods(db, *self, errors);
+                check_inheritance(db, *self, errors);
                 cl.variables(db).check(db, errors);
                 cl.methods(db).iter().for_each(|m| {
                     m.variables(db).check(db, errors);
@@ -107,7 +106,7 @@ impl<'db> Check<'db> for PouDecl<'db> {
                 });
             }
             Pou::Interface(it) => {
-                check_methods(db, *self, errors);
+                check_inheritance(db, *self, errors);
             }
             Pou::DataType(typ) => match typ.spec(db).kind(db) {
                 SpecKind::Array(arr) => {

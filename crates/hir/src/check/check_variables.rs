@@ -5,7 +5,6 @@ use crate::{
     check::{
         check_init_expr::check_init_expr,
         check_semantic_index::Check,
-        check_ty::check_ty,
         errors::{analysis_error::AnalysisError, duplicates::DuplicateError},
     },
     hir_def::{interned::identifier::Ident, pous::variable::VariableDecl},
@@ -32,7 +31,6 @@ impl<'db> Check<'db> for Vec<VariableDecl<'db>> {
             }
 
             let var = variable.spec(db).spec_to_ty(db);
-            check_ty(db, var, errors);
             if let Some(init) = variable.init(db) {
                 check_init_expr(db, var, *resolve_init_expr(db, var, *init), errors);
             }
