@@ -86,7 +86,7 @@ fn resolve_unresolved<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>, init: UnResol
                     // Valid: Array type with ArrayInit
                     let resolved = values
                         .into_iter()
-                        .map(|v| resolve_unresolved(db, array.of_type.spec_to_ty(db), v))
+                        .map(|v| resolve_unresolved(db, array.of_type.to_ty(db), v))
                         .collect();
                     ResolvedInitExprKind::ArrayInit { values: resolved }
                 }
@@ -108,7 +108,7 @@ fn resolve_unresolved<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>, init: UnResol
                 .into_iter()
                 .map(|v| match ty.kind(db) {
                     // For array types, resolve values with element type
-                    TyKind::Array(array)=> resolve_unresolved(db, array.of_type.spec_to_ty(db), v),
+                    TyKind::Array(array)=> resolve_unresolved(db, array.of_type.to_ty(db), v),
                     // For simple types (multidimensional case), resolve with same type
                     _ => resolve_unresolved(db, ty, v),
                 })
@@ -146,7 +146,7 @@ fn resolve_unresolved<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>, init: UnResol
                 TyKind::Struct(ztruct) => {
                     if let Some(element_ty) = ztruct.resolve_elements(db).get(&name) {
                         // Valid field - resolve with field type
-                        let resolved_value = Box::new(resolve_unresolved(db, element_ty.spec(db).spec_to_ty(db), *value));
+                        let resolved_value = Box::new(resolve_unresolved(db, element_ty.spec(db).to_ty(db), *value));
                         let field = ResolvedAccess::new(
                             db,
                             CallSite::Formal(name),

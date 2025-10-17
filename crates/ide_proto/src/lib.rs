@@ -21,6 +21,7 @@ pub mod resolved_var_access;
 pub mod using;
 pub mod variable;
 pub mod resolved_using;
+pub mod spec;
 pub mod struct_element;
 
 pub trait ToProtocol<'db>: HirNodeInfo<'db> {
@@ -70,6 +71,7 @@ impl<'db> AsProtocol<'db> for HirNode<'db> {
             HirNode::PouDecl(p) => p,
             HirNode::VariableDecl(v) => v,
             HirNode::StructElement(s) => s,
+            HirNode::Spec(s) => s,
             HirNode::MethodRef(m) => m,
             HirNode::ResolvedUsing(u) => u,
             HirNode::ResolvedAccess(v) => v,

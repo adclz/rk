@@ -126,9 +126,8 @@ fn check_assignment<'db>(
     access: ResolvedAccess<'db>,
     target: ResolvedExpr<'db>,
 ) -> Result<(), AnalysisError<'db>> {
-    let access_type = match access.to_ty(db) {
-        Ok(Some(ty)) => ty,
-        Ok(None) => return Err(StmtError::InvalidAssignmentTarget { var: access }.into()),
+    let access_type = match access.try_to_ty(db) {
+        Ok(ty) => ty,
         Err(err) => return Err(StmtError::UnresolvedAssignmentTarget { var: access, err }.into()),
     };
 
@@ -141,11 +140,11 @@ fn check_assignment<'db>(
         // is not a variable but callable
         (false, true) => {
             // Special case: assigning to function with return type
-            if let ResolvedPathResult::Ok(ResolvedPath::Pou(pou))  = access.kind(db)
+            if let Ok(ResolvedPath::Pou(pou))  = access.resolved(db)
                 && let Pou::Function(f) = pou.pou(db) 
                 && let Some(ret) = f.return_type(db){
                 
-            return coerce_ty_with_expr(db, ret.spec_to_ty(db), target)
+            return coerce_ty_with_expr(db, ret.to_ty(db), target)
                     .map_err(|err| StmtError::AssignmentTypeMismatch { err }.into());
             } else {
                 return Err(StmtError::AssignmentToCallableType { var: access }.into());
@@ -210,7 +209,7 @@ fn check_invocation<'db>(
         }
         ResolvedMethodKind::FunctionBlockBody { target } => {
             let ty_target = target
-                .to_ty(db)
+                .try_to_ty(db)
                 .map_err(|err| StmtError::UnresolvedFuncCall { call: *target })?;
         }
     }
@@ -283,8 +282,8 @@ fn check_parameters<'db>(
                 resolved_param,
                 value,
             } => match resolved_param {
-                Some(other_param) => match other_param.to_ty(db) {
-                    Ok(Some(p_ty)) => {
+                Some(other_param) => match other_param.try_to_ty(db) {
+                    Ok(p_ty) => {
                         let _ = coerce_ty_with_expr(db, p_ty, value).map_err(|err| {
                             errors.push(
                                 StmtError::ParameterExprMismatch {
@@ -296,7 +295,6 @@ fn check_parameters<'db>(
                             )
                         });
                     }
-                    Ok(None) => unreachable!(""),
                     Err(err) => errors.push(
                         StmtError::UnresolvedNonFormalParam {
                             var: other_param,
@@ -329,8 +327,8 @@ fn check_parameters<'db>(
                     ),
                 }
                 match resolved_param {
-                    Some(other_param) => match other_param.to_ty(db) {
-                        Ok(Some(p_ty)) => {
+                    Some(other_param) => match other_param.try_to_ty(db) {
+                        Ok(p_ty) => {
                             let _ = coerce_ty_with_expr(db, p_ty, value).map_err(|err| {
                                 errors.push(
                                     StmtError::ParameterExprMismatch {
@@ -341,9 +339,6 @@ fn check_parameters<'db>(
                                     .into(),
                                 )
                             });
-                        }
-                        Ok(None) => {
-                            // Handle case where type resolution returns None
                         }
                         Err(err) => errors.push(
                             StmtError::UnresolvedInputParam {
@@ -381,9 +376,9 @@ fn check_parameters<'db>(
                     ),
                 }
                 match resolved_param {
-                    Some(other_param) => match other_param.to_ty(db) {
-                        Ok(Some(p_ty)) => match variable.to_ty(db) {
-                            Ok(Some(var_ty)) => {
+                    Some(other_param) => match other_param.try_to_ty(db) {
+                        Ok(p_ty) => match variable.try_to_ty(db) {
+                            Ok(var_ty) => {
                                 if variable.is_var_input(db) {
                                     errors.push(
                                         StmtError::AssignmentToInputVar {
@@ -413,9 +408,6 @@ fn check_parameters<'db>(
                                     });
                                 }
                             }
-                            Ok(None) => {
-                                // Handle case where type resolution returns None
-                            }
                             Err(err) => errors.push(
                                 StmtError::UnresolvedOutputParamTarget {
                                     var: other_param,
@@ -424,9 +416,6 @@ fn check_parameters<'db>(
                                 .into(),
                             ),
                         },
-                        Ok(None) => {
-                            // Handle case where type resolution returns None
-                        }
                         Err(err) => errors.push(
                             StmtError::UnresolvedOutputParam {
                                 var: other_param,
@@ -456,9 +445,8 @@ fn check_for<'db>(
     step: Option<ResolvedExpr<'db>>,
     errors: &mut Vec<AnalysisError<'db>>,
 ) -> Result<(), AnalysisError<'db>> {
-    let control_var_ty = match control_var.to_ty(db) {
-        Ok(Some(ty)) => ty,
-        Ok(None) => return Err(StmtError::InvalidAssignmentTarget { var: control_var }.into()),
+    let control_var_ty = match control_var.try_to_ty(db) {
+        Ok(ty) => ty,
         Err(err) => return Err(StmtError::UnresolvedAssignmentTarget { var: control_var, err }.into()),
     };
 

@@ -30,7 +30,7 @@ impl<'db> Check<'db> for Vec<VariableDecl<'db>> {
                 }
             }
 
-            let var = variable.spec(db).spec_to_ty(db);
+            let var = variable.spec(db).to_ty(db);
             if let Some(init) = variable.init(db) {
                 check_init_expr(db, var, *resolve_init_expr(db, var, *init), errors);
             }

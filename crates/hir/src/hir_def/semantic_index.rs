@@ -9,7 +9,7 @@ use auto_lsp::default::db::{BaseDatabase, file::File};
 use rustc_hash::FxHashMap;
 use tracing::info_span;
 
-use crate::hir_def::expressions::spec::StructElement;
+use crate::hir_def::expressions::spec::{Spec, StructElement};
 use crate::hir_def::pous::variable::VariableDecl;
 use crate::hir_ty::inheritance_solver::MethodRef;
 use crate::hir_ty::walk::ResolvedPath;
@@ -151,6 +151,7 @@ pub enum HirNode<'db> {
     PouDecl(PouDecl<'db>),
     VariableDecl(VariableDecl<'db>),
     StructElement(StructElement<'db>),
+    Spec(Spec<'db>),
     MethodRef(MethodRef<'db>),
     ResolvedUsing(ResolvedUsing<'db>),
     ResolvedAccess(ResolvedAccess<'db>),
@@ -168,6 +169,7 @@ impl<'db> HirNode<'db> {
             HirNode::PouDecl(p) => p.get_span(db),
             HirNode::VariableDecl(v) => v.get_span(db),
             HirNode::StructElement(s) => s.get_span(db),
+            HirNode::Spec(s) => s.get_span(db),
             HirNode::MethodRef(m) => m.get_span(db),
             HirNode::ResolvedUsing(u) => u.get_span(db),
             HirNode::ResolvedPath(p) => p.get_span(db),

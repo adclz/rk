@@ -4,7 +4,7 @@ use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     hir_def::{
-        expressions::spec::{SpecKind, Struct},
+        expressions::spec::{Spec, SpecKind, Struct},
         namespace::NamespaceDecl,
         pous::{
             class::MethodDecl,
@@ -114,7 +114,7 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
                 }
 
                 for method in fb.methods(db) {
-                    //MethodRef::from(method).walk_hir(db, f)?;
+                    MethodRef::from(method).walk_hir(db, f)?;
                 }
 
                 for stmt in fb.statements(db) {
@@ -126,12 +126,12 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
                     var.walk_hir(db, f)?;
                 }
                 for method in class.methods(db) {
-                    //MethodRef::from(method).walk_hir(db, f)?;
+                    MethodRef::from(method).walk_hir(db, f)?;
                 }
             }
             Pou::Interface(it) => {
                 for method in it.methods(db) {
-                    //MethodRef::from(method).walk_hir(db, f)?;
+                    MethodRef::from(method).walk_hir(db, f)?;
                 }
             }
             Pou::DataType(dt) => {
@@ -147,7 +147,7 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
                 if let Some(init_expr) = dt.init(db) {
                     f(HirNode::ResolvedInitExpr(*resolve_init_expr(
                         db,
-                        dt.spec(db).spec_to_ty(db),
+                        dt.spec(db).to_ty(db),
                         init_expr,
                     )))?;
                 }
@@ -165,9 +165,38 @@ impl<'db> WalkHir<'db> for VariableDecl<'db> {
     ) -> ControlFlow<()> {
         f(HirNode::VariableDecl(*self))?;
         if let Some(init_expr) = self.init(db) {
-            resolve_init_expr(db, self.spec(db).spec_to_ty(db), *init_expr).walk_hir(db, f)?;
+            resolve_init_expr(db, self.spec(db).to_ty(db), *init_expr).walk_hir(db, f)?;
         }
         ControlFlow::Continue(())
+    }
+}
+
+impl<'db> WalkHir<'db> for MethodRef<'db> {
+    fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
+        &self,
+        db: &'db dyn BaseDatabase,
+        f: &mut F,
+    ) -> ControlFlow<()> {
+        f(HirNode::MethodRef(MethodRef::from(*self)))?;
+
+        for var in self.variables(db) {
+            var.walk_hir(db, f)?;
+        }
+
+        if let Some(ret) = self.return_type(db) {
+            ret.walk_hir(db, f)?;
+        }
+        ControlFlow::Continue(())
+    }
+}
+
+impl<'db> WalkHir<'db> for Spec<'db> {
+    fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
+        &self,
+        db: &'db dyn BaseDatabase,
+        f: &mut F,
+    ) -> ControlFlow<()> {
+        f(HirNode::Spec(*self))
     }
 }
 

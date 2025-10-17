@@ -3,7 +3,7 @@ use indexmap::IndexMap;
 
 use crate::{
     AstId, HirNodeInfo, TypeInfo,
-    check::errors::path_error::PathResolveError,
+    check::errors::path_error::AccessError,
     hir_def::{
         expressions::{
             expression::{
@@ -54,8 +54,9 @@ pub struct ResolvedAccess<'db> {
     // Where the access was made
     pub call_site: CallSite<'db>,
 
-    // Where the variable is stored / how it is accessed
-    pub kind: ResolvedPathResult<'db>,
+    // Primarily resolved path
+    // Private: use initial() or resolved() methods
+    kind: ResolvedPathResult<'db>,
 
     pub elements: Vec<ResolvedPathResult<'db>>,
 }
@@ -100,26 +101,36 @@ impl<'db> CallSite<'db> {
 }
 
 impl<'db> ResolvedAccess<'db> {
-    pub fn resolved(
+    /// Get the initially resolved path (first element)
+    pub fn initial(
         &self,
         db: &'db dyn BaseDatabase,
-    ) -> Result<ResolvedPath<'db>, PathResolveError<'db>> {
-        match self.elements(db).last() {
-            Some(ResolvedPathResult::Ok(ok)) => Ok(ok.clone()),
-            Some(ResolvedPathResult::Err(err)) => Err(err.clone()),
-            _ => match &self.kind(db) {
-                ResolvedPathResult::Ok(ok) => Ok(ok.clone()),
-                ResolvedPathResult::Err(err) => Err(err.clone()),
-            },
+    ) -> Result<ResolvedPath<'db>, AccessError<'db>> {
+        match &self.kind(db) {
+            ResolvedPathResult::Ok(ok) => Ok(ok.clone()),
+            ResolvedPathResult::Err(err) => Err(err.clone()),
         }
     }
 
-    pub fn to_ty(
+    /// Get the last resolved path (after all elements)
+    /// If there are no elements, returns the initial path
+    pub fn resolved(
         &self,
         db: &'db dyn BaseDatabase,
-    ) -> Result<Option<Ty<'db>>, PathResolveError<'db>> {
+    ) -> Result<ResolvedPath<'db>, AccessError<'db>> {
+        match self.elements(db).last() {
+            Some(ResolvedPathResult::Ok(ok)) => Ok(ok.clone()),
+            Some(ResolvedPathResult::Err(err)) => Err(err.clone()),
+            _ => self.initial(db),
+        }
+    }
+
+    pub fn try_to_ty(
+        &self,
+        db: &'db dyn BaseDatabase,
+    ) -> Result<Ty<'db>, AccessError<'db>> {
         match self.resolved(db) {
-            Ok(r) => Ok(r.to_ty(db)),
+            Ok(r) => r.try_to_try(db),
             Err(err) => Err(err),
         }
     }
@@ -278,9 +289,8 @@ impl<'db> VarAccessResolverCtx<'db> {
                     None => ResolvedAccess::new(
                         self.db,
                         CallSite::Access(self.access),
-                        ResolvedPathResult::Err(PathResolveError::NoItemInScope {
+                        ResolvedPathResult::Err(AccessError::NoItemInScope {
                             expr: symbolic.kind,
-                            scope: symbolic.kind.scope_id(self.db),
                         }),
                         vec![],
                     ),
@@ -312,9 +322,8 @@ impl<'db> GlobalResolverCtx<'db> {
             None => ResolvedAccess::new(
                 self.db,
                 CallSite::PathExpr(self.path_expr),
-                ResolvedPathResult::Err(PathResolveError::NoItemInScope {
+                ResolvedPathResult::Err(AccessError::NoItemInScope {
                     expr: self.path_expr,
-                    scope: self.path_expr.scope_id(self.db),
                 }),
                 vec![],
             ),

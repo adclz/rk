@@ -140,9 +140,9 @@ impl<'db> ResolveExprCtx<'db> {
                     let resolved_path = resolve_path_expr(self.db, *name);
 
                     // Find the variant in the enum type
-                    let resolved_variant = if let Ok(Some(TyKind::Enum(enum_))) = resolved_path
+                    let resolved_variant = if let Ok(Ok(TyKind::Enum(enum_))) = resolved_path
                         .resolved(self.db)
-                        .map(|p| p.to_ty(self.db).map(|t| t.kind(self.db)))
+                        .map(|p| p.try_to_try(self.db).map(|t| t.kind(self.db)))
                     {
                         enum_
                             .variants

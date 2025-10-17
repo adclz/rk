@@ -2,7 +2,7 @@ use auto_lsp::default::db::BaseDatabase;
 use indexmap::IndexMap;
 
 use crate::{
-    check::errors::path_error::PathResolveError, hir_def::{
+    check::errors::path_error::AccessError, hir_def::{
         expressions::{expression::{FuncCall, ParamAssign}, spec::Spec}, interned::identifier::{Ident, SpanIdent}, pous::variable::VariableDecl, scope::FileScopeId
     }, hir_ty::{
         expr_resolver::ResolvedExpr,
@@ -24,8 +24,8 @@ impl<'db> ResolvedFuncCall<'db> {
     pub fn to_ty(
         &'db self,
         db: &'db dyn BaseDatabase,
-    ) -> Result<Option<Ty<'db>>, PathResolveError<'db>> {
-        self.target.resolved(db).and_then(|r| Ok(r.to_ty(db)))
+    ) -> Result<Ty<'db>, AccessError<'db>> {
+        self.target.resolved(db).and_then(|r| r.try_to_try(db))
     }
 
     pub fn is_callable(&self, db: &'db dyn BaseDatabase) -> bool {

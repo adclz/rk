@@ -44,11 +44,11 @@ impl<'db> DataTypeCheck<'db> for SubRange<'db> {
 
         let min = resolve_expr(db, self.lower);
         let max = resolve_expr(db, self.upper);
-        if let Err(err) = coerce_ty_with_expr(db, self._type.spec_to_ty(db), min) {
+        if let Err(err) = coerce_ty_with_expr(db, self._type.to_ty(db), min) {
             errors.push(SubRangeError::InvalidSubrangeStart { expr: min, err }.into())
         }
 
-        if let Err(err) = coerce_ty_with_expr(db, self._type.spec_to_ty(db), max) {
+        if let Err(err) = coerce_ty_with_expr(db, self._type.to_ty(db), max) {
             errors.push(SubRangeError::InvalidSubrangeEnd { expr: max, err }.into())
         }
     }

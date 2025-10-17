@@ -43,8 +43,8 @@ pub fn check_init_expr<'db>(
             }
         }
         ResolvedInitExprKind::StructElement { field, value } => {
-            match field.to_ty(db) {
-                Ok(Some(field_ty)) => {
+            match field.try_to_ty(db) {
+                Ok(field_ty) => {
                     check_init_expr(db, field_ty, *value, errors);
                 },
                 _ => ()
@@ -53,7 +53,7 @@ pub fn check_init_expr<'db>(
         ResolvedInitExprKind::ArrayInit { values } => {
             // For arrays, validate bounds if we have array type info
             if let TyKind::Array(array) = ty.kind(db) {
-                check_array_dimensions(db, &array.subranges, array.of_type.spec_to_ty(db), &values, errors);
+                check_array_dimensions(db, &array.subranges, array.of_type.to_ty(db), &values, errors);
             } else {
                 // Just recursively check the values - resolver has already validated types
                 for value in values {

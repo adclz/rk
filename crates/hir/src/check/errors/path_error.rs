@@ -12,66 +12,73 @@ use crate::{
         expressions::expression::PathExpr,
         scope::{FileScopeId, ScopeKind},
         semantic_index::semantic_index,
-    }, hir_ty::ty::Ty, TypeInfo
+    }, hir_ty::{ty::Ty, ty_var_access_resolver::ResolvedAccess, walk::ResolvedPath}, TypeInfo
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum PathResolveError<'db> {
+pub enum AccessError<'db> {
     NoItemInScope {
         expr: PathExpr<'db>,
-        scope: FileScopeId<'db>,
+    },
+    InvalidTypeAccess {
+        access: ResolvedPath<'db>,
     },
     UnknownField {
-        ty: Ty<'db>,
+        ty: ResolvedPath<'db>,
         expr: PathExpr<'db>,
     },
     TypeHasNoField {
-        ty: Ty<'db>,
+        ty: ResolvedPath<'db>,
         expr: PathExpr<'db>,
     },
     MissingDeref {
-        ty: Ty<'db>,
+        ty: ResolvedPath<'db>,
         expr: PathExpr<'db>,
     },
     NotAnArray {
-        ty: Ty<'db>,
+        ty: ResolvedPath<'db>,
         expr: PathExpr<'db>,
     },
     NotAReference {
-        ty: Ty<'db>,
+        ty: ResolvedPath<'db>,
         expr: PathExpr<'db>,
     },
 }
 
-impl<'db> DiagnosticDescription<'db> for PathResolveError<'db> {
+impl<'db> DiagnosticDescription<'db> for AccessError<'db> {
     fn description(&self, db: &'db dyn BaseDatabase) -> String {
         match self {
-            PathResolveError::NoItemInScope { expr, scope } => {
+            AccessError::NoItemInScope { expr } => {
                 format!("no item '{}' in scope", expr.ident(db).text(db))
             }
-            PathResolveError::UnknownField { ty, expr } => {
-                format!("field '{}' not found in '{}'", expr.ident(db).text(db), ty.type_name(db))
+            AccessError::InvalidTypeAccess { access } => {
+                format!("invalid type access on '{}'", access.decl_name(db))
             }
-            PathResolveError::TypeHasNoField { ty, expr } => {
-                format!("type '{}' does not have fields", ty.type_name(db))
+            AccessError::UnknownField { ty, expr } => {
+                format!("field '{}' not found in '{}'", expr.ident(db).text(db), ty.decl_name(db))
             }
-            PathResolveError::MissingDeref { ty, expr } => {
-                format!("type '{}' is a reference, maybe you forgot to dereference it ?", ty.type_name(db))
+            AccessError::TypeHasNoField { ty, expr } => {
+                format!("type '{}' does not have fields", ty.decl_name(db))
             }
-            PathResolveError::NotAReference { ty, expr } => {
-                format!("type '{}' can not be dereferenced", ty.type_name(db))
+            AccessError::MissingDeref { ty, expr } => {
+                format!("type '{}' is a reference, maybe you forgot to dereference it ?", ty.decl_name(db))
             }
-            PathResolveError::NotAnArray { ty, expr } => {
-                format!("type '{}' cannot be indexed", ty.type_name(db))
+            AccessError::NotAReference { ty, expr } => {
+                format!("type '{}' can not be dereferenced", ty.decl_name(db))
+            }
+            AccessError::NotAnArray { ty, expr } => {
+                format!("type '{}' cannot be indexed", ty.decl_name(db))
             }
         }
     }
 
     fn note(&self, db: &'db dyn BaseDatabase, diag: &mut IdeDiagnostic) {
         match self {
-            PathResolveError::NoItemInScope { expr, scope } => {
-                if let ScopeKind::Pou(pou) = semantic_index(db, scope.file(db))
-                    .get_scope(db, *scope)
+            AccessError::NoItemInScope { expr } => {
+                let scope = expr.scope_id(db);
+                let sema = semantic_index(db, expr.scope_id(db).file(db));
+                let scope = sema.get_scope(db, scope);
+                if let ScopeKind::Pou(pou) = scope
                     .kind
                 {
                     diag.with_note(get_candidates(&fuzzy_pou_local_items(
@@ -81,21 +88,22 @@ impl<'db> DiagnosticDescription<'db> for PathResolveError<'db> {
                     )));
                 }
             }
-            PathResolveError::TypeHasNoField { ty, expr } => {
-                get_def_for_ty(db, *ty, diag);
+            AccessError::TypeHasNoField { ty, expr } => {
+                //get_def_for_ty(db, *ty, diag);
             }
-            PathResolveError::MissingDeref { ty, expr } => {
-                get_def_for_ty(db, *ty, diag);
+            AccessError::MissingDeref { ty, expr } => {
+                //get_def_for_ty(db, *ty, diag);
             }
-            PathResolveError::UnknownField { ty, expr } => {
-                get_def_for_ty(db, *ty, diag);
+            AccessError::UnknownField { ty, expr } => {
+                //get_def_for_ty(db, *ty, diag);
             }
-            PathResolveError::NotAnArray { ty, expr } => {
-                get_def_for_ty(db, *ty, diag);
+            AccessError::NotAnArray { ty, expr } => {
+                //get_def_for_ty(db, *ty, diag);
             }
-            PathResolveError::NotAReference { ty, expr } => {
-                get_def_for_ty(db, *ty, diag);
-            }
+            AccessError::NotAReference { ty, expr } => {
+                //get_def_for_ty(db, *ty, diag);
+            },
+            _ => { /* No note for other errors */ }
         }
     }
 }

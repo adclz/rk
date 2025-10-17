@@ -3,7 +3,7 @@ use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
     check::errors::{
-            analysis_error::DiagnosticDescription, literals::LiteralErrorKind, path_error::PathResolveError, utils::get_def_for_ty,
+            analysis_error::DiagnosticDescription, literals::LiteralErrorKind, path_error::AccessError, utils::get_def_for_ty,
         }, hir_def::interned::identifier::SpanIdent, hir_ty::{expr_resolver::ResolvedExpr, ty::Ty}, TypeInfo
 };
 
@@ -35,7 +35,7 @@ pub enum ExprMismatchKind<'db> {
         ty: Ty<'db>,
     },
     UnresolvedPathError {
-        err: PathResolveError<'db>,
+        err: AccessError<'db>,
     },
     LhsIsNotABool {
         ty: Ty<'db>,
@@ -82,7 +82,7 @@ impl<'db> ExprMismatch<'db> {
         }
     }
 
-    pub fn unresolved_path(expr: ResolvedExpr<'db>, err: PathResolveError<'db>) -> Self {
+    pub fn unresolved_path(expr: ResolvedExpr<'db>, err: AccessError<'db>) -> Self {
         Self {
             expr,
             kind: ExprMismatchKind::UnresolvedPathError { err },

@@ -141,7 +141,7 @@ fn check_signature<'db>(
     }
 
     sig1.iter().zip(sig2.iter()).for_each(|(var1, var2)| {
-        if let Err(err) = coerce_ty_with_ty(db, var1.spec(db).spec_to_ty(db), var2.spec(db).spec_to_ty(db)) {
+        if let Err(err) = coerce_ty_with_ty(db, var1.spec(db).to_ty(db), var2.spec(db).to_ty(db)) {
             errors.push(MethodError::SignatureParametersTypeMismatch { param: *var2, err }.into());
         }
     });

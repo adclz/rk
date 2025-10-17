@@ -28,7 +28,7 @@ impl<'db> DataTypeCheck<'db> for Struct<'db> {
                 }
             }
 
-            let field_ty = field.spec(db).spec_to_ty(db);
+            let field_ty = field.spec(db).to_ty(db);
             if let Some(init_expr) = field.init(db) {
                 check_init_expr(db, field_ty, *resolve_init_expr(db, field_ty, init_expr), errors);
             }

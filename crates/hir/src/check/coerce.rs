@@ -54,7 +54,7 @@ pub fn coerce_ty_with_expr<'db>(
                 .target
                 .with_return_type(db)
             {
-                Some(ret) => coerce_ty_with_ty(db, ty, ret.spec_to_ty(db))
+                Some(ret) => coerce_ty_with_ty(db, ty, ret.to_ty(db))
                     .map_err(|err| ExprMismatch::type_mismatch(target_expr, err)),
                 None => Err(ExprMismatch::expr_void(target_expr, ty)),
             }
@@ -65,9 +65,7 @@ pub fn coerce_ty_with_expr<'db>(
             coerce_ty_with_ty(
                 db,
                 ty,
-                var.to_ty(db)
-                .transpose()
-                .unwrap()
+                var.try_to_ty(db)
                     .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?,
             )
             .map_err(|err| ExprMismatch::type_mismatch(target_expr, err))
@@ -91,20 +89,16 @@ pub fn coerce_ty_with_expr<'db>(
         // Compare an Array with PathExpr (PathExpr should be an indexed access)
         (TyKind::Array(array), ResolvedExprKind::VarAccess(result)) => coerce_ty_with_ty(
             db,
-            array.of_type.spec_to_ty(db),
+            array.of_type.to_ty(db),
             result
-                .to_ty(db)
-                .transpose()
-                .unwrap()
+                .try_to_ty(db)
                 .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?,
         )
         .map_err(|err| ExprMismatch::type_mismatch(target_expr, err)),
         // Compare a Struct with PathExpr (PathExpr should be a field access)
         (TyKind::Struct(ztruct), ResolvedExprKind::VarAccess(result)) => {
             match result
-                .to_ty(db)
-                .transpose()
-                .unwrap()
+                .try_to_ty(db)
                 .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?
                 .kind(db)
             {
@@ -114,9 +108,7 @@ pub fn coerce_ty_with_expr<'db>(
                     TypeMismatch {
                         ty1: ty,
                         ty2: result
-                            .to_ty(db)
-                            .transpose()
-                .unwrap()
+                            .try_to_ty(db)
                             .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?,
                     },
                 )),
@@ -133,9 +125,7 @@ pub fn coerce_ty_with_expr<'db>(
         ) => {
             // Check if the EnumValue type matches the enum type
             match name
-                .to_ty(db)
-                .transpose()
-                .unwrap()
+                .try_to_ty(db)
                 .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?
                 .kind(db)
             {
@@ -168,7 +158,7 @@ pub fn coerce_ty_with_expr<'db>(
                 None => return Ok(()),
             };
 
-            match coerce_ty_with_expr(db, subrange._type.spec_to_ty(db), target_expr) {
+            match coerce_ty_with_expr(db, subrange._type.to_ty(db), target_expr) {
                 Ok(()) => match resolve_range(db, target_expr.expr(db)) {
                     Some(integer) => {
                         if integer >= min && integer <= max {
@@ -189,7 +179,7 @@ pub fn coerce_ty_with_expr<'db>(
             }
         }
         (TyKind::RefTo(ref_), ResolvedExprKind::RefValue(inner)) => {
-            let ref_to = ref_.spec_to_ty(db);
+            let ref_to = ref_.to_ty(db);
 
             match inner {
                 // A NULL reference can be assigned to any reference type
@@ -197,9 +187,7 @@ pub fn coerce_ty_with_expr<'db>(
                 ResolvedRefValue::Adress(v) => {
                     // Retrives the element that the reference points to
                     let var_ty = v
-                        .to_ty(db)
-                        .transpose()
-                .unwrap()
+                        .try_to_ty(db)
                         .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?;
 
                     // Check that the type of the variable is the same as the type the reference points to
@@ -211,13 +199,11 @@ pub fn coerce_ty_with_expr<'db>(
             }
         }
         (TyKind::RefTo(ref_), ResolvedExprKind::VarAccess(var_access)) => {
-            let ref_to = ref_.spec_to_ty(db);
+            let ref_to = ref_.to_ty(db);
 
             // Retrives the element that the reference points to
             let var_ty = var_access
-                .to_ty(db)
-                .transpose()
-                .unwrap()
+                .try_to_ty(db)
                 .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?;
 
             // Check that the type of the variable is the same as the type the reference points to

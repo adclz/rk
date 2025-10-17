@@ -72,7 +72,7 @@ pub fn get_expr_inlay_hint_position(
 
 pub fn get_expr_ty<'db>(db: &'db dyn BaseDatabase, param: &'db ResolvedInitExpr) -> Option<Ty<'db>> {
     match param.kind(db) {
-        ResolvedInitExprKind::StructElement { field, .. } => field.to_ty(db).ok()?,
+        ResolvedInitExprKind::StructElement { field, .. } => field.try_to_ty(db).ok(),
         _ => None,
     }
 }

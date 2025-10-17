@@ -4,7 +4,7 @@ use ide_diagnostic::{IdeDiagnostic, Related, diag};
 use crate::{
     check::{
         errors::{
-            analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic}, coerce::{ExprMismatch, TypeMismatch}, path_error::PathResolveError, utils::{get_candidates, get_def_for_ty}
+            analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic}, coerce::{ExprMismatch, TypeMismatch}, path_error::AccessError, utils::{get_candidates, get_def_for_ty}
         },
         recovery::func_call::fuzzy_func_local_items,
     }, hir_def::interned::identifier::SpanIdent, hir_ty::{
@@ -19,7 +19,7 @@ pub enum StmtError<'db> {
     // Assignments
     UnresolvedAssignmentTarget {
         var: ResolvedAccess<'db>,
-        err: PathResolveError<'db>,
+        err: AccessError<'db>,
     },
     InvalidAssignmentTarget {
         var: ResolvedAccess<'db>,
@@ -66,7 +66,7 @@ pub enum StmtError<'db> {
     },
     UnresolvedNonFormalParam {
         var: ResolvedAccess<'db>,
-        err: PathResolveError<'db>,
+        err: AccessError<'db>,
     },
     UnknownFormalInputParam {
         call: ResolvedAccess<'db>,
@@ -74,7 +74,7 @@ pub enum StmtError<'db> {
     },
     UnresolvedInputParam {
         var: ResolvedAccess<'db>,
-        err: PathResolveError<'db>,
+        err: AccessError<'db>,
     },
     UnknownFormalOutputParam {
         call: ResolvedAccess<'db>,
@@ -82,11 +82,11 @@ pub enum StmtError<'db> {
     },
     UnresolvedOutputParam {
         var: ResolvedAccess<'db>,
-        err: PathResolveError<'db>,
+        err: AccessError<'db>,
     },
     UnresolvedOutputParamTarget {
         var: ResolvedAccess<'db>,
-        err: PathResolveError<'db>,
+        err: AccessError<'db>,
     },
     ParameterTypeMismatch {
         param: SpanIdent<'db>,
@@ -101,7 +101,7 @@ pub enum StmtError<'db> {
     // For and While loops
     UnresolvedControlVar {
         control: ResolvedAccess<'db>,
-        err: PathResolveError<'db>,
+        err: AccessError<'db>,
     },
     ForLoopStartTypeMismatch {
         start: ResolvedExpr<'db>,

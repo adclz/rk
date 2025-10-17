@@ -169,33 +169,3 @@ pub fn pou_names_res<'db>(
         .or_else(|| all_global_pous(db).get(pou))
         .copied()
 }
-
-/*#[salsa::tracked(returns(ref))]
-pub fn variables_in_scope<'db>(
-    db: &'db dyn BaseDatabase,
-    scope_id: FileScopeId<'db>,
-) -> FxHashMap<Ident, VariableDecl<'db>> {
-    let sema = semantic_index(db, scope_id.file(db));
-    let scope = sema.get_scope(db, scope_id);
-
-    let mut map = FxHashMap::default();
-
-    if let ScopeKind::Pou(pou) = scope.kind {
-        match pou.pou(db) {
-            Pou::Function(f) => {
-                for var in f.variables(db) {
-                    map.insert(*var.name(db), *var);
-                }
-            }
-            Pou::FunctionBlock(fb) => {
-                for var in fb.variables(db) {
-                    map.insert(*var.name(db), *var);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    map
-}
-*/
