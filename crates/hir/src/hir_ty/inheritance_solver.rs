@@ -4,7 +4,7 @@ use crate::{
     AstId, HirNodeInfo,
     hir_def::{
         expressions::spec::Spec,
-        interned::identifier::{Ident, SpanIdent},
+        interned::identifier::Ident,
         modifier::Modifier,
         pous::{
             class::MethodDecl,
@@ -15,10 +15,7 @@ use crate::{
         scope::FileScopeId,
         visibility::Visibility,
     },
-    hir_ty::{
-        name_res::resolve_namespace_access,
-        ty::{Ty, TyKind},
-    },
+    hir_ty::name_res::resolve_namespace_access,
 };
 use auto_lsp::{core::span::Span, default::db::BaseDatabase};
 use rustc_hash::FxHashMap;

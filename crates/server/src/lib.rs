@@ -174,7 +174,6 @@ fn on_requests<Db: BaseDatabase + Clone + RefUnwindSafe>(
         .on::<GotoImplementation, _>(go_to_implementation)
 }
 
-
 fn on_notifications<Db: BaseDatabase + Clone + RefUnwindSafe>(
     registry: &mut NotificationRegistry<Db>,
 ) -> &mut NotificationRegistry<Db> {
@@ -186,7 +185,7 @@ fn on_notifications<Db: BaseDatabase + Clone + RefUnwindSafe>(
                 true => Ok(open_text_document(s, p)?),
                 false => {
                     //log::warn!("Ignored opening file: {}", p.text_document.uri);
-                    return Ok(());
+                    Ok(())
                 }
             }
         })
@@ -195,7 +194,7 @@ fn on_notifications<Db: BaseDatabase + Clone + RefUnwindSafe>(
                 true => Ok(change_text_document(s, p)?),
                 false => {
                     //log::warn!("Ignored opening file: {}", p.text_document.uri);
-                    return Ok(());
+                    Ok(())
                 }
             }
         })

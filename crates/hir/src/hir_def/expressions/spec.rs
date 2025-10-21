@@ -5,9 +5,8 @@ use auto_lsp::core::span::Span;
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::hir_def::expressions::expression::{InitExpr, VariableAccess};
-use crate::hir_def::semantic_index::semantic_index;
-use crate::hir_ty::name_res::resolve_namespace_access;
-use crate::{AstId, TypeInfo};
+use crate::hir_ty::name_res::resolve_namespace_access; 
+use crate::{AstId};
 use crate::{
     HirNodeInfo,
     hir_def::{
@@ -295,7 +294,7 @@ impl<'db> Spec<'db> {
                         let upper = resolve_range(db, *upper)
                             .map(|n| n.to_string())
                             .unwrap_or_default();
-                        format!("[{}..{}]", lower, upper)
+                        format!("[{lower}..{upper}]")
                     })
                     .collect();
                 format!("ARRAY {} OF {}", dimensions.join(" "), elem_type)
@@ -310,7 +309,7 @@ impl<'db> Spec<'db> {
                     .map(|n| n.to_string())
                     .unwrap_or_default();
 
-                format!("SUBRANGE ({}..{})", lower, upper)
+                format!("SUBRANGE ({lower}..{upper})")
             }
             SpecKind::Struct(ztruct) => {
                 format!("STRUCT ({} fields)", ztruct.elements.len())

@@ -11,7 +11,7 @@ pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Opti
 
     let uri = &params.text_document_position_params.text_document.uri;
 
-   let file = match db.get_file(uri) {
+    let file = match db.get_file(uri) {
         Some(file) => file,
         None => return Ok(None),
     };
@@ -21,19 +21,16 @@ pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Opti
     let position = document
         .offset_at(params.text_document_position_params.position)
         .ok_or_else(|| {
-            anyhow::format_err!( 
+            anyhow::format_err!(
                 "Invalid position, {:?}",
                 params.text_document_position_params.position
             )
         })?;
 
-
     let sema = semantic_index(db, file);
 
     let symbol = sema.descendant_at(db, position);
-    match symbol.and_then(|s| {
-        s.as_proto().hover(db, position)
-    }) {
+    match symbol.and_then(|s| s.as_proto().hover(db, position)) {
         Some(hover) => Ok(Some(hover)),
         None => Ok(None),
     }

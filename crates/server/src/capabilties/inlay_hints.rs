@@ -15,7 +15,7 @@ pub fn inlay_hints(
     let uri = &params.text_document.uri;
     let range = params.range;
 
-   let file = match db.get_file(uri) {
+    let file = match db.get_file(uri) {
         Some(file) => file,
         None => return Ok(None),
     };

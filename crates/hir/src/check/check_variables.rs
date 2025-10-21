@@ -20,7 +20,7 @@ impl<'db> Check<'db> for Vec<VariableDecl<'db>> {
                     errors.push(
                         DuplicateError::Variable {
                             var1: *variable,
-                            var2: *prev
+                            var2: *prev,
                         }
                         .into(),
                     );
@@ -29,9 +29,14 @@ impl<'db> Check<'db> for Vec<VariableDecl<'db>> {
                     seen.insert(*variable.name(db), *variable);
                 }
             }
-            
+
             if let Some(init) = variable.init(db) {
-                check_init_expr(db, variable.spec(db).to_ty(db), *resolve_init_expr(db, variable.spec(db).to_ty(db), *init), errors);
+                check_init_expr(
+                    db,
+                    variable.spec(db).to_ty(db),
+                    *resolve_init_expr(db, variable.spec(db).to_ty(db), *init),
+                    errors,
+                );
             }
         }
     }

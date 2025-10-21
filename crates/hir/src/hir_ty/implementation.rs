@@ -1,8 +1,11 @@
 use auto_lsp::default::db::{BaseDatabase, file::File};
 
 use crate::{
-    hir_def::{pous::pou::{Pou, PouDecl}, semantic_index::semantic_index},
-    hir_ty::{name_res::resolve_namespace_access},
+    hir_def::{
+        pous::pou::{Pou, PouDecl},
+        semantic_index::semantic_index,
+    },
+    hir_ty::name_res::resolve_namespace_access,
 };
 
 // todo
@@ -68,9 +71,7 @@ impl<'db> PouDecl<'db> {
                     inheritors.push(base);
                 }
                 for iface in class.implements(db) {
-                    resolve_namespace_access(db, iface.scope_id, iface.path).map(|iface| {
-                        inheritors.push(iface);
-                    });
+                    if let Some(iface) = resolve_namespace_access(db, iface.scope_id, iface.path) { inheritors.push(iface); }
                 }
                 inheritors
             }
@@ -78,9 +79,7 @@ impl<'db> PouDecl<'db> {
                 let mut inheritors = vec![];
                 if let Some(extends) = interface.extends(db) {
                     for iface in extends {
-                        resolve_namespace_access(db, iface.scope_id, iface.path).map(|iface| {
-                            inheritors.push(iface);
-                        });
+                        if let Some(iface) = resolve_namespace_access(db, iface.scope_id, iface.path) { inheritors.push(iface); }
                     }
                 }
                 inheritors

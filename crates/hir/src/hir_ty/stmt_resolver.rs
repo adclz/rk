@@ -4,9 +4,7 @@ use crate::hir_def::semantic_index::semantic_index;
 use crate::hir_ty::expr_resolver::{ResolvedExpr, resolve_expr};
 use crate::hir_ty::func_call_resolver::ResolvedFuncCall;
 use crate::hir_ty::invocation_resolver::ResolvedInvocationResult;
-use crate::hir_ty::ty_var_access_resolver::{
-    ResolvedAccess, resolve_var_access,
-};
+use crate::hir_ty::ty_var_access_resolver::{ResolvedAccess, resolve_var_access};
 use crate::{AstId, HirNodeInfo};
 use auto_lsp::default::db::BaseDatabase;
 

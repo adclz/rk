@@ -5,11 +5,11 @@ use auto_lsp::{
 
 use hir::hir_def::{pous::pou::Pou, semantic_index::semantic_index};
 
-use db::RootDatabase;
 use crate::tests::utils::add_sources;
 use crate::tests::utils::find_namespace_with_name;
 use crate::tests::utils::test_diagnostics;
 use crate::tests::utils::with_db;
+use db::RootDatabase;
 use std::ops::ControlFlow;
 
 use hir::hir_def::interned::identifier::Ident;
@@ -171,7 +171,6 @@ END_NAMESPACE
     assert_eq!(scope.usings.len(), 2);
 }
 
-
 /// Utility to collect all using in a given source file.
 fn collect_usings(db: &dyn BaseDatabase, sema: &SemanticIndex) -> String {
     let mut result = vec![];
@@ -192,7 +191,7 @@ fn collect_usings(db: &dyn BaseDatabase, sema: &SemanticIndex) -> String {
                     .iter()
                     .flat_map(|ns| ns
                         .pous(db)
-                        .into_iter()
+                        .iter()
                         .map(|pou| pou.name(db).text(db).to_string())
                         .collect::<Vec<_>>())
                     .collect::<Vec<_>>()
@@ -229,7 +228,7 @@ END_NAMESPACE"#;
     let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
 
     // brings ns2 into scope
-    assert_snapshot!(collect_usings(&with_db, &sema), @"USING ns1.ns2:  fb3")
+    assert_snapshot!(collect_usings(&with_db, sema), @"USING ns1.ns2:  fb3")
 }
 
 #[rstest]
@@ -249,7 +248,7 @@ END_NAMESPACE
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
     let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
     // brings ns2 into scope
-    assert_snapshot!(collect_usings(&with_db, &sema), @"USING ns2:  fb3")
+    assert_snapshot!(collect_usings(&with_db, sema), @"USING ns2:  fb3")
 }
 
 #[rstest]
@@ -280,7 +279,7 @@ END_NAMESPACE
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 
     let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
-    assert_snapshot!(collect_usings(&with_db, &sema), @r"
+    assert_snapshot!(collect_usings(&with_db, sema), @r"
     USING ns2:  fb2
     fb3
     ")
@@ -316,13 +315,13 @@ END_NAMESPACE"#;
     )
     .unwrap();
 
-    let pou = Ident::from_slice(&with_db, "fb1".into());
+    let pou = Ident::from_slice(&with_db, "fb1");
     assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
 
-    let pou = Ident::from_slice(&with_db, "fb2".into());
+    let pou = Ident::from_slice(&with_db, "fb2");
     assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
 
-    let pou = Ident::from_slice(&with_db, "fb3".into());
+    let pou = Ident::from_slice(&with_db, "fb3");
     assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
 }
 
@@ -361,13 +360,13 @@ END_NAMESPACE"#;
     )
     .unwrap();
 
-    let pou = Ident::from_slice(&with_db, "fb1".into());
+    let pou = Ident::from_slice(&with_db, "fb1");
     assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
 
-    let pou = Ident::from_slice(&with_db, "fb2".into());
+    let pou = Ident::from_slice(&with_db, "fb2");
     assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
 
-    let pou = Ident::from_slice(&with_db, "fb3".into());
+    let pou = Ident::from_slice(&with_db, "fb3");
     assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
 }
 
@@ -405,13 +404,13 @@ END_NAMESPACE"#;
     )
     .unwrap();
 
-    let pou = Ident::from_slice(&with_db, "fb1".into());
+    let pou = Ident::from_slice(&with_db, "fb1");
     assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
 
-    let pou = Ident::from_slice(&with_db, "fb2".into());
+    let pou = Ident::from_slice(&with_db, "fb2");
     assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
 
-    let pou = Ident::from_slice(&with_db, "fb3".into());
+    let pou = Ident::from_slice(&with_db, "fb3");
     assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_none());
 }
 
@@ -451,13 +450,13 @@ END_NAMESPACE"#;
     )
     .unwrap();
 
-    let pou = Ident::from_slice(&with_db, "fb1".into());
+    let pou = Ident::from_slice(&with_db, "fb1");
     assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
 
-    let pou = Ident::from_slice(&with_db, "fb2".into());
+    let pou = Ident::from_slice(&with_db, "fb2");
     assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
 
-    let pou = Ident::from_slice(&with_db, "fb3".into());
+    let pou = Ident::from_slice(&with_db, "fb3");
     assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
 }
 
@@ -495,13 +494,13 @@ END_NAMESPACE"#;
     )
     .unwrap();
 
-    let pou = Ident::from_slice(&with_db, "fb1".into());
+    let pou = Ident::from_slice(&with_db, "fb1");
     assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
 
-    let pou = Ident::from_slice(&with_db, "fb2".into());
+    let pou = Ident::from_slice(&with_db, "fb2");
     assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
 
-    let pou = Ident::from_slice(&with_db, "fb3".into());
+    let pou = Ident::from_slice(&with_db, "fb3");
     assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
 }
 
@@ -539,13 +538,13 @@ END_NAMESPACE"#;
     )
     .unwrap();
 
-    let pou = Ident::from_slice(&with_db, "fb1".into());
+    let pou = Ident::from_slice(&with_db, "fb1");
     assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
 
-    let pou = Ident::from_slice(&with_db, "fb2".into());
+    let pou = Ident::from_slice(&with_db, "fb2");
     assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
 
-    let pou = Ident::from_slice(&with_db, "fb3".into());
+    let pou = Ident::from_slice(&with_db, "fb3");
     assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_none());
 }
 
@@ -585,12 +584,12 @@ END_NAMESPACE"#;
     )
     .unwrap();
 
-    let pou = Ident::from_slice(&with_db, "fb1".into());
+    let pou = Ident::from_slice(&with_db, "fb1");
     assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
 
-    let pou = Ident::from_slice(&with_db, "fb2".into());
+    let pou = Ident::from_slice(&with_db, "fb2");
     assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
 
-    let pou = Ident::from_slice(&with_db, "fb3".into());
+    let pou = Ident::from_slice(&with_db, "fb3");
     assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
 }

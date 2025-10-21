@@ -158,7 +158,7 @@ impl<'db> SemanticIndexBuilder<'db> {
                 method_variables,
                 name,
                 return_type,
-                modifiers, 
+                modifiers,
                 match &m.cast(self.ast).access {
                     Some(access) => match access.cast(self.ast).children.cast(self.ast) {
                         ast::generated::Internal_Private_Protected_Public::Private(_) => Visibility::PRIVATE,

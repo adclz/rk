@@ -1,8 +1,7 @@
 use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{
-        GotoDefinitionResponse, Hover, InlayHint, InlayHintKind, InlayHintLabel, Position,
-        request::GotoDeclarationResponse,
+        InlayHint, InlayHintKind, InlayHintLabel, Position,
     },
 };
 use hir::{

@@ -1,11 +1,16 @@
 use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
-use ide_diagnostic::{IdeDiagnostic, Related, diag};
+use ide_diagnostic::{IdeDiagnostic, diag};
 
 use crate::{
+    HirNodeInfo,
     check::errors::{
         analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic},
-        coerce::{ExprMismatch, TypeMismatch},
-    }, hir_def::{expressions::spec::Spec, interned::{identifier::SpanIdent, namespace::SpanNamespaceAccess}}, hir_ty::{expr_resolver::ResolvedExpr, ty::Ty}, HirNodeInfo, TypeInfo
+        coerce::ExprMismatch,
+    },
+    hir_def::{
+        expressions::spec::Spec,
+        interned::identifier::SpanIdent,
+    },
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]

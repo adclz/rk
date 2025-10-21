@@ -2,26 +2,24 @@ use auto_lsp::default::db::BaseDatabase;
 use ide_diagnostic::{IdeDiagnostic, Related};
 
 use crate::{
-    AstId, HirNodeInfo, TypeInfo,
+    AstId, HirNodeInfo,
     check::errors::path_error::AccessError,
     hir_def::{
         expressions::{
-            expression::{InitExpr, PathExpr},
-            invocation::Invocation,
+            expression::PathExpr,
             spec::{Spec, SpecKind, StructElement},
         },
         pous::{
             pou::{Pou, PouDecl},
-            variable::{VariableDecl, VariableKind},
+            variable::VariableDecl,
         },
         scope::FileScopeId,
     },
     hir_ty::{
         inheritance_solver::{MethodRef, method_table},
         name_res::resolve_namespace_access,
-        signatures::LocalVariables,
         ty::{Ty, TyKind},
-        ty_var_access_resolver::{CallSite, PathExprWalkStep, resolve_var_access},
+        ty_var_access_resolver::{CallSite, PathExprWalkStep},
     },
 };
 
@@ -164,7 +162,7 @@ impl<'db> ResolvedPathKind<'db> {
         };
 
         diag.with_related(Related::new(
-            format!("{} '{}' declared here", decl_name, name),
+            format!("{decl_name} '{name}' declared here"),
             file,
             span,
         ));
@@ -200,9 +198,9 @@ impl<'db> ResolvedPath<'db> {
     pub fn try_to_ty(&self, db: &'db dyn BaseDatabase) -> Result<Ty<'db>, AccessError<'db>> {
         eprintln!("KIND: {:?}", self.kind);
         match self.adjustement {
-            Adjustement::Array(ref arr) => return arr.try_to_ty(db),
+            Adjustement::Array(ref arr) => arr.try_to_ty(db),
             Adjustement::Deref(ref deref) => {
-                return deref.try_to_ty(db);
+                deref.try_to_ty(db)
             }
             _ => {
                 let result = match &self.kind {
@@ -336,7 +334,7 @@ impl<'db> PouDecl<'db> {
             // Index case is invalid
             PathExprWalkStep::Index { expr } => match self.pou(db) {
                 Pou::DataType(dt) => {
-                    return dt.spec(db).walk(db, ResolvedPathKind::Pou(*self), step);
+                    dt.spec(db).walk(db, ResolvedPathKind::Pou(*self), step)
                 }
                 _ => Err(AccessError::NotAnArray {
                     ty: ResolvedPathKind::Pou(*self).into_path_call(*expr, Adjustement::None),
@@ -351,7 +349,7 @@ impl<'db> Spec<'db> {
     pub fn walk(
         &self,
         db: &'db dyn BaseDatabase,
-        mut origin: ResolvedPathKind<'db>,
+        origin: ResolvedPathKind<'db>,
         step: &'db PathExprWalkStep<'db>,
     ) -> Result<ResolvedPath<'db>, AccessError<'db>> {
         // resolve the target if it is one

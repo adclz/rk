@@ -11,7 +11,10 @@ use auto_lsp::{
     core::document_symbols_builder::DocumentSymbolsBuilder,
     default::db::BaseDatabase,
     lsp_types::{
-        request::{GotoDeclarationResponse, GotoImplementationResponse}, CodeLens, Command, CompletionItem, GotoDefinitionResponse, Hover, HoverContents, InlayHint, InlayHintKind, InlayHintLabel, Location, LocationLink, MarkupContent, MarkupKind, SymbolKind
+        CodeLens, Command, CompletionItem, GotoDefinitionResponse, Hover, HoverContents, InlayHint,
+        InlayHintKind, InlayHintLabel, Location, LocationLink, MarkupContent, MarkupKind,
+        SymbolKind,
+        request::GotoImplementationResponse,
     },
 };
 use hir::HirNodeInfo;
@@ -212,8 +215,7 @@ impl<'db> ToProtocol<'db> for PouDecl<'db> {
         let name = self.name(db).text(db);
         let return_type = match self.pou(db) {
             Pou::Function(f) => f
-                .return_type(db)
-                .and_then(|spec| Some(format!(": {}", spec.to_ty(db).type_name(db))))
+                .return_type(db).map(|spec| format!(": {}", spec.to_ty(db).type_name(db)))
                 .unwrap_or_default(),
             _ => "".to_string(),
         };

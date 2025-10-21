@@ -1,16 +1,22 @@
 use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
-use ide_diagnostic::{diag, IdeDiagnostic};
+use ide_diagnostic::{IdeDiagnostic, diag};
 
 use crate::{
+    HirNodeInfo,
     check::{
         errors::{
             analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic},
             utils::get_candidates,
         },
         recovery::pou::fuzzy_pou_local_items,
-    }, hir_def::{
-        expressions::expression::PathExpr, interned::namespace::SpanNamespaceAccess, scope::{FileScopeId, ScopeKind}, semantic_index::semantic_index
-    }, hir_ty::{ty::Ty, ty_var_access_resolver::ResolvedAccess, walk::{ResolvedPath, ResolvedPathKind}}, HirNodeInfo, TypeInfo
+    },
+    hir_def::{
+        expressions::expression::PathExpr,
+        interned::namespace::SpanNamespaceAccess,
+        scope::ScopeKind,
+        semantic_index::semantic_index,
+    },
+    hir_ty::walk::ResolvedPath,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -102,9 +108,7 @@ impl<'db> DiagnosticDescription<'db> for AccessError<'db> {
                     )));
                 }
             }
-            AccessError::NoItemInScope { access } => {
-                
-            }
+            AccessError::NoItemInScope { access } => {}
             AccessError::TypeHasNoField { ty, expr } => {
                 ty.diag_with_location(db, diag);
             }
@@ -127,7 +131,6 @@ impl<'db> DiagnosticDescription<'db> for AccessError<'db> {
     }
 }
 
-
 impl<'db> ToIdeDiagnostic<'db> for AccessError<'db> {
     fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
         let mut diag = diag()
@@ -148,5 +151,4 @@ impl<'db> ToIdeDiagnostic<'db> for AccessError<'db> {
         self.related(db, &mut diag);
         diag
     }
-    
 }

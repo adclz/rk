@@ -1,4 +1,3 @@
-use crate::hir_def::interned::identifier::Ident;
 use crate::AstId;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::analysis_error::AnalysisError;

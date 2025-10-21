@@ -36,7 +36,7 @@ impl<'db> VariableDecl<'db> {
     pub fn name_span(&self, db: &'db dyn BaseDatabase) -> Span {
         self.get_name_span(db).unwrap()
     }
-    
+
     pub fn is_input(&self, db: &'db dyn BaseDatabase) -> bool {
         matches!(self.kind(db), VariableKind::Input)
     }

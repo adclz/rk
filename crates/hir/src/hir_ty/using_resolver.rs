@@ -1,7 +1,14 @@
 use auto_lsp::default::db::BaseDatabase;
-use rustc_hash::FxHashMap;
 
-use crate::{hir_def::{interned::{identifier::SpanIdent, namespace::NamespacePath}, namespace::NamespaceDecl, scope::FileScopeId, using::Using}, hir_ty::name_res::shared_namespaces, AstId, HirNodeInfo};
+use crate::{
+    AstId, HirNodeInfo,
+    hir_def::{
+        namespace::NamespaceDecl,
+        scope::FileScopeId,
+        using::Using,
+    },
+    hir_ty::name_res::shared_namespaces,
+};
 
 #[salsa::tracked(debug)]
 pub struct ResolvedUsing<'db> {
@@ -21,13 +28,9 @@ impl<'db> HirNodeInfo<'db> for ResolvedUsing<'db> {
     }
 }
 
-
 #[tracing::instrument(skip_all, name = "using_resolver")]
 #[salsa::tracked(returns(ref), no_eq)]
-pub fn resolve_using<'db>(
-    db: &'db dyn BaseDatabase,
-    using: Using<'db>,
-) -> ResolvedUsing<'db> {
+pub fn resolve_using<'db>(db: &'db dyn BaseDatabase, using: Using<'db>) -> ResolvedUsing<'db> {
     let path = using.path(db);
 
     let matching_namespaces = shared_namespaces(db, path);

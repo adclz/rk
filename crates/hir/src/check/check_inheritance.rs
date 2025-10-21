@@ -1,6 +1,4 @@
 use auto_lsp::default::db::BaseDatabase;
-use indexmap::IndexMap;
-use rustc_hash::FxHashMap;
 
 use crate::{
     check::{
@@ -9,11 +7,11 @@ use crate::{
             analysis_error::AnalysisError, duplicates::DuplicateError, inheritance::MethodError,
         },
     },
-    hir_def::{interned::identifier::Ident, modifier::Modifier, pous::pou::{Pou, PouDecl}},
-    hir_ty::{
-        inheritance_solver::{method_table, MethodRef},
-        ty::{Ty, TyKind},
+    hir_def::{
+        modifier::Modifier,
+        pous::pou::{Pou, PouDecl},
     },
+    hir_ty::inheritance_solver::{MethodRef, method_table},
 };
 
 pub fn check_inheritance<'db>(

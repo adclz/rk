@@ -15,7 +15,8 @@ FUNCTION_BLOCK fb1
         test3: TIME := T#0h0m0s;
         test4: TIME := TIME#0s;
     END_VAR
-END_FUNCTION_BLOCK"#.to_string();
+END_FUNCTION_BLOCK"#
+        .to_string();
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[&source]), @"");
 }
@@ -30,7 +31,8 @@ FUNCTION_BLOCK fb1
         test3: LTIME := LT#0h0m0s;
         test4: LTIME := LTIME#0s;
     END_VAR
-END_FUNCTION_BLOCK"#.to_string();
+END_FUNCTION_BLOCK"#
+        .to_string();
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[&source]), @"");
 }

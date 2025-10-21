@@ -1,19 +1,10 @@
 use auto_lsp::{core::span::Span, default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, diag};
-use serde_json::to_string;
 
-use crate::{
-    HirNodeInfo,
-    check::{
+use crate::check::{
         check_visibility::{CallableType, SameNamespaceResult},
         errors::analysis_error::{AnalysisError, ToIdeDiagnostic},
-    },
-    hir_def::{expressions::invocation::Invocation, scope::FileScopeId},
-    hir_ty::{
-        inheritance_solver::MethodRef, invocation_resolver::ResolvedInvocation, ty::Ty,
-        ty_var_access_resolver::ResolvedAccess,
-    },
-};
+    };
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum VisibilityError<'db> {

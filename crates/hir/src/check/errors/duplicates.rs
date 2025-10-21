@@ -2,7 +2,14 @@ use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, Related, diag};
 
 use crate::{
-    check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic}, hir_def::{expressions::spec::StructElement, interned::identifier::SpanIdent, pous::{pou::PouDecl, variable::VariableDecl}}, hir_ty::{inheritance_solver::{InheritedMethod, MethodRef}, ty::Ty}, HirNodeInfo
+    HirNodeInfo,
+    check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic},
+    hir_def::{
+        expressions::spec::StructElement,
+        interned::identifier::SpanIdent,
+        pous::{pou::PouDecl, variable::VariableDecl},
+    },
+    hir_ty::inheritance_solver::{InheritedMethod, MethodRef},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
@@ -44,19 +51,13 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
         match self {
             Self::Pou { pou1, pou2 } => {
                 let mut diag = diag()
-                    .message(format!(
-                        "duplicate POU '{}'",
-                        pou1.name(db).text(db)
-                    ))
+                    .message(format!("duplicate POU '{}'", pou1.name(db).text(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(pou1.name_span(db))
                     .call();
 
                 diag.with_related(Related::new(
-                    format!(
-                        "POU '{}' is already defined here",
-                        pou2.name(db).text(db)
-                    ),
+                    format!("POU '{}' is already defined here", pou2.name(db).text(db)),
                     pou2.get_scope_id(db).file(db),
                     pou2.name_span(db),
                 ));
@@ -65,10 +66,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
             }
             Self::Variable { var1, var2 } => {
                 let mut diag = diag()
-                    .message(format!(
-                        "duplicate variable '{}'",
-                        var1.name(db).text(db)
-                    ))
+                    .message(format!("duplicate variable '{}'", var1.name(db).text(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(var1.get_name_span(db).unwrap())
                     .call();
@@ -107,10 +105,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
             }
             Self::StructField { field1, field2 } => {
                 let mut diag = diag()
-                    .message(format!(
-                        "duplicate field '{}'",
-                        field1.name(db).text(db)
-                    ))
+                    .message(format!("duplicate field '{}'", field1.name(db).text(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(field1.get_name_span(db).unwrap())
                     .call();
@@ -128,10 +123,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
             }
             Self::Method { method1, method2 } => {
                 let mut diag = diag()
-                    .message(format!(
-                        "duplicate method '{}'",
-                        method1.name(db).text(db)
-                    ))
+                    .message(format!("duplicate method '{}'", method1.name(db).text(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(method1.name_span(db))
                     .call();

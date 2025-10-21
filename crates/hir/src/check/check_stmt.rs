@@ -5,10 +5,9 @@ use rustc_hash::FxHashMap;
 use crate::{
     check::{
         check_semantic_index::Check,
-        check_visibility::{self, check_call_visibility},
+        check_visibility::check_call_visibility,
         coerce::{coerce_bool_with_expr, coerce_ty_with_expr, coerce_ty_with_ty},
         errors::{analysis_error::AnalysisError, stmt::StmtError},
-        recovery::func_call,
     },
     hir_def::{
         expressions::statement::Stmt,
@@ -23,7 +22,7 @@ use crate::{
         stmt_resolver::{ResolvedStmt, ResolvedStmtKind, resolve_stmt},
         ty::{Ty, TyKind},
         ty_var_access_resolver::ResolvedAccess,
-        walk::{ResolvedPath, ResolvedPathElement, ResolvedPathKind, ResolvedPathResult},
+        walk::ResolvedPathKind,
     },
 };
 
@@ -429,7 +428,7 @@ fn check_parameters<'db>(
                                     errors.push(
                                         StmtError::AssignmentToInputVar { var: variable }.into(),
                                     );
-                                } else if !variable.as_var(db).is_some() {
+                                } else if variable.as_var(db).is_none() {
                                     errors.push(
                                         StmtError::AssignmentToDirectType { var: variable }.into(),
                                     );

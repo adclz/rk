@@ -1,24 +1,14 @@
-use std::fmt::format;
 
-use ast::generated::Target;
 use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{
-        GotoDefinitionResponse, Hover, HoverContents, Location, MarkupContent, MarkupKind,
+        GotoDefinitionResponse, Hover,
         request::GotoDeclarationResponse,
     },
 };
-use hir::{
-    HirNodeInfo, TypeInfo,
-    hir_def::{comment_index::comment_index, pous::variable::VariableKind},
-    hir_ty::{
-        ty::TyKind,
-        ty_var_access_resolver::ResolvedAccess,
-        walk::{ResolvedPath, ResolvedPathKind, ResolvedPathResult},
-    },
-};
+use hir::hir_ty::ty_var_access_resolver::ResolvedAccess;
 
-use crate::{HasComment, ToProtocol};
+use crate::ToProtocol;
 
 impl<'db> ToProtocol<'db> for ResolvedAccess<'db> {
     fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Hover> {

@@ -145,8 +145,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             None,
         );
 
-        self.scope_keys
-            .insert(global_scope, scope);
+        self.scope_keys.insert(global_scope, scope);
 
         SemanticIndex {
             file: self.file,

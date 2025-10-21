@@ -4,30 +4,27 @@ use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     hir_def::{
-        expressions::spec::{Spec, SpecKind, Struct},
+        expressions::spec::{Spec, SpecKind},
         interned::namespace::SpanNamespaceAccess,
         namespace::NamespaceDecl,
         pous::{
-            class::MethodDecl,
-            interface::MethodPrototype,
             pou::{Pou, PouDecl},
             variable::VariableDecl,
         },
-        semantic_index::{semantic_index, HirNode, SemanticIndex},
+        semantic_index::{HirNode, SemanticIndex, semantic_index},
         using::Using,
     },
     hir_ty::{
         expr_resolver::{ResolvedExpr, ResolvedExprKind, ResolvedRefValue},
         func_call_resolver::{ResolvedFuncCall, ResolvedParam, ResolvedParamKind},
         inheritance_solver::MethodRef,
-        init_expr_resolver::{resolve_init_expr, ResolvedInitExpr, ResolvedInitExprKind},
+        init_expr_resolver::{ResolvedInitExpr, ResolvedInitExprKind, resolve_init_expr},
         invocation_resolver::{ResolvedInvocationResult, ResolvedMethodKind},
-        name_res::resolve_namespace_access,
-        stmt_resolver::{resolve_stmt, ResolvedStmt, ResolvedStmtKind},
+        stmt_resolver::{ResolvedStmt, ResolvedStmtKind, resolve_stmt},
         ty_var_access_resolver::ResolvedAccess,
-        using_resolver::{resolve_using, ResolvedUsing},
-        walk::{ResolvedPath, ResolvedPathKind, ResolvedPathResult},
-    }, HirNodeInfo,
+        using_resolver::resolve_using,
+        walk::{ResolvedPath, ResolvedPathResult},
+    },
 };
 
 pub trait WalkHir<'db> {
@@ -175,13 +172,10 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
             }
             Pou::DataType(dt) => {
                 f(HirNode::Spec(dt.spec(db)))?;
-                match dt.spec(db).kind(db) {
-                    SpecKind::Struct(st) => {
-                        for field in &st.elements {
-                            f(HirNode::StructElement(*field))?;
-                        }
+                if let SpecKind::Struct(st) = dt.spec(db).kind(db) {
+                    for field in &st.elements {
+                        f(HirNode::StructElement(*field))?;
                     }
-                    _ => {}
                 }
 
                 if let Some(init_expr) = dt.init(db) {
@@ -218,7 +212,7 @@ impl<'db> WalkHir<'db> for MethodRef<'db> {
         db: &'db dyn BaseDatabase,
         f: &mut F,
     ) -> ControlFlow<()> {
-        f(HirNode::MethodRef(MethodRef::from(*self)))?;
+        f(HirNode::MethodRef(*self))?;
         for var in self.variables(db) {
             var.walk_hir(db, f)?;
         }

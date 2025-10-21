@@ -43,7 +43,7 @@ use crate::{
         name_res::{all_global_pous, all_local_pous},
         stmt_resolver::{ResolveStmtCtx, ResolvedStmt, ResolvedStmtKind, resolve_stmt},
         ty::{Ty, TyKind},
-        ty_var_access_resolver::{ResolvedAccess},
+        ty_var_access_resolver::ResolvedAccess,
     },
     walk::WalkHir,
 };
@@ -53,11 +53,7 @@ pub trait Check<'db> {
 }
 
 pub trait DataTypeCheck<'db> {
-    fn check(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        errors: &mut Vec<AnalysisError<'db>>,
-    );
+    fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<AnalysisError<'db>>);
 }
 
 impl<'db> Check<'db> for SemanticIndex<'db> {

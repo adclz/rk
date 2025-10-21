@@ -3,16 +3,12 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     check::{
-        check_semantic_index::{Check, DataTypeCheck},
+        check_semantic_index::DataTypeCheck,
         coerce::coerce_ty_with_expr,
         errors::{analysis_error::AnalysisError, duplicates::DuplicateError, enum_::EnumError},
     },
     hir_def::expressions::spec::{ElementarySpec, Enum, SpecKind},
-    hir_ty::{
-        array_resolver::resolve_range,
-        expr_resolver::resolve_expr,
-        ty::{Ty, TyKind},
-    },
+    hir_ty::expr_resolver::resolve_expr,
 };
 
 impl<'db> DataTypeCheck<'db> for Enum<'db> {
@@ -56,20 +52,17 @@ impl<'db> DataTypeCheck<'db> for Enum<'db> {
             }
 
             // Check variant value type
-            match (variant.value, self.typ) {
-                (Some(value), Some(typ)) => {
-                    let value_expr = resolve_expr(db, value);
-                    if let Err(err) = coerce_ty_with_expr(db, typ.to_ty(db), value_expr) {
-                        errors.push(
-                            EnumError::InvalidEnumVariantValue {
-                                variant: variant.name,
-                                err,
-                            }
-                            .into(),
-                        )
-                    }
+            if let (Some(value), Some(typ)) = (variant.value, self.typ) {
+                let value_expr = resolve_expr(db, value);
+                if let Err(err) = coerce_ty_with_expr(db, typ.to_ty(db), value_expr) {
+                    errors.push(
+                        EnumError::InvalidEnumVariantValue {
+                            variant: variant.name,
+                            err,
+                        }
+                        .into(),
+                    )
                 }
-                _ => {}
             }
         }
     }

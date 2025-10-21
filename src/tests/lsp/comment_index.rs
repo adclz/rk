@@ -257,5 +257,4 @@ END_FUNCTION
     // Comment should only be picked *once* for x
     // y should not pick it up because the comment is to the right of x
     assert!(index.map.len() == 1, "Expected one comment in the index");
-
 }

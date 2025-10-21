@@ -26,11 +26,10 @@ pub mod check_stmt;
 pub mod check_struct;
 pub mod check_subrange;
 pub mod check_variables;
+pub mod check_visibility;
 pub mod coerce;
 pub mod errors;
 pub mod recovery;
-pub mod check_visibility;
-
 
 #[salsa::tracked(returns(ref), no_eq)]
 pub fn diagnostics_for_file(db: &dyn BaseDatabase, file: File) -> Arc<Vec<IdeDiagnostic>> {

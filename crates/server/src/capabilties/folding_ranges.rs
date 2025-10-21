@@ -45,7 +45,7 @@ pub fn folding_ranges(
 ) -> anyhow::Result<Option<Vec<FoldingRange>>> {
     let uri = params.text_document.uri;
 
-   let file = match db.get_file(&uri) {
+    let file = match db.get_file(&uri) {
         Some(file) => file,
         None => return Ok(None),
     };

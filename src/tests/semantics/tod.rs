@@ -14,7 +14,8 @@ FUNCTION_BLOCK fb1
         test2: TOD := TOD#12:20:50.552;
         test3: TIME_OF_DAY := TIME_OF_DAY#12:30:45.123
     END_VAR
-END_FUNCTION_BLOCK"#.to_string();
+END_FUNCTION_BLOCK"#
+        .to_string();
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[&source]), @"");
 }
@@ -28,7 +29,8 @@ FUNCTION_BLOCK fb1
         test2: LTOD := LTOD#12:20:50.552;
         test3: LTIME_OF_DAY := LTIME_OF_DAY#12:30:45.123
     END_VAR
-END_FUNCTION_BLOCK"#.to_string();
+END_FUNCTION_BLOCK"#
+        .to_string();
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[&source]), @"");
 }

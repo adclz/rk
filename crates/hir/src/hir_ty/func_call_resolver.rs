@@ -16,9 +16,8 @@ use crate::{
     hir_ty::{
         expr_resolver::ResolvedExpr,
         param_resolver::resolve_parameters,
-        signatures::LocalVariables,
         ty::Ty,
-        ty_var_access_resolver::{CallSite, ResolvedAccess, resolve_path_expr},
+        ty_var_access_resolver::{ResolvedAccess, resolve_path_expr},
         walk::{ResolvedPath, ResolvedPathKind},
     },
 };
@@ -33,7 +32,7 @@ impl<'db> ResolvedFuncCall<'db> {
     pub fn to_ty(&'db self, db: &'db dyn BaseDatabase) -> Result<Ty<'db>, AccessError<'db>> {
         self.target.fully_resolved(db).and_then(|r| r.try_to_ty(db))
     }
-    
+
     pub fn with_return_type(&self, db: &'db dyn BaseDatabase) -> Option<Spec<'db>> {
         self.target.with_return_type(db)
     }

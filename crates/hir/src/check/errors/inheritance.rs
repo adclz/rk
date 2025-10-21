@@ -10,12 +10,11 @@ use crate::{
     hir_def::{
         expressions::{expression::PathExpr, invocation::Invocation},
         pous::{
-            pou::{Pou, PouDecl},
+            pou::PouDecl,
             variable::VariableDecl,
         },
-        scope::FileScopeId,
     },
-    hir_ty::{inheritance_solver::MethodRef, ty::Ty},
+    hir_ty::inheritance_solver::MethodRef,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -254,13 +253,13 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                 .range(method.get_span(db).clone())
                 .call(),
             Self::SuperBodyOnIncompatiblePou { ctx, method } => {
-                let mut diag = diag()
+                
+
+                diag()
                     .message("SUPER() can only be called in FUNCTION_BLOCK POUs".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .range(method.get_span(db).clone())
-                    .call();
-
-                diag
+                    .call()
             }
             Self::SignatureParametersCountMismatch {
                 m1,

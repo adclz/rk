@@ -2,15 +2,13 @@ use auto_lsp::{
     core::document_symbols_builder::DocumentSymbolsBuilder,
     default::db::BaseDatabase,
     lsp_types::{
-        request::GotoDeclarationResponse, GotoDefinitionResponse, Hover, HoverContents, Location, MarkupContent, MarkupKind, SymbolKind
+        GotoDefinitionResponse, Hover, HoverContents, Location, MarkupContent, MarkupKind,
+        SymbolKind, request::GotoDeclarationResponse,
     },
 };
 use hir::{
     HirNodeInfo, TypeInfo,
-    hir_def::{
-        comment_index::comment_index,
-        pous::variable::{VariableDecl, VariableKind},
-    },
+    hir_def::pous::variable::{VariableDecl, VariableKind},
 };
 
 use crate::{HasComment, ToProtocol};

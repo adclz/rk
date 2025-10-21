@@ -6,15 +6,9 @@ use auto_lsp::{
     },
 };
 use hir::{
-    HirNodeInfo, TypeInfo,
-    hir_def::{
-        expressions::spec::{ElementarySpec, Spec, SpecKind},
-        pous::pou::Pou,
-    },
-    hir_ty::{
-        array_resolver::resolve_range, name_res::resolve_namespace_access,
-        stmt_resolver::ResolvedStmt,
-    },
+    HirNodeInfo,
+    hir_def::expressions::spec::{Spec, SpecKind},
+    hir_ty::name_res::resolve_namespace_access,
 };
 
 use crate::{HasComment, ToProtocol};
@@ -51,7 +45,7 @@ impl<'db> ToProtocol<'db> for Spec<'db> {
         match self.kind(db) {
             SpecKind::Target(target) => {
                 let pou = resolve_namespace_access(db, target.scope_id, target.path)?;
-                return pou.definition(db);
+                pou.definition(db)
             }
             SpecKind::Ref(_ref) => _ref.definition(db),
             _ => Some(GotoDefinitionResponse::Scalar(Location::new(
@@ -65,7 +59,7 @@ impl<'db> ToProtocol<'db> for Spec<'db> {
         match self.kind(db) {
             SpecKind::Target(target) => {
                 let pou = resolve_namespace_access(db, target.scope_id, target.path)?;
-                return pou.definition(db);
+                pou.definition(db)
             }
             SpecKind::Ref(_ref) => _ref.declaration(db),
             _ => Some(GotoDeclarationResponse::Scalar(Location::new(

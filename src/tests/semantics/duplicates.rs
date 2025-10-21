@@ -241,7 +241,6 @@ END_INTERFACE
     ");
 }
 
-
 #[rstest]
 fn duplicate_methods_in_class(mut with_db: RootDatabase) {
     let source = r#"

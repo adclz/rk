@@ -14,8 +14,8 @@ use crate::hir_def::interned::identifier::SpanIdent;
 use crate::{
     hir_def::expressions::expression::{
         AddOperatorKind, BooleanOperatorKind, ComparisonOperatorKind, Elementary, Expr, ExprKind,
-        MultOperatorKind, ParamAssign, PathExprKind, PrimaryExpr, RefValue,
-        SymbolicVariable, UnaryOperatorKind, VarAccess, VariableAccess,
+        MultOperatorKind, ParamAssign, PathExprKind, PrimaryExpr, RefValue, SymbolicVariable,
+        UnaryOperatorKind, VarAccess, VariableAccess,
     },
     hir_def::interned::identifier::Ident,
 };
@@ -208,14 +208,12 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
     ) -> anyhow::Result<Expr<'db>, AnalysisError<'db>> {
         match self {
             ast::generated::PrimaryExpression::EnumValue(enum_) => {
-                let name = enum_.enum_path.cast(&sema.ast).parse(sema)?;
+                let name = enum_.enum_path.cast(sema.ast).parse(sema)?;
                 let variant = SpanIdent::from_node(sema.db, sema, enum_.children.cast(sema.ast))?;
 
                 Ok(Expr::new(
                     sema.db,
-                    ExprKind::PrimaryExpr(PrimaryExpr::EnumValue 
-                        { name, variant }
-                    ),
+                    ExprKind::PrimaryExpr(PrimaryExpr::EnumValue { name, variant }),
                     enum_.into(),
                     sema.current_scope,
                 ))

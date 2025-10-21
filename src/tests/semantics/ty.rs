@@ -94,4 +94,3 @@ fn nested_array_invalid_bound(mut with_db: RootDatabase) {
     ---'
     ");
 }
-

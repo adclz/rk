@@ -1,15 +1,10 @@
 use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{
-        request::GotoDeclarationResponse, GotoDefinitionResponse, Hover, HoverContents, InlayHint, InlayHintKind, InlayHintLabel, MarkupContent, MarkupKind, Position
+        GotoDefinitionResponse, Hover, request::GotoDeclarationResponse,
     },
 };
-use hir::{
-    hir_ty::{
-        ty::{Ty, TyKind},
-        walk::{ResolvedPath, ResolvedPathKind},
-    }, HirNodeInfo, TypeInfo
-};
+use hir::hir_ty::walk::{ResolvedPath, ResolvedPathKind};
 
 use crate::ToProtocol;
 
@@ -24,10 +19,7 @@ impl<'db> ToProtocol<'db> for ResolvedPath<'db> {
         }
     }
 
-    fn declaration(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-    ) -> Option<GotoDeclarationResponse> {
+    fn declaration(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDeclarationResponse> {
         match &self.kind {
             ResolvedPathKind::Pou(p) => p.declaration(db),
             ResolvedPathKind::Spec(t) => t.declaration(db),
@@ -37,10 +29,7 @@ impl<'db> ToProtocol<'db> for ResolvedPath<'db> {
         }
     }
 
-    fn definition(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-    ) -> Option<GotoDefinitionResponse> {
+    fn definition(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDefinitionResponse> {
         match &self.kind {
             ResolvedPathKind::Pou(p) => p.definition(db),
             ResolvedPathKind::Spec(t) => t.definition(db),

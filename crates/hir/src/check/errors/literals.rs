@@ -1,5 +1,3 @@
-
-
 use crate::hir_ty::{expr_resolver::ResolvedExpr, ty::Ty};
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]

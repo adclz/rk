@@ -4,14 +4,11 @@ use rustc_hash::FxHashMap;
 use crate::{
     hir_def::{
         interned::{
-            identifier::{Ident, SpanIdent},
+            identifier::Ident,
             namespace::{NamespaceAccess, NamespacePath},
         },
         namespace::NamespaceDecl,
-        pous::{
-            pou::{Pou, PouDecl},
-            variable::VariableDecl,
-        },
+        pous::pou::PouDecl,
         scope::{FileScopeId, ScopeKind},
         semantic_index::semantic_index,
     },

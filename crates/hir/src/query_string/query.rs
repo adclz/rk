@@ -6,13 +6,12 @@ use rayon::prelude::*;
 use std::ops::ControlFlow;
 use std::{cmp::Ordering, hash::Hash};
 
-use crate::hir_def::expressions::spec::StructElement;
-use crate::hir_def::pous::variable::VariableDecl;
 use crate::HirNodeInfo;
+use crate::hir_def::expressions::spec::StructElement;
 use crate::hir_def::pous::pou::PouDecl;
+use crate::hir_def::pous::variable::VariableDecl;
 use crate::hir_def::scope::FileScopeId;
 use crate::hir_def::semantic_index::semantic_index;
-use crate::hir_ty::ty::Ty;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum SearchMode {

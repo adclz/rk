@@ -1,4 +1,3 @@
-
 use auto_lsp::default::db::{BaseDatabase, file::File};
 use rustc_hash::FxHashMap;
 
@@ -19,8 +18,8 @@ pub fn check_duplicate_pous<'db>(db: &'db dyn BaseDatabase, file: File) -> Vec<A
                 for j in (i + 1)..pous.len() {
                     errors.push(
                         DuplicateError::Pou {
-                            pou1:  pous[j],
-                            pou2:  pous[0],
+                            pou1: pous[j],
+                            pou2: pous[0],
                         }
                         .into(),
                     );

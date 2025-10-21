@@ -1,5 +1,4 @@
 use auto_lsp::default::db::BaseDatabase;
-use salsa::tracked;
 
 use crate::{
     check::errors::{
@@ -54,12 +53,8 @@ pub fn coerce_ty_with_expr<'db>(
         (TyKind::Simple(elem), ResolvedExprKind::FuncCall(call)) => {
             // Check if the function call has a return type
             match call.target.with_return_type(db) {
-                Some(ret) => coerce_ty_with_ty(
-                    db,
-                    ty,
-                    ret.to_ty(db),
-                )
-                .map_err(|err| ExprMismatch::type_mismatch(target_expr, err)),
+                Some(ret) => coerce_ty_with_ty(db, ty, ret.to_ty(db))
+                    .map_err(|err| ExprMismatch::type_mismatch(target_expr, err)),
                 None => Err(ExprMismatch::expr_void(target_expr, ty)),
             }
         }
@@ -93,9 +88,7 @@ pub fn coerce_ty_with_expr<'db>(
         // Compare an Array with PathExpr (PathExpr should be an indexed access)
         (TyKind::Array(array), ResolvedExprKind::VarAccess(result)) => coerce_ty_with_ty(
             db,
-            array
-                .of_type
-                .to_ty(db),
+            array.of_type.to_ty(db),
             result
                 .try_to_ty(db)
                 .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?,
@@ -138,11 +131,11 @@ pub fn coerce_ty_with_expr<'db>(
                 TyKind::Enum(enum_2) => match variant {
                     Some(variant) => Ok(()),
                     None => {
-                        return Err(ExprMismatch::invalid_enum_variant(
+                        Err(ExprMismatch::invalid_enum_variant(
                             target_expr,
                             ty,
-                            v_text.clone(),
-                        ));
+                            v_text,
+                        ))
                     }
                 },
                 _ => unreachable!("resolver should ensure enum value matches enum type"),
@@ -164,13 +157,7 @@ pub fn coerce_ty_with_expr<'db>(
                 None => return Ok(()),
             };
 
-            match coerce_ty_with_expr(
-                db,
-                subrange
-                    ._type
-                    .to_ty(db),
-                target_expr,
-            ) {
+            match coerce_ty_with_expr(db, subrange._type.to_ty(db), target_expr) {
                 Ok(()) => match resolve_range(db, target_expr.expr(db)) {
                     Some(integer) => {
                         if integer >= min && integer <= max {
@@ -187,16 +174,15 @@ pub fn coerce_ty_with_expr<'db>(
                     }
                     None => Ok(()),
                 },
-                Err(err) => return Err(err),
+                Err(err) => Err(err),
             }
         }
         (TyKind::RefTo(ref_), ResolvedExprKind::RefValue(inner)) => {
-            let ref_to = ref_
-                .to_ty(db);
+            let ref_to = ref_.to_ty(db);
 
             match inner {
                 // A NULL reference can be assigned to any reference type
-                ResolvedRefValue::Null(_, _) => return Ok(()),
+                ResolvedRefValue::Null(_, _) => Ok(()),
                 ResolvedRefValue::Adress(v) => {
                     // Retrives the element that the reference points to
                     let var_ty = v
@@ -219,20 +205,15 @@ pub fn coerce_ty_with_expr<'db>(
 
             // Check that the variable is a reference
             let deref = match var_ty.kind(db) {
-                TyKind::RefTo(deref) => deref
-                    .to_ty(db),
+                TyKind::RefTo(deref) => deref.to_ty(db),
                 _ => {
                     return Err(ExprMismatch::expr_mismatch(target_expr, ty));
                 }
             };
 
             // Check that the type of the variable is the same as the type the reference points to
-            coerce_ty_with_ty(
-                db,
-                ref_.to_ty(db),
-                deref,
-            )
-            .map_err(|err| ExprMismatch::type_mismatch(target_expr, err))
+            coerce_ty_with_ty(db, ref_.to_ty(db), deref)
+                .map_err(|err| ExprMismatch::type_mismatch(target_expr, err))
         }
         _ => Err(ExprMismatch::expr_mismatch(target_expr, ty)),
     }

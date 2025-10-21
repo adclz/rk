@@ -1,11 +1,17 @@
 use crate::{
-    check::errors::init_expr::InitExprError, hir_def::{
-        expressions::expression::{Expr, InitExprKind}, interned::identifier::SpanIdent, scope::FileScopeId,
-    }, hir_ty::{
-        expr_resolver::{resolve_expr, ResolvedExpr},
+    AstId, HirNodeInfo,
+    check::errors::init_expr::InitExprError,
+    hir_def::{
+        expressions::expression::{Expr, InitExprKind},
+        interned::identifier::SpanIdent,
+        scope::FileScopeId,
+    },
+    hir_ty::{
+        expr_resolver::{ResolvedExpr, resolve_expr},
         ty::{Ty, TyKind},
-        ty_var_access_resolver::{CallSite, ResolvedAccess}, walk::{Adjustement, ResolvedPath, ResolvedPathKind, ResolvedPathResult},
-    }, AstId, HirNodeInfo
+        ty_var_access_resolver::{CallSite, ResolvedAccess},
+        walk::{Adjustement, ResolvedPath, ResolvedPathKind, ResolvedPathResult},
+    },
 };
 use auto_lsp::default::db::BaseDatabase;
 
@@ -36,9 +42,7 @@ pub fn flatten<'db>(db: &'db dyn BaseDatabase, expr: InitExpr<'db>) -> UnResolve
                 value: resolved,
             }
         }
-        InitExprKind::ConstantExpr(expr) => {
-            UnResolvedInitExprKind::ConstantExpr(expr)
-        }
+        InitExprKind::ConstantExpr(expr) => UnResolvedInitExprKind::ConstantExpr(expr),
     };
     UnResolvedInitExpr { expr, kind }
 }
@@ -78,7 +82,11 @@ pub fn resolve_init_expr<'db>(
     resolve_unresolved(db, ty, unordered)
 }
 
-fn resolve_unresolved<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>, init: UnResolvedInitExpr<'db>) -> ResolvedInitExpr<'db> {
+fn resolve_unresolved<'db>(
+    db: &'db dyn BaseDatabase,
+    ty: Ty<'db>,
+    init: UnResolvedInitExpr<'db>,
+) -> ResolvedInitExpr<'db> {
     let kind = match init.kind {
         UnResolvedInitExprKind::ArrayInit { values } => {
             match ty.kind(db) {
@@ -108,7 +116,7 @@ fn resolve_unresolved<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>, init: UnResol
                 .into_iter()
                 .map(|v| match ty.kind(db) {
                     // For array types, resolve values with element type
-                    TyKind::Array(array)=> resolve_unresolved(db, array.of_type.to_ty(db), v),
+                    TyKind::Array(array) => resolve_unresolved(db, array.of_type.to_ty(db), v),
                     // For simple types (multidimensional case), resolve with same type
                     _ => resolve_unresolved(db, ty, v),
                 })
@@ -146,15 +154,19 @@ fn resolve_unresolved<'db>(db: &'db dyn BaseDatabase, ty: Ty<'db>, init: UnResol
                 TyKind::Struct(ztruct) => {
                     if let Some(element_ty) = ztruct.resolve_elements(db).get(&name) {
                         // Valid field - resolve with field type
-                        let resolved_value = Box::new(resolve_unresolved(db, element_ty.spec(db).to_ty(db), *value));
+                        let resolved_value = Box::new(resolve_unresolved(
+                            db,
+                            element_ty.spec(db).to_ty(db),
+                            *value,
+                        ));
                         let field = ResolvedAccess::new(
                             db,
                             ResolvedPathResult::Ok(ResolvedPath {
                                 kind: ResolvedPathKind::StructElement(*element_ty),
                                 expr: CallSite::Formal(name),
-                                adjustement: Adjustement::None
+                                adjustement: Adjustement::None,
                             }),
-                            vec![]
+                            vec![],
                         );
 
                         ResolvedInitExprKind::StructElement {

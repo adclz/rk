@@ -3,9 +3,13 @@ use auto_lsp::default::db::BaseDatabase;
 use crate::{
     hir_def::expressions::expression::{ParamAssign, ParamAssignKind},
     hir_ty::{
-        expr_resolver::resolve_expr, func_call_resolver::{ResolvedParam, ResolvedParamKind}, signatures::LocalVariables, ty::Ty, ty_var_access_resolver::{
-            resolve_var_access, CallSite, ResolvedAccess
-        }, walk::{Adjustement, ResolvedPath, ResolvedPathElement, ResolvedPathKind, ResolvedPathResult}
+        expr_resolver::resolve_expr,
+        func_call_resolver::{ResolvedParam, ResolvedParamKind},
+        signatures::LocalVariables,
+        ty_var_access_resolver::{CallSite, ResolvedAccess, resolve_var_access},
+        walk::{
+            Adjustement, ResolvedPath, ResolvedPathKind, ResolvedPathResult,
+        },
     },
 };
 
@@ -32,11 +36,11 @@ pub fn resolve_parameters<'db>(
                                 ResolvedAccess::new(
                                     db,
                                     ResolvedPathResult::Ok(ResolvedPath {
-                                            kind: ResolvedPathKind::Variable(*p),
-                                            expr: CallSite::NonFormal(value),
-                                            adjustement: Adjustement::None
-                                        }),
-                                    vec![]
+                                        kind: ResolvedPathKind::Variable(*p),
+                                        expr: CallSite::NonFormal(value),
+                                        adjustement: Adjustement::None,
+                                    }),
+                                    vec![],
                                 )
                             })
                         },
@@ -58,11 +62,11 @@ pub fn resolve_parameters<'db>(
                                 ResolvedAccess::new(
                                     db,
                                     ResolvedPathResult::Ok(ResolvedPath {
-                                            kind: ResolvedPathKind::Variable(*p),
-                                            expr: CallSite::Formal(param),
-                                            adjustement: Adjustement::None
-                                        }),
-                                    vec![]
+                                        kind: ResolvedPathKind::Variable(*p),
+                                        expr: CallSite::Formal(param),
+                                        adjustement: Adjustement::None,
+                                    }),
+                                    vec![],
                                 )
                             })
                     },
@@ -80,7 +84,7 @@ pub fn resolve_parameters<'db>(
                     not,
                     param,
                     resolved_param: {
-                        callee 
+                        callee
                             .local_variables(db)
                             .get(&param.ident)
                             // todo: check if it's output
@@ -88,11 +92,11 @@ pub fn resolve_parameters<'db>(
                                 ResolvedAccess::new(
                                     db,
                                     ResolvedPathResult::Ok(ResolvedPath {
-                                            kind: ResolvedPathKind::Variable(*p),
-                                            expr: CallSite::Formal(param),
-                                            adjustement: Adjustement::None
-                                        }),
-                                    vec![]
+                                        kind: ResolvedPathKind::Variable(*p),
+                                        expr: CallSite::Formal(param),
+                                        adjustement: Adjustement::None,
+                                    }),
+                                    vec![],
                                 )
                             })
                     },

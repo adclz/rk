@@ -4,7 +4,7 @@ use crate::{
     AstId, HirNodeInfo,
     hir_def::{
         expressions::{
-            expression::{Elementary, Expr, ExprKind, PathExpr, PrimaryExpr, RefValue},
+            expression::{Elementary, Expr, ExprKind, PrimaryExpr, RefValue},
             spec::EnumVariant,
         },
         interned::identifier::SpanIdent,
@@ -16,7 +16,6 @@ use crate::{
         invocation_resolver::ResolvedInvocationResult,
         ty::TyKind,
         ty_var_access_resolver::{ResolvedAccess, resolve_path_expr, resolve_var_access},
-        walk::ResolvedPathKind,
     },
 };
 
@@ -174,7 +173,7 @@ impl<'db> ResolveExprCtx<'db> {
                         self.expr,
                         ResolvedExprKind::EnumValue {
                             name: resolved_path,
-                            v_text: variant.clone(),
+                            v_text: *variant,
                             variant: resolved_variant,
                         },
                     )
@@ -183,7 +182,10 @@ impl<'db> ResolveExprCtx<'db> {
                     RefValue::Null => ResolvedExpr::new(
                         self.db,
                         self.expr,
-                        ResolvedExprKind::RefValue(ResolvedRefValue::Null(self.expr.id(self.db), self.expr.scope_id(self.db))),
+                        ResolvedExprKind::RefValue(ResolvedRefValue::Null(
+                            self.expr.id(self.db),
+                            self.expr.scope_id(self.db),
+                        )),
                     ),
                     RefValue::Address(adress) => ResolvedExpr::new(
                         self.db,

@@ -13,7 +13,7 @@ use crate::{
         recovery::func_call::fuzzy_func_local_items,
     },
     hir_def::interned::identifier::SpanIdent,
-    hir_ty::{expr_resolver::ResolvedExpr, ty::Ty, ty_var_access_resolver::ResolvedAccess},
+    hir_ty::{expr_resolver::ResolvedExpr, ty_var_access_resolver::ResolvedAccess},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
@@ -237,13 +237,13 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 diag
             }
             Self::UnusedReturnType { call } => {
-                let mut diag = diag()
+                
+
+                diag()
                     .message(format!("unused return type of '{}'", call.decl_name(db)))
                     .severity(DiagnosticSeverity::WARNING)
                     .range(call.get_span(db).clone())
-                    .call();
-
-                diag
+                    .call()
             }
             Self::TooManyParameters {
                 call,
@@ -280,16 +280,16 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 diag
             }
             Self::UnknownNonFormalParam { call } => {
-                let mut diag = diag()
+                
+
+                diag()
                     .message(format!(
                         "unknown non-formal parameter in call to '{}'",
                         call.decl_name(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(call.get_span(db).clone())
-                    .call();
-
-                diag
+                    .call()
             }
             Self::UnresolvedInputParam { var, err } => {
                 let mut diag = diag()

@@ -1,10 +1,14 @@
 use auto_lsp::{
     core::document_symbols_builder::DocumentSymbolsBuilder,
     default::db::BaseDatabase,
-    lsp_types::{CompletionItem, Hover, HoverContents, InlayHint, InlayHintKind, InlayHintLabel, MarkedString},
+    lsp_types::{
+        CompletionItem, Hover, HoverContents, InlayHint, InlayHintKind, InlayHintLabel,
+        MarkedString,
+    },
 };
 use hir::{
-    hir_def::{namespace::NamespaceDecl, semantic_index::semantic_index, visibility::Visibility}, HirNodeInfo
+    HirNodeInfo,
+    hir_def::{namespace::NamespaceDecl, semantic_index::semantic_index, visibility::Visibility},
 };
 
 use crate::{ToProtocol, completions};
@@ -32,7 +36,7 @@ NAMESPACE {ns}
         self.namespaces(db)
             .iter()
             .for_each(|ns| ns.document_symbols(db, &mut nested_builder));
-        
+
         self.pous(db)
             .iter()
             .for_each(|pou| pou.document_symbols(db, &mut nested_builder));

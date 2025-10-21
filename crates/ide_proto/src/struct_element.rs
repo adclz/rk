@@ -1,5 +1,13 @@
-use auto_lsp::{default::db::BaseDatabase, lsp_types::{request::GotoDeclarationResponse, GotoDefinitionResponse, Hover, HoverContents, Location, MarkupContent, MarkupKind}};
-use hir::{hir_def::expressions::spec::StructElement, hir_ty::stmt_resolver::ResolvedStmt, HirNodeInfo, TypeInfo};
+use auto_lsp::{
+    default::db::BaseDatabase,
+    lsp_types::{
+        GotoDefinitionResponse, Hover, HoverContents, Location, MarkupContent, MarkupKind,
+        request::GotoDeclarationResponse,
+    },
+};
+use hir::{
+    HirNodeInfo, TypeInfo, hir_def::expressions::spec::StructElement,
+};
 
 use crate::{HasComment, ToProtocol};
 
@@ -9,7 +17,7 @@ impl<'db> ToProtocol<'db> for StructElement<'db> {
         let name = self.name(db).text(db);
         let type_name = self.spec(db).to_ty(db).type_name(db);
 
-                Some(Hover {
+        Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,
                 value: format!(

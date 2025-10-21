@@ -1,14 +1,15 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
+    AstId, HirNodeInfo,
     hir_def::{
         expressions::{spec::Spec, statement::Stmt},
         interned::{identifier::Ident, namespace::SpanNamespaceAccess},
         modifier::Modifier,
         pous::variable::VariableDecl,
-        scope::FileScopeId, visibility::Visibility,
+        scope::FileScopeId,
+        visibility::Visibility,
     },
-    AstId, HirNodeInfo,
 };
 
 #[salsa::tracked(debug)]

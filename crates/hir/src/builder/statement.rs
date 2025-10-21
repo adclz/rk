@@ -3,9 +3,7 @@ use crate::builder::invocation::ParseInvocation;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::analysis_error::AnalysisError;
 use crate::check::errors::syntax::SyntaxError;
-use crate::hir_def::expressions::expression::{
-    FuncCall, ParamAssign, ParamAssignKind,
-};
+use crate::hir_def::expressions::expression::{FuncCall, ParamAssign, ParamAssignKind};
 use crate::hir_def::expressions::statement::{CaseKind, Stmt, StmtKind};
 use crate::hir_def::interned::identifier::SpanIdent;
 use auto_lsp::anyhow::{self};

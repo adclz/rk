@@ -1,10 +1,15 @@
-use auto_lsp::{default::db::BaseDatabase, lsp_types::{request::GotoDeclarationResponse, InlayHint, InlayHintKind, InlayHintLabel, Position}};
+use auto_lsp::{
+    default::db::BaseDatabase,
+    lsp_types::{
+        InlayHint, InlayHintKind, InlayHintLabel, Position, request::GotoDeclarationResponse,
+    },
+};
 use hir::{
-    hir_def::expressions::expression::InitExprKind,
+    HirNodeInfo, TypeInfo,
     hir_ty::{
-        expr_resolver::resolve_expr,
-        init_expr_resolver::{ResolvedInitExpr, ResolvedInitExprKind}, ty::Ty,
-    }, HirNodeInfo, TypeInfo,
+        init_expr_resolver::{ResolvedInitExpr, ResolvedInitExprKind},
+        ty::Ty,
+    },
 };
 
 use crate::ToProtocol;
@@ -63,14 +68,15 @@ pub fn get_expr_inlay_hint_position(
     param: &ResolvedInitExpr,
 ) -> Option<Position> {
     match param.kind(db) {
-        ResolvedInitExprKind::StructElement { field, .. } => {
-            Some(field.get_span(db).lsp().end)
-        },
+        ResolvedInitExprKind::StructElement { field, .. } => Some(field.get_span(db).lsp().end),
         _ => None,
     }
 }
 
-pub fn get_expr_ty<'db>(db: &'db dyn BaseDatabase, param: &'db ResolvedInitExpr) -> Option<Ty<'db>> {
+pub fn get_expr_ty<'db>(
+    db: &'db dyn BaseDatabase,
+    param: &'db ResolvedInitExpr,
+) -> Option<Ty<'db>> {
     match param.kind(db) {
         ResolvedInitExprKind::StructElement { field, .. } => field.try_to_ty(db).ok(),
         _ => None,

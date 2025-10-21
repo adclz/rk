@@ -1,7 +1,5 @@
-use auto_lsp::default::db::BaseDatabase;
-use ide_diagnostic::{IdeDiagnostic, Related};
 
-use crate::{check::recovery::pou::FuzzyResult, hir_ty::ty::Ty, HirNodeInfo, TypeInfo};
+use crate::check::recovery::pou::FuzzyResult;
 
 pub fn get_candidates(candidates: &FuzzyResult) -> String {
     let mut result = String::new();

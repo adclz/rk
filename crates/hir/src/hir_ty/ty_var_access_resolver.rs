@@ -1,17 +1,16 @@
 use auto_lsp::default::db::BaseDatabase;
-use ide_diagnostic::IdeDiagnostic;
 use indexmap::IndexMap;
 
 use crate::{
-    AstId, HirNodeInfo, TypeInfo,
-    check::errors::{analysis_error::DiagnosticDescription, path_error::AccessError},
+    AstId, HirNodeInfo,
+    check::errors::path_error::AccessError,
     hir_def::{
         expressions::{
             expression::{
                 Expr, PathExpr, PathExprKind, VarAccess, VariableAccess, VariableAccessKind,
             },
             invocation::{Invocation, InvocationKind},
-            spec::{Spec, SpecKind, StructElement},
+            spec::Spec,
         },
         interned::{
             identifier::{Ident, SpanIdent},
@@ -19,14 +18,13 @@ use crate::{
         },
         pous::{
             pou::{Pou, PouDecl},
-            variable::{VariableDecl, VariableKind},
+            variable::VariableDecl,
         },
         scope::{FileScopeId, ScopeKind},
         semantic_index::semantic_index,
         visibility::Visibility,
     },
     hir_ty::{
-        inheritance_solver::MethodRef,
         name_res::{pou_names_res, resolve_namespace_access},
         signatures::LocalVariables,
         ty::Ty,
@@ -82,16 +80,13 @@ impl<'db> CallSite<'db> {
             CallSite::InvocationKeyword(id, i) => match i.kind(db) {
                 InvocationKind::This { .. } => "THIS".to_string(),
                 InvocationKind::Super { .. } => "SUPER".to_string(),
-                InvocationKind::SuperBody => format!("SUPER()"),
+                InvocationKind::SuperBody => "SUPER()".to_string(),
             },
-            CallSite::Access(access) => format!(
-                "{}",
-                match access.kind(db) {
+            CallSite::Access(access) => (match access.kind(db) {
                     VariableAccessKind::Direct { adress, .. } => adress.text(db).to_string(),
                     VariableAccessKind::Symbolic(symbolic) =>
                         symbolic.kind.ident(db).text(db).to_string(),
-                }
-            ),
+                }).to_string(),
             CallSite::PathExpr(path) => path.ident(db).text(db).to_string(),
             _ => "{unknown}".to_string(),
         }
@@ -368,7 +363,7 @@ fn find_primary_target<'db>(
             for step in flatten {
                 match step {
                     PathExprWalkStep::Field { ident, .. } => {
-                        fragments.push(ident.clone());
+                        fragments.push(*ident);
                     }
                     _ => break,
                 }
@@ -533,7 +528,7 @@ impl<'db> PathExpr<'db> {
                 }),
                 VarAccess::Deref(target) => result.push(PathExprWalkStep::Deref {
                     expr: self,
-                    target: target,
+                    target,
                 }),
             },
         }

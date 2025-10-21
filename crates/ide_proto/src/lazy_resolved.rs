@@ -1,8 +1,12 @@
 use auto_lsp::{
     default::db::BaseDatabase,
-    lsp_types::{GotoDefinitionResponse, Hover, request::GotoDeclarationResponse},
+    lsp_types::Hover,
 };
-use hir::{hir_def::interned::namespace::SpanNamespaceAccess, hir_ty::{expr_resolver::{ResolvedExpr, ResolvedExprKind}, name_res::resolve_namespace_access}, HirNodeInfo};
+use hir::{
+    HirNodeInfo,
+    hir_def::interned::namespace::SpanNamespaceAccess,
+    hir_ty::name_res::resolve_namespace_access,
+};
 
 use crate::ToProtocol;
 

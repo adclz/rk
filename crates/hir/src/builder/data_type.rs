@@ -1,5 +1,5 @@
 use crate::{
-    builder::{expression::ParseExpr, semantic_index::SemanticIndexBuilder, ParseSpec},
+    builder::{ParseSpec, expression::ParseExpr, semantic_index::SemanticIndexBuilder},
     check::errors::analysis_error::AnalysisError,
     hir_def::{
         interned::identifier::Ident,
@@ -7,7 +7,8 @@ use crate::{
             data_type::DataType,
             pou::{Pou, PouDecl},
         },
-        scope::{FileScopeId, Scope, ScopeKind}, visibility::Visibility,
+        scope::{FileScopeId, Scope, ScopeKind},
+        visibility::Visibility,
     },
 };
 use ast::generated::TypeDecl;

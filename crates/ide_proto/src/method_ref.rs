@@ -1,8 +1,12 @@
 use auto_lsp::{
-    core::document_symbols_builder::DocumentSymbolsBuilder, default::db::BaseDatabase,
+    core::document_symbols_builder::DocumentSymbolsBuilder,
+    default::db::BaseDatabase,
     lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind, SymbolKind},
 };
-use hir::{hir_def::pous::interface::MethodPrototype, hir_ty::inheritance_solver::MethodRef, HirNodeInfo, TypeInfo};
+use hir::{
+    HirNodeInfo, TypeInfo,
+    hir_ty::inheritance_solver::MethodRef,
+};
 
 use crate::{HasComment, ToProtocol};
 
@@ -32,18 +36,14 @@ impl<'db> ToProtocol<'db> for MethodRef<'db> {
         };
         let name = self.name(db).text(db);
         let return_type = match self {
-            MethodRef::Declared(decl) => {
-                match decl.return_type(db) {
-                    Some(ret_ty) => format!(": {}", ret_ty.to_ty(db).type_name(db)),
-                    None => "".to_string(),
-                }
-            }
-            MethodRef::Prototype(proto) => {
-                match proto.return_type(db) {
-                    Some(ret_ty) => format!(": {}", ret_ty.to_ty(db).type_name(db)),
-                    None => "".to_string(),
-                }
-            }
+            MethodRef::Declared(decl) => match decl.return_type(db) {
+                Some(ret_ty) => format!(": {}", ret_ty.to_ty(db).type_name(db)),
+                None => "".to_string(),
+            },
+            MethodRef::Prototype(proto) => match proto.return_type(db) {
+                Some(ret_ty) => format!(": {}", ret_ty.to_ty(db).type_name(db)),
+                None => "".to_string(),
+            },
         };
         let comment = self.get_comment(db).unwrap_or_default();
 
@@ -61,6 +61,5 @@ impl<'db> ToProtocol<'db> for MethodRef<'db> {
             }),
             range: Some(self.get_span(db).into()),
         })
-    
     }
 }

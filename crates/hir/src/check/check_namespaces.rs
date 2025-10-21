@@ -6,7 +6,7 @@ use rustc_hash::FxHashMap;
 use crate::{
     check::errors::{analysis_error::AnalysisError, duplicates::DuplicateError},
     hir_def::{interned::identifier::Ident, namespace::NamespaceDecl, pous::pou::PouDecl},
-    hir_ty::{name_res::shared_namespaces},
+    hir_ty::name_res::shared_namespaces,
 };
 
 #[salsa::tracked(returns(ref), no_eq)]

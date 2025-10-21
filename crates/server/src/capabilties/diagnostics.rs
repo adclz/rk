@@ -23,7 +23,10 @@ pub fn diagnostics<Db: BaseDatabase + Clone + RefUnwindSafe>(
             return Ok(DocumentDiagnosticReportResult::Report(
                 DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
                     related_documents: None,
-                    full_document_diagnostic_report: FullDocumentDiagnosticReport { result_id: None, items: vec![] },
+                    full_document_diagnostic_report: FullDocumentDiagnosticReport {
+                        result_id: None,
+                        items: vec![],
+                    },
                 }),
             ));
         }

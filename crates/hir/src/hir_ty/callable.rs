@@ -1,3 +1,1 @@
-pub trait Callable<'db>: Copy {
-    
-}
+pub trait Callable<'db>: Copy {}

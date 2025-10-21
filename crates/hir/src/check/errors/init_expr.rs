@@ -70,15 +70,15 @@ impl<'db> ToIdeDiagnostic<'db> for InitExprError<'db> {
                 max_capacity,
                 init_expr,
             } => {
-                let mut diag = diag()
+                
+
+                diag()
                     .message(format!(
                         "too many array elements: provided {provided_count}, but array capacity is {max_capacity}"
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(init_expr.get_span(db))
-                    .call();
-
-                diag
+                    .call()
             }
             InitExprError::InitExprTypeExprMismatch { err, init_expr } => {
                 let mut diag = diag()
@@ -95,7 +95,9 @@ impl<'db> ToIdeDiagnostic<'db> for InitExprError<'db> {
                 diag
             }
             InitExprError::TypeInitExprMismatch { expected, found } => {
-                let mut diag = diag()
+                
+
+                diag()
                     .message(format!(
                         "invalid value initializer: expected type '{}', found '{}'",
                         expected.type_name(db),
@@ -103,9 +105,7 @@ impl<'db> ToIdeDiagnostic<'db> for InitExprError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(found.get_span(db))
-                    .call();
-
-                diag
+                    .call()
             }
         }
     }

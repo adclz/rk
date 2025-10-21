@@ -1,18 +1,15 @@
 use auto_lsp::default::db::BaseDatabase;
-use rustc_hash::FxHashMap;
 
 use crate::{
     check::{
-        check_semantic_index::{Check, DataTypeCheck},
+        check_semantic_index::DataTypeCheck,
         coerce::coerce_ty_with_expr,
-        errors::{analysis_error::AnalysisError, duplicates::DuplicateError, subrange::SubRangeError},
+        errors::{
+            analysis_error::AnalysisError, subrange::SubRangeError,
+        },
     },
-    hir_def::expressions::spec::{ElementarySpec, Enum, SpecKind, SubRange},
-    hir_ty::{
-        array_resolver::resolve_range,
-        expr_resolver::resolve_expr,
-        ty::{Ty, TyKind},
-    },
+    hir_def::expressions::spec::{ElementarySpec, SpecKind, SubRange},
+    hir_ty::expr_resolver::resolve_expr,
 };
 
 impl<'db> DataTypeCheck<'db> for SubRange<'db> {

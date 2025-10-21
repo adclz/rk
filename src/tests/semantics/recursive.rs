@@ -1,11 +1,6 @@
-use db::RootDatabase;
-use insta::assert_snapshot;
-use rstest::rstest;
 
-use crate::tests::utils::test_diagnostics;
-use crate::tests::utils::with_db;
 
-/* 
+/*
 #[rstest]
 fn self_referential(mut with_db: RootDatabase) {
     let source = r#"

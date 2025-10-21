@@ -1,22 +1,31 @@
-use auto_lsp::{core::span::Span, default::db::BaseDatabase};
+use auto_lsp::default::db::BaseDatabase;
 use ide_diagnostic::{IdeDiagnostic, Related};
-use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    check::errors::path_error::AccessError, hir_def::{
+    AstId, HirNodeInfo, TypeInfo,
+    check::errors::path_error::AccessError,
+    hir_def::{
         expressions::spec::{
             Array, ElementarySpec, Enum, Spec, SpecKind, Struct, StructElement, SubRange,
         },
-        interned::{identifier::Ident, namespace::SpanNamespaceAccess},
-        pous::{class::Class, function::Function, function_block::FunctionBlock, interface::Interface, pou::{Pou, PouDecl}}, scope::FileScopeId,
-    }, hir_ty::name_res::resolve_namespace_access, AstId, HirNodeInfo, TypeInfo
+        interned::identifier::Ident,
+        pous::{
+            class::Class,
+            function::Function,
+            function_block::FunctionBlock,
+            interface::Interface,
+            pou::Pou,
+        },
+        scope::FileScopeId,
+    },
+    hir_ty::name_res::resolve_namespace_access,
 };
 
 /// Resolved type of a [`Spec`]
 ///
 /// For now Ty just wraps [`Spec`], but in the future it can represent more complex types.
-/// 
+///
 /// Ty serves as a '
 #[salsa::tracked(debug)]
 pub struct Ty<'db> {
@@ -37,7 +46,7 @@ pub enum TyKind<'db> {
     Array(Array<'db>),
     ArrayConformand(Spec<'db>), // todo
     Struct(Struct<'db>),
-    
+
     // POUs
     // there is no DataType because a Type is a spec and thus belongs to the variants above
     Function(Function<'db>),
@@ -45,7 +54,7 @@ pub enum TyKind<'db> {
     Class(Class<'db>),
     Interface(Interface<'db>),
 
-    Err(AccessError<'db>)
+    Err(AccessError<'db>),
 }
 
 impl<'db> HirNodeInfo<'db> for Ty<'db> {
@@ -119,20 +128,20 @@ impl<'db> Spec<'db> {
             SpecKind::Simple(simple) => TyKind::Simple(*simple),
             SpecKind::ArrayConformand(array) => TyKind::ArrayConformand(*array),
             SpecKind::Ref(_ref) => TyKind::RefTo(*_ref),
-            SpecKind::Target(target) => match resolve_namespace_access(db, target.scope_id, target.path) {
-                Some(pou) => match pou.pou(db) {
-                    Pou::Function(f) => TyKind::Function(*f),
-                    Pou::FunctionBlock(fb) => TyKind::FunctionBlock(*fb),
-                    Pou::Class(c) => TyKind::Class(*c),
-                    Pou::Interface(i) => TyKind::Interface(*i),
-                    Pou::DataType(dt) => return dt.spec(db).to_ty(db),
-                },
-                None => {
-                    TyKind::Err(AccessError::NoItemInScope {
-                        access: target.clone(),
-                    })
+            SpecKind::Target(target) => {
+                match resolve_namespace_access(db, target.scope_id, target.path) {
+                    Some(pou) => match pou.pou(db) {
+                        Pou::Function(f) => TyKind::Function(*f),
+                        Pou::FunctionBlock(fb) => TyKind::FunctionBlock(*fb),
+                        Pou::Class(c) => TyKind::Class(*c),
+                        Pou::Interface(i) => TyKind::Interface(*i),
+                        Pou::DataType(dt) => return dt.spec(db).to_ty(db),
+                    },
+                    None => TyKind::Err(AccessError::NoItemInScope {
+                        access: *target,
+                    }),
                 }
-            },
+            }
         };
         Ty::new(db, self, kind)
     }

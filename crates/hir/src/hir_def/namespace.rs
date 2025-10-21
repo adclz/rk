@@ -1,5 +1,4 @@
 use auto_lsp::default::db::BaseDatabase;
-use rustc_hash::FxHashMap;
 
 use crate::hir_def::interned::namespace::NamespacePath;
 use crate::hir_def::pous::pou::PouDecl;

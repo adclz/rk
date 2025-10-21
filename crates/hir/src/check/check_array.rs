@@ -2,11 +2,11 @@ use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     check::{
-        check_semantic_index::{Check, DataTypeCheck},
+        check_semantic_index::DataTypeCheck,
         errors::{analysis_error::AnalysisError, array::ArrayError},
     },
     hir_def::expressions::spec::Array,
-    hir_ty::{array_resolver::resolve_range, expr_resolver::resolve_expr, ty::Ty},
+    hir_ty::{array_resolver::resolve_range, expr_resolver::resolve_expr},
 };
 
 impl<'db> DataTypeCheck<'db> for Array<'db> {

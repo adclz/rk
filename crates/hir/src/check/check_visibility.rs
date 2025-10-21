@@ -2,26 +2,18 @@ use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     HirNodeInfo,
-    builder::invocation,
     check::errors::{
-        analysis_error::AnalysisError, inheritance::MethodError, visibility::VisibilityError,
+        analysis_error::AnalysisError, visibility::VisibilityError,
     },
     hir_def::{
-        expressions::invocation::Invocation,
         interned::identifier::Ident,
         namespace::NamespaceDecl,
-        pous::{class::MethodDecl, pou::Pou, variable::VariableDecl},
+        pous::variable::VariableDecl,
         scope::{FileScopeId, ScopeKind},
         semantic_index::semantic_index,
         visibility::Visibility,
     },
-    hir_ty::{
-        func_call_resolver::ResolvedFuncCall,
-        inheritance_solver::MethodRef,
-        invocation_resolver::ResolvedInvocation,
-        ty::{Ty, TyKind},
-        ty_var_access_resolver::ResolvedAccess,
-    },
+    hir_ty::inheritance_solver::MethodRef,
 };
 
 /*
@@ -145,8 +137,8 @@ pub fn check_call_visibility<'db>(
     }
 
     // Check PROTECTED visibility (default) - callable from same POU or derived POUs
-    if method_visibility.contains(Visibility::PROTECTED) || method_visibility.is_empty() {
-        if !is_derived_pou(db, calling_scope, method_scope) {
+    if (method_visibility.contains(Visibility::PROTECTED) || method_visibility.is_empty())
+        && !is_derived_pou(db, calling_scope, method_scope) {
             errors.push(
                 VisibilityError::ProtectedMethod {
                     method: accessed,
@@ -155,8 +147,6 @@ pub fn check_call_visibility<'db>(
                 .into(),
             );
         }
-        return;
-    }
 }
 
 /// Check if the calling scope is in a POU that derives from the method's POU
@@ -179,11 +169,9 @@ fn is_derived_pou<'db>(
             }
             // In case of SUPER
             child
-                .inheritors(db)
-                .iter()
-                .any(|inheritor| *inheritor == parent)
+                .inheritors(db).contains(&parent)
         }
-        _ => return false, // One or both are not POUs
+        _ => false, // One or both are not POUs
     }
 }
 
