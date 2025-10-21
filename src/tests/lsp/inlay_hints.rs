@@ -190,9 +190,9 @@ pub fn func_call_input_params_inlay_hints(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION fn
     VAR_INPUT
-        param1 : BYTE,
-        param2 : INT,
-        param3 : REAL
+        param1 : BYTE;
+        param2 : INT;
+        param3 : REAL;
     END_VAR
 END_FUNCTION
 
@@ -285,7 +285,6 @@ END_FUNCTION_BLOCK"#;
     "#);
 }
 
-
 #[rstest]
 pub fn init_expr_inlay_hints(mut with_db: RootDatabase) {
     let source = r#"
@@ -322,7 +321,7 @@ END_FUNCTION"#;
                 character: 24,
             },
             label: String(
-                ": ARRAY",
+                ": ARRAY [0..2] OF INT",
             ),
             kind: Some(
                 Type,

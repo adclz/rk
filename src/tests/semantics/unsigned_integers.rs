@@ -127,10 +127,8 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:4:23 ]
        |
      4 |         test: BOOL := 256;
-       |         ^^|^  ^^|^    ^|^  
-       |           `---------------- 'test' is declared here
-       |                 |      |   
-       |                 `---------- type defined here
+       |               ^^|^    ^|^  
+       |                 `---------- expected type 'BOOL' here
        |                        |   
        |                        `--- invalid value initializer: invalid BOOL literal
     ---'
@@ -153,10 +151,8 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:4:25 ]
        |
      4 |         test1: USINT := -1;
-       |         ^^|^^  ^^|^^    ^|  
-       |           `----------------- 'test1' is declared here
-       |                  |       |  
-       |                  `---------- type defined here
+       |                ^^|^^    ^|  
+       |                  `---------- expected type 'USINT' here
        |                          |  
        |                          `-- invalid value initializer: literal can not be negative
     ---'
@@ -164,10 +160,8 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:5:24 ]
        |
      5 |         test2: BYTE := 256;
-       |         ^^|^^  ^^|^    ^|^  
-       |           `----------------- 'test2' is declared here
-       |                  |      |   
-       |                  `---------- type defined here
+       |                ^^|^    ^|^  
+       |                  `---------- expected type 'BYTE' here
        |                         |   
        |                         `--- invalid value initializer: number too large to fit in target type
     ---'
@@ -175,10 +169,8 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:6:25 ]
        |
      6 |         test3: USINT := 16#FFFF;
-       |         ^^|^^  ^^|^^    ^^^|^^^  
-       |           `---------------------- 'test3' is declared here
-       |                  |         |     
-       |                  `--------------- type defined here
+       |                ^^|^^    ^^^|^^^  
+       |                  `--------------- expected type 'USINT' here
        |                            |     
        |                            `----- invalid value initializer: number too large to fit in target type
     ---'
@@ -201,10 +193,8 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:4:24 ]
        |
      4 |         test1: UINT := -1;
-       |         ^^|^^  ^^|^    ^|  
-       |           `---------------- 'test1' is declared here
-       |                  |      |  
-       |                  `--------- type defined here
+       |                ^^|^    ^|  
+       |                  `--------- expected type 'UINT' here
        |                         |  
        |                         `-- invalid value initializer: literal can not be negative
     ---'
@@ -212,10 +202,8 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:5:24 ]
        |
      5 |         test2: WORD := 65536;
-       |         ^^|^^  ^^|^    ^^|^^  
-       |           `------------------- 'test2' is declared here
-       |                  |       |    
-       |                  `------------ type defined here
+       |                ^^|^    ^^|^^  
+       |                  `------------ expected type 'WORD' here
        |                          |    
        |                          `---- invalid value initializer: number too large to fit in target type
     ---'
@@ -223,10 +211,8 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:6:24 ]
        |
      6 |         test3: UINT := 16#FFFFFFFF;
-       |         ^^|^^  ^^|^    ^^^^^|^^^^^  
-       |           `------------------------- 'test3' is declared here
-       |                  |          |       
-       |                  `------------------ type defined here
+       |                ^^|^    ^^^^^|^^^^^  
+       |                  `------------------ expected type 'UINT' here
        |                             |       
        |                             `------- invalid value initializer: number too large to fit in target type
     ---'
@@ -249,10 +235,8 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:4:25 ]
        |
      4 |         test1: UDINT := -1;
-       |         ^^|^^  ^^|^^    ^|  
-       |           `----------------- 'test1' is declared here
-       |                  |       |  
-       |                  `---------- type defined here
+       |                ^^|^^    ^|  
+       |                  `---------- expected type 'UDINT' here
        |                          |  
        |                          `-- invalid value initializer: literal can not be negative
     ---'
@@ -260,10 +244,8 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:5:25 ]
        |
      5 |         test2: DWORD := 4294967296;
-       |         ^^|^^  ^^|^^    ^^^^^|^^^^  
-       |           `------------------------- 'test2' is declared here
-       |                  |           |      
-       |                  `------------------ type defined here
+       |                ^^|^^    ^^^^^|^^^^  
+       |                  `------------------ expected type 'DWORD' here
        |                              |      
        |                              `------ invalid value initializer: number too large to fit in target type
     ---'
@@ -271,10 +253,8 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:6:25 ]
        |
      6 |         test3: UDINT := 16#FFFFFFFFFF;
-       |         ^^|^^  ^^|^^    ^^^^^^|^^^^^^  
-       |           `---------------------------- 'test3' is declared here
-       |                  |            |        
-       |                  `--------------------- type defined here
+       |                ^^|^^    ^^^^^^|^^^^^^  
+       |                  `--------------------- expected type 'UDINT' here
        |                               |        
        |                               `-------- invalid value initializer: number too large to fit in target type
     ---'
@@ -297,10 +277,8 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:4:25 ]
        |
      4 |         test1: ULINT := -1;
-       |         ^^|^^  ^^|^^    ^|  
-       |           `----------------- 'test1' is declared here
-       |                  |       |  
-       |                  `---------- type defined here
+       |                ^^|^^    ^|  
+       |                  `---------- expected type 'ULINT' here
        |                          |  
        |                          `-- invalid value initializer: literal can not be negative
     ---'
@@ -308,10 +286,8 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:5:25 ]
        |
      5 |         test2: LWORD := 18446744073709551616;
-       |         ^^|^^  ^^|^^    ^^^^^^^^^^|^^^^^^^^^  
-       |           `----------------------------------- 'test2' is declared here
-       |                  |                |           
-       |                  `---------------------------- type defined here
+       |                ^^|^^    ^^^^^^^^^^|^^^^^^^^^  
+       |                  `---------------------------- expected type 'LWORD' here
        |                                   |           
        |                                   `----------- invalid value initializer: number too large to fit in target type
     ---'
@@ -319,10 +295,8 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:6:25 ]
        |
      6 |         test3: ULINT := 16#FFFFFFFFFFFFFFFFFF;
-       |         ^^|^^  ^^|^^    ^^^^^^^^^^|^^^^^^^^^^  
-       |           `------------------------------------ 'test3' is declared here
-       |                  |                |            
-       |                  `----------------------------- type defined here
+       |                ^^|^^    ^^^^^^^^^^|^^^^^^^^^^  
+       |                  `----------------------------- expected type 'ULINT' here
        |                                   |            
        |                                   `------------ invalid value initializer: number too large to fit in target type
     ---'

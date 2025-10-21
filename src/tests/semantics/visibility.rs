@@ -38,10 +38,6 @@ fn invalid_access_private_method(mut with_db: RootDatabase) {
     Error: 
        ,-[ file:///test0.st:8:13 ]
        |
-     3 |         METHOD PRIVATE myPrivateMethod: INT  END_METHOD
-       |         ^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^  
-       |                                `------------------------- type defined here
-       | 
      8 |             SUPER.myPrivateMethod();
        |             ^^^^^^^^^^^|^^^^^^^^^^^  
        |                        `------------- can not access PRIVATE METHOD 'myPrivateMethod'
@@ -183,11 +179,11 @@ END_FUNCTION_BLOCK
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-        ,-[ file:///test0.st:11:9 ]
+        ,-[ file:///test0.st:11:5 ]
         |
      11 |     obj.myProtectedMethod();
-        |         ^^^^^^^^|^^^^^^^^  
-        |                 `---------- can not access PROTECTED METHOD 'myProtectedMethod'
+        |     ^|^  
+        |      `--- can not access PROTECTED METHOD 'myProtectedMethod'
         | 
         | Note: METHODS marked PROTECTED are only available within the same POU or derived POUs
     ----'

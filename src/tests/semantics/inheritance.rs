@@ -23,7 +23,7 @@ fn missing_override(mut with_db: RootDatabase) {
        |
      3 |             METHOD Tick : INT END_METHOD
        |                    ^^|^  
-       |                      `--- 'Tick' is declared here
+       |                      `--- base method 'Tick' is declared here
        | 
      8 |             METHOD Tick : INT END_METHOD
        |                    ^^|^  
@@ -52,7 +52,7 @@ fn override_final_method(mut with_db: RootDatabase) {
        |
      3 |             METHOD FINAL Tick : INT END_METHOD
        |                          ^^|^  
-       |                            `--- 'Tick' is declared here
+       |                            `--- FINAL method 'Tick' is declared here
        | 
      8 |             METHOD OVERRIDE Tick : INT END_METHOD
        |                             ^^|^  
@@ -80,7 +80,7 @@ fn missing_abstract_method(mut with_db: RootDatabase) {
        |
      3 |             METHOD ABSTRACT Tick : INT END_METHOD
        |                             ^^|^  
-       |                               `--- 'Tick' is declared here
+       |                               `--- ABSTRACT method 'Tick' is declared here
        | 
      6 |         CLASS Mid EXTENDS Base
        |               ^|^  
@@ -149,7 +149,7 @@ fn interface_methods_not_implemented(mut with_db: RootDatabase) {
        |
      3 |             METHOD DAYTIME END_METHOD
        |                    ^^^|^^^  
-       |                       `----- 'DAYTIME' is declared here
+       |                       `----- method 'DAYTIME' is declared by interface 'Mid' here
        | 
      6 |         CLASS Mid IMPLEMENTS ROOM1
        |               ^|^  
@@ -182,11 +182,11 @@ fn method_signature_count_mismatch_in_implementer(mut with_db: RootDatabase) {
         |
       3 |             METHOD DAYTIME
         |                    ^^^|^^^  
-        |                       `----- 'DAYTIME' is declared here
+        |                       `----- base method 'DAYTIME' is declared here
         | 
      11 |             METHOD OVERRIDE DAYTIME
         |                             ^^^|^^^  
-        |                                `----- invalid number of parameters for inherited method 'DAYTIME': expected 1, got 0
+        |                                `----- invalid number of parameters for method 'DAYTIME': expected 1, got 0
     ----'
     ");
 }
@@ -214,11 +214,11 @@ fn method_signature_count_mismatch_in_base(mut with_db: RootDatabase) {
        |
      3 |             METHOD DAYTIME
        |                    ^^^|^^^  
-       |                       `----- 'DAYTIME' is declared here
+       |                       `----- base method 'DAYTIME' is declared here
        | 
      8 |             METHOD OVERRIDE DAYTIME
        |                             ^^^|^^^  
-       |                                `----- invalid number of parameters for inherited method 'DAYTIME': expected 0, got 1
+       |                                `----- invalid number of parameters for method 'DAYTIME': expected 0, got 1
     ---'
     ");
 }
@@ -250,18 +250,14 @@ fn method_signature_type_mismatch(mut with_db: RootDatabase) {
         ,-[ file:///test0.st:15:21 ]
         |
       6 |                     value2: INT;
-        |                     ^^^|^^  ^|^  
-        |                        `--------- 'value2' is declared here
-        |                              |   
-        |                              `--- type defined here
+        |                             ^|^  
+        |                              `--- expected 'INT' here
         | 
      15 |                     value2: REAL; // should be INT
         |                     ^^^|^^  ^^|^  
-        |                        `---------- invalid parameter in method signature: type mismatch: expected INT, found REAL
-        |                        |      |   
-        |                        `---------- 'value2' is declared here
+        |                        `---------- invalid parameter in method signature: expected 'INT', found 'REAL'
         |                               |   
-        |                               `--- type defined here
+        |                               `--- ... but found 'REAL' instead
     ----'
     ");
 }

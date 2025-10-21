@@ -58,15 +58,13 @@ END_FUNCTION_BLOCK"#;
     Error: 
        ,-[ file:///test0.st:8:5 ]
        |
-     2 | ,-> CLASS base
-       : :   
-     4 | |-> END_CLASS
-       | |               
-       | `--------------- methods are inherited from 'base' here
+     2 | CLASS base
+       |       ^^|^  
+       |         `--- methods are inherited from 'base' here
        | 
-     8 |         SUPER.super_method1()
-       |         ^^^^^^^^^^|^^^^^^^^^^  
-       |                   `------------ no method 'super_method1' in inherited methods of 'base'
+     8 |     SUPER.super_method1()
+       |     ^^^^^^^^^^|^^^^^^^^^^  
+       |               `------------ no method 'super_method1' in inherited methods
     ---'
     ");
 }
@@ -83,10 +81,6 @@ END_CLASS"#;
     Error: 
        ,-[ file:///test0.st:4:9 ]
        |
-     2 | CLASS fb1 EXTENDS base
-       |       ^|^  
-       |        `--- 'fb1' is declared here
-       | 
      4 |         SUPER()
        |         ^^^|^^^  
        |            `----- SUPER() can only be called in FUNCTION_BLOCK POUs
@@ -105,9 +99,6 @@ END_FUNCTION
     Error: 
        ,-[ file:///test0.st:3:5 ]
        |
-     2 | FUNCTION fn1
-       |          ^|^  
-       |           `--- 'fn1' is declared here
      3 |     SUPER()
        |     ^^^|^^^  
        |        `----- SUPER() can only be called in FUNCTION_BLOCK POUs
@@ -171,10 +162,8 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:7:12 ]
        |
      4 |         VAR_INPUT input1 : INT; END_VAR
-       |                   ^^^|^^   ^|^  
-       |                      `---------- 'input1' is declared here
-       |                             |   
-       |                             `--- type defined here
+       |                            ^|^  
+       |                             `--- expected type 'INT' here
        | 
      7 |     THIS.decl(0.5);
        |               ^|^  
@@ -206,10 +195,8 @@ END_CLASS
         ,-[ file:///test0.st:10:17 ]
         |
       4 |         VAR_INPUT input1 : INT; END_VAR
-        |                   ^^^|^^   ^|^  
-        |                      `---------- 'input1' is declared here
-        |                             |   
-        |                             `--- type defined here
+        |                            ^|^  
+        |                             `--- expected type 'INT' here
         | 
      10 |         SUPER.decl(0.5);
         |                    ^|^  
@@ -241,10 +228,8 @@ END_FUNCTION_BLOCK
         ,-[ file:///test0.st:10:17 ]
         |
       4 |         VAR_INPUT input1 : INT; END_VAR
-        |                   ^^^|^^   ^|^  
-        |                      `---------- 'input1' is declared here
-        |                             |   
-        |                             `--- type defined here
+        |                            ^|^  
+        |                             `--- expected type 'INT' here
         | 
      10 |         SUPER.decl(0.5);
         |                    ^|^  

@@ -43,7 +43,7 @@ END_CLASS
     assert_snapshot!(nodes.iter().filter_map(|node|{
         if let HirNode::PouDecl(ty) = node
         {
-            if let HoverContents::Markup(d) = ty.hover(&with_db, 0)?.contents {
+            if let HoverContents::Markup(d) = ty.hover(&with_db, ty.name_span(&with_db).start_byte)?.contents {
                 Some(d.value)
             } else {
                 None
@@ -55,19 +55,19 @@ END_CLASS
         .join("\n"), @r"
     # fn1 comment
     ```iecst
-    (FUNCTION) fn1
+    [FUNCTION] fn1
     ```
-
+                    
 
     # fb1 comment
     ```iecst
-    (FUNCTION_BLOCK) fb1
+    [FUNCTION_BLOCK] fb1
     ```
-
+                    
 
     # class1 comment
     ```iecst
-    (CLASS) class1
+    [CLASS] class1
     ```
     ");
 }
@@ -81,9 +81,9 @@ FUNCTION_BLOCK fb1
         // # var1 comment
         var1: INT; // inline comment
         (* # var2 comment *)
-        var2: INT; 
+        var2: INT;
 
-        var3: INT; /* # var3 comment */ 
+        var3: INT; /* # var3 comment */
     END_VAR
 
 END_FUNCTION_BLOCK
@@ -95,8 +95,7 @@ END_FUNCTION_BLOCK
     let mut nodes = vec![];
 
     let _ = sema.walk_hir(&with_db, &mut |node| {
-        if let HirNode::VariableDecl(var) = node
-        {
+        if let HirNode::VariableDecl(var) = node {
             nodes.push(var);
         }
         ControlFlow::Continue(())
@@ -112,19 +111,19 @@ END_FUNCTION_BLOCK
         .join("\n"), @r"
     # var1 comment
     ```iecst
-    (VAR) var1
+    (VAR) var1: INT
     ```
-
+                    
 
     # var2 comment
     ```iecst
-    (VAR) var2
+    (VAR) var2: INT
     ```
-
+                    
 
     # var3 comment
     ```iecst
-    (VAR) var3
+    (VAR) var3: INT
     ```
     ");
 }

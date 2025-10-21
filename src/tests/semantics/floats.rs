@@ -42,10 +42,8 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:4:24 ]
        |
      4 |         test1: REAL := 0;
-       |         ^^|^^  ^^|^    |  
-       |           `--------------- 'test1' is declared here
-       |                  |     |  
-       |                  `-------- type defined here
+       |                ^^|^    |  
+       |                  `-------- expected type 'REAL' here
        |                        |  
        |                        `-- invalid value initializer: expected a 32-bit floating point number
     ---'
@@ -53,10 +51,8 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:5:24 ]
        |
      5 |         test2: REAL := INT#10;
-       |         ^^|^^  ^^|^    ^^^|^^  
-       |           `-------------------- 'test2' is declared here
-       |                  |        |    
-       |                  `------------- type defined here
+       |                ^^|^    ^^^|^^  
+       |                  `------------- expected type 'REAL' here
        |                           |    
        |                           `---- invalid value initializer: expected a 32-bit floating point number
     ---'
@@ -78,10 +74,8 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:4:25 ]
        |
      4 |         test1: LREAL := 0;
-       |         ^^|^^  ^^|^^    |  
-       |           `---------------- 'test1' is declared here
-       |                  |      |  
-       |                  `--------- type defined here
+       |                ^^|^^    |  
+       |                  `--------- expected type 'LREAL' here
        |                         |  
        |                         `-- invalid value initializer: expected a 64-bit floating point number
     ---'
@@ -89,10 +83,8 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:5:25 ]
        |
      5 |         test2: LREAL := INT#10;
-       |         ^^|^^  ^^|^^    ^^^|^^  
-       |           `--------------------- 'test2' is declared here
-       |                  |         |    
-       |                  `-------------- type defined here
+       |                ^^|^^    ^^^|^^  
+       |                  `-------------- expected type 'LREAL' here
        |                            |    
        |                            `---- invalid value initializer: expected a 64-bit floating point number
     ---'

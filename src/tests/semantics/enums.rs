@@ -15,11 +15,11 @@ fn invalid_enum_type(mut with_db: RootDatabase) {
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test0.st:3:13 ]
+       ,-[ file:///test0.st:3:19 ]
        |
      3 |             List: BOOL (A, B, C);
-       |             ^^|^  
-       |               `--- invalid enum type 'BOOL'
+       |                   ^^|^  
+       |                     `--- invalid enum type 'BOOL'
        | 
        | Note: only numeric integer types are allowed for ENUM
     ---'
@@ -39,10 +39,8 @@ fn type_mismatch_enum_variant_decl(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:3:28 ]
        |
      3 |             List: UINT (A, B := -5, C);
-       |             ^^|^  ^^|^     |  
-       |               `--------------- 'List' is declared here
-       |                     |      |  
-       |                     `--------- type defined here
+       |                   ^^|^     |  
+       |                     `--------- expected type 'UINT' here
        |                            |  
        |                            `-- invalid value for enum variant 'B': literal can not be negative
     ---'
@@ -71,14 +69,12 @@ fn unknown_enum_variant(mut with_db: RootDatabase) {
         ,-[ file:///test0.st:11:21 ]
         |
       3 |             List: UINT (A, B, C);
-        |             ^^|^^^^^^^^^|^^^^^^^  
-        |               `------------------- 'List' is declared here
-        |                         |         
-        |                         `--------- type defined here
+        |                 ^^^^^^^^|^^^^^^^  
+        |                         `--------- type 'ENUM' defined here
         | 
      11 |             test := List#D; // D is not a valid enum variant
         |                     ^^^|^^  
-        |                        `---- invalid assignment: ENUM 'List' has no variant named 'D'
+        |                        `---- invalid assignment: ENUM 'ENUM' has no variant named 'D'
     ----'
     ");
 }

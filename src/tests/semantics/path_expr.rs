@@ -17,7 +17,7 @@ use crate::tests::utils::with_db;
 
 /// Utility to collect all path expressions in a given source file.
 /// The output is a list of lines with the format:
-/// `<offset> <identifier> <type>`
+/// `<offset> <type>`
 fn collect_path_expressions(db: &dyn BaseDatabase, sema: &SemanticIndex) -> String {
     let mut result = vec![];
     let _ = sema.walk_hir(db, &mut |n| {
@@ -29,7 +29,13 @@ fn collect_path_expressions(db: &dyn BaseDatabase, sema: &SemanticIndex) -> Stri
 
     result
         .iter()
-        .map(|r| format!("{} {}", r.get_span(db).start_byte, r.decl_name(db),))
+        .map(|r| {
+            format!(
+                "{} {}",
+                r.get_span(db).start_byte,
+                r.try_to_ty(db).unwrap().type_name(db)
+            )
+        })
         .collect::<Vec<String>>()
         .join("\n")
 }
@@ -52,10 +58,7 @@ END_FUNCTION
     let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
 
     // in case of index access, the index expression has the same offset as the parent expression
-    assert_snapshot!(collect_path_expressions(&with_db, &sema), @r"
-    63 test ARRAY
-    63 test INT
-    ");
+    assert_snapshot!(collect_path_expressions(&with_db, &sema), @"63 INT");
 }
 
 #[rstest]
@@ -80,9 +83,8 @@ END_FUNCTION
     let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
 
     assert_snapshot!(collect_path_expressions(&with_db, &sema), @r"
-    137 test STRUCT
-    142 power ARRAY
-    142 power INT
+    142 ARRAY [1..10] OF INT
+    142 INT
     ");
 }
 
@@ -104,10 +106,8 @@ END_FUNCTION
        ,-[ file:///test0.st:7:13 ]
        |
      4 |        test: ARRAY[0..2] OF INT;
-       |        ^^|^                 ^|^  
-       |          `----------------------- 'test' is declared here
-       |                              |   
-       |                              `--- type defined here
+       |                             ^|^  
+       |                              `--- expected type 'INT' here
        | 
      7 |     test[0] := 0.2;
        |                ^|^  
@@ -138,19 +138,17 @@ END_FUNCTION
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-        ,-[ file:///test0.st:14:2 ]
+        ,-[ file:///test0.st:14:7 ]
         |
       2 | ,-> TYPE Engine:
-        | |        ^^^|^^  
-        | |           `---- 'Engine' is declared here
         : :   
       6 | |->     END_STRUCT
         | |                    
-        | `-------------------- type defined here
+        | `--------------------  'STRUCT' declared here
         | 
      14 |         test.powerr := 0.2;
-        |         ^^^^^|^^^^^  
-        |              `------- invalid assignment: field 'powerr' not found
+        |              ^^^|^^  
+        |                 `---- field 'powerr' not found in 'STRUCT'
     ----'
     ");
 }
@@ -180,10 +178,8 @@ END_FUNCTION
         ,-[ file:///test0.st:14:16 ]
         |
       4 |         power : INT;
-        |         ^^|^^   ^|^  
-        |           `---------- 'power' is declared here
-        |                  |   
-        |                  `--- type defined here
+        |                 ^|^  
+        |                  `--- expected type 'INT' here
         | 
      14 |     test.power := 0.2;
         |                   ^|^  
@@ -217,16 +213,14 @@ END_FUNCTION
         ,-[ file:///test0.st:14:2 ]
         |
       2 | ,-> TYPE Engine:
-        | |        ^^^|^^  
-        | |           `---- 'Engine' is declared here
         : :   
       6 | |->     END_STRUCT
         | |                    
-        | `-------------------- type defined here
+        | `--------------------  'STRUCT' declared here
         | 
      14 |         test[0] := 0.2;
-        |         ^^^|^^^  
-        |            `----- invalid assignment: type 'STRUCT' cannot be indexed
+        |         ^^|^  
+        |           `--- type 'STRUCT' cannot be indexed
     ----'
     ");
 }
@@ -246,17 +240,15 @@ END_FUNCTION
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test0.st:7:2 ]
+       ,-[ file:///test0.st:7:7 ]
        |
      4 |        test: ARRAY[0..1] OF INT;
-       |        ^^|^^^^^^^^^^^|^^^^^^^^^  
-       |          `----------------------- 'test' is declared here
-       |                      |           
-       |                      `----------- type defined here
+       |            ^^^^^^^^^^|^^^^^^^^^  
+       |                      `-----------  'ARRAY [0..1] OF INT' declared here
        | 
      7 |     test.not_a_field := 0.2;
-       |     ^^^^^^^^|^^^^^^^  
-       |             `--------- invalid assignment: type 'ARRAY' does not have fields
+       |          ^^^^^|^^^^^  
+       |               `------- type 'ARRAY [0..1] OF INT' does not have fields
     ---'
     ");
 }

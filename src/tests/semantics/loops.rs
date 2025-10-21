@@ -24,9 +24,16 @@ END_FUNCTION_BLOCK"#;
     Error: 
        ,-[ file:///test0.st:8:14 ]
        |
+     4 |         I: INT;
+       |            ^|^  
+       |             `--- expected 'INT' here
+     5 |         O: BOOL;
+       |            ^^|^  
+       |              `--- ... but found 'BOOL' instead
+       | 
      8 |     FOR I := O TO 10 DO
        |              |  
-       |              `-- invalid FOR loop start: type mismatch: expected INT, found BOOL
+       |              `-- invalid assignment: expected 'INT', found 'BOOL'
     ---'
     ");
 }
@@ -50,9 +57,16 @@ END_FUNCTION_BLOCK"#;
     Error: 
        ,-[ file:///test0.st:8:20 ]
        |
+     4 |         I: INT;
+       |            ^|^  
+       |             `--- expected 'INT' here
+     5 |         O: BOOL;
+       |            ^^|^  
+       |              `--- ... but found 'BOOL' instead
+       | 
      8 |     FOR I := 10 TO O DO
        |                    |  
-       |                    `-- invalid FOR loop end: type mismatch: expected INT, found BOOL
+       |                    `-- invalid FOR loop end: expected 'INT', found 'BOOL'
     ---'
     ");
 }
@@ -76,9 +90,16 @@ END_FUNCTION_BLOCK"#;
     Error: 
        ,-[ file:///test0.st:8:25 ]
        |
+     4 |         I: INT;
+       |            ^|^  
+       |             `--- expected 'INT' here
+     5 |         O: BOOL;
+       |            ^^|^  
+       |              `--- ... but found 'BOOL' instead
+       | 
      8 |     FOR I := 0 TO 10 BY O DO
        |                         |  
-       |                         `-- invalid FOR loop step: type mismatch: expected INT, found BOOL
+       |                         `-- invalid FOR loop step: expected 'INT', found 'BOOL'
     ---'
     ");
 }

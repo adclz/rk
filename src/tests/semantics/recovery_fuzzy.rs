@@ -32,19 +32,21 @@ fn fuzzy_struct_fields(mut with_db: RootDatabase) {
     Error: 
         ,-[ file:///test0.st:15:49 ]
         |
-      2 |         TYPE Engine:
-        |              ^^^|^^  
-        |                 `---- 'Engine' is declared here
+      2 | ,->         TYPE Engine:
+        : :   
+      9 | |->             END_STRUCT
+        | |                            
+        | `---------------------------- type 'STRUCT' defined here
         | 
-     15 |                 Base : Engine := (power := 100, fuel := 10.0);
-        |                                                 ^^|^  
-        |                                                   `--- no field 'fuel' in STRUCT
-        | 
-        | Note: STRUCT field(s) with similar name(s) exist:
-        |       - fuel1
-        |       - fuel2
-        |       - fuel3
-        |       - fuel4
+     15 |                     Base : Engine := (power := 100, fuel := 10.0);
+        |                                                     ^^|^  
+        |                                                       `--- no field 'fuel' in STRUCT
+        |     
+        |     Note: STRUCT field(s) with similar name(s) exist:
+        |           - fuel1
+        |           - fuel2
+        |           - fuel3
+        |           - fuel4
     ----'
     ");
 }
@@ -70,7 +72,7 @@ fn fuzzy_pou_local_variables(mut with_db: RootDatabase) {
        |
      9 |             engine := ULINT#5;
        |             ^^^|^^  
-       |                `---- invalid assignment: no item 'engine' in scope
+       |                `---- no item 'engine' in scope
        | 
        | Note: local variable(s) with similar(s) name exist:
        |       - engine2
@@ -99,10 +101,6 @@ END_FUNCTION_BLOCK
     Error: 
         ,-[ file:///test0.st:11:5 ]
         |
-      2 | FUNCTION fn
-        |          ^|  
-        |           `-- 'fn' is declared here
-        | 
      11 |     fn(param := 0);
         |        ^^|^^  
         |          `---- unknown input parameter 'param'
@@ -137,10 +135,6 @@ END_FUNCTION_BLOCK
     Error: 
         ,-[ file:///test0.st:14:5 ]
         |
-      2 | FUNCTION fn
-        |          ^|  
-        |           `-- 'fn' is declared here
-        | 
      14 |     fn(param => param_out);
         |        ^^|^^  
         |          `---- unknown output parameter 'param'

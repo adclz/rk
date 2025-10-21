@@ -15,11 +15,11 @@ fn invalid_subrange_type(mut with_db: RootDatabase) {
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test0.st:3:13 ]
+       ,-[ file:///test0.st:3:20 ]
        |
      3 |             Range: BOOL (0..5);
-       |             ^^|^^  
-       |               `---- invalid subrange type 'BOOL'
+       |                    ^^|^  
+       |                      `--- invalid subrange type 'BOOL'
        | 
        | Note: only numeric integer types are allowed for SUBRANGE
     ---'
@@ -39,10 +39,8 @@ fn invalid_start_value(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:3:26 ]
        |
      3 |             Range: UINT (-10..0);
-       |             ^^|^^  ^^|^  ^|^  
-       |               `--------------- 'Range' is declared here
-       |                      |    |   
-       |                      `-------- type defined here
+       |                    ^^|^  ^|^  
+       |                      `-------- expected type 'UINT' here
        |                           |   
        |                           `--- invalid start value for subrange: literal can not be negative
     ---'
@@ -62,10 +60,8 @@ fn invalid_end_value(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:3:29 ]
        |
      3 |             Range: UINT (0..-5);
-       |             ^^|^^  ^^|^     ^|  
-       |               `----------------- 'Range' is declared here
-       |                      |       |  
-       |                      `---------- type defined here
+       |                    ^^|^     ^|  
+       |                      `---------- expected type 'UINT' here
        |                              |  
        |                              `-- invalid end value for subrange: literal can not be negative
     ---'
@@ -94,10 +90,8 @@ fn invalid_subrange_value_type(mut with_db: RootDatabase) {
         ,-[ file:///test0.st:11:22 ]
         |
       3 |             Range: UINT (0..5);
-        |             ^^|^^  ^^|^  
-        |               `---------- 'Range' is declared here
-        |                      |   
-        |                      `--- type defined here
+        |                    ^^|^  
+        |                      `--- expected type 'UINT' here
         | 
      11 |             test :=  -1 // -1 should not be allowed here (UINT)
         |                      ^|  
@@ -128,14 +122,12 @@ fn out_fo_bounds_subrange_value(mut with_db: RootDatabase) {
         ,-[ file:///test0.st:11:22 ]
         |
       3 |             Range: UINT (0..5);
-        |             ^^|^^^^^^^^|^^^^^^  
-        |               `----------------- 'Range' is declared here
-        |                        |        
-        |                        `-------- type defined here
+        |                  ^^^^^^|^^^^^^  
+        |                        `-------- type 'SUBRANGE (0..5)' defined here
         | 
      11 |             test :=  6 // 6 should not be allowed here (UINT (0..5))
         |                      |  
-        |                      `-- invalid assignment: value 6 is out of bounds for SUBRANGE Range (expected between 0 and 5)
+        |                      `-- invalid assignment: value 6 is out of bounds for SUBRANGE SUBRANGE (0..5) (expected between 0 and 5)
     ----'
     ");
 }

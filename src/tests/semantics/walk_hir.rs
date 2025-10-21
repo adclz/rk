@@ -37,10 +37,11 @@ END_FUNCTION_BLOCK"#;
     // test := ** INT#5; ** = InitExpr (ResolvedInitExpr)
 
     assert_snapshot!(nodes.join("\n"), @r"
-    Ty(Ty { [salsa id]: Id(2800) })
-    Ty(Ty { [salsa id]: Id(2801) })
-    ResolvedInitExpr(ResolvedInitExpr { [salsa id]: Id(3800) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(3400) })
+    PouDecl(PouDecl { [salsa id]: Id(2400) })
+    VariableDecl(VariableDecl { [salsa id]: Id(1c00) })
+    Spec(Spec { [salsa id]: Id(c00) })
+    ResolvedInitExpr(ResolvedInitExpr { [salsa id]: Id(3400) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(3000) })
     ");
 }
 
@@ -67,9 +68,11 @@ END_CLASS"#;
     // myPublicMethod = Ty (MethodDecl)
 
     assert_snapshot!(nodes.join("\n"), @r"
-    Ty(Ty { [salsa id]: Id(1c00) })
-    Ty(Ty { [salsa id]: Id(1c01) })
-    Ty(Ty { [salsa id]: Id(1c02) })
+    PouDecl(PouDecl { [salsa id]: Id(1800) })
+    MethodRef(Declared(MethodDecl { [salsa id]: Id(1000) }))
+    Spec(Spec { [salsa id]: Id(c00) })
+    MethodRef(Declared(MethodDecl { [salsa id]: Id(1001) }))
+    Spec(Spec { [salsa id]: Id(c01) })
     ");
 }
 
@@ -96,9 +99,9 @@ END_INTERFACE "#;
     // NIGHTTIME = Ty (MethodProt)
 
     assert_snapshot!(nodes.join("\n"), @r"
-    Ty(Ty { [salsa id]: Id(1800) })
-    Ty(Ty { [salsa id]: Id(1801) })
-    Ty(Ty { [salsa id]: Id(1802) })
+    PouDecl(PouDecl { [salsa id]: Id(1400) })
+    MethodRef(Prototype(MethodPrototype { [salsa id]: Id(c00) }))
+    MethodRef(Prototype(MethodPrototype { [salsa id]: Id(c01) }))
     ");
 }
 
@@ -134,38 +137,32 @@ END_FUNCTION_BLOCK"#;
     });
 
     assert_snapshot!(nodes.join("\n"), @r"
-    Ty(Ty { [salsa id]: Id(2c00) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4c00) })
-    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(3400) })
-    ResolvedPathElementResult(ResolvedPathElement { expr: PathExpr { [salsa id]: Id(c00) }, kind: Error(NoItemInScope { expr: PathExpr { [salsa id]: Id(c00) }, scope: FileScopeId { [salsa id]: Id(402) } }) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4800) })
-    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(3401) })
-    ResolvedPathElementResult(ResolvedPathElement { expr: PathExpr { [salsa id]: Id(c01) }, kind: Error(NoItemInScope { expr: PathExpr { [salsa id]: Id(c01) }, scope: FileScopeId { [salsa id]: Id(402) } }) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4c01) })
-    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(3402) })
-    ResolvedPathElementResult(ResolvedPathElement { expr: PathExpr { [salsa id]: Id(c02) }, kind: Error(NoItemInScope { expr: PathExpr { [salsa id]: Id(c02) }, scope: FileScopeId { [salsa id]: Id(402) } }) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4c02) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4803) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4801) })
-    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(3403) })
-    ResolvedPathElementResult(ResolvedPathElement { expr: PathExpr { [salsa id]: Id(c04) }, kind: Error(NoItemInScope { expr: PathExpr { [salsa id]: Id(c04) }, scope: FileScopeId { [salsa id]: Id(402) } }) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4802) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4c03) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4804) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4805) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4806) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4c04) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4809) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4807) })
-    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(3405) })
-    ResolvedPathElementResult(ResolvedPathElement { expr: PathExpr { [salsa id]: Id(c06) }, kind: Error(NoItemInScope { expr: PathExpr { [salsa id]: Id(c06) }, scope: FileScopeId { [salsa id]: Id(402) } }) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4808) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4c05) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(480c) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(480a) })
-    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(3406) })
-    ResolvedPathElementResult(ResolvedPathElement { expr: PathExpr { [salsa id]: Id(c07) }, kind: Error(NoItemInScope { expr: PathExpr { [salsa id]: Id(c07) }, scope: FileScopeId { [salsa id]: Id(402) } }) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(480b) })
+    PouDecl(PouDecl { [salsa id]: Id(2800) })
+    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4400) })
+    ResolvedAccess(ResolvedAccess { [salsa id]: Id(3c00) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4000) })
+    ResolvedAccess(ResolvedAccess { [salsa id]: Id(3c01) })
+    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4401) })
+    ResolvedAccess(ResolvedAccess { [salsa id]: Id(3c02) })
+    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4402) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4003) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4001) })
+    ResolvedAccess(ResolvedAccess { [salsa id]: Id(3c03) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4002) })
+    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4403) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4004) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4005) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4006) })
+    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4404) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4009) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4007) })
+    ResolvedAccess(ResolvedAccess { [salsa id]: Id(3c05) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4008) })
+    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4405) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(400c) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(400a) })
+    ResolvedAccess(ResolvedAccess { [salsa id]: Id(3c06) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(400b) })
     ");
 }
 
@@ -192,14 +189,19 @@ END_FUNCTION_BLOCK"#;
     });
 
     assert_snapshot!(nodes.join("\n"), @r"
-    Ty(Ty { [salsa id]: Id(4000) })
-    Ty(Ty { [salsa id]: Id(4001) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(5400) })
-    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(4400) })
-    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(4401) })
-    ResolvedParam(ResolvedParam { [salsa id]: Id(5000) })
-    ResolvedVarResult(ResolvedVarResult { [salsa id]: Id(4402) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4c00) })
+    PouDecl(PouDecl { [salsa id]: Id(3400) })
+    SpanNamespaceAccess(SpanNamespaceAccess { id: AstId(3), scope_id: FileScopeId { [salsa id]: Id(402) }, path: NamespaceAccess(Id(c00)) })
+    MethodRef(Declared(MethodDecl { [salsa id]: Id(2c00) }))
+    VariableDecl(VariableDecl { [salsa id]: Id(2800) })
+    Spec(Spec { [salsa id]: Id(2400) })
+    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4c00) })
+    ResolvedAccess(ResolvedAccess { [salsa id]: Id(4000) })
+    MethodRef(Declared(MethodDecl { [salsa id]: Id(2c00) }))
+    VariableDecl(VariableDecl { [salsa id]: Id(2800) })
+    Spec(Spec { [salsa id]: Id(2400) })
+    ResolvedParam(ResolvedParam { [salsa id]: Id(4800) })
+    ResolvedAccess(ResolvedAccess { [salsa id]: Id(4001) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4400) })
     ");
 }
 
@@ -239,18 +241,14 @@ END_FUNCTION_BLOCK"#;
     [
         1,
         5,
-        7,
         10,
         12,
         15,
-        15,
         16,
-        19,
         19,
         37,
         39,
         40,
-        42,
         45,
         47,
         52,
@@ -260,13 +258,11 @@ END_FUNCTION_BLOCK"#;
         74,
         76,
         77,
-        79,
         82,
         84,
         89,
         91,
         92,
-        94,
         97,
         99,
     ]
@@ -302,10 +298,11 @@ END_FUNCTION_BLOCK"#;
     [
         1,
         4,
+        10,
         13,
+        18,
         21,
         25,
-        28,
         28,
         30,
         31,

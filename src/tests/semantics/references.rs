@@ -35,17 +35,13 @@ fn invalid_ref_to_elementary_type(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:5:34 ]
        |
      4 |             test: UINT;
-       |             ^^|^  ^^|^  
-       |               `--------- 'test' is declared here
-       |                     |   
-       |                     `--- type defined here
+       |                   ^^|^  
+       |                     `--- ... but found 'UINT' instead
      5 |             test2: REF_TO INT := REF(test); // Reference to INT, but test is UINT
-       |             ^^|^^         ^|^    ^^^^|^^^^  
-       |               `----------------------------- 'test2' is declared here
-       |                            |         |      
-       |                            `---------------- type defined here
+       |                           ^|^    ^^^^|^^^^  
+       |                            `---------------- expected 'INT' here
        |                                      |      
-       |                                      `------ invalid value initializer: type mismatch: expected INT, found UINT
+       |                                      `------ invalid value initializer: expected 'INT', found 'UINT'
     ---'
     ");
 }
@@ -86,20 +82,14 @@ fn invalid_ref_to_pou_type(mut with_db: RootDatabase) {
     Error: 
        ,-[ file:///test0.st:8:34 ]
        |
-     2 |     FUNCTION_BLOCK fb1 END_FUNCTION_BLOCK
-       |     ^^^^^^^^^^^^^^^^|^|^^^^^^^^^^^^^^^^^^  
-       |                     `---------------------- 'fb1' is declared here
-       |                       |                    
-       |                       `-------------------- type defined here
-     3 |     FUNCTION_BLOCK fb2 END_FUNCTION_BLOCK
-       |     ^^^^^^^^^^^^^^^^|^|^^^^^^^^^^^^^^^^^^  
-       |                     `---------------------- 'fb2' is declared here
-       |                       |                    
-       |                       `-------------------- type defined here
-       | 
+     7 |             test: fb2;
+       |                   ^|^  
+       |                    `--- ... but found 'fb2: FUNCTION_BLOCK' instead
      8 |             test2: REF_TO fb1 := REF(test); // Reference to fb1, but test is fb2
-       |                                  ^^^^|^^^^  
-       |                                      `------ invalid value initializer: type mismatch: expected FUNCTION_BLOCK, found FUNCTION_BLOCK
+       |                           ^|^    ^^^^|^^^^  
+       |                            `---------------- expected 'fb1: FUNCTION_BLOCK' here
+       |                                      |      
+       |                                      `------ invalid value initializer: expected 'fb1: FUNCTION_BLOCK', found 'fb2: FUNCTION_BLOCK'
     ---'
     ");
 }
@@ -122,14 +112,12 @@ fn assign_non_ref_type(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:7:17 ]
        |
      4 |             test: REF_TO INT;
-       |             ^^|^^^^^^^|^^^^^  
-       |               `--------------- 'test' is declared here
-       |                       |       
-       |                       `------- type defined here
+       |                 ^^^^^^|^^^^^  
+       |                       `------- expected type 'REF_TO INT' here
        | 
      7 |         test := 0;
        |                 |  
-       |                 `-- invalid assignment: type mismatch: expected REF_TO INT, got <integer>
+       |                 `-- invalid assignment: expected 'REF_TO INT', got '<integer>'
     ---'
     ");
 }
@@ -153,15 +141,27 @@ fn valid_assign_null_to_ref_type(mut with_db: RootDatabase) {
 #[rstest]
 fn valid_assign_ref_to_ref_type(mut with_db: RootDatabase) {
     let source = r#"
-    FUNCTION_BLOCK fn1
-        VAR
-            test: REF_TO INT;
-            test2: REF_TO INT;
-        END_VAR
+        TYPE
+	S1: STRUCT
+		SC1: INT;
+		SC2: REAL;
+	END_STRUCT;
+	A1: ARRAY[1..99] OF INT;
+        END_TYPE
 
-        test := test2^;
+        FUNCTION fn: INT
 
-    END_FUNCTION_BLOCK
+	VAR
+		myS1: S1;
+		myA1: A1;
+		myRefS1: REF_TO S1 := REF(myS1);
+		myRefA1: REF_TO A1 := REF(myA1);
+	END_VAR
+
+	myRefS1^.SC1 := myRefA1^[12]; // in this case, equivalent to S1.SC1:= A1[12];
+
+
+        END_FUNCTION
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
@@ -185,14 +185,12 @@ fn invalid_assign_value_to_ref_type(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:7:17 ]
        |
      4 |             test: REF_TO INT;
-       |             ^^|^^^^^^^|^^^^^  
-       |               `--------------- 'test' is declared here
-       |                       |       
-       |                       `------- type defined here
+       |                 ^^^^^^|^^^^^  
+       |                       `------- expected type 'REF_TO INT' here
        | 
      7 |         test := 0;
        |                 |  
-       |                 `-- invalid assignment: type mismatch: expected REF_TO INT, got <integer>
+       |                 `-- invalid assignment: expected 'REF_TO INT', got '<integer>'
     ---'
     ");
 }
@@ -210,7 +208,7 @@ fn valid_assign_value_to_deref_type(mut with_db: RootDatabase) {
     END_FUNCTION_BLOCK
         "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 #[rstest]
@@ -226,7 +224,7 @@ FUNCTION fn: BOOL
 		myA1: A1;
 		myRefInt: REF_TO INT := REF(myA1[1]);
 	END_VAR
-	
+
 	myRefInt := REF(A1[11]);
 
 END_FUNCTION
@@ -235,8 +233,6 @@ END_FUNCTION
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
-// WIP: will work better once Ty has no more Target type and PathExpr resolver is refactored
-/* 
 #[rstest]
 fn valid_using_deref_array_as_ref_type(mut with_db: RootDatabase) {
     let source = r#"
@@ -265,4 +261,3 @@ END_FUNCTION
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
-*/

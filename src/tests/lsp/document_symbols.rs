@@ -514,7 +514,7 @@ END_INTERFACE"#;
                     DocumentSymbol {
                         name: "DAYTIME",
                         detail: Some(
-                            "method [proto]",
+                            "method",
                         ),
                         kind: Method,
                         tags: None,
@@ -546,7 +546,7 @@ END_INTERFACE"#;
                     DocumentSymbol {
                         name: "NIGHTTIME",
                         detail: Some(
-                            "method [proto]",
+                            "method",
                         ),
                         kind: Method,
                         tags: None,
