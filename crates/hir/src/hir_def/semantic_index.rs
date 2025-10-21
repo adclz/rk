@@ -12,16 +12,16 @@ use tracing::info_span;
 use crate::hir_def::expressions::spec::{Spec, StructElement};
 use crate::hir_def::pous::variable::VariableDecl;
 use crate::hir_ty::inheritance_solver::MethodRef;
-use crate::hir_ty::walk::ResolvedPath;
+use crate::hir_ty::walk::{ResolvedPath, ResolvedPathKind};
 use crate::HirNodeInfo;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::analysis_error::AnalysisError;
-use crate::hir_def::interned::namespace::NamespacePath;
+use crate::hir_def::interned::namespace::{NamespacePath, SpanNamespaceAccess};
 use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::PouDecl;
 use crate::hir_def::scope::{FileScopeId, Scope, ScopeKind};
 use crate::hir_def::using::Using;
-use crate::hir_ty::expr_resolver::ResolvedExpr;
+use crate::hir_ty::expr_resolver::{ResolvedExpr, ResolvedRefValue};
 use crate::hir_ty::func_call_resolver::ResolvedParam;
 use crate::hir_ty::init_expr_resolver::ResolvedInitExpr;
 use crate::hir_ty::stmt_resolver::ResolvedStmt;
@@ -148,6 +148,7 @@ impl FusedIterator for ScopeIterator<'_> {}
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum HirNode<'db> {
     Namespace(NamespaceDecl<'db>),
+    SpanNamespaceAccess(SpanNamespaceAccess<'db>),
     PouDecl(PouDecl<'db>),
     VariableDecl(VariableDecl<'db>),
     StructElement(StructElement<'db>),
@@ -160,12 +161,14 @@ pub enum HirNode<'db> {
     ResolvedParam(ResolvedParam<'db>),
     ResolvedExpr(ResolvedExpr<'db>),
     ResolvedInitExpr(ResolvedInitExpr<'db>),
+    ResolvedRefValue(ResolvedRefValue<'db>),
 }
 
 impl<'db> HirNode<'db> {
     pub fn get_span(&'db self, db: &'db dyn BaseDatabase) -> Span {
         match self {
             HirNode::Namespace(n) => n.get_span(db),
+            HirNode::SpanNamespaceAccess(s) => s.get_span(db),
             HirNode::PouDecl(p) => p.get_span(db),
             HirNode::VariableDecl(v) => v.get_span(db),
             HirNode::StructElement(s) => s.get_span(db),
@@ -178,6 +181,7 @@ impl<'db> HirNode<'db> {
             HirNode::ResolvedParam(p) => p.get_span(db),
             HirNode::ResolvedExpr(e) => e.get_span(db),
             HirNode::ResolvedInitExpr(i) => i.get_span(db),
+            HirNode::ResolvedRefValue(r) => r.get_span(db),
         }
     }
 }

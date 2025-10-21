@@ -2,14 +2,17 @@ use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, diag};
 
 use crate::{
+    HirNodeInfo, TypeInfo,
     check::{
         errors::{
             analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic},
             coerce::ExprMismatch,
-            utils::{get_candidates},
+            utils::get_candidates,
         },
         recovery::struct_::fuzzy_struct_fields,
-    }, hir_def::{expressions::expression::InitExpr, interned::identifier::SpanIdent}, hir_ty::{expr_resolver::ResolvedExpr, init_expr_resolver::ResolvedInitExpr, ty::Ty}, HirNodeInfo, TypeInfo
+    },
+    hir_def::{expressions::expression::InitExpr, interned::identifier::SpanIdent},
+    hir_ty::{expr_resolver::ResolvedExpr, init_expr_resolver::ResolvedInitExpr, ty::Ty},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -32,7 +35,7 @@ pub enum InitExprError<'db> {
     TypeInitExprMismatch {
         expected: Ty<'db>,
         found: InitExpr<'db>,
-    }
+    },
 }
 
 impl<'db> From<InitExprError<'db>> for AnalysisError<'db> {
@@ -54,6 +57,8 @@ impl<'db> ToIdeDiagnostic<'db> for InitExprError<'db> {
                     .severity(DiagnosticSeverity::ERROR)
                     .range(field_name.get_span(db))
                     .call();
+
+                ztruct.diag_with_location(db, &mut diag, None);
 
                 let candidates = fuzzy_struct_fields(db, *ztruct, field_name.as_str(db));
                 diag.with_note(get_candidates(&candidates));

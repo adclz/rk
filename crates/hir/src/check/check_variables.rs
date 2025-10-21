@@ -29,10 +29,9 @@ impl<'db> Check<'db> for Vec<VariableDecl<'db>> {
                     seen.insert(*variable.name(db), *variable);
                 }
             }
-
-            let var = variable.spec(db).to_ty(db);
+            
             if let Some(init) = variable.init(db) {
-                check_init_expr(db, var, *resolve_init_expr(db, var, *init), errors);
+                check_init_expr(db, variable.spec(db).to_ty(db), *resolve_init_expr(db, variable.spec(db).to_ty(db), *init), errors);
             }
         }
     }

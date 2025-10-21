@@ -16,7 +16,7 @@ use crate::{
         invocation_resolver::ResolvedInvocationResult,
         ty::TyKind,
         ty_var_access_resolver::{ResolvedAccess, resolve_path_expr, resolve_var_access},
-        walk::ResolvedPath,
+        walk::ResolvedPathKind,
     },
 };
 
@@ -68,8 +68,24 @@ pub enum ResolvedExprKind<'db> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ResolvedRefValue<'db> {
-    Null,
+    Null(AstId, FileScopeId<'db>),
     Adress(ResolvedAccess<'db>),
+}
+
+impl<'db> HirNodeInfo<'db> for ResolvedRefValue<'db> {
+    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
+        match self {
+            ResolvedRefValue::Null(id, _) => *id,
+            ResolvedRefValue::Adress(access) => access.get_id(db),
+        }
+    }
+
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+        match self {
+            ResolvedRefValue::Null(_, scope) => *scope,
+            ResolvedRefValue::Adress(access) => access.get_scope_id(db),
+        }
+    }
 }
 
 impl<'db> ResolvedExpr<'db> {
@@ -141,8 +157,8 @@ impl<'db> ResolveExprCtx<'db> {
 
                     // Find the variant in the enum type
                     let resolved_variant = if let Ok(Ok(TyKind::Enum(enum_))) = resolved_path
-                        .resolved(self.db)
-                        .map(|p| p.try_to_try(self.db).map(|t| t.kind(self.db)))
+                        .fully_resolved(self.db)
+                        .map(|p| p.try_to_ty(self.db).map(|t| t.kind(self.db)))
                     {
                         enum_
                             .variants
@@ -167,7 +183,7 @@ impl<'db> ResolveExprCtx<'db> {
                     RefValue::Null => ResolvedExpr::new(
                         self.db,
                         self.expr,
-                        ResolvedExprKind::RefValue(ResolvedRefValue::Null),
+                        ResolvedExprKind::RefValue(ResolvedRefValue::Null(self.expr.id(self.db), self.expr.scope_id(self.db))),
                     ),
                     RefValue::Address(adress) => ResolvedExpr::new(
                         self.db,

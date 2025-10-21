@@ -1,14 +1,24 @@
 use std::sync::Arc;
 
 use crate::{
+    AstId, HirNodeInfo,
     hir_def::{
-        expressions::spec::Spec, interned::identifier::{Ident, SpanIdent}, modifier::Modifier, pous::{
-            class::MethodDecl, interface::MethodPrototype, pou::{Pou, PouDecl}, variable::VariableDecl,
-        }, scope::FileScopeId, visibility::Visibility
-    }, hir_ty::{
+        expressions::spec::Spec,
+        interned::identifier::{Ident, SpanIdent},
+        modifier::Modifier,
+        pous::{
+            class::MethodDecl,
+            interface::MethodPrototype,
+            pou::{Pou, PouDecl},
+            variable::VariableDecl,
+        },
+        scope::FileScopeId,
+        visibility::Visibility,
+    },
+    hir_ty::{
         name_res::resolve_namespace_access,
         ty::{Ty, TyKind},
-    }, AstId, HirNodeInfo
+    },
 };
 use auto_lsp::{core::span::Span, default::db::BaseDatabase};
 use rustc_hash::FxHashMap;
@@ -61,7 +71,6 @@ impl<'db> MethodRef<'db> {
             MethodRef::Declared(d) => d.variables(db),
         }
     }
-
 
     pub fn is_prototype(&self) -> bool {
         matches!(self, MethodRef::Prototype(_))
@@ -146,7 +155,7 @@ fn method_cycle<'db>(
     salsa::CycleRecoveryAction::Iterate
 }
 
-#[salsa::tracked(cycle_initial = method_initial, cycle_fn=method_cycle)]
+#[salsa::tracked(cycle_initial=method_initial, cycle_fn=method_cycle)]
 pub fn method_table<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Arc<Methods<'db>> {
     let mut inherited_methods: std::collections::HashMap<
         Ident,
@@ -207,9 +216,7 @@ pub fn method_table<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Arc<Me
             if let Some(iface) = interface.extends(db) {
                 for iface in iface {
                     if let Some(iface) = resolve_namespace_access(db, iface.scope_id, iface.path) {
-                        for (name, entry) in
-                            &method_table(db, iface).declared_methods
-                        {
+                        for (name, entry) in &method_table(db, iface).declared_methods {
                             let method = InheritedMethod::new(iface, *entry);
                             if let Some(m) = inherited_methods.insert(*name, method) {
                                 inherited_duplicates.push((m, method));

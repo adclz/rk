@@ -1,38 +1,27 @@
 use auto_lsp::{core::span::Span, default::db::BaseDatabase};
+use ide_diagnostic::{IdeDiagnostic, Related};
 use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    AstId, HirNodeInfo, TypeInfo,
-    check::errors::path_error::AccessError,
-    hir_def::{
+    check::errors::path_error::AccessError, hir_def::{
         expressions::spec::{
             Array, ElementarySpec, Enum, Spec, SpecKind, Struct, StructElement, SubRange,
         },
         interned::{identifier::Ident, namespace::SpanNamespaceAccess},
-        modifier::Modifier,
-        pous::{
-            class::Class,
-            function::Function,
-            function_block::FunctionBlock,
-            interface::Interface,
-            pou::{Pou, PouDecl},
-            variable::{VariableDecl, VariableKind},
-        },
-        scope::FileScopeId,
-        visibility::Visibility,
-    },
-    hir_ty::{
-        inheritance_solver::{MethodRef, method_table},
-        name_res::resolve_namespace_access,
-        ty_var_access_resolver::PathExprWalkStep,
-    },
+        pous::{class::Class, function::Function, function_block::FunctionBlock, interface::Interface, pou::{Pou, PouDecl}}, scope::FileScopeId,
+    }, hir_ty::name_res::resolve_namespace_access, AstId, HirNodeInfo, TypeInfo
 };
 
-/// The  resolved type of a variable, POU, or method
-/// [`Ty`] is the most fundamental unit of type information in the HIR.
+/// Resolved type of a [`Spec`]
+///
+/// For now Ty just wraps [`Spec`], but in the future it can represent more complex types.
+/// 
+/// Ty serves as a '
 #[salsa::tracked(debug)]
 pub struct Ty<'db> {
+    pub spec: Spec<'db>,
+
     #[tracked]
     #[returns(ref)]
     pub kind: TyKind<'db>,
@@ -48,8 +37,25 @@ pub enum TyKind<'db> {
     Array(Array<'db>),
     ArrayConformand(Spec<'db>), // todo
     Struct(Struct<'db>),
-    Target(SpanNamespaceAccess<'db>)
-    //Pou(PouDecl<'db>),
+    
+    // POUs
+    // there is no DataType because a Type is a spec and thus belongs to the variants above
+    Function(Function<'db>),
+    FunctionBlock(FunctionBlock<'db>),
+    Class(Class<'db>),
+    Interface(Interface<'db>),
+
+    Err(AccessError<'db>)
+}
+
+impl<'db> HirNodeInfo<'db> for Ty<'db> {
+    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
+        self.spec(db).get_id(db)
+    }
+
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+        self.spec(db).get_scope_id(db)
+    }
 }
 
 impl<'db> Struct<'db> {
@@ -73,6 +79,32 @@ impl<'db> Ty<'db> {
     pub fn is_reference(&self, db: &'db dyn BaseDatabase) -> bool {
         matches!(self.kind(db), TyKind::RefTo(_))
     }
+
+    pub fn is_pou(&self, db: &'db dyn BaseDatabase) -> bool {
+        match self.kind(db) {
+            TyKind::Function(f) => true,
+            TyKind::FunctionBlock(fb) => true,
+            TyKind::Class(c) => true,
+            TyKind::Interface(i) => true,
+            _ => false,
+        }
+    }
+
+    pub fn diag_with_location(
+        &self,
+        db: &'db dyn BaseDatabase,
+        diag: &mut IdeDiagnostic,
+        message_closure: Option<fn(String) -> String>,
+    ) {
+        diag.with_related(Related::new(
+            match message_closure {
+                Some(closure) => closure(self.type_name(db)),
+                None => format!("type '{}' defined here", self.type_name(db)),
+            },
+            self.get_scope_id(db).file(db),
+            self.get_span(db),
+        ));
+    }
 }
 
 #[salsa::tracked]
@@ -84,26 +116,30 @@ impl<'db> Spec<'db> {
             SpecKind::Enum(enum_spec) => TyKind::Enum(enum_spec.clone()),
             SpecKind::Subrange(subrange) => TyKind::SubRange(subrange.clone()),
             SpecKind::Struct(ztruct) => TyKind::Struct(ztruct.clone()),
-            SpecKind::Target(target) => TyKind::Target(*target),
             SpecKind::Simple(simple) => TyKind::Simple(*simple),
             SpecKind::ArrayConformand(array) => TyKind::ArrayConformand(*array),
             SpecKind::Ref(_ref) => TyKind::RefTo(*_ref),
+            SpecKind::Target(target) => match resolve_namespace_access(db, target.scope_id, target.path) {
+                Some(pou) => match pou.pou(db) {
+                    Pou::Function(f) => TyKind::Function(*f),
+                    Pou::FunctionBlock(fb) => TyKind::FunctionBlock(*fb),
+                    Pou::Class(c) => TyKind::Class(*c),
+                    Pou::Interface(i) => TyKind::Interface(*i),
+                    Pou::DataType(dt) => return dt.spec(db).to_ty(db),
+                },
+                None => {
+                    TyKind::Err(AccessError::NoItemInScope {
+                        access: target.clone(),
+                    })
+                }
+            },
         };
-        Ty::new(db, kind)
+        Ty::new(db, self, kind)
     }
 }
 
 impl<'db> TypeInfo<'db> for Ty<'db> {
     fn type_name(&self, db: &'db dyn BaseDatabase) -> String {
-        match self.kind(db) {
-            TyKind::Simple(elem) => elem.type_name(db),
-            TyKind::Enum { .. } => "ENUM".into(),
-            TyKind::SubRange { .. } => "SUBRANGE".into(),
-            TyKind::RefTo(ref_) => format!("REF_TO {}", ref_.to_ty(db).type_name(db)),
-            TyKind::Array { .. } => "ARRAY".into(),
-            TyKind::ArrayConformand { .. } => "ARRAY*".into(),
-            TyKind::Struct { .. } => "STRUCT".into(),
-            TyKind::Target(_) => "{unknown}".into(),
-        }
+        self.spec(db).type_name(db)
     }
 }

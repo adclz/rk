@@ -35,7 +35,7 @@ impl<'db> ToIdeDiagnostic<'db> for SubRangeError<'db> {
         match self {
             SubRangeError::InvalidSubrangeType { typ } => {
                 let mut diag = diag()
-                    .message(format!("invalid subrange type '{}'", typ.to_ty(db).type_name(db)))
+                    .message(format!("invalid subrange type '{}'", typ.type_name(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(typ.get_span(db))
                     .call();

@@ -1,4 +1,7 @@
+use auto_lsp::default::db::BaseDatabase;
 use bitflags::bitflags;
+
+use crate::{HirNodeInfo, hir_ty::inheritance_solver::MethodRef};
 
 bitflags! {
     #[repr(transparent)]

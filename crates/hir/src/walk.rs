@@ -5,6 +5,7 @@ use auto_lsp::default::db::BaseDatabase;
 use crate::{
     hir_def::{
         expressions::spec::{Spec, SpecKind, Struct},
+        interned::namespace::SpanNamespaceAccess,
         namespace::NamespaceDecl,
         pous::{
             class::MethodDecl,
@@ -16,15 +17,17 @@ use crate::{
         using::Using,
     },
     hir_ty::{
-        expr_resolver::{ResolvedExpr, ResolvedExprKind},
+        expr_resolver::{ResolvedExpr, ResolvedExprKind, ResolvedRefValue},
         func_call_resolver::{ResolvedFuncCall, ResolvedParam, ResolvedParamKind},
         inheritance_solver::MethodRef,
         init_expr_resolver::{resolve_init_expr, ResolvedInitExpr, ResolvedInitExprKind},
         invocation_resolver::{ResolvedInvocationResult, ResolvedMethodKind},
+        name_res::resolve_namespace_access,
         stmt_resolver::{resolve_stmt, ResolvedStmt, ResolvedStmtKind},
         ty_var_access_resolver::ResolvedAccess,
-        using_resolver::{resolve_using, ResolvedUsing}, walk::{ResolvedPath, ResolvedPathResult},
-    },
+        using_resolver::{resolve_using, ResolvedUsing},
+        walk::{ResolvedPath, ResolvedPathKind, ResolvedPathResult},
+    }, HirNodeInfo,
 };
 
 pub trait WalkHir<'db> {
@@ -56,6 +59,16 @@ impl<'db> WalkHir<'db> for Using<'db> {
         f: &mut F,
     ) -> ControlFlow<()> {
         f(HirNode::ResolvedUsing(*resolve_using(db, *self)))
+    }
+}
+
+impl<'db> WalkHir<'db> for SpanNamespaceAccess<'db> {
+    fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
+        &self,
+        db: &'db dyn BaseDatabase,
+        f: &mut F,
+    ) -> ControlFlow<()> {
+        f(HirNode::SpanNamespaceAccess(*self))
     }
 }
 
@@ -91,7 +104,7 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
         db: &'db dyn BaseDatabase,
         f: &mut F,
     ) -> ControlFlow<()> {
-        // f(HirNode::Ty(ty_for_pou(db, *self)))?;
+        f(HirNode::PouDecl(*self))?;
 
         let scope = semantic_index(db, self.scope_id(db).file(db)).get_scope(db, self.scope_id(db));
         for using in &scope.usings {
@@ -100,6 +113,10 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
 
         match self.pou(db) {
             Pou::Function(function) => {
+                if let Some(ret) = function.return_type(db) {
+                    ret.walk_hir(db, f)?;
+                }
+
                 for var in function.variables(db) {
                     var.walk_hir(db, f)?;
                 }
@@ -109,6 +126,14 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
                 }
             }
             Pou::FunctionBlock(fb) => {
+                if let Some(extends) = fb.extends(db) {
+                    extends.walk_hir(db, f)?;
+                }
+
+                for implements in fb.implements(db) {
+                    implements.walk_hir(db, f)?;
+                }
+
                 for var in fb.variables(db) {
                     var.walk_hir(db, f)?;
                 }
@@ -122,6 +147,14 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
                 }
             }
             Pou::Class(class) => {
+                if let Some(extends) = class.extends(db) {
+                    extends.walk_hir(db, f)?;
+                }
+
+                for implements in class.implements(db) {
+                    implements.walk_hir(db, f)?;
+                }
+
                 for var in class.variables(db) {
                     var.walk_hir(db, f)?;
                 }
@@ -130,11 +163,18 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
                 }
             }
             Pou::Interface(it) => {
+                if let Some(extends) = it.extends(db) {
+                    for implements in extends {
+                        implements.walk_hir(db, f)?;
+                    }
+                }
+
                 for method in it.methods(db) {
                     MethodRef::from(method).walk_hir(db, f)?;
                 }
             }
             Pou::DataType(dt) => {
+                f(HirNode::Spec(dt.spec(db)))?;
                 match dt.spec(db).kind(db) {
                     SpecKind::Struct(st) => {
                         for field in &st.elements {
@@ -164,6 +204,7 @@ impl<'db> WalkHir<'db> for VariableDecl<'db> {
         f: &mut F,
     ) -> ControlFlow<()> {
         f(HirNode::VariableDecl(*self))?;
+        f(HirNode::Spec(self.spec(db)))?;
         if let Some(init_expr) = self.init(db) {
             resolve_init_expr(db, self.spec(db).to_ty(db), *init_expr).walk_hir(db, f)?;
         }
@@ -178,7 +219,6 @@ impl<'db> WalkHir<'db> for MethodRef<'db> {
         f: &mut F,
     ) -> ControlFlow<()> {
         f(HirNode::MethodRef(MethodRef::from(*self)))?;
-
         for var in self.variables(db) {
             var.walk_hir(db, f)?;
         }
@@ -257,7 +297,10 @@ impl<'db> WalkHir<'db> for ResolvedExpr<'db> {
                 inv.walk_hir(db, f)?;
             }
             ResolvedExprKind::VarAccess(var) => {
-                var.walk_hir(db, f);
+                var.walk_hir(db, f)?;
+            }
+            ResolvedExprKind::RefValue(expr) => {
+                expr.walk_hir(db, f)?;
             }
             _ => {}
         }
@@ -368,6 +411,16 @@ impl<'db> WalkHir<'db> for ResolvedFuncCall<'db> {
             param.walk_hir(db, f)?;
         }
         ControlFlow::Continue(())
+    }
+}
+
+impl<'db> WalkHir<'db> for ResolvedRefValue<'db> {
+    fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
+        &self,
+        db: &'db dyn BaseDatabase,
+        f: &mut F,
+    ) -> ControlFlow<()> {
+        f(HirNode::ResolvedRefValue(self.clone()))
     }
 }
 

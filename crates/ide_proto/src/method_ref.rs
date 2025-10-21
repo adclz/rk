@@ -1,10 +1,10 @@
 use auto_lsp::{
     core::document_symbols_builder::DocumentSymbolsBuilder, default::db::BaseDatabase,
-    lsp_types::SymbolKind,
+    lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind, SymbolKind},
 };
-use hir::{hir_def::pous::interface::MethodPrototype, hir_ty::inheritance_solver::MethodRef, HirNodeInfo};
+use hir::{hir_def::pous::interface::MethodPrototype, hir_ty::inheritance_solver::MethodRef, HirNodeInfo, TypeInfo};
 
-use crate::ToProtocol;
+use crate::{HasComment, ToProtocol};
 
 impl<'db> ToProtocol<'db> for MethodRef<'db> {
     fn document_symbols(&self, db: &'db dyn BaseDatabase, builder: &mut DocumentSymbolsBuilder) {
@@ -19,9 +19,48 @@ impl<'db> ToProtocol<'db> for MethodRef<'db> {
             kind: SymbolKind::METHOD,
             deprecated: None,
             range: self.get_span(db).lsp(),
-            selection_range: self.get_name_span(db).unwrap().lsp(),
+            selection_range: self.name_span(db).lsp(),
             children: Some(nested_builder.finalize()),
             tags: None,
         });
+    }
+
+    fn hover(&'db self, db: &'db dyn BaseDatabase, _offset: usize) -> Option<Hover> {
+        let kind = match self {
+            MethodRef::Declared(_) => "METHOD",
+            MethodRef::Prototype(_) => "METHOD PROTOTYPE",
+        };
+        let name = self.name(db).text(db);
+        let return_type = match self {
+            MethodRef::Declared(decl) => {
+                match decl.return_type(db) {
+                    Some(ret_ty) => format!(": {}", ret_ty.to_ty(db).type_name(db)),
+                    None => "".to_string(),
+                }
+            }
+            MethodRef::Prototype(proto) => {
+                match proto.return_type(db) {
+                    Some(ret_ty) => format!(": {}", ret_ty.to_ty(db).type_name(db)),
+                    None => "".to_string(),
+                }
+            }
+        };
+        let comment = self.get_comment(db).unwrap_or_default();
+
+        Some(Hover {
+            contents: HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: format!(
+                    r#"
+{comment}
+```iecst
+[{kind}] {name}{return_type}
+```
+                "#
+                ),
+            }),
+            range: Some(self.get_span(db).into()),
+        })
+    
     }
 }

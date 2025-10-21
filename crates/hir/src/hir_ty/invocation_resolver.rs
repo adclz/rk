@@ -1,13 +1,21 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    check::errors::inheritance::MethodError, hir_def::{
+    AstId, HirNodeInfo,
+    check::errors::inheritance::MethodError,
+    hir_def::{
         expressions::invocation::{Invocation, InvocationKind},
         pous::pou::Pou,
         scope::{FileScopeId, Scope, ScopeKind},
-    }, hir_ty::{
-        func_call_resolver::ResolvedParam, inheritance_solver::method_table, name_res::resolve_namespace_access, param_resolver::resolve_parameters, ty_var_access_resolver::{CallSite, ResolvedAccess}, walk::{ResolvedPath, ResolvedPathResult}
-    }, AstId, HirNodeInfo
+    },
+    hir_ty::{
+        func_call_resolver::ResolvedParam,
+        inheritance_solver::{MethodRef, method_table},
+        name_res::resolve_namespace_access,
+        param_resolver::resolve_parameters,
+        ty_var_access_resolver::{CallSite, ResolvedAccess},
+        walk::{Adjustement, ResolvedPath, ResolvedPathKind, ResolvedPathResult},
+    },
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -32,11 +40,11 @@ impl<'db> ResolvedInvocation<'db> {
 pub enum ResolvedMethodKind<'db> {
     InheritedMethod {
         target: ResolvedAccess<'db>,
-        method: ResolvedAccess<'db>,
+        method: MethodRef<'db>,
     },
     DeclaredMethod {
         target: ResolvedAccess<'db>,
-        method: ResolvedAccess<'db>,
+        method: MethodRef<'db>,
     },
     FunctionBlockBody {
         target: ResolvedAccess<'db>,
@@ -132,19 +140,17 @@ impl<'db> Invocation<'db> {
                                 ResolvedMethodKind::DeclaredMethod {
                                     target: ResolvedAccess::new(
                                         db,
-                                        CallSite::InvocationKeyword(
-                                            self.keyword_id(db),
-                                            *self,
-                                        ),
-                                        ResolvedPathResult::Ok(ResolvedPath::Pou(pou)),
+                                        ResolvedPathResult::Ok(ResolvedPath {
+                                            kind: ResolvedPathKind::Pou(pou),
+                                            expr: CallSite::InvocationKeyword(
+                                                self.keyword_id(db),
+                                                *self,
+                                            ),
+                                            adjustement: Adjustement::None,
+                                        }),
                                         vec![],
                                     ),
-                                    method: ResolvedAccess::new(
-                                        db,
-                                        CallSite::Invocation(*self),
-                                        ResolvedPathResult::Ok(ResolvedPath::Method(*method)),
-                                        vec![],
-                                    ),
+                                    method: *method,
                                 },
                             ),
                             params: resolve_parameters(db, *method, &self.params(db)),
@@ -169,19 +175,17 @@ impl<'db> Invocation<'db> {
                                 ResolvedMethodKind::InheritedMethod {
                                     target: ResolvedAccess::new(
                                         db,
-                                        CallSite::InvocationKeyword(
-                                            self.keyword_id(db),
-                                            *self,
-                                        ),
-                                        ResolvedPathResult::Ok(ResolvedPath::Pou(ty.source)),
-                                        vec![]
+                                        ResolvedPathResult::Ok(ResolvedPath {
+                                            kind: ResolvedPathKind::Pou(ty.source),
+                                            expr: CallSite::InvocationKeyword(
+                                                self.keyword_id(db),
+                                                *self,
+                                            ),
+                                            adjustement: Adjustement::None,
+                                        }),
+                                        vec![],
                                     ),
-                                    method: ResolvedAccess::new(
-                                        db,
-                                        CallSite::Invocation(*self),
-                                        ResolvedPathResult::Ok(ResolvedPath::Method(ty.method)),
-                                        vec![]
-                                    ),
+                                    method: ty.method,
                                 },
                             ),
                             params: resolve_parameters(db, ty.method, &self.params(db)),
@@ -195,9 +199,11 @@ impl<'db> Invocation<'db> {
                                             Pou::Class(class) => class.extends(db).and_then(|e| {
                                                 resolve_namespace_access(db, e.scope_id, e.path)
                                             }),
-                                            Pou::FunctionBlock(fb) => fb.extends(db).and_then(|e| {
-                                                resolve_namespace_access(db, e.scope_id, e.path)
-                                            }),
+                                            Pou::FunctionBlock(fb) => {
+                                                fb.extends(db).and_then(|e| {
+                                                    resolve_namespace_access(db, e.scope_id, e.path)
+                                                })
+                                            }
                                             _ => None,
                                         },
                                         path,
@@ -216,9 +222,12 @@ impl<'db> Invocation<'db> {
                                     ResolvedMethodKind::FunctionBlockBody {
                                         target: ResolvedAccess::new(
                                             db,
-                                            CallSite::Invocation(*self),
-                                            ResolvedPathResult::Ok(ResolvedPath::Pou(pou)),
-                                            vec![]
+                                            ResolvedPathResult::Ok(ResolvedPath {
+                                                kind: ResolvedPathKind::Pou(pou),
+                                                expr: CallSite::Invocation(*self),
+                                                adjustement: Adjustement::None,
+                                            }),
+                                            vec![],
                                         ),
                                     },
                                 ),

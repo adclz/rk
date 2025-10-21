@@ -5,18 +5,25 @@ use rustc_hash::FxHashMap;
 use crate::{
     check::{
         check_semantic_index::Check,
-        check_visibility::check_call_visibility,
+        check_visibility::{self, check_call_visibility},
         coerce::{coerce_bool_with_expr, coerce_ty_with_expr, coerce_ty_with_ty},
-        errors::{analysis_error::AnalysisError, stmt::StmtError}, recovery::func_call,
+        errors::{analysis_error::AnalysisError, stmt::StmtError},
+        recovery::func_call,
     },
-    hir_def::{expressions::statement::Stmt, interned::identifier::Ident, pous::{pou::Pou, variable::VariableDecl}},
+    hir_def::{
+        expressions::statement::Stmt,
+        interned::identifier::Ident,
+        pous::{pou::Pou, variable::VariableDecl},
+    },
     hir_ty::{
         expr_resolver::ResolvedExpr,
         func_call_resolver::{ResolvedFuncCall, ResolvedParam, ResolvedParamKind},
         invocation_resolver::{ResolvedInvocationResult, ResolvedMethodKind},
-        stmt_resolver::{resolve_stmt, ResolvedStmt, ResolvedStmtKind},
+        signatures::LocalVariables,
+        stmt_resolver::{ResolvedStmt, ResolvedStmtKind, resolve_stmt},
         ty::{Ty, TyKind},
-        ty_var_access_resolver::ResolvedAccess, walk::{ResolvedPath, ResolvedPathElement, ResolvedPathResult},
+        ty_var_access_resolver::ResolvedAccess,
+        walk::{ResolvedPath, ResolvedPathElement, ResolvedPathKind, ResolvedPathResult},
     },
 };
 
@@ -125,42 +132,58 @@ fn check_assignment<'db>(
     db: &'db dyn BaseDatabase,
     access: ResolvedAccess<'db>,
     target: ResolvedExpr<'db>,
-) -> Result<(), AnalysisError<'db>> {
+) -> Result<Ty<'db>, AnalysisError<'db>> {
+    // Variables in VAR_INPUT can not be mutated
+    if access.is_var_input(db) {
+        return Err(StmtError::AssignmentToInputVar { var: access }.into());
+    }
+    let resolved = access.fully_resolved(db)?;
+
+    match resolved.kind {
+        // Assigning a variable
+        ResolvedPathKind::Variable(v) => {
+            // A variable type could refer to a Pou (SpecKind::Target).
+            // In this case we need to check we're assigning a correct type
+            if v.spec(db).to_ty(db).is_pou(db) {
+                return Err(StmtError::AssignmentToCallableType { var: access }.into());
+            }
+        }
+        // Assigning to a direct method or pou is not allowed
+        // ... unless this pou is a function with return type
+        ResolvedPathKind::Pou(pou) => {
+            if let Pou::Function(f) = pou.pou(db)
+                && let Some(ret) = f.return_type(db)
+            {
+                // Check the return type
+                return match coerce_ty_with_expr(db, ret.to_ty(db), target) {
+                    Err(err) => Err(StmtError::AssignmentTypeMismatch { err }.into()),
+                    Ok(()) => Ok(ret.to_ty(db)),
+                };
+            } else {
+                return Err(StmtError::AssignmentToDirectType { var: access }.into());
+            }
+        }
+        // Assiging a struct field is valid
+        ResolvedPathKind::StructElement(st) => {}
+        // Other cases are invalid
+        ResolvedPathKind::Spec(_) | ResolvedPathKind::Method(_) => {
+            return Err(StmtError::AssignmentToDirectType { var: access }.into());
+        }
+    }
+
     let access_type = match access.try_to_ty(db) {
         Ok(ty) => ty,
         Err(err) => return Err(StmtError::UnresolvedAssignmentTarget { var: access, err }.into()),
     };
 
-    // Variables in VAR_INPUT can not be mutated
-    if access.is_var_input(db) {
-        return Err(StmtError::AssignmentToInputVar { var: access }.into());
+    // Last, runs the type checker
+    if let Err(err) = coerce_ty_with_expr(db, access_type, target) {
+        return Err(AnalysisError::from(StmtError::AssignmentTypeMismatch {
+            err,
+        }));
     }
 
-    match (access.is_variable(db), access.is_callable(db)) {
-        // is not a variable but callable
-        (false, true) => {
-            // Special case: assigning to function with return type
-            if let Ok(ResolvedPath::Pou(pou))  = access.resolved(db)
-                && let Pou::Function(f) = pou.pou(db) 
-                && let Some(ret) = f.return_type(db){
-                
-            return coerce_ty_with_expr(db, ret.to_ty(db), target)
-                    .map_err(|err| StmtError::AssignmentTypeMismatch { err }.into());
-            } else {
-                return Err(StmtError::AssignmentToCallableType { var: access }.into());
-            }
-            
-                
-        }
-        // is a variable and callable (trying to assign to a FUNCTION_BLOCK, CLASS, ...)
-        (true, true) => {
-            return Err(StmtError::AssignmentToCallableType { var: access }.into());
-        }
-        _ => {}
-    }
-
-    coerce_ty_with_expr(db, access_type, target)
-        .map_err(|err| StmtError::AssignmentTypeMismatch { err }.into())
+    Ok(access_type)
 }
 
 fn check_func_call<'db>(
@@ -168,17 +191,44 @@ fn check_func_call<'db>(
     fun_call: &'db ResolvedFuncCall<'db>,
     errors: &mut Vec<AnalysisError<'db>>,
 ) -> Result<(), AnalysisError<'db>> {
-    let sig = fun_call
-        .callable(db)
-        .ok_or(StmtError::CallANonCallableType { call: fun_call.target })?;
+    let resolved = fun_call.target.fully_resolved(db)?;
 
-    check_parameters(
-        db,
-        fun_call.target,
-        sig,
-        &fun_call.params,
-        errors,
-    );
+    let variables = match resolved.kind {
+        // A FB or CLASS declared in a variable section
+        ResolvedPathKind::Variable(v) => match v.spec(db).to_ty(db).kind(db) {
+            TyKind::FunctionBlock(f) => f.local_variables(db),
+            TyKind::Class(cl) => cl.local_variables(db),
+            _ => {
+                return Err(StmtError::CallANonCallableType {
+                    call: fun_call.target,
+                }
+                .into());
+            }
+        },
+        // Direct FUNCTION call
+        ResolvedPathKind::Pou(p) => match p.pou(db) {
+            Pou::Function(f) => p.local_variables(db),
+            _ => {
+                return Err(StmtError::CallANonCallableType {
+                    call: fun_call.target,
+                }
+                .into());
+            }
+        },
+        // METHOD call
+        ResolvedPathKind::Method(m) => {
+            check_call_visibility(db, m.into(), &fun_call.target, errors);
+            m.local_variables(db)
+        }
+        _ => {
+            return Err(StmtError::CallANonCallableType {
+                call: fun_call.target,
+            }
+            .into());
+        }
+    };
+
+    check_parameters(db, fun_call.target, variables, &fun_call.params, errors);
     Ok(())
 }
 
@@ -193,16 +243,12 @@ fn check_invocation<'db>(
         }
         ResolvedMethodKind::InheritedMethod { target, method }
         | ResolvedMethodKind::DeclaredMethod { target, method } => {
-            let variables = method.callable(db).ok_or(
-                StmtError::UnresolvedFuncCall { call: *target }
-            )?;
-
             // Check visibility
-            check_call_visibility(db, method, &invocation.target, errors);
+            check_call_visibility(db, (*method).into(), &invocation.target.invocation, errors);
             check_parameters(
                 db,
-                *method,
-                variables,
+                *target,
+                method.local_variables(db),
                 &invocation.params,
                 errors,
             );
@@ -381,21 +427,13 @@ fn check_parameters<'db>(
                             Ok(var_ty) => {
                                 if variable.is_var_input(db) {
                                     errors.push(
-                                        StmtError::AssignmentToInputVar {
-                                            var: variable,
-                                        }
-                                        .into(),
+                                        StmtError::AssignmentToInputVar { var: variable }.into(),
                                     );
-                                }
-                                else if !other_param.is_variable(db) {
+                                } else if !variable.as_var(db).is_some() {
                                     errors.push(
-                                        StmtError::AssignmentToDirectType {
-                                            var: variable,
-                                        }
-                                        .into(),
+                                        StmtError::AssignmentToDirectType { var: variable }.into(),
                                     );
-                                }
-                                else {
+                                } else {
                                     let _ = coerce_ty_with_ty(db, p_ty, var_ty).map_err(|err| {
                                         errors.push(
                                             StmtError::ParameterTypeMismatch {
@@ -445,34 +483,7 @@ fn check_for<'db>(
     step: Option<ResolvedExpr<'db>>,
     errors: &mut Vec<AnalysisError<'db>>,
 ) -> Result<(), AnalysisError<'db>> {
-    let control_var_ty = match control_var.try_to_ty(db) {
-        Ok(ty) => ty,
-        Err(err) => return Err(StmtError::UnresolvedAssignmentTarget { var: control_var, err }.into()),
-    };
-
-    // Variables in VAR_INPUT can not be mutated
-    if control_var.is_var_input(db) {
-        errors.push(StmtError::AssignmentToInputVar {
-            var: control_var,
-        }
-        .into());
-    }
-
-    // Direct type
-    if !control_var.is_variable(db) {
-        return Err(StmtError::AssignmentToDirectType {
-            var: control_var,
-        }
-        .into());
-    }
-
-    // POUs can not be mutated
-    if control_var.is_callable(db) {
-        return Err(StmtError::AssignmentToCallableType {
-            var: control_var,
-        }
-        .into());
-    }
+    let control_var_ty = check_assignment(db, control_var, start)?;
 
     // Check start value
     if let Err(err) = coerce_ty_with_expr(db, control_var_ty, start) {

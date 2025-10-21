@@ -1,24 +1,25 @@
-use auto_lsp::default::db::BaseDatabase;
-use ide_diagnostic::IdeDiagnostic;
+use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
+use ide_diagnostic::{diag, IdeDiagnostic};
 
 use crate::{
     check::{
         errors::{
-            analysis_error::DiagnosticDescription,
-            utils::{get_candidates, get_def_for_ty},
+            analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic},
+            utils::get_candidates,
         },
         recovery::pou::fuzzy_pou_local_items,
     }, hir_def::{
-        expressions::expression::PathExpr,
-        scope::{FileScopeId, ScopeKind},
-        semantic_index::semantic_index,
-    }, hir_ty::{ty::Ty, ty_var_access_resolver::ResolvedAccess, walk::ResolvedPath}, TypeInfo
+        expressions::expression::PathExpr, interned::namespace::SpanNamespaceAccess, scope::{FileScopeId, ScopeKind}, semantic_index::semantic_index
+    }, hir_ty::{ty::Ty, ty_var_access_resolver::ResolvedAccess, walk::{ResolvedPath, ResolvedPathKind}}, HirNodeInfo, TypeInfo
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum AccessError<'db> {
-    NoItemInScope {
+    NoLocalItemInScope {
         expr: PathExpr<'db>,
+    },
+    NoItemInScope {
+        access: SpanNamespaceAccess<'db>,
     },
     InvalidTypeAccess {
         access: ResolvedPath<'db>,
@@ -45,23 +46,38 @@ pub enum AccessError<'db> {
     },
 }
 
+impl<'db> From<AccessError<'db>> for AnalysisError<'db> {
+    fn from(err: AccessError<'db>) -> Self {
+        AnalysisError::AccessError(err)
+    }
+}
 impl<'db> DiagnosticDescription<'db> for AccessError<'db> {
     fn description(&self, db: &'db dyn BaseDatabase) -> String {
         match self {
-            AccessError::NoItemInScope { expr } => {
+            AccessError::NoLocalItemInScope { expr } => {
                 format!("no item '{}' in scope", expr.ident(db).text(db))
             }
+            AccessError::NoItemInScope { access } => {
+                format!("no path or item '{}' in scope", access.to_string(db))
+            }
             AccessError::InvalidTypeAccess { access } => {
-                format!("invalid type access on '{}'", access.decl_name(db))
+                format!("no type found for '{}'", access.decl_name(db))
             }
             AccessError::UnknownField { ty, expr } => {
-                format!("field '{}' not found in '{}'", expr.ident(db).text(db), ty.decl_name(db))
+                format!(
+                    "field '{}' not found in '{}'",
+                    expr.ident(db).text(db),
+                    ty.decl_name(db)
+                )
             }
             AccessError::TypeHasNoField { ty, expr } => {
                 format!("type '{}' does not have fields", ty.decl_name(db))
             }
             AccessError::MissingDeref { ty, expr } => {
-                format!("type '{}' is a reference, maybe you forgot to dereference it ?", ty.decl_name(db))
+                format!(
+                    "type '{}' is a reference, maybe you forgot to dereference it ?",
+                    ty.decl_name(db)
+                )
             }
             AccessError::NotAReference { ty, expr } => {
                 format!("type '{}' can not be dereferenced", ty.decl_name(db))
@@ -72,15 +88,13 @@ impl<'db> DiagnosticDescription<'db> for AccessError<'db> {
         }
     }
 
-    fn note(&self, db: &'db dyn BaseDatabase, diag: &mut IdeDiagnostic) {
+    fn related(&self, db: &'db dyn BaseDatabase, diag: &mut IdeDiagnostic) {
         match self {
-            AccessError::NoItemInScope { expr } => {
+            AccessError::NoLocalItemInScope { expr } => {
                 let scope = expr.scope_id(db);
                 let sema = semantic_index(db, expr.scope_id(db).file(db));
                 let scope = sema.get_scope(db, scope);
-                if let ScopeKind::Pou(pou) = scope
-                    .kind
-                {
+                if let ScopeKind::Pou(pou) = scope.kind {
                     diag.with_note(get_candidates(&fuzzy_pou_local_items(
                         db,
                         pou,
@@ -88,22 +102,51 @@ impl<'db> DiagnosticDescription<'db> for AccessError<'db> {
                     )));
                 }
             }
+            AccessError::NoItemInScope { access } => {
+                
+            }
             AccessError::TypeHasNoField { ty, expr } => {
-                //get_def_for_ty(db, *ty, diag);
+                ty.diag_with_location(db, diag);
             }
             AccessError::MissingDeref { ty, expr } => {
-                //get_def_for_ty(db, *ty, diag);
+                ty.diag_with_location(db, diag);
             }
             AccessError::UnknownField { ty, expr } => {
-                //get_def_for_ty(db, *ty, diag);
+                ty.diag_with_location(db, diag);
             }
             AccessError::NotAnArray { ty, expr } => {
-                //get_def_for_ty(db, *ty, diag);
+                ty.diag_with_location(db, diag);
             }
             AccessError::NotAReference { ty, expr } => {
-                //get_def_for_ty(db, *ty, diag);
-            },
-            _ => { /* No note for other errors */ }
+                ty.diag_with_location(db, diag);
+            }
+            AccessError::InvalidTypeAccess { access } => {
+                access.diag_with_location(db, diag);
+            }
         }
     }
+}
+
+
+impl<'db> ToIdeDiagnostic<'db> for AccessError<'db> {
+    fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
+        let mut diag = diag()
+            .message(self.description(db))
+            .severity(DiagnosticSeverity::ERROR)
+            .range(match self {
+                AccessError::NoLocalItemInScope { expr } => expr.get_span(db),
+                AccessError::NoItemInScope { access } => access.get_span(db),
+                AccessError::InvalidTypeAccess { access } => access.expr.get_span(db),
+                AccessError::UnknownField { expr, .. } => expr.get_span(db),
+                AccessError::TypeHasNoField { expr, .. } => expr.get_span(db),
+                AccessError::MissingDeref { expr, .. } => expr.get_span(db),
+                AccessError::NotAnArray { expr, .. } => expr.get_span(db),
+                AccessError::NotAReference { expr, .. } => expr.get_span(db),
+            })
+            .call();
+
+        self.related(db, &mut diag);
+        diag
+    }
+    
 }

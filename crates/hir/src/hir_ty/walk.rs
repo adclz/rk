@@ -1,19 +1,28 @@
 use auto_lsp::default::db::BaseDatabase;
+use ide_diagnostic::{IdeDiagnostic, Related};
 
 use crate::{
-    check::errors::path_error::AccessError, hir_def::{
+    AstId, HirNodeInfo, TypeInfo,
+    check::errors::path_error::AccessError,
+    hir_def::{
         expressions::{
-            expression::PathExpr,
+            expression::{InitExpr, PathExpr},
+            invocation::Invocation,
             spec::{Spec, SpecKind, StructElement},
         },
         pous::{
             pou::{Pou, PouDecl},
-            variable::VariableDecl,
+            variable::{VariableDecl, VariableKind},
         },
         scope::FileScopeId,
-    }, hir_ty::{
-        inheritance_solver::MethodRef, name_res::resolve_namespace_access, signatures::LocalVariables, ty::Ty, ty_var_access_resolver::{resolve_var_access, PathExprWalkStep}
-    }, AstId, HirNodeInfo, TypeInfo
+    },
+    hir_ty::{
+        inheritance_solver::{MethodRef, method_table},
+        name_res::resolve_namespace_access,
+        signatures::LocalVariables,
+        ty::{Ty, TyKind},
+        ty_var_access_resolver::{CallSite, PathExprWalkStep, resolve_var_access},
+    },
 };
 
 /// Represents a resolved element in a path expression.
@@ -55,114 +64,207 @@ pub enum ResolvedPathResult<'db> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum ResolvedPath<'db> {
+pub enum Adjustement<'db> {
+    None,
+    Deref(Box<ResolvedPath<'db>>),
+    Array(Box<ResolvedPath<'db>>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub struct ResolvedPath<'db> {
+    pub expr: CallSite<'db>,
+    pub adjustement: Adjustement<'db>,
+    pub kind: ResolvedPathKind<'db>,
+}
+
+impl<'db> HirNodeInfo<'db> for ResolvedPath<'db> {
+    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
+        self.expr.get_id(db)
+    }
+
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+        self.expr.get_scope_id(db)
+    }
+}
+
+impl<'db> ResolvedPath<'db> {
+    pub fn as_var(&self, db: &'db dyn BaseDatabase) -> Option<VariableDecl<'db>> {
+        eprintln!("{:?} \n\n", self.kind);
+        match self.kind {
+            ResolvedPathKind::Variable(v) => Some(v),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum ResolvedPathKind<'db> {
     Pou(PouDecl<'db>),
     Variable(VariableDecl<'db>),
     StructElement(StructElement<'db>),
     Spec(Spec<'db>),
     Method(MethodRef<'db>),
-    Deref {
-        origin: Box<ResolvedPath<'db>>,
-        element: Box<ResolvedPath<'db>>,
-    },
-    Array {
-        origin: Box<ResolvedPath<'db>>,
-        element: Box<ResolvedPath<'db>>,
-    },
 }
 
-impl<'db> ResolvedPath<'db> {
-    pub fn try_to_try(&self, db: &'db dyn BaseDatabase) -> Result<Ty<'db>, AccessError<'db>> {
-        Ok(match self {
-            ResolvedPath::Pou(p) => match p.pou(db) {
-                Pou::Function(f) => f
-                    .return_type(db)
-                    .ok_or_else(|| AccessError::InvalidTypeAccess {
-                        access: self.clone(),
-                    })?
-                    .to_ty(db),
-                _ => {
-                    return Err(AccessError::InvalidTypeAccess {
-                        access: self.clone(),
-                    })?;
-                }
-            },
-            ResolvedPath::Method(m) => m
-                .return_type(db)
-                .ok_or_else(|| AccessError::InvalidTypeAccess {
-                    access: self.clone(),
-                })?
-                .to_ty(db),
-            ResolvedPath::Variable(v) => v.spec(db).to_ty(db),
-            ResolvedPath::StructElement(e) => e.spec(db).to_ty(db),
-            ResolvedPath::Spec(s) => s.to_ty(db),
-            ResolvedPath::Deref { element, .. } => element.try_to_try(db)?,
-            ResolvedPath::Array { element, .. } => element.try_to_try(db)?,
-            _ => Err(AccessError::InvalidTypeAccess {
-                access: self.clone(),
-            })?,
-        })
+impl<'db> ResolvedPathKind<'db> {
+    pub fn into_path_call(
+        self,
+        expr: PathExpr<'db>,
+        adjustement: Adjustement<'db>,
+    ) -> ResolvedPath<'db> {
+        ResolvedPath {
+            kind: self,
+            expr: CallSite::PathExpr(expr),
+            adjustement,
+        }
+    }
+
+    pub fn decl_name(&self, db: &'db dyn BaseDatabase) -> String {
+        match &self {
+            ResolvedPathKind::Variable(v) => v.name(db).text(db).to_string(),
+            ResolvedPathKind::Pou(p) => p.name(db).text(db).to_string(),
+            ResolvedPathKind::Method(m) => m.name(db).text(db).to_string(),
+            ResolvedPathKind::Spec(m) => m.type_name(db),
+            ResolvedPathKind::StructElement(m) => m.name(db).text(db).to_string(),
+        }
+    }
+
+    pub fn diag_with_location(&self, db: &'db dyn BaseDatabase, diag: &mut IdeDiagnostic) {
+        let (file, span, decl_name, name) = match &self {
+            ResolvedPathKind::Pou(p) => (
+                p.get_scope_id(db).file(db),
+                p.name_span(db),
+                "pou",
+                p.name(db).text(db).to_string(),
+            ),
+            ResolvedPathKind::Variable(v) => (
+                v.get_scope_id(db).file(db),
+                v.name_span(db),
+                "variable",
+                v.name(db).text(db).to_string(),
+            ),
+            ResolvedPathKind::StructElement(f) => (
+                f.get_scope_id(db).file(db),
+                f.name_span(db),
+                "struct element",
+                f.name(db).text(db).to_string(),
+            ),
+            ResolvedPathKind::Method(m) => (
+                m.get_scope_id(db).file(db),
+                m.name_span(db),
+                "method",
+                m.name(db).text(db).to_string(),
+            ),
+            ResolvedPathKind::Spec(s) => (
+                s.get_scope_id(db).file(db),
+                s.get_span(db),
+                "",
+                s.type_name(db),
+            ),
+        };
+
+        diag.with_related(Related::new(
+            format!("{} '{}' declared here", decl_name, name),
+            file,
+            span,
+        ));
     }
 }
 
-impl<'db> HirNodeInfo<'db> for ResolvedPath<'db> {
+impl<'db> HirNodeInfo<'db> for ResolvedPathKind<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
         match self {
-            ResolvedPath::Pou(p) => p.get_id(db),
-            ResolvedPath::Variable(v) => v.get_id(db),
-            ResolvedPath::StructElement(f) => f.get_id(db),
-            ResolvedPath::Spec(s) => s.get_id(db),
-            ResolvedPath::Method(m) => m.get_id(db),
-            ResolvedPath::Deref { origin, .. } => origin.get_id(db),
-            ResolvedPath::Array { origin, .. } => origin.get_id(db),
+            ResolvedPathKind::Pou(p) => p.get_id(db),
+            ResolvedPathKind::Variable(v) => v.get_id(db),
+            ResolvedPathKind::StructElement(e) => e.get_id(db),
+            ResolvedPathKind::Spec(s) => s.get_id(db),
+            ResolvedPathKind::Method(m) => m.get_id(db),
         }
     }
 
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         match self {
-            ResolvedPath::Pou(p) => p.get_scope_id(db),
-            ResolvedPath::Variable(v) => v.get_scope_id(db),
-            ResolvedPath::StructElement(f) => f.get_scope_id(db),
-            ResolvedPath::Spec(s) => s.get_scope_id(db),
-            ResolvedPath::Method(m) => m.get_scope_id(db),
-            ResolvedPath::Deref { origin, .. } => origin.get_scope_id(db),
-            ResolvedPath::Array { origin, .. } => origin.get_scope_id(db),
+            ResolvedPathKind::Pou(p) => p.get_scope_id(db),
+            ResolvedPathKind::Variable(v) => v.get_scope_id(db),
+            ResolvedPathKind::StructElement(e) => e.get_scope_id(db),
+            ResolvedPathKind::Spec(s) => s.get_scope_id(db),
+            ResolvedPathKind::Method(m) => m.get_scope_id(db),
         }
     }
 }
 
 impl<'db> ResolvedPath<'db> {
+    /// Tries to resolve a [`ResolvedPath`] to a [`Ty`] enum.
+    ///
+    /// If [`TyKind`] variant is Err, this function will return an [`AccessError`]
+    pub fn try_to_ty(&self, db: &'db dyn BaseDatabase) -> Result<Ty<'db>, AccessError<'db>> {
+        eprintln!("KIND: {:?}", self.kind);
+        match self.adjustement {
+            Adjustement::Array(ref arr) => return arr.try_to_ty(db),
+            Adjustement::Deref(ref deref) => {
+                return deref.try_to_ty(db);
+            }
+            _ => {
+                let result = match &self.kind {
+                    ResolvedPathKind::Variable(v) => v.spec(db).to_ty(db),
+                    ResolvedPathKind::StructElement(e) => e.spec(db).to_ty(db),
+                    ResolvedPathKind::Spec(s) => s.to_ty(db),
+                    ResolvedPathKind::Pou(pou) => match pou.pou(db) {
+                        Pou::DataType(dt) => dt.spec(db).to_ty(db),
+                        _ => {
+                            return Err(AccessError::InvalidTypeAccess {
+                                access: self.clone(),
+                            });
+                        }
+                    },
+                    _ => {
+                        eprintln!("KIND: {:?}", self.kind);
+                        return Err(AccessError::InvalidTypeAccess {
+                            access: self.clone(),
+                        })?;
+                    }
+                };
+                match result.kind(db) {
+                    TyKind::Err(e) => Err(e.clone()),
+                    any => Ok(result),
+                }
+            }
+        }
+    }
+
+    pub fn diag_with_location(&self, db: &'db dyn BaseDatabase, diag: &mut IdeDiagnostic) {
+        self.kind.diag_with_location(db, diag);
+    }
+
     pub fn decl_name(&self, db: &'db dyn BaseDatabase) -> String {
-        match self {
-            ResolvedPath::Variable(v) => v.name(db).text(db).to_string(),
-            ResolvedPath::Pou(p) => p.name(db).text(db).to_string(),
-            ResolvedPath::Method(m) => m.name(db).text(db).to_string(),
-            ResolvedPath::Spec(m) => m.to_ty(db).type_name(db),
-            ResolvedPath::StructElement(m) => m.name(db).text(db).to_string(),
-            ResolvedPath::Deref { origin, element } => {
-                format!("{}.{}", origin.decl_name(db), element.decl_name(db))
-            }
-            ResolvedPath::Array { origin, element } => {
-                format!("{}[{}]", origin.decl_name(db), element.decl_name(db))
-            }
-        }
+        self.kind.decl_name(db)
     }
-}
 
-impl<'db> ResolvedPath<'db> {
     pub fn walk(
         &self,
         db: &'db dyn BaseDatabase,
         step: &'db PathExprWalkStep<'db>,
     ) -> Result<ResolvedPath<'db>, AccessError<'db>> {
-        match self {
-            ResolvedPath::Pou(pou) => pou.walk(db, step),
-            ResolvedPath::Variable(var) => var.spec(db).walk(db, step),
-            ResolvedPath::Spec(spec) => spec.walk(db, step),
-            ResolvedPath::StructElement(field) => field.spec(db).walk(db, step),
-            ResolvedPath::Deref { origin, element } => element.walk(db, step),
-            ResolvedPath::Array { origin, element } => element.walk(db, step),
-            ResolvedPath::Method(m) => Err(AccessError::InvalidTypeAccess {
+        match self.adjustement {
+            Adjustement::Deref(ref deref) => return deref.walk(db, step),
+            Adjustement::Array(ref array) => return array.walk(db, step),
+            _ => {}
+        }
+        match &self.kind {
+            ResolvedPathKind::Pou(pou) => pou.walk(db, step),
+            // FIXME: We lose the context of the variable declaration here
+            // Any ARRAY or DEREF origin will refer to Spec only, but not the variable it came from
+            ResolvedPathKind::Variable(var) => {
+                var.spec(db)
+                    .walk(db, ResolvedPathKind::Variable(*var), step)
+            }
+            ResolvedPathKind::Spec(spec) => spec.walk(db, ResolvedPathKind::Spec(*spec), step),
+            ResolvedPathKind::StructElement(field) => {
+                field
+                    .spec(db)
+                    .walk(db, ResolvedPathKind::StructElement(*field), step)
+            }
+            ResolvedPathKind::Method(m) => Err(AccessError::InvalidTypeAccess {
                 access: self.clone(),
             })?,
         }
@@ -178,43 +280,69 @@ impl<'db> PouDecl<'db> {
         match step {
             // Simplest case, just an identifier
             PathExprWalkStep::Field { ident, expr } => {
-                // Check local variables of pou
-                if let Some(var) = self.local_variables(db).get(&ident.ident) {
-                    return Ok(ResolvedPath::Variable(*var));
+                match self.pou(db) {
+                    Pou::Class(_) | Pou::Function(_) | Pou::FunctionBlock(_) => {
+                        if let Some(var) = self.global_variables(db).get(&ident.ident) {
+                            return Ok(ResolvedPathKind::Variable(*var)
+                                .into_path_call(*expr, Adjustement::None));
+                        } else if let Some(m) =
+                            method_table(db, *self).declared_methods.get(&ident.ident)
+                        {
+                            return Ok(ResolvedPathKind::Method(*m)
+                                .into_path_call(*expr, Adjustement::None));
+                        }
+                    }
+                    Pou::DataType(dt) => {
+                        return dt.spec(db).walk(db, ResolvedPathKind::Pou(*self), step);
+                    }
+                    _ => {}
                 }
 
                 // Check if ident == self name
                 if *ident == *self.name(db) {
-                    return Ok(ResolvedPath::Pou(*self));
+                    return Ok(
+                        ResolvedPathKind::Pou(*self).into_path_call(*expr, Adjustement::None)
+                    );
                 }
 
                 Err(AccessError::UnknownField {
-                    ty: ResolvedPath::Pou(*self),
-                    expr: *step.get_expr(),
+                    ty: ResolvedPathKind::Pou(*self).into_path_call(*expr, Adjustement::None),
+                    expr: *expr,
                 })
             }
             // Deref case, same as Field except we need to check if the target is a Reference
             PathExprWalkStep::Deref { target, expr } => {
-                match self.local_variables(db).get(&target.ident) {
+                match self.global_variables(db).get(&target.ident) {
                     Some(var) => match var.spec(db).kind(db) {
-                        SpecKind::Ref(ref_to) => return Ok(ResolvedPath::Variable(*var)),
-                        _ => {
-                            return Err(AccessError::NotAReference {
-                                ty: ResolvedPath::Variable(*var),
-                                expr: *step.get_expr(),
-                            });
-                        }
+                        SpecKind::Ref(ref_to) => Ok(ResolvedPathKind::Variable(*var)
+                            .into_path_call(
+                                *expr,
+                                Adjustement::Deref(Box::new(
+                                    ResolvedPathKind::Spec(*ref_to)
+                                        .into_path_call(*expr, Adjustement::None),
+                                )),
+                            )),
+                        _ => Err(AccessError::NotAReference {
+                            ty: ResolvedPathKind::Variable(*var)
+                                .into_path_call(*expr, Adjustement::None),
+                            expr: *step.get_expr(),
+                        }),
                     },
-                    _ => Err(AccessError::NoItemInScope {
+                    _ => Err(AccessError::NoLocalItemInScope {
                         expr: *step.get_expr(),
                     }),
                 }
             }
             // Index case is invalid
-            PathExprWalkStep::Index { expr } => Err(AccessError::NotAnArray {
-                ty: ResolvedPath::Pou(*self),
-                expr: *step.get_expr(),
-            })?,
+            PathExprWalkStep::Index { expr } => match self.pou(db) {
+                Pou::DataType(dt) => {
+                    return dt.spec(db).walk(db, ResolvedPathKind::Pou(*self), step);
+                }
+                _ => Err(AccessError::NotAnArray {
+                    ty: ResolvedPathKind::Pou(*self).into_path_call(*expr, Adjustement::None),
+                    expr: *expr,
+                }),
+            },
         }
     }
 }
@@ -223,59 +351,75 @@ impl<'db> Spec<'db> {
     pub fn walk(
         &self,
         db: &'db dyn BaseDatabase,
+        mut origin: ResolvedPathKind<'db>,
         step: &'db PathExprWalkStep<'db>,
     ) -> Result<ResolvedPath<'db>, AccessError<'db>> {
+        // resolve the target if it is one
+        if let SpecKind::Target(target) = self.kind(db) {
+            return match resolve_namespace_access(db, self.get_scope_id(db), target.path) {
+                Some(pou) => pou.walk(db, step),
+                None => Err(AccessError::NoLocalItemInScope {
+                    expr: *step.get_expr(),
+                }),
+            };
+        }
+
         match step {
             // Only a struct can have fields
             PathExprWalkStep::Field { ident, expr } => match self.kind(db) {
-                SpecKind::Target(t) => match resolve_namespace_access(
-                    db,
-                    self.get_scope_id(db),
-                    t.path
-                ) {
-                    Some(pou) => pou.walk(db, step),
-                    None => Err(AccessError::NoItemInScope { expr: *step.get_expr()}),
-                },
                 SpecKind::Struct(strukt) => match strukt.resolve_elements(db).get(&ident.ident) {
-                    Some(field) => return Ok(ResolvedPath::StructElement(*field)),
-                    None => return Err(AccessError::UnknownField { ty: ResolvedPath::Spec(*self), expr: *step.get_expr() }),
+                    Some(field) => Ok(ResolvedPathKind::StructElement(*field)
+                        .into_path_call(*expr, Adjustement::None)),
+                    None => Err(AccessError::UnknownField {
+                        ty: ResolvedPathKind::Spec(*self).into_path_call(*expr, Adjustement::None),
+                        expr: *expr,
+                    }),
                 },
-                _ => Err(AccessError::TypeHasNoField { ty: ResolvedPath::Spec(*self), expr: *step.get_expr() })
+                _ => Err(AccessError::TypeHasNoField {
+                    ty: ResolvedPathKind::Spec(*self).into_path_call(*expr, Adjustement::None),
+                    expr: *expr,
+                }),
             },
             // Same, but we need to deref first
             PathExprWalkStep::Deref { target, expr } => match self.kind(db) {
-                SpecKind::Target(t) => match resolve_namespace_access(
-                    db,
-                    self.get_scope_id(db),
-                    t.path
-                ) {
-                    Some(pou) => pou.walk(db, step),
-                    None => Err(AccessError::NoItemInScope { expr: *step.get_expr()}),
-                },
                 SpecKind::Struct(strukt) => match strukt.resolve_elements(db).get(&target.ident) {
                     Some(field) => match field.spec(db).kind(db) {
-                        SpecKind::Ref(ref_to) => return Ok(ResolvedPath::StructElement(*field)),
-                        _ => return Err(AccessError::NotAReference { ty: ResolvedPath::StructElement(*field), expr: *step.get_expr() })
+                        SpecKind::Ref(ref_to) => Ok(ResolvedPathKind::StructElement(*field)
+                            .into_path_call(
+                                *expr,
+                                Adjustement::Deref(Box::new(
+                                    ResolvedPathKind::Spec(*ref_to)
+                                        .into_path_call(*expr, Adjustement::None),
+                                )),
+                            )),
+                        _ => Err(AccessError::NotAReference {
+                            ty: ResolvedPathKind::StructElement(*field)
+                                .into_path_call(*expr, Adjustement::None),
+                            expr: *step.get_expr(),
+                        }),
                     },
-                    None => return Err(AccessError::UnknownField { ty: ResolvedPath::Spec(*self), expr: *step.get_expr() })
+                    None => Err(AccessError::UnknownField {
+                        ty: ResolvedPathKind::Spec(*self).into_path_call(*expr, Adjustement::None),
+                        expr: *step.get_expr(),
+                    }),
                 },
-                _ => {
-                    return Err(AccessError::TypeHasNoField { ty: ResolvedPath::Spec(*self), expr: *step.get_expr() });
-                }
+                _ => Err(AccessError::TypeHasNoField {
+                    ty: ResolvedPathKind::Spec(*self).into_path_call(*expr, Adjustement::None),
+                    expr: *step.get_expr(),
+                }),
             },
             PathExprWalkStep::Index { expr } => match self.kind(db) {
-                SpecKind::Array(array) => {
-                    return Ok(ResolvedPath::Array {
-                        origin: Box::new(ResolvedPath::Spec(*self)),
-                        element: Box::new(ResolvedPath::Spec(*array.of_type)),
-                    });
-                }
-                _ => {
-                    return Err(AccessError::NotAnArray {
-                        ty: ResolvedPath::Spec(*self),
-                        expr: *step.get_expr(),
-                    });
-                }
+                SpecKind::Array(array) => Ok(origin.into_path_call(
+                    *expr,
+                    Adjustement::Array(Box::new(
+                        ResolvedPathKind::Spec(*array.of_type)
+                            .into_path_call(*expr, Adjustement::None),
+                    )),
+                )),
+                _ => Err(AccessError::NotAnArray {
+                    ty: ResolvedPathKind::Spec(*self).into_path_call(*expr, Adjustement::None),
+                    expr: *step.get_expr(),
+                }),
             },
         }
     }

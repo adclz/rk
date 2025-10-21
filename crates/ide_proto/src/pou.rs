@@ -1,4 +1,5 @@
 use hir::{
+    TypeInfo,
     hir_def::{
         expressions::spec::{ElementarySpec, SpecKind},
         pous::pou::{Pou, PouDecl},
@@ -10,14 +11,13 @@ use auto_lsp::{
     core::document_symbols_builder::DocumentSymbolsBuilder,
     default::db::BaseDatabase,
     lsp_types::{
-        CodeLens, Command, CompletionItem, InlayHint, InlayHintKind, InlayHintLabel, LocationLink,
-        SymbolKind, request::GotoImplementationResponse,
+        request::{GotoDeclarationResponse, GotoImplementationResponse}, CodeLens, Command, CompletionItem, GotoDefinitionResponse, Hover, HoverContents, InlayHint, InlayHintKind, InlayHintLabel, Location, LocationLink, MarkupContent, MarkupKind, SymbolKind
     },
 };
 use hir::HirNodeInfo;
 use serde_json::to_value;
 
-use crate::ToProtocol;
+use crate::{HasComment, ToProtocol};
 
 impl<'db> ToProtocol<'db> for PouDecl<'db> {
     fn document_symbols(&self, db: &'db dyn BaseDatabase, builder: &mut DocumentSymbolsBuilder) {
@@ -134,7 +134,7 @@ impl<'db> ToProtocol<'db> for PouDecl<'db> {
                     Pou::FunctionBlock(_) => "function block",
                     Pou::Class(_) => "class",
                     Pou::Interface(_) => "interface",
-                    Pou::DataType(_) => "data type",
+                    Pou::DataType(_) => None?,
                 },
                 self.name(db).text(db)
             )),
@@ -181,7 +181,7 @@ impl<'db> ToProtocol<'db> for PouDecl<'db> {
                             command: "rk.showImplementations".into(),
                             arguments: Some(vec![
                                 to_value(self.get_scope_id(db).file(db).url(db).as_str()).unwrap(),
-                                to_value(self.get_name_span(db).unwrap().lsp().start).unwrap(),
+                                to_value(self.name_span(db).lsp().start).unwrap(),
                             ]),
                         }),
                         data: None,
@@ -190,5 +190,54 @@ impl<'db> ToProtocol<'db> for PouDecl<'db> {
             }
             _ => None,
         }
+    }
+
+    fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Hover> {
+        let name_span = self.name_span(db);
+
+        // Return None if the offset is outside the name span
+        if offset < name_span.start_byte || offset >= name_span.end_byte {
+            return None;
+        }
+
+        let comment = self.get_comment(db).unwrap_or_default();
+        let kind = match self.pou(db) {
+            Pou::Function(_) => "FUNCTION".into(),
+            Pou::FunctionBlock(_) => "FUNCTION_BLOCK".into(),
+            Pou::Class(_) => "CLASS".into(),
+            Pou::Interface(_) => "INTERFACE".into(),
+            Pou::DataType(dt) => dt.spec(db).to_ty(db).type_name(db),
+        };
+
+        let name = self.name(db).text(db);
+        let return_type = match self.pou(db) {
+            Pou::Function(f) => f
+                .return_type(db)
+                .and_then(|spec| Some(format!(": {}", spec.to_ty(db).type_name(db))))
+                .unwrap_or_default(),
+            _ => "".to_string(),
+        };
+
+        Some(Hover {
+            contents: HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: format!(
+                    r#"
+{comment}
+```iecst
+[{kind}] {name}{return_type}
+```
+                "#
+                ),
+            }),
+            range: Some(self.get_span(db).into()),
+        })
+    }
+
+    fn definition(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDefinitionResponse> {
+        Some(GotoDefinitionResponse::Scalar(Location::new(
+            self.scope_id(db).file(db).url(db).to_owned(),
+            self.get_span(db).into(),
+        )))
     }
 }

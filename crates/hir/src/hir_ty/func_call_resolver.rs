@@ -2,16 +2,25 @@ use auto_lsp::default::db::BaseDatabase;
 use indexmap::IndexMap;
 
 use crate::{
-    check::errors::path_error::AccessError, hir_def::{
-        expressions::{expression::{FuncCall, ParamAssign}, spec::Spec}, interned::identifier::{Ident, SpanIdent}, pous::variable::VariableDecl, scope::FileScopeId
-    }, hir_ty::{
+    AstId, HirNodeInfo,
+    check::errors::path_error::AccessError,
+    hir_def::{
+        expressions::{
+            expression::{FuncCall, ParamAssign},
+            spec::Spec,
+        },
+        interned::identifier::{Ident, SpanIdent},
+        pous::variable::VariableDecl,
+        scope::FileScopeId,
+    },
+    hir_ty::{
         expr_resolver::ResolvedExpr,
         param_resolver::resolve_parameters,
         signatures::LocalVariables,
         ty::Ty,
-        ty_var_access_resolver::{resolve_path_expr, CallSite, ResolvedAccess},
-        walk::ResolvedPath,
-    }, AstId, HirNodeInfo
+        ty_var_access_resolver::{CallSite, ResolvedAccess, resolve_path_expr},
+        walk::{ResolvedPath, ResolvedPathKind},
+    },
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -21,22 +30,18 @@ pub struct ResolvedFuncCall<'db> {
 }
 
 impl<'db> ResolvedFuncCall<'db> {
-    pub fn to_ty(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-    ) -> Result<Ty<'db>, AccessError<'db>> {
-        self.target.resolved(db).and_then(|r| r.try_to_try(db))
+    pub fn to_ty(&'db self, db: &'db dyn BaseDatabase) -> Result<Ty<'db>, AccessError<'db>> {
+        self.target.fully_resolved(db).and_then(|r| r.try_to_ty(db))
     }
-
-    pub fn is_callable(&self, db: &'db dyn BaseDatabase) -> bool {
-        self.target.is_callable(db)
-    }
-
+    
     pub fn with_return_type(&self, db: &'db dyn BaseDatabase) -> Option<Spec<'db>> {
         self.target.with_return_type(db)
     }
 
-    pub fn callable(&self, db: &'db dyn BaseDatabase) -> Option<&'db IndexMap<Ident, VariableDecl<'db>>> {
+    pub fn callable(
+        &self,
+        db: &'db dyn BaseDatabase,
+    ) -> Option<&'db IndexMap<Ident, VariableDecl<'db>>> {
         self.target.callable(db)
     }
 }
@@ -47,9 +52,15 @@ impl<'db> FuncCall<'db> {
 
         ResolvedFuncCall {
             target,
-            params: match target.resolved(db) {
-                Ok(ResolvedPath::Pou(pou)) => resolve_parameters(db, pou, &self.params),
-                Ok(ResolvedPath::Method(method)) => resolve_parameters(db, method, &self.params),
+            params: match target.fully_resolved(db) {
+                Ok(ResolvedPath {
+                    kind: ResolvedPathKind::Pou(pou),
+                    ..
+                }) => resolve_parameters(db, pou, &self.params),
+                Ok(ResolvedPath {
+                    kind: ResolvedPathKind::Method(method),
+                    ..
+                }) => resolve_parameters(db, method, &self.params),
                 _ => Default::default(),
             },
         }

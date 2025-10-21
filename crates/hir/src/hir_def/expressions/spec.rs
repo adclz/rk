@@ -1,5 +1,7 @@
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
+use crate::hir_ty::array_resolver::resolve_range;
+use auto_lsp::core::span::Span;
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::hir_def::expressions::expression::{InitExpr, VariableAccess};
@@ -26,35 +28,6 @@ pub struct Spec<'db> {
     pub id: AstId,
 
     pub scope_id: FileScopeId<'db>,
-}
-
-impl<'db> Spec<'db> {
-    pub fn shorthand(&'db self, db: &'db dyn BaseDatabase) -> String {
-        match self.kind(db) {
-            SpecKind::Target(target) => {
-                let sema = semantic_index(db, self.scope_id(db).file(db));
-                match resolve_namespace_access(db, self.scope_id(db), target.path) {
-                    Some(pou) => pou.name(db).text(db).to_string(),
-                    None => "{unknown}".to_string(),
-                }
-            }
-            SpecKind::Ref(ref_name) => {
-                format!("REF_TO {}", ref_name.shorthand(db))
-            }
-            SpecKind::Simple(el) => el.type_name(db),
-            SpecKind::Struct(s) => format!("STRUCT"),
-            SpecKind::Array(a) => format!("ARRAY OF {}", a.of_type.shorthand(db)),
-            SpecKind::ArrayConformand(a) => format!("ARRAY[*] OF {}", a.shorthand(db)),
-            SpecKind::Subrange(sr) => format!("SUBRANGE"),
-            SpecKind::Enum(e) => {
-                if let Some(typ) = &e.typ {
-                    format!("ENUM {}", typ.shorthand(db))
-                } else {
-                    "ENUM".to_string()
-                }
-            }
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -141,7 +114,8 @@ impl<'db> ElementarySpec {
             ElementarySpec::LTime => "LTIME",
             ElementarySpec::Tod => "TOD",
             ElementarySpec::LTod => "LTOD",
-        }.into()
+        }
+        .into()
     }
 }
 
@@ -180,6 +154,12 @@ pub struct StructElement<'db> {
     pub name_id: AstId,
 
     pub scope_id: FileScopeId<'db>,
+}
+
+impl<'db> StructElement<'db> {
+    pub fn name_span(&self, db: &'db dyn BaseDatabase) -> Span {
+        self.get_name_span(db).unwrap()
+    }
 }
 
 impl<'db> HirNodeInfo<'db> for StructElement<'db> {
@@ -221,4 +201,140 @@ pub struct SubRange<'db> {
     pub _type: Box<Spec<'db>>,
     pub lower: Expr<'db>,
     pub upper: Expr<'db>,
+}
+
+impl<'db> Spec<'db> {
+    pub fn type_name(&self, db: &'db dyn BaseDatabase) -> String {
+        match self.kind(db) {
+            SpecKind::Simple(elem) => match elem {
+                ElementarySpec::Bool => "BOOL",
+                ElementarySpec::REDGEBool => "BOOL (RISING EDGE)",
+                ElementarySpec::FEDGEBool => "BOOl (FALLING EDGE)",
+                ElementarySpec::Byte => "BYTE",
+                ElementarySpec::Word => "WORD",
+                ElementarySpec::DWord => "DWORD",
+                ElementarySpec::LWord => "LWORD",
+                ElementarySpec::SInt => "SINT",
+                ElementarySpec::USInt => "USINT",
+                ElementarySpec::UInt => "UINT",
+                ElementarySpec::Int => "INT",
+                ElementarySpec::DInt => "DINT",
+                ElementarySpec::UDInt => "UDINT",
+                ElementarySpec::LInt => "LINT",
+                ElementarySpec::ULInt => "ULINT",
+                ElementarySpec::Real => "REAL",
+                ElementarySpec::LReal => "LREAL",
+                ElementarySpec::String => "STRING",
+                ElementarySpec::WString => "WSTRING",
+                ElementarySpec::Char => "CHAR",
+                ElementarySpec::WChar => "WCHAR",
+                ElementarySpec::Date => "DATE",
+                ElementarySpec::LDate => "LDATE",
+                ElementarySpec::Dt => "DT",
+                ElementarySpec::Ldt => "LDT",
+                ElementarySpec::Time => "TIME",
+                ElementarySpec::LTime => "LTIME",
+                ElementarySpec::Tod => "TOD",
+                ElementarySpec::LTod => "LTOD",
+            }
+            .into(),
+            SpecKind::Enum(_) => "ENUM".into(),
+            SpecKind::Struct(_) => "STRUCT".into(),
+
+            _ => self.full_type_name(db),
+        }
+    }
+
+    pub fn full_type_name(&self, db: &'db dyn BaseDatabase) -> String {
+        match self.kind(db) {
+            SpecKind::Simple(elem) => match elem {
+                ElementarySpec::Bool => "BOOL",
+                ElementarySpec::REDGEBool => "BOOL (RISING EDGE)",
+                ElementarySpec::FEDGEBool => "BOOl (FALLING EDGE)",
+                ElementarySpec::Byte => "BYTE (0..255)",
+                ElementarySpec::Word => "WORD (0..65535)",
+                ElementarySpec::DWord => "DWORD (0..4294967295)",
+                ElementarySpec::LWord => "LWORD (0..18446744073709551615)",
+                ElementarySpec::SInt => "SINT (-128..127)",
+                ElementarySpec::USInt => "USINT (0..255)",
+                ElementarySpec::UInt => "UINT (0..65535)",
+                ElementarySpec::Int => "INT (-32768..32767)",
+                ElementarySpec::DInt => "DINT (-2147483648..2147483647)",
+                ElementarySpec::UDInt => "UDINT (0..4294967295)",
+                ElementarySpec::LInt => "LINT (-9223372036854775808..9223372036854775807)",
+                ElementarySpec::ULInt => "ULINT (0..18446744073709551615)",
+                ElementarySpec::Real => "REAL (approx. ±1.5 x 10^-45 to ±3.4 x 10^38)",
+                ElementarySpec::LReal => "LREAL (approx. ±5.0 x 10^-324 to ±1.7 x 10^308)",
+                ElementarySpec::String => "STRING (0 to 255 characters)",
+                ElementarySpec::WString => "WSTRING (0 to 255 wide characters)",
+                ElementarySpec::Char => "CHAR (single 8-bit character)",
+                ElementarySpec::WChar => "WCHAR (single 16-bit wide character)",
+                ElementarySpec::Date => "DATE (January 1, 1970 to December 31, 2262)",
+                ElementarySpec::LDate => "LDATE (January 1, 0001 to December 31, 9999)",
+                ElementarySpec::Dt => "DT (Date and Time)",
+                ElementarySpec::Ldt => "LDT (Long Date and Time)",
+                ElementarySpec::Time => {
+                    "TIME (0 to 24 days, 20 hours, 31 minutes, 23 seconds, and 647 milliseconds)"
+                }
+                ElementarySpec::LTime => {
+                    "LTIME (0 to 49 days, 17 hours, 27 minutes, 15 seconds, and 808 milliseconds)"
+                }
+                ElementarySpec::Tod => "TOD (Time of Day)",
+                ElementarySpec::LTod => "LTOD (Long Time of Day)",
+            }
+            .into(),
+            SpecKind::Array(array) => {
+                let elem_type = array.of_type.type_name(db);
+                let dimensions: Vec<String> = array
+                    .subranges
+                    .iter()
+                    .map(|(lower, upper)| {
+                        let lower = resolve_range(db, *lower)
+                            .map(|n| n.to_string())
+                            .unwrap_or_default();
+                        let upper = resolve_range(db, *upper)
+                            .map(|n| n.to_string())
+                            .unwrap_or_default();
+                        format!("[{}..{}]", lower, upper)
+                    })
+                    .collect();
+                format!("ARRAY {} OF {}", dimensions.join(" "), elem_type)
+            }
+            SpecKind::Enum(enm) => format!("ENUM ({} members)", enm.variants.len()),
+            SpecKind::Subrange(subrange) => {
+                let lower = resolve_range(db, subrange.lower)
+                    .map(|n| n.to_string())
+                    .unwrap_or_default();
+
+                let upper = resolve_range(db, subrange.upper)
+                    .map(|n| n.to_string())
+                    .unwrap_or_default();
+
+                format!("SUBRANGE ({}..{})", lower, upper)
+            }
+            SpecKind::Struct(ztruct) => {
+                format!("STRUCT ({} fields)", ztruct.elements.len())
+            }
+            SpecKind::Target(target) => {
+                match resolve_namespace_access(db, target.scope_id, target.path) {
+                    Some(pou) => {
+                        format!(
+                            "{}: {}",
+                            pou.name(db).text(db),
+                            match pou.pou(db) {
+                                Pou::Function(_) => "FUNCTION".into(),
+                                Pou::FunctionBlock(_) => "FUNCTION_BLOCK".into(),
+                                Pou::Class(_) => "CLASS".into(),
+                                Pou::Interface(_) => "INTERFACE".into(),
+                                Pou::DataType(dt) => dt.spec(db).type_name(db),
+                            }
+                        )
+                    }
+                    None => "{unknown}".into(),
+                }
+            }
+            SpecKind::ArrayConformand(_) => "ARRAY*".into(),
+            SpecKind::Ref(_ref) => format!("REF_TO {}", _ref.type_name(db)),
+        }
+    }
 }

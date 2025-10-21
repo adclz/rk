@@ -6,23 +6,43 @@ use auto_lsp::{
         request::{GotoDeclarationResponse, GotoImplementationResponse},
     },
 };
-use hir::{HirNodeInfo, hir_def::semantic_index::HirNode};
+use hir::{
+    HirNodeInfo,
+    hir_def::{comment_index::comment_index, semantic_index::HirNode},
+};
 
 pub mod completions;
-pub mod method_ref; 
+pub mod lazy_resolved;
+pub mod method_ref;
 pub mod namespace;
 pub mod pou;
 pub mod resolved_expr;
 pub mod resolved_init_expr;
 pub mod resolved_param;
 pub mod resolved_path_element;
+pub mod resolved_ref_value;
 pub mod resolved_stmt;
-pub mod resolved_var_access;
-pub mod using;
-pub mod variable;
 pub mod resolved_using;
+pub mod resolved_var_access;
 pub mod spec;
 pub mod struct_element;
+pub mod using;
+pub mod variable;
+
+pub trait HasComment<'db>: HirNodeInfo<'db> {
+    fn get_comment(&'db self, db: &'db dyn BaseDatabase) -> Option<String> {
+        let comment = match comment_index(db, self.get_scope_id(db).file(db)).find_nearby_comment(
+            self.get_scope_id(db).file(db).document(db),
+            &self.get_span(db),
+        ) {
+            Some(c) => c.to_string(self.get_scope_id(db).file(db).document(db)),
+            None => "".to_string(),
+        };
+        Some(comment)
+    }
+}
+
+impl<'db, T> HasComment<'db> for T where T: HirNodeInfo<'db> {}
 
 pub trait ToProtocol<'db>: HirNodeInfo<'db> {
     fn document_symbols(&self, _db: &'db dyn BaseDatabase, _builder: &mut DocumentSymbolsBuilder) {}
@@ -68,6 +88,7 @@ impl<'db> AsProtocol<'db> for HirNode<'db> {
     fn as_proto(&'db self) -> &'db dyn ToProtocol<'db> {
         match self {
             HirNode::Namespace(ns) => ns,
+            HirNode::SpanNamespaceAccess(s) => s,
             HirNode::PouDecl(p) => p,
             HirNode::VariableDecl(v) => v,
             HirNode::StructElement(s) => s,
@@ -80,6 +101,7 @@ impl<'db> AsProtocol<'db> for HirNode<'db> {
             HirNode::ResolvedExpr(e) => e,
             HirNode::ResolvedParam(p) => p,
             HirNode::ResolvedStmt(s) => s,
+            HirNode::ResolvedRefValue(r) => r,
         }
     }
 }

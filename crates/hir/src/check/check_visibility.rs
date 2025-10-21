@@ -1,19 +1,27 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    builder::invocation, check::errors::{
+    HirNodeInfo,
+    builder::invocation,
+    check::errors::{
         analysis_error::AnalysisError, inheritance::MethodError, visibility::VisibilityError,
-    }, hir_def::{
+    },
+    hir_def::{
         expressions::invocation::Invocation,
+        interned::identifier::Ident,
         namespace::NamespaceDecl,
-        pous::{class::MethodDecl, pou::Pou},
+        pous::{class::MethodDecl, pou::Pou, variable::VariableDecl},
         scope::{FileScopeId, ScopeKind},
         semantic_index::semantic_index,
         visibility::Visibility,
-    }, hir_ty::{
+    },
+    hir_ty::{
+        func_call_resolver::ResolvedFuncCall,
+        inheritance_solver::MethodRef,
         invocation_resolver::ResolvedInvocation,
-        ty::{Ty, TyKind}, ty_var_access_resolver::ResolvedAccess,
-    }, HirNodeInfo
+        ty::{Ty, TyKind},
+        ty_var_access_resolver::ResolvedAccess,
+    },
 };
 
 /*
@@ -35,16 +43,67 @@ Variable access specifiers
 11c INTERNAL specifier The variable may only be accessed from inside the same
 namespace.
 11d PROTECTED specifier The variable may only be accessed from inside the defining POU
-and its derivations (default). 
+and its derivations (default).
 */
+
+#[derive(Debug, Clone, PartialEq, Eq, salsa::Update, salsa::Supertype)]
+pub enum CallableType<'db> {
+    Method(MethodRef<'db>),
+    Variable(VariableDecl<'db>),
+}
+
+impl<'db> CallableType<'db> {
+    pub fn name(&self, db: &'db dyn BaseDatabase) -> &'db Ident {
+        match self {
+            Self::Method(m) => m.name(db),
+            Self::Variable(v) => v.name(db),
+        }
+    }
+
+    pub fn visibility(&self, db: &'db dyn BaseDatabase) -> Visibility {
+        match self {
+            Self::Method(m) => m.visibility(db),
+            Self::Variable(v) => Visibility::PUBLIC, // todo
+        }
+    }
+}
+
+impl<'db> From<MethodRef<'db>> for CallableType<'db> {
+    fn from(value: MethodRef<'db>) -> Self {
+        Self::Method(value)
+    }
+}
+
+impl<'db> From<VariableDecl<'db>> for CallableType<'db> {
+    fn from(value: VariableDecl<'db>) -> Self {
+        Self::Variable(value)
+    }
+}
+
+impl<'db> HirNodeInfo<'db> for CallableType<'db> {
+    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> crate::AstId {
+        match self {
+            Self::Method(m) => m.get_id(db),
+            Self::Variable(v) => v.get_id(db),
+        }
+    }
+
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+        match self {
+            Self::Method(m) => m.get_scope_id(db),
+            Self::Variable(v) => v.get_scope_id(db),
+        }
+    }
+}
+
 pub fn check_call_visibility<'db>(
     db: &'db dyn BaseDatabase,
-    accessed: &'db ResolvedAccess<'db>,
+    accessed: CallableType<'db>,
     call_site: &'db impl HirNodeInfo<'db>,
     errors: &mut Vec<AnalysisError<'db>>,
 ) {
     let calling_scope = call_site.get_scope_id(db);
-    let method_visibility =  accessed.visibility(db);
+    let method_visibility = accessed.visibility(db);
     let method_scope = accessed.get_scope_id(db);
 
     // PUBLIC methods can be called from anywhere
@@ -57,7 +116,7 @@ pub fn check_call_visibility<'db>(
         if calling_scope != method_scope {
             errors.push(
                 VisibilityError::PrivateMethod {
-                    method: *accessed,
+                    method: accessed,
                     call_site: call_site.get_span(db),
                 }
                 .into(),
@@ -74,7 +133,7 @@ pub fn check_call_visibility<'db>(
             _ => {
                 errors.push(
                     VisibilityError::InternalMethod {
-                        method: *accessed,
+                        method: accessed,
                         result,
                         call_site: call_site.get_span(db),
                     }
@@ -90,7 +149,7 @@ pub fn check_call_visibility<'db>(
         if !is_derived_pou(db, calling_scope, method_scope) {
             errors.push(
                 VisibilityError::ProtectedMethod {
-                    method: *accessed,
+                    method: accessed,
                     call_site: call_site.get_span(db),
                 }
                 .into(),
@@ -122,9 +181,7 @@ fn is_derived_pou<'db>(
             child
                 .inheritors(db)
                 .iter()
-                .any(|inheritor| {
-                    *inheritor == parent
-                })
+                .any(|inheritor| *inheritor == parent)
         }
         _ => return false, // One or both are not POUs
     }

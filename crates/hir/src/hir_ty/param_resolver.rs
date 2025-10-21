@@ -5,7 +5,7 @@ use crate::{
     hir_ty::{
         expr_resolver::resolve_expr, func_call_resolver::{ResolvedParam, ResolvedParamKind}, signatures::LocalVariables, ty::Ty, ty_var_access_resolver::{
             resolve_var_access, CallSite, ResolvedAccess
-        }, walk::{ResolvedPath, ResolvedPathElement, ResolvedPathResult}
+        }, walk::{Adjustement, ResolvedPath, ResolvedPathElement, ResolvedPathKind, ResolvedPathResult}
     },
 };
 
@@ -31,8 +31,11 @@ pub fn resolve_parameters<'db>(
                             param.map(|p| {
                                 ResolvedAccess::new(
                                     db,
-                                    CallSite::NonFormal(value),
-                                    ResolvedPathResult::Ok(ResolvedPath::Variable(*p)),
+                                    ResolvedPathResult::Ok(ResolvedPath {
+                                            kind: ResolvedPathKind::Variable(*p),
+                                            expr: CallSite::NonFormal(value),
+                                            adjustement: Adjustement::None
+                                        }),
                                     vec![]
                                 )
                             })
@@ -54,8 +57,11 @@ pub fn resolve_parameters<'db>(
                             .map(|p| {
                                 ResolvedAccess::new(
                                     db,
-                                    CallSite::Formal(param),
-                                    ResolvedPathResult::Ok(ResolvedPath::Variable(*p)),
+                                    ResolvedPathResult::Ok(ResolvedPath {
+                                            kind: ResolvedPathKind::Variable(*p),
+                                            expr: CallSite::Formal(param),
+                                            adjustement: Adjustement::None
+                                        }),
                                     vec![]
                                 )
                             })
@@ -81,8 +87,11 @@ pub fn resolve_parameters<'db>(
                             .map(|p| {
                                 ResolvedAccess::new(
                                     db,
-                                    CallSite::Formal(param),
-                                    ResolvedPathResult::Ok(ResolvedPath::Variable(*p)),
+                                    ResolvedPathResult::Ok(ResolvedPath {
+                                            kind: ResolvedPathKind::Variable(*p),
+                                            expr: CallSite::Formal(param),
+                                            adjustement: Adjustement::None
+                                        }),
                                     vec![]
                                 )
                             })

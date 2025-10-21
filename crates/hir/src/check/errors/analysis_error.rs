@@ -5,7 +5,7 @@ use auto_lsp::{core::errors::PositionError, default::db::BaseDatabase};
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::check::errors::{
-    array::ArrayError, duplicates::DuplicateError, enum_::EnumError, inheritance::MethodError, init_expr::InitExprError, scope::NamespaceError, stmt::StmtError, subrange::SubRangeError, syntax::SyntaxError, visibility::VisibilityError
+    array::ArrayError, duplicates::DuplicateError, enum_::EnumError, inheritance::MethodError, init_expr::InitExprError, path_error::AccessError, scope::NamespaceError, stmt::StmtError, subrange::SubRangeError, syntax::SyntaxError, visibility::VisibilityError
 };
 
 pub trait ToIdeDiagnostic<'db> {
@@ -26,6 +26,7 @@ pub enum AnalysisError<'db> {
     SubRangeError(SubRangeError<'db>),
     EnumError(EnumError<'db>),
     VisibilityError(VisibilityError<'db>),
+    AccessError(AccessError<'db>)
 }
 
 impl Error for AnalysisError<'_> {}
@@ -56,6 +57,7 @@ impl<'db> ToIdeDiagnostic<'db> for AnalysisError<'db> {
             Self::SubRangeError(err) => err.to_diagnostic(db),
             Self::EnumError(err) => err.to_diagnostic(db),
             Self::VisibilityError(err) => err.to_diagnostic(db),
+            Self::AccessError(err) => err.to_diagnostic(db),
         }
     }
 }

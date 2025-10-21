@@ -1,7 +1,19 @@
 use auto_lsp::default::db::BaseDatabase;
 use indexmap::IndexMap;
 
-use crate::{hir_def::{interned::identifier::Ident, pous::{pou::{Pou, PouDecl}, variable::{VariableDecl, VariableKind}}}, hir_ty::inheritance_solver::MethodRef};
+use crate::{
+    hir_def::{
+        interned::identifier::Ident,
+        pous::{
+            class::Class,
+            function::Function,
+            function_block::FunctionBlock,
+            pou::{Pou, PouDecl},
+            variable::{VariableDecl, VariableKind},
+        },
+    },
+    hir_ty::inheritance_solver::MethodRef,
+};
 
 #[salsa::tracked]
 impl<'db> PouDecl<'db> {
@@ -10,7 +22,7 @@ impl<'db> PouDecl<'db> {
         match self.pou(db) {
             Pou::Function(f) => global_variables(db, f.variables(db)),
             Pou::FunctionBlock(fb) => global_variables(db, fb.variables(db)),
-            Pou::Class(cl) =>  global_variables(db, cl.variables(db)),
+            Pou::Class(cl) => global_variables(db, cl.variables(db)),
             Pou::Interface(_) | Pou::DataType(_) => IndexMap::default(),
         }
     }
@@ -27,10 +39,34 @@ impl<'db> LocalVariables<'db> for PouDecl<'db> {
         match self.pou(db) {
             Pou::Function(f) => local_variables(db, f.variables(db)),
             Pou::FunctionBlock(fb) => local_variables(db, fb.variables(db)),
-            Pou::Class(cl) =>  local_variables(db, cl.variables(db)),
+            Pou::Class(cl) => local_variables(db, cl.variables(db)),
             Pou::Interface(_) | Pou::DataType(_) => IndexMap::default(),
         }
-    }    
+    }
+}
+
+#[salsa::tracked]
+impl<'db> LocalVariables<'db> for Function<'db> {
+    #[salsa::tracked(returns(ref))]
+    fn local_variables(self, db: &'db dyn BaseDatabase) -> IndexMap<Ident, VariableDecl<'db>> {
+        local_variables(db, self.variables(db))
+    }
+}
+
+#[salsa::tracked]
+impl<'db> LocalVariables<'db> for FunctionBlock<'db> {
+    #[salsa::tracked(returns(ref))]
+    fn local_variables(self, db: &'db dyn BaseDatabase) -> IndexMap<Ident, VariableDecl<'db>> {
+        local_variables(db, self.variables(db))
+    }
+}
+
+#[salsa::tracked]
+impl<'db> LocalVariables<'db> for Class<'db> {
+    #[salsa::tracked(returns(ref))]
+    fn local_variables(self, db: &'db dyn BaseDatabase) -> IndexMap<Ident, VariableDecl<'db>> {
+        local_variables(db, self.variables(db))
+    }
 }
 
 #[salsa::tracked]

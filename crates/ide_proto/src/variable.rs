@@ -1,10 +1,19 @@
 use auto_lsp::{
-    core::document_symbols_builder::DocumentSymbolsBuilder, default::db::BaseDatabase,
-    lsp_types::SymbolKind,
+    core::document_symbols_builder::DocumentSymbolsBuilder,
+    default::db::BaseDatabase,
+    lsp_types::{
+        request::GotoDeclarationResponse, GotoDefinitionResponse, Hover, HoverContents, Location, MarkupContent, MarkupKind, SymbolKind
+    },
 };
-use hir::{HirNodeInfo, hir_def::pous::variable::VariableDecl};
+use hir::{
+    HirNodeInfo, TypeInfo,
+    hir_def::{
+        comment_index::comment_index,
+        pous::variable::{VariableDecl, VariableKind},
+    },
+};
 
-use crate::ToProtocol;
+use crate::{HasComment, ToProtocol};
 
 impl<'db> ToProtocol<'db> for VariableDecl<'db> {
     fn document_symbols(&self, db: &'db dyn BaseDatabase, builder: &mut DocumentSymbolsBuilder) {
@@ -18,5 +27,49 @@ impl<'db> ToProtocol<'db> for VariableDecl<'db> {
             children: None,
             tags: None,
         });
+    }
+
+    fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Hover> {
+        let comment = self.get_comment(db).unwrap_or_default();
+        let kind = match self.kind(db) {
+            VariableKind::Input => "INPUT",
+            VariableKind::Output => "OUTPUT",
+            VariableKind::InOut => "IN_OUT",
+            VariableKind::Var => "VAR",
+            VariableKind::External => "EXTERNAL",
+            VariableKind::Global => "GLOBAL",
+            VariableKind::Access => "ACCESS",
+            VariableKind::Config => "CONFIG",
+            VariableKind::Temp => "TEMP",
+        };
+
+        let name = self.name(db).text(db);
+        let type_name = self.spec(db).to_ty(db).type_name(db);
+
+        Some(Hover {
+            contents: HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: format!(
+                    r#"
+{comment}
+```iecst
+({kind}) {name}: {type_name}
+```
+                "#
+                ),
+            }),
+            range: Some(self.get_span(db).into()),
+        })
+    }
+
+    fn declaration(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDeclarationResponse> {
+        Some(GotoDeclarationResponse::Scalar(Location::new(
+            self.scope_id(db).file(db).url(db).to_owned(),
+            self.get_span(db).into(),
+        )))
+    }
+
+    fn definition(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDefinitionResponse> {
+        self.spec(db).definition(db)
     }
 }

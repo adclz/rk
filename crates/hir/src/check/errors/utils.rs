@@ -1,11 +1,7 @@
 use auto_lsp::default::db::BaseDatabase;
 use ide_diagnostic::{IdeDiagnostic, Related};
 
-use crate::{HirNodeInfo, check::recovery::pou::FuzzyResult, hir_ty::ty::Ty};
-
-pub fn get_def_for_ty(db: &dyn BaseDatabase, ty: Ty<'_>, diag: &mut IdeDiagnostic) {
-    
-}
+use crate::{check::recovery::pou::FuzzyResult, hir_ty::ty::Ty, HirNodeInfo, TypeInfo};
 
 pub fn get_candidates(candidates: &FuzzyResult) -> String {
     let mut result = String::new();

@@ -52,7 +52,7 @@ impl<'db> ToProtocol<'db> for ResolvedInitExpr<'db> {
     ) -> Option<auto_lsp::lsp_types::Hover> {
         match self.kind(db) {
             ResolvedInitExprKind::ConstantExpr(expr) => expr.hover(db, offset),
-            ResolvedInitExprKind::StructElement { field, value } => field.hover(db, offset),
+            ResolvedInitExprKind::StructElement { field, .. } => field.hover(db, offset),
             _ => None,
         }
     }

@@ -3,10 +3,10 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     check::{
-        check_init_expr::check_init_expr, check_semantic_index::{Check, DataTypeCheck}, errors::{analysis_error::AnalysisError, duplicates::DuplicateError, init_expr}
+        check_init_expr::check_init_expr, check_semantic_index::{Check, DataTypeCheck}, errors::{analysis_error::AnalysisError, duplicates::DuplicateError, init_expr, path_error::AccessError}
     },
     hir_def::{expressions::spec::{Struct, StructElement}, interned::identifier::Ident},
-    hir_ty::{init_expr_resolver::resolve_init_expr, ty::Ty},
+    hir_ty::{init_expr_resolver::resolve_init_expr, name_res::resolve_namespace_access, ty::{Ty, TyKind}},
 };
 
 impl<'db> DataTypeCheck<'db> for Struct<'db> {
@@ -28,9 +28,12 @@ impl<'db> DataTypeCheck<'db> for Struct<'db> {
                 }
             }
 
-            let field_ty = field.spec(db).to_ty(db);
+            if let TyKind::Err(err) = field.spec(db).to_ty(db).kind(db) {
+                errors.push(err.clone().into());
+            }
+
             if let Some(init_expr) = field.init(db) {
-                check_init_expr(db, field_ty, *resolve_init_expr(db, field_ty, init_expr), errors);
+                check_init_expr(db, field.spec(db).to_ty(db), *resolve_init_expr(db, field.spec(db).to_ty(db), init_expr), errors);
             }
         }
     }

@@ -3,7 +3,7 @@ use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
     check::errors::{
-            analysis_error::DiagnosticDescription, literals::LiteralErrorKind, path_error::AccessError, utils::get_def_for_ty,
+            analysis_error::DiagnosticDescription, literals::LiteralErrorKind, path_error::AccessError,
         }, hir_def::interned::identifier::SpanIdent, hir_ty::{expr_resolver::ResolvedExpr, ty::Ty}, TypeInfo
 };
 
@@ -239,7 +239,7 @@ impl<'db> DiagnosticDescription<'db> for ExprMismatch<'db> {
                 err.description(db)
             }
             ExprMismatchKind::ExprTypeMismatch { ty } => {
-                format!("expected {}, got {}", ty.type_name(db), self.expr.expr(db).to_string(db))
+                format!("expected '{}', got '{}'", ty.type_name(db), self.expr.expr(db).to_string(db))
             }
             ExprMismatchKind::VoidRhs { ty } => {
                 "right-hand side is void".to_string()
@@ -270,28 +270,29 @@ impl<'db> DiagnosticDescription<'db> for ExprMismatch<'db> {
     fn related(&self, db: &'db dyn BaseDatabase, diag: &mut IdeDiagnostic) {
         match &self.kind {
             ExprMismatchKind::TypeMismatch { err } => {
-                get_def_for_ty(db, err.ty1, diag);
-                get_def_for_ty(db, err.ty2, diag);
+                err.related(db, diag);
             }
             ExprMismatchKind::ExprTypeMismatch { ty } => {
-                get_def_for_ty(db, *ty, diag);
+                ty.diag_with_location(db, diag, Some(|type_name| format!("expected type '{}' here", type_name)));
             }
             ExprMismatchKind::Literal { ty, literal } => {
-                get_def_for_ty(db, *ty, diag);
+                ty.diag_with_location(db, diag, Some(|type_name| format!("expected type '{}' here", type_name)));
             }
             ExprMismatchKind::VoidRhs { ty } => {
-                get_def_for_ty(db, *ty, diag);
+                ty.diag_with_location(db, diag, Some(|type_name| format!("expected type '{}', which is not void", type_name)));
             }
             ExprMismatchKind::LhsIsNotABool { ty } => {
-                get_def_for_ty(db, *ty, diag);
+                ty.diag_with_location(db, diag, None);
             }
             ExprMismatchKind::InvalidEnumVariant { enum_ty, variant } => {
-                get_def_for_ty(db, *enum_ty, diag);
+                enum_ty.diag_with_location(db, diag, None);
             }
             ExprMismatchKind::SubRangeValueOutOfBounds { expr, subrange_ty, min, max, value } => {
-                get_def_for_ty(db, *subrange_ty, diag);
+                subrange_ty.diag_with_location(db, diag, None);
             }
-            _ => {}
+            ExprMismatchKind::UnresolvedPathError { err } => {
+                err.related(db, diag);
+            }
         }
     }
 }
@@ -299,14 +300,14 @@ impl<'db> DiagnosticDescription<'db> for ExprMismatch<'db> {
 impl<'db> DiagnosticDescription<'db> for TypeMismatch<'db> {
     fn description(&self, db: &'db dyn BaseDatabase) -> String {
         format!(
-            "expected {}, found {}",
+            "expected '{}', found '{}'",
             self.ty1.type_name(db),
             self.ty2.type_name(db)
         )
     }
 
     fn related(&self, db: &'db dyn BaseDatabase, diag: &mut IdeDiagnostic) {
-        get_def_for_ty(db, self.ty1, diag);
-        get_def_for_ty(db, self.ty2, diag);
+        self.ty1.diag_with_location(db, diag, Some(|type_name| format!("expected '{}' here", type_name)));
+        self.ty2.diag_with_location(db, diag, Some(|type_name| format!("... but found '{}' instead", type_name)));
     }
 }

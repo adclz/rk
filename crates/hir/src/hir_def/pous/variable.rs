@@ -1,4 +1,4 @@
-use auto_lsp::default::db::BaseDatabase;
+use auto_lsp::{core::span::Span, default::db::BaseDatabase};
 
 use crate::{
     hir_def::{
@@ -33,6 +33,10 @@ pub struct VariableDecl<'db> {
 }
 
 impl<'db> VariableDecl<'db> {
+    pub fn name_span(&self, db: &'db dyn BaseDatabase) -> Span {
+        self.get_name_span(db).unwrap()
+    }
+    
     pub fn is_input(&self, db: &'db dyn BaseDatabase) -> bool {
         matches!(self.kind(db), VariableKind::Input)
     }
