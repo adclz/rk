@@ -108,6 +108,7 @@ static NEW_LINES: &str = r#"
     "END_VAR"
     "END_METHOD"
 ] @append_hardline
+("USING" (_) ";" @append_hardline)
 
 [
     (assign)
@@ -124,17 +125,27 @@ static NEW_LINES: &str = r#"
     "CONTINUE"
 ] @prepend_spaced_softline
 
-(
+ (
   "," @append_spaced_softline
   .
   [(line_comment) (c_style_comment) (pascal_style_comment)]* @do_nothing
 )
 
 (
-  ";" @append_hardline
+  ";" @append_spaced_softline
   .
   [(line_comment) (c_style_comment) (pascal_style_comment)]* @do_nothing
+)  
+
+[(line_comment) (c_style_comment) (pascal_style_comment)] @prepend_input_softline
+
+(
+  [(line_comment) (c_style_comment) (pascal_style_comment)] @append_input_softline
+  .
+  [ "," ";" ]* @do_nothing
 )
+
+(stmt_list  ";" @do_nothing)
 
 [
     (line_comment)
@@ -257,6 +268,7 @@ static ALLOW_BLANK_LINE: &str = r#"
     "METHOD" "END_METHOD"
     "VAR" "END_VAR"
     "STRUCT" "END_STRUCT"
+    (line_comment) (c_style_comment) (pascal_style_comment)
 ] @allow_blank_line_before
 
 (stmt_list . (_) @allow_blank_line_before)
