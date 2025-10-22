@@ -7,6 +7,8 @@ use crate::hir_def::{
 pub struct DataType<'db> {
     pub spec: Spec<'db>,
 
+    #[tracked]
+    #[no_eq]
     pub init: Option<InitExpr<'db>>,
 
     pub scope_id: FileScopeId<'db>,

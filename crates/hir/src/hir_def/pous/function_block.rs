@@ -20,6 +20,8 @@ pub struct FunctionBlock<'db> {
     #[returns(ref)]
     pub methods: Vec<MethodDecl<'db>>,
 
+    #[tracked]
+    #[no_eq]
     #[returns(ref)]
     pub statements: Vec<Stmt<'db>>,
 

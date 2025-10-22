@@ -18,6 +18,8 @@ pub struct VariableDecl<'db> {
 
     pub spec: Spec<'db>,
 
+    #[tracked]
+    #[no_eq]
     #[returns(as_ref)]
     pub init: Option<InitExpr<'db>>,
 

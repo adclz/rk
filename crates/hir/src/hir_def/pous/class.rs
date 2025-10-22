@@ -48,6 +48,7 @@ pub struct MethodDecl<'db> {
 
     pub _override: bool,
 
+    #[tracked]
     #[no_eq]
     #[returns(ref)]
     pub stmts: Vec<Stmt<'db>>,
