@@ -14,7 +14,9 @@ use crate::{
 
 impl<'db> DataTypeCheck<'db> for SubRange<'db> {
     fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<AnalysisError<'db>>) {
-        match self._type.kind(db) {
+        let typ = self._type(db);
+
+        match typ.kind(db) {
             SpecKind::Simple(elementary) => match elementary {
                 ElementarySpec::Byte
                 | ElementarySpec::Word
@@ -29,23 +31,23 @@ impl<'db> DataTypeCheck<'db> for SubRange<'db> {
                 | ElementarySpec::LInt
                 | ElementarySpec::ULInt => {}
                 _ => {
-                    errors.push(SubRangeError::InvalidSubrangeType { typ: *self._type }.into());
+                    errors.push(SubRangeError::InvalidSubrangeType { typ }.into());
                     return;
                 }
             },
             _ => {
-                errors.push(SubRangeError::InvalidSubrangeType { typ: *self._type }.into());
+                errors.push(SubRangeError::InvalidSubrangeType { typ }.into());
                 return;
             }
         }
 
-        let min = resolve_expr(db, self.lower);
-        let max = resolve_expr(db, self.upper);
-        if let Err(err) = coerce_ty_with_expr(db, self._type.to_ty(db), min) {
+        let min = resolve_expr(db, self.lower(db));
+        let max = resolve_expr(db, self.upper(db));
+        if let Err(err) = coerce_ty_with_expr(db, typ.to_ty(db), min) {
             errors.push(SubRangeError::InvalidSubrangeStart { expr: min, err }.into())
         }
 
-        if let Err(err) = coerce_ty_with_expr(db, self._type.to_ty(db), max) {
+        if let Err(err) = coerce_ty_with_expr(db, typ.to_ty(db), max) {
             errors.push(SubRangeError::InvalidSubrangeEnd { expr: max, err }.into())
         }
     }

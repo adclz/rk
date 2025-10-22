@@ -379,10 +379,7 @@ impl<'db> ParseSpec<'db> for ast::generated::ArrayTypeSpec {
 
         Ok(Spec::new(
             sema.db,
-            SpecKind::Array(Array {
-                subranges: ranges,
-                of_type: Box::new(kind),
-            }),
+            SpecKind::Array(Array::new(sema.db, ranges, kind)),
             self.into(),
             sema.current_scope,
         ))
@@ -639,10 +636,7 @@ impl<'db> ParseSpec<'db> for ast::generated::StructTypeSpec {
 
         Ok(Spec::new(
             sema.db,
-            SpecKind::Struct(Struct {
-                elements,
-                overlap: self.overlap.is_some(),
-            }),
+            SpecKind::Struct(Struct::new(sema.db, self.overlap.is_some(), elements)),
             self.into(),
             sema.current_scope,
         ))
@@ -739,7 +733,7 @@ impl<'db> ParseSpec<'db> for ast::generated::EnumTypeSpec {
         }
         Ok(Spec::new(
             sema.db,
-            SpecKind::Enum(Enum { typ, variants }),
+            SpecKind::Enum(Enum::new(sema.db, typ, variants)),
             self.into(),
             sema.current_scope,
         ))
@@ -769,11 +763,7 @@ impl<'db> ParseSpec<'db> for ast::generated::SubrangeTypeSpec {
             .to_expr(sema)?;
         Ok(Spec::new(
             sema.db,
-            SpecKind::Subrange(SubRange {
-                _type: Box::new(spec),
-                lower,
-                upper,
-            }),
+            SpecKind::Subrange(SubRange::new(sema.db, spec, lower, upper)),
             self.into(),
             sema.current_scope,
         ))

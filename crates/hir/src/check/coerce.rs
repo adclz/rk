@@ -88,7 +88,7 @@ pub fn coerce_ty_with_expr<'db>(
         // Compare an Array with PathExpr (PathExpr should be an indexed access)
         (TyKind::Array(array), ResolvedExprKind::VarAccess(result)) => coerce_ty_with_ty(
             db,
-            array.of_type.to_ty(db),
+            array.of_type(db).to_ty(db),
             result
                 .try_to_ty(db)
                 .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?,
@@ -147,17 +147,17 @@ pub fn coerce_ty_with_expr<'db>(
         (TyKind::SubRange(subrange), _) => {
             // We do not return an error in case of failure to resolve the range bounds
             // as the error will be reported when checking the subrange type itself
-            let min = match resolve_range(db, subrange.lower) {
+            let min = match resolve_range(db, subrange.lower(db)) {
                 Some(v) => v,
                 None => return Ok(()),
             };
 
-            let max = match resolve_range(db, subrange.upper) {
+            let max = match resolve_range(db, subrange.upper(db)) {
                 Some(v) => v,
                 None => return Ok(()),
             };
 
-            match coerce_ty_with_expr(db, subrange._type.to_ty(db), target_expr) {
+            match coerce_ty_with_expr(db, subrange._type(db).to_ty(db), target_expr) {
                 Ok(()) => match resolve_range(db, target_expr.expr(db)) {
                     Some(integer) => {
                         if integer >= min && integer <= max {

@@ -50,8 +50,8 @@ pub fn check_init_expr<'db>(
             if let TyKind::Array(array) = ty.kind(db) {
                 check_array_dimensions(
                     db,
-                    &array.subranges,
-                    array.of_type.to_ty(db),
+                    &array.subranges(db),
+                    array.of_type(db).to_ty(db),
                     &values,
                     errors,
                 );

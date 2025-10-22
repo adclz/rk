@@ -128,7 +128,7 @@ impl<'db> HirNodeInfo<'db> for Spec<'db> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+#[salsa::tracked(debug)]
 pub struct Struct<'db> {
     pub overlap: bool,
     pub elements: Vec<StructElement<'db>>,
@@ -175,7 +175,7 @@ impl<'db> HirNodeInfo<'db> for StructElement<'db> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+#[salsa::tracked(debug)]
 pub struct Enum<'db> {
     pub typ: Option<Spec<'db>>,
     pub variants: Vec<EnumVariant<'db>>,
@@ -187,17 +187,17 @@ pub struct EnumVariant<'db> {
     pub value: Option<Expr<'db>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+#[salsa::tracked(debug)]
 pub struct Array<'db> {
     // lower - upper bounds
     pub subranges: Vec<(Expr<'db>, Expr<'db>)>,
-    pub of_type: Box<Spec<'db>>,
+    pub of_type: Spec<'db>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+#[salsa::tracked(debug)]
 pub struct SubRange<'db> {
     // Should be a INT
-    pub _type: Box<Spec<'db>>,
+    pub _type: Spec<'db>,
     pub lower: Expr<'db>,
     pub upper: Expr<'db>,
 }
@@ -283,9 +283,9 @@ impl<'db> Spec<'db> {
             }
             .into(),
             SpecKind::Array(array) => {
-                let elem_type = array.of_type.type_name(db);
+                let elem_type = array.of_type(db).type_name(db);
                 let dimensions: Vec<String> = array
-                    .subranges
+                    .subranges(db)
                     .iter()
                     .map(|(lower, upper)| {
                         let lower = resolve_range(db, *lower)
@@ -299,20 +299,20 @@ impl<'db> Spec<'db> {
                     .collect();
                 format!("ARRAY {} OF {}", dimensions.join(" "), elem_type)
             }
-            SpecKind::Enum(enm) => format!("ENUM ({} members)", enm.variants.len()),
+            SpecKind::Enum(enm) => format!("ENUM ({} members)", enm.variants(db).len()),
             SpecKind::Subrange(subrange) => {
-                let lower = resolve_range(db, subrange.lower)
+                let lower = resolve_range(db, subrange.lower(db))
                     .map(|n| n.to_string())
                     .unwrap_or_default();
 
-                let upper = resolve_range(db, subrange.upper)
+                let upper = resolve_range(db, subrange.upper(db))
                     .map(|n| n.to_string())
                     .unwrap_or_default();
 
                 format!("SUBRANGE ({lower}..{upper})")
             }
             SpecKind::Struct(ztruct) => {
-                format!("STRUCT ({} fields)", ztruct.elements.len())
+                format!("STRUCT ({} fields)", ztruct.elements(db).len())
             }
             SpecKind::Target(target) => {
                 match resolve_namespace_access(db, target.scope_id, target.path) {

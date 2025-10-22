@@ -160,7 +160,7 @@ impl<'db> ResolveExprCtx<'db> {
                         .map(|p| p.try_to_ty(self.db).map(|t| t.kind(self.db)))
                     {
                         enum_
-                            .variants
+                            .variants(self.db)
                             .iter()
                             .find(|v| v.name == variant.ident)
                             .cloned()

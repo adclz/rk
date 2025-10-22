@@ -14,7 +14,7 @@ use crate::{
 impl<'db> DataTypeCheck<'db> for Enum<'db> {
     fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<AnalysisError<'db>>) {
         // Check underlying type
-        if let Some(typ) = self.typ {
+        if let Some(typ) = self.typ(db) {
             match typ.kind(db) {
                 SpecKind::Simple(elementary) => match elementary {
                     ElementarySpec::Byte
@@ -36,7 +36,7 @@ impl<'db> DataTypeCheck<'db> for Enum<'db> {
         };
 
         let mut seen = FxHashMap::default();
-        for variant in &self.variants {
+        for variant in &self.variants(db) {
             // Check duplicate variant names
             match seen.get(&variant.name.ident) {
                 Some(prev) => errors.push(
@@ -52,7 +52,7 @@ impl<'db> DataTypeCheck<'db> for Enum<'db> {
             }
 
             // Check variant value type
-            if let (Some(value), Some(typ)) = (variant.value, self.typ) {
+            if let (Some(value), Some(typ)) = (variant.value, self.typ(db)) {
                 let value_expr = resolve_expr(db, value);
                 if let Err(err) = coerce_ty_with_expr(db, typ.to_ty(db), value_expr) {
                     errors.push(

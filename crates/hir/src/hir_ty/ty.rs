@@ -86,18 +86,6 @@ impl<'db> HirNodeInfo<'db> for Ty<'db> {
     }
 }
 
-impl<'db> Struct<'db> {
-    pub fn resolve_elements(
-        &self,
-        db: &'db dyn BaseDatabase,
-    ) -> FxHashMap<Ident, StructElement<'db>> {
-        self.elements
-            .iter()
-            .map(|element| (*element.name(db), *element))
-            .collect()
-    }
-}
-
 #[salsa::tracked]
 impl<'db> Ty<'db> {
     pub fn is_simple(&self, db: &'db dyn BaseDatabase) -> bool {
@@ -140,10 +128,10 @@ impl<'db> Spec<'db> {
     #[salsa::tracked]
     pub fn to_ty(self, db: &'db dyn BaseDatabase) -> Ty<'db> {
         let kind = match self.kind(db) {
-            SpecKind::Array(array) => TyKind::Array(array.clone()),
-            SpecKind::Enum(enum_spec) => TyKind::Enum(enum_spec.clone()),
-            SpecKind::Subrange(subrange) => TyKind::SubRange(subrange.clone()),
-            SpecKind::Struct(ztruct) => TyKind::Struct(ztruct.clone()),
+            SpecKind::Array(array) => TyKind::Array(*array),
+            SpecKind::Enum(enum_spec) => TyKind::Enum(*enum_spec),
+            SpecKind::Subrange(subrange) => TyKind::SubRange(*subrange),
+            SpecKind::Struct(ztruct) => TyKind::Struct(*ztruct),
             SpecKind::Simple(simple) => TyKind::Simple(*simple),
             SpecKind::ArrayConformand(array) => TyKind::ArrayConformand(*array),
             SpecKind::Ref(_ref) => TyKind::RefTo(*_ref),

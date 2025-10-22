@@ -11,7 +11,7 @@ use crate::{
 
 impl<'db> DataTypeCheck<'db> for Array<'db> {
     fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<AnalysisError<'db>>) {
-        for range in &self.subranges {
+        for range in &self.subranges(db) {
             let lower = resolve_expr(db, range.0);
             let upper = resolve_expr(db, range.1);
 

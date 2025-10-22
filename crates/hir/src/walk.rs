@@ -173,7 +173,7 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
             Pou::DataType(dt) => {
                 f(HirNode::Spec(dt.spec(db)))?;
                 if let SpecKind::Struct(st) = dt.spec(db).kind(db) {
-                    for field in &st.elements {
+                    for field in &st.elements(db) {
                         f(HirNode::StructElement(*field))?;
                     }
                 }

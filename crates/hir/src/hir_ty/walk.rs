@@ -407,7 +407,7 @@ impl<'db> Spec<'db> {
                 SpecKind::Array(array) => Ok(origin.into_path_call(
                     *expr,
                     Adjustement::Array(Box::new(
-                        ResolvedPathKind::Spec(*array.of_type)
+                        ResolvedPathKind::Spec(array.of_type(db))
                             .into_path_call(*expr, Adjustement::None),
                     )),
                 )),
