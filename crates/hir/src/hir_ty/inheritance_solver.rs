@@ -154,16 +154,8 @@ fn method_cycle<'db>(
 
 #[salsa::tracked(cycle_initial=method_initial, cycle_fn=method_cycle)]
 pub fn method_table<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Arc<Methods<'db>> {
-    let mut inherited_methods: std::collections::HashMap<
-        Ident,
-        InheritedMethod<'_>,
-        rustc_hash::FxBuildHasher,
-    > = FxHashMap::default();
-    let mut declared_methods: std::collections::HashMap<
-        Ident,
-        MethodRef<'db>,
-        rustc_hash::FxBuildHasher,
-    > = FxHashMap::default();
+    let mut inherited_methods= FxHashMap::default();
+    let mut declared_methods = FxHashMap::default();
 
     let mut inherited_duplicates: Vec<(InheritedMethod<'_>, InheritedMethod<'_>)> = vec![];
     let mut declared_duplicates: Vec<(MethodRef<'db>, MethodRef<'_>)> = vec![];

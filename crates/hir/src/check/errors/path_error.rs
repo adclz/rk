@@ -38,10 +38,6 @@ pub enum AccessError<'db> {
         ty: ResolvedPath<'db>,
         expr: PathExpr<'db>,
     },
-    MissingDeref {
-        ty: ResolvedPath<'db>,
-        expr: PathExpr<'db>,
-    },
     NotAnArray {
         ty: ResolvedPath<'db>,
         expr: PathExpr<'db>,
@@ -79,12 +75,6 @@ impl<'db> DiagnosticDescription<'db> for AccessError<'db> {
             AccessError::TypeHasNoField { ty, expr } => {
                 format!("type '{}' does not have fields", ty.decl_name(db))
             }
-            AccessError::MissingDeref { ty, expr } => {
-                format!(
-                    "type '{}' is a reference, maybe you forgot to dereference it ?",
-                    ty.decl_name(db)
-                )
-            }
             AccessError::NotAReference { ty, expr } => {
                 format!("type '{}' can not be dereferenced", ty.decl_name(db))
             }
@@ -110,9 +100,6 @@ impl<'db> DiagnosticDescription<'db> for AccessError<'db> {
             }
             AccessError::NoItemInScope { access } => {}
             AccessError::TypeHasNoField { ty, expr } => {
-                ty.diag_with_location(db, diag);
-            }
-            AccessError::MissingDeref { ty, expr } => {
                 ty.diag_with_location(db, diag);
             }
             AccessError::UnknownField { ty, expr } => {
@@ -142,7 +129,6 @@ impl<'db> ToIdeDiagnostic<'db> for AccessError<'db> {
                 AccessError::InvalidTypeAccess { access } => access.expr.get_span(db),
                 AccessError::UnknownField { expr, .. } => expr.get_span(db),
                 AccessError::TypeHasNoField { expr, .. } => expr.get_span(db),
-                AccessError::MissingDeref { expr, .. } => expr.get_span(db),
                 AccessError::NotAnArray { expr, .. } => expr.get_span(db),
                 AccessError::NotAReference { expr, .. } => expr.get_span(db),
             })

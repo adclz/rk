@@ -12,28 +12,41 @@ use crate::{
         interned::identifier::Ident,
         pous::{
             class::Class,
+            data_type::DataType,
             function::Function,
             function_block::FunctionBlock,
             interface::Interface,
-            pou::Pou,
+            pou::{Pou, PouDecl},
         },
         scope::FileScopeId,
     },
     hir_ty::name_res::resolve_namespace_access,
 };
 
-/// Resolved type of a [`Spec`]
-///
-/// For now Ty just wraps [`Spec`], but in the future it can represent more complex types.
-///
-/// Ty serves as a '
+/// [`Ty`] represents a type in the HIR.
+/// 
+/// It can be created from a [`Spec`] using the [`Spec::to_ty`] method.
+/// 
+/// Ty encapsulates both simple types (like elementary types, arrays, enums, structs)
+/// and complex types (like POUs: functions, function blocks, classes, interfaces).
+/// 
+/// Each Ty has a source, which is either a Spec or a POU declaration.
+/// 
+/// The purpose of Ty is to provide a unified representation of types in the HIR,
+/// allowing for easy type checking, coercion, and error reporting.
 #[salsa::tracked(debug)]
 pub struct Ty<'db> {
-    pub spec: Spec<'db>,
+    pub spec: TySource<'db>,
 
     #[tracked]
     #[returns(ref)]
     pub kind: TyKind<'db>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum TySource<'db> {
+    Spec(Spec<'db>),
+    Pou((Spec<'db>, PouDecl<'db>)),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
@@ -59,11 +72,17 @@ pub enum TyKind<'db> {
 
 impl<'db> HirNodeInfo<'db> for Ty<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
-        self.spec(db).get_id(db)
+        match self.spec(db) {
+            TySource::Spec(spec) => spec.get_id(db),
+            TySource::Pou((spec, pou)) => pou.name_id(db),
+        }
     }
 
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
-        self.spec(db).get_scope_id(db)
+        match self.spec(db) {
+            TySource::Spec(spec) => spec.get_scope_id(db),
+            TySource::Pou((spec, pou)) => spec.get_scope_id(db),
+        }
     }
 }
 
@@ -130,25 +149,39 @@ impl<'db> Spec<'db> {
             SpecKind::Ref(_ref) => TyKind::RefTo(*_ref),
             SpecKind::Target(target) => {
                 match resolve_namespace_access(db, target.scope_id, target.path) {
-                    Some(pou) => match pou.pou(db) {
-                        Pou::Function(f) => TyKind::Function(*f),
-                        Pou::FunctionBlock(fb) => TyKind::FunctionBlock(*fb),
-                        Pou::Class(c) => TyKind::Class(*c),
-                        Pou::Interface(i) => TyKind::Interface(*i),
-                        Pou::DataType(dt) => return dt.spec(db).to_ty(db),
-                    },
-                    None => TyKind::Err(AccessError::NoItemInScope {
-                        access: *target,
-                    }),
+                    Some(pou) => {
+                        let kind = match pou.pou(db) {
+                            Pou::Function(f) => TyKind::Function(*f),
+                            Pou::FunctionBlock(fb) => TyKind::FunctionBlock(*fb),
+                            Pou::Class(c) => TyKind::Class(*c),
+                            Pou::Interface(i) => TyKind::Interface(*i),
+                            Pou::DataType(dt) => dt.spec(db).to_ty(db).kind(db).clone(),
+                        };
+                        return Ty::new(db, TySource::Pou((self, pou)), kind);
+                    }
+                    None => TyKind::Err(AccessError::NoItemInScope { access: *target }),
                 }
             }
         };
-        Ty::new(db, self, kind)
+        Ty::new(db, TySource::Spec(self), kind)
     }
 }
 
 impl<'db> TypeInfo<'db> for Ty<'db> {
     fn type_name(&self, db: &'db dyn BaseDatabase) -> String {
-        self.spec(db).type_name(db)
+        match self.spec(db) {
+            TySource::Spec(spec) => spec.type_name(db),
+            TySource::Pou((_, pou,)) => format!(
+                "{}: {}",
+                pou.name(db).text(db),
+                match pou.pou(db) {
+                    Pou::Function(_) => "FUNCTION".into(),
+                    Pou::FunctionBlock(_) => "FUNCTION_BLOCK".into(),
+                    Pou::Class(_) => "CLASS".into(),
+                    Pou::Interface(_) => "INTERFACE".into(),
+                    Pou::DataType(dt) => dt.spec(db).type_name(db),
+                }
+            ),
+        }
     }
 }

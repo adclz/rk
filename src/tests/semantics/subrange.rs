@@ -122,12 +122,12 @@ fn out_fo_bounds_subrange_value(mut with_db: RootDatabase) {
         ,-[ file:///test0.st:11:22 ]
         |
       3 |             Range: UINT (0..5);
-        |                  ^^^^^^|^^^^^^  
-        |                        `-------- type 'SUBRANGE (0..5)' defined here
+        |             ^^|^^  
+        |               `---- type 'Range: SUBRANGE (0..5)' defined here
         | 
      11 |             test :=  6 // 6 should not be allowed here (UINT (0..5))
         |                      |  
-        |                      `-- invalid assignment: value 6 is out of bounds for SUBRANGE SUBRANGE (0..5) (expected between 0 and 5)
+        |                      `-- invalid assignment: value 6 is out of bounds for 'Range: SUBRANGE (0..5)' (expected between 0 and 5)
     ----'
     ");
 }

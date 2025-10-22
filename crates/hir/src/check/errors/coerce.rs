@@ -229,7 +229,7 @@ impl<'db> DiagnosticDescription<'db> for ExprMismatch<'db> {
             ExprMismatchKind::LhsIsNotABool { ty } => "left-hand side is not a boolean".to_string(),
             ExprMismatchKind::InvalidEnumVariant { enum_ty, variant } => {
                 format!(
-                    "ENUM '{}' has no variant named '{}'",
+                    "'{}' has no variant named '{}'",
                     enum_ty.type_name(db),
                     variant.text(db)
                 )
@@ -242,7 +242,7 @@ impl<'db> DiagnosticDescription<'db> for ExprMismatch<'db> {
                 value,
             } => {
                 format!(
-                    "value {} is out of bounds for SUBRANGE {} (expected between {} and {})",
+                    "value {} is out of bounds for '{}' (expected between {} and {})",
                     value,
                     subrange_ty.type_name(db),
                     min,

@@ -32,21 +32,19 @@ fn fuzzy_struct_fields(mut with_db: RootDatabase) {
     Error: 
         ,-[ file:///test0.st:15:49 ]
         |
-      2 | ,->         TYPE Engine:
-        : :   
-      9 | |->             END_STRUCT
-        | |                            
-        | `---------------------------- type 'STRUCT' defined here
+      2 |         TYPE Engine:
+        |              ^^^|^^  
+        |                 `---- type 'Engine: STRUCT' defined here
         | 
-     15 |                     Base : Engine := (power := 100, fuel := 10.0);
-        |                                                     ^^|^  
-        |                                                       `--- no field 'fuel' in STRUCT
-        |     
-        |     Note: STRUCT field(s) with similar name(s) exist:
-        |           - fuel1
-        |           - fuel2
-        |           - fuel3
-        |           - fuel4
+     15 |                 Base : Engine := (power := 100, fuel := 10.0);
+        |                                                 ^^|^  
+        |                                                   `--- no field 'fuel' in STRUCT
+        | 
+        | Note: STRUCT field(s) with similar name(s) exist:
+        |       - fuel1
+        |       - fuel2
+        |       - fuel3
+        |       - fuel4
     ----'
     ");
 }

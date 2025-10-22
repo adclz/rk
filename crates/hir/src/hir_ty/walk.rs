@@ -2,9 +2,7 @@ use auto_lsp::default::db::BaseDatabase;
 use ide_diagnostic::{IdeDiagnostic, Related};
 
 use crate::{
-    AstId, HirNodeInfo,
-    check::errors::path_error::AccessError,
-    hir_def::{
+    check::errors::path_error::AccessError, hir_def::{
         expressions::{
             expression::PathExpr,
             spec::{Spec, SpecKind, StructElement},
@@ -14,13 +12,12 @@ use crate::{
             variable::VariableDecl,
         },
         scope::FileScopeId,
-    },
-    hir_ty::{
-        inheritance_solver::{MethodRef, method_table},
+    }, hir_ty::{
+        inheritance_solver::{method_table, MethodRef},
         name_res::resolve_namespace_access,
         ty::{Ty, TyKind},
         ty_var_access_resolver::{CallSite, PathExprWalkStep},
-    },
+    }, AstId, HirNodeInfo, TypeInfo
 };
 
 /// Represents a resolved element in a path expression.
@@ -122,7 +119,7 @@ impl<'db> ResolvedPathKind<'db> {
             ResolvedPathKind::Variable(v) => v.name(db).text(db).to_string(),
             ResolvedPathKind::Pou(p) => p.name(db).text(db).to_string(),
             ResolvedPathKind::Method(m) => m.name(db).text(db).to_string(),
-            ResolvedPathKind::Spec(m) => m.type_name(db),
+            ResolvedPathKind::Spec(m) => m.to_ty(db).type_name(db),
             ResolvedPathKind::StructElement(m) => m.name(db).text(db).to_string(),
         }
     }
@@ -157,7 +154,7 @@ impl<'db> ResolvedPathKind<'db> {
                 s.get_scope_id(db).file(db),
                 s.get_span(db),
                 "",
-                s.type_name(db),
+                s.to_ty(db).type_name(db),
             ),
         };
 

@@ -28,16 +28,14 @@ fn unknown_struct_field(mut with_db: RootDatabase) {
     Error: 
         ,-[ file:///test0.st:12:49 ]
         |
-      2 | ,->         TYPE Engine:
-        : :   
-      6 | |->             END_STRUCT
-        | |                            
-        | `---------------------------- type 'STRUCT' defined here
+      2 |         TYPE Engine:
+        |              ^^^|^^  
+        |                 `---- type 'Engine: STRUCT' defined here
         | 
-     12 |                     Base : Engine := (power := 100, fuel := 10.0);
-        |                                                     ^^|^  
-        |                                                       `--- no field 'fuel' in STRUCT
-        |     
+     12 |                 Base : Engine := (power := 100, fuel := 10.0);
+        |                                                 ^^|^  
+        |                                                   `--- no field 'fuel' in STRUCT
+        | 
     ----'
     ");
 }
@@ -76,16 +74,14 @@ fn invalid_struct_value(mut with_db: RootDatabase) {
     Error: 
         ,-[ file:///test0.st:11:50 ]
         |
-      2 | ,->         TYPE Engine:
-        : :   
-      6 | |->             END_STRUCT
-        | |                            
-        | `---------------------------- type 'STRUCT' defined here
+      2 |         TYPE Engine:
+        |              ^^^|^^  
+        |                 `---- type 'Engine: STRUCT' defined here
         | 
-     11 |                     Base : Engine := (power := 10.5, fuel := 10.0);
-        |                                                      ^^|^  
-        |                                                        `--- no field 'fuel' in STRUCT
-        |     
+     11 |                 Base : Engine := (power := 10.5, fuel := 10.0);
+        |                                                  ^^|^  
+        |                                                    `--- no field 'fuel' in STRUCT
+        | 
     ----'
     ");
 }
@@ -359,7 +355,7 @@ fn unexpected_array(mut with_db: RootDatabase) {
        |
      8 |                 Base : Engine := [2];
        |                               ^^^|^^  
-       |                                  `---- invalid value initializer: expected type 'INT', found 'ARRAY init'
+       |                                  `---- invalid value initializer: expected type 'Engine: INT', found 'ARRAY init'
     ---'
     ");
 }
