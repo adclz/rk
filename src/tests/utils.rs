@@ -1,9 +1,13 @@
+use std::sync::Arc;
+use std::sync::RwLock;
+
 use ariadne::Cache;
 use ariadne::CharSet;
 use ariadne::Config;
 use ariadne::FnCache;
 use ariadne::Source;
 use auto_lsp::default::db::BaseDatabase;
+use auto_lsp::salsa::Event;
 use auto_lsp::{
     default::db::{FileManager, file::File},
     lsp_types::Url,
@@ -18,6 +22,17 @@ use rstest::fixture;
 #[fixture]
 pub fn with_db() -> RootDatabase {
     RootDatabase::default()
+}
+
+#[fixture]
+pub fn with_log_db() -> (RootDatabase, Arc<RwLock<Vec<Event>>>) {
+    let log = Arc::new(RwLock::new(vec![]));
+    let cloned_log = log.clone();
+    let db = RootDatabase::new(Some(Box::new(move |l| {
+        eprintln!("{:#?}", l);
+        cloned_log.write().unwrap().push(l);
+    })));
+    (db, log)
 }
 
 pub fn no_color_and_ascii() -> Config {

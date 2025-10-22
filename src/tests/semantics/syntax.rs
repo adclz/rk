@@ -65,15 +65,18 @@ END_NAMESPACE"#;
 #[rstest]
 fn implements_before_extends(mut with_db: RootDatabase) {
     let source = r#"
+CLASS b
+END_CLASS
+
 FUNCTION_BLOCK fn IMPLEMENTS a EXTENDS b
     
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test0.st:2:19 ]
+       ,-[ file:///test0.st:5:19 ]
        |
-     2 | FUNCTION_BLOCK fn IMPLEMENTS a EXTENDS b
+     5 | FUNCTION_BLOCK fn IMPLEMENTS a EXTENDS b
        |                   ^^^^^^|^^^^^  
        |                         `------- implements must be declared after extends
     ---'
@@ -101,15 +104,21 @@ END_FUNCTION_BLOCK"#;
 #[rstest]
 fn extends_multiple_times(mut with_db: RootDatabase) {
     let source = r#"
+CLASS a
+END_CLASS
+
+CLASS b
+END_CLASS
+
 FUNCTION_BLOCK fn EXTENDS a EXTENDS b
     
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test0.st:2:29 ]
+       ,-[ file:///test0.st:8:29 ]
        |
-     2 | FUNCTION_BLOCK fn EXTENDS a EXTENDS b
+     8 | FUNCTION_BLOCK fn EXTENDS a EXTENDS b
        |                             ^^^^|^^^^  
        |                                 `------ multiple extends declarations
     ---'

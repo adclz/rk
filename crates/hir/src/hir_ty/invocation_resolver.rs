@@ -1,21 +1,18 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    AstId, HirNodeInfo,
-    check::errors::inheritance::MethodError,
-    hir_def::{
+    check::errors::inheritance::MethodError, hir_def::{
         expressions::invocation::{Invocation, InvocationKind},
         pous::pou::Pou,
         scope::{FileScopeId, Scope, ScopeKind},
-    },
-    hir_ty::{
+    }, hir_ty::{
         func_call_resolver::ResolvedParam,
-        inheritance_solver::{MethodRef, method_table},
+        inheritance_solver::{declared_methods, inherited_methods, MethodRef},
         name_res::resolve_namespace_access,
         param_resolver::resolve_parameters,
         ty_var_access_resolver::{CallSite, ResolvedAccess},
         walk::{Adjustement, ResolvedPath, ResolvedPathKind, ResolvedPathResult},
-    },
+    }, AstId, HirNodeInfo
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -127,13 +124,12 @@ impl<'db> Invocation<'db> {
                     }
                 }
 
-                let methods = method_table(db, pou);
-                let len = methods.declared_methods.len();
+                let methods = declared_methods(db, pou);
+                let len = methods.len();
 
                 match self.kind(db) {
                     InvocationKind::This { path } => methods
-                        .declared_methods
-                        .get(&path.ident(db).ident)
+                        .get(&path.ident(db))
                         .map(|method| ResolvedInvocationResult {
                             target: ResolvedInvocation::new(
                                 *self,
@@ -166,8 +162,8 @@ impl<'db> Invocation<'db> {
                             ),
                             params: vec![],
                         }),
-                    InvocationKind::Super { path } => methods
-                        .inherited_methods
+                    InvocationKind::Super { path } => inherited_methods(db, pou)
+                        .methods(db)
                         .get(&path.ident(db).ident)
                         .map(|ty| ResolvedInvocationResult {
                             target: ResolvedInvocation::new(

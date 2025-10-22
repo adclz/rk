@@ -1,10 +1,10 @@
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 use crate::{
     AstId, HirNodeInfo,
     hir_def::{
         expressions::spec::Spec,
-        interned::identifier::Ident,
+        interned::{identifier::Ident, namespace::SpanNamespaceAccess},
         modifier::Modifier,
         pous::{
             class::MethodDecl,
@@ -118,16 +118,18 @@ impl<'db> From<&MethodDecl<'db>> for MethodRef<'db> {
     }
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, salsa::Update)]
-pub struct Methods<'db> {
-    pub inherited_methods: FxHashMap<Ident, InheritedMethod<'db>>,
-    pub declared_methods: FxHashMap<Ident, MethodRef<'db>>,
-
-    pub inherited_duplicates: Vec<(InheritedMethod<'db>, InheritedMethod<'db>)>,
-    pub declared_duplicates: Vec<(MethodRef<'db>, MethodRef<'db>)>,
+/// Unsure if this should be interned.
+#[salsa::interned(debug)]
+pub struct InheritedMethodSet<'db> {
+    #[returns(ref)]
+    pub methods: BTreeMap<Ident, InheritedMethod<'db>>,
+    #[returns(ref)]
+    pub duplicates: Vec<(InheritedMethod<'db>, InheritedMethod<'db>)>,
+    #[returns(ref)]
+    pub unresolved: Vec<SpanNamespaceAccess<'db>>,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, salsa::Update)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct InheritedMethod<'db> {
     pub source: PouDecl<'db>,
     pub method: MethodRef<'db>,
@@ -139,108 +141,107 @@ impl<'db> InheritedMethod<'db> {
     }
 }
 
-fn method_initial<'db>(db: &'db dyn BaseDatabase, ty: PouDecl<'db>) -> Arc<Methods<'db>> {
-    Arc::new(Methods::default())
+fn inherited_method_initial<'db>(
+    db: &'db dyn BaseDatabase,
+    pou: PouDecl<'db>,
+) -> InheritedMethodSet<'db> {
+    InheritedMethodSet::new(db, BTreeMap::new(), vec![], vec![])
 }
 
-fn method_cycle<'db>(
+fn inherited_method_cycle<'db>(
     db: &'db dyn BaseDatabase,
-    value: &Arc<Methods<'db>>,
+    value: &InheritedMethodSet<'db>,
     count: u32,
-    ty: PouDecl<'db>,
-) -> salsa::CycleRecoveryAction<Arc<Methods<'db>>> {
+    pou: PouDecl<'db>,
+) -> salsa::CycleRecoveryAction<InheritedMethodSet<'db>> {
     salsa::CycleRecoveryAction::Iterate
 }
 
-#[salsa::tracked(cycle_initial=method_initial, cycle_fn=method_cycle)]
-pub fn method_table<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Arc<Methods<'db>> {
-    let mut inherited_methods= FxHashMap::default();
-    let mut declared_methods = FxHashMap::default();
+#[salsa::tracked(returns(ref))]
+pub fn to_method_ref<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Vec<MethodRef<'db>> {
+    match pou.pou(db) {
+        Pou::Class(class) => class.methods(db).iter().map(|m| m.into()).collect(),
+        Pou::Interface(interface) => interface.methods(db).iter().map(|m| m.into()).collect(),
+        Pou::FunctionBlock(fb) => fb.methods(db).iter().map(|m| m.into()).collect(),
+        _ => Default::default(),
+    }
+}
 
-    let mut inherited_duplicates: Vec<(InheritedMethod<'_>, InheritedMethod<'_>)> = vec![];
-    let mut declared_duplicates: Vec<(MethodRef<'db>, MethodRef<'_>)> = vec![];
+#[salsa::tracked(returns(ref))]
+pub fn declared_methods<'db>(
+    db: &'db dyn BaseDatabase,
+    pou: PouDecl<'db>,
+) -> FxHashMap<Ident, MethodRef<'db>> {
+    to_method_ref(db, pou)
+        .iter()
+        .map(|m| (m.name(db).clone(), *m))
+        .collect()
+}
+
+#[salsa::tracked(cycle_initial = inherited_method_initial, cycle_fn = inherited_method_cycle)]
+pub fn inherited_methods<'db>(
+    db: &'db dyn BaseDatabase,
+    pou: PouDecl<'db>,
+) -> InheritedMethodSet<'db> {
+    let mut methods = BTreeMap::new();
+    let mut duplicates = vec![];
+    let mut unresolved = vec![];
+
+    let mut inherit_from = |src: PouDecl<'db>| {
+        for method in declared_methods(db, src).iter() {
+            let m = InheritedMethod::new(src, *method.1);
+            if let Some(dup) = methods.insert(*method.0, m) {
+                duplicates.push((dup, m));
+            }
+        }
+    };
 
     match pou.pou(db) {
         Pou::Class(class) => {
-            // Inherit base
-            if let Some(base) = class.extends(db)
-                && let Some(base) = resolve_namespace_access(db, base.scope_id, base.path)
-            {
-                for (name, entry) in &method_table(db, base).declared_methods {
-                    let method = InheritedMethod::new(base, *entry);
-                    if let Some(m) = inherited_methods.insert(*name, method) {
-                        inherited_duplicates.push((m, method));
+            if let Some(base) = class.extends(db) {
+                match resolve_namespace_access(db, base.scope_id, base.path) {
+                    Some(base) => {
+                        inherit_from(base);
                     }
+                    _ => unresolved.push(*base),
                 }
             }
-
-            // Inherit interfaces (abstract signatures only)
             for iface in class.implements(db) {
-                if let Some(iface) = resolve_namespace_access(db, iface.scope_id, iface.path) {
-                    for (name, entry) in &method_table(db, iface).declared_methods {
-                        let method = InheritedMethod::new(iface, *entry);
-                        if let Some(m) = inherited_methods.insert(*name, method) {
-                            inherited_duplicates.push((m, method));
-                        }
+                match resolve_namespace_access(db, iface.scope_id, iface.path) {
+                    Some(iface) => {
+                        inherit_from(iface);
                     }
-                }
-            }
-
-            // Add this class’s own methods
-            for m in class.methods(db) {
-                if let Some(dup) = declared_methods.insert(*m.name(db), m.into()) {
-                    declared_duplicates.push((dup, m.into()));
+                    _ => unresolved.push(*iface),
                 }
             }
         }
 
-        Pou::Interface(interface) => {
-            // Methods = abstract signatures
-            for m in interface.methods(db) {
-                if let Some(dup) = declared_methods.insert(*m.name(db), m.into()) {
-                    declared_duplicates.push((dup, m.into()));
-                }
-            }
-
-            if let Some(iface) = interface.extends(db) {
-                for iface in iface {
-                    if let Some(iface) = resolve_namespace_access(db, iface.scope_id, iface.path) {
-                        for (name, entry) in &method_table(db, iface).declared_methods {
-                            let method = InheritedMethod::new(iface, *entry);
-                            if let Some(m) = inherited_methods.insert(*name, method) {
-                                inherited_duplicates.push((m, method));
-                            }
+        Pou::Interface(iface) => {
+            if let Some(extends) = iface.extends(db) {
+                for iface in extends {
+                    match resolve_namespace_access(db, iface.scope_id, iface.path) {
+                        Some(iface) => {
+                            inherit_from(iface);
                         }
+                        _ => unresolved.push(*iface),
                     }
                 }
             }
         }
 
         Pou::FunctionBlock(fb) => {
-            for m in fb.methods(db) {
-                if let Some(dup) = declared_methods.insert(*m.name(db), m.into()) {
-                    declared_duplicates.push((dup, m.into()));
-                }
-            }
-
             if let Some(base) = fb.extends(db) {
-                if let Some(base) = resolve_namespace_access(db, base.scope_id, base.path) {
-                    for (name, entry) in &method_table(db, base).declared_methods {
-                        let method = InheritedMethod::new(base, *entry);
-                        if let Some(m) = inherited_methods.insert(*name, method) {
-                            inherited_duplicates.push((m, method));
-                        }
+                match resolve_namespace_access(db, base.scope_id, base.path) {
+                    Some(base) => {
+                        inherit_from(base);
                     }
+                    _ => unresolved.push(*base),
                 }
             }
         }
+
         _ => {}
     }
 
-    Arc::new(Methods {
-        inherited_methods,
-        declared_methods,
-        inherited_duplicates,
-        declared_duplicates,
-    })
+    InheritedMethodSet::new(db, methods, duplicates, unresolved)
 }

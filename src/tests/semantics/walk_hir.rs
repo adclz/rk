@@ -194,14 +194,14 @@ END_FUNCTION_BLOCK"#;
     MethodRef(Declared(MethodDecl { [salsa id]: Id(2c00) }))
     VariableDecl(VariableDecl { [salsa id]: Id(2800) })
     Spec(Spec { [salsa id]: Id(2400) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4c00) })
-    ResolvedAccess(ResolvedAccess { [salsa id]: Id(4000) })
+    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4400) })
+    ResolvedAccess(ResolvedAccess { [salsa id]: Id(3800) })
     MethodRef(Declared(MethodDecl { [salsa id]: Id(2c00) }))
     VariableDecl(VariableDecl { [salsa id]: Id(2800) })
     Spec(Spec { [salsa id]: Id(2400) })
-    ResolvedParam(ResolvedParam { [salsa id]: Id(4800) })
-    ResolvedAccess(ResolvedAccess { [salsa id]: Id(4001) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(4400) })
+    ResolvedParam(ResolvedParam { [salsa id]: Id(4000) })
+    ResolvedAccess(ResolvedAccess { [salsa id]: Id(3801) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(3c00) })
     ");
 }
 

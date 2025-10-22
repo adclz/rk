@@ -2,23 +2,22 @@ use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, Related, diag};
 
 use crate::{
-    HirNodeInfo,
     check::errors::{
         analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic},
         coerce::TypeMismatch,
-    },
-    hir_def::{
-        expressions::{expression::PathExpr, invocation::Invocation},
-        pous::{
+    }, hir_def::{
+        expressions::{expression::PathExpr, invocation::Invocation}, interned::namespace::SpanNamespaceAccess, pous::{
             pou::PouDecl,
             variable::VariableDecl,
-        },
-    },
-    hir_ty::inheritance_solver::MethodRef,
+        }
+    }, hir_ty::inheritance_solver::MethodRef, HirNodeInfo
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum MethodError<'db> {
+    UnresolvedPou {
+        access: SpanNamespaceAccess<'db>,
+    },
     OverrideFinalMethod {
         base_method: MethodRef<'db>,
         derived_method: MethodRef<'db>,
@@ -86,6 +85,15 @@ impl<'db> From<MethodError<'db>> for AnalysisError<'db> {
 impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
     fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
         match self {
+            Self::UnresolvedPou { access } => diag()
+                .message(format!(
+                    "no item '{}' found in the current scope",
+                    access.to_string(db)
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .range(access.get_span(db).clone())
+                .call(),
+            
             Self::MissingOverride {
                 base_method,
                 derived_method,

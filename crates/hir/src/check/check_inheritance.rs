@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use rustc_hash::{FxHashMap};
 
 use crate::{
     check::{
@@ -7,11 +8,9 @@ use crate::{
             analysis_error::AnalysisError, duplicates::DuplicateError, inheritance::MethodError,
         },
     },
-    hir_def::{
-        modifier::Modifier,
-        pous::pou::{Pou, PouDecl},
+    hir_def::{modifier::Modifier, pous::pou::{Pou, PouDecl}
     },
-    hir_ty::inheritance_solver::{MethodRef, method_table},
+    hir_ty::inheritance_solver::{declared_methods, to_method_ref, inherited_methods, MethodRef},
 };
 
 pub fn check_inheritance<'db>(
@@ -19,34 +18,29 @@ pub fn check_inheritance<'db>(
     implementer: PouDecl<'db>,
     errors: &mut Vec<AnalysisError<'db>>,
 ) {
-    let table = method_table(db, implementer);
+    let declared_methods = declared_methods(db, implementer);
+    let inherited_methods = inherited_methods(db, implementer);
 
-    // If the class is abstract, it must have at least one abstract method
-    if let Pou::Class(class) = implementer.pou(db)
-        && class.modifier(db).contains(Modifier::ABSTRACT)
-        && !table
-            .declared_methods
-            .iter()
-            .any(|(_, m)| m.modifier(db).contains(Modifier::ABSTRACT))
-    {
-        errors.push(AnalysisError::MethodError(
-            MethodError::AbstractClassHasNoAbstractMethods { class: implementer },
-        ));
-    }
+    match implementer.pou(db) {
+        Pou::Class(cl) => {
+            // If the class is abstract, it must have at least one abstract method
+            if cl.modifier(db).contains(Modifier::ABSTRACT)
+                && !declared_methods
+                    .iter()
+                    .any(|(_, m)| m.modifier(db).contains(Modifier::ABSTRACT))
+            {
+                errors.push(AnalysisError::MethodError(
+                    MethodError::AbstractClassHasNoAbstractMethods { class: implementer },
+                ));
+            };
+        },
+        _ => {}
+    };
 
-    // check dups in declared methods
-    for (m1, m2) in &table.declared_duplicates {
-        errors.push(
-            DuplicateError::Method {
-                method1: *m1,
-                method2: *m2,
-            }
-            .into(),
-        );
-    }
+    check_declared_duplicates(db, to_method_ref(db, implementer), errors);
 
     // check dups in inherited methods
-    for (m1, m2) in &table.inherited_duplicates {
+    for (m1, m2) in inherited_methods.duplicates(db) {
         errors.push(
             DuplicateError::InheritedMethod {
                 method1: *m1,
@@ -56,11 +50,18 @@ pub fn check_inheritance<'db>(
         );
     }
 
+    // check unresolved
+    for unresolved in inherited_methods.unresolved(db) {
+        errors.push(AnalysisError::MethodError(
+            MethodError::UnresolvedPou { access: *unresolved }
+        ));
+    }
+
     // look at the inherited methods first
-    for (inherited_name, inherited_method) in &table.inherited_methods {
+    for (inherited_name, inherited_method) in inherited_methods.methods(db).iter() {
         let inherited_method = inherited_method.method;
         // method is inherited from a base interface/class
-        if let Some(declared_method) = table.declared_methods.get(inherited_name) {
+        if let Some(declared_method) = declared_methods.get(inherited_name) {
             check_signature(db, inherited_method, *declared_method, errors);
 
             match (inherited_method.modifier(db), declared_method.modifier(db)) {
@@ -106,14 +107,34 @@ pub fn check_inheritance<'db>(
         }
     }
     // Look at the declared methods
-    let declared = &table.declared_methods;
 
-    for (base_name, base_method) in declared {
-        if table.inherited_methods.contains_key(base_name) {
+    for (base_name, base_method) in declared_methods {
+        if inherited_methods.methods(db).contains_key(base_name) {
         } else if base_method.modifier(db) == Modifier::OVERRIDE {
             errors.push(AnalysisError::MethodError(MethodError::EmptyOverride {
                 base_method: *base_method,
             }));
+        }
+    }
+}
+
+fn check_declared_duplicates<'db>(
+    db: &'db dyn BaseDatabase,
+    methods: &[MethodRef<'db>],
+    errors: &mut Vec<AnalysisError<'db>>,
+) {
+    let mut seen = FxHashMap::default();
+    for method in methods {
+        if let Some(prev) = seen.get(method.name(db)) {
+            errors.push(
+                DuplicateError::Method {
+                    method1: *prev,
+                    method2: *method,
+                }
+                .into(),
+            );
+        } else {
+            seen.insert(*method.name(db), *method);
         }
     }
 }

@@ -8,7 +8,7 @@ use crate::tests::utils::with_db;
 #[rstest]
 fn unresolved_this_method_in_fb(mut with_db: RootDatabase) {
     let source = r#"
-FUNCTION_BLOCK fb1 EXTENDS base
+FUNCTION_BLOCK fb1
 	METHOD decl
 	END_METHOD
 
@@ -72,7 +72,7 @@ END_FUNCTION_BLOCK"#;
 #[rstest]
 fn super_keyword_body_in_class(mut with_db: RootDatabase) {
     let source = r#"
-CLASS fb1 EXTENDS base
+CLASS fb1
     METHOD method1
         SUPER()
     END_METHOD
@@ -148,7 +148,7 @@ END_FUNCTION
 #[rstest]
 fn type_check_this_method_in_fb(mut with_db: RootDatabase) {
     let source = r#"
-FUNCTION_BLOCK fb1 EXTENDS base
+FUNCTION_BLOCK fb1
 	METHOD decl
         VAR_INPUT input1 : INT; END_VAR
 	END_METHOD

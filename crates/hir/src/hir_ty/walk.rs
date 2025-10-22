@@ -13,7 +13,7 @@ use crate::{
         },
         scope::FileScopeId,
     }, hir_ty::{
-        inheritance_solver::{method_table, MethodRef},
+        inheritance_solver::{declared_methods, MethodRef},
         name_res::resolve_namespace_access,
         ty::{Ty, TyKind},
         ty_var_access_resolver::{CallSite, PathExprWalkStep},
@@ -84,7 +84,6 @@ impl<'db> HirNodeInfo<'db> for ResolvedPath<'db> {
 
 impl<'db> ResolvedPath<'db> {
     pub fn as_var(&self, db: &'db dyn BaseDatabase) -> Option<VariableDecl<'db>> {
-        eprintln!("{:?} \n\n", self.kind);
         match self.kind {
             ResolvedPathKind::Variable(v) => Some(v),
             _ => None,
@@ -193,7 +192,6 @@ impl<'db> ResolvedPath<'db> {
     ///
     /// If [`TyKind`] variant is Err, this function will return an [`AccessError`]
     pub fn try_to_ty(&self, db: &'db dyn BaseDatabase) -> Result<Ty<'db>, AccessError<'db>> {
-        eprintln!("KIND: {:?}", self.kind);
         match self.adjustement {
             Adjustement::Array(ref arr) => arr.try_to_ty(db),
             Adjustement::Deref(ref deref) => {
@@ -213,7 +211,6 @@ impl<'db> ResolvedPath<'db> {
                         }
                     },
                     _ => {
-                        eprintln!("KIND: {:?}", self.kind);
                         return Err(AccessError::InvalidTypeAccess {
                             access: self.clone(),
                         })?;
@@ -281,7 +278,7 @@ impl<'db> PouDecl<'db> {
                             return Ok(ResolvedPathKind::Variable(*var)
                                 .into_path_call(*expr, Adjustement::None));
                         } else if let Some(m) =
-                            method_table(db, *self).declared_methods.get(&ident.ident)
+                            declared_methods(db, *self).get(&ident.ident)
                         {
                             return Ok(ResolvedPathKind::Method(*m)
                                 .into_path_call(*expr, Adjustement::None));

@@ -1,4 +1,27 @@
+use std::sync::{Arc, RwLock};
 
+use auto_lsp::salsa::{Event, EventKind};
+use db::RootDatabase;
+use insta::assert_debug_snapshot;
+use rstest::rstest;
+use crate::tests::utils::{add_sources, with_log_db};
+
+
+#[rstest]
+fn self_extends_bo_cycle(mut with_log_db: (RootDatabase, Arc<RwLock<Vec<Event>>>)) {
+    let source = r#"
+        CLASS MyClass EXTENDS MyClass
+        END_CLASS
+        "#;
+
+    add_sources(&mut with_log_db.0, &[source]);
+
+    let lock = with_log_db.1.read().unwrap();
+    let logs = lock
+      .iter().collect::<Vec<_>>();
+
+    assert_debug_snapshot!(logs, @"[]");
+}
 
 /*
 #[rstest]
