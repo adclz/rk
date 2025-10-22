@@ -29,6 +29,15 @@ pub struct SemanticIndexBuilder<'db> {
     /// Maps scope IDs to their corresponding namespaces.
     pub(crate) namespaces: Vec<NamespaceDecl<'db>>,
 
+    /// Counter for generating stable scope IDs.
+    /// 
+    /// The reason for having a separate counter is that each scope will trigger a recomputation if it's ID changes.
+    /// If we use the AST id directly, then any changes in the previous nodes will cause all subsequent scopes to be recomputed.
+    /// 
+    /// Since scope are only created when visiting a Pou or Namespace, 
+    /// writing variables / statements / expressions, will preserve the IDs of scopes.
+    pub(crate) scope_ctr: usize,
+
     /// The current scope ID being processed (by default, the global scope).
     pub(crate) current_scope: FileScopeId<'db>,
 
@@ -51,9 +60,16 @@ impl<'db> SemanticIndexBuilder<'db> {
             global_namespaces: vec![],
             global_pous: vec![],
             namespaces: vec![],
+            scope_ctr: 0,
             current_scope: FileScopeId::global(db, file),
             errors: vec![],
         }
+    }
+
+    pub fn generate_scope_id(&mut self) -> FileScopeId<'db> {
+        let scope_id = FileScopeId::new(self.db, self.file, self.scope_ctr);
+        self.scope_ctr += 1;
+        scope_id
     }
 
     pub fn get_namespace_path(
