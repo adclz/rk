@@ -23,6 +23,12 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
     ) -> anyhow::Result<Stmt<'db>, AnalysisError<'db>> {
         type StmtType = ast::generated::Stmt;
         match self {
+            StmtType::EmptyPathExpression(p) => Ok(Stmt::new(
+                sema.db,
+                StmtKind::EmptyPathExpression(p.children.cast(&sema.ast).parse(sema)?),
+                p.into(),
+                sema.current_scope,
+            )),
             StmtType::Assign(assign) => assign.to_statement(sema),
             StmtType::FuncCall(call) => {
                 let target = call.function.cast(sema.ast).parse(sema)?;

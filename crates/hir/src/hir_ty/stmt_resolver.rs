@@ -4,7 +4,9 @@ use crate::hir_def::semantic_index::semantic_index;
 use crate::hir_ty::expr_resolver::{ResolvedExpr, resolve_expr};
 use crate::hir_ty::func_call_resolver::ResolvedFuncCall;
 use crate::hir_ty::invocation_resolver::ResolvedInvocationResult;
-use crate::hir_ty::ty_var_access_resolver::{ResolvedAccess, resolve_var_access};
+use crate::hir_ty::ty_var_access_resolver::{
+    ResolvedAccess, resolve_global_path_expr, resolve_local_path_expr, resolve_var_access,
+};
 use crate::{AstId, HirNodeInfo};
 use auto_lsp::default::db::BaseDatabase;
 
@@ -23,6 +25,7 @@ pub struct ResolvedStmt<'db> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ResolvedStmtKind<'db> {
+    EmptyPathExpression(ResolvedAccess<'db>),
     Assignment {
         var: ResolvedAccess<'db>,
         target: ResolvedExpr<'db>,
@@ -74,6 +77,11 @@ impl<'db> ResolveStmtCtx<'db> {
 
     pub fn resolve(self) -> ResolvedStmt<'db> {
         match self.stmt.stmt(self.db) {
+            StmtKind::EmptyPathExpression(path_expr) => ResolvedStmt::new(
+                self.db,
+                self.stmt,
+                ResolvedStmtKind::EmptyPathExpression(resolve_local_path_expr(self.db, *path_expr)),
+            ),
             StmtKind::Assignment { var, target } => {
                 let resolved_var = resolve_var_access(self.db, *var);
                 let resolved_target = resolve_expr(self.db, *target);

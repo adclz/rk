@@ -1,14 +1,13 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    AstId, HirNodeInfo,
     hir_def::{
         expressions::{
-            expression::{Expr, FuncCall, VariableAccess},
+            expression::{Expr, FuncCall, PathExpr, VariableAccess},
             invocation::Invocation,
         },
         scope::FileScopeId,
-    },
+    }, AstId, HirNodeInfo
 };
 
 #[salsa::tracked(debug)]
@@ -35,6 +34,7 @@ impl<'db> HirNodeInfo<'db> for Stmt<'db> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum StmtKind<'db> {
+    EmptyPathExpression(PathExpr<'db>),
     Assignment {
         var: VariableAccess<'db>,
         target: Expr<'db>,

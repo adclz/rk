@@ -45,6 +45,12 @@ impl<'db> Check<'db> for Vec<ResolvedStmt<'db>> {
 impl<'db> Check<'db> for ResolvedStmt<'db> {
     fn check(&self, db: &'db dyn BaseDatabase, errors: &mut Vec<AnalysisError<'db>>) {
         match &self.kind(db) {
+            ResolvedStmtKind::EmptyPathExpression(var) => {
+                if let Err(err) = var.fully_resolved(db) {
+                    errors.push(err.into());
+                }
+                errors.push(StmtError::EmptyPathExpression { var: *var }.into());
+            },
             ResolvedStmtKind::If {
                 then,
                 else_,

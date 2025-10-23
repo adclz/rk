@@ -1668,6 +1668,7 @@ module.exports = grammar({
       choice(
         // assignments
         $.assign,
+        $.empty_path_expression, // used for completions
         // subprog
         $.func_call,
         // invocations (THIS, SUPER)
@@ -1843,7 +1844,10 @@ module.exports = grammar({
 
     index_expression: ($) =>
       seq($.path_expression, "[", field("index", $.index_value), "]"),
+
     index_value: ($) => commaSep1($.constant_expr),
+
+    empty_path_expression: ($) => prec(-1, $.path_expression),
 
     IQM: ($) => choice("I", "Q", "M"),
     XBWDL: ($) => choice("X", "B", "W", "D", "L"),
