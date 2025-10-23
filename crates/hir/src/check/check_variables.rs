@@ -8,7 +8,7 @@ use crate::{
         errors::{analysis_error::AnalysisError, duplicates::DuplicateError},
     },
     hir_def::{interned::identifier::Ident, pous::variable::VariableDecl},
-    hir_ty::init_expr_resolver::resolve_init_expr,
+    hir_ty::{init_expr_resolver::resolve_init_expr, ty::TyKind},
 };
 
 impl<'db> Check<'db> for Vec<VariableDecl<'db>> {
@@ -28,6 +28,10 @@ impl<'db> Check<'db> for Vec<VariableDecl<'db>> {
                 None => {
                     seen.insert(*variable.name(db), *variable);
                 }
+            }
+
+            if let TyKind::Err(err) = variable.spec(db).to_ty(db).kind(db) {
+                errors.push(err.clone().into());
             }
 
             if let Some(init) = variable.init(db) {
