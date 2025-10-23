@@ -143,7 +143,7 @@ impl<'db> Spec<'db> {
                             Pou::FunctionBlock(fb) => TyKind::FunctionBlock(*fb),
                             Pou::Class(c) => TyKind::Class(*c),
                             Pou::Interface(i) => TyKind::Interface(*i),
-                            Pou::DataType(dt) => dt.spec(db).to_ty(db).kind(db).clone(),
+                            Pou::DataType(dt) => dt.spec(db).to_ty_kind(db),
                         };
                         return Ty::new(db, TySource::Pou((self, pou)), kind);
                     }
@@ -152,6 +152,32 @@ impl<'db> Spec<'db> {
             }
         };
         Ty::new(db, TySource::Spec(self), kind)
+    }
+
+    fn to_ty_kind(&self, db: &'db dyn BaseDatabase) -> TyKind<'db> {
+        match self.kind(db) {
+            SpecKind::Array(array) => TyKind::Array(*array),
+            SpecKind::Enum(enum_spec) => TyKind::Enum(*enum_spec),
+            SpecKind::Subrange(subrange) => TyKind::SubRange(*subrange),
+            SpecKind::Struct(ztruct) => TyKind::Struct(*ztruct),
+            SpecKind::Simple(simple) => TyKind::Simple(*simple),
+            SpecKind::ArrayConformand(array) => TyKind::ArrayConformand(*array),
+            SpecKind::Ref(_ref) => TyKind::RefTo(*_ref),
+            SpecKind::Target(target) => {
+                match resolve_namespace_access(db, target.scope_id, target.path) {
+                    Some(pou) => {
+                        match pou.pou(db) {
+                            Pou::Function(f) => TyKind::Function(*f),
+                            Pou::FunctionBlock(fb) => TyKind::FunctionBlock(*fb),
+                            Pou::Class(c) => TyKind::Class(*c),
+                            Pou::Interface(i) => TyKind::Interface(*i),
+                            Pou::DataType(dt) => dt.spec(db).to_ty_kind(db),
+                        }
+                    }
+                    None => TyKind::Err(AccessError::NoItemInScope { access: *target }),
+                }
+            }
+        }
     }
 }
 
