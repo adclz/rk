@@ -17,7 +17,7 @@ use crate::{
         expr_resolver::ResolvedExpr,
         param_resolver::resolve_parameters,
         ty::Ty,
-        ty_var_access_resolver::{ResolvedAccess, resolve_path_expr},
+        ty_var_access_resolver::{ResolvedAccess, resolve_global_path_expr},
         walk::{ResolvedPath, ResolvedPathKind},
     },
 };
@@ -47,7 +47,7 @@ impl<'db> ResolvedFuncCall<'db> {
 
 impl<'db> FuncCall<'db> {
     pub fn resolve_func_call(&self, db: &'db dyn BaseDatabase) -> ResolvedFuncCall<'db> {
-        let target = resolve_path_expr(db, self.path);
+        let target = resolve_global_path_expr(db, self.path);
 
         ResolvedFuncCall {
             target,

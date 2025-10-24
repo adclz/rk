@@ -1,7 +1,6 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    AstId, HirNodeInfo,
     hir_def::{
         expressions::{
             expression::{Elementary, Expr, ExprKind, PrimaryExpr, RefValue},
@@ -10,13 +9,12 @@ use crate::{
         interned::identifier::SpanIdent,
         scope::FileScopeId,
         semantic_index::semantic_index,
-    },
-    hir_ty::{
+    }, hir_ty::{
         func_call_resolver::ResolvedFuncCall,
         invocation_resolver::ResolvedInvocationResult,
         ty::TyKind,
-        ty_var_access_resolver::{ResolvedAccess, resolve_path_expr, resolve_var_access},
-    },
+        ty_var_access_resolver::{resolve_global_path_expr, resolve_local_path_expr, resolve_var_access, ResolvedAccess},
+    }, AstId, HirNodeInfo
 };
 
 #[salsa::tracked]
@@ -152,7 +150,7 @@ impl<'db> ResolveExprCtx<'db> {
                 }
                 PrimaryExpr::EnumValue { name, variant } => {
                     // Find the target enum type
-                    let resolved_path = resolve_path_expr(self.db, *name);
+                    let resolved_path = resolve_global_path_expr(self.db, *name);
 
                     // Find the variant in the enum type
                     let resolved_variant = if let Ok(Ok(TyKind::Enum(enum_))) = resolved_path
@@ -190,7 +188,7 @@ impl<'db> ResolveExprCtx<'db> {
                     RefValue::Address(adress) => ResolvedExpr::new(
                         self.db,
                         self.expr,
-                        ResolvedExprKind::RefValue(ResolvedRefValue::Adress(resolve_path_expr(
+                        ResolvedExprKind::RefValue(ResolvedRefValue::Adress(resolve_local_path_expr(
                             self.db,
                             adress.kind,
                         ))),

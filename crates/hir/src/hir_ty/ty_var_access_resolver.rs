@@ -2,9 +2,7 @@ use auto_lsp::default::db::BaseDatabase;
 use indexmap::IndexMap;
 
 use crate::{
-    AstId, HirNodeInfo,
-    check::errors::path_error::AccessError,
-    hir_def::{
+    check::errors::path_error::AccessError, hir_def::{
         expressions::{
             expression::{
                 Expr, PathExpr, PathExprKind, VarAccess, VariableAccess, VariableAccessKind,
@@ -23,13 +21,9 @@ use crate::{
         scope::{FileScopeId, ScopeKind},
         semantic_index::semantic_index,
         visibility::Visibility,
-    },
-    hir_ty::{
-        name_res::{pou_names_res, resolve_namespace_access},
-        signatures::LocalVariables,
-        ty::Ty,
-        walk::{Adjustement, ResolvedPath, ResolvedPathKind, ResolvedPathResult},
-    },
+    }, hir_ty::{
+        inheritance_solver::MethodRef, name_res::{pou_names_res, resolve_namespace_access}, signatures::LocalVariables, ty::Ty, walk::{Adjustement, ResolvedPath, ResolvedPathKind, ResolvedPathResult}
+    }, AstId, HirNodeInfo
 };
 
 #[salsa::tracked]
@@ -41,11 +35,19 @@ pub fn resolve_var_access<'db>(
 }
 
 #[salsa::tracked]
-pub fn resolve_path_expr<'db>(
+pub fn resolve_local_path_expr<'db>(
     db: &'db dyn BaseDatabase,
     path: PathExpr<'db>,
 ) -> ResolvedAccess<'db> {
-    GlobalResolverCtx::new(db, path).resolve()
+    GlobalResolverCtx::new(db, path, SearchMode::Local).resolve()
+}
+
+#[salsa::tracked]
+pub fn resolve_global_path_expr<'db>(
+    db: &'db dyn BaseDatabase,
+    path: PathExpr<'db>,
+) -> ResolvedAccess<'db> {
+    GlobalResolverCtx::new(db, path, SearchMode::Global).resolve()
 }
 
 #[salsa::tracked(debug)]
@@ -83,10 +85,12 @@ impl<'db> CallSite<'db> {
                 InvocationKind::SuperBody => "SUPER()".to_string(),
             },
             CallSite::Access(access) => (match access.kind(db) {
-                    VariableAccessKind::Direct { adress, .. } => adress.text(db).to_string(),
-                    VariableAccessKind::Symbolic(symbolic) =>
-                        symbolic.kind.ident(db).text(db).to_string(),
-                }).to_string(),
+                VariableAccessKind::Direct { adress, .. } => adress.text(db).to_string(),
+                VariableAccessKind::Symbolic(symbolic) => {
+                    symbolic.kind.ident(db).text(db).to_string()
+                }
+            })
+            .to_string(),
             CallSite::PathExpr(path) => path.ident(db).text(db).to_string(),
             _ => "{unknown}".to_string(),
         }
@@ -142,6 +146,16 @@ impl<'db> ResolvedAccess<'db> {
                 kind: ResolvedPathKind::Pou(p),
                 ..
             }) => Some(p),
+            _ => None,
+        }
+    }
+
+    pub fn as_method(&self, db: &'db dyn BaseDatabase) -> Option<MethodRef<'db>> {
+        match self.kind(db) {
+            ResolvedPathResult::Ok(ResolvedPath {
+                kind: ResolvedPathKind::Method(m),
+                ..
+            }) => Some(m),
             _ => None,
         }
     }
@@ -272,20 +286,13 @@ impl<'db> VarAccessResolverCtx<'db> {
                 todo!()
             }
             VariableAccessKind::Symbolic(symbolic) => {
-                let target = find_primary_target(self.db, symbolic.kind);
-                match target {
-                    Some((place, rest)) => {
+                match find_primary_target(self.db, symbolic.kind, SearchMode::Local) {
+                    Ok((place, rest)) => {
                         let elements = resolve_path_rest(self.db, place.clone(), rest);
 
                         ResolvedAccess::new(self.db, ResolvedPathResult::Ok(place), elements)
                     }
-                    None => ResolvedAccess::new(
-                        self.db,
-                        ResolvedPathResult::Err(AccessError::NoLocalItemInScope {
-                            expr: symbolic.kind,
-                        }),
-                        vec![],
-                    ),
+                    Err(e) => return e,
                 }
             }
         }
@@ -295,43 +302,60 @@ impl<'db> VarAccessResolverCtx<'db> {
 pub struct GlobalResolverCtx<'db> {
     db: &'db dyn BaseDatabase,
     path_expr: PathExpr<'db>,
+    search_mode: SearchMode,
 }
 
 impl<'db> GlobalResolverCtx<'db> {
-    pub fn new(db: &'db dyn BaseDatabase, path_expr: PathExpr<'db>) -> Self {
-        Self { db, path_expr }
+    pub fn new(
+        db: &'db dyn BaseDatabase,
+        path_expr: PathExpr<'db>,
+        search_mode: SearchMode,
+    ) -> Self {
+        Self {
+            db,
+            path_expr,
+            search_mode,
+        }
     }
 
     pub fn resolve(&self) -> ResolvedAccess<'db> {
-        let target = find_primary_target(self.db, self.path_expr);
-        match target {
-            Some((place, rest)) => {
+        match find_primary_target(self.db, self.path_expr, self.search_mode) {
+            Ok((place, rest)) => {
                 let elements = resolve_path_rest(self.db, place.clone(), rest);
 
                 ResolvedAccess::new(self.db, ResolvedPathResult::Ok(place), elements)
             }
-            None => ResolvedAccess::new(
-                self.db,
-                ResolvedPathResult::Err(AccessError::NoLocalItemInScope {
-                    expr: self.path_expr,
-                }),
-                vec![],
-            ),
+            Err(e) => return e,
         }
     }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum SearchMode {
+    Local,
+    Global,
 }
 
 fn find_primary_target<'db>(
     db: &'db dyn BaseDatabase,
     path_expr: PathExpr<'db>,
-) -> Option<(ResolvedPath<'db>, &'db [PathExprWalkStep<'db>])> {
+    mode: SearchMode,
+) -> Result<(ResolvedPath<'db>, &'db [PathExprWalkStep<'db>]), ResolvedAccess<'db>> {
     let flatten = path_expr.flatten_steps(db);
     match flatten.first() {
         Some(first) => {
             let (ident, expr) = match first {
                 PathExprWalkStep::Field { ident, expr } => (ident, expr),
                 PathExprWalkStep::Deref { target, expr } => (target, expr),
-                PathExprWalkStep::Index { expr } => return None, // cannot start with index
+                PathExprWalkStep::Index { expr } => {
+                    return Err(ResolvedAccess::new(
+                        db,
+                        ResolvedPathResult::Err(AccessError::NoLocalItemInScope {
+                            expr: path_expr,
+                        }),
+                        vec![],
+                    ));
+                } // cannot start with index
             };
 
             let sema = semantic_index(db, expr.scope_id(db).file(db));
@@ -339,47 +363,81 @@ fn find_primary_target<'db>(
 
             // Search for variables in scope
             if let ScopeKind::Pou(pou) = scope.kind {
-                if let Ok(resolved) = pou.walk(db, first) {
-                    return Some((resolved, flatten[1..].as_ref()));
-                }
-            }
-
-            // Try local POU names
-            if let Some(pou) = pou_names_res(db, ident, expr.scope_id(db)) {
-                return Some((
-                    ResolvedPathKind::Pou(pou).into_path_call(*first.get_expr(), Adjustement::None),
-                    flatten[1..].as_ref(),
-                ));
-            }
-
-            // Try Namespaces
-            // Since the IEC standard states that both namespaces and path expressions should be dotted,
-            // we need to loop through all steps until we find a matching namespace
-            // this is not very efficient, but should work for now
-
-            // first get all fragments that could look like a namespace
-            // we just iterate through all steps until we find a non-Field step
-            let mut fragments = vec![];
-            for step in flatten {
-                match step {
-                    PathExprWalkStep::Field { ident, .. } => {
-                        fragments.push(*ident);
+                match pou.walk(db, first) {
+                    Ok(resolved) => {
+                        return Ok((resolved, flatten[1..].as_ref()));
                     }
-                    _ => break,
+                    Err(err) => {
+                        if let SearchMode::Local = mode {
+                            if matches!(err, AccessError::TypeHasNoField { .. } | AccessError::UnknownField { .. }) {
+                                return Err(ResolvedAccess::new(
+                                    db,
+                                    ResolvedPathResult::Err(AccessError::NoLocalItemInScope {
+                                        expr: path_expr,
+                                    }),
+                                    vec![],
+                                ));
+                            }
+                            return Err(ResolvedAccess::new(
+                                db,
+                                ResolvedPathResult::Err(err),
+                                vec![],
+                            ));
+                        }
+                    }
                 }
             }
 
-            let path = NamespacePath::from((db, &fragments));
-            let access = NamespaceAccess::new(db, Some(path), ident);
-            if let Some(pou) = resolve_namespace_access(db, expr.scope_id(db), access) {
-                return Some((
-                    ResolvedPathKind::Pou(pou).into_path_call(*first.get_expr(), Adjustement::None),
-                    flatten[fragments.len() - 1..].as_ref(),
-                ));
+            if let SearchMode::Global = mode {
+                // Try local POU names
+                if let Some(pou) = pou_names_res(db, ident, expr.scope_id(db)) {
+                    return Ok((
+                        ResolvedPathKind::Pou(pou)
+                            .into_path_call(*first.get_expr(), Adjustement::None),
+                        flatten[1..].as_ref(),
+                    ));
+                }
+
+                // Try Namespaces
+                // Since the IEC standard states that both namespaces and path expressions should be dotted,
+                // we need to loop through all steps until we find a matching namespace
+                // this is not very efficient, but should work for now
+
+                // first get all fragments that could look like a namespace
+                // we just iterate through all steps until we find a non-Field step
+                let mut fragments = vec![];
+                for step in flatten {
+                    match step {
+                        PathExprWalkStep::Field { ident, .. } => {
+                            fragments.push(*ident);
+                        }
+                        _ => break,
+                    }
+                }
+
+                let path = NamespacePath::from((db, &fragments));
+                let access = NamespaceAccess::new(db, Some(path), ident);
+                if let Some(pou) = resolve_namespace_access(db, expr.scope_id(db), access) {
+                    return Ok((
+                        ResolvedPathKind::Pou(pou)
+                            .into_path_call(*first.get_expr(), Adjustement::None),
+                        flatten[fragments.len() - 1..].as_ref(),
+                    ));
+                }
             }
-            None
+            Err(ResolvedAccess::new(
+                db,
+                ResolvedPathResult::Err(AccessError::NoLocalItemInScope {
+                    expr: *first.get_expr(),
+                }),
+                vec![],
+            ))
         }
-        None => None,
+        None => Err(ResolvedAccess::new(
+            db,
+            ResolvedPathResult::Err(AccessError::NoLocalItemInScope { expr: path_expr }),
+            vec![],
+        )),
     }
 }
 
@@ -524,10 +582,9 @@ impl<'db> PathExpr<'db> {
                     expr: self,
                     ident: simple,
                 }),
-                VarAccess::Deref(target) => result.push(PathExprWalkStep::Deref {
-                    expr: self,
-                    target,
-                }),
+                VarAccess::Deref(target) => {
+                    result.push(PathExprWalkStep::Deref { expr: self, target })
+                }
             },
         }
         result
