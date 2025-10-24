@@ -193,11 +193,11 @@ impl<'db> Invocation<'db> {
                                     MethodError::UnresolvedSuperMethod {
                                         ctx: match pou.pou(db) {
                                             Pou::Class(class) => class.extends(db).and_then(|e| {
-                                                resolve_namespace_access(db, e.scope_id, e.path)
+                                                resolve_namespace_access(db, e.path)
                                             }),
                                             Pou::FunctionBlock(fb) => {
                                                 fb.extends(db).and_then(|e| {
-                                                    resolve_namespace_access(db, e.scope_id, e.path)
+                                                    resolve_namespace_access(db, e.path)
                                                 })
                                             }
                                             _ => None,

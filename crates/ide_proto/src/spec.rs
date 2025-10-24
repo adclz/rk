@@ -23,7 +23,7 @@ impl<'db> ToProtocol<'db> for Spec<'db> {
     fn hover(&'db self, db: &'db dyn BaseDatabase, _offset: usize) -> Option<Hover> {
         let comment = match self.kind(db) {
             SpecKind::Target(t) => {
-                let pou = resolve_namespace_access(db, t.scope_id, t.path)?;
+                let pou = resolve_namespace_access(db, t.path)?;
                 pou.get_comment(db).unwrap_or_default()
             }
             SpecKind::Ref(r) => r.get_comment(db).unwrap_or_default(),
@@ -50,7 +50,7 @@ impl<'db> ToProtocol<'db> for Spec<'db> {
     fn definition(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDefinitionResponse> {
         match self.kind(db) {
             SpecKind::Target(target) => {
-                let pou = resolve_namespace_access(db, target.scope_id, target.path)?;
+                let pou = resolve_namespace_access(db, target.path)?;
                 pou.definition(db)
             }
             SpecKind::Ref(_ref) => _ref.definition(db),
@@ -64,7 +64,7 @@ impl<'db> ToProtocol<'db> for Spec<'db> {
     fn declaration(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDeclarationResponse> {
         match self.kind(db) {
             SpecKind::Target(target) => {
-                let pou = resolve_namespace_access(db, target.scope_id, target.path)?;
+                let pou = resolve_namespace_access(db, target.path)?;
                 pou.definition(db)
             }
             SpecKind::Ref(_ref) => _ref.declaration(db),
@@ -94,7 +94,7 @@ impl<'db> ToProtocol<'db> for Spec<'db> {
                 .into(),
             SpecKind::Ref(r) => r.completion(db, offset),
             SpecKind::Target(target) => {
-                match resolve_namespace_access(db, target.scope_id, target.path) {
+                match resolve_namespace_access(db, target.path) {
                     Some(pou) => pou.completion(db, offset),
                     None => {
                         let mut results = vec![];

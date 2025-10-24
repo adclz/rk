@@ -136,7 +136,7 @@ impl<'db> Spec<'db> {
             SpecKind::ArrayConformand(array) => TyKind::ArrayConformand(*array),
             SpecKind::Ref(_ref) => TyKind::RefTo(*_ref),
             SpecKind::Target(target) => {
-                match resolve_namespace_access(db, target.scope_id, target.path) {
+                match resolve_namespace_access(db, target.path) {
                     Some(pou) => {
                         let kind = match pou.pou(db) {
                             Pou::Function(f) => TyKind::Function(*f),
@@ -164,7 +164,7 @@ impl<'db> Spec<'db> {
             SpecKind::ArrayConformand(array) => TyKind::ArrayConformand(*array),
             SpecKind::Ref(_ref) => TyKind::RefTo(*_ref),
             SpecKind::Target(target) => {
-                match resolve_namespace_access(db, target.scope_id, target.path) {
+                match resolve_namespace_access(db, target.path) {
                     Some(pou) => {
                         match pou.pou(db) {
                             Pou::Function(f) => TyKind::Function(*f),

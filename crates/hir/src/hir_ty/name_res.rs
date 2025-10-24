@@ -37,7 +37,6 @@ pub fn shared_namespaces<'db>(
 /// Resolve a namespace access to a POU declaration.
 pub fn resolve_namespace_access<'db>(
     db: &'db dyn BaseDatabase,
-    scope: FileScopeId<'db>,
     access: NamespaceAccess,
 ) -> Option<PouDecl<'db>> {
     let target = access.target(db);
@@ -51,7 +50,7 @@ pub fn resolve_namespace_access<'db>(
                 .copied()
         }),
         // None, look for the POU in the current scope
-        None => pou_names_res(db, &target.ident, scope),
+        None => pou_names_res(db, &target.ident, access.target(db).scope_id),
     }
 }
 

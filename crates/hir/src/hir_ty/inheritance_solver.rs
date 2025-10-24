@@ -199,7 +199,7 @@ pub fn inherited_methods<'db>(
     match pou.pou(db) {
         Pou::Class(class) => {
             if let Some(base) = class.extends(db) {
-                match resolve_namespace_access(db, base.scope_id, base.path) {
+                match resolve_namespace_access(db, base.path) {
                     Some(base) => {
                         inherit_from(base);
                     }
@@ -207,7 +207,7 @@ pub fn inherited_methods<'db>(
                 }
             }
             for iface in class.implements(db) {
-                match resolve_namespace_access(db, iface.scope_id, iface.path) {
+                match resolve_namespace_access(db, iface.path) {
                     Some(iface) => {
                         inherit_from(iface);
                     }
@@ -219,7 +219,7 @@ pub fn inherited_methods<'db>(
         Pou::Interface(iface) => {
             if let Some(extends) = iface.extends(db) {
                 for iface in extends {
-                    match resolve_namespace_access(db, iface.scope_id, iface.path) {
+                    match resolve_namespace_access(db, iface.path) {
                         Some(iface) => {
                             inherit_from(iface);
                         }
@@ -231,7 +231,7 @@ pub fn inherited_methods<'db>(
 
         Pou::FunctionBlock(fb) => {
             if let Some(base) = fb.extends(db) {
-                match resolve_namespace_access(db, base.scope_id, base.path) {
+                match resolve_namespace_access(db, base.path) {
                     Some(base) => {
                         inherit_from(base);
                     }

@@ -417,7 +417,7 @@ fn find_primary_target<'db>(
 
                 let path = NamespacePath::from((db, &fragments));
                 let access = NamespaceAccess::new(db, Some(path), ident);
-                if let Some(pou) = resolve_namespace_access(db, expr.scope_id(db), access) {
+                if let Some(pou) = resolve_namespace_access(db, access) {
                     return Ok((
                         ResolvedPathKind::Pou(pou)
                             .into_path_call(*first.get_expr(), Adjustement::None),
