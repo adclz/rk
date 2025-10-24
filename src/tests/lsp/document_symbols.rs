@@ -42,7 +42,7 @@ END_INTERFACE"#;
         DocumentSymbol {
             name: "fn1",
             detail: Some(
-                "function",
+                "FUNCTION",
             ),
             kind: Function,
             tags: None,
@@ -74,7 +74,7 @@ END_INTERFACE"#;
         DocumentSymbol {
             name: "fb1",
             detail: Some(
-                "function block",
+                "FUNCTION_BLOCK",
             ),
             kind: Function,
             tags: None,
@@ -106,7 +106,7 @@ END_INTERFACE"#;
         DocumentSymbol {
             name: "class1",
             detail: Some(
-                "class",
+                "CLASS",
             ),
             kind: Class,
             tags: None,
@@ -138,7 +138,7 @@ END_INTERFACE"#;
         DocumentSymbol {
             name: "in1",
             detail: Some(
-                "interface",
+                "INTERFACE",
             ),
             kind: Interface,
             tags: None,
@@ -203,7 +203,7 @@ END_FUNCTION_BLOCK"#;
         DocumentSymbol {
             name: "fb1",
             detail: Some(
-                "function block",
+                "FUNCTION_BLOCK",
             ),
             kind: Function,
             tags: None,
@@ -233,7 +233,7 @@ END_FUNCTION_BLOCK"#;
                     DocumentSymbol {
                         name: "a",
                         detail: Some(
-                            "variable",
+                            "INT",
                         ),
                         kind: Variable,
                         tags: None,
@@ -263,7 +263,7 @@ END_FUNCTION_BLOCK"#;
                     DocumentSymbol {
                         name: "b",
                         detail: Some(
-                            "variable",
+                            "INT",
                         ),
                         kind: Variable,
                         tags: None,
@@ -293,7 +293,7 @@ END_FUNCTION_BLOCK"#;
                     DocumentSymbol {
                         name: "c",
                         detail: Some(
-                            "variable",
+                            "STRING",
                         ),
                         kind: Variable,
                         tags: None,
@@ -363,7 +363,7 @@ END_CLASS"#;
         DocumentSymbol {
             name: "CCounter",
             detail: Some(
-                "class",
+                "CLASS",
             ),
             kind: Class,
             tags: None,
@@ -393,7 +393,7 @@ END_CLASS"#;
                     DocumentSymbol {
                         name: "Count",
                         detail: Some(
-                            "method",
+                            "METHOD",
                         ),
                         kind: Method,
                         tags: None,
@@ -425,7 +425,7 @@ END_CLASS"#;
                     DocumentSymbol {
                         name: "SetDirection",
                         detail: Some(
-                            "method",
+                            "METHOD",
                         ),
                         kind: Method,
                         tags: None,
@@ -484,7 +484,7 @@ END_INTERFACE"#;
         DocumentSymbol {
             name: "ROOM",
             detail: Some(
-                "interface",
+                "INTERFACE",
             ),
             kind: Interface,
             tags: None,
@@ -514,7 +514,7 @@ END_INTERFACE"#;
                     DocumentSymbol {
                         name: "DAYTIME",
                         detail: Some(
-                            "method",
+                            "METHOD",
                         ),
                         kind: Method,
                         tags: None,
@@ -546,7 +546,7 @@ END_INTERFACE"#;
                     DocumentSymbol {
                         name: "NIGHTTIME",
                         detail: Some(
-                            "method",
+                            "METHOD",
                         ),
                         kind: Method,
                         tags: None,
@@ -608,7 +608,7 @@ END_TYPE"#;
         DocumentSymbol {
             name: "BOOL",
             detail: Some(
-                "data type",
+                "BOOL",
             ),
             kind: Boolean,
             tags: None,
@@ -640,7 +640,7 @@ END_TYPE"#;
         DocumentSymbol {
             name: "NUMBER",
             detail: Some(
-                "data type",
+                "INT",
             ),
             kind: Number,
             tags: None,
@@ -672,7 +672,7 @@ END_TYPE"#;
         DocumentSymbol {
             name: "FLOAT",
             detail: Some(
-                "data type",
+                "REAL",
             ),
             kind: Number,
             tags: None,
@@ -704,7 +704,7 @@ END_TYPE"#;
         DocumentSymbol {
             name: "STRING20",
             detail: Some(
-                "data type",
+                "STRING",
             ),
             kind: String,
             tags: None,
@@ -736,7 +736,7 @@ END_TYPE"#;
         DocumentSymbol {
             name: "ARRAY_5",
             detail: Some(
-                "data type",
+                "ARRAY [1..5] OF INT",
             ),
             kind: Array,
             tags: None,

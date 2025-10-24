@@ -227,7 +227,7 @@ FUNCTION fn: BOOL
 		myRefInt: REF_TO INT := REF(myA1[1]);
 	END_VAR
 
-	myRefInt := REF(A1[11]);
+	myRefInt := REF(myA1[11]);
 
 END_FUNCTION
         "#;

@@ -45,7 +45,7 @@ END_INTERFACE"#;
                 character: 12,
             },
             label: String(
-                "function fn1",
+                "FUNCTION fn1",
             ),
             kind: Some(
                 Type,
@@ -64,7 +64,7 @@ END_INTERFACE"#;
                 character: 18,
             },
             label: String(
-                "function block fb1",
+                "FUNCTION_BLOCK fb1",
             ),
             kind: Some(
                 Type,
@@ -83,7 +83,7 @@ END_INTERFACE"#;
                 character: 9,
             },
             label: String(
-                "class class1",
+                "CLASS class1",
             ),
             kind: Some(
                 Type,
@@ -102,7 +102,7 @@ END_INTERFACE"#;
                 character: 13,
             },
             label: String(
-                "interface in1",
+                "INTERFACE in1",
             ),
             kind: Some(
                 Type,
@@ -149,7 +149,7 @@ END_NAMESPACE"#;
                 character: 13,
             },
             label: String(
-                "namespace ns1",
+                "NAMESPACE ns1",
             ),
             kind: Some(
                 Type,
@@ -168,7 +168,7 @@ END_NAMESPACE"#;
                 character: 13,
             },
             label: String(
-                "namespace ns2",
+                "NAMESPACE ns2",
             ),
             kind: Some(
                 Type,

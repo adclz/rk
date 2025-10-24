@@ -77,7 +77,6 @@ END_FUNCTION_BLOCK"#;
      10 |         unknown := TRUE
         |         ^^^|^^^  
         |            `----- unknown input parameter 'unknown'
-        | 
     ----'
     ");
 }
@@ -113,7 +112,6 @@ END_FUNCTION_BLOCK"#;
      7 |         unknown => TRUE
        |         ^^^|^^^  
        |            `----- unknown output parameter 'unknown'
-       | 
     ---'
     ");
 }
@@ -353,13 +351,11 @@ END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-        ,-[ file:///test0.st:13:18 ]
+        ,-[ file:///test0.st:13:8 ]
         |
      13 |     fn(param1 => b1);
-        |                  ^|  
-        |                   `-- 'b1' is a type and can not be assigned
-        | 
-        | Note: types can only be assigned if they are declared in a VAR_* section
+        |        ^^^|^^  
+        |           `---- unresolved output parameter target: no item 'b1' in scope
     ----'
     ");
 }

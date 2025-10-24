@@ -72,7 +72,7 @@ fn fuzzy_pou_local_variables(mut with_db: RootDatabase) {
        |             ^^^|^^  
        |                `---- no item 'engine' in scope
        | 
-       | Note: local variable(s) with similar(s) name exist:
+       | Note: POU item(s) with similar name(s) exist:
        |       - engine2
        |       - no_engine
     ---'
@@ -103,7 +103,7 @@ END_FUNCTION_BLOCK
         |        ^^|^^  
         |          `---- unknown input parameter 'param'
         | 
-        | Note: local variable(s) with similar(s) name exist:
+        | Note: POU item(s) with similar name(s) exist:
         |       - param1
         |       - param2
     ----'
@@ -137,7 +137,7 @@ END_FUNCTION_BLOCK
         |        ^^|^^  
         |          `---- unknown output parameter 'param'
         | 
-        | Note: local variable(s) with similar(s) name exist:
+        | Note: POU item(s) with similar name(s) exist:
         |       - param1
         |       - param2
     ----'

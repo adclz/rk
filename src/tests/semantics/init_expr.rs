@@ -35,7 +35,6 @@ fn unknown_struct_field(mut with_db: RootDatabase) {
      12 |                 Base : Engine := (power := 100, fuel := 10.0);
         |                                                 ^^|^  
         |                                                   `--- no field 'fuel' in STRUCT
-        | 
     ----'
     ");
 }
@@ -81,7 +80,6 @@ fn invalid_struct_value(mut with_db: RootDatabase) {
      11 |                 Base : Engine := (power := 10.5, fuel := 10.0);
         |                                                  ^^|^  
         |                                                    `--- no field 'fuel' in STRUCT
-        | 
     ----'
     ");
 }
