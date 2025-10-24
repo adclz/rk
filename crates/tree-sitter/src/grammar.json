@@ -8121,6 +8121,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "empty_path_expression"
+        },
+        {
+          "type": "SYMBOL",
           "name": "func_call"
         },
         {
@@ -8941,6 +8945,14 @@
           }
         }
       ]
+    },
+    "empty_path_expression": {
+      "type": "PREC",
+      "value": -1,
+      "content": {
+        "type": "SYMBOL",
+        "name": "path_expression"
+      }
     },
     "IQM": {
       "type": "CHOICE",

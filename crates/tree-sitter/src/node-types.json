@@ -326,6 +326,10 @@
         "named": true
       },
       {
+        "type": "empty_path_expression",
+        "named": true
+      },
+      {
         "type": "for_stmt",
         "named": true
       },
@@ -1968,6 +1972,21 @@
           }
         ]
       }
+    }
+  },
+  {
+    "type": "empty_path_expression",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "path_expression",
+          "named": true
+        }
+      ]
     }
   },
   {
