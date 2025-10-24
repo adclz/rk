@@ -1,20 +1,18 @@
 use hir::{
-    TypeInfo,
     hir_def::{
         expressions::spec::{ElementarySpec, SpecKind},
-        pous::pou::{Pou, PouDecl},
-    },
-    hir_ty::{implementation::find_all_implementations, inheritance_solver::MethodRef},
+        pous::{pou::{Pou, PouDecl}, variable::VariableKind},
+    }, hir_ty::{
+        implementation::find_all_implementations, inheritance_solver::{declared_methods, MethodRef},
+        signatures::LocalVariables,
+    }, TypeInfo
 };
 
 use auto_lsp::{
     core::document_symbols_builder::DocumentSymbolsBuilder,
     default::db::BaseDatabase,
     lsp_types::{
-        CodeLens, Command, CompletionItem, GotoDefinitionResponse, Hover, HoverContents, InlayHint,
-        InlayHintKind, InlayHintLabel, Location, LocationLink, MarkupContent, MarkupKind,
-        SymbolKind,
-        request::GotoImplementationResponse,
+        request::GotoImplementationResponse, CodeLens, Command, CompletionItem, CompletionItemKind, CompletionItemLabelDetails, GotoDefinitionResponse, Hover, HoverContents, InlayHint, InlayHintKind, InlayHintLabel, Location, LocationLink, MarkupContent, MarkupKind, SymbolKind
     },
 };
 use hir::HirNodeInfo;
@@ -59,13 +57,12 @@ impl<'db> ToProtocol<'db> for PouDecl<'db> {
             name: self.name(db).text(db).to_string(),
             detail: Some(
                 match self.pou(db) {
-                    Pou::FunctionBlock(_) => "function block",
-                    Pou::Function(_) => "function",
-                    Pou::Class(_) => "class",
-                    Pou::DataType(_) => "data type",
-                    Pou::Interface(_) => "interface",
-                }
-                .to_string(),
+                    Pou::FunctionBlock(_) => "FUNCTION_BLOCK".to_string(),
+                    Pou::Function(_) => "FUNCTION".to_string(),
+                    Pou::Class(_) => "CLASS".to_string(),
+                    Pou::DataType(dt) => dt.spec(db).to_ty(db).type_name(db),
+                    Pou::Interface(_) => "INTERFACE".to_string(),
+                },
             ),
             kind: match self.pou(db) {
                 Pou::FunctionBlock(_) => SymbolKind::FUNCTION,
@@ -125,7 +122,52 @@ impl<'db> ToProtocol<'db> for PouDecl<'db> {
         db: &'db dyn BaseDatabase,
         offset: usize,
     ) -> Option<Vec<CompletionItem>> {
-        None
+        if let Pou::DataType(dt) = self.pou(db) {
+            return dt.spec(db).completion(db, offset);
+        }
+
+        let mut results = vec![];
+        self.global_variables(db).iter().for_each(|(name, v)| {
+            results.push(CompletionItem {
+                label: name.text(db).to_string(),
+                label_details: Some(CompletionItemLabelDetails {
+                    detail: Some(match v.kind(db) {
+                        VariableKind::Input => "(INPUT)",
+                        VariableKind::Output => "(OUTPUT)",
+                        VariableKind::InOut => "(IN_OUT",
+                        VariableKind::Var => "(VAR)",
+                        VariableKind::External => "(EXTERNAL)",
+                        VariableKind::Global => "(GLOBAL)",
+                        VariableKind::Access => "(ACCESS)",
+                        VariableKind::Config => "(CONFIG)",
+                        VariableKind::Temp => "(TEMP)",
+                    }.into()),
+                    ..Default::default()
+                }),
+                detail: Some(v.spec(db).to_ty(db).type_name(db)),
+                kind: Some(CompletionItemKind::VARIABLE),
+                ..CompletionItem::default()
+            })
+        });
+
+        declared_methods(db, *self).iter().for_each(|(name, method)| {
+            results.push(CompletionItem {
+                label: method.name(db).text(db).to_string(),
+                detail: match method.return_type(db) {
+                    Some(ret_type) => Some(format!(
+                        "{}: {}",
+                        name.text(db),
+                        ret_type.to_ty(db).type_name(db)
+                    )),
+                    None => None,
+                },
+                kind: Some(CompletionItemKind::METHOD),
+                ..CompletionItem::default()
+            })
+        });
+        
+
+        Some(results)
     }
 
     fn inlay_hint(&'db self, db: &'db dyn BaseDatabase) -> Option<InlayHint> {
@@ -133,10 +175,10 @@ impl<'db> ToProtocol<'db> for PouDecl<'db> {
             label: InlayHintLabel::String(format!(
                 "{} {}",
                 match self.pou(db) {
-                    Pou::Function(_) => "function",
-                    Pou::FunctionBlock(_) => "function block",
-                    Pou::Class(_) => "class",
-                    Pou::Interface(_) => "interface",
+                    Pou::Function(_) => "FUNCTION",
+                    Pou::FunctionBlock(_) => "FUNCTION_BLOCK",
+                    Pou::Class(_) => "CLASS",
+                    Pou::Interface(_) => "INTERFACE",
                     Pou::DataType(_) => None?,
                 },
                 self.name(db).text(db)
@@ -215,7 +257,8 @@ impl<'db> ToProtocol<'db> for PouDecl<'db> {
         let name = self.name(db).text(db);
         let return_type = match self.pou(db) {
             Pou::Function(f) => f
-                .return_type(db).map(|spec| format!(": {}", spec.to_ty(db).type_name(db)))
+                .return_type(db)
+                .map(|spec| format!(": {}", spec.to_ty(db).type_name(db)))
                 .unwrap_or_default(),
             _ => "".to_string(),
         };

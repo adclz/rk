@@ -55,7 +55,7 @@ NAMESPACE {ns}
 
     fn inlay_hint(&'db self, db: &'db dyn BaseDatabase) -> Option<auto_lsp::lsp_types::InlayHint> {
         Some(InlayHint {
-            label: InlayHintLabel::String(format!("namespace {}", self.path(db).to_string(db))),
+            label: InlayHintLabel::String(format!("NAMESPACE {}", self.path(db).to_string(db))),
             position: self.get_span(db).lsp().end,
             kind: Some(InlayHintKind::TYPE),
             text_edits: None,

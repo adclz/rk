@@ -2,8 +2,7 @@ use auto_lsp::{
     core::document_symbols_builder::DocumentSymbolsBuilder,
     default::db::BaseDatabase,
     lsp_types::{
-        GotoDefinitionResponse, Hover, HoverContents, Location, MarkupContent, MarkupKind,
-        SymbolKind, request::GotoDeclarationResponse,
+        request::GotoDeclarationResponse, CompletionItem, GotoDefinitionResponse, Hover, HoverContents, Location, MarkupContent, MarkupKind, SymbolKind
     },
 };
 use hir::{
@@ -17,7 +16,7 @@ impl<'db> ToProtocol<'db> for VariableDecl<'db> {
     fn document_symbols(&self, db: &'db dyn BaseDatabase, builder: &mut DocumentSymbolsBuilder) {
         builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
             name: self.name(db).text(db).to_string(),
-            detail: Some("variable".to_string()),
+            detail: Some(self.spec(db).to_ty(db).type_name(db)),
             kind: SymbolKind::VARIABLE,
             deprecated: None,
             range: self.get_span(db).lsp(),
@@ -69,5 +68,13 @@ impl<'db> ToProtocol<'db> for VariableDecl<'db> {
 
     fn definition(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDefinitionResponse> {
         self.spec(db).definition(db)
+    }
+
+    fn completion(
+            &'db self,
+            db: &'db dyn BaseDatabase,
+            offset: usize,
+        ) -> Option<Vec<CompletionItem>> {
+        self.spec(db).completion(db, offset)
     }
 }

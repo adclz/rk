@@ -1,5 +1,6 @@
 use auto_lsp::{default::db::BaseDatabase, lsp_types::CompletionItem};
-use hir::hir_def::using::Using;
+use hir::{hir_def::{interned::identifier::Ident, namespace::NamespaceDecl, semantic_index::semantic_index, using::Using}, HirNodeInfo};
+use rustc_hash::FxHashSet;
 
 use crate::ToProtocol;
 
@@ -9,12 +10,12 @@ impl<'db> ToProtocol<'db> for Using<'db> {
         db: &'db dyn BaseDatabase,
         _offset: usize,
     ) -> Option<Vec<CompletionItem>> {
-        None
-        /* let fragments = self.path(db).fragments(db);
+        let fragments = self.path(db).fragments(db);
         let mut marker_index = None;
 
         for (i, fragment) in fragments.iter().enumerate() {
-            if fragment.ident.text(db).contains(COMPLETION_MARKER) {
+            let frag_span = fragment.get_span(db);
+            if frag_span.start_byte <= _offset{
                 marker_index = Some(i);
                 break;
             }
@@ -26,14 +27,14 @@ impl<'db> ToProtocol<'db> for Using<'db> {
 
         // Case 1: marker is in the first fragment -> we can only prefix-match from root
         if marker_index == 0 {
-            let prefix = fragments[0].ident.text(db).replace(COMPLETION_MARKER, "");
+            let prefix = fragments[0].ident.text(db);
             return Some(
                 starts_with(db, Ident::new(db, prefix))
                     .iter()
                     .filter_map(|ns| ns.path(db).fragments(db).get(0))
                     .filter(|ident| seen.insert(*ident))
                     .map(|ident| {
-                        CompletionItem::new_simple(ident.ident.text(db), ident.ident.text(db))
+                        CompletionItem::new_simple(ident.text(db).to_string(), ident.text(db).to_string())
                     })
                     .collect(),
             );
@@ -59,9 +60,46 @@ impl<'db> ToProtocol<'db> for Using<'db> {
             .iter()
             .filter_map(|ns| ns.path(db).fragments(db).get(marker_index))
             .filter(|ident| seen.insert(*ident))
-            .map(|ident| CompletionItem::new_simple(ident.ident.text(db), ident.ident.text(db)))
+            .map(|ident| CompletionItem::new_simple(ident.text(db).to_string(), ident.text(db).to_string()))
             .collect();
 
-        Some(completions)*/
+        Some(completions)
     }
+}
+
+
+fn starts_with<'db>(
+    db: &'db dyn BaseDatabase,
+    prefix: Ident,
+) -> Vec<NamespaceDecl<'db>> {
+    db.get_files()
+        .iter()
+        .flat_map(|file| {
+            semantic_index(db, *file)
+                .namespaces
+                .iter()
+                .filter(|ns| ns.path(db).fragments(db).get(0).map_or(false, |frag| {
+                    frag.text(db).starts_with(prefix.text(db).as_str())
+                }))
+                .copied()
+        })
+        .collect()
+}
+
+fn starts<'db>(
+    db: &'db dyn BaseDatabase,
+    ident: Ident,
+) -> Vec<NamespaceDecl<'db>> {
+    db.get_files()
+        .iter()
+        .flat_map(|file| {
+            semantic_index(db, *file)
+                .namespaces
+                .iter()
+                .filter(|ns| ns.path(db).fragments(db).get(0).map_or(false, |frag| {
+                    frag == &ident
+                }))
+                .copied()
+        })
+        .collect()
 }

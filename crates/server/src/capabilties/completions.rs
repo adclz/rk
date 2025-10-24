@@ -5,7 +5,8 @@ use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{CompletionParams, CompletionResponse},
 };
-use ide_proto::completions::reparse::use_completion_marker;
+use hir::hir_def::semantic_index::semantic_index;
+use ide_proto::AsProtocol;
 
 pub fn completions(
     db: &impl BaseDatabase,
@@ -22,11 +23,29 @@ pub fn completions(
 
     let position = params.text_document_position.position;
     let offset = match doc.offset_at(position) {
-        Some(offset) => offset,
+        Some(offset) => match params.context.unwrap().trigger_character {
+            Some(str) if str == "." => offset.saturating_sub(1),
+            _ => offset,
+        },
         None => return Ok(None),
     };
 
-    let _s = tracing::trace_span!("completions").entered();
-
-    use_completion_marker(db, file, position, offset)
+    Ok(semantic_index(db, file)
+        .descendant_at(db, offset)
+        .and_then(|s| {
+            eprintln!("Getting completions for node: {:?}", s);
+            Some(CompletionResponse::Array(
+                s.as_proto().completion(db, offset).unwrap_or_default(),
+            ))
+        })
+        .or_else(|| {
+            Some(CompletionResponse::Array(vec![
+                ide_proto::completions::static_snippets::namespace(),
+                ide_proto::completions::static_snippets::function(),
+                ide_proto::completions::static_snippets::function_block(),
+                ide_proto::completions::static_snippets::class(),
+                ide_proto::completions::static_snippets::interface(),
+                ide_proto::completions::static_snippets::type_(),
+            ]))
+        }))
 }

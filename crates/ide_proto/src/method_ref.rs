@@ -19,7 +19,10 @@ impl<'db> ToProtocol<'db> for MethodRef<'db> {
 
         builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
             name: self.name(db).text(db).to_string(),
-            detail: Some("method".to_string()),
+            detail: Some(format!("METHOD{}", match self.return_type(db) {
+                Some(dt) => format!(" : {}", dt.to_ty(db).type_name(db)),
+                None => "".into()
+            })),
             kind: SymbolKind::METHOD,
             deprecated: None,
             range: self.get_span(db).lsp(),

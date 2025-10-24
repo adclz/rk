@@ -49,8 +49,8 @@ pub trait ToProtocol<'db>: HirNodeInfo<'db> {
 
     fn completion(
         &'db self,
-        _db: &'db dyn BaseDatabase,
-        _offset: usize,
+        db: &'db dyn BaseDatabase,
+        offset: usize,
     ) -> Option<Vec<CompletionItem>> {
         None
     }

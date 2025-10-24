@@ -2,13 +2,12 @@
 use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{
-        GotoDefinitionResponse, Hover,
-        request::GotoDeclarationResponse,
+        request::GotoDeclarationResponse, CompletionItem, GotoDefinitionResponse, Hover
     },
 };
-use hir::hir_ty::ty_var_access_resolver::ResolvedAccess;
+use hir::{hir_def::{pous::pou::Pou, scope::ScopeKind, semantic_index::semantic_index}, hir_ty::{name_res::all_global_pous, ty_var_access_resolver::ResolvedAccess}, HirNodeInfo};
 
-use crate::ToProtocol;
+use crate::{completions::per_scope::scoped_completions, ToProtocol};
 
 impl<'db> ToProtocol<'db> for ResolvedAccess<'db> {
     fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Hover> {
@@ -21,5 +20,16 @@ impl<'db> ToProtocol<'db> for ResolvedAccess<'db> {
 
     fn definition(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDefinitionResponse> {
         self.resolved(db).ok()?.definition(db)
+    }
+
+    fn completion(
+            &'db self,
+            db: &'db dyn BaseDatabase,
+            offset: usize,
+        ) -> Option<Vec<CompletionItem>> {
+        match self.resolved(db) {
+            Ok(resolved) => resolved.completion(db, offset),
+            Err(_) => scoped_completions(db, self.get_scope_id(db), offset)
+        }
     }
 }

@@ -1,12 +1,12 @@
 use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{
-        GotoDefinitionResponse, Hover, request::GotoDeclarationResponse,
+        request::GotoDeclarationResponse, CompletionItem, GotoDefinitionResponse, Hover
     },
 };
-use hir::hir_ty::walk::{ResolvedPath, ResolvedPathKind};
+use hir::hir_ty::{signatures::LocalVariables, walk::{ResolvedPath, ResolvedPathKind}};
 
-use crate::ToProtocol;
+use crate::{completions::static_snippets::namespace, ToProtocol};
 
 impl<'db> ToProtocol<'db> for ResolvedPath<'db> {
     fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Hover> {
@@ -37,5 +37,27 @@ impl<'db> ToProtocol<'db> for ResolvedPath<'db> {
             ResolvedPathKind::Variable(v) => v.definition(db),
             ResolvedPathKind::Method(m) => m.definition(db),
         }
+    }
+
+    fn completion(
+            &'db self,
+            db: &'db dyn BaseDatabase,
+            offset: usize,
+        ) -> Option<Vec<CompletionItem>> {
+            Some(match self.kind {
+                ResolvedPathKind::Variable(v) => {
+                    v.completion(db, offset)?
+                },
+                ResolvedPathKind::Pou(pou) => {
+                    pou.completion(db, offset)?
+                },
+                ResolvedPathKind::Spec(spec) => {
+                    spec.completion(db, offset)?
+                },
+                _ => {
+                    eprintln!("ResolvedPathElement::completion: unsupported kind {:?}", self.kind);
+                    None?
+                }
+            })
     }
 }

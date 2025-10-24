@@ -6,7 +6,7 @@ pub fn namespace() -> CompletionItem {
         label: "NAMESPACE".into(),
         kind: Some(lsp_types::CompletionItemKind::MODULE),
         insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
-        insert_text: Some("NAMESPACE ${1:ns} END_NAMESPACE".into()),
+        insert_text: Some("NAMESPACE ${1:ns} \n\nEND_NAMESPACE".into()),
         ..Default::default()
     }
 }
@@ -28,7 +28,7 @@ pub fn function() -> CompletionItem {
         label: "FUNCTION".into(),
         kind: Some(lsp_types::CompletionItemKind::FUNCTION),
         insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
-        insert_text: Some("FUNCTION ${1:fn} : ${2:BOOL} \n\nEND_FUNCTION".into()),
+        insert_text: Some("FUNCTION ${1:fn} \n\nEND_FUNCTION".into()),
         ..Default::default()
     }
 }
@@ -39,7 +39,7 @@ pub fn function_block() -> CompletionItem {
         label: "FUNCTION_BLOCK".into(),
         kind: Some(lsp_types::CompletionItemKind::FUNCTION),
         insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
-        insert_text: Some("FUNCTION_BLOCK ${1:fn}  \n\nEND_FUNCTION_BLOCK".into()),
+        insert_text: Some("FUNCTION_BLOCK ${1:fb} \n\nEND_FUNCTION_BLOCK".into()),
         ..Default::default()
     }
 }
@@ -50,7 +50,7 @@ pub fn type_() -> CompletionItem {
         label: "TYPE".into(),
         kind: Some(lsp_types::CompletionItemKind::TYPE_PARAMETER),
         insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
-        insert_text: Some("TYPE ${1:type} := ${2:BOOL} \n\nEND_TYPE".into()),
+        insert_text: Some("TYPE \n\nEND_TYPE".into()),
         ..Default::default()
     }
 }
