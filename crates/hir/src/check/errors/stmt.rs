@@ -2,22 +2,18 @@ use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, Related, diag};
 
 use crate::{
-    HirNodeInfo,
-    check::{
-        errors::{
+    check::errors::{
             analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic},
             coerce::{ExprMismatch, TypeMismatch},
             path_error::AccessError,
-            utils::get_candidates,
-        },
-        recovery::func_call::fuzzy_func_local_items,
-    },
-    hir_def::interned::identifier::SpanIdent,
-    hir_ty::{expr_resolver::ResolvedExpr, ty_var_access_resolver::ResolvedAccess},
+        }, hir_def::{expressions::expression::PathExpr, interned::identifier::SpanIdent}, hir_ty::{expr_resolver::ResolvedExpr, ty_var_access_resolver::ResolvedAccess}, query_string::{fuzzy_method::fuzzy_method_parameters, fuzzy_pou::fuzzy_pou_items}, HirNodeInfo
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum StmtError<'db> {
+    EmptyPathExpression {
+        var: ResolvedAccess<'db>,
+    },
     // Assignments
     UnresolvedAssignmentTarget {
         var: ResolvedAccess<'db>,
@@ -130,6 +126,13 @@ impl<'db> From<StmtError<'db>> for AnalysisError<'db> {
 impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
     fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
         match self {
+            Self::EmptyPathExpression { var } => {
+                diag()
+                    .message("unused path, you might want to do something with it".into())
+                    .severity(DiagnosticSeverity::WARNING)
+                    .range(var.get_span(db).clone())
+                    .call()
+            },
             Self::AssignmentToCallableType { var } => {
                 let mut diag = diag()
                     .message(format!(
@@ -312,11 +315,9 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                     .range(param.get_span(db).clone())
                     .call();
 
-                if let Some(pou) = call.as_pou(db) {
-                    let candidates = fuzzy_func_local_items(db, pou, param.ident.text(db).as_str());
-                    diag.with_note(get_candidates(&candidates));
+                if let Some(m) = call.as_pou(db) {
+                    fuzzy_pou_items(db, m, &mut diag, param.ident.text(db).as_str());
                 }
-
                 diag
             }
             Self::UnknownFormalOutputParam { call, param } => {
@@ -326,9 +327,8 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                     .range(param.get_span(db).clone())
                     .call();
 
-                if let Some(pou) = call.as_pou(db) {
-                    let candidates = fuzzy_func_local_items(db, pou, param.ident.text(db).as_str());
-                    diag.with_note(get_candidates(&candidates));
+                if let Some(m) = call.as_pou(db) {
+                    fuzzy_pou_items(db, m, &mut diag, param.ident.text(db).as_str());
                 }
                 diag
             }

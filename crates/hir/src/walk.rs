@@ -427,6 +427,9 @@ impl<'db> WalkHir<'db> for ResolvedStmt<'db> {
         f(HirNode::ResolvedStmt(*self))?;
 
         match self.kind(db) {
+            ResolvedStmtKind::EmptyPathExpression(path) => {
+                path.walk_hir(db, f)?;
+            }
             ResolvedStmtKind::Assignment { target, var } => {
                 var.walk_hir(db, f)?;
                 target.walk_hir(db, f)?;

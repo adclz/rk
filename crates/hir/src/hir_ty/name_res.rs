@@ -16,7 +16,7 @@ use crate::{
 };
 
 /// Find all namespaces in all files that match a given namespace path.
-#[salsa::tracked(returns(ref), no_eq)]
+#[salsa::tracked(returns(ref))]
 pub fn shared_namespaces<'db>(
     db: &'db dyn BaseDatabase,
     path: NamespacePath,
@@ -165,4 +165,17 @@ pub fn pou_names_res<'db>(
         .or_else(|| all_inherited_pous(db, scope_id).get(pou))
         .or_else(|| all_global_pous(db).get(pou))
         .copied()
+}
+
+
+pub fn all_pous_in_scope<'db>(
+    db: &'db dyn BaseDatabase,
+    scope_id: FileScopeId<'db>,
+) -> FxHashMap<Ident, PouDecl<'db>> {
+    let mut result = FxHashMap::default();
+    result.extend(all_local_pous(db, scope_id));
+    result.extend(all_imported_pous(db, scope_id));
+    result.extend(all_inherited_pous(db, scope_id));
+    result.extend(all_global_pous(db));
+    result
 }

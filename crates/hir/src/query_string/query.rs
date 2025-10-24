@@ -7,7 +7,8 @@ use std::ops::ControlFlow;
 use std::{cmp::Ordering, hash::Hash};
 
 use crate::HirNodeInfo;
-use crate::hir_def::expressions::spec::StructElement;
+use crate::hir_def::expressions::spec::{Struct, StructElement};
+use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::PouDecl;
 use crate::hir_def::pous::variable::VariableDecl;
 use crate::hir_def::scope::FileScopeId;
@@ -243,6 +244,7 @@ pub struct NamedSymbol<'db> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum SymbolKind<'db> {
+    Namespace(NamespaceDecl<'db>),
     Pou(PouDecl<'db>),
     StructField(StructElement<'db>),
     Variable(VariableDecl<'db>),
@@ -251,6 +253,7 @@ pub enum SymbolKind<'db> {
 impl<'db> HirNodeInfo<'db> for NamedSymbol<'db> {
     fn get_id(&'db self, db: &'db dyn BaseDatabase) -> crate::AstId {
         match self.kind {
+            SymbolKind::Namespace(ns) => ns.get_id(db),
             SymbolKind::Pou(p) => p.get_id(db),
             SymbolKind::StructField(ty) => ty.get_id(db),
             SymbolKind::Variable(ty) => ty.get_id(db),
@@ -259,6 +262,7 @@ impl<'db> HirNodeInfo<'db> for NamedSymbol<'db> {
 
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
         match self.kind {
+            SymbolKind::Namespace(ns) => ns.get_scope_id(db),
             SymbolKind::Pou(p) => p.get_scope_id(db),
             SymbolKind::StructField(ty) => ty.get_scope_id(db),
             SymbolKind::Variable(ty) => ty.get_scope_id(db),
@@ -294,29 +298,4 @@ pub fn global_symbol_indexes(db: &dyn BaseDatabase, file_to_omit: File) -> Vec<S
             false => None,
         })
         .collect()
-}
-
-pub fn query_completions(
-    db: &dyn BaseDatabase,
-    file: File,
-    scope_id: FileScopeId<'_>,
-    query: &str,
-) -> Vec<CompletionItem> {
-    let indexes = global_symbol_indexes(db, file);
-    let mut fast_query = Query::new(query.to_string());
-    fast_query.fuzzy();
-
-    let mut results = vec![];
-
-    fast_query.search(db, indexes, |symbol| {
-        results.push(CompletionItem {
-            label: symbol.name.clone(),
-            kind: Some(CompletionItemKind::MODULE),
-            ..Default::default()
-        });
-
-        std::ops::ControlFlow::Continue::<()>(())
-    });
-
-    results
 }

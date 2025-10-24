@@ -11,5 +11,4 @@ pub mod scope;
 pub mod stmt;
 pub mod subrange;
 pub mod syntax;
-pub mod utils;
 pub mod visibility;

@@ -2,17 +2,10 @@ use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, diag};
 
 use crate::{
-    HirNodeInfo, TypeInfo,
-    check::{
-        errors::{
+    check::errors::{
             analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic},
             coerce::ExprMismatch,
-            utils::get_candidates,
-        },
-        recovery::struct_::fuzzy_struct_fields,
-    },
-    hir_def::{expressions::expression::InitExpr, interned::identifier::SpanIdent},
-    hir_ty::{expr_resolver::ResolvedExpr, init_expr_resolver::ResolvedInitExpr, ty::Ty},
+        }, hir_def::{expressions::expression::InitExpr, interned::identifier::SpanIdent}, hir_ty::{expr_resolver::ResolvedExpr, init_expr_resolver::ResolvedInitExpr, ty::{Ty, TyKind}}, query_string::fuzzy_struct::fuzzy_struct_fields, HirNodeInfo, TypeInfo
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -58,10 +51,13 @@ impl<'db> ToIdeDiagnostic<'db> for InitExprError<'db> {
                     .range(field_name.get_span(db))
                     .call();
 
-                ztruct.diag_with_location(db, &mut diag, None);
 
-                let candidates = fuzzy_struct_fields(db, *ztruct, field_name.as_str(db));
-                diag.with_note(get_candidates(&candidates));
+                match ztruct.kind(db) {
+                    TyKind::Struct(strukt) => fuzzy_struct_fields(db, *strukt, &mut diag, field_name.as_str(db)),
+                    _ => {}
+                };
+
+                ztruct.diag_with_location(db, &mut diag, None);
                 diag
             }
             InitExprError::ArrayTooManyElements {

@@ -29,9 +29,7 @@ pub mod check_variables;
 pub mod check_visibility;
 pub mod coerce;
 pub mod errors;
-pub mod recovery;
 
-#[salsa::tracked(returns(ref), no_eq)]
 pub fn diagnostics_for_file(db: &dyn BaseDatabase, file: File) -> Arc<Vec<IdeDiagnostic>> {
     let mut all_diagnostics = vec![];
 
