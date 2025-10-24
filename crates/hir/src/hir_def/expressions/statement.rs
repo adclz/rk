@@ -23,7 +23,7 @@ pub struct Stmt<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for Stmt<'db> {
-    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
         self.id(db)
     }
 

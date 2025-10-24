@@ -19,7 +19,7 @@ pub struct ResolvedUsing<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for ResolvedUsing<'db> {
-    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
         self.using(db).get_id(db)
     }
 

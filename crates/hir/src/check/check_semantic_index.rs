@@ -41,7 +41,6 @@ use crate::{
         expr_resolver::{ResolvedExpr, ResolvedExprKind},
         init_expr_resolver::{ResolvedInitExpr, resolve_init_expr},
         name_res::{all_global_pous, all_local_pous},
-        stmt_resolver::{ResolveStmtCtx, ResolvedStmt, ResolvedStmtKind, resolve_stmt},
         ty::{Ty, TyKind},
         ty_var_access_resolver::ResolvedAccess,
     },

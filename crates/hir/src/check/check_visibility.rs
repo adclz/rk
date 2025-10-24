@@ -73,7 +73,7 @@ impl<'db> From<VariableDecl<'db>> for CallableType<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for CallableType<'db> {
-    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> crate::AstId {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> crate::AstId {
         match self {
             Self::Method(m) => m.get_id(db),
             Self::Variable(v) => v.get_id(db),
@@ -88,10 +88,10 @@ impl<'db> HirNodeInfo<'db> for CallableType<'db> {
     }
 }
 
-pub fn check_call_visibility<'db>(
+pub fn check_call_visibility<'db, T: HirNodeInfo<'db> + Copy + 'db>(
     db: &'db dyn BaseDatabase,
     accessed: CallableType<'db>,
-    call_site: &'db impl HirNodeInfo<'db>,
+    call_site: T,
     errors: &mut Vec<AnalysisError<'db>>,
 ) {
     let calling_scope = call_site.get_scope_id(db);

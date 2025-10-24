@@ -7,7 +7,6 @@ use crate::{
         scope::FileScopeId,
     },
     hir_ty::{
-        expr_resolver::{ResolvedExpr, resolve_expr},
         ty::{Ty, TyKind},
         ty_var_access_resolver::{CallSite, ResolvedAccess},
         walk::{Adjustement, ResolvedPath, ResolvedPathKind, ResolvedPathResult},
@@ -196,7 +195,7 @@ fn resolve_unresolved<'db>(
             }
         }
         UnResolvedInitExprKind::ConstantExpr(expr) => {
-            ResolvedInitExprKind::ConstantExpr(resolve_expr(db, expr))
+            ResolvedInitExprKind::ConstantExpr(expr)
         }
     };
 
@@ -225,12 +224,12 @@ pub enum ResolvedInitExprKind<'db> {
         field: ResolvedAccess<'db>,
         value: Box<ResolvedInitExpr<'db>>,
     },
-    ConstantExpr(ResolvedExpr<'db>),
+    ConstantExpr(Expr<'db>),
     Error(InitExprError<'db>),
 }
 
 impl<'db> HirNodeInfo<'db> for ResolvedInitExpr<'db> {
-    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
         self.expr(db).id(db)
     }
 

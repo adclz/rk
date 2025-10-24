@@ -44,7 +44,7 @@ pub struct MethodPrototype<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for MethodPrototype<'db> {
-    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> crate::AstId {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> crate::AstId {
         self.id(db)
     }
 

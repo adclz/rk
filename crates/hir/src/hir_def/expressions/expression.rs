@@ -109,7 +109,7 @@ pub enum PrimaryExpr<'db> {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+#[salsa::tracked(debug)]
 pub struct FuncCall<'db> {
     pub path: PathExpr<'db>,
     pub params: Vec<ParamAssign<'db>>,
@@ -127,7 +127,7 @@ pub struct PathExpr<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for PathExpr<'db> {
-    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
         match &self.expr(db) {
             PathExprKind::Field(field_expr) => match field_expr.var {
                 VarAccess::Simple(ref simple) => simple.id,
@@ -205,6 +205,7 @@ pub struct ParamAssign<'db> {
     pub kind: ParamAssignKind<'db>,
 }
 
+// use local variables
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ParamAssignKind<'db> {
     NonFormal {
@@ -249,7 +250,7 @@ pub struct VariableAccess<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for VariableAccess<'db> {
-    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
         self.id(db)
     }
 
@@ -339,7 +340,7 @@ pub enum IntegerKind {
 }
 
 impl<'db> HirNodeInfo<'db> for Expr<'db> {
-    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
         self.id(db)
     }
 
@@ -379,7 +380,7 @@ pub enum InitExprKind<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for InitExpr<'db> {
-    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
         self.id(db)
     }
 
@@ -466,7 +467,7 @@ impl<'db> PrimaryExpr<'db> {
                 variable,
                 multibits,
             } => "<variable access>",
-            PrimaryExpr::FuncCall(func_call) => func_call.path.ident(db).text(db),
+            PrimaryExpr::FuncCall(func_call) => func_call.path(db).ident(db).text(db),
             PrimaryExpr::Invocation(invocation) => match invocation.kind(db) {
                 InvocationKind::Super { path } => "<SUPER invocation>",
                 InvocationKind::This { path } => "<THIS invocation>",

@@ -1,11 +1,20 @@
-use auto_lsp::{default::db::BaseDatabase, lsp_types::{CompletionItem, CompletionItemKind, CompletionItemLabelDetails}};
+use auto_lsp::{
+    default::db::BaseDatabase,
+    lsp_types::{CompletionItem, CompletionItemKind, CompletionItemLabelDetails, InsertTextFormat},
+};
 use hir::{
     hir_def::{
-        pous::pou::{Pou, PouDecl},
+        pous::{
+            pou::{Pou, PouDecl},
+            variable::VariableKind,
+        },
         scope::{FileScopeId, ScopeKind},
         semantic_index::semantic_index,
     },
-    hir_ty::name_res::{all_global_pous, all_pous_in_scope},
+    hir_ty::{
+        name_res::{all_global_pous, all_pous_in_scope},
+        signatures::LocalVariables,
+    },
 };
 
 use crate::ToProtocol;
@@ -25,7 +34,8 @@ pub fn scoped_completions<'db>(
             }
             all_global_pous(db)
                 .iter()
-                .for_each(|(_, pou)| results.push(simple_pou_completion(db, *pou)));
+                .flat_map(|(_, pou)| signature_pou_completion(db, *pou))
+                .for_each(|(pou)| results.push(pou));
             match pou.pou(db) {
                 Pou::FunctionBlock(fb) => {
                     results.push(CompletionItem::new_simple("THIS".to_string(), "".into()));
@@ -46,10 +56,10 @@ pub fn scoped_completions<'db>(
             Some(results)
         }
         ScopeKind::Global => Some(
-            all_pous_in_scope(db, file_scope)
+            all_global_pous(db)
                 .iter()
-                .map(|(_, pou)| simple_pou_completion(db, *pou))
-                .collect::<Vec<_>>(),
+                .flat_map(|(_, pou)| signature_pou_completion(db, *pou))
+                .collect(),
         ),
         _ => None,
     }
@@ -78,7 +88,7 @@ pub fn simple_pou_completion<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) 
         Pou::Interface(f) => CompletionItem {
             label: pou.name(db).text(db).to_string(),
             detail: Some("INTERFACE".into()),
-                        kind: Some(CompletionItemKind::INTERFACE),
+            kind: Some(CompletionItemKind::INTERFACE),
             ..Default::default()
         },
         Pou::DataType(dt) => CompletionItem {
@@ -90,27 +100,92 @@ pub fn simple_pou_completion<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) 
     }
 }
 
-pub fn signature_pou_completion<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Option<CompletionItem> {
+pub fn signature_pou_completion<'db>(
+    db: &'db dyn BaseDatabase,
+    pou: PouDecl<'db>,
+) -> Option<CompletionItem> {
+    let sep = match pou.local_variables(db).len() {
+        0..5 => "",
+        _ => "\n",
+    };
+    let signature = format!(
+        "{}({sep}{}{sep});",
+        pou.name(db).text(db),
+        pou.local_variables(db)
+            .iter()
+            .enumerate()
+            .filter_map(|(i, (n, v))| {
+                Some(match v.kind(db) {
+                    VariableKind::Input => {
+                        format!(
+                            "\t{} := ${{{}:{}}}",
+                            v.name(db).text(db),
+                            i,
+                            v.name(db).text(db)
+                        )
+                    }
+                    VariableKind::InOut => {
+                        format!(
+                            "\t{} := ${{{}:{}}}",
+                            v.name(db).text(db),
+                            i,
+                            v.name(db).text(db)
+                        )
+                    }
+                    VariableKind::Output => {
+                        format!(
+                            "\t{} => ${{{}:{}}}",
+                            v.name(db).text(db),
+                            i,
+                            v.name(db).text(db)
+                        )
+                    }
+                    _ => None?,
+                })
+            })
+            .collect::<Vec<_>>()
+            .join(match pou.local_variables(db).len() {
+                0..5 => ", ",
+                _ => ",\n",
+            })
+    );
     Some(match pou.pou(db) {
         Pou::FunctionBlock(fb) => CompletionItem {
             label: pou.name(db).text(db).to_string(),
             detail: Some("FUNCTION BLOCK".into()),
+            label_details: Some(CompletionItemLabelDetails {
+                detail: Some("CALL".into()),
+                ..Default::default()
+            }),
             kind: Some(CompletionItemKind::STRUCT),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            insert_text: Some(signature),
             ..Default::default()
         },
         Pou::Class(cl) => CompletionItem {
             label: pou.name(db).text(db).to_string(),
             detail: Some("CLASS".into()),
+            label_details: Some(CompletionItemLabelDetails {
+                detail: Some("CALL".into()),
+                ..Default::default()
+            }),
             kind: Some(CompletionItemKind::CLASS),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            insert_text: Some(signature),
             ..Default::default()
         },
         Pou::Function(f) => CompletionItem {
             label: pou.name(db).text(db).to_string(),
             detail: Some("FUNCTION".into()),
+            label_details: Some(CompletionItemLabelDetails {
+                detail: Some("CALL".into()),
+                ..Default::default()
+            }),
             kind: Some(CompletionItemKind::FUNCTION),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            insert_text: Some(signature),
             ..Default::default()
         },
         _ => None?,
     })
 }
-

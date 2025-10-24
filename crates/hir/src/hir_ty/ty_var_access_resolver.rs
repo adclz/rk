@@ -469,7 +469,7 @@ fn resolve_path_rest<'db>(
 }
 
 impl<'db> HirNodeInfo<'db> for ResolvedAccess<'db> {
-    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
         match self.kind(db) {
             ResolvedPathResult::Ok(ok) => ok.get_id(db),
             ResolvedPathResult::Err(err) => match err {
@@ -501,7 +501,7 @@ impl<'db> HirNodeInfo<'db> for ResolvedAccess<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for CallSite<'db> {
-    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
         match self {
             CallSite::Access(access) => access.get_id(db),
             CallSite::NonFormal(expr) => expr.get_id(db),

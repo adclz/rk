@@ -36,7 +36,7 @@ pub trait TypeInfo<'db> {
 }
 
 pub trait HirNodeInfo<'db> {
-    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId;
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId;
 
     fn get_name_id(&'db self, _db: &'db dyn BaseDatabase) -> Option<AstId> {
         None
@@ -44,7 +44,7 @@ pub trait HirNodeInfo<'db> {
 
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db>;
 
-    fn get_span(&'db self, db: &'db dyn BaseDatabase) -> Span {
+    fn get_span(&self, db: &'db dyn BaseDatabase) -> Span {
         semantic_index(db, self.get_scope_id(db).file(db))
             .ast
             .get(self.get_id(db).0)

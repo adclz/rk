@@ -251,7 +251,7 @@ pub enum SymbolKind<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for NamedSymbol<'db> {
-    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> crate::AstId {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> crate::AstId {
         match self.kind {
             SymbolKind::Namespace(ns) => ns.get_id(db),
             SymbolKind::Pou(p) => p.get_id(db),

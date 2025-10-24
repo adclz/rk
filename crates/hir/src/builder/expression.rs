@@ -280,10 +280,7 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                 }
                 Ok(Expr::new(
                     sema.db,
-                    ExprKind::PrimaryExpr(PrimaryExpr::FuncCall(FuncCall {
-                        path: target,
-                        params: parameters,
-                    })),
+                    ExprKind::PrimaryExpr(PrimaryExpr::FuncCall(FuncCall::new(sema.db, target, parameters))),
                     func.into(),
                     sema.current_scope,
                 ))

@@ -61,10 +61,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                 }
                 Ok(Stmt::new(
                     sema.db,
-                    StmtKind::FuncCall(FuncCall {
-                        path: target,
-                        params: parameters,
-                    }),
+                    StmtKind::FuncCall(FuncCall::new(sema.db, target, parameters)),
                     call.into(),
                     sema.current_scope,
                 ))

@@ -6,7 +6,7 @@ use crate::{
             analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic},
             coerce::{ExprMismatch, TypeMismatch},
             path_error::AccessError,
-        }, hir_def::{expressions::expression::PathExpr, interned::identifier::SpanIdent}, hir_ty::{expr_resolver::ResolvedExpr, ty_var_access_resolver::ResolvedAccess}, query_string::{fuzzy_method::fuzzy_method_parameters, fuzzy_pou::fuzzy_pou_items}, HirNodeInfo
+        }, hir_def::{expressions::expression::{Expr, PathExpr}, interned::identifier::SpanIdent}, hir_ty::{expr_resolver::ResolvedExpr, ty_var_access_resolver::ResolvedAccess}, query_string::{fuzzy_method::fuzzy_method_parameters, fuzzy_pou::fuzzy_pou_items}, HirNodeInfo
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
@@ -93,27 +93,27 @@ pub enum StmtError<'db> {
     },
     ParameterExprMismatch {
         var: ResolvedAccess<'db>,
-        expr: ResolvedExpr<'db>,
+        expr: Expr<'db>,
         err: ExprMismatch<'db>,
     },
     // For and While loops
     ForLoopStartTypeMismatch {
-        start: ResolvedExpr<'db>,
+        start: Expr<'db>,
         err: ExprMismatch<'db>,
     },
     ForLoopEndTypeMismatch {
-        end: ResolvedExpr<'db>,
+        end: Expr<'db>,
         err: ExprMismatch<'db>,
     },
     ForLoopStepTypeMismatch {
-        step: ResolvedExpr<'db>,
+        step: Expr<'db>,
         err: ExprMismatch<'db>,
     },
     WhileConditionIsNotABool {
-        condition: ResolvedExpr<'db>,
+        condition: Expr<'db>,
     },
     RepeatConditionIsNotABool {
-        condition: ResolvedExpr<'db>,
+        condition: Expr<'db>,
     },
 }
 

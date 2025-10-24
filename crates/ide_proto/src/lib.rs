@@ -94,13 +94,13 @@ impl<'db> AsProtocol<'db> for HirNode<'db> {
             HirNode::StructElement(s) => s,
             HirNode::Spec(s) => s,
             HirNode::MethodRef(m) => m,
+            HirNode::Stmt(s) => s,
             HirNode::ResolvedUsing(u) => u,
             HirNode::ResolvedAccess(v) => v,
             HirNode::ResolvedPath(p) => p,
             HirNode::ResolvedInitExpr(i) => i,
             HirNode::ResolvedExpr(e) => e,
             HirNode::ResolvedParam(p) => p,
-            HirNode::ResolvedStmt(s) => s,
             HirNode::ResolvedRefValue(r) => r,
         }
     }

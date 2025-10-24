@@ -2,24 +2,21 @@ use auto_lsp::default::db::BaseDatabase;
 use indexmap::IndexMap;
 
 use crate::{
-    AstId, HirNodeInfo,
-    check::errors::path_error::AccessError,
-    hir_def::{
+    check::errors::path_error::AccessError, hir_def::{
         expressions::{
-            expression::{FuncCall, ParamAssign},
+            expression::{Expr, FuncCall, ParamAssign, VariableAccess},
             spec::Spec,
         },
         interned::identifier::{Ident, SpanIdent},
         pous::variable::VariableDecl,
         scope::FileScopeId,
-    },
-    hir_ty::{
+    }, hir_ty::{
         expr_resolver::ResolvedExpr,
-        param_resolver::resolve_parameters,
+        param_resolver::{resolve_func_call_parameters, resolve_method_parameters},
         ty::Ty,
-        ty_var_access_resolver::{ResolvedAccess, resolve_global_path_expr},
+        ty_var_access_resolver::{resolve_global_path_expr, ResolvedAccess},
         walk::{ResolvedPath, ResolvedPathKind},
-    },
+    }, AstId, HirNodeInfo
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -47,7 +44,7 @@ impl<'db> ResolvedFuncCall<'db> {
 
 impl<'db> FuncCall<'db> {
     pub fn resolve_func_call(&self, db: &'db dyn BaseDatabase) -> ResolvedFuncCall<'db> {
-        let target = resolve_global_path_expr(db, self.path);
+        let target = resolve_global_path_expr(db, self.path(db));
 
         ResolvedFuncCall {
             target,
@@ -55,11 +52,11 @@ impl<'db> FuncCall<'db> {
                 Ok(ResolvedPath {
                     kind: ResolvedPathKind::Pou(pou),
                     ..
-                }) => resolve_parameters(db, pou, &self.params),
+                }) => resolve_func_call_parameters(db, pou, *self),
                 Ok(ResolvedPath {
                     kind: ResolvedPathKind::Method(method),
                     ..
-                }) => resolve_parameters(db, method, &self.params),
+                }) => resolve_method_parameters(db, method, *self),
                 _ => Default::default(),
             },
         }
@@ -76,23 +73,23 @@ pub struct ResolvedParam<'db> {
 pub enum ResolvedParamKind<'db> {
     NonFormal {
         resolved_param: Option<ResolvedAccess<'db>>,
-        value: ResolvedExpr<'db>,
+        value: Expr<'db>,
     },
     FormalInput {
         param: SpanIdent<'db>,
         resolved_param: Option<ResolvedAccess<'db>>,
-        value: ResolvedExpr<'db>,
+        value: Expr<'db>,
     },
     FormalOutput {
         not: bool,
         param: SpanIdent<'db>,
         resolved_param: Option<ResolvedAccess<'db>>,
-        variable: ResolvedAccess<'db>,
+        variable: VariableAccess<'db>,
     },
 }
 
 impl<'db> HirNodeInfo<'db> for ResolvedParam<'db> {
-    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
         self.param(db).id(db)
     }
 

@@ -71,7 +71,7 @@ pub enum TyKind<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for Ty<'db> {
-    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
         match self.spec(db) {
             TySource::Spec(spec) => spec.get_id(db),
             TySource::Pou((spec, pou)) => pou.name_id(db),

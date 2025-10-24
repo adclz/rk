@@ -70,7 +70,7 @@ pub enum ResolvedRefValue<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for ResolvedRefValue<'db> {
-    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
         match self {
             ResolvedRefValue::Null(id, _) => *id,
             ResolvedRefValue::Adress(access) => access.get_id(db),
@@ -240,7 +240,7 @@ impl<'db> ResolveExprCtx<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for ResolvedExpr<'db> {
-    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
         self.expr(db).id(db)
     }
 

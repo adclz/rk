@@ -6,12 +6,7 @@ use crate::{
         pous::pou::Pou,
         scope::{FileScopeId, Scope, ScopeKind},
     }, hir_ty::{
-        func_call_resolver::ResolvedParam,
-        inheritance_solver::{declared_methods, inherited_methods, MethodRef},
-        name_res::resolve_namespace_access,
-        param_resolver::resolve_parameters,
-        ty_var_access_resolver::{CallSite, ResolvedAccess},
-        walk::{Adjustement, ResolvedPath, ResolvedPathKind, ResolvedPathResult},
+        func_call_resolver::ResolvedParam, inheritance_solver::{declared_methods, inherited_methods, MethodRef}, name_res::resolve_namespace_access, param_resolver::{resolve_invocation_func_call_parameters, resolve_invocation_method_parameters, resolve_method_parameters}, ty_var_access_resolver::{CallSite, ResolvedAccess}, walk::{Adjustement, ResolvedPath, ResolvedPathKind, ResolvedPathResult}
     }, AstId, HirNodeInfo
 };
 
@@ -149,7 +144,7 @@ impl<'db> Invocation<'db> {
                                     method: *method,
                                 },
                             ),
-                            params: resolve_parameters(db, *method, &self.params(db)),
+                            params: resolve_invocation_method_parameters(db, *method, *self),
                         })
                         .unwrap_or_else(|| ResolvedInvocationResult {
                             target: ResolvedInvocation::new(
@@ -184,7 +179,7 @@ impl<'db> Invocation<'db> {
                                     method: ty.method,
                                 },
                             ),
-                            params: resolve_parameters(db, ty.method, &self.params(db)),
+                            params: resolve_invocation_method_parameters(db, ty.method, *self),
                         })
                         .unwrap_or_else(|| ResolvedInvocationResult {
                             target: ResolvedInvocation::new(
@@ -210,7 +205,7 @@ impl<'db> Invocation<'db> {
                             params: vec![],
                         }),
                     InvocationKind::SuperBody => {
-                        let params = resolve_parameters(db, pou, &self.params(db));
+                        let params = resolve_invocation_func_call_parameters(db, pou, *self);
                         if let Pou::FunctionBlock { .. } = pou.pou(db) {
                             ResolvedInvocationResult {
                                 target: ResolvedInvocation::new(
@@ -245,14 +240,14 @@ impl<'db> Invocation<'db> {
                         }
                     }
                 }
-            }
+            } 
             _ => unreachable!(""),
         }
     }
 }
 
 impl<'db> HirNodeInfo<'db> for ResolvedInvocation<'db> {
-    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
         self.invocation.id(db)
     }
 

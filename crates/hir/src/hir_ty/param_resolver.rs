@@ -1,19 +1,49 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    hir_def::expressions::expression::{ParamAssign, ParamAssignKind},
+    hir_def::{expressions::{expression::{Expr, FuncCall, ParamAssign, ParamAssignKind}, invocation::Invocation}, interned::identifier::SpanIdent, pous::{pou::PouDecl, variable::VariableDecl}},
     hir_ty::{
-        expr_resolver::resolve_expr,
-        func_call_resolver::{ResolvedParam, ResolvedParamKind},
-        signatures::LocalVariables,
-        ty_var_access_resolver::{CallSite, ResolvedAccess, resolve_var_access},
-        walk::{
-            Adjustement, ResolvedPath, ResolvedPathKind, ResolvedPathResult,
-        },
+        expr_resolver::resolve_expr, func_call_resolver::{ResolvedParam, ResolvedParamKind}, inheritance_solver::MethodRef, signatures::LocalVariables, ty_var_access_resolver::{resolve_var_access, CallSite, ResolvedAccess}, walk::{Adjustement, ResolvedPath, ResolvedPathKind, ResolvedPathResult}
     },
 };
 
-pub fn resolve_parameters<'db>(
+#[salsa::tracked]
+pub fn resolve_func_call_parameters<'db>(
+    db: &'db dyn BaseDatabase,
+    callee: PouDecl<'db>,
+    caller: FuncCall<'db>,
+) -> Vec<ResolvedParam<'db>> {
+    resolve_parameters(db, callee, &caller.params(db))
+}
+
+#[salsa::tracked]
+pub fn resolve_method_parameters<'db>(
+    db: &'db dyn BaseDatabase,
+    callee: MethodRef<'db>,
+    caller: FuncCall<'db>,
+) -> Vec<ResolvedParam<'db>> {
+    resolve_parameters(db, callee, &caller.params(db))
+}
+
+#[salsa::tracked]
+pub fn resolve_invocation_method_parameters<'db>(
+    db: &'db dyn BaseDatabase,
+    callee: MethodRef<'db>,
+    caller: Invocation<'db>,
+) -> Vec<ResolvedParam<'db>> {
+    resolve_parameters(db, callee, &caller.params(db))
+}
+
+#[salsa::tracked]
+pub fn resolve_invocation_func_call_parameters<'db>(
+    db: &'db dyn BaseDatabase,
+    callee: PouDecl<'db>,
+    caller: Invocation<'db>,
+) -> Vec<ResolvedParam<'db>> {
+    resolve_parameters(db, callee, &caller.params(db))
+}
+
+fn resolve_parameters<'db>(
     db: &'db dyn BaseDatabase,
     callee: impl LocalVariables<'db>,
     caller: &[ParamAssign<'db>],
@@ -33,18 +63,10 @@ pub fn resolve_parameters<'db>(
                             let param = callee.local_variables(db).values().nth(formal_index);
                             formal_index += 1;
                             param.map(|p| {
-                                ResolvedAccess::new(
-                                    db,
-                                    ResolvedPathResult::Ok(ResolvedPath {
-                                        kind: ResolvedPathKind::Variable(*p),
-                                        expr: CallSite::NonFormal(value),
-                                        adjustement: Adjustement::None,
-                                    }),
-                                    vec![],
-                                )
+                                var_into_non_formal(db, *p, value)
                             })
                         },
-                        value: resolve_expr(db, value),
+                        value,
                     },
                 )
             }
@@ -57,20 +79,12 @@ pub fn resolve_parameters<'db>(
                         callee
                             .local_variables(db)
                             .get(&param.ident)
-                            // todo: check if it's input / in_out
+                            .filter(|v| v.is_input(db) || v.is_in_out(db))
                             .map(|p| {
-                                ResolvedAccess::new(
-                                    db,
-                                    ResolvedPathResult::Ok(ResolvedPath {
-                                        kind: ResolvedPathKind::Variable(*p),
-                                        expr: CallSite::Formal(param),
-                                        adjustement: Adjustement::None,
-                                    }),
-                                    vec![],
-                                )
+                                var_into_formal(db, *p, param)
                             })
                     },
-                    value: resolve_expr(db, value),
+                    value,
                 },
             ),
             ParamAssignKind::FormalOutput {
@@ -87,22 +101,48 @@ pub fn resolve_parameters<'db>(
                         callee
                             .local_variables(db)
                             .get(&param.ident)
-                            // todo: check if it's output
+                            .filter(|v| v.is_output(db))
                             .map(|p| {
-                                ResolvedAccess::new(
-                                    db,
-                                    ResolvedPathResult::Ok(ResolvedPath {
-                                        kind: ResolvedPathKind::Variable(*p),
-                                        expr: CallSite::Formal(param),
-                                        adjustement: Adjustement::None,
-                                    }),
-                                    vec![],
-                                )
+                                var_into_formal(db, *p, param)
                             })
                     },
-                    variable: resolve_var_access(db, variable),
+                    variable,
                 },
             ),
         })
         .collect()
+}
+
+#[salsa::tracked]
+pub fn var_into_non_formal<'db>(
+    db: &'db dyn BaseDatabase,
+    var: VariableDecl<'db>,
+    expr: Expr<'db>,
+) -> ResolvedAccess<'db> {
+    ResolvedAccess::new(
+        db,
+        ResolvedPathResult::Ok(ResolvedPath {
+            kind: ResolvedPathKind::Variable(var),
+            expr: CallSite::NonFormal(expr),
+            adjustement: Adjustement::None,
+        }),
+        vec![],
+    )
+}
+
+#[salsa::tracked]
+pub fn var_into_formal<'db>(
+    db: &'db dyn BaseDatabase,
+    var: VariableDecl<'db>,
+    ident: SpanIdent<'db>,
+) -> ResolvedAccess<'db> {
+    ResolvedAccess::new(
+        db,
+        ResolvedPathResult::Ok(ResolvedPath {
+            kind: ResolvedPathKind::Variable(var),
+            expr: CallSite::Formal(ident),
+            adjustement: Adjustement::None,
+        }),
+        vec![],
+    )
 }

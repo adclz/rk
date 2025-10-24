@@ -10,18 +10,21 @@ use crate::{
         errors::{analysis_error::AnalysisError, stmt::StmtError},
     },
     hir_def::{
-        expressions::statement::Stmt,
+        expressions::{
+            expression::{Expr, FuncCall, VarAccess, VariableAccess},
+            invocation::Invocation,
+            statement::{Stmt, StmtKind},
+        },
         interned::identifier::Ident,
-        pous::{pou::Pou, variable::VariableDecl},
+        pous::{pou::Pou, variable::VariableDecl}, semantic_index::semantic_index,
     },
     hir_ty::{
-        expr_resolver::ResolvedExpr,
+        expr_resolver::{resolve_expr, ResolvedExpr},
         func_call_resolver::{ResolvedFuncCall, ResolvedParam, ResolvedParamKind},
         invocation_resolver::{ResolvedInvocationResult, ResolvedMethodKind},
         signatures::LocalVariables,
-        stmt_resolver::{ResolvedStmt, ResolvedStmtKind, resolve_stmt},
         ty::{Ty, TyKind},
-        ty_var_access_resolver::ResolvedAccess,
+        ty_var_access_resolver::{resolve_local_path_expr, resolve_var_access, ResolvedAccess},
         walk::ResolvedPathKind,
     },
 };
@@ -29,69 +32,62 @@ use crate::{
 impl<'db> Check<'db> for Vec<Stmt<'db>> {
     fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<AnalysisError<'db>>) {
         for stmt in self {
-            resolve_stmt(db, *stmt).check(db, errors);
-        }
-    }
-}
-
-impl<'db> Check<'db> for Vec<ResolvedStmt<'db>> {
-    fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<AnalysisError<'db>>) {
-        for stmt in self {
             stmt.check(db, errors);
         }
     }
 }
 
-impl<'db> Check<'db> for ResolvedStmt<'db> {
+impl<'db> Check<'db> for Stmt<'db> {
     fn check(&self, db: &'db dyn BaseDatabase, errors: &mut Vec<AnalysisError<'db>>) {
-        match &self.kind(db) {
-            ResolvedStmtKind::EmptyPathExpression(var) => {
-                if let Err(err) = var.fully_resolved(db) {
+        match &self.stmt(db) {
+            StmtKind::EmptyPathExpression(var) => {
+                let resolved = resolve_local_path_expr(db, *var);
+                if let Err(err) = resolved.fully_resolved(db) {
                     errors.push(err.into());
                 }
-                errors.push(StmtError::EmptyPathExpression { var: *var }.into());
-            },
-            ResolvedStmtKind::If {
+                errors.push(StmtError::EmptyPathExpression { var: resolved }.into());
+            }
+            StmtKind::If {
                 then,
                 else_,
                 else_if,
                 ..
             } => {
-                then.check(db, errors);
+                then.as_ref().map(|then| then.check(db, errors));
 
-                else_.check(db, errors);
+                else_.as_ref().map(|else_| else_.check(db, errors));
 
                 else_if.iter().for_each(|(_, s)| s.check(db, errors));
             }
-            ResolvedStmtKind::Assignment { var, target } => {
+            StmtKind::Assignment { var, target } => {
                 if let Err(err) = check_assignment(db, *var, *target) {
                     errors.push(err);
                 }
             }
-            ResolvedStmtKind::AssignmentAttempt { var, target } => {
+            StmtKind::AssignmentAttempt { var, target } => {
                 if let Err(err) = check_assignment(db, *var, *target) {
                     errors.push(err);
                 }
             }
-            ResolvedStmtKind::FuncCall(call) => {
+            StmtKind::FuncCall(call) => {
                 if let Err(err) = check_func_call(db, call, errors) {
                     errors.push(err);
                 }
             }
-            ResolvedStmtKind::For {
-                control_var,
+            StmtKind::For {
+                control_variable,
                 start,
                 step,
                 end,
                 body,
             } => {
-                if let Err(err) = check_for(db, *control_var, *start, *end, *step, errors) {
+                if let Err(err) = check_for(db, *control_variable, *start, *end, *step, errors) {
                     errors.push(err);
                 }
                 body.check(db, errors);
             }
-            ResolvedStmtKind::While { condition, body } => {
-                match coerce_bool_with_expr(db, *condition) {
+            StmtKind::While { condition, body } => {
+                match coerce_bool_with_expr(db, resolve_expr(db, *condition)) {
                     Ok(is_valid) => {
                         if !is_valid {
                             errors.push(
@@ -107,8 +103,8 @@ impl<'db> Check<'db> for ResolvedStmt<'db> {
 
                 body.check(db, errors);
             }
-            ResolvedStmtKind::Repeat { condition, body } => {
-                match coerce_bool_with_expr(db, *condition) {
+            StmtKind::Repeat { condition, body } => {
+                match coerce_bool_with_expr(db, resolve_expr(db, *condition)) {
                     Ok(is_bool) => {
                         if !is_bool {
                             errors.push(
@@ -122,12 +118,12 @@ impl<'db> Check<'db> for ResolvedStmt<'db> {
                     Err(err) => errors.push(err),
                 }
             }
-            ResolvedStmtKind::Invocation(invocation) => {
+            StmtKind::Invocation(invocation) => {
                 if let Err(err) = check_invocation(db, invocation, errors) {
                     errors.push(err);
                 }
             }
-            ResolvedStmtKind::Case {} => {}
+            StmtKind::Case { .. } => {}
             _ => {}
         }
     }
@@ -135,9 +131,10 @@ impl<'db> Check<'db> for ResolvedStmt<'db> {
 
 fn check_assignment<'db>(
     db: &'db dyn BaseDatabase,
-    access: ResolvedAccess<'db>,
-    target: ResolvedExpr<'db>,
+    access: VariableAccess<'db>,
+    target: Expr<'db>,
 ) -> Result<Ty<'db>, AnalysisError<'db>> {
+    let access = resolve_var_access(db, access);
     // Variables in VAR_INPUT can not be mutated
     if access.is_var_input(db) {
         return Err(StmtError::AssignmentToInputVar { var: access }.into());
@@ -160,7 +157,7 @@ fn check_assignment<'db>(
                 && let Some(ret) = f.return_type(db)
             {
                 // Check the return type
-                return match coerce_ty_with_expr(db, ret.to_ty(db), target) {
+                return match coerce_ty_with_expr(db, ret.to_ty(db), resolve_expr(db, target)) {
                     Err(err) => Err(StmtError::AssignmentTypeMismatch { err }.into()),
                     Ok(()) => Ok(ret.to_ty(db)),
                 };
@@ -182,7 +179,7 @@ fn check_assignment<'db>(
     };
 
     // Last, runs the type checker
-    if let Err(err) = coerce_ty_with_expr(db, access_type, target) {
+    if let Err(err) = coerce_ty_with_expr(db, access_type, resolve_expr(db, target)) {
         return Err(AnalysisError::from(StmtError::AssignmentTypeMismatch {
             err,
         }));
@@ -193,9 +190,10 @@ fn check_assignment<'db>(
 
 fn check_func_call<'db>(
     db: &'db dyn BaseDatabase,
-    fun_call: &'db ResolvedFuncCall<'db>,
+    fun_call: &'db FuncCall<'db>,
     errors: &mut Vec<AnalysisError<'db>>,
 ) -> Result<(), AnalysisError<'db>> {
+    let fun_call = fun_call.resolve_func_call(db);
     let resolved = fun_call.target.fully_resolved(db)?;
 
     let variables = match resolved.kind {
@@ -222,7 +220,7 @@ fn check_func_call<'db>(
         },
         // METHOD call
         ResolvedPathKind::Method(m) => {
-            check_call_visibility(db, m.into(), &fun_call.target, errors);
+            check_call_visibility(db, m.into(), fun_call.target, errors);
             m.local_variables(db)
         }
         _ => {
@@ -239,9 +237,14 @@ fn check_func_call<'db>(
 
 fn check_invocation<'db>(
     db: &'db dyn BaseDatabase,
-    invocation: &'db ResolvedInvocationResult<'db>,
+    invocation: &'db Invocation<'db>,
     errors: &mut Vec<AnalysisError<'db>>,
 ) -> Result<(), AnalysisError<'db>> {
+    let scope = semantic_index(db, invocation.scope_id(db).file(db))
+        .get_scope(db, invocation.scope_id(db));
+    let resolved_invocation = invocation.resolve_invocation(db, scope);
+
+    let invocation = invocation.resolve_invocation(db, scope);
     match &invocation.target.kind {
         ResolvedMethodKind::Unresolved(err) => {
             return Err(err.clone().into());
@@ -249,7 +252,7 @@ fn check_invocation<'db>(
         ResolvedMethodKind::InheritedMethod { target, method }
         | ResolvedMethodKind::DeclaredMethod { target, method } => {
             // Check visibility
-            check_call_visibility(db, (*method).into(), &invocation.target.invocation, errors);
+            check_call_visibility(db, (*method).into(), invocation.target.invocation, errors);
             check_parameters(
                 db,
                 *target,
@@ -335,16 +338,17 @@ fn check_parameters<'db>(
             } => match resolved_param {
                 Some(other_param) => match other_param.try_to_ty(db) {
                     Ok(p_ty) => {
-                        let _ = coerce_ty_with_expr(db, p_ty, value).map_err(|err| {
-                            errors.push(
-                                StmtError::ParameterExprMismatch {
-                                    expr: value,
-                                    var: other_param,
-                                    err,
-                                }
-                                .into(),
-                            )
-                        });
+                        let _ =
+                            coerce_ty_with_expr(db, p_ty, resolve_expr(db, value)).map_err(|err| {
+                                errors.push(
+                                    StmtError::ParameterExprMismatch {
+                                        expr: value,
+                                        var: other_param,
+                                        err,
+                                    }
+                                    .into(),
+                                )
+                            });
                     }
                     Err(err) => errors.push(
                         StmtError::UnresolvedNonFormalParam {
@@ -380,16 +384,18 @@ fn check_parameters<'db>(
                 match resolved_param {
                     Some(other_param) => match other_param.try_to_ty(db) {
                         Ok(p_ty) => {
-                            let _ = coerce_ty_with_expr(db, p_ty, value).map_err(|err| {
-                                errors.push(
-                                    StmtError::ParameterExprMismatch {
-                                        expr: value,
-                                        var: other_param,
-                                        err,
-                                    }
-                                    .into(),
-                                )
-                            });
+                            let _ = coerce_ty_with_expr(db, p_ty, resolve_expr(db, value)).map_err(
+                                |err| {
+                                    errors.push(
+                                        StmtError::ParameterExprMismatch {
+                                            expr: value,
+                                            var: other_param,
+                                            err,
+                                        }
+                                        .into(),
+                                    )
+                                },
+                            );
                         }
                         Err(err) => errors.push(
                             StmtError::UnresolvedInputParam {
@@ -414,6 +420,7 @@ fn check_parameters<'db>(
                 resolved_param,
                 variable,
             } => {
+                let variable = resolve_var_access(db, variable);
                 match seen.get(&param.ident) {
                     None => {
                         seen.insert(param.ident, param);
@@ -482,27 +489,28 @@ fn check_parameters<'db>(
 
 fn check_for<'db>(
     db: &'db dyn BaseDatabase,
-    control_var: ResolvedAccess<'db>,
-    start: ResolvedExpr<'db>,
-    end: ResolvedExpr<'db>,
-    step: Option<ResolvedExpr<'db>>,
+    control_var: VariableAccess<'db>,
+    start: Expr<'db>,
+    end: Expr<'db>,
+    step: Option<Expr<'db>>,
     errors: &mut Vec<AnalysisError<'db>>,
 ) -> Result<(), AnalysisError<'db>> {
     let control_var_ty = check_assignment(db, control_var, start)?;
+    let control_var = resolve_var_access(db, control_var);
 
     // Check start value
-    if let Err(err) = coerce_ty_with_expr(db, control_var_ty, start) {
+    if let Err(err) = coerce_ty_with_expr(db, control_var_ty, resolve_expr(db, start)) {
         errors.push(StmtError::ForLoopStartTypeMismatch { start, err }.into());
     }
 
     // Check end value
-    if let Err(err) = coerce_ty_with_expr(db, control_var_ty, end) {
+    if let Err(err) = coerce_ty_with_expr(db, control_var_ty, resolve_expr(db, end)) {
         errors.push(StmtError::ForLoopEndTypeMismatch { end, err }.into());
     }
 
     // Check step value
     if let Some(step) = step {
-        if let Err(err) = coerce_ty_with_expr(db, control_var_ty, step) {
+        if let Err(err) = coerce_ty_with_expr(db, control_var_ty, resolve_expr(db, step)) {
             errors.push(StmtError::ForLoopStepTypeMismatch { step, err }.into());
         }
     }

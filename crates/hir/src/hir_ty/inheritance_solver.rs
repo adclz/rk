@@ -79,7 +79,7 @@ impl<'db> MethodRef<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for MethodRef<'db> {
-    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
         match self {
             MethodRef::Prototype(p) => p.get_id(db),
             MethodRef::Declared(d) => d.get_id(db),

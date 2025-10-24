@@ -41,7 +41,7 @@ impl<'db> ResolvedPathElement<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for ResolvedPathElement<'db> {
-    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
         // We do not use the id field of the expression because of the way PathExpr are built from the AST.
         // Instead, get_id method will return the id of *this* specific path element.
         self.expr.get_id(db)
@@ -73,7 +73,7 @@ pub struct ResolvedPath<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for ResolvedPath<'db> {
-    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
         self.expr.get_id(db)
     }
 
@@ -166,7 +166,7 @@ impl<'db> ResolvedPathKind<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for ResolvedPathKind<'db> {
-    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
         match self {
             ResolvedPathKind::Pou(p) => p.get_id(db),
             ResolvedPathKind::Variable(v) => v.get_id(db),

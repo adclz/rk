@@ -81,7 +81,7 @@ impl Hash for SpanNamespaceAccess<'_> {
 }
 
 impl<'db> HirNodeInfo<'db> for SpanNamespaceAccess<'db> {
-    fn get_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
         self.id
     }
 
