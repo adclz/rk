@@ -53,8 +53,14 @@ impl<'db> ToProtocol<'db> for PouDecl<'db> {
             _ => {}
         }
 
+        let name = self.name(db).text(db).to_string();
+        let name = match name.len() {
+            0 => "?".into(),
+            _ => name
+        };
+
         builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
-            name: self.name(db).text(db).to_string(),
+            name,
             detail: Some(
                 match self.pou(db) {
                     Pou::FunctionBlock(_) => "FUNCTION_BLOCK".to_string(),

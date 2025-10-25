@@ -14,8 +14,15 @@ use crate::{HasComment, ToProtocol};
 
 impl<'db> ToProtocol<'db> for VariableDecl<'db> {
     fn document_symbols(&self, db: &'db dyn BaseDatabase, builder: &mut DocumentSymbolsBuilder) {
+
+        let name = self.name(db).text(db).to_string();
+        let name = match name.len() {
+            0 => "?".into(),
+            _ => name
+        };
+
         builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
-            name: self.name(db).text(db).to_string(),
+            name,
             detail: Some(self.spec(db).to_ty(db).type_name(db)),
             kind: SymbolKind::VARIABLE,
             deprecated: None,

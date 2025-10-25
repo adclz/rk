@@ -3,26 +3,32 @@ use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind, SymbolKind},
 };
-use hir::{
-    HirNodeInfo, TypeInfo,
-    hir_ty::inheritance_solver::MethodRef,
-};
+use hir::{HirNodeInfo, TypeInfo, hir_ty::inheritance_solver::MethodRef};
 
 use crate::{HasComment, ToProtocol};
 
 impl<'db> ToProtocol<'db> for MethodRef<'db> {
     fn document_symbols(&self, db: &'db dyn BaseDatabase, builder: &mut DocumentSymbolsBuilder) {
+        let name = self.name(db).text(db).to_string();
+        let name = match name.len() {
+            0 => "?".into(),
+            _ => name,
+        };
+
         let mut nested_builder = DocumentSymbolsBuilder::default();
         self.variables(db)
             .iter()
             .for_each(|var| var.document_symbols(db, &mut nested_builder));
 
         builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
-            name: self.name(db).text(db).to_string(),
-            detail: Some(format!("METHOD{}", match self.return_type(db) {
-                Some(dt) => format!(" : {}", dt.to_ty(db).type_name(db)),
-                None => "".into()
-            })),
+            name,
+            detail: Some(format!(
+                "METHOD{}",
+                match self.return_type(db) {
+                    Some(dt) => format!(" : {}", dt.to_ty(db).type_name(db)),
+                    None => "".into(),
+                }
+            )),
             kind: SymbolKind::METHOD,
             deprecated: None,
             range: self.get_span(db).lsp(),

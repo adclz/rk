@@ -40,9 +40,15 @@ NAMESPACE {ns}
             .iter()
             .for_each(|pou| pou.document_symbols(db, &mut nested_builder));
 
+        let name = self.path(db).to_string(db);
+        let name = match name.len() {
+            0 => "?".into(),
+            _ => name
+        };
+
         builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
-            name: self.path(db).to_string(db),
-            detail: Some("namespace".to_string()),
+            name,
+            detail: Some("NAMESPACE".to_string()),
             kind: auto_lsp::lsp_types::SymbolKind::NAMESPACE, // Namespace
             deprecated: None,
             range: self.get_span(db).lsp(),
