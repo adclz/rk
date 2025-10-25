@@ -22,7 +22,7 @@ use crate::{
         semantic_index::{get_scope, semantic_index},
         visibility::Visibility,
     }, hir_ty::{
-        inheritance_solver::MethodRef, name_res::{pou_names_res, resolve_namespace_access}, signatures::LocalVariables, ty::Ty, walk::{Adjustement, ResolvedPath, ResolvedPathKind, ResolvedPathResult}
+        flatten::{Flatten, PathExprWalkStep}, inheritance_solver::MethodRef, name_res::{pou_names_res, resolve_namespace_access}, signatures::LocalVariables, ty::Ty, walk::{Adjustement, ResolvedPath, ResolvedPathKind, ResolvedPathResult}
     }, AstId, HirNodeInfo
 };
 
@@ -321,7 +321,7 @@ fn find_primary_target<'db>(
     path_expr: PathExpr<'db>,
     mode: SearchMode,
 ) -> Result<(ResolvedPath<'db>, &'db [PathExprWalkStep<'db>]), ResolvedAccess<'db>> {
-    let flatten = path_expr.flatten_steps(db);
+    let flatten = path_expr.flatten(db);
     match flatten.first() {
         Some(first) => {
             let (ident, expr) = match first {
@@ -489,65 +489,3 @@ impl<'db> HirNodeInfo<'db> for CallSite<'db> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
-pub enum PathExprWalkStep<'db> {
-    Field {
-        ident: SpanIdent<'db>,
-        expr: PathExpr<'db>,
-    }, // By name
-    Index {
-        expr: PathExpr<'db>,
-    }, // By index
-    Deref {
-        target: SpanIdent<'db>,
-        expr: PathExpr<'db>,
-    }, // For pointers
-}
-
-impl PathExprWalkStep<'_> {
-    pub fn get_expr(&self) -> &PathExpr<'_> {
-        match self {
-            PathExprWalkStep::Field { expr, .. } => expr,
-            PathExprWalkStep::Index { expr } => expr,
-            PathExprWalkStep::Deref { expr, .. } => expr,
-        }
-    }
-}
-
-#[salsa::tracked]
-impl<'db> PathExpr<'db> {
-    #[salsa::tracked(returns(ref))]
-    fn flatten_steps(self, db: &'db dyn BaseDatabase) -> Vec<PathExprWalkStep<'db>> {
-        let mut result = Vec::new();
-
-        match self.expr(db) {
-            PathExprKind::Field(field_expr) => {
-                result.extend(field_expr.path.flatten_steps(db).iter().cloned());
-                match &field_expr.var {
-                    VarAccess::Simple(simple) => result.push(PathExprWalkStep::Field {
-                        expr: self,
-                        ident: *simple,
-                    }),
-                    VarAccess::Deref(target) => result.push(PathExprWalkStep::Deref {
-                        expr: self,
-                        target: *target,
-                    }),
-                }
-            }
-            PathExprKind::Index(index_expr) => {
-                result.extend(index_expr.path.flatten_steps(db).iter().cloned());
-                result.push(PathExprWalkStep::Index { expr: self });
-            }
-            PathExprKind::VarAccess(var_access) => match var_access {
-                VarAccess::Simple(simple) => result.push(PathExprWalkStep::Field {
-                    expr: self,
-                    ident: simple,
-                }),
-                VarAccess::Deref(target) => {
-                    result.push(PathExprWalkStep::Deref { expr: self, target })
-                }
-            },
-        }
-        result
-    }
-}

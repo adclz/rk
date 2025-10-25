@@ -2,9 +2,7 @@ use auto_lsp::default::db::BaseDatabase;
 use ide_diagnostic::{IdeDiagnostic, Related};
 
 use crate::{
-    AstId, HirNodeInfo, TypeInfo,
-    check::errors::path_error::AccessError,
-    hir_def::{
+    check::errors::path_error::AccessError, hir_def::{
         expressions::{
             expression::PathExpr,
             spec::{Spec, SpecKind, StructElement},
@@ -14,14 +12,9 @@ use crate::{
             variable::VariableDecl,
         },
         scope::ScopeId,
-    },
-    hir_ty::{
-        inheritance_solver::{MethodRef, declared_methods},
-        name_res::resolve_namespace_access,
-        signatures::GlobalVariables,
-        ty::{Ty, TyKind},
-        ty_var_access_resolver::{CallSite, PathExprWalkStep},
-    },
+    }, hir_ty::{
+        flatten::PathExprWalkStep, inheritance_solver::{declared_methods, MethodRef}, name_res::resolve_namespace_access, signatures::GlobalVariables, ty::{Ty, TyKind}, ty_var_access_resolver::CallSite
+    }, AstId, HirNodeInfo, TypeInfo
 };
 
 /// Represents a resolved element in a path expression.
