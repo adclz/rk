@@ -1,4 +1,4 @@
-use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
+use auto_lsp::{default::db::BaseDatabase, lsp_types::{DiagnosticSeverity, DiagnosticTag}};
 use ide_diagnostic::{IdeDiagnostic, Related, diag};
 
 use crate::{
@@ -6,13 +6,13 @@ use crate::{
             analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic},
             coerce::{ExprMismatch, TypeMismatch},
             path_error::AccessError,
-        }, hir_def::{expressions::expression::{Expr, PathExpr}, interned::identifier::SpanIdent, pous::variable::VariableDecl}, hir_ty::{expr_resolver::ResolvedExpr, ty_var_access_resolver::ResolvedAccess}, query_string::{fuzzy_method::fuzzy_method_parameters, fuzzy_pou::fuzzy_pou_items}, HirNodeInfo
+        }, hir_def::{expressions::{expression::{Expr, PathExpr}, statement::Stmt}, interned::identifier::SpanIdent, pous::variable::VariableDecl}, hir_ty::{expr_resolver::ResolvedExpr, ty_var_access_resolver::ResolvedAccess}, query_string::{fuzzy_method::fuzzy_method_parameters, fuzzy_pou::fuzzy_pou_items}, HirNodeInfo
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum StmtError<'db> {
     EmptyPathExpression {
-        var: ResolvedAccess<'db>,
+        stmt: Stmt<'db>,
     },
     // Assignments
     UnresolvedAssignmentTarget {
@@ -126,11 +126,12 @@ impl<'db> From<StmtError<'db>> for AnalysisError<'db> {
 impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
     fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
         match self {
-            Self::EmptyPathExpression { var } => {
+            Self::EmptyPathExpression { stmt } => {
                 diag()
-                    .message("unused path, you might want to do something with it".into())
+                    .message("unused code, you might want to do something with it".into())
                     .severity(DiagnosticSeverity::WARNING)
-                    .range(var.get_span(db).clone())
+                    .tags(vec![DiagnosticTag::UNNECESSARY])
+                    .range(stmt.get_span(db).clone())
                     .call()
             },
             Self::AssignmentToCallableType { var } => {

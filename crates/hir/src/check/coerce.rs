@@ -35,7 +35,6 @@ pub fn coerce_ty_with_ty<'db>(
     }
 }
 
-#[salsa::tracked]
 pub fn coerce_ty_with_expr<'db>(
     db: &'db dyn BaseDatabase,
     ty: Ty<'db>,

@@ -40,7 +40,7 @@ impl<'db> Check<'db> for Stmt<'db> {
                 if let Err(err) = resolved.fully_resolved(db) {
                     errors.push(err.into());
                 }
-                errors.push(StmtError::EmptyPathExpression { var: resolved }.into());
+                errors.push(StmtError::EmptyPathExpression { stmt: *self }.into());
             }
             StmtKind::If {
                 then,
@@ -124,11 +124,10 @@ impl<'db> Check<'db> for Stmt<'db> {
     }
 }
 
-fn check_assignment<'db>(
+fn check_assign_target<'db>(
     db: &'db dyn BaseDatabase,
     access: VariableAccess<'db>,
-    target: Expr<'db>,
-) -> Result<Ty<'db>, AnalysisError<'db>> {
+) -> Result<ResolvedAccess<'db>, AnalysisError<'db>> {
     let access = resolve_var_access(db, access);
     // Variables in VAR_INPUT can not be mutated
     if access.is_var_input(db) {
@@ -146,27 +145,33 @@ fn check_assignment<'db>(
             }
         }
         // Assigning to a direct method or pou is not allowed
-        // ... unless this pou is a function with return type
+        // ... unless this pou is a function with return type and is the actual pou being assigned
         ResolvedPathKind::Pou(pou) => {
-            if let Pou::Function(f) = pou.pou(db)
-                && let Some(ret) = f.return_type(db)
-            {
-                // Check the return type
-                return match coerce_ty_with_expr(db, ret.to_ty(db), resolve_expr(db, target)) {
-                    Err(err) => Err(StmtError::AssignmentTypeMismatch { err }.into()),
-                    Ok(()) => Ok(ret.to_ty(db)),
-                };
-            } else {
-                return Err(StmtError::AssignmentToDirectType { var: access }.into());
+            if let Pou::Function(func) = pou.pou(db) {
+                if func.return_type(db).is_some() {
+                    return Ok(access);
+                }
             }
+            return Err(StmtError::AssignmentToDirectType { var: access }.into());
         }
-        // Assiging a struct field is valid
-        ResolvedPathKind::StructElement(st) => {}
+        // Assigning a struct field is valid
+        ResolvedPathKind::StructElement(_) => {}
         // Other cases are invalid
         ResolvedPathKind::Spec(_) | ResolvedPathKind::Method(_) => {
             return Err(StmtError::AssignmentToDirectType { var: access }.into());
         }
     }
+
+    Ok(access)
+}
+
+
+fn check_assignment<'db>(
+    db: &'db dyn BaseDatabase,
+    access: VariableAccess<'db>,
+    target: Expr<'db>,
+) -> Result<Ty<'db>, AnalysisError<'db>> {
+    let access = check_assign_target(db, access)?;
 
     let access_type = match access.try_to_ty(db) {
         Ok(ty) => ty,
@@ -346,7 +351,7 @@ fn check_parameters<'db>(
                     }
                     None => {
                         if too_many_params {
-                            continue;
+                            break;
                         }
                         // No more formal parameters
                         errors.push(StmtError::UnknownNonFormalParam { call: target.clone() }.into());
@@ -407,12 +412,13 @@ fn check_parameters<'db>(
                     }
                 match resolved_param {
                     Some(var) => {
-                        let variable = resolve_var_access(db, variable);
-                        if variable.is_var_input(db) {
-                            errors.push(StmtError::AssignmentToInputVar { var: variable }.into());
-                        } else if variable.as_var(db).is_none() {
-                            errors.push(StmtError::AssignmentToDirectType { var: variable }.into());
-                        } else {
+                        let variable = match check_assign_target(db, variable) {
+                            Ok(v) => v,
+                            Err(err) => {
+                                errors.push(err);
+                                continue;
+                            }
+                        };
                             if let Err(err) = coerce_ty_with_ty(
                                 db,
                                 variable.try_to_ty(db).unwrap(),
@@ -426,7 +432,6 @@ fn check_parameters<'db>(
                                     }
                                     .into(),
                                 );
-                            }
                         }
                     }
                     None => {
@@ -436,7 +441,7 @@ fn check_parameters<'db>(
                                 param: param,
                             }
                             .into(),
-                        );
+                        ); 
                         continue;
                     }
                 }

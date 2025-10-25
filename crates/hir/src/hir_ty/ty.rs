@@ -86,7 +86,6 @@ impl<'db> HirNodeInfo<'db> for Ty<'db> {
     }
 }
 
-#[salsa::tracked]
 impl<'db> Ty<'db> {
     pub fn is_simple(&self, db: &'db dyn BaseDatabase) -> bool {
         matches!(self.kind(db), TyKind::Simple(_))

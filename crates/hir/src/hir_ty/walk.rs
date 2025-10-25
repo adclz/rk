@@ -207,6 +207,11 @@ impl<'db> ResolvedPath<'db> {
                     ResolvedPathKind::Spec(s) => s.to_ty(db),
                     ResolvedPathKind::Pou(pou) => match pou.pou(db) {
                         Pou::DataType(dt) => dt.spec(db).to_ty(db),
+                        // Special case for functions to get their return type
+                        Pou::Function(f) => f.return_type(db)
+                            .map(|spec| spec.to_ty(db)).ok_or_else(|| AccessError::InvalidTypeAccess {
+                                access: self.clone(),
+                            })?,
                         _ => {
                             return Err(AccessError::InvalidTypeAccess {
                                 access: self.clone(),
