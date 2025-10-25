@@ -38,7 +38,6 @@ use crate::{
         semantic_index::{HirNode, SemanticIndex, semantic_index},
     },
     hir_ty::{
-        expr_resolver::{ResolvedExpr, ResolvedExprKind},
         init_expr_resolver::{ResolvedInitExpr, resolve_init_expr},
         name_res::{all_global_pous, all_local_pous},
         ty::{Ty, TyKind},

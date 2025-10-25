@@ -20,7 +20,7 @@ use crate::{
         semantic_index::{get_scope, semantic_index},
     },
     hir_ty::{
-        expr_resolver::{resolve_expr, ResolvedExpr}, func_call_resolver::ResolvedFuncCall, invocation_resolver::{ResolvedInvocationResult, ResolvedMethodKind}, param_resolver::{resolve_parameters, ResolvedParamKind}, signatures::LocalVariables, ty::{Ty, TyKind}, ty_var_access_resolver::{resolve_local_path_expr, resolve_var_access, ResolvedAccess}, walk::ResolvedPathKind
+         func_call_resolver::ResolvedFuncCall, invocation_resolver::{ResolvedInvocationResult, ResolvedMethodKind}, param_resolver::{resolve_parameters, ResolvedParamKind}, signatures::LocalVariables, ty::{Ty, TyKind}, ty_var_access_resolver::{resolve_local_path_expr, resolve_var_access, ResolvedAccess}, walk::ResolvedPathKind
     },
 };
 
@@ -82,7 +82,7 @@ impl<'db> Check<'db> for Stmt<'db> {
                 body.check(db, errors);
             }
             StmtKind::While { condition, body } => {
-                match coerce_bool_with_expr(db, resolve_expr(db, *condition)) {
+                match coerce_bool_with_expr(db, *condition) {
                     Ok(is_valid) => {
                         if !is_valid {
                             errors.push(
@@ -99,7 +99,7 @@ impl<'db> Check<'db> for Stmt<'db> {
                 body.check(db, errors);
             }
             StmtKind::Repeat { condition, body } => {
-                match coerce_bool_with_expr(db, resolve_expr(db, *condition)) {
+                match coerce_bool_with_expr(db, *condition) {
                     Ok(is_bool) => {
                         if !is_bool {
                             errors.push(
@@ -179,7 +179,7 @@ fn check_assignment<'db>(
     };
 
     // Last, runs the type checker
-    if let Err(err) = coerce_ty_with_expr(db, access_type, resolve_expr(db, target)) {
+    if let Err(err) = coerce_ty_with_expr(db, access_type, target) {
         return Err(AnalysisError::from(StmtError::AssignmentTypeMismatch {
             err,
         }));
@@ -337,7 +337,7 @@ fn check_parameters<'db>(
                         if let Err(err) = coerce_ty_with_expr(
                             db,
                             var.spec(db).to_ty(db),
-                            resolve_expr(db, value),
+                            value,
                         ) {
                             errors.push(
                                 StmtError::ParameterExprMismatch {
@@ -376,7 +376,7 @@ fn check_parameters<'db>(
                         if let Err(err) = coerce_ty_with_expr(
                             db,
                             var.spec(db).to_ty(db),
-                            resolve_expr(db, value),
+                            value,
                         ) {
                             errors.push(
                                 StmtError::ParameterExprMismatch {
@@ -462,18 +462,18 @@ fn check_for<'db>(
     let control_var = resolve_var_access(db, control_var);
 
     // Check start value
-    if let Err(err) = coerce_ty_with_expr(db, control_var_ty, resolve_expr(db, start)) {
+    if let Err(err) = coerce_ty_with_expr(db, control_var_ty, start) {
         errors.push(StmtError::ForLoopStartTypeMismatch { start, err }.into());
     }
 
     // Check end value
-    if let Err(err) = coerce_ty_with_expr(db, control_var_ty, resolve_expr(db, end)) {
+    if let Err(err) = coerce_ty_with_expr(db, control_var_ty, end) {
         errors.push(StmtError::ForLoopEndTypeMismatch { end, err }.into());
     }
 
     // Check step value
     if let Some(step) = step {
-        if let Err(err) = coerce_ty_with_expr(db, control_var_ty, resolve_expr(db, step)) {
+        if let Err(err) = coerce_ty_with_expr(db, control_var_ty, step) {
             errors.push(StmtError::ForLoopStepTypeMismatch { step, err }.into());
         }
     }

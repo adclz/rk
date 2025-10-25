@@ -100,6 +100,17 @@ pub fn var_output() -> CompletionItem {
 }
 
 #[inline]
+pub fn var_in_out() -> CompletionItem {
+    CompletionItem {
+        label: "VAR_IN_OUT".into(),
+        kind: Some(lsp_types::CompletionItemKind::INTERFACE),
+        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+        insert_text: Some("VAR_OUTPUT \n\nEND_VAR".into()),
+        ..Default::default()
+    }
+}
+
+#[inline]
 pub fn var_temp() -> CompletionItem {
     CompletionItem {
         label: "VAR_TEMP".into(),
@@ -117,6 +128,61 @@ pub fn var() -> CompletionItem {
         kind: Some(lsp_types::CompletionItemKind::INTERFACE),
         insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
         insert_text: Some("VAR \n\nEND_VAR".into()),
+        ..Default::default()
+    }
+}
+
+#[inline]
+pub fn method() -> CompletionItem {
+    CompletionItem {
+        label: "METHOD".into(),
+        kind: Some(lsp_types::CompletionItemKind::INTERFACE),
+        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+        insert_text: Some("METHOD ${1:method} \n\nEND_METHOD".into()),
+        ..Default::default()
+    }
+}
+
+#[inline]
+pub fn if_() -> CompletionItem {
+    CompletionItem {
+        label: "IF".into(),
+        kind: Some(lsp_types::CompletionItemKind::INTERFACE),
+        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+        insert_text: Some("IF ${1:cond} THEN \n\nEND_IF".into()),
+        ..Default::default()
+    }
+}
+
+#[inline]
+pub fn for_() -> CompletionItem {
+    CompletionItem {
+        label: "FOR".into(),
+        kind: Some(lsp_types::CompletionItemKind::INTERFACE),
+        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+        insert_text: Some("FOR ${1:var} := ${2:value} TO ${3:end} DO \n\nEND_FOR".into()),
+        ..Default::default()
+    }
+}
+
+#[inline]
+pub fn while_() -> CompletionItem {
+    CompletionItem {
+        label: "WHILE".into(),
+        kind: Some(lsp_types::CompletionItemKind::INTERFACE),
+        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+        insert_text: Some("WHILE ${1:var} >= ${2:value} DO \n\nEND_WHILE".into()),
+        ..Default::default()
+    }
+}
+
+#[inline]
+pub fn repeat() -> CompletionItem {
+    CompletionItem {
+        label: "REPEAT".into(),
+        kind: Some(lsp_types::CompletionItemKind::INTERFACE),
+        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+        insert_text: Some("REPEAT \n\n\tUNTIL ${1:var} >= ${2:value} \n\nEND_REPEAT".into()),
         ..Default::default()
     }
 }

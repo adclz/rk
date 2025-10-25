@@ -1,14 +1,14 @@
-use crate::hir_ty::{expr_resolver::ResolvedExpr, ty::Ty};
+use crate::{hir_def::expressions::expression::Expr, hir_ty::ty::Ty};
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub struct LiteralError<'db> {
     pub ty: Ty<'db>,
-    pub expr: ResolvedExpr<'db>,
+    pub expr: Expr<'db>,
     pub kind: LiteralErrorKind,
 }
 
 impl<'db> LiteralError<'db> {
-    pub fn new(ty: Ty<'db>, expr: ResolvedExpr<'db>, kind: LiteralErrorKind) -> Self {
+    pub fn new(ty: Ty<'db>, expr: Expr<'db>, kind: LiteralErrorKind) -> Self {
         Self { ty, expr, kind }
     }
 }

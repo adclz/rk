@@ -11,7 +11,6 @@ use crate::{
         pous::variable::VariableDecl,
         scope::ScopeId,
     }, hir_ty::{
-        expr_resolver::ResolvedExpr,
         ty::Ty,
         ty_var_access_resolver::{resolve_global_path_expr, ResolvedAccess},
         walk::{ResolvedPath, ResolvedPathKind},

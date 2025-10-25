@@ -1,7 +1,7 @@
 use hir::{
     hir_def::{
         expressions::spec::{ElementarySpec, SpecKind},
-        pous::{pou::{Pou, PouDecl}, variable::VariableKind},
+        pous::{function_block::FunctionBlock, pou::{Pou, PouDecl}, variable::VariableKind},
     }, hir_ty::{
         implementation::find_all_implementations, inheritance_solver::{declared_methods, MethodRef},
         signatures::{GlobalVariables, LocalVariables},
@@ -18,7 +18,7 @@ use auto_lsp::{
 use hir::HirNodeInfo;
 use serde_json::to_value;
 
-use crate::{HasComment, ToProtocol};
+use crate::{completions, HasComment, ToProtocol};
 
 impl<'db> ToProtocol<'db> for PouDecl<'db> {
     fn document_symbols(&self, db: &'db dyn BaseDatabase, builder: &mut DocumentSymbolsBuilder) {
@@ -115,59 +115,6 @@ impl<'db> ToProtocol<'db> for PouDecl<'db> {
             children: Some(nested_builder.finalize()),
             tags: None,
         });
-    }
-
-    fn completion(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        offset: usize,
-    ) -> Option<Vec<CompletionItem>> {
-        if let Pou::DataType(dt) = self.pou(db) {
-            return dt.spec(db).completion(db, offset);
-        }
-
-        let mut results = vec![];
-        self.global_variables(db).iter().for_each(|(name, v)| {
-            results.push(CompletionItem {
-                label: name.text(db).to_string(),
-                label_details: Some(CompletionItemLabelDetails {
-                    detail: Some(match v.kind(db) {
-                        VariableKind::Input => "(INPUT)",
-                        VariableKind::Output => "(OUTPUT)",
-                        VariableKind::InOut => "(IN_OUT",
-                        VariableKind::Var => "(VAR)",
-                        VariableKind::External => "(EXTERNAL)",
-                        VariableKind::Global => "(GLOBAL)",
-                        VariableKind::Access => "(ACCESS)",
-                        VariableKind::Config => "(CONFIG)",
-                        VariableKind::Temp => "(TEMP)",
-                    }.into()),
-                    ..Default::default()
-                }),
-                detail: Some(v.spec(db).to_ty(db).type_name(db)),
-                kind: Some(CompletionItemKind::VARIABLE),
-                ..CompletionItem::default()
-            })
-        });
-
-        declared_methods(db, *self).iter().for_each(|(name, method)| {
-            results.push(CompletionItem {
-                label: method.name(db).text(db).to_string(),
-                detail: match method.return_type(db) {
-                    Some(ret_type) => Some(format!(
-                        "{}: {}",
-                        name.text(db),
-                        ret_type.to_ty(db).type_name(db)
-                    )),
-                    None => None,
-                },
-                kind: Some(CompletionItemKind::METHOD),
-                ..CompletionItem::default()
-            })
-        });
-        
-
-        Some(results)
     }
 
     fn inlay_hint(&'db self, db: &'db dyn BaseDatabase) -> Option<InlayHint> {
@@ -284,5 +231,148 @@ impl<'db> ToProtocol<'db> for PouDecl<'db> {
             self.scope_id(db).file(db).url(db).to_owned(),
             self.get_span(db).into(),
         )))
+    }
+
+
+    fn completion(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        offset: usize,
+    ) -> Option<Vec<CompletionItem>> {
+
+        match self.pou(db) {
+            Pou::FunctionBlock(fb) => {
+                return Some(fb.completion(db, offset));
+            },
+            Pou::DataType(dt) => {
+                return dt.spec(db).completion(db, offset);
+            },
+            _ => {}
+        }
+
+        let mut results = vec![];
+        self.global_variables(db).iter().for_each(|(name, v)| {
+            results.push(CompletionItem {
+                label: name.text(db).to_string(),
+                label_details: Some(CompletionItemLabelDetails {
+                    detail: Some(match v.kind(db) {
+                        VariableKind::Input => "(INPUT)",
+                        VariableKind::Output => "(OUTPUT)",
+                        VariableKind::InOut => "(IN_OUT",
+                        VariableKind::Var => "(VAR)",
+                        VariableKind::External => "(EXTERNAL)",
+                        VariableKind::Global => "(GLOBAL)",
+                        VariableKind::Access => "(ACCESS)",
+                        VariableKind::Config => "(CONFIG)",
+                        VariableKind::Temp => "(TEMP)",
+                    }.into()),
+                    ..Default::default()
+                }),
+                detail: Some(v.spec(db).to_ty(db).type_name(db)),
+                kind: Some(CompletionItemKind::VARIABLE),
+                ..CompletionItem::default()
+            })
+        });
+
+        declared_methods(db, *self).iter().for_each(|(name, method)| {
+            results.push(CompletionItem {
+                label: method.name(db).text(db).to_string(),
+                detail: match method.return_type(db) {
+                    Some(ret_type) => Some(format!(
+                        "{}: {}",
+                        name.text(db),
+                        ret_type.to_ty(db).type_name(db)
+                    )),
+                    None => None,
+                },
+                kind: Some(CompletionItemKind::METHOD),
+                ..CompletionItem::default()
+            })
+        });
+        
+
+        Some(results)
+    }
+
+}
+
+
+trait PrecizeCompletion<'db> {
+    fn completion(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Vec<CompletionItem>;
+}
+
+impl<'db> PrecizeCompletion<'db> for FunctionBlock<'db> {
+    fn completion(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Vec<CompletionItem> {
+        // Locate if the offset is inside variable declarations
+
+        let mut results = vec![];
+        match (self.variables(db).first(), self.variables(db).last()) {
+            (Some(first), Some(last)) => {
+                // Before the first variable, both variables and methods can be suggested
+                if offset <= first.get_span(db).start_byte {
+                    eprintln!("Offset before first variable: {}", offset);
+                    results.extend(vec![
+                        completions::static_snippets::var_input(),
+                        completions::static_snippets::var_output(),
+                        completions::static_snippets::var_in_out(),
+                        completions::static_snippets::var_temp(),
+                        completions::static_snippets::var(),
+                        completions::static_snippets::method(),
+                    ]);
+                    return results;
+                }
+
+
+                // After the first and before the last variable
+                if offset >= first.get_span(db).start_byte
+                    && offset <= last.get_span(db).end_byte
+                {
+                  eprintln!("Offset between first and last variable: {}", offset);
+                  results.extend(vec![
+                    completions::static_snippets::var_input(),
+                    completions::static_snippets::var_output(),
+                    completions::static_snippets::var_in_out(),
+                    completions::static_snippets::var_temp(),                   
+                    completions::static_snippets::var()
+                  ]);
+                  return results;  
+                }
+
+                eprintln!("Offset after last variable: {}", offset);
+                results.extend(vec![
+                    completions::static_snippets::var_input(),
+                    completions::static_snippets::var_output(),
+                    completions::static_snippets::var_in_out(),
+                    completions::static_snippets::var_temp(),
+                    completions::static_snippets::var(),
+                    completions::static_snippets::method(),
+                    completions::static_snippets::if_(),
+                    completions::static_snippets::for_(),
+                    completions::static_snippets::while_(),
+                    completions::static_snippets::repeat(),
+
+                ]);
+            },
+            _ => {
+                eprintln!("No variables declared yet: {}", offset);
+                // No variables declared yet, provide all variables, methods and stmts snippets
+                results.extend(vec![
+                    completions::static_snippets::var_input(),
+                    completions::static_snippets::var_output(),
+                    completions::static_snippets::var_in_out(),
+                    completions::static_snippets::var_temp(),
+                    completions::static_snippets::var(),
+                    completions::static_snippets::method(),
+                    completions::static_snippets::if_(),
+                    completions::static_snippets::for_(),
+                    completions::static_snippets::while_(),
+                    completions::static_snippets::repeat(),
+
+                ]);
+                return results;
+            }
+            _ => {},
+        }
+        results
     }
 }

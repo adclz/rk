@@ -9,7 +9,6 @@ use crate::{
         },
     },
     hir_def::expressions::spec::{ElementarySpec, SpecKind, SubRange},
-    hir_ty::expr_resolver::resolve_expr,
 };
 
 impl<'db> DataTypeCheck<'db> for SubRange<'db> {
@@ -41,8 +40,8 @@ impl<'db> DataTypeCheck<'db> for SubRange<'db> {
             }
         }
 
-        let min = resolve_expr(db, self.lower(db));
-        let max = resolve_expr(db, self.upper(db));
+        let min = self.lower(db);
+        let max = self.upper(db);
         if let Err(err) = coerce_ty_with_expr(db, typ.to_ty(db), min) {
             errors.push(SubRangeError::InvalidSubrangeStart { expr: min, err }.into())
         }

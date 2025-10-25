@@ -6,14 +6,14 @@ use crate::{
         errors::{analysis_error::AnalysisError, array::ArrayError},
     },
     hir_def::expressions::spec::Array,
-    hir_ty::{array_resolver::resolve_range, expr_resolver::resolve_expr},
+    hir_ty::{array_resolver::resolve_range},
 };
 
 impl<'db> DataTypeCheck<'db> for Array<'db> {
     fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<AnalysisError<'db>>) {
         for range in &self.subranges(db) {
-            let lower = resolve_expr(db, range.0);
-            let upper = resolve_expr(db, range.1);
+            let lower = range.0;
+            let upper = range.1;
 
             match (resolve_range(db, range.0), resolve_range(db, range.1)) {
                 (Some(lower_range), Some(upper_range)) => {

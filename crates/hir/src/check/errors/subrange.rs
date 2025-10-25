@@ -2,13 +2,10 @@ use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, diag};
 
 use crate::{
-    HirNodeInfo,
     check::errors::{
         analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic},
         coerce::ExprMismatch,
-    },
-    hir_def::expressions::spec::Spec,
-    hir_ty::expr_resolver::ResolvedExpr,
+    }, hir_def::expressions::{expression::Expr, spec::Spec}, HirNodeInfo
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -18,11 +15,11 @@ pub enum SubRangeError<'db> {
         typ: Spec<'db>,
     },
     InvalidSubrangeStart {
-        expr: ResolvedExpr<'db>,
+        expr: Expr<'db>,
         err: ExprMismatch<'db>,
     },
     InvalidSubrangeEnd {
-        expr: ResolvedExpr<'db>,
+        expr: Expr<'db>,
         err: ExprMismatch<'db>,
     },
 }

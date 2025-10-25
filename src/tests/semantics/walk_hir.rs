@@ -41,7 +41,7 @@ END_FUNCTION_BLOCK"#;
     VariableDecl(VariableDecl { [salsa id]: Id(1c00) })
     Spec(Spec { [salsa id]: Id(c00) })
     ResolvedInitExpr(ResolvedInitExpr { [salsa id]: Id(3000) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(3400) })
+    Expr(Expr { [salsa id]: Id(1400) })
     ");
 }
 
@@ -139,14 +139,23 @@ END_FUNCTION_BLOCK"#;
     assert_snapshot!(nodes.join("\n"), @r"
     PouDecl(PouDecl { [salsa id]: Id(2c00) })
     ResolvedAccess(ResolvedAccess { kind: Err(NoLocalItemInScope { expr: PathExpr { [salsa id]: Id(c00) } }), elements: [] })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(3c00) })
+    Expr(Expr { [salsa id]: Id(1800) })
     ResolvedAccess(ResolvedAccess { kind: Err(NoLocalItemInScope { expr: PathExpr { [salsa id]: Id(c02) } }), elements: [] })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(3c03) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(3c04) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(3c05) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(3c06) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(3c09) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(3c0c) })
+    Expr(Expr { [salsa id]: Id(1804) })
+    Expr(Expr { [salsa id]: Id(1802) })
+    ResolvedAccess(ResolvedAccess { kind: Err(NoLocalItemInScope { expr: PathExpr { [salsa id]: Id(c04) } }), elements: [] })
+    Expr(Expr { [salsa id]: Id(1803) })
+    Expr(Expr { [salsa id]: Id(1805) })
+    Expr(Expr { [salsa id]: Id(1806) })
+    Expr(Expr { [salsa id]: Id(1807) })
+    Expr(Expr { [salsa id]: Id(180a) })
+    Expr(Expr { [salsa id]: Id(1808) })
+    ResolvedAccess(ResolvedAccess { kind: Err(NoLocalItemInScope { expr: PathExpr { [salsa id]: Id(c06) } }), elements: [] })
+    Expr(Expr { [salsa id]: Id(1809) })
+    Expr(Expr { [salsa id]: Id(180d) })
+    Expr(Expr { [salsa id]: Id(180b) })
+    ResolvedAccess(ResolvedAccess { kind: Err(NoLocalItemInScope { expr: PathExpr { [salsa id]: Id(c07) } }), elements: [] })
+    Expr(Expr { [salsa id]: Id(180c) })
     ");
 }
 
@@ -220,11 +229,20 @@ END_FUNCTION_BLOCK"#;
         12,
         19,
         39,
+        40,
+        45,
+        47,
         59,
         64,
         69,
         76,
+        77,
+        82,
+        84,
         91,
+        92,
+        97,
+        99,
     ]
     ");
 }

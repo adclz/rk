@@ -1,12 +1,26 @@
-use auto_lsp::{default::db::BaseDatabase, lsp_types::{DiagnosticSeverity, DiagnosticTag}};
+use auto_lsp::{
+    default::db::BaseDatabase,
+    lsp_types::{DiagnosticSeverity, DiagnosticTag},
+};
 use ide_diagnostic::{IdeDiagnostic, Related, diag};
 
 use crate::{
+    HirNodeInfo,
     check::errors::{
-            analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic},
-            coerce::{ExprMismatch, TypeMismatch},
-            path_error::AccessError,
-        }, hir_def::{expressions::{expression::{Expr, PathExpr}, statement::Stmt}, interned::identifier::SpanIdent, pous::variable::VariableDecl}, hir_ty::{expr_resolver::ResolvedExpr, ty_var_access_resolver::ResolvedAccess}, query_string::{fuzzy_method::fuzzy_method_parameters, fuzzy_pou::fuzzy_pou_items}, HirNodeInfo
+        analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic},
+        coerce::{ExprMismatch, TypeMismatch},
+        path_error::AccessError,
+    },
+    hir_def::{
+        expressions::{
+            expression::{Expr, PathExpr},
+            statement::Stmt,
+        },
+        interned::identifier::SpanIdent,
+        pous::variable::VariableDecl,
+    },
+    hir_ty::{ty_var_access_resolver::ResolvedAccess},
+    query_string::{fuzzy_method::fuzzy_method_parameters, fuzzy_pou::fuzzy_pou_items},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
@@ -126,14 +140,12 @@ impl<'db> From<StmtError<'db>> for AnalysisError<'db> {
 impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
     fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
         match self {
-            Self::EmptyPathExpression { stmt } => {
-                diag()
-                    .message("unused code, you might want to do something with it".into())
-                    .severity(DiagnosticSeverity::WARNING)
-                    .tags(vec![DiagnosticTag::UNNECESSARY])
-                    .range(stmt.get_span(db).clone())
-                    .call()
-            },
+            Self::EmptyPathExpression { stmt } => diag()
+                .message("unused code, you might want to do something with it".into())
+                .severity(DiagnosticSeverity::WARNING)
+                .tags(vec![DiagnosticTag::UNNECESSARY])
+                .range(stmt.get_span(db).clone())
+                .call(),
             Self::AssignmentToCallableType { var } => {
                 let mut diag = diag()
                     .message(format!(
@@ -240,15 +252,11 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
 
                 diag
             }
-            Self::UnusedReturnType { call } => {
-                
-
-                diag()
-                    .message(format!("unused return type of '{}'", call.decl_name(db)))
-                    .severity(DiagnosticSeverity::WARNING)
-                    .range(call.get_span(db).clone())
-                    .call()
-            }
+            Self::UnusedReturnType { call } => diag()
+                .message(format!("unused return type of '{}'", call.decl_name(db)))
+                .severity(DiagnosticSeverity::WARNING)
+                .range(call.get_span(db).clone())
+                .call(),
             Self::TooManyParameters {
                 call,
                 expected,
@@ -283,22 +291,17 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
 
                 diag
             }
-            Self::UnknownNonFormalParam { call } => {
-                diag()
-                    .message(format!(
-                        "unknown non-formal parameter in call to '{}'",
-                        call.decl_name(db)
-                    ))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .range(call.get_span(db).clone())
-                    .call()
-            }
+            Self::UnknownNonFormalParam { call } => diag()
+                .message(format!(
+                    "unknown non-formal parameter in call to '{}'",
+                    call.decl_name(db)
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .range(call.get_span(db).clone())
+                .call(),
             Self::UnresolvedInputParam { var, err } => {
                 let mut diag = diag()
-                    .message(format!(
-                        "unresolved input: {}",
-                        err.description(db)
-                    ))
+                    .message(format!("unresolved input: {}", err.description(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(var.get_span(db).clone())
                     .call();
@@ -332,18 +335,12 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 diag
             }
             Self::UnresolvedOutputParam { var, err } => diag()
-                .message(format!(
-                    "unresolved output: {}",
-                    err.description(db)
-                ))
+                .message(format!("unresolved output: {}", err.description(db)))
                 .severity(DiagnosticSeverity::ERROR)
                 .range(var.get_span(db).clone())
                 .call(),
             Self::UnresolvedOutputParamTarget { var, err } => diag()
-                .message(format!(
-                    "unresolved output target: {}",
-                    err.description(db)
-                ))
+                .message(format!("unresolved output target: {}", err.description(db)))
                 .severity(DiagnosticSeverity::ERROR)
                 .range(var.get_span(db).clone())
                 .call(),
@@ -357,10 +354,7 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 .call(),
             Self::ParameterTypeMismatch { var, param, err } => {
                 let mut diag = diag()
-                    .message(format!(
-                        "invalid output: {}",
-                        err.description(db)
-                    ))
+                    .message(format!("invalid output: {}", err.description(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(var.get_span(db).clone())
                     .call();
@@ -371,10 +365,7 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
             }
             Self::ParameterExprMismatch { var, expr, err } => {
                 let mut diag = diag()
-                    .message(format!(
-                        "invalid parameter: {}",
-                        err.description(db)
-                    ))
+                    .message(format!("invalid parameter: {}", err.description(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(expr.get_span(db).clone())
                     .call();

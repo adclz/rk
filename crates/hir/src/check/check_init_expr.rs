@@ -1,4 +1,4 @@
-use crate::{hir_def::expressions::expression::Expr, hir_ty::expr_resolver::resolve_expr};
+use crate::{hir_def::expressions::expression::Expr};
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
@@ -26,7 +26,6 @@ pub fn check_init_expr<'db>(
         }
         // Handle constant expressions - only case that needs original type for coercion
         ResolvedInitExprKind::ConstantExpr(expr_val) => {
-            let expr_val = resolve_expr(db, expr_val);
             if let Err(err) = coerce_ty_with_expr(db, ty, expr_val) {
                 errors.push(
                     InitExprError::InitExprTypeExprMismatch {

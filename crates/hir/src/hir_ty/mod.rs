@@ -1,6 +1,5 @@
 pub mod array_resolver;
 pub mod callable;
-pub mod expr_resolver;
 pub mod func_call_resolver;
 pub mod implementation;
 pub mod inheritance_solver;

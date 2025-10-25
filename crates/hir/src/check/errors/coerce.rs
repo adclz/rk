@@ -2,12 +2,9 @@ use auto_lsp::default::db::BaseDatabase;
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
-    TypeInfo,
     check::errors::{
         analysis_error::DiagnosticDescription, literals::LiteralErrorKind, path_error::AccessError,
-    },
-    hir_def::interned::identifier::SpanIdent,
-    hir_ty::{expr_resolver::ResolvedExpr, ty::Ty},
+    }, hir_def::{expressions::expression::Expr, interned::identifier::SpanIdent}, hir_ty::ty::Ty, TypeInfo
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -18,7 +15,7 @@ pub struct TypeMismatch<'db> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct ExprMismatch<'db> {
-    pub expr: ResolvedExpr<'db>,
+    pub expr: Expr<'db>,
     pub kind: ExprMismatchKind<'db>,
 }
 
@@ -48,7 +45,7 @@ pub enum ExprMismatchKind<'db> {
         variant: SpanIdent<'db>,
     },
     SubRangeValueOutOfBounds {
-        expr: ResolvedExpr<'db>,
+        expr: Expr<'db>,
         subrange_ty: Ty<'db>,
         min: u64,
         max: u64,
@@ -57,42 +54,42 @@ pub enum ExprMismatchKind<'db> {
 }
 
 impl<'db> ExprMismatch<'db> {
-    pub fn type_mismatch(expr: ResolvedExpr<'db>, type_error: TypeMismatch<'db>) -> Self {
+    pub fn type_mismatch(expr: Expr<'db>, type_error: TypeMismatch<'db>) -> Self {
         Self {
             expr,
             kind: ExprMismatchKind::TypeMismatch { err: type_error },
         }
     }
 
-    pub fn literal(expr: ResolvedExpr<'db>, ty: Ty<'db>, literal: LiteralErrorKind) -> Self {
+    pub fn literal(expr: Expr<'db>, ty: Ty<'db>, literal: LiteralErrorKind) -> Self {
         Self {
             expr,
             kind: ExprMismatchKind::Literal { literal, ty },
         }
     }
 
-    pub fn expr_mismatch(expr: ResolvedExpr<'db>, ty: Ty<'db>) -> Self {
+    pub fn expr_mismatch(expr: Expr<'db>, ty: Ty<'db>) -> Self {
         Self {
             expr,
             kind: ExprMismatchKind::ExprTypeMismatch { ty },
         }
     }
 
-    pub fn expr_void(expr: ResolvedExpr<'db>, ty: Ty<'db>) -> Self {
+    pub fn expr_void(expr: Expr<'db>, ty: Ty<'db>) -> Self {
         Self {
             expr,
             kind: ExprMismatchKind::VoidRhs { ty },
         }
     }
 
-    pub fn unresolved_path(expr: ResolvedExpr<'db>, err: AccessError<'db>) -> Self {
+    pub fn unresolved_path(expr: Expr<'db>, err: AccessError<'db>) -> Self {
         Self {
             expr,
             kind: ExprMismatchKind::UnresolvedPathError { err },
         }
     }
 
-    pub fn lhs_is_not_abool(expr: ResolvedExpr<'db>, ty: Ty<'db>) -> Self {
+    pub fn lhs_is_not_abool(expr: Expr<'db>, ty: Ty<'db>) -> Self {
         Self {
             expr,
             kind: ExprMismatchKind::LhsIsNotABool { ty },
@@ -100,7 +97,7 @@ impl<'db> ExprMismatch<'db> {
     }
 
     pub fn invalid_enum_variant(
-        expr: ResolvedExpr<'db>,
+        expr: Expr<'db>,
         enum_ty: Ty<'db>,
         variant: SpanIdent<'db>,
     ) -> Self {
@@ -111,7 +108,7 @@ impl<'db> ExprMismatch<'db> {
     }
 
     pub fn subrange_value_out_of_bounds(
-        expr: ResolvedExpr<'db>,
+        expr: Expr<'db>,
         subrange_ty: Ty<'db>,
         min: u64,
         max: u64,
@@ -221,7 +218,7 @@ impl<'db> DiagnosticDescription<'db> for ExprMismatch<'db> {
                 format!(
                     "expected '{}', got '{}'",
                     ty.type_name(db),
-                    self.expr.expr(db).to_string(db)
+                    self.expr.to_string(db)
                 )
             }
             ExprMismatchKind::VoidRhs { ty } => "right-hand side is void".to_string(),

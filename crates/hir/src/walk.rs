@@ -5,7 +5,7 @@ use auto_lsp::default::db::BaseDatabase;
 use crate::{
     hir_def::{
         expressions::{
-            expression::{Expr, VarAccess, VariableAccess},
+            expression::{Expr, ExprKind, PrimaryExpr, RefValue, VarAccess, VariableAccess},
             spec::{Spec, SpecKind},
             statement::{Stmt, StmtKind},
         },
@@ -19,7 +19,7 @@ use crate::{
         using::Using,
     },
     hir_ty::{
-        expr_resolver::{resolve_expr, ResolvedExpr, ResolvedExprKind, ResolvedRefValue}, func_call_resolver::ResolvedFuncCall, inheritance_solver::MethodRef, init_expr_resolver::{resolve_init_expr, ResolvedInitExpr, ResolvedInitExprKind}, invocation_resolver::{ResolvedInvocationResult, ResolvedMethodKind}, param_resolver::{resolve_parameters, ResolvedParam, ResolvedParamKind}, ty::TyKind, ty_var_access_resolver::{resolve_local_path_expr, resolve_var_access, ResolvedAccess}, using_resolver::resolve_using, walk::{ResolvedPath, ResolvedPathKind, ResolvedPathResult}
+        func_call_resolver::ResolvedFuncCall, inheritance_solver::MethodRef, init_expr_resolver::{resolve_init_expr, ResolvedInitExpr, ResolvedInitExprKind}, invocation_resolver::{ResolvedInvocationResult, ResolvedMethodKind}, param_resolver::{resolve_parameters, ResolvedParam, ResolvedParamKind}, ty::TyKind, ty_var_access_resolver::{resolve_local_path_expr, resolve_var_access, ResolvedAccess}, using_resolver::resolve_using, walk::{ResolvedPath, ResolvedPathKind, ResolvedPathResult}
     },
 };
 
@@ -255,41 +255,46 @@ impl<'db> WalkHir<'db> for ResolvedPath<'db> {
     }
 }
 
-impl<'db> WalkHir<'db> for ResolvedExpr<'db> {
+impl<'db> WalkHir<'db> for Expr<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
         &self,
         db: &'db dyn BaseDatabase,
         f: &mut F,
     ) -> ControlFlow<()> {
-        f(HirNode::ResolvedExpr(*self))?;
-        match self.kind(db) {
-            ResolvedExprKind::BooleanExpression(lhs, rhs) => {
-                lhs.walk_hir(db, f)?;
-                rhs.walk_hir(db, f)?;
+        f(HirNode::Expr(*self))?;
+        match self.expr(db) {
+            ExprKind::AddOperator{ left, right, .. }=> {
+                left.walk_hir(db, f)?;
+                right.walk_hir(db, f)?;
             }
-            ResolvedExprKind::Compare(lhs, rhs) => {
-                lhs.walk_hir(db, f)?;
-                rhs.walk_hir(db, f)?;
+            ExprKind::BooleanOperator{ left, right, .. } => {
+                left.walk_hir(db, f)?;
+                right.walk_hir(db, f)?;
             }
-            ResolvedExprKind::Math(lhs, rhs) => {
-                lhs.walk_hir(db, f)?;
-                rhs.walk_hir(db, f)?;
+            ExprKind::ComparisonOperator{ left, right, .. } => {
+                left.walk_hir(db, f)?;
+                right.walk_hir(db, f)?;
             }
-            ResolvedExprKind::Parenthesized(expr) => {
+            ExprKind::MultOperator{ left, right, .. }=> {
+                left.walk_hir(db, f)?;
+                right.walk_hir(db, f)?;
+            }
+            ExprKind::UnaryOperator{ expr, .. }=> {
                 expr.walk_hir(db, f)?;
             }
-            ResolvedExprKind::FuncCall(func) => {
-                func.walk_hir(db, f)?;
+            ExprKind::PowerOperator{ left, right, .. }=> {
+                left.walk_hir(db, f)?;
+                right.walk_hir(db, f)?;
             }
-            ResolvedExprKind::Invocation(inv) => {
-                inv.walk_hir(db, f)?;
-            }
-            ResolvedExprKind::VarAccess(var) => {
-                var.walk_hir(db, f)?;
-            }
-            ResolvedExprKind::RefValue(expr) => {
-                expr.walk_hir(db, f)?;
-            }
+            ExprKind::PrimaryExpr(expr) => {
+                match expr {
+                    PrimaryExpr::VariableAccess { variable, ..} => {
+                        let var_access = resolve_var_access(db, *variable);
+                        var_access.walk_hir(db, f)?;
+                    },
+                    _ => {}
+                }
+            },
             _ => {}
         }
         ControlFlow::Continue(())
@@ -315,7 +320,7 @@ impl<'db> WalkHir<'db> for ResolvedInitExpr<'db> {
                 value.walk_hir(db, f)?;
             }
             ResolvedInitExprKind::ConstantExpr(expr) => {
-                resolve_expr(db, expr).walk_hir(db, f)?;
+                expr.walk_hir(db, f)?;
             }
             ResolvedInitExprKind::Error(_) => {}
         }
@@ -335,20 +340,20 @@ impl<'db> WalkHir<'db> for ResolvedParam<'db> {
                 resolved_param,
                 value,
             } => {
-                if let Some(ty) = resolved_param {
-                    ty.walk_hir(db, f)?;
+                if let Some(var) = resolved_param {
+                    var.walk_hir(db, f)?;
                 }
-                resolve_expr(db, value).walk_hir(db, f)
+                value.walk_hir(db, f)
             }
             ResolvedParamKind::FormalInput {
                 param,
                 resolved_param,
                 value,
             } => {
-                if let Some(ty) = resolved_param {
-                    ty.walk_hir(db, f)?;
+                if let Some(var) = resolved_param {
+                    var.walk_hir(db, f)?;
                 }
-                resolve_expr(db, value).walk_hir(db, f)
+                value.walk_hir(db, f)
             }
             ResolvedParamKind::FormalOutput {
                 not,
@@ -429,16 +434,6 @@ impl<'db> WalkHir<'db> for ResolvedFuncCall<'db> {
     }
 }
 
-impl<'db> WalkHir<'db> for ResolvedRefValue<'db> {
-    fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
-        &self,
-        db: &'db dyn BaseDatabase,
-        f: &mut F,
-    ) -> ControlFlow<()> {
-        f(HirNode::ResolvedRefValue(self.clone()))
-    }
-}
-
 impl<'db> WalkHir<'db> for VariableAccess<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
         &self,
@@ -446,16 +441,6 @@ impl<'db> WalkHir<'db> for VariableAccess<'db> {
         f: &mut F,
     ) -> ControlFlow<()> {
         f(HirNode::ResolvedAccess(resolve_var_access(db, *self)))
-    }
-}
-
-impl<'db> WalkHir<'db> for Expr<'db> {
-    fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
-        &self,
-        db: &'db dyn BaseDatabase,
-        f: &mut F,
-    ) -> ControlFlow<()> {
-        f(HirNode::ResolvedExpr(resolve_expr(db, *self)))
     }
 }
 

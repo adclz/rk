@@ -8,7 +8,6 @@ use crate::{
         errors::{analysis_error::AnalysisError, duplicates::DuplicateError, enum_::EnumError},
     },
     hir_def::expressions::spec::{ElementarySpec, Enum, SpecKind},
-    hir_ty::expr_resolver::resolve_expr,
 };
 
 impl<'db> DataTypeCheck<'db> for Enum<'db> {
@@ -53,8 +52,7 @@ impl<'db> DataTypeCheck<'db> for Enum<'db> {
 
             // Check variant value type
             if let (Some(value), Some(typ)) = (variant.value, self.typ(db)) {
-                let value_expr = resolve_expr(db, value);
-                if let Err(err) = coerce_ty_with_expr(db, typ.to_ty(db), value_expr) {
+                if let Err(err) = coerce_ty_with_expr(db, typ.to_ty(db), value) {
                     errors.push(
                         EnumError::InvalidEnumVariantValue {
                             variant: variant.name,

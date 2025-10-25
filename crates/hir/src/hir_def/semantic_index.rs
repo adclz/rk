@@ -9,6 +9,7 @@ use auto_lsp::default::db::{BaseDatabase, file::File};
 use rustc_hash::FxHashMap;
 use tracing::info_span;
 
+use crate::hir_def::expressions::expression::{Expr, RefValue};
 use crate::hir_def::expressions::statement::Stmt;
 use crate::hir_ty::param_resolver::ResolvedParam;
 use crate::HirNodeInfo;
@@ -20,7 +21,6 @@ use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::PouDecl;
 use crate::hir_def::pous::variable::VariableDecl;
 use crate::hir_def::scope::{ScopeId, Scope};
-use crate::hir_ty::expr_resolver::{ResolvedExpr, ResolvedRefValue};
 use crate::hir_ty::inheritance_solver::MethodRef;
 use crate::hir_ty::init_expr_resolver::ResolvedInitExpr;
 use crate::hir_ty::ty_var_access_resolver::ResolvedAccess;
@@ -155,13 +155,12 @@ pub enum HirNode<'db> {
     Spec(Spec<'db>),
     MethodRef(MethodRef<'db>),
     Stmt(Stmt<'db>),
+    Expr(Expr<'db>),
     ResolvedParam(ResolvedParam<'db>),
     ResolvedUsing(ResolvedUsing<'db>),
     ResolvedAccess(ResolvedAccess<'db>),
     ResolvedPath(ResolvedPath<'db>),
-    ResolvedExpr(ResolvedExpr<'db>),
     ResolvedInitExpr(ResolvedInitExpr<'db>),
-    ResolvedRefValue(ResolvedRefValue<'db>),
 }
 
 impl<'db> HirNode<'db> {
@@ -175,13 +174,12 @@ impl<'db> HirNode<'db> {
             HirNode::Spec(s) => s.get_span(db),
             HirNode::MethodRef(m) => m.get_span(db),
             HirNode::Stmt(s) => s.get_span(db),
+            HirNode::Expr(e) => e.get_span(db),
             HirNode::ResolvedUsing(u) => u.get_span(db),
             HirNode::ResolvedPath(p) => p.get_span(db),
             HirNode::ResolvedAccess(v) => v.get_span(db),
             HirNode::ResolvedParam(p) => p.get_span(db),
-            HirNode::ResolvedExpr(e) => e.get_span(db),
             HirNode::ResolvedInitExpr(i) => i.get_span(db),
-            HirNode::ResolvedRefValue(r) => r.get_span(db),
         }
     }
 }

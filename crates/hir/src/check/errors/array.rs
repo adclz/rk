@@ -2,24 +2,22 @@ use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, diag};
 
 use crate::{
-    HirNodeInfo,
-    check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic},
-    hir_ty::expr_resolver::ResolvedExpr,
+    check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic}, hir_def::expressions::expression::Expr, HirNodeInfo
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ArrayError<'db> {
     // Arrays
     InvalidArrayLowerValue {
-        value: ResolvedExpr<'db>,
+        value: Expr<'db>,
     },
     InvalidArrayUpperValue {
-        value: ResolvedExpr<'db>,
+        value: Expr<'db>,
     },
     InferiorUpperBound {
         lower: u64,
         upper: u64,
-        upper_expr: ResolvedExpr<'db>,
+        upper_expr: Expr<'db>,
     },
 }
 
@@ -35,12 +33,12 @@ impl<'db> ToIdeDiagnostic<'db> for ArrayError<'db> {
             ArrayError::InvalidArrayLowerValue { value } => diag()
                 .message("Invalid lower bound value for ARRAY".to_string())
                 .severity(DiagnosticSeverity::ERROR)
-                .range(value.expr(db).get_span(db))
+                .range(value.get_span(db))
                 .call(),
             ArrayError::InvalidArrayUpperValue { value } => diag()
                 .message("Invalid upper bound value for ARRAY".to_string())
                 .severity(DiagnosticSeverity::ERROR)
-                .range(value.expr(db).get_span(db))
+                .range(value.get_span(db))
                 .call(),
             ArrayError::InferiorUpperBound {
                 lower,

@@ -5,11 +5,14 @@ use crate::{
         analysis_error::AnalysisError,
         coerce::{ExprMismatch, TypeMismatch},
     },
-    hir_def::expressions::spec::ElementarySpec,
+    hir_def::expressions::{
+        expression::{Expr, ExprKind, PrimaryExpr, RefValue},
+        spec::ElementarySpec,
+    },
     hir_ty::{
         array_resolver::resolve_range,
-        expr_resolver::{ResolvedExpr, ResolvedExprKind, ResolvedRefValue},
         ty::{Ty, TyKind},
+        ty_var_access_resolver::{resolve_global_path_expr, resolve_local_path_expr, resolve_var_access},
     },
 };
 
@@ -38,18 +41,19 @@ pub fn coerce_ty_with_ty<'db>(
 pub fn coerce_ty_with_expr<'db>(
     db: &'db dyn BaseDatabase,
     ty: Ty<'db>,
-    target_expr: ResolvedExpr<'db>,
+    target_expr: Expr<'db>,
 ) -> Result<(), ExprMismatch<'db>> {
     if let TyKind::Err(err) = ty.kind(db) {
         return Err(ExprMismatch::unresolved_path(target_expr, err.clone()));
     }
-    match (ty.kind(db), target_expr.kind(db)) {
+    match (ty.kind(db), target_expr.expr(db)) {
         // Compare an elementary type with a literal
-        (TyKind::Simple(elem), ResolvedExprKind::Literal(prim)) => elem
-            .check_literal(db, prim)
+        (TyKind::Simple(elem), ExprKind::PrimaryExpr(PrimaryExpr::Literal(prim))) => elem
+            .check_literal(db, *prim)
             .map_err(|err| ExprMismatch::literal(target_expr, ty, err)),
         // Compare an elementary type with a function call
-        (TyKind::Simple(elem), ResolvedExprKind::FuncCall(call)) => {
+        (TyKind::Simple(elem), ExprKind::PrimaryExpr(PrimaryExpr::FuncCall(call))) => {
+            let call = call.resolve_func_call(db);
             // Check if the function call has a return type
             match call.target.with_return_type(db) {
                 Some(ret) => coerce_ty_with_ty(db, ty, ret.to_ty(db))
@@ -58,7 +62,11 @@ pub fn coerce_ty_with_expr<'db>(
             }
         }
         // Compare an elementary type with a variable access
-        (TyKind::Simple(elem), ResolvedExprKind::VarAccess(var)) => {
+        (
+            TyKind::Simple(elem),
+            ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess { variable, .. }),
+        ) => {
+            let var = resolve_var_access(db, *variable);
             // Check if the variable type can be coerced to the target type
             coerce_ty_with_ty(
                 db,
@@ -69,7 +77,7 @@ pub fn coerce_ty_with_expr<'db>(
             .map_err(|err| ExprMismatch::type_mismatch(target_expr, err))
         }
         // Compare an elementary with a boolean expression (AND ...)
-        (TyKind::Simple(elem), ResolvedExprKind::BooleanExpression(lhs, rhs)) => {
+        (TyKind::Simple(elem), ExprKind::BooleanOperator { left, right, .. }) => {
             // Check if Ty is bool
             match elem {
                 ElementarySpec::Bool => Ok(()),
@@ -77,7 +85,7 @@ pub fn coerce_ty_with_expr<'db>(
             }
         }
         // Compare an elementary with a comparison expression (<> < > <= >= ==)
-        (TyKind::Simple(elem), ResolvedExprKind::Compare(lhs, rhs)) => {
+        (TyKind::Simple(elem), ExprKind::ComparisonOperator { left, right, .. }) => {
             // Check if Ty is bool
             match elem {
                 ElementarySpec::Bool => Ok(()),
@@ -85,16 +93,22 @@ pub fn coerce_ty_with_expr<'db>(
             }
         }
         // Compare an Array with PathExpr (PathExpr should be an indexed access)
-        (TyKind::Array(array), ResolvedExprKind::VarAccess(result)) => coerce_ty_with_ty(
-            db,
-            array.of_type(db).to_ty(db),
-            result
-                .try_to_ty(db)
-                .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?,
-        )
+        (
+            TyKind::Array(array),
+            ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess { variable, .. }),
+        ) => {
+            let var = resolve_var_access(db, *variable);
+            coerce_ty_with_ty(
+                db,
+                array.of_type(db).to_ty(db),
+                var.try_to_ty(db)
+                    .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?,
+            )
+        }
         .map_err(|err| ExprMismatch::type_mismatch(target_expr, err)),
         // Compare a Struct with PathExpr (PathExpr should be a field access)
-        (TyKind::Struct(ztruct), ResolvedExprKind::VarAccess(result)) => {
+        (TyKind::Struct(ztruct), ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess { variable, .. })) => {
+            let result = resolve_var_access(db, *variable);
             match result
                 .try_to_ty(db)
                 .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?
@@ -115,27 +129,17 @@ pub fn coerce_ty_with_expr<'db>(
         // Compare an Enum with EnumValue
         (
             TyKind::Enum(enum_),
-            ResolvedExprKind::EnumValue {
-                name,
-                variant,
-                v_text,
-            },
-        ) => {
+            ExprKind::PrimaryExpr(PrimaryExpr::EnumValue { name, variant }))  => {
+            let name = resolve_global_path_expr(db, *name);
             // Check if the EnumValue type matches the enum type
             match name
                 .try_to_ty(db)
                 .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?
                 .kind(db)
             {
-                TyKind::Enum(enum_2) => match variant {
+                TyKind::Enum(enum_2) => match enum_2.variants(db).iter().find(|v| v.name.ident == variant.ident) {
                     Some(variant) => Ok(()),
-                    None => {
-                        Err(ExprMismatch::invalid_enum_variant(
-                            target_expr,
-                            ty,
-                            v_text,
-                        ))
-                    }
+                    None => Err(ExprMismatch::invalid_enum_variant(target_expr, ty, *variant)),
                 },
                 _ => unreachable!("resolver should ensure enum value matches enum type"),
             }
@@ -157,7 +161,7 @@ pub fn coerce_ty_with_expr<'db>(
             };
 
             match coerce_ty_with_expr(db, subrange._type(db).to_ty(db), target_expr) {
-                Ok(()) => match resolve_range(db, target_expr.expr(db)) {
+                Ok(()) => match resolve_range(db, target_expr) {
                     Some(integer) => {
                         if integer >= min && integer <= max {
                             Ok(())
@@ -176,13 +180,14 @@ pub fn coerce_ty_with_expr<'db>(
                 Err(err) => Err(err),
             }
         }
-        (TyKind::RefTo(ref_), ResolvedExprKind::RefValue(inner)) => {
+        (TyKind::RefTo(ref_), ExprKind::PrimaryExpr(PrimaryExpr::RefValue { value })) => {
             let ref_to = ref_.to_ty(db);
 
-            match inner {
+            match value {
                 // A NULL reference can be assigned to any reference type
-                ResolvedRefValue::Null(_, _) => Ok(()),
-                ResolvedRefValue::Adress(v) => {
+                RefValue::Null => Ok(()),
+                RefValue::Address(v) => {
+                    let v = resolve_local_path_expr(db, v.kind);
                     // Retrives the element that the reference points to
                     let var_ty = v
                         .try_to_ty(db)
@@ -196,7 +201,9 @@ pub fn coerce_ty_with_expr<'db>(
                 }
             }
         }
-        (TyKind::RefTo(ref_), ResolvedExprKind::VarAccess(var_access)) => {
+        (TyKind::RefTo(ref_), ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess { variable, .. })) => {
+            let var_access = resolve_var_access(db, *variable);
+
             // Get the variable type being accessed
             let var_ty = var_access
                 .try_to_ty(db)
@@ -233,11 +240,11 @@ pub fn coerce_bool_with_ty<'db>(
 
 pub fn coerce_bool_with_expr<'db>(
     db: &'db dyn BaseDatabase,
-    target_expr: ResolvedExpr<'db>,
+    target_expr: Expr<'db>,
 ) -> Result<bool, AnalysisError<'db>> {
-    match target_expr.kind(db) {
-        ResolvedExprKind::BooleanExpression(_, _) => Ok(true),
-        ResolvedExprKind::Compare(_, _) => Ok(true),
+    match target_expr.expr(db) {
+        ExprKind::BooleanOperator { .. } => Ok(true),
+        ExprKind::ComparisonOperator { .. } => Ok(true),
         _ => Ok(false),
     }
 }
