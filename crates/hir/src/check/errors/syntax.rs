@@ -25,6 +25,8 @@ pub enum SyntaxError {
     MultipleExtends(Span),
     MultipleImplements(Span),
     ImplementsBeforeExtends(Span),
+    ClassVariablesAfterMethod(Span),
+    FbVariablesAfterMethod(Span),
     MissingVarType(Span),
     UnexpectedVarInit(Span),
     IncompleteEdgeQualifier(Span),
@@ -106,6 +108,16 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 .call(),
             Self::ImplementsBeforeExtends(span) => diag()
                 .message("implements must be declared after extends".into())
+                .severity(DiagnosticSeverity::ERROR)
+                .range(span.clone())
+                .call(),
+            Self::ClassVariablesAfterMethod(span) => diag()
+                .message("class variable declarations must appear before methods".into())
+                .severity(DiagnosticSeverity::ERROR)
+                .range(span.clone())
+                .call(),
+            Self::FbVariablesAfterMethod(span) => diag()
+                .message("FB variable declarations must appear before methods".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .range(span.clone())
                 .call(),

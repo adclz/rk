@@ -77,7 +77,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         }
 
         class.children.iter().for_each(|f| {
-            type Error = ast::generated::ERRExtendsMultipleTimes_ERRImplementsBeforeExtends_ERRImplementsMultipleTimes;
+            type Error = ast::generated::ERRClassVariablesAfterMethod_ERRExtendsMultipleTimes_ERRImplementsBeforeExtends_ERRImplementsMultipleTimes;
             match f.cast(self.ast) {
                 Error::ERRExtendsMultipleTimes(err) => {
                     self.errors.push(AnalysisError::SyntaxError(SyntaxError::MultipleExtends(err.get_span())));
@@ -87,6 +87,9 @@ impl<'db> SemanticIndexBuilder<'db> {
                 },
                 Error::ERRImplementsMultipleTimes(err) => {
                     self.errors.push(AnalysisError::SyntaxError(SyntaxError::MultipleImplements(err.get_span())));
+                },
+                Error::ERRClassVariablesAfterMethod(err) => {
+                    self.errors.push(AnalysisError::SyntaxError(SyntaxError::ClassVariablesAfterMethod(err.get_span())));
                 },
             }
         });

@@ -320,3 +320,64 @@ END_FUNCTION"#;
     ---'
     ");
 }
+
+#[rstest]
+fn class_variables_before_method(mut with_db: RootDatabase) {
+    let source = r#"
+CLASS base
+
+    METHOD PROTECTED myProtectedMethod END_METHOD
+        
+    VAR
+        obj: Base;
+    END_VAR
+    
+    VAR
+        obj: Base;
+    END_VAR
+
+END_CLASS"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    Error: 
+        ,-[ file:///test0.st:6:5 ]
+        |
+      6 | ,->     VAR
+        : :   
+     12 | |->     END_VAR
+        | |                 
+        | `----------------- class variable declarations must appear before methods
+    ----'
+    ");
+}
+
+
+#[rstest]
+fn fb_variables_before_method(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+
+    METHOD PROTECTED myProtectedMethod END_METHOD
+        
+    VAR
+        obj: Base;
+    END_VAR
+    
+    VAR
+        obj: Base;
+    END_VAR
+
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    Error: 
+        ,-[ file:///test0.st:6:5 ]
+        |
+      6 | ,->     VAR
+        : :   
+     12 | |->     END_VAR
+        | |                 
+        | `----------------- FB variable declarations must appear before methods
+    ----'
+    ");
+}

@@ -281,6 +281,9 @@ module.exports = grammar({
     // for now we will forbid function calls, until the day we implement compile time evaluation
     ERR_func_call_in_init: ($) => prec(2, $.func_call),
 
+    ERR_class_variables_after_method: ($) => prec(-1, repeat1($._class_variables)),
+    ERR_fb_variables_after_method: ($) => prec(-1, repeat1($._fb_variables)),
+
     // Table 3 - Comments
 
     line_comment: ($) => token(seq("//", /.*/)),
@@ -1074,6 +1077,7 @@ module.exports = grammar({
         field("directives", repeat($.using_directive)),
         field("variables", repeat($._fb_variables)),
         field("method", repeat($.method_decl)),
+        optional($.ERR_fb_variables_after_method),
         field("body", optional($.fb_body)),
         "END_FUNCTION_BLOCK",
       ),
@@ -1184,6 +1188,7 @@ module.exports = grammar({
         optional(repeat($.ERR_implements_multiple_times)),
         field("variables", repeat($._class_variables)),
         field("methods", repeat($.method_decl)),
+        optional($.ERR_class_variables_after_method),
         "END_CLASS",
       ),
 
@@ -1685,6 +1690,7 @@ module.exports = grammar({
         $.repeat_stmt,
         "EXIT",
         "CONTINUE",
+        $.ERR_unexpected_variables_declaration
       ),
 
     // assignment: $ => seq(

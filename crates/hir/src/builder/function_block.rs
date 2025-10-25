@@ -58,7 +58,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             .unwrap_or_default();
 
         func.children.iter().for_each(|f| {
-            type Error = ast::generated::ERRExtendsMultipleTimes_ERRImplementsBeforeExtends_ERRImplementsMultipleTimes;
+            type Error = ast::generated::ERRExtendsMultipleTimes_ERRFbVariablesAfterMethod_ERRImplementsBeforeExtends_ERRImplementsMultipleTimes;
             match f.cast(self.ast) {
                 Error::ERRExtendsMultipleTimes(err) => {
                     self.errors.push(AnalysisError::SyntaxError(SyntaxError::MultipleExtends(err.get_span())));
@@ -68,6 +68,9 @@ impl<'db> SemanticIndexBuilder<'db> {
                 },
                 Error::ERRImplementsMultipleTimes(err) => {
                     self.errors.push(AnalysisError::SyntaxError(SyntaxError::MultipleImplements(err.get_span())));
+                },
+                Error::ERRFbVariablesAfterMethod(err) => {
+                    self.errors.push(AnalysisError::SyntaxError(SyntaxError::FbVariablesAfterMethod(err.get_span())));
                 },
             }
         });
