@@ -200,6 +200,44 @@
         "name": "func_call"
       }
     },
+    "ERR_class_variables_after_method": {
+      "type": "PREC",
+      "value": -1,
+      "content": {
+        "type": "REPEAT1",
+        "content": {
+          "type": "SYMBOL",
+          "name": "_class_variables"
+        }
+      }
+    },
+    "ERR_fb_variables_after_method": {
+      "type": "PREC",
+      "value": -1,
+      "content": {
+        "type": "REPEAT1",
+        "content": {
+          "type": "SYMBOL",
+          "name": "_fb_variables"
+        }
+      }
+    },
+    "ERR_unexpected_variables_declaration": {
+      "type": "PREC",
+      "value": -2,
+      "content": {
+        "type": "REPEAT1",
+        "content": {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_fb_variables"
+            }
+          ]
+        }
+      }
+    },
     "line_comment": {
       "type": "TOKEN",
       "content": {
@@ -4717,6 +4755,18 @@
           }
         },
         {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "ERR_fb_variables_after_method"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
           "type": "FIELD",
           "name": "body",
           "content": {
@@ -5427,6 +5477,18 @@
               "name": "method_decl"
             }
           }
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "ERR_class_variables_after_method"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
         },
         {
           "type": "STRING",
@@ -8166,6 +8228,10 @@
         {
           "type": "STRING",
           "value": "CONTINUE"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "ERR_unexpected_variables_declaration"
         }
       ]
     },

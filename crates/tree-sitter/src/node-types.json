@@ -545,6 +545,21 @@
     }
   },
   {
+    "type": "ERR_class_variables_after_method",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "_class_variables",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "ERR_empty_right_hand_assignment",
     "named": true,
     "fields": {}
@@ -559,6 +574,21 @@
       "types": [
         {
           "type": "namespace_access",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "ERR_fb_variables_after_method",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "_fb_variables",
           "named": true
         }
       ]
@@ -1564,6 +1594,10 @@
       "required": false,
       "types": [
         {
+          "type": "ERR_class_variables_after_method",
+          "named": true
+        },
+        {
           "type": "ERR_extends_multiple_times",
           "named": true
         },
@@ -2296,6 +2330,10 @@
       "types": [
         {
           "type": "ERR_extends_multiple_times",
+          "named": true
+        },
+        {
+          "type": "ERR_fb_variables_after_method",
           "named": true
         },
         {
