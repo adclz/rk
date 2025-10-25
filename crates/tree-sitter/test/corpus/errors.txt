@@ -495,3 +495,93 @@ END_FUNCTION
                       (path_expression
                         (var_access
                           (field))))))))))))                          
+
+================================================================================
+class variables after methods
+================================================================================
+
+CLASS base
+
+    METHOD PROTECTED myProtectedMethod END_METHOD
+        
+    VAR
+        obj: Base;
+    END_VAR
+    
+    VAR
+        obj: Base;
+    END_VAR
+
+END_CLASS
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (class_decl
+        (identifier)
+        (method_decl
+          (access_spec
+            (protected))
+          (identifier))
+        (ERR_class_variables_after_method
+          (var_decls
+            (var_decl_init_list
+              (variable_list
+                (identifier))
+              (var_decl_init
+                (simple_type_spec
+                  (namespace_access
+                    (identifier))))))
+          (var_decls
+            (var_decl_init_list
+              (variable_list
+                (identifier))
+              (var_decl_init
+                (simple_type_spec
+                  (namespace_access
+                    (identifier)))))))))
+
+================================================================================
+fb variables after methods
+================================================================================
+
+FUNCTION_BLOCK fb1
+
+    METHOD PROTECTED myProtectedMethod END_METHOD
+        
+    VAR
+        obj: Base;
+    END_VAR
+    
+    VAR
+        obj: Base;
+    END_VAR
+
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (fb_decl
+        (identifier)
+        (method_decl
+          (access_spec
+            (protected))
+          (identifier))
+        (ERR_fb_variables_after_method
+          (var_decls
+            (var_decl_init_list
+              (variable_list
+                (identifier))
+              (var_decl_init
+                (simple_type_spec
+                  (namespace_access
+                    (identifier))))))
+          (var_decls
+            (var_decl_init_list
+              (variable_list
+                (identifier))
+              (var_decl_init
+                (simple_type_spec
+                  (namespace_access
+                    (identifier)))))))))
