@@ -1,7 +1,7 @@
 use crate::AstId;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::analysis_error::AnalysisError;
-use crate::hir_def::scope::FileScopeId;
+use crate::hir_def::scope::ScopeId;
 use crate::{HirNodeInfo, hir_def::interned::identifier::SpanIdent};
 use auto_lsp::default::db::tracked::get_ast;
 use auto_lsp::{anyhow, default::db::BaseDatabase};
@@ -64,7 +64,7 @@ impl From<(&dyn BaseDatabase, &Vec<SpanIdent<'_>>)> for NamespacePath {
 #[derive(Debug, Copy, Clone, salsa::Update)]
 pub struct SpanNamespaceAccess<'db> {
     pub id: AstId,
-    pub scope_id: FileScopeId<'db>,
+    pub scope_id: ScopeId<'db>,
     pub path: NamespaceAccess,
 }
 
@@ -85,7 +85,7 @@ impl<'db> HirNodeInfo<'db> for SpanNamespaceAccess<'db> {
         self.id
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
         self.scope_id
     }
 }

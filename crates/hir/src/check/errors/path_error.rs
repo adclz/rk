@@ -2,13 +2,11 @@ use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, diag};
 
 use crate::{
-    check::errors::{
-            analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic},
-        }, hir_def::{
+    check::errors::analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic}, hir_def::{
         expressions::expression::PathExpr,
         interned::namespace::SpanNamespaceAccess,
         scope::ScopeKind,
-        semantic_index::semantic_index,
+        semantic_index::{get_scope, semantic_index},
     }, hir_ty::walk::ResolvedPath, query_string::fuzzy_pou::fuzzy_pou_items, HirNodeInfo
 };
 
@@ -80,9 +78,7 @@ impl<'db> DiagnosticDescription<'db> for AccessError<'db> {
     fn related(&self, db: &'db dyn BaseDatabase, diag: &mut IdeDiagnostic) {
         match self {
             AccessError::NoLocalItemInScope { expr } => {
-                let scope = expr.scope_id(db);
-                let sema = semantic_index(db, expr.scope_id(db).file(db));
-                let scope = sema.get_scope(db, scope);
+                let scope = get_scope(db, expr.scope_id(db));
                 if let ScopeKind::Pou(pou) = scope.kind {
                     fuzzy_pou_items(
                         db,

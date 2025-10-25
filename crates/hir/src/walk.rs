@@ -4,25 +4,22 @@ use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     hir_def::{
-        expressions::{expression::{Expr, VarAccess, VariableAccess}, spec::{Spec, SpecKind}, statement::{Stmt, StmtKind}},
+        expressions::{
+            expression::{Expr, VarAccess, VariableAccess},
+            spec::{Spec, SpecKind},
+            statement::{Stmt, StmtKind},
+        },
         interned::namespace::SpanNamespaceAccess,
         namespace::NamespaceDecl,
         pous::{
             pou::{Pou, PouDecl},
             variable::VariableDecl,
         },
-        semantic_index::{semantic_index, HirNode, SemanticIndex},
+        semantic_index::{get_scope, semantic_index, HirNode, SemanticIndex},
         using::Using,
     },
     hir_ty::{
-        expr_resolver::{resolve_expr, ResolvedExpr, ResolvedExprKind, ResolvedRefValue},
-        func_call_resolver::{ResolvedFuncCall, ResolvedParam, ResolvedParamKind},
-        inheritance_solver::MethodRef,
-        init_expr_resolver::{resolve_init_expr, ResolvedInitExpr, ResolvedInitExprKind},
-        invocation_resolver::{ResolvedInvocationResult, ResolvedMethodKind},
-        ty_var_access_resolver::{resolve_local_path_expr, resolve_var_access, ResolvedAccess},
-        using_resolver::resolve_using,
-        walk::{ResolvedPath, ResolvedPathResult},
+        expr_resolver::{resolve_expr, ResolvedExpr, ResolvedExprKind, ResolvedRefValue}, func_call_resolver::ResolvedFuncCall, inheritance_solver::MethodRef, init_expr_resolver::{resolve_init_expr, ResolvedInitExpr, ResolvedInitExprKind}, invocation_resolver::{ResolvedInvocationResult, ResolvedMethodKind}, param_resolver::{resolve_parameters, ResolvedParam, ResolvedParamKind}, ty::TyKind, ty_var_access_resolver::{resolve_local_path_expr, resolve_var_access, ResolvedAccess}, using_resolver::resolve_using, walk::{ResolvedPath, ResolvedPathKind, ResolvedPathResult}
     },
 };
 
@@ -76,8 +73,7 @@ impl<'db> WalkHir<'db> for NamespaceDecl<'db> {
     ) -> ControlFlow<()> {
         f(HirNode::Namespace(*self))?;
 
-        let sema = semantic_index(db, self.scope_id(db).file(db));
-        let scope = sema.get_scope(db, self.scope_id(db));
+        let scope = get_scope(db, self.scope_id(db));
 
         for using in &scope.usings {
             using.walk_hir(db, f)?;
@@ -102,7 +98,7 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
     ) -> ControlFlow<()> {
         f(HirNode::PouDecl(*self))?;
 
-        let scope = semantic_index(db, self.scope_id(db).file(db)).get_scope(db, self.scope_id(db));
+        let scope = get_scope(db, self.scope_id(db));
         for using in &scope.usings {
             using.walk_hir(db, f)?;
         }
@@ -239,8 +235,8 @@ impl<'db> WalkHir<'db> for ResolvedAccess<'db> {
         db: &'db dyn BaseDatabase,
         f: &mut F,
     ) -> ControlFlow<()> {
-        f(HirNode::ResolvedAccess(*self))?;
-        for elem in &self.elements(db) {
+        f(HirNode::ResolvedAccess(self.clone()))?;
+        for elem in &self.elements {
             if let ResolvedPathResult::Ok(path) = &elem {
                 path.walk_hir(db, f)?;
             }
@@ -255,7 +251,6 @@ impl<'db> WalkHir<'db> for ResolvedPath<'db> {
         db: &'db dyn BaseDatabase,
         f: &mut F,
     ) -> ControlFlow<()> {
-        // A path element does not derive Copy, but it is small enough to be cheaply cloned.
         f(HirNode::ResolvedPath(self.clone()))
     }
 }
@@ -334,8 +329,8 @@ impl<'db> WalkHir<'db> for ResolvedParam<'db> {
         db: &'db dyn BaseDatabase,
         f: &mut F,
     ) -> ControlFlow<()> {
-        f(HirNode::ResolvedParam(*self))?;
-        match self.kind(db) {
+        f(HirNode::ResolvedParam(self.clone()))?;
+        match self.kind {
             ResolvedParamKind::NonFormal {
                 resolved_param,
                 value,
@@ -376,7 +371,7 @@ impl<'db> WalkHir<'db> for ResolvedInvocationResult<'db> {
         db: &'db dyn BaseDatabase,
         f: &mut F,
     ) -> ControlFlow<()> {
-        match self.target.kind {
+        match &self.target.kind {
             ResolvedMethodKind::InheritedMethod { target, method }
             | ResolvedMethodKind::DeclaredMethod { target, method } => {
                 target.walk_hir(db, f)?;
@@ -384,10 +379,6 @@ impl<'db> WalkHir<'db> for ResolvedInvocationResult<'db> {
             }
             _ => ControlFlow::Continue(()),
         }?;
-
-        for param in &self.params {
-            param.walk_hir(db, f)?;
-        }
         ControlFlow::Continue(())
     }
 }
@@ -400,8 +391,39 @@ impl<'db> WalkHir<'db> for ResolvedFuncCall<'db> {
     ) -> ControlFlow<()> {
         self.target.walk_hir(db, f)?;
 
-        for param in &self.params {
-            param.walk_hir(db, f)?;
+        match self.target.fully_resolved(db) {
+            Ok(r) => match &r.kind {
+                ResolvedPathKind::Pou(pou) => {
+                    for param in resolve_parameters(db, pou, &self.params) {
+                        param.walk_hir(db, f)?;
+                    }
+                }
+                ResolvedPathKind::Variable(v) => {
+                    match v.spec(db).to_ty(db).kind(db) {
+                        TyKind::Function(func) => {
+                            for param in resolve_parameters(db, func, &self.params) {
+                                param.walk_hir(db, f)?;
+                            }
+                        }
+                        TyKind::FunctionBlock(fb) => {
+                            for param in resolve_parameters(db, fb, &self.params) {
+                                param.walk_hir(db, f)?; 
+                            }
+                        },
+                        TyKind::Class(cl) => {
+                            for param in resolve_parameters(db, cl, &self.params) {
+                                param.walk_hir(db, f)?; 
+                            }
+                        },
+                        _ => {}
+                    }
+                }
+                ResolvedPathKind::Method(method) => {
+                    method.walk_hir(db, f)?;
+                }
+                _ => {}
+            },
+            _ => {}
         }
         ControlFlow::Continue(())
     }
@@ -467,14 +489,14 @@ impl<'db> WalkHir<'db> for Stmt<'db> {
                         stmt.walk_hir(db, f)?;
                     }
                 }
-                
+
                 for (cond, block) in else_if {
                     cond.walk_hir(db, f)?;
                     for stmt in block {
                         stmt.walk_hir(db, f)?;
                     }
                 }
-                
+
                 if let Some(else_block) = else_ {
                     for stmt in else_block {
                         stmt.walk_hir(db, f)?;

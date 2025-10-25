@@ -1,51 +1,59 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    hir_def::{expressions::{expression::{Expr, FuncCall, ParamAssign, ParamAssignKind}, invocation::Invocation}, interned::identifier::SpanIdent, pous::{pou::PouDecl, variable::VariableDecl}},
-    hir_ty::{
-        expr_resolver::resolve_expr, func_call_resolver::{ResolvedParam, ResolvedParamKind}, inheritance_solver::MethodRef, signatures::LocalVariables, ty_var_access_resolver::{resolve_var_access, CallSite, ResolvedAccess}, walk::{Adjustement, ResolvedPath, ResolvedPathKind, ResolvedPathResult}
-    },
+    hir_def::{expressions::{expression::{Expr, FuncCall, ParamAssign, ParamAssignKind, VariableAccess}, invocation::Invocation}, interned::identifier::SpanIdent, pous::{pou::PouDecl, variable::VariableDecl}, scope::ScopeId}, hir_ty::{
+        expr_resolver::resolve_expr, func_call_resolver::{}, inheritance_solver::MethodRef, signatures::LocalVariables, ty_var_access_resolver::{resolve_var_access, CallSite, ResolvedAccess}, walk::{Adjustement, ResolvedPath, ResolvedPathKind, ResolvedPathResult}
+    }, AstId, HirNodeInfo
 };
 
-#[salsa::tracked]
-pub fn resolve_func_call_parameters<'db>(
-    db: &'db dyn BaseDatabase,
-    callee: PouDecl<'db>,
-    caller: FuncCall<'db>,
-) -> Vec<ResolvedParam<'db>> {
-    resolve_parameters(db, callee, &caller.params(db))
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub struct ResolvedParam<'db> {
+    pub param_assign: ParamAssign<'db>,
+    pub kind: ResolvedParamKind<'db>,
 }
 
-#[salsa::tracked]
-pub fn resolve_method_parameters<'db>(
-    db: &'db dyn BaseDatabase,
-    callee: MethodRef<'db>,
-    caller: FuncCall<'db>,
-) -> Vec<ResolvedParam<'db>> {
-    resolve_parameters(db, callee, &caller.params(db))
+impl<'db> ResolvedParam<'db> {
+    pub fn new(
+        db: &'db dyn BaseDatabase,
+        param_assign: ParamAssign<'db>,
+        kind: ResolvedParamKind<'db>,
+    ) -> Self {
+        ResolvedParam { param_assign, kind }
+    }
 }
 
-#[salsa::tracked]
-pub fn resolve_invocation_method_parameters<'db>(
-    db: &'db dyn BaseDatabase,
-    callee: MethodRef<'db>,
-    caller: Invocation<'db>,
-) -> Vec<ResolvedParam<'db>> {
-    resolve_parameters(db, callee, &caller.params(db))
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum ResolvedParamKind<'db> {
+    NonFormal {
+        resolved_param: Option<VariableDecl<'db>>,
+        value: Expr<'db>,
+    },
+    FormalInput {
+        param: SpanIdent<'db>,
+        resolved_param: Option<VariableDecl<'db>>,
+        value: Expr<'db>,
+    },
+    FormalOutput {
+        not: bool,
+        param: SpanIdent<'db>,
+        resolved_param: Option<VariableDecl<'db>>,
+        variable: VariableAccess<'db>,
+    },
 }
 
-#[salsa::tracked]
-pub fn resolve_invocation_func_call_parameters<'db>(
-    db: &'db dyn BaseDatabase,
-    callee: PouDecl<'db>,
-    caller: Invocation<'db>,
-) -> Vec<ResolvedParam<'db>> {
-    resolve_parameters(db, callee, &caller.params(db))
+impl<'db> HirNodeInfo<'db> for ResolvedParam<'db> {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+        self.param_assign.id(db)
+    }
+
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+        self.param_assign.scope_id(db)
+    }
 }
 
-fn resolve_parameters<'db>(
+pub fn resolve_parameters<'db>(
     db: &'db dyn BaseDatabase,
-    callee: impl LocalVariables<'db>,
+    callee: &impl LocalVariables<'db>,
     caller: &[ParamAssign<'db>],
 ) -> Vec<ResolvedParam<'db>> {
     let mut formal_index = 0;
@@ -63,7 +71,7 @@ fn resolve_parameters<'db>(
                             let param = callee.local_variables(db).values().nth(formal_index);
                             formal_index += 1;
                             param.map(|p| {
-                                var_into_non_formal(db, *p, value)
+                                *p
                             })
                         },
                         value,
@@ -81,7 +89,7 @@ fn resolve_parameters<'db>(
                             .get(&param.ident)
                             .filter(|v| v.is_input(db) || v.is_in_out(db))
                             .map(|p| {
-                                var_into_formal(db, *p, param)
+                                *p
                             })
                     },
                     value,
@@ -103,7 +111,7 @@ fn resolve_parameters<'db>(
                             .get(&param.ident)
                             .filter(|v| v.is_output(db))
                             .map(|p| {
-                                var_into_formal(db, *p, param)
+                                *p
                             })
                     },
                     variable,
@@ -113,36 +121,3 @@ fn resolve_parameters<'db>(
         .collect()
 }
 
-#[salsa::tracked]
-pub fn var_into_non_formal<'db>(
-    db: &'db dyn BaseDatabase,
-    var: VariableDecl<'db>,
-    expr: Expr<'db>,
-) -> ResolvedAccess<'db> {
-    ResolvedAccess::new(
-        db,
-        ResolvedPathResult::Ok(ResolvedPath {
-            kind: ResolvedPathKind::Variable(var),
-            expr: CallSite::NonFormal(expr),
-            adjustement: Adjustement::None,
-        }),
-        vec![],
-    )
-}
-
-#[salsa::tracked]
-pub fn var_into_formal<'db>(
-    db: &'db dyn BaseDatabase,
-    var: VariableDecl<'db>,
-    ident: SpanIdent<'db>,
-) -> ResolvedAccess<'db> {
-    ResolvedAccess::new(
-        db,
-        ResolvedPathResult::Ok(ResolvedPath {
-            kind: ResolvedPathKind::Variable(var),
-            expr: CallSite::Formal(ident),
-            adjustement: Adjustement::None,
-        }),
-        vec![],
-    )
-}

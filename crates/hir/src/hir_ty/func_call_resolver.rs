@@ -9,10 +9,9 @@ use crate::{
         },
         interned::identifier::{Ident, SpanIdent},
         pous::variable::VariableDecl,
-        scope::FileScopeId,
+        scope::ScopeId,
     }, hir_ty::{
         expr_resolver::ResolvedExpr,
-        param_resolver::{resolve_func_call_parameters, resolve_method_parameters},
         ty::Ty,
         ty_var_access_resolver::{resolve_global_path_expr, ResolvedAccess},
         walk::{ResolvedPath, ResolvedPathKind},
@@ -22,7 +21,7 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct ResolvedFuncCall<'db> {
     pub target: ResolvedAccess<'db>,
-    pub params: Vec<ResolvedParam<'db>>,
+    pub params: Vec<ParamAssign<'db>>,
 }
 
 impl<'db> ResolvedFuncCall<'db> {
@@ -47,53 +46,18 @@ impl<'db> FuncCall<'db> {
         let target = resolve_global_path_expr(db, self.path(db));
 
         ResolvedFuncCall {
-            target,
+            target: target.clone(),
             params: match target.fully_resolved(db) {
                 Ok(ResolvedPath {
                     kind: ResolvedPathKind::Pou(pou),
                     ..
-                }) => resolve_func_call_parameters(db, pou, *self),
+                }) => self.params(db).clone(),
                 Ok(ResolvedPath {
                     kind: ResolvedPathKind::Method(method),
                     ..
-                }) => resolve_method_parameters(db, method, *self),
+                }) => self.params(db).clone(),
                 _ => Default::default(),
             },
         }
-    }
-}
-
-#[salsa::tracked(debug)]
-pub struct ResolvedParam<'db> {
-    pub param: ParamAssign<'db>,
-    pub kind: ResolvedParamKind<'db>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum ResolvedParamKind<'db> {
-    NonFormal {
-        resolved_param: Option<ResolvedAccess<'db>>,
-        value: Expr<'db>,
-    },
-    FormalInput {
-        param: SpanIdent<'db>,
-        resolved_param: Option<ResolvedAccess<'db>>,
-        value: Expr<'db>,
-    },
-    FormalOutput {
-        not: bool,
-        param: SpanIdent<'db>,
-        resolved_param: Option<ResolvedAccess<'db>>,
-        variable: VariableAccess<'db>,
-    },
-}
-
-impl<'db> HirNodeInfo<'db> for ResolvedParam<'db> {
-    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
-        self.param(db).id(db)
-    }
-
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
-        self.param(db).scope_id(db)
     }
 }

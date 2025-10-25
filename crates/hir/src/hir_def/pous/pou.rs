@@ -8,7 +8,7 @@ use crate::{
             class::Class, data_type::DataType, function::Function, function_block::FunctionBlock,
             interface::Interface,
         },
-        scope::FileScopeId,
+        scope::ScopeId,
     },
     {AstId, HirNodeInfo},
 };
@@ -29,7 +29,7 @@ pub struct PouDecl<'db> {
     #[no_eq]
     pub name_id: AstId,
 
-    pub scope_id: FileScopeId<'db>,
+    pub scope_id: ScopeId<'db>,
 }
 
 impl<'db> PouDecl<'db> {
@@ -55,7 +55,7 @@ impl<'db> HirNodeInfo<'db> for PouDecl<'db> {
         Some(self.name_id(db))
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
         self.scope_id(db)
     }
 }

@@ -6,7 +6,7 @@ use crate::{
             expression::{Expr, FuncCall, PathExpr, VariableAccess},
             invocation::Invocation,
         },
-        scope::FileScopeId,
+        scope::ScopeId,
     }, AstId, HirNodeInfo
 };
 
@@ -19,7 +19,7 @@ pub struct Stmt<'db> {
     #[no_eq]
     pub id: AstId,
 
-    pub scope_id: FileScopeId<'db>,
+    pub scope_id: ScopeId<'db>,
 }
 
 impl<'db> HirNodeInfo<'db> for Stmt<'db> {
@@ -27,7 +27,7 @@ impl<'db> HirNodeInfo<'db> for Stmt<'db> {
         self.id(db)
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
         self.scope_id(db)
     }
 }

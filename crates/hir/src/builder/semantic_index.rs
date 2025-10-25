@@ -9,7 +9,7 @@ use crate::check::errors::syntax::SyntaxError;
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::PouDecl;
-use crate::hir_def::scope::{FileScopeId, Scope, ScopeKind};
+use crate::hir_def::scope::{ScopeId, Scope, ScopeKind};
 use crate::hir_def::semantic_index::SemanticIndex;
 use crate::hir_def::visibility::Visibility;
 
@@ -20,8 +20,11 @@ pub struct SemanticIndexBuilder<'db> {
     pub(crate) db: &'db dyn BaseDatabase,
     pub(crate) file: File,
 
+    /// The current scope ID being processed (by default, the global scope).
+    pub(crate) current_scope: ScopeId<'db>,
+
     /// Maps scope IDs to their corresponding scopes.
-    pub(crate) scope_keys: FxHashMap<FileScopeId<'db>, Scope<'db>>,
+    pub(crate) scope_keys: FxHashMap<usize, Scope<'db>>,
 
     pub(crate) global_namespaces: Vec<NamespaceDecl<'db>>,
     pub(crate) global_pous: Vec<PouDecl<'db>>,
@@ -37,9 +40,6 @@ pub struct SemanticIndexBuilder<'db> {
     /// Since scope are only created when visiting a Pou or Namespace, 
     /// writing variables / statements / expressions, will preserve the IDs of scopes.
     pub(crate) scope_ctr: usize,
-
-    /// The current scope ID being processed (by default, the global scope).
-    pub(crate) current_scope: FileScopeId<'db>,
 
     pub(crate) errors: Vec<AnalysisError<'db>>,
 }
@@ -61,13 +61,13 @@ impl<'db> SemanticIndexBuilder<'db> {
             global_pous: vec![],
             namespaces: vec![],
             scope_ctr: 0,
-            current_scope: FileScopeId::global(db, file),
+            current_scope: ScopeId::global(db, file),
             errors: vec![],
         }
     }
 
-    pub fn generate_scope_id(&mut self) -> FileScopeId<'db> {
-        let scope_id = FileScopeId::new(self.db, self.file, self.scope_ctr);
+    pub fn generate_scope_id(&mut self) -> ScopeId<'db> {
+        let scope_id = ScopeId::new(self.db, self.file, self.scope_ctr);
         self.scope_ctr += 1;
         scope_id
     }
@@ -89,7 +89,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     #[tracing::instrument(skip_all, name = "build HIR")]
     pub fn build(mut self) -> SemanticIndex<'db> {
         let mut usings = vec![];
-        let global_scope = FileScopeId::global(self.db, self.file);
+        let global_scope = ScopeId::global(self.db, self.file);
 
         for child in self.source.children.iter() {
             type SourceFileDecl = ast::generated::ERRInvalidPouKeyword_ClassDecl_ConfigDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl_ProgDecl_UsingDirective;
@@ -161,7 +161,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             None,
         );
 
-        self.scope_keys.insert(global_scope, scope);
+        self.scope_keys.insert(global_scope.scope(self.db), scope);
 
         SemanticIndex {
             file: self.file,

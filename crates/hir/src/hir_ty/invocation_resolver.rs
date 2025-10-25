@@ -1,19 +1,28 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    check::errors::inheritance::MethodError, hir_def::{
-        expressions::invocation::{Invocation, InvocationKind},
+    AstId, HirNodeInfo,
+    check::errors::inheritance::MethodError,
+    hir_def::{
+        expressions::{
+            expression::ParamAssign,
+            invocation::{Invocation, InvocationKind},
+        },
         pous::pou::Pou,
-        scope::{FileScopeId, Scope, ScopeKind},
-    }, hir_ty::{
-        func_call_resolver::ResolvedParam, inheritance_solver::{declared_methods, inherited_methods, MethodRef}, name_res::resolve_namespace_access, param_resolver::{resolve_invocation_func_call_parameters, resolve_invocation_method_parameters, resolve_method_parameters}, ty_var_access_resolver::{CallSite, ResolvedAccess}, walk::{Adjustement, ResolvedPath, ResolvedPathKind, ResolvedPathResult}
-    }, AstId, HirNodeInfo
+        scope::{ScopeId, Scope, ScopeKind},
+    },
+    hir_ty::{
+        inheritance_solver::{MethodRef, declared_methods, inherited_methods},
+        name_res::resolve_namespace_access,
+        ty_var_access_resolver::{CallSite, ResolvedAccess},
+        walk::{Adjustement, ResolvedPath, ResolvedPathKind, ResolvedPathResult},
+    },
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct ResolvedInvocationResult<'db> {
     pub target: ResolvedInvocation<'db>,
-    pub params: Vec<ResolvedParam<'db>>,
+    pub params: Vec<ParamAssign<'db>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -133,9 +142,9 @@ impl<'db> Invocation<'db> {
                                         db,
                                         ResolvedPathResult::Ok(ResolvedPath {
                                             kind: ResolvedPathKind::Pou(pou),
-                                            expr: CallSite::InvocationKeyword(
+                                            expr: CallSite::new(
+                                                self.scope_id(db),
                                                 self.keyword_id(db),
-                                                *self,
                                             ),
                                             adjustement: Adjustement::None,
                                         }),
@@ -144,7 +153,7 @@ impl<'db> Invocation<'db> {
                                     method: *method,
                                 },
                             ),
-                            params: resolve_invocation_method_parameters(db, *method, *self),
+                            params: self.params(db).clone(),
                         })
                         .unwrap_or_else(|| ResolvedInvocationResult {
                             target: ResolvedInvocation::new(
@@ -168,9 +177,9 @@ impl<'db> Invocation<'db> {
                                         db,
                                         ResolvedPathResult::Ok(ResolvedPath {
                                             kind: ResolvedPathKind::Pou(ty.source),
-                                            expr: CallSite::InvocationKeyword(
+                                            expr: CallSite::new(
+                                                self.scope_id(db),
                                                 self.keyword_id(db),
-                                                *self,
                                             ),
                                             adjustement: Adjustement::None,
                                         }),
@@ -179,7 +188,7 @@ impl<'db> Invocation<'db> {
                                     method: ty.method,
                                 },
                             ),
-                            params: resolve_invocation_method_parameters(db, ty.method, *self),
+                            params: self.params(db).clone(),
                         })
                         .unwrap_or_else(|| ResolvedInvocationResult {
                             target: ResolvedInvocation::new(
@@ -187,14 +196,12 @@ impl<'db> Invocation<'db> {
                                 ResolvedMethodKind::Unresolved(
                                     MethodError::UnresolvedSuperMethod {
                                         ctx: match pou.pou(db) {
-                                            Pou::Class(class) => class.extends(db).and_then(|e| {
-                                                resolve_namespace_access(db, e.path)
-                                            }),
-                                            Pou::FunctionBlock(fb) => {
-                                                fb.extends(db).and_then(|e| {
-                                                    resolve_namespace_access(db, e.path)
-                                                })
-                                            }
+                                            Pou::Class(class) => class
+                                                .extends(db)
+                                                .and_then(|e| resolve_namespace_access(db, e.path)),
+                                            Pou::FunctionBlock(fb) => fb
+                                                .extends(db)
+                                                .and_then(|e| resolve_namespace_access(db, e.path)),
                                             _ => None,
                                         },
                                         path,
@@ -205,7 +212,7 @@ impl<'db> Invocation<'db> {
                             params: vec![],
                         }),
                     InvocationKind::SuperBody => {
-                        let params = resolve_invocation_func_call_parameters(db, pou, *self);
+                        let params = self.params(db).clone();
                         if let Pou::FunctionBlock { .. } = pou.pou(db) {
                             ResolvedInvocationResult {
                                 target: ResolvedInvocation::new(
@@ -215,7 +222,10 @@ impl<'db> Invocation<'db> {
                                             db,
                                             ResolvedPathResult::Ok(ResolvedPath {
                                                 kind: ResolvedPathKind::Pou(pou),
-                                                expr: CallSite::Invocation(*self),
+                                                expr: CallSite::new(
+                                                    self.scope_id(db),
+                                                    self.keyword_id(db),
+                                                ),
                                                 adjustement: Adjustement::None,
                                             }),
                                             vec![],
@@ -240,7 +250,7 @@ impl<'db> Invocation<'db> {
                         }
                     }
                 }
-            } 
+            }
             _ => unreachable!(""),
         }
     }
@@ -251,7 +261,7 @@ impl<'db> HirNodeInfo<'db> for ResolvedInvocation<'db> {
         self.invocation.id(db)
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
         self.invocation.scope_id(db)
     }
 }

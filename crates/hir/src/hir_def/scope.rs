@@ -1,25 +1,26 @@
 use auto_lsp::default::db::{BaseDatabase, file::File};
 
 use crate::hir_def::{
-    namespace::NamespaceDecl, pous::pou::PouDecl, using::Using, visibility::Visibility,
+    namespace::NamespaceDecl, pous::pou::PouDecl, semantic_index::semantic_index, using::Using, visibility::Visibility
 };
 
 #[salsa::tracked(debug)]
-pub struct FileScopeId<'db> {
+pub struct ScopeId<'db> {
     pub file: File,
 
     pub scope: usize,
 }
 
-impl<'db> From<(&'db dyn BaseDatabase, File, usize)> for FileScopeId<'db> {
+impl<'db> From<(&'db dyn BaseDatabase, File, usize)> for ScopeId<'db> {
     fn from(data: (&'db dyn BaseDatabase, File, usize)) -> Self {
-        FileScopeId::new(data.0, data.1, data.2)
+        ScopeId::new(data.0, data.1, data.2)
     }
 }
 
-impl<'db> FileScopeId<'db> {
+#[salsa::tracked]
+impl<'db> ScopeId<'db> {
     pub fn global(db: &'db dyn BaseDatabase, file: File) -> Self {
-        FileScopeId::new(db, file, usize::MAX)
+        ScopeId::new(db, file, usize::MAX)
     }
 
     pub fn is_global(&self, db: &'db dyn BaseDatabase) -> bool {
@@ -39,10 +40,10 @@ pub struct Scope<'db> {
 
     pub kind: ScopeKind<'db>,
 
-    pub id: FileScopeId<'db>,
+    pub id: ScopeId<'db>,
 
     // If None, this is the global scope
-    pub parent: Option<FileScopeId<'db>>,
+    pub parent: Option<ScopeId<'db>>,
 
     pub visibility: Visibility,
 }
@@ -52,9 +53,9 @@ impl<'db> Scope<'db> {
         file: File,
         kind: ScopeKind<'db>,
         usings: Vec<Using<'db>>,
-        id: FileScopeId<'db>,
+        id: ScopeId<'db>,
         visibility: Visibility,
-        parent: Option<FileScopeId<'db>>,
+        parent: Option<ScopeId<'db>>,
     ) -> Self {
         Self {
             file,

@@ -9,14 +9,14 @@ use std::{hash::Hash, ops::Deref};
 use crate::{
     builder::semantic_index::SemanticIndexBuilder,
     check::errors::analysis_error::AnalysisError,
-    hir_def::scope::FileScopeId,
+    hir_def::scope::ScopeId,
     {AstId, HirNodeInfo},
 };
 
 #[derive(Clone, Copy, Eq, salsa::Update, Debug)]
 pub struct SpanIdent<'db> {
     pub id: AstId,
-    pub scope_id: FileScopeId<'db>,
+    pub scope_id: ScopeId<'db>,
     pub ident: Ident,
 }
 
@@ -79,7 +79,7 @@ impl<'db> HirNodeInfo<'db> for SpanIdent<'db> {
         self.id
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
         self.scope_id
     }
 }

@@ -4,7 +4,7 @@ use crate::{
     AstId, HirNodeInfo,
     hir_def::{
         expressions::expression::{ParamAssign, PathExpr},
-        scope::FileScopeId,
+        scope::ScopeId,
     },
 };
 
@@ -18,7 +18,7 @@ pub struct Invocation<'db> {
     #[no_eq]
     pub keyword_id: AstId,
 
-    pub scope_id: FileScopeId<'db>,
+    pub scope_id: ScopeId<'db>,
 
     pub kind: InvocationKind<'db>,
 
@@ -37,7 +37,7 @@ impl<'db> HirNodeInfo<'db> for Invocation<'db> {
         self.id(db)
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
         self.scope_id(db)
     }
 }

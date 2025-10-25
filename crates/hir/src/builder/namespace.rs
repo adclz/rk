@@ -8,7 +8,7 @@ use crate::check::errors::syntax::SyntaxError;
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::interned::namespace::NamespacePath;
 use crate::hir_def::namespace::NamespaceDecl;
-use crate::hir_def::scope::{FileScopeId, Scope, ScopeKind};
+use crate::hir_def::scope::{ScopeId, Scope, ScopeKind};
 use crate::hir_def::visibility::Visibility;
 
 impl<'db> SemanticIndexBuilder<'db> {
@@ -98,7 +98,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             Some(previous_scope),
         );
 
-        self.scope_keys.insert(scope_id, scope);
+        self.scope_keys.insert(scope_id.scope(self.db), scope);
 
         // Then insert it into the map with its ID
         self.global_namespaces.push(result);

@@ -4,7 +4,7 @@ use crate::{
     hir_def::{
         expressions::expression::{Expr, InitExprKind},
         interned::identifier::SpanIdent,
-        scope::FileScopeId,
+        scope::ScopeId,
     },
     hir_ty::{
         ty::{Ty, TyKind},
@@ -162,7 +162,7 @@ fn resolve_unresolved<'db>(
                             db,
                             ResolvedPathResult::Ok(ResolvedPath {
                                 kind: ResolvedPathKind::StructElement(*element_ty),
-                                expr: CallSite::Formal(name),
+                                expr: CallSite::new( name.scope_id, name.id),
                                 adjustement: Adjustement::None,
                             }),
                             vec![],
@@ -194,9 +194,7 @@ fn resolve_unresolved<'db>(
                 }
             }
         }
-        UnResolvedInitExprKind::ConstantExpr(expr) => {
-            ResolvedInitExprKind::ConstantExpr(expr)
-        }
+        UnResolvedInitExprKind::ConstantExpr(expr) => ResolvedInitExprKind::ConstantExpr(expr),
     };
 
     ResolvedInitExpr::new(db, init.expr, kind)
@@ -233,7 +231,7 @@ impl<'db> HirNodeInfo<'db> for ResolvedInitExpr<'db> {
         self.expr(db).id(db)
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
         self.expr(db).scope_id(db)
     }
 }

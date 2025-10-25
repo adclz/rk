@@ -7,7 +7,7 @@ use crate::{
         interned::{identifier::Ident, namespace::SpanNamespaceAccess},
         modifier::Modifier,
         pous::variable::VariableDecl,
-        scope::FileScopeId,
+        scope::ScopeId,
         visibility::Visibility,
     },
 };
@@ -28,7 +28,7 @@ pub struct Class<'db> {
 
     pub modifier: Modifier,
 
-    pub scope_id: FileScopeId<'db>,
+    pub scope_id: ScopeId<'db>,
 }
 
 #[salsa::tracked(debug)]
@@ -61,7 +61,7 @@ pub struct MethodDecl<'db> {
     #[no_eq]
     pub name_id: AstId,
 
-    pub scope_id: FileScopeId<'db>,
+    pub scope_id: ScopeId<'db>,
 }
 
 impl<'db> HirNodeInfo<'db> for MethodDecl<'db> {
@@ -73,7 +73,7 @@ impl<'db> HirNodeInfo<'db> for MethodDecl<'db> {
         Some(self.name_id(db))
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
         self.scope_id(db)
     }
 }

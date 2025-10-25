@@ -2,7 +2,7 @@ use auto_lsp::default::db::BaseDatabase;
 
 use crate::hir_def::interned::namespace::NamespacePath;
 use crate::hir_def::pous::pou::PouDecl;
-use crate::hir_def::scope::FileScopeId;
+use crate::hir_def::scope::ScopeId;
 use crate::{AstId, HirNodeInfo};
 
 #[salsa::tracked(debug)]
@@ -24,7 +24,7 @@ pub struct NamespaceDecl<'db> {
     #[no_eq]
     pub name_id: AstId,
 
-    pub scope_id: FileScopeId<'db>,
+    pub scope_id: ScopeId<'db>,
 }
 
 impl<'db> HirNodeInfo<'db> for NamespaceDecl<'db> {
@@ -36,7 +36,7 @@ impl<'db> HirNodeInfo<'db> for NamespaceDecl<'db> {
         Some(self.name_id(db))
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
         self.scope_id(db)
     }
 }

@@ -15,10 +15,31 @@ use crate::{
     hir_ty::inheritance_solver::MethodRef,
 };
 
+pub trait LocalVariables<'db>: Copy {
+    fn local_variables(self, db: &'db dyn BaseDatabase) -> &'db IndexMap<Ident, VariableDecl<'db>>;
+    
+    fn named_parameter_match(&self, db: &'db dyn BaseDatabase, ident: Ident) -> Option<VariableDecl<'db>> {
+        self.local_variables(db)
+            .get(&ident)
+            .copied()
+    }
+
+    fn indexed_parameter_match(&self, db: &'db dyn BaseDatabase, index: usize) -> Option<VariableDecl<'db>> {
+        self.local_variables(db)
+            .values()
+            .nth(index)
+            .copied()
+    }
+}
+
+pub trait GlobalVariables<'db>: Copy + LocalVariables<'db> {
+    fn global_variables(self, db: &'db dyn BaseDatabase) -> &'db IndexMap<Ident, VariableDecl<'db>>;
+}
+
 #[salsa::tracked]
-impl<'db> PouDecl<'db> {
+impl<'db> GlobalVariables<'db> for  PouDecl<'db> {
     #[salsa::tracked(returns(ref))]
-    pub fn global_variables(self, db: &'db dyn BaseDatabase) -> IndexMap<Ident, VariableDecl<'db>> {
+    fn global_variables(self, db: &'db dyn BaseDatabase) -> IndexMap<Ident, VariableDecl<'db>> {
         match self.pou(db) {
             Pou::Function(f) => global_variables(db, f.variables(db)),
             Pou::FunctionBlock(fb) => global_variables(db, fb.variables(db)),
@@ -26,10 +47,6 @@ impl<'db> PouDecl<'db> {
             Pou::Interface(_) | Pou::DataType(_) => IndexMap::default(),
         }
     }
-}
-
-pub trait LocalVariables<'db>: Copy {
-    fn local_variables(self, db: &'db dyn BaseDatabase) -> &'db IndexMap<Ident, VariableDecl<'db>>;
 }
 
 #[salsa::tracked]

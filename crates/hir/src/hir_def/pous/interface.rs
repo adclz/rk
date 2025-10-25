@@ -6,7 +6,7 @@ use crate::{
         expressions::spec::Spec,
         interned::{identifier::Ident, namespace::SpanNamespaceAccess},
         pous::variable::VariableDecl,
-        scope::FileScopeId,
+        scope::ScopeId,
     },
 };
 
@@ -18,7 +18,7 @@ pub struct Interface<'db> {
     #[returns(ref)]
     pub methods: Vec<MethodPrototype<'db>>,
 
-    pub scope_id: FileScopeId<'db>,
+    pub scope_id: ScopeId<'db>,
 }
 
 #[salsa::tracked(debug)]
@@ -40,7 +40,7 @@ pub struct MethodPrototype<'db> {
     #[no_eq]
     pub name_id: AstId,
 
-    pub scope_id: FileScopeId<'db>,
+    pub scope_id: ScopeId<'db>,
 }
 
 impl<'db> HirNodeInfo<'db> for MethodPrototype<'db> {
@@ -48,7 +48,7 @@ impl<'db> HirNodeInfo<'db> for MethodPrototype<'db> {
         self.id(db)
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
         self.scope_id(db)
     }
 

@@ -1,6 +1,6 @@
 use crate::hir_def::{
     expressions::{expression::InitExpr, spec::Spec},
-    scope::FileScopeId,
+    scope::ScopeId,
 };
 
 #[salsa::tracked(debug)]
@@ -11,5 +11,5 @@ pub struct DataType<'db> {
     #[no_eq]
     pub init: Option<InitExpr<'db>>,
 
-    pub scope_id: FileScopeId<'db>,
+    pub scope_id: ScopeId<'db>,
 }

@@ -18,7 +18,7 @@ use crate::{
             interface::Interface,
             pou::{Pou, PouDecl},
         },
-        scope::FileScopeId,
+        scope::ScopeId,
     },
     hir_ty::name_res::resolve_namespace_access,
 };
@@ -78,7 +78,7 @@ impl<'db> HirNodeInfo<'db> for Ty<'db> {
         }
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
         match self.spec(db) {
             TySource::Spec(spec) => spec.get_scope_id(db),
             TySource::Pou((spec, pou)) => spec.get_scope_id(db),

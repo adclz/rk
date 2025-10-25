@@ -3,7 +3,7 @@ use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
     hir_def::{expressions::spec::Struct, pous::pou::{Pou, PouDecl}},
-    hir_ty::ty::{Ty, TyKind},
+    hir_ty::{signatures::GlobalVariables, ty::{Ty, TyKind}},
     query_string::query::{NamedSymbol, Query, SymbolIndex, SymbolKind},
 };
 

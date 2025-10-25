@@ -8,8 +8,8 @@ use hir::{
             pou::{Pou, PouDecl},
             variable::VariableKind,
         },
-        scope::{FileScopeId, ScopeKind},
-        semantic_index::semantic_index,
+        scope::{ScopeId, ScopeKind},
+        semantic_index::{get_scope, semantic_index},
     },
     hir_ty::{
         name_res::{all_global_pous, all_pous_in_scope},
@@ -21,11 +21,10 @@ use crate::ToProtocol;
 
 pub fn scoped_completions<'db>(
     db: &'db dyn BaseDatabase,
-    file_scope: FileScopeId<'db>,
+    file_scope: ScopeId<'db>,
     offset: usize,
 ) -> Option<Vec<CompletionItem>> {
-    let sema = semantic_index(db, file_scope.file(db));
-    let scope = sema.get_scope(db, file_scope);
+    let scope = get_scope(db, file_scope);
     match scope.kind {
         ScopeKind::Pou(pou) => {
             let mut results = vec![];

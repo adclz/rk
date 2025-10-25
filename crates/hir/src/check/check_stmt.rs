@@ -11,21 +11,16 @@ use crate::{
     },
     hir_def::{
         expressions::{
-            expression::{Expr, FuncCall, VarAccess, VariableAccess},
+            expression::{Expr, FuncCall, ParamAssign, ParamAssignKind, VarAccess, VariableAccess},
             invocation::Invocation,
             statement::{Stmt, StmtKind},
         },
         interned::identifier::Ident,
-        pous::{pou::Pou, variable::VariableDecl}, semantic_index::semantic_index,
+        pous::{pou::Pou, variable::VariableDecl},
+        semantic_index::{get_scope, semantic_index},
     },
     hir_ty::{
-        expr_resolver::{resolve_expr, ResolvedExpr},
-        func_call_resolver::{ResolvedFuncCall, ResolvedParam, ResolvedParamKind},
-        invocation_resolver::{ResolvedInvocationResult, ResolvedMethodKind},
-        signatures::LocalVariables,
-        ty::{Ty, TyKind},
-        ty_var_access_resolver::{resolve_local_path_expr, resolve_var_access, ResolvedAccess},
-        walk::ResolvedPathKind,
+        expr_resolver::{resolve_expr, ResolvedExpr}, func_call_resolver::ResolvedFuncCall, invocation_resolver::{ResolvedInvocationResult, ResolvedMethodKind}, param_resolver::{resolve_parameters, ResolvedParamKind}, signatures::LocalVariables, ty::{Ty, TyKind}, ty_var_access_resolver::{resolve_local_path_expr, resolve_var_access, ResolvedAccess}, walk::ResolvedPathKind
     },
 };
 
@@ -199,8 +194,8 @@ fn check_func_call<'db>(
     let variables = match resolved.kind {
         // A FB or CLASS declared in a variable section
         ResolvedPathKind::Variable(v) => match v.spec(db).to_ty(db).kind(db) {
-            TyKind::FunctionBlock(f) => f.local_variables(db),
-            TyKind::Class(cl) => cl.local_variables(db),
+            TyKind::FunctionBlock(f) => check_parameters(db, fun_call.target, f, &fun_call.params, errors),
+            TyKind::Class(cl) =>  check_parameters(db, fun_call.target, cl, &fun_call.params, errors),
             _ => {
                 return Err(StmtError::CallANonCallableType {
                     call: fun_call.target,
@@ -210,7 +205,9 @@ fn check_func_call<'db>(
         },
         // Direct FUNCTION call
         ResolvedPathKind::Pou(p) => match p.pou(db) {
-            Pou::Function(f) => p.local_variables(db),
+            Pou::Function(f) => {
+                check_parameters(db, fun_call.target, &p, &fun_call.params, errors);
+            },
             _ => {
                 return Err(StmtError::CallANonCallableType {
                     call: fun_call.target,
@@ -220,8 +217,8 @@ fn check_func_call<'db>(
         },
         // METHOD call
         ResolvedPathKind::Method(m) => {
-            check_call_visibility(db, m.into(), fun_call.target, errors);
-            m.local_variables(db)
+            check_call_visibility(db, m.into(), fun_call.target.clone(), errors);
+            check_parameters(db, fun_call.target.clone(), &m, &fun_call.params, errors);
         }
         _ => {
             return Err(StmtError::CallANonCallableType {
@@ -230,8 +227,6 @@ fn check_func_call<'db>(
             .into());
         }
     };
-
-    check_parameters(db, fun_call.target, variables, &fun_call.params, errors);
     Ok(())
 }
 
@@ -240,11 +235,10 @@ fn check_invocation<'db>(
     invocation: &'db Invocation<'db>,
     errors: &mut Vec<AnalysisError<'db>>,
 ) -> Result<(), AnalysisError<'db>> {
-    let scope = semantic_index(db, invocation.scope_id(db).file(db))
-        .get_scope(db, invocation.scope_id(db));
-    let resolved_invocation = invocation.resolve_invocation(db, scope);
+    let scope = get_scope(db, invocation.scope_id(db));
+    let resolved_invocation = invocation.resolve_invocation(db, &scope);
 
-    let invocation = invocation.resolve_invocation(db, scope);
+    let invocation = invocation.resolve_invocation(db, &scope);
     match &invocation.target.kind {
         ResolvedMethodKind::Unresolved(err) => {
             return Err(err.clone().into());
@@ -255,8 +249,8 @@ fn check_invocation<'db>(
             check_call_visibility(db, (*method).into(), invocation.target.invocation, errors);
             check_parameters(
                 db,
-                *target,
-                method.local_variables(db),
+                target.clone(),
+                method,
                 &invocation.params,
                 errors,
             );
@@ -264,7 +258,7 @@ fn check_invocation<'db>(
         ResolvedMethodKind::FunctionBlockBody { target } => {
             let ty_target = target
                 .try_to_ty(db)
-                .map_err(|err| StmtError::UnresolvedFuncCall { call: *target })?;
+                .map_err(|err| StmtError::UnresolvedFuncCall { call: target.clone() })?;
         }
     }
 
@@ -279,24 +273,24 @@ enum FormalCall {
 }
 
 impl FormalCall {
-    fn check_consistency(&mut self, kind: &ResolvedParamKind) -> bool {
+    fn check_consistency(&mut self, kind: &ParamAssignKind) -> bool {
         match (*self, kind) {
             (
                 FormalCall::Unset,
-                ResolvedParamKind::FormalInput { .. } | ResolvedParamKind::FormalOutput { .. },
+                ParamAssignKind::FormalInput { .. } | ParamAssignKind::FormalOutput { .. },
             ) => {
                 *self = FormalCall::Formal;
                 true
             }
-            (FormalCall::Unset, ResolvedParamKind::NonFormal { .. }) => {
+            (FormalCall::Unset, ParamAssignKind::NonFormal { .. }) => {
                 *self = FormalCall::NonFormal;
                 true
             }
             (
                 FormalCall::Formal,
-                ResolvedParamKind::FormalInput { .. } | ResolvedParamKind::FormalOutput { .. },
+                ParamAssignKind::FormalInput { .. } | ParamAssignKind::FormalOutput { .. },
             ) => true,
-            (FormalCall::NonFormal, ResolvedParamKind::NonFormal { .. }) => true,
+            (FormalCall::NonFormal, ParamAssignKind::NonFormal { .. }) => true,
             _ => false, // Mixed formal/non-formal
         }
     }
@@ -305,18 +299,18 @@ impl FormalCall {
 fn check_parameters<'db>(
     db: &'db dyn BaseDatabase,
     target: ResolvedAccess<'db>,
-    signature: &IndexMap<Ident, VariableDecl<'db>>,
-    params: &Vec<ResolvedParam<'db>>,
+    signature: &impl LocalVariables<'db>,
+    params: &Vec<ParamAssign<'db>>,
     errors: &mut Vec<AnalysisError<'db>>,
 ) {
     let mut format = FormalCall::Unset;
-
-    let too_many_params = params.len() > signature.len();
+    let len: usize = signature.local_variables(db).len();
+    let too_many_params = params.len() > len;
     if too_many_params {
         errors.push(
             StmtError::TooManyParameters {
-                call: target,
-                expected: signature.len(),
+                call: target.clone(),
+                expected: len,
                 found: params.len(),
             }
             .into(),
@@ -325,167 +319,131 @@ fn check_parameters<'db>(
 
     let mut seen = FxHashMap::default();
 
-    for p in params.iter() {
-        if !format.check_consistency(&p.kind(db)) {
-            errors.push(StmtError::MixedFormalNonFormalParams { call: target }.into());
+    let parameters = resolve_parameters(db, signature, params);
+    for parameter in  parameters {
+        if !format.check_consistency(&parameter.param_assign.kind(db)) {
+            errors.push(StmtError::MixedFormalNonFormalParams { call: target.clone() }.into());
             break;
         }
-
-        match p.kind(db) {
-            ResolvedParamKind::NonFormal {
-                resolved_param,
-                value,
-            } => match resolved_param {
-                Some(other_param) => match other_param.try_to_ty(db) {
-                    Ok(p_ty) => {
-                        let _ =
-                            coerce_ty_with_expr(db, p_ty, resolve_expr(db, value)).map_err(|err| {
-                                errors.push(
-                                    StmtError::ParameterExprMismatch {
-                                        expr: value,
-                                        var: other_param,
-                                        err,
-                                    }
-                                    .into(),
-                                )
-                            });
-                    }
-                    Err(err) => errors.push(
-                        StmtError::UnresolvedNonFormalParam {
-                            var: other_param,
-                            err,
-                        }
-                        .into(),
-                    ),
-                },
-                None => {
-                    if !too_many_params {
-                        errors.push(StmtError::UnknownNonFormalParam { call: target }.into());
-                    }
-                }
-            },
-            ResolvedParamKind::FormalInput {
-                param,
-                resolved_param,
-                value,
-            } => {
-                match seen.get(&param.ident) {
-                    None => {
-                        seen.insert(param.ident, param);
-                    }
-                    Some(prev) => errors.push(
-                        StmtError::DuplicateParameter {
-                            param1: param,
-                            param2: *prev,
-                        }
-                        .into(),
-                    ),
-                }
+        match parameter.kind {
+            ResolvedParamKind::NonFormal { resolved_param, value } => {
                 match resolved_param {
-                    Some(other_param) => match other_param.try_to_ty(db) {
-                        Ok(p_ty) => {
-                            let _ = coerce_ty_with_expr(db, p_ty, resolve_expr(db, value)).map_err(
-                                |err| {
-                                    errors.push(
-                                        StmtError::ParameterExprMismatch {
-                                            expr: value,
-                                            var: other_param,
-                                            err,
-                                        }
-                                        .into(),
-                                    )
-                                },
-                            );
-                        }
-                        Err(err) => errors.push(
-                            StmtError::UnresolvedInputParam {
-                                var: other_param,
-                                err,
-                            }
-                            .into(),
-                        ),
-                    },
-                    None => errors.push(
-                        StmtError::UnknownFormalInputParam {
-                            call: target,
-                            param,
-                        }
-                        .into(),
-                    ),
-                }
-            }
-            ResolvedParamKind::FormalOutput {
-                not,
-                param,
-                resolved_param,
-                variable,
-            } => {
-                let variable = resolve_var_access(db, variable);
-                match seen.get(&param.ident) {
-                    None => {
-                        seen.insert(param.ident, param);
-                    }
-                    Some(prev) => errors.push(
-                        StmtError::DuplicateParameter {
-                            param1: param,
-                            param2: *prev,
-                        }
-                        .into(),
-                    ),
-                }
-                match resolved_param {
-                    Some(other_param) => match other_param.try_to_ty(db) {
-                        Ok(p_ty) => match variable.try_to_ty(db) {
-                            Ok(var_ty) => {
-                                if variable.is_var_input(db) {
-                                    errors.push(
-                                        StmtError::AssignmentToInputVar { var: variable }.into(),
-                                    );
-                                } else if variable.as_var(db).is_none() {
-                                    errors.push(
-                                        StmtError::AssignmentToDirectType { var: variable }.into(),
-                                    );
-                                } else {
-                                    let _ = coerce_ty_with_ty(db, p_ty, var_ty).map_err(|err| {
-                                        errors.push(
-                                            StmtError::ParameterTypeMismatch {
-                                                param,
-                                                var: variable,
-                                                err,
-                                            }
-                                            .into(),
-                                        )
-                                    });
-                                }
-                            }
-                            Err(err) => errors.push(
-                                StmtError::UnresolvedOutputParamTarget {
-                                    var: other_param,
+                    Some(var) => {
+                        if let Err(err) = coerce_ty_with_expr(
+                            db,
+                            var.spec(db).to_ty(db),
+                            resolve_expr(db, value),
+                        ) {
+                            errors.push(
+                                StmtError::ParameterExprMismatch {
+                                    expr: value,
+                                    var: var,
                                     err,
                                 }
                                 .into(),
-                            ),
-                        },
-                        Err(err) => errors.push(
-                            StmtError::UnresolvedOutputParam {
-                                var: other_param,
-                                err,
+                            );
+                        }
+                    }
+                    None => {
+                        if too_many_params {
+                            continue;
+                        }
+                        // No more formal parameters
+                        errors.push(StmtError::UnknownNonFormalParam { call: target.clone() }.into());
+                    }
+                }
+            }
+            ResolvedParamKind::FormalInput { param, resolved_param, value }  => {
+                match seen.get(&param.ident) {
+                        None => {
+                            seen.insert(param.ident, param);
+                        }
+                        Some(prev) => errors.push(
+                            StmtError::DuplicateParameter {
+                                param1: param,
+                                param2: *prev,
                             }
                             .into(),
                         ),
-                    },
+                    }
+                match resolved_param {
+                    Some(var) => {
+                        if let Err(err) = coerce_ty_with_expr(
+                            db,
+                            var.spec(db).to_ty(db),
+                            resolve_expr(db, value),
+                        ) {
+                            errors.push(
+                                StmtError::ParameterExprMismatch {
+                                    expr: value,
+                                    var: var,
+                                    err,
+                                }
+                                .into(),
+                            );
+                        }
+                    }
                     None => errors.push(
-                        StmtError::UnknownFormalOutputParam {
-                            call: target,
-                            param,
+                        StmtError::UnknownFormalInputParam {
+                            call: target.clone(),
+                            param: param,
                         }
                         .into(),
                     ),
                 }
             }
-        }
+            ResolvedParamKind::FormalOutput { not, param, resolved_param, variable } => {
+                match seen.get(&param.ident) {
+                        None => {
+                            seen.insert(param.ident, param);
+                        }
+                        Some(prev) => errors.push(
+                            StmtError::DuplicateParameter {
+                                param1: param,
+                                param2: *prev,
+                            }
+                            .into(),
+                        ),
+                    }
+                match resolved_param {
+                    Some(var) => {
+                        let variable = resolve_var_access(db, variable);
+                        if variable.is_var_input(db) {
+                            errors.push(StmtError::AssignmentToInputVar { var: variable }.into());
+                        } else if variable.as_var(db).is_none() {
+                            errors.push(StmtError::AssignmentToDirectType { var: variable }.into());
+                        } else {
+                            if let Err(err) = coerce_ty_with_ty(
+                                db,
+                                variable.try_to_ty(db).unwrap(),
+                                var.spec(db).to_ty(db),
+                            ) {
+                                errors.push(
+                                    StmtError::ParameterTypeMismatch {
+                                        param: param,
+                                        var: variable,
+                                        err,
+                                    }
+                                    .into(),
+                                );
+                            }
+                        }
+                    }
+                    None => {
+                        errors.push(
+                            StmtError::UnknownFormalOutputParam {
+                                call: target.clone(),
+                                param: param,
+                            }
+                            .into(),
+                        );
+                        continue;
+                    }
+                }
+            }
+        }    
     }
-}
+    }
 
 fn check_for<'db>(
     db: &'db dyn BaseDatabase,

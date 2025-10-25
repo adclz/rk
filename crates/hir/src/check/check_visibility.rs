@@ -1,19 +1,16 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    HirNodeInfo,
     check::errors::{
         analysis_error::AnalysisError, visibility::VisibilityError,
-    },
-    hir_def::{
+    }, hir_def::{
         interned::identifier::Ident,
         namespace::NamespaceDecl,
         pous::variable::VariableDecl,
-        scope::{FileScopeId, ScopeKind},
-        semantic_index::semantic_index,
+        scope::{ScopeId, ScopeKind},
+        semantic_index::{get_scope, semantic_index},
         visibility::Visibility,
-    },
-    hir_ty::inheritance_solver::MethodRef,
+    }, hir_ty::inheritance_solver::MethodRef, HirNodeInfo
 };
 
 /*
@@ -80,7 +77,7 @@ impl<'db> HirNodeInfo<'db> for CallableType<'db> {
         }
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
         match self {
             Self::Method(m) => m.get_scope_id(db),
             Self::Variable(v) => v.get_scope_id(db),
@@ -88,7 +85,7 @@ impl<'db> HirNodeInfo<'db> for CallableType<'db> {
     }
 }
 
-pub fn check_call_visibility<'db, T: HirNodeInfo<'db> + Copy + 'db>(
+pub fn check_call_visibility<'db, T: HirNodeInfo<'db> + Clone + 'db>(
     db: &'db dyn BaseDatabase,
     accessed: CallableType<'db>,
     call_site: T,
@@ -152,14 +149,14 @@ pub fn check_call_visibility<'db, T: HirNodeInfo<'db> + Copy + 'db>(
 /// Check if the calling scope is in a POU that derives from the method's POU
 fn is_derived_pou<'db>(
     db: &'db dyn BaseDatabase,
-    calling_scope: FileScopeId<'db>,
-    method_scope: FileScopeId<'db>,
+    calling_scope: ScopeId<'db>,
+    method_scope: ScopeId<'db>,
 ) -> bool {
     let sema_calling_scope = semantic_index(db, calling_scope.file(db));
     let sema_method_scope = semantic_index(db, method_scope.file(db));
 
-    let sema_calling_scope = sema_calling_scope.get_scope(db, calling_scope);
-    let sema_method_scope = sema_method_scope.get_scope(db, method_scope);
+    let sema_calling_scope = get_scope(db, calling_scope);
+    let sema_method_scope = get_scope(db, method_scope);
 
     match (sema_calling_scope.kind, sema_method_scope.kind) {
         (ScopeKind::Pou(child), ScopeKind::Pou(parent)) => {
@@ -186,8 +183,8 @@ pub enum SameNamespaceResult<'db> {
 /// Check if two scopes belong to the same namespace
 fn is_same_namespace<'db>(
     db: &'db dyn BaseDatabase,
-    scope1: FileScopeId<'db>,
-    scope2: FileScopeId<'db>,
+    scope1: ScopeId<'db>,
+    scope2: ScopeId<'db>,
 ) -> SameNamespaceResult<'db> {
     let ns1 = find_containing_namespace(db, scope1);
     let ns2 = find_containing_namespace(db, scope2);
@@ -210,7 +207,7 @@ fn is_same_namespace<'db>(
 /// Find the namespace that contains the given scope using the scope iterator
 fn find_containing_namespace<'db>(
     db: &'db dyn BaseDatabase,
-    scope: FileScopeId<'db>,
+    scope: ScopeId<'db>,
 ) -> Option<crate::hir_def::namespace::NamespaceDecl<'db>> {
     let sema = semantic_index(db, scope.file(db));
 

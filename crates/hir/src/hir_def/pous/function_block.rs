@@ -3,7 +3,7 @@ use crate::hir_def::{
     interned::namespace::SpanNamespaceAccess,
     modifier::Modifier,
     pous::{class::MethodDecl, variable::VariableDecl},
-    scope::FileScopeId,
+    scope::ScopeId,
 };
 
 #[salsa::tracked(debug)]
@@ -27,5 +27,5 @@ pub struct FunctionBlock<'db> {
 
     pub modifier: Modifier,
 
-    pub scope_id: FileScopeId<'db>,
+    pub scope_id: ScopeId<'db>,
 }

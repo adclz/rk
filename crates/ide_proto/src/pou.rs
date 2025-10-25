@@ -4,7 +4,7 @@ use hir::{
         pous::{pou::{Pou, PouDecl}, variable::VariableKind},
     }, hir_ty::{
         implementation::find_all_implementations, inheritance_solver::{declared_methods, MethodRef},
-        signatures::LocalVariables,
+        signatures::{GlobalVariables, LocalVariables},
     }, TypeInfo
 };
 

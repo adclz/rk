@@ -4,7 +4,7 @@ use crate::{
     hir_def::{
         expressions::{expression::InitExpr, spec::Spec},
         interned::identifier::Ident,
-        scope::FileScopeId,
+        scope::ScopeId,
     },
     {AstId, HirNodeInfo},
 };
@@ -31,7 +31,7 @@ pub struct VariableDecl<'db> {
     #[no_eq]
     pub name_id: AstId,
 
-    pub scope_id: FileScopeId<'db>,
+    pub scope_id: ScopeId<'db>,
 }
 
 impl<'db> VariableDecl<'db> {
@@ -108,7 +108,7 @@ impl<'db> HirNodeInfo<'db> for VariableDecl<'db> {
         Some(self.name_id(db))
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
         self.scope_id(db)
     }
 }

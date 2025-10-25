@@ -34,7 +34,7 @@ use crate::{
             pou::{Pou, PouDecl},
             variable::VariableDecl,
         },
-        scope::FileScopeId,
+        scope::ScopeId,
         semantic_index::{HirNode, SemanticIndex, semantic_index},
     },
     hir_ty::{

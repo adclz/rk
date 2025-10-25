@@ -7,7 +7,7 @@ use crate::{
             data_type::DataType,
             pou::{Pou, PouDecl},
         },
-        scope::{FileScopeId, Scope, ScopeKind},
+        scope::{ScopeId, Scope, ScopeKind},
         visibility::Visibility,
     },
 };
@@ -67,7 +67,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             Some(previous_scope),
         );
 
-        self.scope_keys.insert(scope_id, scope);
+        self.scope_keys.insert(scope_id.scope(self.db), scope);
 
         Ok(result)
     }

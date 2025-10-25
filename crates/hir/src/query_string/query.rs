@@ -11,7 +11,7 @@ use crate::hir_def::expressions::spec::{Struct, StructElement};
 use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::PouDecl;
 use crate::hir_def::pous::variable::VariableDecl;
-use crate::hir_def::scope::FileScopeId;
+use crate::hir_def::scope::ScopeId;
 use crate::hir_def::semantic_index::semantic_index;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -260,7 +260,7 @@ impl<'db> HirNodeInfo<'db> for NamedSymbol<'db> {
         }
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
         match self.kind {
             SymbolKind::Namespace(ns) => ns.get_scope_id(db),
             SymbolKind::Pou(p) => p.get_scope_id(db),

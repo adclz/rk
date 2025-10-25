@@ -7,8 +7,7 @@ use auto_lsp::{
     },
 };
 use hir::{
-    HirNodeInfo,
-    hir_def::{namespace::NamespaceDecl, semantic_index::semantic_index, visibility::Visibility},
+    hir_def::{namespace::NamespaceDecl, semantic_index::{get_scope, semantic_index}, visibility::Visibility}, HirNodeInfo
 };
 
 use crate::{ToProtocol, completions};
@@ -71,8 +70,7 @@ NAMESPACE {ns}
         db: &'db dyn BaseDatabase,
         offset: usize,
     ) -> Option<Vec<CompletionItem>> {
-        let sema = semantic_index(db, self.scope_id(db).file(db));
-        let scope = sema.get_scope(db, self.scope_id(db));
+        let scope = get_scope(db, self.scope_id(db));
 
         // Don't provide completions between the namespace keyword and the namespace name
         if self.get_name_span(db)?.end_byte > offset {

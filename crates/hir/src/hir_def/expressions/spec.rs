@@ -13,7 +13,7 @@ use crate::{
         expressions::expression::{Expr, MultibitsPart},
         interned::identifier::Ident,
         pous::pou::Pou,
-        scope::FileScopeId,
+        scope::ScopeId,
     },
 };
 
@@ -26,7 +26,7 @@ pub struct Spec<'db> {
     #[no_eq]
     pub id: AstId,
 
-    pub scope_id: FileScopeId<'db>,
+    pub scope_id: ScopeId<'db>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -123,7 +123,7 @@ impl<'db> HirNodeInfo<'db> for Spec<'db> {
         self.id(db)
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
         self.scope_id(db)
     }
 }
@@ -152,7 +152,7 @@ pub struct StructElement<'db> {
     #[no_eq]
     pub name_id: AstId,
 
-    pub scope_id: FileScopeId<'db>,
+    pub scope_id: ScopeId<'db>,
 }
 
 impl<'db> StructElement<'db> {
@@ -170,7 +170,7 @@ impl<'db> HirNodeInfo<'db> for StructElement<'db> {
         Some(self.name_id(db))
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
         self.scope_id(db)
     }
 }

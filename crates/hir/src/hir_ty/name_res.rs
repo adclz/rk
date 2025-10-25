@@ -9,14 +9,14 @@ use crate::{
         },
         namespace::NamespaceDecl,
         pous::pou::PouDecl,
-        scope::{FileScopeId, ScopeKind},
-        semantic_index::semantic_index,
+        scope::{ScopeId, ScopeKind},
+        semantic_index::{get_scope, semantic_index},
     },
     hir_ty::using_resolver::resolve_using,
 };
 
 /// Find all namespaces in all files that match a given namespace path.
-#[salsa::tracked(returns(ref))]
+#[salsa::tracked(returns(ref), no_eq)]
 pub fn shared_namespaces<'db>(
     db: &'db dyn BaseDatabase,
     path: NamespacePath,
@@ -55,7 +55,7 @@ pub fn resolve_namespace_access<'db>(
 }
 
 /// Returns all POU declarations *globally declared*.
-#[salsa::tracked(returns(ref))]
+#[salsa::tracked(returns(ref), no_eq)]
 pub fn all_global_pous<'db>(db: &'db dyn BaseDatabase) -> FxHashMap<Ident, PouDecl<'db>> {
     db.get_files()
         .iter()
@@ -69,13 +69,12 @@ pub fn all_global_pous<'db>(db: &'db dyn BaseDatabase) -> FxHashMap<Ident, PouDe
 }
 
 /// Returns all POU declarations *globally declared*.
-#[salsa::tracked(returns(ref))]
+#[salsa::tracked(returns(ref), no_eq)]
 pub fn all_local_pous<'db>(
     db: &'db dyn BaseDatabase,
-    scope_id: FileScopeId<'db>,
+    scope_id: ScopeId<'db>,
 ) -> FxHashMap<Ident, PouDecl<'db>> {
-    let sema = semantic_index(db, scope_id.file(db));
-    let scope = sema.get_scope(db, scope_id);
+    let scope = get_scope(db, scope_id);
 
     match scope.kind {
         ScopeKind::Namespace(ns) => ns.pous(db).iter().map(|p| (*p.name(db), *p)).collect(),
@@ -87,7 +86,7 @@ pub fn all_local_pous<'db>(
 #[salsa::tracked(returns(ref))]
 pub fn all_imported_pous<'db>(
     db: &'db dyn BaseDatabase,
-    scope_id: FileScopeId<'db>,
+    scope_id: ScopeId<'db>,
 ) -> FxHashMap<Ident, PouDecl<'db>> {
     let mut result = FxHashMap::default();
     let sema = semantic_index(db, scope_id.file(db));
@@ -95,14 +94,14 @@ pub fn all_imported_pous<'db>(
     // A scope always refers to the current scope of the element.
     // But in the case of NAMESPACE, POUs have access to the USING directives of the parent namespace.
     // It is then necessary to check both the POU's directives AND the parent's directives.
-    let scope = match sema.get_scope(db, scope_id).kind {
+    let scope = match get_scope(db, scope_id).kind {
         // Inside Global Scope, just check the current scope.
-        ScopeKind::Global => sema.get_scope(db, scope_id),
+        ScopeKind::Global => get_scope(db, scope_id),
         // Same, NAMESPACES do not have access to the USING directives of the parent namespace.
-        ScopeKind::Namespace(_) => sema.get_scope(db, scope_id),
+        ScopeKind::Namespace(_) => get_scope(db, scope_id),
         // POUs must check both their own USING directives and the USING directives of their parent namespace.
         ScopeKind::Pou(_) => {
-            let scope = sema.get_scope(db, scope_id);
+            let scope = get_scope(db, scope_id);
             for using in &scope.usings {
                 let namespaces = resolve_using(db, *using);
                 for ns in namespaces.namespaces(db) {
@@ -110,7 +109,7 @@ pub fn all_imported_pous<'db>(
                 }
             }
             if let Some(parent) = scope.parent {
-                let parent_scope = sema.get_scope(db, parent);
+                let parent_scope = get_scope(db, parent);
                 for using in &parent_scope.usings {
                     let namespaces = resolve_using(db, *using);
                     for ns in namespaces.namespaces(db) {
@@ -136,7 +135,7 @@ pub fn all_imported_pous<'db>(
 #[salsa::tracked(returns(ref))]
 pub fn all_inherited_pous<'db>(
     db: &'db dyn BaseDatabase,
-    scope_id: FileScopeId<'db>,
+    scope_id: ScopeId<'db>,
 ) -> FxHashMap<Ident, PouDecl<'db>> {
     let sema = semantic_index(db, scope_id.file(db));
     let mut result = FxHashMap::default();
@@ -156,7 +155,7 @@ pub fn all_inherited_pous<'db>(
 pub fn pou_names_res<'db>(
     db: &'db dyn BaseDatabase,
     pou: &Ident,
-    scope_id: FileScopeId<'db>,
+    scope_id: ScopeId<'db>,
 ) -> Option<PouDecl<'db>> {
     all_local_pous(db, scope_id)
         .get(pou)
@@ -169,7 +168,7 @@ pub fn pou_names_res<'db>(
 
 pub fn all_pous_in_scope<'db>(
     db: &'db dyn BaseDatabase,
-    scope_id: FileScopeId<'db>,
+    scope_id: ScopeId<'db>,
 ) -> FxHashMap<Ident, PouDecl<'db>> {
     let mut result = FxHashMap::default();
     result.extend(all_local_pous(db, scope_id));

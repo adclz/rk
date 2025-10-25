@@ -6,7 +6,7 @@ use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::pous::function::Function;
 use crate::hir_def::pous::pou::{Pou, PouDecl};
 use crate::hir_def::pous::variable::VariableDecl;
-use crate::hir_def::scope::{FileScopeId, Scope, ScopeKind};
+use crate::hir_def::scope::{ScopeId, Scope, ScopeKind};
 use crate::hir_def::visibility::Visibility;
 use ast::generated::FuncVariables;
 use auto_lsp::anyhow;
@@ -73,7 +73,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             Some(previous_scope),
         );
 
-        self.scope_keys.insert(scope_id, scope);
+        self.scope_keys.insert(scope_id.scope(self.db), scope);
 
         Ok(result)
     }

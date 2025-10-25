@@ -1,7 +1,7 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    hir_def::{interned::namespace::NamespacePath, scope::FileScopeId},
+    hir_def::{interned::namespace::NamespacePath, scope::ScopeId},
     {AstId, HirNodeInfo},
 };
 
@@ -13,7 +13,7 @@ pub struct Using<'db> {
     #[no_eq]
     pub id: AstId,
 
-    pub scope_id: FileScopeId<'db>,
+    pub scope_id: ScopeId<'db>,
 }
 
 impl<'db> HirNodeInfo<'db> for Using<'db> {
@@ -21,7 +21,7 @@ impl<'db> HirNodeInfo<'db> for Using<'db> {
         self.id(db)
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
         self.scope_id(db)
     }
 }

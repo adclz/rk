@@ -10,6 +10,7 @@ use rustc_hash::FxHashMap;
 use tracing::info_span;
 
 use crate::hir_def::expressions::statement::Stmt;
+use crate::hir_ty::param_resolver::ResolvedParam;
 use crate::HirNodeInfo;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::analysis_error::AnalysisError;
@@ -18,9 +19,8 @@ use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::PouDecl;
 use crate::hir_def::pous::variable::VariableDecl;
-use crate::hir_def::scope::{FileScopeId, Scope};
+use crate::hir_def::scope::{ScopeId, Scope};
 use crate::hir_ty::expr_resolver::{ResolvedExpr, ResolvedRefValue};
-use crate::hir_ty::func_call_resolver::ResolvedParam;
 use crate::hir_ty::inheritance_solver::MethodRef;
 use crate::hir_ty::init_expr_resolver::ResolvedInitExpr;
 use crate::hir_ty::ty_var_access_resolver::ResolvedAccess;
@@ -53,7 +53,7 @@ pub struct SemanticIndex<'db> {
     pub(crate) ast: Arc<Vec<Box<dyn AstNode>>>,
 
     /// Map of scope IDs to their corresponding scopes
-    pub(crate) scopes: FxHashMap<FileScopeId<'db>, Scope<'db>>,
+    pub(crate) scopes: FxHashMap<usize, Scope<'db>>,
 
     /// All *global* namespaces in the file
     pub global_namespaces: Vec<NamespaceDecl<'db>>,
@@ -81,18 +81,6 @@ impl<'db> SemanticIndex<'db> {
         }
     }
 
-    /// Get the scope corresponding to the given ID.
-    ///
-    /// Panics if the scope does not belong to the same file as the semantic index.
-    pub fn get_scope(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        id: FileScopeId<'db>,
-    ) -> &'db Scope<'db> {
-        assert!(self.file == id.file(db));
-        &self.scopes[&id]
-    }
-
     pub fn pous(&'db self, db: &'db dyn BaseDatabase) -> &'db Vec<PouDecl<'db>> {
         &self.global_pous
     }
@@ -101,9 +89,9 @@ impl<'db> SemanticIndex<'db> {
     pub fn scope_iterator(
         &self,
         db: &'db dyn BaseDatabase,
-        scope: FileScopeId<'db>,
+        scope: ScopeId<'db>,
     ) -> ScopeIterator {
-        ScopeIterator::new(&self.scopes, self.get_scope(db, scope))
+        ScopeIterator::new(db, &self.scopes, &scope)
     }
 
     /// Returns all errors encountered during semantic analysis.
@@ -112,20 +100,34 @@ impl<'db> SemanticIndex<'db> {
     }
 }
 
+    /// Get the scope corresponding to the given ID.
+    ///
+    /// Panics if the scope does not belong to the same file as the semantic index.
+pub fn get_scope<'db>(
+        db: &'db dyn BaseDatabase,
+        id: ScopeId<'db>,
+    ) -> &'db Scope<'db> {
+        let sema = semantic_index(db, id.file(db));
+        &sema.scopes[&id.scope(db)]
+    }
+
 /// Iterator over scopes in a given scope hierarchy
 pub struct ScopeIterator<'db> {
-    scopes: &'db FxHashMap<FileScopeId<'db>, Scope<'db>>,
-    next_id: Option<FileScopeId<'db>>,
+    db: &'db dyn BaseDatabase,
+    scopes: &'db FxHashMap<usize, Scope<'db>>,
+    next_id: Option<ScopeId<'db>>,
 }
 
 impl<'db> ScopeIterator<'db> {
     pub fn new(
-        scopes: &'db FxHashMap<FileScopeId<'db>, Scope<'db>>,
-        scope: &'db Scope<'db>,
+        db: &'db dyn BaseDatabase,
+        scopes: &'db FxHashMap<usize, Scope<'db>>,
+        scope: &ScopeId<'db>,
     ) -> Self {
         Self {
+            db,
             scopes,
-            next_id: Some(scope.id),
+            next_id: Some(*scope),
         }
     }
 }
@@ -135,7 +137,7 @@ impl<'db> Iterator for ScopeIterator<'db> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let current = self.next_id?;
-        let current = self.scopes.get(&current)?;
+        let current = self.scopes.get(&current.scope(self.db))?;
         self.next_id = current.parent;
         Some(current)
     }
@@ -153,10 +155,10 @@ pub enum HirNode<'db> {
     Spec(Spec<'db>),
     MethodRef(MethodRef<'db>),
     Stmt(Stmt<'db>),
+    ResolvedParam(ResolvedParam<'db>),
     ResolvedUsing(ResolvedUsing<'db>),
     ResolvedAccess(ResolvedAccess<'db>),
     ResolvedPath(ResolvedPath<'db>),
-    ResolvedParam(ResolvedParam<'db>),
     ResolvedExpr(ResolvedExpr<'db>),
     ResolvedInitExpr(ResolvedInitExpr<'db>),
     ResolvedRefValue(ResolvedRefValue<'db>),

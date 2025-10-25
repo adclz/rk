@@ -7,8 +7,8 @@ use crate::{
             spec::EnumVariant,
         },
         interned::identifier::SpanIdent,
-        scope::FileScopeId,
-        semantic_index::semantic_index,
+        scope::ScopeId,
+        semantic_index::{get_scope, semantic_index},
     }, hir_ty::{
         func_call_resolver::ResolvedFuncCall,
         invocation_resolver::ResolvedInvocationResult,
@@ -65,7 +65,7 @@ pub enum ResolvedExprKind<'db> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ResolvedRefValue<'db> {
-    Null(AstId, FileScopeId<'db>),
+    Null(AstId, ScopeId<'db>),
     Adress(ResolvedAccess<'db>),
 }
 
@@ -77,7 +77,7 @@ impl<'db> HirNodeInfo<'db> for ResolvedRefValue<'db> {
         }
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
         match self {
             ResolvedRefValue::Null(_, scope) => *scope,
             ResolvedRefValue::Adress(access) => access.get_scope_id(db),
@@ -130,9 +130,8 @@ impl<'db> ResolveExprCtx<'db> {
                     ResolvedExprKind::Parenthesized(resolve_expr(self.db, *expr)),
                 ),
                 PrimaryExpr::Invocation(invocation) => {
-                    let scope = semantic_index(self.db, self.expr.scope_id(self.db).file(self.db))
-                        .get_scope(self.db, self.expr.scope_id(self.db));
-                    let resolved_invocation = invocation.resolve_invocation(self.db, scope);
+                    let scope = get_scope(self.db, self.expr.scope_id(self.db));
+                    let resolved_invocation = invocation.resolve_invocation(self.db, &scope);
 
                     ResolvedExpr::new(
                         self.db,
@@ -244,7 +243,7 @@ impl<'db> HirNodeInfo<'db> for ResolvedExpr<'db> {
         self.expr(db).id(db)
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
         self.expr(db).scope_id(db)
     }
 }

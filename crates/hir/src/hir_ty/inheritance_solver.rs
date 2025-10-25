@@ -12,7 +12,7 @@ use crate::{
             pou::{Pou, PouDecl},
             variable::VariableDecl,
         },
-        scope::FileScopeId,
+        scope::ScopeId,
         visibility::Visibility,
     },
     hir_ty::name_res::resolve_namespace_access,
@@ -86,7 +86,7 @@ impl<'db> HirNodeInfo<'db> for MethodRef<'db> {
         }
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
         match self {
             MethodRef::Prototype(p) => p.get_scope_id(db),
             MethodRef::Declared(d) => d.get_scope_id(db),

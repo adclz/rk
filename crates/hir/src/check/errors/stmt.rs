@@ -6,7 +6,7 @@ use crate::{
             analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic},
             coerce::{ExprMismatch, TypeMismatch},
             path_error::AccessError,
-        }, hir_def::{expressions::expression::{Expr, PathExpr}, interned::identifier::SpanIdent}, hir_ty::{expr_resolver::ResolvedExpr, ty_var_access_resolver::ResolvedAccess}, query_string::{fuzzy_method::fuzzy_method_parameters, fuzzy_pou::fuzzy_pou_items}, HirNodeInfo
+        }, hir_def::{expressions::expression::{Expr, PathExpr}, interned::identifier::SpanIdent, pous::variable::VariableDecl}, hir_ty::{expr_resolver::ResolvedExpr, ty_var_access_resolver::ResolvedAccess}, query_string::{fuzzy_method::fuzzy_method_parameters, fuzzy_pou::fuzzy_pou_items}, HirNodeInfo
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
@@ -92,7 +92,7 @@ pub enum StmtError<'db> {
         err: TypeMismatch<'db>,
     },
     ParameterExprMismatch {
-        var: ResolvedAccess<'db>,
+        var: VariableDecl<'db>,
         expr: Expr<'db>,
         err: ExprMismatch<'db>,
     },
@@ -283,8 +283,6 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 diag
             }
             Self::UnknownNonFormalParam { call } => {
-                
-
                 diag()
                     .message(format!(
                         "unknown non-formal parameter in call to '{}'",
@@ -297,7 +295,7 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
             Self::UnresolvedInputParam { var, err } => {
                 let mut diag = diag()
                     .message(format!(
-                        "unresolved input parameter: {}",
+                        "unresolved input: {}",
                         err.description(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
@@ -310,7 +308,7 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
             }
             Self::UnknownFormalInputParam { call, param } => {
                 let mut diag = diag()
-                    .message(format!("unknown input parameter '{}'", param.text(db)))
+                    .message(format!("unknown input '{}'", param.text(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(param.get_span(db).clone())
                     .call();
@@ -322,7 +320,7 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
             }
             Self::UnknownFormalOutputParam { call, param } => {
                 let mut diag = diag()
-                    .message(format!("unknown output parameter '{}'", param.text(db)))
+                    .message(format!("unknown output '{}'", param.text(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(param.get_span(db).clone())
                     .call();
@@ -334,7 +332,7 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
             }
             Self::UnresolvedOutputParam { var, err } => diag()
                 .message(format!(
-                    "unresolved output parameter: {}",
+                    "unresolved output: {}",
                     err.description(db)
                 ))
                 .severity(DiagnosticSeverity::ERROR)
@@ -342,7 +340,7 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 .call(),
             Self::UnresolvedOutputParamTarget { var, err } => diag()
                 .message(format!(
-                    "unresolved output parameter target: {}",
+                    "unresolved output target: {}",
                     err.description(db)
                 ))
                 .severity(DiagnosticSeverity::ERROR)
@@ -359,7 +357,7 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
             Self::ParameterTypeMismatch { var, param, err } => {
                 let mut diag = diag()
                     .message(format!(
-                        "invalid output assignment: {}",
+                        "invalid output: {}",
                         err.description(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
@@ -373,7 +371,7 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
             Self::ParameterExprMismatch { var, expr, err } => {
                 let mut diag = diag()
                     .message(format!(
-                        "parameter expression mismatch: {}",
+                        "invalid parameter: {}",
                         err.description(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)

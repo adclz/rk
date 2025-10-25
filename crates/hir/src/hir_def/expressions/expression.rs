@@ -1,6 +1,6 @@
 use crate::hir_def::expressions::invocation::{Invocation, InvocationKind};
 use crate::hir_def::interned::identifier::{Ident, SpanIdent};
-use crate::hir_def::scope::FileScopeId;
+use crate::hir_def::scope::ScopeId;
 use crate::{AstId, HirNodeInfo};
 use auto_lsp::default::db::BaseDatabase;
 
@@ -13,7 +13,7 @@ pub struct Expr<'db> {
     #[no_eq]
     pub id: AstId,
 
-    pub scope_id: FileScopeId<'db>,
+    pub scope_id: ScopeId<'db>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -123,7 +123,7 @@ pub struct PathExpr<'db> {
     #[no_eq]
     pub id: AstId,
 
-    pub scope_id: FileScopeId<'db>,
+    pub scope_id: ScopeId<'db>,
 }
 
 impl<'db> HirNodeInfo<'db> for PathExpr<'db> {
@@ -141,7 +141,7 @@ impl<'db> HirNodeInfo<'db> for PathExpr<'db> {
         }
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
         self.scope_id(db)
     }
 }
@@ -200,9 +200,19 @@ pub struct ParamAssign<'db> {
     #[no_eq]
     pub id: AstId,
 
-    pub scope_id: FileScopeId<'db>,
+    pub scope_id: ScopeId<'db>,
 
     pub kind: ParamAssignKind<'db>,
+}
+
+impl<'db> HirNodeInfo<'db> for ParamAssign<'db> {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+        self.id(db)
+    }
+
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+        self.scope_id(db)
+    }
 }
 
 // use local variables
@@ -246,7 +256,7 @@ pub struct VariableAccess<'db> {
     #[no_eq]
     pub id: AstId,
 
-    pub scope_id: FileScopeId<'db>,
+    pub scope_id: ScopeId<'db>,
 }
 
 impl<'db> HirNodeInfo<'db> for VariableAccess<'db> {
@@ -254,7 +264,7 @@ impl<'db> HirNodeInfo<'db> for VariableAccess<'db> {
         self.id(db)
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
         self.scope_id(db)
     }
 }
@@ -344,7 +354,7 @@ impl<'db> HirNodeInfo<'db> for Expr<'db> {
         self.id(db)
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
         self.scope_id(db)
     }
 }
@@ -357,7 +367,7 @@ pub struct InitExpr<'db> {
     #[no_eq]
     pub id: AstId,
 
-    pub scope_id: FileScopeId<'db>,
+    pub scope_id: ScopeId<'db>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -384,7 +394,7 @@ impl<'db> HirNodeInfo<'db> for InitExpr<'db> {
         self.id(db)
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
         self.scope_id(db)
     }
 }

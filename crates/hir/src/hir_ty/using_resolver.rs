@@ -4,7 +4,7 @@ use crate::{
     AstId, HirNodeInfo,
     hir_def::{
         namespace::NamespaceDecl,
-        scope::FileScopeId,
+        scope::ScopeId,
         using::Using,
     },
     hir_ty::name_res::shared_namespaces,
@@ -23,7 +23,7 @@ impl<'db> HirNodeInfo<'db> for ResolvedUsing<'db> {
         self.using(db).get_id(db)
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
         self.using(db).get_scope_id(db)
     }
 }

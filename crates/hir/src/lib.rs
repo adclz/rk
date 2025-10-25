@@ -7,7 +7,7 @@ use auto_lsp::{
     default::db::BaseDatabase,
 };
 
-use crate::hir_def::{scope::FileScopeId, semantic_index::semantic_index};
+use crate::hir_def::{scope::ScopeId, semantic_index::semantic_index};
 
 pub mod builder;
 pub mod check;
@@ -42,7 +42,7 @@ pub trait HirNodeInfo<'db> {
         None
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> FileScopeId<'db>;
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db>;
 
     fn get_span(&self, db: &'db dyn BaseDatabase) -> Span {
         semantic_index(db, self.get_scope_id(db).file(db))
