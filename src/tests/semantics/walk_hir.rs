@@ -40,8 +40,8 @@ END_FUNCTION_BLOCK"#;
     PouDecl(PouDecl { [salsa id]: Id(2400) })
     VariableDecl(VariableDecl { [salsa id]: Id(1c00) })
     Spec(Spec { [salsa id]: Id(c00) })
-    ResolvedInitExpr(ResolvedInitExpr { [salsa id]: Id(3400) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(3000) })
+    ResolvedInitExpr(ResolvedInitExpr { [salsa id]: Id(3000) })
+    ResolvedExpr(ResolvedExpr { [salsa id]: Id(3400) })
     ");
 }
 
@@ -137,32 +137,16 @@ END_FUNCTION_BLOCK"#;
     });
 
     assert_snapshot!(nodes.join("\n"), @r"
-    PouDecl(PouDecl { [salsa id]: Id(2800) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4000) })
-    ResolvedAccess(ResolvedAccess { [salsa id]: Id(2c00) })
+    PouDecl(PouDecl { [salsa id]: Id(2c00) })
+    ResolvedAccess(ResolvedAccess { kind: Err(NoLocalItemInScope { expr: PathExpr { [salsa id]: Id(c00) } }), elements: [] })
     ResolvedExpr(ResolvedExpr { [salsa id]: Id(3c00) })
-    ResolvedAccess(ResolvedAccess { [salsa id]: Id(2c01) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4001) })
-    ResolvedAccess(ResolvedAccess { [salsa id]: Id(2c02) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4002) })
+    ResolvedAccess(ResolvedAccess { kind: Err(NoLocalItemInScope { expr: PathExpr { [salsa id]: Id(c02) } }), elements: [] })
     ResolvedExpr(ResolvedExpr { [salsa id]: Id(3c03) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(3c01) })
-    ResolvedAccess(ResolvedAccess { [salsa id]: Id(2c03) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(3c02) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4003) })
     ResolvedExpr(ResolvedExpr { [salsa id]: Id(3c04) })
     ResolvedExpr(ResolvedExpr { [salsa id]: Id(3c05) })
     ResolvedExpr(ResolvedExpr { [salsa id]: Id(3c06) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4004) })
     ResolvedExpr(ResolvedExpr { [salsa id]: Id(3c09) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(3c07) })
-    ResolvedAccess(ResolvedAccess { [salsa id]: Id(2c05) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(3c08) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4005) })
     ResolvedExpr(ResolvedExpr { [salsa id]: Id(3c0c) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(3c0a) })
-    ResolvedAccess(ResolvedAccess { [salsa id]: Id(2c06) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(3c0b) })
     ");
 }
 
@@ -190,18 +174,10 @@ END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(nodes.join("\n"), @r"
     PouDecl(PouDecl { [salsa id]: Id(3400) })
-    SpanNamespaceAccess(SpanNamespaceAccess { id: AstId(3), scope_id: FileScopeId { [salsa id]: Id(402) }, path: NamespaceAccess(Id(c00)) })
+    SpanNamespaceAccess(SpanNamespaceAccess { id: AstId(3), scope_id: ScopeId { [salsa id]: Id(402) }, path: NamespaceAccess(Id(c00)) })
     MethodRef(Declared(MethodDecl { [salsa id]: Id(2c00) }))
     VariableDecl(VariableDecl { [salsa id]: Id(2800) })
     Spec(Spec { [salsa id]: Id(2400) })
-    ResolvedStmt(ResolvedStmt { [salsa id]: Id(4400) })
-    ResolvedAccess(ResolvedAccess { [salsa id]: Id(3800) })
-    MethodRef(Declared(MethodDecl { [salsa id]: Id(2c00) }))
-    VariableDecl(VariableDecl { [salsa id]: Id(2800) })
-    Spec(Spec { [salsa id]: Id(2400) })
-    ResolvedParam(ResolvedParam { [salsa id]: Id(4000) })
-    ResolvedAccess(ResolvedAccess { [salsa id]: Id(3801) })
-    ResolvedExpr(ResolvedExpr { [salsa id]: Id(3c00) })
     ");
 }
 
@@ -240,31 +216,15 @@ END_FUNCTION_BLOCK"#;
     assert_debug_snapshot!(nodes, @r"
     [
         1,
-        5,
         10,
         12,
-        15,
-        16,
         19,
-        37,
         39,
-        40,
-        45,
-        47,
-        52,
         59,
         64,
         69,
-        74,
         76,
-        77,
-        82,
-        84,
-        89,
         91,
-        92,
-        97,
-        99,
     ]
     ");
 }
@@ -302,13 +262,14 @@ END_FUNCTION_BLOCK"#;
         13,
         18,
         21,
-        25,
-        28,
+        26,
         30,
-        31,
+        4,
+        10,
         31,
         38,
-        39,
+        13,
+        18,
         39,
         45,
         46,

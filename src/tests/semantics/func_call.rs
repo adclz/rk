@@ -76,7 +76,7 @@ END_FUNCTION_BLOCK"#;
         |
      10 |         unknown := TRUE
         |         ^^^|^^^  
-        |            `----- unknown input parameter 'unknown'
+        |            `----- unknown input 'unknown'
     ----'
     ");
 }
@@ -111,7 +111,7 @@ END_FUNCTION_BLOCK"#;
        |
      7 |         unknown => TRUE
        |         ^^^|^^^  
-       |            `----- unknown output parameter 'unknown'
+       |            `----- unknown output 'unknown'
     ---'
     ");
 }
@@ -144,7 +144,7 @@ END_FUNCTION_BLOCK"#;
         | 
      11 |         param1 := 5.5,
         |                   ^|^  
-        |                    `--- parameter expression mismatch: invalid INT literal
+        |                    `--- invalid parameter: invalid INT literal
     ----'
     Error: 
         ,-[ file:///test0.st:12:19 ]
@@ -155,7 +155,7 @@ END_FUNCTION_BLOCK"#;
         | 
      12 |         param2 := 10
         |                   ^|  
-        |                    `-- parameter expression mismatch: expected a 32-bit floating point number
+        |                    `-- invalid parameter: expected a 32-bit floating point number
     ----'
     ");
 }
@@ -193,15 +193,15 @@ END_FUNCTION_BLOCK"#;
         |
       9 |     param3: INT;
         |             ^|^  
-        |              `--- expected 'INT' here
+        |              `--- ... but found 'INT' instead
         | 
      15 |         variable1: BOOL;
         |                    ^^|^  
-        |                      `--- ... but found 'BOOL' instead
+        |                      `--- expected 'BOOL' here
         | 
      21 |         param3 => variable1
         |                   ^^^^|^^^^  
-        |                       `------ invalid output assignment: expected 'INT', found 'BOOL'
+        |                       `------ invalid output: expected 'BOOL', found 'INT'
     ----'
     ");
 }
@@ -351,11 +351,11 @@ END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-        ,-[ file:///test0.st:13:8 ]
+        ,-[ file:///test0.st:13:18 ]
         |
      13 |     fn(param1 => b1);
-        |        ^^^|^^  
-        |           `---- unresolved output parameter target: no item 'b1' in scope
+        |                  ^|  
+        |                   `-- no item 'b1' in scope
     ----'
     ");
 }

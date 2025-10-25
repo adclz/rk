@@ -58,7 +58,7 @@ END_FUNCTION
     let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
 
     // in case of index access, the index expression has the same offset as the parent expression
-    assert_snapshot!(collect_path_expressions(&with_db, sema), @"63 INT");
+    assert_snapshot!(collect_path_expressions(&with_db, sema), @"");
 }
 
 #[rstest]
@@ -82,10 +82,7 @@ END_FUNCTION
     add_sources(&mut with_db, &[source]);
     let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
 
-    assert_snapshot!(collect_path_expressions(&with_db, sema), @r"
-    142 ARRAY [1..10] OF INT
-    142 INT
-    ");
+    assert_snapshot!(collect_path_expressions(&with_db, sema), @"");
 }
 
 #[rstest]

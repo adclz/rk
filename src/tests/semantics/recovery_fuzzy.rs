@@ -101,7 +101,7 @@ END_FUNCTION_BLOCK
         |
      11 |     fn(param := 0);
         |        ^^|^^  
-        |          `---- unknown input parameter 'param'
+        |          `---- unknown input 'param'
         | 
         | Note: POU item(s) with similar name(s) exist:
         |       - param1
@@ -135,7 +135,7 @@ END_FUNCTION_BLOCK
         |
      14 |     fn(param => param_out);
         |        ^^|^^  
-        |          `---- unknown output parameter 'param'
+        |          `---- unknown output 'param'
         | 
         | Note: POU item(s) with similar name(s) exist:
         |       - param1

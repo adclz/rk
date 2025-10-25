@@ -167,7 +167,7 @@ END_FUNCTION_BLOCK"#;
        | 
      7 |     THIS.decl(0.5);
        |               ^|^  
-       |                `--- parameter expression mismatch: invalid INT literal
+       |                `--- invalid parameter: invalid INT literal
     ---'
     ");
 }
@@ -200,7 +200,7 @@ END_CLASS
         | 
      10 |         SUPER.decl(0.5);
         |                    ^|^  
-        |                     `--- parameter expression mismatch: invalid INT literal
+        |                     `--- invalid parameter: invalid INT literal
     ----'
     ");
 }
@@ -233,7 +233,7 @@ END_FUNCTION_BLOCK
         | 
      10 |         SUPER.decl(0.5);
         |                    ^|^  
-        |                     `--- parameter expression mismatch: invalid INT literal
+        |                     `--- invalid parameter: invalid INT literal
     ----'
     ");
 }
