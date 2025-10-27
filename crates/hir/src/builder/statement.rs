@@ -1,5 +1,4 @@
 use crate::builder::expression::{ParseExpr, ParseExpression, ParseVariableAccess};
-use crate::builder::invocation::ParseInvocation;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::analysis_error::AnalysisError;
 use crate::check::errors::syntax::SyntaxError;
@@ -14,7 +13,7 @@ pub trait ParseStatement<'db> {
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<Stmt<'db>, AnalysisError<'db>>;
-}
+} 
 
 impl<'db> ParseStatement<'db> for ast::generated::Stmt {
     fn to_statement(
@@ -23,9 +22,9 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
     ) -> anyhow::Result<Stmt<'db>, AnalysisError<'db>> {
         type StmtType = ast::generated::Stmt;
         match self {
-            StmtType::EmptyPathExpression(p) => Ok(Stmt::new(
+            StmtType::BeginPathExpression(p) => Ok(Stmt::new(
                 sema.db,
-                StmtKind::EmptyPathExpression(p.children.cast(&sema.ast).parse(sema)?),
+                StmtKind::EmptyPathExpression(p.parse(sema)?),
                 p.into(),
                 sema.current_scope,
             )),
@@ -66,18 +65,6 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                     sema.current_scope,
                 ))
             }
-            StmtType::SuperBodyInvocation(super_invocation) => Ok(Stmt::new(
-                sema.db,
-                StmtKind::Invocation(super_invocation.to_invocation(sema)?),
-                super_invocation.into(),
-                sema.current_scope,
-            )),
-            StmtType::Invocation(invocation) => Ok(Stmt::new(
-                sema.db,
-                StmtKind::Invocation(invocation.to_invocation(sema)?),
-                invocation.into(),
-                sema.current_scope,
-            )),
             StmtType::IfStmt(if_stmt) => {
                 let condition = if_stmt.if_cond.cast(sema.ast).to_expr(sema)?;
                 let then = if_stmt

@@ -91,14 +91,11 @@ pub enum ExprKind<'db> {
 pub enum PrimaryExpr<'db> {
     Literal(Elementary), // constant
     // Path --> Target
-    VariableAccess {
-        variable: VariableAccess<'db>,
-        multibits: Option<MultibitsPart>,
-    },
+    VariableAccess(VariableAccess<'db>),
     FuncCall(FuncCall<'db>),
     Invocation(Invocation<'db>),
     EnumValue {
-        name: PathExpr<'db>,
+        name: BeginPathExpr<'db>,
         variant: SpanIdent<'db>,
     },
     RefValue {
@@ -111,8 +108,31 @@ pub enum PrimaryExpr<'db> {
 
 #[salsa::tracked(debug)]
 pub struct FuncCall<'db> {
-    pub path: PathExpr<'db>,
+    pub path: BeginPathExpr<'db>,
     pub params: Vec<ParamAssign<'db>>,
+}
+
+
+#[salsa::tracked(debug)]
+pub struct BeginPathExpr<'db> {
+    pub invocation: Option<Invocation<'db>>,
+    pub expr: Option<PathExpr<'db>>,
+
+    #[tracked]
+    #[no_eq]
+    pub id: AstId,
+
+    pub scope_id: ScopeId<'db>,
+}
+
+impl<'db> HirNodeInfo<'db> for BeginPathExpr<'db> {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+        self.id(db)
+    }
+
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+        self.scope_id(db)
+    }
 }
 
 #[salsa::tracked(debug)]
@@ -143,6 +163,22 @@ impl<'db> HirNodeInfo<'db> for PathExpr<'db> {
 
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
         self.scope_id(db)
+    }
+}
+
+impl<'db> BeginPathExpr<'db> {
+    pub fn to_string(&self, db: &'db dyn BaseDatabase) -> &'db str {
+        match self.invocation(db) {
+            Some(invocation) => match invocation.kind(db) {
+                InvocationKind::Super => "SUPER",
+                InvocationKind::This => "THIS",
+                InvocationKind::SuperBody => "SUPER()",
+            },
+            None => match self.expr(db) {
+                Some(path_expr) => path_expr.ident(db).text(db).as_str(),
+                None => "<invalid path>",
+            } 
+        }
     }
 }
 
@@ -190,7 +226,7 @@ pub enum MultibitsPart {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum RefValue<'db> {
-    Address(SymbolicVariable<'db>),
+    Address(BeginPathExpr<'db>),
     Null,
 }
 
@@ -248,15 +284,35 @@ pub enum SizeOperator {
     L,
 }
 
+// Variable : Direct_Variable | Symbolic_Variable; 
+// Direct_Variable : '%' ( 'I' | 'Q' | 'M' ) ( 'X' | 'B' | 'W' | 'D' | 'L' )? Unsigned_Int ( '.' Unsigned_Int )*; 
+// Symbolic_Variable : ( ( 'THIS' '.' ) | ( Namespace_Name '.' )+ )? ( Var_Access | Multi_Elem_Var );
+// Var_Access : Identifier | Ref_Deref;
+
+// Variable_Access : Variable Multibit_Part_Access ?; 
+// Multibit_Part_Access : '.' ( Unsigned_Int | '%' ( 'X' | 'B' | 'W' | 'D' | 'L' ) ? Unsigned_Int );
+
 #[salsa::tracked(debug)]
 pub struct VariableAccess<'db> {
     pub kind: VariableAccessKind<'db>,
+
+    pub multibits: Option<MultibitsPart>,
 
     #[tracked]
     #[no_eq]
     pub id: AstId,
 
     pub scope_id: ScopeId<'db>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum VariableAccessKind<'db> {
+    Direct {
+        adress: Ident,
+        partly: bool,
+        offset: Option<Ident>,
+    },
+    Symbolic(BeginPathExpr<'db>),
 }
 
 impl<'db> HirNodeInfo<'db> for VariableAccess<'db> {
@@ -267,21 +323,6 @@ impl<'db> HirNodeInfo<'db> for VariableAccess<'db> {
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
         self.scope_id(db)
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum VariableAccessKind<'db> {
-    Direct {
-        adress: Ident,
-        partly: bool,
-        offset: Option<Ident>,
-    },
-    Symbolic(SymbolicVariable<'db>),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub struct SymbolicVariable<'db> {
-    pub kind: PathExpr<'db>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -473,14 +514,11 @@ impl<'db> PrimaryExpr<'db> {
                 Elementary::InferInteger(_) => "<integer>",
                 Elementary::InferIdent(_) => "<identifier>",
             },
-            PrimaryExpr::VariableAccess {
-                variable,
-                multibits,
-            } => "<variable access>",
-            PrimaryExpr::FuncCall(func_call) => func_call.path(db).ident(db).text(db),
+            PrimaryExpr::VariableAccess(v) => "<variable access>",
+            PrimaryExpr::FuncCall(func_call) => func_call.path(db).to_string(db),
             PrimaryExpr::Invocation(invocation) => match invocation.kind(db) {
-                InvocationKind::Super { path } => "<SUPER invocation>",
-                InvocationKind::This { path } => "<THIS invocation>",
+                InvocationKind::Super => "<SUPER invocation>",
+                InvocationKind::This => "<THIS invocation>",
                 InvocationKind::SuperBody { .. } => "<SUPER.BODY invocation>",
             },
             PrimaryExpr::EnumValue { name, variant } => variant.text(db),

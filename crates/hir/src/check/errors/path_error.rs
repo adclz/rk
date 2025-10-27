@@ -3,7 +3,7 @@ use ide_diagnostic::{IdeDiagnostic, diag};
 
 use crate::{
     check::errors::analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic}, hir_def::{
-        expressions::expression::PathExpr,
+        expressions::expression::{BeginPathExpr, PathExpr},
         interned::namespace::SpanNamespaceAccess,
         scope::ScopeKind,
         semantic_index::{get_scope, semantic_index},
@@ -12,6 +12,9 @@ use crate::{
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum AccessError<'db> {
+    NoBeginLocalItemInScope {
+        expr: BeginPathExpr<'db>,
+    },
     NoLocalItemInScope {
         expr: PathExpr<'db>,
     },
@@ -47,6 +50,9 @@ impl<'db> From<AccessError<'db>> for AnalysisError<'db> {
 impl<'db> DiagnosticDescription<'db> for AccessError<'db> {
     fn description(&self, db: &'db dyn BaseDatabase) -> String {
         match self {
+            AccessError::NoBeginLocalItemInScope { expr } => {
+                format!("no begin item '{}' in scope", expr.to_string(db))
+            }
             AccessError::NoLocalItemInScope { expr } => {
                 format!("no item '{}' in scope", expr.ident(db).text(db))
             }
@@ -77,6 +83,9 @@ impl<'db> DiagnosticDescription<'db> for AccessError<'db> {
 
     fn related(&self, db: &'db dyn BaseDatabase, diag: &mut IdeDiagnostic) {
         match self {
+            AccessError::NoBeginLocalItemInScope { expr } => {
+
+            }
             AccessError::NoLocalItemInScope { expr } => {
                 let scope = get_scope(db, expr.scope_id(db));
                 if let ScopeKind::Pou(pou) = scope.kind {
@@ -114,6 +123,7 @@ impl<'db> ToIdeDiagnostic<'db> for AccessError<'db> {
             .message(self.description(db))
             .severity(DiagnosticSeverity::ERROR)
             .range(match self {
+                AccessError::NoBeginLocalItemInScope { expr } => expr.get_span(db),
                 AccessError::NoLocalItemInScope { expr } => expr.get_span(db),
                 AccessError::NoItemInScope { access } => access.get_span(db),
                 AccessError::InvalidTypeAccess { access } => access.expr.get_span(db),

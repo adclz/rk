@@ -5,14 +5,14 @@ use crate::{
         analysis_error::AnalysisError,
         coerce::{ExprMismatch, TypeMismatch},
     },
-    hir_def::expressions::{
+    hir_def::{expressions::{
         expression::{Expr, ExprKind, PrimaryExpr, RefValue},
         spec::ElementarySpec,
-    },
+    }, pous::variable},
     hir_ty::{
         array_resolver::resolve_range,
         ty::{Ty, TyKind},
-        ty_var_access_resolver::{resolve_global_path_expr, resolve_local_path_expr, resolve_var_access},
+        ty_var_access_resolver::{LookUp},
     },
 };
 
@@ -64,14 +64,13 @@ pub fn coerce_ty_with_expr<'db>(
         // Compare an elementary type with a variable access
         (
             TyKind::Simple(elem),
-            ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess { variable, .. }),
+            ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(variable)),
         ) => {
-            let var = resolve_var_access(db, *variable);
             // Check if the variable type can be coerced to the target type
             coerce_ty_with_ty(
                 db,
                 ty,
-                var.try_to_ty(db)
+                variable.lookup(db).try_to_ty(db)
                     .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?,
             )
             .map_err(|err| ExprMismatch::type_mismatch(target_expr, err))
@@ -95,20 +94,19 @@ pub fn coerce_ty_with_expr<'db>(
         // Compare an Array with PathExpr (PathExpr should be an indexed access)
         (
             TyKind::Array(array),
-            ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess { variable, .. }),
+            ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(variable)),
         ) => {
-            let var = resolve_var_access(db, *variable);
             coerce_ty_with_ty(
                 db,
                 array.of_type(db).to_ty(db),
-                var.try_to_ty(db)
+                variable.lookup(db).try_to_ty(db)
                     .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?,
             )
         }
         .map_err(|err| ExprMismatch::type_mismatch(target_expr, err)),
         // Compare a Struct with PathExpr (PathExpr should be a field access)
-        (TyKind::Struct(ztruct), ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess { variable, .. })) => {
-            let result = resolve_var_access(db, *variable);
+        (TyKind::Struct(ztruct), ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(variable))) => {
+            let result = variable.lookup(db);
             match result
                 .try_to_ty(db)
                 .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?
@@ -130,7 +128,7 @@ pub fn coerce_ty_with_expr<'db>(
         (
             TyKind::Enum(enum_),
             ExprKind::PrimaryExpr(PrimaryExpr::EnumValue { name, variant }))  => {
-            let name = resolve_global_path_expr(db, *name);
+            let name = name.lookup(db);
             // Check if the EnumValue type matches the enum type
             match name
                 .try_to_ty(db)
@@ -187,7 +185,7 @@ pub fn coerce_ty_with_expr<'db>(
                 // A NULL reference can be assigned to any reference type
                 RefValue::Null => Ok(()),
                 RefValue::Address(v) => {
-                    let v = resolve_local_path_expr(db, v.kind);
+                    let v = v.lookup(db);
                     // Retrives the element that the reference points to
                     let var_ty = v
                         .try_to_ty(db)
@@ -201,11 +199,9 @@ pub fn coerce_ty_with_expr<'db>(
                 }
             }
         }
-        (TyKind::RefTo(ref_), ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess { variable, .. })) => {
-            let var_access = resolve_var_access(db, *variable);
-
+        (TyKind::RefTo(ref_), ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(variable))) => {
             // Get the variable type being accessed
-            let var_ty = var_access
+            let var_ty = variable.lookup(db)
                 .try_to_ty(db)
                 .map_err(|err| ExprMismatch::unresolved_path(target_expr, err))?;
 

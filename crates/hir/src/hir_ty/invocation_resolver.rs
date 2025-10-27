@@ -87,6 +87,7 @@ be used.
 block
 */
 
+/* 
 impl<'db> Invocation<'db> {
     pub fn resolve_invocation(
         &self,
@@ -265,3 +266,4 @@ impl<'db> HirNodeInfo<'db> for ResolvedInvocation<'db> {
         self.invocation.scope_id(db)
     }
 }
+*/

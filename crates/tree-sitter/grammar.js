@@ -212,8 +212,12 @@ module.exports = grammar({
 
   conflicts: ($) => [
     [$.constant_expr, $.parenthesized_expression],
-    [$.symbolic_variable, $.field_expression],
-    [$.symbolic_variable, $.func_call],
+    [$.begin_path_expression, $.field_expression],
+    [$.any_invocation_kind, $.field_expression],
+    [$.any_invocation],
+    [$.any_invocation_kind],
+    [$.variable, $.func_call],
+    [$.func_call, $._stmt],
     [$.case_selection],
   ],
 
@@ -629,7 +633,7 @@ module.exports = grammar({
       seq(field("value", $.identifier), optional(seq(":=", $._expression))),
 
     enum_value: ($) =>
-      seq(field("enum_path", $.path_expression), "#", $.identifier),
+      seq(field("enum_path", $.begin_path_expression), "#", $.identifier),
 
     ...createSpecInit(
       "array",
@@ -765,21 +769,14 @@ module.exports = grammar({
 
     ref_value: ($) => choice($.ref_addr, alias("NULL", $.null)),
 
-    ref_addr: ($) => seq("REF", "(", $.symbolic_variable, ")"),
+    ref_addr: ($) => seq("REF", "(", $.begin_path_expression, ")"),
 
     ref_deref: ($) =>
       prec(RK_PREC.dereference, seq(field("ref", $.identifier), "^")),
 
     // Table 13 - Declaration of variables/Table 14 – Initialization of variables
 
-    variable: ($) => choice($.symbolic_variable, $.direct_variable),
-
-    symbolic_variable: ($) => $.path_expression,
-
-    this_invocation: ($) => seq(field("THIS", "THIS"), ".", $.path_expression),
-    super_invocation: ($) =>
-      seq(field("SUPER", "SUPER"), ".", $.path_expression),
-    super_body_invocation: ($) => seq(field("SUPER", "SUPER"), "(", ")"),
+    variable: ($) => choice($.begin_path_expression, $.direct_variable),
 
     // Var_Access : Variable_Name | Ref_Deref;
     var_access: ($) =>
@@ -1218,18 +1215,18 @@ module.exports = grammar({
     interface_spec_init: ($) => seq(":=", $.interface_value),
 
     interface_value: ($) =>
-      choice($.symbolic_variable, $.path_expression, "NULL"),
+      choice($.begin_path_expression, "NULL"),
 
     interface_name_list: ($) => commaSep1($.namespace_access),
 
     interface_name: ($) => $.identifier,
 
     access_spec: ($) => choice(
-        alias("PUBLIC", $.public),
-        alias("PROTECTED", $.protected),
-        alias("PRIVATE", $.private), 
-        alias("INTERNAL", $.internal)
-      ),
+      alias("PUBLIC", $.public),
+      alias("PROTECTED", $.protected),
+      alias("PRIVATE", $.private),
+      alias("INTERNAL", $.internal)
+    ),
 
     // Table 47 - Program declaration
 
@@ -1270,7 +1267,7 @@ module.exports = grammar({
       seq(
         field("name", $.identifier),
         ":",
-        field("variable", $.symbolic_variable),
+        field("variable", $.path_expression),
         optional(seq(".", $.direct_variable)),
         ":",
         field("access", $.data_type_access),
@@ -1456,8 +1453,8 @@ module.exports = grammar({
 
     prog_cnxn: ($) =>
       choice(
-        seq($.symbolic_variable, ":=", $.prog_data_source),
-        seq($.symbolic_variable, "=>", $.data_sink),
+        seq($.path_expression, ":=", $.prog_data_source),
+        seq($.path_expression, "=>", $.data_sink),
       ),
 
     prog_data_source: ($) =>
@@ -1529,14 +1526,12 @@ module.exports = grammar({
       ),
 
     // Primary_Expr : Constant | Enum_Value | Variable_Access | Func_Call | Ref_Value| '(' Expression ')';
-    // Invocation is not in the grammar but examples in the standard show it being used.
     _primary_expression: ($) =>
       choice(
         $.constant,
         $.enum_value,
         $.variable_access,
         $.func_call,
-        $.invocation,
         $.ref_value,
         $.parenthesized_expression,
       ),
@@ -1644,20 +1639,9 @@ module.exports = grammar({
         seq("%", field("access", optional($.XBWDL)), $.unsigned_int),
       ),
 
-    invocation: ($) =>
-      seq(
-        field("invocation", choice($.this_invocation, $.super_invocation)),
-        "(",
-        prec(
-          RK_PREC.parameter_list,
-          field("params", commaSep($.param_assign)),
-        ),
-        ")",
-      ),
-
     func_call: ($) =>
       seq(
-        field("function", $.path_expression),
+        field("function", $.begin_path_expression),
         "(",
         prec(
           RK_PREC.parameter_list,
@@ -1673,13 +1657,11 @@ module.exports = grammar({
       choice(
         // assignments
         $.assign,
-        $.empty_path_expression, // used for completions
+        //$.empty_path_expression, // used for completions
         // subprog
         $.func_call,
         // invocations (THIS, SUPER)
-        $.invocation,
-        // SUPER()
-        $.super_body_invocation,
+        $.begin_path_expression,
         "RETURN",
         // selection
         $.if_stmt,
@@ -1690,7 +1672,6 @@ module.exports = grammar({
         $.repeat_stmt,
         "EXIT",
         "CONTINUE",
-        $.ERR_unexpected_variables_declaration
       ),
 
     // assignment: $ => seq(
@@ -1841,7 +1822,45 @@ module.exports = grammar({
 
     _path: ($) => choice($.identifier, $.scoped_identifier),
 
-    // St field access
+    begin_path_expression: ($) =>
+      choice(
+        // invocation (THIS / SUPER / SUPER()) with optional deref, optionally followed by a path_expression
+        $.invocation,
+        // or a plain path expression
+        $.path_expression
+      ),
+
+    invocation: ($) =>
+      choice(
+        $.super_body_invocation,
+        $.any_invocation,
+      ),
+
+    any_invocation: ($) =>
+      seq(
+        field("invocation",choice($.this_invocation, $.super_invocation)),
+        optional($.any_invocation_kind),
+      ),
+
+    any_invocation_kind: ($) =>
+      choice(
+        alias("^", $.deref_invocation),
+        seq(alias("^", $.deref_invocation), ".", field("path", $.path_expression)),
+        seq(".", field("path", $.path_expression)),
+      ),
+
+    this_invocation: ($) => seq(
+      field("THIS", "THIS"),
+    ),
+
+    super_invocation: ($) => seq(
+      field("SUPER", "SUPER")
+    ),
+
+    super_body_invocation: ($) => seq(
+      field("SUPER", "SUPER"), "()"
+    ),
+
     path_expression: ($) =>
       choice($.var_access, $.field_expression, $.index_expression),
 

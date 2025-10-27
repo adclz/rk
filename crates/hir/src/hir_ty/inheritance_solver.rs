@@ -123,8 +123,10 @@ impl<'db> From<&MethodDecl<'db>> for MethodRef<'db> {
 pub struct InheritedMethodSet<'db> {
     #[returns(ref)]
     pub methods: BTreeMap<Ident, InheritedMethod<'db>>,
+
     #[returns(ref)]
     pub duplicates: Vec<(InheritedMethod<'db>, InheritedMethod<'db>)>,
+    
     #[returns(ref)]
     pub unresolved: Vec<SpanNamespaceAccess<'db>>,
 }

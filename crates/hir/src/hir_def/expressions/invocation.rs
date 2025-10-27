@@ -20,15 +20,13 @@ pub struct Invocation<'db> {
 
     pub scope_id: ScopeId<'db>,
 
-    pub kind: InvocationKind<'db>,
-
-    pub params: Vec<ParamAssign<'db>>,
+    pub kind: InvocationKind,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum InvocationKind<'db> {
-    This { path: PathExpr<'db> },
-    Super { path: PathExpr<'db> },
+pub enum InvocationKind{
+    This,
+    Super,
     SuperBody,
 }
 

@@ -1,17 +1,21 @@
 use auto_lsp::{
     default::db::BaseDatabase,
-    lsp_types::{
-        request::GotoDeclarationResponse, CompletionItem, GotoDefinitionResponse, Hover
-    },
+    lsp_types::{CompletionItem, GotoDefinitionResponse, Hover, request::GotoDeclarationResponse},
 };
-use hir::hir_ty::{signatures::LocalVariables, walk::{ResolvedPath, ResolvedPathKind}};
+use hir::hir_ty::{
+    signatures::LocalVariables,
+    walk::{ResolvedPath, ResolvedPathKind},
+};
 
-use crate::{completions::static_snippets::namespace, ToProtocol};
+use crate::{ToProtocol, completions::static_snippets::namespace};
 
 impl<'db> ToProtocol<'db> for ResolvedPath<'db> {
     fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Hover> {
         match &self.kind {
-            ResolvedPathKind::Pou(p) => p.hover(db, offset),
+            ResolvedPathKind::Pou(p)
+            | ResolvedPathKind::This(p)
+            | ResolvedPathKind::Super(p)
+            | ResolvedPathKind::SuperBody(p) => p.hover(db, offset),
             ResolvedPathKind::Spec(t) => t.hover(db, offset),
             ResolvedPathKind::StructElement(st) => st.hover(db, offset),
             ResolvedPathKind::Variable(v) => v.hover(db, offset),
@@ -21,7 +25,10 @@ impl<'db> ToProtocol<'db> for ResolvedPath<'db> {
 
     fn declaration(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDeclarationResponse> {
         match &self.kind {
-            ResolvedPathKind::Pou(p) => p.declaration(db),
+            ResolvedPathKind::Pou(p)
+            | ResolvedPathKind::This(p)
+            | ResolvedPathKind::Super(p)
+            | ResolvedPathKind::SuperBody(p) => p.declaration(db),
             ResolvedPathKind::Spec(t) => t.declaration(db),
             ResolvedPathKind::StructElement(st) => st.declaration(db),
             ResolvedPathKind::Variable(v) => v.declaration(db),
@@ -31,7 +38,10 @@ impl<'db> ToProtocol<'db> for ResolvedPath<'db> {
 
     fn definition(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDefinitionResponse> {
         match &self.kind {
-            ResolvedPathKind::Pou(p) => p.definition(db),
+            ResolvedPathKind::Pou(p)
+            | ResolvedPathKind::This(p)
+            | ResolvedPathKind::Super(p)
+            | ResolvedPathKind::SuperBody(p) => p.definition(db),
             ResolvedPathKind::Spec(t) => t.definition(db),
             ResolvedPathKind::StructElement(st) => st.definition(db),
             ResolvedPathKind::Variable(v) => v.definition(db),
@@ -40,24 +50,21 @@ impl<'db> ToProtocol<'db> for ResolvedPath<'db> {
     }
 
     fn completion(
-            &'db self,
-            db: &'db dyn BaseDatabase,
-            offset: usize,
-        ) -> Option<Vec<CompletionItem>> {
-            Some(match self.kind {
-                ResolvedPathKind::Variable(v) => {
-                    v.completion(db, offset)?
-                },
-                ResolvedPathKind::Pou(pou) => {
-                    pou.completion(db, offset)?
-                },
-                ResolvedPathKind::Spec(spec) => {
-                    spec.completion(db, offset)?
-                },
-                _ => {
-                    eprintln!("ResolvedPathElement::completion: unsupported kind {:?}", self.kind);
-                    None?
-                }
-            })
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        offset: usize,
+    ) -> Option<Vec<CompletionItem>> {
+        Some(match self.kind {
+            ResolvedPathKind::Variable(v) => v.completion(db, offset)?,
+            ResolvedPathKind::Pou(pou) => pou.completion(db, offset)?,
+            ResolvedPathKind::Spec(spec) => spec.completion(db, offset)?,
+            _ => {
+                eprintln!(
+                    "ResolvedPathElement::completion: unsupported kind {:?}",
+                    self.kind
+                );
+                None?
+            }
+        })
     }
 }

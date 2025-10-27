@@ -12,7 +12,7 @@ use crate::{
         scope::ScopeId,
     }, hir_ty::{
         ty::Ty,
-        ty_var_access_resolver::{resolve_global_path_expr, ResolvedAccess},
+        ty_var_access_resolver::{LookUp, ResolvedAccess},
         walk::{ResolvedPath, ResolvedPathKind},
     }, AstId, HirNodeInfo
 };
@@ -42,7 +42,7 @@ impl<'db> ResolvedFuncCall<'db> {
 
 impl<'db> FuncCall<'db> {
     pub fn resolve_func_call(&self, db: &'db dyn BaseDatabase) -> ResolvedFuncCall<'db> {
-        let target = resolve_global_path_expr(db, self.path(db));
+        let target = self.path(db).lookup(db);
 
         ResolvedFuncCall {
             target: target.clone(),

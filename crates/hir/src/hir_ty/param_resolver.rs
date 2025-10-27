@@ -2,7 +2,7 @@ use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     hir_def::{expressions::{expression::{Expr, FuncCall, ParamAssign, ParamAssignKind, VariableAccess}, invocation::Invocation}, interned::identifier::SpanIdent, pous::{pou::PouDecl, variable::VariableDecl}, scope::ScopeId}, hir_ty::{
-        func_call_resolver::{}, inheritance_solver::MethodRef, signatures::LocalVariables, ty_var_access_resolver::{resolve_var_access, CallSite, ResolvedAccess}, walk::{Adjustement, ResolvedPath, ResolvedPathKind, ResolvedPathResult}
+        func_call_resolver::{}, inheritance_solver::MethodRef, signatures::LocalVariables, ty_var_access_resolver::{CallSite, ResolvedAccess}, walk::{Adjustement, ResolvedPath, ResolvedPathKind, ResolvedPathResult}
     }, AstId, HirNodeInfo
 };
 

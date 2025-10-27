@@ -3,7 +3,7 @@ use auto_lsp::default::db::BaseDatabase;
 use crate::{
     hir_def::{
         expressions::{
-            expression::{Expr, FuncCall, PathExpr, VariableAccess},
+            expression::{BeginPathExpr, Expr, FuncCall, PathExpr, VariableAccess},
             invocation::Invocation,
         },
         scope::ScopeId,
@@ -34,7 +34,7 @@ impl<'db> HirNodeInfo<'db> for Stmt<'db> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum StmtKind<'db> {
-    EmptyPathExpression(PathExpr<'db>),
+    EmptyPathExpression(BeginPathExpr<'db>),
     Assignment {
         var: VariableAccess<'db>,
         target: Expr<'db>,
@@ -44,7 +44,6 @@ pub enum StmtKind<'db> {
         target: Expr<'db>, // todo: replace with ref or identifier
     },
     FuncCall(FuncCall<'db>),
-    Invocation(Invocation<'db>),
     Return,
     If {
         condition: Expr<'db>,

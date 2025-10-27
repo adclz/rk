@@ -2,7 +2,9 @@ use auto_lsp::default::db::BaseDatabase;
 use ide_diagnostic::{IdeDiagnostic, Related};
 
 use crate::{
-    check::errors::path_error::AccessError, hir_def::{
+    AstId, HirNodeInfo, TypeInfo,
+    check::errors::path_error::AccessError,
+    hir_def::{
         expressions::{
             expression::PathExpr,
             spec::{Spec, SpecKind, StructElement},
@@ -12,9 +14,15 @@ use crate::{
             variable::VariableDecl,
         },
         scope::ScopeId,
-    }, hir_ty::{
-        flatten::PathExprWalkStep, inheritance_solver::{declared_methods, MethodRef}, name_res::resolve_namespace_access, signatures::GlobalVariables, ty::{Ty, TyKind}, ty_var_access_resolver::CallSite
-    }, AstId, HirNodeInfo, TypeInfo
+    },
+    hir_ty::{
+        flatten::PathExprWalkStep,
+        inheritance_solver::{MethodRef, declared_methods},
+        name_res::resolve_namespace_access,
+        signatures::GlobalVariables,
+        ty::{Ty, TyKind},
+        ty_var_access_resolver::CallSite,
+    },
 };
 
 /// Represents a resolved element in a path expression.
@@ -90,6 +98,9 @@ impl<'db> ResolvedPath<'db> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ResolvedPathKind<'db> {
+    This(PouDecl<'db>),
+    SuperBody(PouDecl<'db>),
+    Super(PouDecl<'db>),
     Pou(PouDecl<'db>),
     Variable(VariableDecl<'db>),
     StructElement(StructElement<'db>),
@@ -114,7 +125,10 @@ impl<'db> ResolvedPathKind<'db> {
     pub fn decl_name(&self, db: &'db dyn BaseDatabase) -> String {
         match &self {
             ResolvedPathKind::Variable(v) => v.name(db).text(db).to_string(),
-            ResolvedPathKind::Pou(p) => p.name(db).text(db).to_string(),
+            ResolvedPathKind::Pou(p)
+            | ResolvedPathKind::Super(p)
+            | ResolvedPathKind::SuperBody(p)
+            | ResolvedPathKind::This(p) => p.name(db).text(db).to_string(),
             ResolvedPathKind::Method(m) => m.name(db).text(db).to_string(),
             ResolvedPathKind::Spec(m) => m.to_ty(db).type_name(db),
             ResolvedPathKind::StructElement(m) => m.name(db).text(db).to_string(),
@@ -123,7 +137,10 @@ impl<'db> ResolvedPathKind<'db> {
 
     pub fn diag_with_location(&self, db: &'db dyn BaseDatabase, diag: &mut IdeDiagnostic) {
         let (file, span, decl_name, name) = match &self {
-            ResolvedPathKind::Pou(p) => (
+            ResolvedPathKind::Pou(p)
+            | ResolvedPathKind::This(p)
+            | ResolvedPathKind::Super(p)
+            | ResolvedPathKind::SuperBody(p) => (
                 p.get_scope_id(db).file(db),
                 p.name_span(db),
                 "pou",
@@ -166,7 +183,10 @@ impl<'db> ResolvedPathKind<'db> {
 impl<'db> HirNodeInfo<'db> for ResolvedPathKind<'db> {
     fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
         match self {
-            ResolvedPathKind::Pou(p) => p.get_id(db),
+            ResolvedPathKind::Pou(p)
+            | ResolvedPathKind::Super(p)
+            | ResolvedPathKind::SuperBody(p)
+            | ResolvedPathKind::This(p) => p.get_id(db),
             ResolvedPathKind::Variable(v) => v.get_id(db),
             ResolvedPathKind::StructElement(e) => e.get_id(db),
             ResolvedPathKind::Spec(s) => s.get_id(db),
@@ -176,7 +196,10 @@ impl<'db> HirNodeInfo<'db> for ResolvedPathKind<'db> {
 
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
         match self {
-            ResolvedPathKind::Pou(p) => p.get_scope_id(db),
+            ResolvedPathKind::Pou(p)
+            | ResolvedPathKind::Super(p)
+            | ResolvedPathKind::SuperBody(p)
+            | ResolvedPathKind::This(p) => p.get_scope_id(db),
             ResolvedPathKind::Variable(v) => v.get_scope_id(db),
             ResolvedPathKind::StructElement(e) => e.get_scope_id(db),
             ResolvedPathKind::Spec(s) => s.get_scope_id(db),
@@ -201,8 +224,10 @@ impl<'db> ResolvedPath<'db> {
                     ResolvedPathKind::Pou(pou) => match pou.pou(db) {
                         Pou::DataType(dt) => dt.spec(db).to_ty(db),
                         // Special case for functions to get their return type
-                        Pou::Function(f) => f.return_type(db)
-                            .map(|spec| spec.to_ty(db)).ok_or_else(|| AccessError::InvalidTypeAccess {
+                        Pou::Function(f) => f
+                            .return_type(db)
+                            .map(|spec| spec.to_ty(db))
+                            .ok_or_else(|| AccessError::InvalidTypeAccess {
                                 access: self.clone(),
                             })?,
                         _ => {
@@ -244,7 +269,10 @@ impl<'db> ResolvedPath<'db> {
             _ => {}
         }
         match &self.kind {
-            ResolvedPathKind::Pou(pou) => pou.walk(db, step),
+            ResolvedPathKind::Pou(pou)
+            | ResolvedPathKind::Super(pou)
+            | ResolvedPathKind::SuperBody(pou)
+            | ResolvedPathKind::This(pou) => pou.walk(db, step),
             // FIXME: We lose the context of the variable declaration here
             // Any ARRAY or DEREF origin will refer to Spec only, but not the variable it came from
             ResolvedPathKind::Variable(var) => {
@@ -276,11 +304,17 @@ impl<'db> PouDecl<'db> {
                 match self.pou(db) {
                     Pou::Class(_) | Pou::Function(_) | Pou::FunctionBlock(_) => {
                         if let Some(var) = self.global_variables(db).get(&ident.ident) {
-                            return Ok(ResolvedPathKind::Variable(*var)
-                                .with_call_site(db, *expr, Adjustement::None));
+                            return Ok(ResolvedPathKind::Variable(*var).with_call_site(
+                                db,
+                                *expr,
+                                Adjustement::None,
+                            ));
                         } else if let Some(m) = declared_methods(db, *self).get(&ident.ident) {
-                            return Ok(ResolvedPathKind::Method(*m)
-                                .with_call_site(db, *expr, Adjustement::None));
+                            return Ok(ResolvedPathKind::Method(*m).with_call_site(
+                                db,
+                                *expr,
+                                Adjustement::None,
+                            ));
                         }
                     }
                     Pou::DataType(dt) => {
@@ -291,9 +325,11 @@ impl<'db> PouDecl<'db> {
 
                 // Check if ident == self name
                 if *ident == *self.name(db) {
-                    return Ok(
-                        ResolvedPathKind::Pou(*self).with_call_site(db, *expr, Adjustement::None)
-                    );
+                    return Ok(ResolvedPathKind::Pou(*self).with_call_site(
+                        db,
+                        *expr,
+                        Adjustement::None,
+                    ));
                 }
 
                 Err(AccessError::UnknownField {
@@ -310,13 +346,19 @@ impl<'db> PouDecl<'db> {
                                 db,
                                 *expr,
                                 Adjustement::Deref(Box::new(
-                                    ResolvedPathKind::Spec(*ref_to)
-                                        .with_call_site(db, *expr, Adjustement::None),
+                                    ResolvedPathKind::Spec(*ref_to).with_call_site(
+                                        db,
+                                        *expr,
+                                        Adjustement::None,
+                                    ),
                                 )),
                             )),
                         _ => Err(AccessError::NotAReference {
-                            ty: ResolvedPathKind::Variable(*var)
-                                .with_call_site(db, *expr, Adjustement::None),
+                            ty: ResolvedPathKind::Variable(*var).with_call_site(
+                                db,
+                                *expr,
+                                Adjustement::None,
+                            ),
                             expr: *step.get_expr(),
                         }),
                     },
@@ -358,10 +400,17 @@ impl<'db> Spec<'db> {
             // Only a struct can have fields
             PathExprWalkStep::Field { ident, expr } => match self.kind(db) {
                 SpecKind::Struct(strukt) => match strukt.resolve_elements(db).get(&ident.ident) {
-                    Some(field) => Ok(ResolvedPathKind::StructElement(*field)
-                        .with_call_site(db, *expr, Adjustement::None)),
+                    Some(field) => Ok(ResolvedPathKind::StructElement(*field).with_call_site(
+                        db,
+                        *expr,
+                        Adjustement::None,
+                    )),
                     None => Err(AccessError::UnknownField {
-                        ty: ResolvedPathKind::Spec(*self).with_call_site(db, *expr, Adjustement::None),
+                        ty: ResolvedPathKind::Spec(*self).with_call_site(
+                            db,
+                            *expr,
+                            Adjustement::None,
+                        ),
                         expr: *expr,
                     }),
                 },
@@ -379,18 +428,28 @@ impl<'db> Spec<'db> {
                                 db,
                                 *expr,
                                 Adjustement::Deref(Box::new(
-                                    ResolvedPathKind::Spec(*ref_to)
-                                        .with_call_site(db, *expr, Adjustement::None),
+                                    ResolvedPathKind::Spec(*ref_to).with_call_site(
+                                        db,
+                                        *expr,
+                                        Adjustement::None,
+                                    ),
                                 )),
                             )),
                         _ => Err(AccessError::NotAReference {
-                            ty: ResolvedPathKind::StructElement(*field)
-                                .with_call_site(db, *expr, Adjustement::None),
+                            ty: ResolvedPathKind::StructElement(*field).with_call_site(
+                                db,
+                                *expr,
+                                Adjustement::None,
+                            ),
                             expr: *step.get_expr(),
                         }),
                     },
                     None => Err(AccessError::UnknownField {
-                        ty: ResolvedPathKind::Spec(*self).with_call_site(db, *expr, Adjustement::None),
+                        ty: ResolvedPathKind::Spec(*self).with_call_site(
+                            db,
+                            *expr,
+                            Adjustement::None,
+                        ),
                         expr: *step.get_expr(),
                     }),
                 },
@@ -404,8 +463,11 @@ impl<'db> Spec<'db> {
                     db,
                     *expr,
                     Adjustement::Array(Box::new(
-                        ResolvedPathKind::Spec(array.of_type(db))
-                            .with_call_site(db, *expr, Adjustement::None),
+                        ResolvedPathKind::Spec(array.of_type(db)).with_call_site(
+                            db,
+                            *expr,
+                            Adjustement::None,
+                        ),
                     )),
                 )),
                 _ => Err(AccessError::NotAnArray {
