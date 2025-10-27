@@ -15,11 +15,19 @@ use crate::{
             pou::{Pou, PouDecl},
             variable::VariableDecl,
         },
-        semantic_index::{get_scope, semantic_index, HirNode, SemanticIndex},
+        semantic_index::{HirNode, SemanticIndex, get_scope, semantic_index},
         using::Using,
     },
     hir_ty::{
-        func_call_resolver::ResolvedFuncCall, inheritance_solver::MethodRef, init_expr_resolver::{resolve_init_expr, ResolvedInitExpr, ResolvedInitExprKind}, invocation_resolver::{ResolvedInvocationResult, ResolvedMethodKind}, param_resolver::{resolve_parameters, ResolvedParam, ResolvedParamKind}, ty::TyKind, ty_var_access_resolver::{resolve_local_path_expr, resolve_var_access, ResolvedAccess}, using_resolver::resolve_using, walk::{ResolvedPath, ResolvedPathKind, ResolvedPathResult}
+        func_call_resolver::ResolvedFuncCall,
+        inheritance_solver::MethodRef,
+        init_expr_resolver::{ResolvedInitExpr, ResolvedInitExprKind, resolve_init_expr},
+        invocation_resolver::{ResolvedInvocationResult, ResolvedMethodKind},
+        param_resolver::{ResolvedParam, ResolvedParamKind, resolve_parameters},
+        ty::TyKind,
+        ty_var_access_resolver::{LookUp, ResolvedAccess},
+        using_resolver::resolve_using,
+        walk::{ResolvedPath, ResolvedPathKind, ResolvedPathResult},
     },
 };
 
@@ -263,37 +271,35 @@ impl<'db> WalkHir<'db> for Expr<'db> {
     ) -> ControlFlow<()> {
         f(HirNode::Expr(*self))?;
         match self.expr(db) {
-            ExprKind::AddOperator{ left, right, .. }=> {
+            ExprKind::AddOperator { left, right, .. } => {
                 left.walk_hir(db, f)?;
                 right.walk_hir(db, f)?;
             }
-            ExprKind::BooleanOperator{ left, right, .. } => {
+            ExprKind::BooleanOperator { left, right, .. } => {
                 left.walk_hir(db, f)?;
                 right.walk_hir(db, f)?;
             }
-            ExprKind::ComparisonOperator{ left, right, .. } => {
+            ExprKind::ComparisonOperator { left, right, .. } => {
                 left.walk_hir(db, f)?;
                 right.walk_hir(db, f)?;
             }
-            ExprKind::MultOperator{ left, right, .. }=> {
+            ExprKind::MultOperator { left, right, .. } => {
                 left.walk_hir(db, f)?;
                 right.walk_hir(db, f)?;
             }
-            ExprKind::UnaryOperator{ expr, .. }=> {
+            ExprKind::UnaryOperator { expr, .. } => {
                 expr.walk_hir(db, f)?;
             }
-            ExprKind::PowerOperator{ left, right, .. }=> {
+            ExprKind::PowerOperator { left, right, .. } => {
                 left.walk_hir(db, f)?;
                 right.walk_hir(db, f)?;
             }
-            ExprKind::PrimaryExpr(expr) => {
-                match expr {
-                    PrimaryExpr::VariableAccess { variable, ..} => {
-                        let var_access = resolve_var_access(db, *variable);
-                        var_access.walk_hir(db, f)?;
-                    },
-                    _ => {}
+            ExprKind::PrimaryExpr(expr) => match expr {
+                PrimaryExpr::VariableAccess(variable)=> {
+                    let var_access = variable.lookup(db);
+                    var_access.walk_hir(db, f)?;
                 }
+                _ => {}
             },
             _ => {}
         }
@@ -364,7 +370,7 @@ impl<'db> WalkHir<'db> for ResolvedParam<'db> {
                 if let Some(ty) = resolved_param {
                     ty.walk_hir(db, f)?;
                 }
-                resolve_var_access(db, variable).walk_hir(db, f)
+                variable.lookup(db).walk_hir(db, f)
             }
         }
     }
@@ -403,26 +409,24 @@ impl<'db> WalkHir<'db> for ResolvedFuncCall<'db> {
                         param.walk_hir(db, f)?;
                     }
                 }
-                ResolvedPathKind::Variable(v) => {
-                    match v.spec(db).to_ty(db).kind(db) {
-                        TyKind::Function(func) => {
-                            for param in resolve_parameters(db, func, &self.params) {
-                                param.walk_hir(db, f)?;
-                            }
+                ResolvedPathKind::Variable(v) => match v.spec(db).to_ty(db).kind(db) {
+                    TyKind::Function(func) => {
+                        for param in resolve_parameters(db, func, &self.params) {
+                            param.walk_hir(db, f)?;
                         }
-                        TyKind::FunctionBlock(fb) => {
-                            for param in resolve_parameters(db, fb, &self.params) {
-                                param.walk_hir(db, f)?; 
-                            }
-                        },
-                        TyKind::Class(cl) => {
-                            for param in resolve_parameters(db, cl, &self.params) {
-                                param.walk_hir(db, f)?; 
-                            }
-                        },
-                        _ => {}
                     }
-                }
+                    TyKind::FunctionBlock(fb) => {
+                        for param in resolve_parameters(db, fb, &self.params) {
+                            param.walk_hir(db, f)?;
+                        }
+                    }
+                    TyKind::Class(cl) => {
+                        for param in resolve_parameters(db, cl, &self.params) {
+                            param.walk_hir(db, f)?;
+                        }
+                    }
+                    _ => {}
+                },
                 ResolvedPathKind::Method(method) => {
                     method.walk_hir(db, f)?;
                 }
@@ -440,7 +444,7 @@ impl<'db> WalkHir<'db> for VariableAccess<'db> {
         db: &'db dyn BaseDatabase,
         f: &mut F,
     ) -> ControlFlow<()> {
-        f(HirNode::ResolvedAccess(resolve_var_access(db, *self)))
+        f(HirNode::ResolvedAccess(self.lookup(db)))
     }
 }
 
@@ -452,7 +456,7 @@ impl<'db> WalkHir<'db> for Stmt<'db> {
     ) -> ControlFlow<()> {
         match self.stmt(db) {
             StmtKind::EmptyPathExpression(path) => {
-                resolve_local_path_expr(db, *path).walk_hir(db, f)?;
+                path.lookup(db).walk_hir(db, f)?;
             }
             StmtKind::Assignment { target, var } => {
                 var.walk_hir(db, f)?;
@@ -518,9 +522,6 @@ impl<'db> WalkHir<'db> for Stmt<'db> {
             }
             StmtKind::FuncCall(func_call) => {
                 func_call.resolve_func_call(db).walk_hir(db, f)?;
-            }
-            StmtKind::Invocation(invocation) => {
-                //invocation.resolve_invocation(db, scope).walk_hir(db, f)?;
             }
             _ => {}
         }

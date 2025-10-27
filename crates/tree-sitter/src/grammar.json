@@ -222,22 +222,6 @@
         }
       }
     },
-    "ERR_unexpected_variables_declaration": {
-      "type": "PREC",
-      "value": -2,
-      "content": {
-        "type": "REPEAT1",
-        "content": {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SYMBOL",
-              "name": "_fb_variables"
-            }
-          ]
-        }
-      }
-    },
     "line_comment": {
       "type": "TOKEN",
       "content": {
@@ -2010,7 +1994,7 @@
           "name": "enum_path",
           "content": {
             "type": "SYMBOL",
-            "name": "path_expression"
+            "name": "begin_path_expression"
           }
         },
         {
@@ -2880,7 +2864,7 @@
         },
         {
           "type": "SYMBOL",
-          "name": "symbolic_variable"
+          "name": "begin_path_expression"
         },
         {
           "type": "STRING",
@@ -2914,78 +2898,11 @@
       "members": [
         {
           "type": "SYMBOL",
-          "name": "symbolic_variable"
+          "name": "begin_path_expression"
         },
         {
           "type": "SYMBOL",
           "name": "direct_variable"
-        }
-      ]
-    },
-    "symbolic_variable": {
-      "type": "SYMBOL",
-      "name": "path_expression"
-    },
-    "this_invocation": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "FIELD",
-          "name": "THIS",
-          "content": {
-            "type": "STRING",
-            "value": "THIS"
-          }
-        },
-        {
-          "type": "STRING",
-          "value": "."
-        },
-        {
-          "type": "SYMBOL",
-          "name": "path_expression"
-        }
-      ]
-    },
-    "super_invocation": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "FIELD",
-          "name": "SUPER",
-          "content": {
-            "type": "STRING",
-            "value": "SUPER"
-          }
-        },
-        {
-          "type": "STRING",
-          "value": "."
-        },
-        {
-          "type": "SYMBOL",
-          "name": "path_expression"
-        }
-      ]
-    },
-    "super_body_invocation": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "FIELD",
-          "name": "SUPER",
-          "content": {
-            "type": "STRING",
-            "value": "SUPER"
-          }
-        },
-        {
-          "type": "STRING",
-          "value": "("
-        },
-        {
-          "type": "STRING",
-          "value": ")"
         }
       ]
     },
@@ -5692,11 +5609,7 @@
       "members": [
         {
           "type": "SYMBOL",
-          "name": "symbolic_variable"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "path_expression"
+          "name": "begin_path_expression"
         },
         {
           "type": "STRING",
@@ -5932,7 +5845,7 @@
           "name": "variable",
           "content": {
             "type": "SYMBOL",
-            "name": "symbolic_variable"
+            "name": "path_expression"
           }
         },
         {
@@ -7118,7 +7031,7 @@
           "members": [
             {
               "type": "SYMBOL",
-              "name": "symbolic_variable"
+              "name": "path_expression"
             },
             {
               "type": "STRING",
@@ -7135,7 +7048,7 @@
           "members": [
             {
               "type": "SYMBOL",
-              "name": "symbolic_variable"
+              "name": "path_expression"
             },
             {
               "type": "STRING",
@@ -7484,10 +7397,6 @@
         {
           "type": "SYMBOL",
           "name": "func_call"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "invocation"
         },
         {
           "type": "SYMBOL",
@@ -8013,77 +7922,6 @@
         }
       ]
     },
-    "invocation": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "FIELD",
-          "name": "invocation",
-          "content": {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "this_invocation"
-              },
-              {
-                "type": "SYMBOL",
-                "name": "super_invocation"
-              }
-            ]
-          }
-        },
-        {
-          "type": "STRING",
-          "value": "("
-        },
-        {
-          "type": "PREC",
-          "value": 10,
-          "content": {
-            "type": "FIELD",
-            "name": "params",
-            "content": {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "SEQ",
-                  "members": [
-                    {
-                      "type": "SYMBOL",
-                      "name": "param_assign"
-                    },
-                    {
-                      "type": "REPEAT",
-                      "content": {
-                        "type": "SEQ",
-                        "members": [
-                          {
-                            "type": "STRING",
-                            "value": ","
-                          },
-                          {
-                            "type": "SYMBOL",
-                            "name": "param_assign"
-                          }
-                        ]
-                      }
-                    }
-                  ]
-                },
-                {
-                  "type": "BLANK"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type": "STRING",
-          "value": ")"
-        }
-      ]
-    },
     "func_call": {
       "type": "SEQ",
       "members": [
@@ -8092,7 +7930,7 @@
           "name": "function",
           "content": {
             "type": "SYMBOL",
-            "name": "path_expression"
+            "name": "begin_path_expression"
           }
         },
         {
@@ -8183,19 +8021,11 @@
         },
         {
           "type": "SYMBOL",
-          "name": "empty_path_expression"
-        },
-        {
-          "type": "SYMBOL",
           "name": "func_call"
         },
         {
           "type": "SYMBOL",
-          "name": "invocation"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "super_body_invocation"
+          "name": "begin_path_expression"
         },
         {
           "type": "STRING",
@@ -8228,10 +8058,6 @@
         {
           "type": "STRING",
           "value": "CONTINUE"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "ERR_unexpected_variables_declaration"
         }
       ]
     },
@@ -8920,6 +8746,166 @@
         }
       ]
     },
+    "begin_path_expression": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "invocation"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "path_expression"
+        }
+      ]
+    },
+    "invocation": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "super_body_invocation"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "any_invocation"
+        }
+      ]
+    },
+    "any_invocation": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "FIELD",
+          "name": "invocation",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "this_invocation"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "super_invocation"
+              }
+            ]
+          }
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "any_invocation_kind"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        }
+      ]
+    },
+    "any_invocation_kind": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "^"
+          },
+          "named": true,
+          "value": "deref_invocation"
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "ALIAS",
+              "content": {
+                "type": "STRING",
+                "value": "^"
+              },
+              "named": true,
+              "value": "deref_invocation"
+            },
+            {
+              "type": "STRING",
+              "value": "."
+            },
+            {
+              "type": "FIELD",
+              "name": "path",
+              "content": {
+                "type": "SYMBOL",
+                "name": "path_expression"
+              }
+            }
+          ]
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "."
+            },
+            {
+              "type": "FIELD",
+              "name": "path",
+              "content": {
+                "type": "SYMBOL",
+                "name": "path_expression"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "this_invocation": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "FIELD",
+          "name": "THIS",
+          "content": {
+            "type": "STRING",
+            "value": "THIS"
+          }
+        }
+      ]
+    },
+    "super_invocation": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "FIELD",
+          "name": "SUPER",
+          "content": {
+            "type": "STRING",
+            "value": "SUPER"
+          }
+        }
+      ]
+    },
+    "super_body_invocation": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "FIELD",
+          "name": "SUPER",
+          "content": {
+            "type": "STRING",
+            "value": "SUPER"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": "()"
+        }
+      ]
+    },
     "path_expression": {
       "type": "CHOICE",
       "members": [
@@ -9137,12 +9123,26 @@
       "parenthesized_expression"
     ],
     [
-      "symbolic_variable",
+      "begin_path_expression",
       "field_expression"
     ],
     [
-      "symbolic_variable",
+      "any_invocation_kind",
+      "field_expression"
+    ],
+    [
+      "any_invocation"
+    ],
+    [
+      "any_invocation_kind"
+    ],
+    [
+      "variable",
       "func_call"
+    ],
+    [
+      "func_call",
+      "_stmt"
     ],
     [
       "case_selection"
