@@ -38,7 +38,7 @@ static SURROUND_SPACES: &str = r#"
     "CONTINUE"
     "REF_TO"
     ":=" "=" "<=" "<" ">=" ">" "<>" "+" "-" "*" "/" "%"
-    "&" "AND" "OR"
+    "&" "AND" "OR" "NOT"
     (line_comment)
     (c_style_comment)
     (pascal_style_comment)
@@ -159,11 +159,6 @@ static NEW_LINES: &str = r#"
 
 static BLOCKS: &str = r#"
 (func_call
-  "(" @append_spaced_softline @append_indent_start
-  ")" @prepend_spaced_softline @prepend_indent_end
-)
-
-(invocation
   "(" @append_spaced_softline @append_indent_start
   ")" @prepend_spaced_softline @prepend_indent_end
 )
@@ -296,7 +291,6 @@ static SEMI_COLONS: &str = r#"
     (global_var_decl)
 
     (assign)
-    (invocation)
     (super_body_invocation)
     "RETURN"
     "CONTINUE"
