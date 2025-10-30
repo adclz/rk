@@ -51,18 +51,6 @@ pub enum MethodError<'db> {
         path: PathExpr<'db>,
         method: Invocation<'db>,
     },
-    ThisOnIncompatiblePou {
-        path: PathExpr<'db>,
-        method: Invocation<'db>,
-    },
-    SuperOnIncompatiblePou {
-        path: PathExpr<'db>,
-        method: Invocation<'db>,
-    },
-    SuperBodyOnIncompatiblePou {
-        ctx: PouDecl<'db>,
-        method: Invocation<'db>,
-    },
     // Signatures
     SignatureParametersCountMismatch {
         m1: MethodRef<'db>,
@@ -249,25 +237,6 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                     ));
                 }
                 diag
-            }
-            Self::ThisOnIncompatiblePou { path, method } => diag()
-                .message("THIS can only be used in in FUNCTION_BLOCK or CLASS POUs".into())
-                .severity(DiagnosticSeverity::ERROR)
-                .range(method.get_span(db).clone())
-                .call(),
-            Self::SuperOnIncompatiblePou { path, method } => diag()
-                .message("SUPER can only be used in FUNCTION_BLOCK or CLASS POUs".into())
-                .severity(DiagnosticSeverity::ERROR)
-                .range(method.get_span(db).clone())
-                .call(),
-            Self::SuperBodyOnIncompatiblePou { ctx, method } => {
-                
-
-                diag()
-                    .message("SUPER() can only be called in FUNCTION_BLOCK POUs".into())
-                    .severity(DiagnosticSeverity::ERROR)
-                    .range(method.get_span(db).clone())
-                    .call()
             }
             Self::SignatureParametersCountMismatch {
                 m1,

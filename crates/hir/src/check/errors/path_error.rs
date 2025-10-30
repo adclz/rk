@@ -7,7 +7,7 @@ use crate::{
         interned::namespace::SpanNamespaceAccess,
         scope::ScopeKind,
         semantic_index::{get_scope, semantic_index},
-    }, hir_ty::walk::ResolvedPath, query_string::fuzzy_pou::fuzzy_pou_items, HirNodeInfo
+    }, hir_ty::{ty_var_access_resolver::CallSite, walk::ResolvedPath}, query_string::fuzzy_pou::fuzzy_pou_items, HirNodeInfo
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -39,6 +39,20 @@ pub enum AccessError<'db> {
     NotAReference {
         ty: ResolvedPath<'db>,
         expr: PathExpr<'db>,
+    },
+    UnknownMethod {
+        ty: ResolvedPath<'db>,
+        expr: PathExpr<'db>,
+    },
+    // OOP
+    ThisOnIncompatiblePou {
+        call_site: CallSite<'db>,
+    },
+    SuperOnIncompatiblePou {
+        call_site: CallSite<'db>,
+    },
+    SuperBodyOnIncompatiblePou {
+        call_site: CallSite<'db>,
     },
 }
 
@@ -78,6 +92,23 @@ impl<'db> DiagnosticDescription<'db> for AccessError<'db> {
             AccessError::NotAnArray { ty, expr } => {
                 format!("type '{}' cannot be indexed", ty.decl_name(db))
             }
+            AccessError::UnknownMethod { ty, expr } => {
+                format!(
+                    "method '{}' not found in '{}'",
+                    expr.ident(db).text(db),
+                    ty.decl_name(db)
+                )
+            }
+            // OOP
+            AccessError::ThisOnIncompatiblePou { call_site } => {
+                format!("'THIS' is not valid in this context")
+            }
+            AccessError::SuperOnIncompatiblePou { call_site } => {
+                format!("'SUPER' is not valid in this context")
+            }
+            AccessError::SuperBodyOnIncompatiblePou { call_site } => {
+                format!("'SUPER()' is not valid in this context")
+            }
         }
     }
 
@@ -112,7 +143,8 @@ impl<'db> DiagnosticDescription<'db> for AccessError<'db> {
             }
             AccessError::InvalidTypeAccess { access } => {
                 access.diag_with_location(db, diag);
-            }
+            },
+            _ => {}
         }
     }
 }
@@ -131,6 +163,10 @@ impl<'db> ToIdeDiagnostic<'db> for AccessError<'db> {
                 AccessError::TypeHasNoField { expr, .. } => expr.get_span(db),
                 AccessError::NotAnArray { expr, .. } => expr.get_span(db),
                 AccessError::NotAReference { expr, .. } => expr.get_span(db),
+                AccessError::UnknownMethod { expr, .. } => expr.get_span(db),
+                AccessError::ThisOnIncompatiblePou { call_site } => call_site.get_span(db),
+                AccessError::SuperOnIncompatiblePou { call_site } => call_site.get_span(db),
+                AccessError::SuperBodyOnIncompatiblePou { call_site } => call_site.get_span(db)
             })
             .call();
 

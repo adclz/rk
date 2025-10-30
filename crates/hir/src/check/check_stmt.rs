@@ -21,7 +21,6 @@ use crate::{
     },
     hir_ty::{
         func_call_resolver::ResolvedFuncCall,
-        invocation_resolver::{ResolvedInvocationResult, ResolvedMethodKind},
         param_resolver::{ResolvedParamKind, resolve_parameters},
         signatures::LocalVariables,
         ty::{Ty, TyKind},
@@ -240,36 +239,6 @@ fn check_func_call<'db>(
     Ok(())
 }
 
-/*fn check_invocation<'db>(
-    db: &'db dyn BaseDatabase,
-    invocation: &'db Invocation<'db>,
-    errors: &mut Vec<AnalysisError<'db>>,
-) -> Result<(), AnalysisError<'db>> {
-    let scope = get_scope(db, invocation.scope_id(db));
-    let resolved_invocation = invocation.lookup(db);
-
-    let invocation = invocation.resolve_invocation(db, &scope);
-    match &invocation.target.kind {
-        ResolvedMethodKind::Unresolved(err) => {
-            return Err(err.clone().into());
-        }
-        ResolvedMethodKind::InheritedMethod { target, method }
-        | ResolvedMethodKind::DeclaredMethod { target, method } => {
-            // Check visibility
-            check_call_visibility(db, (*method).into(), invocation.target.invocation, errors);
-            check_parameters(db, target.clone(), method, &invocation.params, errors);
-        }
-        ResolvedMethodKind::FunctionBlockBody { target } => {
-            let ty_target = target
-                .try_to_ty(db)
-                .map_err(|err| StmtError::UnresolvedFuncCall {
-                    call: target.clone(),
-                })?;
-        }
-    }
-
-    Ok(())
-}*/
 
 #[derive(Clone, Copy)]
 enum FormalCall {

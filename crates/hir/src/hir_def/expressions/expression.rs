@@ -93,7 +93,6 @@ pub enum PrimaryExpr<'db> {
     // Path --> Target
     VariableAccess(VariableAccess<'db>),
     FuncCall(FuncCall<'db>),
-    Invocation(Invocation<'db>),
     EnumValue {
         name: BeginPathExpr<'db>,
         variant: SpanIdent<'db>,
@@ -516,11 +515,6 @@ impl<'db> PrimaryExpr<'db> {
             },
             PrimaryExpr::VariableAccess(v) => "<variable access>",
             PrimaryExpr::FuncCall(func_call) => func_call.path(db).to_string(db),
-            PrimaryExpr::Invocation(invocation) => match invocation.kind(db) {
-                InvocationKind::Super => "<SUPER invocation>",
-                InvocationKind::This => "<THIS invocation>",
-                InvocationKind::SuperBody { .. } => "<SUPER.BODY invocation>",
-            },
             PrimaryExpr::EnumValue { name, variant } => variant.text(db),
             PrimaryExpr::RefValue { value } => match value {
                 RefValue::Address(addr) => "<DEREF>",
