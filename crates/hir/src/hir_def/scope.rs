@@ -1,8 +1,8 @@
 use auto_lsp::default::db::{BaseDatabase, file::File};
 
-use crate::hir_def::{
-    namespace::NamespaceDecl, pous::pou::PouDecl, semantic_index::semantic_index, using::Using, visibility::Visibility
-};
+use crate::{hir_def::{
+    namespace::NamespaceDecl, pous::{class::MethodDecl, pou::PouDecl}, semantic_index::semantic_index, using::Using, visibility::Visibility
+}, hir_ty::inheritance_solver::MethodRef};
 
 #[salsa::tracked(debug)]
 pub struct ScopeId<'db> {
@@ -44,8 +44,6 @@ pub struct Scope<'db> {
 
     // If None, this is the global scope
     pub parent: Option<ScopeId<'db>>,
-
-    pub visibility: Visibility,
 }
 
 impl<'db> Scope<'db> {
@@ -61,7 +59,6 @@ impl<'db> Scope<'db> {
             file,
             usings,
             kind,
-            visibility,
             id,
             parent,
         }
@@ -85,4 +82,5 @@ pub enum ScopeKind<'db> {
     Global,
     Namespace(NamespaceDecl<'db>),
     Pou(PouDecl<'db>),
+    MethodDecl(MethodDecl<'db>)
 }

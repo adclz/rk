@@ -10,7 +10,7 @@ use crate::{
     },
     hir_def::{modifier::Modifier, pous::pou::{Pou, PouDecl}
     },
-    hir_ty::inheritance_solver::{declared_methods, to_method_ref, inherited_methods, MethodRef},
+    hir_ty::inheritance_solver::{declared_methods, inherited_methods, to_method_ref, MethodRef}, HirNodeInfo,
 };
 
 pub fn check_inheritance<'db>(
@@ -40,7 +40,7 @@ pub fn check_inheritance<'db>(
     check_declared_duplicates(db, to_method_ref(db, implementer), errors);
 
     // check dups in inherited methods
-    for (m1, m2) in inherited_methods.duplicates(db) {
+    for (m1, m2) in &inherited_methods.duplicates {
         errors.push(
             DuplicateError::InheritedMethod {
                 method1: *m1,
@@ -51,14 +51,14 @@ pub fn check_inheritance<'db>(
     }
 
     // check unresolved
-    for unresolved in inherited_methods.unresolved(db) {
+    for unresolved in &inherited_methods.unresolved {
         errors.push(AnalysisError::MethodError(
             MethodError::UnresolvedPou { access: *unresolved }
         ));
     }
 
     // look at the inherited methods first
-    for (inherited_name, inherited_method) in inherited_methods.methods(db).iter() {
+    for (inherited_name, inherited_method) in inherited_methods.methods.iter() {
         let inherited_method = inherited_method.method;
         // method is inherited from a base interface/class
         if let Some(declared_method) = declared_methods.get(inherited_name) {
@@ -109,7 +109,7 @@ pub fn check_inheritance<'db>(
     // Look at the declared methods
 
     for (base_name, base_method) in declared_methods {
-        if inherited_methods.methods(db).contains_key(base_name) {
+        if inherited_methods.methods.contains_key(&base_name) {
         } else if base_method.modifier(db) == Modifier::OVERRIDE {
             errors.push(AnalysisError::MethodError(MethodError::EmptyOverride {
                 base_method: *base_method,

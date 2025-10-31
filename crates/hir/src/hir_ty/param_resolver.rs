@@ -2,7 +2,7 @@ use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     hir_def::{expressions::{expression::{Expr, FuncCall, ParamAssign, ParamAssignKind, VariableAccess}, invocation::Invocation}, interned::identifier::SpanIdent, pous::{pou::PouDecl, variable::VariableDecl}, scope::ScopeId}, hir_ty::{
-        func_call_resolver::{}, inheritance_solver::MethodRef, signatures::LocalVariables, ty_var_access_resolver::{CallSite, ResolvedAccess}, walk::{Adjustement, ResolvedPath, ResolvedPathKind, ResolvedPathResult}
+        func_call_resolver::{}, inheritance_solver::MethodRef, ty_var_access_resolver::{CallSite, ResolvedAccess}, walk::{Adjustement, ResolvedPath, ResolvedPathKind, ResolvedPathResult}
     }, AstId, HirNodeInfo
 };
 
@@ -53,7 +53,7 @@ impl<'db> HirNodeInfo<'db> for ResolvedParam<'db> {
 
 pub fn resolve_parameters<'db>(
     db: &'db dyn BaseDatabase,
-    callee: &impl LocalVariables<'db>,
+    callee: ScopeId<'db>,
     caller: &[ParamAssign<'db>],
 ) -> Vec<ResolvedParam<'db>> {
     let mut formal_index = 0;
@@ -69,7 +69,7 @@ pub fn resolve_parameters<'db>(
                         resolved_param: {
                             // Try to get the param by index
                             let param = callee.local_variables(db).values().nth(formal_index);
-                            formal_index += 1;
+                            formal_index += 1; 
                             param.map(|p| {
                                 *p
                             })

@@ -29,7 +29,6 @@ use crate::{
         flatten::{Flatten, PathExprWalkStep},
         inheritance_solver::MethodRef,
         name_res::{pou_names_res, resolve_namespace_access},
-        signatures::LocalVariables,
         ty::Ty,
         walk::{Adjustement, ResolvedPath, ResolvedPathKind, ResolvedPathResult},
     },
@@ -65,17 +64,27 @@ impl<'db> LookUp<'db> for BeginPathExpr<'db> {
     fn lookup(&self, db: &'db dyn BaseDatabase) -> ResolvedAccess<'db> {
         match self.invocation(db) {
             Some(invocation) => {
-                let invoc = find_invocation_target(db, invocation);
+                let invoc = match find_invocation_target(db, invocation, invocation.scope_id(db)) {
+                    Ok(place) => place,
+                    Err(e) => return e,
+                };
                 match self.expr(db) {
-                    Some(expr) => match find_primary_target(db, expr, SearchMode::Local) {
-                        Ok((place, rest)) => {
-                            let elements = resolve_path_rest(db, place.clone(), rest);
+                    Some(expr) => {
+                        let elements = resolve_path_rest(db, invoc.clone(), expr.flatten(db));
 
-                            ResolvedAccess::new(db, ResolvedPathResult::Ok(place), elements)
-                        }
-                        Err(e) => return e,
-                    },
-                    None => invoc,
+                        ResolvedAccess::new(
+                            db,
+                            ResolvedPathResult::Ok(invoc),
+                            CallSite::new(self.scope_id(db), self.get_id(db)),
+                            elements,
+                        )
+                    }
+                    None => ResolvedAccess::new(
+                        db,
+                        ResolvedPathResult::Ok(invoc),
+                        CallSite::new(self.scope_id(db), self.get_id(db)),
+                        vec![],
+                    ),
                 }
             }
             None => match self.expr(db) {
@@ -83,6 +92,7 @@ impl<'db> LookUp<'db> for BeginPathExpr<'db> {
                 None => ResolvedAccess::new(
                     db,
                     ResolvedPathResult::Err(AccessError::NoBeginLocalItemInScope { expr: *self }),
+                    CallSite::new(self.scope_id(db), self.get_id(db)),
                     vec![],
                 ),
             },
@@ -101,6 +111,8 @@ pub struct ResolvedAccess<'db> {
     // Primarily resolved path
     // Private: use initial() or resolved() methods
     kind: ResolvedPathResult<'db>,
+
+    pub call_site: CallSite<'db>,
 
     pub elements: Vec<ResolvedPathResult<'db>>,
 }
@@ -122,9 +134,14 @@ impl<'db> ResolvedAccess<'db> {
     pub fn new(
         db: &'db dyn BaseDatabase,
         kind: ResolvedPathResult<'db>,
+        call_site: CallSite<'db>,
         elements: Vec<ResolvedPathResult<'db>>,
     ) -> Self {
-        ResolvedAccess { kind, elements }
+        ResolvedAccess {
+            kind,
+            call_site,
+            elements,
+        }
     }
 
     /// Get the initially resolved path (first element)
@@ -207,11 +224,11 @@ impl<'db> ResolvedAccess<'db> {
             ResolvedPathResult::Ok(ResolvedPath {
                 kind: ResolvedPathKind::Pou(p),
                 ..
-            }) => p.local_variables(db),
+            }) => p.scope_id(db).local_variables(db),
             ResolvedPathResult::Ok(ResolvedPath {
                 kind: ResolvedPathKind::Method(m),
                 ..
-            }) => m.local_variables(db),
+            }) => m.get_scope_id(db).local_variables(db),
             _ => None?,
         })
     }
@@ -297,37 +314,77 @@ impl<'db> ResolvedAccess<'db> {
 fn find_invocation_target<'db>(
     db: &'db dyn BaseDatabase,
     path: Invocation<'db>,
-) -> ResolvedAccess<'db> {
-    match get_scope(db, path.scope_id(db)).kind {
-        ScopeKind::Pou(pou_decl) => match path.kind(db) {
-            InvocationKind::SuperBody => ResolvedAccess::new(
-                db,
-                ResolvedPathResult::Ok(ResolvedPath {
-                    kind: ResolvedPathKind::SuperBody(pou_decl),
-                    expr: CallSite::new(path.scope_id(db), path.keyword_id(db)),
-                    adjustement: Adjustement::None,
-                }),
-                vec![],
-            ),
-            InvocationKind::Super => ResolvedAccess::new(
-                db,
-                ResolvedPathResult::Ok(ResolvedPath {
-                    kind: ResolvedPathKind::Super(pou_decl),
-                    expr: CallSite::new(path.scope_id(db), path.keyword_id(db)),
-                    adjustement: Adjustement::None,
-                }),
-                vec![],
-            ),
-            InvocationKind::This => ResolvedAccess::new(
-                db,
-                ResolvedPathResult::Ok(ResolvedPath {
-                    kind: ResolvedPathKind::This(pou_decl),
-                    expr: CallSite::new(path.scope_id(db), path.keyword_id(db)),
-                    adjustement: Adjustement::None,
-                }),
-                vec![],
-            ),
-        },
+    scope_id: ScopeId<'db>,
+) -> Result<ResolvedPath<'db>, ResolvedAccess<'db>> {
+    match get_scope(db, scope_id).kind {
+        ScopeKind::MethodDecl(m) => {
+            let scope = get_scope(db, m.scope_id(db));
+            let parent = scope.parent.expect("A method scope always has a parent scope");
+            find_invocation_target(db, path, parent)
+        }
+        ScopeKind::Pou(pou_decl) => {
+            /*
+            7Access reference
+            9a THIS: Reference to own methods
+            9b SUPER: Access reference to method in base class
+
+            FUNCTION BLOCKS:
+
+            Access reference
+            10a THIS:  Reference to own methods
+            10b SUPER:  Access reference to method in base function block
+            10c SUPER():  Access reference to body in base function block
+            */
+            match path.kind(db) {
+                InvocationKind::SuperBody => match pou_decl.pou(db) {
+                    Pou::FunctionBlock(f) => Ok(ResolvedPath {
+                        kind: ResolvedPathKind::SuperBody(pou_decl),
+                        expr: CallSite::new(scope_id, path.keyword_id(db)),
+                        adjustement: Adjustement::None,
+                    }),
+                    _ => Err(ResolvedAccess::new(
+                        db,
+                        ResolvedPathResult::Err(AccessError::SuperBodyOnIncompatiblePou {
+                            call_site: CallSite::new(scope_id, path.keyword_id(db)),
+                        }),
+                        CallSite::new(scope_id, path.keyword_id(db)),
+                        vec![],
+                    )),
+                },
+                InvocationKind::Super => match pou_decl.pou(db) {
+                    Pou::FunctionBlock(_) | Pou::Class(_) => Ok(ResolvedPath {
+                        kind: ResolvedPathKind::Super(pou_decl),
+                        expr: CallSite::new(scope_id, path.keyword_id(db)),
+                        adjustement: Adjustement::None,
+                    }),
+                    _ => Err(ResolvedAccess::new(
+                        db,
+                        ResolvedPathResult::Err(AccessError::SuperOnIncompatiblePou {
+                            call_site: CallSite::new(scope_id, path.keyword_id(db)),
+                        }),
+                        CallSite::new(scope_id, path.keyword_id(db)),
+                        vec![],
+                    )),
+                },
+                InvocationKind::This => match pou_decl.pou(db) {
+                    Pou::FunctionBlock(_) | Pou::Class(_) => Ok(ResolvedPath {
+                        kind: ResolvedPathKind::This(pou_decl),
+                        expr: CallSite::new(scope_id, path.keyword_id(db)),
+                        adjustement: Adjustement::None,
+                    }),
+                    _ => {
+                        return Err(ResolvedAccess::new(
+                            db,
+                            ResolvedPathResult::Err(AccessError::ThisOnIncompatiblePou {
+                                call_site: CallSite::new(scope_id, path.keyword_id(db)),
+                            }),
+                            CallSite::new(scope_id, path.keyword_id(db)),
+                            vec![],
+                        ));
+                    }
+                },
+            }
+        }
         _ => unreachable!("An invocation will always be in a POU scope"),
     }
 }
@@ -356,7 +413,15 @@ impl<'db> GlobalResolverCtx<'db> {
             Ok((place, rest)) => {
                 let elements = resolve_path_rest(self.db, place.clone(), rest);
 
-                ResolvedAccess::new(self.db, ResolvedPathResult::Ok(place), elements)
+                ResolvedAccess::new(
+                    self.db,
+                    ResolvedPathResult::Ok(place),
+                    CallSite::new(
+                        self.path_expr.scope_id(self.db),
+                        self.path_expr.get_id(self.db),
+                    ),
+                    elements,
+                )
             }
             Err(e) => return e,
         }
@@ -386,6 +451,7 @@ fn find_primary_target<'db>(
                         ResolvedPathResult::Err(AccessError::NoLocalItemInScope {
                             expr: path_expr,
                         }),
+                        CallSite::new(expr.scope_id(db), expr.get_id(db)),
                         vec![],
                     ));
                 } // cannot start with index
@@ -411,12 +477,44 @@ fn find_primary_target<'db>(
                                     ResolvedPathResult::Err(AccessError::NoLocalItemInScope {
                                         expr: path_expr,
                                     }),
+                                    CallSite::new(expr.scope_id(db), expr.get_id(db)),
                                     vec![],
                                 ));
                             }
                             return Err(ResolvedAccess::new(
                                 db,
                                 ResolvedPathResult::Err(err),
+                                CallSite::new(expr.scope_id(db), expr.get_id(db)),
+                                vec![],
+                            ));
+                        }
+                    }
+                }
+            } else if let ScopeKind::MethodDecl(m) = scope.kind {
+                match MethodRef::from(m).walk(db, first) {
+                    Ok(resolved) => {
+                        return Ok((resolved, flatten[1..].as_ref()));
+                    }
+                    Err(err) => {
+                        if let SearchMode::Local = mode {
+                            if matches!(
+                                err,
+                                AccessError::TypeHasNoField { .. }
+                                    | AccessError::UnknownField { .. }
+                            ) {
+                                return Err(ResolvedAccess::new(
+                                    db,
+                                    ResolvedPathResult::Err(AccessError::NoLocalItemInScope {
+                                        expr: path_expr,
+                                    }),
+                                    CallSite::new(expr.scope_id(db), expr.get_id(db)),
+                                    vec![],
+                                ));
+                            }
+                            return Err(ResolvedAccess::new(
+                                db,
+                                ResolvedPathResult::Err(err),
+                                CallSite::new(expr.scope_id(db), expr.get_id(db)),
                                 vec![],
                             ));
                         }
@@ -472,12 +570,14 @@ fn find_primary_target<'db>(
                 ResolvedPathResult::Err(AccessError::NoLocalItemInScope {
                     expr: *first.get_expr(),
                 }),
+                CallSite::new(first.get_expr().scope_id(db), first.get_expr().get_id(db)),
                 vec![],
             ))
         }
         None => Err(ResolvedAccess::new(
             db,
             ResolvedPathResult::Err(AccessError::NoLocalItemInScope { expr: path_expr }),
+            CallSite::new(path_expr.scope_id(db), path_expr.get_id(db)),
             vec![],
         )),
     }
@@ -510,40 +610,6 @@ fn resolve_path_rest<'db>(
     result
 }
 
-impl<'db> HirNodeInfo<'db> for ResolvedAccess<'db> {
-    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
-        match &self.kind {
-            ResolvedPathResult::Ok(ok) => ok.get_id(db),
-            ResolvedPathResult::Err(err) => match err {
-                AccessError::NoBeginLocalItemInScope { expr } => expr.get_id(db),
-                AccessError::NoLocalItemInScope { expr } => expr.get_id(db),
-                AccessError::InvalidTypeAccess { access } => access.get_id(db),
-                AccessError::UnknownField { expr, .. } => expr.get_id(db),
-                AccessError::TypeHasNoField { expr, .. } => expr.get_id(db),
-                AccessError::NotAnArray { expr, .. } => expr.get_id(db),
-                AccessError::NotAReference { expr, .. } => expr.get_id(db),
-                AccessError::NoItemInScope { access } => access.get_id(db),
-            },
-        }
-    }
-
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
-        match &self.kind {
-            ResolvedPathResult::Ok(ok) => ok.get_scope_id(db),
-            ResolvedPathResult::Err(err) => match err {
-                AccessError::NoBeginLocalItemInScope { expr } => expr.get_scope_id(db),
-                AccessError::NoLocalItemInScope { expr } => expr.get_scope_id(db),
-                AccessError::InvalidTypeAccess { access } => access.get_scope_id(db),
-                AccessError::UnknownField { expr, .. } => expr.get_scope_id(db),
-                AccessError::TypeHasNoField { expr, .. } => expr.get_scope_id(db),
-                AccessError::NotAnArray { expr, .. } => expr.get_scope_id(db),
-                AccessError::NotAReference { expr, .. } => expr.get_scope_id(db),
-                AccessError::NoItemInScope { access } => access.get_scope_id(db),
-            },
-        }
-    }
-}
-
 impl<'db> HirNodeInfo<'db> for CallSite<'db> {
     fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
         self.id
@@ -551,5 +617,15 @@ impl<'db> HirNodeInfo<'db> for CallSite<'db> {
 
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
         self.scope
+    }
+}
+
+impl<'db> HirNodeInfo<'db> for ResolvedAccess<'db> {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+        self.call_site.get_id(db)
+    }
+
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+        self.call_site.get_scope_id(db)
     }
 }

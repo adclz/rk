@@ -2,9 +2,7 @@ use auto_lsp::default::db::BaseDatabase;
 use ide_diagnostic::{IdeDiagnostic, Related};
 
 use crate::{
-    AstId, HirNodeInfo, TypeInfo,
-    check::errors::path_error::AccessError,
-    hir_def::{
+    check::errors::path_error::AccessError, hir_def::{
         expressions::{
             expression::PathExpr,
             spec::{Spec, SpecKind, StructElement},
@@ -13,16 +11,14 @@ use crate::{
             pou::{Pou, PouDecl},
             variable::VariableDecl,
         },
-        scope::ScopeId,
-    },
-    hir_ty::{
+        scope::ScopeId, visibility::Visibility,
+    }, hir_ty::{
         flatten::PathExprWalkStep,
-        inheritance_solver::{MethodRef, declared_methods},
+        inheritance_solver::{declared_methods, inherited_methods, InheritedMethodSet, MethodRef},
         name_res::resolve_namespace_access,
-        signatures::GlobalVariables,
         ty::{Ty, TyKind},
         ty_var_access_resolver::CallSite,
-    },
+    }, AstId, HirNodeInfo, TypeInfo
 };
 
 /// Represents a resolved element in a path expression.
@@ -92,6 +88,42 @@ impl<'db> ResolvedPath<'db> {
         match self.kind {
             ResolvedPathKind::Variable(v) => Some(v),
             _ => None,
+        }
+    }
+
+    pub fn target_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+        match &self.kind {
+            ResolvedPathKind::Pou(pou)
+            | ResolvedPathKind::This(pou)
+            | ResolvedPathKind::Super(pou)
+            | ResolvedPathKind::SuperBody(pou) => pou.get_scope_id(db),
+            ResolvedPathKind::Variable(v) => v.get_scope_id(db),
+            ResolvedPathKind::StructElement(e) => e.get_scope_id(db),
+            ResolvedPathKind::Spec(s) => s.get_scope_id(db),
+            ResolvedPathKind::Method(m) => m.get_scope_id(db),
+        }
+    }
+
+    pub fn is_callable(&self, db: &'db dyn BaseDatabase) -> bool {
+        match &self.kind {
+            ResolvedPathKind::Pou(pou) => match pou.pou(db) {
+                Pou::Function(_) => true,
+                _ => false,
+            },
+            ResolvedPathKind::Variable(v) => match v.spec(db).to_ty(db).kind(db) {
+                TyKind::Function(_) | TyKind::FunctionBlock(_) => true,
+                _ => false,
+            },
+            ResolvedPathKind::Method(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn visibility(&self, db: &'db dyn BaseDatabase) -> Visibility {
+        match self.kind {
+            ResolvedPathKind::Method(m) => m.visibility(db),
+            // Todo: add variables
+            _ => Visibility::PUBLIC
         }
     }
 }
@@ -269,12 +301,27 @@ impl<'db> ResolvedPath<'db> {
             _ => {}
         }
         match &self.kind {
-            ResolvedPathKind::Pou(pou)
-            | ResolvedPathKind::Super(pou)
-            | ResolvedPathKind::SuperBody(pou)
-            | ResolvedPathKind::This(pou) => pou.walk(db, step),
-            // FIXME: We lose the context of the variable declaration here
-            // Any ARRAY or DEREF origin will refer to Spec only, but not the variable it came from
+            ResolvedPathKind::Pou(pou) | ResolvedPathKind::SuperBody(pou) => pou.walk(db, step),
+            ResolvedPathKind::This(pou) => match step {
+                PathExprWalkStep::Field { ident, expr } => {
+                    if let Some(m) = declared_methods(db, *pou).get(&ident.ident) {
+                        return Ok(ResolvedPathKind::Method(*m).with_call_site(
+                            db,
+                            *expr,
+                            Adjustement::None,
+                        ));
+                    }
+
+                    Err(AccessError::UnknownMethod {
+                        ty: self.clone(),
+                        expr: *expr,
+                    })
+                }
+                _ => Err(AccessError::InvalidTypeAccess {
+                    access: self.clone(),
+                })?,
+            },
+            ResolvedPathKind::Super(p) => inherited_methods(db, *p).walk(db, self, step),
             ResolvedPathKind::Variable(var) => {
                 var.spec(db)
                     .walk(db, ResolvedPathKind::Variable(*var), step)
@@ -292,6 +339,35 @@ impl<'db> ResolvedPath<'db> {
     }
 }
 
+impl<'db> InheritedMethodSet<'db> {
+    pub fn walk(
+        &self,
+        db: &'db dyn BaseDatabase,
+        parent: &ResolvedPath<'db>,
+        step: &'db PathExprWalkStep<'db>,
+    ) -> Result<ResolvedPath<'db>, AccessError<'db>> {
+        match step {
+            PathExprWalkStep::Field { ident, expr } => {
+                if let Some(m) = self.methods.get(&ident.ident) {
+                    return Ok(ResolvedPathKind::Method(m.method).with_call_site(
+                        db,
+                        *expr,
+                        Adjustement::None,
+                    ));
+                }
+
+                Err(AccessError::UnknownMethod {
+                    ty: parent.clone(),
+                    expr: *expr,
+                })
+            }
+            _ => Err(AccessError::InvalidTypeAccess {
+                access: parent.clone(),
+            })?,
+        }
+    }
+}
+
 impl<'db> PouDecl<'db> {
     pub fn walk(
         &self,
@@ -303,7 +379,8 @@ impl<'db> PouDecl<'db> {
             PathExprWalkStep::Field { ident, expr } => {
                 match self.pou(db) {
                     Pou::Class(_) | Pou::Function(_) | Pou::FunctionBlock(_) => {
-                        if let Some(var) = self.global_variables(db).get(&ident.ident) {
+                        if let Some(var) = self.scope_id(db).global_variables(db).get(&ident.ident)
+                        {
                             return Ok(ResolvedPathKind::Variable(*var).with_call_site(
                                 db,
                                 *expr,
@@ -339,7 +416,7 @@ impl<'db> PouDecl<'db> {
             }
             // Deref case, same as Field except we need to check if the target is a Reference
             PathExprWalkStep::Deref { target, expr } => {
-                match self.global_variables(db).get(&target.ident) {
+                match self.scope_id(db).global_variables(db).get(&target.ident) {
                     Some(var) => match var.spec(db).kind(db) {
                         SpecKind::Ref(ref_to) => Ok(ResolvedPathKind::Variable(*var)
                             .with_call_site(
@@ -375,6 +452,75 @@ impl<'db> PouDecl<'db> {
                     expr: *expr,
                 }),
             },
+        }
+    }
+}
+
+impl<'db> MethodRef<'db> {
+    pub fn walk(
+        &self,
+        db: &'db dyn BaseDatabase,
+        step: &'db PathExprWalkStep<'db>,
+    ) -> Result<ResolvedPath<'db>, AccessError<'db>> {
+        match step {
+            // Simplest case, just an identifier
+            PathExprWalkStep::Field { ident, expr } => {
+                if let Some(var) = self.get_scope_id(db).global_variables(db).get(&ident.ident) {
+                    return Ok(ResolvedPathKind::Variable(*var).with_call_site(
+                        db,
+                        *expr,
+                        Adjustement::None,
+                    ));
+                }
+
+                Err(AccessError::UnknownField {
+                    ty: ResolvedPathKind::Method(*self).with_call_site(
+                        db,
+                        *expr,
+                        Adjustement::None,
+                    ),
+                    expr: *expr,
+                })
+            }
+            // Deref case, same as Field except we need to check if the target is a Reference
+            PathExprWalkStep::Deref { target, expr } => {
+                match self
+                    .get_scope_id(db)
+                    .global_variables(db)
+                    .get(&target.ident)
+                {
+                    Some(var) => match var.spec(db).kind(db) {
+                        SpecKind::Ref(ref_to) => Ok(ResolvedPathKind::Variable(*var)
+                            .with_call_site(
+                                db,
+                                *expr,
+                                Adjustement::Deref(Box::new(
+                                    ResolvedPathKind::Spec(*ref_to).with_call_site(
+                                        db,
+                                        *expr,
+                                        Adjustement::None,
+                                    ),
+                                )),
+                            )),
+                        _ => Err(AccessError::NotAReference {
+                            ty: ResolvedPathKind::Variable(*var).with_call_site(
+                                db,
+                                *expr,
+                                Adjustement::None,
+                            ),
+                            expr: *step.get_expr(),
+                        }),
+                    },
+                    _ => Err(AccessError::NoLocalItemInScope {
+                        expr: *step.get_expr(),
+                    }),
+                }
+            }
+            // Index case is invalid
+            PathExprWalkStep::Index { expr } => Err(AccessError::NotAnArray {
+                ty: ResolvedPathKind::Method(*self).with_call_site(db, *expr, Adjustement::None),
+                expr: *expr,
+            }),
         }
     }
 }

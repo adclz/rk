@@ -16,7 +16,7 @@ use crate::{
 };
 
 /// Find all namespaces in all files that match a given namespace path.
-#[salsa::tracked(returns(ref), no_eq)]
+#[salsa::tracked(returns(ref))]
 pub fn shared_namespaces<'db>(
     db: &'db dyn BaseDatabase,
     path: NamespacePath,
@@ -55,7 +55,7 @@ pub fn resolve_namespace_access<'db>(
 }
 
 /// Returns all POU declarations *globally declared*.
-#[salsa::tracked(returns(ref), no_eq)]
+#[salsa::tracked(returns(ref))]
 pub fn all_global_pous<'db>(db: &'db dyn BaseDatabase) -> FxHashMap<Ident, PouDecl<'db>> {
     db.get_files()
         .iter()
@@ -69,7 +69,7 @@ pub fn all_global_pous<'db>(db: &'db dyn BaseDatabase) -> FxHashMap<Ident, PouDe
 }
 
 /// Returns all POU declarations *globally declared*.
-#[salsa::tracked(returns(ref), no_eq)]
+#[salsa::tracked(returns(ref))]
 pub fn all_local_pous<'db>(
     db: &'db dyn BaseDatabase,
     scope_id: ScopeId<'db>,
@@ -98,7 +98,7 @@ pub fn all_imported_pous<'db>(
         // Inside Global Scope, just check the current scope.
         ScopeKind::Global => get_scope(db, scope_id),
         // Same, NAMESPACES do not have access to the USING directives of the parent namespace.
-        ScopeKind::Namespace(_) => get_scope(db, scope_id),
+        ScopeKind::Namespace(_) | ScopeKind::MethodDecl(_) => get_scope(db, scope_id),
         // POUs must check both their own USING directives and the USING directives of their parent namespace.
         ScopeKind::Pou(_) => {
             let scope = get_scope(db, scope_id);

@@ -12,23 +12,20 @@ use crate::{
         interned::namespace::SpanNamespaceAccess,
         namespace::NamespaceDecl,
         pous::{
-            pou::{Pou, PouDecl},
-            variable::VariableDecl,
+            class::MethodDecl, pou::{Pou, PouDecl}, variable::VariableDecl
         },
-        semantic_index::{HirNode, SemanticIndex, get_scope, semantic_index},
+        semantic_index::{get_scope, semantic_index, HirNode, SemanticIndex},
         using::Using,
-    },
-    hir_ty::{
+    }, hir_ty::{
         func_call_resolver::ResolvedFuncCall,
         inheritance_solver::MethodRef,
-        init_expr_resolver::{ResolvedInitExpr, ResolvedInitExprKind, resolve_init_expr},
-        invocation_resolver::{ResolvedInvocationResult, ResolvedMethodKind},
-        param_resolver::{ResolvedParam, ResolvedParamKind, resolve_parameters},
+        init_expr_resolver::{resolve_init_expr, ResolvedInitExpr, ResolvedInitExprKind},
+        param_resolver::{resolve_parameters, ResolvedParam, ResolvedParamKind},
         ty::TyKind,
         ty_var_access_resolver::{LookUp, ResolvedAccess},
         using_resolver::resolve_using,
         walk::{ResolvedPath, ResolvedPathKind, ResolvedPathResult},
-    },
+    }, HirNodeInfo
 };
 
 pub trait WalkHir<'db> {
@@ -223,6 +220,12 @@ impl<'db> WalkHir<'db> for MethodRef<'db> {
         if let Some(ret) = self.return_type(db) {
             ret.walk_hir(db, f)?;
         }
+
+        if let MethodRef::Declared(m) = self {
+            for stmt in m.stmts(db) {
+                stmt.walk_hir(db, f)?;
+            }
+        }
         ControlFlow::Continue(())
     }
 }
@@ -295,13 +298,16 @@ impl<'db> WalkHir<'db> for Expr<'db> {
                 right.walk_hir(db, f)?;
             }
             ExprKind::PrimaryExpr(expr) => match expr {
-                PrimaryExpr::VariableAccess(variable)=> {
+                PrimaryExpr::VariableAccess(variable) => {
                     let var_access = variable.lookup(db);
                     var_access.walk_hir(db, f)?;
                 }
+                PrimaryExpr::FuncCall(func) => {
+                    let resolved_call = func.resolve_func_call(db);
+                    resolved_call.walk_hir(db, f)?;
+                }
                 _ => {}
             },
-            _ => {}
         }
         ControlFlow::Continue(())
     }
@@ -376,24 +382,6 @@ impl<'db> WalkHir<'db> for ResolvedParam<'db> {
     }
 }
 
-impl<'db> WalkHir<'db> for ResolvedInvocationResult<'db> {
-    fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
-        &self,
-        db: &'db dyn BaseDatabase,
-        f: &mut F,
-    ) -> ControlFlow<()> {
-        match &self.target.kind {
-            ResolvedMethodKind::InheritedMethod { target, method }
-            | ResolvedMethodKind::DeclaredMethod { target, method } => {
-                target.walk_hir(db, f)?;
-                method.walk_hir(db, f)
-            }
-            _ => ControlFlow::Continue(()),
-        }?;
-        ControlFlow::Continue(())
-    }
-}
-
 impl<'db> WalkHir<'db> for ResolvedFuncCall<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
         &self,
@@ -403,35 +391,11 @@ impl<'db> WalkHir<'db> for ResolvedFuncCall<'db> {
         self.target.walk_hir(db, f)?;
 
         match self.target.fully_resolved(db) {
-            Ok(r) => match &r.kind {
-                ResolvedPathKind::Pou(pou) => {
-                    for param in resolve_parameters(db, pou, &self.params) {
-                        param.walk_hir(db, f)?;
-                    }
+            Ok(r) => {
+                for param in resolve_parameters(db, r.target_scope_id(db), &self.params) {
+                    param.walk_hir(db, f)?;
                 }
-                ResolvedPathKind::Variable(v) => match v.spec(db).to_ty(db).kind(db) {
-                    TyKind::Function(func) => {
-                        for param in resolve_parameters(db, func, &self.params) {
-                            param.walk_hir(db, f)?;
-                        }
-                    }
-                    TyKind::FunctionBlock(fb) => {
-                        for param in resolve_parameters(db, fb, &self.params) {
-                            param.walk_hir(db, f)?;
-                        }
-                    }
-                    TyKind::Class(cl) => {
-                        for param in resolve_parameters(db, cl, &self.params) {
-                            param.walk_hir(db, f)?;
-                        }
-                    }
-                    _ => {}
-                },
-                ResolvedPathKind::Method(method) => {
-                    method.walk_hir(db, f)?;
-                }
-                _ => {}
-            },
+            }
             _ => {}
         }
         ControlFlow::Continue(())

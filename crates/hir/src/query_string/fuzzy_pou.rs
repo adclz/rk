@@ -3,7 +3,7 @@ use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
     hir_def::{expressions::spec::Struct, pous::pou::{Pou, PouDecl}},
-    hir_ty::{signatures::GlobalVariables, ty::{Ty, TyKind}},
+    hir_ty::{ty::{Ty, TyKind}},
     query_string::query::{NamedSymbol, Query, SymbolIndex, SymbolKind},
 };
 
@@ -13,7 +13,7 @@ pub fn pou_symbol_index<'db>(
     pou: PouDecl<'db>,
 ) -> Vec<SymbolIndex<'db>> {
     let mut variables = vec![];
-    pou.global_variables(db).iter().for_each(|((i, v))| {
+    pou.scope_id(db).global_variables(db).iter().for_each(|((i, v))| {
         variables.push(NamedSymbol {
             name: v.name(db).text(db).to_string(),
             kind: SymbolKind::Variable(*v),

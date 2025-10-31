@@ -105,6 +105,7 @@ fn resolve_unresolved<'db>(
                                 expr: CallSite::new( name.scope_id, name.id),
                                 adjustement: Adjustement::None,
                             }),
+                            CallSite::new( name.scope_id, name.id),
                             vec![],
                         );
 

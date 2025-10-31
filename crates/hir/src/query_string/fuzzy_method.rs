@@ -1,7 +1,7 @@
 use auto_lsp::default::db::BaseDatabase;
 use ide_diagnostic::IdeDiagnostic;
 
-use crate::{hir_def::pous::pou::PouDecl, hir_ty::{inheritance_solver::MethodRef, signatures::LocalVariables}, query_string::query::{NamedSymbol, Query, SymbolIndex, SymbolKind}};
+use crate::{hir_def::pous::pou::PouDecl, hir_ty::inheritance_solver::MethodRef, query_string::query::{NamedSymbol, Query, SymbolIndex, SymbolKind}, HirNodeInfo};
 
 #[salsa::tracked]
 pub fn method_symbol_index<'db>(
@@ -9,7 +9,7 @@ pub fn method_symbol_index<'db>(
     method: MethodRef<'db>,
 ) -> Vec<SymbolIndex<'db>> {
     let mut variables = vec![];
-    method.local_variables(db).iter().for_each(|((i, v))| {
+    method.get_scope_id(db).local_variables(db).iter().for_each(|((i, v))| {
         variables.push(NamedSymbol {
             name: v.name(db).text(db).to_string(),
             kind: SymbolKind::Variable(*v),

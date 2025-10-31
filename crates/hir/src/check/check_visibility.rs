@@ -10,7 +10,7 @@ use crate::{
         scope::{ScopeId, ScopeKind},
         semantic_index::{get_scope, semantic_index},
         visibility::Visibility,
-    }, hir_ty::inheritance_solver::MethodRef, HirNodeInfo
+    }, hir_ty::{inheritance_solver::MethodRef, ty_var_access_resolver::ResolvedAccess, walk::{ResolvedPath, ResolvedPathKind}}, HirNodeInfo
 };
 
 /*
@@ -35,78 +35,45 @@ namespace.
 and its derivations (default).
 */
 
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update, salsa::Supertype)]
-pub enum CallableType<'db> {
-    Method(MethodRef<'db>),
-    Variable(VariableDecl<'db>),
-}
 
-impl<'db> CallableType<'db> {
-    pub fn name(&self, db: &'db dyn BaseDatabase) -> &'db Ident {
-        match self {
-            Self::Method(m) => m.name(db),
-            Self::Variable(v) => v.name(db),
-        }
-    }
-
-    pub fn visibility(&self, db: &'db dyn BaseDatabase) -> Visibility {
-        match self {
-            Self::Method(m) => m.visibility(db),
-            Self::Variable(v) => Visibility::PUBLIC, // todo
-        }
-    }
-}
-
-impl<'db> From<MethodRef<'db>> for CallableType<'db> {
-    fn from(value: MethodRef<'db>) -> Self {
-        Self::Method(value)
-    }
-}
-
-impl<'db> From<VariableDecl<'db>> for CallableType<'db> {
-    fn from(value: VariableDecl<'db>) -> Self {
-        Self::Variable(value)
-    }
-}
-
-impl<'db> HirNodeInfo<'db> for CallableType<'db> {
-    fn get_id(&self, db: &'db dyn BaseDatabase) -> crate::AstId {
-        match self {
-            Self::Method(m) => m.get_id(db),
-            Self::Variable(v) => v.get_id(db),
-        }
-    }
-
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
-        match self {
-            Self::Method(m) => m.get_scope_id(db),
-            Self::Variable(v) => v.get_scope_id(db),
-        }
-    }
-}
-
-pub fn check_call_visibility<'db, T: HirNodeInfo<'db> + Clone + 'db>(
+pub fn check_call_visibility<'db>(
     db: &'db dyn BaseDatabase,
-    accessed: CallableType<'db>,
-    call_site: T,
+    call_site: &ResolvedAccess<'db>,
+    target: &ResolvedPath<'db>,
     errors: &mut Vec<AnalysisError<'db>>,
 ) {
-    let calling_scope = call_site.get_scope_id(db);
-    let method_visibility = accessed.visibility(db);
-    let method_scope = accessed.get_scope_id(db);
+    // Methods use their declaring POU as scope for visibility checks
+    let calling_scope_id = call_site.get_scope_id(db);
+    let calling_scope = match get_scope(db, calling_scope_id).kind {
+        ScopeKind::MethodDecl(m) => {
+            let parent = get_scope(db, calling_scope_id).parent.expect("Method should always have a parent scope");
+            parent
+        },
+        _ => calling_scope_id
+    };
+    let target_scope = match target.kind {
+        ResolvedPathKind::Method(m) => {
+            let scope = m.get_scope_id(db);
+            let parent = get_scope(db, scope).parent.expect("Method should always have a parent scope");
+            parent
+        },
+        _ => target.target_scope_id(db)
+    };
+    let target_visibility = target.visibility(db);
 
     // PUBLIC methods can be called from anywhere
-    if method_visibility.contains(Visibility::PUBLIC) {
+    if target_visibility.contains(Visibility::PUBLIC) {
         return;
     }
 
     // Check PRIVATE visibility - only callable from the same POU (same scope)
-    if method_visibility.contains(Visibility::PRIVATE) {
-        if calling_scope != method_scope {
+    if target_visibility.contains(Visibility::PRIVATE) {
+        eprintln!("Checking PRIVATE visibility: calling_scope={:?}, target_scope={:?}", get_scope(db, calling_scope).kind, get_scope(db, target_scope));
+        if calling_scope != target_scope {
             errors.push(
-                VisibilityError::PrivateMethod {
-                    method: accessed,
-                    call_site: call_site.get_span(db),
+                VisibilityError::Private {
+                    call_site: call_site.clone(),
+                    target: target.clone(),
                 }
                 .into(),
             );
@@ -115,16 +82,16 @@ pub fn check_call_visibility<'db, T: HirNodeInfo<'db> + Clone + 'db>(
     }
 
     // Check INTERNAL visibility - only callable from the same namespace
-    if method_visibility.contains(Visibility::INTERNAL) {
-        let result = is_same_namespace(db, calling_scope, method_scope);
+    if target_visibility.contains(Visibility::INTERNAL) {
+        let result = is_same_namespace(db, calling_scope, target_scope);
         match result {
             SameNamespaceResult::Same => {} // Ok
             _ => {
                 errors.push(
-                    VisibilityError::InternalMethod {
-                        method: accessed,
+                    VisibilityError::Internal {
+                        call_site: call_site.clone(),
+                        target: target.clone(),
                         result,
-                        call_site: call_site.get_span(db),
                     }
                     .into(),
                 );
@@ -134,12 +101,12 @@ pub fn check_call_visibility<'db, T: HirNodeInfo<'db> + Clone + 'db>(
     }
 
     // Check PROTECTED visibility (default) - callable from same POU or derived POUs
-    if (method_visibility.contains(Visibility::PROTECTED) || method_visibility.is_empty())
-        && !is_derived_pou(db, calling_scope, method_scope) {
+    if (target_visibility.contains(Visibility::PROTECTED) || target_visibility.is_empty())
+        && !is_derived_pou(db, calling_scope, target_scope) {
             errors.push(
-                VisibilityError::ProtectedMethod {
-                    method: accessed,
-                    call_site: call_site.get_span(db),
+                VisibilityError::Protected {
+                    call_site: call_site.clone(),
+                    target: target.clone(),
                 }
                 .into(),
             );

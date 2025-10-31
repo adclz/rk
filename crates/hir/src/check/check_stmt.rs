@@ -14,19 +14,15 @@ use crate::{
             expression::{Expr, FuncCall, ParamAssign, ParamAssignKind, VarAccess, VariableAccess},
             invocation::Invocation,
             statement::{Stmt, StmtKind},
-        },
-        interned::identifier::Ident,
-        pous::{pou::Pou, variable::VariableDecl},
-        semantic_index::{get_scope, semantic_index},
+        }, interned::identifier::Ident, pous::{pou::Pou, variable::VariableDecl}, scope::ScopeId, semantic_index::{get_scope, semantic_index}
     },
     hir_ty::{
         func_call_resolver::ResolvedFuncCall,
-        param_resolver::{ResolvedParamKind, resolve_parameters},
-        signatures::LocalVariables,
+        param_resolver::{resolve_parameters, ResolvedParamKind},
         ty::{Ty, TyKind},
         ty_var_access_resolver::{LookUp, ResolvedAccess},
         walk::ResolvedPathKind,
-    },
+    }, HirNodeInfo,
 };
 
 impl<'db> Check<'db> for Vec<Stmt<'db>> {
@@ -195,47 +191,11 @@ fn check_func_call<'db>(
 ) -> Result<(), AnalysisError<'db>> {
     let fun_call = fun_call.resolve_func_call(db);
     let resolved = fun_call.target.fully_resolved(db)?;
-
-    let variables = match resolved.kind {
-        // A FB or CLASS declared in a variable section
-        ResolvedPathKind::Variable(v) => match v.spec(db).to_ty(db).kind(db) {
-            TyKind::FunctionBlock(f) => {
-                check_parameters(db, fun_call.target, f, &fun_call.params, errors)
-            }
-            TyKind::Class(cl) => {
-                check_parameters(db, fun_call.target, cl, &fun_call.params, errors)
-            }
-            _ => {
-                return Err(StmtError::CallANonCallableType {
-                    call: fun_call.target,
-                }
-                .into());
-            }
-        },
-        // Direct FUNCTION call
-        ResolvedPathKind::Pou(p) => match p.pou(db) {
-            Pou::Function(f) => {
-                check_parameters(db, fun_call.target, &p, &fun_call.params, errors);
-            }
-            _ => {
-                return Err(StmtError::CallANonCallableType {
-                    call: fun_call.target,
-                }
-                .into());
-            }
-        },
-        // METHOD call
-        ResolvedPathKind::Method(m) => {
-            check_call_visibility(db, m.into(), fun_call.target.clone(), errors);
-            check_parameters(db, fun_call.target.clone(), &m, &fun_call.params, errors);
-        }
-        _ => {
-            return Err(StmtError::CallANonCallableType {
-                call: fun_call.target,
-            }
-            .into());
-        }
-    };
+    if !resolved.is_callable(db) {
+        return Err(StmtError::CallANonCallableType { call: fun_call.target }.into());
+    }
+    check_call_visibility(db, &fun_call.target, &resolved, errors);
+    check_parameters(db, fun_call.target.clone(), resolved.target_scope_id(db), &fun_call.params, errors);
     Ok(())
 }
 
@@ -274,7 +234,7 @@ impl FormalCall {
 fn check_parameters<'db>(
     db: &'db dyn BaseDatabase,
     target: ResolvedAccess<'db>,
-    signature: &impl LocalVariables<'db>,
+    signature: ScopeId<'db>,
     params: &Vec<ParamAssign<'db>>,
     errors: &mut Vec<AnalysisError<'db>>,
 ) {

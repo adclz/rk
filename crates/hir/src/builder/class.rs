@@ -8,11 +8,11 @@ use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use crate::hir_def::modifier::Modifier;
 use crate::hir_def::pous::class::{Class, MethodDecl};
 use crate::hir_def::pous::pou::{Pou, PouDecl};
-use crate::hir_def::scope::{ScopeId, Scope, ScopeKind};
+use crate::hir_def::scope::{Scope, ScopeId, ScopeKind};
 use crate::hir_def::visibility::Visibility;
 use ast::generated::{ClassDecl, ClassVariables};
 use auto_lsp::anyhow;
-use auto_lsp::core::ast::AstNode;
+use auto_lsp::core::ast::{AstNode, AstNodeId};
 
 impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_class(
@@ -94,9 +94,51 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
         });
 
-        let methods = class.methods
+        let name = Ident::from_node(self.db, self.file, class.name.cast(self.ast))?;
+        let usings = match self.parse_usings(&class.directives) {
+            Ok(usings) => usings,
+            Err(error) => {
+                self.errors.push(error);
+                vec![]
+            }
+        };
+
+        let result = PouDecl::new(
+            self.db,
+            Pou::Class(Class::new(
+                self.db, extends, implements, variables, self.parse_methods(&class.methods), modifiers, scope_id,
+            )),
+            name,
+            class.into(),
+            class.name.cast(self.ast).into(),
+            scope_id,
+        );
+
+        let scope = Scope::new(
+            self.file,
+            ScopeKind::Pou(result),
+            usings,
+            scope_id,
+            Visibility::empty(),
+            Some(previous_scope),
+        );
+
+        self.scope_keys.insert(scope_id.scope(self.db), scope);
+
+        Ok(result)
+    }
+}
+
+impl<'db> SemanticIndexBuilder<'db> {
+    pub fn parse_methods(&mut self, class: &[AstNodeId<ast::generated::MethodDecl>]) -> Vec<MethodDecl<'db>> {
+        let previous_scope = self.current_scope;
+
+        class
             .iter()
             .filter_map(|m| {
+                let scope_id = self.generate_scope_id();
+                self.current_scope = scope_id;
+        
             let name = match Ident::from_node(self.db, self.file, m.cast(self.ast).name.cast(self.ast)) {
                 Ok(name) => name,
                 Err(error) => {
@@ -116,6 +158,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
 
             type MethodBody = ast::generated::ExternalVarDecls_InOutDecls_InputDecls_OutputDecls_TempVarDecls_VarDecls;
+
             let mut method_variables = vec![];
             for v in m.cast(self.ast).variables.iter() {
                 match v.cast(self.ast) {
@@ -156,7 +199,7 @@ impl<'db> SemanticIndexBuilder<'db> {
 
             let _override = m.cast(self.ast)._override.is_some();
 
-            Some(MethodDecl::new(
+            let result = MethodDecl::new(
                 self.db,
                 method_variables,
                 name,
@@ -176,40 +219,21 @@ impl<'db> SemanticIndexBuilder<'db> {
                 m.cast(self.ast).into(),
                 m.cast(self.ast).name.cast(self.ast).into(),
                 scope_id
-            ))
-        }).collect::<Vec<_>>();
+            );
 
-        let name = Ident::from_node(self.db, self.file, class.name.cast(self.ast))?;
-        let usings = match self.parse_usings(&class.directives) {
-            Ok(usings) => usings,
-            Err(error) => {
-                self.errors.push(error);
-                vec![]
-            }
-        };
+            let scope = Scope::new(
+                self.file,
+                ScopeKind::MethodDecl(result),
+                vec![],
+                scope_id,
+                result.visibility(self.db),
+                Some(previous_scope),
+            );
 
-        let result = PouDecl::new(
-            self.db,
-            Pou::Class(Class::new(
-                self.db, extends, implements, variables, methods, modifiers, scope_id,
-            )),
-            name,
-            class.into(),
-            class.name.cast(self.ast).into(),
-            scope_id,
-        );
+            self.scope_keys.insert(scope_id.scope(self.db), scope);
 
-        let scope = Scope::new(
-            self.file,
-            ScopeKind::Pou(result),
-            usings,
-            scope_id,
-            Visibility::empty(),
-            Some(previous_scope),
-        );
 
-        self.scope_keys.insert(scope_id.scope(self.db), scope);
-
-        Ok(result)
+            Some(result)
+        }).collect::<Vec<_>>()
     }
 }

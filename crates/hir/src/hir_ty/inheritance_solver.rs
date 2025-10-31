@@ -118,17 +118,28 @@ impl<'db> From<&MethodDecl<'db>> for MethodRef<'db> {
     }
 }
 
-/// Unsure if this should be interned.
-#[salsa::interned(debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct InheritedMethodSet<'db> {
-    #[returns(ref)]
     pub methods: BTreeMap<Ident, InheritedMethod<'db>>,
 
-    #[returns(ref)]
     pub duplicates: Vec<(InheritedMethod<'db>, InheritedMethod<'db>)>,
-    
-    #[returns(ref)]
+
     pub unresolved: Vec<SpanNamespaceAccess<'db>>,
+}
+
+impl<'db> InheritedMethodSet<'db> {
+    fn new(
+        db: &'db dyn BaseDatabase,
+        methods: BTreeMap<Ident, InheritedMethod<'db>>,
+        duplicates: Vec<(InheritedMethod<'db>, InheritedMethod<'db>)>,
+        unresolved: Vec<SpanNamespaceAccess<'db>>,
+    ) -> Self {
+        InheritedMethodSet {
+            methods,
+            duplicates,
+            unresolved,
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -146,8 +157,8 @@ impl<'db> InheritedMethod<'db> {
 fn inherited_method_initial<'db>(
     db: &'db dyn BaseDatabase,
     pou: PouDecl<'db>,
-) -> InheritedMethodSet<'db> {
-    InheritedMethodSet::new(db, BTreeMap::new(), vec![], vec![])
+) -> Arc<InheritedMethodSet<'db>>{
+    Arc::new(InheritedMethodSet::new(db, BTreeMap::new(), vec![], vec![]))
 }
 
 fn inherited_method_cycle<'db>(
@@ -155,7 +166,7 @@ fn inherited_method_cycle<'db>(
     value: &InheritedMethodSet<'db>,
     count: u32,
     pou: PouDecl<'db>,
-) -> salsa::CycleRecoveryAction<InheritedMethodSet<'db>> {
+) -> salsa::CycleRecoveryAction<Arc<InheritedMethodSet<'db>>> {
     salsa::CycleRecoveryAction::Iterate
 }
 
@@ -184,7 +195,7 @@ pub fn declared_methods<'db>(
 pub fn inherited_methods<'db>(
     db: &'db dyn BaseDatabase,
     pou: PouDecl<'db>,
-) -> InheritedMethodSet<'db> {
+) -> Arc<InheritedMethodSet<'db>> {
     let mut methods = BTreeMap::new();
     let mut duplicates = vec![];
     let mut unresolved = vec![];
@@ -210,7 +221,7 @@ pub fn inherited_methods<'db>(
             }
             for iface in class.implements(db) {
                 match resolve_namespace_access(db, iface.path) {
-                    Some(iface) => {
+                    Some(iface) if matches!(*iface.pou(db), Pou::Interface(_)) => {
                         inherit_from(iface);
                     }
                     _ => unresolved.push(*iface),
@@ -240,10 +251,21 @@ pub fn inherited_methods<'db>(
                     _ => unresolved.push(*base),
                 }
             }
+
+            for iface in fb.implements(db) {
+                match resolve_namespace_access(db, iface.path) {
+                    Some(iface) if matches!(*iface.pou(db), Pou::Interface(_)) => {
+                        inherit_from(iface);
+                    }
+                    _ => {
+                        unresolved.push(*iface);
+                    },
+                }
+            }
         }
 
         _ => {}
     }
 
-    InheritedMethodSet::new(db, methods, duplicates, unresolved)
+    Arc::new(InheritedMethodSet::new(db, methods, duplicates, unresolved))
 }
