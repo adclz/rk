@@ -79,8 +79,8 @@ NAMESPACE {ns}
         let scope = get_scope(db, self.scope_id(db));
 
         // Don't provide completions between the namespace keyword and the namespace name
-        if self.get_name_span(db)?.end_byte > offset {
-            if !scope.visibility == Visibility::PUBLIC {
+        /*if self.get_name_span(db)?.end_byte > offset {
+            if !self.visibility == Visibility::PUBLIC {
                 return Some(vec![CompletionItem::new_simple(
                     "INTERNAL".into(),
                     "internal".into(),
@@ -88,7 +88,7 @@ NAMESPACE {ns}
             } else {
                 return None;
             }
-        }
+        }*/
 
         let mut completions = vec![
             completions::static_snippets::namespace(),

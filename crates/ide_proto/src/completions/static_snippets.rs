@@ -1,6 +1,28 @@
 use auto_lsp::lsp_types::{self, CompletionItem};
 
 #[inline]
+pub fn extends() -> CompletionItem {
+    CompletionItem {
+        label: "EXTENDS".into(),
+        kind: Some(lsp_types::CompletionItemKind::INTERFACE),
+        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+        insert_text: Some("EXTENDS ${1:ext}".into()),
+        ..Default::default()
+    }
+}
+
+#[inline]
+pub fn implements() -> CompletionItem {
+    CompletionItem {
+        label: "IMPLEMENTS".into(),
+        kind: Some(lsp_types::CompletionItemKind::INTERFACE),
+        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+        insert_text: Some("IMPLEMENTS ${1:impl}".into()),
+        ..Default::default()
+    }
+}
+
+#[inline]
 pub fn namespace() -> CompletionItem {
     CompletionItem {
         label: "NAMESPACE".into(),

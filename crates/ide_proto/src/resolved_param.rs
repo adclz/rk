@@ -42,6 +42,34 @@ impl<'db> ToProtocol<'db> for ResolvedParam<'db> {
             }
         }
     }
+
+    fn definition(&'db self, _db: &'db dyn BaseDatabase) -> Option<auto_lsp::lsp_types::GotoDefinitionResponse> {
+        match self.kind {
+            ResolvedParamKind::NonFormal { resolved_param, .. } => {
+                resolved_param.and_then(|p| p.definition(_db))
+            },
+            ResolvedParamKind::FormalInput { resolved_param, .. } => {
+                resolved_param.and_then(|p| p.definition(_db))
+            }
+            ResolvedParamKind::FormalOutput { resolved_param, .. } => {
+                resolved_param.and_then(|p| p.definition(_db))
+            }
+        }
+    }
+
+    fn declaration(&'db self, _db: &'db dyn BaseDatabase) -> Option<auto_lsp::lsp_types::request::GotoDeclarationResponse> {
+        match self.kind {
+            ResolvedParamKind::NonFormal { resolved_param, .. } => {
+                resolved_param.and_then(|p| p.declaration(_db))
+            },
+            ResolvedParamKind::FormalInput { resolved_param, .. } => {
+                resolved_param.and_then(|p| p.declaration(_db))
+            }
+            ResolvedParamKind::FormalOutput { resolved_param, .. } => {
+                resolved_param.and_then(|p| p.declaration(_db))
+            }
+        }
+    }
 }
 
 pub fn get_param_inlay_hint_position(

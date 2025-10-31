@@ -5,7 +5,7 @@ use auto_lsp::{
         request::GotoDeclarationResponse, CompletionItem, GotoDefinitionResponse, Hover
     },
 };
-use hir::{hir_def::{pous::pou::Pou, scope::ScopeKind, semantic_index::semantic_index}, hir_ty::{name_res::all_global_pous, ty_var_access_resolver::ResolvedAccess}, HirNodeInfo};
+use hir::{hir_ty::{name_res::all_global_pous, ty_var_access_resolver::ResolvedAccess}, HirNodeInfo};
 
 use crate::{completions::per_scope::scoped_completions, ToProtocol};
 

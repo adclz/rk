@@ -2,10 +2,9 @@ use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{CompletionItem, GotoDefinitionResponse, Hover, request::GotoDeclarationResponse},
 };
-use hir::hir_ty::{
-    signatures::LocalVariables,
-    walk::{ResolvedPath, ResolvedPathKind},
-};
+use hir::{hir_ty::{
+    inheritance_solver::{declared_methods, inherited_methods}, walk::{ResolvedPath, ResolvedPathKind}
+}, HirNodeInfo};
 
 use crate::{ToProtocol, completions::static_snippets::namespace};
 
@@ -15,7 +14,9 @@ impl<'db> ToProtocol<'db> for ResolvedPath<'db> {
             ResolvedPathKind::Pou(p)
             | ResolvedPathKind::This(p)
             | ResolvedPathKind::Super(p)
-            | ResolvedPathKind::SuperBody(p) => p.hover(db, offset),
+            | ResolvedPathKind::SuperBody(p) => {
+                p.hover(db, p.name_span(db).start_byte)
+            },
             ResolvedPathKind::Spec(t) => t.hover(db, offset),
             ResolvedPathKind::StructElement(st) => st.hover(db, offset),
             ResolvedPathKind::Variable(v) => v.hover(db, offset),
@@ -58,13 +59,22 @@ impl<'db> ToProtocol<'db> for ResolvedPath<'db> {
             ResolvedPathKind::Variable(v) => v.completion(db, offset)?,
             ResolvedPathKind::Pou(pou) => pou.completion(db, offset)?,
             ResolvedPathKind::Spec(spec) => spec.completion(db, offset)?,
-            _ => {
-                eprintln!(
-                    "ResolvedPathElement::completion: unsupported kind {:?}",
-                    self.kind
-                );
-                None?
+            ResolvedPathKind::This(pou) => {
+                declared_methods(db, pou)
+                    .iter()
+                    .filter_map(|(_, m)| m.completion(db, offset))
+                    .flatten()
+                    .collect::<Vec<_>>()
             }
+            ResolvedPathKind::Super(pou) => {
+                inherited_methods(db, pou)
+                    .methods
+                    .iter()
+                    .filter_map(|(_, m)| m.method.completion(db, offset))
+                    .flatten()
+                    .collect::<Vec<_>>()
+            }
+            _ => None?
         })
     }
 }

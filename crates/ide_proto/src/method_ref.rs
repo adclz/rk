@@ -1,11 +1,13 @@
 use auto_lsp::{
     core::document_symbols_builder::DocumentSymbolsBuilder,
     default::db::BaseDatabase,
-    lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind, SymbolKind},
+    lsp_types::{
+        CompletionItem, CompletionItemKind, Hover, HoverContents, InsertTextFormat, MarkupContent, MarkupKind, SymbolKind
+    },
 };
-use hir::{HirNodeInfo, TypeInfo, hir_ty::inheritance_solver::MethodRef};
+use hir::{hir_def::pous::variable::VariableKind, hir_ty::{inheritance_solver::MethodRef}, HirNodeInfo, TypeInfo};
 
-use crate::{HasComment, ToProtocol};
+use crate::{completions::per_scope::signature, HasComment, ToProtocol};
 
 impl<'db> ToProtocol<'db> for MethodRef<'db> {
     fn document_symbols(&self, db: &'db dyn BaseDatabase, builder: &mut DocumentSymbolsBuilder) {
@@ -70,5 +72,20 @@ impl<'db> ToProtocol<'db> for MethodRef<'db> {
             }),
             range: Some(self.get_span(db).into()),
         })
+    }
+
+    fn completion(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        offset: usize,
+    ) -> Option<Vec<CompletionItem>> {
+        Some(vec![CompletionItem {
+            label: self.name(db).text(db).to_string(),
+            detail: Some("METHOD".into()),
+            kind: Some(CompletionItemKind::METHOD),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            insert_text: Some(signature(db, self.name(db).text(db), self.get_scope_id(db))),
+            ..Default::default()
+        }])
     }
 }

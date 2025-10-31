@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{CompletionItem, CompletionItemKind, CompletionItemLabelDetails, InsertTextFormat},
@@ -13,7 +15,6 @@ use hir::{
     },
     hir_ty::{
         name_res::{all_global_pous, all_pous_in_scope},
-        signatures::LocalVariables,
     },
 };
 
@@ -57,7 +58,7 @@ pub fn scoped_completions<'db>(
         ScopeKind::Global => Some(
             all_global_pous(db)
                 .iter()
-                .flat_map(|(_, pou)| signature_pou_completion(db, *pou))
+                .map(|(_, pou)| simple_pou_completion(db, *pou))
                 .collect(),
         ),
         _ => None,
@@ -103,51 +104,7 @@ pub fn signature_pou_completion<'db>(
     db: &'db dyn BaseDatabase,
     pou: PouDecl<'db>,
 ) -> Option<CompletionItem> {
-    let sep = match pou.local_variables(db).len() {
-        0..5 => "",
-        _ => "\n",
-    };
-    let signature = format!(
-        "{}({sep}{}{sep});",
-        pou.name(db).text(db),
-        pou.local_variables(db)
-            .iter()
-            .enumerate()
-            .filter_map(|(i, (n, v))| {
-                Some(match v.kind(db) {
-                    VariableKind::Input => {
-                        format!(
-                            "\t{} := ${{{}:{}}}",
-                            v.name(db).text(db),
-                            i,
-                            v.name(db).text(db)
-                        )
-                    }
-                    VariableKind::InOut => {
-                        format!(
-                            "\t{} := ${{{}:{}}}",
-                            v.name(db).text(db),
-                            i,
-                            v.name(db).text(db)
-                        )
-                    }
-                    VariableKind::Output => {
-                        format!(
-                            "\t{} => ${{{}:{}}}",
-                            v.name(db).text(db),
-                            i,
-                            v.name(db).text(db)
-                        )
-                    }
-                    _ => None?,
-                })
-            })
-            .collect::<Vec<_>>()
-            .join(match pou.local_variables(db).len() {
-                0..5 => ", ",
-                _ => ",\n",
-            })
-    );
+    let sig = Some(signature(db, pou.name(db).text(db), pou.scope_id(db)));
     Some(match pou.pou(db) {
         Pou::FunctionBlock(fb) => CompletionItem {
             label: pou.name(db).text(db).to_string(),
@@ -158,19 +115,7 @@ pub fn signature_pou_completion<'db>(
             }),
             kind: Some(CompletionItemKind::STRUCT),
             insert_text_format: Some(InsertTextFormat::SNIPPET),
-            insert_text: Some(signature),
-            ..Default::default()
-        },
-        Pou::Class(cl) => CompletionItem {
-            label: pou.name(db).text(db).to_string(),
-            detail: Some("CLASS".into()),
-            label_details: Some(CompletionItemLabelDetails {
-                detail: Some("CALL".into()),
-                ..Default::default()
-            }),
-            kind: Some(CompletionItemKind::CLASS),
-            insert_text_format: Some(InsertTextFormat::SNIPPET),
-            insert_text: Some(signature),
+            insert_text: sig,
             ..Default::default()
         },
         Pou::Function(f) => CompletionItem {
@@ -182,9 +127,62 @@ pub fn signature_pou_completion<'db>(
             }),
             kind: Some(CompletionItemKind::FUNCTION),
             insert_text_format: Some(InsertTextFormat::SNIPPET),
-            insert_text: Some(signature),
+            insert_text: sig,
             ..Default::default()
         },
         _ => None?,
     })
+}
+
+
+pub fn signature<'db>(
+    db: &'db dyn BaseDatabase,
+    name: &impl Display,
+    has_variables: ScopeId<'db>,
+) -> String {
+       let (sep, tab) = match has_variables.local_variables(db).len() {
+            0..5 => ("", ""),
+            _ => ("\n", "\t"),
+        };
+    format!(
+        "{}({sep}{}{sep});",
+        name,
+        has_variables.local_variables(db)
+            .iter()
+            .enumerate()
+            .filter_map(|(i, (n, v))| {
+                Some(match v.kind(db) {
+                    VariableKind::Input => {
+                        format!(
+                            "{tab}{} := ${{{}:{}}}",
+                            v.name(db).text(db),
+                            i + 1,
+                            v.name(db).text(db)
+                        )
+                    }
+                    VariableKind::InOut => {
+                        format!(
+                            "{tab}{} := ${{{}:{}}}",
+                            v.name(db).text(db),
+                            i + 1,
+                            v.name(db).text(db)
+                        )
+                    }
+                    VariableKind::Output => {
+                        format!(
+                            "{tab}{} => ${{{}:{}}}",
+                            v.name(db).text(db),
+                            i + 1,
+                            v.name(db).text(db)
+                        )
+                    }
+                    _ => None?,
+                })
+            })
+            .collect::<Vec<_>>()
+            .join(match has_variables.local_variables(db).len() {
+                0..5 => ", ",
+                _ => ",\n",
+            })
+        )
 }
