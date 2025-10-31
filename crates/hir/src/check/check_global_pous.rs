@@ -1,14 +1,14 @@
 use auto_lsp::default::db::{BaseDatabase, file::File};
+use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    check::errors::{analysis_error::AnalysisError, duplicates::DuplicateError},
+    check::errors::{analysis_error::{AnalysisError, ToIdeDiagnostic}, duplicates::DuplicateError},
     hir_def::{interned::identifier::Ident, pous::pou::PouDecl, semantic_index::semantic_index},
 };
 
-#[salsa::tracked(returns(ref), no_eq)]
-pub fn check_duplicate_pous<'db>(db: &'db dyn BaseDatabase, file: File) -> Vec<AnalysisError<'db>> {
-    let mut errors: Vec<AnalysisError<'db>> = vec![];
+pub fn check_duplicate_pous<'db>(db: &'db dyn BaseDatabase, file: File) -> Vec<IdeDiagnostic> {
+    let mut errors: Vec<IdeDiagnostic> = vec![];
     let self_pous = global_pous_in_file(db, file);
 
     // Multiple local POUs with the same name in this file
@@ -21,7 +21,7 @@ pub fn check_duplicate_pous<'db>(db: &'db dyn BaseDatabase, file: File) -> Vec<A
                             pou1: pous[j],
                             pou2: pous[0],
                         }
-                        .into(),
+                        .to_diagnostic(db),
                     );
                 }
             }
@@ -43,7 +43,7 @@ pub fn check_duplicate_pous<'db>(db: &'db dyn BaseDatabase, file: File) -> Vec<A
                                     pou1: *self_pou,
                                     pou2: *pou,
                                 }
-                                .into(),
+                                .to_diagnostic(db),
                             );
                         }
                     }

@@ -1,8 +1,9 @@
 use auto_lsp::default::db::BaseDatabase;
+use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
     check::errors::{
-        analysis_error::AnalysisError, visibility::VisibilityError,
+        analysis_error::{AnalysisError, ToIdeDiagnostic}, visibility::VisibilityError,
     }, hir_def::{
         interned::identifier::Ident,
         namespace::NamespaceDecl,
@@ -40,7 +41,7 @@ pub fn check_call_visibility<'db>(
     db: &'db dyn BaseDatabase,
     call_site: &ResolvedAccess<'db>,
     target: &ResolvedPath<'db>,
-    errors: &mut Vec<AnalysisError<'db>>,
+    errors: &mut Vec<IdeDiagnostic>,
 ) {
     // Methods use their declaring POU as scope for visibility checks
     let calling_scope_id = call_site.get_scope_id(db);
@@ -75,7 +76,7 @@ pub fn check_call_visibility<'db>(
                     call_site: call_site.clone(),
                     target: target.clone(),
                 }
-                .into(),
+                .to_diagnostic(db),
             );
         }
         return;
@@ -93,7 +94,7 @@ pub fn check_call_visibility<'db>(
                         target: target.clone(),
                         result,
                     }
-                    .into(),
+                    .to_diagnostic(db),
                 );
             }
         }
@@ -108,7 +109,7 @@ pub fn check_call_visibility<'db>(
                     call_site: call_site.clone(),
                     target: target.clone(),
                 }
-                .into(),
+                .to_diagnostic(db),
             );
         }
 }

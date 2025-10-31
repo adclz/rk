@@ -1,18 +1,19 @@
 use auto_lsp::default::db::BaseDatabase;
+use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
     check::{
         check_semantic_index::DataTypeCheck,
         coerce::coerce_ty_with_expr,
         errors::{
-            analysis_error::AnalysisError, subrange::SubRangeError,
+            analysis_error::{AnalysisError, ToIdeDiagnostic}, subrange::SubRangeError,
         },
     },
     hir_def::expressions::spec::{ElementarySpec, SpecKind, SubRange},
 };
 
 impl<'db> DataTypeCheck<'db> for SubRange<'db> {
-    fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<AnalysisError<'db>>) {
+    fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<IdeDiagnostic>) {
         let typ = self._type(db);
 
         match typ.kind(db) {
@@ -30,12 +31,12 @@ impl<'db> DataTypeCheck<'db> for SubRange<'db> {
                 | ElementarySpec::LInt
                 | ElementarySpec::ULInt => {}
                 _ => {
-                    errors.push(SubRangeError::InvalidSubrangeType { typ }.into());
+                    errors.push(SubRangeError::InvalidSubrangeType { typ }.to_diagnostic(db));
                     return;
                 }
             },
             _ => {
-                errors.push(SubRangeError::InvalidSubrangeType { typ }.into());
+                errors.push(SubRangeError::InvalidSubrangeType { typ }.to_diagnostic(db));
                 return;
             }
         }
@@ -43,11 +44,11 @@ impl<'db> DataTypeCheck<'db> for SubRange<'db> {
         let min = self.lower(db);
         let max = self.upper(db);
         if let Err(err) = coerce_ty_with_expr(db, typ.to_ty(db), min) {
-            errors.push(SubRangeError::InvalidSubrangeStart { expr: min, err }.into())
+            errors.push(SubRangeError::InvalidSubrangeStart { expr: min, err }.to_diagnostic(db))
         }
 
         if let Err(err) = coerce_ty_with_expr(db, typ.to_ty(db), max) {
-            errors.push(SubRangeError::InvalidSubrangeEnd { expr: max, err }.into())
+            errors.push(SubRangeError::InvalidSubrangeEnd { expr: max, err }.to_diagnostic(db))
         }
     }
 }

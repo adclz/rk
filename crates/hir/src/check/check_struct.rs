@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
 use crate::{
@@ -6,7 +7,7 @@ use crate::{
         check_init_expr::check_init_expr,
         check_semantic_index::DataTypeCheck,
         errors::{
-            analysis_error::AnalysisError, duplicates::DuplicateError,
+            analysis_error::{AnalysisError, ToIdeDiagnostic}, duplicates::DuplicateError,
         },
     },
     hir_def::{
@@ -20,7 +21,7 @@ use crate::{
 };
 
 impl<'db> DataTypeCheck<'db> for Struct<'db> {
-    fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<AnalysisError<'db>>) {
+    fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<IdeDiagnostic>) {
         let mut seen: FxHashMap<Ident, StructElement> = FxHashMap::default();
         for field in &self.elements(db) {
             match seen.get(field.name(db)) {
@@ -30,7 +31,7 @@ impl<'db> DataTypeCheck<'db> for Struct<'db> {
                             field1: *field,
                             field2: *prev,
                         }
-                        .into(),
+                        .to_diagnostic(db),
                     );
                 }
                 None => {
@@ -39,7 +40,7 @@ impl<'db> DataTypeCheck<'db> for Struct<'db> {
             }
 
             if let TyKind::Err(err) = field.spec(db).to_ty(db).kind(db) {
-                errors.push(err.clone().into());
+                errors.push(err.to_diagnostic(db));
             }
 
             if let Some(init_expr) = field.init(db) {

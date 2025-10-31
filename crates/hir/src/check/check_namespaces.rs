@@ -1,10 +1,11 @@
 use std::collections::hash_map::Entry;
 
 use auto_lsp::default::db::{BaseDatabase, file::File};
+use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    check::errors::{analysis_error::AnalysisError, duplicates::DuplicateError},
+    check::errors::{analysis_error::{AnalysisError, ToIdeDiagnostic}, duplicates::DuplicateError},
     hir_def::{interned::identifier::Ident, namespace::NamespaceDecl, pous::pou::PouDecl},
     hir_ty::name_res::shared_namespaces,
 };
@@ -13,8 +14,8 @@ use crate::{
 pub fn check_duplicate_namespaces<'db>(
     db: &'db dyn BaseDatabase,
     namespace: NamespaceDecl<'db>,
-) -> FxHashMap<File, Vec<AnalysisError<'db>>> {
-    let mut errors: FxHashMap<File, Vec<AnalysisError<'db>>> = FxHashMap::default();
+) -> FxHashMap<File, Vec<IdeDiagnostic>> {
+    let mut errors: FxHashMap<File, Vec<IdeDiagnostic>> = FxHashMap::default();
     let mut seen_pous: FxHashMap<Ident, PouDecl<'db>> = FxHashMap::default();
 
     // Collect POUs and process duplicates in a single pass
@@ -34,7 +35,7 @@ pub fn check_duplicate_namespaces<'db>(
                                         pou1: *decl,
                                         pou2: original,
                                     }
-                                    .into(),
+                                    .to_diagnostic(db),
                                 );
                             }
                             Entry::Vacant(err_entry) => {
@@ -43,7 +44,7 @@ pub fn check_duplicate_namespaces<'db>(
                                         pou1: *decl,
                                         pou2: original,
                                     }
-                                    .into(),
+                                    .to_diagnostic(db),
                                 ]);
                             }
                         };

@@ -1,17 +1,18 @@
 use auto_lsp::default::db::BaseDatabase;
+use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
 use crate::{
     check::{
         check_semantic_index::DataTypeCheck,
         coerce::coerce_ty_with_expr,
-        errors::{analysis_error::AnalysisError, duplicates::DuplicateError, enum_::EnumError},
+        errors::{analysis_error::{AnalysisError, ToIdeDiagnostic}, duplicates::DuplicateError, enum_::EnumError},
     },
     hir_def::expressions::spec::{ElementarySpec, Enum, SpecKind},
 };
 
 impl<'db> DataTypeCheck<'db> for Enum<'db> {
-    fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<AnalysisError<'db>>) {
+    fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<IdeDiagnostic>) {
         // Check underlying type
         if let Some(typ) = self.typ(db) {
             match typ.kind(db) {
@@ -28,9 +29,9 @@ impl<'db> DataTypeCheck<'db> for Enum<'db> {
                     | ElementarySpec::UDInt
                     | ElementarySpec::LInt
                     | ElementarySpec::ULInt => {}
-                    _ => errors.push(EnumError::InvalidEnumType { value: typ }.into()),
+                    _ => errors.push(EnumError::InvalidEnumType { value: typ }.to_diagnostic(db)),
                 },
-                _ => errors.push(EnumError::InvalidEnumType { value: typ }.into()),
+                _ => errors.push(EnumError::InvalidEnumType { value: typ }.to_diagnostic(db)),
             }
         };
 
@@ -43,7 +44,7 @@ impl<'db> DataTypeCheck<'db> for Enum<'db> {
                         variant1: *prev,
                         variant2: variant.name,
                     }
-                    .into(),
+                    .to_diagnostic(db),
                 ),
                 None => {
                     seen.insert(variant.name.ident, variant.name);
@@ -58,7 +59,7 @@ impl<'db> DataTypeCheck<'db> for Enum<'db> {
                             variant: variant.name,
                             err,
                         }
-                        .into(),
+                        .to_diagnostic(db),
                     )
                 }
             }

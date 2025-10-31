@@ -1,5 +1,6 @@
-use crate::{hir_def::expressions::expression::Expr};
+use crate::{check::errors::analysis_error::ToIdeDiagnostic, hir_def::expressions::expression::Expr};
 use auto_lsp::default::db::BaseDatabase;
+use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
     check::{
@@ -17,12 +18,12 @@ pub fn check_init_expr<'db>(
     db: &'db dyn BaseDatabase,
     ty: Ty<'db>,
     expr: ResolvedInitExpr<'db>,
-    errors: &mut Vec<AnalysisError<'db>>,
+    errors: &mut Vec<IdeDiagnostic>,
 ) {
     match expr.kind(db) {
         // Process resolver errors first
         ResolvedInitExprKind::Error(err) => {
-            errors.push(err.clone().into());
+            errors.push(err.to_diagnostic(db));
         }
         // Handle constant expressions - only case that needs original type for coercion
         ResolvedInitExprKind::ConstantExpr(expr_val) => {
@@ -32,7 +33,7 @@ pub fn check_init_expr<'db>(
                         err,
                         init_expr: expr_val,
                     }
-                    .into(),
+                    .to_diagnostic(db),
                 )
             }
         }
@@ -75,7 +76,7 @@ fn check_array_dimensions<'db>(
     ranges: &[(Expr<'db>, Expr<'db>)],
     element_type: Ty<'db>,
     values: &[ResolvedInitExpr<'db>],
-    errors: &mut Vec<AnalysisError<'db>>,
+    errors: &mut Vec<IdeDiagnostic>,
 ) {
     if let Some((first_range, remaining_ranges)) = ranges.split_first() {
         if let (Some(v1), Some(v2)) = (
@@ -91,7 +92,7 @@ fn check_array_dimensions<'db>(
                         max_capacity: dimension_capacity,
                         init_expr: err.1,
                     }
-                    .into(),
+                    .to_diagnostic(db),
                 );
             }
 

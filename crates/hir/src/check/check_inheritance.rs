@@ -1,11 +1,12 @@
 use auto_lsp::default::db::BaseDatabase;
+use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::{FxHashMap};
 
 use crate::{
     check::{
         coerce::coerce_ty_with_ty,
         errors::{
-            analysis_error::AnalysisError, duplicates::DuplicateError, inheritance::MethodError,
+            analysis_error::{AnalysisError, ToIdeDiagnostic}, duplicates::DuplicateError, inheritance::MethodError,
         },
     },
     hir_def::{modifier::Modifier, pous::pou::{Pou, PouDecl}
@@ -16,7 +17,7 @@ use crate::{
 pub fn check_inheritance<'db>(
     db: &'db dyn BaseDatabase,
     implementer: PouDecl<'db>,
-    errors: &mut Vec<AnalysisError<'db>>,
+    errors: &mut Vec<IdeDiagnostic>,
 ) {
     let declared_methods = declared_methods(db, implementer);
     let inherited_methods = inherited_methods(db, implementer);
@@ -31,7 +32,7 @@ pub fn check_inheritance<'db>(
             {
                 errors.push(AnalysisError::MethodError(
                     MethodError::AbstractClassHasNoAbstractMethods { class: implementer },
-                ));
+                ).to_diagnostic(db));
             };
         },
         _ => {}
@@ -46,7 +47,7 @@ pub fn check_inheritance<'db>(
                 method1: *m1,
                 method2: *m2,
             }
-            .into(),
+            .to_diagnostic(db),
         );
     }
 
@@ -54,7 +55,7 @@ pub fn check_inheritance<'db>(
     for unresolved in &inherited_methods.unresolved {
         errors.push(AnalysisError::MethodError(
             MethodError::UnresolvedPou { access: *unresolved }
-        ));
+        ).to_diagnostic(db));
     }
 
     // look at the inherited methods first
@@ -72,14 +73,14 @@ pub fn check_inheritance<'db>(
                             base_method: inherited_method,
                             derived_method: *declared_method,
                         },
-                    ));
+                    ).to_diagnostic(db));
                 }
                 // Override of method without override
                 (_, Modifier::EMPTY) => {
                     errors.push(AnalysisError::MethodError(MethodError::MissingOverride {
                         base_method: inherited_method,
                         derived_method: *declared_method,
-                    }));
+                    }).to_diagnostic(db));
                 }
                 _ => {}
             }
@@ -93,7 +94,7 @@ pub fn check_inheritance<'db>(
                         implementer,
                         method: inherited_method,
                     },
-                ));
+                ).to_diagnostic(db));
             }
 
             if let Modifier::ABSTRACT = inherited_method.modifier(db) {
@@ -102,7 +103,7 @@ pub fn check_inheritance<'db>(
                         implementer,
                         base_method: inherited_method,
                     },
-                ));
+                ).to_diagnostic(db));
             }
         }
     }
@@ -113,7 +114,7 @@ pub fn check_inheritance<'db>(
         } else if base_method.modifier(db) == Modifier::OVERRIDE {
             errors.push(AnalysisError::MethodError(MethodError::EmptyOverride {
                 base_method: *base_method,
-            }));
+            }).to_diagnostic(db));
         }
     }
 }
@@ -121,7 +122,7 @@ pub fn check_inheritance<'db>(
 fn check_declared_duplicates<'db>(
     db: &'db dyn BaseDatabase,
     methods: &[MethodRef<'db>],
-    errors: &mut Vec<AnalysisError<'db>>,
+    errors: &mut Vec<IdeDiagnostic>,
 ) {
     let mut seen = FxHashMap::default();
     for method in methods {
@@ -131,7 +132,7 @@ fn check_declared_duplicates<'db>(
                     method1: *prev,
                     method2: *method,
                 }
-                .into(),
+                .to_diagnostic(db),
             );
         } else {
             seen.insert(*method.name(db), *method);
@@ -143,7 +144,7 @@ fn check_signature<'db>(
     db: &'db dyn BaseDatabase,
     m1: MethodRef<'db>,
     m2: MethodRef<'db>,
-    errors: &mut Vec<AnalysisError<'db>>,
+    errors: &mut Vec<IdeDiagnostic>,
 ) {
     let sig1 = m1.variables(db);
     let sig2 = m2.variables(db);
@@ -155,13 +156,13 @@ fn check_signature<'db>(
                 m2,
                 got: sig2.len(),
             }
-            .into(),
+            .to_diagnostic(db),
         );
     }
 
     for (var1, var2) in sig1.iter().zip(sig2.iter()) {
         if let Err(err) = coerce_ty_with_ty(db, var1.spec(db).to_ty(db), var2.spec(db).to_ty(db)) {
-            errors.push(MethodError::SignatureParametersTypeMismatch { param: *var2, err }.into());
+            errors.push(MethodError::SignatureParametersTypeMismatch { param: *var2, err }.to_diagnostic(db));
         }
     }
 }

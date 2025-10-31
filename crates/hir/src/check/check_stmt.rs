@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use ide_diagnostic::IdeDiagnostic;
 use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
 
@@ -7,7 +8,7 @@ use crate::{
         check_semantic_index::Check,
         check_visibility::check_call_visibility,
         coerce::{coerce_bool_with_expr, coerce_ty_with_expr, coerce_ty_with_ty},
-        errors::{analysis_error::AnalysisError, stmt::StmtError},
+        errors::{analysis_error::{AnalysisError, ToIdeDiagnostic}, stmt::StmtError},
     },
     hir_def::{
         expressions::{
@@ -26,7 +27,7 @@ use crate::{
 };
 
 impl<'db> Check<'db> for Vec<Stmt<'db>> {
-    fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<AnalysisError<'db>>) {
+    fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<IdeDiagnostic>) {
         for stmt in self {
             stmt.check(db, errors);
         }
@@ -34,14 +35,14 @@ impl<'db> Check<'db> for Vec<Stmt<'db>> {
 }
 
 impl<'db> Check<'db> for Stmt<'db> {
-    fn check(&self, db: &'db dyn BaseDatabase, errors: &mut Vec<AnalysisError<'db>>) {
+    fn check(&self, db: &'db dyn BaseDatabase, errors: &mut Vec<IdeDiagnostic>) {
         match &self.stmt(db) {
             StmtKind::EmptyPathExpression(var) => {
                 let resolved = var.lookup(db);
                 if let Err(err) = resolved.fully_resolved(db) {
-                    errors.push(err.into());
+                    errors.push(err.to_diagnostic(db));
                 }
-                errors.push(StmtError::EmptyPathExpression { stmt: *self }.into());
+                errors.push(StmtError::EmptyPathExpression { stmt: *self }.to_diagnostic(db));
             }
             StmtKind::If {
                 then,
@@ -90,11 +91,11 @@ impl<'db> Check<'db> for Stmt<'db> {
                                 StmtError::WhileConditionIsNotABool {
                                     condition: *condition,
                                 }
-                                .into(),
+                                .to_diagnostic(db),
                             );
                         }
                     }
-                    Err(err) => errors.push(err),
+                    Err(err) => errors.push(err.to_diagnostic(db)),
                 }
 
                 body.check(db, errors);
@@ -106,11 +107,11 @@ impl<'db> Check<'db> for Stmt<'db> {
                             StmtError::RepeatConditionIsNotABool {
                                 condition: *condition,
                             }
-                            .into(),
+                            .to_diagnostic(db),
                         );
                     }
                 }
-                Err(err) => errors.push(err),
+                Err(err) => errors.push(err.to_diagnostic(db)),
             },
             StmtKind::Case { .. } => {}
             _ => {}
@@ -121,13 +122,13 @@ impl<'db> Check<'db> for Stmt<'db> {
 fn check_assign_target<'db>(
     db: &'db dyn BaseDatabase,
     access: VariableAccess<'db>,
-) -> Result<ResolvedAccess<'db>, AnalysisError<'db>> {
+) -> Result<ResolvedAccess<'db>, IdeDiagnostic> {
     let access = access.lookup(db);
     // Variables in VAR_INPUT can not be mutated
     if access.is_var_input(db) {
-        return Err(StmtError::AssignmentToInputVar { var: access }.into());
+        return Err(StmtError::AssignmentToInputVar { var: access }.to_diagnostic(db));
     }
-    let resolved = access.fully_resolved(db)?;
+    let resolved = access.fully_resolved(db).map_err(|err| err.to_diagnostic(db))?;
 
     match resolved.kind {
         // Assigning a variable
@@ -135,7 +136,7 @@ fn check_assign_target<'db>(
             // A variable type could refer to a Pou (SpecKind::Target).
             // In this case we need to check we're assigning a correct type
             if v.spec(db).to_ty(db).is_pou(db) {
-                return Err(StmtError::AssignmentToCallableType { var: access }.into());
+                return Err(StmtError::AssignmentToCallableType { var: access }.to_diagnostic(db));
             }
         }
         // Assigning to a direct method or pou is not allowed
@@ -146,16 +147,16 @@ fn check_assign_target<'db>(
                     return Ok(access);
                 }
             }
-            return Err(StmtError::AssignmentToDirectType { var: access }.into());
+            return Err(StmtError::AssignmentToDirectType { var: access }.to_diagnostic(db));
         }
         // Assigning a struct field is valid
         ResolvedPathKind::StructElement(_) => {}
         // Other cases are invalid
         ResolvedPathKind::Spec(_) | ResolvedPathKind::Method(_) => {
-            return Err(StmtError::AssignmentToDirectType { var: access }.into());
+            return Err(StmtError::AssignmentToDirectType { var: access }.to_diagnostic(db));
         }
         _ => {
-            return Err(StmtError::AssignmentToDirectType { var: access }.into());
+            return Err(StmtError::AssignmentToDirectType { var: access }.to_diagnostic(db));
         }
     }
 
@@ -166,19 +167,19 @@ fn check_assignment<'db>(
     db: &'db dyn BaseDatabase,
     access: VariableAccess<'db>,
     target: Expr<'db>,
-) -> Result<Ty<'db>, AnalysisError<'db>> {
+) -> Result<Ty<'db>, IdeDiagnostic> {
     let access = check_assign_target(db, access)?;
 
     let access_type = match access.try_to_ty(db) {
         Ok(ty) => ty,
-        Err(err) => return Err(StmtError::UnresolvedAssignmentTarget { var: access, err }.into()),
+        Err(err) => return Err(StmtError::UnresolvedAssignmentTarget { var: access, err }.to_diagnostic(db)),
     };
 
     // Last, runs the type checker
     if let Err(err) = coerce_ty_with_expr(db, access_type, target) {
         return Err(AnalysisError::from(StmtError::AssignmentTypeMismatch {
             err,
-        }));
+        }).to_diagnostic(db));
     }
 
     Ok(access_type)
@@ -187,12 +188,12 @@ fn check_assignment<'db>(
 fn check_func_call<'db>(
     db: &'db dyn BaseDatabase,
     fun_call: &'db FuncCall<'db>,
-    errors: &mut Vec<AnalysisError<'db>>,
-) -> Result<(), AnalysisError<'db>> {
+    errors: &mut Vec<IdeDiagnostic>,
+) -> Result<(), IdeDiagnostic> {
     let fun_call = fun_call.resolve_func_call(db);
-    let resolved = fun_call.target.fully_resolved(db)?;
+    let resolved = fun_call.target.fully_resolved(db).map_err(|err| err.to_diagnostic(db))?;
     if !resolved.is_callable(db) {
-        return Err(StmtError::CallANonCallableType { call: fun_call.target }.into());
+        return Err(StmtError::CallANonCallableType { call: fun_call.target }.to_diagnostic(db));
     }
     check_call_visibility(db, &fun_call.target, &resolved, errors);
     check_parameters(db, fun_call.target.clone(), resolved.target_scope_id(db), &fun_call.params, errors);
@@ -236,7 +237,7 @@ fn check_parameters<'db>(
     target: ResolvedAccess<'db>,
     signature: ScopeId<'db>,
     params: &Vec<ParamAssign<'db>>,
-    errors: &mut Vec<AnalysisError<'db>>,
+    errors: &mut Vec<IdeDiagnostic>,
 ) {
     let mut format = FormalCall::Unset;
     let len: usize = signature.local_variables(db).len();
@@ -248,7 +249,7 @@ fn check_parameters<'db>(
                 expected: len,
                 found: params.len(),
             }
-            .into(),
+            .to_diagnostic(db),
         );
     }
 
@@ -261,7 +262,7 @@ fn check_parameters<'db>(
                 StmtError::MixedFormalNonFormalParams {
                     call: target.clone(),
                 }
-                .into(),
+                .to_diagnostic(db),
             );
             break;
         }
@@ -279,7 +280,7 @@ fn check_parameters<'db>(
                                     var: var,
                                     err,
                                 }
-                                .into(),
+                                .to_diagnostic(db),
                             );
                         }
                     }
@@ -292,7 +293,7 @@ fn check_parameters<'db>(
                             StmtError::UnknownNonFormalParam {
                                 call: target.clone(),
                             }
-                            .into(),
+                            .to_diagnostic(db),
                         );
                     }
                 }
@@ -311,7 +312,7 @@ fn check_parameters<'db>(
                             param1: param,
                             param2: *prev,
                         }
-                        .into(),
+                        .to_diagnostic(db),
                     ),
                 }
                 match resolved_param {
@@ -323,7 +324,7 @@ fn check_parameters<'db>(
                                     var: var,
                                     err,
                                 }
-                                .into(),
+                                .to_diagnostic(db),
                             );
                         }
                     }
@@ -332,7 +333,7 @@ fn check_parameters<'db>(
                             call: target.clone(),
                             param: param,
                         }
-                        .into(),
+                        .to_diagnostic(db),
                     ),
                 }
             }
@@ -351,7 +352,7 @@ fn check_parameters<'db>(
                             param1: param,
                             param2: *prev,
                         }
-                        .into(),
+                        .to_diagnostic(db),
                     ),
                 }
                 match resolved_param {
@@ -374,7 +375,7 @@ fn check_parameters<'db>(
                                     var: variable,
                                     err,
                                 }
-                                .into(),
+                                .to_diagnostic(db),
                             );
                         }
                     }
@@ -384,7 +385,7 @@ fn check_parameters<'db>(
                                 call: target.clone(),
                                 param: param,
                             }
-                            .into(),
+                            .to_diagnostic(db),
                         );
                         continue;
                     }
@@ -400,25 +401,25 @@ fn check_for<'db>(
     start: Expr<'db>,
     end: Expr<'db>,
     step: Option<Expr<'db>>,
-    errors: &mut Vec<AnalysisError<'db>>,
-) -> Result<(), AnalysisError<'db>> {
+    errors: &mut Vec<IdeDiagnostic>,
+) -> Result<(), IdeDiagnostic> {
     let control_var_ty = check_assignment(db, control_var, start)?;
     let control_var = control_var.lookup(db);
 
     // Check start value
     if let Err(err) = coerce_ty_with_expr(db, control_var_ty, start) {
-        errors.push(StmtError::ForLoopStartTypeMismatch { start, err }.into());
+        errors.push(StmtError::ForLoopStartTypeMismatch { start, err }.to_diagnostic(db));
     }
 
     // Check end value
     if let Err(err) = coerce_ty_with_expr(db, control_var_ty, end) {
-        errors.push(StmtError::ForLoopEndTypeMismatch { end, err }.into());
+        errors.push(StmtError::ForLoopEndTypeMismatch { end, err }.to_diagnostic(db));
     }
 
     // Check step value
     if let Some(step) = step {
         if let Err(err) = coerce_ty_with_expr(db, control_var_ty, step) {
-            errors.push(StmtError::ForLoopStepTypeMismatch { step, err }.into());
+            errors.push(StmtError::ForLoopStepTypeMismatch { step, err }.to_diagnostic(db));
         }
     }
 
