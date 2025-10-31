@@ -305,6 +305,12 @@ static SEMI_COLONS: &str = r#"
   (#delimiter! ";")
 )
 
+((stmt_list (func_call)*  @append_delimiter
+ .
+ ";"* @do_nothing
+ (#delimiter! ";")
+)) 
+
 (using_directive
  "USING" (_) 
 	.
