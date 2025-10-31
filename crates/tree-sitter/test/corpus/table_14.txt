@@ -310,7 +310,7 @@ END_PROGRAM
                           (real_value))))
                     (variable_access
                       (variable
-                        (symbolic_variable
+                        (begin_path_expression
                           (path_expression
                             (var_access
                               (field))))))))))))))
@@ -384,7 +384,7 @@ END_PROGRAM
                 (constant_expr
                   (ref_value
                     (ref_addr
-                      (symbolic_variable
+                      (begin_path_expression
                         (path_expression
                           (var_access
                             (field)))))))))))))

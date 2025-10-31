@@ -17,7 +17,7 @@ END_FUNCTION
           (stmt_list
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))

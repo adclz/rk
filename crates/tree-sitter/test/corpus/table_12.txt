@@ -40,7 +40,7 @@ END_FUNCTION
                 (eq_operator
                   (variable_access
                     (variable
-                      (symbolic_variable
+                      (begin_path_expression
                         (path_expression
                           (var_access
                             (field))))))
@@ -64,14 +64,14 @@ END_FUNCTION
           (stmt_list
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
               (assignment
                 (ref_value
                   (ref_addr
-                    (symbolic_variable
+                    (begin_path_expression
                       (path_expression
                         (var_access
                           (field))))))))))))
@@ -93,14 +93,14 @@ END_FUNCTION
           (stmt_list
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
               (assignment
                 (variable_access
                   (variable
-                    (symbolic_variable
+                    (begin_path_expression
                       (path_expression
                         (index_expression
                           (path_expression

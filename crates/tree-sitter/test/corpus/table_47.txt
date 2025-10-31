@@ -464,7 +464,7 @@ END_PROGRAM
           (stmt_list
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -473,13 +473,13 @@ END_PROGRAM
                   (and_operator
                     (variable_access
                       (variable
-                        (symbolic_variable
+                        (begin_path_expression
                           (path_expression
                             (var_access
                               (field))))))
                     (variable_access
                       (variable
-                        (symbolic_variable
+                        (begin_path_expression
                           (path_expression
                             (var_access
                               (field))))))))))))
@@ -545,10 +545,9 @@ END_PROGRAM
         (prog_access_decls
           (prog_access_decl
             (identifier)
-            (symbolic_variable
-              (path_expression
-                (var_access
-                  (field))))
+            (path_expression
+              (var_access
+                (field)))
             (direct_variable
               (direct_variable_identifier)
               (offset
@@ -559,18 +558,17 @@ END_PROGRAM
             (access_direction))
           (prog_access_decl
             (identifier)
-            (symbolic_variable
-              (path_expression
-                (field_expression
-                  (path_expression
-                    (field_expression
-                      (path_expression
-                        (var_access
-                          (field)))
+            (path_expression
+              (field_expression
+                (path_expression
+                  (field_expression
+                    (path_expression
                       (var_access
-                        (field))))
-                  (var_access
-                    (field)))))
+                        (field)))
+                    (var_access
+                      (field))))
+                (var_access
+                  (field))))
             (numeric_type_name
               (int_type_name
                 (unsign_int_type_name

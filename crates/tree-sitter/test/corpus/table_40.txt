@@ -244,7 +244,7 @@ END_FUNCTION_BLOCK
           (stmt_list
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -253,13 +253,13 @@ END_FUNCTION_BLOCK
                   (and_operator
                     (variable_access
                       (variable
-                        (symbolic_variable
+                        (begin_path_expression
                           (path_expression
                             (var_access
                               (field))))))
                     (variable_access
                       (variable
-                        (symbolic_variable
+                        (begin_path_expression
                           (path_expression
                             (var_access
                               (field))))))))))))

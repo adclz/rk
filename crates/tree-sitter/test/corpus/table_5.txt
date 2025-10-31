@@ -20,7 +20,7 @@ END_FUNCTION
           (stmt_list
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -32,7 +32,7 @@ END_FUNCTION
                         (unsigned_int)))))))
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -44,7 +44,7 @@ END_FUNCTION
                         (unsigned_int)))))))
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -56,7 +56,7 @@ END_FUNCTION
                         (unsigned_int)))))))
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -88,7 +88,7 @@ END_FUNCTION
           (stmt_list
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -99,7 +99,7 @@ END_FUNCTION
                       (real_value))))))
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -110,7 +110,7 @@ END_FUNCTION
                       (real_value))))))
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -140,7 +140,7 @@ END_FUNCTION
           (stmt_list
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -151,7 +151,7 @@ END_FUNCTION
                       (binary_int))))))
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -181,7 +181,7 @@ END_FUNCTION
           (stmt_list
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -192,7 +192,7 @@ END_FUNCTION
                       (octal_int))))))
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -225,7 +225,7 @@ END_FUNCTION
           (stmt_list
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -236,7 +236,7 @@ END_FUNCTION
                       (hex_int))))))
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -247,7 +247,7 @@ END_FUNCTION
                       (hex_int))))))
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -258,7 +258,7 @@ END_FUNCTION
                       (hex_int))))))
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -309,7 +309,7 @@ END_FUNCTION
           (stmt_list
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -325,7 +325,7 @@ END_FUNCTION
                         (unsigned_int)))))))
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -340,7 +340,7 @@ END_FUNCTION
                       (hex_int))))))
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -354,7 +354,7 @@ END_FUNCTION
                       (hex_int))))))
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -369,7 +369,7 @@ END_FUNCTION
                         (unsigned_int)))))))
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -384,7 +384,7 @@ END_FUNCTION
                       (hex_int))))))
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -396,7 +396,7 @@ END_FUNCTION
                       (hex_int))))))
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -406,7 +406,7 @@ END_FUNCTION
                     (bool_literal_with_numeric)))))
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -416,7 +416,7 @@ END_FUNCTION
                     (bool_literal_with_numeric)))))
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -426,7 +426,7 @@ END_FUNCTION
                     (bool_literal_with_string)))))
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))

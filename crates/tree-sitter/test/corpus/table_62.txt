@@ -174,10 +174,9 @@ END_CONFIGURATION
             (prog_conf_elems
               (prog_conf_elem
                 (prog_cnxn
-                  (symbolic_variable
-                    (path_expression
-                      (var_access
-                        (field))))
+                  (path_expression
+                    (var_access
+                      (field)))
                   (prog_data_source
                     (direct_variable
                       (direct_variable_identifier)
@@ -273,7 +272,7 @@ END_CONFIGURATION
 
 --------------------------------------------------------------------------------
 
-   (source_file
+    (source_file
       (config_decl
         (config_name
           (identifier))
@@ -328,20 +327,18 @@ END_CONFIGURATION
               (prog_conf_elems
                 (prog_conf_elem
                   (prog_cnxn
-                    (symbolic_variable
-                      (path_expression
-                        (var_access
-                          (field))))
+                    (path_expression
+                      (var_access
+                        (field)))
                     (prog_data_source
                       (path_expression
                         (var_access
                           (field))))))
                 (prog_conf_elem
                   (prog_cnxn
-                    (symbolic_variable
-                      (path_expression
-                        (var_access
-                          (field))))
+                    (path_expression
+                      (var_access
+                        (field)))
                     (prog_data_source
                       (path_expression
                         (var_access
@@ -356,10 +353,9 @@ END_CONFIGURATION
               (prog_conf_elems
                 (prog_conf_elem
                   (prog_cnxn
-                    (symbolic_variable
-                      (path_expression
-                        (var_access
-                          (field))))
+                    (path_expression
+                      (var_access
+                        (field)))
                     (data_sink
                       (direct_variable
                         (direct_variable_identifier)
@@ -397,7 +393,7 @@ END_CONFIGURATION
 
 --------------------------------------------------------------------------------
 
-   (source_file
+    (source_file
       (config_decl
         (config_name
           (identifier))

@@ -197,9 +197,10 @@ END_FUNCTION_BLOCK
             (assign
               (ERR_assign_func_call
                 (func_call
-                  (path_expression
-                    (var_access
-                      (field)))))
+                  (begin_path_expression
+                    (path_expression
+                      (var_access
+                        (field))))))
               (assignment
                 (constant
                   (numeric_literal
@@ -224,7 +225,7 @@ END_FUNCTION_BLOCK
           (stmt_list
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (field_expression
                       (path_expression
@@ -260,7 +261,7 @@ END_FUNCTION_BLOCK
           (stmt_list
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (field_expression
                       (path_expression
@@ -296,7 +297,7 @@ END_FUNCTION_BLOCK
           (stmt_list
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -348,9 +349,10 @@ END_FUNCTION_BLOCK
                       (init_elem
                         (ERR_func_call_in_init
                           (func_call
-                            (path_expression
-                              (var_access
-                                (field)))
+                            (begin_path_expression
+                              (path_expression
+                                (var_access
+                                  (field))))
                             (param_assign
                               (param_assign_input
                                 (identifier)
@@ -363,7 +365,7 @@ END_FUNCTION_BLOCK
                               (param_assign_output
                                 (identifier)
                                 (variable
-                                  (symbolic_variable
+                                  (begin_path_expression
                                     (path_expression
                                       (var_access
                                         (field)))))))))))))))))))
@@ -385,7 +387,7 @@ END_FUNCTION_BLOCK
           (stmt_list
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -413,7 +415,7 @@ END_FUNCTION_BLOCK
           (stmt_list
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -441,7 +443,7 @@ END_FUNCTION
           (stmt_list
             (for_stmt
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -449,13 +451,13 @@ END_FUNCTION
                 (ERR_missing_dot_in_for_control)
                 (variable_access
                   (variable
-                    (symbolic_variable
+                    (begin_path_expression
                       (path_expression
                         (var_access
                           (field))))))
                 (variable_access
                   (variable
-                    (symbolic_variable
+                    (begin_path_expression
                       (path_expression
                         (var_access
                           (field))))))))))))
@@ -477,7 +479,7 @@ END_FUNCTION
           (stmt_list
             (for_stmt
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -485,13 +487,13 @@ END_FUNCTION
                 (ERR_missing_equal_in_for_control)
                 (variable_access
                   (variable
-                    (symbolic_variable
+                    (begin_path_expression
                       (path_expression
                         (var_access
                           (field))))))
                 (variable_access
                   (variable
-                    (symbolic_variable
+                    (begin_path_expression
                       (path_expression
                         (var_access
                           (field))))))))))))                          

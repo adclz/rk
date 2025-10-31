@@ -17,20 +17,20 @@ END_FUNCTION
           (stmt_list
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
               (assignment
                 (variable_access
                   (variable
-                    (symbolic_variable
+                    (begin_path_expression
                       (path_expression
                         (var_access
                           (field))))))))
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -38,7 +38,7 @@ END_FUNCTION
                 (add_operator
                   (variable_access
                     (variable
-                      (symbolic_variable
+                      (begin_path_expression
                         (path_expression
                           (var_access
                             (field))))))
@@ -49,20 +49,21 @@ END_FUNCTION
                           (unsigned_int))))))))
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
               (assignment
                 (func_call
-                  (path_expression
-                    (var_access
-                      (field)))
+                  (begin_path_expression
+                    (path_expression
+                      (var_access
+                        (field))))
                   (param_assign
                     (param_assign_input
                       (variable_access
                         (variable
-                          (symbolic_variable
+                          (begin_path_expression
                             (path_expression
                               (var_access
                                 (field)))))))))))))))
@@ -87,9 +88,10 @@ END_FUNCTION
         (func_body
           (stmt_list
             (func_call
-              (path_expression
-                (var_access
-                  (field)))
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))
               (param_assign
                 (param_assign_input
                   (constant
@@ -98,15 +100,16 @@ END_FUNCTION
                         (signed_int
                           (unsigned_int))))))))
             (func_call
-              (path_expression
-                (var_access
-                  (field)))
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))
               (param_assign
                 (param_assign_input
                   (identifier)
                   (variable_access
                     (variable
-                      (symbolic_variable
+                      (begin_path_expression
                         (path_expression
                           (var_access
                             (field))))))))
@@ -121,14 +124,14 @@ END_FUNCTION
                           (time_value))))))))
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
               (assignment
                 (variable_access
                   (variable
-                    (symbolic_variable
+                    (begin_path_expression
                       (path_expression
                         (field_expression
                           (path_expression
@@ -137,13 +140,14 @@ END_FUNCTION
                           (var_access
                             (field)))))))))
             (func_call
-              (path_expression
-                (field_expression
-                  (path_expression
+              (begin_path_expression
+                (path_expression
+                  (field_expression
+                    (path_expression
+                      (var_access
+                        (field)))
                     (var_access
-                      (field)))
-                  (var_access
-                    (field))))
+                      (field)))))
               (param_assign
                 (param_assign_input
                   (constant
@@ -180,7 +184,7 @@ END_FUNCTION
           (stmt_list
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -189,13 +193,13 @@ END_FUNCTION
                   (mult_operator
                     (variable_access
                       (variable
-                        (symbolic_variable
+                        (begin_path_expression
                           (path_expression
                             (var_access
                               (field))))))
                     (variable_access
                       (variable
-                        (symbolic_variable
+                        (begin_path_expression
                           (path_expression
                             (var_access
                               (field)))))))
@@ -207,13 +211,13 @@ END_FUNCTION
                             (real_value))))
                       (variable_access
                         (variable
-                          (symbolic_variable
+                          (begin_path_expression
                             (path_expression
                               (var_access
                                 (field)))))))
                     (variable_access
                       (variable
-                        (symbolic_variable
+                        (begin_path_expression
                           (path_expression
                             (var_access
                               (field))))))))))
@@ -222,7 +226,7 @@ END_FUNCTION
                 (ord_operator
                   (variable_access
                     (variable
-                      (symbolic_variable
+                      (begin_path_expression
                         (path_expression
                           (var_access
                             (field))))))
@@ -233,7 +237,7 @@ END_FUNCTION
               (stmt_list
                 (assign
                   (variable
-                    (symbolic_variable
+                    (begin_path_expression
                       (path_expression
                         (var_access
                           (field)))))
@@ -248,7 +252,7 @@ END_FUNCTION
                   (eq_operator
                     (variable_access
                       (variable
-                        (symbolic_variable
+                        (begin_path_expression
                           (path_expression
                             (var_access
                               (field))))))
@@ -259,7 +263,7 @@ END_FUNCTION
                 (stmt_list
                   (assign
                     (variable
-                      (symbolic_variable
+                      (begin_path_expression
                         (path_expression
                           (var_access
                             (field)))))
@@ -271,7 +275,7 @@ END_FUNCTION
                               (unsigned_int)))))))
                   (assign
                     (variable
-                      (symbolic_variable
+                      (begin_path_expression
                         (path_expression
                           (var_access
                             (field)))))
@@ -280,7 +284,7 @@ END_FUNCTION
                         (mult_operator
                           (variable_access
                             (variable
-                              (symbolic_variable
+                              (begin_path_expression
                                 (path_expression
                                   (var_access
                                     (field))))))
@@ -292,14 +296,14 @@ END_FUNCTION
                                     (real_value))))
                               (variable_access
                                 (variable
-                                  (symbolic_variable
+                                  (begin_path_expression
                                     (path_expression
                                       (var_access
                                         (field))))))))))))))
               (stmt_list
                 (assign
                   (variable
-                    (symbolic_variable
+                    (begin_path_expression
                       (path_expression
                         (var_access
                           (field)))))
@@ -311,7 +315,7 @@ END_FUNCTION
                             (unsigned_int)))))))
                 (assign
                   (variable
-                    (symbolic_variable
+                    (begin_path_expression
                       (path_expression
                         (var_access
                           (field)))))
@@ -322,19 +326,20 @@ END_FUNCTION
                           (add_operator
                             (variable_access
                               (variable
-                                (symbolic_variable
+                                (begin_path_expression
                                   (path_expression
                                     (var_access
                                       (field))))))
                             (func_call
-                              (path_expression
-                                (var_access
-                                  (field)))
+                              (begin_path_expression
+                                (path_expression
+                                  (var_access
+                                    (field))))
                               (param_assign
                                 (param_assign_input
                                   (variable_access
                                     (variable
-                                      (symbolic_variable
+                                      (begin_path_expression
                                         (path_expression
                                           (var_access
                                             (field))))))))))))
@@ -346,13 +351,13 @@ END_FUNCTION
                                 (real_value))))
                           (variable_access
                             (variable
-                              (symbolic_variable
+                              (begin_path_expression
                                 (path_expression
                                   (var_access
                                     (field)))))))))))
                 (assign
                   (variable
-                    (symbolic_variable
+                    (begin_path_expression
                       (path_expression
                         (var_access
                           (field)))))
@@ -363,19 +368,20 @@ END_FUNCTION
                           (add_operator
                             (variable_access
                               (variable
-                                (symbolic_variable
+                                (begin_path_expression
                                   (path_expression
                                     (var_access
                                       (field))))))
                             (func_call
-                              (path_expression
-                                (var_access
-                                  (field)))
+                              (begin_path_expression
+                                (path_expression
+                                  (var_access
+                                    (field))))
                               (param_assign
                                 (param_assign_input
                                   (variable_access
                                     (variable
-                                      (symbolic_variable
+                                      (begin_path_expression
                                         (path_expression
                                           (var_access
                                             (field))))))))))))
@@ -387,7 +393,7 @@ END_FUNCTION
                                 (real_value))))
                           (variable_access
                             (variable
-                              (symbolic_variable
+                              (begin_path_expression
                                 (path_expression
                                   (var_access
                                     (field)))))))))))))))))
@@ -421,26 +427,27 @@ END_FUNCTION
           (stmt_list
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
               (assignment
                 (func_call
-                  (path_expression
-                    (var_access
-                      (field)))
+                  (begin_path_expression
+                    (path_expression
+                      (var_access
+                        (field))))
                   (param_assign
                     (param_assign_input
                       (variable_access
                         (variable
-                          (symbolic_variable
+                          (begin_path_expression
                             (path_expression
                               (var_access
                                 (field)))))))))))
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -453,7 +460,7 @@ END_FUNCTION
             (case_stmt
               (variable_access
                 (variable
-                  (symbolic_variable
+                  (begin_path_expression
                     (path_expression
                       (var_access
                         (field))))))
@@ -476,14 +483,14 @@ END_FUNCTION
                 (stmt_list
                   (assign
                     (variable
-                      (symbolic_variable
+                      (begin_path_expression
                         (path_expression
                           (var_access
                             (field)))))
                     (assignment
                       (variable_access
                         (variable
-                          (symbolic_variable
+                          (begin_path_expression
                             (path_expression
                               (var_access
                                 (field))))))))))
@@ -499,14 +506,14 @@ END_FUNCTION
                 (stmt_list
                   (assign
                     (variable
-                      (symbolic_variable
+                      (begin_path_expression
                         (path_expression
                           (var_access
                             (field)))))
                     (assignment
                       (variable_access
                         (variable
-                          (symbolic_variable
+                          (begin_path_expression
                             (path_expression
                               (var_access
                                 (field))))))))))
@@ -522,7 +529,7 @@ END_FUNCTION
                 (stmt_list
                   (assign
                     (variable
-                      (symbolic_variable
+                      (begin_path_expression
                         (path_expression
                           (var_access
                             (field)))))
@@ -530,13 +537,13 @@ END_FUNCTION
                       (add_operator
                         (variable_access
                           (variable
-                            (symbolic_variable
+                            (begin_path_expression
                               (path_expression
                                 (var_access
                                   (field))))))
                         (variable_access
                           (variable
-                            (symbolic_variable
+                            (begin_path_expression
                               (path_expression
                                 (var_access
                                   (field)))))))))))
@@ -566,21 +573,22 @@ END_FUNCTION
                 (stmt_list
                   (assign
                     (variable
-                      (symbolic_variable
+                      (begin_path_expression
                         (path_expression
                           (var_access
                             (field)))))
                     (assignment
                       (func_call
-                        (path_expression
-                          (var_access
-                            (field)))
+                        (begin_path_expression
+                          (path_expression
+                            (var_access
+                              (field))))
                         (param_assign
                           (param_assign_input
                             (add_operator
                               (variable_access
                                 (variable
-                                  (symbolic_variable
+                                  (begin_path_expression
                                     (path_expression
                                       (var_access
                                         (field))))))
@@ -592,7 +600,7 @@ END_FUNCTION
               (stmt_list
                 (assign
                   (variable
-                    (symbolic_variable
+                    (begin_path_expression
                       (path_expression
                         (var_access
                           (field)))))
@@ -604,7 +612,7 @@ END_FUNCTION
                             (unsigned_int)))))))
                 (assign
                   (variable
-                    (symbolic_variable
+                    (begin_path_expression
                       (path_expression
                         (var_access
                           (field)))))
@@ -616,20 +624,21 @@ END_FUNCTION
                             (unsigned_int)))))))))
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
               (assignment
                 (func_call
-                  (path_expression
-                    (var_access
-                      (field)))
+                  (begin_path_expression
+                    (path_expression
+                      (var_access
+                        (field))))
                   (param_assign
                     (param_assign_input
                       (variable_access
                         (variable
-                          (symbolic_variable
+                          (begin_path_expression
                             (path_expression
                               (var_access
                                 (field)))))))))))))))
@@ -658,7 +667,7 @@ END_FUNCTION
           (stmt_list
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -670,7 +679,7 @@ END_FUNCTION
                         (unsigned_int)))))))
             (for_stmt
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -696,7 +705,7 @@ END_FUNCTION
                     (eq_operator
                       (variable_access
                         (variable
-                          (symbolic_variable
+                          (begin_path_expression
                             (path_expression
                               (index_expression
                                 (path_expression
@@ -706,7 +715,7 @@ END_FUNCTION
                                   (constant_expr
                                     (variable_access
                                       (variable
-                                        (symbolic_variable
+                                        (begin_path_expression
                                           (path_expression
                                             (var_access
                                               (field)))))))))))))
@@ -716,14 +725,14 @@ END_FUNCTION
                   (stmt_list
                     (assign
                       (variable
-                        (symbolic_variable
+                        (begin_path_expression
                           (path_expression
                             (var_access
                               (field)))))
                       (assignment
                         (variable_access
                           (variable
-                            (symbolic_variable
+                            (begin_path_expression
                               (path_expression
                                 (var_access
                                   (field))))))))))))))))
@@ -748,7 +757,7 @@ END_FUNCTION
           (stmt_list
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -763,7 +772,7 @@ END_FUNCTION
                 (ord_operator
                   (variable_access
                     (variable
-                      (symbolic_variable
+                      (begin_path_expression
                         (path_expression
                           (var_access
                             (field))))))
@@ -775,7 +784,7 @@ END_FUNCTION
               (stmt_list
                 (assign
                   (variable
-                    (symbolic_variable
+                    (begin_path_expression
                       (path_expression
                         (var_access
                           (field)))))
@@ -783,7 +792,7 @@ END_FUNCTION
                     (add_operator
                       (variable_access
                         (variable
-                          (symbolic_variable
+                          (begin_path_expression
                             (path_expression
                               (var_access
                                 (field))))))
@@ -815,7 +824,7 @@ END_FUNCTION
           (stmt_list
             (assign
               (variable
-                (symbolic_variable
+                (begin_path_expression
                   (path_expression
                     (var_access
                       (field)))))
@@ -829,7 +838,7 @@ END_FUNCTION
               (stmt_list
                 (assign
                   (variable
-                    (symbolic_variable
+                    (begin_path_expression
                       (path_expression
                         (var_access
                           (field)))))
@@ -837,7 +846,7 @@ END_FUNCTION
                     (add_operator
                       (variable_access
                         (variable
-                          (symbolic_variable
+                          (begin_path_expression
                             (path_expression
                               (var_access
                                 (field))))))
@@ -852,7 +861,7 @@ END_FUNCTION
                     (eq_operator
                       (variable_access
                         (variable
-                          (symbolic_variable
+                          (begin_path_expression
                             (path_expression
                               (var_access
                                 (field))))))
@@ -865,7 +874,7 @@ END_FUNCTION
                     (eq_operator
                       (variable_access
                         (variable
-                          (symbolic_variable
+                          (begin_path_expression
                             (path_expression
                               (index_expression
                                 (path_expression
@@ -875,7 +884,7 @@ END_FUNCTION
                                   (constant_expr
                                     (variable_access
                                       (variable
-                                        (symbolic_variable
+                                        (begin_path_expression
                                           (path_expression
                                             (var_access
                                               (field)))))))))))))

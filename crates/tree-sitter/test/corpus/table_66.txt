@@ -127,15 +127,16 @@ END_FUNCTION
         (fb_body
           (stmt_list
             (func_call
-              (path_expression
-                (var_access
-                  (field)))
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))
               (param_assign
                 (param_assign_input
                   (identifier)
                   (variable_access
                     (variable
-                      (symbolic_variable
+                      (begin_path_expression
                         (path_expression
                           (var_access
                             (field))))))))

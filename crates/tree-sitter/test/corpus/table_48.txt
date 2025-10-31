@@ -122,7 +122,7 @@ END_CLASS
                     (and_operator
                       (variable_access
                         (variable
-                          (symbolic_variable
+                          (begin_path_expression
                             (path_expression
                               (var_access
                                 (field))))))
@@ -130,20 +130,20 @@ END_CLASS
                         (ord_operator
                           (variable_access
                             (variable
-                              (symbolic_variable
+                              (begin_path_expression
                                 (path_expression
                                   (var_access
                                     (field))))))
                           (variable_access
                             (variable
-                              (symbolic_variable
+                              (begin_path_expression
                                 (path_expression
                                   (var_access
                                     (field)))))))))))
                 (stmt_list
                   (assign
                     (variable
-                      (symbolic_variable
+                      (begin_path_expression
                         (path_expression
                           (var_access
                             (field)))))
@@ -151,7 +151,7 @@ END_CLASS
                       (add_operator
                         (variable_access
                           (variable
-                            (symbolic_variable
+                            (begin_path_expression
                               (path_expression
                                 (var_access
                                   (field))))))
@@ -167,7 +167,7 @@ END_CLASS
                       (and_operator
                         (variable_access
                           (variable
-                            (symbolic_variable
+                            (begin_path_expression
                               (path_expression
                                 (var_access
                                   (field))))))
@@ -175,20 +175,20 @@ END_CLASS
                           (ord_operator
                             (variable_access
                               (variable
-                                (symbolic_variable
+                                (begin_path_expression
                                   (path_expression
                                     (var_access
                                       (field))))))
                             (variable_access
                               (variable
-                                (symbolic_variable
+                                (begin_path_expression
                                   (path_expression
                                     (var_access
                                       (field))))))))))))
                 (stmt_list
                   (assign
                     (variable
-                      (symbolic_variable
+                      (begin_path_expression
                         (path_expression
                           (var_access
                             (field)))))
@@ -196,7 +196,7 @@ END_CLASS
                       (add_operator
                         (variable_access
                           (variable
-                            (symbolic_variable
+                            (begin_path_expression
                               (path_expression
                                 (var_access
                                   (field))))))
@@ -219,14 +219,14 @@ END_CLASS
             (stmt_list
               (assign
                 (variable
-                  (symbolic_variable
+                  (begin_path_expression
                     (path_expression
                       (var_access
                         (field)))))
                 (assignment
                   (variable_access
                     (variable
-                      (symbolic_variable
+                      (begin_path_expression
                         (path_expression
                           (var_access
                             (field)))))))))))))
