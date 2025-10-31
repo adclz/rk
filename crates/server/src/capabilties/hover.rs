@@ -31,7 +31,10 @@ pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Opti
 
     let symbol = sema.descendant_at(db, position);
     match symbol.and_then(|s| s.as_proto().hover(db, position)) {
-        Some(hover) => Ok(Some(hover)),
+        Some(hover) => {
+            eprintln!("Hover generated: {:?}", hover);
+            Ok(Some(hover))
+        },
         None => Ok(None),
     }
 }

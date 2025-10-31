@@ -137,25 +137,26 @@ END_FUNCTION_BLOCK"#;
     });
 
     assert_snapshot!(nodes.join("\n"), @r"
-    PouDecl(PouDecl { [salsa id]: Id(2c00) })
-    ResolvedAccess(ResolvedAccess { kind: Err(NoLocalItemInScope { expr: PathExpr { [salsa id]: Id(c00) } }), elements: [] })
-    Expr(Expr { [salsa id]: Id(1800) })
-    ResolvedAccess(ResolvedAccess { kind: Err(NoLocalItemInScope { expr: PathExpr { [salsa id]: Id(c02) } }), elements: [] })
-    Expr(Expr { [salsa id]: Id(1804) })
-    Expr(Expr { [salsa id]: Id(1802) })
-    ResolvedAccess(ResolvedAccess { kind: Err(NoLocalItemInScope { expr: PathExpr { [salsa id]: Id(c04) } }), elements: [] })
-    Expr(Expr { [salsa id]: Id(1803) })
-    Expr(Expr { [salsa id]: Id(1805) })
-    Expr(Expr { [salsa id]: Id(1806) })
-    Expr(Expr { [salsa id]: Id(1807) })
-    Expr(Expr { [salsa id]: Id(180a) })
-    Expr(Expr { [salsa id]: Id(1808) })
-    ResolvedAccess(ResolvedAccess { kind: Err(NoLocalItemInScope { expr: PathExpr { [salsa id]: Id(c06) } }), elements: [] })
-    Expr(Expr { [salsa id]: Id(1809) })
-    Expr(Expr { [salsa id]: Id(180d) })
-    Expr(Expr { [salsa id]: Id(180b) })
-    ResolvedAccess(ResolvedAccess { kind: Err(NoLocalItemInScope { expr: PathExpr { [salsa id]: Id(c07) } }), elements: [] })
-    Expr(Expr { [salsa id]: Id(180c) })
+    PouDecl(PouDecl { [salsa id]: Id(3000) })
+    ResolvedAccess(ResolvedAccess { kind: Err(NoLocalItemInScope { expr: PathExpr { [salsa id]: Id(c00) } }), call_site: CallSite { scope: ScopeId { [salsa id]: Id(402) }, id: AstId(10) }, elements: [] })
+    Expr(Expr { [salsa id]: Id(1c00) })
+    ResolvedAccess(ResolvedAccess { kind: Err(NoLocalItemInScope { expr: PathExpr { [salsa id]: Id(c01) } }), call_site: CallSite { scope: ScopeId { [salsa id]: Id(402) }, id: AstId(16) }, elements: [] })
+    ResolvedAccess(ResolvedAccess { kind: Err(NoLocalItemInScope { expr: PathExpr { [salsa id]: Id(c02) } }), call_site: CallSite { scope: ScopeId { [salsa id]: Id(402) }, id: AstId(21) }, elements: [] })
+    Expr(Expr { [salsa id]: Id(1c04) })
+    Expr(Expr { [salsa id]: Id(1c02) })
+    ResolvedAccess(ResolvedAccess { kind: Err(NoLocalItemInScope { expr: PathExpr { [salsa id]: Id(c05) } }), call_site: CallSite { scope: ScopeId { [salsa id]: Id(402) }, id: AstId(47) }, elements: [] })
+    Expr(Expr { [salsa id]: Id(1c03) })
+    Expr(Expr { [salsa id]: Id(1c05) })
+    Expr(Expr { [salsa id]: Id(1c06) })
+    Expr(Expr { [salsa id]: Id(1c07) })
+    Expr(Expr { [salsa id]: Id(1c0a) })
+    Expr(Expr { [salsa id]: Id(1c08) })
+    ResolvedAccess(ResolvedAccess { kind: Err(NoLocalItemInScope { expr: PathExpr { [salsa id]: Id(c08) } }), call_site: CallSite { scope: ScopeId { [salsa id]: Id(402) }, id: AstId(84) }, elements: [] })
+    Expr(Expr { [salsa id]: Id(1c09) })
+    Expr(Expr { [salsa id]: Id(1c0d) })
+    Expr(Expr { [salsa id]: Id(1c0b) })
+    ResolvedAccess(ResolvedAccess { kind: Err(NoLocalItemInScope { expr: PathExpr { [salsa id]: Id(c0a) } }), call_site: CallSite { scope: ScopeId { [salsa id]: Id(402) }, id: AstId(99) }, elements: [] })
+    Expr(Expr { [salsa id]: Id(1c0c) })
     ");
 }
 
@@ -182,11 +183,17 @@ END_FUNCTION_BLOCK"#;
     });
 
     assert_snapshot!(nodes.join("\n"), @r"
-    PouDecl(PouDecl { [salsa id]: Id(3400) })
+    PouDecl(PouDecl { [salsa id]: Id(3c00) })
     SpanNamespaceAccess(SpanNamespaceAccess { id: AstId(3), scope_id: ScopeId { [salsa id]: Id(402) }, path: NamespaceAccess(Id(c00)) })
-    MethodRef(Declared(MethodDecl { [salsa id]: Id(2c00) }))
-    VariableDecl(VariableDecl { [salsa id]: Id(2800) })
-    Spec(Spec { [salsa id]: Id(2400) })
+    MethodRef(Declared(MethodDecl { [salsa id]: Id(3400) }))
+    VariableDecl(VariableDecl { [salsa id]: Id(3000) })
+    Spec(Spec { [salsa id]: Id(2c00) })
+    ResolvedAccess(ResolvedAccess { kind: Ok(ResolvedPath { expr: CallSite { scope: ScopeId { [salsa id]: Id(402) }, id: AstId(24) }, adjustement: None, kind: This(PouDecl { [salsa id]: Id(3c00) }) }), call_site: CallSite { scope: ScopeId { [salsa id]: Id(402) }, id: AstId(20) }, elements: [Ok(ResolvedPath { expr: CallSite { scope: ScopeId { [salsa id]: Id(402) }, id: AstId(26) }, adjustement: None, kind: Method(Declared(MethodDecl { [salsa id]: Id(3400) })) })] })
+    ResolvedPath(ResolvedPath { expr: CallSite { scope: ScopeId { [salsa id]: Id(402) }, id: AstId(26) }, adjustement: None, kind: Method(Declared(MethodDecl { [salsa id]: Id(3400) })) })
+    ResolvedParam(ResolvedParam { param_assign: ParamAssign { [salsa id]: Id(2000) }, kind: NonFormal { resolved_param: Some(VariableDecl { [salsa id]: Id(3000) }), value: Expr { [salsa id]: Id(1c00) } } })
+    VariableDecl(VariableDecl { [salsa id]: Id(3000) })
+    Spec(Spec { [salsa id]: Id(2c00) })
+    Expr(Expr { [salsa id]: Id(1c00) })
     ");
 }
 
@@ -227,22 +234,23 @@ END_FUNCTION_BLOCK"#;
         1,
         10,
         12,
-        19,
-        39,
-        40,
-        45,
+        16,
+        21,
+        41,
+        42,
         47,
-        59,
-        64,
-        69,
-        76,
-        77,
-        82,
+        49,
+        61,
+        66,
+        71,
+        78,
+        79,
         84,
-        91,
-        92,
-        97,
+        86,
+        93,
+        94,
         99,
+        101,
     ]
     ");
 }
@@ -280,17 +288,17 @@ END_FUNCTION_BLOCK"#;
         13,
         18,
         21,
-        26,
-        30,
+        29,
+        31,
         4,
         10,
-        31,
-        38,
+        32,
+        39,
         13,
         18,
-        39,
-        45,
+        40,
         46,
+        47,
     ]
     ");
 }

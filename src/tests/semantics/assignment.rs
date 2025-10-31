@@ -51,7 +51,9 @@ END_FUNCTION_BLOCK"#;
        |
      8 |     fb2 := ULINT#5;
        |     ^|^  
-       |      `--- no item 'fb2' in scope
+       |      `--- 'fb2' is a type and can not be assigned
+       | 
+       | Note: types can only be assigned if they are declared in a VAR_* section
     ---'
     ");
 }
@@ -99,7 +101,9 @@ END_FUNCTION_BLOCK"#;
        |
      8 |     T1 := ULINT#5;
        |     ^|  
-       |      `-- no item 'T1' in scope
+       |      `-- 'T1' is a type and can not be assigned
+       | 
+       | Note: types can only be assigned if they are declared in a VAR_* section
     ---'
     ");
 }

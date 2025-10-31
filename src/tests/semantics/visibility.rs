@@ -39,10 +39,10 @@ fn invalid_access_private_method(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:8:13 ]
        |
      8 |             SUPER.myPrivateMethod();
-       |             ^^^^^^^^^^^|^^^^^^^^^^^  
-       |                        `------------- can not access PRIVATE METHOD 'myPrivateMethod'
+       |             ^^^^^^^^^^|^^^^^^^^^^  
+       |                       `------------ can not access PRIVATE item 'myPrivateMethod'
        | 
-       | Note: METHODS marked PRIVATE can only be accessed from within the same POU
+       | Note: variables and methods marked PRIVATE can only be accessed from within the same POU
     ---'
     ");
 }
@@ -72,10 +72,10 @@ END_NAMESPACE
         ,-[ file:///test0.st:13:13 ]
         |
      13 |             SUPER.myInternalMethod();
-        |             ^^^^^^^^^^^^|^^^^^^^^^^^  
-        |                         `------------- can not access INTERNAL METHOD 'myInternalMethod'
+        |             ^^^^^^^^^^^|^^^^^^^^^^  
+        |                        `------------ can not access INTERNAL item 'myInternalMethod'
         | 
-        | Note: calling scope is in NAMESPACE 'ns2', method is only available in NAMESPACE 'ns1'
+        | Note: calling scope is in NAMESPACE 'ns2', item is only available in NAMESPACE 'ns1'
     ----'
     ");
 }
@@ -103,10 +103,10 @@ END_NAMESPACE
        ,-[ file:///test0.st:6:9 ]
        |
      6 |         SUPER.myInternalMethod();
-       |         ^^^^^^^^^^^^|^^^^^^^^^^^  
-       |                     `------------- can not access INTERNAL METHOD 'myInternalMethod'
+       |         ^^^^^^^^^^^|^^^^^^^^^^  
+       |                    `------------ can not access INTERNAL item 'myInternalMethod'
        | 
-       | Note: calling scope is in the GLOBAL scope, method is only available in NAMESPACE 'ns2'
+       | Note: calling scope is in the GLOBAL scope, item is only available in NAMESPACE 'ns2'
     ---'
     ");
 }
@@ -132,10 +132,10 @@ END_NAMESPACE
        ,-[ file:///test0.st:9:13 ]
        |
      9 |             SUPER.myInternalMethod();
-       |             ^^^^^^^^^^^^|^^^^^^^^^^^  
-       |                         `------------- can not access INTERNAL METHOD 'myInternalMethod'
+       |             ^^^^^^^^^^^|^^^^^^^^^^  
+       |                        `------------ can not access INTERNAL item 'myInternalMethod'
        | 
-       | Note: calling scope is in NAMESPACE 'ns2', method scope is only available the GLOBAL scope
+       | Note: calling scope is in NAMESPACE 'ns2', item scope is only available the GLOBAL scope
     ---'
     ");
 }
@@ -179,13 +179,13 @@ END_FUNCTION_BLOCK
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-        ,-[ file:///test0.st:11:5 ]
+        ,-[ file:///test0.st:11:9 ]
         |
      11 |     obj.myProtectedMethod();
-        |     ^|^  
-        |      `--- can not access PROTECTED METHOD 'myProtectedMethod'
+        |         ^^^^^^^^|^^^^^^^^  
+        |                 `---------- can not access PROTECTED item 'myProtectedMethod'
         | 
-        | Note: METHODS marked PROTECTED are only available within the same POU or derived POUs
+        | Note: Variables and methods marked PROTECTED are only available within the same POU or derived POUs
     ----'
     ");
 }

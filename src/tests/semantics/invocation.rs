@@ -18,11 +18,11 @@ END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test0.st:6:2 ]
+       ,-[ file:///test0.st:6:7 ]
        |
      6 |     THIS.decl1();
-       |     ^^^^^^|^^^^^  
-       |           `------- no method 'decl1' in declared methods of 'fb1'
+       |          ^^|^^  
+       |            `---- method 'decl1' not found in 'fb1'
     ---'
     ");
 }
@@ -56,15 +56,11 @@ FUNCTION_BLOCK fb1 EXTENDS base
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test0.st:8:5 ]
+       ,-[ file:///test0.st:8:11 ]
        |
-     2 | CLASS base
-       |       ^^|^  
-       |         `--- methods are inherited from 'base' here
-       | 
      8 |     SUPER.super_method1()
-       |     ^^^^^^^^^^|^^^^^^^^^^  
-       |               `------------ no method 'super_method1' in inherited methods
+       |           ^^^^^^|^^^^^^  
+       |                 `-------- method 'super_method1' not found in 'fb1'
     ---'
     ");
 }
@@ -82,8 +78,15 @@ END_CLASS"#;
        ,-[ file:///test0.st:4:9 ]
        |
      4 |         SUPER()
+       |         ^^|^^  
+       |           `---- 'SUPER()' is not valid in this context
+    ---'
+    Warning: 
+       ,-[ file:///test0.st:4:9 ]
+       |
+     4 |         SUPER()
        |         ^^^|^^^  
-       |            `----- SUPER() can only be called in FUNCTION_BLOCK POUs
+       |            `----- unused code, you might want to do something with it
     ---'
     ");
 }
@@ -100,8 +103,15 @@ END_FUNCTION
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     SUPER()
+       |     ^^|^^  
+       |       `---- 'SUPER()' is not valid in this context
+    ---'
+    Warning: 
+       ,-[ file:///test0.st:3:5 ]
+       |
+     3 |     SUPER()
        |     ^^^|^^^  
-       |        `----- SUPER() can only be called in FUNCTION_BLOCK POUs
+       |        `----- unused code, you might want to do something with it
     ---'
     ");
 }
@@ -118,8 +128,8 @@ END_FUNCTION
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     SUPER.something()
-       |     ^^^^^^^^|^^^^^^^^  
-       |             `---------- SUPER can only be used in FUNCTION_BLOCK or CLASS POUs
+       |     ^^|^^  
+       |       `---- 'SUPER' is not valid in this context
     ---'
     ");
 }
@@ -136,8 +146,8 @@ END_FUNCTION
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     THIS.something()
-       |     ^^^^^^^^|^^^^^^^  
-       |             `--------- THIS can only be used in in FUNCTION_BLOCK or CLASS POUs
+       |     ^^|^  
+       |       `--- 'THIS' is not valid in this context
     ---'
     ");
 }

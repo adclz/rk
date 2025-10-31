@@ -86,15 +86,21 @@ END_FUNCTION_BLOCK"#;
 #[rstest]
 fn implements_multiple_times(mut with_db: RootDatabase) {
     let source = r#"
+INTERFACE a
+END_INTERFACE
+
+INTERFACE b
+END_INTERFACE
+
 FUNCTION_BLOCK fn IMPLEMENTS a IMPLEMENTS b
     
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test0.st:2:32 ]
+       ,-[ file:///test0.st:8:32 ]
        |
-     2 | FUNCTION_BLOCK fn IMPLEMENTS a IMPLEMENTS b
+     8 | FUNCTION_BLOCK fn IMPLEMENTS a IMPLEMENTS b
        |                                ^^^^^^|^^^^^  
        |                                      `------- multiple implements declarations
     ---'

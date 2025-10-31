@@ -351,7 +351,7 @@ END_FUNCTION
         .document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
-    FUNCTION fn dfgdfg(a := 1, b := 2, c := 3)
+    FUNCTION fn dfgdfg(a := 1, b := 2, c := 3);
     END_FUNCTION
     ");
 }
@@ -381,7 +381,7 @@ END_FUNCTION
     		a := 1,
     		b := 2,
     		c := 3
-    	)
+    	);
     END_FUNCTION
     ");
 }
