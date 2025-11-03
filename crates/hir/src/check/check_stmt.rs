@@ -240,7 +240,7 @@ fn check_parameters<'db>(
     errors: &mut Vec<IdeDiagnostic>,
 ) {
     let mut format = FormalCall::Unset;
-    let len: usize = signature.local_variables(db).len();
+    let len: usize = signature.def_map(db).local_variables.len();
     let too_many_params = params.len() > len;
     if too_many_params {
         errors.push(

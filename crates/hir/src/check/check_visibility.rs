@@ -69,7 +69,6 @@ pub fn check_call_visibility<'db>(
 
     // Check PRIVATE visibility - only callable from the same POU (same scope)
     if target_visibility.contains(Visibility::PRIVATE) {
-        eprintln!("Checking PRIVATE visibility: calling_scope={:?}, target_scope={:?}", get_scope(db, calling_scope).kind, get_scope(db, target_scope));
         if calling_scope != target_scope {
             errors.push(
                 VisibilityError::Private {

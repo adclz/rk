@@ -37,7 +37,7 @@ use crate::{
         semantic_index::{semantic_index, HirNode, SemanticIndex},
     }, hir_ty::{
         init_expr_resolver::{resolve_init_expr, ResolvedInitExpr},
-        name_res::{all_global_pous, all_local_pous},
+        name_res::{global_pou_index},
         ty::{Ty, TyKind},
         ty_var_access_resolver::ResolvedAccess,
     }, walk::WalkHir, HirNodeInfo
@@ -82,6 +82,7 @@ impl<'db> Check<'db> for PouDecl<'db> {
             Pou::FunctionBlock(fb) => {
                 check_inheritance(db, *self, errors);
                 fb.variables(db).check(db, errors);
+                fb.methods(db).check(db, errors);
                 fb.statements(db).check(db, errors);
                 fb.methods(db).iter().for_each(|m| {
                     m.variables(db).check(db, errors);
@@ -91,12 +92,14 @@ impl<'db> Check<'db> for PouDecl<'db> {
             Pou::Class(cl) => {
                 check_inheritance(db, *self, errors);
                 cl.variables(db).check(db, errors);
+                cl.methods(db).check(db, errors);
                 cl.methods(db).iter().for_each(|m| {
                     m.variables(db).check(db, errors);
                     m.stmts(db).check(db, errors);
                 });
             }
             Pou::Interface(it) => {
+                it.methods(db).check(db, errors);
                 check_inheritance(db, *self, errors);
             }
             Pou::DataType(typ) => match typ.spec(db).kind(db) {

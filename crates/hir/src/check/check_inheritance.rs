@@ -1,25 +1,73 @@
 use auto_lsp::default::db::BaseDatabase;
 use ide_diagnostic::IdeDiagnostic;
-use rustc_hash::{FxHashMap};
+use rustc_hash::FxHashMap;
 
 use crate::{
+    HirNodeInfo,
     check::{
+        check_semantic_index::Check,
         coerce::coerce_ty_with_ty,
         errors::{
-            analysis_error::{AnalysisError, ToIdeDiagnostic}, duplicates::DuplicateError, inheritance::MethodError,
+            analysis_error::{AnalysisError, ToIdeDiagnostic},
+            duplicates::DuplicateError,
+            inheritance::MethodError,
         },
     },
-    hir_def::{modifier::Modifier, pous::pou::{Pou, PouDecl}
+    hir_def::{
+        modifier::Modifier,
+        pous::{
+            class::MethodDecl,
+            interface::MethodPrototype,
+            pou::{Pou, PouDecl},
+        },
     },
-    hir_ty::inheritance_solver::{declared_methods, inherited_methods, to_method_ref, MethodRef}, HirNodeInfo,
+    hir_ty::inheritance_solver::{MethodRef, inherited_methods},
 };
+
+impl<'db> Check<'db> for Vec<MethodDecl<'db>> {
+    fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<IdeDiagnostic>) {
+        let mut seen = FxHashMap::default();
+        for method in self {
+            if let Some(prev) = seen.get(method.name(db)) {
+                errors.push(
+                    DuplicateError::MethodDecl {
+                        method1: *prev,
+                        method2: *method,
+                    }
+                    .to_diagnostic(db),
+                );
+            } else {
+                seen.insert(*method.name(db), *method);
+            }
+        }
+    }
+}
+
+impl<'db> Check<'db> for Vec<MethodPrototype<'db>> {
+    fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<IdeDiagnostic>) {
+        let mut seen = FxHashMap::default();
+        for method in self {
+            if let Some(prev) = seen.get(method.name(db)) {
+                errors.push(
+                    DuplicateError::MethodProt {
+                        method1: *prev,
+                        method2: *method,
+                    }
+                    .to_diagnostic(db),
+                );
+            } else {
+                seen.insert(*method.name(db), *method);
+            }
+        }
+    }
+}
 
 pub fn check_inheritance<'db>(
     db: &'db dyn BaseDatabase,
     implementer: PouDecl<'db>,
     errors: &mut Vec<IdeDiagnostic>,
 ) {
-    let declared_methods = declared_methods(db, implementer);
+    let declared_methods = &implementer.scope_id(db).def_map(db).declared_methods;
     let inherited_methods = inherited_methods(db, implementer);
 
     match implementer.pou(db) {
@@ -30,15 +78,16 @@ pub fn check_inheritance<'db>(
                     .iter()
                     .any(|(_, m)| m.modifier(db).contains(Modifier::ABSTRACT))
             {
-                errors.push(AnalysisError::MethodError(
-                    MethodError::AbstractClassHasNoAbstractMethods { class: implementer },
-                ).to_diagnostic(db));
+                errors.push(
+                    AnalysisError::MethodError(MethodError::AbstractClassHasNoAbstractMethods {
+                        class: implementer,
+                    })
+                    .to_diagnostic(db),
+                );
             };
-        },
+        }
         _ => {}
     };
-
-    check_declared_duplicates(db, to_method_ref(db, implementer), errors);
 
     // check dups in inherited methods
     for (m1, m2) in &inherited_methods.duplicates {
@@ -53,9 +102,12 @@ pub fn check_inheritance<'db>(
 
     // check unresolved
     for unresolved in &inherited_methods.unresolved {
-        errors.push(AnalysisError::MethodError(
-            MethodError::UnresolvedPou { access: *unresolved }
-        ).to_diagnostic(db));
+        errors.push(
+            AnalysisError::MethodError(MethodError::UnresolvedPou {
+                access: *unresolved,
+            })
+            .to_diagnostic(db),
+        );
     }
 
     // look at the inherited methods first
@@ -68,19 +120,23 @@ pub fn check_inheritance<'db>(
             match (inherited_method.modifier(db), declared_method.modifier(db)) {
                 // Override of a final method
                 (Modifier::FINAL, Modifier::OVERRIDE) => {
-                    errors.push(AnalysisError::MethodError(
-                        MethodError::OverrideFinalMethod {
+                    errors.push(
+                        AnalysisError::MethodError(MethodError::OverrideFinalMethod {
                             base_method: inherited_method,
                             derived_method: *declared_method,
-                        },
-                    ).to_diagnostic(db));
+                        })
+                        .to_diagnostic(db),
+                    );
                 }
                 // Override of method without override
                 (_, Modifier::EMPTY) => {
-                    errors.push(AnalysisError::MethodError(MethodError::MissingOverride {
-                        base_method: inherited_method,
-                        derived_method: *declared_method,
-                    }).to_diagnostic(db));
+                    errors.push(
+                        AnalysisError::MethodError(MethodError::MissingOverride {
+                            base_method: inherited_method,
+                            derived_method: *declared_method,
+                        })
+                        .to_diagnostic(db),
+                    );
                 }
                 _ => {}
             }
@@ -89,21 +145,23 @@ pub fn check_inheritance<'db>(
 
             // method is from an interface
             if inherited_method.is_prototype() {
-                errors.push(AnalysisError::MethodError(
-                    MethodError::UnimplementedInterfaceMethod {
+                errors.push(
+                    AnalysisError::MethodError(MethodError::UnimplementedInterfaceMethod {
                         implementer,
                         method: inherited_method,
-                    },
-                ).to_diagnostic(db));
+                    })
+                    .to_diagnostic(db),
+                );
             }
 
             if let Modifier::ABSTRACT = inherited_method.modifier(db) {
-                errors.push(AnalysisError::MethodError(
-                    MethodError::MissingAbstractMethod {
+                errors.push(
+                    AnalysisError::MethodError(MethodError::MissingAbstractMethod {
                         implementer,
                         base_method: inherited_method,
-                    },
-                ).to_diagnostic(db));
+                    })
+                    .to_diagnostic(db),
+                );
             }
         }
     }
@@ -112,30 +170,12 @@ pub fn check_inheritance<'db>(
     for (base_name, base_method) in declared_methods {
         if inherited_methods.methods.contains_key(&base_name) {
         } else if base_method.modifier(db) == Modifier::OVERRIDE {
-            errors.push(AnalysisError::MethodError(MethodError::EmptyOverride {
-                base_method: *base_method,
-            }).to_diagnostic(db));
-        }
-    }
-}
-
-fn check_declared_duplicates<'db>(
-    db: &'db dyn BaseDatabase,
-    methods: &[MethodRef<'db>],
-    errors: &mut Vec<IdeDiagnostic>,
-) {
-    let mut seen = FxHashMap::default();
-    for method in methods {
-        if let Some(prev) = seen.get(method.name(db)) {
             errors.push(
-                DuplicateError::Method {
-                    method1: *prev,
-                    method2: *method,
-                }
+                AnalysisError::MethodError(MethodError::EmptyOverride {
+                    base_method: *base_method,
+                })
                 .to_diagnostic(db),
             );
-        } else {
-            seen.insert(*method.name(db), *method);
         }
     }
 }
@@ -162,7 +202,10 @@ fn check_signature<'db>(
 
     for (var1, var2) in sig1.iter().zip(sig2.iter()) {
         if let Err(err) = coerce_ty_with_ty(db, var1.spec(db).to_ty(db), var2.spec(db).to_ty(db)) {
-            errors.push(MethodError::SignatureParametersTypeMismatch { param: *var2, err }.to_diagnostic(db));
+            errors.push(
+                MethodError::SignatureParametersTypeMismatch { param: *var2, err }
+                    .to_diagnostic(db),
+            );
         }
     }
 }

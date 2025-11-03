@@ -7,7 +7,7 @@ use crate::{
     hir_def::{
         expressions::spec::StructElement,
         interned::identifier::SpanIdent,
-        pous::{pou::PouDecl, variable::VariableDecl},
+        pous::{class::MethodDecl, interface::MethodPrototype, pou::PouDecl, variable::VariableDecl},
     },
     hir_ty::inheritance_solver::{InheritedMethod, MethodRef},
 };
@@ -30,9 +30,13 @@ pub enum DuplicateError<'db> {
         variant1: SpanIdent<'db>,
         variant2: SpanIdent<'db>,
     },
-    Method {
-        method1: MethodRef<'db>,
-        method2: MethodRef<'db>,
+    MethodDecl {
+        method1: MethodDecl<'db>,
+        method2: MethodDecl<'db>,
+    },
+    MethodProt {
+        method1: MethodPrototype<'db>,
+        method2: MethodPrototype<'db>,
     },
     InheritedMethod {
         method1: InheritedMethod<'db>,
@@ -121,11 +125,11 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
 
                 diag
             }
-            Self::Method { method1, method2 } => {
+            Self::MethodDecl { method1, method2 } => {
                 let mut diag = diag()
                     .message(format!("duplicate method '{}'", method1.name(db).text(db)))
                     .severity(DiagnosticSeverity::ERROR)
-                    .range(method1.name_span(db))
+                    .range(method1.get_name_span(db).unwrap())
                     .call();
 
                 diag.with_related(Related::new(
@@ -134,7 +138,25 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                         method2.name(db).text(db)
                     ),
                     method2.get_scope_id(db).file(db),
-                    method2.name_span(db),
+                    method2.get_name_span(db).unwrap(),
+                ));
+
+                diag
+            }
+            Self::MethodProt { method1, method2 } => {
+                let mut diag = diag()
+                    .message(format!("duplicate method '{}'", method1.name(db).text(db)))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(method1.get_name_span(db).unwrap())
+                    .call();
+
+                diag.with_related(Related::new(
+                    format!(
+                        "method '{}' is already defined here",
+                        method2.name(db).text(db)
+                    ),
+                    method2.get_scope_id(db).file(db),
+                    method2.get_name_span(db).unwrap(),
                 ));
 
                 diag
