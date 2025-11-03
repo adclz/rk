@@ -14,7 +14,7 @@ use crate::{
         scope::ScopeId, visibility::Visibility,
     }, hir_ty::{
         flatten::PathExprWalkStep,
-        inheritance_solver::{declared_methods, inherited_methods, InheritedMethodSet, MethodRef},
+        inheritance_solver::{inherited_methods, InheritedMethodSet, MethodRef},
         name_res::resolve_namespace_access,
         ty::{Ty, TyKind},
         ty_var_access_resolver::CallSite,
@@ -304,7 +304,7 @@ impl<'db> ResolvedPath<'db> {
             ResolvedPathKind::Pou(pou) | ResolvedPathKind::SuperBody(pou) => pou.walk(db, step),
             ResolvedPathKind::This(pou) => match step {
                 PathExprWalkStep::Field { ident, expr } => {
-                    if let Some(m) = declared_methods(db, *pou).get(&ident.ident) {
+                    if let Some(m) = pou.scope_id(db).def_map(db).declared_methods.get(&ident.ident) {
                         return Ok(ResolvedPathKind::Method(*m).with_call_site(
                             db,
                             *expr,
@@ -379,14 +379,14 @@ impl<'db> PouDecl<'db> {
             PathExprWalkStep::Field { ident, expr } => {
                 match self.pou(db) {
                     Pou::Class(_) | Pou::Function(_) | Pou::FunctionBlock(_) => {
-                        if let Some(var) = self.scope_id(db).global_variables(db).get(&ident.ident)
+                        if let Some(var) = self.scope_id(db).def_map(db).global_variables.get(&ident.ident)
                         {
                             return Ok(ResolvedPathKind::Variable(*var).with_call_site(
                                 db,
                                 *expr,
                                 Adjustement::None,
                             ));
-                        } else if let Some(m) = declared_methods(db, *self).get(&ident.ident) {
+                        } else if let Some(m) = self.scope_id(db).def_map(db).declared_methods.get(&ident.ident) {
                             return Ok(ResolvedPathKind::Method(*m).with_call_site(
                                 db,
                                 *expr,
@@ -416,7 +416,7 @@ impl<'db> PouDecl<'db> {
             }
             // Deref case, same as Field except we need to check if the target is a Reference
             PathExprWalkStep::Deref { target, expr } => {
-                match self.scope_id(db).global_variables(db).get(&target.ident) {
+                match self.scope_id(db).def_map(db).global_variables.get(&target.ident) {
                     Some(var) => match var.spec(db).kind(db) {
                         SpecKind::Ref(ref_to) => Ok(ResolvedPathKind::Variable(*var)
                             .with_call_site(
@@ -465,7 +465,7 @@ impl<'db> MethodRef<'db> {
         match step {
             // Simplest case, just an identifier
             PathExprWalkStep::Field { ident, expr } => {
-                if let Some(var) = self.get_scope_id(db).global_variables(db).get(&ident.ident) {
+                if let Some(var) = self.get_scope_id(db).def_map(db).global_variables.get(&ident.ident) {
                     return Ok(ResolvedPathKind::Variable(*var).with_call_site(
                         db,
                         *expr,
@@ -486,7 +486,8 @@ impl<'db> MethodRef<'db> {
             PathExprWalkStep::Deref { target, expr } => {
                 match self
                     .get_scope_id(db)
-                    .global_variables(db)
+                    .def_map(db)
+                    .global_variables
                     .get(&target.ident)
                 {
                     Some(var) => match var.spec(db).kind(db) {

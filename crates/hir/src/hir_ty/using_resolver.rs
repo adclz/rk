@@ -6,8 +6,7 @@ use crate::{
         namespace::NamespaceDecl,
         scope::ScopeId,
         using::Using,
-    },
-    hir_ty::name_res::shared_namespaces,
+    }, hir_ty::name_res::global_namespace_index,
 };
 
 #[salsa::tracked(debug)]
@@ -33,6 +32,8 @@ impl<'db> HirNodeInfo<'db> for ResolvedUsing<'db> {
 pub fn resolve_using<'db>(db: &'db dyn BaseDatabase, using: Using<'db>) -> ResolvedUsing<'db> {
     let path = using.path(db);
 
-    let matching_namespaces = shared_namespaces(db, path);
-    ResolvedUsing::new(db, using, matching_namespaces.to_vec())
+    let matching_namespaces = global_namespace_index(db).get(&path);
+    ResolvedUsing::new(db, using, matching_namespaces.map(|n| {
+        n.clone()
+    }).unwrap_or_default())
 }

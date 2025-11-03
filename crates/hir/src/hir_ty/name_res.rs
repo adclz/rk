@@ -2,9 +2,10 @@ use auto_lsp::default::db::BaseDatabase;
 use rustc_hash::FxHashMap;
 
 use crate::{
+    HirNodeInfo,
     hir_def::{
         interned::{
-            identifier::Ident,
+            identifier::{Ident, SpanIdent},
             namespace::{NamespaceAccess, NamespacePath},
         },
         namespace::NamespaceDecl,
@@ -15,48 +16,26 @@ use crate::{
     hir_ty::using_resolver::resolve_using,
 };
 
-/// Find all namespaces in all files that match a given namespace path.
-#[salsa::tracked(returns(ref))]
-pub fn shared_namespaces<'db>(
+/// Returns all Namespaces.
+#[salsa::tracked(returns(ref), no_eq)]
+pub fn global_namespace_index<'db>(
     db: &'db dyn BaseDatabase,
-    path: NamespacePath,
-) -> Vec<NamespaceDecl<'db>> {
-    db.get_files()
-        .iter()
-        .flat_map(|file| {
-            semantic_index(db, *file)
-                .global_namespaces
-                .iter()
-                .filter_map(move |ns| (ns.path(db) == &path).then_some(*ns))
-        })
-        .collect()
-}
-
-#[tracing::instrument(skip_all)]
-#[salsa::tracked]
-/// Resolve a namespace access to a POU declaration.
-pub fn resolve_namespace_access<'db>(
-    db: &'db dyn BaseDatabase,
-    access: NamespaceAccess,
-) -> Option<PouDecl<'db>> {
-    let target = access.target(db);
-
-    match access.namespace(db) {
-        // There's a namespace specified, so we look for it
-        Some(path) => shared_namespaces(db, path).iter().find_map(|ns| {
-            ns.pous(db)
-                .iter()
-                .find(|pou| *pou.name(db) == target.ident)
-                .copied()
-        }),
-        // None, look for the POU in the current scope
-        None => pou_names_res(db, &target.ident, access.target(db).scope_id),
+) -> FxHashMap<NamespacePath, Vec<NamespaceDecl<'db>>> {
+    let mut result = FxHashMap::default();
+    for file in db.get_files().iter() {
+        for ns in semantic_index(db, *file).global_namespaces.iter() {
+            result
+                .entry(*ns.path(db))
+                .or_insert_with(Vec::new)
+                .push(*ns);
+        }
     }
+    result
 }
 
-/// Returns all POU declarations *globally declared*.
-#[salsa::tracked(returns(ref))]
-pub fn all_global_pous<'db>(db: &'db dyn BaseDatabase) -> FxHashMap<Ident, PouDecl<'db>> {
+/// Returns all POUs *globally declared*.
+#[salsa::tracked(returns(ref), no_eq)]
+pub fn global_pou_index<'db>(db: &'db dyn BaseDatabase) -> FxHashMap<Ident, PouDecl<'db>> {
     db.get_files()
         .iter()
         .flat_map(|file| {
@@ -68,112 +47,68 @@ pub fn all_global_pous<'db>(db: &'db dyn BaseDatabase) -> FxHashMap<Ident, PouDe
         .collect()
 }
 
-/// Returns all POU declarations *globally declared*.
-#[salsa::tracked(returns(ref))]
-pub fn all_local_pous<'db>(
+#[tracing::instrument(skip_all)]
+/// Resolve a namespace access to a POU declaration.
+pub fn resolve_namespace_access<'db>(
     db: &'db dyn BaseDatabase,
-    scope_id: ScopeId<'db>,
-) -> FxHashMap<Ident, PouDecl<'db>> {
-    let scope = get_scope(db, scope_id);
+    access: NamespaceAccess,
+) -> Option<PouDecl<'db>> {
+    let target = access.target(db);
 
-    match scope.kind {
-        ScopeKind::Namespace(ns) => ns.pous(db).iter().map(|p| (*p.name(db), *p)).collect(),
-        _ => FxHashMap::default(),
+    match access.namespace(db) {
+        // There's a namespace specified, so we look for it
+        Some(path) => global_namespace_index(db)
+            .get(&path)?
+            .iter()
+            .find_map(|ns| pou_names_res(db, &target)),
+        // None, look for the POU in the current scope
+        None => pou_names_res(db, &target),
     }
 }
 
-/// Returns all POU declarations *globally declared*.
-#[salsa::tracked(returns(ref))]
-pub fn all_imported_pous<'db>(
+#[tracing::instrument(skip_all)]
+pub fn find_in_parent_pous<'db>(
     db: &'db dyn BaseDatabase,
-    scope_id: ScopeId<'db>,
-) -> FxHashMap<Ident, PouDecl<'db>> {
-    let mut result = FxHashMap::default();
-    let sema = semantic_index(db, scope_id.file(db));
-
-    // A scope always refers to the current scope of the element.
-    // But in the case of NAMESPACE, POUs have access to the USING directives of the parent namespace.
-    // It is then necessary to check both the POU's directives AND the parent's directives.
-    let scope = match get_scope(db, scope_id).kind {
-        // Inside Global Scope, just check the current scope.
-        ScopeKind::Global => get_scope(db, scope_id),
-        // Same, NAMESPACES do not have access to the USING directives of the parent namespace.
-        ScopeKind::Namespace(_) | ScopeKind::MethodDecl(_) => get_scope(db, scope_id),
-        // POUs must check both their own USING directives and the USING directives of their parent namespace.
-        ScopeKind::Pou(_) => {
-            let scope = get_scope(db, scope_id);
-            for using in &scope.usings {
-                let namespaces = resolve_using(db, *using);
-                for ns in namespaces.namespaces(db) {
-                    result.extend(ns.pous(db).iter().map(|p| (*p.name(db), *p)));
-                }
-            }
-            if let Some(parent) = scope.parent {
-                let parent_scope = get_scope(db, parent);
-                for using in &parent_scope.usings {
-                    let namespaces = resolve_using(db, *using);
-                    for ns in namespaces.namespaces(db) {
-                        result.extend(ns.pous(db).iter().map(|p| (*p.name(db), *p)));
+    name: &SpanIdent<'db>,
+) -> Option<PouDecl<'db>> {
+    let it = semantic_index(db, name.scope_id.file(db)).scope_iterator(db, name.scope_id);
+    for scope in it {
+        if let ScopeKind::Namespace(ns) = scope.kind {
+            if let Some(namespaces) = global_namespace_index(db).get(ns.path(db)) {
+                for ns in namespaces.iter() {
+                    if let Some(pou) = ns.pous(db).iter().find(|p| p.name(db) == &name.ident) {
+                        return Some(*pou);
                     }
                 }
             }
-            return result;
         }
-    };
 
-    for using in &scope.usings {
-        let namespaces = resolve_using(db, *using);
-        for ns in namespaces.namespaces(db) {
-            result.extend(ns.pous(db).iter().map(|p| (*p.name(db), *p)));
-        }
-    }
-
-    result
-}
-
-// Returns all POU declarations *globally declared*.
-#[salsa::tracked(returns(ref))]
-pub fn all_inherited_pous<'db>(
-    db: &'db dyn BaseDatabase,
-    scope_id: ScopeId<'db>,
-) -> FxHashMap<Ident, PouDecl<'db>> {
-    let sema = semantic_index(db, scope_id.file(db));
-    let mut result = FxHashMap::default();
-
-    let it = sema.scope_iterator(db, scope_id);
-    for scope in it {
-        if let ScopeKind::Namespace(ns) = scope.kind {
-            shared_namespaces(db, *ns.path(db)).iter().for_each(|ns| {
-                result.extend(ns.pous(db).iter().map(|p| (*p.name(db), *p)));
-            });
+        for using in &scope.usings {
+            if let Some(namespaces) = global_namespace_index(db).get(&using.path(db)) {
+                for ns in namespaces.iter() {
+                    if let Some(pou) = ns.pous(db).iter().find(|p| p.name(db) == &name.ident) {
+                        return Some(*pou);
+                    }
+                }
+            }
         }
     }
 
-    result
+    None
 }
 
 pub fn pou_names_res<'db>(
     db: &'db dyn BaseDatabase,
-    pou: &Ident,
-    scope_id: ScopeId<'db>,
+    pou: &SpanIdent<'db>,
 ) -> Option<PouDecl<'db>> {
-    all_local_pous(db, scope_id)
+    // Checks for POUs declared in the current scope
+    pou.scope_id
+        .def_map(db)
+        .local_pous
         .get(pou)
-        .or_else(|| all_imported_pous(db, scope_id).get(pou))
-        .or_else(|| all_inherited_pous(db, scope_id).get(pou))
-        .or_else(|| all_global_pous(db).get(pou))
         .copied()
-}
-
-
-pub fn all_pous_in_scope<'db>(
-    db: &'db dyn BaseDatabase,
-    scope_id: ScopeId<'db>,
-) -> FxHashMap<Ident, PouDecl<'db>> {
-    let mut result = FxHashMap::default();
-    result.extend(all_local_pous(db, scope_id));
-    result.extend(all_imported_pous(db, scope_id));
-    result.extend(all_inherited_pous(db, scope_id));
-    result.extend(all_global_pous(db));
-    result
+        // Checks for parent POUs and those imported via USING directives
+        .or_else(|| find_in_parent_pous(db, pou))
+        // Checks for POUs declared globally
+        .or_else(|| global_pou_index(db).get(pou).copied())
 }

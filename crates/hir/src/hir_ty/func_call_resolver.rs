@@ -2,7 +2,7 @@ use auto_lsp::default::db::BaseDatabase;
 use indexmap::IndexMap;
 
 use crate::{
-    check::errors::path_error::AccessError, hir_def::{
+    AstId, HirNodeInfo, check::errors::path_error::AccessError, hir_def::{
         expressions::{
             expression::{Expr, FuncCall, ParamAssign, VariableAccess},
             spec::Spec,
@@ -11,10 +11,8 @@ use crate::{
         pous::variable::VariableDecl,
         scope::ScopeId,
     }, hir_ty::{
-        ty::Ty,
-        ty_var_access_resolver::{LookUp, ResolvedAccess},
-        walk::{ResolvedPath, ResolvedPathKind},
-    }, AstId, HirNodeInfo
+        def_map::FxIndexMap, ty::Ty, ty_var_access_resolver::{LookUp, ResolvedAccess}, walk::{ResolvedPath, ResolvedPathKind}
+    }
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -35,7 +33,7 @@ impl<'db> ResolvedFuncCall<'db> {
     pub fn callable(
         &self,
         db: &'db dyn BaseDatabase,
-    ) -> Option<&'db IndexMap<Ident, VariableDecl<'db>>> {
+    ) -> Option<&'db FxIndexMap<Ident, VariableDecl<'db>>> {
         self.target.callable(db)
     }
 }

@@ -68,7 +68,7 @@ pub fn resolve_parameters<'db>(
                     ResolvedParamKind::NonFormal {
                         resolved_param: {
                             // Try to get the param by index
-                            let param = callee.local_variables(db).values().nth(formal_index);
+                            let param = callee.def_map(db).local_variables.values().nth(formal_index);
                             formal_index += 1; 
                             param.map(|p| {
                                 *p
@@ -85,7 +85,8 @@ pub fn resolve_parameters<'db>(
                     param,
                     resolved_param: {
                         callee
-                            .local_variables(db)
+                            .def_map(db)
+                            .local_variables
                             .get(&param.ident)
                             .filter(|v| v.is_input(db) || v.is_in_out(db))
                             .map(|p| {
@@ -107,7 +108,8 @@ pub fn resolve_parameters<'db>(
                     param,
                     resolved_param: {
                         callee
-                            .local_variables(db)
+                            .def_map(db)
+                            .local_variables
                             .get(&param.ident)
                             .filter(|v| v.is_output(db))
                             .map(|p| {

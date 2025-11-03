@@ -32,10 +32,6 @@ impl<'db> ScopeId<'db> {
 pub struct Scope<'db> {
     pub file: File,
 
-    // from the standard: "A USING namespace directive enables the types contained in the given namespace,
-    // but specifically does not enable types contained in nested namespaces."
-
-    // TLDR: Using directives are not recursive
     pub usings: Vec<Using<'db>>,
 
     pub kind: ScopeKind<'db>,

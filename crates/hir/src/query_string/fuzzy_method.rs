@@ -9,7 +9,7 @@ pub fn method_symbol_index<'db>(
     method: MethodRef<'db>,
 ) -> Vec<SymbolIndex<'db>> {
     let mut variables = vec![];
-    method.get_scope_id(db).local_variables(db).iter().for_each(|((i, v))| {
+    method.get_scope_id(db).def_map(db).local_variables.iter().for_each(|((i, v))| {
         variables.push(NamedSymbol {
             name: v.name(db).text(db).to_string(),
             kind: SymbolKind::Variable(*v),

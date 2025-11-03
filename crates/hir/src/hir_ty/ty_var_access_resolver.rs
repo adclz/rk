@@ -26,11 +26,7 @@ use crate::{
         visibility::Visibility,
     },
     hir_ty::{
-        flatten::{Flatten, PathExprWalkStep},
-        inheritance_solver::MethodRef,
-        name_res::{pou_names_res, resolve_namespace_access},
-        ty::Ty,
-        walk::{Adjustement, ResolvedPath, ResolvedPathKind, ResolvedPathResult},
+        def_map::FxIndexMap, flatten::{Flatten, PathExprWalkStep}, inheritance_solver::MethodRef, name_res::{pou_names_res, resolve_namespace_access}, ty::Ty, walk::{Adjustement, ResolvedPath, ResolvedPathKind, ResolvedPathResult}
     },
 };
 
@@ -219,16 +215,16 @@ impl<'db> ResolvedAccess<'db> {
     pub fn callable(
         &self,
         db: &'db dyn BaseDatabase,
-    ) -> Option<&'db IndexMap<Ident, VariableDecl<'db>>> {
+    ) -> Option<&'db FxIndexMap<Ident, VariableDecl<'db>>> {
         Some(match self.kind {
             ResolvedPathResult::Ok(ResolvedPath {
                 kind: ResolvedPathKind::Pou(p),
                 ..
-            }) => p.scope_id(db).local_variables(db),
+            }) => &p.scope_id(db).def_map(db).local_variables,
             ResolvedPathResult::Ok(ResolvedPath {
                 kind: ResolvedPathKind::Method(m),
                 ..
-            }) => m.get_scope_id(db).local_variables(db),
+            }) => &m.get_scope_id(db).def_map(db).local_variables,
             _ => None?,
         })
     }
@@ -524,7 +520,7 @@ fn find_primary_target<'db>(
 
             if let SearchMode::Global = mode {
                 // Try local POU names
-                if let Some(pou) = pou_names_res(db, ident, expr.scope_id(db)) {
+                if let Some(pou) = pou_names_res(db, ident) {
                     return Ok((
                         ResolvedPathKind::Pou(pou).with_call_site(
                             db,

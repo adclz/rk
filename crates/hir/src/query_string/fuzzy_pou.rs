@@ -13,7 +13,7 @@ pub fn pou_symbol_index<'db>(
     pou: PouDecl<'db>,
 ) -> Vec<SymbolIndex<'db>> {
     let mut variables = vec![];
-    pou.scope_id(db).global_variables(db).iter().for_each(|((i, v))| {
+    pou.scope_id(db).def_map(db).global_variables.iter().for_each(|((i, v))| {
         variables.push(NamedSymbol {
             name: v.name(db).text(db).to_string(),
             kind: SymbolKind::Variable(*v),

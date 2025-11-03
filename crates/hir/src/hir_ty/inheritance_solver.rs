@@ -118,7 +118,6 @@ impl<'db> From<&MethodDecl<'db>> for MethodRef<'db> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct InheritedMethodSet<'db> {
     pub methods: BTreeMap<Ident, InheritedMethod<'db>>,
 
@@ -157,8 +156,8 @@ impl<'db> InheritedMethod<'db> {
 fn inherited_method_initial<'db>(
     db: &'db dyn BaseDatabase,
     pou: PouDecl<'db>,
-) -> Arc<InheritedMethodSet<'db>>{
-    Arc::new(InheritedMethodSet::new(db, BTreeMap::new(), vec![], vec![]))
+) -> InheritedMethodSet<'db> {
+    InheritedMethodSet::new(db, BTreeMap::new(), vec![], vec![])
 }
 
 fn inherited_method_cycle<'db>(
@@ -166,42 +165,20 @@ fn inherited_method_cycle<'db>(
     value: &InheritedMethodSet<'db>,
     count: u32,
     pou: PouDecl<'db>,
-) -> salsa::CycleRecoveryAction<Arc<InheritedMethodSet<'db>>> {
+) -> salsa::CycleRecoveryAction<InheritedMethodSet<'db>> {
     salsa::CycleRecoveryAction::Iterate
 }
 
-#[salsa::tracked(returns(ref))]
-pub fn to_method_ref<'db>(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Vec<MethodRef<'db>> {
-    match pou.pou(db) {
-        Pou::Class(class) => class.methods(db).iter().map(|m| m.into()).collect(),
-        Pou::Interface(interface) => interface.methods(db).iter().map(|m| m.into()).collect(),
-        Pou::FunctionBlock(fb) => fb.methods(db).iter().map(|m| m.into()).collect(),
-        _ => Default::default(),
-    }
-}
-
-#[salsa::tracked(returns(ref))]
-pub fn declared_methods<'db>(
-    db: &'db dyn BaseDatabase,
-    pou: PouDecl<'db>,
-) -> FxHashMap<Ident, MethodRef<'db>> {
-    to_method_ref(db, pou)
-        .iter()
-        .map(|m| (m.name(db).clone(), *m))
-        .collect()
-}
-
-#[salsa::tracked(cycle_initial = inherited_method_initial, cycle_fn = inherited_method_cycle)]
 pub fn inherited_methods<'db>(
     db: &'db dyn BaseDatabase,
     pou: PouDecl<'db>,
-) -> Arc<InheritedMethodSet<'db>> {
+) -> InheritedMethodSet<'db> {
     let mut methods = BTreeMap::new();
     let mut duplicates = vec![];
     let mut unresolved = vec![];
 
     let mut inherit_from = |src: PouDecl<'db>| {
-        for method in declared_methods(db, src).iter() {
+        for method in src.scope_id(db).def_map(db).declared_methods.iter() {
             let m = InheritedMethod::new(src, *method.1);
             if let Some(dup) = methods.insert(*method.0, m) {
                 duplicates.push((dup, m));
@@ -259,7 +236,7 @@ pub fn inherited_methods<'db>(
                     }
                     _ => {
                         unresolved.push(*iface);
-                    },
+                    }
                 }
             }
         }
@@ -267,5 +244,5 @@ pub fn inherited_methods<'db>(
         _ => {}
     }
 
-    Arc::new(InheritedMethodSet::new(db, methods, duplicates, unresolved))
+    InheritedMethodSet::new(db, methods, duplicates, unresolved)
 }
