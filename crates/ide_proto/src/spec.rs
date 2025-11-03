@@ -8,7 +8,7 @@ use auto_lsp::{
 use hir::{
     HirNodeInfo, TypeInfo,
     hir_def::expressions::spec::{Spec, SpecKind},
-    hir_ty::name_res::{all_global_pous, resolve_namespace_access},
+    hir_ty::name_res::{global_pou_index, resolve_namespace_access},
 };
 
 use crate::{
@@ -100,7 +100,7 @@ impl<'db> ToProtocol<'db> for Spec<'db> {
                         let mut results = vec![];
                         results.extend(static_snippets::elem_type_names());
                         results.extend(
-                            all_global_pous(db)
+                            global_pou_index(db)
                                 .iter()
                                 .map(|(_, pou)| simple_pou_completion(db, *pou))
                                 .collect::<Vec<_>>(),

@@ -14,7 +14,7 @@ use hir::{
         semantic_index::{get_scope, semantic_index},
     },
     hir_ty::{
-        name_res::{all_global_pous, all_pous_in_scope},
+        name_res::{global_pou_index},
     },
 };
 
@@ -32,7 +32,7 @@ pub fn scoped_completions<'db>(
             if let Some(base) = pou.completion(db, offset) {
                 results.extend(base);
             }
-            all_global_pous(db)
+            global_pou_index(db)
                 .iter()
                 .flat_map(|(_, pou)| signature_pou_completion(db, *pou))
                 .for_each(|(pou)| results.push(pou));
@@ -56,7 +56,7 @@ pub fn scoped_completions<'db>(
             Some(results)
         }
         ScopeKind::Global => Some(
-            all_global_pous(db)
+            global_pou_index(db)
                 .iter()
                 .map(|(_, pou)| simple_pou_completion(db, *pou))
                 .collect(),
@@ -140,14 +140,14 @@ pub fn signature<'db>(
     name: &impl Display,
     has_variables: ScopeId<'db>,
 ) -> String {
-       let (sep, tab) = match has_variables.local_variables(db).len() {
+       let (sep, tab) = match has_variables.def_map(db).local_variables.len() {
             0..5 => ("", ""),
             _ => ("\n", "\t"),
         };
     format!(
         "{}({sep}{}{sep});",
         name,
-        has_variables.local_variables(db)
+        has_variables.def_map(db).local_variables
             .iter()
             .enumerate()
             .filter_map(|(i, (n, v))| {
@@ -180,7 +180,7 @@ pub fn signature<'db>(
                 })
             })
             .collect::<Vec<_>>()
-            .join(match has_variables.local_variables(db).len() {
+            .join(match has_variables.def_map(db).local_variables.len() {
                 0..5 => ", ",
                 _ => ",\n",
             })

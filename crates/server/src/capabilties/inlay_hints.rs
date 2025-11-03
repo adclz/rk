@@ -1,4 +1,4 @@
-use std::ops::ControlFlow;
+use std::{ops::ControlFlow, panic::RefUnwindSafe};
 
 use auto_lsp::{
     anyhow,
@@ -8,8 +8,8 @@ use auto_lsp::{
 use hir::{hir_def::semantic_index::semantic_index, walk::WalkHir};
 use ide_proto::AsProtocol;
 
-pub fn inlay_hints(
-    db: &impl BaseDatabase,
+pub fn inlay_hints<Db: BaseDatabase + Clone + RefUnwindSafe>(
+    db: &Db,
     params: InlayHintParams,
 ) -> anyhow::Result<Option<Vec<InlayHint>>> {
     let uri = &params.text_document.uri;
@@ -20,20 +20,25 @@ pub fn inlay_hints(
         None => return Ok(None),
     };
 
+    match salsa::Cancelled::catch(|| {
+
     let mut results = vec![];
 
     let sema = semantic_index(db, file);
+        let _ = sema.walk_hir(db, &mut |node| {
+            if let Some(inlay_hint) = node.as_proto().inlay_hint(db) {
+                results.push(inlay_hint);
+            }
+            ControlFlow::Continue(())
+        });
 
-    let _ = sema.walk_hir(db, &mut |node| {
-        let span = node.get_span(db);
-        if span.lsp().start.line < range.start.line || span.lsp().end.line > range.end.line {
-            return ControlFlow::Break(());
-        }
-        if let Some(inlay_hint) = node.as_proto().inlay_hint(db) {
-            results.push(inlay_hint);
-        }
-        ControlFlow::Continue(())
-    });
-
-    Ok(Some(results))
+        Ok(Some(results))
+    }) {
+        Ok(result) => result,
+        Err(err) => {
+            eprintln!("[hints] Salsa error {:?} in thread {:?}", err, std::thread::current().id());
+            Ok(None)
+        },
+    }
+    
 }

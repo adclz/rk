@@ -8,7 +8,7 @@ use hir::{
         }
     }, hir_ty::{
         implementation::find_all_implementations,
-        inheritance_solver::{declared_methods, MethodRef},
+        inheritance_solver::{MethodRef},
     }, TypeInfo
 };
 
@@ -263,7 +263,7 @@ impl<'db> ToProtocol<'db> for PouDecl<'db> {
         }
 
         let mut results = vec![];
-        self.scope_id(db).global_variables(db).iter().for_each(|(name, v)| {
+        self.scope_id(db).def_map(db).global_variables.iter().for_each(|(name, v)| {
             results.push(CompletionItem {
                 label: name.text(db).to_string(),
                 label_details: Some(CompletionItemLabelDetails {
@@ -289,7 +289,7 @@ impl<'db> ToProtocol<'db> for PouDecl<'db> {
             })
         });
 
-        declared_methods(db, *self)
+        self.scope_id(db).def_map(db).declared_methods
             .iter()
             .for_each(|(name, method)| {
                 results.push(CompletionItem {

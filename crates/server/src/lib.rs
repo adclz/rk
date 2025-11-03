@@ -77,6 +77,7 @@ use crate::capabilties::implementation::go_to_implementation;
 use crate::capabilties::inlay_hints::inlay_hints;
 use crate::capabilties::semantic_tokens;
 use crate::capabilties::semantic_tokens::SUPPORTED_MODIFIERS;
+use auto_lsp::salsa::Database;
 
 pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
     log::info!("Starting IEC LSP");

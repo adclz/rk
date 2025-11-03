@@ -3,7 +3,7 @@ use auto_lsp::{
     lsp_types::{CompletionItem, GotoDefinitionResponse, Hover, request::GotoDeclarationResponse},
 };
 use hir::{hir_ty::{
-    inheritance_solver::{declared_methods, inherited_methods}, walk::{ResolvedPath, ResolvedPathKind}
+    inheritance_solver::{inherited_methods}, walk::{ResolvedPath, ResolvedPathKind}
 }, HirNodeInfo};
 
 use crate::{ToProtocol, completions::static_snippets::namespace};
@@ -60,7 +60,7 @@ impl<'db> ToProtocol<'db> for ResolvedPath<'db> {
             ResolvedPathKind::Pou(pou) => pou.completion(db, offset)?,
             ResolvedPathKind::Spec(spec) => spec.completion(db, offset)?,
             ResolvedPathKind::This(pou) => {
-                declared_methods(db, pou)
+                pou.scope_id(db).def_map(db).declared_methods
                     .iter()
                     .filter_map(|(_, m)| m.completion(db, offset))
                     .flatten()

@@ -33,7 +33,7 @@ pub fn completions(
     Ok(semantic_index(db, file)
         .descendant_at(db, offset)
         .and_then(|s| {
-            eprintln!("Getting completions for node: {:?}", s);
+            //eprintln!("Getting completions for node: {:?}", s);
             Some(CompletionResponse::Array(
                 s.as_proto().completion(db, offset).unwrap_or_default(),
             ))
