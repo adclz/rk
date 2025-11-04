@@ -61,11 +61,11 @@ impl From<(&dyn BaseDatabase, &Vec<SpanIdent<'_>>)> for NamespacePath {
 }
 
 /// A [`SpannedPath`] is a wrapper around a [`NamespaceAccess`] that includes a span
-#[derive(Debug, Copy, Clone, salsa::Update)]
+#[derive(Debug, Clone, salsa::Update)]
 pub struct SpanNamespaceAccess<'db> {
     pub id: AstId,
     pub scope_id: ScopeId<'db>,
-    pub path: NamespaceAccess,
+    pub path: NamespaceAccess<'db>,
 }
 
 impl PartialEq for SpanNamespaceAccess<'_> {
@@ -110,14 +110,21 @@ impl<'db> SpanNamespaceAccess<'db> {
     }
 }
 
-#[salsa::interned(debug, no_lifetime)]
-pub struct NamespaceAccess {
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub struct NamespaceAccess<'db> {
     pub namespace: Option<NamespacePath>,
     pub target: SpanIdent<'db>,
 }
 
-impl NamespaceAccess {
-    pub fn from_ast<'db>(
+impl<'db> NamespaceAccess<'db> {
+    pub fn new(
+        db: &'db dyn BaseDatabase,
+        namespace: Option<NamespacePath>,
+        target: SpanIdent<'db>,
+    ) -> Self {
+        Self { namespace, target }
+    }
+    pub fn from_ast(
         db: &'db dyn BaseDatabase,
         sema: &SemanticIndexBuilder<'db>,
         fq_name: &ast::generated::NamespaceAccess,
@@ -166,13 +173,13 @@ impl NamespaceAccess {
 
     pub fn to_string(&self, db: &dyn BaseDatabase) -> String {
         let mut path = self
-            .namespace(db)
+            .namespace
             .map(|ns| ns.to_string(db))
             .unwrap_or_default();
         if !path.is_empty() {
             path.push('.');
         }
-        path.push_str(self.target(db).ident.text(db).as_str());
+        path.push_str(self.target.ident.text(db).as_str());
         path
     }
 }
