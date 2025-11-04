@@ -189,19 +189,21 @@ pub fn inherited_methods<'db>(
     match pou.pou(db) {
         Pou::Class(class) => {
             if let Some(base) = class.extends(db) {
-                match resolve_namespace_access(db, base.path) {
+                debug_assert!(base.scope_id == pou.scope_id(db));
+                debug_assert!(base.path.target.scope_id == pou.scope_id(db));
+                match resolve_namespace_access(db, &base.path) {
                     Some(base) => {
                         inherit_from(base);
                     }
-                    _ => unresolved.push(*base),
+                    _ => unresolved.push(base.clone()),
                 }
             }
             for iface in class.implements(db) {
-                match resolve_namespace_access(db, iface.path) {
+                match resolve_namespace_access(db, &iface.path) {
                     Some(iface) if matches!(*iface.pou(db), Pou::Interface(_)) => {
                         inherit_from(iface);
                     }
-                    _ => unresolved.push(*iface),
+                    _ => unresolved.push(iface.clone()),
                 }
             }
         }
@@ -209,11 +211,11 @@ pub fn inherited_methods<'db>(
         Pou::Interface(iface) => {
             if let Some(extends) = iface.extends(db) {
                 for iface in extends {
-                    match resolve_namespace_access(db, iface.path) {
+                    match resolve_namespace_access(db, &iface.path) {
                         Some(iface) => {
                             inherit_from(iface);
                         }
-                        _ => unresolved.push(*iface),
+                        _ => unresolved.push(iface.clone()),
                     }
                 }
             }
@@ -221,21 +223,23 @@ pub fn inherited_methods<'db>(
 
         Pou::FunctionBlock(fb) => {
             if let Some(base) = fb.extends(db) {
-                match resolve_namespace_access(db, base.path) {
+                match resolve_namespace_access(db, &base.path) {
                     Some(base) => {
                         inherit_from(base);
                     }
-                    _ => unresolved.push(*base),
+                    _ => unresolved.push(base.clone()),
                 }
             }
 
             for iface in fb.implements(db) {
-                match resolve_namespace_access(db, iface.path) {
+                debug_assert!(iface.scope_id == pou.scope_id(db));
+                debug_assert!(iface.path.target.scope_id == pou.scope_id(db));
+                match resolve_namespace_access(db, &iface.path) {
                     Some(iface) if matches!(*iface.pou(db), Pou::Interface(_)) => {
                         inherit_from(iface);
                     }
                     _ => {
-                        unresolved.push(*iface);
+                        unresolved.push(iface.clone());
                     }
                 }
             }

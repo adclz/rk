@@ -135,7 +135,7 @@ impl<'db> Spec<'db> {
             SpecKind::ArrayConformand(array) => TyKind::ArrayConformand(*array),
             SpecKind::Ref(_ref) => TyKind::RefTo(*_ref),
             SpecKind::Target(target) => {
-                match resolve_namespace_access(db, target.path) {
+                match resolve_namespace_access(db, &target.path) {
                     Some(pou) => {
                         let kind = match pou.pou(db) {
                             Pou::Function(f) => TyKind::Function(*f),
@@ -146,7 +146,7 @@ impl<'db> Spec<'db> {
                         };
                         return Ty::new(db, TySource::Pou((self, pou)), kind);
                     }
-                    None => TyKind::Err(AccessError::NoItemInScope { access: *target }),
+                    None => TyKind::Err(AccessError::NoItemInScope { access: target.clone() }),
                 }
             }
         };
@@ -163,7 +163,7 @@ impl<'db> Spec<'db> {
             SpecKind::ArrayConformand(array) => TyKind::ArrayConformand(*array),
             SpecKind::Ref(_ref) => TyKind::RefTo(*_ref),
             SpecKind::Target(target) => {
-                match resolve_namespace_access(db, target.path) {
+                match resolve_namespace_access(db, &target.path) {
                     Some(pou) => {
                         match pou.pou(db) {
                             Pou::Function(f) => TyKind::Function(*f),
@@ -173,7 +173,7 @@ impl<'db> Spec<'db> {
                             Pou::DataType(dt) => dt.spec(db).to_ty_kind(db),
                         }
                     }
-                    None => TyKind::Err(AccessError::NoItemInScope { access: *target }),
+                    None => TyKind::Err(AccessError::NoItemInScope { access: target.clone() }),
                 }
             }
         }

@@ -74,6 +74,8 @@ impl<'db> Check<'db> for NamespaceDecl<'db> {
 
 impl<'db> Check<'db> for PouDecl<'db> {
     fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<IdeDiagnostic>) {
+        self.scope_id(db).file(db);
+        
         match self.pou(db) {
             Pou::Function(f) => {
                 f.variables(db).check(db, errors);

@@ -39,7 +39,7 @@ impl<'db> ScopeId<'db> {
     #[salsa::tracked(returns(ref))]
     pub fn def_map(self, db: &'db dyn BaseDatabase) -> LocalDefMap<'db> {
         LocalDefMap {
-            local_pous: self.local_pous(db),
+            local_pous: self.local_pous(db).clone(),
             local_variables: self.local_variables(db),
             global_variables: self.global_variables(db),
             declared_methods: self.declared_methods(db),

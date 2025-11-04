@@ -66,12 +66,12 @@ impl<'db> PouDecl<'db> {
             Pou::Class(class) => {
                 let mut inheritors = vec![];
                 if let Some(base) = class.extends(db)
-                    && let Some(base) = resolve_namespace_access(db,base.path)
+                    && let Some(base) = resolve_namespace_access(db,&base.path)
                 {
                     inheritors.push(base);
                 }
                 for iface in class.implements(db) {
-                    if let Some(iface) = resolve_namespace_access(db, iface.path) { inheritors.push(iface); }
+                    if let Some(iface) = resolve_namespace_access(db, &iface.path) { inheritors.push(iface); }
                 }
                 inheritors
             }
@@ -79,7 +79,7 @@ impl<'db> PouDecl<'db> {
                 let mut inheritors = vec![];
                 if let Some(extends) = interface.extends(db) {
                     for iface in extends {
-                        if let Some(iface) = resolve_namespace_access(db, iface.path) { inheritors.push(iface); }
+                        if let Some(iface) = resolve_namespace_access(db, &iface.path) { inheritors.push(iface); }
                     }
                 }
                 inheritors
@@ -87,7 +87,7 @@ impl<'db> PouDecl<'db> {
             Pou::FunctionBlock(fb) => {
                 let mut inheritors = vec![];
                 if let Some(base) = fb.extends(db)
-                    && let Some(base) = resolve_namespace_access(db, base.path)
+                    && let Some(base) = resolve_namespace_access(db, &base.path)
                 {
                     inheritors.push(base);
                 }

@@ -66,7 +66,7 @@ impl<'db> WalkHir<'db> for SpanNamespaceAccess<'db> {
         db: &'db dyn BaseDatabase,
         f: &mut F,
     ) -> ControlFlow<()> {
-        f(HirNode::SpanNamespaceAccess(*self))
+        f(HirNode::SpanNamespaceAccess(self.clone()))
     }
 }
 

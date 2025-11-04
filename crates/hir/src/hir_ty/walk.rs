@@ -535,7 +535,7 @@ impl<'db> Spec<'db> {
     ) -> Result<ResolvedPath<'db>, AccessError<'db>> {
         // resolve the target if it is one
         if let SpecKind::Target(target) = self.kind(db) {
-            return match resolve_namespace_access(db, target.path) {
+            return match resolve_namespace_access(db, &target.path) {
                 Some(pou) => pou.walk(db, step),
                 None => Err(AccessError::NoLocalItemInScope {
                     expr: *step.get_expr(),

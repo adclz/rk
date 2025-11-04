@@ -38,8 +38,6 @@ pub fn diagnostics_for_file(db: &dyn BaseDatabase, file: File) -> Arc<Vec<IdeDia
         .map(|e| (file, e).into())
         .collect::<Vec<_>>();
     let mut errors = vec![];
-    //db.unwind_if_revision_cancelled();
-    std::thread::sleep(Duration::from_secs(1));
     semantic_index(db, file).check(db, &mut errors);
 
     all_diagnostics.extend(check_duplicate_pous(db, file));

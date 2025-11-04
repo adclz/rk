@@ -315,7 +315,7 @@ impl<'db> Spec<'db> {
                 format!("STRUCT ({} fields)", ztruct.elements(db).len())
             }
             SpecKind::Target(target) => {
-                match resolve_namespace_access(db, target.path) {
+                match resolve_namespace_access(db, &target.path) {
                     Some(pou) => {
                         format!(
                             "{}: {}",

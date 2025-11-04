@@ -104,7 +104,7 @@ pub fn check_inheritance<'db>(
     for unresolved in &inherited_methods.unresolved {
         errors.push(
             AnalysisError::MethodError(MethodError::UnresolvedPou {
-                access: *unresolved,
+                access: unresolved.clone(),
             })
             .to_diagnostic(db),
         );
