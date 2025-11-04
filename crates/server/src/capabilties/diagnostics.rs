@@ -18,44 +18,10 @@ pub fn diagnostics<Db: BaseDatabase + Clone + RefUnwindSafe>(
 ) -> anyhow::Result<DocumentDiagnosticReportResult> {
     let uri = params.text_document.uri;
 
-    eprintln!("diag thread_id {:?}", thread::current().id());
-    
-    match salsa::Cancelled::catch(|| -> anyhow::Result<DocumentDiagnosticReportResult> {
-        let file = match db.get_file(&uri) {
-            Some(file) => file,
-            None => {
-                return Ok(DocumentDiagnosticReportResult::Report(
-                    DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
-                        related_documents: None,
-                        full_document_diagnostic_report: FullDocumentDiagnosticReport {
-                            result_id: None,
-                            items: vec![],
-                        },
-                    }),
-                ));
-            }
-        };
-
-        Ok(DocumentDiagnosticReportResult::Report(
-            DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
-                related_documents: None,
-                full_document_diagnostic_report: FullDocumentDiagnosticReport {
-                    result_id: None,
-                    items: diagnostics_for_file(db, file)
-                        .iter()
-                        .map(|d| d.to_lsp_diagnostic(db))
-                        .collect::<Vec<_>>(),
-                },
-            }),
-        ))
-    }) {
-        Ok(result) => {
-            //eprintln!("Diagnostics generated for {}: {:?}", uri, result);
-            result
-        },
-        Err(err) => {
-            eprintln!("[diag] Salsa error {:?} in thread {:?}", err, std::thread::current().id());
-            Ok(DocumentDiagnosticReportResult::Report(
+    let file = match db.get_file(&uri) {
+        Some(file) => file,
+        None => {
+            return Ok(DocumentDiagnosticReportResult::Report(
                 DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
                     related_documents: None,
                     full_document_diagnostic_report: FullDocumentDiagnosticReport {
@@ -63,17 +29,29 @@ pub fn diagnostics<Db: BaseDatabase + Clone + RefUnwindSafe>(
                         items: vec![],
                     },
                 }),
-            ))
-        },
-    }
+            ));
+        }
+    };
 
+    Ok(DocumentDiagnosticReportResult::Report(
+        DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
+            related_documents: None,
+            full_document_diagnostic_report: FullDocumentDiagnosticReport {
+                result_id: None,
+                items: diagnostics_for_file(db, file)
+                    .iter()
+                    .map(|d| d.to_lsp_diagnostic(db))
+                    .collect::<Vec<_>>(),
+            },
+        }),
+    ))
 }
 
 pub fn workspace_diagnostics<Db: BaseDatabase + Clone + RefUnwindSafe>(
     db: &Db,
     _params: WorkspaceDiagnosticParams,
 ) -> anyhow::Result<WorkspaceDiagnosticReportResult> {
-    /*let result = db
+    let result = db
         .get_files()
         .into_par_iter()
         .map_with(db.clone(), |db, file| {
@@ -101,9 +79,9 @@ pub fn workspace_diagnostics<Db: BaseDatabase + Clone + RefUnwindSafe>(
                 uri: file.url(db).clone(),
             })
         })
-        .collect();*/
+        .collect();
 
     Ok(WorkspaceDiagnosticReportResult::Report(
-        WorkspaceDiagnosticReport { items: vec![] },
+        WorkspaceDiagnosticReport { items: result },
     ))
 }

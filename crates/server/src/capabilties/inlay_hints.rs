@@ -20,25 +20,15 @@ pub fn inlay_hints<Db: BaseDatabase + Clone + RefUnwindSafe>(
         None => return Ok(None),
     };
 
-    match salsa::Cancelled::catch(|| {
-
     let mut results = vec![];
 
     let sema = semantic_index(db, file);
-        let _ = sema.walk_hir(db, &mut |node| {
-            if let Some(inlay_hint) = node.as_proto().inlay_hint(db) {
-                results.push(inlay_hint);
-            }
-            ControlFlow::Continue(())
-        });
+    let _ = sema.walk_hir(db, &mut |node| {
+        if let Some(inlay_hint) = node.as_proto().inlay_hint(db) {
+            results.push(inlay_hint);
+        }
+        ControlFlow::Continue(())
+    });
 
-        Ok(Some(results))
-    }) {
-        Ok(result) => result,
-        Err(err) => {
-            eprintln!("[hints] Salsa error {:?} in thread {:?}", err, std::thread::current().id());
-            Ok(None)
-        },
-    }
-    
+    Ok(Some(results))
 }

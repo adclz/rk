@@ -57,6 +57,7 @@ use auto_lsp::server::Session;
 use auto_lsp::server::notification_registry::NotificationRegistry;
 use auto_lsp::server::options::InitOptions;
 use auto_lsp::server::request_registry::RequestRegistry;
+use auto_lsp::server::vendored::intent::ThreadIntent;
 use capabilties::semantic_tokens::SUPPORTED_TYPES;
 use db::RootDatabase;
 use std::error::Error;
@@ -159,20 +160,20 @@ fn on_requests<Db: BaseDatabase + Clone + RefUnwindSafe>(
     registry: &mut RequestRegistry<Db>,
 ) -> &mut RequestRegistry<Db> {
     registry
-        .on::<DocumentDiagnosticRequest, _>(diagnostics)
-        .on::<WorkspaceDiagnosticRequest, _>(workspace_diagnostics)
-        .on::<DocumentSymbolRequest, _>(document_symbols)
-        .on::<SemanticTokensFullRequest, _>(semantic_tokens::semantic_tokens_full)
-        .on::<HoverRequest, _>(hover)
-        .on::<CodeActionRequest, _>(code_actions)
-        .on::<CodeLensRequest, _>(code_lens)
-        .on::<FoldingRangeRequest, _>(folding_ranges)
-        .on::<Completion, _>(completions)
-        .on::<InlayHintRequest, _>(inlay_hints)
-        .on::<Formatting, _>(formatting)
-        .on::<GotoDeclaration, _>(go_to_declaration)
-        .on::<GotoDefinition, _>(go_to_definition)
-        .on::<GotoImplementation, _>(go_to_implementation)
+        .on::<DocumentDiagnosticRequest, _>(ThreadIntent::Worker, diagnostics)
+        .on::<WorkspaceDiagnosticRequest, _>(ThreadIntent::Worker,workspace_diagnostics)
+        .on::<DocumentSymbolRequest, _>(ThreadIntent::Worker,document_symbols)
+        .on::<SemanticTokensFullRequest, _>(ThreadIntent::LatencySensitive,semantic_tokens::semantic_tokens_full)
+        .on::<HoverRequest, _>(ThreadIntent::Worker,hover)
+        .on::<CodeActionRequest, _>(ThreadIntent::Worker,code_actions)
+        .on::<CodeLensRequest, _>(ThreadIntent::Worker,code_lens)
+        .on::<FoldingRangeRequest, _>(ThreadIntent::Worker,folding_ranges)
+        .on::<Completion, _>(ThreadIntent::LatencySensitive,completions)
+        .on::<InlayHintRequest, _>(ThreadIntent::Worker,inlay_hints)
+        .on::<Formatting, _>(ThreadIntent::Worker,formatting)
+        .on::<GotoDeclaration, _>(ThreadIntent::Worker,go_to_declaration)
+        .on::<GotoDefinition, _>(ThreadIntent::Worker,go_to_definition)
+        .on::<GotoImplementation, _>(ThreadIntent::Worker,go_to_implementation)
 }
 
 fn on_notifications<Db: BaseDatabase + Clone + RefUnwindSafe>(
@@ -213,10 +214,10 @@ fn on_notifications<Db: BaseDatabase + Clone + RefUnwindSafe>(
             }
             Ok(())
         })
-        .on::<DidSaveTextDocument, _>(|_s, _p| Ok(()))
-        .on::<DidCloseTextDocument, _>(|_s, _p| Ok(()))
-        .on::<SetTrace, _>(|_s, _p| Ok(()))
-        .on::<LogTrace, _>(|_s, _p| Ok(()))
+        .on::<DidSaveTextDocument, _>(ThreadIntent::Worker, |_s, _p| Ok(()))
+        .on::<DidCloseTextDocument, _>(ThreadIntent::Worker, |_s, _p| Ok(()))
+        .on::<SetTrace, _>(ThreadIntent::Worker, |_s, _p| Ok(()))
+        .on::<LogTrace, _>(ThreadIntent::Worker, |_s, _p| Ok(()))
 }
 
 pub fn send_request<N: lsp_types::request::Request>(

@@ -13,8 +13,6 @@ pub fn document_symbols(
     db: &impl BaseDatabase,
     params: DocumentSymbolParams,
 ) -> anyhow::Result<Option<DocumentSymbolResponse>> {
-    //eprintln!("symbols thread_id {:?}", std::thread::current().id());
-
     let uri = params.text_document.uri;
 
     let file = match db.get_file(&uri) {
@@ -33,6 +31,5 @@ pub fn document_symbols(
         .iter()
         .for_each(|ns| ns.document_symbols(db, &mut builder));
 
-    eprintln!("finished symbols");
     Ok(Some(DocumentSymbolResponse::Nested(builder.finalize())))
 }
