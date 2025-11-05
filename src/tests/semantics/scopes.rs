@@ -3,12 +3,20 @@ use auto_lsp::{
     lsp_types,
 };
 
-use hir::hir_def::{pous::pou::Pou, semantic_index::{get_scope, semantic_index}};
+use hir::{
+    hir_def::{
+        interned::identifier::SpanIdent,
+        pous::pou::{Pou, PouDecl},
+        scope::ScopeId,
+        semantic_index::{get_scope, semantic_index},
+    },
+    hir_ty::name_res::pou_name_res_from_scope,
+};
 
-use crate::tests::utils::add_sources;
 use crate::tests::utils::find_namespace_with_name;
 use crate::tests::utils::test_diagnostics;
 use crate::tests::utils::with_db;
+use crate::tests::utils::{add_sources, find_pou_with_name};
 use db::RootDatabase;
 use std::ops::ControlFlow;
 
@@ -20,13 +28,27 @@ use hir::walk::WalkHir;
 use insta::assert_snapshot;
 use rstest::rstest;
 
+trait PouDeclToSpanIdent<'db> {
+    fn to_span_ident(&self, db: &'db dyn BaseDatabase) -> SpanIdent<'db>;
+}
+
+impl<'db> PouDeclToSpanIdent<'db> for PouDecl<'db> {
+    fn to_span_ident(&self, db: &'db dyn BaseDatabase) -> SpanIdent<'db> {
+        SpanIdent {
+            id: self.name_id(db),
+            scope_id: self.scope_id(db),
+            ident: *self.name(db),
+        }
+    }
+}
+
 #[test]
 fn global_scope() {
     let mut db = RootDatabase::default();
     let url = lsp_types::Url::parse("file:///test.st").unwrap();
     let source = r#"
     FUNCTION fn1
-    END_FUNCTION    
+    END_FUNCTION
 
     FUNCTION_BLOCK fn2
     END_FUNCTION_BLOCK
@@ -147,10 +169,10 @@ fn using_directives() {
     let url = lsp_types::Url::parse("file:///test.st").unwrap();
     let source = r#"
 NAMESPACE ns
-    USING ns2   
+    USING ns2
     USING ns3.nss
     FUNCTION fn1
-    END_FUNCTION    
+    END_FUNCTION
 END_NAMESPACE
 "#;
     let file = File::from_string()
@@ -298,31 +320,43 @@ fn inherit_global_pous(mut with_db: RootDatabase) {
     END_FUNCTION_BLOCK
 
     NAMESPACE ns1
-    FUNCTION_BLOCK fb3
+        FUNCTION_BLOCK fb3
 
-    END_FUNCTION_BLOCK
-END_NAMESPACE"#;
+        END_FUNCTION_BLOCK
+    END_NAMESPACE"#;
     add_sources(&mut with_db, &[source1]);
 
-    let ns1 = find_namespace_with_name(
-        &with_db,
-        *with_db
-            .get_files()
-            .iter()
-            .find(|f| f.url(&with_db).as_str() == "file:///test0.st")
-            .unwrap(),
-        "ns1",
-    )
-    .unwrap();
+    let file = with_db
+        .get_files()
+        .iter()
+        .find(|f| f.url(&with_db).as_str() == "file:///test0.st")
+        .unwrap();
 
-    let pou = Ident::from_slice(&with_db, "fb1");
-    assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
+    let ns1 = find_namespace_with_name(&with_db, *file, "ns1").unwrap();
+    let fb1 = pou_name_res_from_scope(&with_db, ns1, "fb1").unwrap();
+    let fb2 = pou_name_res_from_scope(&with_db, ns1, "fb2").unwrap();
+    let fb3 = pou_name_res_from_scope(&with_db, ns1, "fb3").unwrap();
 
-    let pou = Ident::from_slice(&with_db, "fb2");
-    assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
+    assert_eq!(
+        get_scope(&with_db, fb1.scope_id(&with_db))
+            .parent
+            .unwrap()
+            .scope(&with_db),
+        usize::MAX // global scope
+    );
 
-    let pou = Ident::from_slice(&with_db, "fb3");
-    assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
+    assert_eq!(
+        get_scope(&with_db, fb2.scope_id(&with_db))
+            .parent
+            .unwrap()
+            .scope(&with_db),
+        usize::MAX // global scope
+    );
+
+    assert_eq!(
+        get_scope(&with_db, fb3.scope_id(&with_db)).parent,
+        Some(ns1.scope_id(&with_db)) // ns1 namespace scope
+    );
 }
 
 // Both ns1 namespaces should be allowed to coexist, as they are merged.
@@ -349,25 +383,38 @@ END_NAMESPACE"#;
 
     add_sources(&mut with_db, &[source1, source2]);
 
-    let ns1 = find_namespace_with_name(
-        &with_db,
-        *with_db
-            .get_files()
-            .iter()
-            .find(|f| f.url(&with_db).as_str() == "file:///test0.st")
-            .unwrap(),
-        "ns1",
-    )
-    .unwrap();
+    let file1 = with_db
+        .get_files()
+        .iter()
+        .find(|f| f.url(&with_db).as_str() == "file:///test0.st")
+        .unwrap();
 
-    let pou = Ident::from_slice(&with_db, "fb1");
-    assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
+    let file2 = with_db
+        .get_files()
+        .iter()
+        .find(|f| f.url(&with_db).as_str() == "file:///test1.st")
+        .unwrap();
 
-    let pou = Ident::from_slice(&with_db, "fb2");
-    assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
+    let file_0_ns1 = find_namespace_with_name(&with_db, *file1, "ns1").unwrap();
+    let file_1_ns1 = find_namespace_with_name(&with_db, *file2, "ns1").unwrap();
 
-    let pou = Ident::from_slice(&with_db, "fb3");
-    assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
+    let fb1 = pou_name_res_from_scope(&with_db, file_0_ns1, "fb1").unwrap();
+    let fb2 = pou_name_res_from_scope(&with_db, file_0_ns1, "fb2").unwrap();
+    let fb3 = pou_name_res_from_scope(&with_db, file_0_ns1, "fb3").unwrap();
+
+    assert_eq!(
+        get_scope(&with_db, fb1.scope_id(&with_db)).parent,
+        Some(file_0_ns1.scope_id(&with_db)) // ns1 namespace scope
+    );
+
+    assert_eq!(
+        get_scope(&with_db, fb2.scope_id(&with_db)).parent,
+        Some(file_0_ns1.scope_id(&with_db)) // ns1 namespace scope
+    );
+    assert_eq!(
+        get_scope(&with_db, fb3.scope_id(&with_db)).parent,
+        Some(file_1_ns1.scope_id(&with_db)) // ns1 namespace scope (other file)
+    );
 }
 
 // ns1 and ns2 are separate namespaces, so fb3 should not be in scope in ns1.
@@ -393,25 +440,39 @@ END_NAMESPACE"#;
 
     add_sources(&mut with_db, &[source1, source2]);
 
-    let ns1 = find_namespace_with_name(
-        &with_db,
-        *with_db
-            .get_files()
-            .iter()
-            .find(|f| f.url(&with_db).as_str() == "file:///test0.st")
-            .unwrap(),
-        "ns1",
-    )
-    .unwrap();
+    let file1 = with_db
+        .get_files()
+        .iter()
+        .find(|f| f.url(&with_db).as_str() == "file:///test0.st")
+        .unwrap();
 
-    let pou = Ident::from_slice(&with_db, "fb1");
-    assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
+    let file2 = with_db
+        .get_files()
+        .iter()
+        .find(|f| f.url(&with_db).as_str() == "file:///test1.st")
+        .unwrap();
 
-    let pou = Ident::from_slice(&with_db, "fb2");
-    assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
+    let ns1 = find_namespace_with_name(&with_db, *file1, "ns1").unwrap();
+    let ns2 = find_namespace_with_name(&with_db, *file2, "ns2").unwrap();
 
-    let pou = Ident::from_slice(&with_db, "fb3");
-    assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_none());
+    let fb1 = pou_name_res_from_scope(&with_db, ns1, "fb1").unwrap();
+    let fb2 = pou_name_res_from_scope(&with_db, ns1, "fb2").unwrap();
+    let fb3 = pou_name_res_from_scope(&with_db, ns2, "fb3").unwrap();
+
+    assert_eq!(
+        get_scope(&with_db, fb1.scope_id(&with_db)).parent,
+        Some(ns1.scope_id(&with_db)) // ns1 namespace scope
+    );
+
+    assert_eq!(
+        get_scope(&with_db, fb2.scope_id(&with_db)).parent,
+        Some(ns1.scope_id(&with_db)) // ns1 namespace scope
+    );
+
+    assert_eq!(
+        get_scope(&with_db, fb3.scope_id(&with_db)).parent,
+        Some(ns2.scope_id(&with_db)) // ns1 namespace scope
+    );
 }
 
 // ns1 should have access to ns2's pous because of the USING statement.
@@ -439,25 +500,40 @@ END_NAMESPACE"#;
 
     add_sources(&mut with_db, &[source1, source2]);
 
-    let ns1 = find_namespace_with_name(
-        &with_db,
-        *with_db
-            .get_files()
-            .iter()
-            .find(|f| f.url(&with_db).as_str() == "file:///test0.st")
-            .unwrap(),
-        "ns1",
-    )
-    .unwrap();
+    let file1 = with_db
+        .get_files()
+        .iter()
+        .find(|f| f.url(&with_db).as_str() == "file:///test0.st")
+        .unwrap();
 
-    let pou = Ident::from_slice(&with_db, "fb1");
-    assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
+    let file2 = with_db
+        .get_files()
+        .iter()
+        .find(|f| f.url(&with_db).as_str() == "file:///test1.st")
+        .unwrap();
 
-    let pou = Ident::from_slice(&with_db, "fb2");
-    assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
+    let ns1 = find_namespace_with_name(&with_db, *file1, "ns1").unwrap();
+    let ns2 = find_namespace_with_name(&with_db, *file2, "ns2").unwrap();
 
-    let pou = Ident::from_slice(&with_db, "fb3");
-    assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
+    let fb1 = pou_name_res_from_scope(&with_db, ns1, "fb1").unwrap();
+    let fb2 = pou_name_res_from_scope(&with_db, ns1, "fb2").unwrap();
+    let fb3 = pou_name_res_from_scope(&with_db, ns1, "fb3").unwrap();
+
+    assert_eq!(
+        get_scope(&with_db, fb1.scope_id(&with_db)).parent,
+        Some(ns1.scope_id(&with_db)) // ns1 namespace scope
+    );
+
+    assert_eq!(
+        get_scope(&with_db, fb2.scope_id(&with_db)).parent,
+        Some(ns1.scope_id(&with_db)) // ns1 namespace scope
+    );
+
+    // fb3 is in file2
+    assert_eq!(
+        get_scope(&with_db, fb3.scope_id(&with_db)).parent,
+        Some(ns2.scope_id(&with_db)) // ns2 namespace scope (but available in ns1 due to USING)
+    );
 }
 
 // Pous declared in parent namespace should be in scope in child namespace.
@@ -483,25 +559,33 @@ END_NAMESPACE"#;
 
     add_sources(&mut with_db, &[source1]);
 
-    let ns1 = find_namespace_with_name(
-        &with_db,
-        *with_db
-            .get_files()
-            .iter()
-            .find(|f| f.url(&with_db).as_str() == "file:///test0.st")
-            .unwrap(),
-        "ns1.ns2",
-    )
-    .unwrap();
+    let file1 = with_db
+        .get_files()
+        .iter()
+        .find(|f| f.url(&with_db).as_str() == "file:///test0.st")
+        .unwrap();
 
-    let pou = Ident::from_slice(&with_db, "fb1");
-    assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
+    let ns1 = find_namespace_with_name(&with_db, *file1, "ns1").unwrap();
+    let ns2 = find_namespace_with_name(&with_db, *file1, "ns1.ns2").unwrap();
 
-    let pou = Ident::from_slice(&with_db, "fb2");
-    assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
+    let fb1 = pou_name_res_from_scope(&with_db, ns2, "fb1").unwrap();
+    let fb2 = pou_name_res_from_scope(&with_db, ns2, "fb2").unwrap();
+    let fb3 = pou_name_res_from_scope(&with_db, ns2, "fb3").unwrap();
 
-    let pou = Ident::from_slice(&with_db, "fb3");
-    assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
+    assert_eq!(
+        get_scope(&with_db, fb1.scope_id(&with_db)).parent,
+        Some(ns1.scope_id(&with_db)) // ns1 namespace scope
+    );
+
+    assert_eq!(
+        get_scope(&with_db, fb2.scope_id(&with_db)).parent,
+        Some(ns1.scope_id(&with_db)) // ns1 namespace scope
+    );
+
+    assert_eq!(
+        get_scope(&with_db, fb3.scope_id(&with_db)).parent,
+        Some(ns2.scope_id(&with_db)) // ns2 namespace scope (but available in ns1 due to nesting)
+    );
 }
 
 // However parent namespaces should not have access to child namespace pous.
@@ -527,25 +611,28 @@ END_NAMESPACE"#;
 
     add_sources(&mut with_db, &[source1]);
 
-    let ns1 = find_namespace_with_name(
-        &with_db,
-        *with_db
-            .get_files()
-            .iter()
-            .find(|f| f.url(&with_db).as_str() == "file:///test0.st")
-            .unwrap(),
-        "ns1",
-    )
-    .unwrap();
+    let file1 = with_db
+        .get_files()
+        .iter()
+        .find(|f| f.url(&with_db).as_str() == "file:///test0.st")
+        .unwrap();
 
-    let pou = Ident::from_slice(&with_db, "fb1");
-    assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
+    let ns1 = find_namespace_with_name(&with_db, *file1, "ns1").unwrap();
+    let fb1 = pou_name_res_from_scope(&with_db, ns1, "fb1").unwrap();
+    let fb2 = pou_name_res_from_scope(&with_db, ns1, "fb2").unwrap();
+    let fb3 = pou_name_res_from_scope(&with_db, ns1, "fb3");
 
-    let pou = Ident::from_slice(&with_db, "fb2");
-    assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
+    assert_eq!(
+        get_scope(&with_db, fb1.scope_id(&with_db)).parent,
+        Some(ns1.scope_id(&with_db)) // ns1 namespace scope
+    );
 
-    let pou = Ident::from_slice(&with_db, "fb3");
-    assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_none());
+    assert_eq!(
+        get_scope(&with_db, fb2.scope_id(&with_db)).parent,
+        Some(ns1.scope_id(&with_db)) // ns1 namespace scope
+    );
+
+    assert!(fb3.is_none());
 }
 
 // A Using directive in a parent namespace should bring pous from the used namespace,
@@ -584,12 +671,28 @@ END_NAMESPACE"#;
     )
     .unwrap();
 
-    let pou = Ident::from_slice(&with_db, "fb1");
-    assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
+    let ns2 = find_namespace_with_name(
+        &with_db,
+        *with_db.get_files().iter().last().unwrap(),
+        "ns1.ns2",
+    )
+    .unwrap();
 
-    let pou = Ident::from_slice(&with_db, "fb2");
-    assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
+    let fb1 = pou_name_res_from_scope(&with_db, ns2, "fb1").unwrap();
+    let fb2 = pou_name_res_from_scope(&with_db, ns2, "fb2").unwrap();
+    let fb3 = pou_name_res_from_scope(&with_db, ns2, "fb3").unwrap();
 
-    let pou = Ident::from_slice(&with_db, "fb3");
-    assert!(pou_names_res(&with_db, &pou, ns1.scope_id(&with_db)).is_some());
+    assert_eq!(
+        get_scope(&with_db, fb1.scope_id(&with_db)).parent,
+        Some(ns1.scope_id(&with_db)) // ns1 namespace scope
+    );
+
+    assert_eq!(
+        get_scope(&with_db, fb2.scope_id(&with_db)).parent,
+        Some(ns1.scope_id(&with_db)) // ns1 namespace scope
+    );
+    assert_eq!(
+        get_scope(&with_db, fb3.scope_id(&with_db)).parent,
+        Some(ns2.scope_id(&with_db)) // ns2 namespace scope (but available in ns1 due to USING)
+    );
 }

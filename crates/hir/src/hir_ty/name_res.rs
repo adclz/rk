@@ -13,7 +13,6 @@ use crate::{
         scope::{ScopeId, ScopeKind},
         semantic_index::{get_scope, semantic_index},
     },
-    hir_ty::{def_map, using_resolver::resolve_using},
 };
 
 // todo: for both indexes, use salsa::par_map to parallelize the construction
@@ -116,4 +115,18 @@ pub fn pou_names_res<'db>(
             find_in_parent_pous(db, span_ident)
                 .or_else(|| global_pou_index(db).get(&span_ident.ident).copied())
         })
+}
+
+#[cfg(debug_assertions)]
+pub fn pou_name_res_from_scope<'db>(
+    db: &'db dyn BaseDatabase,
+    scope: impl HirNodeInfo<'db>,
+    name: &str,
+) -> Option<PouDecl<'db>> {
+    let span_ident = SpanIdent {
+        id: crate::AstId(0),
+        ident: Ident::from_slice(db, name),
+        scope_id: scope.get_scope_id(db),
+    };
+    pou_names_res(db, &span_ident)
 }
