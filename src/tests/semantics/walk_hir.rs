@@ -183,17 +183,17 @@ END_FUNCTION_BLOCK"#;
     });
 
     assert_snapshot!(nodes.join("\n"), @r"
-    PouDecl(PouDecl { [salsa id]: Id(3c00) })
-    SpanNamespaceAccess(SpanNamespaceAccess { id: AstId(3), scope_id: ScopeId { [salsa id]: Id(402) }, path: NamespaceAccess(Id(c00)) })
-    MethodRef(Declared(MethodDecl { [salsa id]: Id(3400) }))
-    VariableDecl(VariableDecl { [salsa id]: Id(3000) })
-    Spec(Spec { [salsa id]: Id(2c00) })
-    ResolvedAccess(ResolvedAccess { kind: Ok(ResolvedPath { expr: CallSite { scope: ScopeId { [salsa id]: Id(402) }, id: AstId(24) }, adjustement: None, kind: This(PouDecl { [salsa id]: Id(3c00) }) }), call_site: CallSite { scope: ScopeId { [salsa id]: Id(402) }, id: AstId(20) }, elements: [Ok(ResolvedPath { expr: CallSite { scope: ScopeId { [salsa id]: Id(402) }, id: AstId(26) }, adjustement: None, kind: Method(Declared(MethodDecl { [salsa id]: Id(3400) })) })] })
-    ResolvedPath(ResolvedPath { expr: CallSite { scope: ScopeId { [salsa id]: Id(402) }, id: AstId(26) }, adjustement: None, kind: Method(Declared(MethodDecl { [salsa id]: Id(3400) })) })
-    ResolvedParam(ResolvedParam { param_assign: ParamAssign { [salsa id]: Id(2000) }, kind: NonFormal { resolved_param: Some(VariableDecl { [salsa id]: Id(3000) }), value: Expr { [salsa id]: Id(1c00) } } })
-    VariableDecl(VariableDecl { [salsa id]: Id(3000) })
-    Spec(Spec { [salsa id]: Id(2c00) })
-    Expr(Expr { [salsa id]: Id(1c00) })
+    PouDecl(PouDecl { [salsa id]: Id(3800) })
+    SpanNamespaceAccess(SpanNamespaceAccess { id: AstId(3), scope_id: ScopeId { [salsa id]: Id(402) }, path: NamespaceAccess { namespace: None, target: SpanIdent { id: AstId(4), scope_id: ScopeId { [salsa id]: Id(402) }, ident: Ident(Id(800)) } } })
+    MethodRef(Declared(MethodDecl { [salsa id]: Id(3000) }))
+    VariableDecl(VariableDecl { [salsa id]: Id(2c00) })
+    Spec(Spec { [salsa id]: Id(2800) })
+    ResolvedAccess(ResolvedAccess { kind: Ok(ResolvedPath { expr: CallSite { scope: ScopeId { [salsa id]: Id(402) }, id: AstId(24) }, adjustement: None, kind: This(PouDecl { [salsa id]: Id(3800) }) }), call_site: CallSite { scope: ScopeId { [salsa id]: Id(402) }, id: AstId(20) }, elements: [Ok(ResolvedPath { expr: CallSite { scope: ScopeId { [salsa id]: Id(402) }, id: AstId(26) }, adjustement: None, kind: Method(Declared(MethodDecl { [salsa id]: Id(3000) })) })] })
+    ResolvedPath(ResolvedPath { expr: CallSite { scope: ScopeId { [salsa id]: Id(402) }, id: AstId(26) }, adjustement: None, kind: Method(Declared(MethodDecl { [salsa id]: Id(3000) })) })
+    ResolvedParam(ResolvedParam { param_assign: ParamAssign { [salsa id]: Id(1c00) }, kind: NonFormal { resolved_param: Some(VariableDecl { [salsa id]: Id(2c00) }), value: Expr { [salsa id]: Id(1800) } } })
+    VariableDecl(VariableDecl { [salsa id]: Id(2c00) })
+    Spec(Spec { [salsa id]: Id(2800) })
+    Expr(Expr { [salsa id]: Id(1800) })
     ");
 }
 

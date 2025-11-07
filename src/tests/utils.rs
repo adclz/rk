@@ -118,8 +118,11 @@ pub fn find_pou_with_name<'db>(
         }
     }
 
-    for ns in sema.namespaces.iter() {
+    eprintln!("len {}", sema.global_namespaces.len());
+    for ns in sema.global_namespaces.iter() {
+        eprintln!("namespace {}", ns.path(db).to_string(db));
         for pou in ns.pous(db) {
+            eprintln!("pou: {}", pou.name(db).text(db));
             if pou.name(db).text(db).as_str() == name {
                 return Some(*pou);
             }

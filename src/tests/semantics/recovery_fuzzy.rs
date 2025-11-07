@@ -40,7 +40,7 @@ fn fuzzy_struct_fields(mut with_db: RootDatabase) {
         |                                                 ^^|^  
         |                                                   `--- no field 'fuel' in STRUCT
         | 
-        | Note: STRUCT field(s) with similar name(s) exist:
+        | Note: STRUCT has fields with similar name:
         |       - fuel1
         |       - fuel2
         |       - fuel3
@@ -72,7 +72,7 @@ fn fuzzy_pou_local_variables(mut with_db: RootDatabase) {
        |             ^^^|^^  
        |                `---- no item 'engine' in scope
        | 
-       | Note: POU item(s) with similar name(s) exist:
+       | Note: 'fb1' has items with similar name:
        |       - engine2
        |       - no_engine
     ---'
@@ -103,7 +103,7 @@ END_FUNCTION_BLOCK
         |        ^^|^^  
         |          `---- unknown input 'param'
         | 
-        | Note: POU item(s) with similar name(s) exist:
+        | Note: 'fn' has items with similar name:
         |       - param1
         |       - param2
     ----'
@@ -137,7 +137,7 @@ END_FUNCTION_BLOCK
         |        ^^|^^  
         |          `---- unknown output 'param'
         | 
-        | Note: POU item(s) with similar name(s) exist:
+        | Note: 'fn' has items with similar name:
         |       - param1
         |       - param2
     ----'
