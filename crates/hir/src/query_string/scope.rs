@@ -1,0 +1,128 @@
+use std::{cmp::Ordering, ops::ControlFlow};
+
+use auto_lsp::default::db::{BaseDatabase, file::File};
+use rayon::slice::ParallelSliceMut;
+use rustc_hash::{FxHashMap, FxHashSet};
+
+use crate::{
+    hir_def::{
+        interned::{identifier::Ident, namespace::NamespacePath},
+        pous::{pou::PouDecl, variable::VariableDecl},
+        scope::{ScopeId, ScopeKind},
+        semantic_index::semantic_index,
+    },
+    hir_ty::name_res::global_namespace_index,
+    query_string::{
+        file::file_symbol_index,
+        query::{NamedSymbol, Query, SymbolIndex, SymbolKind},
+        variables::variable_symbol_index,
+    },
+};
+
+#[derive(Default)]
+pub struct ScopeSearchResult<'db> {
+    /// POUs that need to be imported via USING directives
+    pub need_imports: Vec<(NamespacePath, PouDecl<'db>)>,
+    pub local_variables: Vec<VariableDecl<'db>>,
+    pub local_pous: Vec<PouDecl<'db>>,
+}
+
+/// Discover POUs and variables available for a given query in the given scope
+///
+/// This will return both local POUs and POUs that can be imported via USING directives
+pub fn query_scope_items<'db>(
+    db: &'db dyn BaseDatabase,
+    query: &str,
+    scope: ScopeId<'db>,
+    filter_pou: impl Fn(&PouDecl<'db>) -> bool,
+) -> ScopeSearchResult<'db> {
+    let comp = discover_in_scope(db, scope);
+    let mut result = ScopeSearchResult::default();
+
+    // Collects all symbol indexes to search
+    let mut indexes: Vec<_> = db
+        .get_files()
+        .iter()
+        .map(|file| file_symbol_index(db, *file))
+        .collect();
+
+    // Add variable index for the current scope
+    indexes.push(variable_symbol_index(db, scope));
+
+    let mut need_imports = vec![];
+    let mut fast_query = Query::new(query.to_string());
+    fast_query.fuzzy();
+
+    fast_query.search(db, &indexes, |symbol| {
+        match symbol.kind {
+            SymbolKind::Pou(pou) => {
+                if let Some(ns) = symbol.namespace {
+                    // Check if we have already seen this symbol in the local scopes
+                    if comp.seen_namespaces.contains(&ns) {
+                        return ControlFlow::Continue::<()>(());
+                    }
+
+                    // Then, check if we have already added this POU
+                    if comp.pous.contains_key(pou.name(db)) {
+                        return ControlFlow::Continue::<()>(());
+                    }
+                    if !filter_pou(&pou) {
+                        return ControlFlow::Continue::<()>(());
+                    }
+
+                    need_imports.push((ns, pou));
+                }
+            }
+            SymbolKind::Variable(v) => {
+                result.local_variables.push(v);
+            }
+            _ => {}
+        }
+        ControlFlow::Continue::<()>(())
+    });
+
+    result.local_pous = comp.pous.values().cloned().collect();
+    result.need_imports = need_imports;
+    result
+}
+
+#[derive(Default)]
+pub struct LocalSearchResult<'db> {
+    pub seen_namespaces: FxHashSet<NamespacePath>,
+    pub pous: FxHashMap<Ident, PouDecl<'db>>,
+}
+
+// Iterate through the local scopes and collect local POUs and seen namespaces
+pub fn discover_in_scope<'db>(
+    db: &'db dyn BaseDatabase,
+    scope: ScopeId<'db>,
+) -> LocalSearchResult<'db> {
+    let mut result = LocalSearchResult::default();
+
+    // Adds pous declared
+    scope.def_map(db).local_pous.iter().for_each(|(n, p)| {
+        result.pous.insert(*n, *p);
+    });
+
+    let it = semantic_index(db, scope.file(db)).scope_iterator(db, scope);
+    for scope in it {
+        // Find POUs in all shared namespaces
+        if let ScopeKind::Namespace(ns) = scope.kind {
+            if let Some(namespaces) = global_namespace_index(db).get(ns.path(db)) {
+                for ns in namespaces.iter() {
+                    result.seen_namespaces.insert(*ns.path(db));
+                }
+            }
+        }
+
+        // Find POUs in all USING directives
+        for using in &scope.usings {
+            if let Some(namespaces) = global_namespace_index(db).get(&using.path(db)) {
+                for ns in namespaces.iter() {
+                    result.seen_namespaces.insert(*ns.path(db));
+                }
+            }
+        }
+    }
+    result
+}

@@ -1,5 +1,6 @@
 pub mod query;
-pub mod symbol_index;
-pub mod fuzzy_struct;
-pub mod fuzzy_pou;
-pub mod fuzzy_method;
+pub mod file;
+pub mod strukt;
+pub mod variables;
+pub mod method;
+pub mod scope;

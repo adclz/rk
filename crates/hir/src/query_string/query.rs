@@ -1,13 +1,18 @@
 use auto_lsp::default::db::{BaseDatabase, file::File};
 use auto_lsp::lsp_types::{CompletionItem, CompletionItemKind};
+use db::RootDatabase;
 use fst::{Automaton, Streamer, raw::IndexedValue};
 use rayon::prelude::*;
 
+use std::fmt;
+use std::hash::Hasher;
 use std::ops::ControlFlow;
+use std::sync::Arc;
 use std::{cmp::Ordering, hash::Hash};
 
 use crate::HirNodeInfo;
 use crate::hir_def::expressions::spec::{Struct, StructElement};
+use crate::hir_def::interned::namespace::NamespacePath;
 use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::PouDecl;
 use crate::hir_def::pous::variable::VariableDecl;
@@ -102,8 +107,8 @@ impl Query {
     pub fn search<'sym, T>(
         &self,
         db: &'sym dyn BaseDatabase,
-        indices: Vec<SymbolIndex<'sym>>,
-        cb: impl FnMut(&'sym NamedSymbol) -> ControlFlow<T>,
+        indices: &[SymbolIndex<'sym>],
+        cb: impl FnMut(&NamedSymbol<'sym>) -> ControlFlow<T>,
     ) -> Option<T> {
         let mut op = fst::map::OpBuilder::new();
         match self.mode {
@@ -111,7 +116,7 @@ impl Query {
                 let automaton = fst::automaton::Str::new(&self.lowercased);
 
                 for index in indices.iter() {
-                    op = op.add(index.map(db).search(&automaton));
+                    op = op.add(index.map.search(&automaton));
                 }
                 self.search_maps(db, indices, op.union(), cb)
             }
@@ -119,7 +124,7 @@ impl Query {
                 let automaton = fst::automaton::Subsequence::new(&self.lowercased);
 
                 for index in indices.iter() {
-                    op = op.add(index.map(db).search(&automaton));
+                    op = op.add(index.map.search(&automaton));
                 }
                 self.search_maps(db, indices, op.union(), cb)
             }
@@ -127,7 +132,7 @@ impl Query {
                 let automaton = fst::automaton::Str::new(&self.lowercased).starts_with();
 
                 for index in indices.iter() {
-                    op = op.add(index.map(db).search(&automaton));
+                    op = op.add(index.map.search(&automaton));
                 }
                 self.search_maps(db, indices, op.union(), cb)
             }
@@ -137,16 +142,16 @@ impl Query {
     fn search_maps<'sym, T>(
         &self,
         db: &'sym dyn BaseDatabase,
-        indices: Vec<SymbolIndex<'sym>>,
+        indices: &[SymbolIndex<'sym>],
         mut stream: fst::map::Union<'_>,
-        mut cb: impl FnMut(&'sym NamedSymbol) -> ControlFlow<T>,
+        mut cb: impl FnMut(&NamedSymbol<'sym>) -> ControlFlow<T>,
     ) -> Option<T> {
         while let Some((_, indexed_values)) = stream.next() {
             for &IndexedValue { index, value } in indexed_values {
                 let symbol_index = &indices[index];
                 let (start, end) = SymbolIndex::map_value_to_range(value);
 
-                for symbol in &symbol_index.symbols(db)[start..end] {
+                for symbol in &symbol_index.symbols[start..end] {
                     let symbol_name = symbol.name.as_str();
 
                     if let Some(b) = cb(symbol).break_value() {
@@ -164,20 +169,40 @@ impl Query {
     }
 }
 
-#[salsa::tracked]
+#[derive(Default, Clone)]
 pub struct SymbolIndex<'db> {
-    #[tracked]
-    #[returns(ref)]
     symbols: Box<[NamedSymbol<'db>]>,
-
-    #[tracked]
-    #[no_eq]
-    #[returns(ref)]
     map: fst::Map<Vec<u8>>,
 }
 
+impl fmt::Debug for SymbolIndex<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SymbolIndex").field("n_symbols", &self.symbols.len()).finish()
+    }
+}
+
+impl PartialEq for SymbolIndex<'_> {
+    fn eq(&self, other: &SymbolIndex) -> bool {
+        self.symbols == other.symbols
+    }
+}
+
+impl Eq for SymbolIndex<'_> {}
+
+impl Hash for SymbolIndex<'_> {
+    fn hash<H: Hasher>(&self, hasher: &mut H) {
+        self.symbols.hash(hasher)
+    }
+}
+
+unsafe impl salsa::Update for SymbolIndex<'_> {
+    unsafe fn maybe_update(old_pointer: *mut Self, new_value: Self) -> bool {
+        false
+    }
+}
+
 impl<'db> SymbolIndex<'db> {
-    pub fn create(
+    pub fn new(
         db: &'db dyn BaseDatabase,
         mut symbols: Box<[NamedSymbol<'db>]>,
     ) -> SymbolIndex<'db> {
@@ -219,7 +244,7 @@ impl<'db> SymbolIndex<'db> {
                 })
             })
             .unwrap();
-        SymbolIndex::new(db, symbols, map)
+        SymbolIndex { symbols, map }
     }
 
     fn range_to_map_value(start: usize, end: usize) -> u64 {
@@ -239,6 +264,7 @@ impl<'db> SymbolIndex<'db> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct NamedSymbol<'db> {
     pub name: String,
+    pub namespace: Option<NamespacePath>,
     pub kind: SymbolKind<'db>,
 }
 
@@ -268,34 +294,4 @@ impl<'db> HirNodeInfo<'db> for NamedSymbol<'db> {
             SymbolKind::Variable(ty) => ty.get_scope_id(db),
         }
     }
-}
-
-#[tracing::instrument(skip_all)]
-#[salsa::tracked(no_eq)]
-pub fn file_symbol_index<'db>(db: &'db dyn BaseDatabase, file: File) -> SymbolIndex<'db> {
-    let mut pous = vec![];
-    let sema = semantic_index(db, file);
-
-    sema.namespaces.iter().for_each(|ns| {
-        ns.pous(db).iter().for_each(|pou| {
-            pous.push(NamedSymbol {
-                name: pou.name(db).text(db).to_string(),
-                kind: SymbolKind::Pou(*pou),
-            });
-        });
-    });
-
-    SymbolIndex::create(db, pous.into_boxed_slice())
-}
-
-pub fn global_symbol_indexes(db: &dyn BaseDatabase, file_to_omit: File) -> Vec<SymbolIndex> {
-    db.get_files()
-        .iter()
-        // Filter out the file to omit
-        // Local queries have to be used to know which items are visible in the current scope
-        .filter_map(|file| match *file == file_to_omit {
-            true => Some(file_symbol_index(db, *file)),
-            false => None,
-        })
-        .collect()
 }

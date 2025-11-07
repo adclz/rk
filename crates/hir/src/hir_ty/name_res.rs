@@ -75,6 +75,7 @@ pub fn find_in_parent_pous<'db>(
 ) -> Option<PouDecl<'db>> {
     let it = semantic_index(db, name.scope_id.file(db)).scope_iterator(db, name.scope_id);
     for scope in it {
+        // Find POUs in all shared namespaces
         if let ScopeKind::Namespace(ns) = scope.kind {
             if let Some(namespaces) = global_namespace_index(db).get(ns.path(db)) {
                 for ns in namespaces.iter() {
@@ -85,6 +86,7 @@ pub fn find_in_parent_pous<'db>(
             }
         }
 
+        // Find POUs in all USING directives
         for using in &scope.usings {
             if let Some(namespaces) = global_namespace_index(db).get(&using.path(db)) {
                 for ns in namespaces.iter() {

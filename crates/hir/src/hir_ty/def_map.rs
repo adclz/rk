@@ -57,7 +57,19 @@ impl<'db> ScopeId<'db> {
             }
             _ => FxHashMap::default(),
         }
+    }
 
+    pub fn can_have_local_variables(&self, db: &'db dyn BaseDatabase) -> bool {
+        match get_scope(db, *self).kind {
+            ScopeKind::Global | ScopeKind::Namespace(_) => false,
+            ScopeKind::Pou(pou) => match pou.pou(db) {
+                Pou::Function(_) | Pou::FunctionBlock(_) | Pou::Class(_) => {
+                    true
+                }
+                _ => false,
+            },
+            ScopeKind::MethodDecl(m) => true,
+        }
     }
 
     fn local_variables(&self, db: &'db dyn BaseDatabase) -> FxIndexMap<Ident, VariableDecl<'db>> { 
