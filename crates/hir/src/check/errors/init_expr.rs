@@ -5,7 +5,7 @@ use crate::{
     check::errors::{
             analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic},
             coerce::ExprMismatch,
-        }, hir_def::{expressions::expression::{Expr, InitExpr}, interned::identifier::SpanIdent}, hir_ty::{init_expr_resolver::ResolvedInitExpr, ty::{Ty, TyKind}}, query_string::fuzzy_struct::fuzzy_struct_fields, HirNodeInfo, TypeInfo
+        }, hir_def::{expressions::expression::{Expr, InitExpr}, interned::identifier::SpanIdent}, hir_ty::{init_expr_resolver::ResolvedInitExpr, ty::{Ty, TyKind}}, query_string::strukt::fuzzy_struct_fields, HirNodeInfo, TypeInfo
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]

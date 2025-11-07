@@ -20,7 +20,7 @@ use crate::{
         pous::variable::VariableDecl,
     },
     hir_ty::{ty_var_access_resolver::ResolvedAccess},
-    query_string::{fuzzy_method::fuzzy_method_parameters, fuzzy_pou::fuzzy_pou_items},
+    query_string::{method::fuzzy_method_parameters, variables::fuzzy_variables},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
@@ -318,7 +318,7 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                     .call();
 
                 if let Some(m) = call.as_pou(db) {
-                    fuzzy_pou_items(db, m, &mut diag, param.ident.text(db).as_str());
+                    fuzzy_variables(db, m, &mut diag, param.ident.text(db).as_str());
                 }
                 diag
             }
@@ -330,7 +330,7 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                     .call();
 
                 if let Some(m) = call.as_pou(db) {
-                    fuzzy_pou_items(db, m, &mut diag, param.ident.text(db).as_str());
+                    fuzzy_variables(db, m, &mut diag, param.ident.text(db).as_str());
                 }
                 diag
             }

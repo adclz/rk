@@ -1,3 +1,4 @@
+use auto_lsp::core::span::Span;
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::hir_def::interned::namespace::NamespacePath;
@@ -25,6 +26,12 @@ pub struct NamespaceDecl<'db> {
     pub name_id: AstId,
 
     pub scope_id: ScopeId<'db>,
+}
+
+impl<'db> NamespaceDecl<'db> {
+    pub fn name_span(&self, db: &'db dyn BaseDatabase) -> Span {
+        self.get_name_span(db).unwrap()
+    }
 }
 
 impl<'db> HirNodeInfo<'db> for NamespaceDecl<'db> {

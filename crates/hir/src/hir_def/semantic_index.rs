@@ -182,6 +182,25 @@ impl<'db> HirNode<'db> {
             HirNode::ResolvedInitExpr(i) => i.get_span(db),
         }
     }
+
+    pub fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+        match self {
+            HirNode::Namespace(n) => n.get_scope_id(db),
+            HirNode::SpanNamespaceAccess(s) => s.get_scope_id(db),
+            HirNode::PouDecl(p) => p.get_scope_id(db),
+            HirNode::VariableDecl(v) => v.get_scope_id(db),
+            HirNode::StructElement(s) => s.get_scope_id(db),
+            HirNode::Spec(s) => s.get_scope_id(db),
+            HirNode::MethodRef(m) => m.get_scope_id(db),
+            HirNode::Stmt(s) => s.get_scope_id(db),
+            HirNode::Expr(e) => e.get_scope_id(db),
+            HirNode::ResolvedUsing(u) => u.get_scope_id(db),
+            HirNode::ResolvedPath(p) => p.get_scope_id(db),
+            HirNode::ResolvedAccess(v) => v.get_scope_id(db),
+            HirNode::ResolvedParam(p) => p.get_scope_id(db),
+            HirNode::ResolvedInitExpr(i) => i.get_scope_id(db),
+        }
+    }
 }
 
 impl<'db> SemanticIndex<'db> {

@@ -7,7 +7,7 @@ use crate::{
         interned::namespace::SpanNamespaceAccess,
         scope::ScopeKind,
         semantic_index::{get_scope, semantic_index},
-    }, hir_ty::{ty_var_access_resolver::CallSite, walk::ResolvedPath}, query_string::fuzzy_pou::fuzzy_pou_items, HirNodeInfo
+    }, hir_ty::{ty_var_access_resolver::CallSite, walk::ResolvedPath}, query_string::variables::fuzzy_variables, HirNodeInfo
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -120,7 +120,7 @@ impl<'db> DiagnosticDescription<'db> for AccessError<'db> {
             AccessError::NoLocalItemInScope { expr } => {
                 let scope = get_scope(db, expr.scope_id(db));
                 if let ScopeKind::Pou(pou) = scope.kind {
-                    fuzzy_pou_items(
+                    fuzzy_variables(
                         db,
                         pou,
                         diag,
