@@ -37,7 +37,7 @@ static SURROUND_SPACES: &str = r#"
     "EXIT"
     "CONTINUE"
     "REF_TO"
-    ":=" "=" "<=" "<" ">=" ">" "<>" "+" "-" "*" "/" "%"
+    ":=" "=" "=>" "<=" "<" ">=" ">" "<>" "+" "-" "*" "/" "%"
     "&" "AND" "OR" "NOT"
     (line_comment)
     (c_style_comment)
