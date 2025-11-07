@@ -78,7 +78,6 @@ use crate::capabilties::implementation::go_to_implementation;
 use crate::capabilties::inlay_hints::inlay_hints;
 use crate::capabilties::semantic_tokens;
 use crate::capabilties::semantic_tokens::SUPPORTED_MODIFIERS;
-use auto_lsp::salsa::Database;
 
 pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
     log::info!("Starting IEC LSP");
@@ -160,15 +159,15 @@ fn on_requests<Db: BaseDatabase + Clone + RefUnwindSafe>(
     registry: &mut RequestRegistry<Db>,
 ) -> &mut RequestRegistry<Db> {
     registry
+        .on::<SemanticTokensFullRequest, _>(ThreadIntent::LatencySensitive,semantic_tokens::semantic_tokens_full)
+        .on::<Completion, _>(ThreadIntent::LatencySensitive,completions)
         .on::<DocumentDiagnosticRequest, _>(ThreadIntent::Worker, diagnostics)
         .on::<WorkspaceDiagnosticRequest, _>(ThreadIntent::Worker,workspace_diagnostics)
         .on::<DocumentSymbolRequest, _>(ThreadIntent::Worker,document_symbols)
-        .on::<SemanticTokensFullRequest, _>(ThreadIntent::LatencySensitive,semantic_tokens::semantic_tokens_full)
         .on::<HoverRequest, _>(ThreadIntent::Worker,hover)
         .on::<CodeActionRequest, _>(ThreadIntent::Worker,code_actions)
         .on::<CodeLensRequest, _>(ThreadIntent::Worker,code_lens)
         .on::<FoldingRangeRequest, _>(ThreadIntent::Worker,folding_ranges)
-        .on::<Completion, _>(ThreadIntent::LatencySensitive,completions)
         .on::<InlayHintRequest, _>(ThreadIntent::Worker,inlay_hints)
         .on::<Formatting, _>(ThreadIntent::Worker,formatting)
         .on::<GotoDeclaration, _>(ThreadIntent::Worker,go_to_declaration)

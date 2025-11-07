@@ -4,7 +4,7 @@ use auto_lsp::lsp_types::{self, CompletionItem};
 pub fn extends() -> CompletionItem {
     CompletionItem {
         label: "EXTENDS".into(),
-        kind: Some(lsp_types::CompletionItemKind::INTERFACE),
+        kind: Some(lsp_types::CompletionItemKind::CLASS),
         insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
         insert_text: Some("EXTENDS ${1:ext}".into()),
         ..Default::default()
@@ -103,7 +103,7 @@ pub fn interface() -> CompletionItem {
 pub fn var_input() -> CompletionItem {
     CompletionItem {
         label: "VAR_INPUT".into(),
-        kind: Some(lsp_types::CompletionItemKind::INTERFACE),
+        kind: Some(lsp_types::CompletionItemKind::VARIABLE),
         insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
         insert_text: Some("VAR_INPUT \n\nEND_VAR".into()),
         ..Default::default()
@@ -114,7 +114,7 @@ pub fn var_input() -> CompletionItem {
 pub fn var_output() -> CompletionItem {
     CompletionItem {
         label: "VAR_OUTPUT".into(),
-        kind: Some(lsp_types::CompletionItemKind::INTERFACE),
+        kind: Some(lsp_types::CompletionItemKind::VARIABLE),
         insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
         insert_text: Some("VAR_OUTPUT \n\nEND_VAR".into()),
         ..Default::default()
@@ -125,7 +125,7 @@ pub fn var_output() -> CompletionItem {
 pub fn var_in_out() -> CompletionItem {
     CompletionItem {
         label: "VAR_IN_OUT".into(),
-        kind: Some(lsp_types::CompletionItemKind::INTERFACE),
+        kind: Some(lsp_types::CompletionItemKind::VARIABLE),
         insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
         insert_text: Some("VAR_OUTPUT \n\nEND_VAR".into()),
         ..Default::default()
@@ -136,7 +136,7 @@ pub fn var_in_out() -> CompletionItem {
 pub fn var_temp() -> CompletionItem {
     CompletionItem {
         label: "VAR_TEMP".into(),
-        kind: Some(lsp_types::CompletionItemKind::INTERFACE),
+        kind: Some(lsp_types::CompletionItemKind::VARIABLE),
         insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
         insert_text: Some("VAR_TEMP \n\nEND_VAR".into()),
         ..Default::default()
@@ -147,7 +147,7 @@ pub fn var_temp() -> CompletionItem {
 pub fn var() -> CompletionItem {
     CompletionItem {
         label: "VAR".into(),
-        kind: Some(lsp_types::CompletionItemKind::INTERFACE),
+        kind: Some(lsp_types::CompletionItemKind::VARIABLE),
         insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
         insert_text: Some("VAR \n\nEND_VAR".into()),
         ..Default::default()
@@ -155,14 +155,52 @@ pub fn var() -> CompletionItem {
 }
 
 #[inline]
+pub fn fn_var_snippets() -> Vec<CompletionItem> {
+    vec![
+        var_input(),
+        var_output(),
+        var_in_out(),
+        var_temp(),
+        var(),
+    ]
+}
+
+#[inline]
+pub fn fb_var_snippets() -> Vec<CompletionItem> {
+    vec![
+        var_input(),
+        var_output(),
+        var_in_out(),
+        var_temp(),
+        var(),
+    ]
+}
+
+#[inline]
+pub fn class_var_snippets() -> Vec<CompletionItem> {
+    vec![
+        var_input(),
+        var_output(),
+        var_in_out(),
+        var_temp(),
+        var(),
+    ]
+}
+
+#[inline]
 pub fn method() -> CompletionItem {
     CompletionItem {
         label: "METHOD".into(),
-        kind: Some(lsp_types::CompletionItemKind::INTERFACE),
+        kind: Some(lsp_types::CompletionItemKind::METHOD),
         insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
         insert_text: Some("METHOD ${1:method} \n\nEND_METHOD".into()),
         ..Default::default()
     }
+}
+
+#[inline]
+pub fn all_stmts() -> Vec<CompletionItem> {
+    vec![if_(), for_(), while_(), repeat()]
 }
 
 #[inline]

@@ -14,7 +14,6 @@ use hir::{
 use crate::{
     HasComment, ToProtocol,
     completions::{
-        per_scope::{simple_pou_completion, scoped_completions},
         static_snippets,
     },
 };
@@ -99,12 +98,7 @@ impl<'db> ToProtocol<'db> for Spec<'db> {
                     None => {
                         let mut results = vec![];
                         results.extend(static_snippets::elem_type_names());
-                        results.extend(
-                            global_pou_index(db)
-                                .iter()
-                                .map(|(_, pou)| simple_pou_completion(db, *pou))
-                                .collect::<Vec<_>>(),
-                        );
+                        
 
                         Some(results)
                     }

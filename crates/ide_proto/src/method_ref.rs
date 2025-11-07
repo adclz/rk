@@ -7,7 +7,7 @@ use auto_lsp::{
 };
 use hir::{hir_def::pous::variable::VariableKind, hir_ty::{inheritance_solver::MethodRef}, HirNodeInfo, TypeInfo};
 
-use crate::{completions::per_scope::signature, HasComment, ToProtocol};
+use crate::{HasComment, ToProtocol};
 
 impl<'db> ToProtocol<'db> for MethodRef<'db> {
     fn document_symbols(&self, db: &'db dyn BaseDatabase, builder: &mut DocumentSymbolsBuilder) {
@@ -79,13 +79,6 @@ impl<'db> ToProtocol<'db> for MethodRef<'db> {
         db: &'db dyn BaseDatabase,
         offset: usize,
     ) -> Option<Vec<CompletionItem>> {
-        Some(vec![CompletionItem {
-            label: self.name(db).text(db).to_string(),
-            detail: Some("METHOD".into()),
-            kind: Some(CompletionItemKind::METHOD),
-            insert_text_format: Some(InsertTextFormat::SNIPPET),
-            insert_text: Some(signature(db, self.name(db).text(db), self.get_scope_id(db))),
-            ..Default::default()
-        }])
+        None
     }
 }

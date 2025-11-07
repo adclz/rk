@@ -15,7 +15,6 @@ use hir::{
 
 use crate::{
     ToProtocol,
-    completions::per_scope::{scoped_completions, simple_pou_completion},
 };
 
 impl<'db> ToProtocol<'db> for SpanNamespaceAccess<'db> {
@@ -45,30 +44,9 @@ impl<'db> ToProtocol<'db> for SpanNamespaceAccess<'db> {
         db: &'db dyn BaseDatabase,
         offset: usize,
     ) -> Option<Vec<CompletionItem>> {
-        scoped_completions(db, self.scope_id, offset)
+        eprintln!("FROM LAZY RESOLVED NAMESPACE ACCESS");
+        //scoped_completions(db, self.scope_id, offset)
+        None
     }
 }
 
-pub fn extends_completion<'db>(
-    db: &'db dyn BaseDatabase,
-    scope_id: ScopeId<'db>,
-) -> Vec<CompletionItem> {
-    // compute completions but only returns FB, CLASS, or INTERFACES
-    global_pou_index(db)
-        .iter()
-        .filter(|(_, pou)| matches!(pou.pou(db), Pou::FunctionBlock(_) | Pou::Class(_)))
-        .map(|(_, pou)| simple_pou_completion(db, *pou))
-        .collect()
-}
-
-pub fn implements_completion<'db>(
-    db: &'db dyn BaseDatabase,
-    scope_id: ScopeId<'db>,
-) -> Vec<CompletionItem> {
-    // compute completions but only returns INTERFACES
-    global_pou_index(db)
-        .iter()
-        .filter(|(_, pou)| matches!(pou.pou(db), Pou::Interface(_)))
-        .map(|(_, pou)| simple_pou_completion(db, *pou))
-        .collect()
-}
