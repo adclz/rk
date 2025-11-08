@@ -8,7 +8,6 @@ pub mod name_res;
 pub mod param_resolver;
 pub mod ty;
 pub mod ty_var_access_resolver;
-pub mod using_resolver;
 pub mod walk;
 pub mod struct_resolver;
 pub mod flatten;

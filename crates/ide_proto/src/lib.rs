@@ -24,7 +24,6 @@ pub mod resolved_using;
 pub mod resolved_var_access;
 pub mod spec;
 pub mod struct_element;
-pub mod using;
 pub mod variable;
 
 pub trait HasComment<'db>: HirNodeInfo<'db> {
@@ -93,7 +92,7 @@ impl<'db> AsProtocol<'db> for HirNode<'db> {
             HirNode::Spec(s) => s,
             HirNode::MethodRef(m) => m,
             HirNode::Stmt(s) => s,
-            HirNode::ResolvedUsing(u) => u,
+            HirNode::Using(u) => u,
             HirNode::ResolvedAccess(v) => v,
             HirNode::ResolvedPath(p) => p,
             HirNode::ResolvedInitExpr(i) => i,

@@ -23,7 +23,6 @@ use crate::{
         param_resolver::{ResolvedParam, ResolvedParamKind, resolve_parameters},
         ty::TyKind,
         ty_var_access_resolver::{LookUp, ResolvedAccess},
-        using_resolver::resolve_using,
         walk::{ResolvedPath, ResolvedPathKind, ResolvedPathResult},
     }
 };
@@ -56,7 +55,7 @@ impl<'db> WalkHir<'db> for Using<'db> {
         db: &'db dyn BaseDatabase,
         f: &mut F,
     ) -> ControlFlow<()> {
-        f(HirNode::ResolvedUsing(*resolve_using(db, *self)))
+        f(HirNode::Using(*self))
     }
 }
 

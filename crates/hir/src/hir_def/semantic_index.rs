@@ -11,6 +11,7 @@ use tracing::info_span;
 
 use crate::hir_def::expressions::expression::{Expr, RefValue};
 use crate::hir_def::expressions::statement::Stmt;
+use crate::hir_def::using::Using;
 use crate::hir_ty::param_resolver::ResolvedParam;
 use crate::HirNodeInfo;
 use crate::builder::semantic_index::SemanticIndexBuilder;
@@ -24,7 +25,6 @@ use crate::hir_def::scope::{ScopeId, Scope};
 use crate::hir_ty::inheritance_solver::MethodRef;
 use crate::hir_ty::init_expr_resolver::ResolvedInitExpr;
 use crate::hir_ty::ty_var_access_resolver::ResolvedAccess;
-use crate::hir_ty::using_resolver::ResolvedUsing;
 use crate::hir_ty::walk::ResolvedPath;
 use crate::walk::WalkHir;
 
@@ -156,8 +156,8 @@ pub enum HirNode<'db> {
     MethodRef(MethodRef<'db>),
     Stmt(Stmt<'db>),
     Expr(Expr<'db>),
+    Using(Using<'db>),
     ResolvedParam(ResolvedParam<'db>),
-    ResolvedUsing(ResolvedUsing<'db>),
     ResolvedAccess(ResolvedAccess<'db>),
     ResolvedPath(ResolvedPath<'db>),
     ResolvedInitExpr(ResolvedInitExpr<'db>),
@@ -175,7 +175,7 @@ impl<'db> HirNode<'db> {
             HirNode::MethodRef(m) => m.get_span(db),
             HirNode::Stmt(s) => s.get_span(db),
             HirNode::Expr(e) => e.get_span(db),
-            HirNode::ResolvedUsing(u) => u.get_span(db),
+            HirNode::Using(u) => u.get_span(db),
             HirNode::ResolvedPath(p) => p.get_span(db),
             HirNode::ResolvedAccess(v) => v.get_span(db),
             HirNode::ResolvedParam(p) => p.get_span(db),
@@ -194,7 +194,7 @@ impl<'db> HirNode<'db> {
             HirNode::MethodRef(m) => m.get_scope_id(db),
             HirNode::Stmt(s) => s.get_scope_id(db),
             HirNode::Expr(e) => e.get_scope_id(db),
-            HirNode::ResolvedUsing(u) => u.get_scope_id(db),
+            HirNode::Using(u) => u.get_scope_id(db),
             HirNode::ResolvedPath(p) => p.get_scope_id(db),
             HirNode::ResolvedAccess(v) => v.get_scope_id(db),
             HirNode::ResolvedParam(p) => p.get_scope_id(db),

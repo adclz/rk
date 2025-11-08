@@ -10,7 +10,7 @@ use hir::{
         scope::ScopeId,
         semantic_index::{get_scope, semantic_index},
     },
-    hir_ty::name_res::pou_name_res_from_scope,
+    hir_ty::name_res::{global_namespace_index, pou_name_res_from_scope},
 };
 
 use crate::tests::utils::find_namespace_with_name;
@@ -197,7 +197,7 @@ END_NAMESPACE
 fn collect_usings(db: &dyn BaseDatabase, sema: &SemanticIndex) -> String {
     let mut result = vec![];
     let _ = sema.walk_hir(db, &mut |n| {
-        if let HirNode::ResolvedUsing(path) = n {
+        if let HirNode::Using(path) = n {
             result.push(path);
         }
         ControlFlow::Continue(())
@@ -208,8 +208,10 @@ fn collect_usings(db: &dyn BaseDatabase, sema: &SemanticIndex) -> String {
         .map(|r| {
             format!(
                 "USING {}:  {}\n",
-                r.using(db).path(db).to_string(db),
-                r.namespaces(db)
+                r.path(db).to_string(db),
+                global_namespace_index(db)
+                    .get(&r.path(db))
+                    .unwrap()
                     .iter()
                     .flat_map(|ns| ns
                         .pous(db)
