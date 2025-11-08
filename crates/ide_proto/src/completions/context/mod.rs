@@ -30,6 +30,7 @@ pub mod class;
 pub mod function;
 pub mod function_block;
 pub mod interface;
+pub mod method;
 
 pub trait PrecizeCompletion<'db, 'scope> {
     fn head_completion(
@@ -66,7 +67,7 @@ impl<'db> ScopeCompletionCtx<'db> {
     }
 
     pub fn scoped(mut self, db: &'db dyn BaseDatabase) -> Self {
-        match get_scope(db, self.scope).kind {
+        match &get_scope(db, self.scope).kind {
             ScopeKind::Pou(p) => match p.pou(db) {
                 Pou::FunctionBlock(f) => f.head_completion(
                     db,
@@ -96,7 +97,21 @@ impl<'db> ScopeCompletionCtx<'db> {
                         name_span: p.name_span(db),
                     },
                 ),
-                Pou::DataType(dt) => todo!()
+                Pou::DataType(dt) => {
+                    dt.spec(db).completion(db, self.offset)
+                        .map(|completions| {
+                            self.items.extend_from_slice(&completions);
+                        });
+                }
+            },
+            ScopeKind::MethodDecl(m) => {
+                m.head_completion(
+                    db,
+                    PouCompletionCtx {
+                        scope_ctx: &mut self,
+                        name_span: m.get_name_span(db).unwrap(),
+                    },
+                );
             },
             _ => { }
         };

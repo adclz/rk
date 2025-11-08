@@ -188,6 +188,18 @@ pub fn class_var_snippets() -> Vec<CompletionItem> {
 }
 
 #[inline]
+pub fn method_var_snippets() -> Vec<CompletionItem> {
+    vec![
+        var_input(),
+        var_output(),
+        var_in_out(),
+        var_temp(),
+        var(),
+    ]
+}
+
+
+#[inline]
 pub fn method() -> CompletionItem {
     CompletionItem {
         label: "METHOD".into(),
