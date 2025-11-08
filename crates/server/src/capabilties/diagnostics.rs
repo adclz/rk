@@ -1,5 +1,4 @@
 use std::panic::RefUnwindSafe;
-use std::thread;
 
 use auto_lsp::anyhow;
 use auto_lsp::default::db::BaseDatabase;

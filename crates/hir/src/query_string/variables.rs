@@ -3,9 +3,8 @@ use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
     HirNodeInfo, hir_def::{
-        expressions::spec::Struct,
-        pous::pou::{Pou, PouDecl}, scope::ScopeId,
-    }, hir_ty::ty::{Ty, TyKind}, query_string::query::{NamedSymbol, Query, SymbolIndex, SymbolKind}
+        pous::pou::PouDecl, scope::ScopeId,
+    }, query_string::query::{NamedSymbol, Query, SymbolIndex, SymbolKind}
 };
 
 #[salsa::tracked]
@@ -17,7 +16,7 @@ pub fn variable_symbol_index<'db>(
     pou .def_map(db)
         .global_variables
         .iter()
-        .for_each(|((i, v))| {
+        .for_each(|(i, v)| {
             variables.push(NamedSymbol {
                 name: v.name(db).text(db).to_string(),
                 namespace: None,
@@ -40,7 +39,7 @@ pub fn fuzzy_variables<'db>(
     let mut fast_query = Query::new(query.to_string());
     fast_query.fuzzy();
 
-    fast_query.search(db, &vec![index], |symbol| {
+    fast_query.search(db, &[index], |symbol| {
         candidates.push(symbol.clone());
         std::ops::ControlFlow::Continue::<()>(())
     });

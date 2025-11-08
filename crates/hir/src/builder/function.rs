@@ -6,11 +6,10 @@ use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::pous::function::Function;
 use crate::hir_def::pous::pou::{Pou, PouDecl};
 use crate::hir_def::pous::variable::VariableDecl;
-use crate::hir_def::scope::{ScopeId, Scope, ScopeKind};
+use crate::hir_def::scope::{Scope, ScopeKind};
 use crate::hir_def::visibility::Visibility;
 use ast::generated::FuncVariables;
 use auto_lsp::anyhow;
-use auto_lsp::core::ast::AstNode;
 
 impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_function(

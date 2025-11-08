@@ -6,7 +6,7 @@ use crate::{
         check_semantic_index::DataTypeCheck,
         coerce::coerce_ty_with_expr,
         errors::{
-            analysis_error::{AnalysisError, ToIdeDiagnostic}, subrange::SubRangeError,
+            analysis_error::ToIdeDiagnostic, subrange::SubRangeError,
         },
     },
     hir_def::expressions::spec::{ElementarySpec, SpecKind, SubRange},

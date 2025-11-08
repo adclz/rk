@@ -1,11 +1,9 @@
-use std::fmt::format;
 
 use auto_lsp::default::db::BaseDatabase;
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
     hir_def::expressions::spec::Struct,
-    hir_ty::ty::{Ty, TyKind},
     query_string::query::{NamedSymbol, Query, SymbolIndex, SymbolKind},
 };
 
@@ -15,7 +13,7 @@ pub fn struct_symbol_index<'db>(
     strukt: Struct<'db>,
 ) -> Vec<SymbolIndex<'db>> {
     let mut struct_fields = vec![];
-    strukt.elements(db).iter().for_each(|(e)| {
+    strukt.elements(db).iter().for_each(|e| {
         struct_fields.push(NamedSymbol {
             name: e.name(db).text(db).to_string(),
             namespace: None,

@@ -1,19 +1,12 @@
-use auto_lsp::{core::span::Span, default::db::BaseDatabase, lsp_types::CompletionItem};
+use auto_lsp::default::db::BaseDatabase;
 use hir::{
     HirNodeInfo,
-    hir_def::{
-        expressions::statement::Stmt,
-        interned::namespace::SpanNamespaceAccess,
-        pous::{
-            class::MethodDecl, function_block::FunctionBlock, pou::PouDecl, variable::VariableDecl,
-        },
-    },
+    hir_def::pous::class::MethodDecl,
 };
 
 use crate::completions::{
-    self,
-    context::{PouCompletionCtx, PrecizeCompletion, ScopeCompletionCtx},
-    static_snippets::{all_stmts, fb_var_snippets, method, method_var_snippets},
+    context::{PouCompletionCtx, PrecizeCompletion},
+    static_snippets::{all_stmts, method_var_snippets},
 };
 
 impl<'db, 'scope> PrecizeCompletion<'db, 'scope> for MethodDecl<'db> {
@@ -30,20 +23,17 @@ impl<'db, 'scope> PrecizeCompletion<'db, 'scope> for MethodDecl<'db> {
             // If we are before first variable, suggest variable snippets
             (Some(var), _) if ctx.scope_ctx.offset < var.get_span(db).end_byte => {
                 ctx.scope_ctx.items.extend(method_var_snippets());
-                return;
             }
             // If we are before statements, suggest variable snippets and statement snippets
             (_, Some(stmt)) if ctx.scope_ctx.offset < stmt.get_span(db).end_byte => {
                 ctx.scope_ctx.items.extend(method_var_snippets());
                 ctx.scope_ctx.items.extend(all_stmts());
                 ctx.scope_ctx.query_scope_items(db);
-                return;
             }
             // we are in statements
             (_, Some(stmt)) if ctx.scope_ctx.offset > stmt.get_span(db).end_byte => {
                 ctx.scope_ctx.items.extend(all_stmts());
                 ctx.scope_ctx.query_scope_items(db);
-                return;
             }
             _ => {
                 // method is likely empty, suggest all

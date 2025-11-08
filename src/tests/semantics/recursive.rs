@@ -1,6 +1,6 @@
 use std::sync::{Arc, RwLock};
 
-use auto_lsp::salsa::{Event, EventKind};
+use auto_lsp::salsa::Event;
 use db::RootDatabase;
 use insta::assert_debug_snapshot;
 use rstest::rstest;

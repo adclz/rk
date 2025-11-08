@@ -1,7 +1,6 @@
-use std::{cmp::Ordering, ops::ControlFlow};
+use std::ops::ControlFlow;
 
-use auto_lsp::default::db::{BaseDatabase, file::File};
-use rayon::slice::ParallelSliceMut;
+use auto_lsp::default::db::BaseDatabase;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
@@ -14,7 +13,7 @@ use crate::{
     hir_ty::name_res::global_namespace_index,
     query_string::{
         file::file_symbol_index,
-        query::{NamedSymbol, Query, SymbolIndex, SymbolKind},
+        query::{Query, SymbolKind},
         variables::variable_symbol_index,
     },
 };

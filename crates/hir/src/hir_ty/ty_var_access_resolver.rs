@@ -1,5 +1,4 @@
 use auto_lsp::default::db::BaseDatabase;
-use indexmap::IndexMap;
 
 use crate::{
     AstId, HirNodeInfo,
@@ -7,14 +6,14 @@ use crate::{
     hir_def::{
         expressions::{
             expression::{
-                BeginPathExpr, Expr, PathExpr, PathExprKind, VarAccess, VariableAccess,
+                BeginPathExpr, PathExpr, VariableAccess,
                 VariableAccessKind,
             },
-            invocation::{self, Invocation, InvocationKind},
+            invocation::{Invocation, InvocationKind},
             spec::Spec,
         },
         interned::{
-            identifier::{Ident, SpanIdent},
+            identifier::Ident,
             namespace::{NamespaceAccess, NamespacePath},
         },
         pous::{
@@ -22,7 +21,7 @@ use crate::{
             variable::VariableDecl,
         },
         scope::{ScopeId, ScopeKind},
-        semantic_index::{get_scope, semantic_index},
+        semantic_index::get_scope,
         visibility::Visibility,
     },
     hir_ty::{
@@ -369,14 +368,14 @@ fn find_invocation_target<'db>(
                         adjustement: Adjustement::None,
                     }),
                     _ => {
-                        return Err(ResolvedAccess::new(
+                        Err(ResolvedAccess::new(
                             db,
                             ResolvedPathResult::Err(AccessError::ThisOnIncompatiblePou {
                                 call_site: CallSite::new(scope_id, path.keyword_id(db)),
                             }),
                             CallSite::new(scope_id, path.keyword_id(db)),
                             vec![],
-                        ));
+                        ))
                     }
                 },
             }
@@ -419,7 +418,7 @@ impl<'db> GlobalResolverCtx<'db> {
                     elements,
                 )
             }
-            Err(e) => return e,
+            Err(e) => e,
         }
     }
 }

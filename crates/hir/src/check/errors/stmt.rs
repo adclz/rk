@@ -13,14 +13,14 @@ use crate::{
     },
     hir_def::{
         expressions::{
-            expression::{Expr, PathExpr},
+            expression::Expr,
             statement::Stmt,
         },
         interned::identifier::SpanIdent,
         pous::variable::VariableDecl,
     },
     hir_ty::{ty_var_access_resolver::ResolvedAccess},
-    query_string::{method::fuzzy_method_parameters, variables::fuzzy_variables},
+    query_string::variables::fuzzy_variables,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]

@@ -1,7 +1,6 @@
 use db::RootDatabase;
 use hir::hir_def::semantic_index::semantic_index;
 use ide_proto::AsProtocol;
-use insta::assert_debug_snapshot;
 use rstest::rstest;
 use auto_lsp::default::db::BaseDatabase;
 
@@ -35,8 +34,8 @@ pub fn variables_in_scope(mut with_db: RootDatabase, #[case] source: (&str, usiz
     let in_variables = sema.descendant_at(&with_db, source.1).unwrap();
     let completions = in_variables.as_proto().completion(&with_db, source.1).unwrap();
 
-    assert!(format!("{:?}", completions).contains("var1"));
-    assert!(format!("{:?}", completions).contains("var2"));
+    assert!(format!("{completions:?}").contains("var1"));
+    assert!(format!("{completions:?}").contains("var2"));
 }
 
 
@@ -65,8 +64,8 @@ pub fn global_functions_in_scope(mut with_db: RootDatabase, #[case] source: (&st
     let in_variables = sema.descendant_at(&with_db, source.1).unwrap();
     let completions = in_variables.as_proto().completion(&with_db, source.1).unwrap();
 
-    assert!(format!("{:?}", completions).contains("fn1"));
-    assert!(format!("{:?}", completions).contains("fn2"));
+    assert!(format!("{completions:?}").contains("fn1"));
+    assert!(format!("{completions:?}").contains("fn2"));
 }
 
 
@@ -99,6 +98,6 @@ pub fn import_functions_in_scope(mut with_db: RootDatabase, #[case] source: (&st
     let in_variables = sema.descendant_at(&with_db, source.1).unwrap();
     let completions = in_variables.as_proto().completion(&with_db, source.1).unwrap();
 
-    assert!(format!("{:?}", completions).contains("fn1")); // via using
-    assert!(format!("{:?}", completions).contains("fn2")); // via using
+    assert!(format!("{completions:?}").contains("fn1")); // via using
+    assert!(format!("{completions:?}").contains("fn2")); // via using
 }

@@ -2,10 +2,7 @@ use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     hir_def::{
-        expressions::{
-            expression::{BeginPathExpr, Expr, FuncCall, PathExpr, VariableAccess},
-            invocation::Invocation,
-        },
+        expressions::expression::{BeginPathExpr, Expr, FuncCall, VariableAccess},
         scope::ScopeId,
     }, AstId, HirNodeInfo
 };

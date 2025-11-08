@@ -1,29 +1,18 @@
 use auto_lsp::{
     core::span::Span,
     default::db::BaseDatabase,
-    lsp_types::{CompletionContext, CompletionItem},
+    lsp_types::CompletionItem,
 };
 use hir::{
     HirNodeInfo, hir_def::{
-        expressions::statement::Stmt,
-        interned::namespace::SpanNamespaceAccess,
-        pous::{
-            class::MethodDecl,
-            function_block::FunctionBlock,
-            pou::{Pou, PouDecl},
-            variable::VariableDecl,
-        },
+        pous::pou::Pou,
         scope::{ScopeId, ScopeKind}, semantic_index::get_scope,
-    }, hir_ty::name_res::global_pou_index, query_string::scope::query_scope_items
+    }, query_string::scope::query_scope_items
 };
 
 use crate::{
     ToProtocol,
-    completions::{
-        self,
-        item_builder::CompletionBuilder,
-        static_snippets::{all_stmts, fb_var_snippets},
-    },
+    completions::item_builder::CompletionBuilder,
 };
 
 pub mod class;
@@ -98,10 +87,7 @@ impl<'db> ScopeCompletionCtx<'db> {
                     },
                 ),
                 Pou::DataType(dt) => {
-                    dt.spec(db).completion(db, self.offset)
-                        .map(|completions| {
-                            self.items.extend_from_slice(&completions);
-                        });
+                    if let Some(completions) = dt.spec(db).completion(db, self.offset) { self.items.extend_from_slice(&completions); }
                 }
             },
             ScopeKind::MethodDecl(m) => {

@@ -102,7 +102,7 @@ impl<'db> CompletionBuilder {
             let namespace_str = ns.to_string(db);
             additional_edit = Some(TextEdit {
                 range,
-                new_text: format!("USING {};\n", namespace_str),
+                new_text: format!("USING {namespace_str};\n"),
             });
         }
 
@@ -145,7 +145,7 @@ pub fn find_using_range<'db>(db: &'db dyn BaseDatabase, node: ScopeId<'db>) -> R
     match scope.usings.last() {
         // Some USING directives exist; insert after the last one.
         Some(u) => {
-            return go_to_next_line(u.get_span(db));
+            go_to_next_line(u.get_span(db))
         }
         None => match scope.kind {
             // In case of Global scope and no USING directives, insert at the start of the file.
@@ -161,17 +161,17 @@ pub fn find_using_range<'db>(db: &'db dyn BaseDatabase, node: ScopeId<'db>) -> R
             },
             // Same with namespaces and POUs: insert after their name declaration line.
             ScopeKind::Namespace(ns) => {
-                return go_to_next_line(ns.name_span(db));
+                go_to_next_line(ns.name_span(db))
             }
             ScopeKind::Pou(p) => {
-                return go_to_next_line(p.name_span(db));
+                go_to_next_line(p.name_span(db))
             }
             ScopeKind::MethodDecl(m) => {
                 // methods can't have USING directives, so we go to the parent scope
                 let parent_scope = get_scope(db, m.scope_id(db))
                     .parent
                     .expect("All methods should have a parent scope");
-                return find_using_range(db, parent_scope);
+                find_using_range(db, parent_scope)
             }
         },
     }
@@ -217,12 +217,10 @@ pub fn signature<'db>(
 
             match v.kind(db) {
                 VariableKind::Input | VariableKind::InOut => Some(format!(
-                    "{tab}{} := ${{{placeholder_num}:{var_name}}}",
-                    var_name
+                    "{tab}{var_name} := ${{{placeholder_num}:{var_name}}}"
                 )),
                 VariableKind::Output => Some(format!(
-                    "{tab}{} => ${{{placeholder_num}:{var_name}}}",
-                    var_name
+                    "{tab}{var_name} => ${{{placeholder_num}:{var_name}}}"
                 )),
                 _ => None,
             }

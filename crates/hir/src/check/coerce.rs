@@ -5,10 +5,10 @@ use crate::{
         analysis_error::AnalysisError,
         coerce::{ExprMismatch, TypeMismatch},
     },
-    hir_def::{expressions::{
+    hir_def::expressions::{
         expression::{Expr, ExprKind, PrimaryExpr, RefValue},
         spec::ElementarySpec,
-    }, pous::variable},
+    },
     hir_ty::{
         array_resolver::resolve_range,
         ty::{Ty, TyKind},

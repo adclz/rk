@@ -6,7 +6,7 @@ use crate::{
         expressions::expression::{BeginPathExpr, PathExpr},
         interned::namespace::SpanNamespaceAccess,
         scope::ScopeKind,
-        semantic_index::{get_scope, semantic_index},
+        semantic_index::get_scope,
     }, hir_ty::{ty_var_access_resolver::CallSite, walk::ResolvedPath}, query_string::variables::fuzzy_variables, HirNodeInfo
 };
 
@@ -101,13 +101,13 @@ impl<'db> DiagnosticDescription<'db> for AccessError<'db> {
             }
             // OOP
             AccessError::ThisOnIncompatiblePou { call_site } => {
-                format!("'THIS' is not valid in this context")
+                "'THIS' is not valid in this context".to_string()
             }
             AccessError::SuperOnIncompatiblePou { call_site } => {
-                format!("'SUPER' is not valid in this context")
+                "'SUPER' is not valid in this context".to_string()
             }
             AccessError::SuperBodyOnIncompatiblePou { call_site } => {
-                format!("'SUPER()' is not valid in this context")
+                "'SUPER()' is not valid in this context".to_string()
             }
         }
     }

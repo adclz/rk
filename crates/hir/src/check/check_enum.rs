@@ -6,7 +6,7 @@ use crate::{
     check::{
         check_semantic_index::DataTypeCheck,
         coerce::coerce_ty_with_expr,
-        errors::{analysis_error::{AnalysisError, ToIdeDiagnostic}, duplicates::DuplicateError, enum_::EnumError},
+        errors::{analysis_error::ToIdeDiagnostic, duplicates::DuplicateError, enum_::EnumError},
     },
     hir_def::expressions::spec::{ElementarySpec, Enum, SpecKind},
 };

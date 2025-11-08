@@ -9,7 +9,7 @@ use auto_lsp::default::db::{BaseDatabase, file::File};
 use rustc_hash::FxHashMap;
 use tracing::info_span;
 
-use crate::hir_def::expressions::expression::{Expr, RefValue};
+use crate::hir_def::expressions::expression::Expr;
 use crate::hir_def::expressions::statement::Stmt;
 use crate::hir_def::using::Using;
 use crate::hir_ty::param_resolver::ResolvedParam;
@@ -17,7 +17,7 @@ use crate::HirNodeInfo;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::analysis_error::AnalysisError;
 use crate::hir_def::expressions::spec::{Spec, StructElement};
-use crate::hir_def::interned::namespace::{SpanNamespaceAccess, SpanNamespaceAccessContext};
+use crate::hir_def::interned::namespace::SpanNamespaceAccessContext;
 use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::PouDecl;
 use crate::hir_def::pous::variable::VariableDecl;

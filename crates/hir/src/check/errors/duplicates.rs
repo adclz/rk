@@ -9,7 +9,7 @@ use crate::{
         interned::identifier::SpanIdent,
         pous::{class::MethodDecl, interface::MethodPrototype, pou::PouDecl, variable::VariableDecl},
     },
-    hir_ty::inheritance_solver::{InheritedMethod, MethodRef},
+    hir_ty::inheritance_solver::InheritedMethod,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]

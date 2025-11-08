@@ -5,7 +5,7 @@ use ide_diagnostic::IdeDiagnostic;
 use crate::{
     check::{
         coerce::coerce_ty_with_expr,
-        errors::{analysis_error::AnalysisError, init_expr::InitExprError},
+        errors::init_expr::InitExprError,
     },
     hir_ty::{
         array_resolver::resolve_range,

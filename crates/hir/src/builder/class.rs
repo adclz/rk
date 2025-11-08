@@ -8,7 +8,7 @@ use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use crate::hir_def::modifier::Modifier;
 use crate::hir_def::pous::class::{Class, MethodDecl};
 use crate::hir_def::pous::pou::{Pou, PouDecl};
-use crate::hir_def::scope::{Scope, ScopeId, ScopeKind};
+use crate::hir_def::scope::{Scope, ScopeKind};
 use crate::hir_def::visibility::Visibility;
 use ast::generated::{ClassDecl, ClassVariables};
 use auto_lsp::anyhow;

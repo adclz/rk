@@ -1,4 +1,4 @@
-use auto_lsp::{core::span::Span, default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
+use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, diag};
 
 use crate::{check::{

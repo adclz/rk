@@ -1,15 +1,13 @@
 use auto_lsp::default::db::BaseDatabase;
-use indexmap::IndexMap;
 
 use crate::{
-    AstId, HirNodeInfo, check::errors::path_error::AccessError, hir_def::{
+    check::errors::path_error::AccessError, hir_def::{
         expressions::{
-            expression::{Expr, FuncCall, ParamAssign, VariableAccess},
+            expression::{FuncCall, ParamAssign},
             spec::Spec,
         },
-        interned::identifier::{Ident, SpanIdent},
+        interned::identifier::Ident,
         pous::variable::VariableDecl,
-        scope::ScopeId,
     }, hir_ty::{
         def_map::FxIndexMap, ty::Ty, ty_var_access_resolver::{LookUp, ResolvedAccess}, walk::{ResolvedPath, ResolvedPathKind}
     }

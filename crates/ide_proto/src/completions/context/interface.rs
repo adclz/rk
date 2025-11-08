@@ -1,10 +1,7 @@
-use auto_lsp::{core::span::Span, default::db::BaseDatabase, lsp_types::CompletionItem};
-use hir::{
-    HirNodeInfo,
-    hir_def::pous::{function::Function, function_block::FunctionBlock, interface::Interface},
-};
+use auto_lsp::default::db::BaseDatabase;
+use hir::hir_def::pous::interface::Interface;
 
-use crate::completions::{self, context::{PouCompletionCtx, PrecizeCompletion, ScopeCompletionCtx}};
+use crate::completions::{self, context::{PouCompletionCtx, PrecizeCompletion}};
 
 impl<'db, 'scope> PrecizeCompletion<'db, 'scope> for Interface<'db> {
     fn head_completion(

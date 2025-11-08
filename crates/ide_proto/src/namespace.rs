@@ -7,7 +7,7 @@ use auto_lsp::{
     },
 };
 use hir::{
-    hir_def::{namespace::NamespaceDecl, semantic_index::{get_scope, semantic_index}, visibility::Visibility}, HirNodeInfo
+    hir_def::{namespace::NamespaceDecl, semantic_index::get_scope}, HirNodeInfo
 };
 
 use crate::{ToProtocol, completions};

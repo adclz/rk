@@ -1,7 +1,6 @@
 use db::RootDatabase;
 use hir::hir_def::semantic_index::semantic_index;
 use ide_proto::AsProtocol;
-use insta::assert_debug_snapshot;
 use rstest::rstest;
 use auto_lsp::default::db::BaseDatabase;
 
@@ -22,5 +21,5 @@ END_INTERFACE"#;
     let in_variables = sema.descendant_at(&with_db, 15).unwrap();
     let completions = in_variables.as_proto().completion(&with_db, 19).unwrap();
 
-    assert!(format!("{:?}", completions).contains("METHOD"));
+    assert!(format!("{completions:?}").contains("METHOD"));
 }

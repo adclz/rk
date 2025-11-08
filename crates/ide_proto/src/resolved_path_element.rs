@@ -2,11 +2,11 @@ use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{CompletionItem, GotoDefinitionResponse, Hover, request::GotoDeclarationResponse},
 };
-use hir::{hir_ty::{
+use hir::hir_ty::{
     inheritance_solver::{inherited_methods}, walk::{ResolvedPath, ResolvedPathKind}
-}, HirNodeInfo};
+};
 
-use crate::{ToProtocol, completions::static_snippets::namespace};
+use crate::ToProtocol;
 
 impl<'db> ToProtocol<'db> for ResolvedPath<'db> {
     fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Hover> {

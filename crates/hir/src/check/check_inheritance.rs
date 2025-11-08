@@ -3,7 +3,6 @@ use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    HirNodeInfo,
     check::{
         check_semantic_index::Check,
         coerce::coerce_ty_with_ty,
@@ -70,23 +69,20 @@ pub fn check_inheritance<'db>(
     let declared_methods = &implementer.scope_id(db).def_map(db).declared_methods;
     let inherited_methods = inherited_methods(db, implementer);
 
-    match implementer.pou(db) {
-        Pou::Class(cl) => {
-            // If the class is abstract, it must have at least one abstract method
-            if cl.modifier(db).contains(Modifier::ABSTRACT)
-                && !declared_methods
-                    .iter()
-                    .any(|(_, m)| m.modifier(db).contains(Modifier::ABSTRACT))
-            {
-                errors.push(
-                    AnalysisError::MethodError(MethodError::AbstractClassHasNoAbstractMethods {
-                        class: implementer,
-                    })
-                    .to_diagnostic(db),
-                );
-            };
-        }
-        _ => {}
+    if let Pou::Class(cl) = implementer.pou(db) {
+        // If the class is abstract, it must have at least one abstract method
+        if cl.modifier(db).contains(Modifier::ABSTRACT)
+            && !declared_methods
+                .iter()
+                .any(|(_, m)| m.modifier(db).contains(Modifier::ABSTRACT))
+        {
+            errors.push(
+                AnalysisError::MethodError(MethodError::AbstractClassHasNoAbstractMethods {
+                    class: implementer,
+                })
+                .to_diagnostic(db),
+            );
+        };
     };
 
     // check dups in inherited methods
@@ -168,7 +164,7 @@ pub fn check_inheritance<'db>(
     // Look at the declared methods
 
     for (base_name, base_method) in declared_methods {
-        if inherited_methods.methods.contains_key(&base_name) {
+        if inherited_methods.methods.contains_key(base_name) {
         } else if base_method.modifier(db) == Modifier::OVERRIDE {
             errors.push(
                 AnalysisError::MethodError(MethodError::EmptyOverride {

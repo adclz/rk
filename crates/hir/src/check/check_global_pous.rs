@@ -3,11 +3,11 @@ use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    check::errors::{analysis_error::{AnalysisError, ToIdeDiagnostic}, duplicates::DuplicateError},
+    check::errors::{analysis_error::ToIdeDiagnostic, duplicates::DuplicateError},
     hir_def::{interned::identifier::Ident, pous::pou::PouDecl, semantic_index::semantic_index},
 };
 
-pub fn check_duplicate_pous<'db>(db: &'db dyn BaseDatabase, file: File) -> Vec<IdeDiagnostic> {
+pub fn check_duplicate_pous(db: &dyn BaseDatabase, file: File) -> Vec<IdeDiagnostic> {
     let mut errors: Vec<IdeDiagnostic> = vec![];
     let self_pous = global_pous_in_file(db, file);
 

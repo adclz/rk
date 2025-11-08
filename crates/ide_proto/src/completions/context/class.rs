@@ -1,12 +1,12 @@
-use auto_lsp::{core::span::Span, default::db::BaseDatabase, lsp_types::CompletionItem};
+use auto_lsp::default::db::BaseDatabase;
 use hir::{
     HirNodeInfo,
-    hir_def::pous::{class::Class, function::Function, function_block::FunctionBlock},
+    hir_def::pous::class::Class,
 };
 
 use crate::completions::{
     self,
-    context::{PouCompletionCtx, PrecizeCompletion, ScopeCompletionCtx},
+    context::{PouCompletionCtx, PrecizeCompletion},
     static_snippets::{all_stmts, class_var_snippets, method},
 };
 
@@ -39,25 +39,21 @@ impl<'db, 'scope> PrecizeCompletion<'db, 'scope> for Class<'db> {
             (None, None) => {
                 ctx.scope_ctx.items.extend(suggest);
                 ctx.scope_ctx.items.extend(class_var_snippets());
-                return;
             }
             // If we are in variables, suggest both extends and implements and variable snippets
             (Some(var), _) if ctx.scope_ctx.offset < var.get_span(db).start_byte => {
                 ctx.scope_ctx.items.extend(suggest);
                 ctx.scope_ctx.items.extend(class_var_snippets());
-                return;
             }
             // If we are in methods, suggest variable, method snippets
             (_, Some(m)) if ctx.scope_ctx.offset < m.get_span(db).start_byte => {
                 ctx.scope_ctx.items.extend(class_var_snippets());
                 ctx.scope_ctx.items.push(method());
-                return;
             }
             // we are in statements
             (_, Some(stmt)) if ctx.scope_ctx.offset > stmt.get_span(db).end_byte => {
                 ctx.scope_ctx.items.extend(all_stmts());
                 ctx.scope_ctx.query_scope_items(db);
-                return;
             }
             _ => {
                 // function block is likely empty, suggest all

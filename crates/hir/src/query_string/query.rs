@@ -1,24 +1,18 @@
-use auto_lsp::default::db::{BaseDatabase, file::File};
-use auto_lsp::lsp_types::{CompletionItem, CompletionItemKind};
-use db::RootDatabase;
+use auto_lsp::default::db::BaseDatabase;
 use fst::{Automaton, Streamer, raw::IndexedValue};
 use rayon::prelude::*;
-use salsa::tracked;
 
-use std::fmt;
 use std::hash::Hasher;
 use std::ops::ControlFlow;
-use std::sync::Arc;
 use std::{cmp::Ordering, hash::Hash};
 
 use crate::HirNodeInfo;
-use crate::hir_def::expressions::spec::{Struct, StructElement};
+use crate::hir_def::expressions::spec::StructElement;
 use crate::hir_def::interned::namespace::NamespacePath;
 use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::PouDecl;
 use crate::hir_def::pous::variable::VariableDecl;
 use crate::hir_def::scope::ScopeId;
-use crate::hir_def::semantic_index::semantic_index;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum SearchMode {

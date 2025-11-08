@@ -2,26 +2,16 @@ use hir::{
     TypeInfo,
     hir_def::{
         expressions::spec::{ElementarySpec, SpecKind},
-        interned::namespace::SpanNamespaceAccess,
-        pous::{
-            class::MethodDecl,
-            function_block::FunctionBlock,
-            pou::{Pou, PouDecl},
-            variable::{VariableDecl, VariableKind},
-        },
+        pous::pou::{Pou, PouDecl},
     },
-    hir_ty::{
-        inheritance_solver::MethodRef,
-        ty_var_access_resolver::CallSite,
-    },
+    hir_ty::inheritance_solver::MethodRef,
 };
 
 use auto_lsp::{
-    core::{document_symbols_builder::DocumentSymbolsBuilder, span::Span},
+    core::document_symbols_builder::DocumentSymbolsBuilder,
     default::db::BaseDatabase,
     lsp_types::{
-        CodeLens, Command, CompletionContext, CompletionItem, CompletionItemKind,
-        CompletionItemLabelDetails, GotoDefinitionResponse, Hover, HoverContents, InlayHint,
+        CodeLens, Command, CompletionItem, GotoDefinitionResponse, Hover, HoverContents, InlayHint,
         InlayHintKind, InlayHintLabel, Location, LocationLink, MarkupContent, MarkupKind,
         SymbolKind, request::GotoImplementationResponse,
     },
@@ -31,7 +21,7 @@ use serde_json::to_value;
 
 use crate::{
     HasComment, ToProtocol,
-    completions::{self, context::ScopeCompletionCtx}, implementation::find_all_implementations,
+    completions::context::ScopeCompletionCtx, implementation::find_all_implementations,
 };
 
 impl<'db> ToProtocol<'db> for PouDecl<'db> {

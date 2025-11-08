@@ -1,7 +1,6 @@
 use db::RootDatabase;
 use hir::hir_def::semantic_index::semantic_index;
 use ide_proto::AsProtocol;
-use insta::assert_debug_snapshot;
 use rstest::rstest;
 use auto_lsp::default::db::BaseDatabase;
 
@@ -21,10 +20,10 @@ END_NAMESPACE"#;
     let in_variables = sema.descendant_at(&with_db, 21).unwrap();
     let completions = in_variables.as_proto().completion(&with_db, 21).unwrap();
 
-    assert!(format!("{:?}", completions).contains("NAMESPACE"));
-    assert!(format!("{:?}", completions).contains("INTERFACE"));
-    assert!(format!("{:?}", completions).contains("FUNCTION"));
-    assert!(format!("{:?}", completions).contains("FUNCTION_BLOCK"));
-    assert!(format!("{:?}", completions).contains("TYPE"));
-    assert!(format!("{:?}", completions).contains("CLASS"));
+    assert!(format!("{completions:?}").contains("NAMESPACE"));
+    assert!(format!("{completions:?}").contains("INTERFACE"));
+    assert!(format!("{completions:?}").contains("FUNCTION"));
+    assert!(format!("{completions:?}").contains("FUNCTION_BLOCK"));
+    assert!(format!("{completions:?}").contains("TYPE"));
+    assert!(format!("{completions:?}").contains("CLASS"));
 }

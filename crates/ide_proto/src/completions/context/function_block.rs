@@ -1,18 +1,12 @@
-use auto_lsp::{core::span::Span, default::db::BaseDatabase, lsp_types::CompletionItem};
+use auto_lsp::default::db::BaseDatabase;
 use hir::{
     HirNodeInfo,
-    hir_def::{
-        expressions::statement::Stmt,
-        interned::namespace::SpanNamespaceAccess,
-        pous::{
-            class::MethodDecl, function_block::FunctionBlock, pou::PouDecl, variable::VariableDecl,
-        },
-    },
+    hir_def::pous::function_block::FunctionBlock,
 };
 
 use crate::completions::{
     self,
-    context::{PouCompletionCtx, PrecizeCompletion, ScopeCompletionCtx},
+    context::{PouCompletionCtx, PrecizeCompletion},
     static_snippets::{all_stmts, fb_var_snippets, method},
 };
 
@@ -50,30 +44,26 @@ impl<'db, 'scope> PrecizeCompletion<'db, 'scope> for FunctionBlock<'db> {
             (Some(var), _, _) if ctx.scope_ctx.offset < var.get_span(db).end_byte => {
                 ctx.scope_ctx.items.extend(suggest);
                 ctx.scope_ctx.items.extend(fb_var_snippets());
-                return;
             }
             // If we are before first method, suggest both extends and implements and variable snippets
             (None, Some(m), _) if ctx.scope_ctx.offset < m.get_span(db).end_byte => {
                 ctx.scope_ctx.items.extend(fb_var_snippets());
                 ctx.scope_ctx.items.push(method());
-                return;
             }
             // If we are before statements, suggest method snippets and statement snippets
             (_, _, Some(stmt)) if ctx.scope_ctx.offset < stmt.get_span(db).end_byte => {
                 // if there are methods, we can't show variables
-                if self.methods(db).first().is_none() {
+                if self.methods(db).is_empty() {
                     ctx.scope_ctx.items.extend(fb_var_snippets());
                 }
                 ctx.scope_ctx.items.push(method());
                 ctx.scope_ctx.items.extend(all_stmts());
                 ctx.scope_ctx.query_scope_items(db);
-                return;
             }
             // we are in statements
             (_, _, Some(stmt)) if ctx.scope_ctx.offset > stmt.get_span(db).end_byte => {
                 ctx.scope_ctx.items.extend(all_stmts());
                 ctx.scope_ctx.query_scope_items(db);
-                return;
             }
             _ => {
                 // function block is likely empty, suggest all

@@ -1,4 +1,3 @@
-use ast::generated::Variable;
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 
@@ -288,7 +287,7 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                 ast::generated::Null_RefAddr::RefAddr(a) => Ok(Expr::new(
                     sema.db,
                     ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
-                        value: RefValue::Address(a.children.cast(&sema.ast).parse(sema)?),
+                        value: RefValue::Address(a.children.cast(sema.ast).parse(sema)?),
                     }),
                     a.into(),
                     sema.current_scope,
@@ -614,14 +613,14 @@ impl<'db> ParseExpr<'db> for ast::generated::BeginPathExpression {
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<Self::Output, AnalysisError<'db>> {
-        match self.children.cast(&sema.ast) { 
+        match self.children.cast(sema.ast) { 
             ast::generated::Invocation_PathExpression::Invocation(i) => {
-                match i.children.cast(&sema.ast) {
+                match i.children.cast(sema.ast) {
                     ast::generated::AnyInvocation_SuperBodyInvocation::SuperBodyInvocation(s) => {
                         let invocation = Invocation::new(
                             sema.db, 
                             s.into(), 
-                            s.SUPER.cast(&sema.ast).into(), 
+                            s.SUPER.cast(sema.ast).into(), 
                             sema.current_scope, 
                             InvocationKind::SuperBody
                         );
@@ -637,19 +636,19 @@ impl<'db> ParseExpr<'db> for ast::generated::BeginPathExpression {
                     ast::generated::AnyInvocation_SuperBodyInvocation::AnyInvocation(any) => {
                         let path = any.children.as_ref()
                             .and_then(|s| {
-                            s.cast(&sema.ast)
+                            s.cast(sema.ast)
                                 .path.as_ref().map(|p| {
-                                    p.cast(&sema.ast)
+                                    p.cast(sema.ast)
                                     .parse(sema)
                             })
                         }).transpose()?;
 
-                        let invocation = match any.invocation.cast(&sema.ast) {
+                        let invocation = match any.invocation.cast(sema.ast) {
                             ast::generated::SuperInvocation_ThisInvocation::SuperInvocation(s) => {
                                 Invocation::new(
                                     sema.db,
                                     self.into(),
-                                    s.SUPER.cast(&sema.ast).into(),
+                                    s.SUPER.cast(sema.ast).into(),
                                     sema.current_scope,
                                     InvocationKind::Super,
                                 )
@@ -658,7 +657,7 @@ impl<'db> ParseExpr<'db> for ast::generated::BeginPathExpression {
                                 Invocation::new(
                                     sema.db,
                                     self.into(),
-                                    t.THIS.cast(&sema.ast).into(),
+                                    t.THIS.cast(sema.ast).into(),
                                     sema.current_scope,
                                     InvocationKind::This,
                                 )

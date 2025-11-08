@@ -3,27 +3,26 @@ use std::ops::ControlFlow;
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    HirNodeInfo, hir_def::{
+    hir_def::{
         expressions::{
-            expression::{Expr, ExprKind, PrimaryExpr, RefValue, VarAccess, VariableAccess},
+            expression::{Expr, ExprKind, PrimaryExpr, VariableAccess},
             spec::{Spec, SpecKind},
             statement::{Stmt, StmtKind},
         },
-        interned::namespace::{SpanNamespaceAccess, SpanNamespaceAccessContext},
+        interned::namespace::SpanNamespaceAccessContext,
         namespace::NamespaceDecl,
         pous::{
-            class::MethodDecl, pou::{Pou, PouDecl}, variable::VariableDecl
+            pou::{Pou, PouDecl}, variable::VariableDecl
         },
-        semantic_index::{HirNode, SemanticIndex, get_scope, semantic_index},
+        semantic_index::{HirNode, SemanticIndex, get_scope},
         using::Using,
     }, hir_ty::{
         func_call_resolver::ResolvedFuncCall,
         inheritance_solver::MethodRef,
         init_expr_resolver::{ResolvedInitExpr, ResolvedInitExprKind, resolve_init_expr},
         param_resolver::{ResolvedParam, ResolvedParamKind, resolve_parameters},
-        ty::TyKind,
         ty_var_access_resolver::{LookUp, ResolvedAccess},
-        walk::{ResolvedPath, ResolvedPathKind, ResolvedPathResult},
+        walk::{ResolvedPath, ResolvedPathResult},
     }
 };
 
@@ -379,13 +378,10 @@ impl<'db> WalkHir<'db> for ResolvedFuncCall<'db> {
     ) -> ControlFlow<()> {
         self.target.walk_hir(db, f)?;
 
-        match self.target.fully_resolved(db) {
-            Ok(r) => {
-                for param in resolve_parameters(db, r.target_scope_id(db), &self.params) {
-                    param.walk_hir(db, f)?;
-                }
+        if let Ok(r) = self.target.fully_resolved(db) {
+            for param in resolve_parameters(db, r.target_scope_id(db), &self.params) {
+                param.walk_hir(db, f)?;
             }
-            _ => {}
         }
         ControlFlow::Continue(())
     }

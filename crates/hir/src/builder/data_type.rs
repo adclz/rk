@@ -7,13 +7,12 @@ use crate::{
             data_type::DataType,
             pou::{Pou, PouDecl},
         },
-        scope::{ScopeId, Scope, ScopeKind},
+        scope::{Scope, ScopeKind},
         visibility::Visibility,
     },
 };
 use ast::generated::TypeDecl;
 use auto_lsp::anyhow;
-use auto_lsp::core::ast::AstNode;
 
 impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_data_type(

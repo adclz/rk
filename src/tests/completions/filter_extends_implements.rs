@@ -1,7 +1,6 @@
 use db::RootDatabase;
 use hir::hir_def::semantic_index::semantic_index;
 use ide_proto::AsProtocol;
-use insta::assert_debug_snapshot;
 use rstest::rstest;
 use auto_lsp::default::db::BaseDatabase;
 
@@ -30,9 +29,9 @@ END_FUNCTION_BLOCK"#;
     let in_variables = sema.descendant_at(&with_db, 128).unwrap();
     let completions = in_variables.as_proto().completion(&with_db, 128).unwrap();
 
-    assert!(format!("{:?}", completions).contains("cb1"));
-    assert!(!format!("{:?}", completions).contains("cfn1"));
-    assert!(!format!("{:?}", completions).contains("cn1"));
+    assert!(format!("{completions:?}").contains("cb1"));
+    assert!(!format!("{completions:?}").contains("cfn1"));
+    assert!(!format!("{completions:?}").contains("cn1"));
 }
 
 #[rstest]
@@ -55,9 +54,9 @@ END_FUNCTION_BLOCK"#;
     let in_variables = sema.descendant_at(&with_db, 109).unwrap();
     let completions = in_variables.as_proto().completion(&with_db, 109).unwrap();
 
-    assert!(format!("{:?}", completions).contains("cl1"));
-    assert!(!format!("{:?}", completions).contains("cfn1"));
-    assert!(!format!("{:?}", completions).contains("cn1"));
+    assert!(format!("{completions:?}").contains("cl1"));
+    assert!(!format!("{completions:?}").contains("cfn1"));
+    assert!(!format!("{completions:?}").contains("cn1"));
 }
 
 #[rstest]
@@ -80,7 +79,7 @@ END_FUNCTION_BLOCK"#;
     let in_variables = sema.descendant_at(&with_db, 112).unwrap();
     let completions = in_variables.as_proto().completion(&with_db, 112).unwrap();
 
-    assert!(format!("{:?}", completions).contains("in1"));
-    assert!(!format!("{:?}", completions).contains("il1"));
-    assert!(!format!("{:?}", completions).contains("ifn1"));
+    assert!(format!("{completions:?}").contains("in1"));
+    assert!(!format!("{completions:?}").contains("il1"));
+    assert!(!format!("{completions:?}").contains("ifn1"));
 }

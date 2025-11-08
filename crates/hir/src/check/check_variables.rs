@@ -6,7 +6,7 @@ use crate::{
     check::{
         check_init_expr::check_init_expr,
         check_semantic_index::Check,
-        errors::{analysis_error::{AnalysisError, ToIdeDiagnostic}, duplicates::DuplicateError},
+        errors::{analysis_error::ToIdeDiagnostic, duplicates::DuplicateError},
     },
     hir_def::{interned::identifier::Ident, pous::variable::VariableDecl},
     hir_ty::{init_expr_resolver::resolve_init_expr, ty::TyKind},

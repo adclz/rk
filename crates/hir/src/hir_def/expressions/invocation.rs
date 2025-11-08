@@ -2,10 +2,7 @@ use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     AstId, HirNodeInfo,
-    hir_def::{
-        expressions::expression::{ParamAssign, PathExpr},
-        scope::ScopeId,
-    },
+    hir_def::scope::ScopeId,
 };
 
 #[salsa::tracked(debug)]

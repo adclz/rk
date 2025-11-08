@@ -1,8 +1,8 @@
 use auto_lsp::default::db::{BaseDatabase, file::File};
 
-use crate::{hir_def::{
-    namespace::NamespaceDecl, pous::{class::MethodDecl, pou::PouDecl}, semantic_index::semantic_index, using::Using, visibility::Visibility
-}, hir_ty::inheritance_solver::MethodRef};
+use crate::hir_def::{
+    namespace::NamespaceDecl, pous::{class::MethodDecl, pou::PouDecl}, using::Using, visibility::Visibility
+};
 
 #[salsa::tracked(debug)]
 pub struct ScopeId<'db> {

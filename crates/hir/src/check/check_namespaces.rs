@@ -5,7 +5,7 @@ use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    check::errors::{analysis_error::{AnalysisError, ToIdeDiagnostic}, duplicates::DuplicateError},
+    check::errors::{analysis_error::ToIdeDiagnostic, duplicates::DuplicateError},
     hir_def::{interned::identifier::Ident, namespace::NamespaceDecl, pous::pou::PouDecl}, hir_ty::name_res::global_namespace_index,
 };
 

@@ -7,7 +7,7 @@ use crate::{
         check_init_expr::check_init_expr,
         check_semantic_index::DataTypeCheck,
         errors::{
-            analysis_error::{AnalysisError, ToIdeDiagnostic}, duplicates::DuplicateError,
+            analysis_error::ToIdeDiagnostic, duplicates::DuplicateError,
         },
     },
     hir_def::{

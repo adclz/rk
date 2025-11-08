@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, sync::Arc};
+use std::collections::BTreeMap;
 
 use crate::{
     AstId, HirNodeInfo,
@@ -18,7 +18,6 @@ use crate::{
     hir_ty::name_res::resolve_namespace_access,
 };
 use auto_lsp::{core::span::Span, default::db::BaseDatabase};
-use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, salsa::Update, salsa::Supertype)]
 pub enum MethodRef<'db> {

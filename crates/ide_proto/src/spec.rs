@@ -8,7 +8,7 @@ use auto_lsp::{
 use hir::{
     HirNodeInfo, TypeInfo,
     hir_def::expressions::spec::{Spec, SpecKind},
-    hir_ty::name_res::{global_pou_index, resolve_namespace_access},
+    hir_ty::name_res::resolve_namespace_access,
 };
 
 use crate::{

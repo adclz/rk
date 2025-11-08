@@ -4,18 +4,12 @@ use auto_lsp::{
 };
 use hir::{
     HirNodeInfo,
-    hir_def::{pous::pou::Pou, scope::ScopeKind, semantic_index::get_scope},
-    hir_ty::{name_res::global_pou_index, ty_var_access_resolver::ResolvedAccess},
-    query_string::scope::query_scope_items,
+    hir_ty::ty_var_access_resolver::ResolvedAccess,
 };
 
 use crate::{
     ToProtocol,
-    completions::{
-        context::ScopeCompletionCtx,
-        item_builder::CompletionBuilder,
-        static_snippets::{all_stmts, class_var_snippets, fb_var_snippets, fn_var_snippets},
-    },
+    completions::context::ScopeCompletionCtx,
 };
 
 impl<'db> ToProtocol<'db> for ResolvedAccess<'db> {

@@ -5,9 +5,7 @@ use auto_lsp::{
 
 use hir::{
     hir_def::{
-        interned::identifier::SpanIdent,
-        pous::pou::{Pou, PouDecl},
-        scope::ScopeId,
+        pous::pou::Pou,
         semantic_index::{get_scope, semantic_index},
     },
     hir_ty::{name_res::{global_namespace_index, pou_name_res_from_scope}, ty::TyKind},

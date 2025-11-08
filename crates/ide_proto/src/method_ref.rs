@@ -2,10 +2,10 @@ use auto_lsp::{
     core::document_symbols_builder::DocumentSymbolsBuilder,
     default::db::BaseDatabase,
     lsp_types::{
-        CompletionItem, CompletionItemKind, Hover, HoverContents, InsertTextFormat, MarkupContent, MarkupKind, SymbolKind
+        CompletionItem, Hover, HoverContents, MarkupContent, MarkupKind, SymbolKind
     },
 };
-use hir::{hir_def::pous::variable::VariableKind, hir_ty::{inheritance_solver::MethodRef}, HirNodeInfo, TypeInfo};
+use hir::{hir_ty::{inheritance_solver::MethodRef}, HirNodeInfo, TypeInfo};
 
 use crate::{HasComment, ToProtocol};
 

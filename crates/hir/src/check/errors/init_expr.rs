@@ -52,10 +52,7 @@ impl<'db> ToIdeDiagnostic<'db> for InitExprError<'db> {
                     .call();
 
 
-                match ztruct.kind(db) {
-                    TyKind::Struct(strukt) => fuzzy_struct_fields(db, *strukt, &mut diag, field_name.as_str(db)),
-                    _ => {}
-                };
+                if let TyKind::Struct(strukt) = ztruct.kind(db) { fuzzy_struct_fields(db, *strukt, &mut diag, field_name.as_str(db)) };
 
                 ztruct.diag_with_location(db, &mut diag, None);
                 diag

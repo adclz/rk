@@ -7,7 +7,7 @@ use auto_lsp::{
     },
 };
 use hir::{
-    AstId, HirNodeInfo, hir_def::{interned::namespace::SpanNamespaceAccess, scope::ScopeId, semantic_index::HirNode}
+    HirNodeInfo, hir_def::semantic_index::HirNode
 };
 
 pub mod completions;

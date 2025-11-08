@@ -3,14 +3,12 @@ use auto_lsp::{
     lsp_types::{CompletionItem, GotoDefinitionResponse, Hover, request::GotoDeclarationResponse},
 };
 use hir::{
-    AstId, HirNodeInfo,
+    HirNodeInfo,
     hir_def::{
-        interned::namespace::{SpanNamespaceAccess, SpanNamespaceAccessContext},
+        interned::namespace::SpanNamespaceAccessContext,
         pous::pou::Pou,
-        scope::{ScopeId, ScopeKind},
-        semantic_index::semantic_index,
     },
-    hir_ty::name_res::{global_pou_index, resolve_namespace_access},
+    hir_ty::name_res::resolve_namespace_access,
     query_string::scope::query_scope_items,
 };
 

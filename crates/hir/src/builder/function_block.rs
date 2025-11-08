@@ -1,16 +1,15 @@
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::statement::ParseStatement;
-use crate::builder::{ParseSpec, ParseVarSection};
+use crate::builder::ParseVarSection;
 use crate::check::errors::analysis_error::AnalysisError;
 use crate::check::errors::syntax::SyntaxError;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use crate::hir_def::modifier::Modifier;
-use crate::hir_def::pous::class::MethodDecl;
 use crate::hir_def::pous::function_block::FunctionBlock;
 use crate::hir_def::pous::pou::{Pou, PouDecl};
 use crate::hir_def::pous::variable::VariableDecl;
-use crate::hir_def::scope::{Scope, ScopeId, ScopeKind};
+use crate::hir_def::scope::{Scope, ScopeKind};
 use crate::hir_def::visibility::Visibility;
 use ast::generated::{FbDecl, FbVariables};
 use auto_lsp::anyhow;

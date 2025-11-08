@@ -1,11 +1,8 @@
-use std::{cmp::Ordering, ops::ControlFlow};
 
 use auto_lsp::default::db::{BaseDatabase, file::File};
-use rayon::slice::ParallelSliceMut;
-use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
-    hir_def::{interned::{identifier::Ident, namespace::NamespacePath}, pous::pou::PouDecl, scope::{ScopeId, ScopeKind}, semantic_index::semantic_index}, hir_ty::name_res::global_namespace_index, query_string::query::{NamedSymbol, Query, SymbolIndex, SymbolKind}
+    hir_def::semantic_index::semantic_index, query_string::query::{NamedSymbol, SymbolIndex, SymbolKind}
 };
 
 // Construct a symbol index for all POUs in the given file

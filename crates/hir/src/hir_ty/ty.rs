@@ -1,18 +1,15 @@
 use auto_lsp::default::db::BaseDatabase;
 use ide_diagnostic::{IdeDiagnostic, Related};
-use rustc_hash::FxHashMap;
 
 use crate::{
     AstId, HirNodeInfo, TypeInfo,
     check::errors::path_error::AccessError,
     hir_def::{
         expressions::spec::{
-            Array, ElementarySpec, Enum, Spec, SpecKind, Struct, StructElement, SubRange,
+            Array, ElementarySpec, Enum, Spec, SpecKind, Struct, SubRange,
         },
-        interned::identifier::Ident,
         pous::{
             class::Class,
-            data_type::DataType,
             function::Function,
             function_block::FunctionBlock,
             interface::Interface,

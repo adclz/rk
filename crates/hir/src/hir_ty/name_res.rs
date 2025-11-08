@@ -11,7 +11,7 @@ use crate::{
         namespace::NamespaceDecl,
         pous::pou::PouDecl,
         scope::{ScopeId, ScopeKind},
-        semantic_index::{get_scope, semantic_index},
+        semantic_index::semantic_index,
     },
 };
 

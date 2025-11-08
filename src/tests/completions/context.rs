@@ -1,16 +1,10 @@
-use std::ops::ControlFlow;
 
 use auto_lsp::default::db::BaseDatabase;
-use auto_lsp::lsp_types::InlayHint;
 use db::RootDatabase;
-use hir::hir_def::semantic_index::HirNode;
-use hir::hir_def::semantic_index::get_scope;
 use hir::hir_def::semantic_index::semantic_index;
-use hir::walk::WalkHir;
 use ide_proto::AsProtocol;
 use ide_proto::ToProtocol;
 use insta::assert_debug_snapshot;
-use insta::assert_snapshot;
 use rstest::rstest;
 
 use crate::tests::utils::add_sources;
@@ -97,10 +91,10 @@ pub fn statements_and_variables_after_variables(mut with_db: RootDatabase, #[cas
     let in_variables = sema.descendant_at(&with_db, source.1).unwrap();
     let completions = in_variables.as_proto().completion(&with_db, source.1).unwrap();
 
-    assert!(format!("{:?}", completions).contains("VAR_INPUT"));
-    assert!(format!("{:?}", completions).contains("VAR_OUTPUT"));
-    assert!(format!("{:?}", completions).contains("VAR_IN_OUT"));
-    assert!(format!("{:?}", completions).contains("VAR_TEMP"));
-    assert!(format!("{:?}", completions).contains("IF"));
-    assert!(format!("{:?}", completions).contains("FOR"));
+    assert!(format!("{completions:?}").contains("VAR_INPUT"));
+    assert!(format!("{completions:?}").contains("VAR_OUTPUT"));
+    assert!(format!("{completions:?}").contains("VAR_IN_OUT"));
+    assert!(format!("{completions:?}").contains("VAR_TEMP"));
+    assert!(format!("{completions:?}").contains("IF"));
+    assert!(format!("{completions:?}").contains("FOR"));
 }

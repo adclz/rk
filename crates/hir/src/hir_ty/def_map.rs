@@ -1,23 +1,21 @@
-use std::sync::{LazyLock, RwLock};
 
-use auto_lsp::default::db::{BaseDatabase, file::File};
+use auto_lsp::default::db::BaseDatabase;
 use indexmap::IndexMap;
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 
 use crate::{
     hir_def::{
-        interned::{identifier::Ident, namespace::NamespacePath},
-        namespace::NamespaceDecl,
+        interned::identifier::Ident,
         pous::{
             pou::{Pou, PouDecl},
             variable::{VariableDecl, VariableKind},
         },
         scope::{ScopeId, ScopeKind},
-        semantic_index::{SemanticIndex, get_scope, semantic_index},
+        semantic_index::get_scope,
     },
     hir_ty::{
         inheritance_solver::MethodRef,
-        name_res::{global_namespace_index, resolve_namespace_access},
+        name_res::resolve_namespace_access,
     },
 };
 

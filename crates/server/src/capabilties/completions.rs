@@ -32,11 +32,11 @@ pub fn completions(
 
     Ok(semantic_index(db, file)
         .descendant_at(db, offset)
-        .and_then(|s| {
-            eprintln!("Getting completions for node: {:?}, {offset}", s);
-            Some(CompletionResponse::Array(
+        .map(|s| {
+            eprintln!("Getting completions for node: {s:?}, {offset}");
+            CompletionResponse::Array(
                 s.as_proto().completion(db, offset).unwrap_or_default(),
-            ))
+            )
         })
         .or_else(|| {
             Some(CompletionResponse::Array(vec![

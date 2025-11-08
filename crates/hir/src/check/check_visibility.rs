@@ -3,15 +3,13 @@ use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
     check::errors::{
-        analysis_error::{AnalysisError, ToIdeDiagnostic}, visibility::VisibilityError,
+        analysis_error::ToIdeDiagnostic, visibility::VisibilityError,
     }, hir_def::{
-        interned::identifier::Ident,
         namespace::NamespaceDecl,
-        pous::variable::VariableDecl,
         scope::{ScopeId, ScopeKind},
         semantic_index::{get_scope, semantic_index},
         visibility::Visibility,
-    }, hir_ty::{inheritance_solver::MethodRef, ty_var_access_resolver::ResolvedAccess, walk::{ResolvedPath, ResolvedPathKind}}, HirNodeInfo
+    }, hir_ty::{ty_var_access_resolver::ResolvedAccess, walk::{ResolvedPath, ResolvedPathKind}}, HirNodeInfo
 };
 
 /*
@@ -47,16 +45,16 @@ pub fn check_call_visibility<'db>(
     let calling_scope_id = call_site.get_scope_id(db);
     let calling_scope = match get_scope(db, calling_scope_id).kind {
         ScopeKind::MethodDecl(m) => {
-            let parent = get_scope(db, calling_scope_id).parent.expect("Method should always have a parent scope");
-            parent
+            
+            get_scope(db, calling_scope_id).parent.expect("Method should always have a parent scope")
         },
         _ => calling_scope_id
     };
     let target_scope = match target.kind {
         ResolvedPathKind::Method(m) => {
             let scope = m.get_scope_id(db);
-            let parent = get_scope(db, scope).parent.expect("Method should always have a parent scope");
-            parent
+            
+            get_scope(db, scope).parent.expect("Method should always have a parent scope")
         },
         _ => target.target_scope_id(db)
     };

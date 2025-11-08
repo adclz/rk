@@ -1,9 +1,7 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    hir_def::{expressions::{expression::{Expr, FuncCall, ParamAssign, ParamAssignKind, VariableAccess}, invocation::Invocation}, interned::identifier::SpanIdent, pous::{pou::PouDecl, variable::VariableDecl}, scope::ScopeId}, hir_ty::{
-        func_call_resolver::{}, inheritance_solver::MethodRef, ty_var_access_resolver::{CallSite, ResolvedAccess}, walk::{Adjustement, ResolvedPath, ResolvedPathKind, ResolvedPathResult}
-    }, AstId, HirNodeInfo
+    hir_def::{expressions::expression::{Expr, ParamAssign, ParamAssignKind, VariableAccess}, interned::identifier::SpanIdent, pous::variable::VariableDecl, scope::ScopeId}, AstId, HirNodeInfo
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -70,9 +68,7 @@ pub fn resolve_parameters<'db>(
                             // Try to get the param by index
                             let param = callee.def_map(db).local_variables.values().nth(formal_index);
                             formal_index += 1; 
-                            param.map(|p| {
-                                *p
-                            })
+                            param.copied()
                         },
                         value,
                     },
@@ -88,10 +84,7 @@ pub fn resolve_parameters<'db>(
                             .def_map(db)
                             .local_variables
                             .get(&param.ident)
-                            .filter(|v| v.is_input(db) || v.is_in_out(db))
-                            .map(|p| {
-                                *p
-                            })
+                            .filter(|v| v.is_input(db) || v.is_in_out(db)).copied()
                     },
                     value,
                 },
@@ -111,10 +104,7 @@ pub fn resolve_parameters<'db>(
                             .def_map(db)
                             .local_variables
                             .get(&param.ident)
-                            .filter(|v| v.is_output(db))
-                            .map(|p| {
-                                *p
-                            })
+                            .filter(|v| v.is_output(db)).copied()
                     },
                     variable,
                 },

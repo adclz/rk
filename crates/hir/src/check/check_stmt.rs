@@ -1,6 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
 use ide_diagnostic::IdeDiagnostic;
-use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
 
 use crate::{
@@ -12,18 +11,16 @@ use crate::{
     },
     hir_def::{
         expressions::{
-            expression::{Expr, FuncCall, ParamAssign, ParamAssignKind, VarAccess, VariableAccess},
-            invocation::Invocation,
+            expression::{Expr, FuncCall, ParamAssign, ParamAssignKind, VariableAccess},
             statement::{Stmt, StmtKind},
-        }, interned::identifier::Ident, pous::{pou::Pou, variable::VariableDecl}, scope::ScopeId, semantic_index::{get_scope, semantic_index}
+        }, pous::pou::Pou, scope::ScopeId
     },
     hir_ty::{
-        func_call_resolver::ResolvedFuncCall,
         param_resolver::{resolve_parameters, ResolvedParamKind},
-        ty::{Ty, TyKind},
+        ty::Ty,
         ty_var_access_resolver::{LookUp, ResolvedAccess},
         walk::ResolvedPathKind,
-    }, HirNodeInfo,
+    },
 };
 
 impl<'db> Check<'db> for Vec<Stmt<'db>> {
@@ -50,9 +47,9 @@ impl<'db> Check<'db> for Stmt<'db> {
                 else_if,
                 ..
             } => {
-                then.as_ref().map(|then| then.check(db, errors));
+                if let Some(then) = then.as_ref() { then.check(db, errors) }
 
-                else_.as_ref().map(|else_| else_.check(db, errors));
+                if let Some(else_) = else_.as_ref() { else_.check(db, errors) }
 
                 else_if.iter().for_each(|(_, s)| s.check(db, errors));
             }
@@ -277,7 +274,7 @@ fn check_parameters<'db>(
                             errors.push(
                                 StmtError::ParameterExprMismatch {
                                     expr: value,
-                                    var: var,
+                                    var,
                                     err,
                                 }
                                 .to_diagnostic(db),
@@ -321,7 +318,7 @@ fn check_parameters<'db>(
                             errors.push(
                                 StmtError::ParameterExprMismatch {
                                     expr: value,
-                                    var: var,
+                                    var,
                                     err,
                                 }
                                 .to_diagnostic(db),
@@ -331,7 +328,7 @@ fn check_parameters<'db>(
                     None => errors.push(
                         StmtError::UnknownFormalInputParam {
                             call: target.clone(),
-                            param: param,
+                            param,
                         }
                         .to_diagnostic(db),
                     ),
@@ -371,7 +368,7 @@ fn check_parameters<'db>(
                         ) {
                             errors.push(
                                 StmtError::ParameterTypeMismatch {
-                                    param: param,
+                                    param,
                                     var: variable,
                                     err,
                                 }
@@ -383,7 +380,7 @@ fn check_parameters<'db>(
                         errors.push(
                             StmtError::UnknownFormalOutputParam {
                                 call: target.clone(),
-                                param: param,
+                                param,
                             }
                             .to_diagnostic(db),
                         );

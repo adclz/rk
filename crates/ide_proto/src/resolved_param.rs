@@ -87,10 +87,10 @@ pub fn get_param_ty<'db>(db: &'db dyn BaseDatabase, param: &'db ResolvedParam) -
     match param.kind {
         ResolvedParamKind::NonFormal { .. } => None,
         ResolvedParamKind::FormalInput { resolved_param, .. } => {
-            resolved_param.and_then(|p| Some(p.spec(db).to_ty(db)))
+            resolved_param.map(|p| p.spec(db).to_ty(db))
         }
         ResolvedParamKind::FormalOutput { resolved_param, .. } => {
-            resolved_param.and_then(|p| Some(p.spec(db).to_ty(db)))
+            resolved_param.map(|p| p.spec(db).to_ty(db))
         }
     }
 }
