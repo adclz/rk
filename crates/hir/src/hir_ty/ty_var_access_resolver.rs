@@ -520,7 +520,7 @@ fn find_primary_target<'db>(
 
             if let SearchMode::Global = mode {
                 // Try local POU names
-                if let Some(pou) = pou_names_res(db, ident) {
+                if let Some(pou) = pou_names_res(db, ident.ident, scope.id) {
                     return Ok((
                         ResolvedPathKind::Pou(pou).with_call_site(
                             db,

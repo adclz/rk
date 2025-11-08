@@ -57,29 +57,39 @@ pub fn resolve_namespace_access<'db>(
 ) -> Option<PouDecl<'db>> {
     let target = &access.target;
 
+    eprintln!("resolving POU access: {:?}", access.to_string(db));
     match access.namespace {
         // There's a namespace specified, so we look for it
         Some(path) => global_namespace_index(db)
             .get(&path)?
             .iter()
-            .find_map(|ns| pou_names_res(db, &target)),
+            .find_map(|ns| {
+                eprintln!(
+                    "in ns{} looking for pou {}",
+                    ns.path(db).to_string(db),
+                    target.ident.text(db)
+                );
+
+                pou_names_res(db, target.ident, ns.scope_id(db))
+            }),
         // None, look for the POU in the current scope
-        None => pou_names_res(db, target),
+        None => pou_names_res(db, target.ident,target.scope_id),
     }
 }
 
 #[tracing::instrument(skip_all)]
 pub fn find_in_parent_pous<'db>(
     db: &'db dyn BaseDatabase,
-    name: &SpanIdent<'db>,
+    name: Ident,
+    scope: ScopeId<'db>,
 ) -> Option<PouDecl<'db>> {
-    let it = semantic_index(db, name.scope_id.file(db)).scope_iterator(db, name.scope_id);
+    let it = semantic_index(db, scope.file(db)).scope_iterator(db, scope);
     for scope in it {
         // Find POUs in all shared namespaces
         if let ScopeKind::Namespace(ns) = scope.kind {
             if let Some(namespaces) = global_namespace_index(db).get(ns.path(db)) {
                 for ns in namespaces.iter() {
-                    if let Some(p) = ns.scope_id(db).def_map(db).local_pous.get(&name.ident) {
+                    if let Some(p) = ns.scope_id(db).def_map(db).local_pous.get(&name) {
                         return Some(*p);
                     }
                 }
@@ -90,7 +100,7 @@ pub fn find_in_parent_pous<'db>(
         for using in &scope.usings {
             if let Some(namespaces) = global_namespace_index(db).get(&using.path(db)) {
                 for ns in namespaces.iter() {
-                    if let Some(p) = ns.scope_id(db).def_map(db).local_pous.get(&name.ident) {
+                    if let Some(p) = ns.scope_id(db).def_map(db).local_pous.get(&name) {
                         return Some(*p);
                     }
                 }
@@ -103,19 +113,19 @@ pub fn find_in_parent_pous<'db>(
 
 pub fn pou_names_res<'db>(
     db: &'db dyn BaseDatabase,
-    span_ident: &SpanIdent<'db>,
+    name: Ident,
+    scope: ScopeId<'db>
 ) -> Option<PouDecl<'db>> {
     // Checks for POUs declared in the current scope
-    span_ident
-        .scope_id
+    scope
         .def_map(db)
         .local_pous
-        .get(span_ident)
+        .get(&name)
         .copied()
         .or_else(|| {
             // Checks for parent POUs and those imported via USING directives
-            find_in_parent_pous(db, span_ident)
-                .or_else(|| global_pou_index(db).get(&span_ident.ident).copied())
+            find_in_parent_pous(db, name, scope)
+                .or_else(|| global_pou_index(db).get(&name).copied())
         })
 }
 
@@ -130,5 +140,5 @@ pub fn pou_name_res_from_scope<'db>(
         ident: Ident::from_slice(db, name),
         scope_id: scope.get_scope_id(db),
     };
-    pou_names_res(db, &span_ident)
+    pou_names_res(db, span_ident.ident, scope.get_scope_id(db))
 }

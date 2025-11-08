@@ -10,7 +10,7 @@ use hir::{
         scope::ScopeId,
         semantic_index::{get_scope, semantic_index},
     },
-    hir_ty::name_res::{global_namespace_index, pou_name_res_from_scope},
+    hir_ty::{name_res::{global_namespace_index, pou_name_res_from_scope}, ty::TyKind},
 };
 
 use crate::tests::utils::find_namespace_with_name;
@@ -23,24 +23,9 @@ use std::ops::ControlFlow;
 use hir::hir_def::interned::identifier::Ident;
 use hir::hir_def::semantic_index::HirNode;
 use hir::hir_def::semantic_index::SemanticIndex;
-use hir::hir_ty::name_res::pou_names_res;
 use hir::walk::WalkHir;
 use insta::assert_snapshot;
 use rstest::rstest;
-
-trait PouDeclToSpanIdent<'db> {
-    fn to_span_ident(&self, db: &'db dyn BaseDatabase) -> SpanIdent<'db>;
-}
-
-impl<'db> PouDeclToSpanIdent<'db> for PouDecl<'db> {
-    fn to_span_ident(&self, db: &'db dyn BaseDatabase) -> SpanIdent<'db> {
-        SpanIdent {
-            id: self.name_id(db),
-            scope_id: self.scope_id(db),
-            ident: *self.name(db),
-        }
-    }
-}
 
 #[test]
 fn global_scope() {
@@ -697,4 +682,103 @@ END_NAMESPACE"#;
         get_scope(&with_db, fb3.scope_id(&with_db)).parent,
         Some(ns2.scope_id(&with_db)) // ns2 namespace scope (but available in ns1 due to USING)
     );
+}
+
+// usage of fully qualified paths in variable type
+#[rstest]
+fn fully_qualified_path_in_var_type(mut with_db: RootDatabase) {
+    let source1 = r#"
+NAMESPACE ns
+	FUNCTION_BLOCK fb1
+
+	END_FUNCTION_BLOCK
+END_NAMESPACE
+
+FUNCTION_BLOCK fb
+    VAR_INPUT
+        i1 : ns.fb1; // should resolve to fb1 in ns namespace
+    END_VAR
+
+END_FUNCTION_BLOCK
+"#;
+
+    add_sources(&mut with_db, &[source1]);
+
+    let file1 = with_db
+        .get_files()
+        .iter()
+        .find(|f| f.url(&with_db).as_str() == "file:///test0.st")
+        .unwrap();
+
+    let fb = find_pou_with_name(&with_db, *file1, "fb").unwrap();
+    let variables = &fb.scope_id(&with_db).def_map(&with_db).global_variables;
+    let var_i1 = variables.get(&Ident::from_slice(&with_db, "i1")).unwrap();
+    let ty = var_i1.spec(&with_db).to_ty(&with_db);
+
+    assert!(matches!(
+        ty.kind(&with_db),
+        TyKind::FunctionBlock(fb)
+    ));
+
+}
+
+// usage of fully qualified paths in EXTENDS clause
+#[rstest]
+fn fully_qualified_path_in_extends(mut with_db: RootDatabase) {
+    let source1 = r#"
+NAMESPACE ns
+	CLASS cl1
+
+	END_CLASS
+END_NAMESPACE
+
+FUNCTION_BLOCK fb EXTENDS ns.cl1
+
+END_FUNCTION_BLOCK
+"#;
+
+    add_sources(&mut with_db, &[source1]);
+
+    let file1 = with_db
+        .get_files()
+        .iter()
+        .find(|f| f.url(&with_db).as_str() == "file:///test0.st")
+        .unwrap();
+
+    let fb = find_pou_with_name(&with_db, *file1, "fb").unwrap();
+
+    let inehrited = fb.scope_id(&with_db).inheritors(&with_db);
+    assert_eq!(inehrited.len(), 1);
+    assert_eq!(inehrited[0].name(&with_db).text(&with_db), "cl1");
+}
+
+
+// usage of fully qualified paths in IMPLEMENTS clause
+#[rstest]
+fn fully_qualified_path_in_implements(mut with_db: RootDatabase) {
+    let source1 = r#"
+NAMESPACE ns
+	INTERFACE in1
+
+	END_INTERFACE
+END_NAMESPACE
+
+FUNCTION_BLOCK fb IMPLEMENTS ns.in1
+
+END_FUNCTION_BLOCK
+"#;
+
+    add_sources(&mut with_db, &[source1]);
+
+    let file1 = with_db
+        .get_files()
+        .iter()
+        .find(|f| f.url(&with_db).as_str() == "file:///test0.st")
+        .unwrap();
+
+    let fb = find_pou_with_name(&with_db, *file1, "fb").unwrap();
+
+    let inehrited = fb.scope_id(&with_db).inheritors(&with_db);
+    assert_eq!(inehrited.len(), 1);
+    assert_eq!(inehrited[0].name(&with_db).text(&with_db), "in1");
 }

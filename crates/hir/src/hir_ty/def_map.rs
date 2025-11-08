@@ -160,6 +160,12 @@ impl<'db> ScopeId<'db> {
                     {
                         inheritors.push(base);
                     }
+
+                    for iface in fb.implements(db) {
+                        if let Some(iface) = resolve_namespace_access(db, &iface.path) {
+                            inheritors.push(iface);
+                        }
+                    }
                     inheritors
                 }
                 _ => vec![],
