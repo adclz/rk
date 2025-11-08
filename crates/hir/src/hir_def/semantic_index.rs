@@ -16,7 +16,7 @@ use crate::HirNodeInfo;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::analysis_error::AnalysisError;
 use crate::hir_def::expressions::spec::{Spec, StructElement};
-use crate::hir_def::interned::namespace::SpanNamespaceAccess;
+use crate::hir_def::interned::namespace::{SpanNamespaceAccess, SpanNamespaceAccessContext};
 use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::PouDecl;
 use crate::hir_def::pous::variable::VariableDecl;
@@ -145,10 +145,10 @@ impl<'db> Iterator for ScopeIterator<'db> {
 
 impl FusedIterator for ScopeIterator<'_> {}
 
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HirNode<'db> {
     Namespace(NamespaceDecl<'db>),
-    SpanNamespaceAccess(SpanNamespaceAccess<'db>),
+    SpanNamespaceAccess(SpanNamespaceAccessContext<'db>),
     PouDecl(PouDecl<'db>),
     VariableDecl(VariableDecl<'db>),
     StructElement(StructElement<'db>),
