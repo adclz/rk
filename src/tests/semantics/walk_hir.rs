@@ -184,7 +184,7 @@ END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(nodes.join("\n"), @r"
     PouDecl(PouDecl { [salsa id]: Id(3800) })
-    SpanNamespaceAccess(SpanNamespaceAccess { id: AstId(3), scope_id: ScopeId { [salsa id]: Id(402) }, path: NamespaceAccess { namespace: None, target: SpanIdent { id: AstId(4), scope_id: ScopeId { [salsa id]: Id(402) }, ident: Ident(Id(800)) } } })
+    SpanNamespaceAccess(Extends(SpanNamespaceAccess { id: AstId(3), scope_id: ScopeId { [salsa id]: Id(402) }, path: NamespaceAccess { namespace: None, target: SpanIdent { id: AstId(4), scope_id: ScopeId { [salsa id]: Id(402) }, ident: Ident(Id(800)) } } }))
     MethodRef(Declared(MethodDecl { [salsa id]: Id(3000) }))
     VariableDecl(VariableDecl { [salsa id]: Id(2c00) })
     Spec(Spec { [salsa id]: Id(2800) })

@@ -5,3 +5,4 @@ pub mod class;
 pub mod namespace;
 pub mod interface;
 pub mod function;
+pub mod filter_extends_implements;
