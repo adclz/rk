@@ -3,6 +3,7 @@ use auto_lsp::lsp_types::{CompletionItem, CompletionItemKind};
 use db::RootDatabase;
 use fst::{Automaton, Streamer, raw::IndexedValue};
 use rayon::prelude::*;
+use salsa::tracked;
 
 use std::fmt;
 use std::hash::Hasher;
@@ -116,7 +117,7 @@ impl Query {
                 let automaton = fst::automaton::Str::new(&self.lowercased);
 
                 for index in indices.iter() {
-                    op = op.add(index.map.search(&automaton));
+                    op = op.add(index.map(db).search(&automaton));
                 }
                 self.search_maps(db, indices, op.union(), cb)
             }
@@ -124,7 +125,7 @@ impl Query {
                 let automaton = fst::automaton::Subsequence::new(&self.lowercased);
 
                 for index in indices.iter() {
-                    op = op.add(index.map.search(&automaton));
+                    op = op.add(index.map(db).search(&automaton));
                 }
                 self.search_maps(db, indices, op.union(), cb)
             }
@@ -132,7 +133,7 @@ impl Query {
                 let automaton = fst::automaton::Str::new(&self.lowercased).starts_with();
 
                 for index in indices.iter() {
-                    op = op.add(index.map.search(&automaton));
+                    op = op.add(index.map(db).search(&automaton));
                 }
                 self.search_maps(db, indices, op.union(), cb)
             }
@@ -151,7 +152,7 @@ impl Query {
                 let symbol_index = &indices[index];
                 let (start, end) = SymbolIndex::map_value_to_range(value);
 
-                for symbol in &symbol_index.symbols[start..end] {
+                for symbol in &symbol_index.symbols(db)[start..end] {
                     let symbol_name = symbol.name.as_str();
 
                     if let Some(b) = cb(symbol).break_value() {
@@ -169,40 +170,18 @@ impl Query {
     }
 }
 
-#[derive(Default, Clone)]
+#[salsa::tracked(debug)]
 pub struct SymbolIndex<'db> {
+    #[returns(ref)]
     symbols: Box<[NamedSymbol<'db>]>,
+    #[tracked]
+    #[no_eq]
+    #[returns(ref)]
     map: fst::Map<Vec<u8>>,
 }
 
-impl fmt::Debug for SymbolIndex<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SymbolIndex").field("n_symbols", &self.symbols.len()).finish()
-    }
-}
-
-impl PartialEq for SymbolIndex<'_> {
-    fn eq(&self, other: &SymbolIndex) -> bool {
-        self.symbols == other.symbols
-    }
-}
-
-impl Eq for SymbolIndex<'_> {}
-
-impl Hash for SymbolIndex<'_> {
-    fn hash<H: Hasher>(&self, hasher: &mut H) {
-        self.symbols.hash(hasher)
-    }
-}
-
-unsafe impl salsa::Update for SymbolIndex<'_> {
-    unsafe fn maybe_update(old_pointer: *mut Self, new_value: Self) -> bool {
-        false
-    }
-}
-
 impl<'db> SymbolIndex<'db> {
-    pub fn new(
+    pub fn create(
         db: &'db dyn BaseDatabase,
         mut symbols: Box<[NamedSymbol<'db>]>,
     ) -> SymbolIndex<'db> {
@@ -244,7 +223,7 @@ impl<'db> SymbolIndex<'db> {
                 })
             })
             .unwrap();
-        SymbolIndex { symbols, map }
+        SymbolIndex::new(db, symbols, map)
     }
 
     fn range_to_map_value(start: usize, end: usize) -> u64 {
