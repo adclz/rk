@@ -15,7 +15,10 @@ use crate::{
         scope::{ScopeId, ScopeKind},
         semantic_index::{SemanticIndex, get_scope, semantic_index},
     },
-    hir_ty::{inheritance_solver::MethodRef, name_res::global_namespace_index},
+    hir_ty::{
+        inheritance_solver::MethodRef,
+        name_res::{global_namespace_index, resolve_namespace_access},
+    },
 };
 
 pub type FxIndexMap<K, V> = IndexMap<K, V, rustc_hash::FxBuildHasher>;
@@ -48,7 +51,7 @@ impl<'db> ScopeId<'db> {
 
     fn local_pous(&self, db: &'db dyn BaseDatabase) -> FxHashMap<Ident, PouDecl<'db>> {
         match get_scope(db, *self).kind {
-            ScopeKind::Namespace(ns) =>  {
+            ScopeKind::Namespace(ns) => {
                 let mut result = FxHashMap::default();
                 ns.pous(db).iter().for_each(|pou| {
                     result.insert(*pou.name(db), *pou);
@@ -63,16 +66,14 @@ impl<'db> ScopeId<'db> {
         match get_scope(db, *self).kind {
             ScopeKind::Global | ScopeKind::Namespace(_) => false,
             ScopeKind::Pou(pou) => match pou.pou(db) {
-                Pou::Function(_) | Pou::FunctionBlock(_) | Pou::Class(_) => {
-                    true
-                }
+                Pou::Function(_) | Pou::FunctionBlock(_) | Pou::Class(_) => true,
                 _ => false,
             },
             ScopeKind::MethodDecl(m) => true,
         }
     }
 
-    fn local_variables(&self, db: &'db dyn BaseDatabase) -> FxIndexMap<Ident, VariableDecl<'db>> { 
+    fn local_variables(&self, db: &'db dyn BaseDatabase) -> FxIndexMap<Ident, VariableDecl<'db>> {
         match get_scope(db, *self).kind {
             ScopeKind::Global | ScopeKind::Namespace(_) => IndexMap::default(),
             ScopeKind::Pou(pou) => match pou.pou(db) {
@@ -121,6 +122,49 @@ impl<'db> ScopeId<'db> {
                     .collect(),
                 _ => Default::default(),
             },
+        }
+    }
+
+    pub fn inheritors(&self, db: &'db dyn BaseDatabase) -> Vec<PouDecl<'db>> {
+        match get_scope(db, *self).kind {
+            ScopeKind::Pou(pou) => match pou.pou(db) {
+                Pou::Class(class) => {
+                    let mut inheritors = vec![];
+                    if let Some(base) = class.extends(db)
+                        && let Some(base) = resolve_namespace_access(db, &base.path)
+                    {
+                        inheritors.push(base);
+                    }
+                    for iface in class.implements(db) {
+                        if let Some(iface) = resolve_namespace_access(db, &iface.path) {
+                            inheritors.push(iface);
+                        }
+                    }
+                    inheritors
+                }
+                Pou::Interface(interface) => {
+                    let mut inheritors = vec![];
+                    if let Some(extends) = interface.extends(db) {
+                        for iface in extends {
+                            if let Some(iface) = resolve_namespace_access(db, &iface.path) {
+                                inheritors.push(iface);
+                            }
+                        }
+                    }
+                    inheritors
+                }
+                Pou::FunctionBlock(fb) => {
+                    let mut inheritors = vec![];
+                    if let Some(base) = fb.extends(db)
+                        && let Some(base) = resolve_namespace_access(db, &base.path)
+                    {
+                        inheritors.push(base);
+                    }
+                    inheritors
+                }
+                _ => vec![],
+            },
+            _ => vec![],
         }
     }
 }

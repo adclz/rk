@@ -11,7 +11,7 @@ use hir::{
         },
     },
     hir_ty::{
-        implementation::find_all_implementations, inheritance_solver::MethodRef,
+        inheritance_solver::MethodRef,
         ty_var_access_resolver::CallSite,
     },
 };
@@ -31,7 +31,7 @@ use serde_json::to_value;
 
 use crate::{
     HasComment, ToProtocol,
-    completions::{self, context::ScopeCompletionCtx},
+    completions::{self, context::ScopeCompletionCtx}, implementation::find_all_implementations,
 };
 
 impl<'db> ToProtocol<'db> for PouDecl<'db> {

@@ -7,7 +7,7 @@ use auto_lsp::{
     },
 };
 use hir::{
-    AstId, HirNodeInfo, hir_def::{comment_index::comment_index, interned::namespace::SpanNamespaceAccess, scope::ScopeId, semantic_index::HirNode}
+    AstId, HirNodeInfo, hir_def::{interned::namespace::SpanNamespaceAccess, scope::ScopeId, semantic_index::HirNode}
 };
 
 pub mod completions;
@@ -25,10 +25,12 @@ pub mod resolved_var_access;
 pub mod spec;
 pub mod struct_element;
 pub mod variable;
+pub mod implementation;
+pub mod comment_index;
 
 pub trait HasComment<'db>: HirNodeInfo<'db> {
     fn get_comment(&'db self, db: &'db dyn BaseDatabase) -> Option<String> {
-        let comment = match comment_index(db, self.get_scope_id(db).file(db)).find_nearby_comment(
+        let comment = match comment_index::comment_index(db, self.get_scope_id(db).file(db)).find_nearby_comment(
             self.get_scope_id(db).file(db).document(db),
             &self.get_span(db),
         ) {

@@ -3,7 +3,7 @@ use auto_lsp::{
     lsp_types, tree_sitter,
 };
 use db::RootDatabase;
-use hir::hir_def::comment_index::comment_index;
+use ide_proto::comment_index::comment_index;
 
 #[test]
 fn single_line_comment() {
