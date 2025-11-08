@@ -352,7 +352,7 @@
         },
         {
           "name": "storage.modifier.st",
-          "match": "\\b(?:ABSTRACT|CONSTANT|RETAIN|PERSISTENT|PUBLIC|PRIVATE|PROTECTED|INTERNAL|FINAL)\\b"
+          "match": "\\b(?:ABSTRACT|CONSTANT|RETAIN|PERSISTENT|PUBLIC|PRIVATE|PROTECTED|INTERNAL|FINAL|OVERRIDE)\\b"
         },
         {
           "name": "constant.language.st",
