@@ -58,9 +58,9 @@ impl<'db, 'scope> PrecizeCompletion<'db, 'scope> for FunctionBlock<'db> {
                 ctx.scope_ctx.items.push(method());
                 return;
             }
-            // If we are in statements, suggest method snippets and statement snippets
+            // If we are before statements, suggest method snippets and statement snippets
             (_, _, Some(stmt)) if ctx.scope_ctx.offset < stmt.get_span(db).end_byte => {
-                // if there methods, we can't show variables
+                // if there are methods, we can't show variables
                 if self.methods(db).first().is_none() {
                     ctx.scope_ctx.items.extend(fb_var_snippets());
                 }
@@ -69,12 +69,20 @@ impl<'db, 'scope> PrecizeCompletion<'db, 'scope> for FunctionBlock<'db> {
                 ctx.scope_ctx.query_scope_items(db);
                 return;
             }
+            // we are in statements
+            (_, _, Some(stmt)) if ctx.scope_ctx.offset > stmt.get_span(db).end_byte => {
+                ctx.scope_ctx.items.extend(all_stmts());
+                ctx.scope_ctx.query_scope_items(db);
+                return;
+            }
             _ => {
+                // function block is likely empty, suggest all
+                ctx.scope_ctx.items.extend(suggest);
                 ctx.scope_ctx.items.extend(all_stmts());
                 ctx.scope_ctx.items.push(method());
                 ctx.scope_ctx.items.extend(fb_var_snippets());
                 ctx.scope_ctx.query_scope_items(db);
             }
         }
-    }
+    }  
 }

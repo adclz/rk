@@ -4,17 +4,17 @@ use hir::{
     hir_def::pous::{class::Class, function::Function, function_block::FunctionBlock},
 };
 
-use crate::completions::{self, context::{PouCompletionCtx, PrecizeCompletion, ScopeCompletionCtx}, static_snippets::{all_stmts, class_var_snippets, method}};
+use crate::completions::{
+    self,
+    context::{PouCompletionCtx, PrecizeCompletion, ScopeCompletionCtx},
+    static_snippets::{all_stmts, class_var_snippets, method},
+};
 
 impl<'db, 'scope> PrecizeCompletion<'db, 'scope> for Class<'db> {
-    fn head_completion(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        ctx: PouCompletionCtx<'db, 'scope>,
-    ) {
+    fn head_completion(&'db self, db: &'db dyn BaseDatabase, ctx: PouCompletionCtx<'db, 'scope>) {
         if ctx.scope_ctx.offset <= ctx.name_span.start_byte {
             // Before the name of POU, returns nothing
-            return
+            return;
         }
 
         let suggest = match (self.extends(db), self.implements(db).last()) {
@@ -53,7 +53,20 @@ impl<'db, 'scope> PrecizeCompletion<'db, 'scope> for Class<'db> {
                 ctx.scope_ctx.items.push(method());
                 return;
             }
-            _ => { /* after variables and statements, do nothing */ }
+            // we are in statements
+            (_, Some(stmt)) if ctx.scope_ctx.offset > stmt.get_span(db).end_byte => {
+                ctx.scope_ctx.items.extend(all_stmts());
+                ctx.scope_ctx.query_scope_items(db);
+                return;
+            }
+            _ => {
+                // function block is likely empty, suggest all
+                ctx.scope_ctx.items.extend(suggest);
+                ctx.scope_ctx.items.extend(all_stmts());
+                ctx.scope_ctx.items.push(method());
+                ctx.scope_ctx.items.extend(class_var_snippets());
+                ctx.scope_ctx.query_scope_items(db);
+            }
         }
     }
 }
