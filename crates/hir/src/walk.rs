@@ -3,29 +3,29 @@ use std::ops::ControlFlow;
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    hir_def::{
+    HirNodeInfo, hir_def::{
         expressions::{
             expression::{Expr, ExprKind, PrimaryExpr, RefValue, VarAccess, VariableAccess},
             spec::{Spec, SpecKind},
             statement::{Stmt, StmtKind},
         },
-        interned::namespace::SpanNamespaceAccess,
+        interned::namespace::{SpanNamespaceAccess, SpanNamespaceAccessContext},
         namespace::NamespaceDecl,
         pous::{
             class::MethodDecl, pou::{Pou, PouDecl}, variable::VariableDecl
         },
-        semantic_index::{get_scope, semantic_index, HirNode, SemanticIndex},
+        semantic_index::{HirNode, SemanticIndex, get_scope, semantic_index},
         using::Using,
     }, hir_ty::{
         func_call_resolver::ResolvedFuncCall,
         inheritance_solver::MethodRef,
-        init_expr_resolver::{resolve_init_expr, ResolvedInitExpr, ResolvedInitExprKind},
-        param_resolver::{resolve_parameters, ResolvedParam, ResolvedParamKind},
+        init_expr_resolver::{ResolvedInitExpr, ResolvedInitExprKind, resolve_init_expr},
+        param_resolver::{ResolvedParam, ResolvedParamKind, resolve_parameters},
         ty::TyKind,
         ty_var_access_resolver::{LookUp, ResolvedAccess},
         using_resolver::resolve_using,
         walk::{ResolvedPath, ResolvedPathKind, ResolvedPathResult},
-    }, HirNodeInfo
+    }
 };
 
 pub trait WalkHir<'db> {
@@ -57,16 +57,6 @@ impl<'db> WalkHir<'db> for Using<'db> {
         f: &mut F,
     ) -> ControlFlow<()> {
         f(HirNode::ResolvedUsing(*resolve_using(db, *self)))
-    }
-}
-
-impl<'db> WalkHir<'db> for SpanNamespaceAccess<'db> {
-    fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
-        &self,
-        db: &'db dyn BaseDatabase,
-        f: &mut F,
-    ) -> ControlFlow<()> {
-        f(HirNode::SpanNamespaceAccess(self.clone()))
     }
 }
 
@@ -124,11 +114,11 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
             }
             Pou::FunctionBlock(fb) => {
                 if let Some(extends) = fb.extends(db) {
-                    extends.walk_hir(db, f)?;
+                    f(HirNode::SpanNamespaceAccess(SpanNamespaceAccessContext::Extends(extends)))?;
                 }
 
                 for implements in fb.implements(db) {
-                    implements.walk_hir(db, f)?;
+                    f(HirNode::SpanNamespaceAccess(SpanNamespaceAccessContext::Implements(implements)))?;
                 }
 
                 for var in fb.variables(db) {
@@ -145,11 +135,11 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
             }
             Pou::Class(class) => {
                 if let Some(extends) = class.extends(db) {
-                    extends.walk_hir(db, f)?;
+                    f(HirNode::SpanNamespaceAccess(SpanNamespaceAccessContext::Extends(extends)))?;
                 }
 
                 for implements in class.implements(db) {
-                    implements.walk_hir(db, f)?;
+                    f(HirNode::SpanNamespaceAccess(SpanNamespaceAccessContext::Implements(implements)))?;
                 }
 
                 for var in class.variables(db) {
@@ -162,7 +152,7 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
             Pou::Interface(it) => {
                 if let Some(extends) = it.extends(db) {
                     for implements in extends {
-                        implements.walk_hir(db, f)?;
+                        f(HirNode::SpanNamespaceAccess(SpanNamespaceAccessContext::Implements(implements)))?
                     }
                 }
 

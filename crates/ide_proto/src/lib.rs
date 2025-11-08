@@ -7,12 +7,11 @@ use auto_lsp::{
     },
 };
 use hir::{
-    HirNodeInfo,
-    hir_def::{comment_index::comment_index, semantic_index::HirNode},
+    AstId, HirNodeInfo, hir_def::{comment_index::comment_index, interned::namespace::SpanNamespaceAccess, scope::ScopeId, semantic_index::HirNode}
 };
 
 pub mod completions;
-pub mod lazy_resolved;
+pub mod namespace_access;
 pub mod method_ref;
 pub mod namespace;
 pub mod pou;

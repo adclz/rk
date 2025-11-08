@@ -35,5 +35,5 @@ pub fn file_symbol_index<'db>(db: &'db dyn BaseDatabase, file: File) -> SymbolIn
         }
     }
 
-    SymbolIndex::new(db, items.into_boxed_slice())
+    SymbolIndex::create(db, items.into_boxed_slice())
 }

@@ -25,7 +25,7 @@ pub fn variable_symbol_index<'db>(
             });
         });
 
-    SymbolIndex::new(db, variables.into_boxed_slice())
+    SymbolIndex::create(db, variables.into_boxed_slice())
 }
 
 pub fn fuzzy_variables<'db>(

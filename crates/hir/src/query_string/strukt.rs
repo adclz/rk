@@ -23,7 +23,7 @@ pub fn struct_symbol_index<'db>(
         });
     });
 
-    vec![SymbolIndex::new(db, struct_fields.into_boxed_slice())]
+    vec![SymbolIndex::create(db, struct_fields.into_boxed_slice())]
 }
 
 pub fn fuzzy_struct_fields<'db>(

@@ -112,10 +112,6 @@ impl<'db> ScopeCompletionCtx<'db> {
             matches!(pou.pou(db), Pou::Function(_))
         });
 
-        for (n, pou) in global_pou_index(db) {
-            self.items.push(builder.build_pou(db, &pou, None));
-        }
-
         for pou in pous.local_pous {
             self.items.push(builder.build_pou(db, &pou, None));
         }

@@ -17,7 +17,7 @@ pub fn method_symbol_index<'db>(
         });
     });
 
-    vec![SymbolIndex::new(db, variables.into_boxed_slice())]
+    vec![SymbolIndex::create(db, variables.into_boxed_slice())]
 }
 
 

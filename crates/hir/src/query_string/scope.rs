@@ -36,8 +36,8 @@ pub fn query_scope_items<'db>(
     scope: ScopeId<'db>,
     filter_pou: impl Fn(&PouDecl<'db>) -> bool,
 ) -> ScopeSearchResult<'db> {
-    let comp = discover_in_scope(db, scope);
-    let mut result = ScopeSearchResult::default();
+    let local = discover_in_scope(db, scope);
+    let mut search_result = ScopeSearchResult::default();
 
     // Collects all symbol indexes to search
     let mut indexes: Vec<_> = db
@@ -49,7 +49,6 @@ pub fn query_scope_items<'db>(
     // Add variable index for the current scope
     indexes.push(variable_symbol_index(db, scope));
 
-    let mut need_imports = vec![];
     let mut fast_query = Query::new(query.to_string());
     fast_query.fuzzy();
 
@@ -58,32 +57,38 @@ pub fn query_scope_items<'db>(
             SymbolKind::Pou(pou) => {
                 if let Some(ns) = symbol.namespace {
                     // Check if we have already seen this symbol in the local scopes
-                    if comp.seen_namespaces.contains(&ns) {
+                    if local.seen_namespaces.contains(&ns) {
                         return ControlFlow::Continue::<()>(());
                     }
 
                     // Then, check if we have already added this POU
-                    if comp.pous.contains_key(pou.name(db)) {
+                    if local.pous.contains_key(pou.name(db)) {
                         return ControlFlow::Continue::<()>(());
                     }
+
+                    // Apply the filter
                     if !filter_pou(&pou) {
                         return ControlFlow::Continue::<()>(());
                     }
 
-                    need_imports.push((ns, pou));
+                    search_result.need_imports.push((ns, pou));
+                    return ControlFlow::Continue::<()>(());
                 }
+                // Apply the filter
+                if !filter_pou(&pou) {
+                    return ControlFlow::Continue::<()>(());
+                }
+                search_result.local_pous.push(pou);
             }
             SymbolKind::Variable(v) => {
-                result.local_variables.push(v);
+                search_result.local_variables.push(v);
             }
             _ => {}
         }
         ControlFlow::Continue::<()>(())
     });
 
-    result.local_pous = comp.pous.values().cloned().collect();
-    result.need_imports = need_imports;
-    result
+    search_result
 }
 
 #[derive(Default)]

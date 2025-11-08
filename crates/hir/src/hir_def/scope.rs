@@ -17,7 +17,6 @@ impl<'db> From<(&'db dyn BaseDatabase, File, usize)> for ScopeId<'db> {
     }
 }
 
-#[salsa::tracked]
 impl<'db> ScopeId<'db> {
     pub fn global(db: &'db dyn BaseDatabase, file: File) -> Self {
         ScopeId::new(db, file, usize::MAX)
