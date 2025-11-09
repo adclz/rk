@@ -29,7 +29,6 @@ pub fn with_log_db() -> (RootDatabase, Arc<RwLock<Vec<Event>>>) {
     let log = Arc::new(RwLock::new(vec![]));
     let cloned_log = log.clone();
     let db = RootDatabase::new(Some(Box::new(move |l| {
-        eprintln!("{l:#?}");
         cloned_log.write().unwrap().push(l);
     })));
     (db, log)

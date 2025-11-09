@@ -715,7 +715,7 @@ END_FUNCTION_BLOCK
 
     assert!(matches!(
         ty.kind(&with_db),
-        TyKind::FunctionBlock(fb)
+        TyKind::FunctionBlock(_)
     ));
 
 }
