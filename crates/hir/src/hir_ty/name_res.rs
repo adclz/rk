@@ -57,19 +57,12 @@ pub fn resolve_namespace_access<'db>(
 ) -> Option<PouDecl<'db>> {
     let target = &access.target;
 
-    eprintln!("resolving POU access: {:?}", access.to_string(db));
     match access.namespace {
         // There's a namespace specified, so we look for it
         Some(path) => global_namespace_index(db)
             .get(&path)?
             .iter()
             .find_map(|ns| {
-                eprintln!(
-                    "in ns{} looking for pou {}",
-                    ns.path(db).to_string(db),
-                    target.ident.text(db)
-                );
-
                 pou_names_res(db, target.ident, ns.scope_id(db))
             }),
         // None, look for the POU in the current scope

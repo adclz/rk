@@ -1,6 +1,5 @@
 use auto_lsp::{
-    default::db::{BaseDatabase, tracked::get_ast},
-    lsp_types::{CompletionItem, GotoDefinitionResponse, Hover, request::GotoDeclarationResponse},
+    core::semantic_tokens_builder::SemanticTokensBuilder, default::db::{BaseDatabase, tracked::get_ast}, lsp_types::{CompletionItem, GotoDefinitionResponse, Hover, request::GotoDeclarationResponse}
 };
 use hir::{
     HirNodeInfo,
@@ -43,6 +42,13 @@ impl<'db> ToProtocol<'db> for ResolvedAccess<'db> {
                         .take_items(),
                 )
             }
+        }
+    }
+
+    fn semantic_tokens(&'db self, db: &'db dyn BaseDatabase, builder: &mut SemanticTokensBuilder) {
+        match self.resolved(db) {
+            Ok(resolved) => resolved.semantic_tokens(db, builder),
+            Err(_) => {}
         }
     }
 }

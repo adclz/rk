@@ -1,8 +1,12 @@
 use auto_lsp::{
-    core::document_symbols_builder::DocumentSymbolsBuilder,
+    core::{
+        document_symbols_builder::DocumentSymbolsBuilder,
+        semantic_tokens_builder::SemanticTokensBuilder,
+    },
     default::db::BaseDatabase,
     lsp_types::{
-        request::GotoDeclarationResponse, CompletionItem, GotoDefinitionResponse, Hover, HoverContents, Location, MarkupContent, MarkupKind, SymbolKind
+        CompletionItem, GotoDefinitionResponse, Hover, HoverContents, Location, MarkupContent,
+        MarkupKind, SymbolKind, request::GotoDeclarationResponse,
     },
 };
 use hir::{
@@ -10,15 +14,14 @@ use hir::{
     hir_def::pous::variable::{VariableDecl, VariableKind},
 };
 
-use crate::{HasComment, ToProtocol};
+use crate::{HasComment, SUPPORTED_TYPES, ToProtocol, VARIABLE, resolved_path_element::HasTokens};
 
 impl<'db> ToProtocol<'db> for VariableDecl<'db> {
     fn document_symbols(&self, db: &'db dyn BaseDatabase, builder: &mut DocumentSymbolsBuilder) {
-
         let name = self.name(db).text(db).to_string();
         let name = match name.len() {
             0 => "?".into(),
-            _ => name
+            _ => name,
         };
 
         builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
@@ -78,10 +81,29 @@ impl<'db> ToProtocol<'db> for VariableDecl<'db> {
     }
 
     fn completion(
-            &'db self,
-            db: &'db dyn BaseDatabase,
-            offset: usize,
-        ) -> Option<Vec<CompletionItem>> {
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        offset: usize,
+    ) -> Option<Vec<CompletionItem>> {
         self.spec(db).completion(db, offset)
+    }
+
+    fn semantic_tokens(&'db self, db: &'db dyn BaseDatabase, builder: &mut SemanticTokensBuilder) {
+        match self.spec(db).tokens(db) {
+            Some((typ, modi)) => {
+                builder.push(
+                    self.spec(db).get_span(db).lsp(),
+                    SUPPORTED_TYPES.iter().position(|x| *x == typ).unwrap() as u32,
+                    modi,
+                );
+            }
+            None => {
+                builder.push(
+                    self.spec(db).get_span(db).lsp(),
+                    SUPPORTED_TYPES.iter().position(|x| *x == VARIABLE).unwrap() as u32,
+                    0,
+                );
+            }
+        };
     }
 }
