@@ -1,10 +1,8 @@
 use auto_lsp::{
-    core::document_symbols_builder::DocumentSymbolsBuilder,
-    default::db::BaseDatabase,
-    lsp_types::{
+    core::{document_symbols_builder::DocumentSymbolsBuilder, semantic_tokens_builder::SemanticTokensBuilder}, default::db::BaseDatabase, define_semantic_token_modifiers, define_semantic_token_types, lsp_types::{
         CodeLens, CompletionItem, GotoDefinitionResponse, Hover, InlayHint,
         request::{GotoDeclarationResponse, GotoImplementationResponse},
-    },
+    }
 };
 use hir::{
     HirNodeInfo, hir_def::semantic_index::HirNode
@@ -77,6 +75,10 @@ pub trait ToProtocol<'db>: HirNodeInfo<'db> {
     fn definition(&'db self, _db: &'db dyn BaseDatabase) -> Option<GotoDefinitionResponse> {
         None
     }
+
+    fn semantic_tokens(&'db self, _db: &'db dyn BaseDatabase, builder: &mut SemanticTokensBuilder)  {
+        
+    }
 }
 
 pub trait AsProtocol<'db> {
@@ -103,3 +105,28 @@ impl<'db> AsProtocol<'db> for HirNode<'db> {
         }
     }
 }
+
+
+define_semantic_token_types![
+    standard {
+        FUNCTION,
+        INTERFACE,
+        CLASS,
+        TYPE,
+        VARIABLE
+    }
+
+    custom {
+
+    }
+];
+
+define_semantic_token_modifiers![
+    standard {
+
+    }
+
+    custom {
+        //(INTERNAL, "internal"),
+    }
+];

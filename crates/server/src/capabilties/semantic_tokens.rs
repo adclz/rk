@@ -5,42 +5,9 @@ use auto_lsp::{
     define_semantic_token_modifiers, define_semantic_token_types,
     lsp_types::{SemanticTokensParams, SemanticTokensResult},
 };
+use hir::{hir_def::semantic_index::semantic_index, walk::WalkHir};
+use ide_proto::AsProtocol;
 
-define_semantic_token_types![
-    standard {
-        NAMESPACE,
-        FUNCTION,
-        CLASS,
-        INTERFACE,
-        TYPE,
-        VARIABLE,
-        KEYWORD,
-        MODIFIER,
-        OPERATOR,
-        TYPE_PARAMETER,
-        NUMBER,
-        STRING,
-        METHOD
-    }
-
-    custom {
-
-    }
-];
-
-define_semantic_token_modifiers![
-    standard {
-        DECLARATION,
-        MODIFICATION,
-
-    }
-
-    custom {
-        (INTERNAL, "internal"),
-        (CONTROL, "control"),
-        (OOP, "oop"),
-    }
-];
 
 pub fn semantic_tokens_full(
     db: &impl BaseDatabase,
@@ -53,7 +20,13 @@ pub fn semantic_tokens_full(
         None => return Ok(None),
     };
 
-    let builder = SemanticTokensBuilder::new("".into());
+    let mut builder = SemanticTokensBuilder::new("".into());
+    let sema = semantic_index(db, file);
 
-    Ok(None)
+    let _ = sema.walk_hir(db, &mut |node| {
+        node.as_proto().semantic_tokens(db, &mut builder);
+        std::ops::ControlFlow::Continue(())
+    });
+
+    Ok(Some(SemanticTokensResult::Tokens(builder.build())))
 }

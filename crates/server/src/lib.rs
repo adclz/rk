@@ -58,8 +58,9 @@ use auto_lsp::server::notification_registry::NotificationRegistry;
 use auto_lsp::server::options::InitOptions;
 use auto_lsp::server::request_registry::RequestRegistry;
 use auto_lsp::server::vendored::intent::ThreadIntent;
-use capabilties::semantic_tokens::SUPPORTED_TYPES;
 use db::RootDatabase;
+use ide_proto::SUPPORTED_MODIFIERS;
+use ide_proto::SUPPORTED_TYPES;
 use std::error::Error;
 use std::panic::RefUnwindSafe;
 
@@ -77,7 +78,6 @@ use crate::capabilties::hover::hover;
 use crate::capabilties::implementation::go_to_implementation;
 use crate::capabilties::inlay_hints::inlay_hints;
 use crate::capabilties::semantic_tokens;
-use crate::capabilties::semantic_tokens::SUPPORTED_MODIFIERS;
 
 pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
     log::info!("Starting IEC LSP");
