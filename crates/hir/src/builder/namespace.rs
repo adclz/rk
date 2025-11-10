@@ -6,7 +6,7 @@ use super::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::analysis_error::AnalysisError;
 use crate::check::errors::syntax::SyntaxError;
 use crate::hir_def::interned::identifier::SpanIdent;
-use crate::hir_def::interned::namespace::NamespacePath;
+use crate::hir_def::interned::namespace::{NamespacePath, SpanNamespacePath};
 use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::scope::{Scope, ScopeKind};
 use crate::hir_def::visibility::Visibility;
@@ -22,7 +22,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             ERRInvalidPouKeyword_ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl;
 
         let scope_id = self.generate_scope_id();
-        let path = NamespacePath::from((self.db, parent_path));
+        let path = SpanNamespacePath::from((self.db, parent_path, self.current_scope));
         let usings = match self.parse_usings(&nested.directives) {
             Ok(usings) => usings,
             Err(error) => {
@@ -78,7 +78,7 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         let result = NamespaceDecl::new(
             self.db,
-            path,
+            *path,
             pous.clone(),
             namespaces,
             nested.into(),

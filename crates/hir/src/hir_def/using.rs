@@ -1,13 +1,12 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    hir_def::{interned::namespace::NamespacePath, scope::ScopeId},
-    {AstId, HirNodeInfo},
+    AstId, HirNodeInfo, hir_def::{interned::namespace::{NamespacePath, SpanNamespacePath}, scope::ScopeId}
 };
 
 #[salsa::tracked(debug)]
 pub struct Using<'db> {
-    pub path: NamespacePath,
+    pub path: SpanNamespacePath<'db>,
 
     #[tracked]
     #[no_eq]

@@ -5,7 +5,7 @@ use auto_lsp::core::ast::AstNodeId;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::analysis_error::AnalysisError;
 use crate::hir_def::interned::identifier::SpanIdent;
-use crate::hir_def::interned::namespace::NamespacePath;
+use crate::hir_def::interned::namespace::{NamespacePath, SpanNamespacePath};
 use crate::hir_def::using::Using;
 
 impl<'db> SemanticIndexBuilder<'db> {
@@ -21,7 +21,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
             result.push(Using::new(
                 self.db,
-                NamespacePath::from((self.db, &path)),
+                SpanNamespacePath::from((self.db, &path, self.current_scope)),
                 child.cast(self.ast).into(),
                 self.current_scope,
             ));
@@ -42,7 +42,7 @@ impl<'db> SemanticIndexBuilder<'db> {
                 }
                 using.push(Using::new(
                     self.db,
-                    NamespacePath::from((self.db, &path)),
+                    SpanNamespacePath::from((self.db, &path,   self.current_scope)),
                     child.cast(self.ast).into(),
                     self.current_scope,
                 ));

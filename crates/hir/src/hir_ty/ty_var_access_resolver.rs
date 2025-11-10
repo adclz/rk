@@ -14,7 +14,7 @@ use crate::{
         },
         interned::{
             identifier::Ident,
-            namespace::{NamespaceAccess, NamespacePath},
+            namespace::{NamespaceAccess, NamespacePath, SpanNamespacePath},
         },
         pous::{
             pou::{Pou, PouDecl},
@@ -547,7 +547,7 @@ fn find_primary_target<'db>(
                     }
                 }
 
-                let path = NamespacePath::from((db, &fragments));
+                let path = SpanNamespacePath::from((db, &fragments, path_expr.scope_id(db)));
                 let access = NamespaceAccess::new(db, Some(path), *ident);
                 if let Some(pou) = resolve_namespace_access(db, &access) {
                     return Ok((

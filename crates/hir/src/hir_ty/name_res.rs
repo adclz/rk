@@ -57,7 +57,7 @@ pub fn resolve_namespace_access<'db>(
 ) -> Option<PouDecl<'db>> {
     let target = &access.target;
 
-    match access.namespace {
+    match &access.namespace {
         // There's a namespace specified, so we look for it
         Some(path) => global_namespace_index(db)
             .get(&path)?
