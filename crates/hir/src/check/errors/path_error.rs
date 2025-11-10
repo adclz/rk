@@ -2,16 +2,20 @@ use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, diag};
 
 use crate::{
-    check::errors::analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic}, hir_def::{
+    HirNodeInfo, check::errors::analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic}, hir_def::{
         expressions::expression::{BeginPathExpr, PathExpr},
         interned::namespace::SpanNamespaceAccess,
         scope::ScopeKind,
-        semantic_index::get_scope,
-    }, hir_ty::{ty_var_access_resolver::CallSite, walk::ResolvedPath}, query_string::variables::fuzzy_variables, HirNodeInfo
+        semantic_index::get_scope, using::Using,
+    }, hir_ty::{ty_var_access_resolver::CallSite, walk::ResolvedPath}, query_string::variables::fuzzy_variables
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum AccessError<'db> {
+    // Using directive 
+    InvalidUsingDirective {
+        using: Using<'db>,
+    },
     NoBeginLocalItemInScope {
         expr: BeginPathExpr<'db>,
     },
@@ -64,6 +68,9 @@ impl<'db> From<AccessError<'db>> for AnalysisError<'db> {
 impl<'db> DiagnosticDescription<'db> for AccessError<'db> {
     fn description(&self, db: &'db dyn BaseDatabase) -> String {
         match self {
+            AccessError::InvalidUsingDirective { using } => {
+                format!("could not find namespace '{}'", using.path(db).to_string(db))
+            }
             AccessError::NoBeginLocalItemInScope { expr } => {
                 format!("no begin item '{}' in scope", expr.to_string(db))
             }
@@ -155,6 +162,7 @@ impl<'db> ToIdeDiagnostic<'db> for AccessError<'db> {
             .message(self.description(db))
             .severity(DiagnosticSeverity::ERROR)
             .range(match self {
+                AccessError::InvalidUsingDirective { using } => using.get_span(db),
                 AccessError::NoBeginLocalItemInScope { expr } => expr.get_span(db),
                 AccessError::NoLocalItemInScope { expr } => expr.get_span(db),
                 AccessError::NoItemInScope { access } => access.get_span(db),

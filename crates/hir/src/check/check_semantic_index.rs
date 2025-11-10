@@ -13,12 +13,14 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use salsa::Accumulator;
 
 use crate::{
+    HirNodeInfo,
     check::{
         check_inheritance::check_inheritance,
         check_init_expr::check_init_expr,
         check_namespaces::check_duplicate_namespaces,
-        errors::{analysis_error::{ToIdeDiagnostic}, duplicates::DuplicateError, stmt::StmtError},
-    }, hir_def::{
+        errors::{analysis_error::ToIdeDiagnostic, duplicates::DuplicateError, stmt::StmtError},
+    },
+    hir_def::{
         expressions::{
             expression::{
                 Elementary, Expr, ExprKind, InitExprKind, Integer, IntegerKind, PathExpr,
@@ -34,13 +36,15 @@ use crate::{
             variable::VariableDecl,
         },
         scope::ScopeId,
-        semantic_index::{semantic_index, HirNode, SemanticIndex},
-    }, hir_ty::{
-        init_expr_resolver::{resolve_init_expr, ResolvedInitExpr},
-        name_res::{global_pou_index},
+        semantic_index::{HirNode, SemanticIndex, get_scope, semantic_index},
+    },
+    hir_ty::{
+        init_expr_resolver::{ResolvedInitExpr, resolve_init_expr},
+        name_res::global_pou_index,
         ty::{Ty, TyKind},
         ty_var_access_resolver::ResolvedAccess,
-    }, walk::WalkHir, HirNodeInfo
+    },
+    walk::WalkHir,
 };
 
 pub trait Check<'db> {
@@ -54,7 +58,9 @@ pub trait DataTypeCheck<'db> {
 impl<'db> Check<'db> for SemanticIndex<'db> {
     fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<IdeDiagnostic>) {
         // Get syntax errors
-        self.errors.iter().for_each(|err| errors.push(err.to_diagnostic(db)));
+        self.errors
+            .iter()
+            .for_each(|err| errors.push(err.to_diagnostic(db)));
         self.pous(db).iter().for_each(|pou| pou.check(db, errors));
         // Namespaces
         self.namespaces.iter().for_each(|ns| ns.check(db, errors));
@@ -68,14 +74,25 @@ impl<'db> Check<'db> for NamespaceDecl<'db> {
         {
             errors.extend_from_slice(ns_errors);
         }
+        get_scope(db, self.get_scope_id(db))
+            .usings
+            .iter()
+            .for_each(|u| {
+                u.check(db, errors);
+            });
         self.pous(db).iter().for_each(|p| p.check(db, errors));
     }
 }
 
 impl<'db> Check<'db> for PouDecl<'db> {
     fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<IdeDiagnostic>) {
-        self.scope_id(db).file(db);
-        
+        get_scope(db, self.get_scope_id(db))
+            .usings
+            .iter()
+            .for_each(|u| {
+                u.check(db, errors);
+            });
+
         match self.pou(db) {
             Pou::Function(f) => {
                 f.variables(db).check(db, errors);

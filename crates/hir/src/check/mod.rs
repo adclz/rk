@@ -27,6 +27,7 @@ pub mod check_struct;
 pub mod check_subrange;
 pub mod check_variables;
 pub mod check_visibility;
+pub mod check_using;
 pub mod coerce;
 pub mod errors;
 
