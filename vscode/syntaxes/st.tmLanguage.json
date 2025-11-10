@@ -86,6 +86,15 @@
           }
         },
         {
+          "name": "storage.type.namespace.st",
+          "match": "\\s*\\b(NAMESPACE)\\b\\s*([a-zA-Z_0-9\\.]+)\\b",
+          "captures": {
+            "2": {
+              "name": "entity.name.type.namespace"
+            }
+          }
+        },
+        {
           "name": "storage.type.interface.st",
           "match": "\\s*\\b(INTERFACE)\\b\\s*([a-zA-Z_0-9]*)\\b",
           "captures": {
