@@ -20,8 +20,8 @@ use hir::HirNodeInfo;
 use serde_json::to_value;
 
 use crate::{
-    HasComment, ToProtocol,
-    completions::context::ScopeCompletionCtx, implementation::find_all_implementations,
+    HasComment, ToProtocol, completions::context::ScopeCompletionCtx,
+    implementation::find_all_implementations,
 };
 
 impl<'db> ToProtocol<'db> for PouDecl<'db> {
@@ -177,7 +177,11 @@ impl<'db> ToProtocol<'db> for PouDecl<'db> {
                     Some(CodeLens {
                         range: self.get_span(db).lsp(),
                         command: Some(Command {
-                            title: format!("{} implementations", implementations.len()),
+                            title: format!(
+                                "{} implementation{}",
+                                implementations.len(),
+                                if implementations.len() > 1 { "s" } else { "" }
+                            ),
                             command: "rk.showImplementations".into(),
                             arguments: Some(vec![
                                 to_value(self.get_scope_id(db).file(db).url(db).as_str()).unwrap(),
