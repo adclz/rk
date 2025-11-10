@@ -5,13 +5,16 @@ use auto_lsp::{
 };
 use hir::{
     HirNodeInfo,
-    hir_def::{interned::namespace::SpanNamespaceAccessContext, pous::pou::Pou},
+    hir_def::{
+        interned::namespace::{SpanNamespaceAccess, SpanNamespaceAccessContext},
+        pous::pou::Pou,
+    },
     hir_ty::name_res::resolve_namespace_access,
     query_string::scope::query_scope_items,
 };
 
 use crate::{
-    CLASS, FUNCTION, INTERFACE, SUPPORTED_TYPES, ToProtocol,
+    CLASS, FUNCTION, INTERFACE, NAMESPACE, SUPPORTED_TYPES, ToProtocol,
     completions::item_builder::CompletionBuilder,
 };
 
@@ -86,18 +89,19 @@ impl<'db> ToProtocol<'db> for SpanNamespaceAccessContext<'db> {
     fn semantic_tokens(&'db self, db: &'db dyn BaseDatabase, builder: &mut SemanticTokensBuilder) {
         match self {
             Self::Extends(ext) => {
+                push_fragments(db, &ext, builder);
                 if let Some(resolved) = resolve_namespace_access(db, &ext.path) {
                     match resolved.pou(db) {
                         Pou::Class(_) => {
                             builder.push(
-                                self.get_span(db).lsp(),
+                                self.get_access().path.target.get_span(db).lsp(),
                                 SUPPORTED_TYPES.iter().position(|x| *x == CLASS).unwrap() as u32,
                                 0,
                             );
                         }
                         Pou::FunctionBlock(_) => {
                             builder.push(
-                                self.get_span(db).lsp(),
+                                self.get_access().path.target.get_span(db).lsp(),
                                 SUPPORTED_TYPES.iter().position(|x| *x == FUNCTION).unwrap() as u32,
                                 0,
                             );
@@ -107,10 +111,10 @@ impl<'db> ToProtocol<'db> for SpanNamespaceAccessContext<'db> {
                 }
             }
             Self::Implements(imp) => {
+                push_fragments(db, &imp, builder);
                 if let Some(resolved) = resolve_namespace_access(db, &imp.path) {
-                    eprintln!("Adding semantic token for interface");
                     builder.push(
-                        self.get_span(db).lsp(),
+                        self.get_access().path.target.get_span(db).lsp(),
                         SUPPORTED_TYPES
                             .iter()
                             .position(|x| *x == INTERFACE)
@@ -119,6 +123,26 @@ impl<'db> ToProtocol<'db> for SpanNamespaceAccessContext<'db> {
                     );
                 }
             }
+        }
+    }
+}
+
+pub fn push_fragments(
+    db: &dyn BaseDatabase,
+    access: &SpanNamespaceAccess,
+    builder: &mut SemanticTokensBuilder,
+) {
+    if let Some(path) = &access.path.namespace {
+        for (index, _) in path.fragments(db).iter().enumerate() {
+            let span = path.get_fragment_ast_node(db, index).get_span().lsp();
+            builder.push(
+                span,
+                SUPPORTED_TYPES
+                    .iter()
+                    .position(|x| *x == NAMESPACE)
+                    .unwrap() as u32,
+                0,
+            );
         }
     }
 }

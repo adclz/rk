@@ -1,35 +1,54 @@
 use auto_lsp::{
+    core::semantic_tokens_builder::SemanticTokensBuilder,
     default::db::BaseDatabase,
     lsp_types::{Hover, HoverContents, MarkedString},
 };
-use hir::{HirNodeInfo, hir_def::using::Using};
+use hir::{
+    HirNodeInfo,
+    hir_def::using::Using,
+    hir_ty::name_res::{global_namespace_index, resolve_namespace_access},
+};
 
-use crate::ToProtocol;
+use crate::{NAMESPACE, SUPPORTED_TYPES, ToProtocol};
 
 impl<'db> ToProtocol<'db> for Using<'db> {
     fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Hover> {
-        for fragment in self.path(db).fragments(db) {
-            let span = fragment.get_span(db);
+        let mut accumulated_path = Vec::new();
 
-            if offset < span.start_byte || offset > span.end_byte {
-                continue;
-            }
+        for (index, fragment) in self.path(db).fragments(db).iter().enumerate() {
+            let span = self.path(db).get_fragment_ast_node(db, index).get_span();
+            accumulated_path.push(fragment.text(db).to_string());
 
-            let fragment_name = fragment.text(db).to_string();
-            return Some(Hover {
-                contents: HoverContents::Scalar(MarkedString::from_markdown(
-                    format!(
+            if offset >= span.start_byte && offset <= span.end_byte {
+                let full_path = accumulated_path.join(".");
+                return Some(Hover {
+                    contents: HoverContents::Scalar(MarkedString::from_markdown(format!(
                         r#"
 ```iecst
-(using) NAMESPACE {fragment_name}
+(using) NAMESPACE {}
 ```
-                    "#
-                    )
-                    .to_string(),
-                )),
-                range: None,
-            });
+"#,
+                        full_path
+                    ))),
+                    range: None,
+                });
+            }
         }
+
         None
+    }
+
+    fn semantic_tokens(&'db self, db: &'db dyn BaseDatabase, builder: &mut SemanticTokensBuilder) {
+        for (index, fragment) in self.path(db).fragments(db).iter().enumerate() {
+            let span = self.path(db).get_fragment_ast_node(db, index).get_span();
+            builder.push(
+                span.lsp(),
+                SUPPORTED_TYPES
+                    .iter()
+                    .position(|x| *x == NAMESPACE)
+                    .unwrap() as u32,
+                0,
+            );
+        }
     }
 }

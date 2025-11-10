@@ -109,11 +109,10 @@ impl<'db> AsProtocol<'db> for HirNode<'db> {
 
 define_semantic_token_types![
     standard {
+        NAMESPACE,
         FUNCTION,
         INTERFACE,
         CLASS,
-        TYPE,
-        VARIABLE
     }
 
     custom {

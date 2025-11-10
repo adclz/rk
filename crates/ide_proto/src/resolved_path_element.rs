@@ -20,7 +20,7 @@ use hir::{
 };
 
 use crate::{
-    CLASS, FUNCTION, INTERFACE, SUPPORTED_TYPES, ToProtocol, VARIABLE,
+    CLASS, FUNCTION, INTERFACE, SUPPORTED_TYPES, ToProtocol, namespace_access::push_fragments,
 };
 
 impl<'db> ToProtocol<'db> for ResolvedPath<'db> {
@@ -93,31 +93,40 @@ impl<'db> ToProtocol<'db> for ResolvedPath<'db> {
     fn semantic_tokens(&'db self, db: &'db dyn BaseDatabase, builder: &mut SemanticTokensBuilder) {
         match self.kind {
             ResolvedPathKind::Pou(p) => {
-                if let Some((typ, modi)) = p.tokens(db) {
-                    builder.push(
-                        self.get_span(db).lsp(),
-                        SUPPORTED_TYPES.iter().position(|x| *x == typ).unwrap() as u32,
-                        modi,
-                    );
-                }
+                let token = match p.pou(db) {
+                    Pou::FunctionBlock(_) => FUNCTION,
+                    Pou::Function(_) => FUNCTION,
+                    Pou::Interface(_) => INTERFACE,
+                    Pou::Class(_) => CLASS,
+                    Pou::DataType(d) => return,
+                };
+                builder.push(
+                    self.get_span(db).lsp(),
+                    SUPPORTED_TYPES.iter().position(|x| *x == token).unwrap() as u32,
+                    0,
+                );
             }
             ResolvedPathKind::Variable(v) => {
-                match v.spec(db).tokens(db) {
-                    Some((typ, modi)) => {
-                        builder.push(
-                            self.get_span(db).lsp(),
-                            SUPPORTED_TYPES.iter().position(|x| *x == typ).unwrap() as u32,
-                            modi,
-                        );
+                if let SpecKind::Target(t) = v.spec(db).kind(db) {
+                    push_fragments(db, &t, builder);
+                    match resolve_namespace_access(db, &t.path) {
+                        Some(pou) => {
+                            let token = match pou.pou(db) {
+                                Pou::FunctionBlock(_) => FUNCTION,
+                                Pou::Function(_) => FUNCTION,
+                                Pou::Interface(_) => INTERFACE,
+                                Pou::Class(_) => CLASS,
+                                Pou::DataType(_) => return,
+                            };
+                            builder.push(
+                                self.get_span(db).lsp(),
+                                SUPPORTED_TYPES.iter().position(|x| *x == token).unwrap() as u32,
+                                0,
+                            );
+                        }
+                        None => {}
                     }
-                    None => {
-                        builder.push(
-                            self.get_span(db).lsp(),
-                            SUPPORTED_TYPES.iter().position(|x| *x == VARIABLE).unwrap() as u32,
-                            0,
-                        );
-                    }
-                };
+                }
             }
             _ => {}
         }
@@ -125,17 +134,25 @@ impl<'db> ToProtocol<'db> for ResolvedPath<'db> {
 }
 
 pub trait HasTokens<'db> {
-    fn tokens(&'db self, db: &'db dyn BaseDatabase) -> Option<(SemanticTokenType, u32)>;
+    fn tokens(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        builder: &mut SemanticTokensBuilder,
+    ) -> Option<(SemanticTokenType, u32)>;
 }
 
 impl<'db> HasTokens<'db> for PouDecl<'db> {
-    fn tokens(&'db self, db: &'db dyn BaseDatabase) -> Option<(SemanticTokenType, u32)> {
+    fn tokens(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        builder: &mut SemanticTokensBuilder,
+    ) -> Option<(SemanticTokenType, u32)> {
         let typ = match self.pou(db) {
-            Pou::FunctionBlock(p) => FUNCTION,
-            Pou::Function(p) => FUNCTION,
-            Pou::Interface(p) => INTERFACE,
-            Pou::Class(p) => CLASS,
-            Pou::DataType(p) => return p.spec(db).tokens(db),
+            Pou::FunctionBlock(_) => FUNCTION,
+            Pou::Function(_) => FUNCTION,
+            Pou::Interface(_) => INTERFACE,
+            Pou::Class(_) => CLASS,
+            Pou::DataType(p) => return p.spec(db).tokens(db, builder),
         };
 
         return Some((typ, 0));
@@ -143,12 +160,33 @@ impl<'db> HasTokens<'db> for PouDecl<'db> {
 }
 
 impl<'db> HasTokens<'db> for Spec<'db> {
-    fn tokens(&'db self, db: &'db dyn BaseDatabase) -> Option<(SemanticTokenType, u32)> {
+    fn tokens(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        builder: &mut SemanticTokensBuilder,
+    ) -> Option<(SemanticTokenType, u32)> {
         let typ = match self.kind(db) {
-            SpecKind::Target(t) => match resolve_namespace_access(db, &t.path) {
-                Some(pou) => return pou.tokens(db),
-                None => None?,
-            },
+            SpecKind::Target(t) => {
+                push_fragments(db, t, builder);
+                match resolve_namespace_access(db, &t.path) {
+                    Some(pou) => {
+                        let token = match pou.pou(db) {
+                            Pou::FunctionBlock(_) => FUNCTION,
+                            Pou::Function(_) => FUNCTION,
+                            Pou::Interface(_) => INTERFACE,
+                            Pou::Class(_) => CLASS,
+                            Pou::DataType(p) => return p.spec(db).tokens(db, builder),
+                        };
+                        builder.push(
+                            t.path.target.get_span(db).lsp(),
+                            SUPPORTED_TYPES.iter().position(|x| *x == token).unwrap() as u32,
+                            0,
+                        );
+                        None?
+                    }
+                    None => None?,
+                }
+            }
             _ => None?,
         };
 

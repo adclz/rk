@@ -14,7 +14,7 @@ use hir::{
     hir_def::pous::variable::{VariableDecl, VariableKind},
 };
 
-use crate::{HasComment, SUPPORTED_TYPES, ToProtocol, VARIABLE, resolved_path_element::HasTokens};
+use crate::{HasComment, SUPPORTED_TYPES, ToProtocol, resolved_path_element::HasTokens};
 
 impl<'db> ToProtocol<'db> for VariableDecl<'db> {
     fn document_symbols(&self, db: &'db dyn BaseDatabase, builder: &mut DocumentSymbolsBuilder) {
@@ -89,7 +89,7 @@ impl<'db> ToProtocol<'db> for VariableDecl<'db> {
     }
 
     fn semantic_tokens(&'db self, db: &'db dyn BaseDatabase, builder: &mut SemanticTokensBuilder) {
-        match self.spec(db).tokens(db) {
+        match self.spec(db).tokens(db, builder) {
             Some((typ, modi)) => {
                 builder.push(
                     self.spec(db).get_span(db).lsp(),
@@ -97,13 +97,7 @@ impl<'db> ToProtocol<'db> for VariableDecl<'db> {
                     modi,
                 );
             }
-            None => {
-                builder.push(
-                    self.spec(db).get_span(db).lsp(),
-                    SUPPORTED_TYPES.iter().position(|x| *x == VARIABLE).unwrap() as u32,
-                    0,
-                );
-            }
+            None => {}
         };
     }
 }

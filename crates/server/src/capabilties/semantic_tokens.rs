@@ -28,5 +28,8 @@ pub fn semantic_tokens_full(
         std::ops::ControlFlow::Continue(())
     });
 
-    Ok(Some(SemanticTokensResult::Tokens(builder.build())))
+    let result = builder.build();
+    eprintln!("Semantic tokens generated: {:?}", result);
+
+    Ok(Some(SemanticTokensResult::Tokens(result)))
 }
