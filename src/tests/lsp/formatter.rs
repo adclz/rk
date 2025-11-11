@@ -472,11 +472,11 @@ END_FUNCTION_BLOCK
         .document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
-FUNCTION_BLOCK fb1 
+    FUNCTION_BLOCK fb1
 
-        THIS.dfgdfg(a := 1, b := 2, c := 3);
+    	THIS.dfgdfg(a := 1, b := 2, c := 3);
 
-END_FUNCTION_BLOCK
+    END_FUNCTION_BLOCK
     ");
 }
 
