@@ -2,23 +2,21 @@ use auto_lsp::default::db::BaseDatabase;
 use ide_diagnostic::{IdeDiagnostic, Related};
 
 use crate::{
-    check::errors::path_error::AccessError, hir_def::{
+    AstId, HirNodeInfo, TypeInfo, check::errors::path_error::AccessError, hir_def::{
         expressions::{
             expression::PathExpr,
             spec::{Spec, SpecKind, StructElement},
-        },
-        pous::{
+        }, pous::{
             pou::{Pou, PouDecl},
             variable::VariableDecl,
-        },
-        scope::ScopeId, visibility::Visibility,
+        }, scope::{ScopeId, ScopeKind}, semantic_index::get_scope, visibility::Visibility
     }, hir_ty::{
         flatten::PathExprWalkStep,
-        inheritance_solver::{inherited_methods, InheritedMethodSet, MethodRef},
+        inheritance_solver::{InheritedMethodSet, MethodRef, inherited_methods},
         name_res::resolve_namespace_access,
         ty::{Ty, TyKind},
         ty_var_access_resolver::CallSite,
-    }, AstId, HirNodeInfo, TypeInfo
+    }
 };
 
 /// Represents a resolved element in a path expression.
@@ -240,6 +238,14 @@ impl<'db> HirNodeInfo<'db> for ResolvedPathKind<'db> {
     }
 }
 
+pub trait ResolvePath<'db> {
+    fn walk(
+        &self,
+        db: &'db dyn BaseDatabase,
+        step: PathExprWalkStep<'db>
+    ) -> Option<ResolvedPath>;
+}
+
 impl<'db> ResolvedPath<'db> {
     /// Tries to resolve a [`ResolvedPath`] to a [`Ty`] enum.
     ///
@@ -253,6 +259,12 @@ impl<'db> ResolvedPath<'db> {
                     ResolvedPathKind::Variable(v) => v.spec(db).to_ty(db),
                     ResolvedPathKind::StructElement(e) => e.spec(db).to_ty(db),
                     ResolvedPathKind::Spec(s) => s.to_ty(db),
+                    ResolvedPathKind::Method(m) => m.
+                        return_type(db)
+                        .map(|spec| spec.to_ty(db))
+                        .ok_or_else(|| AccessError::InvalidTypeAccess {
+                                access: self.clone(),
+                            })?,
                     ResolvedPathKind::Pou(pou) => match pou.pou(db) {
                         Pou::DataType(dt) => dt.spec(db).to_ty(db),
                         // Special case for functions to get their return type
@@ -473,6 +485,15 @@ impl<'db> MethodRef<'db> {
                     ));
                 }
 
+                let parent =  get_scope(db, self.get_scope_id(db)).parent.expect("Methods always have a paent scope");
+
+                let parent_scope = get_scope(db, parent);
+                match parent_scope.kind {
+                    ScopeKind::Pou(p) => {
+                        return p.walk(db, step)
+                    },
+                    _ => {}
+                }
                 Err(AccessError::UnknownField {
                     ty: ResolvedPathKind::Method(*self).with_call_site(
                         db,

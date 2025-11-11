@@ -80,7 +80,7 @@ impl<'db> Flatten<'db> for InitExpr<'db> {
 /// Each step in the path is represented as a [`PathExprWalkStep`].
 /// 
 /// This is later used by type resolution to walk trough a path expression step by step.
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, salsa::Update)]
 pub enum PathExprWalkStep<'db> {
     Field {
         ident: SpanIdent<'db>,

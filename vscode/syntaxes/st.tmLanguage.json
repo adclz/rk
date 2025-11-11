@@ -95,6 +95,15 @@
           }
         },
         {
+          "name": "storage.type.class.st",
+          "match": "\\s*\\b(CLASS)\\b\\s*([a-zA-Z_0-9]*)\\b",
+          "captures": {
+            "2": {
+              "name": "entity.name.type.class"
+            }
+          }
+        },
+        {
           "name": "storage.type.interface.st",
           "match": "\\s*\\b(INTERFACE)\\b\\s*([a-zA-Z_0-9]*)\\b",
           "captures": {

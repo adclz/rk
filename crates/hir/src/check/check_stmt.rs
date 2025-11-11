@@ -7,16 +7,21 @@ use crate::{
         check_semantic_index::Check,
         check_visibility::check_call_visibility,
         coerce::{coerce_bool_with_expr, coerce_ty_with_expr, coerce_ty_with_ty},
-        errors::{analysis_error::{AnalysisError, ToIdeDiagnostic}, stmt::StmtError},
+        errors::{
+            analysis_error::{AnalysisError, ToIdeDiagnostic},
+            stmt::StmtError,
+        },
     },
     hir_def::{
         expressions::{
             expression::{Expr, FuncCall, ParamAssign, ParamAssignKind, VariableAccess},
             statement::{Stmt, StmtKind},
-        }, pous::pou::Pou, scope::ScopeId
+        },
+        pous::pou::Pou,
+        scope::ScopeId,
     },
     hir_ty::{
-        param_resolver::{resolve_parameters, ResolvedParamKind},
+        param_resolver::{ResolvedParamKind, resolve_parameters},
         ty::Ty,
         ty_var_access_resolver::{LookUp, ResolvedAccess},
         walk::ResolvedPathKind,
@@ -47,9 +52,13 @@ impl<'db> Check<'db> for Stmt<'db> {
                 else_if,
                 ..
             } => {
-                if let Some(then) = then.as_ref() { then.check(db, errors) }
+                if let Some(then) = then.as_ref() {
+                    then.check(db, errors)
+                }
 
-                if let Some(else_) = else_.as_ref() { else_.check(db, errors) }
+                if let Some(else_) = else_.as_ref() {
+                    else_.check(db, errors)
+                }
 
                 else_if.iter().for_each(|(_, s)| s.check(db, errors));
             }
@@ -125,7 +134,9 @@ fn check_assign_target<'db>(
     if access.is_var_input(db) {
         return Err(StmtError::AssignmentToInputVar { var: access }.to_diagnostic(db));
     }
-    let resolved = access.fully_resolved(db).map_err(|err| err.to_diagnostic(db))?;
+    let resolved = access
+        .fully_resolved(db)
+        .map_err(|err| err.to_diagnostic(db))?;
 
     match resolved.kind {
         // Assigning a variable
@@ -138,7 +149,7 @@ fn check_assign_target<'db>(
         }
         // Assigning to a direct method or pou is not allowed
         // ... unless this pou is a function with return type and is the actual pou being assigned
-        ResolvedPathKind::Pou(pou)  => {
+        ResolvedPathKind::Pou(pou) => {
             if let Pou::Function(func) = pou.pou(db) {
                 if func.return_type(db).is_some() {
                     return Ok(access);
@@ -146,10 +157,17 @@ fn check_assign_target<'db>(
             }
             return Err(StmtError::AssignmentToDirectType { var: access }.to_diagnostic(db));
         }
+        // Assigning a method is ok as long as it has a return type
+        ResolvedPathKind::Method(m) => {
+            if m.return_type(db).is_some() {
+                return Ok(access);
+            }
+            return Err(StmtError::AssignmentToDirectType { var: access }.to_diagnostic(db));
+        }
         // Assigning a struct field is valid
         ResolvedPathKind::StructElement(_) => {}
         // Other cases are invalid
-        ResolvedPathKind::Spec(_) | ResolvedPathKind::Method(_) => {
+        ResolvedPathKind::Spec(_) => {
             return Err(StmtError::AssignmentToDirectType { var: access }.to_diagnostic(db));
         }
         _ => {
@@ -169,14 +187,16 @@ fn check_assignment<'db>(
 
     let access_type = match access.try_to_ty(db) {
         Ok(ty) => ty,
-        Err(err) => return Err(StmtError::UnresolvedAssignmentTarget { var: access, err }.to_diagnostic(db)),
+        Err(err) => {
+            return Err(StmtError::UnresolvedAssignmentTarget { var: access, err }.to_diagnostic(db));
+        }
     };
 
     // Last, runs the type checker
     if let Err(err) = coerce_ty_with_expr(db, access_type, target) {
-        return Err(AnalysisError::from(StmtError::AssignmentTypeMismatch {
-            err,
-        }).to_diagnostic(db));
+        return Err(
+            AnalysisError::from(StmtError::AssignmentTypeMismatch { err }).to_diagnostic(db),
+        );
     }
 
     Ok(access_type)
@@ -188,15 +208,26 @@ fn check_func_call<'db>(
     errors: &mut Vec<IdeDiagnostic>,
 ) -> Result<(), IdeDiagnostic> {
     let fun_call = fun_call.resolve_func_call(db);
-    let resolved = fun_call.target.fully_resolved(db).map_err(|err| err.to_diagnostic(db))?;
+    let resolved = fun_call
+        .target
+        .fully_resolved(db)
+        .map_err(|err| err.to_diagnostic(db))?;
     if !resolved.is_callable(db) {
-        return Err(StmtError::CallANonCallableType { call: fun_call.target }.to_diagnostic(db));
+        return Err(StmtError::CallANonCallableType {
+            call: fun_call.target,
+        }
+        .to_diagnostic(db));
     }
     check_call_visibility(db, &fun_call.target, &resolved, errors);
-    check_parameters(db, fun_call.target.clone(), resolved.target_scope_id(db), &fun_call.params, errors);
+    check_parameters(
+        db,
+        fun_call.target.clone(),
+        resolved.target_scope_id(db),
+        &fun_call.params,
+        errors,
+    );
     Ok(())
 }
-
 
 #[derive(Clone, Copy)]
 enum FormalCall {

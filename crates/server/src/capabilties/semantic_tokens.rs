@@ -29,7 +29,5 @@ pub fn semantic_tokens_full(
     });
 
     let result = builder.build();
-    eprintln!("Semantic tokens generated: {:?}", result);
-
     Ok(Some(SemanticTokensResult::Tokens(result)))
 }

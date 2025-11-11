@@ -240,7 +240,10 @@ impl<'db> ResolvedAccess<'db> {
             ResolvedPathResult::Ok(ResolvedPath {
                 kind: ResolvedPathKind::Method(m),
                 ..
-            }) => m.return_type(db).copied(),
+            }) => {
+                eprintln!("HAS RETURN TYPE {}", m.return_type(db).is_some());
+                m.return_type(db).copied()
+            },
             _ => None,
         }
     }

@@ -102,7 +102,7 @@ impl<'db> CompletionBuilder {
             let namespace_str = ns.to_string(db);
             additional_edit = Some(TextEdit {
                 range,
-                new_text: format!("USING {namespace_str};\n"),
+                new_text: format!("\tUSING {namespace_str};\n"),
             });
         }
 

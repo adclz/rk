@@ -45,7 +45,7 @@ static SURROUND_SPACES: &str = r#"
 ] @prepend_space @append_space
 
 (identifier) @prepend_space
-["(" "[" "."] @append_antispace
+["(" "[" "." "END_CASE"] @append_antispace
 [")" "]" ":" ";" "," "." "^"] @prepend_antispace
 ["NOT" ":"] @append_space
 "#;
@@ -62,6 +62,8 @@ static NEW_LINES: &str = r#"
 
     "ELSE"
 ] @prepend_hardline @append_hardline
+
+("ELSE" (_)) @append_hardline
 
 ["USING" "METHOD"] @prepend_hardline
 ["TYPE" "STRUCT"] @append_hardline
@@ -204,6 +206,7 @@ static INDENTATIONS: &str = r#"
     "REPEAT"
 ] @append_indent_start
 
+("ELSE" (_) @append_indent_end) 
 (case_stmt "OF" @append_indent_start)
 
 ; case selection

@@ -166,6 +166,73 @@ pub fn class_definition(mut with_db: RootDatabase) {
     ");
 }
 
+
+#[rstest]
+pub fn class_definition2(mut with_db: RootDatabase) {
+    let source = r#"
+ CLASS COUNTER
+VAR
+CV: UINT;
+Max: UINT:= 1000;
+END_VAR
+// Current value of counter
+METHOD PUBLIC UP: UINT
+VAR_INPUT INC: UINT; END_VAR
+VAR_OUTPUT QU: BOOL; END_VAR
+IF CV <= Max - INC
+THEN CV:= CV + INC;
+QU:= FALSE;
+ELSE QU:= TRUE;
+END_IF
+UP:= CV;
+END_METHOD
+METHOD PUBLIC UP5: UINT
+VAR_OUTPUT QU: BOOL; END_VAR
+UP5:= THIS.UP(INC:= 5, QU => QU);
+END_METHOD
+END_CLASS
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    CLASS COUNTER
+    	VAR
+    		CV: UINT;
+    		Max: UINT := 1000;
+    	END_VAR
+    	// Current value of counter
+    	METHOD PUBLIC UP: UINT
+    		VAR_INPUT
+    			INC: UINT;
+    		END_VAR
+    		VAR_OUTPUT
+    			QU: BOOL;
+    		END_VAR
+    		IF CV <= Max - INC THEN
+    			CV := CV + INC;
+    			QU := FALSE;
+    			ELSE
+    				QU := TRUE;
+    		END_IF;
+    		UP := CV;
+    	END_METHOD
+    	METHOD PUBLIC UP5: UINT
+    		VAR_OUTPUT
+    			QU: BOOL;
+    		END_VAR
+    		UP5 := THIS.UP(INC := 5, QU => QU);
+    	END_METHOD
+    END_CLASS
+    ");
+}
+
 #[rstest]
 pub fn case_statement(mut with_db: RootDatabase) {
     let source = r#"
@@ -205,9 +272,9 @@ END_FUNCTION
     		ELSE
     			DISPLAY := 0;
     			TW_ERROR := 1;
-    		END_CASE ;
-    		QW100 := INT_TO_BCD(DISPLAY);
-    	END_FUNCTION
+    	END_CASE;
+    	QW100 := INT_TO_BCD(DISPLAY);
+    END_FUNCTION
     ");
 }
 
@@ -390,7 +457,9 @@ END_FUNCTION
 pub fn invocation_single_line(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK fb1
+
 	THIS.dfgdfg(a := 1,      b:=2,    c:=3)
+
 END_FUNCTION_BLOCK
 "#;
 
@@ -403,8 +472,11 @@ END_FUNCTION_BLOCK
         .document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
-    FUNCTION_BLOCK fb1 THIS.dfgdfg(a := 1, b := 2, c := 3);
-    END_FUNCTION_BLOCK
+FUNCTION_BLOCK fb1 
+
+        THIS.dfgdfg(a := 1, b := 2, c := 3);
+
+END_FUNCTION_BLOCK
     ");
 }
 
