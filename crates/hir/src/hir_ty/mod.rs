@@ -12,3 +12,5 @@ pub mod struct_resolver;
 pub mod flatten;
 pub mod def_map;
 pub mod inference;
+pub mod display;
+pub mod ty2;
