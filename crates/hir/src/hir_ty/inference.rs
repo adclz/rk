@@ -4,6 +4,7 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     HirNodeInfo,
+    builder::interface,
     check::errors::path_error::AccessError,
     hir_def::{
         expressions::{
@@ -13,8 +14,9 @@ use crate::{
             },
             invocation::{self, Invocation, InvocationKind},
             spec::{Array, ElementarySpec, Enum, Spec, SpecKind, Struct, StructElement, SubRange},
-            statement::{Stmt, StmtKind},
+            statement::{CaseKind, Stmt, StmtKind},
         },
+        interned::identifier::Ident,
         pous::{
             class::{Class, MethodDecl},
             function::Function,
@@ -43,6 +45,11 @@ pub enum WalkError<'db> {
         expr: PathExpr<'db>,
         scope: ScopeId<'db>,
     },
+    NoSuchField {
+        expr: PathExpr<'db>,
+        ident: Ident,
+        ty: Type<'db>,
+    },
     DerefNonRefType {
         expr: PathExpr<'db>,
         ty: Type<'db>,
@@ -60,17 +67,24 @@ pub enum WalkError<'db> {
     ThisOnIncompatiblePou {
         call_site: CallSite<'db>,
     },
+    ContinueOutsideLoop {
+        stmt: Stmt<'db>,
+    },
+    ExitOutsideLoop {
+        stmt: Stmt<'db>,
+    },
 }
 
 #[salsa::tracked(returns(ref))]
-pub fn infer_scope<'db>(
-    db: &'db dyn BaseDatabase,
-    scope: ScopeId<'db>,
-) -> InferenceResult<'db> {
+pub fn infer_scope<'db>(db: &'db dyn BaseDatabase, scope: ScopeId<'db>) -> InferenceResult<'db> {
     let mut result = InferenceResult::new(scope);
     let ctx = InferCtx::new(db, scope);
 
-    ctx.resolve_statements(StatementSource::Scope(scope), &mut result);
+    ctx.resolve_statements(
+        StatementSource::Scope(scope),
+        NestedScope::None,
+        &mut result,
+    );
 
     result
 }
@@ -99,7 +113,7 @@ pub struct InferenceResult<'db> {
     pub type_of_expr: FxHashMap<Expr<'db>, Type<'db>>,
 
     // Mapping from path expressions to their adjustment sequences.
-    pub adjustements: FxHashMap<PathExpr<'db>, Box<[Adjustment<'db>]>>,
+    pub path_expr_adjustments: FxHashMap<PathExpr<'db>, Vec<Adjustment<'db>>>,
 
     pub errors: Vec<WalkError<'db>>,
 }
@@ -114,20 +128,84 @@ impl<'db> InferenceResult<'db> {
             type_of_expr: FxHashMap::default(),
             type_of_begin_path_expr: FxHashMap::default(),
             type_of_path_expr: FxHashMap::default(),
-            adjustements: FxHashMap::default(),
+            path_expr_adjustments: FxHashMap::default(),
             errors: Vec::new(),
         }
     }
 
-    pub fn type_of_path_with_adjustments(&self, expr: PathExpr<'db>) -> Option<Type<'db>> {
+    pub fn type_of_expr_with_adjustments(
+        &self,
+        db: &'db dyn BaseDatabase,
+        expr: Expr<'db>,
+    ) -> Option<Type<'db>> {
+        match expr.expr(db) {
+            ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(var)) => match var.kind(db) {
+                VariableAccessKind::Symbolic(sym) => {
+                    self.type_of_begin_expr_with_adjustments(db, sym)
+                }
+                _ => self.type_of_expr.get(&expr).copied(),
+            },
+            _ => self.type_of_expr.get(&expr).copied(),
+        }
+    }
+
+    pub fn type_of_variable_access_with_adjustments(
+        &self,
+        db: &'db dyn BaseDatabase,
+        var_access: VariableAccess<'db>,
+    ) -> Option<Type<'db>> {
+        match var_access.kind(db) {
+            VariableAccessKind::Symbolic(sym) => self.type_of_begin_expr_with_adjustments(db, sym),
+            _ => None,
+        }
+    }
+
+    pub fn type_of_begin_expr_with_adjustments(
+        &self,
+        db: &'db dyn BaseDatabase,
+        begin: BeginPathExpr<'db>,
+    ) -> Option<Type<'db>> {
+        match begin.expr(db) {
+            Some(expr) => self.type_of_path_expr_with_adjustments(expr),
+            None => match begin.invocation(db) {
+                Some(invocation) => self.type_of_invocation.get(&invocation).copied(),
+                None => None,
+            },
+        }
+    }
+
+    pub fn type_of_path_expr_with_adjustments(&self, expr: PathExpr<'db>) -> Option<Type<'db>> {
         match self
-            .adjustements
+            .path_expr_adjustments
             .get(&expr)
             .and_then(|adjustements| adjustements.last())
         {
             Some(adjustment) => Some(adjustment.target),
             None => self.type_of_path_expr.get(&expr).copied(),
         }
+    }
+
+    pub fn variable_for_path_expr(&self, expr: PathExpr<'db>) -> Option<VariableDecl<'db>> {
+        self.variable_of_path_expr.get(&expr).copied()
+    }
+
+    pub fn variable_for_param(&self, param: ParamAssign<'db>) -> Option<VariableDecl<'db>> {
+        self.variable_of_param.get(&param).copied()
+    }
+
+    pub fn variable_for_var_access(
+        &self,
+        db: &'db dyn BaseDatabase,
+        var_access: VariableAccess<'db>,
+    ) -> Option<VariableDecl<'db>> {
+        match var_access.kind(db) {
+            VariableAccessKind::Direct { .. } => todo!(),
+            VariableAccessKind::Symbolic(path_expr) => None,
+        }
+    }
+
+    pub fn path_expr_adjustments(&self, expr: PathExpr<'db>) -> Option<&[Adjustment<'db>]> {
+        self.path_expr_adjustments.get(&expr).map(|it| &**it)
     }
 }
 
@@ -173,14 +251,25 @@ pub enum StatementSource<'db> {
     List(&'db [Stmt<'db>]),
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum NestedScope {
+    Loop,
+    None,
+}
+
 pub struct InferCtx<'db> {
     pub db: &'db dyn BaseDatabase,
     pub scope: ScopeId<'db>,
+    pub nested_scope: NestedScope,
 }
 
 impl<'db> InferCtx<'db> {
     pub fn new(db: &'db dyn BaseDatabase, scope: ScopeId<'db>) -> Self {
-        InferCtx { db, scope }
+        InferCtx {
+            db,
+            scope,
+            nested_scope: NestedScope::None,
+        }
     }
 
     pub fn resolve_invocation(
@@ -225,6 +314,7 @@ impl<'db> InferCtx<'db> {
                         }
                     },
                     InvocationKind::Super => match pou.pou(db) {
+                        // fixme: SUPER only gives access to base methods from EXTENDS, not all implemented interfaces
                         Pou::FunctionBlock(_) | Pou::Class(_) => {
                             ctx.type_of_invocation
                                 .insert(invocation, Type::new_pou(db, pou));
@@ -306,16 +396,33 @@ impl<'db> InferCtx<'db> {
     }
 
     /// Resolve all expression statements for a given scope
-    pub fn resolve_statements(&self, source: StatementSource<'db>, ctx: &mut InferenceResult<'db>) {
-        // Only scopes with statements can have expressions to resolve
-        let (scope_typ, statements) = match get_scope(self.db, self.scope).kind {
+    pub fn resolve_statements(
+        &self,
+        source: StatementSource<'db>,
+        nested_scope: NestedScope,
+        ctx: &mut InferenceResult<'db>,
+    ) {
+        let scope_typ = match get_scope(self.db, self.scope).kind {
             ScopeKind::Pou(pou) => match pou.pou(self.db) {
-                Pou::Function(f) => (Type::Function(*f), f.statements(self.db)),
-                Pou::FunctionBlock(fb) => (Type::FunctionBlock(*fb), fb.statements(self.db)),
+                Pou::Function(f) => Type::Function(*f),
+                Pou::FunctionBlock(fb) => Type::FunctionBlock(*fb),
                 _ => return,
             },
-            ScopeKind::MethodDecl(m) => (Type::MethodDecl(m.into()), m.stmts(self.db)),
+            ScopeKind::MethodDecl(m) => Type::MethodDecl(m.into()),
             _ => return,
+        };
+
+        let statements = match source {
+            StatementSource::List(stmts) => stmts,
+            StatementSource::Scope(scope) => match get_scope(self.db, self.scope).kind {
+                ScopeKind::Pou(pou) => match pou.pou(self.db) {
+                    Pou::Function(f) => f.statements(self.db),
+                    Pou::FunctionBlock(fb) => fb.statements(self.db),
+                    _ => return,
+                },
+                ScopeKind::MethodDecl(m) => m.stmts(self.db),
+                _ => return,
+            },
         };
 
         for stmt in statements.iter() {
@@ -340,20 +447,29 @@ impl<'db> InferCtx<'db> {
                     self.resolve_expr(*condition, scope_typ, ctx);
 
                     if let Some(then) = then.as_ref() {
-                        InferCtx::new(self.db, self.scope)
-                            .resolve_statements(StatementSource::List(then), ctx);
+                        InferCtx::new(self.db, self.scope).resolve_statements(
+                            StatementSource::List(then),
+                            NestedScope::None,
+                            ctx,
+                        );
                     }
 
                     for (expr, stmt) in else_if {
                         self.resolve_expr(*expr, scope_typ, ctx);
 
-                        InferCtx::new(self.db, self.scope)
-                            .resolve_statements(StatementSource::List(stmt), ctx);
+                        InferCtx::new(self.db, self.scope).resolve_statements(
+                            StatementSource::List(stmt),
+                            NestedScope::None,
+                            ctx,
+                        );
                     }
 
                     if let Some(else_) = else_.as_ref() {
-                        InferCtx::new(self.db, self.scope)
-                            .resolve_statements(StatementSource::List(else_), ctx);
+                        InferCtx::new(self.db, self.scope).resolve_statements(
+                            StatementSource::List(else_),
+                            NestedScope::None,
+                            ctx,
+                        );
                     }
                 }
                 StmtKind::For {
@@ -370,33 +486,145 @@ impl<'db> InferCtx<'db> {
                         self.resolve_expr(*step, scope_typ, ctx);
                     }
 
-                    InferCtx::new(self.db, self.scope)
-                        .resolve_statements(StatementSource::List(body), ctx);
+                    InferCtx::new(self.db, self.scope).resolve_statements(
+                        StatementSource::List(body),
+                        NestedScope::Loop,
+                        ctx,
+                    );
                 }
                 StmtKind::While { condition, body } => {
                     self.resolve_expr(*condition, scope_typ, ctx);
 
-                    InferCtx::new(self.db, self.scope)
-                        .resolve_statements(StatementSource::List(body), ctx);
+                    InferCtx::new(self.db, self.scope).resolve_statements(
+                        StatementSource::List(body),
+                        NestedScope::Loop,
+                        ctx,
+                    );
                 }
                 StmtKind::Repeat { condition, body } => {
                     self.resolve_expr(*condition, scope_typ, ctx);
 
-                    InferCtx::new(self.db, self.scope)
-                        .resolve_statements(StatementSource::List(body), ctx);
-
+                    InferCtx::new(self.db, self.scope).resolve_statements(
+                        StatementSource::List(body),
+                        NestedScope::Loop,
+                        ctx,
+                    );
                 }
                 StmtKind::FuncCall(f) => self.resolve_func_call(scope_typ, *f, ctx),
-                _ => { /* Other statements are not handled yet */ }
+                StmtKind::Case { condition, cases, else_ } => {
+                    self.resolve_expr(*condition, scope_typ, ctx);
+
+                    for (exprs, stmts) in cases {
+                        for expr in exprs {
+                            match expr {
+                                CaseKind::Expression(expr) => {
+                                    self.resolve_expr(*expr, scope_typ, ctx);
+                                }
+                                CaseKind::Subrange { lower, upper } => {
+                                    self.resolve_expr(*lower, scope_typ, ctx);
+                                    self.resolve_expr(*upper, scope_typ, ctx);
+                                }
+                            }
+                        }
+
+                        InferCtx::new(self.db, self.scope).resolve_statements(
+                            StatementSource::List(stmts),
+                            NestedScope::None,
+                            ctx,
+                        );
+                    }
+
+                    if let Some(else_) = else_.as_ref() {
+                        InferCtx::new(self.db, self.scope).resolve_statements(
+                            StatementSource::List(else_),
+                            NestedScope::None,
+                            ctx,
+                        );
+                    }
+                },
+                StmtKind::Continue => {
+                    if nested_scope != NestedScope::Loop {
+                        ctx.errors.push(WalkError::ContinueOutsideLoop {
+                            stmt: *stmt,
+                        });
+                    }
+                },
+                StmtKind::Exit => {
+                    if nested_scope != NestedScope::Loop {
+                        ctx.errors.push(WalkError::ExitOutsideLoop {
+                            stmt: *stmt,
+                        });
+                    }
+                }
+                StmtKind::Return => {
+                    // Nothing to do for return statements yet
+                    // We could return a warning if RETURN is the followed by other statements
+                    // But this seems to be the job of the MIR layer
+                }
             }
         }
     }
 
     pub fn resolve_expr(&self, expr: Expr<'db>, scope: Type<'db>, ctx: &mut InferenceResult<'db>) {
-        if let ExprKind::PrimaryExpr(p) = expr.expr(self.db) {
-            if let PrimaryExpr::VariableAccess(v) = p {
-                scope.walk_variable_access(self.db, *v, ctx)
+        match expr.expr(self.db) {
+            ExprKind::AddOperator {
+                left,
+                operator,
+                right,
+            } => {
+                self.resolve_expr(*left, scope, ctx);
+                self.resolve_expr(*right, scope, ctx);
             }
+            ExprKind::BooleanOperator {
+                left,
+                operator,
+                right,
+            } => {
+                self.resolve_expr(*left, scope, ctx);
+                self.resolve_expr(*right, scope, ctx);
+            }
+            ExprKind::ComparisonOperator {
+                left,
+                operator,
+                right,
+            } => {
+                self.resolve_expr(*left, scope, ctx);
+                self.resolve_expr(*right, scope, ctx);
+            }
+            ExprKind::MultOperator {
+                left,
+                operator,
+                right,
+            } => {
+                self.resolve_expr(*left, scope, ctx);
+                self.resolve_expr(*right, scope, ctx);
+            }
+            ExprKind::PowerOperator { left, right } => {
+                self.resolve_expr(*left, scope, ctx);
+                self.resolve_expr(*right, scope, ctx);
+            }
+            ExprKind::UnaryOperator { expr, operator } => {
+                self.resolve_expr(*expr, scope, ctx);
+            }
+            ExprKind::PrimaryExpr(p) => match p {
+                PrimaryExpr::VariableAccess(v) => scope.walk_variable_access(self.db, *v, ctx),
+                PrimaryExpr::FuncCall(f) => self.resolve_func_call(scope, *f, ctx),
+                PrimaryExpr::Literal(elem) => {
+                    ctx.type_of_expr.insert(expr, Type::ElementaryValue(*elem));
+                }
+                PrimaryExpr::ParenthesizedExpr { expr } => {
+                    self.resolve_expr(*expr, scope, ctx);
+                }
+                PrimaryExpr::EnumValue { name, variant } => {
+                    // resolve enum first
+                    //ctx.type_of_expr.insert(expr, Type::EnumVariant(**variant));
+                    todo!()
+                }
+                PrimaryExpr::RefValue { value } => {
+                    // find reference
+                    todo!()
+                }
+            },
         }
     }
 }

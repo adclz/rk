@@ -241,7 +241,6 @@ impl<'db> ResolvedAccess<'db> {
                 kind: ResolvedPathKind::Method(m),
                 ..
             }) => {
-                eprintln!("HAS RETURN TYPE {}", m.return_type(db).is_some());
                 m.return_type(db).copied()
             },
             _ => None,

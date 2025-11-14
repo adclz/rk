@@ -8,26 +8,28 @@ use crate::{
     hir_def::{
         expressions::{
             expression::{
-                BeginPathExpr, Expr, ExprKind, FuncCall, InitExpr, ParamAssign, ParamAssignKind,
-                PathExpr, PrimaryExpr, VariableAccess, VariableAccessKind,
+                BeginPathExpr, Elementary, Expr, ExprKind, FuncCall, InitExpr, ParamAssign, ParamAssignKind, PathExpr, PrimaryExpr, VariableAccess, VariableAccessKind
             },
             invocation::{self, Invocation, InvocationKind},
             spec::{Array, ElementarySpec, Enum, Spec, SpecKind, Struct, StructElement, SubRange},
             statement::{Stmt, StmtKind},
-        },
-        pous::{
+        }, interned::identifier::Ident, pous::{
             class::{Class, MethodDecl},
             function::Function,
             function_block::FunctionBlock,
             interface::{Interface, MethodPrototype},
             pou::{Pou, PouDecl},
             variable::VariableDecl,
-        },
-        scope::{ScopeId, ScopeKind},
-        semantic_index::{HirNode, get_scope},
+        }, scope::{Scope, ScopeId, ScopeKind}, semantic_index::{HirNode, get_scope}
     },
     hir_ty::{
-        def_map::LocalDefMap, flatten::{self, Flatten, PathExprWalkStep}, inference::{Adjustment, InferCtx, InferenceResult}, inheritance_solver::MethodRef, name_res::{pou_names_res, resolve_namespace_access}, ty::Ty, ty_var_access_resolver::CallSite
+        def_map::LocalDefMap,
+        flatten::{self, Flatten, PathExprWalkStep},
+        inference::{Adjustment, InferCtx, InferenceResult, WalkError},
+        inheritance_solver::MethodRef,
+        name_res::{pou_names_res, resolve_namespace_access},
+        ty::Ty,
+        ty_var_access_resolver::CallSite,
     },
 };
 
@@ -35,6 +37,7 @@ use crate::{
 pub enum Type<'db> {
     // Primitive types
     Elementary(ElementarySpec),
+    ElementaryValue(Elementary),
     RefTo(Spec<'db>),
     // Structured types
     Struct(Struct<'db>),
@@ -42,6 +45,7 @@ pub enum Type<'db> {
     Array(Array<'db>),
     ArrayConformand(Spec<'db>),
     Enum(Enum<'db>),
+    EnumVariant(Ident),
     SubRange(SubRange<'db>),
     // Pous
     Function(Function<'db>),
@@ -106,6 +110,14 @@ impl<'db> Type<'db> {
         })
     }
 
+    pub fn can_be_assigned(&self, db: &'db dyn BaseDatabase, scope: ScopeId<'db>) -> bool {
+        match self {
+            Type::Function(f) => f.scope_id(db) == scope,
+            Type::MethodDecl(m) => m.get_scope_id(db) == scope,
+            _ => true
+        }
+    }
+
     pub fn walk_variable_access(
         &self,
         db: &'db dyn BaseDatabase,
@@ -150,21 +162,19 @@ impl<'db> Type<'db> {
         ctx: &mut InferenceResult<'db>,
     ) {
         match step {
-            PathExprWalkStep::Deref { target, expr } => {
-                match self {
-                    Type::RefTo(ref_to) => {
-                        ctx.type_of_path_expr.insert(*expr, *self);
-                        ctx.adjustements.insert(
-                            *expr,
-                            vec![Adjustment::new_deref(db, Type::new_spec(db, *ref_to))]
-                                .into_boxed_slice(),
-                        );
-                    }
-                    _ => {
-                        // Error: cannot deref non-ref type
-                    }
+            PathExprWalkStep::Deref { target, expr } => match self {
+                Type::RefTo(ref_to) => {
+                    ctx.type_of_path_expr.insert(*expr, *self);
+                    ctx.path_expr_adjustments.insert(
+                        *expr,
+                        vec![Adjustment::new_deref(db, Type::new_spec(db, *ref_to))],
+                    );
                 }
-            }
+                _ => ctx.errors.push(WalkError::DerefNonRefType {
+                    expr: *expr,
+                    ty: *self,
+                }),
+            },
             PathExprWalkStep::Field { ident, expr } => {
                 match self {
                     Type::Function(_) | Type::FunctionBlock(_) | Type::Class(_) => {
@@ -179,6 +189,12 @@ impl<'db> Type<'db> {
                                     .insert(*expr, Type::new_spec(db, var.spec(db)));
                                 ctx.variable_of_path_expr.insert(*expr, *var);
                             })
+                            // LookUp methods next
+                            .or_else(|| {
+                                def_map.declared_methods.get(&ident.ident).map(|m| {
+                                    ctx.type_of_path_expr.insert(*expr, Type::MethodDecl(*m));
+                                })
+                            })
                             // Lookup Pous in scope
                             .or_else(|| {
                                 pou_names_res(db, ident.ident, ctx.scope).map(|pou_decl| {
@@ -192,29 +208,29 @@ impl<'db> Type<'db> {
                             .get(&ident.ident)
                             .map(|s| ctx.type_of_path_expr.insert(*expr, Type::StructElement(*s)));
                     }
-                    _ => {
-                        // Error: cannot access field on non-structured type
-                    }
+                    _ => ctx.errors.push(WalkError::NoSuchField {
+                        expr: *expr,
+                        ident: **ident,
+                        ty: *self,
+                    }),
                 }
             }
-            PathExprWalkStep::Index { expr } => {
-                match self {
-                    Type::Array(arr) => {
-                        ctx.type_of_path_expr.insert(*expr, *self);
-                        ctx.adjustements.insert(
-                            *expr,
-                            vec![Adjustment::new_index(
-                                db,
-                                Type::new_spec(db, arr.of_type(db)),
-                            )]
-                            .into_boxed_slice(),
-                        );
-                    }
-                    _ => {
-                        // Error: cannot index non-array type
-                    }
+            PathExprWalkStep::Index { expr } => match self {
+                Type::Array(arr) => {
+                    ctx.type_of_path_expr.insert(*expr, *self);
+                    ctx.path_expr_adjustments.insert(
+                        *expr,
+                        vec![Adjustment::new_index(
+                            db,
+                            Type::new_spec(db, arr.of_type(db)),
+                        )],
+                    );
                 }
-            }
+                _ => ctx.errors.push(WalkError::IndexNonArrayType {
+                    expr: *expr,
+                    ty: *self,
+                }),
+            },
         }
     }
 }
