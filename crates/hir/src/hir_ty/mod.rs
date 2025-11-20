@@ -14,3 +14,4 @@ pub mod def_map;
 pub mod inference;
 pub mod display;
 pub mod ty2;
+pub mod infer;

@@ -1,9 +1,9 @@
 use auto_lsp::default::db::BaseDatabase;
 
-use crate::{hir_def::expressions::spec::ElementarySpec, hir_ty::{array_resolver::resolve_range, ty2::Type}};
+use crate::{hir_def::expressions::spec::ElementarySpec, hir_ty::{array_resolver::resolve_range, ty2::{InferType, Type}}};
 
 impl<'db> Type<'db> {
-    fn type_name(&self, db: &'db dyn BaseDatabase) -> String {
+    pub fn type_name(&self, db: &'db dyn BaseDatabase) -> String {
         match self {
             Self::Elementary(elem) => match elem {
                 ElementarySpec::Bool => "BOOL",
@@ -29,8 +29,8 @@ impl<'db> Type<'db> {
                 ElementarySpec::WChar => "WCHAR",
                 ElementarySpec::Date => "DATE",
                 ElementarySpec::LDate => "LDATE",
-                ElementarySpec::Dt => "DT",
-                ElementarySpec::Ldt => "LDT",
+                ElementarySpec::DateAndTime => "DT",
+                ElementarySpec::LDateTime => "LDT",
                 ElementarySpec::Time => "TIME",
                 ElementarySpec::LTime => "LTIME",
                 ElementarySpec::Tod => "TOD",
@@ -44,11 +44,16 @@ impl<'db> Type<'db> {
             Self::Enum(_) => "ENUM".into(),
             Self::Struct(_) => "STRUCT".into(),
             Self::Never => "{unknown}".into(),
+            Self::Infer(infer) => match infer {
+                InferType::Integer(i) => format!("(INT) {}", i.ident(db).text(db)),
+                InferType::Float(f) => format!("(REAL) {}", f.text(db)),
+            }
             _ => self.full_type_name(db),
         }
     }
 
-    fn full_type_name(&self, db: &'db dyn BaseDatabase) -> String {
+    pub fn full_type_name(&self, db: &'db dyn BaseDatabase) -> String {
+        eprintln!("Getting full type name for {:?}", self);
         match self {
             Self::Array(array) => {
                 let elem_type = array.of_type(db).type_name(db);
