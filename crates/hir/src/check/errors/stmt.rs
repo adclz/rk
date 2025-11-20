@@ -13,13 +13,13 @@ use crate::{
     },
     hir_def::{
         expressions::{
-            expression::Expr,
+            expression::{Expr, VarAccess, VariableAccess},
             statement::Stmt,
         },
         interned::identifier::SpanIdent,
         pous::variable::VariableDecl,
     },
-    hir_ty::{ty_var_access_resolver::ResolvedAccess},
+    hir_ty::{ty_var_access_resolver::ResolvedAccess, ty2::Type},
     query_string::variables::fuzzy_variables,
 };
 
@@ -29,6 +29,16 @@ pub enum StmtError<'db> {
         stmt: Stmt<'db>,
     },
     // Assignments
+    AssignmentToInputVar {
+        access: VariableAccess<'db>,
+        var: VariableDecl<'db>,
+    },
+    AssignmentToInvalidType {
+        access: VariableAccess<'db>,
+        ty: Type<'db>,
+    },
+
+    // old
     UnresolvedAssignmentTarget {
         var: ResolvedAccess<'db>,
         err: AccessError<'db>,
@@ -40,9 +50,6 @@ pub enum StmtError<'db> {
         var: ResolvedAccess<'db>,
     },
     AssignmentToCallableType {
-        var: ResolvedAccess<'db>,
-    },
-    AssignmentToInputVar {
         var: ResolvedAccess<'db>,
     },
     AssignmentTypeMismatch {
@@ -140,6 +147,31 @@ impl<'db> From<StmtError<'db>> for AnalysisError<'db> {
 impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
     fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
         match self {
+            Self::AssignmentToInputVar { access, var } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' is an input variable and can not be assigned",
+                        var.name(db).text(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(access.get_span(db).clone())
+                    .call();
+                                
+                diag
+            }
+
+            Self::AssignmentToInvalidType { access, ty } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "ACCESS of type '{}' can not be assigned",
+                        ty.type_name(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .range(access.get_span(db).clone())
+                    .call();
+                
+                diag
+            }
             Self::EmptyPathExpression { stmt } => diag()
                 .message("unused code, you might want to do something with it".into())
                 .severity(DiagnosticSeverity::WARNING)
@@ -202,21 +234,6 @@ impl<'db> ToIdeDiagnostic<'db> for StmtError<'db> {
                 diag.with_note(
                     "types can only be assigned if they are declared in a VAR_* section".into(),
                 );
-                diag
-            }
-            Self::AssignmentToInputVar { var } => {
-                let mut diag = diag()
-                    .message(format!(
-                        "'{}' is an input variable and can not be assigned",
-                        var.decl_name(db),
-                    ))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .range(var.get_span(db).clone())
-                    .call();
-
-                let _ = var.resolved(db).map(|p| {
-                    p.diag_with_location(db, &mut diag);
-                });
                 diag
             }
             Self::UnresolvedFuncCall { call } => diag()

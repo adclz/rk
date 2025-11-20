@@ -3,7 +3,7 @@ use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
     check::errors::{
-        analysis_error::DiagnosticDescription, literals::LiteralErrorKind, path_error::AccessError,
+        analysis_error::DiagnosticDescription, literals::InferLiteralError, path_error::AccessError,
     }, hir_def::{expressions::expression::Expr, interned::identifier::SpanIdent}, hir_ty::ty::Ty, TypeInfo
 };
 
@@ -23,7 +23,7 @@ pub struct ExprMismatch<'db> {
 pub enum ExprMismatchKind<'db> {
     Literal {
         ty: Ty<'db>,
-        literal: LiteralErrorKind,
+        literal: InferLiteralError,
     },
     TypeMismatch {
         err: TypeMismatch<'db>,
@@ -61,7 +61,7 @@ impl<'db> ExprMismatch<'db> {
         }
     }
 
-    pub fn literal(expr: Expr<'db>, ty: Ty<'db>, literal: LiteralErrorKind) -> Self {
+    pub fn literal(expr: Expr<'db>, ty: Ty<'db>, literal: InferLiteralError) -> Self {
         Self {
             expr,
             kind: ExprMismatchKind::Literal { literal, ty },
@@ -131,85 +131,85 @@ impl<'db> DiagnosticDescription<'db> for ExprMismatch<'db> {
     fn description(&self, db: &'db dyn BaseDatabase) -> String {
         match &self.kind {
             ExprMismatchKind::Literal { literal, ty } => match literal {
-                LiteralErrorKind::Invalid_BOOL_Literal => "invalid BOOL literal".to_string(),
-                LiteralErrorKind::Invalid_UNSIGNED_8_BITS_Literal => {
+                InferLiteralError::Invalid_BOOL_Literal => "invalid BOOL literal".to_string(),
+                InferLiteralError::Invalid_UNSIGNED_8_BITS_Literal => {
                     "invalid USINT literal".to_string()
                 }
-                LiteralErrorKind::Invalid_UNSIGNED_16_BITS_Literal => {
+                InferLiteralError::Invalid_UNSIGNED_16_BITS_Literal => {
                     "invalid UINT literal".to_string()
                 }
-                LiteralErrorKind::Invalid_UNSIGNED_32_BITS_Literal => {
+                InferLiteralError::Invalid_UNSIGNED_32_BITS_Literal => {
                     "invalid UDINT literal".to_string()
                 }
-                LiteralErrorKind::Invalid_UNSIGNED_64_BITS_Literal => {
+                InferLiteralError::Invalid_UNSIGNED_64_BITS_Literal => {
                     "invalid ULINT literal".to_string()
                 }
-                LiteralErrorKind::Invalid_SIGNED_8_BITS_Literal => {
+                InferLiteralError::Invalid_SIGNED_8_BITS_Literal => {
                     "invalid SINT literal".to_string()
                 }
-                LiteralErrorKind::Invalid_SIGNED_16_BITS_Literal => {
+                InferLiteralError::Invalid_SIGNED_16_BITS_Literal => {
                     "invalid INT literal".to_string()
                 }
-                LiteralErrorKind::Invalid_SIGNED_32_BITS_Literal => {
+                InferLiteralError::Invalid_SIGNED_32_BITS_Literal => {
                     "invalid DINT literal".to_string()
                 }
-                LiteralErrorKind::Invalid_SIGNED_64_BITS_Literal => {
+                InferLiteralError::Invalid_SIGNED_64_BITS_Literal => {
                     "invalid LINT literal".to_string()
                 }
-                LiteralErrorKind::Invalid_REAL_Literal => "invalid REAL literal".to_string(),
-                LiteralErrorKind::Invalid_LREAL_Literal => "invalid LREAL literal".to_string(),
-                LiteralErrorKind::Invalid_TIME_Literal => "invalid TIME literal".to_string(),
-                LiteralErrorKind::Invalid_LTIME_Literal => "invalid LTIME literal".to_string(),
-                LiteralErrorKind::Invalid_TOD_Literal => "invalid TOD literal".to_string(),
-                LiteralErrorKind::Invalid_LTOD_Literal => "invalid LTOD literal".to_string(),
-                LiteralErrorKind::Invalid_DATE_Literal => "invalid DATE literal".to_string(),
-                LiteralErrorKind::Invalid_LDATE_Literal => "invalid LDATE literal".to_string(),
-                LiteralErrorKind::Invalid_DT_Literal => "invalid DT literal".to_string(),
-                LiteralErrorKind::Invalid_LDT_Literal => "invalid LDT literal".to_string(),
-                LiteralErrorKind::Invalid_STRING_Literal => "invalid DSTRINGT literal".to_string(),
-                LiteralErrorKind::Invalid_WSTRING_Literal => "invalid WSTRING literal".to_string(),
-                LiteralErrorKind::TypeMismatch(err) => err.to_owned(),
-                LiteralErrorKind::DurationOverflow => "duration overflow".to_string(),
-                LiteralErrorKind::ExpectedNumber => "expected a number".to_string(),
-                LiteralErrorKind::InvalidNumber(err) => format!("invalid number: {err}"),
-                LiteralErrorKind::Invalid_TIME_Components => "invalid TIME components".to_string(),
-                LiteralErrorKind::Invalid_TIME_Unit(err) => {
+                InferLiteralError::Invalid_REAL_Literal => "invalid REAL literal".to_string(),
+                InferLiteralError::Invalid_LREAL_Literal => "invalid LREAL literal".to_string(),
+                InferLiteralError::Invalid_TIME_Literal => "invalid TIME literal".to_string(),
+                InferLiteralError::Invalid_LTIME_Literal => "invalid LTIME literal".to_string(),
+                InferLiteralError::Invalid_TOD_Literal => "invalid TOD literal".to_string(),
+                InferLiteralError::Invalid_LTOD_Literal => "invalid LTOD literal".to_string(),
+                InferLiteralError::Invalid_DATE_Literal => "invalid DATE literal".to_string(),
+                InferLiteralError::Invalid_LDATE_Literal => "invalid LDATE literal".to_string(),
+                InferLiteralError::Invalid_DT_Literal => "invalid DT literal".to_string(),
+                InferLiteralError::Invalid_LDT_Literal => "invalid LDT literal".to_string(),
+                InferLiteralError::Invalid_STRING_Literal => "invalid DSTRINGT literal".to_string(),
+                InferLiteralError::Invalid_WSTRING_Literal => "invalid WSTRING literal".to_string(),
+                InferLiteralError::TypeMismatch(err) => err.to_owned(),
+                InferLiteralError::DurationOverflow => "duration overflow".to_string(),
+                InferLiteralError::ExpectedNumber => "expected a number".to_string(),
+                InferLiteralError::InvalidNumber(err) => format!("invalid number: {err}"),
+                InferLiteralError::Invalid_TIME_Components => "invalid TIME components".to_string(),
+                InferLiteralError::Invalid_TIME_Unit(err) => {
                     format!("invalid TIME unit: {err}")
                 }
-                LiteralErrorKind::Invalid_DATE_Format(err) => {
+                InferLiteralError::Invalid_DATE_Format(err) => {
                     format!("invalid DATE format: {err}")
                 }
-                LiteralErrorKind::Invalid_LDATE_Format(err) => {
+                InferLiteralError::Invalid_LDATE_Format(err) => {
                     format!("invalid DATE format: {err}")
                 }
-                LiteralErrorKind::Invalid_TOD_Format(err) => {
+                InferLiteralError::Invalid_TOD_Format(err) => {
                     format!("invalid TOD format: {err}")
                 }
-                LiteralErrorKind::Invalid_LTOD_Format(err) => {
+                InferLiteralError::Invalid_LTOD_Format(err) => {
                     format!("invalid LTOD format: {err}")
                 }
-                LiteralErrorKind::Invalid_DT_Format(err) => {
+                InferLiteralError::Invalid_DT_Format(err) => {
                     format!("invalid DT format: {err}")
                 }
-                LiteralErrorKind::Invalid_LDT_Format(err) => {
+                InferLiteralError::Invalid_LDT_Format(err) => {
                     format!("invalid LDT format: {err}")
                 }
-                LiteralErrorKind::Incomplete_STRING_XX_Escape => {
+                InferLiteralError::Incomplete_STRING_XX_Escape => {
                     "incomplete escape sequence in STRING literal".to_string()
                 }
-                LiteralErrorKind::Invalid_STRING_Hex_Escape => {
+                InferLiteralError::Invalid_STRING_Hex_Escape => {
                     "invalid hex escape sequence in STRING literal".to_string()
                 }
-                LiteralErrorKind::Invalid_STRING_CHAR(err) => {
+                InferLiteralError::Invalid_STRING_CHAR(err) => {
                     format!("invalid escape sequence in STRING literal: {err}")
                 }
-                LiteralErrorKind::Invalid_WSTRING_Hex_Escape(err) => {
+                InferLiteralError::Invalid_WSTRING_Hex_Escape(err) => {
                     format!("invalid escape sequence in STRING literal: {err}")
                 }
-                LiteralErrorKind::Invalid_WSTRING_Unicode_Scalar(err) => {
+                InferLiteralError::Invalid_WSTRING_Unicode_Scalar(err) => {
                     format!("invalid escape sequence in STRING literal: {err}")
                 }
-                LiteralErrorKind::Incomplete_WSTRING_XXXX_Escape => {
+                InferLiteralError::Incomplete_WSTRING_XXXX_Escape => {
                     "invalid escape sequence in STRING literal".to_string()
                 }
             },

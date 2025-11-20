@@ -28,7 +28,7 @@ use crate::{
     },
 };
 
-impl<'db> Check<'db> for Vec<Stmt<'db>> {
+/*impl<'db> Check<'db> for Vec<Stmt<'db>> {
     fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<IdeDiagnostic>) {
         for stmt in self {
             stmt.check(db, errors);
@@ -453,3 +453,4 @@ fn check_for<'db>(
 
     Ok(())
 }
+*/

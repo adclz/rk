@@ -372,7 +372,7 @@ pub enum Elementary {
 
     // Has to be solved later
     InferInteger(Integer),
-    InferIdent(Ident),
+    InferFloat(Ident),
 }
 
 #[salsa::interned(debug, no_lifetime)]
@@ -511,7 +511,7 @@ impl<'db> PrimaryExpr<'db> {
                 Elementary::AnyString(_) => "STRING literal",
                 Elementary::AnyChar(_) => "CHAR literal",
                 Elementary::InferInteger(_) => "<integer>",
-                Elementary::InferIdent(_) => "<identifier>",
+                Elementary::InferFloat(_) => "<identifier>",
             },
             PrimaryExpr::VariableAccess(v) => "<variable access>",
             PrimaryExpr::FuncCall(func_call) => func_call.path(db).to_string(db),

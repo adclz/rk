@@ -47,10 +47,6 @@ pub fn coerce_ty_with_expr<'db>(
         return Err(ExprMismatch::unresolved_path(target_expr, err.clone()));
     }
     match (ty.kind(db), target_expr.expr(db)) {
-        // Compare an elementary type with a literal
-        (TyKind::Simple(elem), ExprKind::PrimaryExpr(PrimaryExpr::Literal(prim))) => elem
-            .check_literal(db, *prim)
-            .map_err(|err| ExprMismatch::literal(target_expr, ty, err)),
         // Compare an elementary type with a function call
         (TyKind::Simple(elem), ExprKind::PrimaryExpr(PrimaryExpr::FuncCall(call))) => {
             let call = call.resolve_func_call(db);

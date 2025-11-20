@@ -192,13 +192,13 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
             AstSpec::AnyDtTypeName(dt_type_name) => match dt_type_name {
                 ast::generated::AnyDtTypeName::DtTypeName(_) => Spec::new(
                     sema.db,
-                    SpecKind::Simple(ElementarySpec::Dt),
+                    SpecKind::Simple(ElementarySpec::DateAndTime),
                     self.into(),
                     sema.current_scope,
                 ),
                 ast::generated::AnyDtTypeName::LDtTypeName(_) => Spec::new(
                     sema.db,
-                    SpecKind::Simple(ElementarySpec::Ldt),
+                    SpecKind::Simple(ElementarySpec::LDateTime),
                     self.into(),
                     sema.current_scope,
                 ),

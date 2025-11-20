@@ -108,8 +108,8 @@ impl<'db> ToProtocol<'db> for PouDecl<'db> {
                         | ElementarySpec::LTime
                         | ElementarySpec::Tod
                         | ElementarySpec::LTod
-                        | ElementarySpec::Dt
-                        | ElementarySpec::Ldt
+                        | ElementarySpec::DateAndTime
+                        | ElementarySpec::LDateTime
                         | ElementarySpec::Date
                         | ElementarySpec::LDate => SymbolKind::EVENT,
                     },

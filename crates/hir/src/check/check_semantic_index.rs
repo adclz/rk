@@ -96,16 +96,16 @@ impl<'db> Check<'db> for PouDecl<'db> {
         match self.pou(db) {
             Pou::Function(f) => {
                 f.variables(db).check(db, errors);
-                f.statements(db).check(db, errors);
+                f.scope_id(db).check(db, errors);
             }
             Pou::FunctionBlock(fb) => {
                 check_inheritance(db, *self, errors);
                 fb.variables(db).check(db, errors);
                 fb.methods(db).check(db, errors);
-                fb.statements(db).check(db, errors);
+                fb.scope_id(db).check(db, errors);
                 fb.methods(db).iter().for_each(|m| {
                     m.variables(db).check(db, errors);
-                    m.stmts(db).check(db, errors);
+                    m.scope_id(db).check(db, errors);
                 });
             }
             Pou::Class(cl) => {
@@ -114,7 +114,7 @@ impl<'db> Check<'db> for PouDecl<'db> {
                 cl.methods(db).check(db, errors);
                 cl.methods(db).iter().for_each(|m| {
                     m.variables(db).check(db, errors);
-                    m.stmts(db).check(db, errors);
+                    m.scope_id(db).check(db, errors);
                 });
             }
             Pou::Interface(it) => {

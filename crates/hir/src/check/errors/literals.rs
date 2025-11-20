@@ -4,18 +4,18 @@ use crate::{hir_def::expressions::expression::Expr, hir_ty::ty::Ty};
 pub struct LiteralError<'db> {
     pub ty: Ty<'db>,
     pub expr: Expr<'db>,
-    pub kind: LiteralErrorKind,
+    pub kind: InferLiteralError,
 }
 
 impl<'db> LiteralError<'db> {
-    pub fn new(ty: Ty<'db>, expr: Expr<'db>, kind: LiteralErrorKind) -> Self {
+    pub fn new(ty: Ty<'db>, expr: Expr<'db>, kind: InferLiteralError) -> Self {
         Self { ty, expr, kind }
     }
 }
 
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum LiteralErrorKind {
+pub enum InferLiteralError {
     // Emitted by rust std library cast
     TypeMismatch(String),
 

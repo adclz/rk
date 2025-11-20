@@ -412,7 +412,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Constant {
                                     }
                                 }
                             }
-                            None => Elementary::InferIdent(Ident::from_node(sema.db, sema.file, real_literal.value.cast(sema.ast))?)
+                            None => Elementary::InferFloat(Ident::from_node(sema.db, sema.file, real_literal.value.cast(sema.ast))?)
                         }
                     },
                 }
