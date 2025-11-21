@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use crate::{
     AstId, HirNodeInfo,
     hir_def::{
@@ -18,6 +16,7 @@ use crate::{
     hir_ty::name_res::resolve_namespace_access,
 };
 use auto_lsp::{core::span::Span, default::db::BaseDatabase};
+use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, salsa::Update, salsa::Supertype)]
 pub enum MethodRef<'db> {
@@ -117,18 +116,19 @@ impl<'db> From<&MethodDecl<'db>> for MethodRef<'db> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub struct InheritedMethodSet<'db> {
-    pub methods: BTreeMap<Ident, InheritedMethod<'db>>,
+    pub methods: FxHashMap<Ident, InheritedMethod<'db>>,
 
     pub duplicates: Vec<(InheritedMethod<'db>, InheritedMethod<'db>)>,
 
-    pub unresolved: Vec<SpanNamespaceAccess<'db>>,
+    pub unresolved: Vec<SpanNamespaceAccess<'db>>
 }
 
 impl<'db> InheritedMethodSet<'db> {
     fn new(
         db: &'db dyn BaseDatabase,
-        methods: BTreeMap<Ident, InheritedMethod<'db>>,
+        methods: FxHashMap<Ident, InheritedMethod<'db>>,
         duplicates: Vec<(InheritedMethod<'db>, InheritedMethod<'db>)>,
         unresolved: Vec<SpanNamespaceAccess<'db>>,
     ) -> Self {
@@ -152,27 +152,12 @@ impl<'db> InheritedMethod<'db> {
     }
 }
 
-fn inherited_method_initial<'db>(
-    db: &'db dyn BaseDatabase,
-    pou: PouDecl<'db>,
-) -> InheritedMethodSet<'db> {
-    InheritedMethodSet::new(db, BTreeMap::new(), vec![], vec![])
-}
-
-fn inherited_method_cycle<'db>(
-    db: &'db dyn BaseDatabase,
-    value: &InheritedMethodSet<'db>,
-    count: u32,
-    pou: PouDecl<'db>,
-) -> salsa::CycleRecoveryAction<InheritedMethodSet<'db>> {
-    salsa::CycleRecoveryAction::Iterate
-}
-
+#[salsa::tracked(returns(ref))]
 pub fn inherited_methods<'db>(
     db: &'db dyn BaseDatabase,
     pou: PouDecl<'db>,
 ) -> InheritedMethodSet<'db> {
-    let mut methods = BTreeMap::new();
+    let mut methods = FxHashMap::default();
     let mut duplicates = vec![];
     let mut unresolved = vec![];
 
