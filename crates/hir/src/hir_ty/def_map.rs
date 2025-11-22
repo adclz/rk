@@ -1,22 +1,23 @@
-
 use auto_lsp::default::db::BaseDatabase;
 use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
 
 use crate::{
     hir_def::{
+        expressions::{
+            expression::{Elementary, Expr, ExprKind, PrimaryExpr},
+            spec::{Struct, StructElement},
+        },
         interned::identifier::Ident,
         pous::{
+            class::MethodDecl,
             pou::{Pou, PouDecl},
             variable::{VariableDecl, VariableKind},
         },
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
-    hir_ty::{
-        inheritance_solver::MethodRef,
-        name_res::resolve_namespace_access,
-    },
+    hir_ty::{inheritance_solver::MethodRef, name_res::resolve_namespace_access},
 };
 
 pub type FxIndexMap<K, V> = IndexMap<K, V, rustc_hash::FxBuildHasher>;
@@ -123,8 +124,9 @@ impl<'db> ScopeId<'db> {
         }
     }
 
-    pub fn inheritors(&self, db: &'db dyn BaseDatabase) -> Vec<PouDecl<'db>> {
-        match get_scope(db, *self).kind {
+    #[salsa::tracked(returns(ref))]
+    pub fn inheritors(self, db: &'db dyn BaseDatabase) -> Vec<PouDecl<'db>> {
+        match get_scope(db, self).kind {
             ScopeKind::Pou(pou) => match pou.pou(db) {
                 Pou::Class(class) => {
                     let mut inheritors = vec![];
@@ -169,6 +171,33 @@ impl<'db> ScopeId<'db> {
                 _ => vec![],
             },
             _ => vec![],
+        }
+    }
+}
+
+#[salsa::tracked]
+impl<'db> Struct<'db> {
+    #[salsa::tracked(returns(ref))]
+    pub fn resolve_elements(
+        self,
+        db: &'db dyn BaseDatabase,
+    ) -> FxHashMap<Ident, StructElement<'db>> {
+        self.elements(db)
+            .iter()
+            .map(|element| (*element.name(db), *element))
+            .collect()
+    }
+}
+
+#[salsa::tracked]
+impl<'db> Expr<'db> {
+    #[salsa::tracked]
+    pub fn as_range(self, db: &'db dyn BaseDatabase) -> Option<u64> {
+        match self.expr(db) {
+            ExprKind::PrimaryExpr(PrimaryExpr::Literal(Elementary::InferInteger(v))) => {
+                v.as_u64(db).ok()
+            }
+            _ => None,
         }
     }
 }

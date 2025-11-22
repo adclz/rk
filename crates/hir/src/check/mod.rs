@@ -22,7 +22,6 @@ pub mod check_inheritance;
 pub mod check_init_expr;
 pub mod check_namespaces;
 pub mod check_semantic_index;
-pub mod check_stmt;
 pub mod check_struct;
 pub mod check_subrange;
 pub mod check_variables;
