@@ -8,7 +8,7 @@ use auto_lsp::{
 use hir::{
     HirNodeInfo, TypeInfo,
     hir_def::expressions::spec::{Spec, SpecKind},
-    hir_ty::name_res::resolve_namespace_access,
+    hir_ty::{name_res::resolve_namespace_access, ty::Type},
 };
 
 use crate::{
@@ -28,7 +28,7 @@ impl<'db> ToProtocol<'db> for Spec<'db> {
             SpecKind::Ref(r) => r.get_comment(db).unwrap_or_default(),
             _ => Default::default(),
         };
-        let desc = self.full_type_name(db);
+        let desc = Type::new_spec(db, *self).full_type_name(db);
 
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
@@ -86,7 +86,7 @@ impl<'db> ToProtocol<'db> for Spec<'db> {
                 .map(|el| CompletionItem {
                     label: el.name(db).text(db).to_string(),
                     kind: Some(auto_lsp::lsp_types::CompletionItemKind::FIELD),
-                    detail: Some(el.spec(db).to_ty(db).type_name(db).to_string()),
+                    detail: Some(Type::new_spec(db, el.spec(db)).type_name(db).to_string()),
                     ..Default::default()
                 })
                 .collect::<Vec<_>>()

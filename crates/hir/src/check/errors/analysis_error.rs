@@ -6,7 +6,7 @@ use ide_diagnostic::IdeDiagnostic;
 
 use crate::check::errors::{
     array::ArrayError, duplicates::DuplicateError, enum_::EnumError, inheritance::MethodError,
-    init_expr::InitExprError, path_error::AccessError, scope::NamespaceError, stmt::StmtError,
+    path_error::AccessError, scope::NamespaceError,
     subrange::SubRangeError, syntax::SyntaxError, visibility::VisibilityError,
 };
 
@@ -21,8 +21,8 @@ pub enum AnalysisError<'db> {
     SyntaxError(SyntaxError),
     NamespaceError(NamespaceError<'db>),
     DuplicateError(DuplicateError<'db>),
-    StmtError(StmtError<'db>),
-    InitExprError(InitExprError<'db>),
+    //StmtError(StmtError<'db>),
+    //InitExprError(InitExprError<'db>),
     MethodError(MethodError<'db>),
     ArrayError(ArrayError<'db>),
     SubRangeError(SubRangeError<'db>),
@@ -52,8 +52,8 @@ impl<'db> ToIdeDiagnostic<'db> for AnalysisError<'db> {
             Self::SyntaxError(err) => err.to_diagnostic(db),
             Self::NamespaceError(err) => err.to_diagnostic(db),
             Self::DuplicateError(err) => err.to_diagnostic(db),
-            Self::StmtError(err) => err.to_diagnostic(db),
-            Self::InitExprError(err) => err.to_diagnostic(db),
+            //Self::StmtError(err) => err.to_diagnostic(db),
+            //Self::InitExprError(err) => err.to_diagnostic(db),
             Self::MethodError(err) => err.to_diagnostic(db),
             Self::ArrayError(err) => err.to_diagnostic(db),
             Self::SubRangeError(err) => err.to_diagnostic(db),

@@ -1,6 +1,6 @@
 use auto_lsp::default::db::BaseDatabase;
 
-use crate::{hir_def::expressions::spec::ElementarySpec, hir_ty::{array_resolver::resolve_range, ty2::{InferType, Type}}};
+use crate::{hir_def::expressions::spec::ElementarySpec, hir_ty::{ty::{InferType, Type}}};
 
 impl<'db> Type<'db> {
     pub fn type_name(&self, db: &'db dyn BaseDatabase) -> String {
@@ -44,27 +44,27 @@ impl<'db> Type<'db> {
             Self::Enum(_) => "ENUM".into(),
             Self::Struct(_) => "STRUCT".into(),
             Self::Never => "{unknown}".into(),
+            Self::StructElement(st) => Type::new_spec(db, st.spec(db)).type_name(db),
             Self::Infer(infer) => match infer {
                 InferType::Integer(i) => format!("(INT) {}", i.ident(db).text(db)),
                 InferType::Float(f) => format!("(REAL) {}", f.text(db)),
             }
-            _ => self.full_type_name(db),
+            _ => self.full_type_name(db)
         }
     }
 
     pub fn full_type_name(&self, db: &'db dyn BaseDatabase) -> String {
-        eprintln!("Getting full type name for {:?}", self);
         match self {
             Self::Array(array) => {
-                let elem_type = array.of_type(db).type_name(db);
+                let elem_type = Type::new_spec(db, array.of_type(db)).type_name(db);
                 let dimensions: Vec<String> = array
                     .subranges(db)
                     .iter()
                     .map(|(lower, upper)| {
-                        let lower = resolve_range(db, *lower)
+                        let lower = lower.as_range(db)
                             .map(|n| n.to_string())
                             .unwrap_or_default();
-                        let upper = resolve_range(db, *upper)
+                        let upper = upper.as_range(db)
                             .map(|n| n.to_string())
                             .unwrap_or_default();
                         format!("[{lower}..{upper}]")
@@ -74,19 +74,19 @@ impl<'db> Type<'db> {
             }
             Self::Enum(enum_) => format!("ENUM ({} members)", enum_.variants(db).len()),
             Self::SubRange(subrange) => {
-                let lower = resolve_range(db, subrange.lower(db))
+                let lower = subrange.lower(db).as_range(db)
                     .map(|n| n.to_string())
                     .unwrap_or_default();
 
-                let upper = resolve_range(db, subrange.upper(db))
+                let upper = subrange.upper(db).as_range(db)
                     .map(|n| n.to_string())
                     .unwrap_or_default();
 
                 format!("SUBRANGE ({lower}..{upper})")
             }
             Self::Struct(ztruct) => format!("STRUCT ({} members)", ztruct.elements(db).len()),
-            Self::RefTo(ref_to) => format!("REF TO {}", ref_to.type_name(db)),
-            _ => self.type_name(db),
+            Self::RefTo(ref_to) => format!("REF TO {}", Type::new_spec(db, *ref_to).type_name(db),),
+            _ => self.type_name(db)
         }
     }
 }

@@ -3,7 +3,7 @@ use ide_diagnostic::{IdeDiagnostic, diag};
 
 use crate::{
     HirNodeInfo,
-    check::errors::analysis_error::ToIdeDiagnostic,
+    check::errors::{analysis_error::ToIdeDiagnostic, body_inference::TypeError},
     hir_def::{
         expressions::{
             expression::{
@@ -17,64 +17,10 @@ use crate::{
     },
     hir_ty::{
         infer::ctx::InferCtx,
-        inference::{InferenceError, InferenceResult},
-        ty2::Type,
+        body_inference::BodyInferenceResult,
+        ty::Type,
     },
 };
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
-pub enum InferError<'db> {
-    NotAssignable {
-        target: Type<'db>,
-        value: Type<'db>,
-        expr: Expr<'db>,
-    },
-    NotComparable {
-        lhs: Type<'db>,
-        rhs: Type<'db>,
-        expr: Expr<'db>,
-    },
-    NotMultiplicable {
-        lhs: Type<'db>,
-        rhs: Type<'db>,
-        expr: Expr<'db>,
-    },
-    NotAddable {
-        lhs: Type<'db>,
-        rhs: Type<'db>,
-        expr: Expr<'db>,
-    },
-    NotABoolean {
-        typ: Type<'db>,
-        expr: Expr<'db>,
-    },
-    UnknownVariable {
-        name: Ident,
-        expr: Expr<'db>,
-    },
-    Other(String),
-}
-
-impl<'db> ToIdeDiagnostic<'db> for InferError<'db> {
-    fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
-        match self {
-            Self::NotAssignable {
-                target,
-                value,
-                expr,
-            } => diag()
-                .message(format!(
-                    "expected {}, got {}",
-                    target.full_type_name(db),
-                    value.full_type_name(db)
-                ))
-                .range(expr.get_span(db))
-                .call(),
-            _ => todo!(),
-        }
-    }
-}
-
 pub struct InferExprCtx<'db> {
     /// Current scope
     pub scope: ScopeId<'db>,
@@ -91,7 +37,7 @@ impl<'db> InferExprCtx<'db> {
         &self,
         db: &'db dyn BaseDatabase,
         expr: Expr<'db>,
-        infer_result: &mut InferenceResult<'db>,
+        infer_result: &mut BodyInferenceResult<'db>,
     ) -> Type<'db> {
         match expr.expr(db) {
             ExprKind::AddOperator {
@@ -104,7 +50,7 @@ impl<'db> InferExprCtx<'db> {
                 if lhs.coerce_with(db, rhs, self.scope) == false {
                     infer_result
                         .errors
-                        .push(InferError::NotAddable { lhs, rhs, expr }.into());
+                        .push(TypeError::NotAddable { lhs, operator: *operator, rhs, expr }.into());
                 }
                 lhs
             }
@@ -117,13 +63,13 @@ impl<'db> InferExprCtx<'db> {
                 if lhs.coerce_with(db, Type::new_bool(), self.scope) == false {
                     infer_result
                         .errors
-                        .push(InferError::NotABoolean { typ: lhs, expr }.into());
+                        .push(TypeError::NotABoolean { typ: lhs, expr }.into());
                 }
                 let rhs = self.infer_expr(db, *right, infer_result);
                 if rhs.coerce_with(db, Type::new_bool(), self.scope) == false {
                     infer_result
                         .errors
-                        .push(InferError::NotABoolean { typ: lhs, expr }.into());
+                        .push(TypeError::NotABoolean { typ: lhs, expr }.into());
                 }
                 Type::new_bool()
             }
@@ -137,7 +83,7 @@ impl<'db> InferExprCtx<'db> {
                 if lhs.coerce_with(db, rhs, self.scope) == false {
                     infer_result
                         .errors
-                        .push(InferError::NotComparable { lhs, rhs, expr }.into());
+                        .push(TypeError::NotComparable { lhs, rhs, expr }.into());
                 }
                 Type::new_bool()
             }
@@ -151,7 +97,7 @@ impl<'db> InferExprCtx<'db> {
                 if lhs.coerce_with(db, rhs, self.scope) == false {
                     infer_result
                         .errors
-                        .push(InferError::NotMultiplicable { lhs, rhs, expr }.into());
+                        .push(TypeError::NotMultiplicable { lhs, operator: *operator, rhs, expr }.into());
                 }
                 lhs
             }
@@ -162,7 +108,7 @@ impl<'db> InferExprCtx<'db> {
                 if lhs.coerce_with(db, rhs, self.scope) == false {
                     infer_result
                         .errors
-                        .push(InferError::NotComparable { lhs, rhs, expr }.into());
+                        .push(TypeError::NotComparable { lhs, rhs, expr }.into());
                 }
                 lhs
             }
@@ -171,7 +117,7 @@ impl<'db> InferExprCtx<'db> {
                     let not_expr = self.infer_expr(db, *expr, infer_result);
                     if !not_expr.is_boolean() {
                         infer_result.errors.push(
-                            InferError::NotABoolean {
+                            TypeError::NotABoolean {
                                 typ: not_expr,
                                 expr: *expr,
                             }
@@ -191,7 +137,7 @@ impl<'db> InferExprCtx<'db> {
         db: &'db dyn BaseDatabase,
         base_expr: Expr<'db>,
         to: &PrimaryExpr<'db>,
-        infer_result: &mut InferenceResult<'db>,
+        infer_result: &mut BodyInferenceResult<'db>,
     ) -> Type<'db> {
         match to {
             PrimaryExpr::Literal(prim) => (*prim).into(),

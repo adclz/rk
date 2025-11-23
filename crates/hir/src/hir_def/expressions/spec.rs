@@ -1,6 +1,5 @@
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
-use crate::hir_ty::array_resolver::resolve_range;
 use auto_lsp::core::span::Span;
 use auto_lsp::default::db::BaseDatabase;
 
@@ -202,6 +201,7 @@ pub struct SubRange<'db> {
     pub upper: Expr<'db>,
 }
 
+/* 
 impl<'db> Spec<'db> {
     pub fn type_name(&self, db: &'db dyn BaseDatabase) -> String {
         match self.kind(db) {
@@ -288,10 +288,10 @@ impl<'db> Spec<'db> {
                     .subranges(db)
                     .iter()
                     .map(|(lower, upper)| {
-                        let lower = resolve_range(db, *lower)
+                        let lower = lower.as_range(db)
                             .map(|n| n.to_string())
                             .unwrap_or_default();
-                        let upper = resolve_range(db, *upper)
+                        let upper = upper.as_range(db)
                             .map(|n| n.to_string())
                             .unwrap_or_default();
                         format!("[{lower}..{upper}]")
@@ -301,11 +301,11 @@ impl<'db> Spec<'db> {
             }
             SpecKind::Enum(enm) => format!("ENUM ({} members)", enm.variants(db).len()),
             SpecKind::Subrange(subrange) => {
-                let lower = resolve_range(db, subrange.lower(db))
+                let lower = subrange.lower(db).as_range(db)
                     .map(|n| n.to_string())
                     .unwrap_or_default();
 
-                let upper = resolve_range(db, subrange.upper(db))
+                let upper = subrange.upper(db).as_range(db)
                     .map(|n| n.to_string())
                     .unwrap_or_default();
 
@@ -337,3 +337,4 @@ impl<'db> Spec<'db> {
         }
     }
 }
+*/

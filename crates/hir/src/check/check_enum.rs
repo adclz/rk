@@ -5,18 +5,18 @@ use rustc_hash::FxHashMap;
 use crate::{
     check::{
         check_semantic_index::DataTypeCheck,
-        coerce::coerce_ty_with_expr,
         errors::{analysis_error::ToIdeDiagnostic, duplicates::DuplicateError, enum_::EnumError},
     },
-    hir_def::expressions::spec::{ElementarySpec, Enum, SpecKind},
+    hir_def::expressions::spec::{ElementarySpec, Enum, SpecKind}, hir_ty::ty::Type,
 };
 
 impl<'db> DataTypeCheck<'db> for Enum<'db> {
     fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<IdeDiagnostic>) {
         // Check underlying type
-        if let Some(typ) = self.typ(db) {
-            match typ.kind(db) {
-                SpecKind::Simple(elementary) => match elementary {
+        if let Some(spec) = self.typ(db) {
+            let typ = Type::new_spec(db, spec);
+            match typ {
+                Type::Elementary(elementary) => match elementary {
                     ElementarySpec::Byte
                     | ElementarySpec::Word
                     | ElementarySpec::DWord
@@ -29,9 +29,9 @@ impl<'db> DataTypeCheck<'db> for Enum<'db> {
                     | ElementarySpec::UDInt
                     | ElementarySpec::LInt
                     | ElementarySpec::ULInt => {}
-                    _ => errors.push(EnumError::InvalidEnumType { value: typ }.to_diagnostic(db)),
+                    _ => errors.push(EnumError::InvalidEnumType { value: spec, typ }.to_diagnostic(db)),
                 },
-                _ => errors.push(EnumError::InvalidEnumType { value: typ }.to_diagnostic(db)),
+                _ => errors.push(EnumError::InvalidEnumType { value: spec, typ }.to_diagnostic(db)),
             }
         };
 
@@ -52,7 +52,7 @@ impl<'db> DataTypeCheck<'db> for Enum<'db> {
             }
 
             // Check variant value type
-            if let (Some(value), Some(typ)) = (variant.value, self.typ(db)) {
+            /*if let (Some(value), Some(typ)) = (variant.value, self.typ(db)) {
                 if let Err(err) = coerce_ty_with_expr(db, typ.to_ty(db), value) {
                     errors.push(
                         EnumError::InvalidEnumVariantValue {
@@ -62,7 +62,7 @@ impl<'db> DataTypeCheck<'db> for Enum<'db> {
                         .to_diagnostic(db),
                     )
                 }
-            }
+            }*/
         }
     }
 }

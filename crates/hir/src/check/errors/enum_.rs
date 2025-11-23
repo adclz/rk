@@ -5,12 +5,11 @@ use crate::{
     HirNodeInfo,
     check::errors::{
         analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic},
-        coerce::ExprMismatch,
     },
     hir_def::{
         expressions::spec::Spec,
         interned::identifier::SpanIdent,
-    },
+    }, hir_ty::ty::Type,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -18,11 +17,12 @@ pub enum EnumError<'db> {
     // Enums
     InvalidEnumType {
         value: Spec<'db>,
+        typ: Type<'db>,
     },
-    InvalidEnumVariantValue {
+    /*InvalidEnumVariantValue {
         variant: SpanIdent<'db>,
         err: ExprMismatch<'db>,
-    },
+    },*/
 }
 
 impl<'db> From<EnumError<'db>> for AnalysisError<'db> {
@@ -34,9 +34,9 @@ impl<'db> From<EnumError<'db>> for AnalysisError<'db> {
 impl<'db> ToIdeDiagnostic<'db> for EnumError<'db> {
     fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
         match self {
-            EnumError::InvalidEnumType { value } => {
+            EnumError::InvalidEnumType { value, typ } => {
                 let mut diag = diag()
-                    .message(format!("invalid enum type '{}'", value.type_name(db)))
+                    .message(format!("invalid enum type '{}'", typ.type_name(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(value.get_span(db))
                     .call();
@@ -45,7 +45,7 @@ impl<'db> ToIdeDiagnostic<'db> for EnumError<'db> {
 
                 diag
             }
-            EnumError::InvalidEnumVariantValue { variant, err } => {
+            /*EnumError::InvalidEnumVariantValue { variant, err } => {
                 let mut diag = diag()
                     .message(format!(
                         "invalid value for enum variant '{}': {}",
@@ -60,7 +60,7 @@ impl<'db> ToIdeDiagnostic<'db> for EnumError<'db> {
                 err.note(db, &mut diag);
 
                 diag
-            }
+            }*/
         }
     }
 }

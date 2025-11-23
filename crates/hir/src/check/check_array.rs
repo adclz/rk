@@ -7,7 +7,6 @@ use crate::{
         errors::{analysis_error::ToIdeDiagnostic, array::ArrayError},
     },
     hir_def::expressions::spec::Array,
-    hir_ty::array_resolver::resolve_range,
 };
 
 impl<'db> DataTypeCheck<'db> for Array<'db> {
@@ -16,7 +15,7 @@ impl<'db> DataTypeCheck<'db> for Array<'db> {
             let lower = range.0;
             let upper = range.1;
 
-            match (resolve_range(db, range.0), resolve_range(db, range.1)) {
+            match (lower.as_range(db), upper.as_range(db)) {
                 (Some(lower_range), Some(upper_range)) => {
                     if lower_range > upper_range {
                         errors.push(

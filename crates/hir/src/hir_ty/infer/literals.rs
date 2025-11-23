@@ -10,8 +10,8 @@ use crate::{
         interned::identifier::Ident,
     },
     hir_ty::{
-        inference::InferenceResult,
-        ty2::{Type},
+        body_inference::BodyInferenceResult,
+        ty::{Type},
     },
 };
 
@@ -135,7 +135,7 @@ impl<'db> ElementarySpec {
         &self,
         db: &'db dyn BaseDatabase,
         typ: Elementary,
-        ctx: &mut InferenceResult<'db>,
+        ctx: &mut BodyInferenceResult<'db>,
     ) -> Result<Type<'db>, InferLiteralError> {
         match self {
             ElementarySpec::Bool | ElementarySpec::REDGEBool | ElementarySpec::FEDGEBool => {

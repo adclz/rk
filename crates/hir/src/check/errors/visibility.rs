@@ -1,25 +1,25 @@
 use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, diag};
 
-use crate::{check::{
+use crate::{HirNodeInfo, check::{
         check_visibility::SameNamespaceResult,
         errors::analysis_error::{AnalysisError, ToIdeDiagnostic},
-    }, hir_ty::{ty_var_access_resolver::ResolvedAccess, walk::ResolvedPath}, HirNodeInfo};
+    }, hir_ty::{infer::ctx::CallSite}};
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum VisibilityError<'db> {
     Private {
-        call_site: ResolvedAccess<'db>,
-        target: ResolvedPath<'db>,
+        call_site: CallSite<'db>,
+        target: CallSite<'db>,
     },
     Internal {
-        call_site: ResolvedAccess<'db>,
-        target: ResolvedPath<'db>,
+        call_site: CallSite<'db>,
+        target: CallSite<'db>,
         result: SameNamespaceResult<'db>,
     },
     Protected {
-        call_site: ResolvedAccess<'db>,
-        target: ResolvedPath<'db>,
+        call_site: CallSite<'db>,
+        target: CallSite<'db>,
     },
 }
 
@@ -35,8 +35,8 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
             VisibilityError::Private { call_site, target } => {
                 let mut diag = diag()
                     .message(format!(
-                        "can not access PRIVATE item '{}'",
-                        target.decl_name(db)
+                        "can not access PRIVATE item",
+                        
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(call_site.get_span(db))
@@ -55,8 +55,7 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
             } => {
                 let mut diag = diag()
                     .message(format!(
-                        "can not access INTERNAL item '{}'",
-                        target.decl_name(db)
+                        "can not access INTERNAL item",
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(call_site.get_span(db))
@@ -89,8 +88,7 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
             VisibilityError::Protected { call_site, target } => {
                 let mut diag = diag()
                     .message(format!(
-                        "can not access PROTECTED item '{}'",
-                        target.decl_name(db)
+                        "can not access PROTECTED item",
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(call_site.get_span(db))

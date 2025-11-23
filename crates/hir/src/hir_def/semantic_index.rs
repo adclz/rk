@@ -9,10 +9,9 @@ use auto_lsp::default::db::{BaseDatabase, file::File};
 use rustc_hash::FxHashMap;
 use tracing::info_span;
 
-use crate::hir_def::expressions::expression::Expr;
+use crate::hir_def::expressions::expression::{Expr, InitExpr};
 use crate::hir_def::expressions::statement::Stmt;
 use crate::hir_def::using::Using;
-use crate::hir_ty::param_resolver::ResolvedParam;
 use crate::HirNodeInfo;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::analysis_error::AnalysisError;
@@ -23,9 +22,6 @@ use crate::hir_def::pous::pou::PouDecl;
 use crate::hir_def::pous::variable::VariableDecl;
 use crate::hir_def::scope::{ScopeId, Scope};
 use crate::hir_ty::inheritance_solver::MethodRef;
-use crate::hir_ty::init_expr_resolver::ResolvedInitExpr;
-use crate::hir_ty::ty_var_access_resolver::ResolvedAccess;
-use crate::hir_ty::walk::ResolvedPath;
 use crate::walk::WalkHir;
 
 /// Returns the semantic index of a given file
@@ -156,11 +152,8 @@ pub enum HirNode<'db> {
     MethodRef(MethodRef<'db>),
     Stmt(Stmt<'db>),
     Expr(Expr<'db>),
+    InitExpr(InitExpr<'db>),
     Using(Using<'db>),
-    ResolvedParam(ResolvedParam<'db>),
-    ResolvedAccess(ResolvedAccess<'db>),
-    ResolvedPath(ResolvedPath<'db>),
-    ResolvedInitExpr(ResolvedInitExpr<'db>),
 }
 
 impl<'db> HirNode<'db> {
@@ -175,11 +168,8 @@ impl<'db> HirNode<'db> {
             HirNode::MethodRef(m) => m.get_span(db),
             HirNode::Stmt(s) => s.get_span(db),
             HirNode::Expr(e) => e.get_span(db),
+            HirNode::InitExpr(e) => e.get_span(db),
             HirNode::Using(u) => u.get_span(db),
-            HirNode::ResolvedPath(p) => p.get_span(db),
-            HirNode::ResolvedAccess(v) => v.get_span(db),
-            HirNode::ResolvedParam(p) => p.get_span(db),
-            HirNode::ResolvedInitExpr(i) => i.get_span(db),
         }
     }
 
@@ -194,11 +184,8 @@ impl<'db> HirNode<'db> {
             HirNode::MethodRef(m) => m.get_scope_id(db),
             HirNode::Stmt(s) => s.get_scope_id(db),
             HirNode::Expr(e) => e.get_scope_id(db),
+            HirNode::InitExpr(e) => e.get_scope_id(db),
             HirNode::Using(u) => u.get_scope_id(db),
-            HirNode::ResolvedPath(p) => p.get_scope_id(db),
-            HirNode::ResolvedAccess(v) => v.get_scope_id(db),
-            HirNode::ResolvedParam(p) => p.get_scope_id(db),
-            HirNode::ResolvedInitExpr(i) => i.get_scope_id(db),
         }
     }
 }

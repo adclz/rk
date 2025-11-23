@@ -5,7 +5,6 @@ use rustc_hash::FxHashMap;
 use crate::{
     check::{
         check_semantic_index::Check,
-        coerce::coerce_ty_with_ty,
         errors::{
             analysis_error::{AnalysisError, ToIdeDiagnostic},
             duplicates::DuplicateError,
@@ -196,12 +195,12 @@ fn check_signature<'db>(
         );
     }
 
-    for (var1, var2) in sig1.iter().zip(sig2.iter()) {
+    /*for (var1, var2) in sig1.iter().zip(sig2.iter()) {
         if let Err(err) = coerce_ty_with_ty(db, var1.spec(db).to_ty(db), var2.spec(db).to_ty(db)) {
             errors.push(
                 MethodError::SignatureParametersTypeMismatch { param: *var2, err }
                     .to_diagnostic(db),
             );
         }
-    }
+    }*/
 }

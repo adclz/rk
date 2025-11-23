@@ -1,7 +1,7 @@
 use auto_lsp::default::db::{BaseDatabase, file::File};
 
 use crate::hir_def::{
-    namespace::NamespaceDecl, pous::{class::MethodDecl, pou::PouDecl}, using::Using, visibility::Visibility
+    namespace::NamespaceDecl, pous::{class::MethodDecl, pou::{Pou, PouDecl}, variable::VariableDecl}, semantic_index::get_scope, using::Using, visibility::Visibility
 };
 
 #[salsa::tracked(debug)]
@@ -24,6 +24,37 @@ impl<'db> ScopeId<'db> {
 
     pub fn is_global(&self, db: &'db dyn BaseDatabase) -> bool {
         self.scope(db) == usize::MAX
+    }
+
+        pub fn pous(&self, db: &'db dyn BaseDatabase) -> Option<&Vec<PouDecl<'db>>> {
+        Some(match get_scope(db, *self).kind {
+            ScopeKind::Namespace(ns) => ns.pous(db),
+            _ => None?,
+        })
+    }
+
+    pub fn methods(&self, db: &'db dyn BaseDatabase) -> Option<&Vec<MethodDecl<'db>>> {
+        Some(match get_scope(db, *self).kind {
+            ScopeKind::Pou(pou) => match pou.pou(db) {
+                Pou::Class(cl) => cl.methods(db),
+                Pou::FunctionBlock(fb) => fb.methods(db),
+                _ => None?,
+            },
+            _ => None?,
+        })
+    }
+
+    pub fn variables(&self, db: &'db dyn BaseDatabase) -> Option<&Vec<VariableDecl<'db>>> {
+        Some(match get_scope(db, *self).kind {
+            ScopeKind::Pou(pou) => match pou.pou(db) {
+                Pou::Function(f) => f.variables(db),
+                Pou::FunctionBlock(fb) => fb.variables(db),
+                Pou::Class(cl) => cl.variables(db),
+                _ => None?,
+            },
+            ScopeKind::MethodDecl(m) => m.variables(db),
+            _ => None?,
+        })
     }
 }
 

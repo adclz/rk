@@ -5,7 +5,7 @@ use auto_lsp::{
         CompletionItem, Hover, HoverContents, MarkupContent, MarkupKind, SymbolKind
     },
 };
-use hir::{hir_ty::{inheritance_solver::MethodRef}, HirNodeInfo, TypeInfo};
+use hir::{HirNodeInfo, TypeInfo, hir_ty::{inheritance_solver::MethodRef, ty::Type}};
 
 use crate::{HasComment, ToProtocol};
 
@@ -27,7 +27,7 @@ impl<'db> ToProtocol<'db> for MethodRef<'db> {
             detail: Some(format!(
                 "METHOD{}",
                 match self.return_type(db) {
-                    Some(dt) => format!(" : {}", dt.to_ty(db).type_name(db)),
+                    Some(dt) => format!(" : {}", Type::new_spec(db, *dt).type_name(db)),
                     None => "".into(),
                 }
             )),
@@ -48,11 +48,11 @@ impl<'db> ToProtocol<'db> for MethodRef<'db> {
         let name = self.name(db).text(db);
         let return_type = match self {
             MethodRef::Declared(decl) => match decl.return_type(db) {
-                Some(ret_ty) => format!(": {}", ret_ty.to_ty(db).type_name(db)),
+                Some(ret_ty) => format!(": {}", Type::new_spec(db, *ret_ty).type_name(db)),
                 None => "".to_string(),
             },
             MethodRef::Prototype(proto) => match proto.return_type(db) {
-                Some(ret_ty) => format!(": {}", ret_ty.to_ty(db).type_name(db)),
+                Some(ret_ty) => format!(": {}", Type::new_spec(db, *ret_ty).type_name(db)),
                 None => "".to_string(),
             },
         };

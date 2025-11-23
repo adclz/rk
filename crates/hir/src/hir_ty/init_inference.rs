@@ -5,15 +5,14 @@ use crate::{
     HirNodeInfo,
     check::errors::{
         body_inference::{BodyInferenceError, TypeError},
-        init_expr,
         init_inference::InitInferenceError,
     },
     hir_def::{
-        expressions::expression::{InitExpr, InitExprKind}, interned::identifier::SpanIdent, pous::{data_type::DataType, pou::PouDecl}, scope::ScopeId
+        expressions::{expression::{InitExpr, InitExprKind}, spec::Spec}, interned::identifier::SpanIdent, pous::{data_type::DataType, pou::PouDecl}, scope::ScopeId
     },
     hir_ty::{
         body_inference::BodyInferenceResult, def_map::FxIndexMap, infer::expr::InferExprCtx,
-        ty2::Type,
+        ty::Type,
     },
 };
 
@@ -37,8 +36,8 @@ pub struct InitExprInferenceResult<'db> {
     pub expr: InitExpr<'db>,
     /// Mapping of init expr to their resolved types
     pub type_of_expr: FxHashMap<InitExpr<'db>, Type<'db>>,
-    /// Mapping of types to their type declarations
-    pub type_definitions: FxHashMap<Type<'db>, DataType<'db>>,
+    /// Mapping of types to their spec declarations
+    pub type_definitions: FxHashMap<Type<'db>, Spec<'db>>,
     /// BodyInference results
     pub body_infer_result: BodyInferenceResult<'db>,
     /// Errors encountered during inference

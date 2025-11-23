@@ -16,9 +16,8 @@ use crate::{
     HirNodeInfo,
     check::{
         check_inheritance::check_inheritance,
-        check_init_expr::check_init_expr,
         check_namespaces::check_duplicate_namespaces,
-        errors::{analysis_error::ToIdeDiagnostic, duplicates::DuplicateError, stmt::StmtError},
+        errors::{analysis_error::ToIdeDiagnostic, duplicates::DuplicateError},
     },
     hir_def::{
         expressions::{
@@ -39,10 +38,7 @@ use crate::{
         semantic_index::{HirNode, SemanticIndex, get_scope, semantic_index},
     },
     hir_ty::{
-        init_expr_resolver::{ResolvedInitExpr, resolve_init_expr},
         name_res::global_pou_index,
-        ty::{Ty, TyKind},
-        ty_var_access_resolver::ResolvedAccess,
     },
     walk::WalkHir,
 };

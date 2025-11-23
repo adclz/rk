@@ -1,5 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
-
+/* 
 use crate::{
     check::errors::{
         analysis_error::AnalysisError,
@@ -10,7 +10,6 @@ use crate::{
         spec::ElementarySpec,
     },
     hir_ty::{
-        array_resolver::resolve_range,
         ty::{Ty, TyKind},
         ty_var_access_resolver::{LookUp},
     },
@@ -144,18 +143,18 @@ pub fn coerce_ty_with_expr<'db>(
         (TyKind::SubRange(subrange), _) => {
             // We do not return an error in case of failure to resolve the range bounds
             // as the error will be reported when checking the subrange type itself
-            let min = match resolve_range(db, subrange.lower(db)) {
+            let min = match subrange.lower(db).as_range(db) {
                 Some(v) => v,
                 None => return Ok(()),
             };
 
-            let max = match resolve_range(db, subrange.upper(db)) {
+            let max = match subrange.upper(db).as_range(db)  {
                 Some(v) => v,
                 None => return Ok(()),
             };
 
             match coerce_ty_with_expr(db, subrange._type(db).to_ty(db), target_expr) {
-                Ok(()) => match resolve_range(db, target_expr) {
+                Ok(()) => match target_expr.as_range(db) {
                     Some(integer) => {
                         if integer >= min && integer <= max {
                             Ok(())
@@ -240,3 +239,4 @@ pub fn coerce_bool_with_expr<'db>(
         _ => Ok(false),
     }
 }
+*/

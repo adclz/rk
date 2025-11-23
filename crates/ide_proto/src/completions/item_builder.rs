@@ -19,7 +19,7 @@ use hir::{
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
-    hir_ty::name_res::resolve_namespace_access,
+    hir_ty::{name_res::resolve_namespace_access, ty::Type},
 };
 
 /// A builder for creating completion items with various options.
@@ -64,7 +64,7 @@ impl<'db> CompletionBuilder {
 
         CompletionItem {
             label: variable_name.to_string(),
-            detail: Some(variable.spec(db).to_ty(db).type_name(db)),
+            detail: Some(Type::new_spec(db, variable.spec(db)).type_name(db)),
             kind: Some(CompletionItemKind::VARIABLE),
             label_details: Some(CompletionItemLabelDetails {
                 detail: Some(

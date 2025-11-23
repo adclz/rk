@@ -2,14 +2,14 @@ use auto_lsp::default::db::BaseDatabase;
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
-    check::errors::{
+    HirNodeInfo, check::errors::{
         analysis_error::ToIdeDiagnostic, visibility::VisibilityError,
     }, hir_def::{
         namespace::NamespaceDecl,
         scope::{ScopeId, ScopeKind},
         semantic_index::{get_scope, semantic_index},
         visibility::Visibility,
-    }, hir_ty::{ty_var_access_resolver::ResolvedAccess, walk::{ResolvedPath, ResolvedPathKind}}, HirNodeInfo
+    }, hir_ty::{infer::ctx::CallSite, ty::Type}
 };
 
 /*
@@ -37,10 +37,11 @@ and its derivations (default).
 
 pub fn check_call_visibility<'db>(
     db: &'db dyn BaseDatabase,
-    call_site: &ResolvedAccess<'db>,
-    target: &ResolvedPath<'db>,
+    call_site: &CallSite<'db>,
+    target: &Type<'db>,
     errors: &mut Vec<IdeDiagnostic>,
 ) {
+    /* 
     // Methods use their declaring POU as scope for visibility checks
     let calling_scope_id = call_site.get_scope_id(db);
     let calling_scope = match get_scope(db, calling_scope_id).kind {
@@ -108,7 +109,7 @@ pub fn check_call_visibility<'db>(
                 }
                 .to_diagnostic(db),
             );
-        }
+        }*/
 }
 
 /// Check if the calling scope is in a POU that derives from the method's POU

@@ -19,7 +19,7 @@ use crate::{
 
 
 /// Returns all Namespaces.
-#[salsa::tracked(returns(ref), no_eq)]
+#[salsa::tracked(returns(ref))]
 pub fn global_namespace_index<'db>(
     db: &'db dyn BaseDatabase,
 ) -> FxHashMap<NamespacePath, Vec<NamespaceDecl<'db>>> {
@@ -36,7 +36,7 @@ pub fn global_namespace_index<'db>(
 }
 
 /// Returns all POUs *globally declared*.
-#[salsa::tracked(returns(ref), no_eq)]
+#[salsa::tracked(returns(ref))]
 pub fn global_pou_index<'db>(db: &'db dyn BaseDatabase) -> FxHashMap<Ident, PouDecl<'db>> {
     db.get_files()
         .iter()

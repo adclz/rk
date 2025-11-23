@@ -9,10 +9,10 @@ use crate::{
         errors::{analysis_error::ToIdeDiagnostic, duplicates::DuplicateError},
     },
     hir_def::{interned::identifier::Ident, pous::variable::VariableDecl},
-    hir_ty::{init_expr_resolver::resolve_init_expr, ty::TyKind},
+    hir_ty::{ty::Type},
 };
 
-impl<'db> Check<'db> for Vec<VariableDecl<'db>> {
+impl<'db> Check<'db> for [VariableDecl<'db>] {
     fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<IdeDiagnostic>) {
         let mut seen: FxHashMap<Ident, VariableDecl<'db>> = FxHashMap::default();
         for variable in self {
@@ -31,15 +31,13 @@ impl<'db> Check<'db> for Vec<VariableDecl<'db>> {
                 }
             }
 
-            if let TyKind::Err(err) = variable.spec(db).to_ty(db).kind(db) {
-                errors.push(err.to_diagnostic(db));
-            }
+            // Check initializer expression
 
-            if let Some(init) = variable.init(db) {
+            if let Some(init_expr) = variable.init(db) {
                 check_init_expr(
                     db,
-                    variable.spec(db).to_ty(db),
-                    *resolve_init_expr(db, variable.spec(db).to_ty(db), *init),
+                    Type::new_spec(db, variable.spec(db)),
+                    *init_expr,
                     errors,
                 );
             }

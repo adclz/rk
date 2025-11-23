@@ -1,7 +1,7 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    hir_def::{
+    AstId, HirNodeInfo, check::errors::body_inference::{BodyInferenceError, TypeError}, hir_def::{
         expressions::{
             expression::{Expr, FuncCall, ParamAssignKind},
             invocation::{Invocation, InvocationKind},
@@ -10,13 +10,9 @@ use crate::{
         pous::pou::Pou,
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
-    },
-    hir_ty::{
-        infer::expr::{InferError, InferExprCtx},
-        inference::{InferenceError, InferenceResult},
-        ty_var_access_resolver::CallSite,
-        ty2::Type,
-    },
+    }, hir_ty::{
+        body_inference::BodyInferenceResult, infer::expr::InferExprCtx, ty::Type
+    }
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -28,6 +24,28 @@ pub enum NestedScope {
 pub struct InferCtx<'db> {
     pub scope: ScopeId<'db>,
     pub nested_scope: NestedScope,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub struct CallSite<'db> {
+    pub scope: ScopeId<'db>,
+    pub id: AstId,
+}
+
+impl<'db> CallSite<'db> {
+    pub fn new(scope: ScopeId<'db>, id: AstId) -> Self {
+        Self { scope, id }
+    }
+}
+
+impl<'db> HirNodeInfo<'db> for CallSite<'db> {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+        self.id
+    }
+
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+        self.scope
+    }
 }
 
 impl<'db> InferCtx<'db> {
@@ -42,7 +60,7 @@ impl<'db> InferCtx<'db> {
         db: &'db dyn BaseDatabase,
         scope: ScopeId<'db>,
         invocation: Invocation<'db>,
-        ctx: &mut InferenceResult<'db>,
+        ctx: &mut BodyInferenceResult<'db>,
     ) {
         match get_scope(db, scope).kind {
             ScopeKind::MethodDecl(m) => {
@@ -74,7 +92,7 @@ impl<'db> InferCtx<'db> {
                                 .insert(invocation, Type::new_pou(db, pou));
                         }
                         _ => {
-                            ctx.errors.push(InferenceError::SuperBodyOnIncompatiblePou {
+                            ctx.errors.push(BodyInferenceError::SuperBodyOnIncompatiblePou {
                                 call_site: CallSite::new(scope, invocation.keyword_id(db)),
                             });
                         }
@@ -86,7 +104,7 @@ impl<'db> InferCtx<'db> {
                                 .insert(invocation, Type::new_pou(db, pou));
                         }
                         _ => {
-                            ctx.errors.push(InferenceError::SuperOnIncompatiblePou {
+                            ctx.errors.push(BodyInferenceError::SuperOnIncompatiblePou {
                                 call_site: CallSite::new(scope, invocation.keyword_id(db)),
                             });
                         }
@@ -97,7 +115,7 @@ impl<'db> InferCtx<'db> {
                                 .insert(invocation, Type::new_pou(db, pou));
                         }
                         _ => {
-                            ctx.errors.push(InferenceError::ThisOnIncompatiblePou {
+                            ctx.errors.push(BodyInferenceError::ThisOnIncompatiblePou {
                                 call_site: CallSite::new(scope, invocation.keyword_id(db)),
                             });
                         }
@@ -112,7 +130,7 @@ impl<'db> InferCtx<'db> {
         db: &'db dyn BaseDatabase,
         scope_typ: Type<'db>,
         func_call: FuncCall<'db>,
-        ctx: &mut InferenceResult<'db>,
+        ctx: &mut BodyInferenceResult<'db>,
     ) -> Type<'db> {
         let typ = scope_typ.walk_begin_path_expr(db, func_call.path(db), ctx);
         if let Some(callable) = typ.as_callable() {
@@ -166,7 +184,7 @@ impl<'db> InferCtx<'db> {
         scope_typ: Type<'db>,
         statements: &'db [Stmt<'db>],
         nested_scope: NestedScope,
-        ctx: &mut InferenceResult<'db>,
+        ctx: &mut BodyInferenceResult<'db>,
     ) {
         let infer_ctx = InferExprCtx::new(self.scope, scope_typ);
 
@@ -301,13 +319,13 @@ impl<'db> InferCtx<'db> {
                 StmtKind::Continue => {
                     if nested_scope != NestedScope::Loop {
                         ctx.errors
-                            .push(InferenceError::ContinueOutsideLoop { stmt: *stmt });
+                            .push(BodyInferenceError::ContinueOutsideLoop { stmt: *stmt });
                     }
                 }
                 StmtKind::Exit => {
                     if nested_scope != NestedScope::Loop {
                         ctx.errors
-                            .push(InferenceError::ExitOutsideLoop { stmt: *stmt });
+                            .push(BodyInferenceError::ExitOutsideLoop { stmt: *stmt });
                     }
                 }
                 StmtKind::Return => {
@@ -325,15 +343,15 @@ impl<'db> InferCtx<'db> {
         target: Type<'db>,
         expr: Expr<'db>,
         infer_ctx: &InferExprCtx<'db>,
-        ctx: &mut InferenceResult<'db>,
+        ctx: &mut BodyInferenceResult<'db>,
     ) {
         let value = infer_ctx.infer_expr(db, expr, ctx);
         if !target.coerce_with(db, value, self.scope) {
             ctx.errors.push(
-                InferError::NotAssignable {
+                TypeError::NotAssignable {
                     target,
                     value,
-                    expr,
+                    expr: expr.into(),
                 }
                 .into(),
             )
@@ -346,18 +364,12 @@ impl<'db> InferCtx<'db> {
         lhs: Type<'db>,
         expr: Expr<'db>,
         infer_ctx: &InferExprCtx<'db>,
-        ctx: &mut InferenceResult<'db>,
+        ctx: &mut BodyInferenceResult<'db>,
     ) {
         let rhs = infer_ctx.infer_expr(db, expr, ctx);
         if !lhs.coerce_with(db, rhs, self.scope) {
-            ctx.errors.push(
-                InferError::NotComparable {
-                    lhs,
-                    rhs,
-                    expr,
-                }
-                .into(),
-            )
+            ctx.errors
+                .push(TypeError::NotComparable { lhs, rhs, expr }.into())
         };
     }
 }

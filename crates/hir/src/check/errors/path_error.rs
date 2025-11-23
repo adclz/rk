@@ -7,7 +7,7 @@ use crate::{
         interned::namespace::SpanNamespaceAccess,
         scope::ScopeKind,
         semantic_index::get_scope, using::Using,
-    }, hir_ty::{ty_var_access_resolver::CallSite, walk::ResolvedPath}, query_string::variables::fuzzy_variables
+    }, hir_ty::{infer::ctx::CallSite}, query_string::variables::fuzzy_variables
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -24,29 +24,6 @@ pub enum AccessError<'db> {
     },
     NoItemInScope {
         access: SpanNamespaceAccess<'db>,
-    },
-    InvalidTypeAccess {
-        access: ResolvedPath<'db>,
-    },
-    UnknownField {
-        ty: ResolvedPath<'db>,
-        expr: PathExpr<'db>,
-    },
-    TypeHasNoField {
-        ty: ResolvedPath<'db>,
-        expr: PathExpr<'db>,
-    },
-    NotAnArray {
-        ty: ResolvedPath<'db>,
-        expr: PathExpr<'db>,
-    },
-    NotAReference {
-        ty: ResolvedPath<'db>,
-        expr: PathExpr<'db>,
-    },
-    UnknownMethod {
-        ty: ResolvedPath<'db>,
-        expr: PathExpr<'db>,
     },
     // OOP
     ThisOnIncompatiblePou {
@@ -80,32 +57,6 @@ impl<'db> DiagnosticDescription<'db> for AccessError<'db> {
             AccessError::NoItemInScope { access } => {
                 format!("no path or item '{}' in scope", access.to_string(db))
             }
-            AccessError::InvalidTypeAccess { access } => {
-                format!("no type found for '{}'", access.decl_name(db))
-            }
-            AccessError::UnknownField { ty, expr } => {
-                format!(
-                    "field '{}' not found in '{}'",
-                    expr.ident(db).text(db),
-                    ty.decl_name(db)
-                )
-            }
-            AccessError::TypeHasNoField { ty, expr } => {
-                format!("type '{}' does not have fields", ty.decl_name(db))
-            }
-            AccessError::NotAReference { ty, expr } => {
-                format!("type '{}' can not be dereferenced", ty.decl_name(db))
-            }
-            AccessError::NotAnArray { ty, expr } => {
-                format!("type '{}' cannot be indexed", ty.decl_name(db))
-            }
-            AccessError::UnknownMethod { ty, expr } => {
-                format!(
-                    "method '{}' not found in '{}'",
-                    expr.ident(db).text(db),
-                    ty.decl_name(db)
-                )
-            }
             // OOP
             AccessError::ThisOnIncompatiblePou { call_site } => {
                 "'THIS' is not valid in this context".to_string()
@@ -136,21 +87,6 @@ impl<'db> DiagnosticDescription<'db> for AccessError<'db> {
                 }
             }
             AccessError::NoItemInScope { access } => {}
-            AccessError::TypeHasNoField { ty, expr } => {
-                ty.diag_with_location(db, diag);
-            }
-            AccessError::UnknownField { ty, expr } => {
-                ty.diag_with_location(db, diag);
-            }
-            AccessError::NotAnArray { ty, expr } => {
-                ty.diag_with_location(db, diag);
-            }
-            AccessError::NotAReference { ty, expr } => {
-                ty.diag_with_location(db, diag);
-            }
-            AccessError::InvalidTypeAccess { access } => {
-                access.diag_with_location(db, diag);
-            },
             _ => {}
         }
     }
@@ -166,12 +102,6 @@ impl<'db> ToIdeDiagnostic<'db> for AccessError<'db> {
                 AccessError::NoBeginLocalItemInScope { expr } => expr.get_span(db),
                 AccessError::NoLocalItemInScope { expr } => expr.get_span(db),
                 AccessError::NoItemInScope { access } => access.get_span(db),
-                AccessError::InvalidTypeAccess { access } => access.expr.get_span(db),
-                AccessError::UnknownField { expr, .. } => expr.get_span(db),
-                AccessError::TypeHasNoField { expr, .. } => expr.get_span(db),
-                AccessError::NotAnArray { expr, .. } => expr.get_span(db),
-                AccessError::NotAReference { expr, .. } => expr.get_span(db),
-                AccessError::UnknownMethod { expr, .. } => expr.get_span(db),
                 AccessError::ThisOnIncompatiblePou { call_site } => call_site.get_span(db),
                 AccessError::SuperOnIncompatiblePou { call_site } => call_site.get_span(db),
                 AccessError::SuperBodyOnIncompatiblePou { call_site } => call_site.get_span(db)

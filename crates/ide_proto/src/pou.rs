@@ -4,7 +4,7 @@ use hir::{
         expressions::spec::{ElementarySpec, SpecKind},
         pous::pou::{Pou, PouDecl},
     },
-    hir_ty::inheritance_solver::MethodRef,
+    hir_ty::{inheritance_solver::MethodRef, ty::Type},
 };
 
 use auto_lsp::{
@@ -69,7 +69,7 @@ impl<'db> ToProtocol<'db> for PouDecl<'db> {
                 Pou::FunctionBlock(_) => "FUNCTION_BLOCK".to_string(),
                 Pou::Function(_) => "FUNCTION".to_string(),
                 Pou::Class(_) => "CLASS".to_string(),
-                Pou::DataType(dt) => dt.spec(db).to_ty(db).type_name(db),
+                Pou::DataType(dt) => Type::new_spec(db, dt.spec(db)).type_name(db),
                 Pou::Interface(_) => "INTERFACE".to_string(),
             }),
             kind: match self.pou(db) {
@@ -210,14 +210,14 @@ impl<'db> ToProtocol<'db> for PouDecl<'db> {
             Pou::FunctionBlock(_) => "FUNCTION_BLOCK".into(),
             Pou::Class(_) => "CLASS".into(),
             Pou::Interface(_) => "INTERFACE".into(),
-            Pou::DataType(dt) => dt.spec(db).to_ty(db).type_name(db),
+            Pou::DataType(dt) => Type::new_spec(db, dt.spec(db)).type_name(db),
         };
 
         let name = self.name(db).text(db);
         let return_type = match self.pou(db) {
             Pou::Function(f) => f
                 .return_type(db)
-                .map(|spec| format!(": {}", spec.to_ty(db).type_name(db)))
+                .map(|spec| format!(": {}", Type::new_spec(db, *spec).type_name(db)))
                 .unwrap_or_default(),
             _ => "".to_string(),
         };

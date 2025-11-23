@@ -7,7 +7,7 @@ use crate::{
     HirNodeInfo,
     builder::interface,
     check::errors::{
-        analysis_error::ToIdeDiagnostic, coerce::TypeMismatch, path_error::AccessError,
+        analysis_error::ToIdeDiagnostic, body_inference::BodyInferenceError, path_error::AccessError
     },
     hir_def::{
         expressions::{
@@ -36,103 +36,17 @@ use crate::{
         flatten::{self, Flatten, PathExprWalkStep},
         infer::{
             ctx::{InferCtx, NestedScope},
-            expr::{InferError, InferExprCtx},
+            expr::InferExprCtx,
         },
         inheritance_solver::MethodRef,
         name_res::{pou_names_res, resolve_namespace_access},
-        ty::Ty,
-        ty_var_access_resolver::CallSite,
-        ty2::Type,
+        ty::Type,
     },
 };
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
-pub enum InferenceError<'db> {
-    NoItemInScope {
-        expr: PathExpr<'db>,
-        scope: ScopeId<'db>,
-    },
-    NoSuchField {
-        expr: PathExpr<'db>,
-        ident: Ident,
-        ty: Type<'db>,
-    },
-    DerefNonRefType {
-        expr: PathExpr<'db>,
-        ty: Type<'db>,
-    },
-    IndexNonArrayType {
-        expr: PathExpr<'db>,
-        ty: Type<'db>,
-    },
-    SuperBodyOnIncompatiblePou {
-        call_site: CallSite<'db>,
-    },
-    SuperOnIncompatiblePou {
-        call_site: CallSite<'db>,
-    },
-    ThisOnIncompatiblePou {
-        call_site: CallSite<'db>,
-    },
-    ContinueOutsideLoop {
-        stmt: Stmt<'db>,
-    },
-    ExitOutsideLoop {
-        stmt: Stmt<'db>,
-    },
-    TypeMismatch(InferError<'db>),
-}
-
-impl<'db> From<InferError<'db>> for InferenceError<'db> {
-    fn from(value: InferError<'db>) -> Self {
-        InferenceError::TypeMismatch(value)
-    }
-}
-
-impl<'db> ToIdeDiagnostic<'db> for InferenceError<'db> {
-    fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
-        match self {
-            Self::SuperBodyOnIncompatiblePou { call_site } => diag()
-                .message("'SUPER()' is not valid in this context".to_string())
-                .range(call_site.get_span(db))
-                .call(),
-            Self::SuperOnIncompatiblePou { call_site } => diag()
-                .message("'SUPER' is not valid in this context".to_string())
-                .range(call_site.get_span(db))
-                .call(),
-            Self::ThisOnIncompatiblePou { call_site } => diag()
-                .message("'THIS' is not valid in this context".to_string())
-                .range(call_site.get_span(db))
-                .call(),
-            Self::ContinueOutsideLoop { stmt } => diag()
-                .message("'CONTINUE' can only be used inside loops".to_string())
-                .range(stmt.get_span(db))
-                .call(),
-            Self::ExitOutsideLoop { stmt } => diag()
-                .message("'EXIT' can only be used inside loops".to_string())
-                .range(stmt.get_span(db))
-                .call(),
-            Self::TypeMismatch(mismatch) => mismatch.to_diagnostic(db),
-            Self::NoItemInScope { expr, scope } => diag()
-                .message(format!("No item found in scope",))
-                .range(expr.get_span(db))
-                .call(),
-            Self::NoSuchField { expr, ident, ty } => diag()
-                .message(format!(
-                    "Type '{}' has no field named '{}'",
-                    ty.full_type_name(db),
-                    ident.text(db)
-                ))
-                .range(expr.get_span(db))
-                .call(),
-            _ => todo!(),
-        }
-    }
-}
-
 #[salsa::tracked(returns(ref))]
-pub fn infer_scope<'db>(db: &'db dyn BaseDatabase, scope: ScopeId<'db>) -> InferenceResult<'db> {
-    let mut result = InferenceResult::new(scope);
+pub fn infer_body_scope<'db>(db: &'db dyn BaseDatabase, scope: ScopeId<'db>) -> BodyInferenceResult<'db> {
+    let mut result = BodyInferenceResult::new(scope);
     let ctx = InferCtx::new(scope);
 
     let (scope_typ, statements) = match get_scope(db, scope).kind {
@@ -151,12 +65,12 @@ pub fn infer_scope<'db>(db: &'db dyn BaseDatabase, scope: ScopeId<'db>) -> Infer
 }
 
 #[derive(Debug, PartialEq, Eq, salsa::Update)]
-pub struct InferenceResult<'db> {
+pub struct BodyInferenceResult<'db> {
     // Scope where this InferenceResult was emitted
     pub scope: ScopeId<'db>,
 
     // Mapping from path exression to variables
-    pub variable_of_path_expr: FxHashMap<PathExpr<'db>, VariableDecl<'db>>,
+    pub variable_of_type: FxHashMap<Type<'db>, VariableDecl<'db>>,
 
     // Mapping from parameter assignments to variables
     pub variable_of_param: FxHashMap<ParamAssign<'db>, VariableDecl<'db>>,
@@ -173,14 +87,14 @@ pub struct InferenceResult<'db> {
     // Mapping from path expressions to their adjustment sequences.
     pub path_expr_adjustments: FxHashMap<PathExpr<'db>, Vec<Adjustment<'db>>>,
 
-    pub errors: Vec<InferenceError<'db>>,
+    pub errors: Vec<BodyInferenceError<'db>>,
 }
 
-impl<'db> InferenceResult<'db> {
+impl<'db> BodyInferenceResult<'db> {
     pub fn new(scope: ScopeId<'db>) -> Self {
-        InferenceResult {
+        Self {
             scope,
-            variable_of_path_expr: FxHashMap::default(),
+            variable_of_type: FxHashMap::default(),
             variable_of_param: FxHashMap::default(),
             type_of_invocation: FxHashMap::default(),
             type_of_expr: FxHashMap::default(),
@@ -242,26 +156,12 @@ impl<'db> InferenceResult<'db> {
         }
     }
 
-    pub fn variable_for_path_expr(&self, expr: PathExpr<'db>) -> Option<VariableDecl<'db>> {
-        self.variable_of_path_expr.get(&expr).copied()
-    }
-
     pub fn variable_for_param(&self, param: ParamAssign<'db>) -> Option<VariableDecl<'db>> {
         self.variable_of_param.get(&param).copied()
     }
 
-    pub fn variable_for_var_access(
-        &self,
-        db: &'db dyn BaseDatabase,
-        var_access: VariableAccess<'db>,
-    ) -> Option<VariableDecl<'db>> {
-        match var_access.kind(db) {
-            VariableAccessKind::Direct { .. } => todo!(),
-            VariableAccessKind::Symbolic(path_expr) => match path_expr.expr(db) {
-                Some(expr) => self.variable_for_path_expr(expr),
-                None => None,
-            },
-        }
+    pub fn variable_for_type(&self, typ: Type<'db>) -> Option<VariableDecl<'db>> {
+        self.variable_of_type.get(&typ).copied()
     }
 
     pub fn path_expr_adjustments(&self, expr: PathExpr<'db>) -> Option<&[Adjustment<'db>]> {

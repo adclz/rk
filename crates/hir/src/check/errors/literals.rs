@@ -1,17 +1,4 @@
-use crate::{hir_def::expressions::expression::Expr, hir_ty::ty::Ty};
-
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
-pub struct LiteralError<'db> {
-    pub ty: Ty<'db>,
-    pub expr: Expr<'db>,
-    pub kind: InferLiteralError,
-}
-
-impl<'db> LiteralError<'db> {
-    pub fn new(ty: Ty<'db>, expr: Expr<'db>, kind: InferLiteralError) -> Self {
-        Self { ty, expr, kind }
-    }
-}
+use crate::{hir_def::expressions::expression::Expr};
 
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

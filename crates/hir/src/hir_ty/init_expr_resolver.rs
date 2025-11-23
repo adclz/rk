@@ -1,16 +1,5 @@
-use crate::{
-    check::errors::init_expr::InitExprError, hir_def::{
-        expressions::expression::{Expr},
-        interned::identifier::SpanIdent,
-        scope::ScopeId,
-    }, hir_ty::{
-        flatten::{Flatten, UnResolvedInitExpr, UnResolvedInitExprKind}, ty::{Ty, TyKind}, ty_var_access_resolver::{CallSite, ResolvedAccess}, walk::{Adjustement, ResolvedPath, ResolvedPathKind, ResolvedPathResult}
-    }, AstId, HirNodeInfo
-};
-use auto_lsp::default::db::BaseDatabase;
-
 use crate::hir_def::expressions::expression::InitExpr;
-
+/* 
 #[salsa::tracked(returns(ref))]
 pub fn resolve_init_expr<'db>(
     db: &'db dyn BaseDatabase,
@@ -176,3 +165,4 @@ impl<'db> HirNodeInfo<'db> for ResolvedInitExpr<'db> {
         self.expr(db).scope_id(db)
     }
 }
+*/

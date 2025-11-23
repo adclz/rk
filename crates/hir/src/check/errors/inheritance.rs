@@ -4,7 +4,6 @@ use ide_diagnostic::{IdeDiagnostic, Related, diag};
 use crate::{
     check::errors::{
         analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic},
-        coerce::TypeMismatch,
     }, hir_def::{
         expressions::{expression::PathExpr, invocation::Invocation}, interned::namespace::SpanNamespaceAccess, pous::{
             pou::PouDecl,
@@ -58,10 +57,10 @@ pub enum MethodError<'db> {
         m2: MethodRef<'db>,
         got: usize,
     },
-    SignatureParametersTypeMismatch {
-        err: TypeMismatch<'db>,
+    /*SignatureParametersTypeMismatch {
+        err: Type<'db>,
         param: VariableDecl<'db>,
-    },
+    },*/
 }
 
 impl<'db> From<MethodError<'db>> for AnalysisError<'db> {
@@ -262,7 +261,7 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                 ));
                 diag
             }
-            Self::SignatureParametersTypeMismatch { err, param } => {
+            /*Self::SignatureParametersTypeMismatch { err, param } => {
                 let mut diag = diag()
                     .message(format!(
                         "invalid parameter in method signature: {}",
@@ -276,7 +275,7 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                 err.note(db, &mut diag);
 
                 diag
-            }
+            }*/
         }
     }
 }

@@ -14,9 +14,7 @@ use crate::{
         expressions::spec::{Struct, StructElement},
         interned::identifier::Ident,
     },
-    hir_ty::{
-        init_expr_resolver::resolve_init_expr,
-        ty::TyKind,
+    hir_ty::{ty::Type,
     },
 };
 
@@ -38,16 +36,13 @@ impl<'db> DataTypeCheck<'db> for Struct<'db> {
                     seen.insert(*field.name(db), *field);
                 }
             }
-
-            if let TyKind::Err(err) = field.spec(db).to_ty(db).kind(db) {
-                errors.push(err.to_diagnostic(db));
-            }
+            //todo: check field type
 
             if let Some(init_expr) = field.init(db) {
                 check_init_expr(
                     db,
-                    field.spec(db).to_ty(db),
-                    *resolve_init_expr(db, field.spec(db).to_ty(db), init_expr),
+                    Type::new_spec(db, field.spec(db)),
+                    init_expr,
                     errors,
                 );
             }

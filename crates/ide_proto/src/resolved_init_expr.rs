@@ -5,14 +5,12 @@ use auto_lsp::{
     },
 };
 use hir::{
-    hir_ty::{
-        init_expr_resolver::{ResolvedInitExpr, ResolvedInitExprKind}, ty::Ty
-    }, HirNodeInfo, TypeInfo
+    HirNodeInfo, TypeInfo, hir_def::expressions::expression::InitExpr, hir_ty::ty::Type
 };
 
 use crate::ToProtocol;
 
-impl<'db> ToProtocol<'db> for ResolvedInitExpr<'db> {
+impl<'db> ToProtocol<'db> for InitExpr<'db> {
     fn inlay_hint(&'db self, db: &'db dyn BaseDatabase) -> Option<InlayHint> {
         Some(InlayHint {
             position: get_expr_inlay_hint_position(db, self)?,
@@ -30,22 +28,14 @@ impl<'db> ToProtocol<'db> for ResolvedInitExpr<'db> {
     }
 
     fn declaration(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDeclarationResponse> {
-        match self.kind(db) {
-            ResolvedInitExprKind::ConstantExpr(expr) => expr.declaration(db),
-            ResolvedInitExprKind::StructElement { field, value } => field.declaration(db),
-            _ => None,
-        }
+        None
     }
 
     fn definition(
         &'db self,
         db: &'db dyn BaseDatabase,
     ) -> Option<auto_lsp::lsp_types::GotoDefinitionResponse> {
-        match self.kind(db) {
-            ResolvedInitExprKind::ConstantExpr(expr) => expr.definition(db),
-            ResolvedInitExprKind::StructElement { field, value } => field.definition(db),
-            _ => None,
-        }
+        None
     }
 
     fn hover(
@@ -53,30 +43,20 @@ impl<'db> ToProtocol<'db> for ResolvedInitExpr<'db> {
         db: &'db dyn BaseDatabase,
         offset: usize,
     ) -> Option<auto_lsp::lsp_types::Hover> {
-        match self.kind(db) {
-            ResolvedInitExprKind::ConstantExpr(expr) => expr.hover(db, offset),
-            ResolvedInitExprKind::StructElement { field, .. } => field.hover(db, offset),
-            _ => None,
-        }
+        None
     }
 }
 
 pub fn get_expr_inlay_hint_position(
     db: &dyn BaseDatabase,
-    param: &ResolvedInitExpr,
+    param: &InitExpr,
 ) -> Option<Position> {
-    match param.kind(db) {
-        ResolvedInitExprKind::StructElement { field, .. } => Some(field.get_span(db).lsp().end),
-        _ => None,
-    }
+    None
 }
 
 pub fn get_expr_ty<'db>(
     db: &'db dyn BaseDatabase,
-    param: &'db ResolvedInitExpr,
-) -> Option<Ty<'db>> {
-    match param.kind(db) {
-        ResolvedInitExprKind::StructElement { field, .. } => field.try_to_ty(db).ok(),
-        _ => None,
-    }
+    param: &'db InitExpr,
+) -> Option<Type<'db>> {
+    None
 }

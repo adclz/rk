@@ -4,9 +4,9 @@ use ide_diagnostic::IdeDiagnostic;
 use crate::{
     check::errors::{
         analysis_error::DiagnosticDescription, literals::InferLiteralError, path_error::AccessError,
-    }, hir_def::{expressions::expression::Expr, interned::identifier::SpanIdent}, hir_ty::ty::Ty, TypeInfo
+    }, hir_def::{expressions::expression::Expr, interned::identifier::SpanIdent}, TypeInfo
 };
-
+/* 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct TypeMismatch<'db> {
     pub ty1: Ty<'db>,
@@ -319,3 +319,4 @@ impl<'db> DiagnosticDescription<'db> for TypeMismatch<'db> {
         );
     }
 }
+*/
