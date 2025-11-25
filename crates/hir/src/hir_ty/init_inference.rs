@@ -11,8 +11,7 @@ use crate::{
         expressions::{expression::{InitExpr, InitExprKind}, spec::Spec}, interned::identifier::SpanIdent, pous::{data_type::DataType, pou::PouDecl}, scope::ScopeId
     },
     hir_ty::{
-        body_inference::BodyInferenceResult, def_map::FxIndexMap, infer::expr::InferExprCtx,
-        ty::Type,
+        body_inference::BodyInferenceResult, def_map::FxIndexMap, infer::expr::InferExprCtx, resolver::Resolver, ty::Type
     },
 };
 
@@ -57,7 +56,7 @@ impl<'db> InitExprInferenceResult<'db> {
     }
 
     pub fn resolve_init_expr(&mut self, db: &'db dyn BaseDatabase, typ: Type<'db>) {
-        let map = self.expr.flatten_(db);
+        let map = self.expr.flatten(db);
         self.resolve_expr(db, self.expr, typ, &map);
     }
 
@@ -103,7 +102,7 @@ impl<'db> InitExprInferenceResult<'db> {
             }
 
             InitExprKind::ConstantExpr(e) => {
-                let inferred = InferExprCtx::new(self.scope, expected).infer_expr(
+                let inferred = InferExprCtx::new(self.scope, Resolver::new(Some(expected))).infer_expr(
                     db,
                     e,
                     &mut self.body_infer_result,
@@ -134,7 +133,8 @@ pub enum InitExprWalkStep<'db> {
 
 #[salsa::tracked]
 impl<'db> InitExpr<'db> {
-    pub fn flatten_(
+    #[salsa::tracked(returns(ref))]
+    pub fn flatten(
         self,
         db: &'db dyn BaseDatabase,
     ) -> FxIndexMap<InitExpr<'db>, InitExprWalkStep<'db>> {

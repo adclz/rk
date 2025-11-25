@@ -7,19 +7,20 @@ use crate::{
     HirNodeInfo,
     builder::interface,
     check::errors::{
-        analysis_error::ToIdeDiagnostic, body_inference::BodyInferenceError, path_error::AccessError
+        analysis_error::ToIdeDiagnostic, body_inference::BodyInferenceError,
+        path_error::AccessError,
     },
     hir_def::{
         expressions::{
             expression::{
                 BeginPathExpr, Expr, ExprKind, FuncCall, InitExpr, ParamAssign, ParamAssignKind,
-                PathExpr, PrimaryExpr, VariableAccess, VariableAccessKind,
+                PathExpr, PathExprKind, PrimaryExpr, VarAccess, VariableAccess, VariableAccessKind,
             },
             invocation::{self, Invocation, InvocationKind},
             spec::{Array, ElementarySpec, Enum, Spec, SpecKind, Struct, StructElement, SubRange},
             statement::{CaseKind, Stmt, StmtKind},
         },
-        interned::identifier::Ident,
+        interned::{identifier::{Ident, SpanIdent}, namespace::{NamespaceAccess, SpanNamespacePath}},
         pous::{
             class::{Class, MethodDecl},
             function::Function,
@@ -32,23 +33,21 @@ use crate::{
         semantic_index::{HirNode, get_scope},
     },
     hir_ty::{
-        def_map::LocalDefMap,
-        flatten::{self, Flatten, PathExprWalkStep},
-        infer::{
-            ctx::{InferCtx, NestedScope},
-            expr::InferExprCtx,
-        },
-        inheritance_solver::MethodRef,
-        name_res::{pou_names_res, resolve_namespace_access},
+        infer::ctx::{InferCtx, NestedScope},
+        resolver::Resolver,
         ty::Type,
     },
 };
 
 #[salsa::tracked(returns(ref))]
-pub fn infer_body_scope<'db>(db: &'db dyn BaseDatabase, scope: ScopeId<'db>) -> BodyInferenceResult<'db> {
+pub fn infer_body_scope<'db>(
+    db: &'db dyn BaseDatabase,
+    scope: ScopeId<'db>,
+) -> BodyInferenceResult<'db> {
     let mut result = BodyInferenceResult::new(scope);
     let ctx = InferCtx::new(scope);
 
+    // Only Scopes with bodies can have statements
     let (scope_typ, statements) = match get_scope(db, scope).kind {
         ScopeKind::Pou(pou) => match pou.pou(db) {
             Pou::Function(f) => (Type::Function(*f), f.statements(db)),
@@ -59,7 +58,13 @@ pub fn infer_body_scope<'db>(db: &'db dyn BaseDatabase, scope: ScopeId<'db>) -> 
         _ => return result,
     };
 
-    ctx.resolve_statements(db, scope_typ, statements, NestedScope::None, &mut result);
+    ctx.resolve_statements(
+        db,
+        Resolver::new(Some(scope_typ)),
+        statements,
+        NestedScope::None,
+        &mut result,
+    );
 
     result
 }
@@ -87,6 +92,7 @@ pub struct BodyInferenceResult<'db> {
     // Mapping from path expressions to their adjustment sequences.
     pub path_expr_adjustments: FxHashMap<PathExpr<'db>, Vec<Adjustment<'db>>>,
 
+    // Errors encountered during inference
     pub errors: Vec<BodyInferenceError<'db>>,
 }
 
@@ -202,5 +208,102 @@ impl<'db> Adjustment<'db> {
             kind: Adjust::Index,
             target: ty,
         }
+    }
+}
+
+/// Flattened representation of a path expression.
+/// Each step in the path is represented as a [`PathExprWalkStep`].
+///
+/// This is later used by type resolution to walk trough a path expression step by step.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, salsa::Update)]
+pub enum PathExprWalkStep<'db> {
+    Field {
+        ident: SpanIdent<'db>,
+        expr: PathExpr<'db>,
+    }, // By name
+    Index {
+        expr: PathExpr<'db>,
+    }, // By index
+    Deref {
+        target: SpanIdent<'db>,
+        expr: PathExpr<'db>,
+    }, // For pointers
+}
+
+impl PathExprWalkStep<'_> {
+    pub fn get_expr(&self) -> &PathExpr<'_> {
+        match self {
+            PathExprWalkStep::Field { expr, .. } => expr,
+            PathExprWalkStep::Index { expr } => expr,
+            PathExprWalkStep::Deref { expr, .. } => expr,
+        }
+    }
+}
+
+#[salsa::tracked]
+impl<'db> PathExpr<'db> {
+    #[salsa::tracked(returns(ref))]
+    pub fn flatten(self, db: &'db dyn BaseDatabase) -> Vec<PathExprWalkStep<'db>> {
+        let mut result = Vec::new();
+
+        match self.expr(db) {
+            PathExprKind::Field(field_expr) => {
+                result.extend(field_expr.path.flatten(db).iter().cloned());
+                match &field_expr.var {
+                    VarAccess::Simple(simple) => result.push(PathExprWalkStep::Field {
+                        expr: self,
+                        ident: *simple,
+                    }),
+                    VarAccess::Deref(target) => result.push(PathExprWalkStep::Deref {
+                        expr: self,
+                        target: *target,
+                    }),
+                }
+            }
+            PathExprKind::Index(index_expr) => {
+                result.extend(index_expr.path.flatten(db).iter().cloned());
+                result.push(PathExprWalkStep::Index { expr: self });
+            }
+            PathExprKind::VarAccess(var_access) => match var_access {
+                VarAccess::Simple(simple) => result.push(PathExprWalkStep::Field {
+                    expr: self,
+                    ident: simple,
+                }),
+                VarAccess::Deref(target) => {
+                    result.push(PathExprWalkStep::Deref { expr: self, target })
+                }
+            },
+        }
+        result
+    }
+
+    #[salsa::tracked(returns(ref))]
+    pub fn to_namespace_access(
+        self,
+        db: &'db dyn BaseDatabase,
+    ) -> Option<(NamespaceAccess<'db>, Ident)> {
+        let flatten = self.flatten(db);
+
+        // Collect FIELD.FIELD.FIELD prefix
+        let mut frags = Vec::new();
+
+        for step in flatten.iter() {
+            match step {
+                PathExprWalkStep::Field { ident, .. } => frags.push(*ident),
+                _ => break,
+            }
+        }
+
+        if frags.is_empty() {
+            return None;
+        }
+
+        let first = frags.remove(0);
+
+        let scope = self.scope_id(db);
+        let path = SpanNamespacePath::from((db, &frags, scope));
+        let access = NamespaceAccess::new(db, Some(path), first);
+
+        Some((access, *first)) // returning `first` is optional
     }
 }

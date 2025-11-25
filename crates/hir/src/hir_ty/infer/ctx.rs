@@ -11,7 +11,7 @@ use crate::{
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     }, hir_ty::{
-        body_inference::BodyInferenceResult, infer::expr::InferExprCtx, ty::Type
+        body_inference::BodyInferenceResult, infer::expr::InferExprCtx, resolver::Resolver, ty::Type
     }
 };
 
@@ -128,11 +128,11 @@ impl<'db> InferCtx<'db> {
 
     pub fn resolve_func_call(
         db: &'db dyn BaseDatabase,
-        scope_typ: Type<'db>,
+        resolver: Resolver<'db>,
         func_call: FuncCall<'db>,
         ctx: &mut BodyInferenceResult<'db>,
     ) -> Type<'db> {
-        let typ = scope_typ.walk_begin_path_expr(db, func_call.path(db), ctx);
+        let typ = resolver.resolve_begin_path_expr(db, func_call.path(db), ctx);
         if let Some(callable) = typ.as_callable() {
             let mut formal_idx = 0;
             for parameter in func_call.params(db) {
@@ -163,7 +163,7 @@ impl<'db> InferCtx<'db> {
                         variable,
                     } => {
                         let var = callable.def_map(db).local_variables.get(&param.ident);
-                        let ty = typ.walk_variable_access(db, variable, ctx);
+                        let ty = resolver.resolve_variable_access(db, variable, ctx);
 
                         if let Some(var) = var {
                             ctx.variable_of_param.insert(parameter, *var);
@@ -181,22 +181,22 @@ impl<'db> InferCtx<'db> {
     pub fn resolve_statements(
         &self,
         db: &'db dyn BaseDatabase,
-        scope_typ: Type<'db>,
+        resolver: Resolver<'db>,
         statements: &'db [Stmt<'db>],
         nested_scope: NestedScope,
         ctx: &mut BodyInferenceResult<'db>,
     ) {
-        let infer_ctx = InferExprCtx::new(self.scope, scope_typ);
+        let infer_ctx = InferExprCtx::new(self.scope, resolver);
 
         for stmt in statements.iter() {
             match stmt.stmt(db) {
                 StmtKind::EmptyPathExpression(expr) => {
-                    let _ = scope_typ.walk_begin_path_expr(db, *expr, ctx);
+                    let _ = resolver.resolve_begin_path_expr(db, *expr, ctx);
                 }
                 StmtKind::Assignment { var, target } => {
                     self.check_assign(
                         db,
-                        scope_typ.walk_variable_access(db, *var, ctx),
+                        resolver.resolve_variable_access(db, *var, ctx),
                         *target,
                         &infer_ctx,
                         ctx,
@@ -207,7 +207,7 @@ impl<'db> InferCtx<'db> {
                     // fixme: assignment attempts should only be REF_TO
                     self.check_assign(
                         db,
-                        scope_typ.walk_variable_access(db, *var, ctx),
+                        resolver.resolve_variable_access(db, *var, ctx),
                         *target,
                         &infer_ctx,
                         ctx,
@@ -223,19 +223,19 @@ impl<'db> InferCtx<'db> {
 
                     // Analyze THEN block
                     if let Some(then) = then.as_ref() {
-                        self.resolve_statements(db, scope_typ, then, NestedScope::None, ctx);
+                        self.resolve_statements(db, resolver, then, NestedScope::None, ctx);
                     }
 
                     // Analyze ELSE IF blocks
                     for (condition, stmt) in else_if {
                         self.check_assign(db, Type::new_bool(), *condition, &infer_ctx, ctx);
 
-                        self.resolve_statements(db, scope_typ, stmt, NestedScope::None, ctx);
+                        self.resolve_statements(db, resolver, stmt, NestedScope::None, ctx);
                     }
 
                     // Analyze ELSE block
                     if let Some(else_) = else_.as_ref() {
-                        self.resolve_statements(db, scope_typ, else_, NestedScope::None, ctx);
+                        self.resolve_statements(db, resolver, else_, NestedScope::None, ctx);
                     }
                 }
                 StmtKind::For {
@@ -247,7 +247,7 @@ impl<'db> InferCtx<'db> {
                 } => {
                     self.check_assign(
                         db,
-                        scope_typ.walk_variable_access(db, *control_variable, ctx),
+                        resolver.resolve_variable_access(db, *control_variable, ctx),
                         *start,
                         &infer_ctx,
                         ctx,
@@ -255,7 +255,7 @@ impl<'db> InferCtx<'db> {
 
                     self.check_assign(
                         db,
-                        scope_typ.walk_variable_access(db, *control_variable, ctx),
+                        resolver.resolve_variable_access(db, *control_variable, ctx),
                         *end,
                         &infer_ctx,
                         ctx,
@@ -264,27 +264,27 @@ impl<'db> InferCtx<'db> {
                     if let Some(step) = step {
                         self.check_assign(
                             db,
-                            scope_typ.walk_variable_access(db, *control_variable, ctx),
+                            resolver.resolve_variable_access(db, *control_variable, ctx),
                             *step,
                             &infer_ctx,
                             ctx,
                         );
                     }
 
-                    self.resolve_statements(db, scope_typ, body, NestedScope::Loop, ctx);
+                    self.resolve_statements(db, resolver, body, NestedScope::Loop, ctx);
                 }
                 StmtKind::While { condition, body } => {
                     self.check_assign(db, Type::new_bool(), *condition, &infer_ctx, ctx);
 
-                    self.resolve_statements(db, scope_typ, body, NestedScope::Loop, ctx);
+                    self.resolve_statements(db, resolver, body, NestedScope::Loop, ctx);
                 }
                 StmtKind::Repeat { condition, body } => {
                     self.check_assign(db, Type::new_bool(), *condition, &infer_ctx, ctx);
 
-                    self.resolve_statements(db, scope_typ, body, NestedScope::Loop, ctx);
+                    self.resolve_statements(db, resolver, body, NestedScope::Loop, ctx);
                 }
                 StmtKind::FuncCall(f) => {
-                    let typ = Self::resolve_func_call(db, scope_typ, *f, ctx);
+                    let typ = Self::resolve_func_call(db, resolver, *f, ctx);
                     if typ.with_return_type(db).is_some() {
                         // unused return type of function call
                     }
@@ -309,11 +309,11 @@ impl<'db> InferCtx<'db> {
                             }
                         }
 
-                        self.resolve_statements(db, scope_typ, stmts, NestedScope::None, ctx);
+                        self.resolve_statements(db, resolver, stmts, NestedScope::None, ctx);
                     }
 
                     if let Some(else_) = else_.as_ref() {
-                        self.resolve_statements(db, scope_typ, else_, NestedScope::None, ctx);
+                        self.resolve_statements(db, resolver, else_, NestedScope::None, ctx);
                     }
                 }
                 StmtKind::Continue => {

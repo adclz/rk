@@ -16,28 +16,26 @@ use crate::{
         scope::{Scope, ScopeId},
     },
     hir_ty::{
-        infer::ctx::InferCtx,
-        body_inference::BodyInferenceResult,
-        ty::Type,
+        body_inference::BodyInferenceResult, infer::ctx::InferCtx, resolver::Resolver, ty::Type
     },
 };
 pub struct InferExprCtx<'db> {
     /// Current scope
     pub scope: ScopeId<'db>,
     /// Current scope type (POu with body, method, etc.)
-    pub scope_typ: Type<'db>,
+    pub resolver: Resolver<'db>
 }
 
 impl<'db> InferExprCtx<'db> {
-    pub fn new(scope: ScopeId<'db>, scope_typ: Type<'db>) -> Self {
-        Self { scope, scope_typ }
+    pub fn new(scope: ScopeId<'db>, resolver: Resolver<'db>) -> Self {
+        Self { scope, resolver }
     }
 
     pub fn infer_expr(
         &self,
         db: &'db dyn BaseDatabase,
         expr: Expr<'db>,
-        infer_result: &mut BodyInferenceResult<'db>,
+        errors: &mut BodyInferenceResult<'db>,
     ) -> Type<'db> {
         match expr.expr(db) {
             ExprKind::AddOperator {
@@ -45,10 +43,10 @@ impl<'db> InferExprCtx<'db> {
                 operator,
                 right,
             } => {
-                let lhs = self.infer_expr(db, *left, infer_result);
-                let rhs = self.infer_expr(db, *right, infer_result);
+                let lhs = self.infer_expr(db, *left, errors);
+                let rhs = self.infer_expr(db, *right, errors);
                 if lhs.coerce_with(db, rhs, self.scope) == false {
-                    infer_result
+                    errors
                         .errors
                         .push(TypeError::NotAddable { lhs, operator: *operator, rhs, expr }.into());
                 }
@@ -59,15 +57,15 @@ impl<'db> InferExprCtx<'db> {
                 operator,
                 right,
             } => {
-                let lhs = self.infer_expr(db, *left, infer_result);
+                let lhs = self.infer_expr(db, *left, errors);
                 if lhs.coerce_with(db, Type::new_bool(), self.scope) == false {
-                    infer_result
+                    errors
                         .errors
                         .push(TypeError::NotABoolean { typ: lhs, expr }.into());
                 }
-                let rhs = self.infer_expr(db, *right, infer_result);
+                let rhs = self.infer_expr(db, *right, errors);
                 if rhs.coerce_with(db, Type::new_bool(), self.scope) == false {
-                    infer_result
+                    errors
                         .errors
                         .push(TypeError::NotABoolean { typ: lhs, expr }.into());
                 }
@@ -78,10 +76,10 @@ impl<'db> InferExprCtx<'db> {
                 operator,
                 right,
             } => {
-                let lhs = self.infer_expr(db, *left, infer_result);
-                let rhs = self.infer_expr(db, *right, infer_result);
+                let lhs = self.infer_expr(db, *left, errors);
+                let rhs = self.infer_expr(db, *right, errors);
                 if lhs.coerce_with(db, rhs, self.scope) == false {
-                    infer_result
+                    errors
                         .errors
                         .push(TypeError::NotComparable { lhs, rhs, expr }.into());
                 }
@@ -92,21 +90,21 @@ impl<'db> InferExprCtx<'db> {
                 operator,
                 right,
             } => {
-                let lhs = self.infer_expr(db, *left, infer_result);
-                let rhs = self.infer_expr(db, *right, infer_result);
+                let lhs = self.infer_expr(db, *left, errors);
+                let rhs = self.infer_expr(db, *right, errors);
                 if lhs.coerce_with(db, rhs, self.scope) == false {
-                    infer_result
+                    errors
                         .errors
                         .push(TypeError::NotMultiplicable { lhs, operator: *operator, rhs, expr }.into());
                 }
                 lhs
             }
             ExprKind::PowerOperator { left, right } => {
-                let lhs = self.infer_expr(db, *left, infer_result);
-                let rhs = self.infer_expr(db, *right, infer_result);
+                let lhs = self.infer_expr(db, *left, errors);
+                let rhs = self.infer_expr(db, *right, errors);
 
                 if lhs.coerce_with(db, rhs, self.scope) == false {
-                    infer_result
+                    errors
                         .errors
                         .push(TypeError::NotComparable { lhs, rhs, expr }.into());
                 }
@@ -114,9 +112,9 @@ impl<'db> InferExprCtx<'db> {
             }
             ExprKind::UnaryOperator { expr, operator } => match operator {
                 UnaryOperatorKind::Not => {
-                    let not_expr = self.infer_expr(db, *expr, infer_result);
+                    let not_expr = self.infer_expr(db, *expr, errors);
                     if !not_expr.is_boolean() {
-                        infer_result.errors.push(
+                        errors.errors.push(
                             TypeError::NotABoolean {
                                 typ: not_expr,
                                 expr: *expr,
@@ -126,9 +124,9 @@ impl<'db> InferExprCtx<'db> {
                     }
                     Type::new_bool()
                 }
-                _ => self.infer_expr(db, *expr, infer_result),
+                _ => self.infer_expr(db, *expr, errors),
             },
-            ExprKind::PrimaryExpr(primary) => self.infer_primary(db, expr, primary, infer_result),
+            ExprKind::PrimaryExpr(primary) => self.infer_primary(db, expr, primary, errors),
         }
     }
 
@@ -142,13 +140,13 @@ impl<'db> InferExprCtx<'db> {
         match to {
             PrimaryExpr::Literal(prim) => (*prim).into(),
             PrimaryExpr::VariableAccess(v) => {
-                self.scope_typ.walk_variable_access(db, *v, infer_result)
+                self.resolver.resolve_variable_access(db, *v, infer_result)
             }
             PrimaryExpr::FuncCall(call) => {
-                InferCtx::resolve_func_call(db, self.scope_typ, *call, infer_result)
+                InferCtx::resolve_func_call(db, self.resolver, *call, infer_result)
             }
             PrimaryExpr::EnumValue { name, variant } => {
-                match self.scope_typ.walk_begin_path_expr(db, *name, infer_result) {
+                match self.resolver.resolve_begin_path_expr(db, *name, infer_result) {
                     Type::Enum(enm) => enm
                         .variants(db)
                         .iter()
@@ -160,8 +158,8 @@ impl<'db> InferExprCtx<'db> {
             }
             PrimaryExpr::RefValue { value } => match value {
                 RefValue::Address(adress) => {
-                    self.scope_typ
-                        .walk_begin_path_expr(db, *adress, infer_result)
+                    self.resolver
+                        .resolve_begin_path_expr(db, *adress, infer_result)
                 }
                 RefValue::Null => Type::Null,
             },

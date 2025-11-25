@@ -1,11 +1,9 @@
 pub mod inheritance_solver;
-pub mod init_expr_resolver;
-pub mod literals;
 pub mod name_res;
-pub mod flatten;
 pub mod def_map;
 pub mod body_inference;
 pub mod display;
 pub mod ty;
 pub mod infer;
 pub mod init_inference;
+pub mod resolver;
