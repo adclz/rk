@@ -227,7 +227,7 @@ impl<'db> Type<'db> {
 
                         // Variables
                         if let Some(var) = def_map.global_variables.get(&ident.ident) {
-                            result_ty = Type::new_spec(db, var.spec(db));
+                            result_ty = Type::new_var(db, *var);
                             ctx.variable_of_type.insert(result_ty, *var);
                         }
                         // Methods
@@ -335,7 +335,7 @@ impl<'db> Type<'db> {
 
                         // Variables
                         if let Some(var) = def_map.global_variables.get(&ident.ident) {
-                            result_ty = Type::new_spec(db, var.spec(db));
+                            result_ty = Type::new_var(db, *var);
                         } else {
                             ctx.errors.push(InitInferenceError::NoSuchField {
                                 expr: expr,

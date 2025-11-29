@@ -16,11 +16,7 @@ use crate::{
         },
         interned::identifier::{Ident, SpanIdent},
         pous::{
-            class::{Class, MethodDecl},
-            function::Function,
-            function_block::FunctionBlock,
-            interface::{Interface, MethodPrototype},
-            pou::{Pou, PouDecl},
+            class::{Class, MethodDecl}, data_type::DataType, function::Function, function_block::FunctionBlock, interface::{Interface, MethodPrototype}, pou::{Pou, PouDecl}, variable::VariableDecl
         },
         scope::{Scope, ScopeId, ScopeKind},
     },
@@ -33,6 +29,13 @@ use crate::{
         name_res::{pou_names_res, resolve_namespace_access},
     },
 };
+
+/// Represents the location where a type is defined
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum TypeLocId<'db> {
+    Spec(Spec<'db>),
+    Pou(PouDecl<'db>),    
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
 pub enum Type<'db> {
@@ -53,8 +56,10 @@ pub enum Type<'db> {
     FunctionBlock(FunctionBlock<'db>),
     Class(Class<'db>),
     Interface(Interface<'db>),
+    Type(DataType<'db>),
     // Methods
     MethodDecl(MethodRef<'db>),
+    Variable(VariableDecl<'db>),
     Infer(InferType),
     Never,
 }
@@ -149,6 +154,20 @@ impl<'db> Type<'db> {
         Type::Elementary(ElementarySpec::Bool)
     }
 
+    pub fn new_pou(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Self {
+        match pou.pou(db) {
+            Pou::Class(cl) => Type::Class(*cl),
+            Pou::Function(f) => Type::Function(*f),
+            Pou::FunctionBlock(f) => Type::FunctionBlock(*f),
+            Pou::Interface(f) => Type::Interface(*f),
+            Pou::DataType(dt) => Type::Type(*dt),
+        }
+    }
+
+    pub fn new_var(db: &'db dyn BaseDatabase, var: VariableDecl<'db>) -> Self {
+        Type::Variable(var)
+    }
+
     #[salsa::tracked]
     pub fn new_spec(db: &'db dyn BaseDatabase, spec: Spec<'db>) -> Self {
         match spec.kind(db) {
@@ -163,16 +182,6 @@ impl<'db> Type<'db> {
                 Some(pou) => Type::new_pou(db, pou),
                 None => Type::Never,
             },
-        }
-    }
-
-    pub fn new_pou(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Self {
-        match pou.pou(db) {
-            Pou::Class(cl) => Type::Class(*cl),
-            Pou::Function(f) => Type::Function(*f),
-            Pou::FunctionBlock(f) => Type::FunctionBlock(*f),
-            Pou::Interface(f) => Type::Interface(*f),
-            Pou::DataType(dt) => Type::new_spec(db, dt.spec(db)),
         }
     }
 
@@ -242,6 +251,20 @@ impl<'db> Type<'db> {
         }
 
         match (self, &to) {
+            // allow coercion between Type and its Spec
+            (Type::Type(typ), typ2) => {
+                Type::new_spec(db, typ.spec(db)).coerce_with(db, *typ2, scope)
+            }
+            (typ1, Type::Type(typ)) => {
+                typ1.coerce_with(db, Type::new_spec(db, typ.spec(db)), scope)
+            }
+            // same with variable declarations
+            (Type::Variable(var), var2) => {
+                Type::new_spec(db, var.spec(db)).coerce_with(db, *var2, scope)
+            }
+            (var1, Type::Variable(var)) => {
+                var1.coerce_with(db, Type::new_spec(db, var.spec(db)), scope)
+            }
             // variant is already solved by the resolver
             (Type::Enum(e1), Type::EnumVariant(e2)) => true,
             // same types are assignable
