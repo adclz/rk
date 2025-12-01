@@ -3,15 +3,18 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     HirNodeInfo,
-    check::errors::{
-        body_inference::{BodyInferenceError, TypeError},
-        init_inference::InitInferenceError,
-    },
+    check::errors::{body_inference::TypeError, init_inference::InitInferenceError},
     hir_def::{
-        expressions::{expression::{InitExpr, InitExprKind}, spec::Spec}, interned::identifier::SpanIdent, pous::{data_type::DataType, pou::PouDecl}, scope::ScopeId
+        expressions::{
+            expression::{InitExpr, InitExprKind},
+            spec::Spec,
+        },
+        interned::identifier::SpanIdent,
+        scope::ScopeId,
     },
     hir_ty::{
-        body_inference::BodyInferenceResult, def_map::FxIndexMap, infer::expr::InferExprCtx, resolver::Resolver, ty::Type
+        body_inference::BodyInferenceResult, def_map::FxIndexMap, infer::expr::InferExprCtx,
+        resolver::Resolver, ty::Type,
     },
 };
 
@@ -102,11 +105,8 @@ impl<'db> InitExprInferenceResult<'db> {
             }
 
             InitExprKind::ConstantExpr(e) => {
-                let inferred = InferExprCtx::new(self.scope, Resolver::new(Some(expected))).infer_expr(
-                    db,
-                    e,
-                    &mut self.body_infer_result,
-                );
+                let inferred = InferExprCtx::new(self.scope, Resolver::new(Some(expected)))
+                    .infer_expr(db, e, &mut self.body_infer_result);
 
                 if !expected.coerce_with(db, inferred, self.scope) {
                     self.errors

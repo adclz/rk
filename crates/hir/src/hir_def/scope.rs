@@ -11,12 +11,6 @@ pub struct ScopeId<'db> {
     pub scope: usize,
 }
 
-impl<'db> From<(&'db dyn BaseDatabase, File, usize)> for ScopeId<'db> {
-    fn from(data: (&'db dyn BaseDatabase, File, usize)) -> Self {
-        ScopeId::new(data.0, data.1, data.2)
-    }
-}
-
 impl<'db> ScopeId<'db> {
     pub fn global(db: &'db dyn BaseDatabase, file: File) -> Self {
         ScopeId::new(db, file, usize::MAX)
@@ -26,7 +20,7 @@ impl<'db> ScopeId<'db> {
         self.scope(db) == usize::MAX
     }
 
-        pub fn pous(&self, db: &'db dyn BaseDatabase) -> Option<&Vec<PouDecl<'db>>> {
+    pub fn pous(&self, db: &'db dyn BaseDatabase) -> Option<&Vec<PouDecl<'db>>> {
         Some(match get_scope(db, *self).kind {
             ScopeKind::Namespace(ns) => ns.pous(db),
             _ => None?,
@@ -108,5 +102,5 @@ pub enum ScopeKind<'db> {
     Global,
     Namespace(NamespaceDecl<'db>),
     Pou(PouDecl<'db>),
-    MethodDecl(MethodDecl<'db>)
+    MethodDecl(MethodDecl<'db>),
 }

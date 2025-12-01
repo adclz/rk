@@ -83,10 +83,15 @@ impl<'db> ToIdeDiagnostic<'db> for BodyInferenceError<'db> {
                 .message("'EXIT' can only be used inside loops".to_string())
                 .range(stmt.get_span(db))
                 .call(),
-            Self::NoItemInScope { expr, scope } => diag()
-                .message(format!("no item found in scope",))
+            Self::NoItemInScope { expr, scope } => {
+                let diag = diag()
+                .message(format!("no item {:?} found in scope", expr.ident(db).text(db)))
                 .range(expr.get_span(db))
-                .call(),
+                .call();
+
+                
+                diag
+            },
             Self::NoSuchField { expr, ident, ty } => diag()
                 .message(format!(
                     "'{}' has no field named '{}'",
@@ -176,6 +181,10 @@ pub enum TypeError<'db> {
         typ: Type<'db>,
         expr: Expr<'db>,
     },
+    UnusedReturnType {
+        typ: Type<'db>,
+        expr: Stmt<'db>,
+    },
     Other {
         message: String,
         expr: Expr<'db>,
@@ -199,37 +208,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                     .range(expr.get_span(db))
                     .call();
 
-                match expr {
-                    InitOrExpr::Expr(expr) => {
-                        let inference = infer_body_scope(db, expr.get_scope_id(db));
-
-                        if let Some(var) = inference.variable_for_type(*target) {
-                            diag.with_related(Related::new(
-                                format!(
-                                    "type is declared by variable '{}' here",
-                                    var.name(db).text(db)
-                                ),
-                                var.get_scope_id(db).file(db),
-                                var.get_span(db),
-                            ));
-                        }
-                    },
-                    InitOrExpr::InitExpr(init) => {
-                        let inference = infer_init_expr(db,  *target, *init);
-
-                        /*if let Some(var) = inference.t(*target) {
-                            diag.with_related(Related::new(
-                                format!(
-                                    "type is declared by variable '{}' here",
-                                    var.name(db).text(db)
-                                ),
-                                var.get_scope_id(db).file(db),
-                                var.get_span(db),
-                            ));
-                        }*/
-                    }
-                }
-
+                target.location(db, &mut diag);
                 diag
             }
             Self::NotComparable { lhs, rhs, expr } => diag()
@@ -282,6 +261,13 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 ))
                 .range(expr.get_span(db))
                 .call(),
+            Self::UnusedReturnType { typ, expr } => diag()
+                .message(format!(
+                    "unused return value of type '{}'",
+                    typ.full_type_name(db)
+                ))
+                .range(expr.get_span(db))
+                .call(),    
             Self::Other { message, expr } => diag()
                 .message(message.clone())
                 .range(expr.get_span(db))

@@ -16,16 +16,13 @@ use crate::{
                 BeginPathExpr, Expr, ExprKind, FuncCall, InitExpr, ParamAssign, ParamAssignKind,
                 PathExpr, PathExprKind, PrimaryExpr, VarAccess, VariableAccess, VariableAccessKind,
             },
-            invocation::{self, Invocation, InvocationKind},
-            spec::{Array, ElementarySpec, Enum, Spec, SpecKind, Struct, StructElement, SubRange},
-            statement::{CaseKind, Stmt, StmtKind},
+            invocation::{self, Invocation, InvocationKind}
         },
-        interned::{identifier::{Ident, SpanIdent}, namespace::{NamespaceAccess, SpanNamespacePath}},
+        interned::{
+            identifier::{Ident, SpanIdent},
+            namespace::{NamespaceAccess, SpanNamespacePath},
+        },
         pous::{
-            class::{Class, MethodDecl},
-            function::Function,
-            function_block::FunctionBlock,
-            interface::{Interface, MethodPrototype},
             pou::{Pou, PouDecl},
             variable::VariableDecl,
         },
@@ -44,6 +41,7 @@ pub fn infer_body_scope<'db>(
     db: &'db dyn BaseDatabase,
     scope: ScopeId<'db>,
 ) -> BodyInferenceResult<'db> {
+    eprintln!("--- Inferring body for scope {:?} ---", scope);
     let mut result = BodyInferenceResult::new(scope);
     let ctx = InferCtx::new(scope);
 
@@ -74,9 +72,6 @@ pub struct BodyInferenceResult<'db> {
     // Scope where this InferenceResult was emitted
     pub scope: ScopeId<'db>,
 
-    // Mapping from path exression to variables
-    pub variable_of_type: FxHashMap<Type<'db>, VariableDecl<'db>>,
-
     // Mapping from parameter assignments to variables
     pub variable_of_param: FxHashMap<ParamAssign<'db>, VariableDecl<'db>>,
 
@@ -100,7 +95,6 @@ impl<'db> BodyInferenceResult<'db> {
     pub fn new(scope: ScopeId<'db>) -> Self {
         Self {
             scope,
-            variable_of_type: FxHashMap::default(),
             variable_of_param: FxHashMap::default(),
             type_of_invocation: FxHashMap::default(),
             type_of_expr: FxHashMap::default(),
@@ -164,10 +158,6 @@ impl<'db> BodyInferenceResult<'db> {
 
     pub fn variable_for_param(&self, param: ParamAssign<'db>) -> Option<VariableDecl<'db>> {
         self.variable_of_param.get(&param).copied()
-    }
-
-    pub fn variable_for_type(&self, typ: Type<'db>) -> Option<VariableDecl<'db>> {
-        self.variable_of_type.get(&typ).copied()
     }
 
     pub fn path_expr_adjustments(&self, expr: PathExpr<'db>) -> Option<&[Adjustment<'db>]> {
@@ -287,7 +277,7 @@ impl<'db> PathExpr<'db> {
         // Collect FIELD.FIELD.FIELD prefix
         let mut frags = Vec::new();
 
-        for step in flatten.iter() {
+        for step in flatten.iter().rev() {
             match step {
                 PathExprWalkStep::Field { ident, .. } => frags.push(*ident),
                 _ => break,
@@ -301,8 +291,14 @@ impl<'db> PathExpr<'db> {
         let first = frags.remove(0);
 
         let scope = self.scope_id(db);
-        let path = SpanNamespacePath::from((db, &frags, scope));
-        let access = NamespaceAccess::new(db, Some(path), first);
+        let access = NamespaceAccess::new(
+            db,
+            match frags.len() {
+                0 => None,
+                _ => Some(SpanNamespacePath::from((db, &frags, scope))),
+            },
+            first,
+        );
 
         Some((access, *first)) // returning `first` is optional
     }

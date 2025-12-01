@@ -22,7 +22,6 @@ use crate::{
 pub struct InferExprCtx<'db> {
     /// Current scope
     pub scope: ScopeId<'db>,
-    /// Current scope type (POu with body, method, etc.)
     pub resolver: Resolver<'db>
 }
 

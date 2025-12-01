@@ -286,7 +286,7 @@ impl<'db> InferCtx<'db> {
                 StmtKind::FuncCall(f) => {
                     let typ = Self::resolve_func_call(db, resolver, *f, ctx);
                     if typ.with_return_type(db).is_some() {
-                        // unused return type of function call
+                        ctx.errors.push(TypeError::UnusedReturnType { typ, expr: *stmt }.into());
                     }
                 }
                 StmtKind::Case {

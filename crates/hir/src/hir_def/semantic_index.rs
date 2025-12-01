@@ -9,18 +9,18 @@ use auto_lsp::default::db::{BaseDatabase, file::File};
 use rustc_hash::FxHashMap;
 use tracing::info_span;
 
-use crate::hir_def::expressions::expression::{Expr, InitExpr};
-use crate::hir_def::expressions::statement::Stmt;
-use crate::hir_def::using::Using;
 use crate::HirNodeInfo;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::analysis_error::AnalysisError;
+use crate::hir_def::expressions::expression::{Expr, InitExpr};
 use crate::hir_def::expressions::spec::{Spec, StructElement};
+use crate::hir_def::expressions::statement::Stmt;
 use crate::hir_def::interned::namespace::SpanNamespaceAccessContext;
 use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::PouDecl;
 use crate::hir_def::pous::variable::VariableDecl;
-use crate::hir_def::scope::{ScopeId, Scope};
+use crate::hir_def::scope::{Scope, ScopeId};
+use crate::hir_def::using::Using;
 use crate::hir_ty::inheritance_solver::MethodRef;
 use crate::walk::WalkHir;
 
@@ -82,11 +82,7 @@ impl<'db> SemanticIndex<'db> {
     }
 
     /// Returns a [`ScopeIterator`] starting from the given scope.
-    pub fn scope_iterator(
-        &self,
-        db: &'db dyn BaseDatabase,
-        scope: ScopeId<'db>,
-    ) -> ScopeIterator {
+    pub fn scope_iterator(&self, db: &'db dyn BaseDatabase, scope: ScopeId<'db>) -> ScopeIterator {
         ScopeIterator::new(db, &self.scopes, &scope)
     }
 
@@ -96,16 +92,13 @@ impl<'db> SemanticIndex<'db> {
     }
 }
 
-    /// Get the scope corresponding to the given ID.
-    ///
-    /// Panics if the scope does not belong to the same file as the semantic index.
-pub fn get_scope<'db>(
-        db: &'db dyn BaseDatabase,
-        id: ScopeId<'db>,
-    ) -> &'db Scope<'db> {
-        let sema = semantic_index(db, id.file(db));
-        &sema.scopes[&id.scope(db)]
-    }
+/// Get the scope corresponding to the given ID.
+///
+/// Panics if the scope does not belong to the same file as the semantic index.
+pub fn get_scope<'db>(db: &'db dyn BaseDatabase, id: ScopeId<'db>) -> &'db Scope<'db> {
+    let sema = semantic_index(db, id.file(db));
+    &sema.scopes[&id.scope(db)]
+}
 
 /// Iterator over scopes in a given scope hierarchy
 pub struct ScopeIterator<'db> {

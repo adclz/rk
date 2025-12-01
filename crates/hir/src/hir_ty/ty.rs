@@ -56,7 +56,7 @@ pub enum Type<'db> {
     FunctionBlock(FunctionBlock<'db>),
     Class(Class<'db>),
     Interface(Interface<'db>),
-    Type(DataType<'db>),
+    DataType(DataType<'db>),
     // Methods
     MethodDecl(MethodRef<'db>),
     Variable(VariableDecl<'db>),
@@ -160,7 +160,7 @@ impl<'db> Type<'db> {
             Pou::Function(f) => Type::Function(*f),
             Pou::FunctionBlock(f) => Type::FunctionBlock(*f),
             Pou::Interface(f) => Type::Interface(*f),
-            Pou::DataType(dt) => Type::Type(*dt),
+            Pou::DataType(dt) => Type::DataType(*dt),
         }
     }
 
@@ -252,10 +252,10 @@ impl<'db> Type<'db> {
 
         match (self, &to) {
             // allow coercion between Type and its Spec
-            (Type::Type(typ), typ2) => {
+            (Type::DataType(typ), typ2) => {
                 Type::new_spec(db, typ.spec(db)).coerce_with(db, *typ2, scope)
             }
-            (typ1, Type::Type(typ)) => {
+            (typ1, Type::DataType(typ)) => {
                 typ1.coerce_with(db, Type::new_spec(db, typ.spec(db)), scope)
             }
             // same with variable declarations

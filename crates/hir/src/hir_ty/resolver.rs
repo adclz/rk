@@ -2,11 +2,8 @@ use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     check::errors::{body_inference::BodyInferenceError, init_inference::InitInferenceError},
-    hir_def::{
-        expressions::expression::{
-            BeginPathExpr, InitExpr, PathExpr, VariableAccess, VariableAccessKind,
-        },
-        interned::namespace::{NamespaceAccess, SpanNamespacePath},
+    hir_def::expressions::expression::{
+        BeginPathExpr, InitExpr, PathExpr, VariableAccess, VariableAccessKind,
     },
     hir_ty::{
         body_inference::{Adjustment, BodyInferenceResult, PathExprWalkStep},
@@ -42,6 +39,9 @@ impl<'db> Resolver<'db> {
                 });
             return Type::Never;
         };
+
+        eprintln!("Resolving FQ PathExpr: {:?}", access.target.text(db));
+        eprintln!("Resolving ns: {:?}", access.namespace);
 
         match resolve_namespace_access(db, &access) {
             Some(pou) => Type::new_pou(db, pou),
@@ -94,14 +94,7 @@ impl<'db> Resolver<'db> {
         infer_results: &mut BodyInferenceResult<'db>,
     ) -> Type<'db> {
         match self.walkable_typ {
-            Some(start) => self.resolve_path_steps(
-                start,
-                db,
-                path_expr.flatten(db),
-                infer_results,
-                true,
-                Some(path_expr),
-            ),
+            Some(start) => self.resolve_path_steps(start, db, path_expr, infer_results),
             None => self.resolve_as_fq(db, path_expr, infer_results),
         }
     }
@@ -111,20 +104,16 @@ impl<'db> Resolver<'db> {
         &self,
         mut current: Type<'db>,
         db: &'db dyn BaseDatabase,
-        steps: impl IntoIterator<Item = &'db PathExprWalkStep<'db>>,
+        path_expr: PathExpr<'db>,
         ctx: &mut BodyInferenceResult<'db>,
-        allow_fq_fallback: bool,
-        path_expr_for_fq: Option<PathExpr<'db>>,
     ) -> Type<'db> {
+        let steps = path_expr.flatten(db);
         for (index, step) in steps.into_iter().enumerate() {
-            let report = index != 0;
-
-            match current.walk_path_expr(db, report, step, ctx) {
+            match current.walk_path_expr(db, index != 0, step, ctx) {
                 Type::Never => {
-                    if allow_fq_fallback && report {
-                        if let Some(expr) = path_expr_for_fq {
-                            return self.resolve_as_fq(db, expr, ctx);
-                        }
+                    // no path was resolved yet
+                    if index == 0 {
+                        return self.resolve_as_fq(db, path_expr, ctx);
                     }
                     return Type::Never;
                 }
@@ -144,7 +133,7 @@ impl<'db> Type<'db> {
         ctx: &mut BodyInferenceResult<'db>,
     ) -> Type<'db> {
         // resolve invocation if present
-        let mut current = if let Some(invocation) = expr.invocation(db) {
+        let current = if let Some(invocation) = expr.invocation(db) {
             InferCtx::resolve_invocation(db, ctx.scope, invocation, ctx);
             ctx.type_of_invocation
                 .get(&invocation)
@@ -155,14 +144,8 @@ impl<'db> Type<'db> {
         };
 
         if let Some(path) = expr.expr(db) {
-            current = Resolver { walkable_typ: None }.resolve_path_steps(
-                current,
-                db,
-                path.flatten(db),
-                ctx,
-                false,
-                None,
-            );
+            // resolve path steps
+            let _ = Resolver { walkable_typ: None }.resolve_path_steps(current, db, path, ctx);
 
             return ctx
                 .type_of_path_expr_with_adjustments(path)
@@ -204,7 +187,24 @@ impl<'db> Type<'db> {
 
             PathExprWalkStep::Field { ident, expr: _ } => {
                 match self {
+                    Type::Variable(v) => {
+                        return Type::new_spec(db, v.spec(db)).walk_path_expr(
+                            db,
+                            report_errors,
+                            step,
+                            ctx,
+                        );
+                    }
+                    Type::DataType(typ) => {
+                        return Type::new_spec(db, typ.spec(db)).walk_path_expr(
+                            db,
+                            report_errors,
+                            step,
+                            ctx,
+                        );
+                    }
                     Type::Struct(st) => {
+                        eprintln!("Walking struct type for field access, {:?}", ident.ident);
                         if let Some(field) = st.resolve_elements(db).get(&ident.ident) {
                             result_ty = Type::StructElement(*field);
                         } else if report_errors {
@@ -228,7 +228,6 @@ impl<'db> Type<'db> {
                         // Variables
                         if let Some(var) = def_map.global_variables.get(&ident.ident) {
                             result_ty = Type::new_var(db, *var);
-                            ctx.variable_of_type.insert(result_ty, *var);
                         }
                         // Methods
                         else if let Some(m) = def_map.declared_methods.get(&ident.ident) {
