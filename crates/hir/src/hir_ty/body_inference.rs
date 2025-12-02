@@ -41,7 +41,6 @@ pub fn infer_body_scope<'db>(
     db: &'db dyn BaseDatabase,
     scope: ScopeId<'db>,
 ) -> BodyInferenceResult<'db> {
-    eprintln!("--- Inferring body for scope {:?} ---", scope);
     let mut result = BodyInferenceResult::new(scope);
     let ctx = InferCtx::new(scope);
 

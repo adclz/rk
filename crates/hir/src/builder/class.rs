@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::statement::ParseStatement;
 use crate::builder::{ParseSpec, ParseVarSection};
@@ -123,7 +125,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             Some(previous_scope),
         );
 
-        self.scope_keys.insert(scope_id.scope(self.db), scope);
+        self.scope_keys.insert(scope_id.scope(self.db), Arc::new(scope));
 
         Ok(result)
     }
@@ -230,7 +232,7 @@ impl<'db> SemanticIndexBuilder<'db> {
                 Some(previous_scope),
             );
 
-            self.scope_keys.insert(scope_id.scope(self.db), scope);
+            self.scope_keys.insert(scope_id.scope(self.db), Arc::new(scope));
 
 
             Some(result)

@@ -5,9 +5,9 @@ use rustc_hash::FxHashMap;
 use crate::{
     check::{
         check_semantic_index::DataTypeCheck,
-        errors::{analysis_error::ToIdeDiagnostic, duplicates::DuplicateError, enum_::EnumError},
+        errors::{analysis_error::ToIdeDiagnostic, body_inference::{BodyInferenceError, TypeError}, duplicates::DuplicateError, enum_::EnumError},
     },
-    hir_def::expressions::spec::{ElementarySpec, Enum, SpecKind}, hir_ty::ty::Type,
+    hir_def::expressions::spec::{ElementarySpec, Enum, SpecKind}, hir_ty::{body_inference::BodyInferenceResult, infer::{ctx::InferCtx, expr::InferExprCtx}, resolver::Resolver, ty::Type},
 };
 
 impl<'db> DataTypeCheck<'db> for Enum<'db> {
@@ -52,17 +52,18 @@ impl<'db> DataTypeCheck<'db> for Enum<'db> {
             }
 
             // Check variant value type
-            /*if let (Some(value), Some(typ)) = (variant.value, self.typ(db)) {
-                if let Err(err) = coerce_ty_with_expr(db, typ.to_ty(db), value) {
+            if let (Some(value), Some(typ)) = (variant.value, self.typ(db)) {
+                let mut infer_body = BodyInferenceResult::new(value.scope_id(db));
+                let infer = InferExprCtx::new(value.scope_id(db), Resolver::new(None));
+
+                let target = Type::new_spec(db, typ);
+                let expr = infer.infer_expr(db, value, &mut infer_body);
+                if !target.coerce_with(db, expr,value.scope_id(db)) {
                     errors.push(
-                        EnumError::InvalidEnumVariantValue {
-                            variant: variant.name,
-                            err,
-                        }
-                        .to_diagnostic(db),
+                        TypeError::NotAssignable { target, value: expr , expr: value.into() }.to_diagnostic(db)
                     )
                 }
-            }*/
+            }
         }
     }
 }

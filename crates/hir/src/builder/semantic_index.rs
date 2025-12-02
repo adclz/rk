@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::default::db::tracked::ParsedAst;
@@ -24,7 +26,7 @@ pub struct SemanticIndexBuilder<'db> {
     pub(crate) current_scope: ScopeId<'db>,
 
     /// Maps scope IDs to their corresponding scopes.
-    pub(crate) scope_keys: FxHashMap<usize, Scope<'db>>,
+    pub(crate) scope_keys: FxHashMap<usize, Arc<Scope<'db>>>,
 
     pub(crate) global_namespaces: Vec<NamespaceDecl<'db>>,
     pub(crate) global_pous: Vec<PouDecl<'db>>,
@@ -161,7 +163,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             None,
         );
 
-        self.scope_keys.insert(global_scope.scope(self.db), scope);
+        self.scope_keys.insert(global_scope.scope(self.db), Arc::new(scope));
 
         SemanticIndex {
             file: self.file,

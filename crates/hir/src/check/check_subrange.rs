@@ -4,11 +4,10 @@ use ide_diagnostic::IdeDiagnostic;
 use crate::{
     check::{
         check_semantic_index::DataTypeCheck,
-        errors::{
-            analysis_error::ToIdeDiagnostic, subrange::SubRangeError,
-        },
+        errors::{analysis_error::ToIdeDiagnostic, body_inference::TypeError, subrange::SubRangeError},
     },
-    hir_def::expressions::spec::{ElementarySpec, SpecKind, SubRange}, hir_ty::ty::Type,
+    hir_def::expressions::spec::{ElementarySpec, SpecKind, SubRange},
+    hir_ty::{body_inference::BodyInferenceResult, infer::expr::InferExprCtx, resolver::Resolver, ty::Type},
 };
 
 impl<'db> DataTypeCheck<'db> for SubRange<'db> {
@@ -30,24 +29,56 @@ impl<'db> DataTypeCheck<'db> for SubRange<'db> {
                 | ElementarySpec::LInt
                 | ElementarySpec::ULInt => {}
                 _ => {
-                    errors.push(SubRangeError::InvalidSubrangeType { spec: self._type(db), typ }.to_diagnostic(db));
+                    errors.push(
+                        SubRangeError::InvalidSubrangeType {
+                            spec: self._type(db),
+                            typ,
+                        }
+                        .to_diagnostic(db),
+                    );
                     return;
                 }
             },
             _ => {
-                errors.push(SubRangeError::InvalidSubrangeType {spec: self._type(db), typ }.to_diagnostic(db));
+                errors.push(
+                    SubRangeError::InvalidSubrangeType {
+                        spec: self._type(db),
+                        typ,
+                    }
+                    .to_diagnostic(db),
+                );
                 return;
             }
         }
 
         let min = self.lower(db);
         let max = self.upper(db);
-        /*if let Err(err) = coerce_ty_with_expr(db, typ.to_ty(db), min) {
-            errors.push(SubRangeError::InvalidSubrangeStart { expr: min, err }.to_diagnostic(db))
+
+        let mut infer_body = BodyInferenceResult::new(self._type(db).scope_id(db));
+        let infer = InferExprCtx::new(self.lower(db).scope_id(db), Resolver::new(None));
+
+        let expr = infer.infer_expr(db, min, &mut infer_body);
+        if !typ.coerce_with(db, expr, min.scope_id(db)) {
+            errors.push(
+                TypeError::NotAssignable {
+                    target: typ,
+                    value: expr,
+                    expr: min.into(),
+                }
+                .to_diagnostic(db),
+            )
         }
 
-        if let Err(err) = coerce_ty_with_expr(db, typ.to_ty(db), max) {
-            errors.push(SubRangeError::InvalidSubrangeEnd { expr: max, err }.to_diagnostic(db))
-        }*/
+        let expr = infer.infer_expr(db, max, &mut infer_body);
+        if !typ.coerce_with(db, expr, max.scope_id(db)) {
+            errors.push(
+                TypeError::NotAssignable {
+                    target: typ,
+                    value: expr,
+                    expr: max.into(),
+                }
+                .to_diagnostic(db),
+            )
+        }
     }
 }

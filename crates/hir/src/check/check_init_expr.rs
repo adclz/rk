@@ -11,12 +11,10 @@ pub fn check_init_expr<'db>(
 ) {
     let infer = infer_init_expr(db, ty, expr);
 
-    eprintln!("errors in check_init_expr: {:?}", infer.errors.len());
     for error in infer.errors.iter() {
         errors.push(error.to_diagnostic(db));
     }
 
-    eprintln!("resolved init expr in check_init_expr: {:?}", infer.body_infer_result.errors.len());
     for error in infer.body_infer_result.errors.iter() {
         errors.push(error.to_diagnostic(db));
     }

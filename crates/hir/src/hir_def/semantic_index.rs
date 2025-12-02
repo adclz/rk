@@ -49,7 +49,7 @@ pub struct SemanticIndex<'db> {
     pub(crate) ast: Arc<Vec<Box<dyn AstNode>>>,
 
     /// Map of scope IDs to their corresponding scopes
-    pub(crate) scopes: FxHashMap<usize, Scope<'db>>,
+    pub(crate) scopes: FxHashMap<usize, Arc<Scope<'db>>>,
 
     /// All *global* namespaces in the file
     pub global_namespaces: Vec<NamespaceDecl<'db>>,
@@ -95,22 +95,23 @@ impl<'db> SemanticIndex<'db> {
 /// Get the scope corresponding to the given ID.
 ///
 /// Panics if the scope does not belong to the same file as the semantic index.
-pub fn get_scope<'db>(db: &'db dyn BaseDatabase, id: ScopeId<'db>) -> &'db Scope<'db> {
+#[salsa::tracked(returns(deref))]
+pub fn get_scope<'db>(db: &'db dyn BaseDatabase, id: ScopeId<'db>) -> Arc<Scope<'db>> {
     let sema = semantic_index(db, id.file(db));
-    &sema.scopes[&id.scope(db)]
+    Arc::clone(&sema.scopes[&id.scope(db)])
 }
 
 /// Iterator over scopes in a given scope hierarchy
 pub struct ScopeIterator<'db> {
     db: &'db dyn BaseDatabase,
-    scopes: &'db FxHashMap<usize, Scope<'db>>,
+    scopes: &'db FxHashMap<usize, Arc<Scope<'db>>>,
     next_id: Option<ScopeId<'db>>,
 }
 
 impl<'db> ScopeIterator<'db> {
     pub fn new(
         db: &'db dyn BaseDatabase,
-        scopes: &'db FxHashMap<usize, Scope<'db>>,
+        scopes: &'db FxHashMap<usize, Arc<Scope<'db>>>,
         scope: &ScopeId<'db>,
     ) -> Self {
         Self {

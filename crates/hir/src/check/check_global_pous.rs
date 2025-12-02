@@ -34,10 +34,10 @@ pub fn check_duplicate_pous(db: &dyn BaseDatabase, file: File) -> Vec<IdeDiagnos
         .filter(|f| (**f) != file)
         .for_each(|file| {
             for (name, pous) in global_pous_in_file(db, *file) {
-                if let Some(self_pous) = self_pous.get(name) {
+                if let Some(self_pous) = self_pous.get(&name) {
                     // We have a duplicate POU name
                     for self_pou in self_pous {
-                        for pou in pous {
+                        for pou in &pous {
                             errors.push(
                                 DuplicateError::Pou {
                                     pou1: *self_pou,
@@ -53,7 +53,6 @@ pub fn check_duplicate_pous(db: &dyn BaseDatabase, file: File) -> Vec<IdeDiagnos
     errors
 }
 
-#[salsa::tracked(returns(ref), no_eq)]
 pub fn global_pous_in_file<'db>(
     db: &'db dyn BaseDatabase,
     file: File,
