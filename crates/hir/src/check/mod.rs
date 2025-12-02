@@ -28,7 +28,6 @@ pub mod check_variables;
 pub mod check_visibility;
 pub mod check_using;
 pub mod check_scope;
-pub mod coerce;
 pub mod errors;
 
 pub fn diagnostics_for_file(db: &dyn BaseDatabase, file: File) -> Arc<Vec<IdeDiagnostic>> {
