@@ -13,8 +13,7 @@ use crate::{
         scope::ScopeId,
     },
     hir_ty::{
-        body_inference::BodyInferenceResult, def_map::FxIndexMap, infer::expr::InferExprCtx,
-        resolver::Resolver, ty::Type,
+        body_inference::BodyInferenceResult, def_map::FxIndexMap, expr_store::InitExprWalkStep, infer::expr::InferExprCtx, resolver::Resolver, ty::Type
     },
 };
 
@@ -118,62 +117,6 @@ impl<'db> InitExprInferenceResult<'db> {
                 }
 
                 inferred
-            }
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, salsa::Update)]
-pub enum InitExprWalkStep<'db> {
-    Index,
-    Access,
-    Field(SpanIdent<'db>),
-    NoOp,
-}
-
-#[salsa::tracked]
-impl<'db> InitExpr<'db> {
-    #[salsa::tracked(returns(ref))]
-    pub fn flatten(
-        self,
-        db: &'db dyn BaseDatabase,
-    ) -> FxIndexMap<InitExpr<'db>, InitExprWalkStep<'db>> {
-        let mut map = FxIndexMap::default();
-        self.flat(db, &mut map);
-        map
-    }
-
-    fn flat(
-        &self,
-        db: &'db dyn BaseDatabase,
-        map: &mut FxIndexMap<InitExpr<'db>, InitExprWalkStep<'db>>,
-    ) {
-        // Infering init expressions can be quite long ...
-        db.unwind_if_revision_cancelled();
-        match self.kind(db) {
-            InitExprKind::ArrayInit { values } => {
-                map.insert(*self, InitExprWalkStep::Index);
-                for v in values {
-                    v.flat(db, map);
-                }
-            }
-            InitExprKind::ArrayIndexedElement { size, values } => {
-                for v in values {
-                    v.flat(db, map);
-                }
-            }
-            InitExprKind::StructInit { values } => {
-                map.insert(*self, InitExprWalkStep::Access);
-                for v in values {
-                    v.flat(db, map);
-                }
-            }
-            InitExprKind::StructElement { name, value } => {
-                map.insert(*self, InitExprWalkStep::Field(name));
-                value.flat(db, map);
-            }
-            InitExprKind::ConstantExpr(expr) => {
-                map.insert(*self, InitExprWalkStep::NoOp);
             }
         }
     }

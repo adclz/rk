@@ -25,7 +25,7 @@ use crate::{
         def_map::LocalDefMap,
         infer::ctx::InferCtx,
         inheritance_solver::MethodRef,
-        init_inference::{InitExprInferenceResult, InitExprWalkStep},
+        init_inference::{InitExprInferenceResult},
         name_res::{pou_names_res, resolve_namespace_access},
     },
 };

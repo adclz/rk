@@ -6,11 +6,7 @@ use crate::{
         BeginPathExpr, InitExpr, PathExpr, VariableAccess, VariableAccessKind,
     },
     hir_ty::{
-        body_inference::{Adjustment, BodyInferenceResult, PathExprWalkStep},
-        infer::ctx::InferCtx,
-        init_inference::{InitExprInferenceResult, InitExprWalkStep},
-        name_res::resolve_namespace_access,
-        ty::Type,
+        body_inference::{Adjustment, BodyInferenceResult}, expr_store::{InitExprWalkStep, PathExprWalkStep}, infer::ctx::InferCtx, init_inference::InitExprInferenceResult, name_res::resolve_namespace_access, ty::Type
     },
 };
 
