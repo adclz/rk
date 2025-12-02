@@ -38,7 +38,7 @@ use crate::{
         semantic_index::{HirNode, SemanticIndex, get_scope, semantic_index},
     },
     hir_ty::{
-        name_res::global_pou_index,
+        name_res::pou_index,
     },
     walk::WalkHir,
 };

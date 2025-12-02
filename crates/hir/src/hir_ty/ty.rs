@@ -30,13 +30,6 @@ use crate::{
     },
 };
 
-/// Represents the location where a type is defined
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
-pub enum TypeLocId<'db> {
-    Spec(Spec<'db>),
-    Pou(PouDecl<'db>),    
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
 pub enum Type<'db> {
     // Primitive types

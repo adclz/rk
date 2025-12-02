@@ -6,7 +6,7 @@ use auto_lsp::{
 use hir::{
     HirNodeInfo,
     hir_def::using::Using,
-    hir_ty::name_res::{global_namespace_index, resolve_namespace_access},
+    hir_ty::name_res::{namespace_index, resolve_namespace_access},
 };
 
 use crate::{NAMESPACE, SUPPORTED_TYPES, ToProtocol};

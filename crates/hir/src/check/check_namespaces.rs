@@ -6,7 +6,8 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     check::errors::{analysis_error::ToIdeDiagnostic, duplicates::DuplicateError},
-    hir_def::{interned::identifier::Ident, namespace::NamespaceDecl, pous::pou::PouDecl}, hir_ty::name_res::global_namespace_index,
+    hir_def::{interned::identifier::Ident, namespace::NamespaceDecl, pous::pou::PouDecl},
+    hir_ty::name_res::namespace_index,
 };
 
 #[salsa::tracked(returns(ref), no_eq)]
@@ -18,9 +19,8 @@ pub fn check_duplicate_namespaces<'db>(
     let mut seen_pous: FxHashMap<Ident, PouDecl<'db>> = FxHashMap::default();
 
     // Collect POUs and process duplicates in a single pass
-    global_namespace_index(db).get(namespace.path(db))
+    namespace_index(db, *namespace.path(db))
         .iter()
-        .flat_map(|n| *n)
         .for_each(|ns| {
             ns.pous(db).iter().for_each(|decl| {
                 let name = *decl.name(db);

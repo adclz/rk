@@ -10,7 +10,7 @@ use crate::{
         scope::{ScopeId, ScopeKind},
         semantic_index::semantic_index,
     },
-    hir_ty::name_res::global_namespace_index,
+    hir_ty::name_res::namespace_index,
     query_string::{
         file::file_symbol_index,
         query::{Query, SymbolKind},
@@ -112,19 +112,15 @@ pub fn discover_in_scope<'db>(
     for scope in it {
         // Find POUs in all shared namespaces
         if let ScopeKind::Namespace(ns) = scope.kind {
-            if let Some(namespaces) = global_namespace_index(db).get(ns.path(db)) {
-                for ns in namespaces.iter() {
-                    result.seen_namespaces.insert(*ns.path(db));
-                }
+            for ns in namespace_index(db, *ns.path(db)).iter() {
+                result.seen_namespaces.insert(*ns.path(db));
             }
         }
 
         // Find POUs in all USING directives
         for using in &scope.usings {
-            if let Some(namespaces) = global_namespace_index(db).get(&using.path(db)) {
-                for ns in namespaces.iter() {
-                    result.seen_namespaces.insert(*ns.path(db));
-                }
+            for ns in namespace_index(db, *using.path(db)).iter() {
+                result.seen_namespaces.insert(*ns.path(db));
             }
         }
     }

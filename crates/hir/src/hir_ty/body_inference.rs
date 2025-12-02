@@ -16,7 +16,7 @@ use crate::{
                 BeginPathExpr, Expr, ExprKind, FuncCall, InitExpr, ParamAssign, ParamAssignKind,
                 PathExpr, PathExprKind, PrimaryExpr, VarAccess, VariableAccess, VariableAccessKind,
             },
-            invocation::{self, Invocation, InvocationKind}
+            invocation::{self, Invocation, InvocationKind},
         },
         interned::{
             identifier::{Ident, SpanIdent},
@@ -36,6 +36,7 @@ use crate::{
     },
 };
 
+#[tracing::instrument(skip(db))]
 #[salsa::tracked(returns(ref))]
 pub fn infer_body_scope<'db>(
     db: &'db dyn BaseDatabase,
