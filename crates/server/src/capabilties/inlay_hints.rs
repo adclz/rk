@@ -5,8 +5,8 @@ use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{InlayHint, InlayHintParams},
 };
-use hir::{hir_def::semantic_index::semantic_index, walk::WalkHir};
-use ide_proto::AsProtocol;
+use hir::{hir_def::semantic_index::semantic_index};
+use ide_proto::to_proto::{AsProtocol, walk::WalkHir};
 
 pub fn inlay_hints<Db: BaseDatabase + Clone + RefUnwindSafe>(
     db: &Db,

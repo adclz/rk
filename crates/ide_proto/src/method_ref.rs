@@ -7,7 +7,8 @@ use auto_lsp::{
 };
 use hir::{HirNodeInfo, TypeInfo, hir_ty::{inheritance_solver::MethodRef, ty::Type}};
 
-use crate::{HasComment, ToProtocol};
+use crate::to_proto::{HasComment, ToProtocol};
+
 
 impl<'db> ToProtocol<'db> for MethodRef<'db> {
     fn document_symbols(&self, db: &'db dyn BaseDatabase, builder: &mut DocumentSymbolsBuilder) {

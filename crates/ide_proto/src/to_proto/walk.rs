@@ -2,12 +2,12 @@ use std::ops::ControlFlow;
 
 use auto_lsp::default::db::BaseDatabase;
 
-use crate::{
-    hir_def::{
+use hir::{
+        hir_def::{
         expressions::{
-            expression::{Expr, ExprKind, PrimaryExpr, VariableAccess},
+            expression::{BeginPathExpr, Expr, ExprKind, ParamAssign, PathExpr, PrimaryExpr, VariableAccess},
             spec::{Spec, SpecKind},
-            statement::{Stmt, StmtKind},
+            statement::{CaseKind, Stmt, StmtKind},
         },
         interned::namespace::SpanNamespaceAccessContext,
         namespace::NamespaceDecl,
@@ -15,13 +15,13 @@ use crate::{
             pou::{Pou, PouDecl},
             variable::VariableDecl,
         },
-        semantic_index::{HirNode, SemanticIndex, get_scope},
+        semantic_index::{SemanticIndex, get_scope},
         using::Using,
     },
-    hir_ty::{
-        inheritance_solver::MethodRef,
-    },
+    hir_ty::inheritance_solver::MethodRef,
 };
+
+use crate::to_proto::hir_node::HirNode;
 
 pub trait WalkHir<'db> {
     fn walk_hir<F>(&self, db: &'db dyn BaseDatabase, f: &mut F) -> ControlFlow<()>
@@ -248,6 +248,54 @@ impl<'db> WalkHir<'db> for Expr<'db> {
     }
 }
 
+impl<'db> WalkHir<'db> for BeginPathExpr<'db> {
+    fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
+        &self,
+        db: &'db dyn BaseDatabase,
+        f: &mut F,
+    ) -> ControlFlow<()> {
+        f(HirNode::BeginPathExpr(*self))?;
+
+        ControlFlow::Continue(())
+    }
+}
+
+impl<'db> WalkHir<'db> for PathExpr<'db> {
+    fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
+        &self,
+        db: &'db dyn BaseDatabase,
+        f: &mut F,
+    ) -> ControlFlow<()> {
+        f(HirNode::PathExpr(*self))?;
+
+        ControlFlow::Continue(())
+    }
+}
+
+impl<'db> WalkHir<'db> for VariableAccess<'db> {
+    fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
+        &self,
+        db: &'db dyn BaseDatabase,
+        f: &mut F,
+    ) -> ControlFlow<()> {
+        f(HirNode::VariableAccess(*self))?;
+
+        ControlFlow::Continue(())
+    }
+}
+
+impl<'db> WalkHir<'db> for ParamAssign<'db> {
+    fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
+        &self,
+        db: &'db dyn BaseDatabase,
+        f: &mut F,
+    ) -> ControlFlow<()> {
+        f(HirNode::Param(*self))?;
+
+        ControlFlow::Continue(())
+    }
+}
+
 impl<'db> WalkHir<'db> for Stmt<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
         &self,
@@ -258,9 +306,11 @@ impl<'db> WalkHir<'db> for Stmt<'db> {
             StmtKind::EmptyPathExpression(path) => {
             }
             StmtKind::Assignment { target, var } => {
+                var.walk_hir(db, f)?;
                 target.walk_hir(db, f)?;
             }
             StmtKind::AssignmentAttempt { var, target } => {
+                var.walk_hir(db, f)?;
                 target.walk_hir(db, f)?;
             }
             StmtKind::If {
@@ -318,8 +368,37 @@ impl<'db> WalkHir<'db> for Stmt<'db> {
                 }
             }
             StmtKind::FuncCall(func_call) => {
+                func_call.path(db).walk_hir(db, f)?;
+                for param in func_call.params(db) {
+                    param.walk_hir(db, f)?;
+                }
+
             }
-            _ => {}
+            StmtKind::Case { condition, cases, else_ } => {
+                condition.walk_hir(db, f)?;
+                for (case_exprs, stmts) in cases {
+                    for case in case_exprs {
+                        match case {
+                            CaseKind::Expression(expr) => {
+                                expr.walk_hir(db, f)?;
+                            }
+                            CaseKind::Subrange { lower, upper } => {
+                                lower.walk_hir(db, f)?;
+                                upper.walk_hir(db, f)?;
+                            }
+                        }
+                    }
+                    for stmt in stmts {
+                        stmt.walk_hir(db, f)?;
+                    }
+                }
+                if let Some(else_block) = else_ {
+                    for stmt in else_block {
+                        stmt.walk_hir(db, f)?;
+                    }
+                }
+            }
+            StmtKind::Continue | StmtKind::Exit | StmtKind::Return => {}
         }
         ControlFlow::Continue(())
     }

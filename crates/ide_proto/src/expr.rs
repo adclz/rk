@@ -11,7 +11,7 @@ use hir::{
     hir_ty::{body_inference::infer_body_scope, ty::Type},
 };
 
-use crate::{HasComment, ToProtocol, typ::TypeProto};
+use crate::{to_proto::ToProtocol, typ::TypeProto};
 
 impl<'db> ToProtocol<'db> for Expr<'db> {
     fn inlay_hint(&'db self, db: &'db dyn BaseDatabase) -> Option<InlayHint> {

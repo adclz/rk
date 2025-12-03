@@ -11,8 +11,7 @@ use hir::{
 };
 
 use crate::{
-    ToProtocol,
-    completions::item_builder::CompletionBuilder,
+    completions::item_builder::CompletionBuilder, to_proto::ToProtocol,
 };
 
 pub mod class;

@@ -35,12 +35,11 @@ use crate::{
             variable::VariableDecl,
         },
         scope::ScopeId,
-        semantic_index::{HirNode, SemanticIndex, get_scope, semantic_index},
+        semantic_index::{SemanticIndex, get_scope, semantic_index},
     },
     hir_ty::{
         name_res::pou_index,
     },
-    walk::WalkHir,
 };
 
 pub trait Check<'db> {

@@ -20,8 +20,8 @@ use hir::HirNodeInfo;
 use serde_json::to_value;
 
 use crate::{
-    HasComment, ToProtocol, completions::context::ScopeCompletionCtx,
-    implementation::find_all_implementations,
+    completions::context::ScopeCompletionCtx,
+    implementation::find_all_implementations, to_proto::{HasComment, ToProtocol},
 };
 
 impl<'db> ToProtocol<'db> for PouDecl<'db> {

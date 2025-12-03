@@ -14,7 +14,6 @@ pub mod check;
 pub mod hir_def;
 pub mod hir_ty;
 pub mod query_string;
-pub mod walk;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct AstId(pub(crate) usize);

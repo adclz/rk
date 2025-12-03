@@ -9,7 +9,7 @@ use hir::{
     hir_ty::name_res::{namespace_index, resolve_namespace_access},
 };
 
-use crate::{NAMESPACE, SUPPORTED_TYPES, ToProtocol};
+use crate::{NAMESPACE, SUPPORTED_TYPES, to_proto::ToProtocol};
 
 impl<'db> ToProtocol<'db> for Using<'db> {
     fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Hover> {

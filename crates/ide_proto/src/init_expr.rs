@@ -8,7 +8,7 @@ use hir::{
     HirNodeInfo, TypeInfo, hir_def::expressions::expression::InitExpr, hir_ty::ty::Type
 };
 
-use crate::ToProtocol;
+use crate::to_proto::ToProtocol;
 
 impl<'db> ToProtocol<'db> for InitExpr<'db> {
     fn inlay_hint(&'db self, db: &'db dyn BaseDatabase) -> Option<InlayHint> {

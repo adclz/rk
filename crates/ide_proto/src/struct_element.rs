@@ -9,7 +9,7 @@ use hir::{
     HirNodeInfo, TypeInfo, hir_def::expressions::spec::StructElement, hir_ty::ty::Type,
 };
 
-use crate::{HasComment, ToProtocol};
+use crate::to_proto::{HasComment, ToProtocol};
 
 impl<'db> ToProtocol<'db> for StructElement<'db> {
     fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Hover> {

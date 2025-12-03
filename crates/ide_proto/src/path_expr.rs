@@ -11,7 +11,7 @@ use hir::{
     hir_ty::body_inference::infer_body_scope,
 };
 
-use crate::{ToProtocol, typ::TypeProto};
+use crate::{to_proto::ToProtocol, typ::TypeProto};
 
 impl<'db> ToProtocol<'db> for PathExpr<'db> {
     fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Hover> {

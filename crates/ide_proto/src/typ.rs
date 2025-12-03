@@ -4,7 +4,7 @@ use auto_lsp::{
 };
 use hir::{HirNodeInfo, hir_ty::ty::Type};
 
-use crate::ToProtocol;
+use crate::to_proto::ToProtocol;
 
 pub(crate) trait TypeProto<'db> {
     fn inlay_hint(

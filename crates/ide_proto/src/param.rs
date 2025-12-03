@@ -3,7 +3,7 @@ use hir::{
     HirNodeInfo, hir_def::expressions::expression::{ParamAssign, ParamAssignKind}, hir_ty::{body_inference::infer_body_scope, ty::Type}
 };
 
-use crate::{ToProtocol, typ::TypeProto};
+use crate::{to_proto::ToProtocol, typ::TypeProto};
 
 impl<'db> ToProtocol<'db> for ParamAssign<'db> {
     fn inlay_hint(&'db self, db: &'db dyn BaseDatabase) -> Option<InlayHint> {

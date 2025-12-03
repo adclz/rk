@@ -6,7 +6,7 @@ use auto_lsp::{
     lsp_types::{CompletionParams, CompletionResponse},
 };
 use hir::hir_def::semantic_index::semantic_index;
-use ide_proto::AsProtocol;
+use ide_proto::to_proto::{AsProtocol, hir_node::descendant_at};
 
 pub fn completions(
     db: &impl BaseDatabase,
@@ -30,8 +30,7 @@ pub fn completions(
         None => return Ok(None),
     };
 
-    Ok(semantic_index(db, file)
-        .descendant_at(db, offset)
+    Ok(descendant_at(db, file, offset)
         .map(|s| {
             eprintln!("Getting completions for node: {s:?}, {offset}");
             CompletionResponse::Array(

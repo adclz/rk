@@ -12,10 +12,7 @@ use hir::{
 };
 
 use crate::{
-    HasComment, ToProtocol,
-    completions::{
-        static_snippets,
-    },
+    completions::static_snippets, to_proto::{HasComment, ToProtocol},
 };
 
 impl<'db> ToProtocol<'db> for Spec<'db> {

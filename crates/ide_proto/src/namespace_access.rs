@@ -14,8 +14,8 @@ use hir::{
 };
 
 use crate::{
-    CLASS, FUNCTION, INTERFACE, NAMESPACE, SUPPORTED_TYPES, ToProtocol,
-    completions::item_builder::CompletionBuilder,
+    CLASS, FUNCTION, INTERFACE, NAMESPACE, SUPPORTED_TYPES,
+    completions::item_builder::CompletionBuilder, to_proto::ToProtocol,
 };
 
 impl<'db> ToProtocol<'db> for SpanNamespaceAccessContext<'db> {

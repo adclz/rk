@@ -1,7 +1,7 @@
 use auto_lsp::{default::db::BaseDatabase, lsp_types::{GotoDefinitionResponse, Hover, request::GotoDeclarationResponse}};
 use hir::{hir_def::expressions::expression::BeginPathExpr, hir_ty::body_inference::infer_body_scope};
 
-use crate::{ToProtocol, typ::TypeProto};
+use crate::{to_proto::ToProtocol, typ::TypeProto};
 
 impl<'db> ToProtocol<'db> for BeginPathExpr<'db> {
     fn declaration(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDeclarationResponse> {

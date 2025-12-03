@@ -14,7 +14,7 @@ use hir::{
     hir_def::pous::variable::{VariableDecl, VariableKind}, hir_ty::ty::Type,
 };
 
-use crate::{HasComment, SUPPORTED_TYPES, ToProtocol};
+use crate::{SUPPORTED_TYPES, to_proto::{HasComment, ToProtocol}};
 
 impl<'db> ToProtocol<'db> for VariableDecl<'db> {
     fn document_symbols(&self, db: &'db dyn BaseDatabase, builder: &mut DocumentSymbolsBuilder) {

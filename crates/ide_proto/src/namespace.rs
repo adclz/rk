@@ -10,7 +10,7 @@ use hir::{
     hir_def::{namespace::NamespaceDecl, semantic_index::get_scope}, HirNodeInfo
 };
 
-use crate::{ToProtocol, completions};
+use crate::{completions, to_proto::ToProtocol};
 
 impl<'db> ToProtocol<'db> for NamespaceDecl<'db> {
     fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Hover> {

@@ -5,9 +5,8 @@ use auto_lsp::{
     define_semantic_token_modifiers, define_semantic_token_types,
     lsp_types::{SemanticTokensParams, SemanticTokensResult},
 };
-use hir::{hir_def::semantic_index::semantic_index, walk::WalkHir};
-use ide_proto::AsProtocol;
-
+use hir::{hir_def::semantic_index::semantic_index};
+use ide_proto::to_proto::{AsProtocol, walk::WalkHir};
 
 pub fn semantic_tokens_full(
     db: &impl BaseDatabase,

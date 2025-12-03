@@ -27,7 +27,7 @@ use crate::{
             variable::VariableDecl,
         },
         scope::{ScopeId, ScopeKind},
-        semantic_index::{HirNode, get_scope},
+        semantic_index::{get_scope},
     },
     hir_ty::{
         infer::ctx::{InferCtx, NestedScope},
