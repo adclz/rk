@@ -5,7 +5,7 @@ use auto_lsp::{
     }
 };
 use hir::{
-    HirNodeInfo, hir_def::semantic_index::HirNode
+    HirNodeInfo, hir_def::{expressions::statement::StmtKind, semantic_index::HirNode}
 };
 
 pub mod completions;
@@ -15,13 +15,17 @@ pub mod namespace;
 pub mod pou;
 pub mod expr;
 pub mod init_expr;
-pub mod stmt;
+pub mod path_expr;
 pub mod using;
 pub mod spec;
 pub mod struct_element;
 pub mod variable;
 pub mod implementation;
 pub mod comment_index;
+pub mod var_access;
+pub mod typ;
+pub mod begin_path_expr;
+pub mod param;
 
 pub trait HasComment<'db>: HirNodeInfo<'db> {
     fn get_comment(&'db self, db: &'db dyn BaseDatabase) -> Option<String> {
@@ -92,14 +96,16 @@ impl<'db> AsProtocol<'db> for HirNode<'db> {
             HirNode::StructElement(s) => s,
             HirNode::Spec(s) => s,
             HirNode::MethodRef(m) => m,
-            HirNode::Stmt(s) => s,
             HirNode::Using(u) => u,
+            HirNode::BeginPathExpr(b) => b,
             HirNode::Expr(e) => e,
+            HirNode::PathExpr(p) => p,
+            HirNode::VariableAccess(v) => v,
             HirNode::InitExpr(e) => e,
+            HirNode::Param(p) => p,
         }
     }
 }
-
 
 define_semantic_token_types![
     standard {
