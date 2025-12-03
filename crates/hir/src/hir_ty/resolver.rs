@@ -36,11 +36,12 @@ impl<'db> Resolver<'db> {
             return Type::Never;
         };
 
-        eprintln!("Resolving FQ PathExpr: {:?}", access.target.text(db));
-        eprintln!("Resolving ns: {:?}", access.namespace);
-
         match resolve_namespace_access(db, &access) {
-            Some(pou) => Type::new_pou(db, pou),
+            Some(pou) => {
+                let typ = Type::new_pou(db, pou);
+                infer_results.type_of_path_expr.insert(path_expr, typ);
+                typ
+            },
             None => {
                 infer_results
                     .errors
@@ -200,7 +201,6 @@ impl<'db> Type<'db> {
                         );
                     }
                     Type::Struct(st) => {
-                        eprintln!("Walking struct type for field access, {:?}", ident.ident);
                         if let Some(field) = st.resolve_elements(db).get(&ident.ident) {
                             result_ty = Type::StructElement(*field);
                         } else if report_errors {

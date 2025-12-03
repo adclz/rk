@@ -6,10 +6,10 @@ use crate::{
     check::{
         check_init_expr::check_init_expr,
         check_semantic_index::Check,
-        errors::{analysis_error::ToIdeDiagnostic, duplicates::DuplicateError},
+        errors::{analysis_error::ToIdeDiagnostic, body_inference::{BodyInferenceError, TypeError}, duplicates::DuplicateError},
     },
     hir_def::{interned::identifier::Ident, pous::variable::VariableDecl},
-    hir_ty::{ty::Type},
+    hir_ty::ty::Type,
 };
 
 impl<'db> Check<'db> for [VariableDecl<'db>] {
@@ -29,6 +29,15 @@ impl<'db> Check<'db> for [VariableDecl<'db>] {
                 None => {
                     seen.insert(*variable.name(db), *variable);
                 }
+            }
+
+            let var_typ = Type::new_spec(db, variable.spec(db));
+            if var_typ.is_never() {
+                eprintln!("checking variable with never type: {:?}", variable.name(db));
+                errors.push(
+                    BodyInferenceError::NoSpecItemInScope { spec: variable.spec(db), scope: variable.scope_id(db) }
+                    .to_diagnostic(db)
+                );
             }
 
             // Check initializer expression

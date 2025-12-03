@@ -65,7 +65,6 @@ fn global_pou_index<'db>(db: &'db dyn BaseDatabase) -> FxHashMap<Ident, PouDecl<
 #[tracing::instrument(skip(db))]
 #[salsa::tracked(returns(ref))]
 pub fn pou_index<'db>(db: &'db dyn BaseDatabase, name: Ident) -> Option<PouDecl<'db>> {
-    eprintln!("Resolving POU globally: {}", name.text(db));
     global_pou_index(db).get(&name).copied()
 }
 

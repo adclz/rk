@@ -12,7 +12,7 @@ use tracing::info_span;
 use crate::HirNodeInfo;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::analysis_error::AnalysisError;
-use crate::hir_def::expressions::expression::{Expr, InitExpr};
+use crate::hir_def::expressions::expression::{BeginPathExpr, Expr, FuncCall, InitExpr, ParamAssign, PathExpr, VariableAccess};
 use crate::hir_def::expressions::spec::{Spec, StructElement};
 use crate::hir_def::expressions::statement::Stmt;
 use crate::hir_def::interned::namespace::SpanNamespaceAccessContext;
@@ -144,10 +144,13 @@ pub enum HirNode<'db> {
     StructElement(StructElement<'db>),
     Spec(Spec<'db>),
     MethodRef(MethodRef<'db>),
-    Stmt(Stmt<'db>),
+    BeginPathExpr(BeginPathExpr<'db>),
     Expr(Expr<'db>),
     InitExpr(InitExpr<'db>),
+    PathExpr(PathExpr<'db>),
+    VariableAccess(VariableAccess<'db>),
     Using(Using<'db>),
+    Param(ParamAssign<'db>),
 }
 
 impl<'db> HirNode<'db> {
@@ -160,10 +163,13 @@ impl<'db> HirNode<'db> {
             HirNode::StructElement(s) => s.get_span(db),
             HirNode::Spec(s) => s.get_span(db),
             HirNode::MethodRef(m) => m.get_span(db),
-            HirNode::Stmt(s) => s.get_span(db),
+            HirNode::BeginPathExpr(b) => b.get_span(db),
+            HirNode::PathExpr(p) => p.get_span(db),
+            HirNode::VariableAccess(v) => v.get_span(db),
             HirNode::Expr(e) => e.get_span(db),
             HirNode::InitExpr(e) => e.get_span(db),
             HirNode::Using(u) => u.get_span(db),
+            HirNode::Param(p) => p.get_span(db),
         }
     }
 
@@ -176,10 +182,13 @@ impl<'db> HirNode<'db> {
             HirNode::StructElement(s) => s.get_scope_id(db),
             HirNode::Spec(s) => s.get_scope_id(db),
             HirNode::MethodRef(m) => m.get_scope_id(db),
-            HirNode::Stmt(s) => s.get_scope_id(db),
+            HirNode::BeginPathExpr(b) => b.get_scope_id(db),
             HirNode::Expr(e) => e.get_scope_id(db),
+            HirNode::PathExpr(p) => p.get_scope_id(db),
+            HirNode::VariableAccess(v) => v.get_scope_id(db),
             HirNode::InitExpr(e) => e.get_scope_id(db),
             HirNode::Using(u) => u.get_scope_id(db),
+            HirNode::Param(p) => p.get_scope_id(db),
         }
     }
 }

@@ -31,8 +31,10 @@ impl<'db> Check<'db> for ScopeId<'db> {
         });
 
         // check pous
-        self.pous(db).iter().for_each(|pou| {
-            //pou.check(db, errors);
+        self.pous(db).map(|pous| {
+            pous.iter().for_each(|pou| {
+                pou.scope_id(db).check(db, errors);
+            });
         });
 
         // check methods

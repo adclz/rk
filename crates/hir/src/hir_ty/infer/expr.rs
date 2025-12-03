@@ -137,7 +137,11 @@ impl<'db> InferExprCtx<'db> {
         infer_result: &mut BodyInferenceResult<'db>,
     ) -> Type<'db> {
         match to {
-            PrimaryExpr::Literal(prim) => (*prim).into(),
+            PrimaryExpr::Literal(prim) => {
+                let typ = (*prim).into();
+                infer_result.type_of_expr.insert(base_expr, typ);
+                typ
+            },
             PrimaryExpr::VariableAccess(v) => {
                 self.resolver.resolve_variable_access(db, *v, infer_result)
             }

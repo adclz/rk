@@ -6,8 +6,7 @@ use crate::{
     check::errors::analysis_error::ToIdeDiagnostic,
     hir_def::{
         expressions::{
-            expression::{AddOperatorKind, Expr, InitExpr, MultOperatorKind, PathExpr},
-            statement::Stmt,
+            expression::{AddOperatorKind, Expr, InitExpr, MultOperatorKind, PathExpr}, spec::Spec, statement::Stmt
         },
         interned::identifier::Ident,
         scope::ScopeId,
@@ -21,6 +20,10 @@ use crate::{
 pub enum BodyInferenceError<'db> {
     NoItemInScope {
         expr: PathExpr<'db>,
+        scope: ScopeId<'db>,
+    },
+    NoSpecItemInScope {
+        spec: Spec<'db>,
         scope: ScopeId<'db>,
     },
     NoSuchField {
@@ -90,6 +93,14 @@ impl<'db> ToIdeDiagnostic<'db> for BodyInferenceError<'db> {
                 .call();
 
                 
+                diag
+            },
+            Self::NoSpecItemInScope { spec, scope } => {
+                let diag = diag()
+                .message(format!("no item {:?} found in scope", spec.display(db)))
+                .range(spec.get_span(db))
+                .call();
+
                 diag
             },
             Self::NoSuchField { expr, ident, ty } => diag()
