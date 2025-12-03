@@ -6,7 +6,12 @@ use crate::{
         BeginPathExpr, InitExpr, PathExpr, VariableAccess, VariableAccessKind,
     },
     hir_ty::{
-        body_inference::{Adjustment, BodyInferenceResult}, expr_store::{InitExprWalkStep, PathExprWalkStep}, infer::ctx::InferCtx, init_inference::InitExprInferenceResult, name_res::resolve_namespace_access, ty::Type
+        body_inference::{Adjustment, BodyInferenceResult},
+        expr_store::{InitExprWalkStep, PathExprWalkStep},
+        infer::ctx::InferCtx,
+        init_inference::InitExprInferenceResult,
+        name_res::resolve_namespace_access,
+        ty::Type,
     },
 };
 
@@ -41,7 +46,7 @@ impl<'db> Resolver<'db> {
                 let typ = Type::new_pou(db, pou);
                 infer_results.type_of_path_expr.insert(path_expr, typ);
                 typ
-            },
+            }
             None => {
                 infer_results
                     .errors
@@ -278,6 +283,12 @@ impl<'db> Type<'db> {
         step: InitExprWalkStep<'db>,
         ctx: &mut InitExprInferenceResult<'db>,
     ) -> Type<'db> {
+        if let Type::DataType(dt) = self {
+            return Type::new_spec(db, dt.spec(db)).walk_init_expr(db, expr, step, ctx);
+        }
+        if let Type::StructElement(elem) = self {
+            return Type::new_spec(db, elem.spec(db)).walk_init_expr(db, expr, step, ctx);
+        }
         let mut result_ty = Type::Never;
         match step {
             InitExprWalkStep::Index => {

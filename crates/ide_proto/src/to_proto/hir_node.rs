@@ -5,23 +5,63 @@ use auto_lsp::{
     default::db::{BaseDatabase, file::File},
 };
 use hir::{
-    HirNodeInfo,
-    hir_def::{
+    AstId, HirNodeInfo, hir_def::{
         expressions::{
             expression::{BeginPathExpr, Expr, InitExpr, ParamAssign, PathExpr, VariableAccess},
             spec::{Spec, StructElement},
-        },
-        interned::namespace::SpanNamespaceAccessContext,
-        namespace::NamespaceDecl,
-        pous::{pou::PouDecl, variable::VariableDecl},
-        scope::ScopeId,
-        semantic_index::{SemanticIndex, semantic_index},
-        using::Using,
-    },
-    hir_ty::inheritance_solver::MethodRef,
+        }, interned::namespace::SpanNamespaceAccess, namespace::NamespaceDecl, pous::{pou::PouDecl, variable::VariableDecl}, scope::ScopeId, semantic_index::{SemanticIndex, semantic_index}, using::Using
+    }, hir_ty::{inheritance_solver::MethodRef, ty::Type}
 };
 
 use crate::to_proto::walk::WalkHir;
+
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum SpanNamespaceAccessContext<'db> {
+    Extends(&'db SpanNamespaceAccess<'db>),
+    Implements(&'db SpanNamespaceAccess<'db>),
+}
+
+impl<'db> SpanNamespaceAccessContext<'db> {
+    pub fn get_access(&self) -> &'db SpanNamespaceAccess<'db> {
+        match self {
+            SpanNamespaceAccessContext::Extends(access) => access,
+            SpanNamespaceAccessContext::Implements(access) => access,
+        }
+    }
+}
+
+impl<'db> HirNodeInfo<'db> for SpanNamespaceAccessContext<'db> {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+        self.get_access().get_scope_id(db)
+    }
+
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+        self.get_access().get_id(db)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct InitExprWithTypeContext<'db> {
+    pub init_expr: InitExpr<'db>,
+    pub ty: Type<'db>,
+}
+
+impl<'db> From<(InitExpr<'db>, Type<'db>)> for InitExprWithTypeContext<'db> {
+    fn from((init_expr, ty): (InitExpr<'db>, Type<'db>)) -> Self {
+        InitExprWithTypeContext { init_expr, ty }
+    }
+}
+
+impl<'db> HirNodeInfo<'db> for InitExprWithTypeContext<'db> {
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+        self.init_expr.get_scope_id(db)
+    }
+
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+        self.init_expr.get_id(db)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HirNode<'db> {
@@ -34,7 +74,7 @@ pub enum HirNode<'db> {
     MethodRef(MethodRef<'db>),
     BeginPathExpr(BeginPathExpr<'db>),
     Expr(Expr<'db>),
-    InitExpr(InitExpr<'db>),
+    InitExprWithType(InitExprWithTypeContext<'db>),
     PathExpr(PathExpr<'db>),
     VariableAccess(VariableAccess<'db>),
     Using(Using<'db>),
@@ -55,7 +95,7 @@ impl<'db> HirNode<'db> {
             HirNode::PathExpr(p) => p.get_span(db),
             HirNode::VariableAccess(v) => v.get_span(db),
             HirNode::Expr(e) => e.get_span(db),
-            HirNode::InitExpr(e) => e.get_span(db),
+            HirNode::InitExprWithType(e) => e.get_span(db),
             HirNode::Using(u) => u.get_span(db),
             HirNode::Param(p) => p.get_span(db),
         }
@@ -74,7 +114,7 @@ impl<'db> HirNode<'db> {
             HirNode::Expr(e) => e.get_scope_id(db),
             HirNode::PathExpr(p) => p.get_scope_id(db),
             HirNode::VariableAccess(v) => v.get_scope_id(db),
-            HirNode::InitExpr(e) => e.get_scope_id(db),
+            HirNode::InitExprWithType(e) => e.get_scope_id(db),
             HirNode::Using(u) => u.get_scope_id(db),
             HirNode::Param(p) => p.get_scope_id(db),
         }

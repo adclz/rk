@@ -1,41 +1,47 @@
 use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{
-        InlayHint, InlayHintKind, InlayHintLabel, Position, request::GotoDeclarationResponse,
+        GotoDefinitionResponse, InlayHint, InlayHintKind, InlayHintLabel, Position,
+        request::GotoDeclarationResponse,
     },
 };
 use hir::{
-    HirNodeInfo, TypeInfo, hir_def::expressions::expression::InitExpr, hir_ty::ty::Type
+    HirNodeInfo, TypeInfo,
+    hir_def::expressions::expression::{InitExpr, InitExprKind},
+    hir_ty::{
+        init_inference::infer_init_expr,
+        ty::{self, Type},
+    },
 };
 
-use crate::to_proto::ToProtocol;
+use crate::{
+    to_proto::{ToProtocol, hir_node::InitExprWithTypeContext},
+    typ::TypeProto,
+};
 
-impl<'db> ToProtocol<'db> for InitExpr<'db> {
+impl<'db> ToProtocol<'db> for InitExprWithTypeContext<'db> {
     fn inlay_hint(&'db self, db: &'db dyn BaseDatabase) -> Option<InlayHint> {
-        Some(InlayHint {
-            position: get_expr_inlay_hint_position(db, self)?,
-            label: InlayHintLabel::String(match get_expr_ty(db, self) {
-                Some(ty) => format!(": {}", ty.type_name(db)),
-                None => return None,
+        match self.init_expr.kind(db) {
+            InitExprKind::StructElement { name, value } => Some(InlayHint {
+                position: name.get_span(db).lsp().end,
+                label: InlayHintLabel::String(format!(": {}", self.ty.type_name(db))),
+                kind: Some(InlayHintKind::TYPE),
+                padding_left: Some(false),
+                padding_right: Some(false),
+                text_edits: None,
+                tooltip: None,
+                data: None,
             }),
-            kind: Some(InlayHintKind::TYPE),
-            padding_left: Some(false),
-            padding_right: Some(false),
-            text_edits: None,
-            tooltip: None,
-            data: None,
-        })
+            _ => None,
+        }
     }
 
     fn declaration(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDeclarationResponse> {
-        None
+        self.ty.declaration(db)
     }
 
-    fn definition(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-    ) -> Option<auto_lsp::lsp_types::GotoDefinitionResponse> {
-        None
+    fn definition(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDefinitionResponse> {
+        self.ty.definition(db)
     }
 
     fn hover(
@@ -43,20 +49,6 @@ impl<'db> ToProtocol<'db> for InitExpr<'db> {
         db: &'db dyn BaseDatabase,
         offset: usize,
     ) -> Option<auto_lsp::lsp_types::Hover> {
-        None
+        self.ty.hover(db, offset, &self.init_expr)
     }
-}
-
-pub fn get_expr_inlay_hint_position(
-    db: &dyn BaseDatabase,
-    param: &InitExpr,
-) -> Option<Position> {
-    None
-}
-
-pub fn get_expr_ty<'db>(
-    db: &'db dyn BaseDatabase,
-    param: &'db InitExpr,
-) -> Option<Type<'db>> {
-    None
 }

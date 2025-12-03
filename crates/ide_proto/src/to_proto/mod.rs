@@ -80,7 +80,7 @@ impl<'db> AsProtocol<'db> for HirNode<'db> {
             HirNode::Expr(e) => e,
             HirNode::PathExpr(p) => p,
             HirNode::VariableAccess(v) => v,
-            HirNode::InitExpr(e) => e,
+            HirNode::InitExprWithType(e) => e,
             HirNode::Param(p) => p,
         }
     }

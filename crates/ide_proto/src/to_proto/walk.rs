@@ -3,13 +3,14 @@ use std::ops::ControlFlow;
 use auto_lsp::default::db::BaseDatabase;
 
 use hir::{
-        hir_def::{
+    hir_def::{
         expressions::{
-            expression::{BeginPathExpr, Expr, ExprKind, ParamAssign, PathExpr, PrimaryExpr, VariableAccess},
+            expression::{
+                BeginPathExpr, Expr, ExprKind, ParamAssign, PathExpr, PrimaryExpr, VariableAccess,
+            },
             spec::{Spec, SpecKind},
             statement::{CaseKind, Stmt, StmtKind},
         },
-        interned::namespace::SpanNamespaceAccessContext,
         namespace::NamespaceDecl,
         pous::{
             pou::{Pou, PouDecl},
@@ -18,10 +19,10 @@ use hir::{
         semantic_index::{SemanticIndex, get_scope},
         using::Using,
     },
-    hir_ty::inheritance_solver::MethodRef,
+    hir_ty::{inheritance_solver::MethodRef, init_inference::infer_init_expr, ty::Type},
 };
 
-use crate::to_proto::hir_node::HirNode;
+use crate::to_proto::hir_node::{HirNode, SpanNamespaceAccessContext};
 
 pub trait WalkHir<'db> {
     fn walk_hir<F>(&self, db: &'db dyn BaseDatabase, f: &mut F) -> ControlFlow<()>
@@ -179,7 +180,10 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
                 }
 
                 if let Some(init_expr) = dt.init(db) {
-                    f(HirNode::InitExpr(init_expr))?;
+                    let infer = infer_init_expr(db, Type::new_spec(db, dt.spec(db)), init_expr);
+                    for (init_expr, typ) in &infer.type_of_expr {
+                        f(HirNode::InitExprWithType((*init_expr, *typ).into()))?;
+                    }
                 }
             }
         }
@@ -196,7 +200,10 @@ impl<'db> WalkHir<'db> for VariableDecl<'db> {
         f(HirNode::VariableDecl(*self))?;
         f(HirNode::Spec(self.spec(db)))?;
         if let Some(init_expr) = self.init(db) {
-            f(HirNode::InitExpr(*init_expr))?;
+            let infer = infer_init_expr(db, Type::new_spec(db, self.spec(db)), *init_expr);
+            for (init_expr, typ) in &infer.type_of_expr {
+                f(HirNode::InitExprWithType((*init_expr, *typ).into()))?;
+            }
         }
         ControlFlow::Continue(())
     }
@@ -303,8 +310,7 @@ impl<'db> WalkHir<'db> for Stmt<'db> {
         f: &mut F,
     ) -> ControlFlow<()> {
         match self.stmt(db) {
-            StmtKind::EmptyPathExpression(path) => {
-            }
+            StmtKind::EmptyPathExpression(path) => {}
             StmtKind::Assignment { target, var } => {
                 var.walk_hir(db, f)?;
                 target.walk_hir(db, f)?;
@@ -372,9 +378,12 @@ impl<'db> WalkHir<'db> for Stmt<'db> {
                 for param in func_call.params(db) {
                     param.walk_hir(db, f)?;
                 }
-
             }
-            StmtKind::Case { condition, cases, else_ } => {
+            StmtKind::Case {
+                condition,
+                cases,
+                else_,
+            } => {
                 condition.walk_hir(db, f)?;
                 for (case_exprs, stmts) in cases {
                     for case in case_exprs {

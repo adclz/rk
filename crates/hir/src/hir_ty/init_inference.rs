@@ -13,7 +13,8 @@ use crate::{
         scope::ScopeId,
     },
     hir_ty::{
-        body_inference::BodyInferenceResult, def_map::FxIndexMap, expr_store::InitExprWalkStep, infer::expr::InferExprCtx, resolver::Resolver, ty::Type
+        body_inference::BodyInferenceResult, def_map::FxIndexMap, expr_store::InitExprWalkStep,
+        infer::expr::InferExprCtx, resolver::Resolver, ty::Type,
     },
 };
 
@@ -76,6 +77,8 @@ impl<'db> InitExprInferenceResult<'db> {
             Some(s) => expected.walk_init_expr(db, expr, s, self),
             None => expected,
         };
+
+        self.type_of_expr.insert(expr, narrowed);
 
         match expr.kind(db) {
             InitExprKind::StructInit { values } => {

@@ -245,31 +245,6 @@ impl<'db> SpanNamespaceAccess<'db> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum SpanNamespaceAccessContext<'db> {
-    Extends(&'db SpanNamespaceAccess<'db>),
-    Implements(&'db SpanNamespaceAccess<'db>),
-}
-
-impl<'db> SpanNamespaceAccessContext<'db> {
-    pub fn get_access(&self) -> &'db SpanNamespaceAccess<'db> {
-        match self {
-            SpanNamespaceAccessContext::Extends(access) => access,
-            SpanNamespaceAccessContext::Implements(access) => access,
-        }
-    }
-}
-
-impl<'db> HirNodeInfo<'db> for SpanNamespaceAccessContext<'db> {
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
-        self.get_access().get_scope_id(db)
-    }
-
-    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
-        self.get_access().get_id(db)
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct NamespaceAccess<'db> {
     pub namespace: Option<SpanNamespacePath<'db>>,

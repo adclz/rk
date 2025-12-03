@@ -6,7 +6,7 @@ use auto_lsp::{
 use hir::{
     HirNodeInfo,
     hir_def::{
-        interned::namespace::{SpanNamespaceAccess, SpanNamespaceAccessContext},
+        interned::namespace::{SpanNamespaceAccess},
         pous::pou::Pou,
     },
     hir_ty::name_res::resolve_namespace_access,
@@ -15,7 +15,7 @@ use hir::{
 
 use crate::{
     CLASS, FUNCTION, INTERFACE, NAMESPACE, SUPPORTED_TYPES,
-    completions::item_builder::CompletionBuilder, to_proto::ToProtocol,
+    completions::item_builder::CompletionBuilder, to_proto::{ToProtocol, hir_node::SpanNamespaceAccessContext},
 };
 
 impl<'db> ToProtocol<'db> for SpanNamespaceAccessContext<'db> {

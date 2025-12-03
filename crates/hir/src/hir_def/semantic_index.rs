@@ -15,7 +15,6 @@ use crate::check::errors::analysis_error::AnalysisError;
 use crate::hir_def::expressions::expression::{BeginPathExpr, Expr, FuncCall, InitExpr, ParamAssign, PathExpr, VariableAccess};
 use crate::hir_def::expressions::spec::{Spec, StructElement};
 use crate::hir_def::expressions::statement::Stmt;
-use crate::hir_def::interned::namespace::SpanNamespaceAccessContext;
 use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::PouDecl;
 use crate::hir_def::pous::variable::VariableDecl;
