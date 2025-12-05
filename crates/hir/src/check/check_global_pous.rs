@@ -3,8 +3,9 @@ use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
 use crate::{
+    HasName,
     check::errors::{analysis_error::ToIdeDiagnostic, duplicates::DuplicateError},
-    hir_def::{interned::identifier::Ident, pous::pou::PouDecl, semantic_index::semantic_index},
+    hir_def::{interned::identifier::Ident, pous::pou::Pou, semantic_index::semantic_index},
 };
 
 pub fn check_duplicate_pous(db: &dyn BaseDatabase, file: File) -> Vec<IdeDiagnostic> {
@@ -56,11 +57,11 @@ pub fn check_duplicate_pous(db: &dyn BaseDatabase, file: File) -> Vec<IdeDiagnos
 pub fn global_pous_in_file<'db>(
     db: &'db dyn BaseDatabase,
     file: File,
-) -> FxHashMap<Ident, Vec<PouDecl<'db>>> {
-    let mut map: std::collections::HashMap<Ident, Vec<PouDecl<'db>>, rustc_hash::FxBuildHasher> =
+) -> FxHashMap<Ident, Vec<Pou<'db>>> {
+    let mut map: std::collections::HashMap<Ident, Vec<Pou<'db>>, rustc_hash::FxBuildHasher> =
         FxHashMap::default();
     semantic_index(db, file).global_pous.iter().for_each(|pou| {
-        map.entry(*pou.name(db)).or_default().push(*pou);
+        map.entry(pou.get_name_ident(db)).or_default().push(*pou);
     });
     map
 }

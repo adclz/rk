@@ -1,7 +1,7 @@
 use auto_lsp::default::db::BaseDatabase;
 use ide_diagnostic::IdeDiagnostic;
 
-use crate::{hir_ty::inheritance_solver::MethodRef, query_string::query::{NamedSymbol, Query, SymbolIndex, SymbolKind}, HirNodeInfo};
+use crate::{HasName, HirNodeInfo, hir_ty::inheritance_solver::MethodRef, query_string::query::{NamedSymbol, Query, SymbolIndex, SymbolKind}};
 
 #[salsa::tracked(returns(ref))]
 pub fn method_symbol_index<'db>(
@@ -40,7 +40,7 @@ pub fn fuzzy_method_parameters<'db>(
 
     if !candidates.is_empty() {
         let mut note = format!("'{}' has parameter{} with similar name:\n",
-            method.name(db).text(db),
+            method.get_name_ident(db).text(db),
             if candidates.len() > 1 { "s" } else { "" }
         );
         let display_count = candidates.len().min(5);

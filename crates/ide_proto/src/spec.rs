@@ -6,7 +6,7 @@ use auto_lsp::{
     },
 };
 use hir::{
-    HirNodeInfo, TypeInfo,
+    HirNodeInfo,
     hir_def::expressions::spec::{Spec, SpecKind},
     hir_ty::{name_res::resolve_namespace_access, ty::Type},
 };

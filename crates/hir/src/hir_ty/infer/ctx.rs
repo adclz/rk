@@ -86,7 +86,7 @@ impl<'db> InferCtx<'db> {
                 10c SUPER():  Access reference to body in base function block
                 */
                 match invocation.kind(db) {
-                    InvocationKind::SuperBody => match pou.pou(db) {
+                    InvocationKind::SuperBody => match pou {
                         Pou::FunctionBlock(fb) => {
                             ctx.type_of_invocation
                                 .insert(invocation, Type::new_pou(db, pou));
@@ -97,7 +97,7 @@ impl<'db> InferCtx<'db> {
                             });
                         }
                     },
-                    InvocationKind::Super => match pou.pou(db) {
+                    InvocationKind::Super => match pou {
                         // fixme: SUPER only gives access to base methods from EXTENDS, not all implemented interfaces
                         Pou::FunctionBlock(_) | Pou::Class(_) => {
                             ctx.type_of_invocation
@@ -109,7 +109,7 @@ impl<'db> InferCtx<'db> {
                             });
                         }
                     },
-                    InvocationKind::This => match pou.pou(db) {
+                    InvocationKind::This => match pou {
                         Pou::FunctionBlock(_) | Pou::Class(_) => {
                             ctx.type_of_invocation
                                 .insert(invocation, Type::new_pou(db, pou));

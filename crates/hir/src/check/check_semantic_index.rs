@@ -31,7 +31,7 @@ use crate::{
         interned::namespace::NamespacePath,
         namespace::NamespaceDecl,
         pous::{
-            pou::{Pou, PouDecl},
+            pou::{Pou},
             variable::VariableDecl,
         },
         scope::ScopeId,
@@ -57,7 +57,7 @@ impl<'db> Check<'db> for SemanticIndex<'db> {
             .iter()
             .for_each(|err| errors.push(err.to_diagnostic(db)));
 
-        self.pous(db).iter().for_each(|pou| pou.scope_id(db).check(db, errors));
+        self.pous(db).iter().for_each(|pou| pou.get_scope_id(db).check(db, errors));
         // Namespaces
         self.namespaces.iter().for_each(|ns| ns.scope_id(db).check(db, errors));
     }

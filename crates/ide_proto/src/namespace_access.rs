@@ -4,13 +4,10 @@ use auto_lsp::{
     lsp_types::{CompletionItem, GotoDefinitionResponse, Hover, request::GotoDeclarationResponse},
 };
 use hir::{
-    HirNodeInfo,
-    hir_def::{
-        interned::namespace::{SpanNamespaceAccess},
+    HasName, HirNodeInfo, hir_def::{
+        interned::namespace::SpanNamespaceAccess,
         pous::pou::Pou,
-    },
-    hir_ty::name_res::resolve_namespace_access,
-    query_string::scope::query_scope_items,
+    }, hir_ty::name_res::resolve_namespace_access, query_string::scope::query_scope_items
 };
 
 use crate::{
@@ -21,7 +18,7 @@ use crate::{
 impl<'db> ToProtocol<'db> for SpanNamespaceAccessContext<'db> {
     fn hover(&'db self, db: &'db dyn BaseDatabase, _offset: usize) -> Option<Hover> {
         match resolve_namespace_access(db, &self.get_access().path) {
-            Some(resolved) => resolved.hover(db, resolved.name_span(db).start_byte),
+            Some(resolved) => resolved.hover(db, resolved.get_name_span(db).start_byte),
             None => None,
         }
     }
@@ -52,7 +49,7 @@ impl<'db> ToProtocol<'db> for SpanNamespaceAccessContext<'db> {
             Self::Extends(ext) => {
                 let pous =
                     query_scope_items(db, &ext.to_string(db), self.get_scope_id(db), |pou| {
-                        matches!(pou.pou(db), Pou::FunctionBlock(_) | Pou::Class(_))
+                        matches!(pou, Pou::FunctionBlock(_) | Pou::Class(_))
                     });
 
                 let builder = CompletionBuilder::default().with_import(db, self.get_scope_id(db));
@@ -69,7 +66,7 @@ impl<'db> ToProtocol<'db> for SpanNamespaceAccessContext<'db> {
             Self::Implements(imp) => {
                 let pous =
                     query_scope_items(db, &imp.to_string(db), self.get_scope_id(db), |pou| {
-                        matches!(pou.pou(db), Pou::Interface(_))
+                        matches!(pou, Pou::Interface(_))
                     });
 
                 let builder = CompletionBuilder::default().with_import(db, self.get_scope_id(db));
@@ -91,7 +88,7 @@ impl<'db> ToProtocol<'db> for SpanNamespaceAccessContext<'db> {
             Self::Extends(ext) => {
                 push_fragments(db, &ext, builder);
                 if let Some(resolved) = resolve_namespace_access(db, &ext.path) {
-                    match resolved.pou(db) {
+                    match resolved {
                         Pou::Class(_) => {
                             builder.push(
                                 self.get_access().path.target.get_span(db).lsp(),

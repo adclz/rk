@@ -4,7 +4,7 @@ use auto_lsp::{
     lsp_types::CompletionItem,
 };
 use hir::{
-    HirNodeInfo, hir_def::{
+    HasName, HirNodeInfo, hir_def::{
         pous::pou::Pou,
         scope::{ScopeId, ScopeKind}, semantic_index::get_scope,
     }, query_string::scope::query_scope_items
@@ -56,33 +56,33 @@ impl<'db> ScopeCompletionCtx<'db> {
 
     pub fn scoped(mut self, db: &'db dyn BaseDatabase) -> Self {
         match &get_scope(db, self.scope).kind {
-            ScopeKind::Pou(p) => match p.pou(db) {
+            ScopeKind::Pou(p) => match p {
                 Pou::FunctionBlock(f) => f.head_completion(
                     db,
                     PouCompletionCtx {
                         scope_ctx: &mut self,
-                        name_span: p.name_span(db),
+                        name_span: p.get_name_span(db),
                     },
                 ),
                 Pou::Function(f) => f.head_completion(
                     db,
                     PouCompletionCtx {
                         scope_ctx: &mut self,
-                        name_span: p.name_span(db),
+                        name_span: p.get_name_span(db),
                     },
                 ),
                 Pou::Interface(i) => i.head_completion(
                     db,
                     PouCompletionCtx {
                         scope_ctx: &mut self,
-                        name_span: p.name_span(db), 
+                        name_span: p.get_name_span(db), 
                     }
                 ),
                 Pou::Class(c) => c.head_completion(
                     db,
                     PouCompletionCtx {
                         scope_ctx: &mut self,
-                        name_span: p.name_span(db),
+                        name_span: p.get_name_span(db),
                     },
                 ),
                 Pou::DataType(dt) => {
@@ -94,7 +94,7 @@ impl<'db> ScopeCompletionCtx<'db> {
                     db,
                     PouCompletionCtx {
                         scope_ctx: &mut self,
-                        name_span: m.get_name_span(db).unwrap(),
+                        name_span: m.get_name_span(db),
                     },
                 );
             },
@@ -109,7 +109,7 @@ impl<'db> ScopeCompletionCtx<'db> {
             .with_signature();
 
         let pous = query_scope_items(db, self.query, self.scope, |pou| {
-            matches!(pou.pou(db), Pou::Function(_))
+            matches!(pou, Pou::Function(_))
         });
 
         for pou in pous.local_pous {

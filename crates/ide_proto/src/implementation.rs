@@ -1,5 +1,5 @@
 use auto_lsp::{default::db::{BaseDatabase, file::File}, salsa};
-use hir::hir_def::{pous::pou::PouDecl, semantic_index::semantic_index};
+use hir::{HirNodeInfo, hir_def::{pous::pou::Pou, semantic_index::semantic_index}};
 
 // todo
 // this could be optimized by filtering out files that do not contains the pou's name
@@ -7,8 +7,8 @@ use hir::hir_def::{pous::pou::PouDecl, semantic_index::semantic_index};
 // this would be a lot more efficient for large workspaces
 pub fn find_all_implementations<'db>(
     db: &'db dyn BaseDatabase,
-    pou: PouDecl<'db>,
-) -> Vec<PouDecl<'db>> {
+    pou: Pou<'db>,
+) -> Vec<Pou<'db>> {
     let mut results = vec![];
     db.get_files().iter().for_each(|file| {
         results.extend(find_implementations(db, *file, pou));
@@ -20,8 +20,8 @@ pub fn find_all_implementations<'db>(
 fn find_implementations<'db>(
     db: &'db dyn BaseDatabase,
     file: File,
-    implemented: PouDecl<'db>,
-) -> Vec<PouDecl<'db>> {
+    implemented: Pou<'db>,
+) -> Vec<Pou<'db>> {
     let mut pous = vec![];
     let sema = semantic_index(db, file);
 
@@ -40,11 +40,11 @@ fn find_implementations<'db>(
 
 fn check_implementations<'db>(
     db: &'db dyn BaseDatabase,
-    pou: PouDecl<'db>,
-    implemented: PouDecl<'db>,
-    pous: &mut Vec<PouDecl<'db>>,
+    pou: Pou<'db>,
+    implemented: Pou<'db>,
+    pous: &mut Vec<Pou<'db>>,
 ) {
-    for candidate in pou.scope_id(db).inheritors(db) {
+    for candidate in pou.get_scope_id(db).inheritors(db) {
         if *candidate == implemented {
             pous.push(pou);
             return;

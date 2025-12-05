@@ -3,7 +3,7 @@ use std::ops::ControlFlow;
 use auto_lsp::default::db::BaseDatabase;
 
 use hir::{
-    hir_def::{
+    HirNodeInfo, hir_def::{
         expressions::{
             expression::{
                 BeginPathExpr, Expr, ExprKind, ParamAssign, PathExpr, PrimaryExpr, VariableAccess,
@@ -13,13 +13,12 @@ use hir::{
         },
         namespace::NamespaceDecl,
         pous::{
-            pou::{Pou, PouDecl},
+            pou::{Pou},
             variable::VariableDecl,
         },
         semantic_index::{SemanticIndex, get_scope},
         using::Using,
-    },
-    hir_ty::{inheritance_solver::MethodRef, init_inference::infer_init_expr, ty::Type},
+    }, hir_ty::{inheritance_solver::MethodRef, init_inference::infer_init_expr, ty::Type}
 };
 
 use crate::to_proto::hir_node::{HirNode, SpanNamespaceAccessContext};
@@ -81,7 +80,7 @@ impl<'db> WalkHir<'db> for NamespaceDecl<'db> {
     }
 }
 
-impl<'db> WalkHir<'db> for PouDecl<'db> {
+impl<'db> WalkHir<'db> for Pou<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
         &self,
         db: &'db dyn BaseDatabase,
@@ -89,9 +88,9 @@ impl<'db> WalkHir<'db> for PouDecl<'db> {
     ) -> ControlFlow<()> {
         f(HirNode::PouDecl(*self))?;
 
-        let scope = get_scope(db, self.scope_id(db));
+        let scope = get_scope(db, self.get_scope_id(db));
 
-        match self.pou(db) {
+        match self {
             Pou::Function(function) => {
                 if let Some(ret) = function.return_type(db) {
                     ret.walk_hir(db, f)?;

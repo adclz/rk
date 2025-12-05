@@ -23,7 +23,7 @@ use crate::{
             namespace::{NamespaceAccess, SpanNamespacePath},
         },
         pous::{
-            pou::{Pou, PouDecl},
+            pou::{Pou},
             variable::VariableDecl,
         },
         scope::{ScopeId, ScopeKind},
@@ -47,9 +47,9 @@ pub fn infer_body_scope<'db>(
 
     // Only Scopes with bodies can have statements
     let (scope_typ, statements) = match get_scope(db, scope).kind {
-        ScopeKind::Pou(pou) => match pou.pou(db) {
-            Pou::Function(f) => (Type::Function(*f), f.statements(db)),
-            Pou::FunctionBlock(fb) => (Type::FunctionBlock(*fb), fb.statements(db)),
+        ScopeKind::Pou(pou) => match pou {
+            Pou::Function(f) => (Type::Function(f), f.statements(db)),
+            Pou::FunctionBlock(fb) => (Type::FunctionBlock(fb), fb.statements(db)),
             _ => return result,
         },
         ScopeKind::MethodDecl(m) => (Type::MethodDecl(m.into()), m.stmts(db)),

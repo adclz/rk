@@ -3,30 +3,28 @@ use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    check::{
+    HasName, HirNodeInfo, check::{
         check_semantic_index::Check,
         errors::{
             analysis_error::{AnalysisError, ToIdeDiagnostic},
             duplicates::DuplicateError,
             inheritance::MethodError,
         },
-    },
-    hir_def::{
+    }, hir_def::{
         modifier::Modifier,
         pous::{
             class::MethodDecl,
             interface::MethodPrototype,
-            pou::{Pou, PouDecl},
+            pou::{Pou},
         },
-    },
-    hir_ty::inheritance_solver::{MethodRef, inherited_methods},
+    }, hir_ty::inheritance_solver::{MethodRef, inherited_methods}
 };
 
 impl<'db> Check<'db> for Vec<MethodDecl<'db>> {
     fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<IdeDiagnostic>) {
         let mut seen = FxHashMap::default();
         for method in self {
-            if let Some(prev) = seen.get(method.name(db)) {
+            if let Some(prev) = seen.get(&method.get_name_ident(db)) {
                 errors.push(
                     DuplicateError::MethodDecl {
                         method1: *prev,
@@ -35,7 +33,7 @@ impl<'db> Check<'db> for Vec<MethodDecl<'db>> {
                     .to_diagnostic(db),
                 );
             } else {
-                seen.insert(*method.name(db), *method);
+                seen.insert(method.get_name_ident(db), *method);
             }
         }
     }
@@ -45,7 +43,7 @@ impl<'db> Check<'db> for Vec<MethodPrototype<'db>> {
     fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<IdeDiagnostic>) {
         let mut seen = FxHashMap::default();
         for method in self {
-            if let Some(prev) = seen.get(method.name(db)) {
+            if let Some(prev) = seen.get(&method.get_name_ident(db)) {
                 errors.push(
                     DuplicateError::MethodProt {
                         method1: *prev,
@@ -54,7 +52,7 @@ impl<'db> Check<'db> for Vec<MethodPrototype<'db>> {
                     .to_diagnostic(db),
                 );
             } else {
-                seen.insert(*method.name(db), *method);
+                seen.insert(method.name(db), *method);
             }
         }
     }
@@ -62,13 +60,13 @@ impl<'db> Check<'db> for Vec<MethodPrototype<'db>> {
 
 pub fn check_inheritance<'db>(
     db: &'db dyn BaseDatabase,
-    implementer: PouDecl<'db>,
+    implementer: Pou<'db>,
     errors: &mut Vec<IdeDiagnostic>,
 ) {
-    let declared_methods = &implementer.scope_id(db).def_map(db).declared_methods;
+    let declared_methods = &implementer.get_scope_id(db).def_map(db).declared_methods;
     let inherited_methods = inherited_methods(db, implementer);
 
-    if let Pou::Class(cl) = implementer.pou(db) {
+    if let Pou::Class(cl) = implementer {
         // If the class is abstract, it must have at least one abstract method
         if cl.modifier(db).contains(Modifier::ABSTRACT)
             && !declared_methods

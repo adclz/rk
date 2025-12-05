@@ -1,7 +1,11 @@
 use auto_lsp::default::db::BaseDatabase;
 use ide_diagnostic::{IdeDiagnostic, Related};
 
-use crate::{HirNodeInfo, hir_def::expressions::spec::ElementarySpec, hir_ty::ty::{InferType, Type}};
+use crate::{
+    HasName, HirNodeInfo,
+    hir_def::expressions::spec::{ElementarySpec, Spec, SpecKind},
+    hir_ty::ty::{InferType, Type},
+};
 
 impl<'db> Type<'db> {
     pub fn type_name(&self, db: &'db dyn BaseDatabase) -> String {
@@ -36,13 +40,17 @@ impl<'db> Type<'db> {
                 ElementarySpec::LTime => "LTIME",
                 ElementarySpec::Tod => "TOD",
                 ElementarySpec::LTod => "LTOD",
-            }.into(),
-            Self::Function(f) => format!("FUNCTION"),
-            Self::FunctionBlock(fb) => format!("FUNCTION BLOCK"),
-            Self::MethodDecl(m) => format!("METHOD"),
-            Self::Class(c) => format!("CLASS"),
-            Self::Interface(i) => format!("INTERFACE"),
-            Self::DataType(typ) => Type::new_spec(db, typ.spec(db)).type_name(db),
+            }
+            .into(),
+            Self::Function(f) => f.get_name_ident(db).text(db).to_string(),
+            Self::FunctionBlock(fb) => fb.get_name_ident(db).text(db).to_string(),
+            Self::MethodDecl(m) => m.get_name_ident(db).text(db).to_string(),
+            Self::Class(c) => c.get_name_ident(db).text(db).to_string(),
+            Self::Interface(i) => i.get_name_ident(db).text(db).to_string(),
+            Self::DataType(typ) => match typ.spec(db).kind(db) {
+                SpecKind::Target(e) => Type::new_spec(db, typ.spec(db)).type_name(db),
+                _ => Type::new_spec(db, typ.spec(db)).type_name(db),
+            },
             Self::Enum(_) => "ENUM".into(),
             Self::Struct(_) => "STRUCT".into(),
             Self::Never => "{unknown}".into(),
@@ -51,8 +59,8 @@ impl<'db> Type<'db> {
             Self::Infer(infer) => match infer {
                 InferType::Integer(i) => format!("(INT) {}", i.ident(db).text(db)),
                 InferType::Float(f) => format!("(REAL) {}", f.text(db)),
-            }
-            _ => self.full_type_name(db)
+            },
+            _ => self.full_type_name(db),
         }
     }
 
@@ -64,10 +72,12 @@ impl<'db> Type<'db> {
                     .subranges(db)
                     .iter()
                     .map(|(lower, upper)| {
-                        let lower = lower.as_range(db)
+                        let lower = lower
+                            .as_range(db)
                             .map(|n| n.to_string())
                             .unwrap_or_default();
-                        let upper = upper.as_range(db)
+                        let upper = upper
+                            .as_range(db)
                             .map(|n| n.to_string())
                             .unwrap_or_default();
                         format!("[{lower}..{upper}]")
@@ -77,11 +87,15 @@ impl<'db> Type<'db> {
             }
             Self::Enum(enum_) => format!("ENUM ({} members)", enum_.variants(db).len()),
             Self::SubRange(subrange) => {
-                let lower = subrange.lower(db).as_range(db)
+                let lower = subrange
+                    .lower(db)
+                    .as_range(db)
                     .map(|n| n.to_string())
                     .unwrap_or_default();
 
-                let upper = subrange.upper(db).as_range(db)
+                let upper = subrange
+                    .upper(db)
+                    .as_range(db)
                     .map(|n| n.to_string())
                     .unwrap_or_default();
 
@@ -89,31 +103,50 @@ impl<'db> Type<'db> {
             }
             Self::Struct(ztruct) => format!("STRUCT ({} members)", ztruct.elements(db).len()),
             Self::RefTo(ref_to) => format!("REF TO {}", Type::new_spec(db, *ref_to).type_name(db),),
-            _ => self.type_name(db)
+            _ => self.type_name(db),
         }
     }
 
     pub fn location(&self, db: &'db dyn BaseDatabase, diag: &mut IdeDiagnostic) {
         match self {
-            Self::Variable(v) => {
-                diag.with_related(Related::new(
+            Self::Variable(v) => match v.spec(db).kind(db) {
+                SpecKind::Target(t) => {
+                    Type::new_spec(db, v.spec(db)).location(db, diag);
+                }
+                _ => diag.with_related(Related::new(
                     format!(
                         "type is declared by variable '{}' here",
                         v.name(db).text(db)
                     ),
                     v.get_scope_id(db).file(db),
-                    v.name_span(db)
-                ));
-            }
+                    v.get_name_span(db),
+                )),
+            },
             Self::DataType(typ) => {
                 diag.with_related(Related::new(
                     format!(
-                        "type is defined here",
+                        "type is defined by '{}' here",
+                        typ.get_name_ident(db).text(db)
                     ),
                     typ.scope_id(db).file(db),
-                    typ.spec(db).get_span(db)
+                    typ.spec(db).get_span(db),
                 ));
-            },
+            }
+            Self::StructElement(elem) => {
+                match elem.spec(db).kind(db) {
+                    SpecKind::Target(t) => {
+                        Type::new_spec(db, elem.spec(db)).location(db, diag);
+                    }
+                    _ => diag.with_related(Related::new(
+                        format!(
+                            "type is declared by struct element '{}' here",
+                            elem.name(db).text(db)
+                        ),
+                        elem.get_scope_id(db).file(db),
+                        elem.get_name_span(db),
+                    )),
+                }
+            }
             _ => { /* No location info available */ }
         }
     }

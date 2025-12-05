@@ -52,7 +52,7 @@ NAMESPACE {ns}
             kind: auto_lsp::lsp_types::SymbolKind::NAMESPACE, // Namespace
             deprecated: None,
             range: self.get_span(db).lsp(),
-            selection_range: self.get_name_span(db).unwrap().lsp(),
+            selection_range: self.name_span(db).lsp(),
             children: Some(nested_builder.finalize()),
             tags: None,
         });

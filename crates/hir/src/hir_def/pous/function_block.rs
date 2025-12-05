@@ -1,13 +1,21 @@
-use crate::hir_def::{
+use auto_lsp::default::db::BaseDatabase;
+
+use crate::{AstId, HasName, HirNodeInfo, hir_def::{
     expressions::statement::Stmt,
-    interned::namespace::SpanNamespaceAccess,
+    interned::{identifier::Ident, namespace::SpanNamespaceAccess},
     modifier::Modifier,
     pous::{class::MethodDecl, variable::VariableDecl},
     scope::ScopeId,
-};
+}};
 
 #[salsa::tracked(debug)]
 pub struct FunctionBlock<'db> {
+    pub name: Ident,
+
+    #[tracked]
+    #[no_eq]
+    pub name_id: AstId,
+
     #[returns(as_ref)]
     pub extends: Option<SpanNamespaceAccess<'db>>,
 
@@ -27,5 +35,29 @@ pub struct FunctionBlock<'db> {
 
     pub modifier: Modifier,
 
+    #[tracked]
+    #[no_eq]
+    pub id: AstId,
+
     pub scope_id: ScopeId<'db>,
+}
+
+impl<'db> HirNodeInfo<'db> for FunctionBlock<'db> {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+        self.id(db)
+    }
+
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+        self.scope_id(db)
+    }
+}
+
+impl<'db> HasName<'db> for FunctionBlock<'db> {
+    fn get_name_ident(&self, db: &'db dyn BaseDatabase) -> Ident {
+        self.name(db)
+    }
+
+    fn get_name_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+        self.name_id(db)
+    }
 }

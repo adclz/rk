@@ -1,7 +1,7 @@
 use auto_lsp::default::db::{BaseDatabase, file::File};
 
 use crate::hir_def::{
-    namespace::NamespaceDecl, pous::{class::MethodDecl, pou::{Pou, PouDecl}, variable::VariableDecl}, semantic_index::get_scope, using::Using, visibility::Visibility
+    namespace::NamespaceDecl, pous::{class::MethodDecl, pou::{Pou}, variable::VariableDecl}, semantic_index::get_scope, using::Using, visibility::Visibility
 };
 
 #[salsa::tracked(debug)]
@@ -20,7 +20,7 @@ impl<'db> ScopeId<'db> {
         self.scope(db) == usize::MAX
     }
 
-    pub fn pous(&self, db: &'db dyn BaseDatabase) -> Option<&Vec<PouDecl<'db>>> {
+    pub fn pous(&self, db: &'db dyn BaseDatabase) -> Option<&Vec<Pou<'db>>> {
         Some(match get_scope(db, *self).kind {
             ScopeKind::Namespace(ns) => ns.pous(db),
             _ => None?,
@@ -29,7 +29,7 @@ impl<'db> ScopeId<'db> {
 
     pub fn methods(&self, db: &'db dyn BaseDatabase) -> Option<&Vec<MethodDecl<'db>>> {
         Some(match get_scope(db, *self).kind {
-            ScopeKind::Pou(pou) => match pou.pou(db) {
+            ScopeKind::Pou(pou) => match pou {
                 Pou::Class(cl) => cl.methods(db),
                 Pou::FunctionBlock(fb) => fb.methods(db),
                 _ => None?,
@@ -40,7 +40,7 @@ impl<'db> ScopeId<'db> {
 
     pub fn variables(&self, db: &'db dyn BaseDatabase) -> Option<&Vec<VariableDecl<'db>>> {
         Some(match get_scope(db, *self).kind {
-            ScopeKind::Pou(pou) => match pou.pou(db) {
+            ScopeKind::Pou(pou) => match pou {
                 Pou::Function(f) => f.variables(db),
                 Pou::FunctionBlock(fb) => fb.variables(db),
                 Pou::Class(cl) => cl.variables(db),
@@ -101,6 +101,6 @@ impl<'db> Scope<'db> {
 pub enum ScopeKind<'db> {
     Global,
     Namespace(NamespaceDecl<'db>),
-    Pou(PouDecl<'db>),
+    Pou(Pou<'db>),
     MethodDecl(MethodDecl<'db>),
 }

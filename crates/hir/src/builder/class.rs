@@ -9,7 +9,7 @@ use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use crate::hir_def::modifier::Modifier;
 use crate::hir_def::pous::class::{Class, MethodDecl};
-use crate::hir_def::pous::pou::{Pou, PouDecl};
+use crate::hir_def::pous::pou::{Pou};
 use crate::hir_def::scope::{Scope, ScopeKind};
 use crate::hir_def::visibility::Visibility;
 use ast::generated::{ClassDecl, ClassVariables};
@@ -20,7 +20,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_class(
         &mut self,
         class: &ClassDecl,
-    ) -> anyhow::Result<PouDecl<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<Pou<'db>, AnalysisError<'db>> {
         let scope_id = self.generate_scope_id();
         let previous_scope = self.current_scope;
         self.current_scope = scope_id;
@@ -105,16 +105,19 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
         };
 
-        let result = PouDecl::new(
-            self.db,
+        let result = 
             Pou::Class(Class::new(
-                self.db, extends, implements, variables, self.parse_methods(&class.methods), modifiers, scope_id,
-            )),
-            name,
-            class.into(),
-            class.name.cast(self.ast).into(),
-            scope_id,
-        );
+                self.db,
+                name,
+                class.name.cast(self.ast).into(),
+                extends,
+                implements,
+                variables,
+                self.parse_methods(&class.methods),
+                modifiers,
+                class.into(),
+                scope_id,
+            ));
 
         let scope = Scope::new(
             self.file,
@@ -125,11 +128,13 @@ impl<'db> SemanticIndexBuilder<'db> {
             Some(previous_scope),
         );
 
-        self.scope_keys.insert(scope_id.scope(self.db), Arc::new(scope));
+        self.scope_keys
+            .insert(scope_id.scope(self.db), Arc::new(scope));
 
         Ok(result)
     }
 }
+
 
 impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_methods(&mut self, class: &[AstNodeId<ast::generated::MethodDecl>]) -> Vec<MethodDecl<'db>> {
@@ -203,8 +208,9 @@ impl<'db> SemanticIndexBuilder<'db> {
 
             let result = MethodDecl::new(
                 self.db,
-                method_variables,
                 name,
+                m.cast(self.ast).name.cast(self.ast).into(),
+                method_variables,
                 return_type,
                 modifiers,
                 match &m.cast(self.ast).access {
@@ -219,7 +225,6 @@ impl<'db> SemanticIndexBuilder<'db> {
                 _override,
                 body,
                 m.cast(self.ast).into(),
-                m.cast(self.ast).name.cast(self.ast).into(),
                 scope_id
             );
 

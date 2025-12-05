@@ -1,19 +1,24 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    AstId, HirNodeInfo,
-    hir_def::{
+    AstId, HasName, HirNodeInfo, hir_def::{
         expressions::{spec::Spec, statement::Stmt},
         interned::{identifier::Ident, namespace::SpanNamespaceAccess},
         modifier::Modifier,
         pous::variable::VariableDecl,
         scope::ScopeId,
         visibility::Visibility,
-    },
+    }
 };
 
 #[salsa::tracked(debug)]
 pub struct Class<'db> {
+    pub name: Ident,
+
+    #[tracked]
+    #[no_eq]
+    pub name_id: AstId,
+
     #[returns(as_ref)]
     pub extends: Option<SpanNamespaceAccess<'db>>,
 
@@ -28,16 +33,44 @@ pub struct Class<'db> {
 
     pub modifier: Modifier,
 
+    #[tracked]
+    #[no_eq]
+    pub id: AstId,
+
     pub scope_id: ScopeId<'db>,
+}
+
+impl<'db> HirNodeInfo<'db> for Class<'db> {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+        self.id(db)
+    }
+
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+        self.scope_id(db)
+    }
+}
+
+
+impl<'db> HasName<'db> for Class<'db> {
+    fn get_name_ident(&self, db: &'db dyn BaseDatabase) -> Ident {
+        self.name(db)
+    }
+
+    fn get_name_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+        self.name_id(db)
+    }
 }
 
 #[salsa::tracked(debug)]
 pub struct MethodDecl<'db> {
-    #[returns(ref)]
-    pub variables: Vec<VariableDecl<'db>>,
+    pub name: Ident,
+
+    #[tracked]
+    #[no_eq]
+    pub name_id: AstId,
 
     #[returns(ref)]
-    pub name: Ident,
+    pub variables: Vec<VariableDecl<'db>>,
 
     #[returns(as_ref)]
     pub return_type: Option<Spec<'db>>,
@@ -57,10 +90,6 @@ pub struct MethodDecl<'db> {
     #[no_eq]
     pub id: AstId,
 
-    #[tracked]
-    #[no_eq]
-    pub name_id: AstId,
-
     pub scope_id: ScopeId<'db>,
 }
 
@@ -69,11 +98,18 @@ impl<'db> HirNodeInfo<'db> for MethodDecl<'db> {
         self.id(db)
     }
 
-    fn get_name_id(&'db self, db: &'db dyn BaseDatabase) -> Option<AstId> {
-        Some(self.name_id(db))
-    }
-
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
         self.scope_id(db)
+    }
+}
+
+
+impl<'db> HasName<'db> for MethodDecl<'db> {
+    fn get_name_ident(&self, db: &'db dyn BaseDatabase) -> Ident {
+        self.name(db)
+    }
+
+    fn get_name_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+        self.name_id(db)
     }
 }

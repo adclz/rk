@@ -8,18 +8,16 @@ use auto_lsp::{
     },
 };
 use hir::{
-    HirNodeInfo, TypeInfo,
-    hir_def::{
+    HasName, HirNodeInfo, hir_def::{
         expressions::spec::SpecKind,
         interned::namespace::NamespacePath,
         pous::{
-            pou::{Pou, PouDecl},
+            pou::{Pou},
             variable::{VariableDecl, VariableKind},
         },
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
-    },
-    hir_ty::{name_res::resolve_namespace_access, ty::Type},
+    }, hir_ty::{name_res::resolve_namespace_access, ty::Type}
 };
 
 /// A builder for creating completion items with various options.
@@ -53,8 +51,8 @@ impl<'db> CompletionBuilder {
         let insert_text = if self.signature {
             match variable.spec(db).kind(db) {
                 SpecKind::Target(t) => resolve_namespace_access(db, &t.path)
-                    .filter(|pou| pou.scope_id(db).can_have_local_variables(db))
-                    .map(|pou| signature(db, &variable_name, pou.scope_id(db)))
+                    .filter(|pou| pou.get_scope_id(db).can_have_local_variables(db))
+                    .map(|pou| signature(db, &variable_name, pou.get_scope_id(db)))
                     .unwrap_or_else(|| variable_name.to_string()),
                 _ => variable_name.to_string(),
             }
@@ -92,7 +90,7 @@ impl<'db> CompletionBuilder {
     pub fn build_pou(
         &self,
         db: &'db dyn BaseDatabase,
-        pou: &PouDecl<'db>,
+        pou: &Pou<'db>,
         namespace: Option<&NamespacePath>,
     ) -> CompletionItem {
         let mut additional_edit = None;
@@ -106,8 +104,8 @@ impl<'db> CompletionBuilder {
             });
         }
 
-        let name = pou.name(db).text(db).to_string();
-        let (detail, kind) = match pou.pou(db) {
+        let name = pou.get_name_ident(db).text(db).to_string();
+        let (detail, kind) = match pou {
             Pou::FunctionBlock(_) => ("(FUNCTION BLOCK)", CompletionItemKind::CLASS),
             Pou::Class(_) => ("(CLASS)", CompletionItemKind::CLASS),
             Pou::Function(_) => ("(FUNCTION)", CompletionItemKind::FUNCTION),
@@ -124,7 +122,7 @@ impl<'db> CompletionBuilder {
             }),
             kind: Some(kind),
             insert_text: if self.signature {
-                Some(signature(db, &name, pou.scope_id(db)))
+                Some(signature(db, &name, pou.get_scope_id(db)))
             } else {
                 None
             },
@@ -164,7 +162,7 @@ pub fn find_using_range<'db>(db: &'db dyn BaseDatabase, node: ScopeId<'db>) -> R
                 go_to_next_line(ns.name_span(db))
             }
             ScopeKind::Pou(p) => {
-                go_to_next_line(p.name_span(db))
+                go_to_next_line(p.get_name_span(db))
             }
             ScopeKind::MethodDecl(m) => {
                 // methods can't have USING directives, so we go to the parent scope

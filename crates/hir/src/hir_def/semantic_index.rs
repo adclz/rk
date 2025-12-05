@@ -16,7 +16,7 @@ use crate::hir_def::expressions::expression::{BeginPathExpr, Expr, FuncCall, Ini
 use crate::hir_def::expressions::spec::{Spec, StructElement};
 use crate::hir_def::expressions::statement::Stmt;
 use crate::hir_def::namespace::NamespaceDecl;
-use crate::hir_def::pous::pou::PouDecl;
+use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::pous::variable::VariableDecl;
 use crate::hir_def::scope::{Scope, ScopeId};
 use crate::hir_def::using::Using;
@@ -53,7 +53,7 @@ pub struct SemanticIndex<'db> {
     pub global_namespaces: Vec<NamespaceDecl<'db>>,
 
     /// All *global* POU declarations in the file
-    pub global_pous: Vec<PouDecl<'db>>,
+    pub global_pous: Vec<Pou<'db>>,
 
     /// All  namespaces in the file
     pub namespaces: Vec<NamespaceDecl<'db>>,
@@ -75,7 +75,7 @@ impl<'db> SemanticIndex<'db> {
         }
     }
 
-    pub fn pous(&'db self, db: &'db dyn BaseDatabase) -> &'db Vec<PouDecl<'db>> {
+    pub fn pous(&'db self, db: &'db dyn BaseDatabase) -> &'db Vec<Pou<'db>> {
         &self.global_pous
     }
 

@@ -6,7 +6,7 @@ use auto_lsp::{
     },
 };
 use hir::{
-    HirNodeInfo, TypeInfo,
+    HirNodeInfo,
     hir_def::expressions::expression::{InitExpr, InitExprKind},
     hir_ty::{
         init_inference::infer_init_expr,

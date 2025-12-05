@@ -57,11 +57,11 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
                                 section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
+                                    variable.cast(sema.ast).into(),
                                     VariableKind::Input,
                                     result.spec,
                                     result.init,
                                     child.into(),
-                                    variable.cast(sema.ast).into(),
                                     sema.current_scope,
                                 ));
                             }
@@ -89,11 +89,11 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
                                 section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
+                                    variable.cast(sema.ast).into(),
                                     VariableKind::Input,
                                     spec,
                                     None,
                                     child.into(),
-                                    variable.cast(sema.ast).into(),
                                     sema.current_scope,
                                 ));
                             }
@@ -121,11 +121,11 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
                                 section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
+                                    variable.cast(sema.ast).into(),
                                     VariableKind::Input,
                                     result.spec,
                                     result.init,
                                     child.into(),
-                                    variable.cast(sema.ast).into(),
                                     sema.current_scope,
                                 ));
                             }
@@ -173,11 +173,11 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
                                 section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
+                                    variable.cast(sema.ast).into(),
                                     VariableKind::Input,
                                     result.spec,
                                     result.init,
                                     child.into(),
-                                    variable.cast(sema.ast).into(),
                                     sema.current_scope,
                                 ));
                             }
@@ -205,11 +205,11 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
                                 section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
+                                    variable.cast(sema.ast).into(),
                                     VariableKind::Input,
                                     spec,
                                     None,
                                     child.into(),
-                                    variable.cast(sema.ast).into(),
                                     sema.current_scope,
                                 ));
                             }
@@ -237,11 +237,11 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
                                 section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
+                                    variable.cast(sema.ast).into(),
                                     VariableKind::Input,
                                     result.spec,
                                     result.init,
                                     child.into(),
-                                    variable.cast(sema.ast).into(),
                                     sema.current_scope,
                                 ));
                             }
@@ -289,11 +289,11 @@ impl<'db> ParseVarSection<'db> for ast::generated::OutputDecls {
                                 section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
+                                    variable.cast(sema.ast).into(),
                                     VariableKind::Output,
                                     result.spec,
                                     result.init,
                                     child.into(),
-                                    variable.cast(sema.ast).into(),
                                     sema.current_scope,
                                 ));
                             }
@@ -321,11 +321,11 @@ impl<'db> ParseVarSection<'db> for ast::generated::OutputDecls {
                                 section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
+                                    variable.cast(sema.ast).into(),
                                     VariableKind::Output,
                                     spec,
                                     None,
                                     child.into(),
-                                    variable.cast(sema.ast).into(),
                                     sema.current_scope,
                                 ));
                             }
@@ -373,11 +373,11 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbOutputDecls {
                                 section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
+                                    variable.cast(sema.ast).into(),
                                     VariableKind::Output,
                                     result.spec,
                                     result.init,
                                     child.into(),
-                                    variable.cast(sema.ast).into(),
                                     sema.current_scope,
                                 ));
                             }
@@ -405,11 +405,11 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbOutputDecls {
                                 section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
+                                    variable.cast(sema.ast).into(),
                                     VariableKind::Output,
                                     spec,
                                     None,
                                     child.into(),
-                                    variable.cast(sema.ast).into(),
                                     sema.current_scope,
                                 ));
                             }
@@ -457,11 +457,11 @@ impl<'db> ParseVarSection<'db> for ast::generated::TempVarDecls {
                                 section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
+                                    variable.cast(sema.ast).into(),
                                     VariableKind::Temp,
                                     result.spec,
                                     result.init,
                                     child.into(),
-                                    variable.cast(sema.ast).into(),
                                     sema.current_scope,
                                 ));
                             }
@@ -489,11 +489,11 @@ impl<'db> ParseVarSection<'db> for ast::generated::TempVarDecls {
                                 section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
+                                    variable.cast(sema.ast).into(),
                                     VariableKind::Temp,
                                     result.spec,
                                     result.init,
                                     child.into(),
-                                    variable.cast(sema.ast).into(),
                                     sema.current_scope,
                                 ));
                             }
@@ -541,11 +541,11 @@ impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
                                 section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
+                                    variable.cast(sema.ast).into(),
                                     VariableKind::InOut,
                                     spec,
                                     None,
                                     child.into(),
-                                    variable.cast(sema.ast).into(),
                                     sema.current_scope,
                                 ));
                             }
@@ -573,11 +573,11 @@ impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
                                 section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
+                                    variable.cast(sema.ast).into(),
                                     VariableKind::InOut,
                                     result.spec,
                                     result.init,
                                     child.into(),
-                                    variable.cast(sema.ast).into(),
                                     sema.current_scope,
                                 ));
                             }
@@ -617,11 +617,11 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
                             section.push(VariableDecl::new(
                                 sema.db,
                                 var_name,
+                                child.name.cast(sema.ast).into(),
                                 VariableKind::External,
                                 result.spec,
                                 result.init,
                                 child.into(),
-                                child.name.cast(sema.ast).into(),
                                 sema.current_scope,
                             ));
                         }
@@ -647,11 +647,11 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
                             section.push(VariableDecl::new(
                                 sema.db,
                                 var_name,
+                                child.name.cast(sema.ast).into(),
                                 VariableKind::External,
                                 spec,
                                 None,
                                 child.into(),
-                                child.name.cast(sema.ast).into(),
                                 sema.current_scope,
                             ));
                         }
@@ -706,11 +706,11 @@ impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
                         section.push(VariableDecl::new(
                             sema.db,
                             var_name,
+                            variable.cast(sema.ast).into(),
                             VariableKind::Var,
                             result.spec,
                             result.init,
                             var_decl.into(),
-                            variable.cast(sema.ast).into(),
                             sema.current_scope,
                         ));
                     }
@@ -755,11 +755,11 @@ impl<'db> ParseVarSection<'db> for ast::generated::RetainVarDecls {
                         section.push(VariableDecl::new(
                             sema.db,
                             var_name,
+                            variable.cast(sema.ast).into(),
                             VariableKind::Var,
                             result.spec,
                             result.init,
                             var_decl.into(),
-                            variable.cast(sema.ast).into(),
                             sema.current_scope,
                         ));
                     }
@@ -804,11 +804,11 @@ impl<'db> ParseVarSection<'db> for ast::generated::NoRetainVarDecls {
                         section.push(VariableDecl::new(
                             sema.db,
                             var_name,
+                            variable.cast(sema.ast).into(),
                             VariableKind::Var,
                             result.spec,
                             result.init,
                             var_decl.into(),
-                            variable.cast(sema.ast).into(),
                             sema.current_scope,
                         ));
                     }
@@ -842,11 +842,11 @@ impl<'db> ParseVarSection<'db> for ast::generated::LocPartlyVarDecl {
             section.push(VariableDecl::new(
                 sema.db,
                 var_name,
+                child.cast(sema.ast).variable_name.cast(sema.ast).into(),
                 VariableKind::Var,
                 result.spec,
                 result.init,
                 child.cast(sema.ast).into(),
-                child.cast(sema.ast).variable_name.cast(sema.ast).into(),
                 sema.current_scope,
             ));
         }
@@ -879,11 +879,11 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
                     section.push(VariableDecl::new(
                         sema.db,
                         name,
+                        child.cast(sema.ast).spec.cast(sema.ast).into(),
                         VariableKind::Global,
                         result.spec,
                         result.init,
                         child.cast(sema.ast).into(),
-                        child.cast(sema.ast).spec.cast(sema.ast).into(),
                         sema.current_scope,
                     ))
                 }
@@ -909,11 +909,11 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
                     section.push(VariableDecl::new(
                         sema.db,
                         name,
+                        child.cast(sema.ast).spec.cast(sema.ast).into(),
                         VariableKind::Global,
                         result.spec,
                         result.init,
                         child.cast(sema.ast).into(),
-                        child.cast(sema.ast).spec.cast(sema.ast).into(),
                         sema.current_scope,
                     ))
                 }

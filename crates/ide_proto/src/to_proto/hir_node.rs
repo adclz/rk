@@ -9,7 +9,7 @@ use hir::{
         expressions::{
             expression::{BeginPathExpr, Expr, InitExpr, ParamAssign, PathExpr, VariableAccess},
             spec::{Spec, StructElement},
-        }, interned::namespace::SpanNamespaceAccess, namespace::NamespaceDecl, pous::{pou::PouDecl, variable::VariableDecl}, scope::ScopeId, semantic_index::{SemanticIndex, semantic_index}, using::Using
+        }, interned::namespace::SpanNamespaceAccess, namespace::NamespaceDecl, pous::{pou::Pou, variable::VariableDecl}, scope::ScopeId, semantic_index::{SemanticIndex, semantic_index}, using::Using
     }, hir_ty::{inheritance_solver::MethodRef, ty::Type}
 };
 
@@ -67,7 +67,7 @@ impl<'db> HirNodeInfo<'db> for InitExprWithTypeContext<'db> {
 pub enum HirNode<'db> {
     Namespace(NamespaceDecl<'db>),
     SpanNamespaceAccess(SpanNamespaceAccessContext<'db>),
-    PouDecl(PouDecl<'db>),
+    PouDecl(Pou<'db>),
     VariableDecl(VariableDecl<'db>),
     StructElement(StructElement<'db>),
     Spec(Spec<'db>),

@@ -1,19 +1,17 @@
 use crate::{
-    AstId, HirNodeInfo,
-    hir_def::{
+    AstId, HasName, HirNodeInfo, hir_def::{
         expressions::spec::Spec,
         interned::{identifier::Ident, namespace::SpanNamespaceAccess},
         modifier::Modifier,
         pous::{
             class::MethodDecl,
             interface::MethodPrototype,
-            pou::{Pou, PouDecl},
+            pou::{Pou},
             variable::VariableDecl,
         },
         scope::ScopeId,
         visibility::Visibility,
-    },
-    hir_ty::name_res::resolve_namespace_access,
+    }, hir_ty::name_res::resolve_namespace_access
 };
 use auto_lsp::{core::span::Span, default::db::BaseDatabase};
 use rustc_hash::FxHashMap;
@@ -25,20 +23,6 @@ pub enum MethodRef<'db> {
 }
 
 impl<'db> MethodRef<'db> {
-    pub fn name(&self, db: &'db dyn BaseDatabase) -> &'db Ident {
-        match self {
-            MethodRef::Prototype(p) => p.name(db),
-            MethodRef::Declared(d) => d.name(db),
-        }
-    }
-
-    pub fn name_span(&self, db: &'db dyn BaseDatabase) -> Span {
-        match self {
-            MethodRef::Prototype(p) => p.get_name_span(db).unwrap(),
-            MethodRef::Declared(d) => d.get_name_span(db).unwrap(),
-        }
-    }
-
     pub fn return_type(&self, db: &'db dyn BaseDatabase) -> Option<&'db Spec<'db>> {
         match self {
             MethodRef::Prototype(p) => p.return_type(db),
@@ -88,6 +72,22 @@ impl<'db> HirNodeInfo<'db> for MethodRef<'db> {
         match self {
             MethodRef::Prototype(p) => p.get_scope_id(db),
             MethodRef::Declared(d) => d.get_scope_id(db),
+        }
+    }
+}
+
+impl<'db> HasName<'db> for MethodRef<'db> {
+    fn get_name_ident(&self, db: &'db dyn BaseDatabase) -> Ident {
+        match self {
+            MethodRef::Prototype(p) => p.get_name_ident(db),
+            MethodRef::Declared(d) => d.get_name_ident(db),
+        }
+    }
+
+    fn get_name_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+        match self {
+            MethodRef::Prototype(p) => p.get_name_id(db),
+            MethodRef::Declared(d) => d.get_name_id(db),
         }
     }
 }
@@ -142,12 +142,12 @@ impl<'db> InheritedMethodSet<'db> {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct InheritedMethod<'db> {
-    pub source: PouDecl<'db>,
+    pub source: Pou<'db>,
     pub method: MethodRef<'db>,
 }
 
 impl<'db> InheritedMethod<'db> {
-    fn new(source: PouDecl<'db>, method: MethodRef<'db>) -> Self {
+    fn new(source: Pou<'db>, method: MethodRef<'db>) -> Self {
         Self { source, method }
     }
 }
@@ -155,14 +155,14 @@ impl<'db> InheritedMethod<'db> {
 #[salsa::tracked(returns(ref))]
 pub fn inherited_methods<'db>(
     db: &'db dyn BaseDatabase,
-    pou: PouDecl<'db>,
+    pou: Pou<'db>,
 ) -> InheritedMethodSet<'db> {
     let mut methods = FxHashMap::default();
     let mut duplicates = vec![];
     let mut unresolved = vec![];
 
-    let mut inherit_from = |src: PouDecl<'db>| {
-        for method in src.scope_id(db).def_map(db).declared_methods.iter() {
+    let mut inherit_from = |src: Pou<'db>| {
+        for method in src.get_scope_id(db).def_map(db).declared_methods.iter() {
             let m = InheritedMethod::new(src, *method.1);
             if let Some(dup) = methods.insert(*method.0, m) {
                 duplicates.push((dup, m));
@@ -170,11 +170,11 @@ pub fn inherited_methods<'db>(
         }
     };
 
-    match pou.pou(db) {
+    match pou {
         Pou::Class(class) => {
             if let Some(base) = class.extends(db) {
-                debug_assert!(base.scope_id == pou.scope_id(db));
-                debug_assert!(base.path.target.scope_id == pou.scope_id(db));
+                debug_assert!(base.scope_id == pou.get_scope_id(db));
+                debug_assert!(base.path.target.scope_id == pou.get_scope_id(db));
                 match resolve_namespace_access(db, &base.path) {
                     Some(base) => {
                         inherit_from(base);
@@ -184,7 +184,7 @@ pub fn inherited_methods<'db>(
             }
             for iface in class.implements(db) {
                 match resolve_namespace_access(db, &iface.path) {
-                    Some(iface) if matches!(*iface.pou(db), Pou::Interface(_)) => {
+                    Some(iface) if matches!(iface, Pou::Interface(_)) => {
                         inherit_from(iface);
                     }
                     _ => unresolved.push(iface.clone()),
@@ -216,10 +216,10 @@ pub fn inherited_methods<'db>(
             }
 
             for iface in fb.implements(db) {
-                debug_assert!(iface.scope_id == pou.scope_id(db));
-                debug_assert!(iface.path.target.scope_id == pou.scope_id(db));
+                debug_assert!(iface.scope_id == pou.get_scope_id(db));
+                debug_assert!(iface.path.target.scope_id == pou.get_scope_id(db));
                 match resolve_namespace_access(db, &iface.path) {
-                    Some(iface) if matches!(*iface.pou(db), Pou::Interface(_)) => {
+                    Some(iface) if matches!(iface, Pou::Interface(_)) => {
                         inherit_from(iface);
                     }
                     _ => {

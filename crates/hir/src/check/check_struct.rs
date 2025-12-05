@@ -3,26 +3,23 @@ use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    check::{
+    HasName, check::{
         check_init_expr::check_init_expr,
         check_semantic_index::DataTypeCheck,
         errors::{
             analysis_error::ToIdeDiagnostic, duplicates::DuplicateError,
         },
-    },
-    hir_def::{
+    }, hir_def::{
         expressions::spec::{Struct, StructElement},
         interned::identifier::Ident,
-    },
-    hir_ty::{ty::Type,
-    },
+    }, hir_ty::ty::Type
 };
 
 impl<'db> DataTypeCheck<'db> for Struct<'db> {
     fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<IdeDiagnostic>) {
         let mut seen: FxHashMap<Ident, StructElement> = FxHashMap::default();
         for field in &self.elements(db) {
-            match seen.get(field.name(db)) {
+            match seen.get(&field.get_name_ident(db)) {
                 Some(prev) => {
                     errors.push(
                         DuplicateError::StructField {
@@ -33,7 +30,7 @@ impl<'db> DataTypeCheck<'db> for Struct<'db> {
                     );
                 }
                 None => {
-                    seen.insert(*field.name(db), *field);
+                    seen.insert(field.get_name_ident(db), *field);
                 }
             }
             //todo: check field type

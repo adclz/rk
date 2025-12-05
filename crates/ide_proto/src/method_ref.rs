@@ -5,14 +5,14 @@ use auto_lsp::{
         CompletionItem, Hover, HoverContents, MarkupContent, MarkupKind, SymbolKind
     },
 };
-use hir::{HirNodeInfo, TypeInfo, hir_ty::{inheritance_solver::MethodRef, ty::Type}};
+use hir::{HasName, HirNodeInfo, hir_ty::{inheritance_solver::MethodRef, ty::Type}};
 
 use crate::to_proto::{HasComment, ToProtocol};
 
 
 impl<'db> ToProtocol<'db> for MethodRef<'db> {
     fn document_symbols(&self, db: &'db dyn BaseDatabase, builder: &mut DocumentSymbolsBuilder) {
-        let name = self.name(db).text(db).to_string();
+        let name = self.get_name_ident(db).text(db).to_string();
         let name = match name.len() {
             0 => "?".into(),
             _ => name,
@@ -35,7 +35,7 @@ impl<'db> ToProtocol<'db> for MethodRef<'db> {
             kind: SymbolKind::METHOD,
             deprecated: None,
             range: self.get_span(db).lsp(),
-            selection_range: self.name_span(db).lsp(),
+            selection_range: self.get_name_span(db).lsp(),
             children: Some(nested_builder.finalize()),
             tags: None,
         });
@@ -46,7 +46,7 @@ impl<'db> ToProtocol<'db> for MethodRef<'db> {
             MethodRef::Declared(_) => "METHOD",
             MethodRef::Prototype(_) => "METHOD PROTOTYPE",
         };
-        let name = self.name(db).text(db);
+        let name = self.get_name_ident(db).text(db);
         let return_type = match self {
             MethodRef::Declared(decl) => match decl.return_type(db) {
                 Some(ret_ty) => format!(": {}", Type::new_spec(db, *ret_ty).type_name(db)),

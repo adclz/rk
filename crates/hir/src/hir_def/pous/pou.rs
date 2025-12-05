@@ -1,4 +1,4 @@
-use crate::hir_def::modifier::Modifier;
+use crate::{HasName, hir_def::modifier::Modifier};
 use auto_lsp::{core::span::Span, default::db::BaseDatabase};
 
 use crate::{
@@ -13,58 +13,65 @@ use crate::{
     {AstId, HirNodeInfo},
 };
 
-#[salsa::tracked(debug)]
-pub struct PouDecl<'db> {
-    #[returns(ref)]
-    pub pou: Pou<'db>,
-
-    #[returns(ref)]
-    pub name: Ident,
-
-    #[tracked]
-    #[no_eq]
-    pub id: AstId,
-
-    #[tracked]
-    #[no_eq]
-    pub name_id: AstId,
-
-    pub scope_id: ScopeId<'db>,
-}
-
-impl<'db> PouDecl<'db> {
-    pub fn modifier(&'db self, db: &'db dyn BaseDatabase) -> Modifier {
-        match self.pou(db) {
-            Pou::Class(class) => class.modifier(db),
-            Pou::FunctionBlock(fb) => fb.modifier(db),
-            _ => Modifier::empty(),
-        }
-    }
-
-    pub fn name_span(&self, db: &'db dyn BaseDatabase) -> Span {
-        self.get_name_span(db).unwrap()
-    }
-}
-
-impl<'db> HirNodeInfo<'db> for PouDecl<'db> {
-    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
-        self.id(db)
-    }
-
-    fn get_name_id(&'db self, db: &'db dyn BaseDatabase) -> Option<AstId> {
-        Some(self.name_id(db))
-    }
-
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
-        self.scope_id(db)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update, salsa::Supertype)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update, salsa::Supertype)]
 pub enum Pou<'db> {
     Function(Function<'db>),
     FunctionBlock(FunctionBlock<'db>),
     Class(Class<'db>),
     Interface(Interface<'db>),
     DataType(DataType<'db>),
+}
+
+impl<'db> Pou<'db> {
+    pub fn modifier(&'db self, db: &'db dyn BaseDatabase) -> Modifier {
+        match self {
+            Pou::Class(class) => class.modifier(db),
+            Pou::FunctionBlock(fb) => fb.modifier(db),
+            _ => Modifier::empty(),
+        }
+    }
+}
+
+impl<'db> HirNodeInfo<'db> for Pou<'db> {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+        match self {
+            Pou::Function(f) => f.get_id(db),
+            Pou::FunctionBlock(fb) => fb.get_id(db),
+            Pou::Class(c) => c.get_id(db),
+            Pou::Interface(i) => i.get_id(db),
+            Pou::DataType(dt) => dt.get_id(db),
+        }
+    }
+
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+        match self {
+            Pou::Function(f) => f.get_scope_id(db),
+            Pou::FunctionBlock(fb) => fb.get_scope_id(db),
+            Pou::Class(c) => c.get_scope_id(db),
+            Pou::Interface(i) => i.get_scope_id(db),
+            Pou::DataType(dt) => dt.get_scope_id(db),
+        }
+    }
+}
+
+impl<'db> HasName<'db> for Pou<'db> {
+    fn get_name_ident(&self, db: &'db dyn BaseDatabase) -> Ident {
+        match self {
+            Pou::Function(f) => f.get_name_ident(db),
+            Pou::FunctionBlock(fb) => fb.get_name_ident(db),
+            Pou::Class(c) => c.get_name_ident(db),
+            Pou::Interface(i) => i.get_name_ident(db),
+            Pou::DataType(dt) => dt.get_name_ident(db),
+        }
+    }
+
+    fn get_name_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+        match self {
+            Pou::Function(f) => f.get_name_id(db),
+            Pou::FunctionBlock(fb) => fb.get_name_id(db),
+            Pou::Class(c) => c.get_name_id(db),
+            Pou::Interface(i) => i.get_name_id(db),
+            Pou::DataType(dt) => dt.get_name_id(db),
+        }
+    }
 }

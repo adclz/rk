@@ -10,8 +10,7 @@ use auto_lsp::{
     },
 };
 use hir::{
-    HirNodeInfo, TypeInfo,
-    hir_def::pous::variable::{VariableDecl, VariableKind}, hir_ty::ty::Type,
+    HasName, HirNodeInfo, hir_def::pous::variable::{VariableDecl, VariableKind}, hir_ty::ty::Type
 };
 
 use crate::{SUPPORTED_TYPES, to_proto::{HasComment, ToProtocol}};
@@ -30,7 +29,7 @@ impl<'db> ToProtocol<'db> for VariableDecl<'db> {
             kind: SymbolKind::VARIABLE,
             deprecated: None,
             range: self.get_span(db).lsp(),
-            selection_range: self.get_name_span(db).unwrap().lsp(),
+            selection_range: self.get_name_span(db).lsp(),
             children: None,
             tags: None,
         });

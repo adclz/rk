@@ -16,7 +16,13 @@ use crate::{
         },
         interned::identifier::{Ident, SpanIdent},
         pous::{
-            class::{Class, MethodDecl}, data_type::DataType, function::Function, function_block::FunctionBlock, interface::{Interface, MethodPrototype}, pou::{Pou, PouDecl}, variable::VariableDecl
+            class::{Class, MethodDecl},
+            data_type::DataType,
+            function::Function,
+            function_block::FunctionBlock,
+            interface::{Interface, MethodPrototype},
+            pou::{Pou},
+            variable::VariableDecl,
         },
         scope::{Scope, ScopeId, ScopeKind},
     },
@@ -25,7 +31,7 @@ use crate::{
         def_map::LocalDefMap,
         infer::ctx::InferCtx,
         inheritance_solver::MethodRef,
-        init_inference::{InitExprInferenceResult},
+        init_inference::InitExprInferenceResult,
         name_res::{pou_names_res, resolve_namespace_access},
     },
 };
@@ -147,13 +153,13 @@ impl<'db> Type<'db> {
         Type::Elementary(ElementarySpec::Bool)
     }
 
-    pub fn new_pou(db: &'db dyn BaseDatabase, pou: PouDecl<'db>) -> Self {
-        match pou.pou(db) {
-            Pou::Class(cl) => Type::Class(*cl),
-            Pou::Function(f) => Type::Function(*f),
-            Pou::FunctionBlock(f) => Type::FunctionBlock(*f),
-            Pou::Interface(f) => Type::Interface(*f),
-            Pou::DataType(dt) => Type::DataType(*dt),
+    pub fn new_pou(db: &'db dyn BaseDatabase, pou: Pou<'db>) -> Self {
+        match pou {
+            Pou::Class(cl) => Type::Class(cl),
+            Pou::Function(f) => Type::Function(f),
+            Pou::FunctionBlock(f) => Type::FunctionBlock(f),
+            Pou::Interface(f) => Type::Interface(f),
+            Pou::DataType(dt) => Type::DataType(dt),
         }
     }
 
@@ -270,6 +276,7 @@ impl<'db> Type<'db> {
             (Type::Array(a1), Type::Array(a2)) => return a1 == a2,
             // check element spec equality
             (Type::Array(a1), rhs) => {
+                eprintln!("Array coercion: {:?} -> {:?}", a1, rhs);
                 Type::new_spec(db, a1.of_type(db)).coerce_with(db, *rhs, scope)
             }
             // check subrange base type equality

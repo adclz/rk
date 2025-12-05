@@ -7,7 +7,7 @@ use crate::{
         interned::identifier::Ident,
         pous::{
             data_type::DataType,
-            pou::{Pou, PouDecl},
+            pou::{Pou},
         },
         scope::{Scope, ScopeKind},
         visibility::Visibility,
@@ -20,7 +20,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_data_type(
         &mut self,
         data_type: &TypeDecl,
-    ) -> anyhow::Result<PouDecl<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<Pou<'db>, AnalysisError<'db>> {
         let scope_id = self.generate_scope_id();
         let previous_scope = self.current_scope;
         self.current_scope = scope_id;
@@ -50,14 +50,16 @@ impl<'db> SemanticIndexBuilder<'db> {
             None => None,
         };
 
-        let result = PouDecl::new(
-            self.db,
-            Pou::DataType(DataType::new(self.db, spec, init, scope_id)),
-            name,
-            data_type.into(),
-            data_type.name.cast(self.ast).into(),
-            scope_id,
-        );
+        let result = 
+            Pou::DataType(DataType::new(
+                self.db,
+                name,
+                data_type.name.cast(self.ast).into(),
+                spec,
+                init,
+                data_type.into(),
+                scope_id,
+            ));
 
         let scope = Scope::new(
             self.file,
@@ -68,7 +70,8 @@ impl<'db> SemanticIndexBuilder<'db> {
             Some(previous_scope),
         );
 
-        self.scope_keys.insert(scope_id.scope(self.db), Arc::new(scope));
+        self.scope_keys
+            .insert(scope_id.scope(self.db), Arc::new(scope));
 
         Ok(result)
     }

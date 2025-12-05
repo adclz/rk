@@ -2,10 +2,9 @@ use auto_lsp::default::db::BaseDatabase;
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
-    check::{
-        check_inheritance::check_inheritance, check_semantic_index::Check, errors::{analysis_error::ToIdeDiagnostic}
-    },
-    hir_def::{
+    HirNodeInfo, check::{
+        check_inheritance::check_inheritance, check_semantic_index::Check, errors::analysis_error::ToIdeDiagnostic
+    }, hir_def::{
         expressions::{
             expression::{Expr, VariableAccess},
             spec::ElementarySpec,
@@ -14,11 +13,10 @@ use crate::{
         pous::pou::Pou,
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
-    },
-    hir_ty::{
+    }, hir_ty::{
         body_inference::{BodyInferenceResult, infer_body_scope},
         ty::Type,
-    },
+    }
 };
 
 impl<'db> Check<'db> for ScopeId<'db> {
@@ -33,7 +31,7 @@ impl<'db> Check<'db> for ScopeId<'db> {
         // check pous
         self.pous(db).map(|pous| {
             pous.iter().for_each(|pou| {
-                pou.scope_id(db).check(db, errors);
+                pou.get_scope_id(db).check(db, errors);
             });
         });
 

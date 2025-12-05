@@ -10,7 +10,7 @@ use crate::check::errors::analysis_error::AnalysisError;
 use crate::check::errors::syntax::SyntaxError;
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::namespace::NamespaceDecl;
-use crate::hir_def::pous::pou::PouDecl;
+use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::scope::{ScopeId, Scope, ScopeKind};
 use crate::hir_def::semantic_index::SemanticIndex;
 use crate::hir_def::visibility::Visibility;
@@ -29,7 +29,7 @@ pub struct SemanticIndexBuilder<'db> {
     pub(crate) scope_keys: FxHashMap<usize, Arc<Scope<'db>>>,
 
     pub(crate) global_namespaces: Vec<NamespaceDecl<'db>>,
-    pub(crate) global_pous: Vec<PouDecl<'db>>,
+    pub(crate) global_pous: Vec<Pou<'db>>,
 
     /// Maps scope IDs to their corresponding namespaces.
     pub(crate) namespaces: Vec<NamespaceDecl<'db>>,

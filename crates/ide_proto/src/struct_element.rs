@@ -6,7 +6,7 @@ use auto_lsp::{
     },
 };
 use hir::{
-    HirNodeInfo, TypeInfo, hir_def::expressions::spec::StructElement, hir_ty::ty::Type,
+    HirNodeInfo, hir_def::expressions::spec::StructElement, hir_ty::ty::Type,
 };
 
 use crate::to_proto::{HasComment, ToProtocol};

@@ -2,17 +2,16 @@ use auto_lsp::default::db::BaseDatabase;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    HirNodeInfo,
-    hir_def::{
+    HasName, HirNodeInfo, hir_def::{
         interned::{
             identifier::{Ident, SpanIdent},
             namespace::{NamespaceAccess, NamespacePath},
         },
         namespace::NamespaceDecl,
-        pous::pou::PouDecl,
+        pous::pou::Pou,
         scope::{ScopeId, ScopeKind},
         semantic_index::semantic_index,
-    },
+    }
 };
 
 // todo: for both indexes, use salsa::par_map to parallelize the construction
@@ -50,21 +49,21 @@ pub fn namespace_index<'db>(
 /// Returns all POUs *globally declared*.
 #[tracing::instrument(skip_all)]
 #[salsa::tracked(returns(ref))]
-fn global_pou_index<'db>(db: &'db dyn BaseDatabase) -> FxHashMap<Ident, PouDecl<'db>> {
+fn global_pou_index<'db>(db: &'db dyn BaseDatabase) -> FxHashMap<Ident, Pou<'db>> {
     db.get_files()
         .iter()
         .flat_map(|file| {
             semantic_index(db, *file)
                 .global_pous
                 .iter()
-                .map(|p| (*p.name(db), *p))
+                .map(|p| (p.get_name_ident(db), *p))
         })
         .collect()
 }
 
 #[tracing::instrument(skip(db))]
 #[salsa::tracked(returns(ref))]
-pub fn pou_index<'db>(db: &'db dyn BaseDatabase, name: Ident) -> Option<PouDecl<'db>> {
+pub fn pou_index<'db>(db: &'db dyn BaseDatabase, name: Ident) -> Option<Pou<'db>> {
     global_pou_index(db).get(&name).copied()
 }
 
@@ -73,7 +72,7 @@ pub fn pou_index<'db>(db: &'db dyn BaseDatabase, name: Ident) -> Option<PouDecl<
 pub fn resolve_namespace_access<'db>(
     db: &'db dyn BaseDatabase,
     access: &NamespaceAccess<'db>,
-) -> Option<PouDecl<'db>> {
+) -> Option<Pou<'db>> {
     let target = &access.target;
 
     match &access.namespace {
@@ -91,7 +90,7 @@ pub fn find_in_parent_pous<'db>(
     db: &'db dyn BaseDatabase,
     name: Ident,
     scope: ScopeId<'db>,
-) -> Option<PouDecl<'db>> {
+) -> Option<Pou<'db>> {
     let it = semantic_index(db, scope.file(db)).scope_iterator(db, scope);
     for scope in it {
         // Find POUs in all shared namespaces
@@ -120,7 +119,7 @@ pub fn pou_names_res<'db>(
     db: &'db dyn BaseDatabase,
     name: Ident,
     scope: ScopeId<'db>,
-) -> Option<PouDecl<'db>> {
+) -> Option<Pou<'db>> {
     // Checks for POUs declared in the current scope
     scope
         .def_map(db)
@@ -138,7 +137,7 @@ pub fn pou_name_res_from_scope<'db>(
     db: &'db dyn BaseDatabase,
     scope: impl HirNodeInfo<'db>,
     name: &str,
-) -> Option<PouDecl<'db>> {
+) -> Option<Pou<'db>> {
     let span_ident = SpanIdent {
         id: crate::AstId(0),
         ident: Ident::from_slice(db, name),

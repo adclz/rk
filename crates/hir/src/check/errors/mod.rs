@@ -1,6 +1,5 @@
 pub mod analysis_error;
 pub mod array;
-pub mod coerce;
 pub mod duplicates;
 pub mod enum_;
 pub mod inheritance;

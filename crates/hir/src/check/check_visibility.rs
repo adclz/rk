@@ -131,7 +131,7 @@ fn is_derived_pou<'db>(
                 return true;
             }
             // In case of SUPER
-            child.scope_id(db)
+            child.get_scope_id(db)
                 .inheritors(db).contains(&parent)
         }
         _ => false, // One or both are not POUs

@@ -5,7 +5,7 @@ use auto_lsp::{
     },
 };
 use hir::{
-    HirNodeInfo, TypeInfo,
+    HirNodeInfo,
     hir_def::expressions::expression::{InitExpr, VariableAccess},
     hir_ty::{body_inference::infer_body_scope, ty::Type},
 };

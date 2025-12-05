@@ -6,7 +6,7 @@ use crate::builder::{ParseSpec, ParseVarSection};
 use crate::check::errors::analysis_error::AnalysisError;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::pous::function::Function;
-use crate::hir_def::pous::pou::{Pou, PouDecl};
+use crate::hir_def::pous::pou::{Pou};
 use crate::hir_def::pous::variable::VariableDecl;
 use crate::hir_def::scope::{Scope, ScopeKind};
 use crate::hir_def::visibility::Visibility;
@@ -17,7 +17,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_function(
         &mut self,
         func: &ast::generated::FuncDecl,
-    ) -> anyhow::Result<PouDecl<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<Pou<'db>, AnalysisError<'db>> {
         let scope_id = self.generate_scope_id();
         let previous_scope = self.current_scope;
         self.current_scope = scope_id;
@@ -50,20 +50,17 @@ impl<'db> SemanticIndexBuilder<'db> {
         let name = Ident::from_node(self.db, self.file, func.name.cast(self.ast))?;
         let usings = self.parse_usings(&func.directives)?;
 
-        let result = PouDecl::new(
-            self.db,
+        let result = 
             Pou::Function(Function::new(
                 self.db,
+                name,
+                            func.name.cast(self.ast).into(),
                 variables,
                 statements,
                 return_type,
+                func.into(),
                 scope_id,
-            )),
-            name,
-            func.into(),
-            func.name.cast(self.ast).into(),
-            scope_id,
-        );
+            ));
 
         let scope = Scope::new(
             self.file,

@@ -624,12 +624,12 @@ impl<'db> ParseSpec<'db> for ast::generated::StructTypeSpec {
             elements.push(StructElement::new(
                 sema.db,
                 name,
+                elem.cast(sema.ast).name.cast(sema.ast).into(),
                 located,
                 multibits,
                 spec,
                 init,
                 elem.cast(sema.ast).into(),
-                elem.cast(sema.ast).name.cast(sema.ast).into(),
                 sema.current_scope,
             ));
         }

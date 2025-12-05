@@ -5,8 +5,9 @@ use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
 use crate::{
+    HasName, HirNodeInfo,
     check::errors::{analysis_error::ToIdeDiagnostic, duplicates::DuplicateError},
-    hir_def::{interned::identifier::Ident, namespace::NamespaceDecl, pous::pou::PouDecl},
+    hir_def::{interned::identifier::Ident, namespace::NamespaceDecl, pous::pou::Pou},
     hir_ty::name_res::namespace_index,
 };
 
@@ -16,19 +17,19 @@ pub fn check_duplicate_namespaces<'db>(
     namespace: NamespaceDecl<'db>,
 ) -> FxHashMap<File, Vec<IdeDiagnostic>> {
     let mut errors: FxHashMap<File, Vec<IdeDiagnostic>> = FxHashMap::default();
-    let mut seen_pous: FxHashMap<Ident, PouDecl<'db>> = FxHashMap::default();
+    let mut seen_pous: FxHashMap<Ident, Pou<'db>> = FxHashMap::default();
 
     // Collect POUs and process duplicates in a single pass
     namespace_index(db, *namespace.path(db))
         .iter()
         .for_each(|ns| {
             ns.pous(db).iter().for_each(|decl| {
-                let name = *decl.name(db);
+                let name = decl.get_name_ident(db);
                 match seen_pous.entry(name) {
                     Entry::Occupied(entry) => {
                         // Found a duplicate - create error
                         let original = *entry.get();
-                        match errors.entry(decl.scope_id(db).file(db)) {
+                        match errors.entry(decl.get_scope_id(db).file(db)) {
                             Entry::Occupied(mut err_entry) => {
                                 err_entry.get_mut().push(
                                     DuplicateError::Pou {
