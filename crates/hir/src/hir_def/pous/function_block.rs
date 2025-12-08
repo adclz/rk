@@ -1,9 +1,10 @@
 use auto_lsp::default::db::BaseDatabase;
 
-use crate::{AstId, HasName, HirNodeInfo, hir_def::{
+use crate::{
+    Modifier, Visibility,
+    AstId, HasName, HirNodeInfo, hir_def::{
     expressions::statement::Stmt,
     interned::{identifier::Ident, namespace::SpanNamespaceAccess},
-    modifier::Modifier,
     pous::{class::MethodDecl, variable::VariableDecl},
     scope::ScopeId,
 }};

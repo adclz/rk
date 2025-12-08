@@ -1,10 +1,7 @@
 use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, diag};
 
-use crate::{HirNodeInfo, check::{
-        check_visibility::SameNamespaceResult,
-        errors::analysis_error::{AnalysisError, ToIdeDiagnostic},
-    }, hir_ty::{infer::ctx::CallSite}};
+use crate::{CallSite, HirNodeInfo, check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic}, hir_ty::resolver::SameNamespaceResult};
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum VisibilityError<'db> {

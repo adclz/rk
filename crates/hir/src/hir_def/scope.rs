@@ -1,7 +1,11 @@
 use auto_lsp::default::db::{BaseDatabase, file::File};
 
+use crate::{Modifier, Visibility};
 use crate::hir_def::{
-    namespace::NamespaceDecl, pous::{class::MethodDecl, pou::{Pou}, variable::VariableDecl}, semantic_index::get_scope, using::Using, visibility::Visibility
+    namespace::NamespaceDecl,
+    pous::{class::MethodDecl, pou::Pou, variable::VariableDecl},
+    semantic_index::get_scope,
+    using::Using,
 };
 
 #[salsa::tracked(debug)]

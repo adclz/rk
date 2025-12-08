@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::{Modifier, Visibility};
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::statement::ParseStatement;
 use crate::builder::{ParseSpec, ParseVarSection};
@@ -9,7 +10,6 @@ use crate::hir_def::pous::function::Function;
 use crate::hir_def::pous::pou::{Pou};
 use crate::hir_def::pous::variable::VariableDecl;
 use crate::hir_def::scope::{Scope, ScopeKind};
-use crate::hir_def::visibility::Visibility;
 use ast::generated::FuncVariables;
 use auto_lsp::anyhow;
 

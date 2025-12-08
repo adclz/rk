@@ -1,11 +1,11 @@
 #![recursion_limit = "256"]
-#![allow(deprecated)]
 #![allow(unused_variables)]
 
 use auto_lsp::{
     core::{ast::AstNode, span::Span},
     default::db::BaseDatabase,
 };
+use bitflags::bitflags;
 
 use crate::hir_def::{interned::identifier::Ident, scope::ScopeId, semantic_index::semantic_index};
 
@@ -30,10 +30,39 @@ impl AstId {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub struct CallSite<'db> {
+    pub scope: ScopeId<'db>,
+    pub id: AstId,
+}
+
+impl<'db> CallSite<'db> {
+    pub fn new(scope: ScopeId<'db>, id: AstId) -> Self {
+        Self { scope, id }
+    }
+}
+
+impl<'db> HirNodeInfo<'db> for CallSite<'db> {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+        self.id
+    }
+
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+        self.scope
+    }
+}
+
 pub trait HirNodeInfo<'db> {
     fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId;
 
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db>;
+
+    fn as_call_site(&self, db: &'db dyn BaseDatabase) -> CallSite<'db> {
+        CallSite {
+            scope: self.get_scope_id(db),
+            id: self.get_id(db),
+        }
+    }
 
     fn get_span(&self, db: &'db dyn BaseDatabase) -> Span {
         semantic_index(db, self.get_scope_id(db).file(db))
@@ -47,26 +76,6 @@ pub trait HirNodeInfo<'db> {
             })
             .get_span()
     }
-
-    /*fn get_name_span(&'db self, db: &'db dyn BaseDatabase) -> Option<Span> {
-        self.get_name_id(db).map(|name_id| {
-            semantic_index(db, self.get_scope_id(db).file(db))
-                .ast
-                .get(name_id.0)
-                .unwrap_or_else(|| {
-                    panic!(
-                        "Invalid name ID {} when attempting to retrieve name span",
-                        name_id.0
-                    )
-                })
-                .get_span()
-        })
-    }
-    
-    fn get_name_id(&'db self, _db: &'db dyn BaseDatabase) -> Option<AstId> {
-        None
-    }
-    */
 }
 
 pub trait HasName<'db>: HirNodeInfo<'db> {
@@ -86,4 +95,41 @@ pub trait HasName<'db>: HirNodeInfo<'db> {
             })
             .get_span()
     }
+}
+
+bitflags! {
+    #[repr(transparent)]
+    #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub struct Modifier: u16 {
+        const ABSTRACT = 1 << 0;
+        const FINAL = 1 << 1;
+        const OVERRIDE = 1 << 2;
+    }
+}
+
+impl Modifier {
+    pub const EMPTY: Modifier = Modifier::empty();
+}
+
+pub trait HasModifiers<'db>: HirNodeInfo<'db> {
+    fn get_modifiers(&self, db: &'db dyn BaseDatabase) -> Modifier;
+}
+
+bitflags! {
+    #[repr(transparent)]
+    #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub struct Visibility: u16 {
+        const PUBLIC = 1 << 0;
+        const PROTECTED = 1 << 1;
+        const INTERNAL = 1 << 2;
+        const PRIVATE = 1 << 3;
+    }
+}
+
+impl<'db> Visibility {
+    pub const EMPTY: Visibility = Visibility::empty();
+}
+
+pub trait HasVisibility<'db>: HirNodeInfo<'db> {
+    fn get_visibility(&self, db: &'db dyn BaseDatabase) -> Visibility;
 }

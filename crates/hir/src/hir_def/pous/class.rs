@@ -1,13 +1,11 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    AstId, HasName, HirNodeInfo, hir_def::{
+    AstId, HasModifiers, HasName, HasVisibility, HirNodeInfo, Modifier, Visibility, hir_def::{
         expressions::{spec::Spec, statement::Stmt},
         interned::{identifier::Ident, namespace::SpanNamespaceAccess},
-        modifier::Modifier,
         pous::variable::VariableDecl,
         scope::ScopeId,
-        visibility::Visibility,
     }
 };
 
@@ -58,6 +56,12 @@ impl<'db> HasName<'db> for Class<'db> {
 
     fn get_name_id(&self, db: &'db dyn BaseDatabase) -> AstId {
         self.name_id(db)
+    }
+}
+
+impl<'db> HasModifiers<'db> for Class<'db> {
+    fn get_modifiers(&self, db: &'db dyn BaseDatabase) -> Modifier {
+        self.modifier(db)
     }
 }
 

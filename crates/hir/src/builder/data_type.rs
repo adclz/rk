@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::{Modifier, Visibility};
 use crate::{
     builder::{ParseSpec, expression::ParseExpr, semantic_index::SemanticIndexBuilder},
     check::errors::analysis_error::AnalysisError,
@@ -10,7 +11,6 @@ use crate::{
             pou::{Pou},
         },
         scope::{Scope, ScopeKind},
-        visibility::Visibility,
     },
 };
 use ast::generated::TypeDecl;

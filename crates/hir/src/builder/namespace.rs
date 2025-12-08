@@ -5,13 +5,13 @@ use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 
 use super::semantic_index::SemanticIndexBuilder;
+use crate::{Modifier, Visibility};
 use crate::check::errors::analysis_error::AnalysisError;
 use crate::check::errors::syntax::SyntaxError;
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::interned::namespace::{NamespacePath, SpanNamespacePath};
 use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::scope::{Scope, ScopeKind};
-use crate::hir_def::visibility::Visibility;
 
 impl<'db> SemanticIndexBuilder<'db> {
     #[must_use]
