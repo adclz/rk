@@ -16,7 +16,7 @@ pub fn check_init_expr<'db>(
     }
 
     for error in infer.body_infer_result.errors.iter() {
-        errors.push(error.to_diagnostic(db));
+        errors.push(error.clone());
     }
 }
 

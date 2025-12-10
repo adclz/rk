@@ -31,7 +31,6 @@ impl<'db> Check<'db> for [VariableDecl<'db>] {
 
             let var_typ = Type::new_spec(db, variable.spec(db));
             if var_typ.is_never() {
-                eprintln!("checking variable with never type: {:?}", variable.name(db));
                 errors.push(
                     BodyInferenceError::NoSpecItemInScope { spec: variable.spec(db), scope: variable.scope_id(db) }
                     .to_diagnostic(db)

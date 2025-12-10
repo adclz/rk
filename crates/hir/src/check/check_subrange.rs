@@ -4,10 +4,15 @@ use ide_diagnostic::IdeDiagnostic;
 use crate::{
     check::{
         check_semantic_index::DataTypeCheck,
-        errors::{analysis_error::ToIdeDiagnostic, body_inference::TypeError, subrange::SubRangeError},
+        errors::{
+            analysis_error::ToIdeDiagnostic, body_inference::TypeError, subrange::SubRangeError,
+        },
     },
     hir_def::expressions::spec::{ElementarySpec, SpecKind, SubRange},
-    hir_ty::{body_inference::BodyInferenceResult, infer::expr::InferExprCtx, resolver::Resolver, ty::Type},
+    hir_ty::{
+        body_inference::BodyInferenceResult, infer::expr::InferExprCtx, resolver::Resolver,
+        ty::Type,
+    },
 };
 
 impl<'db> DataTypeCheck<'db> for SubRange<'db> {
@@ -58,11 +63,12 @@ impl<'db> DataTypeCheck<'db> for SubRange<'db> {
         let infer = InferExprCtx::new(self.lower(db).scope_id(db), Resolver::new(None));
 
         let expr = infer.infer_expr(db, min, &mut infer_body);
-        if !typ.coerce_with(db, expr, min.scope_id(db)) {
+        if let Err(err) = typ.coerce_with(db, expr, min.scope_id(db)) {
             errors.push(
                 TypeError::NotAssignable {
-                    target: typ,
-                    value: expr,
+                    base_target: typ,
+                    target: err.expected,
+                    value: err.actual,
                     expr: min.into(),
                 }
                 .to_diagnostic(db),
@@ -70,11 +76,12 @@ impl<'db> DataTypeCheck<'db> for SubRange<'db> {
         }
 
         let expr = infer.infer_expr(db, max, &mut infer_body);
-        if !typ.coerce_with(db, expr, max.scope_id(db)) {
+        if let Err(err) = typ.coerce_with(db, expr, max.scope_id(db)) {
             errors.push(
                 TypeError::NotAssignable {
-                    target: typ,
-                    value: expr,
+                    base_target: typ,
+                    target: err.expected,
+                    value: err.actual,
                     expr: max.into(),
                 }
                 .to_diagnostic(db),

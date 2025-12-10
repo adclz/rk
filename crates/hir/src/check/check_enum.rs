@@ -5,9 +5,20 @@ use rustc_hash::FxHashMap;
 use crate::{
     check::{
         check_semantic_index::DataTypeCheck,
-        errors::{analysis_error::ToIdeDiagnostic, body_inference::{BodyInferenceError, TypeError}, duplicates::DuplicateError, enum_::EnumError},
+        errors::{
+            analysis_error::ToIdeDiagnostic,
+            body_inference::{BodyInferenceError, TypeError},
+            duplicates::DuplicateError,
+            enum_::EnumError,
+        },
     },
-    hir_def::expressions::spec::{ElementarySpec, Enum, SpecKind}, hir_ty::{body_inference::BodyInferenceResult, infer::{ctx::InferCtx, expr::InferExprCtx}, resolver::Resolver, ty::Type},
+    hir_def::expressions::spec::{ElementarySpec, Enum, SpecKind},
+    hir_ty::{
+        body_inference::BodyInferenceResult,
+        infer::{ctx::InferCtx, expr::InferExprCtx},
+        resolver::Resolver,
+        ty::Type,
+    },
 };
 
 impl<'db> DataTypeCheck<'db> for Enum<'db> {
@@ -29,7 +40,8 @@ impl<'db> DataTypeCheck<'db> for Enum<'db> {
                     | ElementarySpec::UDInt
                     | ElementarySpec::LInt
                     | ElementarySpec::ULInt => {}
-                    _ => errors.push(EnumError::InvalidEnumType { value: spec, typ }.to_diagnostic(db)),
+                    _ => errors
+                        .push(EnumError::InvalidEnumType { value: spec, typ }.to_diagnostic(db)),
                 },
                 _ => errors.push(EnumError::InvalidEnumType { value: spec, typ }.to_diagnostic(db)),
             }
@@ -58,9 +70,15 @@ impl<'db> DataTypeCheck<'db> for Enum<'db> {
 
                 let target = Type::new_spec(db, typ);
                 let expr = infer.infer_expr(db, value, &mut infer_body);
-                if !target.coerce_with(db, expr,value.scope_id(db)) {
+                if let Err(err) = target.coerce_with(db, expr, value.scope_id(db)) {
                     errors.push(
-                        TypeError::NotAssignable { target, value: expr , expr: value.into() }.to_diagnostic(db)
+                        TypeError::NotAssignable {
+                            base_target: target,
+                            target: err.expected,
+                            value: err.actual,
+                            expr: value.into(),
+                        }
+                        .to_diagnostic(db),
                     )
                 }
             }
