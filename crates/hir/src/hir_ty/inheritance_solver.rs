@@ -1,16 +1,14 @@
 use crate::{
-    AstId, HasName, HirNodeInfo, hir_def::{
+    AstId, HasModifiers, HasName, HasVisibility, HirNodeInfo, Modifier, Visibility, hir_def::{
         expressions::spec::Spec,
         interned::{identifier::Ident, namespace::SpanNamespaceAccess},
-        modifier::Modifier,
         pous::{
             class::MethodDecl,
             interface::MethodPrototype,
-            pou::{Pou},
+            pou::Pou,
             variable::VariableDecl,
         },
         scope::ScopeId,
-        visibility::Visibility,
     }, hir_ty::name_res::resolve_namespace_access
 };
 use auto_lsp::{core::span::Span, default::db::BaseDatabase};
@@ -20,6 +18,24 @@ use rustc_hash::FxHashMap;
 pub enum MethodRef<'db> {
     Prototype(MethodPrototype<'db>),
     Declared(MethodDecl<'db>),
+}
+
+impl<'db> HasModifiers<'db> for MethodRef<'db> {
+    fn get_modifiers(&self, db: &'db dyn BaseDatabase) -> Modifier {
+        match self {
+            MethodRef::Prototype(p) => Modifier::default(),
+            MethodRef::Declared(d) => d.modifier(db),
+        }
+    }
+}
+
+impl<'db> HasVisibility<'db> for MethodRef<'db> {
+    fn get_visibility(&self, db: &'db dyn BaseDatabase) -> Visibility {
+        match self {
+            MethodRef::Prototype(p) => Visibility::default(),
+            MethodRef::Declared(d) => d.visibility(db),
+        }
+    }
 }
 
 impl<'db> MethodRef<'db> {
