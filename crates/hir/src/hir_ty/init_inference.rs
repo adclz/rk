@@ -107,14 +107,16 @@ impl<'db> InitExprInferenceResult<'db> {
             }
 
             InitExprKind::ConstantExpr(e) => {
-                let inferred = InferExprCtx::new(self.scope, Resolver::new(Some(expected)))
+                let resolver = Resolver::new(self.scope, Some(expected));
+                let inferred = InferExprCtx::new(resolver)
                     .infer_expr(db, e, &mut self.body_infer_result);
 
-                if !expected.coerce_with(db, inferred, self.scope) {
+                if let Err(err) = expected.coerce_with(db, inferred, resolver) {
                     self.errors
                         .push(InitInferenceError::TypeMismatch(TypeError::NotAssignable {
-                            target: expected,
-                            value: inferred,
+                            base_target: expected,
+                            target: err.expected,
+                            value: err.actual,
                             expr: e.into(),
                         }));
                 }

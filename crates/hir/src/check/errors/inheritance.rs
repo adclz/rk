@@ -7,7 +7,7 @@ use crate::{
             pou::Pou,
             variable::VariableDecl,
         }
-    }, hir_ty::inheritance_solver::MethodRef
+    }, hir_ty::{inheritance_solver::MethodRef, ty::Type}
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -55,10 +55,11 @@ pub enum MethodError<'db> {
         m2: MethodRef<'db>,
         got: usize,
     },
-    /*SignatureParametersTypeMismatch {
-        err: Type<'db>,
-        param: VariableDecl<'db>,
-    },*/
+    SignatureTypeMismatch {
+        expected: Type<'db>,
+        got: Type<'db>,
+        method: MethodRef<'db>,
+    }
 }
 
 impl<'db> From<MethodError<'db>> for AnalysisError<'db> {
@@ -259,21 +260,22 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                 ));
                 diag
             }
-            /*Self::SignatureParametersTypeMismatch { err, param } => {
+            Self::SignatureTypeMismatch { expected, got, method } => {
                 let mut diag = diag()
                     .message(format!(
-                        "invalid parameter in method signature: {}",
-                        err.description(db)
+                        "method '{}' has incompatible parameter types: expected '{}', got '{}'",
+                        method.get_name_ident(db).text(db),
+                        expected.full_type_name(db),
+                        got.full_type_name(db),
                     ))
                     .severity(DiagnosticSeverity::ERROR)
-                    .range(param.get_get_get_name_span(db).unwrap())
+                    .range(method.get_name_span(db).clone())
                     .call();
 
-                err.related(db, &mut diag);
-                err.note(db, &mut diag);
+                diag.with_note("parameter types must match those of the base method".into());
 
                 diag
-            }*/
+            }
         }
     }
 }

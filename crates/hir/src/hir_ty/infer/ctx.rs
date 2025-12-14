@@ -1,18 +1,25 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    AstId, HirNodeInfo, check::errors::body_inference::{BodyInferenceError, TypeError}, hir_def::{
+    AstId, CallSite, HirNodeInfo,
+    check::errors::{
+        analysis_error::ToIdeDiagnostic,
+        body_inference::{BodyInferenceError, TypeError},
+    },
+    hir_def::{
         expressions::{
             expression::{Expr, FuncCall, ParamAssignKind},
             invocation::{Invocation, InvocationKind},
             statement::{CaseKind, Stmt, StmtKind},
         },
-        pous::pou::Pou,
+        pous::{pou::Pou, variable::VariableDecl},
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
-    }, hir_ty::{
-        body_inference::BodyInferenceResult, infer::expr::InferExprCtx, resolver::Resolver, ty::Type
-    }
+    },
+    hir_ty::{
+        body_inference::BodyInferenceResult, infer::expr::InferExprCtx, resolver::Resolver,
+        ty::Type,
+    },
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -24,28 +31,6 @@ pub enum NestedScope {
 pub struct InferCtx<'db> {
     pub scope: ScopeId<'db>,
     pub nested_scope: NestedScope,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub struct CallSite<'db> {
-    pub scope: ScopeId<'db>,
-    pub id: AstId,
-}
-
-impl<'db> CallSite<'db> {
-    pub fn new(scope: ScopeId<'db>, id: AstId) -> Self {
-        Self { scope, id }
-    }
-}
-
-impl<'db> HirNodeInfo<'db> for CallSite<'db> {
-    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
-        self.id
-    }
-
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
-        self.scope
-    }
 }
 
 impl<'db> InferCtx<'db> {
@@ -61,14 +46,14 @@ impl<'db> InferCtx<'db> {
         scope: ScopeId<'db>,
         invocation: Invocation<'db>,
         ctx: &mut BodyInferenceResult<'db>,
-    ) {
+    ) -> Option<Pou<'db>> {
         match get_scope(db, scope).kind {
             ScopeKind::MethodDecl(m) => {
                 let scope = get_scope(db, m.scope_id(db));
                 let parent = scope
                     .parent
                     .expect("A method scope always has a parent scope");
-                Self::resolve_invocation(db, parent, invocation, ctx);
+                return Self::resolve_invocation(db, parent, invocation, ctx);
             }
             ScopeKind::Pou(pou) => {
                 /*
@@ -90,11 +75,15 @@ impl<'db> InferCtx<'db> {
                         Pou::FunctionBlock(fb) => {
                             ctx.type_of_invocation
                                 .insert(invocation, Type::new_pou(db, pou));
+                            return Some(pou);
                         }
                         _ => {
-                            ctx.errors.push(BodyInferenceError::SuperBodyOnIncompatiblePou {
-                                call_site: CallSite::new(scope, invocation.keyword_id(db)),
-                            });
+                            ctx.errors.push(
+                                BodyInferenceError::SuperBodyOnIncompatiblePou {
+                                    call_site: CallSite::new(scope, invocation.keyword_id(db)),
+                                }
+                                .to_diagnostic(db),
+                            );
                         }
                     },
                     InvocationKind::Super => match pou {
@@ -102,28 +91,37 @@ impl<'db> InferCtx<'db> {
                         Pou::FunctionBlock(_) | Pou::Class(_) => {
                             ctx.type_of_invocation
                                 .insert(invocation, Type::new_pou(db, pou));
+                            return Some(pou);
                         }
                         _ => {
-                            ctx.errors.push(BodyInferenceError::SuperOnIncompatiblePou {
-                                call_site: CallSite::new(scope, invocation.keyword_id(db)),
-                            });
+                            ctx.errors.push(
+                                BodyInferenceError::SuperOnIncompatiblePou {
+                                    call_site: CallSite::new(scope, invocation.keyword_id(db)),
+                                }
+                                .to_diagnostic(db),
+                            );
                         }
                     },
                     InvocationKind::This => match pou {
                         Pou::FunctionBlock(_) | Pou::Class(_) => {
                             ctx.type_of_invocation
                                 .insert(invocation, Type::new_pou(db, pou));
+                            return Some(pou);
                         }
                         _ => {
-                            ctx.errors.push(BodyInferenceError::ThisOnIncompatiblePou {
-                                call_site: CallSite::new(scope, invocation.keyword_id(db)),
-                            });
+                            ctx.errors.push(
+                                BodyInferenceError::ThisOnIncompatiblePou {
+                                    call_site: CallSite::new(scope, invocation.keyword_id(db)),
+                                }
+                                .to_diagnostic(db),
+                            );
                         }
                     },
                 }
             }
             _ => unreachable!("An invocation will always be in a POU scope"),
         }
+        None
     }
 
     pub fn resolve_func_call(
@@ -133,7 +131,8 @@ impl<'db> InferCtx<'db> {
         ctx: &mut BodyInferenceResult<'db>,
     ) -> Type<'db> {
         let typ = resolver.resolve_begin_path_expr(db, func_call.path(db), ctx);
-        if let Some(callable) = typ.as_callable() {
+
+        if let Some(callable) = typ.shallow_as_callable(db) {
             let mut formal_idx = 0;
             for parameter in func_call.params(db) {
                 match parameter.kind(db) {
@@ -146,7 +145,45 @@ impl<'db> InferCtx<'db> {
                             .nth(formal_idx);
 
                         if let Some(var) = var {
+                            let mut expr_ctx = InferExprCtx::new(resolver);
+                            let typ = expr_ctx.infer_expr(db, value, ctx);
+                            expr_ctx
+                                .inference_table
+                                .resolve_completly(db, resolver, ctx);
+
+                            if let Err(e) = Type::new_var(db, *var).coerce_with(db, typ, resolver) {
+                                ctx.errors.push(
+                                    TypeError::NotAssignable {
+                                        base_target: Type::new_var(db, *var),
+                                        target: e.expected,
+                                        value: e.actual,
+                                        expr: value.into(),
+                                    }
+                                    .to_diagnostic(db),
+                                );
+                            }
+
+                            if var.is_output(db) {
+                                ctx.errors.push(
+                                    BodyInferenceError::OutputParameterUsedAsInput {
+                                        func: callable,
+                                        var: *var,
+                                        expr: value,
+                                        param: formal_idx,
+                                    }
+                                    .to_diagnostic(db),
+                                );
+                            }
                             ctx.variable_of_param.insert(parameter, *var);
+                        } else {
+                            ctx.errors.push(
+                                BodyInferenceError::UnknownNonFormalParameter {
+                                    func: callable,
+                                    expr: value,
+                                    param: formal_idx,
+                                }
+                                .to_diagnostic(db),
+                            );
                         }
                         formal_idx += 1;
                     }
@@ -155,6 +192,14 @@ impl<'db> InferCtx<'db> {
 
                         if let Some(var) = var {
                             ctx.variable_of_param.insert(parameter, *var);
+                        } else {
+                            ctx.errors.push(
+                                BodyInferenceError::UnknownInputParameter {
+                                    func: callable,
+                                    param: param,
+                                }
+                                .to_diagnostic(db),
+                            );
                         }
                     }
                     ParamAssignKind::FormalOutput {
@@ -167,12 +212,29 @@ impl<'db> InferCtx<'db> {
 
                         if let Some(var) = var {
                             ctx.variable_of_param.insert(parameter, *var);
+                        } else {
+                            ctx.errors.push(
+                                BodyInferenceError::UnknownOutputParameter {
+                                    func: callable,
+                                    param: param,
+                                }
+                                .to_diagnostic(db),
+                            );
                         }
                         return ty;
                     }
                 }
             }
             return typ;
+        } else {
+            // not a callable type
+            ctx.errors.push(
+                BodyInferenceError::CallNonCallableType {
+                    typ: typ,
+                    func_call: func_call,
+                }
+                .to_diagnostic(db),
+            );
         }
         Type::Never
     }
@@ -186,7 +248,7 @@ impl<'db> InferCtx<'db> {
         nested_scope: NestedScope,
         ctx: &mut BodyInferenceResult<'db>,
     ) {
-        let infer_ctx = InferExprCtx::new(self.scope, resolver);
+        let mut infer_ctx = InferExprCtx::new(resolver);
 
         for stmt in statements.iter() {
             match stmt.stmt(db) {
@@ -194,13 +256,54 @@ impl<'db> InferCtx<'db> {
                     let _ = resolver.resolve_begin_path_expr(db, *expr, ctx);
                 }
                 StmtKind::Assignment { var, target } => {
-                    self.check_assign(
-                        db,
-                        resolver.resolve_variable_access(db, *var, ctx),
-                        *target,
-                        &infer_ctx,
-                        ctx,
-                    );
+                    let var_access = resolver.resolve_variable_access(db, *var, ctx);
+                    // Additional checks for variable assignments
+                    if let Type::Variable(variable) = var_access {
+                        // a variable of kind INPUT cannot be assigned to
+                        if variable.is_input(db) {
+                            ctx.errors.push(
+                                BodyInferenceError::IsVarInput {
+                                    var: variable,
+                                    access: *var,
+                                }
+                                .to_diagnostic(db),
+                            );
+                        }
+
+                        // a variable of callable type cannot be assigned to
+                        if let Some(callable_typ) =
+                            Type::new_var(db, variable).shallow_as_callable(db)
+                        {
+                            ctx.errors.push(
+                                BodyInferenceError::AssignCallableType {
+                                    typ: callable_typ,
+                                    access: *var,
+                                }
+                                .to_diagnostic(db),
+                            );
+                            continue;
+                        }
+                    }
+                    // type is not a variable
+                    else {
+                        // function and methods can be assigned IF they are the same
+                        let ok = match var_access {
+                            Type::Function(f) => f.get_scope_id(db) == var.get_scope_id(db),
+                            Type::MethodDecl(m) => m.get_scope_id(db) == var.get_scope_id(db),
+                            _ => false,
+                        };
+                        if !ok {
+                            ctx.errors.push(
+                                BodyInferenceError::DirectType {
+                                    expr: *var,
+                                    typ: var_access,
+                                }
+                                .to_diagnostic(db),
+                            );
+                            continue;
+                        }
+                    }
+                    self.check_assign(db, var_access, *target, &mut infer_ctx, ctx);
                 }
 
                 StmtKind::AssignmentAttempt { var, target } => {
@@ -209,7 +312,7 @@ impl<'db> InferCtx<'db> {
                         db,
                         resolver.resolve_variable_access(db, *var, ctx),
                         *target,
-                        &infer_ctx,
+                        &mut infer_ctx,
                         ctx,
                     );
                 }
@@ -219,7 +322,7 @@ impl<'db> InferCtx<'db> {
                     else_if,
                     else_,
                 } => {
-                    self.check_assign(db, Type::new_bool(), *condition, &infer_ctx, ctx);
+                    self.check_assign(db, Type::new_bool(), *condition, &mut infer_ctx, ctx);
 
                     // Analyze THEN block
                     if let Some(then) = then.as_ref() {
@@ -228,7 +331,7 @@ impl<'db> InferCtx<'db> {
 
                     // Analyze ELSE IF blocks
                     for (condition, stmt) in else_if {
-                        self.check_assign(db, Type::new_bool(), *condition, &infer_ctx, ctx);
+                        self.check_assign(db, Type::new_bool(), *condition, &mut infer_ctx, ctx);
 
                         self.resolve_statements(db, resolver, stmt, NestedScope::None, ctx);
                     }
@@ -249,7 +352,7 @@ impl<'db> InferCtx<'db> {
                         db,
                         resolver.resolve_variable_access(db, *control_variable, ctx),
                         *start,
-                        &infer_ctx,
+                        &mut infer_ctx,
                         ctx,
                     );
 
@@ -257,7 +360,7 @@ impl<'db> InferCtx<'db> {
                         db,
                         resolver.resolve_variable_access(db, *control_variable, ctx),
                         *end,
-                        &infer_ctx,
+                        &mut infer_ctx,
                         ctx,
                     );
 
@@ -266,7 +369,7 @@ impl<'db> InferCtx<'db> {
                             db,
                             resolver.resolve_variable_access(db, *control_variable, ctx),
                             *step,
-                            &infer_ctx,
+                            &mut infer_ctx,
                             ctx,
                         );
                     }
@@ -274,19 +377,21 @@ impl<'db> InferCtx<'db> {
                     self.resolve_statements(db, resolver, body, NestedScope::Loop, ctx);
                 }
                 StmtKind::While { condition, body } => {
-                    self.check_assign(db, Type::new_bool(), *condition, &infer_ctx, ctx);
+                    self.check_assign(db, Type::new_bool(), *condition, &mut infer_ctx, ctx);
 
                     self.resolve_statements(db, resolver, body, NestedScope::Loop, ctx);
                 }
                 StmtKind::Repeat { condition, body } => {
-                    self.check_assign(db, Type::new_bool(), *condition, &infer_ctx, ctx);
+                    self.check_assign(db, Type::new_bool(), *condition, &mut infer_ctx, ctx);
 
                     self.resolve_statements(db, resolver, body, NestedScope::Loop, ctx);
                 }
                 StmtKind::FuncCall(f) => {
                     let typ = Self::resolve_func_call(db, resolver, *f, ctx);
                     if typ.with_return_type(db).is_some() {
-                        ctx.errors.push(TypeError::UnusedReturnType { typ, expr: *stmt }.into());
+                        ctx.errors.push(
+                            TypeError::UnusedReturnType { typ, expr: *stmt }.to_diagnostic(db),
+                        );
                     }
                 }
                 StmtKind::Case {
@@ -300,11 +405,11 @@ impl<'db> InferCtx<'db> {
                         for case in cases {
                             match case {
                                 CaseKind::Expression(expr) => {
-                                    self.check_compare(db, cond, *expr, &infer_ctx, ctx);
+                                    self.check_compare(db, cond, *expr, &mut infer_ctx, ctx);
                                 }
                                 CaseKind::Subrange { lower, upper } => {
-                                    self.check_compare(db, cond, *lower, &infer_ctx, ctx);
-                                    self.check_compare(db, cond, *upper, &infer_ctx, ctx);
+                                    self.check_compare(db, cond, *lower, &mut infer_ctx, ctx);
+                                    self.check_compare(db, cond, *upper, &mut infer_ctx, ctx);
                                 }
                             }
                         }
@@ -318,14 +423,17 @@ impl<'db> InferCtx<'db> {
                 }
                 StmtKind::Continue => {
                     if nested_scope != NestedScope::Loop {
-                        ctx.errors
-                            .push(BodyInferenceError::ContinueOutsideLoop { stmt: *stmt });
+                        ctx.errors.push(
+                            BodyInferenceError::ContinueOutsideLoop { stmt: *stmt }
+                                .to_diagnostic(db),
+                        );
                     }
                 }
                 StmtKind::Exit => {
                     if nested_scope != NestedScope::Loop {
-                        ctx.errors
-                            .push(BodyInferenceError::ExitOutsideLoop { stmt: *stmt });
+                        ctx.errors.push(
+                            BodyInferenceError::ExitOutsideLoop { stmt: *stmt }.to_diagnostic(db),
+                        );
                     }
                 }
                 StmtKind::Return => {
@@ -342,18 +450,26 @@ impl<'db> InferCtx<'db> {
         db: &'db dyn BaseDatabase,
         target: Type<'db>,
         expr: Expr<'db>,
-        infer_ctx: &InferExprCtx<'db>,
+        infer_ctx: &mut InferExprCtx<'db>,
         ctx: &mut BodyInferenceResult<'db>,
     ) {
-        let value = infer_ctx.infer_expr(db, expr, ctx);
-        if !target.coerce_with(db, value, self.scope) {
+        infer_ctx.infer_expr(db, expr, ctx);
+        infer_ctx.inference_table.set_resolved(expr, target);
+        infer_ctx
+            .inference_table
+            .resolve_completly(db, infer_ctx.resolver, ctx);
+
+        let value = ctx.type_of_expr.get(&expr).copied().unwrap_or_default();
+
+        if let Err(err) = target.coerce_with(db, value, infer_ctx.resolver) {
             ctx.errors.push(
                 TypeError::NotAssignable {
-                    target,
-                    value,
+                    base_target: target,
+                    target: err.expected,
+                    value: err.actual,
                     expr: expr.into(),
                 }
-                .into(),
+                .to_diagnostic(db),
             )
         };
     }
@@ -363,13 +479,22 @@ impl<'db> InferCtx<'db> {
         db: &'db dyn BaseDatabase,
         lhs: Type<'db>,
         expr: Expr<'db>,
-        infer_ctx: &InferExprCtx<'db>,
+        infer_ctx: &mut InferExprCtx<'db>,
         ctx: &mut BodyInferenceResult<'db>,
     ) {
         let rhs = infer_ctx.infer_expr(db, expr, ctx);
-        if !lhs.coerce_with(db, rhs, self.scope) {
-            ctx.errors
-                .push(TypeError::NotComparable { lhs, rhs, expr }.into())
+        infer_ctx
+            .inference_table
+            .resolve_completly(db, infer_ctx.resolver, ctx);
+        if let Err(err) = lhs.coerce_with(db, rhs, infer_ctx.resolver) {
+            ctx.errors.push(
+                TypeError::NotComparable {
+                    lhs: err.expected,
+                    rhs: err.actual,
+                    expr,
+                }
+                .to_diagnostic(db),
+            )
         };
     }
 }

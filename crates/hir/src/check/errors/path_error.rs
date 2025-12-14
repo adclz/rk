@@ -2,12 +2,12 @@ use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, diag};
 
 use crate::{
-    HirNodeInfo, check::errors::analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic}, hir_def::{
+    CallSite, HirNodeInfo, check::errors::analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic}, hir_def::{
         expressions::expression::{BeginPathExpr, PathExpr},
         interned::namespace::SpanNamespaceAccess,
         scope::ScopeKind,
         semantic_index::get_scope, using::Using,
-    }, hir_ty::{infer::ctx::CallSite}, query_string::variables::fuzzy_variables
+    }, query_string::variables::fuzzy_variables
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]

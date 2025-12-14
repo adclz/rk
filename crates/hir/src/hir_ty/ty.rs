@@ -1,7 +1,7 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    HirNodeInfo,
+    AstId, HasName, HirNodeInfo,
     check::errors::{body_inference::BodyInferenceError, init_inference::InitInferenceError},
     hir_def::{
         expressions::{
@@ -61,6 +61,7 @@ pub enum Type<'db> {
     Variable(VariableDecl<'db>),
     Infer(InferType),
     Never,
+    Void,
 }
 
 impl Default for Type<'_> {
@@ -109,21 +110,6 @@ pub enum InferType {
     Float(Ident),
 }
 
-impl<'db> InferType {
-    pub fn infer_default(&self, db: &'db dyn BaseDatabase) -> Type<'db> {
-        match self {
-            InferType::Integer(integer) => integer
-                .as_i32(db)
-                .map(|_| Type::Elementary(ElementarySpec::Int))
-                .unwrap_or_else(|_| Type::Never),
-            InferType::Float(ident) => ident
-                .as_f32(db)
-                .map(|_| Type::Elementary(ElementarySpec::Real))
-                .unwrap_or_else(|_| Type::Never),
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update, salsa::Supertype)]
 pub enum CallableType<'db> {
     Function(Function<'db>),
@@ -139,12 +125,63 @@ impl<'db> CallableType<'db> {
             CallableType::MethodDecl(m) => m.get_scope_id(db).def_map(db),
         }
     }
+
+    pub fn var_len_params(&self, db: &'db dyn BaseDatabase) -> usize {
+        self.def_map(db).local_variables.len()
+    }
+}
+
+impl<'db> HirNodeInfo<'db> for CallableType<'db> {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+        match self {
+            CallableType::Function(f) => f.get_id(db),
+            CallableType::FunctionBlock(f) => f.get_id(db),
+            CallableType::MethodDecl(m) => m.get_id(db),
+        }
+    }
+
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+        match self {
+            CallableType::Function(f) => f.get_scope_id(db),
+            CallableType::FunctionBlock(f) => f.get_scope_id(db),
+            CallableType::MethodDecl(m) => m.get_scope_id(db),
+        }
+    }
+}
+
+impl<'db> HasName<'db> for CallableType<'db> {
+    fn get_name_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+        match self {
+            CallableType::Function(f) => f.get_name_id(db),
+            CallableType::FunctionBlock(f) => f.get_name_id(db),
+            CallableType::MethodDecl(m) => m.get_name_id(db),
+        }
+    }
+
+    fn get_name_ident(&self, db: &'db dyn BaseDatabase) -> Ident {
+        match self {
+            CallableType::Function(f) => f.get_name_ident(db),
+            CallableType::FunctionBlock(f) => f.get_name_ident(db),
+            CallableType::MethodDecl(m) => m.get_name_ident(db),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Size {
     Null,
     Size(usize),
+}
+
+impl PartialOrd for Size {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match (self, other) {
+            (Size::Null, Size::Null) => Some(std::cmp::Ordering::Equal),
+            (Size::Null, Size::Size(_)) => Some(std::cmp::Ordering::Less),
+            (Size::Size(_), Size::Null) => Some(std::cmp::Ordering::Greater),
+            (Size::Size(a), Size::Size(b)) => a.partial_cmp(b),
+        }
+    }
 }
 
 #[salsa::tracked]
@@ -184,11 +221,17 @@ impl<'db> Type<'db> {
         }
     }
 
-    pub fn as_callable(&self) -> Option<CallableType<'db>> {
+    pub fn shallow_as_callable(&self, db: &'db dyn BaseDatabase) -> Option<CallableType<'db>> {
         Some(match self {
             Type::Function(f) => CallableType::Function(*f),
-            Type::FunctionBlock(fb) => CallableType::FunctionBlock(*fb),
             Type::MethodDecl(m) => CallableType::MethodDecl(*m),
+            Type::Variable(var) => {
+                let typ = Type::new_spec(db, var.spec(db));
+                match Type::new_spec(db, var.spec(db)) {
+                    Type::FunctionBlock(fb) => CallableType::FunctionBlock(fb),
+                    _ => None?,
+                }
+            }
             _ => None?,
         })
     }
@@ -313,5 +356,18 @@ impl<'db> Type<'db> {
 
     pub fn is_never(&self) -> bool {
         matches!(self, Type::Never)
+    }
+
+    pub fn has_infer(&self) -> bool {
+        matches!(self, Type::Infer(_))
+    }
+
+    /// Returns a shallow version of the type.
+    pub fn shallow(&self, db: &'db dyn BaseDatabase) -> Type<'db> {
+        match self {
+            Type::DataType(dt) => Type::new_spec(db, dt.spec(db)),
+            Type::Variable(var) => Type::new_spec(db, var.spec(db)),
+            _ => *self,
+        }
     }
 }

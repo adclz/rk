@@ -1,23 +1,72 @@
-use auto_lsp::default::db::BaseDatabase;
+use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, Related, diag};
 
 use crate::{
-    AstId, HirNodeInfo,
+    AstId, CallSite, HasName, HirNodeInfo,
     check::errors::analysis_error::ToIdeDiagnostic,
     hir_def::{
         expressions::{
-            expression::{AddOperatorKind, Expr, InitExpr, MultOperatorKind, PathExpr}, spec::Spec, statement::Stmt
+            expression::{
+                AddOperatorKind, BeginPathExpr, Expr, FuncCall, InitExpr, MultOperatorKind,
+                PathExpr, VariableAccess,
+            },
+            spec::{Enum, Spec},
+            statement::Stmt,
         },
-        interned::identifier::Ident,
+        interned::identifier::{Ident, SpanIdent},
+        pous::variable::VariableDecl,
         scope::ScopeId,
     },
     hir_ty::{
-        body_inference::{BodyInferenceResult, infer_body_scope}, infer::ctx::CallSite, init_inference::infer_init_expr, ty::Type
+        body_inference::{BodyInferenceResult, infer_body_scope},
+        init_inference::infer_init_expr,
+        ty::{CallableType, Type},
     },
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
 pub enum BodyInferenceError<'db> {
+    IsVarInput {
+        var: VariableDecl<'db>,
+        access: VariableAccess<'db>,
+    },
+    AssignCallableType {
+        typ: CallableType<'db>,
+        access: VariableAccess<'db>,
+    },
+    DirectType {
+        typ: Type<'db>,
+        expr: VariableAccess<'db>,
+    },
+    CallNonCallableType {
+        typ: Type<'db>,
+        func_call: FuncCall<'db>,
+    },
+    IncorrectNumberOfParameters {
+        expected: usize,
+        actual: usize,
+        func_call: FuncCall<'db>,
+        callable: CallableType<'db>,
+    },
+    UnknownNonFormalParameter {
+        func: CallableType<'db>,
+        expr: Expr<'db>,
+        param: usize,
+    },
+    OutputParameterUsedAsInput {
+        func: CallableType<'db>,
+        var: VariableDecl<'db>,
+        expr: Expr<'db>,
+        param: usize,
+    },
+    UnknownInputParameter {
+        func: CallableType<'db>,
+        param: SpanIdent<'db>,
+    },
+    UnknownOutputParameter {
+        func: CallableType<'db>,
+        param: SpanIdent<'db>,
+    },
     NoItemInScope {
         expr: PathExpr<'db>,
         scope: ScopeId<'db>,
@@ -54,6 +103,14 @@ pub enum BodyInferenceError<'db> {
     ExitOutsideLoop {
         stmt: Stmt<'db>,
     },
+    NotAnEnum {
+        expr: BeginPathExpr<'db>,
+        item: Type<'db>,
+    },
+    EnumVariantNotFound {
+        enum_: Enum<'db>,
+        variant_name: SpanIdent<'db>,
+    },
     TypeMismatch(TypeError<'db>),
 }
 
@@ -66,6 +123,117 @@ impl<'db> From<TypeError<'db>> for BodyInferenceError<'db> {
 impl<'db> ToIdeDiagnostic<'db> for BodyInferenceError<'db> {
     fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
         match self {
+            Self::IsVarInput { var, access } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "{} is an input variable and can not be assigned",
+                        var.get_name_ident(db).text(db)
+                    ))
+                    .range(access.get_span(db))
+                    .call();
+                diag
+            }
+            Self::AssignCallableType { typ, access } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' is a callable type and can not be assigned",
+                        typ.get_name_ident(db).text(db)
+                    ))
+                    .range(access.get_span(db))
+                    .call();
+
+                diag
+            }
+            Self::DirectType { expr, typ } => diag()
+                .message(format!(
+                    "cannot use direct type '{}' here",
+                    typ.type_name(db)
+                ))
+                .range(expr.get_span(db))
+                .call(),
+            Self::CallNonCallableType { typ, func_call } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' is not a callable type",
+                        typ.full_type_name(db)
+                    ))
+                    .range(func_call.path(db).get_span(db))
+                    .call();
+
+                if let Type::FunctionBlock(db) = typ {
+                    diag.with_note(
+                        "to call a FUNCTION_BLOCK, you need to instantiate it first.".into(),
+                    );
+                }
+
+                diag
+            }
+            Self::IncorrectNumberOfParameters {
+                expected,
+                actual,
+                func_call,
+                callable,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' expects {} parameter{}, but got {}",
+                        callable.get_name_ident(db).text(db),
+                        expected,
+                        match expected {
+                            1 => "",
+                            _ => "s",
+                        },
+                        actual
+                    ))
+                    .range(func_call.path(db).get_span(db))
+                    .call();
+
+                diag
+            }
+            Self::UnknownNonFormalParameter { func, expr, param } => {
+                let mut diag = diag()
+                    .message(format!("no parameter at index '{}'", param))
+                    .range(expr.get_span(db))
+                    .call();
+
+                diag
+            }
+            Self::UnknownInputParameter { func, param } => {
+                let mut diag = diag()
+                    .message(format!("unknown input parameter '{}'", param.text(db)))
+                    .range(param.get_span(db))
+                    .call();
+
+                diag
+            }
+            Self::UnknownOutputParameter { func, param } => {
+                let mut diag = diag()
+                    .message(format!("unknown output parameter '{}'", param.text(db)))
+                    .range(param.get_span(db))
+                    .call();
+
+                diag
+            }
+            Self::OutputParameterUsedAsInput {
+                func,
+                expr,
+                var,
+                param,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "output parameter at index '{}' cannot be used as input",
+                        param
+                    ))
+                    .range(expr.get_span(db))
+                    .call();
+                diag.with_note(format!(
+                    "use formal syntax instead: {} => <variable>",
+                    var.get_name_ident(db).text(db)
+                ));
+
+                diag
+            }
             Self::SuperBodyOnIncompatiblePou { call_site } => diag()
                 .message("'SUPER()' is not valid in this context".to_string())
                 .range(call_site.get_span(db))
@@ -88,21 +256,23 @@ impl<'db> ToIdeDiagnostic<'db> for BodyInferenceError<'db> {
                 .call(),
             Self::NoItemInScope { expr, scope } => {
                 let diag = diag()
-                .message(format!("no item {:?} found in scope", expr.ident(db).text(db)))
-                .range(expr.get_span(db))
-                .call();
+                    .message(format!(
+                        "no item {:?} found in scope",
+                        expr.ident(db).text(db)
+                    ))
+                    .range(expr.get_span(db))
+                    .call();
 
-                
                 diag
-            },
+            }
             Self::NoSpecItemInScope { spec, scope } => {
                 let diag = diag()
-                .message(format!("no item {:?} found in scope", spec.display(db)))
-                .range(spec.get_span(db))
-                .call();
+                    .message(format!("no item {:?} found in scope", spec.display(db)))
+                    .range(spec.get_span(db))
+                    .call();
 
                 diag
-            },
+            }
             Self::NoSuchField { expr, ident, ty } => diag()
                 .message(format!(
                     "'{}' has no field named '{}'",
@@ -124,6 +294,20 @@ impl<'db> ToIdeDiagnostic<'db> for BodyInferenceError<'db> {
                     ty.full_type_name(db)
                 ))
                 .range(expr.get_span(db))
+                .call(),
+            Self::NotAnEnum { expr, item } => diag()
+                .message(format!("'{}' is not an ENUM type", item.full_type_name(db)))
+                .range(expr.get_span(db))
+                .call(),
+            Self::EnumVariantNotFound {
+                enum_,
+                variant_name,
+            } => diag()
+                .message(format!(
+                    "ENUM has no variant named '{}'",
+                    variant_name.text(db)
+                ))
+                .range(variant_name.get_span(db))
                 .call(),
             Self::TypeMismatch(mismatch) => mismatch.to_diagnostic(db),
         }
@@ -167,6 +351,7 @@ impl<'db> HirNodeInfo<'db> for InitOrExpr<'db> {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
 pub enum TypeError<'db> {
     NotAssignable {
+        base_target: Type<'db>,
         target: Type<'db>,
         value: Type<'db>,
         expr: InitOrExpr<'db>,
@@ -192,6 +377,12 @@ pub enum TypeError<'db> {
         typ: Type<'db>,
         expr: Expr<'db>,
     },
+    CannotInfer {
+        source: Expr<'db>,
+        target: Type<'db>,
+        value: Type<'db>,
+        expr: Expr<'db>,
+    },
     UnusedReturnType {
         typ: Type<'db>,
         expr: Stmt<'db>,
@@ -206,6 +397,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
     fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
         match self {
             Self::NotAssignable {
+                base_target,
                 target,
                 value,
                 expr,
@@ -219,7 +411,31 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                     .range(expr.get_span(db))
                     .call();
 
-                target.location(db, &mut diag);
+                base_target.with_location(db, &mut diag);
+                diag
+            }
+            Self::CannotInfer {
+                source,
+                target,
+                value,
+                expr,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "cannot infer type '{}' to '{}'",
+                        value.full_type_name(db),
+                        target.full_type_name(db),
+                    ))
+                    .range(expr.get_span(db))
+                    .call();
+
+                diag.with_related(Related::new(
+                    format!("type is inferred from here"),
+                    source.scope_id(db).file(db),
+                    source.get_span(db),
+                ));
+                target.with_location(db, &mut diag);
+
                 diag
             }
             Self::NotComparable { lhs, rhs, expr } => diag()
@@ -238,11 +454,11 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
             } => diag()
                 .message(format!(
                     "can not {} '{}' with '{}'",
-                    rhs.full_type_name(db),
                     match operator {
                         AddOperatorKind::Plus => "add",
                         AddOperatorKind::Minus => "subtract",
                     },
+                    rhs.full_type_name(db),
                     lhs.full_type_name(db)
                 ))
                 .range(expr.get_span(db))
@@ -274,11 +490,12 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 .call(),
             Self::UnusedReturnType { typ, expr } => diag()
                 .message(format!(
-                    "unused return value of type '{}'",
+                    "unused return value of '{}'",
                     typ.full_type_name(db)
                 ))
                 .range(expr.get_span(db))
-                .call(),    
+                .severity(DiagnosticSeverity::INFORMATION)
+                .call(),
             Self::Other { message, expr } => diag()
                 .message(message.clone())
                 .range(expr.get_span(db))

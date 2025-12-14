@@ -54,6 +54,7 @@ impl<'db> Type<'db> {
             Self::Enum(_) => "ENUM".into(),
             Self::Struct(_) => "STRUCT".into(),
             Self::Never => "{unknown}".into(),
+            Self::Void => "void".into(),
             Self::StructElement(st) => Type::new_spec(db, st.spec(db)).type_name(db),
             Self::Variable(var) => Type::new_spec(db, var.spec(db)).type_name(db),
             Self::Infer(infer) => match infer {
@@ -107,11 +108,11 @@ impl<'db> Type<'db> {
         }
     }
 
-    pub fn location(&self, db: &'db dyn BaseDatabase, diag: &mut IdeDiagnostic) {
+    pub fn with_location(&self, db: &'db dyn BaseDatabase, diag: &mut IdeDiagnostic) {
         match self {
             Self::Variable(v) => match v.spec(db).kind(db) {
                 SpecKind::Target(t) => {
-                    Type::new_spec(db, v.spec(db)).location(db, diag);
+                    Type::new_spec(db, v.spec(db)).with_location(db, diag);
                 }
                 _ => diag.with_related(Related::new(
                     format!(
@@ -132,22 +133,81 @@ impl<'db> Type<'db> {
                     typ.spec(db).get_span(db),
                 ));
             }
-            Self::StructElement(elem) => {
-                match elem.spec(db).kind(db) {
-                    SpecKind::Target(t) => {
-                        Type::new_spec(db, elem.spec(db)).location(db, diag);
-                    }
-                    _ => diag.with_related(Related::new(
-                        format!(
-                            "type is declared by struct element '{}' here",
-                            elem.name(db).text(db)
-                        ),
-                        elem.get_scope_id(db).file(db),
-                        elem.get_name_span(db),
-                    )),
+            Self::StructElement(elem) => match elem.spec(db).kind(db) {
+                SpecKind::Target(t) => {
+                    Type::new_spec(db, elem.spec(db)).with_location(db, diag);
                 }
+                _ => diag.with_related(Related::new(
+                    format!(
+                        "type is defined by struct field '{}' here",
+                        elem.name(db).text(db)
+                    ),
+                    elem.get_scope_id(db).file(db),
+                    elem.get_name_span(db),
+                )),
+            },
+            Self::Function(f) => {
+                diag.with_related(Related::new(
+                    format!(
+                        "FUNCTION '{}' is defined here{}",
+                        f.get_name_ident(db).text(db),
+                        match f.return_type(db) {
+                            Some(ret) => format!(
+                                ", with return type '{}'",
+                                Type::new_spec(db, *ret).type_name(db)
+                            ),
+                            None => "".to_string(),
+                        }
+                    ),
+                    f.get_scope_id(db).file(db),
+                    f.get_name_span(db),
+                ));
             }
-            _ => { /* No location info available */ }
+            Self::MethodDecl(f) => {
+                diag.with_related(Related::new(
+                    format!(
+                        "METHOD '{}' is defined here{}",
+                        f.get_name_ident(db).text(db),
+                        match f.return_type(db) {
+                            Some(ret) => format!(
+                                ", with return type '{}'",
+                                Type::new_spec(db, *ret).type_name(db)
+                            ),
+                            None => "".to_string(),
+                        }
+                    ),
+                    f.get_scope_id(db).file(db),
+                    f.get_name_span(db),
+                ));
+            }
+            Self::FunctionBlock(f) => {
+                diag.with_related(Related::new(
+                    format!(
+                        "FUNCTION_BLOCK '{}' is defined here",
+                        f.get_name_ident(db).text(db),
+                    ),
+                    f.get_scope_id(db).file(db),
+                    f.get_name_span(db),
+                ));
+            }
+            Self::Class(f) => {
+                diag.with_related(Related::new(
+                    format!("CLASS '{}' is defined here", f.get_name_ident(db).text(db),),
+                    f.get_scope_id(db).file(db),
+                    f.get_name_span(db),
+                ));
+            }
+            Self::Interface(f) => {
+                diag.with_related(Related::new(
+                    format!(
+                        "INTERFACE '{}' is defined here",
+                        f.get_name_ident(db).text(db),
+                    ),
+                    f.get_scope_id(db).file(db),
+                    f.get_name_span(db),
+                ));
+            }
+            _ => {}
         }
     }
 }

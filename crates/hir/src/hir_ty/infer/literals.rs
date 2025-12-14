@@ -11,7 +11,7 @@ use crate::{
     },
     hir_ty::{
         body_inference::BodyInferenceResult,
-        ty::{Type},
+        ty::{InferType, Type},
     },
 };
 
@@ -20,6 +20,44 @@ use std::{num::ParseIntError, u8};
 // Figure 12 – Supported implicit type conversions
 
 use time::{Date, Duration, PrimitiveDateTime, Time, macros::format_description};
+
+impl<'db> Elementary {
+    pub fn check(&self, db: &'db dyn BaseDatabase) -> Result<(), InferLiteralError> {
+        match self {
+            Elementary::Date(dt) => dt
+                .as_date(db)
+                .map(|_| ())
+                .map_err(|e| InferLiteralError::Invalid_DATE_Format(e.to_string())),
+            Elementary::LDate(dt) => dt
+                .as_long_date(db)
+                .map(|_| ())
+                .map_err(|e| InferLiteralError::Invalid_LDATE_Format(e.to_string())),
+            Elementary::TimeOfDay(tod) => tod
+                .as_tod(db)
+                .map(|_| ())
+                .map_err(|e| InferLiteralError::Invalid_TOD_Format(e.to_string())),
+            Elementary::LTod(ltod) => ltod
+                .as_long_tod(db)
+                .map(|_| ())
+                .map_err(|e| InferLiteralError::Invalid_LTOD_Format(e.to_string())),
+            Elementary::DateAndTime(dt) => dt
+                .as_date_time(db)
+                .map(|_| ())
+                .map_err(|e| InferLiteralError::Invalid_DT_Format(e.to_string())),
+            Elementary::LDateTime(ldt) => ldt
+                .as_long_date_time(db)
+                .map(|_| ())
+                .map_err(|e| InferLiteralError::Invalid_LDT_Format(e.to_string())),
+            Elementary::Time(t) => t
+                .as_time(db)
+                .map(|_| ()),
+            Elementary::LTime(lt) => lt
+                .as_ltime(db)
+                .map(|_| ()),
+            _ => Ok(()),
+        }
+    }
+}
 
 impl<'db> ElementarySpec {
     pub fn implicit_cast(&self, typ: ElementarySpec) -> Type<'db> {
@@ -80,7 +118,7 @@ impl<'db> ElementarySpec {
             // USINT UINT UDINT ULINT
             USInt => match self {
                 UInt => Type::Elementary(UInt),
-                UDInt => Type::Elementary(UDInt),                
+                UDInt => Type::Elementary(UDInt),
                 ULInt => Type::Elementary(ULInt),
                 // sint is explicit only
                 Int => Type::Elementary(Int),
@@ -130,113 +168,41 @@ impl<'db> ElementarySpec {
     }
 }
 
-impl<'db> ElementarySpec {
-    pub fn infer_literal(
+impl<'db> InferType {
+    pub fn infer_with(
         &self,
         db: &'db dyn BaseDatabase,
-        typ: Elementary,
-        ctx: &mut BodyInferenceResult<'db>,
+        typ: ElementarySpec,
     ) -> Result<Type<'db>, InferLiteralError> {
-        match self {
+        match typ {
             ElementarySpec::Bool | ElementarySpec::REDGEBool | ElementarySpec::FEDGEBool => {
-                check_bool(db, &typ)
+                check_bool(db, self)
             }
-            ElementarySpec::Byte => check_u8(db, &typ),
-            ElementarySpec::Word => check_u16(db, &typ),
-            ElementarySpec::DWord => check_u32(db, &typ),
-            ElementarySpec::LWord => check_u64(db, &typ),
-            ElementarySpec::USInt => check_u8(db, &typ),
-            ElementarySpec::UInt => check_u16(db, &typ),
-            ElementarySpec::UDInt => check_u32(db, &typ),
-            ElementarySpec::ULInt => check_u64(db, &typ),
-            ElementarySpec::SInt => check_i8(db, &typ),
-            ElementarySpec::Int => check_i16(db, &typ),
-            ElementarySpec::DInt => check_i32(db, &typ),
-            ElementarySpec::LInt => check_i64(db, &typ),
-            ElementarySpec::Real => check_f32(db, &typ),
-            ElementarySpec::LReal => check_f64(db, &typ),
-            ElementarySpec::Date => match typ {
-                Elementary::Date(ident) => ident
-                    .as_date(db)
-                    .map(|_| Type::Elementary(ElementarySpec::Date))
-                    .map_err(|e| InferLiteralError::Invalid_DATE_Format(e.to_string())),
-                _ => Err(InferLiteralError::Invalid_DATE_Literal),
-            },
-            ElementarySpec::LDate => match typ {
-                Elementary::LDate(ident) => ident
-                    .as_long_date(db)
-                    .map(|_| Type::Elementary(ElementarySpec::LDate))
-                    .map_err(|e| InferLiteralError::Invalid_LDATE_Format(e.to_string())),
-                _ => Err(InferLiteralError::Invalid_LDATE_Literal),
-            },
-            ElementarySpec::Tod => match typ {
-                Elementary::TimeOfDay(ident) => ident
-                    .as_tod(db)
-                    .map(|_| Type::Elementary(ElementarySpec::Tod))
-                    .map_err(|e| InferLiteralError::Invalid_TOD_Format(e.to_string())),
-                _ => Err(InferLiteralError::Invalid_TOD_Literal),
-            },
-            ElementarySpec::LTod => match typ {
-                Elementary::LTod(ident) => ident
-                    .as_long_tod(db)
-                    .map(|_| Type::Elementary(ElementarySpec::LTod))
-                    .map_err(|e| InferLiteralError::Invalid_LTOD_Format(e.to_string())),
-                _ => Err(InferLiteralError::Invalid_LTOD_Literal),
-            },
-            ElementarySpec::DateAndTime => match typ {
-                Elementary::DateAndTime(ident) => ident
-                    .as_date_time(db)
-                    .map_err(|e| InferLiteralError::Invalid_DT_Format(e.to_string()))
-                    .map(|_| Type::Elementary(ElementarySpec::DateAndTime)),
-                _ => Err(InferLiteralError::Invalid_DT_Literal),
-            },
-
-            // 6a/b LDT / LDATE_AND_TIME
-            ElementarySpec::LDateTime => match typ {
-                Elementary::LDateTime(ident) => ident
-                    .as_long_date_time(db)
-                    .map_err(|e| InferLiteralError::Invalid_LDT_Format(e.to_string()))
-                    .map(|_| Type::Elementary(ElementarySpec::LDateTime)),
-                _ => Err(InferLiteralError::Invalid_LDT_Literal),
-            },
-            ElementarySpec::Time => match typ {
-                Elementary::Time(ident) => ident
-                    .as_time(db)
-                    .map(|_| Type::Elementary(ElementarySpec::Time)),
-                _ => Err(InferLiteralError::Invalid_TIME_Literal),
-            },
-            ElementarySpec::LTime => match typ {
-                Elementary::LTime(ident) => ident
-                    .as_ltime(db)
-                    .map(|_| Type::Elementary(ElementarySpec::LTime)),
-                _ => Err(InferLiteralError::Invalid_LTIME_Literal),
-            },
-
-            ElementarySpec::String => match typ {
-                Elementary::AnyString(ident) => ident
-                    .as_single_string(db)
-                    .map(|_| Type::Elementary(ElementarySpec::String)),
-                _ => Err(InferLiteralError::Invalid_STRING_Literal),
-            },
-            ElementarySpec::WString => match typ {
-                Elementary::AnyString(ident) => ident
-                    .as_double_string(db)
-                    .map(|_| Type::Elementary(ElementarySpec::WString)),
-                _ => Err(InferLiteralError::Invalid_WSTRING_Literal),
-            },
-            ElementarySpec::Char => todo!(),
-            ElementarySpec::WChar => todo!(),
+            ElementarySpec::Byte => check_u8(db, self),
+            ElementarySpec::Word => check_u16(db, self),
+            ElementarySpec::DWord => check_u32(db, self),
+            ElementarySpec::LWord => check_u64(db, self),
+            ElementarySpec::USInt => check_u8(db, self),
+            ElementarySpec::UInt => check_u16(db, self),
+            ElementarySpec::UDInt => check_u32(db, self),
+            ElementarySpec::ULInt => check_u64(db, self),
+            ElementarySpec::SInt => check_i8(db, self),
+            ElementarySpec::Int => check_i16(db, self),
+            ElementarySpec::DInt => check_i32(db, self),
+            ElementarySpec::LInt => check_i64(db, self),
+            ElementarySpec::Real => check_f32(db, self),
+            ElementarySpec::LReal => check_f64(db, self),
+            _ => todo!()
         }
     }
 }
 
 fn check_bool<'db>(
     db: &dyn BaseDatabase,
-    value: &Elementary,
+    value: &InferType,
 ) -> Result<Type<'db>, InferLiteralError> {
     match value {
-        Elementary::Bool(bool) => Ok(Type::Elementary(ElementarySpec::Bool)),
-        Elementary::InferInteger(n) => n
+        InferType::Integer(n) => n
             .as_bool(db)
             .map(|_| Type::Elementary(ElementarySpec::Bool))
             .map_err(|err| InferLiteralError::Invalid_BOOL_Literal),
@@ -244,15 +210,9 @@ fn check_bool<'db>(
     }
 }
 
-fn check_u8<'db>(
-    db: &dyn BaseDatabase,
-    value: &Elementary,
-) -> Result<Type<'db>, InferLiteralError> {
+fn check_u8<'db>(db: &dyn BaseDatabase, value: &InferType) -> Result<Type<'db>, InferLiteralError> {
     match value {
-        Elementary::Byte(n)
-        | Elementary::SInt(n)
-        | Elementary::USInt(n)
-        | Elementary::InferInteger(n) => n
+        InferType::Integer(n) => n
             .as_u8(db)
             .map(|_| Type::Elementary(ElementarySpec::USInt))
             .map_err(|err| InferLiteralError::TypeMismatch(err.to_string())),
@@ -262,16 +222,10 @@ fn check_u8<'db>(
 
 fn check_u16<'db>(
     db: &dyn BaseDatabase,
-    value: &Elementary,
+    value: &InferType,
 ) -> Result<Type<'db>, InferLiteralError> {
     match value {
-        Elementary::Byte(n)
-        | Elementary::Word(n)
-        | Elementary::SInt(n)
-        | Elementary::USInt(n)
-        | Elementary::Int(n)
-        | Elementary::UInt(n)
-        | Elementary::InferInteger(n) => n
+        InferType::Integer(n) => n
             .as_u16(db)
             .map(|_| Type::Elementary(ElementarySpec::UInt))
             .map_err(|err| InferLiteralError::TypeMismatch(err.to_string())),
@@ -281,19 +235,10 @@ fn check_u16<'db>(
 
 fn check_u32<'db>(
     db: &dyn BaseDatabase,
-    value: &Elementary,
+    value: &InferType,
 ) -> Result<Type<'db>, InferLiteralError> {
     match value {
-        Elementary::Byte(n)
-        | Elementary::Word(n)
-        | Elementary::DWord(n)
-        | Elementary::SInt(n)
-        | Elementary::USInt(n)
-        | Elementary::DInt(n)
-        | Elementary::Int(n)
-        | Elementary::UInt(n)
-        | Elementary::UDInt(n)
-        | Elementary::InferInteger(n) => n
+        InferType::Integer(n) => n
             .as_u32(db)
             .map(|_| Type::Elementary(ElementarySpec::UDInt))
             .map_err(|err| InferLiteralError::TypeMismatch(err.to_string())),
@@ -303,22 +248,10 @@ fn check_u32<'db>(
 
 fn check_u64<'db>(
     db: &dyn BaseDatabase,
-    value: &Elementary,
+    value: &InferType,
 ) -> Result<Type<'db>, InferLiteralError> {
     match value {
-        Elementary::Byte(n)
-        | Elementary::Word(n)
-        | Elementary::DWord(n)
-        | Elementary::LWord(n)
-        | Elementary::SInt(n)
-        | Elementary::USInt(n)
-        | Elementary::DInt(n)
-        | Elementary::Int(n)
-        | Elementary::LInt(n)
-        | Elementary::UInt(n)
-        | Elementary::UDInt(n)
-        | Elementary::ULInt(n)
-        | Elementary::InferInteger(n) => n
+        InferType::Integer(n) => n
             .as_u64(db)
             .map(|_| Type::Elementary(ElementarySpec::ULInt))
             .map_err(|err| InferLiteralError::TypeMismatch(err.to_string())),
@@ -326,15 +259,9 @@ fn check_u64<'db>(
     }
 }
 
-fn check_i8<'db>(
-    db: &dyn BaseDatabase,
-    value: &Elementary,
-) -> Result<Type<'db>, InferLiteralError> {
+fn check_i8<'db>(db: &dyn BaseDatabase, value: &InferType) -> Result<Type<'db>, InferLiteralError> {
     match value {
-        Elementary::Byte(n)
-        | Elementary::SInt(n)
-        | Elementary::USInt(n)
-        | Elementary::InferInteger(n) => n
+        InferType::Integer(n) => n
             .as_i8(db)
             .map(|_| Type::Elementary(ElementarySpec::SInt))
             .map_err(|err| InferLiteralError::TypeMismatch(err.to_string())),
@@ -344,16 +271,10 @@ fn check_i8<'db>(
 
 fn check_i16<'db>(
     db: &dyn BaseDatabase,
-    value: &Elementary,
+    value: &InferType,
 ) -> Result<Type<'db>, InferLiteralError> {
     match value {
-        Elementary::Byte(n)
-        | Elementary::Word(n)
-        | Elementary::SInt(n)
-        | Elementary::USInt(n)
-        | Elementary::Int(n)
-        | Elementary::UInt(n)
-        | Elementary::InferInteger(n) => n
+        InferType::Integer(n) => n
             .as_i16(db)
             .map(|_| Type::Elementary(ElementarySpec::Int))
             .map_err(|err| InferLiteralError::TypeMismatch(err.to_string())),
@@ -363,19 +284,10 @@ fn check_i16<'db>(
 
 fn check_i32<'db>(
     db: &dyn BaseDatabase,
-    value: &Elementary,
+    value: &InferType,
 ) -> Result<Type<'db>, InferLiteralError> {
     match value {
-        Elementary::Byte(n)
-        | Elementary::Word(n)
-        | Elementary::DWord(n)
-        | Elementary::SInt(n)
-        | Elementary::USInt(n)
-        | Elementary::DInt(n)
-        | Elementary::Int(n)
-        | Elementary::UInt(n)
-        | Elementary::UDInt(n)
-        | Elementary::InferInteger(n) => n
+        InferType::Integer(n) => n
             .as_i32(db)
             .map(|_| Type::Elementary(ElementarySpec::DInt))
             .map_err(|err| InferLiteralError::TypeMismatch(err.to_string())),
@@ -385,22 +297,10 @@ fn check_i32<'db>(
 
 fn check_i64<'db>(
     db: &dyn BaseDatabase,
-    value: &Elementary,
+    value: &InferType,
 ) -> Result<Type<'db>, InferLiteralError> {
     match value {
-        Elementary::Byte(n)
-        | Elementary::Word(n)
-        | Elementary::DWord(n)
-        | Elementary::LWord(n)
-        | Elementary::SInt(n)
-        | Elementary::USInt(n)
-        | Elementary::DInt(n)
-        | Elementary::Int(n)
-        | Elementary::LInt(n)
-        | Elementary::UInt(n)
-        | Elementary::UDInt(n)
-        | Elementary::ULInt(n)
-        | Elementary::InferInteger(n) => n
+        InferType::Integer(n) => n
             .as_i64(db)
             .map(|_| Type::Elementary(ElementarySpec::LInt))
             .map_err(|err| InferLiteralError::TypeMismatch(err.to_string())),
@@ -410,14 +310,10 @@ fn check_i64<'db>(
 
 fn check_f32<'db>(
     db: &dyn BaseDatabase,
-    value: &Elementary,
+    value: &InferType,
 ) -> Result<Type<'db>, InferLiteralError> {
     match value {
-        Elementary::Real(real) => real
-            .as_f32(db)
-            .map(|_| Type::Elementary(ElementarySpec::Real))
-            .map_err(|err| InferLiteralError::TypeMismatch(err.to_string())),
-        Elementary::InferFloat(ident) => ident
+        InferType::Float(real) => real
             .as_f32(db)
             .map(|_| Type::Elementary(ElementarySpec::Real))
             .map_err(|err| InferLiteralError::TypeMismatch(err.to_string())),
@@ -429,14 +325,10 @@ fn check_f32<'db>(
 
 fn check_f64<'db>(
     db: &dyn BaseDatabase,
-    value: &Elementary,
+    value: &InferType,
 ) -> Result<Type<'db>, InferLiteralError> {
     match value {
-        Elementary::Real(real) | Elementary::LReal(real) => real
-            .as_f64(db)
-            .map(|_| Type::Elementary(ElementarySpec::LReal))
-            .map_err(|err| InferLiteralError::TypeMismatch(err.to_string())),
-        Elementary::InferFloat(ident) => ident
+        InferType::Float(real) => real
             .as_f64(db)
             .map(|_| Type::Elementary(ElementarySpec::LReal))
             .map_err(|err| InferLiteralError::TypeMismatch(err.to_string())),

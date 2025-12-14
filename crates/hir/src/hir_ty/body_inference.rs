@@ -7,7 +7,8 @@ use crate::{
     HirNodeInfo,
     builder::interface,
     check::errors::{
-        analysis_error::ToIdeDiagnostic, body_inference::BodyInferenceError,
+        analysis_error::ToIdeDiagnostic,
+        body_inference::{BodyInferenceError, InitOrExpr},
         path_error::AccessError,
     },
     hir_def::{
@@ -22,12 +23,9 @@ use crate::{
             identifier::{Ident, SpanIdent},
             namespace::{NamespaceAccess, SpanNamespacePath},
         },
-        pous::{
-            pou::{Pou},
-            variable::VariableDecl,
-        },
+        pous::{pou::Pou, variable::VariableDecl},
         scope::{ScopeId, ScopeKind},
-        semantic_index::{get_scope},
+        semantic_index::get_scope,
     },
     hir_ty::{
         infer::ctx::{InferCtx, NestedScope},
@@ -58,7 +56,7 @@ pub fn infer_body_scope<'db>(
 
     ctx.resolve_statements(
         db,
-        Resolver::new(Some(scope_typ)),
+        Resolver::new(scope, Some(scope_typ)),
         statements,
         NestedScope::None,
         &mut result,
@@ -88,7 +86,7 @@ pub struct BodyInferenceResult<'db> {
     pub path_expr_adjustments: FxHashMap<PathExpr<'db>, Vec<Adjustment<'db>>>,
 
     // Errors encountered during inference
-    pub errors: Vec<BodyInferenceError<'db>>,
+    pub errors: Vec<IdeDiagnostic>,
 }
 
 impl<'db> BodyInferenceResult<'db> {
@@ -200,4 +198,3 @@ impl<'db> Adjustment<'db> {
         }
     }
 }
-
