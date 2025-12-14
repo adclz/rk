@@ -21,19 +21,27 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Advice: 
        ,-[ file:///test0.st:8:14 ]
        |
      4 |         I: INT;
-       |            ^|^  
-       |             `--- expected 'INT' here
-     5 |         O: BOOL;
-       |            ^^|^  
-       |              `--- ... but found 'BOOL' instead
+       |         |  
+       |         `-- type is declared by variable 'I' here
        | 
      8 |     FOR I := O TO 10 DO
        |              |  
-       |              `-- invalid assignment: expected 'INT', found 'BOOL'
+       |              `-- expected 'INT', got 'BOOL'
+    ---'
+    Advice: 
+       ,-[ file:///test0.st:8:19 ]
+       |
+     4 |         I: INT;
+       |         |  
+       |         `-- type is declared by variable 'I' here
+       | 
+     8 |     FOR I := O TO 10 DO
+       |                   ^|  
+       |                    `-- expected 'INT', got '(INT) 10'
     ---'
     ");
 }
@@ -54,19 +62,27 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Advice: 
+       ,-[ file:///test0.st:8:14 ]
+       |
+     4 |         I: INT;
+       |         |  
+       |         `-- type is declared by variable 'I' here
+       | 
+     8 |     FOR I := 10 TO O DO
+       |              ^|  
+       |               `-- expected 'INT', got '(INT) 10'
+    ---'
+    Advice: 
        ,-[ file:///test0.st:8:20 ]
        |
      4 |         I: INT;
-       |            ^|^  
-       |             `--- expected 'INT' here
-     5 |         O: BOOL;
-       |            ^^|^  
-       |              `--- ... but found 'BOOL' instead
+       |         |  
+       |         `-- type is declared by variable 'I' here
        | 
      8 |     FOR I := 10 TO O DO
        |                    |  
-       |                    `-- invalid FOR loop end: expected 'INT', found 'BOOL'
+       |                    `-- expected 'INT', got 'BOOL'
     ---'
     ");
 }
@@ -87,19 +103,38 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Advice: 
+       ,-[ file:///test0.st:8:14 ]
+       |
+     4 |         I: INT;
+       |         |  
+       |         `-- type is declared by variable 'I' here
+       | 
+     8 |     FOR I := 0 TO 10 BY O DO
+       |              |  
+       |              `-- expected 'INT', got '(INT) 0'
+    ---'
+    Advice: 
+       ,-[ file:///test0.st:8:19 ]
+       |
+     4 |         I: INT;
+       |         |  
+       |         `-- type is declared by variable 'I' here
+       | 
+     8 |     FOR I := 0 TO 10 BY O DO
+       |                   ^|  
+       |                    `-- expected 'INT', got '(INT) 10'
+    ---'
+    Advice: 
        ,-[ file:///test0.st:8:25 ]
        |
      4 |         I: INT;
-       |            ^|^  
-       |             `--- expected 'INT' here
-     5 |         O: BOOL;
-       |            ^^|^  
-       |              `--- ... but found 'BOOL' instead
+       |         |  
+       |         `-- type is declared by variable 'I' here
        | 
      8 |     FOR I := 0 TO 10 BY O DO
        |                         |  
-       |                         `-- invalid FOR loop step: expected 'INT', found 'BOOL'
+       |                         `-- expected 'INT', got 'BOOL'
     ---'
     ");
 }
@@ -120,12 +155,12 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Advice: 
        ,-[ file:///test0.st:8:11 ]
        |
      8 |     WHILE I DO
        |           |  
-       |           `-- WHILE condition is not returning a boolean
+       |           `-- expected 'BOOL', got 'INT'
     ---'
     ");
 }
@@ -146,12 +181,12 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Advice: 
        ,-[ file:///test0.st:9:15 ]
        |
      9 |         UNTIL I
        |               |  
-       |               `-- REPEAT condition is not returning a boolean
+       |               `-- expected 'BOOL', got 'INT'
     ---'
     ");
 }

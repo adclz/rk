@@ -25,7 +25,6 @@ pub mod check_semantic_index;
 pub mod check_struct;
 pub mod check_subrange;
 pub mod check_variables;
-pub mod check_visibility;
 pub mod check_using;
 pub mod check_scope;
 pub mod errors;

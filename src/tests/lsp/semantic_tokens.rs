@@ -3,13 +3,12 @@ use auto_lsp::core::semantic_tokens_builder::SemanticTokensBuilder;
 use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use hir::hir_def::semantic_index::semantic_index;
-use hir::walk::WalkHir;
-use ide_proto::AsProtocol;
 use ide_proto::CLASS;
 use ide_proto::FUNCTION;
 use ide_proto::INTERFACE;
 use ide_proto::SUPPORTED_TYPES;
-use ide_proto::ToProtocol;
+use ide_proto::to_proto::AsProtocol;
+use ide_proto::to_proto::walk::WalkHir;
 use insta::assert_debug_snapshot;
 use rstest::rstest;
 

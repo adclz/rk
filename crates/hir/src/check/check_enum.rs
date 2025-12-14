@@ -65,12 +65,13 @@ impl<'db> DataTypeCheck<'db> for Enum<'db> {
 
             // Check variant value type
             if let (Some(value), Some(typ)) = (variant.value, self.typ(db)) {
+                let resolver = Resolver::new(value.scope_id(db), None);
                 let mut infer_body = BodyInferenceResult::new(value.scope_id(db));
-                let infer = InferExprCtx::new(value.scope_id(db), Resolver::new(None));
+                let mut infer = InferExprCtx::new(resolver);
 
                 let target = Type::new_spec(db, typ);
                 let expr = infer.infer_expr(db, value, &mut infer_body);
-                if let Err(err) = target.coerce_with(db, expr, value.scope_id(db)) {
+                if let Err(err) = target.coerce_with(db, expr, resolver) {
                     errors.push(
                         TypeError::NotAssignable {
                             base_target: target,

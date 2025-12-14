@@ -246,17 +246,17 @@ fn method_signature_type_mismatch(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Error:
         ,-[ file:///test0.st:15:21 ]
         |
       6 |                     value2: INT;
-        |                             ^|^  
+        |                             ^|^
         |                              `--- expected 'INT' here
-        | 
+        |
      15 |                     value2: REAL; // should be INT
-        |                     ^^^|^^  ^^|^  
+        |                     ^^^|^^  ^^|^
         |                        `---------- invalid parameter in method signature: expected 'INT', found 'REAL'
-        |                               |   
+        |                               |
         |                               `--- ... but found 'REAL' instead
     ----'
     ");

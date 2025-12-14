@@ -38,22 +38,22 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Error:
        ,-[ file:///test0.st:4:24 ]
        |
      4 |         test1: REAL := 0;
-       |                ^^|^    |  
+       |                ^^|^    |
        |                  `-------- expected type 'REAL' here
-       |                        |  
+       |                        |
        |                        `-- invalid value initializer: expected a 32-bit floating point number
     ---'
-    Error: 
+    Error:
        ,-[ file:///test0.st:5:24 ]
        |
      5 |         test2: REAL := INT#10;
-       |                ^^|^    ^^^|^^  
+       |                ^^|^    ^^^|^^
        |                  `------------- expected type 'REAL' here
-       |                           |    
+       |                           |
        |                           `---- invalid value initializer: expected a 32-bit floating point number
     ---'
     ");
@@ -70,22 +70,22 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Error:
        ,-[ file:///test0.st:4:25 ]
        |
      4 |         test1: LREAL := 0;
-       |                ^^|^^    |  
+       |                ^^|^^    |
        |                  `--------- expected type 'LREAL' here
-       |                         |  
+       |                         |
        |                         `-- invalid value initializer: expected a 64-bit floating point number
     ---'
-    Error: 
+    Error:
        ,-[ file:///test0.st:5:25 ]
        |
      5 |         test2: LREAL := INT#10;
-       |                ^^|^^    ^^^|^^  
+       |                ^^|^^    ^^^|^^
        |                  `-------------- expected type 'LREAL' here
-       |                            |    
+       |                            |
        |                            `---- invalid value initializer: expected a 64-bit floating point number
     ---'
     ");

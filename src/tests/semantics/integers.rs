@@ -105,31 +105,31 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Error:
        ,-[ file:///test0.st:4:24 ]
        |
      4 |         test1: SINT := -129;
-       |                ^^|^    ^^|^  
+       |                ^^|^    ^^|^
        |                  `----------- expected type 'SINT' here
-       |                          |   
+       |                          |
        |                          `--- invalid value initializer: number too small to fit in target type
     ---'
-    Error: 
+    Error:
        ,-[ file:///test0.st:5:24 ]
        |
      5 |         test2: SINT := 128;
-       |                ^^|^    ^|^  
+       |                ^^|^    ^|^
        |                  `---------- expected type 'SINT' here
-       |                         |   
+       |                         |
        |                         `--- invalid value initializer: number too large to fit in target type
     ---'
-    Error: 
+    Error:
        ,-[ file:///test0.st:6:24 ]
        |
      6 |         test3: SINT := 16#FFFF;
-       |                ^^|^    ^^^|^^^  
+       |                ^^|^    ^^^|^^^
        |                  `-------------- expected type 'SINT' here
-       |                           |     
+       |                           |
        |                           `----- invalid value initializer: number too large to fit in target type
     ---'
     ");
@@ -147,31 +147,31 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Error:
        ,-[ file:///test0.st:4:23 ]
        |
      4 |         test1: INT := -32769;
-       |                ^|^    ^^^|^^  
+       |                ^|^    ^^^|^^
        |                 `------------- expected type 'INT' here
-       |                          |    
+       |                          |
        |                          `---- invalid value initializer: number too small to fit in target type
     ---'
-    Error: 
+    Error:
        ,-[ file:///test0.st:5:23 ]
        |
      5 |         test2: INT := 32768;
-       |                ^|^    ^^|^^  
+       |                ^|^    ^^|^^
        |                 `------------ expected type 'INT' here
-       |                         |    
+       |                         |
        |                         `---- invalid value initializer: number too large to fit in target type
     ---'
-    Error: 
+    Error:
        ,-[ file:///test0.st:6:23 ]
        |
      6 |         test3: INT := 16#FFFFFFFF;
-       |                ^|^    ^^^^^|^^^^^  
+       |                ^|^    ^^^^^|^^^^^
        |                 `------------------ expected type 'INT' here
-       |                            |       
+       |                            |
        |                            `------- invalid value initializer: number too large to fit in target type
     ---'
     ");
@@ -189,31 +189,31 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Error:
        ,-[ file:///test0.st:4:23 ]
        |
      4 |         test1: INT := -2147483649;
-       |                ^|^    ^^^^^|^^^^^  
+       |                ^|^    ^^^^^|^^^^^
        |                 `------------------ expected type 'INT' here
-       |                            |       
+       |                            |
        |                            `------- invalid value initializer: number too small to fit in target type
     ---'
-    Error: 
+    Error:
        ,-[ file:///test0.st:5:23 ]
        |
      5 |         test2: INT := 2147483648;
-       |                ^|^    ^^^^^|^^^^  
+       |                ^|^    ^^^^^|^^^^
        |                 `----------------- expected type 'INT' here
-       |                            |      
+       |                            |
        |                            `------ invalid value initializer: number too large to fit in target type
     ---'
-    Error: 
+    Error:
        ,-[ file:///test0.st:6:25 ]
        |
      6 |         test3: UDINT := 16#FFFFFFFFFF;
-       |                ^^|^^    ^^^^^^|^^^^^^  
+       |                ^^|^^    ^^^^^^|^^^^^^
        |                  `--------------------- expected type 'UDINT' here
-       |                               |        
+       |                               |
        |                               `-------- invalid value initializer: number too large to fit in target type
     ---'
     ");
@@ -231,22 +231,22 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Error:
        ,-[ file:///test0.st:4:24 ]
        |
      4 |         test1: LINT := -9223372036854775809;
-       |                ^^|^    ^^^^^^^^^^|^^^^^^^^^  
+       |                ^^|^    ^^^^^^^^^^|^^^^^^^^^
        |                  `--------------------------- expected type 'LINT' here
-       |                                  |           
+       |                                  |
        |                                  `----------- invalid value initializer: number too small to fit in target type
     ---'
-    Error: 
+    Error:
        ,-[ file:///test0.st:6:24 ]
        |
      6 |         test3: LINT := 16#FFFFFFFFFFFFFFFFFF;
-       |                ^^|^    ^^^^^^^^^^|^^^^^^^^^^  
+       |                ^^|^    ^^^^^^^^^^|^^^^^^^^^^
        |                  `---------------------------- expected type 'LINT' here
-       |                                  |            
+       |                                  |
        |                                  `------------ invalid value initializer: number too large to fit in target type
     ---'
     ");

@@ -35,14 +35,12 @@ fn type_mismatch_enum_variant_decl(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
-       ,-[ file:///test0.st:3:28 ]
+    Advice: 
+       ,-[ file:///test0.st:3:33 ]
        |
      3 |             List: UINT (A, B := -5, C);
-       |                   ^^|^     |  
-       |                     `--------- expected type 'UINT' here
-       |                            |  
-       |                            `-- invalid value for enum variant 'B': literal can not be negative
+       |                                 ^|  
+       |                                  `-- expected 'UINT', got '(INT) -5'
     ---'
     ");
 }
@@ -65,16 +63,12 @@ fn unknown_enum_variant(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
-        ,-[ file:///test0.st:11:21 ]
+    Advice: 
+        ,-[ file:///test0.st:11:26 ]
         |
-      3 |             List: UINT (A, B, C);
-        |             ^^|^  
-        |               `--- type 'List: ENUM' defined here
-        | 
      11 |             test := List#D; // D is not a valid enum variant
-        |                     ^^^|^^  
-        |                        `---- invalid assignment: 'List: ENUM' has no variant named 'D'
+        |                          |  
+        |                          `-- ENUM has no variant named 'D'
     ----'
     ");
 }

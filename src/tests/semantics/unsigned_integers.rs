@@ -123,13 +123,13 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Error:
        ,-[ file:///test0.st:4:23 ]
        |
      4 |         test: BOOL := 256;
-       |               ^^|^    ^|^  
+       |               ^^|^    ^|^
        |                 `---------- expected type 'BOOL' here
-       |                        |   
+       |                        |
        |                        `--- invalid value initializer: invalid BOOL literal
     ---'
     ");
@@ -147,31 +147,31 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Error:
        ,-[ file:///test0.st:4:25 ]
        |
      4 |         test1: USINT := -1;
-       |                ^^|^^    ^|  
+       |                ^^|^^    ^|
        |                  `---------- expected type 'USINT' here
-       |                          |  
+       |                          |
        |                          `-- invalid value initializer: literal can not be negative
     ---'
-    Error: 
+    Error:
        ,-[ file:///test0.st:5:24 ]
        |
      5 |         test2: BYTE := 256;
-       |                ^^|^    ^|^  
+       |                ^^|^    ^|^
        |                  `---------- expected type 'BYTE' here
-       |                         |   
+       |                         |
        |                         `--- invalid value initializer: number too large to fit in target type
     ---'
-    Error: 
+    Error:
        ,-[ file:///test0.st:6:25 ]
        |
      6 |         test3: USINT := 16#FFFF;
-       |                ^^|^^    ^^^|^^^  
+       |                ^^|^^    ^^^|^^^
        |                  `--------------- expected type 'USINT' here
-       |                            |     
+       |                            |
        |                            `----- invalid value initializer: number too large to fit in target type
     ---'
     ");
@@ -189,31 +189,31 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Error:
        ,-[ file:///test0.st:4:24 ]
        |
      4 |         test1: UINT := -1;
-       |                ^^|^    ^|  
+       |                ^^|^    ^|
        |                  `--------- expected type 'UINT' here
-       |                         |  
+       |                         |
        |                         `-- invalid value initializer: literal can not be negative
     ---'
-    Error: 
+    Error:
        ,-[ file:///test0.st:5:24 ]
        |
      5 |         test2: WORD := 65536;
-       |                ^^|^    ^^|^^  
+       |                ^^|^    ^^|^^
        |                  `------------ expected type 'WORD' here
-       |                          |    
+       |                          |
        |                          `---- invalid value initializer: number too large to fit in target type
     ---'
-    Error: 
+    Error:
        ,-[ file:///test0.st:6:24 ]
        |
      6 |         test3: UINT := 16#FFFFFFFF;
-       |                ^^|^    ^^^^^|^^^^^  
+       |                ^^|^    ^^^^^|^^^^^
        |                  `------------------ expected type 'UINT' here
-       |                             |       
+       |                             |
        |                             `------- invalid value initializer: number too large to fit in target type
     ---'
     ");
@@ -231,31 +231,31 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Error:
        ,-[ file:///test0.st:4:25 ]
        |
      4 |         test1: UDINT := -1;
-       |                ^^|^^    ^|  
+       |                ^^|^^    ^|
        |                  `---------- expected type 'UDINT' here
-       |                          |  
+       |                          |
        |                          `-- invalid value initializer: literal can not be negative
     ---'
-    Error: 
+    Error:
        ,-[ file:///test0.st:5:25 ]
        |
      5 |         test2: DWORD := 4294967296;
-       |                ^^|^^    ^^^^^|^^^^  
+       |                ^^|^^    ^^^^^|^^^^
        |                  `------------------ expected type 'DWORD' here
-       |                              |      
+       |                              |
        |                              `------ invalid value initializer: number too large to fit in target type
     ---'
-    Error: 
+    Error:
        ,-[ file:///test0.st:6:25 ]
        |
      6 |         test3: UDINT := 16#FFFFFFFFFF;
-       |                ^^|^^    ^^^^^^|^^^^^^  
+       |                ^^|^^    ^^^^^^|^^^^^^
        |                  `--------------------- expected type 'UDINT' here
-       |                               |        
+       |                               |
        |                               `-------- invalid value initializer: number too large to fit in target type
     ---'
     ");
@@ -273,31 +273,31 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Error:
        ,-[ file:///test0.st:4:25 ]
        |
      4 |         test1: ULINT := -1;
-       |                ^^|^^    ^|  
+       |                ^^|^^    ^|
        |                  `---------- expected type 'ULINT' here
-       |                          |  
+       |                          |
        |                          `-- invalid value initializer: literal can not be negative
     ---'
-    Error: 
+    Error:
        ,-[ file:///test0.st:5:25 ]
        |
      5 |         test2: LWORD := 18446744073709551616;
-       |                ^^|^^    ^^^^^^^^^^|^^^^^^^^^  
+       |                ^^|^^    ^^^^^^^^^^|^^^^^^^^^
        |                  `---------------------------- expected type 'LWORD' here
-       |                                   |           
+       |                                   |
        |                                   `----------- invalid value initializer: number too large to fit in target type
     ---'
-    Error: 
+    Error:
        ,-[ file:///test0.st:6:25 ]
        |
      6 |         test3: ULINT := 16#FFFFFFFFFFFFFFFFFF;
-       |                ^^|^^    ^^^^^^^^^^|^^^^^^^^^^  
+       |                ^^|^^    ^^^^^^^^^^|^^^^^^^^^^
        |                  `----------------------------- expected type 'ULINT' here
-       |                                   |            
+       |                                   |
        |                                   `------------ invalid value initializer: number too large to fit in target type
     ---'
     ");

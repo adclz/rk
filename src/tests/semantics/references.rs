@@ -31,16 +31,16 @@ fn invalid_ref_to_elementary_type(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Error:
        ,-[ file:///test0.st:5:34 ]
        |
      4 |             test: UINT;
-       |                   ^^|^  
+       |                   ^^|^
        |                     `--- ... but found 'UINT' instead
      5 |             test2: REF_TO INT := REF(test); // Reference to INT, but test is UINT
-       |                           ^|^    ^^^^|^^^^  
+       |                           ^|^    ^^^^|^^^^
        |                            `---------------- expected 'INT' here
-       |                                      |      
+       |                                      |
        |                                      `------ invalid value initializer: expected 'INT', found 'UINT'
     ---'
     ");
@@ -79,18 +79,18 @@ fn invalid_ref_to_pou_type(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Error:
        ,-[ file:///test0.st:8:34 ]
        |
      2 |     FUNCTION_BLOCK fb1 END_FUNCTION_BLOCK
-       |                    ^|^  
+       |                    ^|^
        |                     `--- expected 'fb1: FUNCTION_BLOCK' here
      3 |     FUNCTION_BLOCK fb2 END_FUNCTION_BLOCK
-       |                    ^|^  
+       |                    ^|^
        |                     `--- ... but found 'fb2: FUNCTION_BLOCK' instead
-       | 
+       |
      8 |             test2: REF_TO fb1 := REF(test); // Reference to fb1, but test is fb2
-       |                                  ^^^^|^^^^  
+       |                                  ^^^^|^^^^
        |                                      `------ invalid value initializer: expected 'fb1: FUNCTION_BLOCK', found 'fb2: FUNCTION_BLOCK'
     ---'
     ");
@@ -110,15 +110,15 @@ fn assign_non_ref_type(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Error:
        ,-[ file:///test0.st:7:17 ]
        |
      4 |             test: REF_TO INT;
-       |                 ^^^^^^|^^^^^  
+       |                 ^^^^^^|^^^^^
        |                       `------- expected type 'REF_TO INT' here
-       | 
+       |
      7 |         test := 0;
-       |                 |  
+       |                 |
        |                 `-- invalid assignment: expected 'REF_TO INT', got '<integer>'
     ---'
     ");
@@ -183,15 +183,15 @@ fn invalid_assign_value_to_ref_type(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Error:
        ,-[ file:///test0.st:7:17 ]
        |
      4 |             test: REF_TO INT;
-       |                 ^^^^^^|^^^^^  
+       |                 ^^^^^^|^^^^^
        |                       `------- expected type 'REF_TO INT' here
-       | 
+       |
      7 |         test := 0;
-       |                 |  
+       |                 |
        |                 `-- invalid assignment: expected 'REF_TO INT', got '<integer>'
     ---'
     ");

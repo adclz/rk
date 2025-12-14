@@ -59,11 +59,12 @@ impl<'db> DataTypeCheck<'db> for SubRange<'db> {
         let min = self.lower(db);
         let max = self.upper(db);
 
+        let resolver = Resolver::new(self.lower(db).scope_id(db), None);
         let mut infer_body = BodyInferenceResult::new(self._type(db).scope_id(db));
-        let infer = InferExprCtx::new(self.lower(db).scope_id(db), Resolver::new(None));
+        let mut infer = InferExprCtx::new(resolver);
 
         let expr = infer.infer_expr(db, min, &mut infer_body);
-        if let Err(err) = typ.coerce_with(db, expr, min.scope_id(db)) {
+        if let Err(err) = typ.coerce_with(db, expr, resolver) {
             errors.push(
                 TypeError::NotAssignable {
                     base_target: typ,
@@ -76,7 +77,7 @@ impl<'db> DataTypeCheck<'db> for SubRange<'db> {
         }
 
         let expr = infer.infer_expr(db, max, &mut infer_body);
-        if let Err(err) = typ.coerce_with(db, expr, max.scope_id(db)) {
+        if let Err(err) = typ.coerce_with(db, expr, resolver) {
             errors.push(
                 TypeError::NotAssignable {
                     base_target: typ,

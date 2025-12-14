@@ -3,11 +3,11 @@ use std::ops::ControlFlow;
 use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use hir::HirNodeInfo;
-use hir::TypeInfo;
-use hir::hir_def::semantic_index::HirNode;
 use hir::hir_def::semantic_index::SemanticIndex;
 use hir::hir_def::semantic_index::semantic_index;
-use hir::walk::WalkHir;
+use hir::hir_ty::body_inference::infer_body_scope;
+use ide_proto::to_proto::hir_node::HirNode;
+use ide_proto::to_proto::walk::WalkHir;
 use insta::assert_snapshot;
 use rstest::rstest;
 
@@ -21,7 +21,7 @@ use crate::tests::utils::with_db;
 fn collect_path_expressions(db: &dyn BaseDatabase, sema: &SemanticIndex) -> String {
     let mut result = vec![];
     let _ = sema.walk_hir(db, &mut |n| {
-        if let HirNode::ResolvedPath(path) = n {
+        if let HirNode::PathExpr(path) = n {
             result.push(path);
         }
         ControlFlow::Continue(())
@@ -30,10 +30,12 @@ fn collect_path_expressions(db: &dyn BaseDatabase, sema: &SemanticIndex) -> Stri
     result
         .iter()
         .map(|r| {
+            let infer_result = infer_body_scope(db, r.scope_id(db));
+
             format!(
                 "{} {}",
                 r.get_span(db).start_byte,
-                r.try_to_ty(db).unwrap().type_name(db)
+                infer_result.type_of_path_expr_with_adjustments(*r).unwrap().type_name(db)
             )
         })
         .collect::<Vec<String>>()
@@ -99,16 +101,19 @@ END_FUNCTION
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
-       ,-[ file:///test0.st:7:13 ]
+    Advice: 
+       ,-[ file:///test0.st:7:2 ]
        |
-     4 |        test: ARRAY[0..2] OF INT;
-       |                             ^|^  
-       |                              `--- expected type 'INT' here
-       | 
      7 |     test[0] := 0.2;
-       |                ^|^  
-       |                 `--- invalid assignment: invalid INT literal
+       |     ^^|^  
+       |       `--- cannot index non-array type 'ARRAY [0..2] OF INT'
+    ---'
+    Advice: 
+       ,-[ file:///test0.st:7:2 ]
+       |
+     7 |     test[0] := 0.2;
+       |     ^^^|^^^  
+       |        `----- cannot use direct type '{unknown}' here
     ---'
     ");
 }
@@ -134,18 +139,19 @@ END_FUNCTION
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Advice: 
         ,-[ file:///test0.st:14:7 ]
         |
-      2 | ,-> TYPE Engine:
-        : :   
-      6 | |->     END_STRUCT
-        | |                    
-        | `--------------------  'STRUCT' declared here
-        | 
-     14 |         test.powerr := 0.2;
-        |              ^^^|^^  
-        |                 `---- field 'powerr' not found in 'STRUCT'
+     14 |     test.powerr := 0.2;
+        |          ^^^|^^  
+        |             `---- 'STRUCT (2 members)' has no field named 'powerr'
+    ----'
+    Advice: 
+        ,-[ file:///test0.st:14:2 ]
+        |
+     14 |     test.powerr := 0.2;
+        |     ^^^^^|^^^^^  
+        |          `------- cannot use direct type '{unknown}' here
     ----'
     ");
 }
@@ -171,16 +177,12 @@ END_FUNCTION
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
-        ,-[ file:///test0.st:14:16 ]
+    Advice: 
+        ,-[ file:///test0.st:14:2 ]
         |
-      4 |         power : INT;
-        |                 ^|^  
-        |                  `--- expected type 'INT' here
-        | 
      14 |     test.power := 0.2;
-        |                   ^|^  
-        |                    `--- invalid assignment: invalid INT literal
+        |     ^^^^^|^^^^  
+        |          `------ cannot use direct type 'INT' here
     ----'
     ");
 }
@@ -206,18 +208,19 @@ END_FUNCTION
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Advice: 
         ,-[ file:///test0.st:14:2 ]
         |
-      2 | ,-> TYPE Engine:
-        : :   
-      6 | |->     END_STRUCT
-        | |                    
-        | `--------------------  'STRUCT' declared here
-        | 
-     14 |         test[0] := 0.2;
-        |         ^^|^  
-        |           `--- type 'STRUCT' cannot be indexed
+     14 |     test[0] := 0.2;
+        |     ^^|^  
+        |       `--- cannot index non-array type 'STRUCT'
+    ----'
+    Advice: 
+        ,-[ file:///test0.st:14:2 ]
+        |
+     14 |     test[0] := 0.2;
+        |     ^^^|^^^  
+        |        `----- cannot use direct type '{unknown}' here
     ----'
     ");
 }
@@ -236,16 +239,19 @@ END_FUNCTION
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Advice: 
        ,-[ file:///test0.st:7:7 ]
        |
-     4 |        test: ARRAY[0..1] OF INT;
-       |            ^^^^^^^^^^|^^^^^^^^^  
-       |                      `-----------  'ARRAY [0..1] OF INT' declared here
-       | 
      7 |     test.not_a_field := 0.2;
        |          ^^^^^|^^^^^  
-       |               `------- type 'ARRAY [0..1] OF INT' does not have fields
+       |               `------- 'ARRAY [0..1] OF INT' has no field named 'not_a_field'
+    ---'
+    Advice: 
+       ,-[ file:///test0.st:7:2 ]
+       |
+     7 |     test.not_a_field := 0.2;
+       |     ^^^^^^^^|^^^^^^^  
+       |             `--------- cannot use direct type '{unknown}' here
     ---'
     ");
 }

@@ -2,7 +2,7 @@ use auto_lsp::core::document_symbols_builder::DocumentSymbolsBuilder;
 use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use hir::hir_def::semantic_index::semantic_index;
-use ide_proto::ToProtocol;
+use ide_proto::to_proto::ToProtocol;
 use insta::assert_debug_snapshot;
 use rstest::rstest;
 

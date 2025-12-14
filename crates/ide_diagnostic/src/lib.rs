@@ -8,7 +8,7 @@ use auto_lsp::{
     },
 };
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct IdeDiagnostic {
     diagnostic: auto_lsp::lsp_types::Diagnostic,
     related: Vec<Related>,
@@ -63,7 +63,7 @@ impl IdeDiagnostic {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Related {
     pub message: String,
     pub file: File,

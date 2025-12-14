@@ -35,14 +35,19 @@ fn invalid_start_value(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Advice: 
        ,-[ file:///test0.st:3:26 ]
        |
      3 |             Range: UINT (-10..0);
-       |                    ^^|^  ^|^  
-       |                      `-------- expected type 'UINT' here
-       |                           |   
-       |                           `--- invalid start value for subrange: literal can not be negative
+       |                          ^|^  
+       |                           `--- expected 'UINT', got '(INT) -10'
+    ---'
+    Advice: 
+       ,-[ file:///test0.st:3:31 ]
+       |
+     3 |             Range: UINT (-10..0);
+       |                               |  
+       |                               `-- expected 'UINT', got '(INT) 0'
     ---'
     ");
 }
@@ -56,14 +61,19 @@ fn invalid_end_value(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Advice: 
+       ,-[ file:///test0.st:3:26 ]
+       |
+     3 |             Range: UINT (0..-5);
+       |                          |  
+       |                          `-- expected 'UINT', got '(INT) 0'
+    ---'
+    Advice: 
        ,-[ file:///test0.st:3:29 ]
        |
      3 |             Range: UINT (0..-5);
-       |                    ^^|^     ^|  
-       |                      `---------- expected type 'UINT' here
-       |                              |  
-       |                              `-- invalid end value for subrange: literal can not be negative
+       |                             ^|  
+       |                              `-- expected 'UINT', got '(INT) -5'
     ---'
     ");
 }
@@ -86,16 +96,30 @@ fn invalid_subrange_value_type(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Advice: 
+       ,-[ file:///test0.st:3:26 ]
+       |
+     3 |             Range: UINT (0..5);
+       |                          |  
+       |                          `-- expected 'UINT', got '(INT) 0'
+    ---'
+    Advice: 
+       ,-[ file:///test0.st:3:29 ]
+       |
+     3 |             Range: UINT (0..5);
+       |                             |  
+       |                             `-- expected 'UINT', got '(INT) 5'
+    ---'
+    Advice: 
         ,-[ file:///test0.st:11:22 ]
         |
       3 |             Range: UINT (0..5);
-        |                    ^^|^  
-        |                      `--- expected type 'UINT' here
+        |                  ^^^^^^|^^^^^^  
+        |                        `-------- type is defined by 'Range' here
         | 
      11 |             test :=  -1 // -1 should not be allowed here (UINT)
         |                      ^|  
-        |                       `-- invalid assignment: literal can not be negative
+        |                       `-- expected 'SUBRANGE (0..5)', got '(INT) -1'
     ----'
     ");
 }
@@ -118,16 +142,30 @@ fn out_fo_bounds_subrange_value(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Advice: 
+       ,-[ file:///test0.st:3:26 ]
+       |
+     3 |             Range: UINT (0..5);
+       |                          |  
+       |                          `-- expected 'UINT', got '(INT) 0'
+    ---'
+    Advice: 
+       ,-[ file:///test0.st:3:29 ]
+       |
+     3 |             Range: UINT (0..5);
+       |                             |  
+       |                             `-- expected 'UINT', got '(INT) 5'
+    ---'
+    Advice: 
         ,-[ file:///test0.st:11:22 ]
         |
       3 |             Range: UINT (0..5);
-        |             ^^|^^  
-        |               `---- type 'Range: SUBRANGE (0..5)' defined here
+        |                  ^^^^^^|^^^^^^  
+        |                        `-------- type is defined by 'Range' here
         | 
      11 |             test :=  6 // 6 should not be allowed here (UINT (0..5))
         |                      |  
-        |                      `-- invalid assignment: value 6 is out of bounds for 'Range: SUBRANGE (0..5)' (expected between 0 and 5)
+        |                      `-- expected 'SUBRANGE (0..5)', got '(INT) 6'
     ----'
     ");
 }

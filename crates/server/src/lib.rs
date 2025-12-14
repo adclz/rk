@@ -85,10 +85,10 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     let (connection, io_threads) = Connection::stdio();
     let db = RootDatabase::new(Some(Box::new(|event| {
-        if let EventKind::WillCheckCancellation = event.kind {
+        /*if let EventKind::WillCheckCancellation = event.kind {
             return;
         }
-        eprintln!("Database event: {:?}", event);
+        eprintln!("Database event: {:?}", event);*/
     })));
     let mut request_registry = RequestRegistry::<RootDatabase>::default();
     let mut notification_registry = NotificationRegistry::<RootDatabase>::default();

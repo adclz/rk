@@ -25,16 +25,23 @@ fn unknown_struct_field(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    Advice: 
+        ,-[ file:///test0.st:12:44 ]
+        |
+      4 |                 power : INT;
+        |                 ^^|^^  
+        |                   `---- type is defined by struct field 'power' here
+        | 
+     12 |                 Base : Engine := (power := 100, fuel := 10.0);
+        |                                            ^|^  
+        |                                             `--- expected 'INT', got '(INT) 100'
+    ----'
     Error: 
         ,-[ file:///test0.st:12:49 ]
         |
-      2 |         TYPE Engine:
-        |              ^^^|^^  
-        |                 `---- type 'Engine: STRUCT' defined here
-        | 
      12 |                 Base : Engine := (power := 100, fuel := 10.0);
-        |                                                 ^^|^  
-        |                                                   `--- no field 'fuel' in STRUCT
+        |                                                 ^^^^^^|^^^^^  
+        |                                                       `------- no field 'fuel' in type 'STRUCT'
     ----'
     ");
 }
@@ -59,27 +66,23 @@ fn invalid_struct_value(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Advice: 
         ,-[ file:///test0.st:11:44 ]
         |
       4 |                 power : INT;
-        |                         ^|^  
-        |                          `--- expected type 'INT' here
+        |                 ^^|^^  
+        |                   `---- type is defined by struct field 'power' here
         | 
      11 |                 Base : Engine := (power := 10.5, fuel := 10.0);
         |                                            ^^|^  
-        |                                              `--- invalid value initializer: invalid INT literal
+        |                                              `--- expected 'INT', got '(REAL) 10.5'
     ----'
     Error: 
         ,-[ file:///test0.st:11:50 ]
         |
-      2 |         TYPE Engine:
-        |              ^^^|^^  
-        |                 `---- type 'Engine: STRUCT' defined here
-        | 
      11 |                 Base : Engine := (power := 10.5, fuel := 10.0);
-        |                                                  ^^|^  
-        |                                                    `--- no field 'fuel' in STRUCT
+        |                                                  ^^^^^^|^^^^^  
+        |                                                        `------- no field 'fuel' in type 'STRUCT'
     ----'
     ");
 }
@@ -100,12 +103,12 @@ fn array_initializer_out_of_bounds(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
-       ,-[ file:///test0.st:8:35 ]
+    Advice: 
+       ,-[ file:///test0.st:8:37 ]
        |
      8 |                 Base : Engine := [5(10)];
-       |                                   ^^|^^  
-       |                                     `---- too many array elements: provided 5, but array capacity is 4
+       |                                     ^|  
+       |                                      `-- expected 'INT', got '(INT) 10'
     ---'
     ");
 }
@@ -127,12 +130,33 @@ fn array_initializer_out_of_bounds_with_single_values(mut with_db: RootDatabase)
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Advice: 
+       ,-[ file:///test0.st:9:37 ]
+       |
+     9 |                 Base : Engine := [3(10), 5, 6, 4];
+       |                                     ^|  
+       |                                      `-- expected 'INT', got '(INT) 10'
+    ---'
+    Advice: 
+       ,-[ file:///test0.st:9:42 ]
+       |
+     9 |                 Base : Engine := [3(10), 5, 6, 4];
+       |                                          |  
+       |                                          `-- expected 'INT', got '(INT) 5'
+    ---'
+    Advice: 
        ,-[ file:///test0.st:9:45 ]
        |
      9 |                 Base : Engine := [3(10), 5, 6, 4];
        |                                             |  
-       |                                             `-- too many array elements: provided 5, but array capacity is 4
+       |                                             `-- expected 'INT', got '(INT) 6'
+    ---'
+    Advice: 
+       ,-[ file:///test0.st:9:48 ]
+       |
+     9 |                 Base : Engine := [3(10), 5, 6, 4];
+       |                                                |  
+       |                                                `-- expected 'INT', got '(INT) 4'
     ---'
     ");
 }
@@ -154,12 +178,12 @@ fn multi_dimensional_array_initializer_out_of_bounds(mut with_db: RootDatabase) 
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
-       ,-[ file:///test0.st:8:37 ]
+    Advice: 
+       ,-[ file:///test0.st:8:40 ]
        |
      8 |                 Base : Engine := [3(10(10))];
-       |                                     ^^^|^^  
-       |                                        `---- too many array elements: provided 10, but array capacity is 7
+       |                                        ^|  
+       |                                         `-- expected 'INT', got '(INT) 10'
     ---'
     ");
 }
@@ -181,16 +205,12 @@ fn invalid_array_value(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Advice: 
        ,-[ file:///test0.st:8:37 ]
        |
-     3 |             Engine: ARRAY[0..3] OF INT;
-       |                                    ^|^  
-       |                                     `--- expected type 'INT' here
-       | 
      8 |                 Base : Engine := [3(10.5)];
        |                                     ^^|^  
-       |                                       `--- invalid value initializer: invalid INT literal
+       |                                       `--- expected 'INT', got '(REAL) 10.5'
     ---'
     ");
 }
@@ -212,16 +232,12 @@ fn multi_dimensional_invalid_array_value(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Advice: 
        ,-[ file:///test0.st:8:39 ]
        |
-     3 |             Engine: ARRAY[0..3, 0..6] OF INT;
-       |                                          ^|^  
-       |                                           `--- expected type 'INT' here
-       | 
      8 |                 Base : Engine := [3(5(10.5))];
        |                                       ^^|^  
-       |                                         `--- invalid value initializer: invalid INT literal
+       |                                         `--- expected 'INT', got '(REAL) 10.5'
     ---'
     ");
 }
@@ -246,16 +262,27 @@ fn invalid_value_in_array_of_struct(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Advice: 
+        ,-[ file:///test0.st:12:50 ]
+        |
+      4 |                 Power: INT;
+        |                 ^^|^^  
+        |                   `---- type is defined by struct field 'Power' here
+        | 
+     12 |                 Base : EngineArray := [(Power := 10, Torque := 10.0)];
+        |                                                  ^|  
+        |                                                   `-- expected 'INT', got '(INT) 10'
+    ----'
+    Advice: 
         ,-[ file:///test0.st:12:64 ]
         |
       5 |                 Torque: INT;
-        |                         ^|^  
-        |                          `--- expected type 'INT' here
+        |                 ^^^|^^  
+        |                    `---- type is defined by struct field 'Torque' here
         | 
      12 |                 Base : EngineArray := [(Power := 10, Torque := 10.0)];
         |                                                                ^^|^  
-        |                                                                  `--- invalid value initializer: invalid INT literal
+        |                                                                  `--- expected 'INT', got '(REAL) 10.0'
     ----'
     ");
 }
@@ -279,27 +306,30 @@ fn invalid_value_in_struct_with_array(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Advice: 
+        ,-[ file:///test0.st:11:45 ]
+        |
+     11 |                 Base : Engine := (Power := [10, 5.3], Torque := 10.0);
+        |                                             ^|  
+        |                                              `-- expected 'INT', got '(INT) 10'
+    ----'
+    Advice: 
         ,-[ file:///test0.st:11:49 ]
         |
-      4 |                 Power: ARRAY[0..2] OF INT;
-        |                                       ^|^  
-        |                                        `--- expected type 'INT' here
-        | 
      11 |                 Base : Engine := (Power := [10, 5.3], Torque := 10.0);
         |                                                 ^|^  
-        |                                                  `--- invalid value initializer: invalid INT literal
+        |                                                  `--- expected 'INT', got '(REAL) 5.3'
     ----'
-    Error: 
+    Advice: 
         ,-[ file:///test0.st:11:65 ]
         |
       5 |                 Torque: INT;
-        |                         ^|^  
-        |                          `--- expected type 'INT' here
+        |                 ^^^|^^  
+        |                    `---- type is defined by struct field 'Torque' here
         | 
      11 |                 Base : Engine := (Power := [10, 5.3], Torque := 10.0);
         |                                                                 ^^|^  
-        |                                                                   `--- invalid value initializer: invalid INT literal
+        |                                                                   `--- expected 'INT', got '(REAL) 10.0'
     ----'
     ");
 }
@@ -326,7 +356,7 @@ fn unexpected_struct_field(mut with_db: RootDatabase) {
        |
      8 |                 Base : Engine := [2(param1 := 0)];
        |                                     ^^^^^|^^^^^  
-       |                                          `------- invalid value initializer: expected type 'INT', found 'STRUCT field'
+       |                                          `------- no field 'param1' in type 'INT'
     ---'
     ");
 }
@@ -353,7 +383,7 @@ fn unexpected_array(mut with_db: RootDatabase) {
        |
      8 |                 Base : Engine := [2];
        |                               ^^^|^^  
-       |                                  `---- invalid value initializer: expected type 'Engine: INT', found 'ARRAY init'
+       |                                  `---- cannot index into type 'INT'
     ---'
     ");
 }

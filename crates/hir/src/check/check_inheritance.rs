@@ -16,9 +16,7 @@ use crate::{
     },
     hir_def::pous::{class::MethodDecl, interface::MethodPrototype, pou::Pou},
     hir_ty::{
-        body_inference::infer_body_scope,
-        inheritance_solver::{MethodRef, inherited_methods},
-        ty::Type,
+        body_inference::infer_body_scope, inheritance_solver::{MethodRef, inherited_methods}, resolver::Resolver, ty::Type
     },
 };
 
@@ -202,7 +200,8 @@ fn check_signature<'db>(
     for (var1, var2) in sig1.iter().zip(sig2.iter()) {
         let var1_typ = Type::new_var(db, *var1);
         let var2_typ = Type::new_var(db, *var2);
-        if let Err(err) = (var1_typ.coerce_with(db, var2_typ, var1.scope_id(db))) {
+        let resolver = Resolver::new(var1.scope_id(db), None);
+        if let Err(err) = var1_typ.coerce_with(db, var2_typ, resolver) {
             errors.push(
                 MethodError::SignatureTypeMismatch {
                     expected: err.expected,

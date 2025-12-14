@@ -18,16 +18,16 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Advice: 
        ,-[ file:///test0.st:7:13 ]
        |
      4 |         test: INT;
-       |               ^|^  
-       |                `--- expected type 'INT' here
+       |         ^^|^  
+       |           `--- type is declared by variable 'test' here
        | 
      7 |     test := ULINT#5;
        |             ^^^|^^^  
-       |                `----- invalid assignment: invalid INT literal
+       |                `----- expected 'INT', got 'ULINT'
     ---'
     ");
 }
@@ -46,14 +46,12 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Advice: 
        ,-[ file:///test0.st:8:5 ]
        |
      8 |     fb2 := ULINT#5;
        |     ^|^  
-       |      `--- 'fb2' is a type and can not be assigned
-       | 
-       | Note: types can only be assigned if they are declared in a VAR_* section
+       |      `--- cannot use direct type 'fb2' here
     ---'
     ");
 }
@@ -68,16 +66,16 @@ FUNCTION fn1 : INT
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Advice: 
        ,-[ file:///test0.st:4:12 ]
        |
      2 | FUNCTION fn1 : INT
-       |                ^|^  
-       |                 `--- expected type 'INT' here
+       |          ^|^  
+       |           `--- FUNCTION 'fn1' is defined here, with return type 'INT'
        | 
      4 |     fn1 := ULINT#5;
        |            ^^^|^^^  
-       |               `----- invalid assignment: invalid INT literal
+       |               `----- expected 'INT', got 'ULINT'
     ---'
     ");
 }
@@ -96,14 +94,12 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Advice: 
        ,-[ file:///test0.st:8:5 ]
        |
      8 |     T1 := ULINT#5;
        |     ^|  
-       |      `-- 'T1' is a type and can not be assigned
-       | 
-       | Note: types can only be assigned if they are declared in a VAR_* section
+       |      `-- cannot use direct type 'INT' here
     ---'
     ");
 }
@@ -125,14 +121,12 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Advice: 
         ,-[ file:///test0.st:11:5 ]
         |
      11 |     d_fb2 := ULINT#5;
         |     ^^|^^  
-        |       `---- 'd_fb2' is a callable type and can not be assigned
-        | 
-        | Note: only functions with return types can be assigned
+        |       `---- 'fb2' is a callable type and can not be assigned
     ----'
     ");
 }
@@ -150,16 +144,12 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Advice: 
        ,-[ file:///test0.st:7:5 ]
        |
-     4 |         test: INT;
-       |         ^^|^  
-       |           `--- variable 'test' declared here
-       | 
      7 |     test := 5;
        |     ^^|^  
-       |       `--- 'test' is an input variable and can not be assigned
+       |       `--- test is an input variable and can not be assigned
     ---'
     ");
 }
@@ -181,16 +171,16 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Advice: 
         ,-[ file:///test0.st:11:13 ]
         |
       8 |         test: INT;
-        |               ^|^  
-        |                `--- expected type 'INT', which is not void
+        |         ^^|^  
+        |           `--- type is declared by variable 'test' here
         | 
      11 |     test := fn1();
         |             ^^|^^  
-        |               `---- invalid assignment: right-hand side is void
+        |               `---- expected 'INT', got 'void'
     ----'
     ");
 }
@@ -212,20 +202,16 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Advice: 
         ,-[ file:///test0.st:11:13 ]
         |
-      2 | FUNCTION fn1 : BOOL
-        |                ^^|^  
-        |                  `--- ... but found 'BOOL' instead
-        | 
       8 |         test: INT;
-        |               ^|^  
-        |                `--- expected 'INT' here
+        |         ^^|^  
+        |           `--- type is declared by variable 'test' here
         | 
      11 |     test := fn1();
         |             ^^|^^  
-        |               `---- invalid assignment: expected 'INT', found 'BOOL'
+        |               `---- expected 'INT', got 'BOOL'
     ----'
     ");
 }
@@ -243,16 +229,16 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Advice:
        ,-[ file:///test0.st:7:13 ]
        |
      4 |         test: INT;
-       |               ^|^  
-       |                `--- type 'INT' defined here
-       | 
+       |         ^^|^
+       |           `--- type is declared by variable 'test' here
+       |
      7 |     test := TRUE AND FALSE;
-       |             ^^^^^^^|^^^^^^  
-       |                    `-------- invalid assignment: left-hand side is not a boolean
+       |             ^^^^^^^|^^^^^^
+       |                    `-------- expected 'INT', got 'BOOL'
     ---'
     ");
 }

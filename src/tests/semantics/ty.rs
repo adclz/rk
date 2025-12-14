@@ -16,15 +16,15 @@ fn unknown_type(mut with_db: RootDatabase) {
         END_FUNCTION_BLOCK
         "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
+    Advice: 
        ,-[ file:///test0.st:4:25 ]
        |
      4 |                 input : something;
        |                         ^^^^|^^^^  
-       |                             `------ no path or item 'something' in scope
+       |                             `------ no item "something" found in scope
     ---'
-    ");
+    "#);
 }
 
 #[rstest]

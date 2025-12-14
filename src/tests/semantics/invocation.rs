@@ -17,11 +17,11 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Error:
        ,-[ file:///test0.st:6:7 ]
        |
      6 |     THIS.decl1();
-       |          ^^|^^  
+       |          ^^|^^
        |            `---- method 'decl1' not found in 'fb1'
     ---'
     ");
@@ -55,11 +55,11 @@ FUNCTION_BLOCK fb1 EXTENDS base
 
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Error:
        ,-[ file:///test0.st:8:11 ]
        |
      8 |     SUPER.super_method1()
-       |           ^^^^^^|^^^^^^  
+       |           ^^^^^^|^^^^^^
        |                 `-------- method 'super_method1' not found in 'fb1'
     ---'
     ");
@@ -74,18 +74,18 @@ CLASS fb1
     END_METHOD
 END_CLASS"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Error:
        ,-[ file:///test0.st:4:9 ]
        |
      4 |         SUPER()
-       |         ^^|^^  
+       |         ^^|^^
        |           `---- 'SUPER()' is not valid in this context
     ---'
-    Warning: 
+    Warning:
        ,-[ file:///test0.st:4:9 ]
        |
      4 |         SUPER()
-       |         ^^^|^^^  
+       |         ^^^|^^^
        |            `----- unused code, you might want to do something with it
     ---'
     ");
@@ -99,19 +99,12 @@ FUNCTION fn1
 END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Advice: 
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     SUPER()
        |     ^^|^^  
        |       `---- 'SUPER()' is not valid in this context
-    ---'
-    Warning: 
-       ,-[ file:///test0.st:3:5 ]
-       |
-     3 |     SUPER()
-       |     ^^^|^^^  
-       |        `----- unused code, you might want to do something with it
     ---'
     ");
 }
@@ -124,11 +117,11 @@ FUNCTION fn1
 END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Error:
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     SUPER.something()
-       |     ^^|^^  
+       |     ^^|^^
        |       `---- 'SUPER' is not valid in this context
     ---'
     ");
@@ -142,11 +135,11 @@ FUNCTION fn1
 END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Error:
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     THIS.something()
-       |     ^^|^  
+       |     ^^|^
        |       `--- 'THIS' is not valid in this context
     ---'
     ");
@@ -168,15 +161,15 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Error:
        ,-[ file:///test0.st:7:12 ]
        |
      4 |         VAR_INPUT input1 : INT; END_VAR
-       |                            ^|^  
+       |                            ^|^
        |                             `--- expected type 'INT' here
-       | 
+       |
      7 |     THIS.decl(0.5);
-       |               ^|^  
+       |               ^|^
        |                `--- invalid parameter: invalid INT literal
     ---'
     ");
@@ -201,15 +194,15 @@ END_CLASS
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Error:
         ,-[ file:///test0.st:10:17 ]
         |
       4 |         VAR_INPUT input1 : INT; END_VAR
-        |                            ^|^  
+        |                            ^|^
         |                             `--- expected type 'INT' here
-        | 
+        |
      10 |         SUPER.decl(0.5);
-        |                    ^|^  
+        |                    ^|^
         |                     `--- invalid parameter: invalid INT literal
     ----'
     ");
@@ -234,15 +227,15 @@ END_FUNCTION_BLOCK
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    Error:
         ,-[ file:///test0.st:10:17 ]
         |
       4 |         VAR_INPUT input1 : INT; END_VAR
-        |                            ^|^  
+        |                            ^|^
         |                             `--- expected type 'INT' here
-        | 
+        |
      10 |         SUPER.decl(0.5);
-        |                    ^|^  
+        |                    ^|^
         |                     `--- invalid parameter: invalid INT literal
     ----'
     ");
