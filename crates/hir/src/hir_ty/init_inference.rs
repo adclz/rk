@@ -2,40 +2,53 @@ use auto_lsp::default::db::BaseDatabase;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    CallSite, HirNodeInfo, check::errors::{body_inference::TypeError, init_inference::InitInferenceError}, hir_def::{
+    CallSite, HirNodeInfo,
+    check::errors::{body_inference::TypeError, init_inference::InitInferenceError},
+    hir_def::{
         expressions::{
             expression::{InitExpr, InitExprKind},
             spec::Spec,
         },
         interned::identifier::SpanIdent,
+        pous::{data_type::DataType, variable::VariableDecl},
         scope::ScopeId,
-    }, hir_ty::{
+    },
+    hir_ty::{
         body_inference::BodyInferenceResult, def_map::FxIndexMap, expr_store::InitExprWalkStep,
         infer::expr::InferExprCtx, resolver::Resolver, ty::Type,
-    }
+    },
 };
 
-/// fixme: this query can not be incrementalized because InitExpr and Spec exist without any context
-/// in the HIR. We need to find a way to associate them to their scope or parent POU/DataType.
-/// It would be better to pass a variable or data type directly instead of [̀ Spec`] or [`Type`]
 #[salsa::tracked(returns(ref), no_eq)]
-pub fn infer_init_expr<'db>(
+pub fn infer_variable<'db>(
     db: &'db dyn BaseDatabase,
-    typ: Type<'db>,
-    init_expr: InitExpr<'db>,
+    variable: VariableDecl<'db>,
 ) -> InitExprInferenceResult<'db> {
-    let mut result = InitExprInferenceResult::new(db, init_expr);
+    let typ = Type::new_spec(db, variable.spec(db));
+    let mut infer = InitExprInferenceResult::new(db, variable.scope_id(db));
+    if let Some(expr) = variable.init(db) {
+        infer.resolve_init_expr(db, expr, typ);
+    };
+    infer
+}
 
-    result.resolve_init_expr(db, typ);
-    result
+#[salsa::tracked(returns(ref), no_eq)]
+pub fn infer_data_type<'db>(
+    db: &'db dyn BaseDatabase,
+    data_type: DataType<'db>,
+) -> InitExprInferenceResult<'db> {
+    let typ = Type::new_spec(db, data_type.spec(db));
+    let mut infer = InitExprInferenceResult::new(db, data_type.scope_id(db));
+    if let Some(expr) = data_type.init(db) {
+        infer.resolve_init_expr(db, expr, typ);
+    };
+    infer
 }
 
 #[derive(Debug, PartialEq, Eq, salsa::Update)]
 pub struct InitExprInferenceResult<'db> {
     /// Scope where this InferenceResult was emitted
     pub scope: ScopeId<'db>,
-    /// The init expression being inferred
-    pub expr: InitExpr<'db>,
     /// Mapping of init expr to their resolved types
     pub type_of_expr: FxHashMap<InitExpr<'db>, Type<'db>>,
     /// Mapping of types to their spec declarations
@@ -47,20 +60,19 @@ pub struct InitExprInferenceResult<'db> {
 }
 
 impl<'db> InitExprInferenceResult<'db> {
-    pub fn new(db: &'db dyn BaseDatabase, init_expr: InitExpr<'db>) -> Self {
+    pub fn new(db: &'db dyn BaseDatabase, scope: ScopeId<'db>) -> Self {
         Self {
             type_of_expr: FxHashMap::default(),
-            expr: init_expr,
-            scope: init_expr.get_scope_id(db),
+            scope,
             type_definitions: FxHashMap::default(),
-            body_infer_result: BodyInferenceResult::new(init_expr.get_scope_id(db)),
+            body_infer_result: BodyInferenceResult::new(scope),
             errors: Vec::new(),
         }
     }
 
-    pub fn resolve_init_expr(&mut self, db: &'db dyn BaseDatabase, typ: Type<'db>) {
-        let map = self.expr.flatten(db);
-        self.resolve_expr(db, self.expr, typ, &map);
+    pub fn resolve_init_expr(&mut self, db: &'db dyn BaseDatabase, expr: InitExpr<'db>, typ: Type<'db>) {
+        let map = expr.flatten(db);
+        self.resolve_expr(db, expr, typ, &map);
     }
 
     fn resolve_expr(
@@ -111,9 +123,11 @@ impl<'db> InitExprInferenceResult<'db> {
                 let mut infer_ctx = InferExprCtx::new(resolver);
                 infer_ctx.infer_expr(db, e, &mut self.body_infer_result);
 
-                infer_ctx
-                    .inference_table
-                    .set_target_type(db, CallSite::from_init_expr(db, expr), expected);
+                infer_ctx.inference_table.set_target_type(
+                    db,
+                    CallSite::from_init_expr(db, expr),
+                    expected,
+                );
                 infer_ctx.inference_table.resolve_completly(
                     db,
                     resolver,

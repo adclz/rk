@@ -19,7 +19,6 @@ use crate::{
     },
     hir_ty::{
         body_inference::{BodyInferenceResult, infer_body_scope},
-        init_inference::infer_init_expr,
         ty::{CallableType, Type},
     },
 };

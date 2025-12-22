@@ -19,7 +19,6 @@ pub mod check_array;
 pub mod check_enum;
 pub mod check_global_pous;
 pub mod check_inheritance;
-pub mod check_init_expr;
 pub mod check_namespaces;
 pub mod check_semantic_index;
 pub mod check_struct;

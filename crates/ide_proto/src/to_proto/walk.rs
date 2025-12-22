@@ -13,12 +13,12 @@ use hir::{
         },
         namespace::NamespaceDecl,
         pous::{
-            pou::{Pou},
+            pou::Pou,
             variable::VariableDecl,
         },
         semantic_index::{SemanticIndex, get_scope},
         using::Using,
-    }, hir_ty::{inheritance_solver::MethodRef, init_inference::infer_init_expr, ty::Type}
+    }, hir_ty::{inheritance_solver::MethodRef, init_inference::{infer_data_type, infer_variable}, ty::Type}
 };
 
 use crate::to_proto::hir_node::{HirNode, SpanNamespaceAccessContext};
@@ -179,7 +179,7 @@ impl<'db> WalkHir<'db> for Pou<'db> {
                 }
 
                 if let Some(init_expr) = dt.init(db) {
-                    let infer = infer_init_expr(db, Type::new_spec(db, dt.spec(db)), init_expr);
+                    let infer = infer_data_type(db, *dt);
                     for (init_expr, typ) in &infer.type_of_expr {
                         f(HirNode::InitExprWithType((*init_expr, *typ).into()))?;
                     }
@@ -199,7 +199,7 @@ impl<'db> WalkHir<'db> for VariableDecl<'db> {
         f(HirNode::VariableDecl(*self))?;
         f(HirNode::Spec(self.spec(db)))?;
         if let Some(init_expr) = self.init(db) {
-            let infer = infer_init_expr(db, Type::new_spec(db, self.spec(db)), init_expr);
+            let infer = infer_variable(db, *self);
             for (init_expr, typ) in &infer.type_of_expr {
                 f(HirNode::InitExprWithType((*init_expr, *typ).into()))?;
             }

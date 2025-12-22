@@ -4,7 +4,6 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     HasName, check::{
-        check_init_expr::check_init_expr,
         check_semantic_index::DataTypeCheck,
         errors::{
             analysis_error::ToIdeDiagnostic, duplicates::DuplicateError,
@@ -32,16 +31,6 @@ impl<'db> DataTypeCheck<'db> for Struct<'db> {
                 None => {
                     seen.insert(field.get_name_ident(db), *field);
                 }
-            }
-            //todo: check field type
-
-            if let Some(init_expr) = field.init(db) {
-                check_init_expr(
-                    db,
-                    Type::new_spec(db, field.spec(db)),
-                    init_expr,
-                    errors,
-                );
             }
         }
     }

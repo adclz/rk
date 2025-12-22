@@ -6,7 +6,6 @@ use crate::{
     HirNodeInfo,
     check::{
         check_inheritance::check_inheritance,
-        check_init_expr::check_init_expr,
         check_semantic_index::{Check, DataTypeCheck},
         errors::analysis_error::ToIdeDiagnostic,
     },
@@ -21,8 +20,7 @@ use crate::{
         semantic_index::get_scope,
     },
     hir_ty::{
-        body_inference::{BodyInferenceResult, infer_body_scope},
-        ty::Type,
+        body_inference::{BodyInferenceResult, infer_body_scope}, init_inference::infer_data_type, ty::Type
     },
 };
 
@@ -42,7 +40,14 @@ impl<'db> Check<'db> for ScopeId<'db> {
                         _ => {}
                     }
                     if let Some(init) = dt.init(db) {
-                        check_init_expr(db, Type::new_spec(db, dt.spec(db)), init, errors);
+                        let result = infer_data_type(db, dt);
+                        for error in result.errors.iter() {
+                            errors.push(error.to_diagnostic(db));
+                        }
+
+                        for error in result.body_infer_result.errors.iter() {
+                            errors.push(error.clone());
+                        }
                     }
                 }
             }
