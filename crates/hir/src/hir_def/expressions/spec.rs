@@ -80,43 +80,6 @@ pub enum ElementarySpec {
     LTod,
 }
 
-impl<'db> ElementarySpec {
-    pub fn type_name(&self, db: &'db dyn BaseDatabase) -> String {
-        match self {
-            ElementarySpec::Bool => "BOOL",
-            ElementarySpec::REDGEBool => "REDGE_BOOL",
-            ElementarySpec::FEDGEBool => "FEDGE_BOOL",
-            ElementarySpec::Byte => "BYTE",
-            ElementarySpec::Word => "WORD",
-            ElementarySpec::DWord => "DWORD",
-            ElementarySpec::LWord => "LWORD",
-            ElementarySpec::SInt => "SINT",
-            ElementarySpec::USInt => "USINT",
-            ElementarySpec::UInt => "UINT",
-            ElementarySpec::Int => "INT",
-            ElementarySpec::DInt => "DINT",
-            ElementarySpec::UDInt => "UDINT",
-            ElementarySpec::LInt => "LINT",
-            ElementarySpec::ULInt => "ULINT",
-            ElementarySpec::Real => "REAL",
-            ElementarySpec::LReal => "LREAL",
-            ElementarySpec::String => "STRING",
-            ElementarySpec::WString => "WSTRING",
-            ElementarySpec::Char => "CHAR",
-            ElementarySpec::WChar => "WCHAR",
-            ElementarySpec::Date => "DATE",
-            ElementarySpec::LDate => "LDATE",
-            ElementarySpec::DateAndTime => "DT",
-            ElementarySpec::LDateTime => "LDT",
-            ElementarySpec::Time => "TIME",
-            ElementarySpec::LTime => "LTIME",
-            ElementarySpec::Tod => "TOD",
-            ElementarySpec::LTod => "LTOD",
-        }
-        .into()
-    }
-}
-
 impl<'db> HirNodeInfo<'db> for Spec<'db> {
     fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
         self.id(db)
@@ -198,21 +161,4 @@ pub struct SubRange<'db> {
     pub _type: Spec<'db>,
     pub lower: Expr<'db>,
     pub upper: Expr<'db>,
-}
-
-impl<'db> Spec<'db> {
-    pub fn display(&self, db: &'db dyn BaseDatabase) -> String {
-        match self.kind(db) {
-            SpecKind::Simple(elem) => elem.type_name(db),
-            SpecKind::Struct(_) => "STRUCT".into(),
-            SpecKind::Array(_) => "ARRAY".into(),
-            SpecKind::ArrayConformand(_) => "ARRAY*".into(),
-            SpecKind::Subrange(_) => "SUBRANGE".into(),
-            SpecKind::Enum(_) => "ENUM".into(),
-            SpecKind::Ref(_) => "REF".into(),
-            SpecKind::Target(t) =>  {
-                t.to_string(db)
-            }
-        }
-    }
 }

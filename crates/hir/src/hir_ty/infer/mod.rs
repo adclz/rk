@@ -1,4 +1,5 @@
 pub mod coerce;
-pub mod ctx;
-pub mod expr;
+pub mod expr; 
 pub mod literals;
+pub mod inference_table;
+pub mod normalize;

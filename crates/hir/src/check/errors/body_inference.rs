@@ -3,12 +3,12 @@ use ide_diagnostic::{IdeDiagnostic, Related, diag};
 
 use crate::{
     AstId, CallSite, HasName, HirNodeInfo,
-    check::errors::analysis_error::ToIdeDiagnostic,
+    check::errors::{analysis_error::ToIdeDiagnostic, literals::InferLiteralError},
     hir_def::{
         expressions::{
             expression::{
                 AddOperatorKind, BeginPathExpr, Expr, FuncCall, InitExpr, MultOperatorKind,
-                PathExpr, VariableAccess,
+                ParamAssign, PathExpr, VariableAccess,
             },
             spec::{Enum, Spec},
             statement::Stmt,
@@ -28,15 +28,15 @@ use crate::{
 pub enum BodyInferenceError<'db> {
     IsVarInput {
         var: VariableDecl<'db>,
-        access: VariableAccess<'db>,
+        access: CallSite<'db>,
     },
     AssignCallableType {
         typ: CallableType<'db>,
-        access: VariableAccess<'db>,
+        access: CallSite<'db>,
     },
     DirectType {
         typ: Type<'db>,
-        expr: VariableAccess<'db>,
+        expr: CallSite<'db>,
     },
     CallNonCallableType {
         typ: Type<'db>,
@@ -66,6 +66,11 @@ pub enum BodyInferenceError<'db> {
     UnknownOutputParameter {
         func: CallableType<'db>,
         param: SpanIdent<'db>,
+    },
+    DuplicateParameter {
+        param_1: ParamAssign<'db>,
+        param_2: ParamAssign<'db>,
+        name: Ident,
     },
     NoItemInScope {
         expr: PathExpr<'db>,
@@ -110,6 +115,12 @@ pub enum BodyInferenceError<'db> {
     EnumVariantNotFound {
         enum_: Enum<'db>,
         variant_name: SpanIdent<'db>,
+    },
+    InferLiteralError {
+        expr: Expr<'db>,
+        source: CallSite<'db>,
+        target: Type<'db>,
+        err: InferLiteralError,
     },
     TypeMismatch(TypeError<'db>),
 }
@@ -214,6 +225,24 @@ impl<'db> ToIdeDiagnostic<'db> for BodyInferenceError<'db> {
 
                 diag
             }
+            Self::DuplicateParameter {
+                param_1,
+                param_2,
+                name,
+            } => {
+                let mut diag = diag()
+                    .message(format!("duplicate parameter '{}' found", name.text(db)))
+                    .range(param_2.get_span(db))
+                    .call();
+
+                diag.with_related(Related::new(
+                    format!("previously defined here"),
+                    param_1.get_scope_id(db).file(db),
+                    param_1.get_span(db),
+                ));
+
+                diag
+            }
             Self::OutputParameterUsedAsInput {
                 func,
                 expr,
@@ -267,7 +296,7 @@ impl<'db> ToIdeDiagnostic<'db> for BodyInferenceError<'db> {
             }
             Self::NoSpecItemInScope { spec, scope } => {
                 let diag = diag()
-                    .message(format!("no item {:?} found in scope", spec.display(db)))
+                    .message(format!("no item found in scope"))
                     .range(spec.get_span(db))
                     .call();
 
@@ -309,6 +338,31 @@ impl<'db> ToIdeDiagnostic<'db> for BodyInferenceError<'db> {
                 ))
                 .range(variant_name.get_span(db))
                 .call(),
+            Self::InferLiteralError {
+                err,
+                expr,
+                source,
+                target,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "cannot infer to '{}': {}",
+                        target.full_type_name(db),
+                        err.to_string()
+                    ))
+                    .range(expr.get_span(db))
+                    .call();
+
+                diag.with_related(Related::new(
+                    format!("type is inferred from here"),
+                    source.get_scope_id(db).file(db),
+                    source.get_span(db),
+                ));
+
+                target.with_location(db, &mut diag);
+
+                diag
+            }
             Self::TypeMismatch(mismatch) => mismatch.to_diagnostic(db),
         }
     }
@@ -354,7 +408,7 @@ pub enum TypeError<'db> {
         base_target: Type<'db>,
         target: Type<'db>,
         value: Type<'db>,
-        expr: InitOrExpr<'db>,
+        expr: CallSite<'db>,
     },
     NotComparable {
         lhs: Type<'db>,
@@ -375,12 +429,6 @@ pub enum TypeError<'db> {
     },
     NotABoolean {
         typ: Type<'db>,
-        expr: Expr<'db>,
-    },
-    CannotInfer {
-        source: Expr<'db>,
-        target: Type<'db>,
-        value: Type<'db>,
         expr: Expr<'db>,
     },
     UnusedReturnType {
@@ -414,30 +462,6 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 base_target.with_location(db, &mut diag);
                 diag
             }
-            Self::CannotInfer {
-                source,
-                target,
-                value,
-                expr,
-            } => {
-                let mut diag = diag()
-                    .message(format!(
-                        "cannot infer type '{}' to '{}'",
-                        value.full_type_name(db),
-                        target.full_type_name(db),
-                    ))
-                    .range(expr.get_span(db))
-                    .call();
-
-                diag.with_related(Related::new(
-                    format!("type is inferred from here"),
-                    source.scope_id(db).file(db),
-                    source.get_span(db),
-                ));
-                target.with_location(db, &mut diag);
-
-                diag
-            }
             Self::NotComparable { lhs, rhs, expr } => diag()
                 .message(format!(
                     "can't compare '{}' with '{}'",
@@ -458,8 +482,8 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                         AddOperatorKind::Plus => "add",
                         AddOperatorKind::Minus => "subtract",
                     },
-                    rhs.full_type_name(db),
-                    lhs.full_type_name(db)
+                    lhs.full_type_name(db),
+                    rhs.full_type_name(db)
                 ))
                 .range(expr.get_span(db))
                 .call(),

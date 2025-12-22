@@ -32,6 +32,7 @@ impl<'db> Check<'db> for ScopeId<'db> {
 
         match get_scope(db, *self).kind {
             ScopeKind::Pou(pou) => {
+                check_inheritance(db, pou, errors);
                 if let Pou::DataType(dt) = pou {
                     match dt.spec(db).kind(db) {
                         SpecKind::Array(arr) => arr.check(db, errors),
@@ -60,13 +61,14 @@ impl<'db> Check<'db> for ScopeId<'db> {
             });
         });
 
-        // check methods
-        self.methods(db).map(|methods| {
+        self.method_prototypes(db).map(|methods| {
             methods.check(db, errors);
         });
-        if let ScopeKind::Pou(pou) = get_scope(db, *self).kind {
-            check_inheritance(db, pou, errors);
-        }
+
+        // check methods
+        self.method_declarations(db).map(|methods| {
+            methods.check(db, errors);
+        });
 
         // check variables
         self.variables(db).map(|variables| {

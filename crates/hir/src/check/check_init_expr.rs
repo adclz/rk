@@ -1,4 +1,4 @@
-use crate::{check::errors::analysis_error::ToIdeDiagnostic, hir_def::expressions::expression::{Expr, InitExpr}, hir_ty::{init_inference::infer_init_expr, ty::Type}};
+use crate::{check::errors::analysis_error::ToIdeDiagnostic, hir_def::expressions::{expression::{Expr, InitExpr}, spec::Spec}, hir_ty::{init_inference::infer_init_expr, ty::Type}};
 use auto_lsp::default::db::BaseDatabase;
 use ide_diagnostic::IdeDiagnostic;
 

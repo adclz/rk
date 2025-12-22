@@ -29,7 +29,6 @@ use crate::{
     hir_ty::{
         body_inference::{Adjustment, BodyInferenceResult},
         def_map::LocalDefMap,
-        infer::ctx::InferCtx,
         inheritance_solver::MethodRef,
         init_inference::InitExprInferenceResult,
         name_res::{pou_names_res, resolve_namespace_access},
@@ -60,6 +59,8 @@ pub enum Type<'db> {
     MethodDecl(MethodRef<'db>),
     Variable(VariableDecl<'db>),
     Infer(InferType),
+    // Func call
+    CallableType(CallableType<'db>),
     Never,
     Void,
 }
@@ -108,6 +109,19 @@ impl From<Elementary> for Type<'_> {
 pub enum InferType {
     Integer(Integer),
     Float(Ident),
+}
+
+impl<'db> InferType {
+    pub fn to_ty(&self, db: &'db dyn BaseDatabase) -> Type<'db> {
+        Type::Elementary(self.to_spec(db))
+    }
+
+    pub fn to_spec(&self, db: &'db dyn BaseDatabase) -> ElementarySpec {
+        match self {
+            InferType::Integer(i) => ElementarySpec::Int,
+            InferType::Float(f) => ElementarySpec::Real,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update, salsa::Supertype)]
@@ -221,17 +235,14 @@ impl<'db> Type<'db> {
         }
     }
 
-    pub fn shallow_as_callable(&self, db: &'db dyn BaseDatabase) -> Option<CallableType<'db>> {
+    pub fn as_callable(&self, db: &'db dyn BaseDatabase) -> Option<CallableType<'db>> {
         Some(match self {
             Type::Function(f) => CallableType::Function(*f),
             Type::MethodDecl(m) => CallableType::MethodDecl(*m),
-            Type::Variable(var) => {
-                let typ = Type::new_spec(db, var.spec(db));
-                match Type::new_spec(db, var.spec(db)) {
-                    Type::FunctionBlock(fb) => CallableType::FunctionBlock(fb),
-                    _ => None?,
-                }
-            }
+            Type::Variable(var) => match Type::new_spec(db, var.spec(db)) {
+                Type::FunctionBlock(fb) => CallableType::FunctionBlock(fb),
+                _ => None?,
+            },
             _ => None?,
         })
     }
@@ -360,14 +371,5 @@ impl<'db> Type<'db> {
 
     pub fn has_infer(&self) -> bool {
         matches!(self, Type::Infer(_))
-    }
-
-    /// Returns a shallow version of the type.
-    pub fn shallow(&self, db: &'db dyn BaseDatabase) -> Type<'db> {
-        match self {
-            Type::DataType(dt) => Type::new_spec(db, dt.spec(db)),
-            Type::Variable(var) => Type::new_spec(db, var.spec(db)),
-            _ => *self,
-        }
     }
 }

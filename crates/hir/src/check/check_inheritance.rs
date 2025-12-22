@@ -201,7 +201,7 @@ fn check_signature<'db>(
         let var1_typ = Type::new_var(db, *var1);
         let var2_typ = Type::new_var(db, *var2);
         let resolver = Resolver::new(var1.scope_id(db), None);
-        if let Err(err) = var1_typ.coerce_with(db, var2_typ, resolver) {
+        if let Err(err) = var1_typ.coerce_with_type(db, var2_typ, resolver) {
             errors.push(
                 MethodError::SignatureTypeMismatch {
                     expected: err.expected,

@@ -28,8 +28,7 @@ use crate::{
         semantic_index::get_scope,
     },
     hir_ty::{
-        infer::ctx::{InferCtx, NestedScope},
-        resolver::Resolver,
+        resolver::{Resolver, body::{BodyResolverCtx, NestedScope}},
         ty::Type,
     },
 };
@@ -41,7 +40,7 @@ pub fn infer_body_scope<'db>(
     scope: ScopeId<'db>,
 ) -> BodyInferenceResult<'db> {
     let mut result = BodyInferenceResult::new(scope);
-    let ctx = InferCtx::new(scope);
+    let ctx = BodyResolverCtx::new(scope);
 
     // Only Scopes with bodies can have statements
     let (scope_typ, statements) = match get_scope(db, scope).kind {

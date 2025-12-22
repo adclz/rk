@@ -1,5 +1,6 @@
 use auto_lsp::default::db::{BaseDatabase, file::File};
 
+use crate::hir_def::pous::interface::MethodPrototype;
 use crate::{Modifier, Visibility};
 use crate::hir_def::{
     namespace::NamespaceDecl,
@@ -31,11 +32,21 @@ impl<'db> ScopeId<'db> {
         })
     }
 
-    pub fn methods(&self, db: &'db dyn BaseDatabase) -> Option<&Vec<MethodDecl<'db>>> {
+    pub fn method_declarations(&self, db: &'db dyn BaseDatabase) -> Option<&Vec<MethodDecl<'db>>> {
         Some(match get_scope(db, *self).kind {
             ScopeKind::Pou(pou) => match pou {
                 Pou::Class(cl) => cl.methods(db),
                 Pou::FunctionBlock(fb) => fb.methods(db),
+                _ => None?,
+            },
+            _ => None?,
+        })
+    }
+
+    pub fn method_prototypes(&self, db: &'db dyn BaseDatabase) -> Option<&Vec<MethodPrototype<'db>>> {
+        Some(match get_scope(db, *self).kind {
+            ScopeKind::Pou(pou) => match pou {
+                Pou::Interface(it) => it.methods(db),
                 _ => None?,
             },
             _ => None?,

@@ -14,8 +14,6 @@ pub struct DataType<'db> {
 
     pub spec: Spec<'db>,
 
-    #[tracked]
-    #[no_eq]
     pub init: Option<InitExpr<'db>>,
 
     #[tracked]

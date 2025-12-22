@@ -42,10 +42,6 @@ impl<'db> NamespaceDecl<'db> {
             })
             .get_span()
     }
-
-    fn get_name_id(&'db self, db: &'db dyn BaseDatabase) -> AstId {
-        self.name_id(db)
-    }
 }
 
 impl<'db> HirNodeInfo<'db> for NamespaceDecl<'db> {

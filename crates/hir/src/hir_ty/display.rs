@@ -3,8 +3,8 @@ use ide_diagnostic::{IdeDiagnostic, Related};
 
 use crate::{
     HasName, HirNodeInfo,
-    hir_def::expressions::spec::{ElementarySpec, Spec, SpecKind},
-    hir_ty::ty::{InferType, Type},
+    hir_def::{expressions::{expression::{Elementary, Expr, ExprKind, InitExpr, InitExprKind, PrimaryExpr, RefValue}, spec::{ElementarySpec, Spec, SpecKind}}, pous::function::Function},
+    hir_ty::ty::{CallableType, InferType, Type},
 };
 
 impl<'db> Type<'db> {
@@ -42,24 +42,29 @@ impl<'db> Type<'db> {
                 ElementarySpec::LTod => "LTOD",
             }
             .into(),
-            Self::Function(f) => f.get_name_ident(db).text(db).to_string(),
-            Self::FunctionBlock(fb) => fb.get_name_ident(db).text(db).to_string(),
-            Self::MethodDecl(m) => m.get_name_ident(db).text(db).to_string(),
-            Self::Class(c) => c.get_name_ident(db).text(db).to_string(),
-            Self::Interface(i) => i.get_name_ident(db).text(db).to_string(),
+            Self::Function(f) => format!("FUNCTION: {}", f.get_name_ident(db).text(db)),
+            Self::FunctionBlock(fb) => format!("FUNCTION_BLOCK: {}",fb.get_name_ident(db).text(db)),
+            Self::MethodDecl(m) => format!("METHOD: {}", m.get_name_ident(db).text(db)),
+            Self::Class(c) => format!("CLASS: {}", c.get_name_ident(db).text(db)),
+            Self::Interface(i) => format!("INTERFACE: {}", i.get_name_ident(db).text(db)),
             Self::DataType(typ) => match typ.spec(db).kind(db) {
                 SpecKind::Target(e) => Type::new_spec(db, typ.spec(db)).type_name(db),
                 _ => Type::new_spec(db, typ.spec(db)).type_name(db),
             },
             Self::Enum(_) => "ENUM".into(),
             Self::Struct(_) => "STRUCT".into(),
+            Self::CallableType(typ) => match typ {
+                CallableType::Function(f) => format!("FUNCTION: {}", f.get_name_ident(db).text(db)),
+                CallableType::FunctionBlock(fb) => format!("FUNCTION_BLOCK: {}",fb.get_name_ident(db).text(db)),
+                CallableType::MethodDecl(m) => format!("METHOD: {}", m.get_name_ident(db).text(db)),
+            }
             Self::Never => "{unknown}".into(),
             Self::Void => "void".into(),
             Self::StructElement(st) => Type::new_spec(db, st.spec(db)).type_name(db),
             Self::Variable(var) => Type::new_spec(db, var.spec(db)).type_name(db),
             Self::Infer(infer) => match infer {
-                InferType::Integer(i) => format!("(INT) {}", i.ident(db).text(db)),
-                InferType::Float(f) => format!("(REAL) {}", f.text(db)),
+                InferType::Integer(i) => format!("{{integer}} {}", i.ident(db).text(db)),
+                InferType::Float(f) => format!("{{float}} {}", f.text(db)),
             },
             _ => self.full_type_name(db),
         }
@@ -208,6 +213,93 @@ impl<'db> Type<'db> {
                 ));
             }
             _ => {}
+        }
+    }
+}
+
+
+impl<'db> InitExpr<'db> {
+    pub fn to_string(&self, db: &'db dyn BaseDatabase) -> &str {
+        match self.kind(db) {
+            InitExprKind::StructInit { .. } => "STRUCT init",
+            InitExprKind::ArrayInit { .. } => "ARRAY init",
+            InitExprKind::ArrayIndexedElement { size, .. } => "ARRAY element",
+            InitExprKind::StructElement { name, .. } => "STRUCT field",
+            InitExprKind::ConstantExpr(expr) => "<expression>",
+        }
+    }
+}
+
+impl<'db> Expr<'db> {
+    pub fn to_string(&self, db: &'db dyn BaseDatabase) -> &str {
+        match self.expr(db) {
+            ExprKind::PrimaryExpr(primary_expr) => primary_expr.to_string(db),
+            ExprKind::AddOperator {
+                left,
+                operator,
+                right,
+            } => "<arithmetic expression>",
+            ExprKind::BooleanOperator {
+                left,
+                operator,
+                right,
+            } => "<boolean expression>",
+            ExprKind::ComparisonOperator {
+                left,
+                operator,
+                right,
+            } => "<comparison expression>",
+            ExprKind::MultOperator {
+                left,
+                operator,
+                right,
+            } => "<multiplicative expression>",
+            ExprKind::PowerOperator { left, right } => "<power expression>",
+            ExprKind::UnaryOperator { expr, operator } => "<unary expression>",
+        }
+    }
+}
+
+impl<'db> PrimaryExpr<'db> {
+    pub fn to_string(&self, db: &'db dyn BaseDatabase) -> &str {
+        match self {
+            PrimaryExpr::Literal(lit) => match lit {
+                Elementary::Bool(_) => "BOOL literal",
+                Elementary::Byte(_) => "BYTE literal",
+                Elementary::Word(_) => "WORD literal",
+                Elementary::DWord(_) => "DWORD literal",
+                Elementary::LWord(_) => "LWORD literal",
+                Elementary::SInt(_) => "SINT literal",
+                Elementary::Int(_) => "INT literal",
+                Elementary::DInt(_) => "DINT literal",
+                Elementary::LInt(_) => "LINT literal",
+                Elementary::USInt(_) => "USINT literal",
+                Elementary::UInt(_) => "UINT literal",
+                Elementary::UDInt(_) => "UDINT literal",
+                Elementary::ULInt(_) => "ULINT literal",
+                Elementary::Time(_) => "TIME literal",
+                Elementary::LTime(_) => "LTIME literal",
+                Elementary::Real(_) => "REAL literal",
+                Elementary::LReal(_) => "LREAL literal",
+                Elementary::DateAndTime(_) => "DATE_AND_TIME literal",
+                Elementary::LDateTime(_) => "LDATE_AND_TIME literal",
+                Elementary::LDate(_) => "LDATE literal",
+                Elementary::Date(_) => "DATE literal",
+                Elementary::TimeOfDay(_) => "TIME_OF_DAY literal",
+                Elementary::LTod(_) => "LTOD literal",
+                Elementary::AnyString(_) => "STRING literal",
+                Elementary::AnyChar(_) => "CHAR literal",
+                Elementary::InferInteger(_) => "<integer>",
+                Elementary::InferFloat(_) => "<identifier>",
+            },
+            PrimaryExpr::VariableAccess(v) => "<variable access>",
+            PrimaryExpr::FuncCall(func_call) => func_call.path(db).to_string(db),
+            PrimaryExpr::EnumValue { name, variant } => variant.text(db),
+            PrimaryExpr::RefValue { value } => match value {
+                RefValue::Address(addr) => "<DEREF>",
+                RefValue::Null => "NULL",
+            },
+            PrimaryExpr::ParenthesizedExpr { expr } => expr.to_string(db),
         }
     }
 }

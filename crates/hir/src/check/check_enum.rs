@@ -3,7 +3,7 @@ use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    check::{
+    CallSite, check::{
         check_semantic_index::DataTypeCheck,
         errors::{
             analysis_error::ToIdeDiagnostic,
@@ -11,14 +11,12 @@ use crate::{
             duplicates::DuplicateError,
             enum_::EnumError,
         },
-    },
-    hir_def::expressions::spec::{ElementarySpec, Enum, SpecKind},
-    hir_ty::{
+    }, hir_def::expressions::spec::{ElementarySpec, Enum, SpecKind}, hir_ty::{
         body_inference::BodyInferenceResult,
-        infer::{ctx::InferCtx, expr::InferExprCtx},
+        infer::{expr::InferExprCtx},
         resolver::Resolver,
         ty::Type,
-    },
+    }
 };
 
 impl<'db> DataTypeCheck<'db> for Enum<'db> {
@@ -71,13 +69,13 @@ impl<'db> DataTypeCheck<'db> for Enum<'db> {
 
                 let target = Type::new_spec(db, typ);
                 let expr = infer.infer_expr(db, value, &mut infer_body);
-                if let Err(err) = target.coerce_with(db, expr, resolver) {
+                if let Err(err) = target.coerce_with_type(db, expr, resolver) {
                     errors.push(
                         TypeError::NotAssignable {
                             base_target: target,
                             target: err.expected,
                             value: err.actual,
-                            expr: value.into(),
+                            expr: CallSite::from_expr(db, value),
                         }
                         .to_diagnostic(db),
                     )

@@ -7,7 +7,7 @@ use auto_lsp::{
 };
 use bitflags::bitflags;
 
-use crate::hir_def::{interned::identifier::Ident, scope::ScopeId, semantic_index::semantic_index};
+use crate::hir_def::{expressions::{expression::{Expr, InitExpr, VariableAccess}, spec::Spec}, interned::identifier::Ident, scope::ScopeId, semantic_index::semantic_index};
 
 pub mod builder;
 pub mod check;
@@ -30,7 +30,7 @@ impl AstId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct CallSite<'db> {
     pub scope: ScopeId<'db>,
     pub id: AstId,
@@ -39,6 +39,34 @@ pub struct CallSite<'db> {
 impl<'db> CallSite<'db> {
     pub fn new(scope: ScopeId<'db>, id: AstId) -> Self {
         Self { scope, id }
+    }
+
+    pub fn from_expr(db: &'db dyn BaseDatabase, expr: Expr<'db>) -> Self {
+        Self {
+            scope: expr.get_scope_id(db),
+            id: expr.get_id(db),
+        }
+    }
+
+    pub fn from_init_expr(db: &'db dyn BaseDatabase, expr: InitExpr<'db>) -> Self {
+        Self {
+            scope: expr.get_scope_id(db),
+            id: expr.get_id(db),
+        }
+    }
+
+    pub fn from_var_access(db: &'db dyn BaseDatabase, var_access: VariableAccess<'db>) -> Self {
+        Self {
+            scope: var_access.get_scope_id(db),
+            id: var_access.get_id(db),
+        }
+    }
+
+    pub fn from_spec(db: &'db dyn BaseDatabase, spec: Spec<'db>) -> Self {
+        Self {
+            scope: spec.get_scope_id(db),
+            id: spec.get_id(db),
+        }
     }
 }
 

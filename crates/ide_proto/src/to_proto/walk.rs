@@ -199,7 +199,7 @@ impl<'db> WalkHir<'db> for VariableDecl<'db> {
         f(HirNode::VariableDecl(*self))?;
         f(HirNode::Spec(self.spec(db)))?;
         if let Some(init_expr) = self.init(db) {
-            let infer = infer_init_expr(db, Type::new_spec(db, self.spec(db)), *init_expr);
+            let infer = infer_init_expr(db, Type::new_spec(db, self.spec(db)), init_expr);
             for (init_expr, typ) in &infer.type_of_expr {
                 f(HirNode::InitExprWithType((*init_expr, *typ).into()))?;
             }

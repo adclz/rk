@@ -43,7 +43,7 @@ impl<'db> Check<'db> for [VariableDecl<'db>] {
                 check_init_expr(
                     db,
                     Type::new_spec(db, variable.spec(db)),
-                    *init_expr,
+                    init_expr,
                     errors,
                 );
             }
