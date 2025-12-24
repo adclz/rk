@@ -60,7 +60,9 @@ impl<'db> Check<'db> for SemanticIndex<'db> {
         self.pous(db).iter().for_each(|pou| pou.get_scope_id(db).check(db, errors));
         // Namespaces
         self.namespaces.iter().for_each(|ns| {
-            // check_duplicate_namespaces(db, ns, errors);
+            check_duplicate_namespaces(db, *ns)
+                .values()
+                .for_each(|diags| errors.extend_from_slice(diags));
             ns.scope_id(db).check(db, errors)
         });
     }
