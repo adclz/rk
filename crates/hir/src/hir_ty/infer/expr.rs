@@ -1,5 +1,4 @@
 use auto_lsp::default::db::BaseDatabase;
-use ide_diagnostic::{IdeDiagnostic, diag};
 
 use crate::{
     CallSite, HirNodeInfo,
@@ -7,25 +6,15 @@ use crate::{
         analysis_error::ToIdeDiagnostic,
         body_inference::{BodyInferenceError, TypeError},
     },
-    hir_def::{
-        expressions::{
-            expression::{
-                ComparisonOperatorKind, Elementary, Expr, ExprKind, PrimaryExpr, RefValue,
-                UnaryOperatorKind,
-            },
-            spec::ElementarySpec,
-            statement::Stmt,
-        },
-        interned::identifier::Ident,
-        scope::{Scope, ScopeId},
-    },
+    hir_def::expressions::expression::{Expr, ExprKind, PrimaryExpr, RefValue, UnaryOperatorKind},
     hir_ty::{
         body_inference::BodyInferenceResult,
-        infer::inference_table::InferenceTable,
+        infer::inference_table::{self, InferenceTable},
         resolver::{Resolver, func_call::resolve_func_call},
         ty::Type,
     },
 };
+
 pub struct InferExprCtx<'db> {
     pub resolver: Resolver<'db>,
     pub inference_table: InferenceTable<'db>,
@@ -76,7 +65,7 @@ impl<'db> InferExprCtx<'db> {
         db: &'db dyn BaseDatabase,
         expr: Expr<'db>,
         inference_results: &mut BodyInferenceResult<'db>,
-    ) -> Type<'db> {
+    ) {
         match expr.expr(db) {
             ExprKind::AddOperator {
                 left,
@@ -86,23 +75,19 @@ impl<'db> InferExprCtx<'db> {
                 let (infer_ctx, result) =
                     left.coerce_with_expression(db, *right, self.resolver, inference_results);
 
-                result
-                    .map_err(|err| {
-                        inference_results
-                            .errors
-                            .push(err.into_non_addable(db, expr, *operator))
-                    })
-                    .ok();
+                if let Err(err) = result {
+                    inference_results
+                        .errors
+                        .push(err.into_non_addable(db, expr, *operator));
+                }
 
-                let lhs = inference_results
-                    .type_of_expr_with_adjustments(db, *left)
-                    .unwrap_or_default();
+                let lhs = left.adjust_and_normalize(db, inference_results);
+                let rhs = right.adjust_and_normalize(db, inference_results);
 
-                let rhs = inference_results
-                    .type_of_expr_with_adjustments(db, *right)
-                    .unwrap_or_default();
+                // this might sound redundant because we already checked for coercion
+                // but coercion is unaware of the operation being performed
 
-                if !lhs.normalize(db).is_numeric() || !rhs.normalize(db).is_numeric() {
+                if !lhs.supports_math(rhs) {
                     inference_results.errors.push(
                         TypeError::NotAddable {
                             lhs,
@@ -114,7 +99,9 @@ impl<'db> InferExprCtx<'db> {
                     );
                 };
 
-                infer_ctx.get_final_type()
+                inference_results
+                    .type_of_expr
+                    .insert(expr, infer_ctx.get_final_type());
             }
             ExprKind::MultOperator {
                 left,
@@ -124,23 +111,16 @@ impl<'db> InferExprCtx<'db> {
                 let (infer_ctx, result) =
                     left.coerce_with_expression(db, *right, self.resolver, inference_results);
 
-                result
-                    .map_err(|err| {
-                        inference_results
-                            .errors
-                            .push(err.into_non_multiplicable(db, expr, *operator))
-                    })
-                    .ok();
+                if let Err(err) = result {
+                    inference_results
+                        .errors
+                        .push(err.into_non_multiplicable(db, expr, *operator));
+                }
 
-                let lhs = inference_results
-                    .type_of_expr_with_adjustments(db, *left)
-                    .unwrap_or_default();
+                let lhs = left.adjust_and_normalize(db, inference_results);
+                let rhs = right.adjust_and_normalize(db, inference_results);
 
-                let rhs = inference_results
-                    .type_of_expr_with_adjustments(db, *right)
-                    .unwrap_or_default();
-
-                if !lhs.normalize(db).is_numeric() || !rhs.normalize(db).is_numeric() {
+                if !lhs.supports_math(rhs) {
                     inference_results.errors.push(
                         TypeError::NotMultiplicable {
                             lhs,
@@ -152,21 +132,23 @@ impl<'db> InferExprCtx<'db> {
                     );
                 };
 
-                infer_ctx.get_final_type()
+                inference_results
+                    .type_of_expr
+                    .insert(expr, infer_ctx.get_final_type());
             }
             ExprKind::PowerOperator { left, right } => {
                 let (infer_ctx, result) =
                     left.coerce_with_expression(db, *right, self.resolver, inference_results);
 
-                result
-                    .map_err(|err| {
-                        inference_results
-                            .errors
-                            .push(err.into_non_comparable(db, expr))
-                    })
-                    .ok();
+                if let Err(err) = result {
+                    inference_results
+                        .errors
+                        .push(err.into_non_comparable(db, expr));
+                }
 
-                infer_ctx.get_final_type()
+                inference_results
+                    .type_of_expr
+                    .insert(expr, infer_ctx.get_final_type());
             }
             ExprKind::BooleanOperator {
                 left,
@@ -174,16 +156,19 @@ impl<'db> InferExprCtx<'db> {
                 right,
             } => {
                 // Adds a new inference ctx for boolean operators
+                // each side has its own inference context and *must* be boolean
+                InferExprCtx::new(self.resolver).infer_expr(db, *left, inference_results);
 
-                let lhs = InferExprCtx::new(self.resolver).infer_expr(db, *left, inference_results);
+                let lhs = left.adjust_and_normalize(db, inference_results);
                 if let Err(err) = lhs.coerce_with_type(db, Type::new_bool(), self.resolver) {
                     inference_results
                         .errors
                         .push(TypeError::NotABoolean { typ: lhs, expr }.to_diagnostic(db));
                 }
 
-                let rhs =
-                    InferExprCtx::new(self.resolver).infer_expr(db, *right, inference_results);
+                InferExprCtx::new(self.resolver).infer_expr(db, *right, inference_results);
+
+                let rhs = right.adjust_and_normalize(db, inference_results);
                 if let Err(err) = rhs.coerce_with_type(db, Type::new_bool(), self.resolver) {
                     inference_results
                         .errors
@@ -191,7 +176,9 @@ impl<'db> InferExprCtx<'db> {
                 }
 
                 // a boolean operator always returns a boolean
-                Type::new_bool()
+                inference_results
+                    .type_of_expr
+                    .insert(expr, Type::new_bool());
             }
             ExprKind::ComparisonOperator {
                 left,
@@ -199,80 +186,86 @@ impl<'db> InferExprCtx<'db> {
                 right,
             } => {
                 // A compare operation has it's own inference context since it returns a boolean
-                let mut ctx = InferExprCtx::new(self.resolver);
+                let (inference, result) =
+                    left.coerce_with_expression(db, *right, self.resolver, inference_results);
 
-                ctx.infer_expr(db, *left, inference_results);
-                ctx.infer_expr(db, *right, inference_results);
-
-                ctx.resolve_completly(db, inference_results);
-
-                let lhs = inference_results
-                    .type_of_expr_with_adjustments(db, *left)
-                    .unwrap_or_default();
-
-                let rhs = inference_results
-                    .type_of_expr_with_adjustments(db, *right)
-                    .unwrap_or_default();
-
-                if let Err(err) = lhs.coerce_with_type(db, rhs, self.resolver) {
-                    inference_results.errors.push(
-                        TypeError::NotComparable {
-                            lhs: err.expected,
-                            rhs: err.actual,
-                            expr,
-                        }
-                        .to_diagnostic(db),
-                    );
+                if let Err(err) = result {
+                    inference_results
+                        .errors
+                        .push(err.into_non_comparable(db, expr));
                 }
 
-                Type::new_bool()
+                // from the standard:
+                /*
+                The comparison
+                A = B
+
+                would be used to compare the data value of variable A by the value of variable B if both were
+                of the same data type or one of the variables can implicitly be converted to the data type of
+                the other one.
+
+                If A and B are multi-element variables the data types of A and B shall be the same. In this
+                case the values of the elements of the variable A is compared to the values of the elements of
+                variable B.
+
+                */
+                // In our case coercion will do both strict equality and implicit conversion checks
+                // but i'm unsure if this is enough
+
+                inference_results
+                    .type_of_expr
+                    .insert(expr, Type::new_bool());
             }
-            ExprKind::UnaryOperator { expr, operator } => match operator {
+            ExprKind::UnaryOperator { expr: unary_expr, operator } => match operator {
                 UnaryOperatorKind::Not => {
                     let mut ctx = InferExprCtx::new(self.resolver);
 
-                    let not_expr = ctx.infer_expr(db, *expr, inference_results);
-                    if !not_expr.normalize(db).is_boolean() {
+                    ctx.infer_expr(db, *unary_expr, inference_results);
+                    let not_expr = unary_expr.adjust_and_normalize(db, inference_results);
+                    if !not_expr.is_boolean() {
                         inference_results.errors.push(
                             TypeError::NotABoolean {
                                 typ: not_expr,
-                                expr: *expr,
+                                expr: *unary_expr,
                             }
                             .to_diagnostic(db),
                         );
                     }
-                    Type::new_bool()
+                    inference_results
+                        .type_of_expr
+                        .insert(expr, Type::new_bool());
                 }
-                _ => self.infer_expr(db, *expr, inference_results),
+                _ => self.infer_expr(db, *unary_expr, inference_results),
             },
             ExprKind::PrimaryExpr(primary) => {
                 let typ = self.infer_primary(db, expr, primary, inference_results);
                 inference_results.type_of_expr.insert(expr, typ);
                 self.inference_table.add_type(db, expr, typ, self.resolver);
-                typ
             }
         }
     }
 
+    #[must_use]
     pub fn infer_primary(
         &mut self,
         db: &'db dyn BaseDatabase,
         base_expr: Expr<'db>,
         to: &PrimaryExpr<'db>,
-        infer_result: &mut BodyInferenceResult<'db>,
+        inference_result: &mut BodyInferenceResult<'db>,
     ) -> Type<'db> {
         match to {
             PrimaryExpr::Literal(prim) => (*prim).into(),
             PrimaryExpr::VariableAccess(v) => {
-                self.resolver.resolve_variable_access(db, *v, infer_result)
+                self.resolver
+                    .resolve_variable_access(db, *v, inference_result)
             }
             PrimaryExpr::FuncCall(call) => {
-                resolve_func_call(db, self.resolver, *call, infer_result)
+                resolve_func_call(db, self.resolver, *call, inference_result)
             }
             PrimaryExpr::EnumValue { name, variant } => {
                 let find_enm = self
                     .resolver
-                    .resolve_begin_path_expr(db, *name, infer_result)
+                    .resolve_begin_path_expr(db, *name, inference_result)
                     .normalize(db);
 
                 match find_enm {
@@ -283,7 +276,7 @@ impl<'db> InferExprCtx<'db> {
                         .map(|v| Type::EnumVariant(*v.name))
                         .unwrap_or_else(|| {
                             // variant not found
-                            infer_result.errors.push(
+                            inference_result.errors.push(
                                 BodyInferenceError::EnumVariantNotFound {
                                     enum_: enm,
                                     variant_name: *variant,
@@ -294,7 +287,7 @@ impl<'db> InferExprCtx<'db> {
                         }),
                     _ => {
                         // not an enum
-                        infer_result.errors.push(
+                        inference_result.errors.push(
                             BodyInferenceError::NotAnEnum {
                                 expr: *name,
                                 item: find_enm,
@@ -308,11 +301,18 @@ impl<'db> InferExprCtx<'db> {
             PrimaryExpr::RefValue { value } => match value {
                 RefValue::Address(adress) => {
                     self.resolver
-                        .resolve_begin_path_expr(db, *adress, infer_result)
+                        .resolve_begin_path_expr(db, *adress, inference_result)
                 }
                 RefValue::Null => Type::Null,
             },
-            PrimaryExpr::ParenthesizedExpr { expr } => self.infer_expr(db, *expr, infer_result),
+            PrimaryExpr::ParenthesizedExpr { expr } => {
+                self.infer_expr(db, *expr, inference_result);
+                inference_result
+                    .type_of_expr
+                    .get(expr)
+                    .copied()
+                    .unwrap_or_default()
+            }
         }
     }
 }
