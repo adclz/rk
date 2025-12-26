@@ -40,7 +40,13 @@ pub fn check_visibility<'db>(
             .expect("Method should always have a parent scope"),
         _ => calling_scope_id,
     };
-    let target_scope = target.get_scope_id(db);
+    let target_scope_id = target.get_scope_id(db);
+    let target_scope = match get_scope(db, target_scope_id).kind {
+        ScopeKind::MethodDecl(m) => get_scope(db, target_scope_id)
+            .parent
+            .expect("Method should always have a parent scope"),
+        _ => target_scope_id,
+    };
     let target_visibility = target.get_visibility(db);
 
     // PUBLIC methods can be called from anywhere
