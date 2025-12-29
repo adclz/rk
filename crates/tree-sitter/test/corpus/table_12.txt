@@ -106,7 +106,8 @@ END_FUNCTION
                           (path_expression
                             (var_access
                               (ref_deref
-                                (identifier))))
+                                (identifier)
+                                (deref_sign))))
                           (index_value
                             (constant_expr
                               (constant
@@ -114,3 +115,39 @@ END_FUNCTION
                                   (int_literal
                                     (signed_int
                                       (unsigned_int))))))))))))))))))
+
+
+================================================================================
+Multiple Dereferencing
+================================================================================
+
+FUNCTION fn
+  myInt:= myA1Ref^^^^^;
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (variable_access
+                  (variable
+                    (begin_path_expression
+                      (path_expression
+                        (var_access
+                          (ref_deref
+                            (identifier)
+                            (deref_sign)
+                            (deref_sign)
+                            (deref_sign)
+                            (deref_sign)
+                            (deref_sign)))))))))))))

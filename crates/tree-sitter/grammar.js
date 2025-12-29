@@ -772,7 +772,7 @@ module.exports = grammar({
     ref_addr: ($) => seq("REF", "(", $.begin_path_expression, ")"),
 
     ref_deref: ($) =>
-      prec(RK_PREC.dereference, seq(field("ref", $.identifier), "^")),
+      prec(RK_PREC.dereference, seq(field("ref", $.identifier), repeat1(alias("^", $.deref_sign)))),
 
     // Table 13 - Declaration of variables/Table 14 – Initialization of variables
 
@@ -1838,7 +1838,7 @@ module.exports = grammar({
 
     any_invocation: ($) =>
       seq(
-        field("invocation",choice($.this_invocation, $.super_invocation)),
+        field("invocation", choice($.this_invocation, $.super_invocation)),
         optional($.any_invocation_kind),
       ),
 

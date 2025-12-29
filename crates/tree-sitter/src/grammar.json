@@ -2887,8 +2887,16 @@
             }
           },
           {
-            "type": "STRING",
-            "value": "^"
+            "type": "REPEAT1",
+            "content": {
+              "type": "ALIAS",
+              "content": {
+                "type": "STRING",
+                "value": "^"
+              },
+              "named": true,
+              "value": "deref_sign"
+            }
           }
         ]
       }
