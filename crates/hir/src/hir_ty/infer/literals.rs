@@ -15,7 +15,7 @@ use crate::{
     },
 };
 
-use std::{num::ParseIntError, u8};
+use std::{f64, num::ParseIntError, u8};
 
 // Figure 12 – Supported implicit type conversions
 
@@ -306,7 +306,7 @@ impl<'db> ElementarySpec {
 }
 
 impl<'db> InferType {
-    pub fn infer_with(
+    pub fn check_as(
         &self,
         db: &'db dyn BaseDatabase,
         typ: ElementarySpec,
@@ -454,9 +454,13 @@ fn check_f32<'db>(
             .as_f32(db)
             .map(|_| Type::Elementary(ElementarySpec::Real))
             .map_err(|err| InferLiteralError::TypeMismatch(err.to_string())),
-        _ => Err(InferLiteralError::TypeMismatch(
-            "expected a 32-bit floating point number".into(),
-        )),
+        InferType::Integer(integer) => {
+            let int_val = integer
+            .as_i32(db)
+            .map_err(|err| InferLiteralError::TypeMismatch(err.to_string()))?;
+            // IEC standard allows integer to float conversion
+            Ok(Type::Elementary(ElementarySpec::Real))
+        }
     }
 }
 
@@ -469,9 +473,13 @@ fn check_f64<'db>(
             .as_f64(db)
             .map(|_| Type::Elementary(ElementarySpec::LReal))
             .map_err(|err| InferLiteralError::TypeMismatch(err.to_string())),
-        _ => Err(InferLiteralError::TypeMismatch(
-            "expected a 64-bit floating point number".into(),
-        )),
+        InferType::Integer(integer) => {
+            let int_val = integer
+            .as_i64(db)
+            .map_err(|err| InferLiteralError::TypeMismatch(err.to_string()))?;
+            // IEC standard allows integer to float conversion
+            Ok(Type::Elementary(ElementarySpec::LReal))
+        }
     }
 }
 
