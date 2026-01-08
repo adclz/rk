@@ -2,7 +2,6 @@ use auto_lsp::default::db::BaseDatabase;
 use fst::{Automaton, Streamer, raw::IndexedValue};
 use rayon::prelude::*;
 
-use std::hash::Hasher;
 use std::ops::ControlFlow;
 use std::{cmp::Ordering, hash::Hash};
 
@@ -149,14 +148,13 @@ impl Query {
                 for symbol in &symbol_index.symbols(db)[start..end] {
                     let symbol_name = symbol.name.as_str();
 
-                    if let Some(b) = cb(symbol).break_value() {
-                        if self
+                    if let Some(b) = cb(symbol).break_value()
+                        && self
                             .mode
                             .check(&self.query, self.case_sensitive, symbol_name)
                         {
                             return Some(b);
                         }
-                    }
                 }
             }
         }
@@ -192,11 +190,10 @@ impl<'db> SymbolIndex<'db> {
         let mut last_batch_start = 0;
 
         for idx in 0..symbols.len() {
-            if let Some(next_symbol) = symbols.get(idx + 1) {
-                if cmp(&symbols[last_batch_start], next_symbol) == Ordering::Equal {
+            if let Some(next_symbol) = symbols.get(idx + 1)
+                && cmp(&symbols[last_batch_start], next_symbol) == Ordering::Equal {
                     continue;
                 }
-            }
 
             let start = last_batch_start;
             let end = idx + 1;

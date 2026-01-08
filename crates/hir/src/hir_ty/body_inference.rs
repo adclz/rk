@@ -1,35 +1,22 @@
-use ast::generated::{PrimaryExpression, Subrange};
 use auto_lsp::default::db::BaseDatabase;
-use ide_diagnostic::{IdeDiagnostic, diag};
-use rustc_hash::{FxHashMap, FxHashSet};
+use ide_diagnostic::IdeDiagnostic;
+use rustc_hash::FxHashMap;
 
 use crate::{
-    HirNodeInfo,
-    builder::interface,
-    check::errors::{
-        analysis_error::ToIdeDiagnostic,
-        body_inference::{BodyInferenceError, InitOrExpr},
-        path_error::AccessError,
-    },
     hir_def::{
         expressions::{
             expression::{
-                BeginPathExpr, Expr, ExprKind, FuncCall, InitExpr, ParamAssign, ParamAssignKind,
-                PathExpr, PathExprKind, PrimaryExpr, RefValue, VarAccess, VariableAccess,
+                BeginPathExpr, Expr, ExprKind, ParamAssign,
+                PathExpr, PrimaryExpr, RefValue, VariableAccess,
                 VariableAccessKind,
             },
-            invocation::{self, Invocation, InvocationKind},
-        },
-        interned::{
-            identifier::{Ident, SpanIdent},
-            namespace::{NamespaceAccess, SpanNamespacePath},
+            invocation::Invocation,
         },
         pous::{pou::Pou, variable::VariableDecl},
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
     hir_ty::{
-        infer::inference_table::InferenceTable,
         resolver::{
             Resolver,
             body::{InferenceCtx, NestedScope},

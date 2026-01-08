@@ -6,8 +6,8 @@ use ide_diagnostic::IdeDiagnostic;
 
 use crate::check::errors::{
     array::ArrayError, duplicates::DuplicateError, enum_::EnumError, inheritance::MethodError,
-    path_error::AccessError, scope::NamespaceError,
-    subrange::SubRangeError, syntax::SyntaxError, visibility::VisibilityError,
+    path_error::AccessError, scope::NamespaceError, subrange::SubRangeError, syntax::SyntaxError,
+    visibility::VisibilityError,
 };
 
 pub trait ToIdeDiagnostic<'db> {

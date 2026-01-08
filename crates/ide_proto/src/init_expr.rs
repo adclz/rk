@@ -1,16 +1,13 @@
 use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{
-        GotoDefinitionResponse, InlayHint, InlayHintKind, InlayHintLabel, Position,
+        GotoDefinitionResponse, InlayHint, InlayHintKind, InlayHintLabel,
         request::GotoDeclarationResponse,
     },
 };
 use hir::{
     HirNodeInfo,
-    hir_def::expressions::expression::{InitExpr, InitExprKind},
-    hir_ty::{
-        ty::{self, Type},
-    },
+    hir_def::expressions::expression::InitExprKind,
 };
 
 use crate::{
@@ -21,7 +18,7 @@ use crate::{
 impl<'db> ToProtocol<'db> for InitExprWithTypeContext<'db> {
     fn inlay_hint(&'db self, db: &'db dyn BaseDatabase) -> Option<InlayHint> {
         match self.init_expr.kind(db) {
-            InitExprKind::StructElement { name, value } => Some(InlayHint {
+            InitExprKind::StructElement { name, value: _ } => Some(InlayHint {
                 position: name.get_span(db).lsp().end,
                 label: InlayHintLabel::String(format!(": {}", self.ty.type_name(db))),
                 kind: Some(InlayHintKind::TYPE),

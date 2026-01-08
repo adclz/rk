@@ -12,7 +12,8 @@ use hir::{
 };
 
 use crate::{
-    completions::static_snippets, to_proto::{HasComment, ToProtocol},
+    completions::static_snippets,
+    to_proto::{HasComment, ToProtocol},
 };
 
 impl<'db> ToProtocol<'db> for Spec<'db> {
@@ -89,18 +90,15 @@ impl<'db> ToProtocol<'db> for Spec<'db> {
                 .collect::<Vec<_>>()
                 .into(),
             SpecKind::Ref(r) => r.completion(db, offset),
-            SpecKind::Target(target) => {
-                match resolve_namespace_access(db, &target.path) {
-                    Some(pou) => pou.completion(db, offset),
-                    None => {
-                        let mut results = vec![];
-                        results.extend(static_snippets::elem_type_names());
-                        
+            SpecKind::Target(target) => match resolve_namespace_access(db, &target.path) {
+                Some(pou) => pou.completion(db, offset),
+                None => {
+                    let mut results = vec![];
+                    results.extend(static_snippets::elem_type_names());
 
-                        Some(results)
-                    }
+                    Some(results)
                 }
-            }
+            },
             _ => None,
         }
     }

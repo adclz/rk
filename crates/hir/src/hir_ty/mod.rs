@@ -1,10 +1,10 @@
-pub mod inheritance_solver;
-pub mod name_res;
-pub mod def_map;
 pub mod body_inference;
+pub mod def_map;
 pub mod display;
-pub mod ty;
+pub mod expr_store;
 pub mod infer;
+pub mod inheritance_solver;
 pub mod init_inference;
+pub mod name_res;
 pub mod resolver;
-pub mod expr_store; 
+pub mod ty;

@@ -1,18 +1,15 @@
-use auto_lsp::{
-    core::span::Span,
-    default::db::BaseDatabase,
-    lsp_types::CompletionItem,
-};
+use auto_lsp::{core::span::Span, default::db::BaseDatabase, lsp_types::CompletionItem};
 use hir::{
-    HasName, HirNodeInfo, hir_def::{
+    HasName,
+    hir_def::{
         pous::pou::Pou,
-        scope::{ScopeId, ScopeKind}, semantic_index::get_scope,
-    }, query_string::scope::query_scope_items
+        scope::{ScopeId, ScopeKind},
+        semantic_index::get_scope,
+    },
+    query_string::scope::query_scope_items,
 };
 
-use crate::{
-    completions::item_builder::CompletionBuilder, to_proto::ToProtocol,
-};
+use crate::{completions::item_builder::CompletionBuilder, to_proto::ToProtocol};
 
 pub mod class;
 pub mod function;
@@ -21,11 +18,7 @@ pub mod interface;
 pub mod method;
 
 pub trait PrecizeCompletion<'db, 'scope> {
-    fn head_completion(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        ctx: PouCompletionCtx<'db, 'scope>,
-    );
+    fn head_completion(&'db self, db: &'db dyn BaseDatabase, ctx: PouCompletionCtx<'db, 'scope>);
 }
 
 pub struct ScopeCompletionCtx<'db> {
@@ -75,8 +68,8 @@ impl<'db> ScopeCompletionCtx<'db> {
                     db,
                     PouCompletionCtx {
                         scope_ctx: &mut self,
-                        name_span: p.get_name_span(db), 
-                    }
+                        name_span: p.get_name_span(db),
+                    },
                 ),
                 Pou::Class(c) => c.head_completion(
                     db,
@@ -86,7 +79,9 @@ impl<'db> ScopeCompletionCtx<'db> {
                     },
                 ),
                 Pou::DataType(dt) => {
-                    if let Some(completions) = dt.spec(db).completion(db, self.offset) { self.items.extend_from_slice(&completions); }
+                    if let Some(completions) = dt.spec(db).completion(db, self.offset) {
+                        self.items.extend_from_slice(&completions);
+                    }
                 }
             },
             ScopeKind::MethodDecl(m) => {
@@ -97,8 +92,8 @@ impl<'db> ScopeCompletionCtx<'db> {
                         name_span: m.get_name_span(db),
                     },
                 );
-            },
-            _ => { }
+            }
+            _ => {}
         };
         self
     }

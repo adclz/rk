@@ -1,26 +1,17 @@
 use std::iter::FusedIterator;
-use std::ops::ControlFlow;
 use std::sync::Arc;
 
 use auto_lsp::core::ast::AstNode;
-use auto_lsp::core::span::Span;
 use auto_lsp::default::db::tracked::get_ast;
 use auto_lsp::default::db::{BaseDatabase, file::File};
 use rustc_hash::FxHashMap;
 use tracing::info_span;
 
-use crate::HirNodeInfo;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::analysis_error::AnalysisError;
-use crate::hir_def::expressions::expression::{BeginPathExpr, Expr, FuncCall, InitExpr, ParamAssign, PathExpr, VariableAccess};
-use crate::hir_def::expressions::spec::{Spec, StructElement};
-use crate::hir_def::expressions::statement::Stmt;
 use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::Pou;
-use crate::hir_def::pous::variable::VariableDecl;
 use crate::hir_def::scope::{Scope, ScopeId};
-use crate::hir_def::using::Using;
-use crate::hir_ty::inheritance_solver::MethodRef;
 
 /// Returns the semantic index of a given file
 #[tracing::instrument(skip_all, name = "query_semantic_index")]
@@ -80,7 +71,7 @@ impl<'db> SemanticIndex<'db> {
     }
 
     /// Returns a [`ScopeIterator`] starting from the given scope.
-    pub fn scope_iterator(&self, db: &'db dyn BaseDatabase, scope: ScopeId<'db>) -> ScopeIterator {
+    pub fn scope_iterator(&self, db: &'db dyn BaseDatabase, scope: ScopeId<'db>) -> ScopeIterator<'_> {
         ScopeIterator::new(db, &self.scopes, &scope)
     }
 

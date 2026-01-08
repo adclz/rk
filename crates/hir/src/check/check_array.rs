@@ -29,10 +29,14 @@ impl<'db> DataTypeCheck<'db> for Array<'db> {
                     }
                 }
                 (None, _) => {
-                    errors.push(ArrayError::InvalidArrayLowerValue { value: lower }.to_diagnostic(db));
+                    errors.push(
+                        ArrayError::InvalidArrayLowerValue { value: lower }.to_diagnostic(db),
+                    );
                 }
                 (_, None) => {
-                    errors.push(ArrayError::InvalidArrayUpperValue { value: upper }.to_diagnostic(db));
+                    errors.push(
+                        ArrayError::InvalidArrayUpperValue { value: upper }.to_diagnostic(db),
+                    );
                 }
             }
         }

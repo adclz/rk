@@ -1,17 +1,14 @@
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
-use auto_lsp::core::span::Span;
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::hir_def::expressions::expression::{InitExpr, VariableAccess};
-use crate::hir_ty::name_res::resolve_namespace_access; 
 use crate::{AstId, HasName};
 use crate::{
     HirNodeInfo,
     hir_def::{
         expressions::expression::{Expr, MultibitsPart},
         interned::identifier::Ident,
-        pous::pou::Pou,
         scope::ScopeId,
     },
 };

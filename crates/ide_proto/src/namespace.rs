@@ -7,13 +7,14 @@ use auto_lsp::{
     },
 };
 use hir::{
-    hir_def::{namespace::NamespaceDecl, semantic_index::get_scope}, HirNodeInfo
+    HirNodeInfo,
+    hir_def::{namespace::NamespaceDecl, semantic_index::get_scope},
 };
 
 use crate::{completions, to_proto::ToProtocol};
 
 impl<'db> ToProtocol<'db> for NamespaceDecl<'db> {
-    fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Hover> {
+    fn hover(&'db self, db: &'db dyn BaseDatabase, _offset: usize) -> Option<Hover> {
         let ns = self.path(db).to_string(db);
         Some(Hover {
             contents: HoverContents::Scalar(MarkedString::from_markdown(
@@ -43,7 +44,7 @@ NAMESPACE {ns}
         let name = self.path(db).to_string(db);
         let name = match name.len() {
             0 => "?".into(),
-            _ => name
+            _ => name,
         };
 
         builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
@@ -76,7 +77,7 @@ NAMESPACE {ns}
         db: &'db dyn BaseDatabase,
         offset: usize,
     ) -> Option<Vec<CompletionItem>> {
-        let scope = get_scope(db, self.scope_id(db));
+        let _scope = get_scope(db, self.scope_id(db));
 
         // Don't provide completions between the namespace keyword and the namespace name
         /*if self.get_name_span(db)?.end_byte > offset {

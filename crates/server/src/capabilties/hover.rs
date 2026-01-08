@@ -31,9 +31,7 @@ pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Opti
 
     let symbol = descendant_at(db, file, position);
     match symbol.and_then(|s| s.as_proto().hover(db, position)) {
-        Some(hover) => {
-            Ok(Some(hover))
-        },
+        Some(hover) => Ok(Some(hover)),
         None => Ok(None),
     }
 }

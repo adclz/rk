@@ -8,20 +8,24 @@ use crate::{
         expressions::{
             expression::{
                 AddOperatorKind, BeginPathExpr, Expr, FuncCall, InitExpr, MultOperatorKind,
-                ParamAssign, PathExpr, VariableAccess,
+                ParamAssign, PathExpr,
             },
             spec::{Enum, Spec},
             statement::Stmt,
         },
         interned::identifier::{Ident, SpanIdent},
         pous::variable::VariableDecl,
-        scope::{ScopeId, ScopeKind}, semantic_index::get_scope,
+        scope::{ScopeId, ScopeKind},
+        semantic_index::get_scope,
     },
     hir_ty::{
-        body_inference::{Adjust, Adjustment, BodyInferenceResult, infer_body_scope},
-        infer::coerce::CoerceError,
+        body_inference::{Adjust, Adjustment},
         ty::{CallableType, Type},
-    }, query_string::{method::fuzzy_callable_type_parameters, scope::query_scope_items, variables::fuzzy_variables},
+    },
+    query_string::{
+        method::fuzzy_callable_type_parameters,
+        variables::fuzzy_variables,
+    },
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
@@ -135,25 +139,25 @@ impl<'db> ToIdeDiagnostic<'db> for BodyInferenceError<'db> {
     fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
         match self {
             Self::IsVarInput { var, access } => {
-                let mut diag = diag()
+                
+                diag()
                     .message(format!(
                         "{} is an input variable and can not be assigned",
                         var.get_name_ident(db).text(db)
                     ))
                     .range(access.get_span(db))
-                    .call();
-                diag
+                    .call()
             }
             Self::AssignCallableType { typ, access } => {
-                let mut diag = diag()
+                
+
+                diag()
                     .message(format!(
                         "'{}' is a callable type and can not be assigned",
                         typ.get_name_ident(db).text(db)
                     ))
                     .range(access.get_span(db))
-                    .call();
-
-                diag
+                    .call()
             }
             Self::DirectType { expr, typ } => diag()
                 .message(format!(
@@ -185,7 +189,9 @@ impl<'db> ToIdeDiagnostic<'db> for BodyInferenceError<'db> {
                 func_call,
                 callable,
             } => {
-                let mut diag = diag()
+                
+
+                diag()
                     .message(format!(
                         "'{}' expects {} parameter{}, but got {}",
                         callable.get_name_ident(db).text(db),
@@ -197,17 +203,15 @@ impl<'db> ToIdeDiagnostic<'db> for BodyInferenceError<'db> {
                         actual
                     ))
                     .range(func_call.path(db).get_span(db))
-                    .call();
-
-                diag
+                    .call()
             }
             Self::UnknownNonFormalParameter { func, expr, param } => {
-                let mut diag = diag()
+                
+
+                diag()
                     .message(format!("no parameter at index '{}'", param))
                     .range(expr.get_span(db))
-                    .call();
-
-                diag
+                    .call()
             }
             Self::UnknownInputParameter { func, param } => {
                 let mut diag = diag()
@@ -240,7 +244,7 @@ impl<'db> ToIdeDiagnostic<'db> for BodyInferenceError<'db> {
                     .call();
 
                 diag.with_related(Related::new(
-                    format!("previously defined here"),
+                    "previously defined here".to_string(),
                     param_1.get_scope_id(db).file(db),
                     param_1.get_span(db),
                 ));
@@ -297,22 +301,17 @@ impl<'db> ToIdeDiagnostic<'db> for BodyInferenceError<'db> {
                     .call();
 
                 if let ScopeKind::Pou(pou) = get_scope(db, *scope).kind {
-                    fuzzy_variables(
-                        db,
-                        pou,
-                        &mut diag,
-                        expr.ident(db).as_str(db),
-                    )
+                    fuzzy_variables(db, pou, &mut diag, expr.ident(db).as_str(db))
                 }
                 diag
             }
             Self::NoSpecItemInScope { spec, scope } => {
-                let diag = diag()
-                    .message(format!("no item found in scope"))
-                    .range(spec.get_span(db))
-                    .call();
+                
 
-                diag
+                diag()
+                    .message("no item found in scope".to_string())
+                    .range(spec.get_span(db))
+                    .call()
             }
             Self::NoSuchField { expr, ident, ty } => diag()
                 .message(format!(

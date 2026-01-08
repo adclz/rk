@@ -2,12 +2,14 @@ use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, Related, diag};
 
 use crate::{
-    HasName, HirNodeInfo, check::errors::analysis_error::{AnalysisError, DiagnosticDescription, ToIdeDiagnostic}, hir_def::{
-        expressions::{expression::PathExpr, invocation::Invocation}, interned::namespace::SpanNamespaceAccess, pous::{
-            pou::Pou,
-            variable::VariableDecl,
-        }
-    }, hir_ty::{inheritance_solver::MethodRef, ty::Type}
+    HasName, HirNodeInfo,
+    check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic},
+    hir_def::{
+        expressions::{expression::PathExpr, invocation::Invocation},
+        interned::namespace::SpanNamespaceAccess,
+        pous::pou::Pou,
+    },
+    hir_ty::{inheritance_solver::MethodRef, ty::Type},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -59,7 +61,7 @@ pub enum MethodError<'db> {
         expected: Type<'db>,
         got: Type<'db>,
         method: MethodRef<'db>,
-    }
+    },
 }
 
 impl<'db> From<MethodError<'db>> for AnalysisError<'db> {
@@ -79,7 +81,7 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                 .severity(DiagnosticSeverity::ERROR)
                 .range(access.get_span(db).clone())
                 .call(),
-            
+
             Self::MissingOverride {
                 base_method,
                 derived_method,
@@ -254,13 +256,20 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                     .call();
 
                 diag.with_related(Related::new(
-                    format!("base method '{}' is declared here", m1.get_name_ident(db).text(db)),
+                    format!(
+                        "base method '{}' is declared here",
+                        m1.get_name_ident(db).text(db)
+                    ),
                     m1.get_scope_id(db).file(db),
                     m1.get_name_span(db),
                 ));
                 diag
             }
-            Self::SignatureTypeMismatch { expected, got, method } => {
+            Self::SignatureTypeMismatch {
+                expected,
+                got,
+                method,
+            } => {
                 let mut diag = diag()
                     .message(format!(
                         "method '{}' has incompatible parameter types: expected '{}', got '{}'",

@@ -23,7 +23,7 @@ pub fn resolve_func_call<'db>(
     ctx: &mut BodyInferenceResult<'db>,
 ) {
     resolver.resolve_begin_path_expr(db, func_call.path(db), ctx);
-    let mut typ = ctx
+    let typ = ctx
         .type_of_begin_expr_with_adjustments(db, func_call.path(db))
         .unwrap_or_default();
 
@@ -48,8 +48,8 @@ pub fn resolve_func_call<'db>(
                 BodyInferenceError::IncorrectNumberOfParameters {
                     expected: callable.var_len_params(db),
                     actual: len,
-                    func_call: func_call,
-                    callable: callable,
+                    func_call,
+                    callable,
                 }
                 .to_diagnostic(db),
             );
@@ -113,7 +113,7 @@ pub fn resolve_func_call<'db>(
                         ctx.errors.push(
                             BodyInferenceError::UnknownInputParameter {
                                 func: callable,
-                                param: param,
+                                param,
                             }
                             .to_diagnostic(db),
                         );
@@ -164,7 +164,7 @@ pub fn resolve_func_call<'db>(
                         ctx.errors.push(
                             BodyInferenceError::UnknownOutputParameter {
                                 func: callable,
-                                param: param,
+                                param,
                             }
                             .to_diagnostic(db),
                         );
@@ -172,7 +172,6 @@ pub fn resolve_func_call<'db>(
                 }
             }
         }
-        return;
     } else {
         // not a callable type
         ctx.errors

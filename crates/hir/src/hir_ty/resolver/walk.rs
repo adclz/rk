@@ -1,19 +1,15 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    CallSite, HirNodeInfo,
+    HirNodeInfo,
     check::errors::{
         analysis_error::ToIdeDiagnostic, body_inference::BodyInferenceError,
         init_inference::InitInferenceError,
     },
-    hir_def::{
-        expressions::{
+    hir_def::expressions::{
             expression::{BeginPathExpr, InitExpr, PathExpr},
             invocation::InvocationKind,
         },
-        scope::{ScopeId, ScopeKind},
-        semantic_index::semantic_index,
-    },
     hir_ty::{
         body_inference::{Adjustment, BodyInferenceResult},
         expr_store::{InitExprWalkStep, PathExprWalkStep},
@@ -58,55 +54,80 @@ impl<'db> Type<'db> {
             let inherited = inherited_methods(db, pou);
 
             let mut current = Type::new_pou(db, pou);
-            match expr.expr(db) {
-                Some(path_expr) => {
-                    /*
-                    CLASS:
+            if let Some(path_expr) = expr.expr(db) {
+                /*
+                CLASS:
 
-                    7Access reference
-                    9a THIS: Reference to own methods
-                    9b SUPER: Access reference to method in base class
+                7Access reference
+                9a THIS: Reference to own methods
+                9b SUPER: Access reference to method in base class
 
-                    FUNCTION BLOCKS:
+                FUNCTION BLOCKS:
 
-                    Access reference
-                    10a THIS:  Reference to own methods
-                    10b SUPER:  Access reference to method in base function block
-                    10c SUPER():  Access reference to body in base function block
-                    */
-                    match invocation.kind(db) {
-                        InvocationKind::This => {
-                            let steps = path_expr.flatten(db);
-                            let mut place = PlaceBuilder {
-                                current_typ: current,
-                                current_path: path_expr,
-                            };
-                            for step in steps {
-                                current.walk_path_expr(db, true, step, &mut place, ctx);
-                                // it is necessary to apply adjustments at each step
-                                current = ctx
-                                    .type_of_path_expr_with_adjustments(*step.get_expr())
-                                    .unwrap_or_default();
-                            }
+                Access reference
+                10a THIS:  Reference to own methods
+                10b SUPER:  Access reference to method in base function block
+                10c SUPER():  Access reference to body in base function block
+                */
+                match invocation.kind(db) {
+                    InvocationKind::This => {
+                        let steps = path_expr.flatten(db);
+                        let mut place = PlaceBuilder {
+                            current_typ: current,
+                            current_path: path_expr,
+                        };
+                        for step in steps {
+                            current.walk_path_expr(db, true, step, &mut place, ctx);
+                            // it is necessary to apply adjustments at each step
+                            current = ctx
+                                .type_of_path_expr_with_adjustments(*step.get_expr())
+                                .unwrap_or_default();
+                        }
 
-                            if current.is_never() {
-                                return;
-                            }
+                        if current.is_never() {
+                            return;
+                        }
 
-                            if let Type::MethodDecl(m) = current {
+                        if let Type::MethodDecl(m) = current {
+                            check_visibility(
+                                db,
+                                &invocation.as_call_site(db),
+                                m,
+                                &mut ctx.errors,
+                            );
+                            ctx.type_of_path_expr.insert(path_expr, Type::MethodDecl(m));
+                            return;
+                        } else {
+                            ctx.errors.push(
+                                BodyInferenceError::NoSuchField {
+                                    expr: path_expr,
+                                    ident: *path_expr.ident(db),
+                                    ty: current,
+                                }
+                                .to_diagnostic(db),
+                            );
+                            return;
+                        }
+                    }
+                    InvocationKind::Super => {
+                        let steps = path_expr.flatten(db);
+                        let first = steps.first();
+                        if let Some(PathExprWalkStep::Field { ident, expr }) = first {
+                            // check if it's an inherited method
+                            if let Some(method) = inherited.methods.get(&ident.ident) {
                                 check_visibility(
                                     db,
-                                    &invocation.as_call_site(db),
-                                    m,
+                                    &ident.as_call_site(db),
+                                    method.method,
                                     &mut ctx.errors,
                                 );
-                                ctx.type_of_path_expr.insert(path_expr, Type::MethodDecl(m));
-                                return;
+                                ctx.type_of_path_expr
+                                    .insert(*expr, Type::MethodDecl(method.method));
                             } else {
                                 ctx.errors.push(
                                     BodyInferenceError::NoSuchField {
                                         expr: path_expr,
-                                        ident: *path_expr.ident(db),
+                                        ident: **ident,
                                         ty: current,
                                     }
                                     .to_diagnostic(db),
@@ -114,44 +135,16 @@ impl<'db> Type<'db> {
                                 return;
                             }
                         }
-                        InvocationKind::Super => {
-                            let steps = path_expr.flatten(db);
-                            let first = steps.first();
-                            if let Some(PathExprWalkStep::Field { ident, expr }) = first {
-                                // check if it's an inherited method
-                                if let Some(method) = inherited.methods.get(&ident.ident) {
-                                    check_visibility(
-                                        db,
-                                        &ident.as_call_site(db),
-                                        method.method,
-                                        &mut ctx.errors,
-                                    );
-                                    ctx.type_of_path_expr
-                                        .insert(*expr, Type::MethodDecl(method.method));
-                                } else {
-                                    ctx.errors.push(
-                                        BodyInferenceError::NoSuchField {
-                                            expr: path_expr,
-                                            ident: **ident,
-                                            ty: current,
-                                        }
-                                        .to_diagnostic(db),
-                                    );
-                                    return;
-                                }
-                            }
-                        }
-                        InvocationKind::SuperBody => {}
                     }
+                    InvocationKind::SuperBody => {}
                 }
-                None => (),
             }
         }
 
         if let Some(path) = expr.expr(db) {
             // resolve path steps
-            return Resolver::for_scope(db, path.scope_id(db))
-                .resolve_path_steps(*self, db, path, ctx);
+            Resolver::for_scope(db, path.scope_id(db))
+                .resolve_path_steps(*self, db, path, ctx)
         }
     }
 
@@ -274,13 +267,13 @@ impl<'db> Type<'db> {
                         Ok(ty) => {
                             ctx.path_expr_adjustments
                                 .entry(place.current_path)
-                                .or_insert_with(Vec::new)
+                                .or_default()
                                 .push(Adjustment::new_deref(db, ty));
 
                             ctx.type_of_path_expr.insert(*expr, place.current_typ);
                             ctx.path_expr_adjustments
                                 .entry(*expr)
-                                .or_insert_with(Vec::new)
+                                .or_default()
                                 .push(Adjustment::new_deref(db, ty));
                         }
                         Err(non_ref) => {
@@ -302,7 +295,7 @@ impl<'db> Type<'db> {
                 Type::Array(arr) => {
                     ctx.path_expr_adjustments
                         .entry(place.current_path)
-                        .or_insert_with(Vec::new)
+                        .or_default()
                         .push(Adjustment::new_index(
                             db,
                             Type::new_spec(db, arr.of_type(db)),
@@ -311,7 +304,7 @@ impl<'db> Type<'db> {
                     ctx.type_of_path_expr.insert(*expr, place.current_typ);
                     ctx.path_expr_adjustments
                         .entry(*expr)
-                        .or_insert_with(Vec::new)
+                        .or_default()
                         .push(Adjustment::new_index(
                             db,
                             Type::new_spec(db, arr.of_type(db)),
@@ -361,7 +354,7 @@ impl<'db> Type<'db> {
                     _ => {
                         ctx.errors.push(
                             InitInferenceError::IndexNonArrayType {
-                                expr: expr,
+                                expr,
                                 ty: *self,
                             }
                             .to_diagnostic(db),
@@ -376,7 +369,7 @@ impl<'db> Type<'db> {
                 _ => {
                     ctx.errors.push(
                         InitInferenceError::IsElementaryType {
-                            expr: expr,
+                            expr,
                             ty: *self,
                         }
                         .to_diagnostic(db),
@@ -391,7 +384,7 @@ impl<'db> Type<'db> {
                         } else {
                             ctx.errors.push(
                                 InitInferenceError::NoSuchField {
-                                    expr: expr,
+                                    expr,
                                     ident: *ident,
                                     ty: *self,
                                 }
@@ -415,7 +408,7 @@ impl<'db> Type<'db> {
                         } else {
                             ctx.errors.push(
                                 InitInferenceError::NoSuchField {
-                                    expr: expr,
+                                    expr,
                                     ident: *ident,
                                     ty: *self,
                                 }
@@ -426,7 +419,7 @@ impl<'db> Type<'db> {
                     _ => {
                         ctx.errors.push(
                             InitInferenceError::NoSuchField {
-                                expr: expr,
+                                expr,
                                 ident: *ident,
                                 ty: *self,
                             }

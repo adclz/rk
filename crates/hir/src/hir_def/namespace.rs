@@ -5,7 +5,7 @@ use crate::hir_def::interned::namespace::NamespacePath;
 use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::scope::ScopeId;
 use crate::hir_def::semantic_index::semantic_index;
-use crate::{AstId, HasName, HirNodeInfo};
+use crate::{AstId, HirNodeInfo};
 
 #[salsa::tracked(debug)]
 pub struct NamespaceDecl<'db> {

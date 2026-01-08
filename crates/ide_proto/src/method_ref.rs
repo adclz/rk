@@ -1,14 +1,14 @@
 use auto_lsp::{
     core::document_symbols_builder::DocumentSymbolsBuilder,
     default::db::BaseDatabase,
-    lsp_types::{
-        CompletionItem, Hover, HoverContents, MarkupContent, MarkupKind, SymbolKind
-    },
+    lsp_types::{CompletionItem, Hover, HoverContents, MarkupContent, MarkupKind, SymbolKind},
 };
-use hir::{HasName, HirNodeInfo, hir_ty::{inheritance_solver::MethodRef, ty::Type}};
+use hir::{
+    HasName, HirNodeInfo,
+    hir_ty::{inheritance_solver::MethodRef, ty::Type},
+};
 
 use crate::to_proto::{HasComment, ToProtocol};
-
 
 impl<'db> ToProtocol<'db> for MethodRef<'db> {
     fn document_symbols(&self, db: &'db dyn BaseDatabase, builder: &mut DocumentSymbolsBuilder) {
@@ -77,8 +77,8 @@ impl<'db> ToProtocol<'db> for MethodRef<'db> {
 
     fn completion(
         &'db self,
-        db: &'db dyn BaseDatabase,
-        offset: usize,
+        _db: &'db dyn BaseDatabase,
+        _offset: usize,
     ) -> Option<Vec<CompletionItem>> {
         None
     }

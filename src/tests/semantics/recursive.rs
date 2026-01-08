@@ -1,10 +1,10 @@
 use std::sync::{Arc, RwLock};
 
+use crate::tests::utils::{add_sources, with_log_db};
 use auto_lsp::salsa::Event;
 use db::RootDatabase;
 use insta::assert_debug_snapshot;
 use rstest::rstest;
-use crate::tests::utils::{add_sources, with_log_db};
 
 /*
 #[rstest]

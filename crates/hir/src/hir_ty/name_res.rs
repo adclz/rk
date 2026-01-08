@@ -2,7 +2,8 @@ use auto_lsp::default::db::BaseDatabase;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    HasName, HirNodeInfo, hir_def::{
+    HasName, HirNodeInfo,
+    hir_def::{
         interned::{
             identifier::{Ident, SpanIdent},
             namespace::{NamespaceAccess, NamespacePath},
@@ -11,7 +12,7 @@ use crate::{
         pous::pou::Pou,
         scope::{ScopeId, ScopeKind},
         semantic_index::semantic_index,
-    }
+    },
 };
 
 // todo: for both indexes, use salsa::par_map to parallelize the construction

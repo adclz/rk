@@ -1,8 +1,14 @@
 use auto_lsp::default::db::BaseDatabase;
 
-use crate::{AstId, HasName, HirNodeInfo, hir_def::{
-    expressions::{spec::Spec, statement::Stmt}, interned::identifier::Ident, pous::variable::VariableDecl, scope::ScopeId
-}};
+use crate::{
+    AstId, HasName, HirNodeInfo,
+    hir_def::{
+        expressions::{spec::Spec, statement::Stmt},
+        interned::identifier::Ident,
+        pous::variable::VariableDecl,
+        scope::ScopeId,
+    },
+};
 
 #[salsa::tracked(debug)]
 pub struct Function<'db> {

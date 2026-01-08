@@ -1,25 +1,21 @@
 use auto_lsp::default::db::BaseDatabase;
-use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
-    AstId, CallSite, HirNodeInfo,
+    CallSite,
     check::errors::{
         analysis_error::ToIdeDiagnostic,
         body_inference::{BodyInferenceError, TypeError},
     },
     hir_def::{
         expressions::{
-            expression::{Expr, FuncCall, ParamAssignKind, VariableAccess},
-            invocation::{Invocation, InvocationKind},
-            statement::{CaseKind, Stmt, StmtKind},
+            expression::Expr,
+            statement::{Stmt, StmtKind},
         },
-        pous::{pou::Pou, variable::VariableDecl},
-        scope::{ScopeId, ScopeKind},
-        semantic_index::get_scope,
+        scope::ScopeId,
     },
     hir_ty::{
         body_inference::BodyInferenceResult,
-        infer::{expr::InferExprCtx, inference_table::InferenceTable},
+        infer::expr::InferExprCtx,
         resolver::{Resolver, func_call::resolve_func_call},
         ty::Type,
     },
@@ -57,7 +53,7 @@ impl<'db> InferenceCtx<'db> {
         for stmt in statements {
             match stmt.stmt(db) {
                 StmtKind::EmptyPathExpression(expr) => {
-                    let _ = resolver.resolve_begin_path_expr(db, *expr, ctx);
+                    resolver.resolve_begin_path_expr(db, *expr, ctx);
                 }
 
                 StmtKind::AssignmentAttempt { var, target } => { /* todo */ }

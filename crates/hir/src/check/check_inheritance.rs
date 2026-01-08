@@ -1,5 +1,4 @@
 use auto_lsp::default::db::BaseDatabase;
-use bitflags::Flags;
 use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
@@ -9,7 +8,6 @@ use crate::{
         check_semantic_index::Check,
         errors::{
             analysis_error::{AnalysisError, ToIdeDiagnostic},
-            body_inference::TypeError,
             duplicates::DuplicateError,
             inheritance::MethodError,
         },
@@ -18,7 +16,6 @@ use crate::{
     hir_ty::{
         body_inference::infer_body_scope,
         inheritance_solver::{MethodRef, inherited_methods},
-        resolver::Resolver,
         ty::Type,
     },
 };

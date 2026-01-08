@@ -1,12 +1,13 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    AstId, HasModifiers, HasName, HasVisibility, HirNodeInfo, Modifier, Visibility, hir_def::{
+    AstId, HasModifiers, HasName, HirNodeInfo, Modifier, Visibility,
+    hir_def::{
         expressions::{spec::Spec, statement::Stmt},
         interned::{identifier::Ident, namespace::SpanNamespaceAccess},
         pous::variable::VariableDecl,
         scope::ScopeId,
-    }
+    },
 };
 
 #[salsa::tracked(debug)]
@@ -47,7 +48,6 @@ impl<'db> HirNodeInfo<'db> for Class<'db> {
         self.scope_id(db)
     }
 }
-
 
 impl<'db> HasName<'db> for Class<'db> {
     fn get_name_ident(&self, db: &'db dyn BaseDatabase) -> Ident {
@@ -106,7 +106,6 @@ impl<'db> HirNodeInfo<'db> for MethodDecl<'db> {
         self.scope_id(db)
     }
 }
-
 
 impl<'db> HasName<'db> for MethodDecl<'db> {
     fn get_name_ident(&self, db: &'db dyn BaseDatabase) -> Ident {

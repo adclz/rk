@@ -167,7 +167,6 @@ END_FUNCTION_BLOCK"#;
     ");
 }
 
-
 #[rstest]
 fn invalid_i8_cases(mut with_db: RootDatabase) {
     let source = r#"

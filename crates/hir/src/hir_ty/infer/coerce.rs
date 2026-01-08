@@ -1,6 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
 use ide_diagnostic::IdeDiagnostic;
-use rustc_hash::FxHashMap;
 
 use crate::{
     CallSite, HirNodeInfo,
@@ -8,18 +7,11 @@ use crate::{
         analysis_error::ToIdeDiagnostic,
         body_inference::{BodyInferenceError, TypeError},
     },
-    hir_def::{
-        expressions::{
-            expression::{AddOperatorKind, Expr, MultOperatorKind, PathExpr, VariableAccess},
-            spec::{ElementarySpec, Spec},
-        },
-        scope::ScopeId,
-    },
+    hir_def::expressions::expression::{AddOperatorKind, MultOperatorKind},
     hir_ty::{
         body_inference::{Adjust, Adjustment, BodyInferenceResult},
-        infer::expr::InferExprCtx,
         resolver::Resolver,
-        ty::{InferType, Type},
+        ty::Type,
     },
 };
 
@@ -37,11 +29,10 @@ impl<'db> Type<'db> {
             return true;
         }
 
-        return self.is_numeric() && rhs.is_numeric();
+        self.is_numeric() && rhs.is_numeric()
     }
 
     // Type coercion check
-    #[must_use]
     pub fn coerce_with_type(
         &self,
         db: &'db dyn BaseDatabase,
@@ -69,14 +60,14 @@ impl<'db> Type<'db> {
             (Type::Enum(e1), Type::EnumVariant(e2)) => Ok(()),
             // same types are assignable
             (Type::Struct(s1), Type::Struct(s2)) => {
-                return match s1.eq(s2) {
+                match s1.eq(s2) {
                     true => Ok(()),
                     false => Err(CoerceError {
                         expected: *self,
                         actual: to,
                         adjustment: None,
                     }),
-                };
+                }
             }
             // check element spec equality
             (Type::StructElement(elem), rhs) => {
@@ -84,14 +75,14 @@ impl<'db> Type<'db> {
             }
             // same types are assignable
             (Type::Array(a1), Type::Array(a2)) => {
-                return match a1.eq(a2) {
+                match a1.eq(a2) {
                     true => Ok(()),
                     false => Err(CoerceError {
                         expected: *self,
                         actual: to,
                         adjustment: None,
                     }),
-                };
+                }
             }
             // check array spec equality
             (Type::Array(a1), rhs) => {
@@ -106,7 +97,7 @@ impl<'db> Type<'db> {
                     return Ok(());
                 }
                 // try implicit conversions in both directions
-                match !lhs.implicit_cast(*rhs).is_none() || !rhs.implicit_cast(lhs).is_none() {
+                match lhs.implicit_cast(*rhs).is_some() || rhs.implicit_cast(lhs).is_some() {
                     true => Ok(()),
                     false => Err(CoerceError {
                         expected: *self,
@@ -192,7 +183,7 @@ impl<'db> Type<'db> {
                     );
                 }
             }
-            Type::StructElement(element) => return,
+            Type::StructElement(element) => (),
             _ => {
                 // function and methods can be assigned IF they are the same
                 let self_assign = match self {

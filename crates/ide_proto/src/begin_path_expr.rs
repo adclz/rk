@@ -1,5 +1,10 @@
-use auto_lsp::{default::db::BaseDatabase, lsp_types::{GotoDefinitionResponse, Hover, request::GotoDeclarationResponse}};
-use hir::{hir_def::expressions::expression::BeginPathExpr, hir_ty::body_inference::infer_body_scope};
+use auto_lsp::{
+    default::db::BaseDatabase,
+    lsp_types::{GotoDefinitionResponse, Hover, request::GotoDeclarationResponse},
+};
+use hir::{
+    hir_def::expressions::expression::BeginPathExpr, hir_ty::body_inference::infer_body_scope,
+};
 
 use crate::{to_proto::ToProtocol, typ::TypeProto};
 
@@ -18,11 +23,7 @@ impl<'db> ToProtocol<'db> for BeginPathExpr<'db> {
             .and_then(|typ| typ.definition(db))
     }
 
-    fn hover(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        offset: usize,
-    ) -> Option<Hover> {
+    fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Hover> {
         let infer = infer_body_scope(db, self.scope_id(db));
         infer
             .type_of_begin_expr_with_adjustments(db, *self)

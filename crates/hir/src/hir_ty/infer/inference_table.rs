@@ -4,7 +4,7 @@ use rustc_hash::FxHashMap;
 use crate::{
     CallSite,
     check::errors::{analysis_error::ToIdeDiagnostic, body_inference::BodyInferenceError},
-    hir_def::expressions::{expression::Expr, spec::ElementarySpec},
+    hir_def::expressions::expression::Expr,
     hir_ty::{
         body_inference::BodyInferenceResult,
         resolver::Resolver,
@@ -29,8 +29,10 @@ pub struct InferenceTable<'db> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default)]
 pub enum InferMode<'db> {
     // No inference needed
+    #[default]
     NoInfer,
     // Still unresolved
     Unresolved,
@@ -47,11 +49,6 @@ pub enum InferMode<'db> {
     },
 }
 
-impl Default for InferMode<'_> {
-    fn default() -> Self {
-        InferMode::NoInfer
-    }
-}
 
 impl<'db> InferenceTable<'db> {
     pub fn new() -> Self {
@@ -204,7 +201,7 @@ impl<'db> InferenceTable<'db> {
                             results.errors.push(
                                 BodyInferenceError::InferLiteralError {
                                     expr: *expr,
-                                    source: source.clone(),
+                                    source,
                                     target: final_ty,
                                     err,
                                 }

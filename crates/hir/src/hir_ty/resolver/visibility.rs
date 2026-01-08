@@ -1,4 +1,3 @@
-
 /*
 Methods and specifiers
 
@@ -24,7 +23,15 @@ and its derivations (default).
 use auto_lsp::default::db::BaseDatabase;
 use ide_diagnostic::IdeDiagnostic;
 
-use crate::{CallSite, HasVisibility, HirNodeInfo, Visibility, check::errors::{analysis_error::ToIdeDiagnostic, visibility::VisibilityError}, hir_def::{namespace::NamespaceDecl, scope::{ScopeId, ScopeKind}, semantic_index::{get_scope, semantic_index}}};
+use crate::{
+    CallSite, HasVisibility, HirNodeInfo, Visibility,
+    check::errors::{analysis_error::ToIdeDiagnostic, visibility::VisibilityError},
+    hir_def::{
+        namespace::NamespaceDecl,
+        scope::{ScopeId, ScopeKind},
+        semantic_index::{get_scope, semantic_index},
+    },
+};
 
 pub fn check_visibility<'db>(
     db: &'db dyn BaseDatabase,
@@ -59,7 +66,7 @@ pub fn check_visibility<'db>(
         if calling_scope != target_scope {
             errors.push(
                 VisibilityError::Private {
-                    call_site: call_site.clone(),
+                    call_site: *call_site,
                     target: target.as_call_site(db),
                 }
                 .to_diagnostic(db),
@@ -76,7 +83,7 @@ pub fn check_visibility<'db>(
             _ => {
                 errors.push(
                     VisibilityError::Internal {
-                        call_site: call_site.clone(),
+                        call_site: *call_site,
                         target: target.as_call_site(db),
                         result,
                     }
@@ -93,7 +100,7 @@ pub fn check_visibility<'db>(
     {
         errors.push(
             VisibilityError::Protected {
-                call_site: call_site.clone(),
+                call_site: *call_site,
                 target: target.as_call_site(db),
             }
             .to_diagnostic(db),

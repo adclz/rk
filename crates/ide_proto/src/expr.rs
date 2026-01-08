@@ -1,14 +1,12 @@
 use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{
-        GotoDefinitionResponse, Hover, HoverContents, InlayHint, InlayHintKind, InlayHintLabel,
-        MarkupContent, MarkupKind, request::GotoDeclarationResponse,
+        GotoDefinitionResponse, Hover, InlayHint, request::GotoDeclarationResponse,
     },
 };
 use hir::{
-    HirNodeInfo,
-    hir_def::expressions::expression::{Expr, ExprKind, PrimaryExpr, RefValue},
-    hir_ty::{body_inference::infer_body_scope, ty::Type},
+    hir_def::expressions::expression::Expr,
+    hir_ty::body_inference::infer_body_scope,
 };
 
 use crate::{to_proto::ToProtocol, typ::TypeProto};
@@ -18,7 +16,7 @@ impl<'db> ToProtocol<'db> for Expr<'db> {
         let infer = infer_body_scope(db, self.scope_id(db));
         infer
             .type_of_expr
-            .get(&self)
+            .get(self)
             .and_then(|v| v.inlay_hint(db, self))
     }
 
@@ -26,7 +24,7 @@ impl<'db> ToProtocol<'db> for Expr<'db> {
         let infer = infer_body_scope(db, self.scope_id(db));
         infer
             .type_of_expr
-            .get(&self)
+            .get(self)
             .and_then(|typ| typ.hover(db, offset, self))
     }
 
@@ -34,7 +32,7 @@ impl<'db> ToProtocol<'db> for Expr<'db> {
         let infer = infer_body_scope(db, self.scope_id(db));
         infer
             .type_of_expr
-            .get(&self)
+            .get(self)
             .and_then(|typ| typ.declaration(db))
     }
 
@@ -42,7 +40,7 @@ impl<'db> ToProtocol<'db> for Expr<'db> {
         let infer = infer_body_scope(db, self.scope_id(db));
         infer
             .type_of_expr
-            .get(&self)
+            .get(self)
             .and_then(|typ| typ.definition(db))
     }
 }

@@ -30,16 +30,11 @@ use crate::{
         },
         interned::namespace::NamespacePath,
         namespace::NamespaceDecl,
-        pous::{
-            pou::{Pou},
-            variable::VariableDecl,
-        },
+        pous::{pou::Pou, variable::VariableDecl},
         scope::ScopeId,
         semantic_index::{SemanticIndex, get_scope, semantic_index},
     },
-    hir_ty::{
-        name_res::pou_index,
-    },
+    hir_ty::name_res::pou_index,
 };
 
 pub trait Check<'db> {
@@ -57,7 +52,9 @@ impl<'db> Check<'db> for SemanticIndex<'db> {
             .iter()
             .for_each(|err| errors.push(err.to_diagnostic(db)));
 
-        self.pous(db).iter().for_each(|pou| pou.get_scope_id(db).check(db, errors));
+        self.pous(db)
+            .iter()
+            .for_each(|pou| pou.get_scope_id(db).check(db, errors));
         // Namespaces
         self.namespaces.iter().for_each(|ns| {
             check_duplicate_namespaces(db, *ns)

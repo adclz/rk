@@ -1,5 +1,4 @@
 use auto_lsp::default::db::BaseDatabase;
-use ide_diagnostic::IdeDiagnostic;
 
 pub mod body;
 pub mod func_call;
@@ -8,26 +7,17 @@ pub mod visibility;
 pub mod walk;
 
 use crate::{
-    CallSite, HasVisibility, HirNodeInfo, Visibility,
     check::errors::{
         analysis_error::ToIdeDiagnostic, body_inference::BodyInferenceError,
-        init_inference::InitInferenceError, visibility::VisibilityError,
     },
     hir_def::{
-        expressions::{
-            expression::{BeginPathExpr, InitExpr, PathExpr, VariableAccess, VariableAccessKind},
-            invocation::InvocationKind,
-        },
-        namespace::NamespaceDecl,
+        expressions::expression::{BeginPathExpr, PathExpr, VariableAccess, VariableAccessKind},
         pous::pou::Pou,
         scope::{ScopeId, ScopeKind},
-        semantic_index::{get_scope, semantic_index},
+        semantic_index::get_scope,
     },
     hir_ty::{
-        body_inference::{Adjustment, BodyInferenceResult},
-        expr_store::{InitExprWalkStep, PathExprWalkStep},
-        inheritance_solver::inherited_methods,
-        init_inference::InitExprInferenceResult,
+        body_inference::BodyInferenceResult,
         name_res::resolve_namespace_access,
         resolver::walk::PlaceBuilder,
         ty::Type,
@@ -88,7 +78,7 @@ impl<'db> Resolver<'db> {
             return;
         };
 
-        match resolve_namespace_access(db, &access) {
+        match resolve_namespace_access(db, access) {
             Some(pou) => {
                 infer_results
                     .type_of_path_expr

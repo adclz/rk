@@ -8,12 +8,12 @@ use crate::{
         check_semantic_index::DataTypeCheck,
         errors::{
             analysis_error::ToIdeDiagnostic,
-            body_inference::{BodyInferenceError, TypeError},
+            body_inference::TypeError,
             duplicates::DuplicateError,
             enum_::EnumError,
         },
     },
-    hir_def::expressions::spec::{ElementarySpec, Enum, SpecKind},
+    hir_def::expressions::spec::{ElementarySpec, Enum},
     hir_ty::{
         body_inference::BodyInferenceResult, infer::expr::InferExprCtx, resolver::Resolver,
         ty::Type,

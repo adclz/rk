@@ -3,15 +3,15 @@ use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    HasName, check::{
+    HasName,
+    check::{
         check_semantic_index::DataTypeCheck,
-        errors::{
-            analysis_error::ToIdeDiagnostic, duplicates::DuplicateError,
-        },
-    }, hir_def::{
+        errors::{analysis_error::ToIdeDiagnostic, duplicates::DuplicateError},
+    },
+    hir_def::{
         expressions::spec::{Struct, StructElement},
         interned::identifier::Ident,
-    }, hir_ty::ty::Type
+    },
 };
 
 impl<'db> DataTypeCheck<'db> for Struct<'db> {

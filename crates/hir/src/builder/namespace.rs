@@ -5,16 +5,15 @@ use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 
 use super::semantic_index::SemanticIndexBuilder;
-use crate::{Modifier, Visibility};
 use crate::check::errors::analysis_error::AnalysisError;
 use crate::check::errors::syntax::SyntaxError;
 use crate::hir_def::interned::identifier::SpanIdent;
-use crate::hir_def::interned::namespace::{NamespacePath, SpanNamespacePath};
+use crate::hir_def::interned::namespace::SpanNamespacePath;
 use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::scope::{Scope, ScopeKind};
+use crate::Visibility;
 
 impl<'db> SemanticIndexBuilder<'db> {
-    #[must_use]
     pub fn parse_namespace(
         &mut self,
         parent_path: &[SpanIdent],
@@ -100,7 +99,8 @@ impl<'db> SemanticIndexBuilder<'db> {
             Some(previous_scope),
         );
 
-        self.scope_keys.insert(scope_id.scope(self.db), Arc::new(scope));
+        self.scope_keys
+            .insert(scope_id.scope(self.db), Arc::new(scope));
 
         // Then insert it into the map with its ID
         self.global_namespaces.push(result);

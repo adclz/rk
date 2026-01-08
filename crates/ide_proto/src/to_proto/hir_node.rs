@@ -5,16 +5,23 @@ use auto_lsp::{
     default::db::{BaseDatabase, file::File},
 };
 use hir::{
-    AstId, HirNodeInfo, hir_def::{
+    AstId, HirNodeInfo,
+    hir_def::{
         expressions::{
             expression::{BeginPathExpr, Expr, InitExpr, ParamAssign, PathExpr, VariableAccess},
             spec::{Spec, StructElement},
-        }, interned::namespace::SpanNamespaceAccess, namespace::NamespaceDecl, pous::{pou::Pou, variable::VariableDecl}, scope::ScopeId, semantic_index::{SemanticIndex, semantic_index}, using::Using
-    }, hir_ty::{inheritance_solver::MethodRef, ty::Type}
+        },
+        interned::namespace::SpanNamespaceAccess,
+        namespace::NamespaceDecl,
+        pous::{pou::Pou, variable::VariableDecl},
+        scope::ScopeId,
+        semantic_index::semantic_index,
+        using::Using,
+    },
+    hir_ty::{inheritance_solver::MethodRef, ty::Type},
 };
 
 use crate::to_proto::walk::WalkHir;
-
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SpanNamespaceAccessContext<'db> {

@@ -4,20 +4,23 @@ use auto_lsp::{
     core::span::Span,
     default::db::BaseDatabase,
     lsp_types::{
-        self, CompletionItem, CompletionItemKind, CompletionItemLabelDetails, InsertTextFormat, InsertTextMode, Range, TextEdit
+        self, CompletionItem, CompletionItemKind, CompletionItemLabelDetails, InsertTextFormat,
+        InsertTextMode, Range, TextEdit,
     },
 };
 use hir::{
-    HasName, HirNodeInfo, hir_def::{
+    HasName, HirNodeInfo,
+    hir_def::{
         expressions::spec::SpecKind,
         interned::namespace::NamespacePath,
         pous::{
-            pou::{Pou},
+            pou::Pou,
             variable::{VariableDecl, VariableKind},
         },
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
-    }, hir_ty::{name_res::resolve_namespace_access, ty::Type}
+    },
+    hir_ty::{name_res::resolve_namespace_access, ty::Type},
 };
 
 /// A builder for creating completion items with various options.
@@ -27,7 +30,7 @@ pub struct CompletionBuilder {
     // signature should only be used inside statements
     signature: bool,
     // Whether to include an import statement for the completion item.
-    // this range indicates where to insert the USING statement 
+    // this range indicates where to insert the USING statement
     import: Option<Range>,
 }
 
@@ -142,9 +145,7 @@ pub fn find_using_range<'db>(db: &'db dyn BaseDatabase, node: ScopeId<'db>) -> R
     let scope = get_scope(db, node);
     match scope.usings.last() {
         // Some USING directives exist; insert after the last one.
-        Some(u) => {
-            go_to_next_line(u.get_span(db))
-        }
+        Some(u) => go_to_next_line(u.get_span(db)),
         None => match scope.kind {
             // In case of Global scope and no USING directives, insert at the start of the file.
             ScopeKind::Global => lsp_types::Range {
@@ -158,12 +159,8 @@ pub fn find_using_range<'db>(db: &'db dyn BaseDatabase, node: ScopeId<'db>) -> R
                 },
             },
             // Same with namespaces and POUs: insert after their name declaration line.
-            ScopeKind::Namespace(ns) => {
-                go_to_next_line(ns.name_span(db))
-            }
-            ScopeKind::Pou(p) => {
-                go_to_next_line(p.get_name_span(db))
-            }
+            ScopeKind::Namespace(ns) => go_to_next_line(ns.name_span(db)),
+            ScopeKind::Pou(p) => go_to_next_line(p.get_name_span(db)),
             ScopeKind::MethodDecl(m) => {
                 // methods can't have USING directives, so we go to the parent scope
                 let parent_scope = get_scope(db, m.scope_id(db))
@@ -173,11 +170,6 @@ pub fn find_using_range<'db>(db: &'db dyn BaseDatabase, node: ScopeId<'db>) -> R
             }
         },
     }
-}
-
-enum IndentMode {
-    FollowCurrentLine,
-    Indent,
 }
 
 // todo: set indentation

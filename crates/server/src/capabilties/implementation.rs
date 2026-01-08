@@ -3,7 +3,6 @@ use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::request::{GotoImplementationParams, GotoImplementationResponse},
 };
-use hir::hir_def::semantic_index::semantic_index;
 use ide_proto::to_proto::{AsProtocol, hir_node::descendant_at};
 
 pub fn go_to_implementation(
@@ -27,6 +26,5 @@ pub fn go_to_implementation(
                 params.text_document_position_params.position
             )
         })?;
-    Ok(descendant_at(db, file, position)
-        .and_then(|s| s.as_proto().implementation(db)))
+    Ok(descendant_at(db, file, position).and_then(|s| s.as_proto().implementation(db)))
 }

@@ -3,14 +3,12 @@ use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    CallSite, HirNodeInfo,
-    check::errors::{body_inference::TypeError, init_inference::InitInferenceError},
+    CallSite,
     hir_def::{
         expressions::{
             expression::{InitExpr, InitExprKind},
             spec::Spec,
         },
-        interned::identifier::SpanIdent,
         pous::{data_type::DataType, variable::VariableDecl},
         scope::ScopeId,
     },
@@ -78,7 +76,7 @@ impl<'db> InitExprInferenceResult<'db> {
         typ: Type<'db>,
     ) {
         let map = expr.flatten(db);
-        self.resolve_expr(db, expr, typ, &map);
+        self.resolve_expr(db, expr, typ, map);
     }
 
     fn resolve_expr(

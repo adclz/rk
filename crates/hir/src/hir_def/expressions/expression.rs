@@ -111,7 +111,6 @@ pub struct FuncCall<'db> {
     pub params: Vec<ParamAssign<'db>>,
 }
 
-
 #[salsa::tracked(debug)]
 pub struct BeginPathExpr<'db> {
     pub invocation: Option<Invocation<'db>>,
@@ -176,7 +175,7 @@ impl<'db> BeginPathExpr<'db> {
             None => match self.expr(db) {
                 Some(path_expr) => path_expr.ident(db).text(db).as_str(),
                 None => "<invalid path>",
-            } 
+            },
         }
     }
 }
@@ -283,12 +282,12 @@ pub enum SizeOperator {
     L,
 }
 
-// Variable : Direct_Variable | Symbolic_Variable; 
-// Direct_Variable : '%' ( 'I' | 'Q' | 'M' ) ( 'X' | 'B' | 'W' | 'D' | 'L' )? Unsigned_Int ( '.' Unsigned_Int )*; 
+// Variable : Direct_Variable | Symbolic_Variable;
+// Direct_Variable : '%' ( 'I' | 'Q' | 'M' ) ( 'X' | 'B' | 'W' | 'D' | 'L' )? Unsigned_Int ( '.' Unsigned_Int )*;
 // Symbolic_Variable : ( ( 'THIS' '.' ) | ( Namespace_Name '.' )+ )? ( Var_Access | Multi_Elem_Var );
 // Var_Access : Identifier | Ref_Deref;
 
-// Variable_Access : Variable Multibit_Part_Access ?; 
+// Variable_Access : Variable Multibit_Part_Access ?;
 // Multibit_Part_Access : '.' ( Unsigned_Int | '%' ( 'X' | 'B' | 'W' | 'D' | 'L' ) ? Unsigned_Int );
 
 #[salsa::tracked(debug)]
@@ -377,7 +376,10 @@ pub enum Elementary {
 
 impl Elementary {
     pub fn has_infer(&self) -> bool {
-        matches!(self, Elementary::InferInteger(_) | Elementary::InferFloat(_))
+        matches!(
+            self,
+            Elementary::InferInteger(_) | Elementary::InferFloat(_)
+        )
     }
 }
 

@@ -8,7 +8,7 @@ use crate::{
         check_semantic_index::Check,
         errors::{
             analysis_error::ToIdeDiagnostic,
-            body_inference::{BodyInferenceError, TypeError},
+            body_inference::BodyInferenceError,
             duplicates::DuplicateError,
         },
     },

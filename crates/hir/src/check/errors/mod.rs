@@ -1,13 +1,13 @@
 pub mod analysis_error;
 pub mod array;
+pub mod body_inference;
 pub mod duplicates;
 pub mod enum_;
 pub mod inheritance;
+pub mod init_inference;
 pub mod literals;
 pub mod path_error;
 pub mod scope;
 pub mod subrange;
 pub mod syntax;
 pub mod visibility;
-pub mod body_inference;
-pub mod init_inference;

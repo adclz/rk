@@ -4,10 +4,15 @@ use auto_lsp::{
 };
 
 use hir::{
-    HasName, HirNodeInfo, hir_def::{
+    HasName, HirNodeInfo,
+    hir_def::{
         pous::pou::Pou,
         semantic_index::{get_scope, semantic_index},
-    }, hir_ty::{name_res::{namespace_index, pou_name_res_from_scope}, ty::Type}
+    },
+    hir_ty::{
+        name_res::{namespace_index, pou_name_res_from_scope},
+        ty::Type,
+    },
 };
 use ide_proto::to_proto::{hir_node::HirNode, walk::WalkHir};
 

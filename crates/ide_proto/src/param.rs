@@ -1,6 +1,11 @@
-use auto_lsp::{default::db::BaseDatabase, lsp_types::{GotoDefinitionResponse, Hover, InlayHint, request::GotoDeclarationResponse}};
+use auto_lsp::{
+    default::db::BaseDatabase,
+    lsp_types::{GotoDefinitionResponse, Hover, InlayHint, request::GotoDeclarationResponse},
+};
 use hir::{
-    HirNodeInfo, hir_def::expressions::expression::{ParamAssign, ParamAssignKind}, hir_ty::{body_inference::infer_body_scope, ty::Type}
+    HirNodeInfo,
+    hir_def::expressions::expression::{ParamAssign, ParamAssignKind},
+    hir_ty::{body_inference::infer_body_scope, ty::Type},
 };
 
 use crate::{to_proto::ToProtocol, typ::TypeProto};
@@ -16,11 +21,9 @@ impl<'db> ToProtocol<'db> for ParamAssign<'db> {
 
     fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Hover> {
         let infer = infer_body_scope(db, self.scope_id(db));
-        infer
-            .variable_of_param
-            .get(self)
-            .and_then(|var| Type::new_var(db, *var).hover(db, offset, &*get_param_start_pos(db, self)))
-
+        infer.variable_of_param.get(self).and_then(|var| {
+            Type::new_var(db, *var).hover(db, offset, &*get_param_start_pos(db, self))
+        })
     }
 
     fn declaration(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDeclarationResponse> {
@@ -40,10 +43,13 @@ impl<'db> ToProtocol<'db> for ParamAssign<'db> {
     }
 }
 
-fn get_param_start_pos<'db>(db: &'db dyn BaseDatabase, param: &'db ParamAssign<'db>) -> Box<dyn HirNodeInfo<'db> + 'db> {
+fn get_param_start_pos<'db>(
+    db: &'db dyn BaseDatabase,
+    param: &'db ParamAssign<'db>,
+) -> Box<dyn HirNodeInfo<'db> + 'db> {
     match param.kind(db) {
         ParamAssignKind::FormalInput { param, .. } => Box::new(param) as _,
         ParamAssignKind::FormalOutput { param, .. } => Box::new(param) as _,
-        ParamAssignKind::NonFormal { value } => Box::new(value) as _
+        ParamAssignKind::NonFormal { value } => Box::new(value) as _,
     }
 }

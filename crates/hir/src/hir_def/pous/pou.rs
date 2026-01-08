@@ -1,5 +1,5 @@
-use crate::{HasName, Modifier, Visibility};
-use auto_lsp::{core::span::Span, default::db::BaseDatabase};
+use crate::{HasName, Modifier};
+use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     hir_def::{

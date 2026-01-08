@@ -5,14 +5,12 @@ use auto_lsp::{
         request::GotoDeclarationResponse,
     },
 };
-use hir::{
-    HirNodeInfo, hir_def::expressions::spec::StructElement, hir_ty::ty::Type,
-};
+use hir::{HirNodeInfo, hir_def::expressions::spec::StructElement, hir_ty::ty::Type};
 
 use crate::to_proto::{HasComment, ToProtocol};
 
 impl<'db> ToProtocol<'db> for StructElement<'db> {
-    fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Hover> {
+    fn hover(&'db self, db: &'db dyn BaseDatabase, _offset: usize) -> Option<Hover> {
         let comment = self.get_comment(db).unwrap_or_default();
         let name = self.name(db).text(db);
         let type_name = Type::new_spec(db, self.spec(db)).type_name(db);

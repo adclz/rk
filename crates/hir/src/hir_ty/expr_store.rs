@@ -59,7 +59,10 @@ impl<'db> PathExpr<'db> {
                             ident: *target,
                             expr: self,
                         });
-                        result.push(PathExprWalkStep::Deref { expr: self, count: *count })
+                        result.push(PathExprWalkStep::Deref {
+                            expr: self,
+                            count: *count,
+                        })
                     }
                 }
             }

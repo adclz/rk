@@ -1,15 +1,12 @@
 use std::sync::Arc;
 
-use crate::{Modifier, Visibility};
+use crate::Visibility;
 use crate::{
     builder::{ParseSpec, expression::ParseExpr, semantic_index::SemanticIndexBuilder},
     check::errors::analysis_error::AnalysisError,
     hir_def::{
         interned::identifier::Ident,
-        pous::{
-            data_type::DataType,
-            pou::{Pou},
-        },
+        pous::{data_type::DataType, pou::Pou},
         scope::{Scope, ScopeKind},
     },
 };
@@ -50,16 +47,15 @@ impl<'db> SemanticIndexBuilder<'db> {
             None => None,
         };
 
-        let result = 
-            Pou::DataType(DataType::new(
-                self.db,
-                name,
-                data_type.name.cast(self.ast).into(),
-                spec,
-                init,
-                data_type.into(),
-                scope_id,
-            ));
+        let result = Pou::DataType(DataType::new(
+            self.db,
+            name,
+            data_type.name.cast(self.ast).into(),
+            spec,
+            init,
+            data_type.into(),
+            scope_id,
+        ));
 
         let scope = Scope::new(
             self.file,

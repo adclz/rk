@@ -12,7 +12,11 @@ use crate::hir_def::{
     expressions::{
         expression::{Expr, InitExpr, VariableAccess},
         spec::Spec,
-    }, interned::identifier::Ident, pous::variable::VariableDecl, scope::ScopeId, semantic_index::semantic_index
+    },
+    interned::identifier::Ident,
+    pous::variable::VariableDecl,
+    scope::ScopeId,
+    semantic_index::semantic_index,
 };
 
 pub mod builder;
@@ -44,8 +48,7 @@ impl MyTrait for Vec<u8> {
     fn example_method(&self) {
         // Implementation goes here
     }
-} 
-
+}
 
 pub struct WrapperVec(pub Vec<u8>);
 

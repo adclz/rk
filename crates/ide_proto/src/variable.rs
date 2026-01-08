@@ -10,10 +10,12 @@ use auto_lsp::{
     },
 };
 use hir::{
-    HasName, HirNodeInfo, hir_def::pous::variable::{VariableDecl, VariableKind}, hir_ty::ty::Type
+    HasName, HirNodeInfo,
+    hir_def::pous::variable::{VariableDecl, VariableKind},
+    hir_ty::ty::Type,
 };
 
-use crate::{SUPPORTED_TYPES, to_proto::{HasComment, ToProtocol}};
+use crate::to_proto::{HasComment, ToProtocol};
 
 impl<'db> ToProtocol<'db> for VariableDecl<'db> {
     fn document_symbols(&self, db: &'db dyn BaseDatabase, builder: &mut DocumentSymbolsBuilder) {
@@ -35,7 +37,7 @@ impl<'db> ToProtocol<'db> for VariableDecl<'db> {
         });
     }
 
-    fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Hover> {
+    fn hover(&'db self, db: &'db dyn BaseDatabase, _offset: usize) -> Option<Hover> {
         let comment = self.get_comment(db).unwrap_or_default();
         let kind = match self.kind(db) {
             VariableKind::Input => "INPUT",
@@ -87,7 +89,7 @@ impl<'db> ToProtocol<'db> for VariableDecl<'db> {
         self.spec(db).completion(db, offset)
     }
 
-    fn semantic_tokens(&'db self, db: &'db dyn BaseDatabase, builder: &mut SemanticTokensBuilder) {
+    fn semantic_tokens(&'db self, _db: &'db dyn BaseDatabase, _builder: &mut SemanticTokensBuilder) {
         /*match self.spec(db).tokens(db, builder) {
             Some((typ, modi)) => {
                 builder.push(

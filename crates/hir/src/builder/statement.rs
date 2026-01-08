@@ -13,7 +13,7 @@ pub trait ParseStatement<'db> {
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<Stmt<'db>, AnalysisError<'db>>;
-} 
+}
 
 impl<'db> ParseStatement<'db> for ast::generated::Stmt {
     fn to_statement(

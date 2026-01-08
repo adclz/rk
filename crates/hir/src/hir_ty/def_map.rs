@@ -3,20 +3,21 @@ use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    HasName, hir_def::{
+    HasName,
+    hir_def::{
         expressions::{
             expression::{Elementary, Expr, ExprKind, PrimaryExpr},
             spec::{Struct, StructElement},
         },
         interned::identifier::Ident,
         pous::{
-            class::MethodDecl,
-            pou::{Pou},
+            pou::Pou,
             variable::{VariableDecl, VariableKind},
         },
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
-    }, hir_ty::{inheritance_solver::MethodRef, name_res::resolve_namespace_access}
+    },
+    hir_ty::{inheritance_solver::MethodRef, name_res::resolve_namespace_access},
 };
 
 pub type FxIndexMap<K, V> = IndexMap<K, V, rustc_hash::FxBuildHasher>;
@@ -63,10 +64,7 @@ impl<'db> ScopeId<'db> {
     pub fn can_have_local_variables(&self, db: &'db dyn BaseDatabase) -> bool {
         match get_scope(db, *self).kind {
             ScopeKind::Global | ScopeKind::Namespace(_) => false,
-            ScopeKind::Pou(pou) => match pou {
-                Pou::Function(_) | Pou::FunctionBlock(_) | Pou::Class(_) => true,
-                _ => false,
-            },
+            ScopeKind::Pou(pou) => matches!(pou, Pou::Function(_) | Pou::FunctionBlock(_) | Pou::Class(_)),
             ScopeKind::MethodDecl(m) => true,
         }
     }

@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use crate::{Modifier, Visibility};
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::statement::ParseStatement;
 use crate::builder::{ParseSpec, ParseVarSection};
@@ -9,8 +8,9 @@ use crate::check::errors::syntax::SyntaxError;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use crate::hir_def::pous::class::{Class, MethodDecl};
-use crate::hir_def::pous::pou::{Pou};
+use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::scope::{Scope, ScopeKind};
+use crate::{Modifier, Visibility};
 use ast::generated::{ClassDecl, ClassVariables};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::{AstNode, AstNodeId};
@@ -104,19 +104,18 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
         };
 
-        let result = 
-            Pou::Class(Class::new(
-                self.db,
-                name,
-                class.name.cast(self.ast).into(),
-                extends,
-                implements,
-                variables,
-                self.parse_methods(&class.methods),
-                modifiers,
-                class.into(),
-                scope_id,
-            ));
+        let result = Pou::Class(Class::new(
+            self.db,
+            name,
+            class.name.cast(self.ast).into(),
+            extends,
+            implements,
+            variables,
+            self.parse_methods(&class.methods),
+            modifiers,
+            class.into(),
+            scope_id,
+        ));
 
         let scope = Scope::new(
             self.file,
@@ -134,9 +133,11 @@ impl<'db> SemanticIndexBuilder<'db> {
     }
 }
 
-
 impl<'db> SemanticIndexBuilder<'db> {
-    pub fn parse_methods(&mut self, class: &[AstNodeId<ast::generated::MethodDecl>]) -> Vec<MethodDecl<'db>> {
+    pub fn parse_methods(
+        &mut self,
+        class: &[AstNodeId<ast::generated::MethodDecl>],
+    ) -> Vec<MethodDecl<'db>> {
         let previous_scope = self.current_scope;
 
         class
@@ -144,7 +145,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             .filter_map(|m| {
                 let scope_id = self.generate_scope_id();
                 self.current_scope = scope_id;
-        
+
             let name = match Ident::from_node(self.db, self.file, m.cast(self.ast).name.cast(self.ast)) {
                 Ok(name) => name,
                 Err(error) => {
@@ -178,8 +179,8 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
 
             let mut body = vec![];
-            if let Some(body_node) = m.cast(self.ast).body.as_ref() {
-                if let ast::generated::FbDiagram_LadderDiagram_StmtList::StmtList(stmts) = body_node.cast(self.ast).children.cast(self.ast) {
+            if let Some(body_node) = m.cast(self.ast).body.as_ref()
+                && let ast::generated::FbDiagram_LadderDiagram_StmtList::StmtList(stmts) = body_node.cast(self.ast).children.cast(self.ast) {
                 for stmt in stmts.children.iter() {
                     match stmt.cast(self.ast).to_statement(self) {
                     Ok(statement) => body.push(statement),
@@ -187,7 +188,6 @@ impl<'db> SemanticIndexBuilder<'db> {
                     }
                 }
                 }
-            }
 
             let return_type: Option<_> = m
                 .cast(self.ast)

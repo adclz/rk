@@ -1,15 +1,14 @@
-use ast::generated::AddOperator;
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    CallSite, HirNodeInfo,
+    CallSite,
     check::errors::{
         analysis_error::ToIdeDiagnostic,
-        body_inference::{BodyInferenceError, TypeError},
+        body_inference::BodyInferenceError,
     },
     hir_def::{
         expressions::expression::{
-            AddOperatorKind, Expr, ExprKind, PrimaryExpr, RefValue, UnaryOperatorKind, VarAccess,
+            Expr, ExprKind, PrimaryExpr, RefValue, UnaryOperatorKind,
             VariableAccess,
         },
         pous::variable::VariableDecl,
@@ -17,7 +16,7 @@ use crate::{
     hir_ty::{
         body_inference::{Adjustment, BodyInferenceResult},
         infer::{coerce::CoerceResult, inference_table::InferenceTable},
-        resolver::{Resolver, body::InferenceCtx, func_call::resolve_func_call},
+        resolver::{Resolver, func_call::resolve_func_call},
         ty::Type,
     },
 };
@@ -150,7 +149,7 @@ impl<'db> InferExprCtx<'db> {
                         inference_result
                             .path_expr_adjustments
                             .entry(path)
-                            .or_insert_with(Vec::new)
+                            .or_default()
                             .push(Adjustment::new_ref(db, typ));
                     };
                     typ
@@ -194,7 +193,7 @@ impl<'db> InferExprCtx<'db> {
                 if let Err(err) = self.coerce_expressions(db, *left, *right, inference_results) {
                     inference_results.errors.push(err.into_non_addable(
                         db,
-                        inference_results.type_of_expr[&left],
+                        inference_results.type_of_expr[left],
                         CallSite::from_expr(db, *right),
                         *operator,
                     ));
@@ -208,7 +207,7 @@ impl<'db> InferExprCtx<'db> {
                 if let Err(err) = self.coerce_expressions(db, *left, *right, inference_results) {
                     inference_results.errors.push(err.into_non_multiplicable(
                         db,
-                        inference_results.type_of_expr[&left],
+                        inference_results.type_of_expr[left],
                         CallSite::from_expr(db, *right),
                         *operator,
                     ));
@@ -218,7 +217,7 @@ impl<'db> InferExprCtx<'db> {
                 if let Err(err) = self.coerce_expressions(db, *left, *right, inference_results) {
                     inference_results.errors.push(err.into_non_powerable(
                         db,
-                        inference_results.type_of_expr[&left],
+                        inference_results.type_of_expr[left],
                         CallSite::from_expr(db, *right),
                     ));
                 }

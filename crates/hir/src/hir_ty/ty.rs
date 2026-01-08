@@ -2,40 +2,35 @@ use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
     AstId, HasName, HirNodeInfo,
-    check::errors::{body_inference::BodyInferenceError, init_inference::InitInferenceError},
     hir_def::{
         expressions::{
             expression::{
-                BeginPathExpr, Elementary, Expr, ExprKind, FuncCall, InitExpr, InitExprKind,
-                Integer, ParamAssign, ParamAssignKind, PathExpr, PrimaryExpr, VariableAccess,
-                VariableAccessKind,
+                Elementary,
+                Integer,
             },
-            invocation::{self, Invocation, InvocationKind},
             spec::{Array, ElementarySpec, Enum, Spec, SpecKind, Struct, StructElement, SubRange},
-            statement::{Stmt, StmtKind},
         },
-        interned::identifier::{Ident, SpanIdent},
+        interned::identifier::Ident,
         pous::{
-            class::{Class, MethodDecl},
+            class::Class,
             data_type::DataType,
             function::Function,
             function_block::FunctionBlock,
-            interface::{Interface, MethodPrototype},
+            interface::Interface,
             pou::Pou,
             variable::VariableDecl,
         },
-        scope::{Scope, ScopeId, ScopeKind},
+        scope::ScopeId,
     },
     hir_ty::{
-        body_inference::{Adjustment, BodyInferenceResult},
         def_map::LocalDefMap,
         inheritance_solver::MethodRef,
-        init_inference::InitExprInferenceResult,
-        name_res::{pou_names_res, resolve_namespace_access},
+        name_res::resolve_namespace_access,
     },
 };
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, salsa::Update)]
+#[derive(Default)]
 pub enum Type<'db> {
     // Primitive types
     Elementary(ElementarySpec),
@@ -66,14 +61,10 @@ pub enum Type<'db> {
     // Never type, represents an unresolvable type
     // Important: this type will stop propagation of errors and
     // therefore *requires* a diagnostic to be emitted when created
+    #[default]
     Never,
 }
 
-impl Default for Type<'_> {
-    fn default() -> Self {
-        Type::Never
-    }
-}
 
 impl From<Elementary> for Type<'_> {
     fn from(elem: Elementary) -> Self {

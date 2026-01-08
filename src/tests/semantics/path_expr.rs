@@ -1,14 +1,8 @@
-use std::ops::ControlFlow;
-
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::default::db::file::File;
 use db::RootDatabase;
 use hir::HirNodeInfo;
-use hir::hir_def::semantic_index::SemanticIndex;
-use hir::hir_def::semantic_index::semantic_index;
 use hir::hir_ty::body_inference::infer_body_scope;
-use ide_proto::to_proto::hir_node::HirNode;
-use ide_proto::to_proto::walk::WalkHir;
 use insta::assert_snapshot;
 use rstest::rstest;
 

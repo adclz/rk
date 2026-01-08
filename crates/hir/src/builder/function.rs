@@ -1,15 +1,15 @@
 use std::sync::Arc;
 
-use crate::{Modifier, Visibility};
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::statement::ParseStatement;
 use crate::builder::{ParseSpec, ParseVarSection};
 use crate::check::errors::analysis_error::AnalysisError;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::pous::function::Function;
-use crate::hir_def::pous::pou::{Pou};
+use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::pous::variable::VariableDecl;
 use crate::hir_def::scope::{Scope, ScopeKind};
+use crate::Visibility;
 use ast::generated::FuncVariables;
 use auto_lsp::anyhow;
 
@@ -50,17 +50,16 @@ impl<'db> SemanticIndexBuilder<'db> {
         let name = Ident::from_node(self.db, self.file, func.name.cast(self.ast))?;
         let usings = self.parse_usings(&func.directives)?;
 
-        let result = 
-            Pou::Function(Function::new(
-                self.db,
-                name,
-                            func.name.cast(self.ast).into(),
-                variables,
-                statements,
-                return_type,
-                func.into(),
-                scope_id,
-            ));
+        let result = Pou::Function(Function::new(
+            self.db,
+            name,
+            func.name.cast(self.ast).into(),
+            variables,
+            statements,
+            return_type,
+            func.into(),
+            scope_id,
+        ));
 
         let scope = Scope::new(
             self.file,
@@ -71,7 +70,8 @@ impl<'db> SemanticIndexBuilder<'db> {
             Some(previous_scope),
         );
 
-        self.scope_keys.insert(scope_id.scope(self.db), Arc::new(scope));
+        self.scope_keys
+            .insert(scope_id.scope(self.db), Arc::new(scope));
 
         Ok(result)
     }

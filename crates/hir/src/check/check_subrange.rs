@@ -9,7 +9,7 @@ use crate::{
             analysis_error::ToIdeDiagnostic, body_inference::TypeError, subrange::SubRangeError,
         },
     },
-    hir_def::expressions::spec::{ElementarySpec, SpecKind, SubRange},
+    hir_def::expressions::spec::{ElementarySpec, SubRange},
     hir_ty::{
         body_inference::BodyInferenceResult, infer::expr::InferExprCtx, resolver::Resolver,
         ty::Type,

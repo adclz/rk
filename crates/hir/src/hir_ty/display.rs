@@ -1,18 +1,14 @@
 use auto_lsp::default::db::BaseDatabase;
-use compact_str::CompactString;
 use ide_diagnostic::{IdeDiagnostic, Related};
 
 use crate::{
     HasName, HirNodeInfo,
-    hir_def::{
-        expressions::{
+    hir_def::expressions::{
             expression::{
                 Elementary, Expr, ExprKind, InitExpr, InitExprKind, PrimaryExpr, RefValue,
             },
-            spec::{ElementarySpec, Spec, SpecKind},
+            spec::{ElementarySpec, SpecKind},
         },
-        pous::function::Function,
-    },
     hir_ty::ty::{CallableType, InferType, Type},
 };
 

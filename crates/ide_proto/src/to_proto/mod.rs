@@ -1,10 +1,20 @@
-use auto_lsp::{core::{document_symbols_builder::DocumentSymbolsBuilder, semantic_tokens_builder::SemanticTokensBuilder}, default::db::BaseDatabase, lsp_types::{CodeLens, CompletionItem, GotoDefinitionResponse, Hover, InlayHint, request::{GotoDeclarationResponse, GotoImplementationResponse}}};
-use hir::{HirNodeInfo};
+use auto_lsp::{
+    core::{
+        document_symbols_builder::DocumentSymbolsBuilder,
+        semantic_tokens_builder::SemanticTokensBuilder,
+    },
+    default::db::BaseDatabase,
+    lsp_types::{
+        CodeLens, CompletionItem, GotoDefinitionResponse, Hover, InlayHint,
+        request::{GotoDeclarationResponse, GotoImplementationResponse},
+    },
+};
+use hir::HirNodeInfo;
 
 use crate::{comment_index::comment_index, to_proto::hir_node::HirNode};
 
-pub mod walk;
 pub mod hir_node;
+pub mod walk;
 
 pub trait HasComment<'db>: HirNodeInfo<'db> {
     fn get_comment(&'db self, db: &'db dyn BaseDatabase) -> Option<String> {
@@ -26,8 +36,8 @@ pub trait ToProtocol<'db>: HirNodeInfo<'db> {
 
     fn completion(
         &'db self,
-        db: &'db dyn BaseDatabase,
-        offset: usize,
+        _db: &'db dyn BaseDatabase,
+        _offset: usize,
     ) -> Option<Vec<CompletionItem>> {
         None
     }
@@ -56,8 +66,7 @@ pub trait ToProtocol<'db>: HirNodeInfo<'db> {
         None
     }
 
-    fn semantic_tokens(&'db self, _db: &'db dyn BaseDatabase, builder: &mut SemanticTokensBuilder)  {
-        
+    fn semantic_tokens(&'db self, _db: &'db dyn BaseDatabase, _builder: &mut SemanticTokensBuilder) {
     }
 }
 

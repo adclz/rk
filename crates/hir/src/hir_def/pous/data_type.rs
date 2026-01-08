@@ -1,8 +1,13 @@
 use auto_lsp::default::db::BaseDatabase;
 
-use crate::{AstId, HasName, HirNodeInfo, hir_def::{
-    expressions::{expression::InitExpr, spec::Spec}, interned::identifier::Ident, scope::ScopeId
-}};
+use crate::{
+    AstId, HasName, HirNodeInfo,
+    hir_def::{
+        expressions::{expression::InitExpr, spec::Spec},
+        interned::identifier::Ident,
+        scope::ScopeId,
+    },
+};
 
 #[salsa::tracked(debug)]
 pub struct DataType<'db> {
@@ -32,7 +37,6 @@ impl<'db> HirNodeInfo<'db> for DataType<'db> {
         self.scope_id(db)
     }
 }
-
 
 impl<'db> HasName<'db> for DataType<'db> {
     fn get_name_ident(&self, db: &'db dyn BaseDatabase) -> Ident {

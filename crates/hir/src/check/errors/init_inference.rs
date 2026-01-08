@@ -6,7 +6,7 @@ use crate::{
     check::errors::{analysis_error::ToIdeDiagnostic, body_inference::TypeError},
     hir_def::{
         expressions::expression::InitExpr,
-        interned::identifier::{Ident, SpanIdent},
+        interned::identifier::Ident,
     },
     hir_ty::ty::Type,
     query_string::strukt::fuzzy_struct_fields,
@@ -40,25 +40,25 @@ impl<'db> ToIdeDiagnostic<'db> for InitInferenceError<'db> {
     fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
         match self {
             Self::IndexNonArrayType { expr, ty } => {
-                let mut diag = ide_diagnostic::diag()
+                
+
+                ide_diagnostic::diag()
                     .message(format!("cannot index into type '{}'", ty.type_name(db)))
                     .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                     .range(expr.get_span(db))
-                    .call();
-
-                diag
+                    .call()
             }
             Self::IsElementaryType { expr, ty } => {
-                let mut diag = ide_diagnostic::diag()
+                
+
+                ide_diagnostic::diag()
                     .message(format!(
                         "type '{}' is an elementary type and cannot be initiliazed with '()'",
                         ty.type_name(db)
                     ))
                     .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                     .range(expr.get_span(db))
-                    .call();
-
-                diag
+                    .call()
             }
             Self::NoSuchField { expr, ident, ty } => {
                 let mut diag = ide_diagnostic::diag()

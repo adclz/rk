@@ -1,8 +1,10 @@
 use hir::{
-    HasName, hir_def::{
+    HasName,
+    hir_def::{
         expressions::spec::{ElementarySpec, SpecKind},
-        pous::pou::{Pou},
-    }, hir_ty::{inheritance_solver::MethodRef, ty::Type}
+        pous::pou::Pou,
+    },
+    hir_ty::{inheritance_solver::MethodRef, ty::Type},
 };
 
 use auto_lsp::{
@@ -19,7 +21,8 @@ use serde_json::to_value;
 
 use crate::{
     completions::context::ScopeCompletionCtx,
-    implementation::find_all_implementations, to_proto::{HasComment, ToProtocol},
+    implementation::find_all_implementations,
+    to_proto::{HasComment, ToProtocol},
 };
 
 impl<'db> ToProtocol<'db> for Pou<'db> {

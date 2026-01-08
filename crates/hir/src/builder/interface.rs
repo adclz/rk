@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
-use crate::{Modifier, Visibility};
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::{ParseSpec, ParseVarSection};
 use crate::check::errors::analysis_error::AnalysisError;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use crate::hir_def::pous::interface::{Interface, MethodPrototype};
-use crate::hir_def::pous::pou::{Pou};
+use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::scope::{Scope, ScopeKind};
+use crate::Visibility;
 use auto_lsp::anyhow;
 
 impl<'db> SemanticIndexBuilder<'db> {
@@ -61,16 +61,15 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
         };
 
-        let result = 
-            Pou::Interface(Interface::new(
-                self.db,
-                name,
-                interface.name.cast(self.ast).into(),
-                extends,
-                methods,
-                interface.into(),
-                scope_id,
-            ));
+        let result = Pou::Interface(Interface::new(
+            self.db,
+            name,
+            interface.name.cast(self.ast).into(),
+            extends,
+            methods,
+            interface.into(),
+            scope_id,
+        ));
 
         let scope = Scope::new(
             self.file,

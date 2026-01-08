@@ -1,8 +1,9 @@
-
 use auto_lsp::default::db::{BaseDatabase, file::File};
 
 use crate::{
-    HasName, hir_def::semantic_index::semantic_index, query_string::query::{NamedSymbol, SymbolIndex, SymbolKind}
+    HasName,
+    hir_def::semantic_index::semantic_index,
+    query_string::query::{NamedSymbol, SymbolIndex, SymbolKind},
 };
 
 // Construct a symbol index for all POUs in the given file

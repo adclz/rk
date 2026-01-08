@@ -5,7 +5,7 @@ use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{CodeLens, CodeLensParams},
 };
-use hir::{hir_def::semantic_index::semantic_index};
+use hir::hir_def::semantic_index::semantic_index;
 use ide_proto::to_proto::{AsProtocol, walk::WalkHir};
 
 pub fn code_lens(

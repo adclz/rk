@@ -100,20 +100,19 @@ impl CommentIndex {
                     return Some(comment);
                 }
             }
-            if let Some(line_content) = document.texter.get_row(row) {
-                if !line_content.is_empty() {
+            if let Some(line_content) = document.texter.get_row(row)
+                && !line_content.is_empty() {
                     // Still no comment, but there's a non-empty line
                     break;
                 }
-            }
         }
 
         // Second: check for comments on the same line
         let same_line_comments = self.map.get(&line);
         let mut best_right: Option<&Comment> = None;
 
-        if let Some(comment) = same_line_comments {
-            if comment.range.start_point.column >= column {
+        if let Some(comment) = same_line_comments
+            && comment.range.start_point.column >= column {
                 match &best_right {
                     Some(existing) => {
                         if comment.range.start_point.column < existing.range.start_point.column {
@@ -123,7 +122,6 @@ impl CommentIndex {
                     None => best_right = Some(comment),
                 }
             }
-        }
 
         if best_right.is_some() {
             return best_right;

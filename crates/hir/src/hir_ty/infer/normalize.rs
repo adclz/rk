@@ -1,6 +1,6 @@
 use auto_lsp::default::db::BaseDatabase;
 
-use crate::{hir_def::expressions::expression::Expr, hir_ty::{body_inference::BodyInferenceResult, ty::{CallableType, Type}}};
+use crate::hir_ty::ty::{CallableType, Type};
 
 /*
     Normalizes a type into its identity data type.
@@ -15,7 +15,6 @@ use crate::{hir_def::expressions::expression::Expr, hir_ty::{body_inference::Bod
     This is an eager, lossy operation: information about how a value was
     reached (variable access, path steps, call origin, etc.) is discarded.
 */
-
 
 impl<'db> Type<'db> {
     pub fn normalize(&self, db: &'db dyn BaseDatabase) -> Type<'db> {

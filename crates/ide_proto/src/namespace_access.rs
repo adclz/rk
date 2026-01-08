@@ -4,15 +4,16 @@ use auto_lsp::{
     lsp_types::{CompletionItem, GotoDefinitionResponse, Hover, request::GotoDeclarationResponse},
 };
 use hir::{
-    HasName, HirNodeInfo, hir_def::{
-        interned::namespace::SpanNamespaceAccess,
-        pous::pou::Pou,
-    }, hir_ty::name_res::resolve_namespace_access, query_string::scope::query_scope_items
+    HasName, HirNodeInfo,
+    hir_def::{interned::namespace::SpanNamespaceAccess, pous::pou::Pou},
+    hir_ty::name_res::resolve_namespace_access,
+    query_string::scope::query_scope_items,
 };
 
 use crate::{
     CLASS, FUNCTION, INTERFACE, NAMESPACE, SUPPORTED_TYPES,
-    completions::item_builder::CompletionBuilder, to_proto::{ToProtocol, hir_node::SpanNamespaceAccessContext},
+    completions::item_builder::CompletionBuilder,
+    to_proto::{ToProtocol, hir_node::SpanNamespaceAccessContext},
 };
 
 impl<'db> ToProtocol<'db> for SpanNamespaceAccessContext<'db> {
@@ -40,7 +41,7 @@ impl<'db> ToProtocol<'db> for SpanNamespaceAccessContext<'db> {
     fn completion(
         &'db self,
         db: &'db dyn BaseDatabase,
-        offset: usize,
+        _offset: usize,
     ) -> Option<Vec<CompletionItem>> {
         let mut results = vec![];
 
@@ -86,7 +87,7 @@ impl<'db> ToProtocol<'db> for SpanNamespaceAccessContext<'db> {
     fn semantic_tokens(&'db self, db: &'db dyn BaseDatabase, builder: &mut SemanticTokensBuilder) {
         match self {
             Self::Extends(ext) => {
-                push_fragments(db, &ext, builder);
+                push_fragments(db, ext, builder);
                 if let Some(resolved) = resolve_namespace_access(db, &ext.path) {
                     match resolved {
                         Pou::Class(_) => {
@@ -108,8 +109,8 @@ impl<'db> ToProtocol<'db> for SpanNamespaceAccessContext<'db> {
                 }
             }
             Self::Implements(imp) => {
-                push_fragments(db, &imp, builder);
-                if let Some(resolved) = resolve_namespace_access(db, &imp.path) {
+                push_fragments(db, imp, builder);
+                if let Some(_resolved) = resolve_namespace_access(db, &imp.path) {
                     builder.push(
                         self.get_access().path.target.get_span(db).lsp(),
                         SUPPORTED_TYPES

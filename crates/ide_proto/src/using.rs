@@ -4,9 +4,7 @@ use auto_lsp::{
     lsp_types::{Hover, HoverContents, MarkedString},
 };
 use hir::{
-    HirNodeInfo,
     hir_def::using::Using,
-    hir_ty::name_res::{namespace_index, resolve_namespace_access},
 };
 
 use crate::{NAMESPACE, SUPPORTED_TYPES, to_proto::ToProtocol};
@@ -39,7 +37,7 @@ impl<'db> ToProtocol<'db> for Using<'db> {
     }
 
     fn semantic_tokens(&'db self, db: &'db dyn BaseDatabase, builder: &mut SemanticTokensBuilder) {
-        for (index, fragment) in self.path(db).fragments(db).iter().enumerate() {
+        for (index, _fragment) in self.path(db).fragments(db).iter().enumerate() {
             let span = self.path(db).get_fragment_ast_node(db, index).get_span();
             builder.push(
                 span.lsp(),

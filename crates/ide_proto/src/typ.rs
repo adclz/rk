@@ -1,6 +1,9 @@
 use auto_lsp::{
     default::db::BaseDatabase,
-    lsp_types::{GotoDefinitionResponse, Hover, HoverContents, InlayHint, InlayHintKind, InlayHintLabel, MarkupContent, MarkupKind, request::GotoDeclarationResponse},
+    lsp_types::{
+        GotoDefinitionResponse, Hover, HoverContents, InlayHint, InlayHintKind, InlayHintLabel,
+        MarkupContent, MarkupKind, request::GotoDeclarationResponse,
+    },
 };
 use hir::{HirNodeInfo, hir_ty::ty::Type};
 
@@ -20,15 +23,9 @@ pub(crate) trait TypeProto<'db> {
         _parent: &dyn HirNodeInfo<'db>,
     ) -> Option<Hover>;
 
-    fn definition(
-        &'db self,
-        _db: &'db dyn BaseDatabase,
-    ) -> Option<GotoDefinitionResponse>;
+    fn definition(&'db self, _db: &'db dyn BaseDatabase) -> Option<GotoDefinitionResponse>;
 
-    fn declaration(
-        &'db self,
-        _db: &'db dyn BaseDatabase,
-    ) -> Option<GotoDeclarationResponse>;
+    fn declaration(&'db self, _db: &'db dyn BaseDatabase) -> Option<GotoDeclarationResponse>;
 }
 
 impl<'db> TypeProto<'db> for Type<'db> {
@@ -55,7 +52,12 @@ impl<'db> TypeProto<'db> for Type<'db> {
         }
     }
 
-    fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize, parent: &dyn HirNodeInfo<'db>) -> Option<Hover> {        
+    fn hover(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        offset: usize,
+        parent: &dyn HirNodeInfo<'db>,
+    ) -> Option<Hover> {
         match self {
             Type::Variable(var) => var.hover(db, offset),
             _ => Some(Hover {
@@ -76,20 +78,14 @@ impl<'db> TypeProto<'db> for Type<'db> {
         }
     }
 
-    fn definition(
-            &'db self,
-            _db: &'db dyn BaseDatabase,
-        ) -> Option<GotoDefinitionResponse> {
+    fn definition(&'db self, _db: &'db dyn BaseDatabase) -> Option<GotoDefinitionResponse> {
         match self {
             Type::Variable(var) => var.definition(_db),
             _ => None,
         }
     }
 
-    fn declaration(
-            &'db self,
-            _db: &'db dyn BaseDatabase,
-        ) -> Option<GotoDeclarationResponse> {
+    fn declaration(&'db self, _db: &'db dyn BaseDatabase) -> Option<GotoDeclarationResponse> {
         match self {
             Type::Variable(var) => var.declaration(_db),
             _ => None,

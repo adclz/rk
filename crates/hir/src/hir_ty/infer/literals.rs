@@ -9,10 +9,7 @@ use crate::{
         },
         interned::identifier::Ident,
     },
-    hir_ty::{
-        body_inference::BodyInferenceResult,
-        ty::{InferType, Type},
-    },
+    hir_ty::ty::{InferType, Type},
 };
 
 use std::{f64, num::ParseIntError, u8};
@@ -63,8 +60,8 @@ pub struct ExplicitCast<'db> {
 
 impl<'db> ElementarySpec {
     /// Explicit casts according to IEC 61131-3 standard
-    /// 
-    /// See 6.6.1.6 Data type conversion 
+    ///
+    /// See 6.6.1.6 Data type conversion
     pub fn explicit_cast(&self, typ: ElementarySpec) -> Option<ExplicitCast<'db>> {
         use ElementarySpec::*;
         match typ {
@@ -195,8 +192,8 @@ impl<'db> ElementarySpec {
     }
 
     /// Implicit casts according to IEC 61131-3 standard
-    /// 
-    /// See 6.6.1.6 Data type conversion 
+    ///
+    /// See 6.6.1.6 Data type conversion
     pub fn implicit_cast(&self, typ: ElementarySpec) -> Option<ElementarySpec> {
         use ElementarySpec::*;
 
@@ -456,8 +453,8 @@ fn check_f32<'db>(
             .map_err(|err| InferLiteralError::TypeMismatch(err.to_string())),
         InferType::Integer(integer) => {
             let int_val = integer
-            .as_i32(db)
-            .map_err(|err| InferLiteralError::TypeMismatch(err.to_string()))?;
+                .as_i32(db)
+                .map_err(|err| InferLiteralError::TypeMismatch(err.to_string()))?;
             // IEC standard allows integer to float conversion
             Ok(Type::Elementary(ElementarySpec::Real))
         }
@@ -475,8 +472,8 @@ fn check_f64<'db>(
             .map_err(|err| InferLiteralError::TypeMismatch(err.to_string())),
         InferType::Integer(integer) => {
             let int_val = integer
-            .as_i64(db)
-            .map_err(|err| InferLiteralError::TypeMismatch(err.to_string()))?;
+                .as_i64(db)
+                .map_err(|err| InferLiteralError::TypeMismatch(err.to_string()))?;
             // IEC standard allows integer to float conversion
             Ok(Type::Elementary(ElementarySpec::LReal))
         }

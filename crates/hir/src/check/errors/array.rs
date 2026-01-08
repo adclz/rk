@@ -2,7 +2,9 @@ use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, diag};
 
 use crate::{
-    check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic}, hir_def::expressions::expression::Expr, HirNodeInfo
+    HirNodeInfo,
+    check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic},
+    hir_def::expressions::expression::Expr,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]

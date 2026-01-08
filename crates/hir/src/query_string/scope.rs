@@ -4,16 +4,19 @@ use auto_lsp::default::db::BaseDatabase;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
-    HasName, hir_def::{
+    HasName,
+    hir_def::{
         interned::{identifier::Ident, namespace::NamespacePath},
         pous::{pou::Pou, variable::VariableDecl},
         scope::{ScopeId, ScopeKind},
         semantic_index::semantic_index,
-    }, hir_ty::name_res::namespace_index, query_string::{
+    },
+    hir_ty::name_res::namespace_index,
+    query_string::{
         file::file_symbol_index,
         query::{Query, SymbolKind},
         variables::variable_symbol_index,
-    }
+    },
 };
 
 #[derive(Default)]

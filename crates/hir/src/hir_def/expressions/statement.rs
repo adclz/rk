@@ -1,10 +1,11 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
+    AstId, HirNodeInfo,
     hir_def::{
         expressions::expression::{BeginPathExpr, Expr, FuncCall, VariableAccess},
         scope::ScopeId,
-    }, AstId, HirNodeInfo
+    },
 };
 
 #[salsa::tracked(debug)]

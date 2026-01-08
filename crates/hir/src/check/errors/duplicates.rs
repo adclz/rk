@@ -2,11 +2,14 @@ use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
 use ide_diagnostic::{IdeDiagnostic, Related, diag};
 
 use crate::{
-    HasName, HirNodeInfo, check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic}, hir_def::{
+    HasName, HirNodeInfo,
+    check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic},
+    hir_def::{
         expressions::spec::StructElement,
         interned::identifier::SpanIdent,
         pous::{class::MethodDecl, interface::MethodPrototype, pou::Pou, variable::VariableDecl},
-    }, hir_ty::inheritance_solver::InheritedMethod
+    },
+    hir_ty::inheritance_solver::InheritedMethod,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
@@ -52,13 +55,19 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
         match self {
             Self::Pou { pou1, pou2 } => {
                 let mut diag = diag()
-                    .message(format!("duplicate POU '{}'", pou1.get_name_ident(db).text(db)))
+                    .message(format!(
+                        "duplicate POU '{}'",
+                        pou1.get_name_ident(db).text(db)
+                    ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(pou1.get_name_span(db))
                     .call();
 
                 diag.with_related(Related::new(
-                    format!("POU '{}' is already defined here", pou2.get_name_ident(db).text(db)),
+                    format!(
+                        "POU '{}' is already defined here",
+                        pou2.get_name_ident(db).text(db)
+                    ),
                     pou2.get_scope_id(db).file(db),
                     pou2.get_name_span(db),
                 ));
@@ -67,7 +76,10 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
             }
             Self::Variable { var1, var2 } => {
                 let mut diag = diag()
-                    .message(format!("duplicate variable '{}'", var1.get_name_ident(db).text(db)))
+                    .message(format!(
+                        "duplicate variable '{}'",
+                        var1.get_name_ident(db).text(db)
+                    ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(var1.get_name_span(db))
                     .call();
@@ -106,7 +118,10 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
             }
             Self::StructField { field1, field2 } => {
                 let mut diag = diag()
-                    .message(format!("duplicate field '{}'", field1.get_name_ident(db).text(db)))
+                    .message(format!(
+                        "duplicate field '{}'",
+                        field1.get_name_ident(db).text(db)
+                    ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(field1.get_name_span(db))
                     .call();
@@ -124,7 +139,10 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
             }
             Self::MethodDecl { method1, method2 } => {
                 let mut diag = diag()
-                    .message(format!("duplicate method '{}'", method1.get_name_ident(db).text(db)))
+                    .message(format!(
+                        "duplicate method '{}'",
+                        method1.get_name_ident(db).text(db)
+                    ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(method1.get_name_span(db))
                     .call();
@@ -142,7 +160,10 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
             }
             Self::MethodProt { method1, method2 } => {
                 let mut diag = diag()
-                    .message(format!("duplicate method '{}'", method1.get_name_ident(db).text(db)))
+                    .message(format!(
+                        "duplicate method '{}'",
+                        method1.get_name_ident(db).text(db)
+                    ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(method1.get_name_span(db))
                     .call();

@@ -1,13 +1,14 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    Modifier, Visibility,
-    AstId, HasName, HirNodeInfo, hir_def::{
-    expressions::statement::Stmt,
-    interned::{identifier::Ident, namespace::SpanNamespaceAccess},
-    pous::{class::MethodDecl, variable::VariableDecl},
-    scope::ScopeId,
-}};
+    AstId, HasName, HirNodeInfo, Modifier,
+    hir_def::{
+        expressions::statement::Stmt,
+        interned::{identifier::Ident, namespace::SpanNamespaceAccess},
+        pous::{class::MethodDecl, variable::VariableDecl},
+        scope::ScopeId,
+    },
+};
 
 #[salsa::tracked(debug)]
 pub struct FunctionBlock<'db> {

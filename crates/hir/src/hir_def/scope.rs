@@ -1,13 +1,13 @@
 use auto_lsp::default::db::{BaseDatabase, file::File};
 
 use crate::hir_def::pous::interface::MethodPrototype;
-use crate::{Modifier, Visibility};
 use crate::hir_def::{
     namespace::NamespaceDecl,
     pous::{class::MethodDecl, pou::Pou, variable::VariableDecl},
     semantic_index::get_scope,
     using::Using,
 };
+use crate::Visibility;
 
 #[salsa::tracked(debug)]
 pub struct ScopeId<'db> {
@@ -43,7 +43,10 @@ impl<'db> ScopeId<'db> {
         })
     }
 
-    pub fn method_prototypes(&self, db: &'db dyn BaseDatabase) -> Option<&Vec<MethodPrototype<'db>>> {
+    pub fn method_prototypes(
+        &self,
+        db: &'db dyn BaseDatabase,
+    ) -> Option<&Vec<MethodPrototype<'db>>> {
         Some(match get_scope(db, *self).kind {
             ScopeKind::Pou(pou) => match pou {
                 Pou::Interface(it) => it.methods(db),

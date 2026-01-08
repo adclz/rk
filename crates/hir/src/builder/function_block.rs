@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use crate::{Modifier, Visibility};
 use crate::builder::ParseVarSection;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::statement::ParseStatement;
@@ -9,9 +8,10 @@ use crate::check::errors::syntax::SyntaxError;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use crate::hir_def::pous::function_block::FunctionBlock;
-use crate::hir_def::pous::pou::{Pou};
+use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::pous::variable::VariableDecl;
 use crate::hir_def::scope::{Scope, ScopeKind};
+use crate::{Modifier, Visibility};
 use ast::generated::{FbDecl, FbVariables};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
@@ -110,20 +110,19 @@ impl<'db> SemanticIndexBuilder<'db> {
                 vec![]
             }
         };
-        let result = 
-            Pou::FunctionBlock(FunctionBlock::new(
-                self.db,
-                name,
-                func.name.cast(self.ast).into(),
-                extends,
-                implements,
-                variables,
-                self.parse_methods(&func.method),
-                statements,
-                modifiers,
-                func.into(),
-                scope_id,
-            ));
+        let result = Pou::FunctionBlock(FunctionBlock::new(
+            self.db,
+            name,
+            func.name.cast(self.ast).into(),
+            extends,
+            implements,
+            variables,
+            self.parse_methods(&func.method),
+            statements,
+            modifiers,
+            func.into(),
+            scope_id,
+        ));
 
         let scope = Scope::new(
             self.file,

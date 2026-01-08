@@ -1,17 +1,14 @@
 use crate::{
-    AstId, HasModifiers, HasName, HasVisibility, HirNodeInfo, Modifier, Visibility, hir_def::{
+    AstId, HasModifiers, HasName, HasVisibility, HirNodeInfo, Modifier, Visibility,
+    hir_def::{
         expressions::spec::Spec,
         interned::{identifier::Ident, namespace::SpanNamespaceAccess},
-        pous::{
-            class::MethodDecl,
-            interface::MethodPrototype,
-            pou::Pou,
-            variable::VariableDecl,
-        },
+        pous::{class::MethodDecl, interface::MethodPrototype, pou::Pou, variable::VariableDecl},
         scope::ScopeId,
-    }, hir_ty::name_res::resolve_namespace_access
+    },
+    hir_ty::name_res::resolve_namespace_access,
 };
-use auto_lsp::{core::span::Span, default::db::BaseDatabase};
+use auto_lsp::default::db::BaseDatabase;
 use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, salsa::Update, salsa::Supertype)]
@@ -138,7 +135,7 @@ pub struct InheritedMethodSet<'db> {
 
     pub duplicates: Vec<(InheritedMethod<'db>, InheritedMethod<'db>)>,
 
-    pub unresolved: Vec<SpanNamespaceAccess<'db>>
+    pub unresolved: Vec<SpanNamespaceAccess<'db>>,
 }
 
 impl<'db> InheritedMethodSet<'db> {
@@ -169,10 +166,7 @@ impl<'db> InheritedMethod<'db> {
 }
 
 #[salsa::tracked(returns(ref))]
-pub fn inherited_methods<'db>(
-    db: &'db dyn BaseDatabase,
-    pou: Pou<'db>,
-) -> InheritedMethodSet<'db> {
+pub fn inherited_methods<'db>(db: &'db dyn BaseDatabase, pou: Pou<'db>) -> InheritedMethodSet<'db> {
     let mut methods = FxHashMap::default();
     let mut duplicates = vec![];
     let mut unresolved = vec![];
