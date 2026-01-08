@@ -3,10 +3,10 @@ use std::ops::ControlFlow;
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::InlayHint;
 use db::RootDatabase;
-use hir::hir_def::semantic_index::HirNode;
 use hir::hir_def::semantic_index::semantic_index;
-use hir::walk::WalkHir;
-use ide_proto::ToProtocol;
+use ide_proto::to_proto::ToProtocol;
+use ide_proto::to_proto::hir_node::HirNode;
+use ide_proto::to_proto::walk::WalkHir;
 use insta::assert_debug_snapshot;
 use rstest::rstest;
 
@@ -208,7 +208,7 @@ END_FUNCTION_BLOCK"#;
     let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
     let mut result = vec![];
     let _ = sema.walk_hir(&with_db, &mut |n| {
-        if let HirNode::ResolvedParam(stmt) = n {
+        if let HirNode::Param(stmt) = n {
             if let Some(inlay_hint) = stmt.inlay_hint(&with_db) {
                 result.push(inlay_hint);
             }
@@ -227,7 +227,7 @@ END_FUNCTION_BLOCK"#;
                 ": BYTE",
             ),
             kind: Some(
-                Parameter,
+                Type,
             ),
             text_edits: None,
             tooltip: None,
@@ -248,7 +248,7 @@ END_FUNCTION_BLOCK"#;
                 ": INT",
             ),
             kind: Some(
-                Parameter,
+                Type,
             ),
             text_edits: None,
             tooltip: None,
@@ -269,7 +269,7 @@ END_FUNCTION_BLOCK"#;
                 ": REAL",
             ),
             kind: Some(
-                Parameter,
+                Type,
             ),
             text_edits: None,
             tooltip: None,
@@ -305,10 +305,13 @@ END_FUNCTION"#;
     let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
     let mut result = vec![];
     let _ = sema.walk_hir(&with_db, &mut |n| {
-        if let HirNode::ResolvedInitExpr(stmt) = n {
-            if let Some(inlay_hint) = stmt.inlay_hint(&with_db) {
-                result.push(inlay_hint);
+        match n {
+            HirNode::InitExprWithType(stmt) => {
+                if let Some(inlay_hint) = stmt.inlay_hint(&with_db) {
+                    result.push(inlay_hint);
+                }
             }
+            _ => (),
         }
         ControlFlow::Continue(())
     });

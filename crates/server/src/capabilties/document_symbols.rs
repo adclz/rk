@@ -1,5 +1,3 @@
-#![allow(deprecated)]
-
 use auto_lsp::{
     anyhow,
     core::document_symbols_builder::DocumentSymbolsBuilder,
@@ -7,7 +5,7 @@ use auto_lsp::{
     lsp_types::{DocumentSymbolParams, DocumentSymbolResponse},
 };
 use hir::hir_def::semantic_index::semantic_index;
-use ide_proto::ToProtocol;
+use ide_proto::to_proto::ToProtocol;
 
 pub fn document_symbols(
     db: &impl BaseDatabase,

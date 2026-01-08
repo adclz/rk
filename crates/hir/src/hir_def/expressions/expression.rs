@@ -111,7 +111,6 @@ pub struct FuncCall<'db> {
     pub params: Vec<ParamAssign<'db>>,
 }
 
-
 #[salsa::tracked(debug)]
 pub struct BeginPathExpr<'db> {
     pub invocation: Option<Invocation<'db>>,
@@ -150,12 +149,12 @@ impl<'db> HirNodeInfo<'db> for PathExpr<'db> {
         match &self.expr(db) {
             PathExprKind::Field(field_expr) => match field_expr.var {
                 VarAccess::Simple(ref simple) => simple.id,
-                VarAccess::Deref(ref deref) => deref.id,
+                VarAccess::Deref(ref deref, _) => deref.id,
             },
             PathExprKind::Index(index_expr) => index_expr.path.get_id(db),
             PathExprKind::VarAccess(var_access) => match var_access {
                 VarAccess::Simple(simple) => simple.id,
-                VarAccess::Deref(deref) => deref.id,
+                VarAccess::Deref(deref, _) => deref.id,
             },
         }
     }
@@ -176,7 +175,7 @@ impl<'db> BeginPathExpr<'db> {
             None => match self.expr(db) {
                 Some(path_expr) => path_expr.ident(db).text(db).as_str(),
                 None => "<invalid path>",
-            } 
+            },
         }
     }
 }
@@ -186,12 +185,12 @@ impl<'db> PathExpr<'db> {
         match &self.expr(db) {
             PathExprKind::Field(field_expr) => match field_expr.var {
                 VarAccess::Simple(ref simple) => *simple,
-                VarAccess::Deref(ref deref) => *deref,
+                VarAccess::Deref(ref deref, _) => *deref,
             },
             PathExprKind::Index(index_expr) => index_expr.path.ident(db),
             PathExprKind::VarAccess(var_access) => match var_access {
                 VarAccess::Simple(simple) => *simple,
-                VarAccess::Deref(deref) => *deref,
+                VarAccess::Deref(deref, _) => *deref,
             },
         }
     }
@@ -283,12 +282,12 @@ pub enum SizeOperator {
     L,
 }
 
-// Variable : Direct_Variable | Symbolic_Variable; 
-// Direct_Variable : '%' ( 'I' | 'Q' | 'M' ) ( 'X' | 'B' | 'W' | 'D' | 'L' )? Unsigned_Int ( '.' Unsigned_Int )*; 
+// Variable : Direct_Variable | Symbolic_Variable;
+// Direct_Variable : '%' ( 'I' | 'Q' | 'M' ) ( 'X' | 'B' | 'W' | 'D' | 'L' )? Unsigned_Int ( '.' Unsigned_Int )*;
 // Symbolic_Variable : ( ( 'THIS' '.' ) | ( Namespace_Name '.' )+ )? ( Var_Access | Multi_Elem_Var );
 // Var_Access : Identifier | Ref_Deref;
 
-// Variable_Access : Variable Multibit_Part_Access ?; 
+// Variable_Access : Variable Multibit_Part_Access ?;
 // Multibit_Part_Access : '.' ( Unsigned_Int | '%' ( 'X' | 'B' | 'W' | 'D' | 'L' ) ? Unsigned_Int );
 
 #[salsa::tracked(debug)]
@@ -327,7 +326,7 @@ impl<'db> HirNodeInfo<'db> for VariableAccess<'db> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum VarAccess<'db> {
     Simple(SpanIdent<'db>),
-    Deref(SpanIdent<'db>), // ^
+    Deref(SpanIdent<'db>, u16), // ^ + count
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -372,7 +371,16 @@ pub enum Elementary {
 
     // Has to be solved later
     InferInteger(Integer),
-    InferIdent(Ident),
+    InferFloat(Ident),
+}
+
+impl Elementary {
+    pub fn has_infer(&self) -> bool {
+        matches!(
+            self,
+            Elementary::InferInteger(_) | Elementary::InferFloat(_)
+        )
+    }
 }
 
 #[salsa::interned(debug, no_lifetime)]
@@ -436,91 +444,5 @@ impl<'db> HirNodeInfo<'db> for InitExpr<'db> {
 
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
         self.scope_id(db)
-    }
-}
-
-impl<'db> InitExpr<'db> {
-    pub fn to_string(&self, db: &'db dyn BaseDatabase) -> &str {
-        match self.kind(db) {
-            InitExprKind::StructInit { .. } => "STRUCT init",
-            InitExprKind::ArrayInit { .. } => "ARRAY init",
-            InitExprKind::ArrayIndexedElement { size, .. } => "ARRAY element",
-            InitExprKind::StructElement { name, .. } => "STRUCT field",
-            InitExprKind::ConstantExpr(expr) => "<expression>",
-        }
-    }
-}
-
-impl<'db> Expr<'db> {
-    pub fn to_string(&self, db: &'db dyn BaseDatabase) -> &str {
-        match self.expr(db) {
-            ExprKind::PrimaryExpr(primary_expr) => primary_expr.to_string(db),
-            ExprKind::AddOperator {
-                left,
-                operator,
-                right,
-            } => "<arithmetic expression>",
-            ExprKind::BooleanOperator {
-                left,
-                operator,
-                right,
-            } => "<boolean expression>",
-            ExprKind::ComparisonOperator {
-                left,
-                operator,
-                right,
-            } => "<comparison expression>",
-            ExprKind::MultOperator {
-                left,
-                operator,
-                right,
-            } => "<multiplicative expression>",
-            ExprKind::PowerOperator { left, right } => "<power expression>",
-            ExprKind::UnaryOperator { expr, operator } => "<unary expression>",
-        }
-    }
-}
-
-impl<'db> PrimaryExpr<'db> {
-    pub fn to_string(&self, db: &'db dyn BaseDatabase) -> &str {
-        match self {
-            PrimaryExpr::Literal(lit) => match lit {
-                Elementary::Bool(_) => "BOOL literal",
-                Elementary::Byte(_) => "BYTE literal",
-                Elementary::Word(_) => "WORD literal",
-                Elementary::DWord(_) => "DWORD literal",
-                Elementary::LWord(_) => "LWORD literal",
-                Elementary::SInt(_) => "SINT literal",
-                Elementary::Int(_) => "INT literal",
-                Elementary::DInt(_) => "DINT literal",
-                Elementary::LInt(_) => "LINT literal",
-                Elementary::USInt(_) => "USINT literal",
-                Elementary::UInt(_) => "UINT literal",
-                Elementary::UDInt(_) => "UDINT literal",
-                Elementary::ULInt(_) => "ULINT literal",
-                Elementary::Time(_) => "TIME literal",
-                Elementary::LTime(_) => "LTIME literal",
-                Elementary::Real(_) => "REAL literal",
-                Elementary::LReal(_) => "LREAL literal",
-                Elementary::DateAndTime(_) => "DATE_AND_TIME literal",
-                Elementary::LDateTime(_) => "LDATE_AND_TIME literal",
-                Elementary::LDate(_) => "LDATE literal",
-                Elementary::Date(_) => "DATE literal",
-                Elementary::TimeOfDay(_) => "TIME_OF_DAY literal",
-                Elementary::LTod(_) => "LTOD literal",
-                Elementary::AnyString(_) => "STRING literal",
-                Elementary::AnyChar(_) => "CHAR literal",
-                Elementary::InferInteger(_) => "<integer>",
-                Elementary::InferIdent(_) => "<identifier>",
-            },
-            PrimaryExpr::VariableAccess(v) => "<variable access>",
-            PrimaryExpr::FuncCall(func_call) => func_call.path(db).to_string(db),
-            PrimaryExpr::EnumValue { name, variant } => variant.text(db),
-            PrimaryExpr::RefValue { value } => match value {
-                RefValue::Address(addr) => "<DEREF>",
-                RefValue::Null => "NULL",
-            },
-            PrimaryExpr::ParenthesizedExpr { expr } => expr.to_string(db),
-        }
     }
 }

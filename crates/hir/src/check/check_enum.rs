@@ -3,20 +3,30 @@ use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
 use crate::{
+    CallSite,
     check::{
         check_semantic_index::DataTypeCheck,
-        coerce::coerce_ty_with_expr,
-        errors::{analysis_error::ToIdeDiagnostic, duplicates::DuplicateError, enum_::EnumError},
+        errors::{
+            analysis_error::ToIdeDiagnostic,
+            body_inference::TypeError,
+            duplicates::DuplicateError,
+            enum_::EnumError,
+        },
     },
-    hir_def::expressions::spec::{ElementarySpec, Enum, SpecKind},
+    hir_def::expressions::spec::{ElementarySpec, Enum},
+    hir_ty::{
+        body_inference::BodyInferenceResult, infer::expr::InferExprCtx, resolver::Resolver,
+        ty::Type,
+    },
 };
 
 impl<'db> DataTypeCheck<'db> for Enum<'db> {
     fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<IdeDiagnostic>) {
         // Check underlying type
-        if let Some(typ) = self.typ(db) {
-            match typ.kind(db) {
-                SpecKind::Simple(elementary) => match elementary {
+        if let Some(spec) = self.typ(db) {
+            let typ = Type::new_spec(db, spec);
+            match typ {
+                Type::Elementary(elementary) => match elementary {
                     ElementarySpec::Byte
                     | ElementarySpec::Word
                     | ElementarySpec::DWord
@@ -29,9 +39,10 @@ impl<'db> DataTypeCheck<'db> for Enum<'db> {
                     | ElementarySpec::UDInt
                     | ElementarySpec::LInt
                     | ElementarySpec::ULInt => {}
-                    _ => errors.push(EnumError::InvalidEnumType { value: typ }.to_diagnostic(db)),
+                    _ => errors
+                        .push(EnumError::InvalidEnumType { value: spec, typ }.to_diagnostic(db)),
                 },
-                _ => errors.push(EnumError::InvalidEnumType { value: typ }.to_diagnostic(db)),
+                _ => errors.push(EnumError::InvalidEnumType { value: spec, typ }.to_diagnostic(db)),
             }
         };
 
@@ -53,14 +64,29 @@ impl<'db> DataTypeCheck<'db> for Enum<'db> {
 
             // Check variant value type
             if let (Some(value), Some(typ)) = (variant.value, self.typ(db)) {
-                if let Err(err) = coerce_ty_with_expr(db, typ.to_ty(db), value) {
+                let resolver = Resolver::for_scope(db, value.scope_id(db));
+                let mut infer_body = BodyInferenceResult::new(value.scope_id(db));
+                let mut infer = InferExprCtx::new(resolver);
+
+                let target = Type::new_spec(db, typ);
+                infer.resolve_expr(db, value, &mut infer_body);
+                infer.check_expr(db, value, &mut infer_body);
+
+                if let Err(err) = infer.coerce_type_with_expr(db, target, value, &mut infer_body) {
                     errors.push(
-                        EnumError::InvalidEnumVariantValue {
-                            variant: variant.name,
-                            err,
+                        TypeError::NotAssignable {
+                            base_target: target,
+                            lhs: err.expected,
+                            rhs: err.actual,
+                            adjustment: err.adjustment,
+                            expr: CallSite::from_expr(db, value),
                         }
                         .to_diagnostic(db),
                     )
+                }
+
+                for error in infer_body.errors {
+                    errors.push(error);
                 }
             }
         }

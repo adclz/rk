@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::statement::ParseStatement;
 use crate::builder::{ParseSpec, ParseVarSection};
@@ -5,11 +7,10 @@ use crate::check::errors::analysis_error::AnalysisError;
 use crate::check::errors::syntax::SyntaxError;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
-use crate::hir_def::modifier::Modifier;
 use crate::hir_def::pous::class::{Class, MethodDecl};
-use crate::hir_def::pous::pou::{Pou, PouDecl};
+use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::scope::{Scope, ScopeKind};
-use crate::hir_def::visibility::Visibility;
+use crate::{Modifier, Visibility};
 use ast::generated::{ClassDecl, ClassVariables};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::{AstNode, AstNodeId};
@@ -18,7 +19,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_class(
         &mut self,
         class: &ClassDecl,
-    ) -> anyhow::Result<PouDecl<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<Pou<'db>, AnalysisError<'db>> {
         let scope_id = self.generate_scope_id();
         let previous_scope = self.current_scope;
         self.current_scope = scope_id;
@@ -103,16 +104,18 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
         };
 
-        let result = PouDecl::new(
+        let result = Pou::Class(Class::new(
             self.db,
-            Pou::Class(Class::new(
-                self.db, extends, implements, variables, self.parse_methods(&class.methods), modifiers, scope_id,
-            )),
             name,
-            class.into(),
             class.name.cast(self.ast).into(),
+            extends,
+            implements,
+            variables,
+            self.parse_methods(&class.methods),
+            modifiers,
+            class.into(),
             scope_id,
-        );
+        ));
 
         let scope = Scope::new(
             self.file,
@@ -123,14 +126,18 @@ impl<'db> SemanticIndexBuilder<'db> {
             Some(previous_scope),
         );
 
-        self.scope_keys.insert(scope_id.scope(self.db), scope);
+        self.scope_keys
+            .insert(scope_id.scope(self.db), Arc::new(scope));
 
         Ok(result)
     }
 }
 
 impl<'db> SemanticIndexBuilder<'db> {
-    pub fn parse_methods(&mut self, class: &[AstNodeId<ast::generated::MethodDecl>]) -> Vec<MethodDecl<'db>> {
+    pub fn parse_methods(
+        &mut self,
+        class: &[AstNodeId<ast::generated::MethodDecl>],
+    ) -> Vec<MethodDecl<'db>> {
         let previous_scope = self.current_scope;
 
         class
@@ -138,7 +145,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             .filter_map(|m| {
                 let scope_id = self.generate_scope_id();
                 self.current_scope = scope_id;
-        
+
             let name = match Ident::from_node(self.db, self.file, m.cast(self.ast).name.cast(self.ast)) {
                 Ok(name) => name,
                 Err(error) => {
@@ -172,8 +179,8 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
 
             let mut body = vec![];
-            if let Some(body_node) = m.cast(self.ast).body.as_ref() {
-                if let ast::generated::FbDiagram_LadderDiagram_StmtList::StmtList(stmts) = body_node.cast(self.ast).children.cast(self.ast) {
+            if let Some(body_node) = m.cast(self.ast).body.as_ref()
+                && let ast::generated::FbDiagram_LadderDiagram_StmtList::StmtList(stmts) = body_node.cast(self.ast).children.cast(self.ast) {
                 for stmt in stmts.children.iter() {
                     match stmt.cast(self.ast).to_statement(self) {
                     Ok(statement) => body.push(statement),
@@ -181,7 +188,6 @@ impl<'db> SemanticIndexBuilder<'db> {
                     }
                 }
                 }
-            }
 
             let return_type: Option<_> = m
                 .cast(self.ast)
@@ -201,8 +207,9 @@ impl<'db> SemanticIndexBuilder<'db> {
 
             let result = MethodDecl::new(
                 self.db,
-                method_variables,
                 name,
+                m.cast(self.ast).name.cast(self.ast).into(),
+                method_variables,
                 return_type,
                 modifiers,
                 match &m.cast(self.ast).access {
@@ -217,7 +224,6 @@ impl<'db> SemanticIndexBuilder<'db> {
                 _override,
                 body,
                 m.cast(self.ast).into(),
-                m.cast(self.ast).name.cast(self.ast).into(),
                 scope_id
             );
 
@@ -230,7 +236,7 @@ impl<'db> SemanticIndexBuilder<'db> {
                 Some(previous_scope),
             );
 
-            self.scope_keys.insert(scope_id.scope(self.db), scope);
+            self.scope_keys.insert(scope_id.scope(self.db), Arc::new(scope));
 
 
             Some(result)

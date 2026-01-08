@@ -1,12 +1,9 @@
-#![allow(deprecated)]
-
 use auto_lsp::{
     anyhow,
     default::db::BaseDatabase,
     lsp_types::{CompletionParams, CompletionResponse},
 };
-use hir::hir_def::semantic_index::semantic_index;
-use ide_proto::AsProtocol;
+use ide_proto::to_proto::{AsProtocol, hir_node::descendant_at};
 
 pub fn completions(
     db: &impl BaseDatabase,
@@ -30,14 +27,8 @@ pub fn completions(
         None => return Ok(None),
     };
 
-    Ok(semantic_index(db, file)
-        .descendant_at(db, offset)
-        .map(|s| {
-            eprintln!("Getting completions for node: {s:?}, {offset}");
-            CompletionResponse::Array(
-                s.as_proto().completion(db, offset).unwrap_or_default(),
-            )
-        })
+    Ok(descendant_at(db, file, offset)
+        .map(|s| CompletionResponse::Array(s.as_proto().completion(db, offset).unwrap_or_default()))
         .or_else(|| {
             Some(CompletionResponse::Array(vec![
                 ide_proto::completions::static_snippets::namespace(),

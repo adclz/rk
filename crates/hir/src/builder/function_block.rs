@@ -1,16 +1,17 @@
+use std::sync::Arc;
+
+use crate::builder::ParseVarSection;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::statement::ParseStatement;
-use crate::builder::ParseVarSection;
 use crate::check::errors::analysis_error::AnalysisError;
 use crate::check::errors::syntax::SyntaxError;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
-use crate::hir_def::modifier::Modifier;
 use crate::hir_def::pous::function_block::FunctionBlock;
-use crate::hir_def::pous::pou::{Pou, PouDecl};
+use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::pous::variable::VariableDecl;
 use crate::hir_def::scope::{Scope, ScopeKind};
-use crate::hir_def::visibility::Visibility;
+use crate::{Modifier, Visibility};
 use ast::generated::{FbDecl, FbVariables};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
@@ -19,7 +20,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_function_block(
         &mut self,
         func: &FbDecl,
-    ) -> anyhow::Result<PouDecl<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<Pou<'db>, AnalysisError<'db>> {
         let scope_id = self.generate_scope_id();
         let previous_scope = self.current_scope;
         self.current_scope = scope_id;
@@ -109,16 +110,19 @@ impl<'db> SemanticIndexBuilder<'db> {
                 vec![]
             }
         };
-        let result = PouDecl::new(
+        let result = Pou::FunctionBlock(FunctionBlock::new(
             self.db,
-            Pou::FunctionBlock(FunctionBlock::new(
-                self.db, extends, implements, variables, self.parse_methods(&func.method), statements, modifiers, scope_id,
-            )),
             name,
-            func.into(),
             func.name.cast(self.ast).into(),
+            extends,
+            implements,
+            variables,
+            self.parse_methods(&func.method),
+            statements,
+            modifiers,
+            func.into(),
             scope_id,
-        );
+        ));
 
         let scope = Scope::new(
             self.file,
@@ -129,7 +133,8 @@ impl<'db> SemanticIndexBuilder<'db> {
             Some(previous_scope),
         );
 
-        self.scope_keys.insert(scope_id.scope(self.db), scope);
+        self.scope_keys
+            .insert(scope_id.scope(self.db), Arc::new(scope));
 
         Ok(result)
     }

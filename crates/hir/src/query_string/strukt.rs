@@ -1,4 +1,3 @@
-
 use auto_lsp::default::db::BaseDatabase;
 use ide_diagnostic::IdeDiagnostic;
 
@@ -29,7 +28,7 @@ pub fn fuzzy_struct_fields<'db>(
     strukt: Struct<'db>,
     diag: &mut IdeDiagnostic,
     query: &str,
-){
+) {
     let index = struct_symbol_index(db, strukt);
 
     let mut candidates = vec![];
@@ -42,16 +41,13 @@ pub fn fuzzy_struct_fields<'db>(
     });
 
     if !candidates.is_empty() {
-        let mut note = format!("STRUCT has field{} with similar name:\n",
+        let mut note = format!(
+            "STRUCT has field{} with similar name:\n",
             if candidates.len() > 1 { "s" } else { "" }
         );
         let display_count = candidates.len().min(5);
 
-        for (i, candidate) in candidates
-            .iter()
-            .take(display_count)
-            .enumerate()
-        {
+        for (i, candidate) in candidates.iter().take(display_count).enumerate() {
             if i > 0 {
                 note.push('\n');
             }

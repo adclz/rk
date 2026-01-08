@@ -2,9 +2,9 @@ use auto_lsp::default::db::BaseDatabase;
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
-    HirNodeInfo, hir_def::{
-        pous::pou::PouDecl, scope::ScopeId,
-    }, query_string::query::{NamedSymbol, Query, SymbolIndex, SymbolKind}
+    HasName, HirNodeInfo,
+    hir_def::{pous::pou::Pou, scope::ScopeId},
+    query_string::query::{NamedSymbol, Query, SymbolIndex, SymbolKind},
 };
 
 #[salsa::tracked]
@@ -13,23 +13,20 @@ pub fn variable_symbol_index<'db>(
     pou: ScopeId<'db>,
 ) -> SymbolIndex<'db> {
     let mut variables = vec![];
-    pou .def_map(db)
-        .global_variables
-        .iter()
-        .for_each(|(i, v)| {
-            variables.push(NamedSymbol {
-                name: v.name(db).text(db).to_string(),
-                namespace: None,
-                kind: SymbolKind::Variable(*v),
-            });
+    pou.def_map(db).global_variables.iter().for_each(|(i, v)| {
+        variables.push(NamedSymbol {
+            name: v.name(db).text(db).to_string(),
+            namespace: None,
+            kind: SymbolKind::Variable(*v),
         });
+    });
 
     SymbolIndex::create(db, variables.into_boxed_slice())
 }
 
 pub fn fuzzy_variables<'db>(
     db: &'db dyn BaseDatabase,
-    pou: PouDecl<'db>,
+    pou: Pou<'db>,
     diag: &mut IdeDiagnostic,
     query: &str,
 ) {
@@ -47,7 +44,7 @@ pub fn fuzzy_variables<'db>(
     if !candidates.is_empty() {
         let mut note = format!(
             "'{}' has item{} with similar name:\n",
-            pou.name(db).text(db),
+            pou.get_name_ident(db).text(db),
             if candidates.len() > 1 { "s" } else { "" }
         );
         let display_count = candidates.len().min(5);

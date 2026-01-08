@@ -4,13 +4,14 @@ use auto_lsp::default::db::BaseDatabase;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
+    HasName,
     hir_def::{
         interned::{identifier::Ident, namespace::NamespacePath},
-        pous::{pou::PouDecl, variable::VariableDecl},
+        pous::{pou::Pou, variable::VariableDecl},
         scope::{ScopeId, ScopeKind},
         semantic_index::semantic_index,
     },
-    hir_ty::name_res::global_namespace_index,
+    hir_ty::name_res::namespace_index,
     query_string::{
         file::file_symbol_index,
         query::{Query, SymbolKind},
@@ -21,9 +22,9 @@ use crate::{
 #[derive(Default)]
 pub struct ScopeSearchResult<'db> {
     /// POUs that need to be imported via USING directives
-    pub need_imports: Vec<(NamespacePath, PouDecl<'db>)>,
+    pub need_imports: Vec<(NamespacePath, Pou<'db>)>,
     pub local_variables: Vec<VariableDecl<'db>>,
-    pub local_pous: Vec<PouDecl<'db>>,
+    pub local_pous: Vec<Pou<'db>>,
 }
 
 /// Discover POUs and variables available for a given query in the given scope
@@ -33,7 +34,7 @@ pub fn query_scope_items<'db>(
     db: &'db dyn BaseDatabase,
     query: &str,
     scope: ScopeId<'db>,
-    filter_pou: impl Fn(&PouDecl<'db>) -> bool,
+    filter_pou: impl Fn(&Pou<'db>) -> bool,
 ) -> ScopeSearchResult<'db> {
     let local = discover_in_scope(db, scope);
     let mut search_result = ScopeSearchResult::default();
@@ -61,7 +62,7 @@ pub fn query_scope_items<'db>(
                     }
 
                     // Then, check if we have already added this POU
-                    if local.pous.contains_key(pou.name(db)) {
+                    if local.pous.contains_key(&pou.get_name_ident(db)) {
                         return ControlFlow::Continue::<()>(());
                     }
 
@@ -93,7 +94,7 @@ pub fn query_scope_items<'db>(
 #[derive(Default)]
 pub struct LocalSearchResult<'db> {
     pub seen_namespaces: FxHashSet<NamespacePath>,
-    pub pous: FxHashMap<Ident, PouDecl<'db>>,
+    pub pous: FxHashMap<Ident, Pou<'db>>,
 }
 
 // Iterate through the local scopes and collect local POUs and seen namespaces
@@ -112,19 +113,15 @@ pub fn discover_in_scope<'db>(
     for scope in it {
         // Find POUs in all shared namespaces
         if let ScopeKind::Namespace(ns) = scope.kind {
-            if let Some(namespaces) = global_namespace_index(db).get(ns.path(db)) {
-                for ns in namespaces.iter() {
-                    result.seen_namespaces.insert(*ns.path(db));
-                }
+            for ns in namespace_index(db, *ns.path(db)).iter() {
+                result.seen_namespaces.insert(*ns.path(db));
             }
         }
 
         // Find POUs in all USING directives
         for using in &scope.usings {
-            if let Some(namespaces) = global_namespace_index(db).get(&using.path(db)) {
-                for ns in namespaces.iter() {
-                    result.seen_namespaces.insert(*ns.path(db));
-                }
+            for ns in namespace_index(db, *using.path(db)).iter() {
+                result.seen_namespaces.insert(*ns.path(db));
             }
         }
     }

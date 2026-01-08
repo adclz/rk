@@ -22,12 +22,12 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:7:13 ]
        |
      4 |         test: INT;
-       |               ^|^  
-       |                `--- expected type 'INT' here
+       |         ^^|^  
+       |           `--- type is declared by variable 'test' here
        | 
      7 |     test := ULINT#5;
        |             ^^^|^^^  
-       |                `----- invalid assignment: invalid INT literal
+       |                `----- expected 'INT', got 'ULINT'
     ---'
     ");
 }
@@ -51,9 +51,18 @@ END_FUNCTION_BLOCK"#;
        |
      8 |     fb2 := ULINT#5;
        |     ^|^  
-       |      `--- 'fb2' is a type and can not be assigned
+       |      `--- cannot use direct type 'FUNCTION_BLOCK: fb2' here
+    ---'
+    Error: 
+       ,-[ file:///test0.st:8:12 ]
+       |
+     2 | FUNCTION_BLOCK fb2
+       |                ^|^  
+       |                 `--- FUNCTION_BLOCK 'fb2' is defined here
        | 
-       | Note: types can only be assigned if they are declared in a VAR_* section
+     8 |     fb2 := ULINT#5;
+       |            ^^^|^^^  
+       |               `----- expected 'FUNCTION_BLOCK: fb2', got 'ULINT'
     ---'
     ");
 }
@@ -72,12 +81,12 @@ END_FUNCTION"#;
        ,-[ file:///test0.st:4:12 ]
        |
      2 | FUNCTION fn1 : INT
-       |                ^|^  
-       |                 `--- expected type 'INT' here
+       |          ^|^  
+       |           `--- FUNCTION 'fn1' is defined here, with return type 'INT'
        | 
      4 |     fn1 := ULINT#5;
        |            ^^^|^^^  
-       |               `----- invalid assignment: invalid INT literal
+       |               `----- expected 'FUNCTION: fn1', got 'ULINT'
     ---'
     ");
 }
@@ -101,9 +110,18 @@ END_FUNCTION_BLOCK"#;
        |
      8 |     T1 := ULINT#5;
        |     ^|  
-       |      `-- 'T1' is a type and can not be assigned
+       |      `-- cannot use direct type 'INT' here
+    ---'
+    Error: 
+       ,-[ file:///test0.st:8:11 ]
+       |
+     3 |     T1 : INT;
+       |          ^|^  
+       |           `--- type is defined by 'T1' here
        | 
-       | Note: types can only be assigned if they are declared in a VAR_* section
+     8 |     T1 := ULINT#5;
+       |           ^^^|^^^  
+       |              `----- expected 'INT', got 'ULINT'
     ---'
     ");
 }
@@ -130,9 +148,18 @@ END_FUNCTION_BLOCK"#;
         |
      11 |     d_fb2 := ULINT#5;
         |     ^^|^^  
-        |       `---- 'd_fb2' is a callable type and can not be assigned
+        |       `---- 'fb2' is a callable type and can not be assigned
+    ----'
+    Error: 
+        ,-[ file:///test0.st:11:14 ]
+        |
+      2 | FUNCTION_BLOCK fb2
+        |                ^|^  
+        |                 `--- FUNCTION_BLOCK 'fb2' is defined here
         | 
-        | Note: only functions with return types can be assigned
+     11 |     d_fb2 := ULINT#5;
+        |              ^^^|^^^  
+        |                 `----- expected 'FUNCTION_BLOCK: fb2', got 'ULINT'
     ----'
     ");
 }
@@ -153,13 +180,9 @@ END_FUNCTION_BLOCK"#;
     Error: 
        ,-[ file:///test0.st:7:5 ]
        |
-     4 |         test: INT;
-       |         ^^|^  
-       |           `--- variable 'test' declared here
-       | 
      7 |     test := 5;
        |     ^^|^  
-       |       `--- 'test' is an input variable and can not be assigned
+       |       `--- test is an input variable and can not be assigned
     ---'
     ");
 }
@@ -185,12 +208,12 @@ END_FUNCTION_BLOCK"#;
         ,-[ file:///test0.st:11:13 ]
         |
       8 |         test: INT;
-        |               ^|^  
-        |                `--- expected type 'INT', which is not void
+        |         ^^|^  
+        |           `--- type is declared by variable 'test' here
         | 
      11 |     test := fn1();
         |             ^^|^^  
-        |               `---- invalid assignment: right-hand side is void
+        |               `---- expected 'INT', got 'void'
     ----'
     ");
 }
@@ -215,17 +238,13 @@ END_FUNCTION_BLOCK"#;
     Error: 
         ,-[ file:///test0.st:11:13 ]
         |
-      2 | FUNCTION fn1 : BOOL
-        |                ^^|^  
-        |                  `--- ... but found 'BOOL' instead
-        | 
       8 |         test: INT;
-        |               ^|^  
-        |                `--- expected 'INT' here
+        |         ^^|^  
+        |           `--- type is declared by variable 'test' here
         | 
      11 |     test := fn1();
         |             ^^|^^  
-        |               `---- invalid assignment: expected 'INT', found 'BOOL'
+        |               `---- expected 'INT', got 'BOOL'
     ----'
     ");
 }
@@ -247,12 +266,12 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:7:13 ]
        |
      4 |         test: INT;
-       |               ^|^  
-       |                `--- type 'INT' defined here
+       |         ^^|^  
+       |           `--- type is declared by variable 'test' here
        | 
      7 |     test := TRUE AND FALSE;
        |             ^^^^^^^|^^^^^^  
-       |                    `-------- invalid assignment: left-hand side is not a boolean
+       |                    `-------- expected 'INT', got 'BOOL'
     ---'
     ");
 }

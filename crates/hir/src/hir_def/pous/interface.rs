@@ -1,7 +1,7 @@
 use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
-    AstId, HirNodeInfo,
+    AstId, HasName, HirNodeInfo,
     hir_def::{
         expressions::spec::Spec,
         interned::{identifier::Ident, namespace::SpanNamespaceAccess},
@@ -12,19 +12,52 @@ use crate::{
 
 #[salsa::tracked(debug)]
 pub struct Interface<'db> {
+    pub name: Ident,
+
+    #[tracked]
+    #[no_eq]
+    pub name_id: AstId,
+
     #[returns(as_ref)]
     pub extends: Option<Vec<SpanNamespaceAccess<'db>>>,
 
     #[returns(ref)]
     pub methods: Vec<MethodPrototype<'db>>,
 
+    #[tracked]
+    #[no_eq]
+    pub id: AstId,
+
     pub scope_id: ScopeId<'db>,
+}
+
+impl<'db> HirNodeInfo<'db> for Interface<'db> {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> crate::AstId {
+        self.id(db)
+    }
+
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+        self.scope_id(db)
+    }
+}
+
+impl<'db> HasName<'db> for Interface<'db> {
+    fn get_name_ident(&self, db: &'db dyn BaseDatabase) -> Ident {
+        self.name(db)
+    }
+
+    fn get_name_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+        self.name_id(db)
+    }
 }
 
 #[salsa::tracked(debug)]
 pub struct MethodPrototype<'db> {
-    #[returns(ref)]
     pub name: Ident,
+
+    #[tracked]
+    #[no_eq]
+    pub name_id: AstId,
 
     #[returns(as_ref)]
     pub return_type: Option<Spec<'db>>,
@@ -35,10 +68,6 @@ pub struct MethodPrototype<'db> {
     #[tracked]
     #[no_eq]
     pub id: AstId,
-
-    #[tracked]
-    #[no_eq]
-    pub name_id: AstId,
 
     pub scope_id: ScopeId<'db>,
 }
@@ -51,8 +80,14 @@ impl<'db> HirNodeInfo<'db> for MethodPrototype<'db> {
     fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
         self.scope_id(db)
     }
+}
 
-    fn get_name_id(&'db self, db: &'db dyn BaseDatabase) -> Option<AstId> {
-        Some(self.name_id(db))
+impl<'db> HasName<'db> for MethodPrototype<'db> {
+    fn get_name_ident(&self, db: &'db dyn BaseDatabase) -> Ident {
+        self.name(db)
+    }
+
+    fn get_name_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+        self.name_id(db)
     }
 }

@@ -6,16 +6,14 @@ use auto_lsp::{
     },
 };
 use hir::{
-    HirNodeInfo, TypeInfo,
+    HirNodeInfo,
     hir_def::expressions::spec::{Spec, SpecKind},
-    hir_ty::name_res::resolve_namespace_access,
+    hir_ty::{name_res::resolve_namespace_access, ty::Type},
 };
 
 use crate::{
-    HasComment, ToProtocol,
-    completions::{
-        static_snippets,
-    },
+    completions::static_snippets,
+    to_proto::{HasComment, ToProtocol},
 };
 
 impl<'db> ToProtocol<'db> for Spec<'db> {
@@ -28,7 +26,7 @@ impl<'db> ToProtocol<'db> for Spec<'db> {
             SpecKind::Ref(r) => r.get_comment(db).unwrap_or_default(),
             _ => Default::default(),
         };
-        let desc = self.full_type_name(db);
+        let desc = Type::new_spec(db, *self).full_type_name(db);
 
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
@@ -86,24 +84,21 @@ impl<'db> ToProtocol<'db> for Spec<'db> {
                 .map(|el| CompletionItem {
                     label: el.name(db).text(db).to_string(),
                     kind: Some(auto_lsp::lsp_types::CompletionItemKind::FIELD),
-                    detail: Some(el.spec(db).to_ty(db).type_name(db).to_string()),
+                    detail: Some(Type::new_spec(db, el.spec(db)).type_name(db).to_string()),
                     ..Default::default()
                 })
                 .collect::<Vec<_>>()
                 .into(),
             SpecKind::Ref(r) => r.completion(db, offset),
-            SpecKind::Target(target) => {
-                match resolve_namespace_access(db, &target.path) {
-                    Some(pou) => pou.completion(db, offset),
-                    None => {
-                        let mut results = vec![];
-                        results.extend(static_snippets::elem_type_names());
-                        
+            SpecKind::Target(target) => match resolve_namespace_access(db, &target.path) {
+                Some(pou) => pou.completion(db, offset),
+                None => {
+                    let mut results = vec![];
+                    results.extend(static_snippets::elem_type_names());
 
-                        Some(results)
-                    }
+                    Some(results)
                 }
-            }
+            },
             _ => None,
         }
     }

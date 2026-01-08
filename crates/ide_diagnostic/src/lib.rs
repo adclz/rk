@@ -8,7 +8,7 @@ use auto_lsp::{
     },
 };
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct IdeDiagnostic {
     diagnostic: auto_lsp::lsp_types::Diagnostic,
     related: Vec<Related>,
@@ -63,7 +63,7 @@ impl IdeDiagnostic {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Related {
     pub message: String,
     pub file: File,
@@ -157,7 +157,7 @@ impl IdeDiagnostic {
         let error_kind = match &self.diagnostic.severity {
             Some(auto_lsp::lsp_types::DiagnosticSeverity::ERROR) => ariadne::ReportKind::Error,
             Some(auto_lsp::lsp_types::DiagnosticSeverity::WARNING) => ariadne::ReportKind::Warning,
-            _ => ariadne::ReportKind::Advice,
+            _ => ariadne::ReportKind::Error,
         };
 
         let source = Source::from(file.document(db).as_str());

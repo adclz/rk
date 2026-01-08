@@ -1,8 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
-use hir::{
-    HirNodeInfo,
-    hir_def::pous::function_block::FunctionBlock,
-};
+use hir::{HirNodeInfo, hir_def::pous::function_block::FunctionBlock};
 
 use crate::completions::{
     self,
@@ -74,5 +71,5 @@ impl<'db, 'scope> PrecizeCompletion<'db, 'scope> for FunctionBlock<'db> {
                 ctx.scope_ctx.query_scope_items(db);
             }
         }
-    }  
+    }
 }

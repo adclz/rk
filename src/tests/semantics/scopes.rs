@@ -4,12 +4,17 @@ use auto_lsp::{
 };
 
 use hir::{
+    HasName, HirNodeInfo,
     hir_def::{
         pous::pou::Pou,
         semantic_index::{get_scope, semantic_index},
     },
-    hir_ty::{name_res::{global_namespace_index, pou_name_res_from_scope}, ty::TyKind},
+    hir_ty::{
+        name_res::{namespace_index, pou_name_res_from_scope},
+        ty::Type,
+    },
 };
+use ide_proto::to_proto::{hir_node::HirNode, walk::WalkHir};
 
 use crate::tests::utils::find_namespace_with_name;
 use crate::tests::utils::test_diagnostics;
@@ -19,9 +24,7 @@ use db::RootDatabase;
 use std::ops::ControlFlow;
 
 use hir::hir_def::interned::identifier::Ident;
-use hir::hir_def::semantic_index::HirNode;
 use hir::hir_def::semantic_index::SemanticIndex;
-use hir::walk::WalkHir;
 use insta::assert_snapshot;
 use rstest::rstest;
 
@@ -55,24 +58,24 @@ fn global_scope() {
     let file = db.get_file(&url).unwrap();
     let sema = semantic_index(&db, file);
 
-    sema.global_pous.iter().for_each(|pou| match pou.pou(&db) {
+    sema.global_pous.iter().for_each(|pou| match pou {
         Pou::Function(f) => {
-            assert_eq!(pou.name(&db).text(&db), "fn1");
+            assert_eq!(pou.get_name_ident(&db).text(&db), "fn1");
             let scope = get_scope(&db, f.scope_id(&db));
             assert!(scope.parent.is_some_and(|scope| scope.is_global(&db)));
         }
         Pou::FunctionBlock(fb) => {
-            assert_eq!(pou.name(&db).text(&db), "fn2");
+            assert_eq!(pou.get_name_ident(&db).text(&db), "fn2");
             let scope = get_scope(&db, fb.scope_id(&db));
             assert!(scope.parent.is_some_and(|scope| scope.is_global(&db)));
         }
         Pou::Class(c) => {
-            assert_eq!(pou.name(&db).text(&db), "cl");
+            assert_eq!(pou.get_name_ident(&db).text(&db), "cl");
             let scope = get_scope(&db, c.scope_id(&db));
             assert!(scope.parent.is_some_and(|scope| scope.is_global(&db)));
         }
         Pou::Interface(i) => {
-            assert_eq!(pou.name(&db).text(&db), "in");
+            assert_eq!(pou.get_name_ident(&db).text(&db), "in");
             let scope = get_scope(&db, i.scope_id(&db));
             assert!(scope.parent.is_some_and(|scope| scope.is_global(&db)));
         }
@@ -120,24 +123,24 @@ END_NAMESPACE
     assert!(main_ns_scope.parent.is_some_and(|s| s.is_global(&db)));
 
     for pou in main_ns.pous(&db) {
-        match pou.pou(&db) {
+        match pou {
             Pou::Function(f) => {
-                assert_eq!(pou.name(&db).text(&db), "fn1");
+                assert_eq!(pou.get_name_ident(&db).text(&db), "fn1");
                 let scope = get_scope(&db, f.scope_id(&db));
                 assert_eq!(scope.parent, Some(main_ns.scope_id(&db)));
             }
             Pou::FunctionBlock(fb) => {
-                assert_eq!(pou.name(&db).text(&db), "fn2");
+                assert_eq!(pou.get_name_ident(&db).text(&db), "fn2");
                 let scope = get_scope(&db, fb.scope_id(&db));
                 assert_eq!(scope.parent, Some(main_ns.scope_id(&db)));
             }
             Pou::Class(c) => {
-                assert_eq!(pou.name(&db).text(&db), "cl");
+                assert_eq!(pou.get_name_ident(&db).text(&db), "cl");
                 let scope = get_scope(&db, c.scope_id(&db));
                 assert_eq!(scope.parent, Some(main_ns.scope_id(&db)));
             }
             Pou::Interface(i) => {
-                assert_eq!(pou.name(&db).text(&db), "in");
+                assert_eq!(pou.get_name_ident(&db).text(&db), "in");
                 let scope = get_scope(&db, i.scope_id(&db));
                 assert_eq!(scope.parent, Some(main_ns.scope_id(&db)));
             }
@@ -192,14 +195,12 @@ fn collect_usings(db: &dyn BaseDatabase, sema: &SemanticIndex) -> String {
             format!(
                 "USING {}:  {}\n",
                 r.path(db).to_string(db),
-                global_namespace_index(db)
-                    .get(&r.path(db))
-                    .unwrap()
+                namespace_index(db, *r.path(db))
                     .iter()
                     .flat_map(|ns| ns
                         .pous(db)
                         .iter()
-                        .map(|pou| pou.name(db).text(db).to_string())
+                        .map(|pou| pou.get_name_ident(db).text(db).to_string())
                         .collect::<Vec<_>>())
                     .collect::<Vec<_>>()
                     .join("\n")
@@ -323,7 +324,7 @@ fn inherit_global_pous(mut with_db: RootDatabase) {
     let fb3 = pou_name_res_from_scope(&with_db, ns1, "fb3").unwrap();
 
     assert_eq!(
-        get_scope(&with_db, fb1.scope_id(&with_db))
+        get_scope(&with_db, fb1.get_scope_id(&with_db))
             .parent
             .unwrap()
             .scope(&with_db),
@@ -331,7 +332,7 @@ fn inherit_global_pous(mut with_db: RootDatabase) {
     );
 
     assert_eq!(
-        get_scope(&with_db, fb2.scope_id(&with_db))
+        get_scope(&with_db, fb2.get_scope_id(&with_db))
             .parent
             .unwrap()
             .scope(&with_db),
@@ -339,7 +340,7 @@ fn inherit_global_pous(mut with_db: RootDatabase) {
     );
 
     assert_eq!(
-        get_scope(&with_db, fb3.scope_id(&with_db)).parent,
+        get_scope(&with_db, fb3.get_scope_id(&with_db)).parent,
         Some(ns1.scope_id(&with_db)) // ns1 namespace scope
     );
 }
@@ -388,16 +389,16 @@ END_NAMESPACE"#;
     let fb3 = pou_name_res_from_scope(&with_db, file_0_ns1, "fb3").unwrap();
 
     assert_eq!(
-        get_scope(&with_db, fb1.scope_id(&with_db)).parent,
+        get_scope(&with_db, fb1.get_scope_id(&with_db)).parent,
         Some(file_0_ns1.scope_id(&with_db)) // ns1 namespace scope
     );
 
     assert_eq!(
-        get_scope(&with_db, fb2.scope_id(&with_db)).parent,
+        get_scope(&with_db, fb2.get_scope_id(&with_db)).parent,
         Some(file_0_ns1.scope_id(&with_db)) // ns1 namespace scope
     );
     assert_eq!(
-        get_scope(&with_db, fb3.scope_id(&with_db)).parent,
+        get_scope(&with_db, fb3.get_scope_id(&with_db)).parent,
         Some(file_1_ns1.scope_id(&with_db)) // ns1 namespace scope (other file)
     );
 }
@@ -445,17 +446,17 @@ END_NAMESPACE"#;
     let fb3 = pou_name_res_from_scope(&with_db, ns2, "fb3").unwrap();
 
     assert_eq!(
-        get_scope(&with_db, fb1.scope_id(&with_db)).parent,
+        get_scope(&with_db, fb1.get_scope_id(&with_db)).parent,
         Some(ns1.scope_id(&with_db)) // ns1 namespace scope
     );
 
     assert_eq!(
-        get_scope(&with_db, fb2.scope_id(&with_db)).parent,
+        get_scope(&with_db, fb2.get_scope_id(&with_db)).parent,
         Some(ns1.scope_id(&with_db)) // ns1 namespace scope
     );
 
     assert_eq!(
-        get_scope(&with_db, fb3.scope_id(&with_db)).parent,
+        get_scope(&with_db, fb3.get_scope_id(&with_db)).parent,
         Some(ns2.scope_id(&with_db)) // ns1 namespace scope
     );
 }
@@ -505,18 +506,18 @@ END_NAMESPACE"#;
     let fb3 = pou_name_res_from_scope(&with_db, ns1, "fb3").unwrap();
 
     assert_eq!(
-        get_scope(&with_db, fb1.scope_id(&with_db)).parent,
+        get_scope(&with_db, fb1.get_scope_id(&with_db)).parent,
         Some(ns1.scope_id(&with_db)) // ns1 namespace scope
     );
 
     assert_eq!(
-        get_scope(&with_db, fb2.scope_id(&with_db)).parent,
+        get_scope(&with_db, fb2.get_scope_id(&with_db)).parent,
         Some(ns1.scope_id(&with_db)) // ns1 namespace scope
     );
 
     // fb3 is in file2
     assert_eq!(
-        get_scope(&with_db, fb3.scope_id(&with_db)).parent,
+        get_scope(&with_db, fb3.get_scope_id(&with_db)).parent,
         Some(ns2.scope_id(&with_db)) // ns2 namespace scope (but available in ns1 due to USING)
     );
 }
@@ -558,17 +559,17 @@ END_NAMESPACE"#;
     let fb3 = pou_name_res_from_scope(&with_db, ns2, "fb3").unwrap();
 
     assert_eq!(
-        get_scope(&with_db, fb1.scope_id(&with_db)).parent,
+        get_scope(&with_db, fb1.get_scope_id(&with_db)).parent,
         Some(ns1.scope_id(&with_db)) // ns1 namespace scope
     );
 
     assert_eq!(
-        get_scope(&with_db, fb2.scope_id(&with_db)).parent,
+        get_scope(&with_db, fb2.get_scope_id(&with_db)).parent,
         Some(ns1.scope_id(&with_db)) // ns1 namespace scope
     );
 
     assert_eq!(
-        get_scope(&with_db, fb3.scope_id(&with_db)).parent,
+        get_scope(&with_db, fb3.get_scope_id(&with_db)).parent,
         Some(ns2.scope_id(&with_db)) // ns2 namespace scope (but available in ns1 due to nesting)
     );
 }
@@ -608,12 +609,12 @@ END_NAMESPACE"#;
     let fb3 = pou_name_res_from_scope(&with_db, ns1, "fb3");
 
     assert_eq!(
-        get_scope(&with_db, fb1.scope_id(&with_db)).parent,
+        get_scope(&with_db, fb1.get_scope_id(&with_db)).parent,
         Some(ns1.scope_id(&with_db)) // ns1 namespace scope
     );
 
     assert_eq!(
-        get_scope(&with_db, fb2.scope_id(&with_db)).parent,
+        get_scope(&with_db, fb2.get_scope_id(&with_db)).parent,
         Some(ns1.scope_id(&with_db)) // ns1 namespace scope
     );
 
@@ -668,16 +669,16 @@ END_NAMESPACE"#;
     let fb3 = pou_name_res_from_scope(&with_db, ns2, "fb3").unwrap();
 
     assert_eq!(
-        get_scope(&with_db, fb1.scope_id(&with_db)).parent,
+        get_scope(&with_db, fb1.get_scope_id(&with_db)).parent,
         Some(ns1.scope_id(&with_db)) // ns1 namespace scope
     );
 
     assert_eq!(
-        get_scope(&with_db, fb2.scope_id(&with_db)).parent,
+        get_scope(&with_db, fb2.get_scope_id(&with_db)).parent,
         Some(ns1.scope_id(&with_db)) // ns1 namespace scope
     );
     assert_eq!(
-        get_scope(&with_db, fb3.scope_id(&with_db)).parent,
+        get_scope(&with_db, fb3.get_scope_id(&with_db)).parent,
         Some(ns2.scope_id(&with_db)) // ns2 namespace scope (but available in ns1 due to USING)
     );
 }
@@ -709,15 +710,11 @@ END_FUNCTION_BLOCK
         .unwrap();
 
     let fb = find_pou_with_name(&with_db, *file1, "fb").unwrap();
-    let variables = &fb.scope_id(&with_db).def_map(&with_db).global_variables;
+    let variables = &fb.get_scope_id(&with_db).def_map(&with_db).global_variables;
     let var_i1 = variables.get(&Ident::from_slice(&with_db, "i1")).unwrap();
-    let ty = var_i1.spec(&with_db).to_ty(&with_db);
+    let ty = Type::new_spec(&with_db, var_i1.spec(&with_db));
 
-    assert!(matches!(
-        ty.kind(&with_db),
-        TyKind::FunctionBlock(_)
-    ));
-
+    assert!(matches!(ty, Type::FunctionBlock(_)));
 }
 
 // usage of fully qualified paths in EXTENDS clause
@@ -745,11 +742,10 @@ END_FUNCTION_BLOCK
 
     let fb = find_pou_with_name(&with_db, *file1, "fb").unwrap();
 
-    let inehrited = fb.scope_id(&with_db).inheritors(&with_db);
+    let inehrited = fb.get_scope_id(&with_db).inheritors(&with_db);
     assert_eq!(inehrited.len(), 1);
-    assert_eq!(inehrited[0].name(&with_db).text(&with_db), "cl1");
+    assert_eq!(inehrited[0].get_name_ident(&with_db).text(&with_db), "cl1");
 }
-
 
 // usage of fully qualified paths in IMPLEMENTS clause
 #[rstest]
@@ -776,7 +772,7 @@ END_FUNCTION_BLOCK
 
     let fb = find_pou_with_name(&with_db, *file1, "fb").unwrap();
 
-    let inehrited = fb.scope_id(&with_db).inheritors(&with_db);
+    let inehrited = fb.get_scope_id(&with_db).inheritors(&with_db);
     assert_eq!(inehrited.len(), 1);
-    assert_eq!(inehrited[0].name(&with_db).text(&with_db), "in1");
+    assert_eq!(inehrited[0].get_name_ident(&with_db).text(&with_db), "in1");
 }

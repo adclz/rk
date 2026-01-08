@@ -1,0 +1,50 @@
+use auto_lsp::{
+    default::db::BaseDatabase,
+    lsp_types::{
+        GotoDefinitionResponse, InlayHint, InlayHintKind, InlayHintLabel,
+        request::GotoDeclarationResponse,
+    },
+};
+use hir::{
+    HirNodeInfo,
+    hir_def::expressions::expression::InitExprKind,
+};
+
+use crate::{
+    to_proto::{ToProtocol, hir_node::InitExprWithTypeContext},
+    typ::TypeProto,
+};
+
+impl<'db> ToProtocol<'db> for InitExprWithTypeContext<'db> {
+    fn inlay_hint(&'db self, db: &'db dyn BaseDatabase) -> Option<InlayHint> {
+        match self.init_expr.kind(db) {
+            InitExprKind::StructElement { name, value: _ } => Some(InlayHint {
+                position: name.get_span(db).lsp().end,
+                label: InlayHintLabel::String(format!(": {}", self.ty.type_name(db))),
+                kind: Some(InlayHintKind::TYPE),
+                padding_left: Some(false),
+                padding_right: Some(false),
+                text_edits: None,
+                tooltip: None,
+                data: None,
+            }),
+            _ => None,
+        }
+    }
+
+    fn declaration(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDeclarationResponse> {
+        self.ty.declaration(db)
+    }
+
+    fn definition(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDefinitionResponse> {
+        self.ty.definition(db)
+    }
+
+    fn hover(
+        &'db self,
+        db: &'db dyn BaseDatabase,
+        offset: usize,
+    ) -> Option<auto_lsp::lsp_types::Hover> {
+        self.ty.hover(db, offset, &self.init_expr)
+    }
+}

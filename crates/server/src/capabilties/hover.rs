@@ -4,7 +4,7 @@ use auto_lsp::{
     lsp_types::{Hover, HoverParams},
 };
 use hir::hir_def::semantic_index::semantic_index;
-use ide_proto::AsProtocol;
+use ide_proto::to_proto::{AsProtocol, hir_node::descendant_at};
 
 pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Option<Hover>> {
     let _hover_span = tracing::info_span!("hover").entered();
@@ -29,11 +29,9 @@ pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Opti
 
     let sema = semantic_index(db, file);
 
-    let symbol = sema.descendant_at(db, position);
+    let symbol = descendant_at(db, file, position);
     match symbol.and_then(|s| s.as_proto().hover(db, position)) {
-        Some(hover) => {
-            Ok(Some(hover))
-        },
+        Some(hover) => Ok(Some(hover)),
         None => Ok(None),
     }
 }

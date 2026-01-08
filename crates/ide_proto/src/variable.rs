@@ -10,11 +10,12 @@ use auto_lsp::{
     },
 };
 use hir::{
-    HirNodeInfo, TypeInfo,
+    HasName, HirNodeInfo,
     hir_def::pous::variable::{VariableDecl, VariableKind},
+    hir_ty::ty::Type,
 };
 
-use crate::{HasComment, SUPPORTED_TYPES, ToProtocol, resolved_path_element::HasTokens};
+use crate::to_proto::{HasComment, ToProtocol};
 
 impl<'db> ToProtocol<'db> for VariableDecl<'db> {
     fn document_symbols(&self, db: &'db dyn BaseDatabase, builder: &mut DocumentSymbolsBuilder) {
@@ -26,17 +27,17 @@ impl<'db> ToProtocol<'db> for VariableDecl<'db> {
 
         builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
             name,
-            detail: Some(self.spec(db).to_ty(db).type_name(db)),
+            detail: Some(Type::new_spec(db, self.spec(db)).type_name(db)),
             kind: SymbolKind::VARIABLE,
             deprecated: None,
             range: self.get_span(db).lsp(),
-            selection_range: self.get_name_span(db).unwrap().lsp(),
+            selection_range: self.get_name_span(db).lsp(),
             children: None,
             tags: None,
         });
     }
 
-    fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Hover> {
+    fn hover(&'db self, db: &'db dyn BaseDatabase, _offset: usize) -> Option<Hover> {
         let comment = self.get_comment(db).unwrap_or_default();
         let kind = match self.kind(db) {
             VariableKind::Input => "INPUT",
@@ -51,7 +52,7 @@ impl<'db> ToProtocol<'db> for VariableDecl<'db> {
         };
 
         let name = self.name(db).text(db);
-        let type_name = self.spec(db).to_ty(db).type_name(db);
+        let type_name = Type::new_spec(db, self.spec(db)).type_name(db);
 
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
@@ -88,8 +89,8 @@ impl<'db> ToProtocol<'db> for VariableDecl<'db> {
         self.spec(db).completion(db, offset)
     }
 
-    fn semantic_tokens(&'db self, db: &'db dyn BaseDatabase, builder: &mut SemanticTokensBuilder) {
-        match self.spec(db).tokens(db, builder) {
+    fn semantic_tokens(&'db self, _db: &'db dyn BaseDatabase, _builder: &mut SemanticTokensBuilder) {
+        /*match self.spec(db).tokens(db, builder) {
             Some((typ, modi)) => {
                 builder.push(
                     self.spec(db).get_span(db).lsp(),
@@ -98,6 +99,6 @@ impl<'db> ToProtocol<'db> for VariableDecl<'db> {
                 );
             }
             None => {}
-        };
+        };*/
     }
 }

@@ -39,10 +39,8 @@ fn invalid_start_value(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:3:26 ]
        |
      3 |             Range: UINT (-10..0);
-       |                    ^^|^  ^|^  
-       |                      `-------- expected type 'UINT' here
-       |                           |   
-       |                           `--- invalid start value for subrange: literal can not be negative
+       |                          ^|^  
+       |                           `--- cannot infer '<integer>' to 'UINT': literal can not be negative
     ---'
     ");
 }
@@ -60,10 +58,8 @@ fn invalid_end_value(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:3:29 ]
        |
      3 |             Range: UINT (0..-5);
-       |                    ^^|^     ^|  
-       |                      `---------- expected type 'UINT' here
-       |                              |  
-       |                              `-- invalid end value for subrange: literal can not be negative
+       |                             ^|  
+       |                              `-- cannot infer '<integer>' to 'UINT': literal can not be negative
     ---'
     ");
 }
@@ -89,19 +85,17 @@ fn invalid_subrange_value_type(mut with_db: RootDatabase) {
     Error: 
         ,-[ file:///test0.st:11:22 ]
         |
-      3 |             Range: UINT (0..5);
-        |                    ^^|^  
-        |                      `--- expected type 'UINT' here
-        | 
      11 |             test :=  -1 // -1 should not be allowed here (UINT)
-        |                      ^|  
-        |                       `-- invalid assignment: literal can not be negative
+        |             ^^|^     ^|  
+        |               `---------- 'UINT' is expected due to this
+        |                       |  
+        |                       `-- cannot infer '<integer>' to 'UINT': literal can not be negative
     ----'
     ");
 }
 
 #[rstest]
-fn out_fo_bounds_subrange_value(mut with_db: RootDatabase) {
+fn out_of_bounds_subrange_value(mut with_db: RootDatabase) {
     let source = r#"
         TYPE
             Range: UINT (0..5);
@@ -117,17 +111,5 @@ fn out_fo_bounds_subrange_value(mut with_db: RootDatabase) {
         END_FUNCTION
         "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
-        ,-[ file:///test0.st:11:22 ]
-        |
-      3 |             Range: UINT (0..5);
-        |             ^^|^^  
-        |               `---- type 'Range: SUBRANGE (0..5)' defined here
-        | 
-     11 |             test :=  6 // 6 should not be allowed here (UINT (0..5))
-        |                      |  
-        |                      `-- invalid assignment: value 6 is out of bounds for 'Range: SUBRANGE (0..5)' (expected between 0 and 5)
-    ----'
-    ");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }

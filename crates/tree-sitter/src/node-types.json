@@ -4709,6 +4709,16 @@
           }
         ]
       }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "deref_sign",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -6905,10 +6915,6 @@
     "named": false
   },
   {
-    "type": "^",
-    "named": false
-  },
-  {
     "type": "bool_name",
     "named": true
   },
@@ -6942,6 +6948,10 @@
   },
   {
     "type": "deref_invocation",
+    "named": true
+  },
+  {
+    "type": "deref_sign",
     "named": true
   },
   {

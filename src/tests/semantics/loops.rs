@@ -25,15 +25,12 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:8:14 ]
        |
      4 |         I: INT;
-       |            ^|^  
-       |             `--- expected 'INT' here
-     5 |         O: BOOL;
-       |            ^^|^  
-       |              `--- ... but found 'BOOL' instead
+       |         |  
+       |         `-- type is declared by variable 'I' here
        | 
      8 |     FOR I := O TO 10 DO
        |              |  
-       |              `-- invalid assignment: expected 'INT', found 'BOOL'
+       |              `-- expected 'INT', got 'BOOL'
     ---'
     ");
 }
@@ -58,15 +55,12 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:8:20 ]
        |
      4 |         I: INT;
-       |            ^|^  
-       |             `--- expected 'INT' here
-     5 |         O: BOOL;
-       |            ^^|^  
-       |              `--- ... but found 'BOOL' instead
+       |         |  
+       |         `-- type is declared by variable 'I' here
        | 
      8 |     FOR I := 10 TO O DO
        |                    |  
-       |                    `-- invalid FOR loop end: expected 'INT', found 'BOOL'
+       |                    `-- can't compare 'INT' with 'BOOL'
     ---'
     ");
 }
@@ -91,15 +85,12 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:8:25 ]
        |
      4 |         I: INT;
-       |            ^|^  
-       |             `--- expected 'INT' here
-     5 |         O: BOOL;
-       |            ^^|^  
-       |              `--- ... but found 'BOOL' instead
+       |         |  
+       |         `-- type is declared by variable 'I' here
        | 
      8 |     FOR I := 0 TO 10 BY O DO
        |                         |  
-       |                         `-- invalid FOR loop step: expected 'INT', found 'BOOL'
+       |                         `-- can't compare 'INT' with 'BOOL'
     ---'
     ");
 }
@@ -125,7 +116,7 @@ END_FUNCTION_BLOCK"#;
        |
      8 |     WHILE I DO
        |           |  
-       |           `-- WHILE condition is not returning a boolean
+       |           `-- expected 'BOOL', got 'INT'
     ---'
     ");
 }
@@ -151,7 +142,7 @@ END_FUNCTION_BLOCK"#;
        |
      9 |         UNTIL I
        |               |  
-       |               `-- REPEAT condition is not returning a boolean
+       |               `-- expected 'BOOL', got 'INT'
     ---'
     ");
 }

@@ -61,6 +61,7 @@ use auto_lsp::server::vendored::intent::ThreadIntent;
 use db::RootDatabase;
 use ide_proto::SUPPORTED_MODIFIERS;
 use ide_proto::SUPPORTED_TYPES;
+use salsa::EventKind;
 use std::error::Error;
 use std::panic::RefUnwindSafe;
 
@@ -83,7 +84,12 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
     log::info!("Starting IEC LSP");
 
     let (connection, io_threads) = Connection::stdio();
-    let db = RootDatabase::default();
+    let db = RootDatabase::new(Some(Box::new(|event| {
+        if let EventKind::WillCheckCancellation = event.kind {
+            return;
+        }
+        eprintln!("Database event: {:?}", event);
+    })));
     let mut request_registry = RequestRegistry::<RootDatabase>::default();
     let mut notification_registry = NotificationRegistry::<RootDatabase>::default();
 
@@ -159,20 +165,23 @@ fn on_requests<Db: BaseDatabase + Clone + RefUnwindSafe>(
     registry: &mut RequestRegistry<Db>,
 ) -> &mut RequestRegistry<Db> {
     registry
-        .on::<SemanticTokensFullRequest, _>(ThreadIntent::LatencySensitive,semantic_tokens::semantic_tokens_full)
-        .on::<Completion, _>(ThreadIntent::LatencySensitive,completions)
+        .on::<SemanticTokensFullRequest, _>(
+            ThreadIntent::LatencySensitive,
+            semantic_tokens::semantic_tokens_full,
+        )
+        .on::<Completion, _>(ThreadIntent::LatencySensitive, completions)
         .on::<DocumentDiagnosticRequest, _>(ThreadIntent::Worker, diagnostics)
-        .on::<WorkspaceDiagnosticRequest, _>(ThreadIntent::Worker,workspace_diagnostics)
-        .on::<DocumentSymbolRequest, _>(ThreadIntent::Worker,document_symbols)
-        .on::<HoverRequest, _>(ThreadIntent::Worker,hover)
-        .on::<CodeActionRequest, _>(ThreadIntent::Worker,code_actions)
-        .on::<CodeLensRequest, _>(ThreadIntent::Worker,code_lens)
-        .on::<FoldingRangeRequest, _>(ThreadIntent::Worker,folding_ranges)
-        .on::<InlayHintRequest, _>(ThreadIntent::Worker,inlay_hints)
-        .on::<Formatting, _>(ThreadIntent::Worker,formatting)
-        .on::<GotoDeclaration, _>(ThreadIntent::Worker,go_to_declaration)
-        .on::<GotoDefinition, _>(ThreadIntent::Worker,go_to_definition)
-        .on::<GotoImplementation, _>(ThreadIntent::Worker,go_to_implementation)
+        .on::<WorkspaceDiagnosticRequest, _>(ThreadIntent::Worker, workspace_diagnostics)
+        .on::<DocumentSymbolRequest, _>(ThreadIntent::Worker, document_symbols)
+        .on::<HoverRequest, _>(ThreadIntent::Worker, hover)
+        .on::<CodeActionRequest, _>(ThreadIntent::Worker, code_actions)
+        .on::<CodeLensRequest, _>(ThreadIntent::Worker, code_lens)
+        .on::<FoldingRangeRequest, _>(ThreadIntent::Worker, folding_ranges)
+        .on::<InlayHintRequest, _>(ThreadIntent::Worker, inlay_hints)
+        .on::<Formatting, _>(ThreadIntent::Worker, formatting)
+        .on::<GotoDeclaration, _>(ThreadIntent::Worker, go_to_declaration)
+        .on::<GotoDefinition, _>(ThreadIntent::Worker, go_to_definition)
+        .on::<GotoImplementation, _>(ThreadIntent::Worker, go_to_implementation)
 }
 
 fn on_notifications<Db: BaseDatabase + Clone + RefUnwindSafe>(

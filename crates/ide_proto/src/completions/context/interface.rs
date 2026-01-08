@@ -1,18 +1,19 @@
 use auto_lsp::default::db::BaseDatabase;
 use hir::hir_def::pous::interface::Interface;
 
-use crate::completions::{self, context::{PouCompletionCtx, PrecizeCompletion}};
+use crate::completions::{
+    self,
+    context::{PouCompletionCtx, PrecizeCompletion},
+};
 
 impl<'db, 'scope> PrecizeCompletion<'db, 'scope> for Interface<'db> {
-    fn head_completion(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        ctx: PouCompletionCtx<'db, 'scope>,
-    ) {
+    fn head_completion(&'db self, _db: &'db dyn BaseDatabase, ctx: PouCompletionCtx<'db, 'scope>) {
         if ctx.scope_ctx.offset <= ctx.name_span.start_byte {
             // Before the name of POU, returns nothing
-            return
+            return;
         }
-        ctx.scope_ctx.items.extend(vec![completions::static_snippets::method()]);
+        ctx.scope_ctx
+            .items
+            .extend(vec![completions::static_snippets::method()]);
     }
 }

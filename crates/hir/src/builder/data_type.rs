@@ -1,14 +1,13 @@
+use std::sync::Arc;
+
+use crate::Visibility;
 use crate::{
     builder::{ParseSpec, expression::ParseExpr, semantic_index::SemanticIndexBuilder},
     check::errors::analysis_error::AnalysisError,
     hir_def::{
         interned::identifier::Ident,
-        pous::{
-            data_type::DataType,
-            pou::{Pou, PouDecl},
-        },
+        pous::{data_type::DataType, pou::Pou},
         scope::{Scope, ScopeKind},
-        visibility::Visibility,
     },
 };
 use ast::generated::TypeDecl;
@@ -18,7 +17,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_data_type(
         &mut self,
         data_type: &TypeDecl,
-    ) -> anyhow::Result<PouDecl<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<Pou<'db>, AnalysisError<'db>> {
         let scope_id = self.generate_scope_id();
         let previous_scope = self.current_scope;
         self.current_scope = scope_id;
@@ -48,14 +47,15 @@ impl<'db> SemanticIndexBuilder<'db> {
             None => None,
         };
 
-        let result = PouDecl::new(
+        let result = Pou::DataType(DataType::new(
             self.db,
-            Pou::DataType(DataType::new(self.db, spec, init, scope_id)),
             name,
-            data_type.into(),
             data_type.name.cast(self.ast).into(),
+            spec,
+            init,
+            data_type.into(),
             scope_id,
-        );
+        ));
 
         let scope = Scope::new(
             self.file,
@@ -66,7 +66,8 @@ impl<'db> SemanticIndexBuilder<'db> {
             Some(previous_scope),
         );
 
-        self.scope_keys.insert(scope_id.scope(self.db), scope);
+        self.scope_keys
+            .insert(scope_id.scope(self.db), Arc::new(scope));
 
         Ok(result)
     }

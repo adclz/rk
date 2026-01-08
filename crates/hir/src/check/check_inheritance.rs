@@ -3,31 +3,32 @@ use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
 use crate::{
+    HasName, HirNodeInfo, Modifier,
     check::{
         check_semantic_index::Check,
-        coerce::coerce_ty_with_ty,
         errors::{
             analysis_error::{AnalysisError, ToIdeDiagnostic},
             duplicates::DuplicateError,
             inheritance::MethodError,
         },
     },
-    hir_def::{
-        modifier::Modifier,
-        pous::{
-            class::MethodDecl,
-            interface::MethodPrototype,
-            pou::{Pou, PouDecl},
-        },
+    hir_def::pous::{class::MethodDecl, interface::MethodPrototype, pou::Pou},
+    hir_ty::{
+        body_inference::infer_body_scope,
+        inheritance_solver::{MethodRef, inherited_methods},
+        ty::Type,
     },
-    hir_ty::inheritance_solver::{MethodRef, inherited_methods},
 };
 
 impl<'db> Check<'db> for Vec<MethodDecl<'db>> {
     fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<IdeDiagnostic>) {
         let mut seen = FxHashMap::default();
         for method in self {
-            if let Some(prev) = seen.get(method.name(db)) {
+            for error in &infer_body_scope(db, method.get_scope_id(db)).errors {
+                errors.push(error.clone());
+            }
+
+            if let Some(prev) = seen.get(&method.get_name_ident(db)) {
                 errors.push(
                     DuplicateError::MethodDecl {
                         method1: *prev,
@@ -36,7 +37,7 @@ impl<'db> Check<'db> for Vec<MethodDecl<'db>> {
                     .to_diagnostic(db),
                 );
             } else {
-                seen.insert(*method.name(db), *method);
+                seen.insert(method.get_name_ident(db), *method);
             }
         }
     }
@@ -46,7 +47,7 @@ impl<'db> Check<'db> for Vec<MethodPrototype<'db>> {
     fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<IdeDiagnostic>) {
         let mut seen = FxHashMap::default();
         for method in self {
-            if let Some(prev) = seen.get(method.name(db)) {
+            if let Some(prev) = seen.get(&method.get_name_ident(db)) {
                 errors.push(
                     DuplicateError::MethodProt {
                         method1: *prev,
@@ -55,7 +56,7 @@ impl<'db> Check<'db> for Vec<MethodPrototype<'db>> {
                     .to_diagnostic(db),
                 );
             } else {
-                seen.insert(*method.name(db), *method);
+                seen.insert(method.name(db), *method);
             }
         }
     }
@@ -63,13 +64,13 @@ impl<'db> Check<'db> for Vec<MethodPrototype<'db>> {
 
 pub fn check_inheritance<'db>(
     db: &'db dyn BaseDatabase,
-    implementer: PouDecl<'db>,
+    implementer: Pou<'db>,
     errors: &mut Vec<IdeDiagnostic>,
 ) {
-    let declared_methods = &implementer.scope_id(db).def_map(db).declared_methods;
+    let declared_methods = &implementer.get_scope_id(db).def_map(db).declared_methods;
     let inherited_methods = inherited_methods(db, implementer);
 
-    if let Pou::Class(cl) = implementer.pou(db) {
+    if let Pou::Class(cl) = implementer {
         // If the class is abstract, it must have at least one abstract method
         if cl.modifier(db).contains(Modifier::ABSTRACT)
             && !declared_methods
@@ -197,11 +198,18 @@ fn check_signature<'db>(
     }
 
     for (var1, var2) in sig1.iter().zip(sig2.iter()) {
-        if let Err(err) = coerce_ty_with_ty(db, var1.spec(db).to_ty(db), var2.spec(db).to_ty(db)) {
+        let var1_typ = Type::new_var(db, *var1);
+        let var2_typ = Type::new_var(db, *var2);
+
+        if !var1_typ.normalize(db).eq(&var2_typ.normalize(db)) {
             errors.push(
-                MethodError::SignatureParametersTypeMismatch { param: *var2, err }
-                    .to_diagnostic(db),
-            );
+                MethodError::SignatureTypeMismatch {
+                    expected: var1_typ,
+                    got: var2_typ,
+                    method: m1,
+                }
+                .to_diagnostic(db),
+            )
         }
     }
 }

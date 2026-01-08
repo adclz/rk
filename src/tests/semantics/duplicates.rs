@@ -110,7 +110,7 @@ END_FUNCTION_BLOCK
 #[rstest]
 fn duplicate_enum_variants(mut with_db: RootDatabase) {
     let source = r#"
-TYPE 
+TYPE
     E1 : (A, B, A);
 END_TYPE
 "#;

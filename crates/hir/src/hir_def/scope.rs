@@ -1,20 +1,19 @@
 use auto_lsp::default::db::{BaseDatabase, file::File};
 
+use crate::hir_def::pous::interface::MethodPrototype;
 use crate::hir_def::{
-    namespace::NamespaceDecl, pous::{class::MethodDecl, pou::PouDecl}, using::Using, visibility::Visibility
+    namespace::NamespaceDecl,
+    pous::{class::MethodDecl, pou::Pou, variable::VariableDecl},
+    semantic_index::get_scope,
+    using::Using,
 };
+use crate::Visibility;
 
 #[salsa::tracked(debug)]
 pub struct ScopeId<'db> {
     pub file: File,
 
     pub scope: usize,
-}
-
-impl<'db> From<(&'db dyn BaseDatabase, File, usize)> for ScopeId<'db> {
-    fn from(data: (&'db dyn BaseDatabase, File, usize)) -> Self {
-        ScopeId::new(data.0, data.1, data.2)
-    }
 }
 
 impl<'db> ScopeId<'db> {
@@ -24,6 +23,50 @@ impl<'db> ScopeId<'db> {
 
     pub fn is_global(&self, db: &'db dyn BaseDatabase) -> bool {
         self.scope(db) == usize::MAX
+    }
+
+    pub fn pous(&self, db: &'db dyn BaseDatabase) -> Option<&Vec<Pou<'db>>> {
+        Some(match get_scope(db, *self).kind {
+            ScopeKind::Namespace(ns) => ns.pous(db),
+            _ => None?,
+        })
+    }
+
+    pub fn method_declarations(&self, db: &'db dyn BaseDatabase) -> Option<&Vec<MethodDecl<'db>>> {
+        Some(match get_scope(db, *self).kind {
+            ScopeKind::Pou(pou) => match pou {
+                Pou::Class(cl) => cl.methods(db),
+                Pou::FunctionBlock(fb) => fb.methods(db),
+                _ => None?,
+            },
+            _ => None?,
+        })
+    }
+
+    pub fn method_prototypes(
+        &self,
+        db: &'db dyn BaseDatabase,
+    ) -> Option<&Vec<MethodPrototype<'db>>> {
+        Some(match get_scope(db, *self).kind {
+            ScopeKind::Pou(pou) => match pou {
+                Pou::Interface(it) => it.methods(db),
+                _ => None?,
+            },
+            _ => None?,
+        })
+    }
+
+    pub fn variables(&self, db: &'db dyn BaseDatabase) -> Option<&Vec<VariableDecl<'db>>> {
+        Some(match get_scope(db, *self).kind {
+            ScopeKind::Pou(pou) => match pou {
+                Pou::Function(f) => f.variables(db),
+                Pou::FunctionBlock(fb) => fb.variables(db),
+                Pou::Class(cl) => cl.variables(db),
+                _ => None?,
+            },
+            ScopeKind::MethodDecl(m) => m.variables(db),
+            _ => None?,
+        })
     }
 }
 
@@ -76,6 +119,6 @@ impl<'db> Scope<'db> {
 pub enum ScopeKind<'db> {
     Global,
     Namespace(NamespaceDecl<'db>),
-    Pou(PouDecl<'db>),
-    MethodDecl(MethodDecl<'db>)
+    Pou(Pou<'db>),
+    MethodDecl(MethodDecl<'db>),
 }

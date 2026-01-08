@@ -1,7 +1,7 @@
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::request::GotoImplementationResponse;
 use db::RootDatabase;
-use ide_proto::ToProtocol;
+use ide_proto::to_proto::ToProtocol;
 use insta::assert_debug_snapshot;
 use rstest::rstest;
 

@@ -1,6 +1,6 @@
 use db::RootDatabase;
 use hir::hir_def::semantic_index::semantic_index;
-use ide_proto::AsProtocol;
+use ide_proto::to_proto::hir_node::descendant_at;
 use rstest::rstest;
 use auto_lsp::default::db::BaseDatabase;
 
@@ -22,7 +22,7 @@ END_CLASS"#;
     let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
 
     // 10 = cl1 | VAR
-    let in_variables = sema.descendant_at(&with_db, 10).unwrap();
+    let in_variables = descendant_at(&with_db, 10).unwrap();
     let completions = in_variables.as_proto().completion(&with_db, 10).unwrap();
 
     assert!(format!("{completions:?}").contains("EXTENDS"));

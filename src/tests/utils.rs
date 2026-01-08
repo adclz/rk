@@ -13,9 +13,10 @@ use auto_lsp::{
     lsp_types::Url,
 };
 use db::RootDatabase;
+use hir::HasName;
 use hir::check::diagnostics_for_file;
 use hir::hir_def::namespace::NamespaceDecl;
-use hir::hir_def::pous::pou::PouDecl;
+use hir::hir_def::pous::pou::Pou;
 use hir::hir_def::semantic_index::semantic_index;
 use rstest::fixture;
 
@@ -108,18 +109,18 @@ pub fn find_pou_with_name<'db>(
     db: &'db dyn BaseDatabase,
     file: File,
     name: &str,
-) -> Option<PouDecl<'db>> {
+) -> Option<Pou<'db>> {
     let sema = semantic_index(db, file);
 
     for pou in sema.global_pous.iter().copied() {
-        if pou.name(db).text(db).as_str() == name {
+        if pou.get_name_ident(db).text(db).as_str() == name {
             return Some(pou);
         }
     }
 
     for ns in sema.global_namespaces.iter() {
         for pou in ns.pous(db) {
-            if pou.name(db).text(db).as_str() == name {
+            if pou.get_name_ident(db).text(db).as_str() == name {
                 return Some(*pou);
             }
         }

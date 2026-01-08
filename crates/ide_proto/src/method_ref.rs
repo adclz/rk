@@ -1,17 +1,18 @@
 use auto_lsp::{
     core::document_symbols_builder::DocumentSymbolsBuilder,
     default::db::BaseDatabase,
-    lsp_types::{
-        CompletionItem, Hover, HoverContents, MarkupContent, MarkupKind, SymbolKind
-    },
+    lsp_types::{CompletionItem, Hover, HoverContents, MarkupContent, MarkupKind, SymbolKind},
 };
-use hir::{hir_ty::{inheritance_solver::MethodRef}, HirNodeInfo, TypeInfo};
+use hir::{
+    HasName, HirNodeInfo,
+    hir_ty::{inheritance_solver::MethodRef, ty::Type},
+};
 
-use crate::{HasComment, ToProtocol};
+use crate::to_proto::{HasComment, ToProtocol};
 
 impl<'db> ToProtocol<'db> for MethodRef<'db> {
     fn document_symbols(&self, db: &'db dyn BaseDatabase, builder: &mut DocumentSymbolsBuilder) {
-        let name = self.name(db).text(db).to_string();
+        let name = self.get_name_ident(db).text(db).to_string();
         let name = match name.len() {
             0 => "?".into(),
             _ => name,
@@ -27,14 +28,14 @@ impl<'db> ToProtocol<'db> for MethodRef<'db> {
             detail: Some(format!(
                 "METHOD{}",
                 match self.return_type(db) {
-                    Some(dt) => format!(" : {}", dt.to_ty(db).type_name(db)),
+                    Some(dt) => format!(" : {}", Type::new_spec(db, *dt).type_name(db)),
                     None => "".into(),
                 }
             )),
             kind: SymbolKind::METHOD,
             deprecated: None,
             range: self.get_span(db).lsp(),
-            selection_range: self.name_span(db).lsp(),
+            selection_range: self.get_name_span(db).lsp(),
             children: Some(nested_builder.finalize()),
             tags: None,
         });
@@ -45,14 +46,14 @@ impl<'db> ToProtocol<'db> for MethodRef<'db> {
             MethodRef::Declared(_) => "METHOD",
             MethodRef::Prototype(_) => "METHOD PROTOTYPE",
         };
-        let name = self.name(db).text(db);
+        let name = self.get_name_ident(db).text(db);
         let return_type = match self {
             MethodRef::Declared(decl) => match decl.return_type(db) {
-                Some(ret_ty) => format!(": {}", ret_ty.to_ty(db).type_name(db)),
+                Some(ret_ty) => format!(": {}", Type::new_spec(db, *ret_ty).type_name(db)),
                 None => "".to_string(),
             },
             MethodRef::Prototype(proto) => match proto.return_type(db) {
-                Some(ret_ty) => format!(": {}", ret_ty.to_ty(db).type_name(db)),
+                Some(ret_ty) => format!(": {}", Type::new_spec(db, *ret_ty).type_name(db)),
                 None => "".to_string(),
             },
         };
@@ -76,8 +77,8 @@ impl<'db> ToProtocol<'db> for MethodRef<'db> {
 
     fn completion(
         &'db self,
-        db: &'db dyn BaseDatabase,
-        offset: usize,
+        _db: &'db dyn BaseDatabase,
+        _offset: usize,
     ) -> Option<Vec<CompletionItem>> {
         None
     }

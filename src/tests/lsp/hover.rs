@@ -3,10 +3,11 @@ use std::ops::ControlFlow;
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::HoverContents;
 use db::RootDatabase;
-use hir::hir_def::semantic_index::HirNode;
+use hir::HasName;
 use hir::hir_def::semantic_index::semantic_index;
-use hir::walk::WalkHir;
-use ide_proto::ToProtocol;
+use ide_proto::to_proto::ToProtocol;
+use ide_proto::to_proto::hir_node::HirNode;
+use ide_proto::to_proto::walk::WalkHir;
 use insta::assert_snapshot;
 use rstest::rstest;
 
@@ -41,7 +42,7 @@ END_CLASS
     assert_snapshot!(nodes.iter().filter_map(|node|{
         if let HirNode::PouDecl(ty) = node
         {
-            if let HoverContents::Markup(d) = ty.hover(&with_db, ty.name_span(&with_db).start_byte)?.contents {
+            if let HoverContents::Markup(d) = ty.hover(&with_db, ty.get_name_span(&with_db).start_byte)?.contents {
                 Some(d.value)
             } else {
                 None

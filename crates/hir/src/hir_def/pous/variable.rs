@@ -1,44 +1,56 @@
-use auto_lsp::{core::span::Span, default::db::BaseDatabase};
+use auto_lsp::default::db::BaseDatabase;
 
 use crate::{
+    AstId, HasName, HirNodeInfo,
     hir_def::{
         expressions::{expression::InitExpr, spec::Spec},
         interned::identifier::Ident,
         scope::ScopeId,
     },
-    {AstId, HirNodeInfo},
 };
 
 #[salsa::tracked(debug)]
 pub struct VariableDecl<'db> {
-    #[returns(ref)]
     pub name: Ident,
+
+    #[tracked]
+    #[no_eq]
+    pub name_id: AstId,
 
     pub kind: VariableKind,
 
     pub spec: Spec<'db>,
 
-    #[tracked]
-    #[no_eq]
-    #[returns(as_ref)]
     pub init: Option<InitExpr<'db>>,
 
     #[tracked]
     #[no_eq]
     pub id: AstId,
 
-    #[tracked]
-    #[no_eq]
-    pub name_id: AstId,
-
     pub scope_id: ScopeId<'db>,
 }
 
-impl<'db> VariableDecl<'db> {
-    pub fn name_span(&self, db: &'db dyn BaseDatabase) -> Span {
-        self.get_name_span(db).unwrap()
+impl<'db> HirNodeInfo<'db> for VariableDecl<'db> {
+    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+        self.id(db)
     }
 
+    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+        self.scope_id(db)
+    }
+}
+
+impl<'db> HasName<'db> for VariableDecl<'db> {
+    fn get_name_ident(&self, db: &'db dyn BaseDatabase) -> Ident {
+        self.name(db)
+    }
+
+    fn get_name_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+        self.name_id(db)
+    }
+}
+
+impl<'db> VariableDecl<'db> {
     pub fn is_input(&self, db: &'db dyn BaseDatabase) -> bool {
         matches!(self.kind(db), VariableKind::Input)
     }
@@ -97,18 +109,4 @@ pub enum VariableKind {
     Access,
     Temp,
     Config,
-}
-
-impl<'db> HirNodeInfo<'db> for VariableDecl<'db> {
-    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
-        self.id(db)
-    }
-
-    fn get_name_id(&'db self, db: &'db dyn BaseDatabase) -> Option<AstId> {
-        Some(self.name_id(db))
-    }
-
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
-        self.scope_id(db)
-    }
 }

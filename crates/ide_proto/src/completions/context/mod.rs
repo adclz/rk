@@ -1,19 +1,15 @@
-use auto_lsp::{
-    core::span::Span,
-    default::db::BaseDatabase,
-    lsp_types::CompletionItem,
-};
+use auto_lsp::{core::span::Span, default::db::BaseDatabase, lsp_types::CompletionItem};
 use hir::{
-    HirNodeInfo, hir_def::{
+    HasName,
+    hir_def::{
         pous::pou::Pou,
-        scope::{ScopeId, ScopeKind}, semantic_index::get_scope,
-    }, query_string::scope::query_scope_items
+        scope::{ScopeId, ScopeKind},
+        semantic_index::get_scope,
+    },
+    query_string::scope::query_scope_items,
 };
 
-use crate::{
-    ToProtocol,
-    completions::item_builder::CompletionBuilder,
-};
+use crate::{completions::item_builder::CompletionBuilder, to_proto::ToProtocol};
 
 pub mod class;
 pub mod function;
@@ -22,11 +18,7 @@ pub mod interface;
 pub mod method;
 
 pub trait PrecizeCompletion<'db, 'scope> {
-    fn head_completion(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        ctx: PouCompletionCtx<'db, 'scope>,
-    );
+    fn head_completion(&'db self, db: &'db dyn BaseDatabase, ctx: PouCompletionCtx<'db, 'scope>);
 }
 
 pub struct ScopeCompletionCtx<'db> {
@@ -57,37 +49,39 @@ impl<'db> ScopeCompletionCtx<'db> {
 
     pub fn scoped(mut self, db: &'db dyn BaseDatabase) -> Self {
         match &get_scope(db, self.scope).kind {
-            ScopeKind::Pou(p) => match p.pou(db) {
+            ScopeKind::Pou(p) => match p {
                 Pou::FunctionBlock(f) => f.head_completion(
                     db,
                     PouCompletionCtx {
                         scope_ctx: &mut self,
-                        name_span: p.name_span(db),
+                        name_span: p.get_name_span(db),
                     },
                 ),
                 Pou::Function(f) => f.head_completion(
                     db,
                     PouCompletionCtx {
                         scope_ctx: &mut self,
-                        name_span: p.name_span(db),
+                        name_span: p.get_name_span(db),
                     },
                 ),
                 Pou::Interface(i) => i.head_completion(
                     db,
                     PouCompletionCtx {
                         scope_ctx: &mut self,
-                        name_span: p.name_span(db), 
-                    }
+                        name_span: p.get_name_span(db),
+                    },
                 ),
                 Pou::Class(c) => c.head_completion(
                     db,
                     PouCompletionCtx {
                         scope_ctx: &mut self,
-                        name_span: p.name_span(db),
+                        name_span: p.get_name_span(db),
                     },
                 ),
                 Pou::DataType(dt) => {
-                    if let Some(completions) = dt.spec(db).completion(db, self.offset) { self.items.extend_from_slice(&completions); }
+                    if let Some(completions) = dt.spec(db).completion(db, self.offset) {
+                        self.items.extend_from_slice(&completions);
+                    }
                 }
             },
             ScopeKind::MethodDecl(m) => {
@@ -95,11 +89,11 @@ impl<'db> ScopeCompletionCtx<'db> {
                     db,
                     PouCompletionCtx {
                         scope_ctx: &mut self,
-                        name_span: m.get_name_span(db).unwrap(),
+                        name_span: m.get_name_span(db),
                     },
                 );
-            },
-            _ => { }
+            }
+            _ => {}
         };
         self
     }
@@ -110,7 +104,7 @@ impl<'db> ScopeCompletionCtx<'db> {
             .with_signature();
 
         let pous = query_scope_items(db, self.query, self.scope, |pou| {
-            matches!(pou.pou(db), Pou::Function(_))
+            matches!(pou, Pou::Function(_))
         });
 
         for pou in pous.local_pous {

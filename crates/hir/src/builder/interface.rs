@@ -1,19 +1,21 @@
+use std::sync::Arc;
+
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::{ParseSpec, ParseVarSection};
 use crate::check::errors::analysis_error::AnalysisError;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use crate::hir_def::pous::interface::{Interface, MethodPrototype};
-use crate::hir_def::pous::pou::{Pou, PouDecl};
+use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::scope::{Scope, ScopeKind};
-use crate::hir_def::visibility::Visibility;
+use crate::Visibility;
 use auto_lsp::anyhow;
 
 impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_interface(
         &mut self,
         interface: &ast::generated::InterfaceDecl,
-    ) -> anyhow::Result<PouDecl<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<Pou<'db>, AnalysisError<'db>> {
         let scope_id = self.generate_scope_id();
         let previous_scope = self.current_scope;
         self.current_scope = scope_id;
@@ -59,14 +61,15 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
         };
 
-        let result = PouDecl::new(
+        let result = Pou::Interface(Interface::new(
             self.db,
-            Pou::Interface(Interface::new(self.db, extends, methods, scope_id)),
             name,
-            interface.into(),
             interface.name.cast(self.ast).into(),
+            extends,
+            methods,
+            interface.into(),
             scope_id,
-        );
+        ));
 
         let scope = Scope::new(
             self.file,
@@ -77,7 +80,8 @@ impl<'db> SemanticIndexBuilder<'db> {
             Some(previous_scope),
         );
 
-        self.scope_keys.insert(scope_id.scope(self.db), scope);
+        self.scope_keys
+            .insert(scope_id.scope(self.db), Arc::new(scope));
 
         Ok(result)
     }
@@ -116,10 +120,10 @@ impl<'db> SemanticIndexBuilder<'db> {
         Ok(MethodPrototype::new(
             self.db,
             name,
+            method.name.cast(self.ast).into(),
             return_type,
             variables,
             method.into(),
-            method.name.cast(self.ast).into(),
             self.current_scope,
         ))
     }

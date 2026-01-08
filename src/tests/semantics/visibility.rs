@@ -36,11 +36,11 @@ fn invalid_access_private_method(mut with_db: RootDatabase) {
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test0.st:8:13 ]
+       ,-[ file:///test0.st:8:19 ]
        |
      8 |             SUPER.myPrivateMethod();
-       |             ^^^^^^^^^^|^^^^^^^^^^  
-       |                       `------------ can not access PRIVATE item 'myPrivateMethod'
+       |                   ^^^^^^^|^^^^^^^  
+       |                          `--------- can not access PRIVATE item 'myPrivateMethod'
        | 
        | Note: variables and methods marked PRIVATE can only be accessed from within the same POU
     ---'
@@ -69,11 +69,11 @@ END_NAMESPACE
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-        ,-[ file:///test0.st:13:13 ]
+        ,-[ file:///test0.st:13:19 ]
         |
      13 |             SUPER.myInternalMethod();
-        |             ^^^^^^^^^^^|^^^^^^^^^^  
-        |                        `------------ can not access INTERNAL item 'myInternalMethod'
+        |                   ^^^^^^^^|^^^^^^^  
+        |                           `--------- can not access INTERNAL item 'myInternalMethod'
         | 
         | Note: calling scope is in NAMESPACE 'ns2', item is only available in NAMESPACE 'ns1'
     ----'
@@ -100,11 +100,11 @@ END_NAMESPACE
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test0.st:6:9 ]
+       ,-[ file:///test0.st:6:15 ]
        |
      6 |         SUPER.myInternalMethod();
-       |         ^^^^^^^^^^^|^^^^^^^^^^  
-       |                    `------------ can not access INTERNAL item 'myInternalMethod'
+       |               ^^^^^^^^|^^^^^^^  
+       |                       `--------- can not access INTERNAL item 'myInternalMethod'
        | 
        | Note: calling scope is in the GLOBAL scope, item is only available in NAMESPACE 'ns2'
     ---'
@@ -129,11 +129,11 @@ END_NAMESPACE
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test0.st:9:13 ]
+       ,-[ file:///test0.st:9:19 ]
        |
      9 |             SUPER.myInternalMethod();
-       |             ^^^^^^^^^^^|^^^^^^^^^^  
-       |                        `------------ can not access INTERNAL item 'myInternalMethod'
+       |                   ^^^^^^^^|^^^^^^^  
+       |                           `--------- can not access INTERNAL item 'myInternalMethod'
        | 
        | Note: calling scope is in NAMESPACE 'ns2', item scope is only available the GLOBAL scope
     ---'

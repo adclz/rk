@@ -22,7 +22,7 @@ END_FUNCTION_BLOCK"#;
        |
      6 |     THIS.decl1();
        |          ^^|^^  
-       |            `---- method 'decl1' not found in 'fb1'
+       |            `---- 'fb1' has no field named 'decl1'
     ---'
     ");
 }
@@ -60,7 +60,7 @@ END_FUNCTION_BLOCK"#;
        |
      8 |     SUPER.super_method1()
        |           ^^^^^^|^^^^^^  
-       |                 `-------- method 'super_method1' not found in 'fb1'
+       |                 `-------- 'fb1' has no field named 'super_method1'
     ---'
     ");
 }
@@ -81,13 +81,6 @@ END_CLASS"#;
        |         ^^|^^  
        |           `---- 'SUPER()' is not valid in this context
     ---'
-    Warning: 
-       ,-[ file:///test0.st:4:9 ]
-       |
-     4 |         SUPER()
-       |         ^^^|^^^  
-       |            `----- unused code, you might want to do something with it
-    ---'
     ");
 }
 
@@ -105,13 +98,6 @@ END_FUNCTION
      3 |     SUPER()
        |     ^^|^^  
        |       `---- 'SUPER()' is not valid in this context
-    ---'
-    Warning: 
-       ,-[ file:///test0.st:3:5 ]
-       |
-     3 |     SUPER()
-       |     ^^^|^^^  
-       |        `----- unused code, you might want to do something with it
     ---'
     ");
 }
@@ -160,7 +146,7 @@ fn type_check_this_method_in_fb(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK fb1
 	METHOD decl
-        VAR_INPUT input1 : INT; END_VAR
+        VAR_INPUT input1 : BOOL; END_VAR
 	END_METHOD
 
 	THIS.decl(0.5);
@@ -171,13 +157,13 @@ END_FUNCTION_BLOCK"#;
     Error: 
        ,-[ file:///test0.st:7:12 ]
        |
-     4 |         VAR_INPUT input1 : INT; END_VAR
-       |                            ^|^  
-       |                             `--- expected type 'INT' here
+     4 |         VAR_INPUT input1 : BOOL; END_VAR
+       |                   ^^^^^^|^^^^^^  
+       |                         `-------- 'BOOL' is expected due to this
        | 
      7 |     THIS.decl(0.5);
        |               ^|^  
-       |                `--- invalid parameter: invalid INT literal
+       |                `--- cannot infer '<float>' to 'BOOL': invalid boolean literal
     ---'
     ");
 }
@@ -189,7 +175,7 @@ fn type_check_super_method_in_class_method(mut with_db: RootDatabase) {
     let source = r#"
 CLASS base
 	METHOD PUBLIC decl
-        VAR_INPUT input1 : INT; END_VAR
+        VAR_INPUT input1 : BOOL; END_VAR
 	END_METHOD
 END_CLASS
 
@@ -204,13 +190,13 @@ END_CLASS
     Error: 
         ,-[ file:///test0.st:10:17 ]
         |
-      4 |         VAR_INPUT input1 : INT; END_VAR
-        |                            ^|^  
-        |                             `--- expected type 'INT' here
+      4 |         VAR_INPUT input1 : BOOL; END_VAR
+        |                   ^^^^^^|^^^^^^  
+        |                         `-------- 'BOOL' is expected due to this
         | 
      10 |         SUPER.decl(0.5);
         |                    ^|^  
-        |                     `--- invalid parameter: invalid INT literal
+        |                     `--- cannot infer '<float>' to 'BOOL': invalid boolean literal
     ----'
     ");
 }
@@ -222,7 +208,7 @@ fn type_check_super_method_in_fb_method(mut with_db: RootDatabase) {
     let source = r#"
 CLASS base
 	METHOD PUBLIC decl
-        VAR_INPUT input1 : INT; END_VAR
+        VAR_INPUT input1 : BOOL; END_VAR
 	END_METHOD
 END_CLASS
 
@@ -237,13 +223,13 @@ END_FUNCTION_BLOCK
     Error: 
         ,-[ file:///test0.st:10:17 ]
         |
-      4 |         VAR_INPUT input1 : INT; END_VAR
-        |                            ^|^  
-        |                             `--- expected type 'INT' here
+      4 |         VAR_INPUT input1 : BOOL; END_VAR
+        |                   ^^^^^^|^^^^^^  
+        |                         `-------- 'BOOL' is expected due to this
         | 
      10 |         SUPER.decl(0.5);
         |                    ^|^  
-        |                     `--- invalid parameter: invalid INT literal
+        |                     `--- cannot infer '<float>' to 'BOOL': invalid boolean literal
     ----'
     ");
 }

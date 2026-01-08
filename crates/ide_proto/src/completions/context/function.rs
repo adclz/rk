@@ -1,21 +1,16 @@
 use auto_lsp::default::db::BaseDatabase;
-use hir::{
-    HirNodeInfo,
-    hir_def::pous::function::Function,
+use hir::{HirNodeInfo, hir_def::pous::function::Function};
+
+use crate::completions::{
+    context::{PouCompletionCtx, PrecizeCompletion},
+    static_snippets::{all_stmts, fn_var_snippets},
 };
 
-use crate::completions::{context::{PouCompletionCtx, PrecizeCompletion}, static_snippets::{all_stmts, fn_var_snippets}};
-
-
 impl<'db, 'scope> PrecizeCompletion<'db, 'scope> for Function<'db> {
-    fn head_completion(
-        &'db self,
-        db: &'db dyn BaseDatabase,
-        ctx: PouCompletionCtx<'db, 'scope>,
-    ) {
+    fn head_completion(&'db self, db: &'db dyn BaseDatabase, ctx: PouCompletionCtx<'db, 'scope>) {
         if ctx.scope_ctx.offset <= ctx.name_span.start_byte {
             // Before the name of POU, returns nothing
-            return
+            return;
         }
         match (self.variables(db).first(), self.statements(db).first()) {
             // If we are before variables, suggest both extends and implements and variable snippets

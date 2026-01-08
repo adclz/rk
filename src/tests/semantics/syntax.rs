@@ -8,7 +8,7 @@ use crate::tests::utils::with_db;
 #[rstest]
 fn missing_identifier(mut with_db: RootDatabase) {
     let source = r#"
-NAMESPACE 
+NAMESPACE
 END_NAMESPACE"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
@@ -69,7 +69,7 @@ CLASS b
 END_CLASS
 
 FUNCTION_BLOCK fn IMPLEMENTS a EXTENDS b
-    
+
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
@@ -93,7 +93,7 @@ INTERFACE b
 END_INTERFACE
 
 FUNCTION_BLOCK fn IMPLEMENTS a IMPLEMENTS b
-    
+
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
@@ -117,7 +117,7 @@ CLASS b
 END_CLASS
 
 FUNCTION_BLOCK fn EXTENDS a EXTENDS b
-    
+
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
@@ -138,7 +138,7 @@ FUNCTION_BLOCK fn
     VAR_INPUT
         empty
     END_VAR
-    
+
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
@@ -156,7 +156,7 @@ END_FUNCTION_BLOCK"#;
 fn function_call_as_assignment(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK fn
-    fn() := 0;   
+    fn() := 0;
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
@@ -210,7 +210,7 @@ END_FUNCTION_BLOCK"#;
 fn empty_right_hand_assignment(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK fn
-    a := 
+    a :=
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
@@ -230,8 +230,8 @@ fn function_call_in_init_expression(mut with_db: RootDatabase) {
 FUNCTION_BLOCK fn
   VAR
     ml : ARRAY [0..2] OF TON := [10(call(IN := 5, OUT => OUT))]
-  END_VAR    
-    
+  END_VAR
+
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
@@ -333,11 +333,11 @@ fn class_variables_before_method(mut with_db: RootDatabase) {
 CLASS base
 
     METHOD PROTECTED myProtectedMethod END_METHOD
-        
+
     VAR
         obj: Base;
     END_VAR
-    
+
     VAR
         obj: Base;
     END_VAR
@@ -357,18 +357,17 @@ END_CLASS"#;
     ");
 }
 
-
 #[rstest]
 fn fb_variables_before_method(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK fb1
 
     METHOD PROTECTED myProtectedMethod END_METHOD
-        
+
     VAR
         obj: Base;
     END_VAR
-    
+
     VAR
         obj: Base;
     END_VAR

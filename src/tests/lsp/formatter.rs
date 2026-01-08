@@ -166,7 +166,6 @@ pub fn class_definition(mut with_db: RootDatabase) {
     ");
 }
 
-
 #[rstest]
 pub fn class_definition2(mut with_db: RootDatabase) {
     let source = r#"

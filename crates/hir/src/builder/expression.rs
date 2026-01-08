@@ -211,7 +211,7 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                 let name = enum_.enum_path.cast(sema.ast).parse(sema)?;
                 let variant = SpanIdent::from_node(sema.db, sema, enum_.children.cast(sema.ast))?;
 
-                Ok(Expr::new( 
+                Ok(Expr::new(
                     sema.db,
                     ExprKind::PrimaryExpr(PrimaryExpr::EnumValue { name, variant }),
                     enum_.into(),
@@ -412,7 +412,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Constant {
                                     }
                                 }
                             }
-                            None => Elementary::InferIdent(Ident::from_node(sema.db, sema.file, real_literal.value.cast(sema.ast))?)
+                            None => Elementary::InferFloat(Ident::from_node(sema.db, sema.file, real_literal.value.cast(sema.ast))?)
                         }
                     },
                 }
@@ -613,35 +613,37 @@ impl<'db> ParseExpr<'db> for ast::generated::BeginPathExpression {
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<Self::Output, AnalysisError<'db>> {
-        match self.children.cast(sema.ast) { 
+        match self.children.cast(sema.ast) {
             ast::generated::Invocation_PathExpression::Invocation(i) => {
                 match i.children.cast(sema.ast) {
                     ast::generated::AnyInvocation_SuperBodyInvocation::SuperBodyInvocation(s) => {
                         let invocation = Invocation::new(
-                            sema.db, 
-                            s.into(), 
-                            s.SUPER.cast(sema.ast).into(), 
-                            sema.current_scope, 
-                            InvocationKind::SuperBody
+                            sema.db,
+                            s.into(),
+                            s.SUPER.cast(sema.ast).into(),
+                            sema.current_scope,
+                            InvocationKind::SuperBody,
                         );
 
                         Ok(BeginPathExpr::new(
                             sema.db,
                             Some(invocation),
                             None,
-                            self.into(), 
+                            self.into(),
                             sema.current_scope,
                         ))
-                    },
+                    }
                     ast::generated::AnyInvocation_SuperBodyInvocation::AnyInvocation(any) => {
-                        let path = any.children.as_ref()
+                        let path = any
+                            .children
+                            .as_ref()
                             .and_then(|s| {
-                            s.cast(sema.ast)
-                                .path.as_ref().map(|p| {
-                                    p.cast(sema.ast)
-                                    .parse(sema)
+                                s.cast(sema.ast)
+                                    .path
+                                    .as_ref()
+                                    .map(|p| p.cast(sema.ast).parse(sema))
                             })
-                        }).transpose()?;
+                            .transpose()?;
 
                         let invocation = match any.invocation.cast(sema.ast) {
                             ast::generated::SuperInvocation_ThisInvocation::SuperInvocation(s) => {
@@ -661,28 +663,26 @@ impl<'db> ParseExpr<'db> for ast::generated::BeginPathExpression {
                                     sema.current_scope,
                                     InvocationKind::This,
                                 )
-                            } 
+                            }
                         };
 
                         Ok(BeginPathExpr::new(
-                                    sema.db,
+                            sema.db,
                             Some(invocation),
-                                path,
-                                     self.into(), 
+                            path,
+                            self.into(),
                             sema.current_scope,
                         ))
                     }
-                }  
-            },
-            ast::generated::Invocation_PathExpression::PathExpression(p) => {
-                Ok(BeginPathExpr::new(
-                    sema.db,
-                    None,
-                    Some(p.parse(sema)?),
-                    self.into(), 
-                    sema.current_scope,
-                ))
+                }
             }
+            ast::generated::Invocation_PathExpression::PathExpression(p) => Ok(BeginPathExpr::new(
+                sema.db,
+                None,
+                Some(p.parse(sema)?),
+                self.into(),
+                sema.current_scope,
+            )),
         }
     }
 }
@@ -783,8 +783,8 @@ impl<'db> ParseExpr<'db> for ast::generated::VarAccess {
                     sema.db,
                     sema,
                     ref_deref.Ref.cast(sema.ast),
-                )?))
-            } 
-        } 
+                )?, ref_deref.children.len() as u16))
+            }
+        }
     }
 }

@@ -1,8 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
-use hir::{
-    HirNodeInfo,
-    hir_def::pous::class::Class,
-};
+use hir::{HirNodeInfo, hir_def::pous::class::Class};
 
 use crate::completions::{
     self,

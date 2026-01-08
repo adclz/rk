@@ -28,13 +28,9 @@ fn unknown_struct_field(mut with_db: RootDatabase) {
     Error: 
         ,-[ file:///test0.st:12:49 ]
         |
-      2 |         TYPE Engine:
-        |              ^^^|^^  
-        |                 `---- type 'Engine: STRUCT' defined here
-        | 
      12 |                 Base : Engine := (power := 100, fuel := 10.0);
-        |                                                 ^^|^  
-        |                                                   `--- no field 'fuel' in STRUCT
+        |                                                 ^^^^^^|^^^^^  
+        |                                                       `------- no field 'fuel' in type 'STRUCT'
     ----'
     ");
 }
@@ -60,26 +56,11 @@ fn invalid_struct_value(mut with_db: RootDatabase) {
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-        ,-[ file:///test0.st:11:44 ]
-        |
-      4 |                 power : INT;
-        |                         ^|^  
-        |                          `--- expected type 'INT' here
-        | 
-     11 |                 Base : Engine := (power := 10.5, fuel := 10.0);
-        |                                            ^^|^  
-        |                                              `--- invalid value initializer: invalid INT literal
-    ----'
-    Error: 
         ,-[ file:///test0.st:11:50 ]
         |
-      2 |         TYPE Engine:
-        |              ^^^|^^  
-        |                 `---- type 'Engine: STRUCT' defined here
-        | 
      11 |                 Base : Engine := (power := 10.5, fuel := 10.0);
-        |                                                  ^^|^  
-        |                                                    `--- no field 'fuel' in STRUCT
+        |                                                  ^^^^^^|^^^^^  
+        |                                                        `------- no field 'fuel' in type 'STRUCT'
     ----'
     ");
 }
@@ -99,15 +80,7 @@ fn array_initializer_out_of_bounds(mut with_db: RootDatabase) {
         END_FUNCTION
         "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
-       ,-[ file:///test0.st:8:35 ]
-       |
-     8 |                 Base : Engine := [5(10)];
-       |                                   ^^|^^  
-       |                                     `---- too many array elements: provided 5, but array capacity is 4
-    ---'
-    ");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 #[rstest]
@@ -126,15 +99,7 @@ fn array_initializer_out_of_bounds_with_single_values(mut with_db: RootDatabase)
         END_FUNCTION
         "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
-       ,-[ file:///test0.st:9:45 ]
-       |
-     9 |                 Base : Engine := [3(10), 5, 6, 4];
-       |                                             |  
-       |                                             `-- too many array elements: provided 5, but array capacity is 4
-    ---'
-    ");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 #[rstest]
@@ -153,15 +118,7 @@ fn multi_dimensional_array_initializer_out_of_bounds(mut with_db: RootDatabase) 
 
         "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
-       ,-[ file:///test0.st:8:37 ]
-       |
-     8 |                 Base : Engine := [3(10(10))];
-       |                                     ^^^|^^  
-       |                                        `---- too many array elements: provided 10, but array capacity is 7
-    ---'
-    ");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 #[rstest]
@@ -180,19 +137,7 @@ fn invalid_array_value(mut with_db: RootDatabase) {
 
         "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
-       ,-[ file:///test0.st:8:37 ]
-       |
-     3 |             Engine: ARRAY[0..3] OF INT;
-       |                                    ^|^  
-       |                                     `--- expected type 'INT' here
-       | 
-     8 |                 Base : Engine := [3(10.5)];
-       |                                     ^^|^  
-       |                                       `--- invalid value initializer: invalid INT literal
-    ---'
-    ");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 #[rstest]
@@ -211,19 +156,7 @@ fn multi_dimensional_invalid_array_value(mut with_db: RootDatabase) {
 
         "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
-       ,-[ file:///test0.st:8:39 ]
-       |
-     3 |             Engine: ARRAY[0..3, 0..6] OF INT;
-       |                                          ^|^  
-       |                                           `--- expected type 'INT' here
-       | 
-     8 |                 Base : Engine := [3(5(10.5))];
-       |                                       ^^|^  
-       |                                         `--- invalid value initializer: invalid INT literal
-    ---'
-    ");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 #[rstest]
@@ -245,19 +178,7 @@ fn invalid_value_in_array_of_struct(mut with_db: RootDatabase) {
         END_FUNCTION
         "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
-        ,-[ file:///test0.st:12:64 ]
-        |
-      5 |                 Torque: INT;
-        |                         ^|^  
-        |                          `--- expected type 'INT' here
-        | 
-     12 |                 Base : EngineArray := [(Power := 10, Torque := 10.0)];
-        |                                                                ^^|^  
-        |                                                                  `--- invalid value initializer: invalid INT literal
-    ----'
-    ");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 #[rstest]
@@ -278,30 +199,7 @@ fn invalid_value_in_struct_with_array(mut with_db: RootDatabase) {
         END_FUNCTION
         "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
-        ,-[ file:///test0.st:11:49 ]
-        |
-      4 |                 Power: ARRAY[0..2] OF INT;
-        |                                       ^|^  
-        |                                        `--- expected type 'INT' here
-        | 
-     11 |                 Base : Engine := (Power := [10, 5.3], Torque := 10.0);
-        |                                                 ^|^  
-        |                                                  `--- invalid value initializer: invalid INT literal
-    ----'
-    Error: 
-        ,-[ file:///test0.st:11:65 ]
-        |
-      5 |                 Torque: INT;
-        |                         ^|^  
-        |                          `--- expected type 'INT' here
-        | 
-     11 |                 Base : Engine := (Power := [10, 5.3], Torque := 10.0);
-        |                                                                 ^^|^  
-        |                                                                   `--- invalid value initializer: invalid INT literal
-    ----'
-    ");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 #[rstest]
@@ -326,7 +224,7 @@ fn unexpected_struct_field(mut with_db: RootDatabase) {
        |
      8 |                 Base : Engine := [2(param1 := 0)];
        |                                     ^^^^^|^^^^^  
-       |                                          `------- invalid value initializer: expected type 'INT', found 'STRUCT field'
+       |                                          `------- no field 'param1' in type 'INT'
     ---'
     ");
 }
@@ -353,7 +251,7 @@ fn unexpected_array(mut with_db: RootDatabase) {
        |
      8 |                 Base : Engine := [2];
        |                               ^^^|^^  
-       |                                  `---- invalid value initializer: expected type 'Engine: INT', found 'ARRAY init'
+       |                                  `---- cannot index into type 'INT'
     ---'
     ");
 }

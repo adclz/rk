@@ -1,8 +1,9 @@
-
 use auto_lsp::default::db::{BaseDatabase, file::File};
 
 use crate::{
-    hir_def::semantic_index::semantic_index, query_string::query::{NamedSymbol, SymbolIndex, SymbolKind}
+    HasName,
+    hir_def::semantic_index::semantic_index,
+    query_string::query::{NamedSymbol, SymbolIndex, SymbolKind},
 };
 
 // Construct a symbol index for all POUs in the given file
@@ -15,7 +16,7 @@ pub fn file_symbol_index<'db>(db: &'db dyn BaseDatabase, file: File) -> SymbolIn
     // Global POUs
     for pou in sema.global_pous.iter() {
         items.push(NamedSymbol {
-            name: pou.name(db).text(db).to_string(),
+            name: pou.get_name_ident(db).text(db).to_string(),
             namespace: None,
             kind: SymbolKind::Pou(*pou),
         });
@@ -25,7 +26,7 @@ pub fn file_symbol_index<'db>(db: &'db dyn BaseDatabase, file: File) -> SymbolIn
     for ns in sema.namespaces.iter() {
         for pou in ns.pous(db).iter() {
             items.push(NamedSymbol {
-                name: pou.name(db).text(db).to_string(),
+                name: pou.get_name_ident(db).text(db).to_string(),
                 namespace: Some(*ns.path(db)),
                 kind: SymbolKind::Pou(*pou),
             });

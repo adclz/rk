@@ -16,9 +16,8 @@ use crate::{
     HirNodeInfo,
     check::{
         check_inheritance::check_inheritance,
-        check_init_expr::check_init_expr,
         check_namespaces::check_duplicate_namespaces,
-        errors::{analysis_error::ToIdeDiagnostic, duplicates::DuplicateError, stmt::StmtError},
+        errors::{analysis_error::ToIdeDiagnostic, duplicates::DuplicateError},
     },
     hir_def::{
         expressions::{
@@ -31,20 +30,11 @@ use crate::{
         },
         interned::namespace::NamespacePath,
         namespace::NamespaceDecl,
-        pous::{
-            pou::{Pou, PouDecl},
-            variable::VariableDecl,
-        },
+        pous::{pou::Pou, variable::VariableDecl},
         scope::ScopeId,
-        semantic_index::{HirNode, SemanticIndex, get_scope, semantic_index},
+        semantic_index::{SemanticIndex, get_scope, semantic_index},
     },
-    hir_ty::{
-        init_expr_resolver::{ResolvedInitExpr, resolve_init_expr},
-        name_res::global_pou_index,
-        ty::{Ty, TyKind},
-        ty_var_access_resolver::ResolvedAccess,
-    },
-    walk::WalkHir,
+    hir_ty::name_res::pou_index,
 };
 
 pub trait Check<'db> {
@@ -61,81 +51,16 @@ impl<'db> Check<'db> for SemanticIndex<'db> {
         self.errors
             .iter()
             .for_each(|err| errors.push(err.to_diagnostic(db)));
-        self.pous(db).iter().for_each(|pou| pou.check(db, errors));
+
+        self.pous(db)
+            .iter()
+            .for_each(|pou| pou.get_scope_id(db).check(db, errors));
         // Namespaces
-        self.namespaces.iter().for_each(|ns| ns.check(db, errors));
-    }
-}
-
-impl<'db> Check<'db> for NamespaceDecl<'db> {
-    fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<IdeDiagnostic>) {
-        if let Some(ns_errors) =
-            check_duplicate_namespaces(db, *self).get(&self.scope_id(db).file(db))
-        {
-            errors.extend_from_slice(ns_errors);
-        }
-        get_scope(db, self.get_scope_id(db))
-            .usings
-            .iter()
-            .for_each(|u| {
-                u.check(db, errors);
-            });
-        self.pous(db).iter().for_each(|p| p.check(db, errors));
-    }
-}
-
-impl<'db> Check<'db> for PouDecl<'db> {
-    fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<IdeDiagnostic>) {
-        get_scope(db, self.get_scope_id(db))
-            .usings
-            .iter()
-            .for_each(|u| {
-                u.check(db, errors);
-            });
-
-        match self.pou(db) {
-            Pou::Function(f) => {
-                f.variables(db).check(db, errors);
-                f.statements(db).check(db, errors);
-            }
-            Pou::FunctionBlock(fb) => {
-                check_inheritance(db, *self, errors);
-                fb.variables(db).check(db, errors);
-                fb.methods(db).check(db, errors);
-                fb.statements(db).check(db, errors);
-                fb.methods(db).iter().for_each(|m| {
-                    m.variables(db).check(db, errors);
-                    m.stmts(db).check(db, errors);
-                });
-            }
-            Pou::Class(cl) => {
-                check_inheritance(db, *self, errors);
-                cl.variables(db).check(db, errors);
-                cl.methods(db).check(db, errors);
-                cl.methods(db).iter().for_each(|m| {
-                    m.variables(db).check(db, errors);
-                    m.stmts(db).check(db, errors);
-                });
-            }
-            Pou::Interface(it) => {
-                it.methods(db).check(db, errors);
-                check_inheritance(db, *self, errors);
-            }
-            Pou::DataType(typ) => match typ.spec(db).kind(db) {
-                SpecKind::Array(arr) => {
-                    arr.check(db, errors);
-                }
-                SpecKind::Struct(st) => {
-                    st.check(db, errors);
-                }
-                SpecKind::Enum(en) => {
-                    en.check(db, errors);
-                }
-                SpecKind::Subrange(sub) => {
-                    sub.check(db, errors);
-                }
-                _ => {}
-            },
-        }
+        self.namespaces.iter().for_each(|ns| {
+            check_duplicate_namespaces(db, *ns)
+                .values()
+                .for_each(|diags| errors.extend_from_slice(diags));
+            ns.scope_id(db).check(db, errors)
+        });
     }
 }

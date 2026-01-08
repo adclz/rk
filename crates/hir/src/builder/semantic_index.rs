@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::default::db::tracked::ParsedAst;
@@ -8,10 +10,10 @@ use crate::check::errors::analysis_error::AnalysisError;
 use crate::check::errors::syntax::SyntaxError;
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::namespace::NamespaceDecl;
-use crate::hir_def::pous::pou::PouDecl;
-use crate::hir_def::scope::{ScopeId, Scope, ScopeKind};
+use crate::hir_def::pous::pou::Pou;
+use crate::hir_def::scope::{Scope, ScopeId, ScopeKind};
 use crate::hir_def::semantic_index::SemanticIndex;
-use crate::hir_def::visibility::Visibility;
+use crate::Visibility;
 
 pub struct SemanticIndexBuilder<'db> {
     pub(crate) source: &'db ast::generated::SourceFile,
@@ -24,20 +26,20 @@ pub struct SemanticIndexBuilder<'db> {
     pub(crate) current_scope: ScopeId<'db>,
 
     /// Maps scope IDs to their corresponding scopes.
-    pub(crate) scope_keys: FxHashMap<usize, Scope<'db>>,
+    pub(crate) scope_keys: FxHashMap<usize, Arc<Scope<'db>>>,
 
     pub(crate) global_namespaces: Vec<NamespaceDecl<'db>>,
-    pub(crate) global_pous: Vec<PouDecl<'db>>,
+    pub(crate) global_pous: Vec<Pou<'db>>,
 
     /// Maps scope IDs to their corresponding namespaces.
     pub(crate) namespaces: Vec<NamespaceDecl<'db>>,
 
     /// Counter for generating stable scope IDs.
-    /// 
+    ///
     /// The reason for having a separate counter is that each scope will trigger a recomputation if it's ID changes.
     /// If we use the AST id directly, then any changes in the previous nodes will cause all subsequent scopes to be recomputed.
-    /// 
-    /// Since scope are only created when visiting a Pou or Namespace, 
+    ///
+    /// Since scope are only created when visiting a Pou or Namespace,
     /// writing variables / statements / expressions, will preserve the IDs of scopes.
     pub(crate) scope_ctr: usize,
 
@@ -161,7 +163,8 @@ impl<'db> SemanticIndexBuilder<'db> {
             None,
         );
 
-        self.scope_keys.insert(global_scope.scope(self.db), scope);
+        self.scope_keys
+            .insert(global_scope.scope(self.db), Arc::new(scope));
 
         SemanticIndex {
             file: self.file,

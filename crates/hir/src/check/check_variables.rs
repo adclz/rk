@@ -3,20 +3,24 @@ use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
 use crate::{
+    HasName,
     check::{
-        check_init_expr::check_init_expr,
         check_semantic_index::Check,
-        errors::{analysis_error::ToIdeDiagnostic, duplicates::DuplicateError},
+        errors::{
+            analysis_error::ToIdeDiagnostic,
+            body_inference::BodyInferenceError,
+            duplicates::DuplicateError,
+        },
     },
     hir_def::{interned::identifier::Ident, pous::variable::VariableDecl},
-    hir_ty::{init_expr_resolver::resolve_init_expr, ty::TyKind},
+    hir_ty::{init_inference::infer_variable, ty::Type},
 };
 
-impl<'db> Check<'db> for Vec<VariableDecl<'db>> {
+impl<'db> Check<'db> for [VariableDecl<'db>] {
     fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<IdeDiagnostic>) {
         let mut seen: FxHashMap<Ident, VariableDecl<'db>> = FxHashMap::default();
         for variable in self {
-            match seen.get(variable.name(db)) {
+            match seen.get(&variable.get_name_ident(db)) {
                 Some(prev) => {
                     errors.push(
                         DuplicateError::Variable {
@@ -27,21 +31,32 @@ impl<'db> Check<'db> for Vec<VariableDecl<'db>> {
                     );
                 }
                 None => {
-                    seen.insert(*variable.name(db), *variable);
+                    seen.insert(variable.get_name_ident(db), *variable);
                 }
             }
 
-            if let TyKind::Err(err) = variable.spec(db).to_ty(db).kind(db) {
-                errors.push(err.to_diagnostic(db));
+            let var_typ = Type::new_spec(db, variable.spec(db));
+            if var_typ.is_never() {
+                errors.push(
+                    BodyInferenceError::NoSpecItemInScope {
+                        spec: variable.spec(db),
+                        scope: variable.scope_id(db),
+                    }
+                    .to_diagnostic(db),
+                );
             }
 
-            if let Some(init) = variable.init(db) {
-                check_init_expr(
-                    db,
-                    variable.spec(db).to_ty(db),
-                    *resolve_init_expr(db, variable.spec(db).to_ty(db), *init),
-                    errors,
-                );
+            // Check initializer expression
+
+            if let Some(init_expr) = variable.init(db) {
+                let infer = infer_variable(db, *variable);
+                for error in infer.errors.iter() {
+                    errors.push(error.clone());
+                }
+
+                for error in infer.body_infer_result.errors.iter() {
+                    errors.push(error.clone());
+                }
             }
         }
     }

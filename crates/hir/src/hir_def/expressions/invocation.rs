@@ -1,9 +1,6 @@
 use auto_lsp::default::db::BaseDatabase;
 
-use crate::{
-    AstId, HirNodeInfo,
-    hir_def::scope::ScopeId,
-};
+use crate::{AstId, HirNodeInfo, hir_def::scope::ScopeId};
 
 #[salsa::tracked(debug)]
 pub struct Invocation<'db> {
@@ -21,7 +18,7 @@ pub struct Invocation<'db> {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum InvocationKind{
+pub enum InvocationKind {
     This,
     Super,
     SuperBody,

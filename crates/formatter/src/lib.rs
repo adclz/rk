@@ -46,7 +46,7 @@ static SURROUND_SPACES: &str = r#"
 
 (identifier) @prepend_space
 ["(" "[" "." "END_CASE"] @append_antispace
-[")" "]" ":" ";" "," "." "^"] @prepend_antispace
+[")" "]" ":" ";" "," "." (deref_sign)] @prepend_antispace
 ["NOT" ":"] @append_space
 "#;
 
@@ -364,7 +364,8 @@ pub fn format(db: &impl BaseDatabase, file: File) -> anyhow::Result<Option<Vec<T
             skip_idempotence: true,
             tolerate_parsing_errors: false,
         },
-    ).map_err(|e| anyhow::anyhow!("could not format document: {}", e))?;
+    )
+    .map_err(|e| anyhow::anyhow!("could not format document: {}", e))?;
 
     let output = String::from_utf8(output)?;
 
