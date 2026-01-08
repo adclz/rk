@@ -1,6 +1,7 @@
 use std::ops::ControlFlow;
 
 use auto_lsp::default::db::BaseDatabase;
+use auto_lsp::default::db::file::File;
 use db::RootDatabase;
 use hir::HirNodeInfo;
 use hir::hir_def::semantic_index::SemanticIndex;
@@ -12,34 +13,36 @@ use insta::assert_snapshot;
 use rstest::rstest;
 
 use crate::tests::utils::add_sources;
+use crate::tests::utils::find_pou_with_name;
 use crate::tests::utils::test_diagnostics;
 use crate::tests::utils::with_db;
 
 /// Utility to collect all path expressions in a given source file.
 /// The output is a list of lines with the format:
 /// `<offset> <type>`
-fn collect_path_expressions(db: &dyn BaseDatabase, sema: &SemanticIndex) -> String {
+fn collect_path_expressions(db: &dyn BaseDatabase, file: File, pou_name: &str) -> String {
+    let pou = find_pou_with_name(db, file, pou_name).unwrap();
+
     let mut result = vec![];
-    let _ = sema.walk_hir(db, &mut |n| {
-        if let HirNode::PathExpr(path) = n {
-            result.push(path);
-        }
-        ControlFlow::Continue(())
-    });
+    let infer_result = infer_body_scope(db, pou.get_scope_id(db));
 
-    result
-        .iter()
-        .map(|r| {
-            let infer_result = infer_body_scope(db, r.scope_id(db));
+    for (path_expr, typ) in &infer_result.type_of_path_expr {
+        result.push(format!(
+            "{} {} {}",
+            path_expr.get_id(db).id(),
+            typ.kind(),
+            match infer_result
+                .adjustments_of_path_expr(*path_expr)
+                .iter()
+                .last()
+            {
+                Some(adj) => format!("{:?}", adj),
+                None => "<none>".to_string(),
+            }
+        ));
+    }
 
-            format!(
-                "{} {}",
-                r.get_span(db).start_byte,
-                infer_result.type_of_path_expr_with_adjustments(*r).unwrap().type_name(db)
-            )
-        })
-        .collect::<Vec<String>>()
-        .join("\n")
+    result.join("\n")
 }
 
 // Both tests below ensure that we correctly walk into path expressions.
@@ -52,15 +55,17 @@ FUNCTION fn: BOOL
 		test: ARRAY[0..2] OF INT;
 	END_VAR
 
-	test[0] := 0.2;
+	test[0] := 0;
 
 END_FUNCTION
 "#;
     add_sources(&mut with_db, &[source]);
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
 
     // in case of index access, the index expression has the same offset as the parent expression
-    assert_snapshot!(collect_path_expressions(&with_db, sema), @"");
+    assert_snapshot!(collect_path_expressions(&with_db, *with_db.get_files().iter().last().unwrap(), &"fn"), @r"
+    38 VARIABLE [Adjustment { kind: Index, target: Elementary(Int) }]
+    38 VARIABLE [Adjustment { kind: Index, target: Elementary(Int) }]
+    ");
 }
 
 #[rstest]
@@ -82,9 +87,11 @@ FUNCTION fn: BOOL
 END_FUNCTION
         "#;
     add_sources(&mut with_db, &[source]);
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
-
-    assert_snapshot!(collect_path_expressions(&with_db, sema), @"");
+    assert_snapshot!(collect_path_expressions(&with_db, *with_db.get_files().iter().last().unwrap(), &"fn"), @r"
+    51 STRUCT_ELEMENT [Adjustment { kind: Index, target: Elementary(Int) }]
+    49 VARIABLE <none>
+    51 STRUCT_ELEMENT [Adjustment { kind: Index, target: Elementary(Int) }]
+    ");
 }
 
 #[rstest]
@@ -92,29 +99,28 @@ fn invalid_type_access_array_index(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION fn: BOOL
 	VAR
-		test: ARRAY[0..2] OF INT;
+		test: ARRAY[0..2] OF BOOL;
 	END_VAR
 
-	test[0] := 0.2;
+	test[0] := 0.5;
 
 END_FUNCTION
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Advice: 
-       ,-[ file:///test0.st:7:2 ]
+    Error: 
+       ,-[ file:///test0.st:7:13 ]
        |
-     7 |     test[0] := 0.2;
-       |     ^^|^  
-       |       `--- cannot index non-array type 'ARRAY [0..2] OF INT'
+     7 |     test[0] := 0.5;
+       |     ^^^|^^^    ^|^  
+       |        `------------ 'BOOL' is expected due to this
+       |                 |   
+       |                 `--- cannot infer '<float>' to 'BOOL': invalid boolean literal
     ---'
-    Advice: 
-       ,-[ file:///test0.st:7:2 ]
-       |
-     7 |     test[0] := 0.2;
-       |     ^^^|^^^  
-       |        `----- cannot use direct type '{unknown}' here
-    ---'
+    ");
+    assert_snapshot!(collect_path_expressions(&with_db, *with_db.get_files().iter().last().unwrap(), &"fn"), @r"
+    36 VARIABLE [Adjustment { kind: Index, target: Elementary(Bool) }]
+    36 VARIABLE [Adjustment { kind: Index, target: Elementary(Bool) }]
     ");
 }
 
@@ -139,19 +145,12 @@ END_FUNCTION
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Advice: 
+    Error: 
         ,-[ file:///test0.st:14:7 ]
         |
      14 |     test.powerr := 0.2;
         |          ^^^|^^  
-        |             `---- 'STRUCT (2 members)' has no field named 'powerr'
-    ----'
-    Advice: 
-        ,-[ file:///test0.st:14:2 ]
-        |
-     14 |     test.powerr := 0.2;
-        |     ^^^^^|^^^^^  
-        |          `------- cannot use direct type '{unknown}' here
+        |             `---- 'STRUCT' has no field named 'powerr'
     ----'
     ");
 }
@@ -176,15 +175,7 @@ FUNCTION fn: BOOL
 END_FUNCTION
         "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Advice: 
-        ,-[ file:///test0.st:14:2 ]
-        |
-     14 |     test.power := 0.2;
-        |     ^^^^^|^^^^  
-        |          `------ cannot use direct type 'INT' here
-    ----'
-    ");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 #[rstest]
@@ -208,19 +199,12 @@ END_FUNCTION
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Advice: 
+    Error: 
         ,-[ file:///test0.st:14:2 ]
         |
      14 |     test[0] := 0.2;
         |     ^^|^  
         |       `--- cannot index non-array type 'STRUCT'
-    ----'
-    Advice: 
-        ,-[ file:///test0.st:14:2 ]
-        |
-     14 |     test[0] := 0.2;
-        |     ^^^|^^^  
-        |        `----- cannot use direct type '{unknown}' here
     ----'
     ");
 }
@@ -239,19 +223,12 @@ END_FUNCTION
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Advice: 
+    Error: 
        ,-[ file:///test0.st:7:7 ]
        |
      7 |     test.not_a_field := 0.2;
        |          ^^^^^|^^^^^  
        |               `------- 'ARRAY [0..1] OF INT' has no field named 'not_a_field'
-    ---'
-    Advice: 
-       ,-[ file:///test0.st:7:2 ]
-       |
-     7 |     test.not_a_field := 0.2;
-       |     ^^^^^^^^|^^^^^^^  
-       |             `--------- cannot use direct type '{unknown}' here
     ---'
     ");
 }

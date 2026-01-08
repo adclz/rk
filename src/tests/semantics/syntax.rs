@@ -12,13 +12,13 @@ NAMESPACE
 END_NAMESPACE"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error:
+    Error: 
        ,-[ file:///test0.st:2:10 ]
        |
      2 | NAMESPACE
-       |          |
+       |          | 
        |          `- Syntax error: Missing 'identifier'
-       |          |
+       |          | 
        |          `- add missing identifier here
     ---'
     ");
@@ -33,13 +33,13 @@ fn missing_end_keyword(mut with_db: RootDatabase) {
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error:
+    Error: 
        ,-[ file:///test0.st:2:26 ]
        |
      2 |     FUNCTION myFunc : INT
-       |                          |
+       |                          | 
        |                          `- Syntax error: Missing 'END_FUNCTION'
-       |                          |
+       |                          | 
        |                          `- add missing END_FUNCTION here
     ---'
     ");
@@ -303,26 +303,6 @@ END_FUNCTION"#;
        | 
        | Help: replace '=' with ':='
     ---'
-    Advice: 
-       ,-[ file:///test0.st:4:10 ]
-       |
-     3 |   VAR i : INT END_VAR
-       |       |  
-       |       `-- type is declared by variable 'i' here
-     4 |     FOR i = 0 TO 10 END_FOR
-       |             |  
-       |             `-- expected 'INT', got '(INT) 0'
-    ---'
-    Advice: 
-       ,-[ file:///test0.st:4:15 ]
-       |
-     3 |   VAR i : INT END_VAR
-       |       |  
-       |       `-- type is declared by variable 'i' here
-     4 |     FOR i = 0 TO 10 END_FOR
-       |                  ^|  
-       |                   `-- expected 'INT', got '(INT) 10'
-    ---'
     ");
 }
 
@@ -343,26 +323,6 @@ END_FUNCTION"#;
        |           `-- ':' is not a valid assignment sign
        | 
        | Help: replace ':' with ':='
-    ---'
-    Advice: 
-       ,-[ file:///test0.st:4:10 ]
-       |
-     3 |     VAR i : INT END_VAR
-       |         |  
-       |         `-- type is declared by variable 'i' here
-     4 |     FOR i : 0 TO 10 END_FOR
-       |             |  
-       |             `-- expected 'INT', got '(INT) 0'
-    ---'
-    Advice: 
-       ,-[ file:///test0.st:4:15 ]
-       |
-     3 |     VAR i : INT END_VAR
-       |         |  
-       |         `-- type is declared by variable 'i' here
-     4 |     FOR i : 0 TO 10 END_FOR
-       |                  ^|  
-       |                   `-- expected 'INT', got '(INT) 10'
     ---'
     ");
 }

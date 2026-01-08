@@ -18,7 +18,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Advice: 
+    Error: 
        ,-[ file:///test0.st:7:5 ]
        |
      7 |     test();
@@ -40,12 +40,12 @@ END_FUNCTION_BLOCK
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Advice: 
+    Error: 
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     fb2();
        |     ^|^  
-       |      `--- 'fb2' is not a callable type
+       |      `--- 'FUNCTION_BLOCK: fb2' is not a callable type
        | 
        | Note: to call a FUNCTION_BLOCK, you need to instantiate it first.
     ---'
@@ -69,7 +69,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Advice: 
+    Error: 
         ,-[ file:///test0.st:10:9 ]
         |
      10 |         unknown := TRUE
@@ -93,23 +93,19 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error:
+    Error: 
        ,-[ file:///test0.st:6:5 ]
        |
-     2 | FUNCTION fn
-       |          ^|
-       |           `-- pou 'fn' declared here
-       |
      6 |     fn(
-       |     ^|
-       |      `-- 'fn' expected 0 parameters, but got 1
+       |     ^|  
+       |      `-- 'fn' expects 0 parameters, but got 1
     ---'
-    Error:
+    Error: 
        ,-[ file:///test0.st:7:9 ]
        |
      7 |         unknown => TRUE
-       |         ^^^|^^^
-       |            `----- unknown output 'unknown'
+       |         ^^^|^^^  
+       |            `----- unknown output parameter 'unknown'
     ---'
     ");
 }
@@ -119,41 +115,41 @@ fn type_check_input_param(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION fn
   VAR_INPUT
-    param1: INT;
-    param2: REAL;
+    param1: LINT;
+    param2: LREAL;
   END_VAR
 END_FUNCTION
 
 FUNCTION_BLOCK fb1
     fn(
         param1 := 5.5,
-        param2 := 10
+        param2 := TRUE
     );
 
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error:
+    Error: 
         ,-[ file:///test0.st:11:19 ]
         |
-      4 |     param1: INT;
-        |             ^|^
-        |              `--- expected type 'INT' here
-        |
+      4 |     param1: LINT;
+        |     ^^^^^^|^^^^^  
+        |           `------- 'LINT' is expected due to this
+        | 
      11 |         param1 := 5.5,
-        |                   ^|^
-        |                    `--- invalid parameter: invalid INT literal
+        |                   ^|^  
+        |                    `--- cannot infer '<float>' to 'LINT': invalid LINT literal
     ----'
-    Error:
+    Error: 
         ,-[ file:///test0.st:12:19 ]
         |
-      5 |     param2: REAL;
-        |             ^^|^
-        |               `--- expected type 'REAL' here
-        |
-     12 |         param2 := 10
-        |                   ^|
-        |                    `-- invalid parameter: expected a 32-bit floating point number
+      5 |     param2: LREAL;
+        |     ^^^|^^  
+        |        `---- type is declared by variable 'param2' here
+        | 
+     12 |         param2 := TRUE
+        |                   ^^|^  
+        |                     `--- expected 'LREAL', got 'BOOL'
     ----'
     ");
 }
@@ -178,32 +174,51 @@ FUNCTION_BLOCK fb1
     END_VAR
 
     fn(
-        param1 := 10,
-        param2 := 5.5,
+        param1 := TRUE,
+        param2 := TRUE,
         param3 => variable1
     );
 
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error:
+    Error: 
+        ,-[ file:///test0.st:19:19 ]
+        |
+      4 |     param1: INT;
+        |     ^^^|^^  
+        |        `---- type is declared by variable 'param1' here
+        | 
+     19 |         param1 := TRUE,
+        |                   ^^|^  
+        |                     `--- expected 'INT', got 'BOOL'
+    ----'
+    Error: 
+        ,-[ file:///test0.st:20:19 ]
+        |
+      5 |     param2: REAL;
+        |     ^^^|^^  
+        |        `---- type is declared by variable 'param2' here
+        | 
+     20 |         param2 := TRUE,
+        |                   ^^|^  
+        |                     `--- expected 'REAL', got 'BOOL'
+    ----'
+    Error: 
         ,-[ file:///test0.st:21:19 ]
         |
-      9 |     param3: INT;
-        |             ^|^
-        |              `--- ... but found 'INT' instead
-        |
      15 |         variable1: BOOL;
-        |                    ^^|^
-        |                      `--- expected 'BOOL' here
-        |
+        |         ^^^^|^^^^  
+        |             `------ type is declared by variable 'variable1' here
+        | 
      21 |         param3 => variable1
-        |                   ^^^^|^^^^
-        |                       `------ invalid output: expected 'BOOL', found 'INT'
+        |                   ^^^^|^^^^  
+        |                       `------ expected 'INT', got 'BOOL'
     ----'
     ");
 }
 
+// valid if the order of parameters is correct
 #[rstest]
 fn mixing_non_formal_and_formal_parameters(mut with_db: RootDatabase) {
     let source = r#"
@@ -220,21 +235,7 @@ FUNCTION_BLOCK fb1
 
 END_FUNCTION_BLOCK"#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error:
-        ,-[ file:///test0.st:11:5 ]
-        |
-      2 | FUNCTION fn
-        |          ^|
-        |           `-- pou 'fn' declared here
-        |
-     11 |     fn(param1 := 0, 1.2);
-        |     ^|
-        |      `-- mixed formal and non-formal parameters in call to 'fn'
-        |
-        | Note: parameters must be either all formal or all non-formal
-    ----'
-    ");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
 
 #[rstest]
@@ -253,16 +254,19 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error:
+    Error: 
         ,-[ file:///test0.st:11:2 ]
         |
-      2 | FUNCTION fn
-        |          ^|
-        |           `-- pou 'fn' declared here
+     11 |     fn(0, 1.5, 5);
+        |     ^|  
+        |      `-- 'fn' expects 2 parameters, but got 3
+    ----'
+    Error: 
+        ,-[ file:///test0.st:11:13 ]
         |
      11 |     fn(0, 1.5, 5);
-        |     ^|
-        |      `-- 'fn' expected 2 parameters, but got 3
+        |                |  
+        |                `-- no parameter at index '2'
     ----'
     ");
 }
@@ -284,14 +288,14 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error:
+    Error: 
         ,-[ file:///test0.st:11:21 ]
         |
      11 |     fn(param1 := 0, param1 := 1);
-        |        ^^^|^^       ^^^|^^
-        |           `----------------- parameter 'param1' is already defined here
-        |                        |
-        |                        `---- duplicate parameter 'param1'
+        |        ^^^^^|^^^^^  ^^^^^|^^^^^  
+        |             `-------------------- previously defined here
+        |                          |       
+        |                          `------- duplicate parameter 'param1' found
     ----'
     ");
 }
@@ -317,14 +321,14 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error:
+    Error: 
         ,-[ file:///test0.st:15:22 ]
         |
      15 |     fn(param1 => a1, param1 => a2);
-        |        ^^^|^^        ^^^|^^
-        |           `------------------ parameter 'param1' is already defined here
-        |                         |
-        |                         `---- duplicate parameter 'param1'
+        |        ^^^^^^|^^^^^  ^^^^^^|^^^^^  
+        |              `--------------------- previously defined here
+        |                            |       
+        |                            `------- duplicate parameter 'param1' found
     ----'
     ");
 }
@@ -348,14 +352,12 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error:
+    Error: 
         ,-[ file:///test0.st:13:18 ]
         |
      13 |     fn(param1 => b1);
-        |                  ^|
-        |                   `-- 'b1' is a type and can not be assigned
-        |
-        | Note: types can only be assigned if they are declared in a VAR_* section
+        |                  ^|  
+        |                   `-- cannot use direct type 'INT' here
     ----'
     ");
 }
@@ -379,16 +381,12 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error:
+    Error: 
         ,-[ file:///test0.st:13:18 ]
         |
-     10 |         b1: INT;
-        |         ^|
-        |          `-- variable 'b1' declared here
-        |
      13 |     fn(param1 => b1);
-        |                  ^|
-        |                   `-- 'b1' is an input variable and can not be assigned
+        |                  ^|  
+        |                   `-- b1 is an input variable and can not be assigned
     ----'
     ");
 }

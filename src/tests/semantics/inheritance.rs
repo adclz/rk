@@ -246,18 +246,14 @@ fn method_signature_type_mismatch(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error:
-        ,-[ file:///test0.st:15:21 ]
-        |
-      6 |                     value2: INT;
-        |                             ^|^
-        |                              `--- expected 'INT' here
-        |
-     15 |                     value2: REAL; // should be INT
-        |                     ^^^|^^  ^^|^
-        |                        `---------- invalid parameter in method signature: expected 'INT', found 'REAL'
-        |                               |
-        |                               `--- ... but found 'REAL' instead
-    ----'
+    Error: 
+       ,-[ file:///test0.st:3:20 ]
+       |
+     3 |             METHOD DAYTIME
+       |                    ^^^|^^^  
+       |                       `----- method 'DAYTIME' has incompatible parameter types: expected 'INT', got 'REAL'
+       | 
+       | Note: parameter types must match those of the base method
+    ---'
     ");
 }

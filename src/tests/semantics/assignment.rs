@@ -18,7 +18,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Advice: 
+    Error: 
        ,-[ file:///test0.st:7:13 ]
        |
      4 |         test: INT;
@@ -46,12 +46,23 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Advice: 
+    Error: 
        ,-[ file:///test0.st:8:5 ]
        |
      8 |     fb2 := ULINT#5;
        |     ^|^  
-       |      `--- cannot use direct type 'fb2' here
+       |      `--- cannot use direct type 'FUNCTION_BLOCK: fb2' here
+    ---'
+    Error: 
+       ,-[ file:///test0.st:8:12 ]
+       |
+     2 | FUNCTION_BLOCK fb2
+       |                ^|^  
+       |                 `--- FUNCTION_BLOCK 'fb2' is defined here
+       | 
+     8 |     fb2 := ULINT#5;
+       |            ^^^|^^^  
+       |               `----- expected 'FUNCTION_BLOCK: fb2', got 'ULINT'
     ---'
     ");
 }
@@ -66,7 +77,7 @@ FUNCTION fn1 : INT
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Advice: 
+    Error: 
        ,-[ file:///test0.st:4:12 ]
        |
      2 | FUNCTION fn1 : INT
@@ -75,7 +86,7 @@ END_FUNCTION"#;
        | 
      4 |     fn1 := ULINT#5;
        |            ^^^|^^^  
-       |               `----- expected 'INT', got 'ULINT'
+       |               `----- expected 'FUNCTION: fn1', got 'ULINT'
     ---'
     ");
 }
@@ -94,12 +105,23 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Advice: 
+    Error: 
        ,-[ file:///test0.st:8:5 ]
        |
      8 |     T1 := ULINT#5;
        |     ^|  
        |      `-- cannot use direct type 'INT' here
+    ---'
+    Error: 
+       ,-[ file:///test0.st:8:11 ]
+       |
+     3 |     T1 : INT;
+       |          ^|^  
+       |           `--- type is defined by 'T1' here
+       | 
+     8 |     T1 := ULINT#5;
+       |           ^^^|^^^  
+       |              `----- expected 'INT', got 'ULINT'
     ---'
     ");
 }
@@ -121,12 +143,23 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Advice: 
+    Error: 
         ,-[ file:///test0.st:11:5 ]
         |
      11 |     d_fb2 := ULINT#5;
         |     ^^|^^  
         |       `---- 'fb2' is a callable type and can not be assigned
+    ----'
+    Error: 
+        ,-[ file:///test0.st:11:14 ]
+        |
+      2 | FUNCTION_BLOCK fb2
+        |                ^|^  
+        |                 `--- FUNCTION_BLOCK 'fb2' is defined here
+        | 
+     11 |     d_fb2 := ULINT#5;
+        |              ^^^|^^^  
+        |                 `----- expected 'FUNCTION_BLOCK: fb2', got 'ULINT'
     ----'
     ");
 }
@@ -144,7 +177,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Advice: 
+    Error: 
        ,-[ file:///test0.st:7:5 ]
        |
      7 |     test := 5;
@@ -171,7 +204,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Advice: 
+    Error: 
         ,-[ file:///test0.st:11:13 ]
         |
       8 |         test: INT;
@@ -202,7 +235,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Advice: 
+    Error: 
         ,-[ file:///test0.st:11:13 ]
         |
       8 |         test: INT;
@@ -229,15 +262,15 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Advice:
+    Error: 
        ,-[ file:///test0.st:7:13 ]
        |
      4 |         test: INT;
-       |         ^^|^
+       |         ^^|^  
        |           `--- type is declared by variable 'test' here
-       |
+       | 
      7 |     test := TRUE AND FALSE;
-       |             ^^^^^^^|^^^^^^
+       |             ^^^^^^^|^^^^^^  
        |                    `-------- expected 'INT', got 'BOOL'
     ---'
     ");

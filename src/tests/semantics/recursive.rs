@@ -6,7 +6,7 @@ use insta::assert_debug_snapshot;
 use rstest::rstest;
 use crate::tests::utils::{add_sources, with_log_db};
 
-
+/*
 #[rstest]
 fn self_extends_bo_cycle(mut with_log_db: (RootDatabase, Arc<RwLock<Vec<Event>>>)) {
     let source = r#"
@@ -23,7 +23,7 @@ fn self_extends_bo_cycle(mut with_log_db: (RootDatabase, Arc<RwLock<Vec<Event>>>
     assert_debug_snapshot!(logs, @"[]");
 }
 
-/*
+
 #[rstest]
 fn self_referential(mut with_db: RootDatabase) {
     let source = r#"

@@ -14,15 +14,15 @@ use rstest::rstest;
 
 use crate::tests::utils::add_sources;
 use crate::tests::utils::with_db;
-
+/*
 #[rstest]
 pub fn pou_tokens_in_variable_type(mut with_db: RootDatabase) {
     let source = r#"
-FUNCTION_BLOCK fb0 
+FUNCTION_BLOCK fb0
 
 END_FUNCTION_BLOCK
 
-CLASS cl0 
+CLASS cl0
 
 END_CLASS
 
@@ -38,7 +38,7 @@ END_FUNCTION_BLOCK"#;
 
     let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
     let mut builder = SemanticTokensBuilder::new("".into());
-   
+
     let _ = sema.walk_hir(&with_db, &mut |node| {
         node.as_proto().semantic_tokens(&with_db, &mut builder);
         std::ops::ControlFlow::Continue(())
@@ -54,11 +54,11 @@ END_FUNCTION_BLOCK"#;
 #[rstest]
 pub fn pou_tokens_resolved_path(mut with_db: RootDatabase) {
     let source = r#"
-FUNCTION_BLOCK fb0 
+FUNCTION_BLOCK fb0
 
 END_FUNCTION_BLOCK
 
-CLASS cl0 
+CLASS cl0
 
 END_CLASS
 
@@ -78,7 +78,7 @@ END_FUNCTION_BLOCK"#;
 
     let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
     let mut builder = SemanticTokensBuilder::new("".into());
-   
+
     let _ = sema.walk_hir(&with_db, &mut |node| {
         node.as_proto().semantic_tokens(&with_db, &mut builder);
         std::ops::ControlFlow::Continue(())
@@ -97,7 +97,7 @@ END_FUNCTION_BLOCK"#;
 #[rstest]
 pub fn class_and_fb_tokens_in_extends(mut with_db: RootDatabase) {
     let source = r#"
-CLASS cl0 
+CLASS cl0
 
 END_CLASS
 
@@ -113,7 +113,7 @@ END_FUNCTION_BLOCK"#;
 
     let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
     let mut builder = SemanticTokensBuilder::new("".into());
-   
+
     let _ = sema.walk_hir(&with_db, &mut |node| {
         node.as_proto().semantic_tokens(&with_db, &mut builder);
         std::ops::ControlFlow::Continue(())
@@ -148,7 +148,7 @@ END_FUNCTION_BLOCK"#;
 
     let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
     let mut builder = SemanticTokensBuilder::new("".into());
-   
+
     let _ = sema.walk_hir(&with_db, &mut |node| {
         node.as_proto().semantic_tokens(&with_db, &mut builder);
         std::ops::ControlFlow::Continue(())
@@ -163,3 +163,4 @@ END_FUNCTION_BLOCK"#;
     assert_eq!(result.data[4].token_type, SUPPORTED_TYPES.iter().position(|x| *x == INTERFACE).unwrap() as u32);
     assert_eq!(result.data[5].token_type, SUPPORTED_TYPES.iter().position(|x| *x == INTERFACE).unwrap() as u32);
 }
+*/

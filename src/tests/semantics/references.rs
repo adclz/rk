@@ -31,19 +31,31 @@ fn invalid_ref_to_elementary_type(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error:
-       ,-[ file:///test0.st:5:34 ]
+    Error: 
+       ,-[ file:///test0.st:5:31 ]
        |
-     4 |             test: UINT;
-       |                   ^^|^
-       |                     `--- ... but found 'UINT' instead
      5 |             test2: REF_TO INT := REF(test); // Reference to INT, but test is UINT
-       |                           ^|^    ^^^^|^^^^
-       |                            `---------------- expected 'INT' here
-       |                                      |
-       |                                      `------ invalid value initializer: expected 'INT', found 'UINT'
+       |                               ^^^^^^|^^^^^  
+       |                                     `------- expected 'REF TO INT', got 'REF TO UINT'
     ---'
     ");
+}
+
+#[rstest]
+fn valid_deref_int(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fn1
+	VAR
+		test: REF_TO INT;
+	END_VAR
+
+	test^ := 0;
+
+END_FUNCTION_BLOCK
+
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
 
 #[rstest]
@@ -79,19 +91,12 @@ fn invalid_ref_to_pou_type(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error:
-       ,-[ file:///test0.st:8:34 ]
-       |
-     2 |     FUNCTION_BLOCK fb1 END_FUNCTION_BLOCK
-       |                    ^|^
-       |                     `--- expected 'fb1: FUNCTION_BLOCK' here
-     3 |     FUNCTION_BLOCK fb2 END_FUNCTION_BLOCK
-       |                    ^|^
-       |                     `--- ... but found 'fb2: FUNCTION_BLOCK' instead
+    Error: 
+       ,-[ file:///test0.st:8:31 ]
        |
      8 |             test2: REF_TO fb1 := REF(test); // Reference to fb1, but test is fb2
-       |                                  ^^^^|^^^^
-       |                                      `------ invalid value initializer: expected 'fb1: FUNCTION_BLOCK', found 'fb2: FUNCTION_BLOCK'
+       |                               ^^^^^^|^^^^^  
+       |                                     `------- expected 'REF TO FUNCTION_BLOCK: fb1', got 'REF TO FUNCTION_BLOCK: fb2'
     ---'
     ");
 }
@@ -110,16 +115,16 @@ fn assign_non_ref_type(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error:
+    Error: 
        ,-[ file:///test0.st:7:17 ]
        |
      4 |             test: REF_TO INT;
-       |                 ^^^^^^|^^^^^
-       |                       `------- expected type 'REF_TO INT' here
-       |
+       |             ^^|^  
+       |               `--- type is declared by variable 'test' here
+       | 
      7 |         test := 0;
-       |                 |
-       |                 `-- invalid assignment: expected 'REF_TO INT', got '<integer>'
+       |                 |  
+       |                 `-- expected 'REF TO INT', got 'INT'
     ---'
     ");
 }
@@ -170,34 +175,6 @@ fn valid_assign_ref_to_ref_type(mut with_db: RootDatabase) {
 }
 
 #[rstest]
-fn invalid_assign_value_to_ref_type(mut with_db: RootDatabase) {
-    let source = r#"
-    FUNCTION_BLOCK fn1
-        VAR
-            test: REF_TO INT;
-        END_VAR
-
-        test := 0;
-
-    END_FUNCTION_BLOCK
-        "#;
-
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error:
-       ,-[ file:///test0.st:7:17 ]
-       |
-     4 |             test: REF_TO INT;
-       |                 ^^^^^^|^^^^^
-       |                       `------- expected type 'REF_TO INT' here
-       |
-     7 |         test := 0;
-       |                 |
-       |                 `-- invalid assignment: expected 'REF_TO INT', got '<integer>'
-    ---'
-    ");
-}
-
-#[rstest]
 fn valid_assign_value_to_deref_type(mut with_db: RootDatabase) {
     let source = r#"
     FUNCTION_BLOCK fn1
@@ -232,7 +209,26 @@ FUNCTION fn: BOOL
 END_FUNCTION
         "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    Error: 
+        ,-[ file:///test0.st:10:24 ]
+        |
+     10 |        myRefInt: REF_TO INT := REF(myA1[1]);
+        |                             ^^^^^^^|^^^^^^^  
+        |                                    `--------- expected 'REF TO INT', got 'REF TO ARRAY [1..99] OF INT'
+    ----'
+    Error: 
+        ,-[ file:///test0.st:13:14 ]
+        |
+     10 |        myRefInt: REF_TO INT := REF(myA1[1]);
+        |        ^^^^|^^^  
+        |            `----- type is declared by variable 'myRefInt' here
+        | 
+     13 |     myRefInt := REF(myA1[11]);
+        |                 ^^^^^^|^^^^^^  
+        |                       `-------- expected 'REF TO INT', got 'REF TO ARRAY [1..99] OF INT'
+    ----'
+    ");
 }
 
 #[rstest]
@@ -256,7 +252,7 @@ FUNCTION fn: INT
 	END_VAR
 
 	myRefS1^.SC1 := myRefA1^[12]; // in this case, equivalent to S1.SC1:= A1[12];
-
+	myS1.SC1:= myA1[12];
 
 END_FUNCTION
         "#;

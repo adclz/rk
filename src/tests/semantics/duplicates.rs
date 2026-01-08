@@ -143,15 +143,15 @@ END_NAMESPACE
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error:
+    Error: 
        ,-[ file:///test0.st:7:20 ]
        |
      3 |     FUNCTION_BLOCK fb1
-       |                    ^|^
+       |                    ^|^  
        |                     `--- POU 'fb1' is already defined here
-       |
+       | 
      7 |     FUNCTION_BLOCK fb1
-       |                    ^|^
+       |                    ^|^  
        |                     `--- duplicate POU 'fb1'
     ---'
     ");
@@ -228,14 +228,14 @@ END_INTERFACE
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error:
+    Error: 
        ,-[ file:///test0.st:3:12 ]
        |
      3 |     METHOD m1 END_METHOD
-       |            ^|
+       |            ^|  
        |             `-- duplicate method 'm1'
      4 |     METHOD m1 END_METHOD
-       |            ^|
+       |            ^|  
        |             `-- method 'm1' is already defined here
     ---'
     ");

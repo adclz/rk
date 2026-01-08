@@ -35,12 +35,12 @@ fn type_mismatch_enum_variant_decl(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Advice: 
+    Error: 
        ,-[ file:///test0.st:3:33 ]
        |
      3 |             List: UINT (A, B := -5, C);
        |                                 ^|  
-       |                                  `-- expected 'UINT', got '(INT) -5'
+       |                                  `-- cannot infer '<integer>' to 'UINT': literal can not be negative
     ---'
     ");
 }
@@ -63,7 +63,7 @@ fn unknown_enum_variant(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Advice: 
+    Error: 
         ,-[ file:///test0.st:11:26 ]
         |
      11 |             test := List#D; // D is not a valid enum variant
