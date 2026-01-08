@@ -12,7 +12,15 @@ use crate::{
     },
 };
 
-#[derive(Default, Clone)]
+/*
+    The inference table is used to resolve inferred types during body inference.
+
+    It replaces all Type::Infer types with concrete types based on the context of their usage.
+    If no concrete type can be determined, the inferred type is replaced with [`Type::Never`].
+
+*/
+
+#[derive(Default, Debug, Clone)]
 pub struct InferenceTable<'db> {
     /// Current inference mode
     pub current_mode: InferMode<'db>,
@@ -27,9 +35,16 @@ pub enum InferMode<'db> {
     // Still unresolved
     Unresolved,
     // Resolved to an infer type
-    ResolvedInfer { ty: Type<'db>, expr: CallSite<'db> },
+    ResolvedInfer {
+        ty: Type<'db>,
+        expr: Option<CallSite<'db>>,
+    },
     // Fully resolved type
-    Resolved { ty: Type<'db>, expr: CallSite<'db> },
+    // Resolved has a priority over ResolvedInfer
+    Resolved {
+        ty: Type<'db>,
+        expr: Option<CallSite<'db>>,
+    },
 }
 
 impl Default for InferMode<'_> {
@@ -50,7 +65,7 @@ impl<'db> InferenceTable<'db> {
     pub fn set_target_type(
         &mut self,
         db: &'db dyn BaseDatabase,
-        expr: CallSite<'db>,
+        expr: Option<CallSite<'db>>,
         ty: Type<'db>,
     ) {
         // only elementary types can be used to resolve the inference
@@ -83,7 +98,7 @@ impl<'db> InferenceTable<'db> {
                     InferMode::NoInfer | InferMode::Unresolved => {
                         self.current_mode = InferMode::ResolvedInfer {
                             ty: infer.to_ty(db),
-                            expr: CallSite::from_expr(db, expr),
+                            expr: Some(CallSite::from_expr(db, expr)),
                         };
                     }
                     // inferred types have no priority over already resolved types
@@ -102,7 +117,7 @@ impl<'db> InferenceTable<'db> {
                     }
                     self.current_mode = InferMode::Resolved {
                         ty: value,
-                        expr: CallSite::from_expr(db, expr),
+                        expr: Some(CallSite::from_expr(db, expr)),
                     };
                 }
                 // already resolved
@@ -114,11 +129,11 @@ impl<'db> InferenceTable<'db> {
                     }
                 }
             },
-            _ => { /* 
+            _ => { /*
                 ignore for now:
                 other types cannot be used to resolve infer variants.
                 We may, however, keep that comment if we decide one day to create a richer inference system
-                */
+                 */
             }
         }
     }
@@ -175,11 +190,17 @@ impl<'db> InferenceTable<'db> {
                         None => elem,
                     };
 
-                    match infer.infer_with(db, cast) {
+                    // check the literal value
+                    // since we can't have infer variants, we either replace them with a concrete type or a never type
+                    match infer.check_as(db, cast) {
                         Ok(typ) => {
-                            results.type_of_expr.insert(*expr, typ);
+                            results.type_of_expr.insert(*expr, Type::Elementary(cast));
                         }
                         Err(err) => {
+                            let infer_str = match infer {
+                                InferType::Float(fl) => fl.text(db).to_string(),
+                                InferType::Integer(int) => int.ident(db).text(db).to_string(),
+                            };
                             results.errors.push(
                                 BodyInferenceError::InferLiteralError {
                                     expr: *expr,

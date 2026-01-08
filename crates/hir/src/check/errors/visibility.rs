@@ -32,7 +32,8 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
             VisibilityError::Private { call_site, target } => {
                 let mut diag = diag()
                     .message(format!(
-                        "can not access PRIVATE item",
+                        "can not access PRIVATE item '{}'",
+                        call_site.to_string(db)
                         
                     ))
                     .severity(DiagnosticSeverity::ERROR)
@@ -52,7 +53,8 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
             } => {
                 let mut diag = diag()
                     .message(format!(
-                        "can not access INTERNAL item",
+                        "can not access INTERNAL item '{}'",
+                        call_site.to_string(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(call_site.get_span(db))
@@ -85,7 +87,8 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
             VisibilityError::Protected { call_site, target } => {
                 let mut diag = diag()
                     .message(format!(
-                        "can not access PROTECTED item",
+                        "can not access PROTECTED item '{}'",
+                        call_site.to_string(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .range(call_site.get_span(db))

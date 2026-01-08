@@ -30,7 +30,6 @@ pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Opti
     let sema = semantic_index(db, file);
 
     let symbol = descendant_at(db, file, position);
-    eprintln!("Hover requested at position {}: found symbol {:?}", position, symbol);
     match symbol.and_then(|s| s.as_proto().hover(db, position)) {
         Some(hover) => {
             Ok(Some(hover))

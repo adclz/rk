@@ -6,8 +6,14 @@ use auto_lsp::{
     default::db::BaseDatabase,
 };
 use bitflags::bitflags;
+use compact_str::CompactString;
 
-use crate::hir_def::{expressions::{expression::{Expr, InitExpr, VariableAccess}, spec::Spec}, interned::identifier::Ident, scope::ScopeId, semantic_index::semantic_index};
+use crate::hir_def::{
+    expressions::{
+        expression::{Expr, InitExpr, VariableAccess},
+        spec::Spec,
+    }, interned::identifier::Ident, pous::variable::VariableDecl, scope::ScopeId, semantic_index::semantic_index
+};
 
 pub mod builder;
 pub mod check;
@@ -27,6 +33,25 @@ impl<T: AstNode> From<&T> for AstId {
 impl AstId {
     pub fn id(&self) -> usize {
         self.0
+    }
+}
+
+pub trait MyTrait {
+    fn example_method(&self);
+}
+
+impl MyTrait for Vec<u8> {
+    fn example_method(&self) {
+        // Implementation goes here
+    }
+} 
+
+
+pub struct WrapperVec(pub Vec<u8>);
+
+impl MyTrait for WrapperVec {
+    fn example_method(&self) {
+        self.0.example_method();
     }
 }
 
@@ -62,11 +87,30 @@ impl<'db> CallSite<'db> {
         }
     }
 
+    pub fn from_var_decl(db: &'db dyn BaseDatabase, var_access: VariableDecl<'db>) -> Self {
+        Self {
+            scope: var_access.get_scope_id(db),
+            id: var_access.get_id(db),
+        }
+    }
+
     pub fn from_spec(db: &'db dyn BaseDatabase, spec: Spec<'db>) -> Self {
         Self {
             scope: spec.get_scope_id(db),
             id: spec.get_id(db),
         }
+    }
+
+    pub fn to_string(&self, db: &'db dyn BaseDatabase) -> CompactString {
+        let file = self.scope.file(db);
+        let node = semantic_index(db, file)
+            .ast
+            .get(self.id.0)
+            .unwrap_or_else(|| panic!("Invalid ID {} when attempting to retrieve text", self.id.0));
+        CompactString::from(
+            node.get_text(file.document(db).as_bytes())
+                .expect("Failed to get text"),
+        )
     }
 }
 

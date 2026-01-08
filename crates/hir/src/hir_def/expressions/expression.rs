@@ -150,12 +150,12 @@ impl<'db> HirNodeInfo<'db> for PathExpr<'db> {
         match &self.expr(db) {
             PathExprKind::Field(field_expr) => match field_expr.var {
                 VarAccess::Simple(ref simple) => simple.id,
-                VarAccess::Deref(ref deref) => deref.id,
+                VarAccess::Deref(ref deref, _) => deref.id,
             },
             PathExprKind::Index(index_expr) => index_expr.path.get_id(db),
             PathExprKind::VarAccess(var_access) => match var_access {
                 VarAccess::Simple(simple) => simple.id,
-                VarAccess::Deref(deref) => deref.id,
+                VarAccess::Deref(deref, _) => deref.id,
             },
         }
     }
@@ -186,12 +186,12 @@ impl<'db> PathExpr<'db> {
         match &self.expr(db) {
             PathExprKind::Field(field_expr) => match field_expr.var {
                 VarAccess::Simple(ref simple) => *simple,
-                VarAccess::Deref(ref deref) => *deref,
+                VarAccess::Deref(ref deref, _) => *deref,
             },
             PathExprKind::Index(index_expr) => index_expr.path.ident(db),
             PathExprKind::VarAccess(var_access) => match var_access {
                 VarAccess::Simple(simple) => *simple,
-                VarAccess::Deref(deref) => *deref,
+                VarAccess::Deref(deref, _) => *deref,
             },
         }
     }
@@ -327,7 +327,7 @@ impl<'db> HirNodeInfo<'db> for VariableAccess<'db> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum VarAccess<'db> {
     Simple(SpanIdent<'db>),
-    Deref(SpanIdent<'db>), // ^
+    Deref(SpanIdent<'db>, u16), // ^ + count
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -373,6 +373,12 @@ pub enum Elementary {
     // Has to be solved later
     InferInteger(Integer),
     InferFloat(Ident),
+}
+
+impl Elementary {
+    pub fn has_infer(&self) -> bool {
+        matches!(self, Elementary::InferInteger(_) | Elementary::InferFloat(_))
+    }
 }
 
 #[salsa::interned(debug, no_lifetime)]

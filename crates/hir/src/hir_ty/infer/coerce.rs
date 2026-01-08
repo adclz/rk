@@ -16,7 +16,7 @@ use crate::{
         scope::ScopeId,
     },
     hir_ty::{
-        body_inference::BodyInferenceResult,
+        body_inference::{Adjust, Adjustment, BodyInferenceResult},
         infer::expr::InferExprCtx,
         resolver::Resolver,
         ty::{InferType, Type},
@@ -26,17 +26,27 @@ use crate::{
 pub struct CoerceError<'db> {
     pub expected: Type<'db>,
     pub actual: Type<'db>,
+    pub adjustment: Option<Adjustment<'db>>,
 }
 
 pub type CoerceResult<'db> = Result<(), CoerceError<'db>>;
 
 impl<'db> Type<'db> {
+    pub fn supports_math(&self, rhs: Type) -> bool {
+        if self.is_never() || rhs.is_never() {
+            return true;
+        }
+
+        return self.is_numeric() && rhs.is_numeric();
+    }
+
     // Type coercion check
     #[must_use]
     pub fn coerce_with_type(
         &self,
         db: &'db dyn BaseDatabase,
         to: Type<'db>,
+        adjustments: Option<&[Adjustment<'db>]>,
         resolver: Resolver<'db>,
     ) -> CoerceResult<'db> {
         // We return true if the lhs or rhs is of type never.
@@ -50,7 +60,7 @@ impl<'db> Type<'db> {
         debug_assert!(!self.has_infer());
         debug_assert!(!to.has_infer());
 
-        // shallowing here is necessary here to avoid matching on wrapped types
+        // normalizing here is necessary here to avoid matching on wrapped types
         let lhs = self.normalize(db);
         let to = to.normalize(db);
 
@@ -64,12 +74,13 @@ impl<'db> Type<'db> {
                     false => Err(CoerceError {
                         expected: *self,
                         actual: to,
+                        adjustment: None,
                     }),
                 };
             }
             // check element spec equality
             (Type::StructElement(elem), rhs) => {
-                Type::new_spec(db, elem.spec(db)).coerce_with_type(db, *rhs, resolver)
+                Type::new_spec(db, elem.spec(db)).coerce_with_type(db, *rhs, adjustments, resolver)
             }
             // same types are assignable
             (Type::Array(a1), Type::Array(a2)) => {
@@ -78,16 +89,17 @@ impl<'db> Type<'db> {
                     false => Err(CoerceError {
                         expected: *self,
                         actual: to,
+                        adjustment: None,
                     }),
                 };
             }
             // check array spec equality
             (Type::Array(a1), rhs) => {
-                Type::new_spec(db, a1.of_type(db)).coerce_with_type(db, *rhs, resolver)
+                Type::new_spec(db, a1.of_type(db)).coerce_with_type(db, *rhs, adjustments, resolver)
             }
             // check subrange base type equality
             (Type::SubRange(sub), rhs) => {
-                Type::new_spec(db, sub._type(db)).coerce_with_type(db, *rhs, resolver)
+                Type::new_spec(db, sub._type(db)).coerce_with_type(db, *rhs, adjustments, resolver)
             }
             (Type::Elementary(lhs), Type::Elementary(rhs)) => {
                 if lhs == *rhs {
@@ -99,117 +111,106 @@ impl<'db> Type<'db> {
                     false => Err(CoerceError {
                         expected: *self,
                         actual: to,
+                        adjustment: None,
                     }),
                 }
             }
             (Type::RefTo(_), Type::Null) => Ok(()),
+            (Type::RefTo(spec), rhs) => {
+                let expected = Type::new_spec(db, spec);
+
+                // Case 2: RHS was auto-ref'd to &T
+                if let Some(adjs) = adjustments {
+                    return match adjs.iter().last() {
+                        Some(adj) if adj.kind == Adjust::Ref => {
+                            match expected.coerce_with_type(db, *rhs, None, resolver) {
+                                Ok(()) => Ok(()),
+                                Err(_) => match expected.eq(rhs) {
+                                    true => Ok(()),
+                                    false => Err(CoerceError {
+                                        expected: *self,
+                                        actual: *rhs,
+                                        adjustment: adjs.iter().last().cloned(),
+                                    }),
+                                },
+                            }
+                        }
+                        _ => Err(CoerceError {
+                            expected: *self,
+                            actual: *rhs,
+                            adjustment: adjs.iter().last().cloned(),
+                        }),
+                    };
+                }
+
+                Err(CoerceError {
+                    expected: *self,
+                    actual: *rhs,
+                    adjustment: None,
+                })
+            }
             _ => Err(CoerceError {
                 expected: *self,
                 actual: to,
+                adjustment: None,
             }),
         }
     }
 
-    pub fn coerce_with_expression(
-        &self,
-        db: &'db dyn BaseDatabase,
-        call_site: CallSite<'db>,
-        expr: Expr<'db>,
-        resolver: Resolver<'db>,
-        ctx: &mut BodyInferenceResult<'db>,
-    ) -> CoerceResult<'db> {
-        let mut infer_ctx = InferExprCtx::new(resolver.clone());
-
-        infer_ctx.infer_expr(db, expr, ctx);
-
-        infer_ctx.set_target_type(db, call_site, *self);
-        infer_ctx.resolve_completly(db, ctx);
-
-        let rhs_ty = ctx
-            .type_of_expr_with_adjustments(db, expr)
-            .unwrap_or_default();
-
-        self.coerce_with_type(db, rhs_ty, infer_ctx.resolver)
-    }
-
-    pub fn is_assignable(
+    pub fn check_assignable(
         &self,
         db: &'db dyn BaseDatabase,
         call_site: CallSite<'db>,
         ctx: &mut BodyInferenceResult<'db>,
     ) {
+        if self.is_never() {
+            return;
+        }
+
         // Additional checks for variable assignments
-        if let Type::Variable(variable) = self {
-            // a variable of kind INPUT cannot be assigned to
-            if variable.is_input(db) {
-                ctx.errors.push(
-                    BodyInferenceError::IsVarInput {
-                        var: *variable,
-                        access: call_site,
-                    }
-                    .to_diagnostic(db),
-                );
-            }
+        match self {
+            Type::Variable(variable) => {
+                // a variable of kind INPUT cannot be assigned to
+                if variable.is_input(db) {
+                    ctx.errors.push(
+                        BodyInferenceError::IsVarInput {
+                            var: *variable,
+                            access: call_site,
+                        }
+                        .to_diagnostic(db),
+                    );
+                }
 
-            // a variable of callable type cannot be assigned to
-            if let Some(callable_typ) = Type::new_var(db, *variable).as_callable(db) {
-                ctx.errors.push(
-                    BodyInferenceError::AssignCallableType {
-                        typ: callable_typ,
-                        access: call_site,
-                    }
-                    .to_diagnostic(db),
-                );
-                return;
+                // a variable of callable type cannot be assigned to
+                if let Some(callable_typ) = Type::new_var(db, *variable).as_callable(db) {
+                    ctx.errors.push(
+                        BodyInferenceError::AssignCallableType {
+                            typ: callable_typ,
+                            access: call_site,
+                        }
+                        .to_diagnostic(db),
+                    );
+                }
+            }
+            Type::StructElement(element) => return,
+            _ => {
+                // function and methods can be assigned IF they are the same
+                let self_assign = match self {
+                    Type::Function(f) => f.get_scope_id(db) == call_site.get_scope_id(db),
+                    Type::MethodDecl(m) => m.get_scope_id(db) == call_site.get_scope_id(db),
+                    _ => false,
+                };
+                if !self_assign {
+                    ctx.errors.push(
+                        BodyInferenceError::DirectType {
+                            expr: call_site,
+                            typ: *self,
+                        }
+                        .to_diagnostic(db),
+                    );
+                }
             }
         }
-        // type is not a variable
-        else {
-            // function and methods can be assigned IF they are the same
-            let ok = match self {
-                Type::Function(f) => f.get_scope_id(db) == call_site.get_scope_id(db),
-                Type::MethodDecl(m) => m.get_scope_id(db) == call_site.get_scope_id(db),
-                _ => false,
-            };
-            if !ok {
-                ctx.errors.push(
-                    BodyInferenceError::DirectType {
-                        expr: call_site,
-                        typ: *self,
-                    }
-                    .to_diagnostic(db),
-                );
-                return;
-            }
-        }
-    }
-}
-
-impl<'db> Expr<'db> {
-    pub fn coerce_with_expression(
-        &self,
-        db: &'db dyn BaseDatabase,
-        expr: Expr<'db>,
-        resolver: Resolver<'db>,
-        ctx: &mut BodyInferenceResult<'db>,
-    ) -> (InferExprCtx<'db>, CoerceResult<'db>) {
-        let mut infer_ctx = InferExprCtx::new(resolver.clone());
-
-        infer_ctx.infer_expr(db, *self, ctx);
-        infer_ctx.infer_expr(db, expr, ctx);
-
-        infer_ctx.resolve_completly(db, ctx);
-
-        let self_ty = ctx
-            .type_of_expr_with_adjustments(db, *self)
-            .unwrap_or_default();
-
-        let rhs_ty = ctx
-            .type_of_expr_with_adjustments(db, expr)
-            .unwrap_or_default();
-
-        let resolver = infer_ctx.resolver.clone();
-        (infer_ctx, self_ty.coerce_with_type(db, rhs_ty, resolver))
     }
 }
 
@@ -218,22 +219,30 @@ impl<'db> CoerceError<'db> {
         self,
         db: &'db dyn BaseDatabase,
         base_target: Type<'db>,
-        expr: Expr<'db>,
+        call_site: CallSite<'db>,
     ) -> IdeDiagnostic {
         TypeError::NotAssignable {
             base_target,
-            target: self.expected,
-            value: self.actual,
-            expr: CallSite::from_expr(db, expr),
+            lhs: self.expected,
+            rhs: self.actual,
+            adjustment: self.adjustment,
+            expr: call_site,
         }
         .to_diagnostic(db)
     }
 
-    pub fn into_non_comparable(self, db: &'db dyn BaseDatabase, expr: Expr<'db>) -> IdeDiagnostic {
+    pub fn into_non_comparable(
+        self,
+        db: &'db dyn BaseDatabase,
+        base_target: Type<'db>,
+        call_site: CallSite<'db>,
+    ) -> IdeDiagnostic {
         TypeError::NotComparable {
+            base_target,
             lhs: self.expected,
             rhs: self.actual,
-            expr,
+            adjustment: self.adjustment,
+            expr: call_site,
         }
         .to_diagnostic(db)
     }
@@ -241,14 +250,17 @@ impl<'db> CoerceError<'db> {
     pub fn into_non_addable(
         self,
         db: &'db dyn BaseDatabase,
-        expr: Expr<'db>,
+        base_target: Type<'db>,
+        call_site: CallSite<'db>,
         operator: AddOperatorKind,
     ) -> IdeDiagnostic {
         TypeError::NotAddable {
+            base_target,
             lhs: self.expected,
             operator,
             rhs: self.actual,
-            expr,
+            adjustment: self.adjustment,
+            expr: call_site,
         }
         .to_diagnostic(db)
     }
@@ -256,44 +268,34 @@ impl<'db> CoerceError<'db> {
     pub fn into_non_multiplicable(
         self,
         db: &'db dyn BaseDatabase,
-        expr: Expr<'db>,
+        base_target: Type<'db>,
+        call_site: CallSite<'db>,
         operator: MultOperatorKind,
     ) -> IdeDiagnostic {
         TypeError::NotMultiplicable {
+            base_target,
             lhs: self.expected,
             operator,
             rhs: self.actual,
-            expr,
+            adjustment: self.adjustment,
+            expr: call_site,
         }
         .to_diagnostic(db)
     }
-}
 
-pub fn unify_var_access<'db>(
-    db: &'db dyn BaseDatabase,
-    target: Type<'db>,
-    var: VariableAccess<'db>,
-    resolver: Resolver<'db>,
-    ctx: &mut BodyInferenceResult<'db>,
-) {
-    let mut infer_ctx = InferExprCtx::new(resolver.clone());
-    let _ = infer_ctx.resolver.resolve_variable_access(db, var, ctx);
-    infer_ctx.set_target_type(db, CallSite::from_var_access(db, var), target);
-    infer_ctx.resolve_completly(db, ctx);
-
-    let value = ctx
-        .type_of_variable_access_with_adjustments(db, var)
-        .unwrap_or_default();
-
-    if let Err(err) = target.coerce_with_type(db, value, infer_ctx.resolver) {
-        ctx.errors.push(
-            TypeError::NotAssignable {
-                base_target: target,
-                target: err.expected,
-                value: err.actual,
-                expr: CallSite::from_var_access(db, var),
-            }
-            .to_diagnostic(db),
-        )
-    };
+    pub fn into_non_powerable(
+        self,
+        db: &'db dyn BaseDatabase,
+        base_target: Type<'db>,
+        call_site: CallSite<'db>,
+    ) -> IdeDiagnostic {
+        TypeError::NotPowerable {
+            base_target,
+            lhs: self.expected,
+            rhs: self.actual,
+            adjustment: self.adjustment,
+            expr: call_site,
+        }
+        .to_diagnostic(db)
+    }
 }

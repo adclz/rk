@@ -3,7 +3,8 @@ use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    CallSite, check::{
+    CallSite,
+    check::{
         check_semantic_index::DataTypeCheck,
         errors::{
             analysis_error::ToIdeDiagnostic,
@@ -11,12 +12,12 @@ use crate::{
             duplicates::DuplicateError,
             enum_::EnumError,
         },
-    }, hir_def::expressions::spec::{ElementarySpec, Enum, SpecKind}, hir_ty::{
-        body_inference::BodyInferenceResult,
-        infer::{expr::InferExprCtx},
-        resolver::Resolver,
+    },
+    hir_def::expressions::spec::{ElementarySpec, Enum, SpecKind},
+    hir_ty::{
+        body_inference::BodyInferenceResult, infer::expr::InferExprCtx, resolver::Resolver,
         ty::Type,
-    }
+    },
 };
 
 impl<'db> DataTypeCheck<'db> for Enum<'db> {
@@ -63,22 +64,29 @@ impl<'db> DataTypeCheck<'db> for Enum<'db> {
 
             // Check variant value type
             if let (Some(value), Some(typ)) = (variant.value, self.typ(db)) {
-                let resolver = Resolver::new(value.scope_id(db), None);
+                let resolver = Resolver::for_scope(db, value.scope_id(db));
                 let mut infer_body = BodyInferenceResult::new(value.scope_id(db));
                 let mut infer = InferExprCtx::new(resolver);
 
                 let target = Type::new_spec(db, typ);
-                let expr = infer.infer_expr(db, value, &mut infer_body);
-                if let Err(err) = target.coerce_with_type(db, expr, resolver) {
+                infer.resolve_expr(db, value, &mut infer_body);
+                infer.check_expr(db, value, &mut infer_body);
+
+                if let Err(err) = infer.coerce_type_with_expr(db, target, value, &mut infer_body) {
                     errors.push(
                         TypeError::NotAssignable {
                             base_target: target,
-                            target: err.expected,
-                            value: err.actual,
+                            lhs: err.expected,
+                            rhs: err.actual,
+                            adjustment: err.adjustment,
                             expr: CallSite::from_expr(db, value),
                         }
                         .to_diagnostic(db),
                     )
+                }
+
+                for error in infer_body.errors {
+                    errors.push(error);
                 }
             }
         }

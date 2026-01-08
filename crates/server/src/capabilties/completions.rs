@@ -32,7 +32,6 @@ pub fn completions(
 
     Ok(descendant_at(db, file, offset)
         .map(|s| {
-            eprintln!("Getting completions for node: {s:?}, {offset}");
             CompletionResponse::Array(
                 s.as_proto().completion(db, offset).unwrap_or_default(),
             )

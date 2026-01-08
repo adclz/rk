@@ -13,13 +13,6 @@ use hir::{
 use crate::{to_proto::ToProtocol, typ::TypeProto};
 
 impl<'db> ToProtocol<'db> for VariableAccess<'db> {
-    fn inlay_hint(&'db self, db: &'db dyn BaseDatabase) -> Option<InlayHint> {
-        let infer = infer_body_scope(db, self.scope_id(db));
-        infer
-            .type_of_variable_access_with_adjustments(db, *self)
-            .and_then(|typ| typ.inlay_hint(db, self))
-    }
-
     fn declaration(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDeclarationResponse> {
         let infer = infer_body_scope(db, self.scope_id(db));
         infer

@@ -46,7 +46,7 @@ static SURROUND_SPACES: &str = r#"
 
 (identifier) @prepend_space
 ["(" "[" "." "END_CASE"] @append_antispace
-[")" "]" ":" ";" "," "." (deref_sig)] @prepend_antispace
+[")" "]" ":" ";" "," "." (deref_sign)] @prepend_antispace
 ["NOT" ":"] @append_space
 "#;
 

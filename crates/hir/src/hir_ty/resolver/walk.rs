@@ -8,7 +8,7 @@ use crate::{
     },
     hir_def::{
         expressions::{
-            expression::{BeginPathExpr, InitExpr},
+            expression::{BeginPathExpr, InitExpr, PathExpr},
             invocation::InvocationKind,
         },
         scope::{ScopeId, ScopeKind},
@@ -24,14 +24,24 @@ use crate::{
     },
 };
 
+/// When waking a path expression, we need to keep track of the parent type
+///
+/// The parent type is either a variable or a data type
+///
+/// This is only useful to create accurate diagnostics
+#[derive(Debug, Copy, Clone)]
+pub struct PlaceBuilder<'db> {
+    pub current_typ: Type<'db>,
+    pub current_path: PathExpr<'db>,
+}
+
 impl<'db> Type<'db> {
-    #[must_use]
     pub fn walk_begin_path_expr(
         &self,
         db: &'db dyn BaseDatabase,
         expr: BeginPathExpr<'db>,
         ctx: &mut BodyInferenceResult<'db>,
-    ) -> Type<'db> {
+    ) {
         // a begin path expr can either have:
         // - an invocation
         // - a path expression
@@ -41,7 +51,7 @@ impl<'db> Type<'db> {
         if let Some(invocation) = expr.invocation(db) {
             let pou = match resolve_invocation(db, ctx.scope, invocation, ctx) {
                 Some(pou) => pou,
-                None => return Type::Never,
+                None => return,
             };
 
             // walk invocation w/ path expr and kind
@@ -67,9 +77,22 @@ impl<'db> Type<'db> {
                     match invocation.kind(db) {
                         InvocationKind::This => {
                             let steps = path_expr.flatten(db);
+                            let mut place = PlaceBuilder {
+                                current_typ: current,
+                                current_path: path_expr,
+                            };
                             for step in steps {
-                                current = current.walk_path_expr(db, true, step, ctx);
+                                current.walk_path_expr(db, true, step, &mut place, ctx);
+                                // it is necessary to apply adjustments at each step
+                                current = ctx
+                                    .type_of_path_expr_with_adjustments(*step.get_expr())
+                                    .unwrap_or_default();
                             }
+
+                            if current.is_never() {
+                                return;
+                            }
+
                             if let Type::MethodDecl(m) = current {
                                 check_visibility(
                                     db,
@@ -78,7 +101,7 @@ impl<'db> Type<'db> {
                                     &mut ctx.errors,
                                 );
                                 ctx.type_of_path_expr.insert(path_expr, Type::MethodDecl(m));
-                                return current;
+                                return;
                             } else {
                                 ctx.errors.push(
                                     BodyInferenceError::NoSuchField {
@@ -88,7 +111,7 @@ impl<'db> Type<'db> {
                                     }
                                     .to_diagnostic(db),
                                 );
-                                return Type::Never;
+                                return;
                             }
                         }
                         InvocationKind::Super => {
@@ -105,7 +128,6 @@ impl<'db> Type<'db> {
                                     );
                                     ctx.type_of_path_expr
                                         .insert(*expr, Type::MethodDecl(method.method));
-                                    return Type::MethodDecl(method.method);
                                 } else {
                                     ctx.errors.push(
                                         BodyInferenceError::NoSuchField {
@@ -115,93 +137,81 @@ impl<'db> Type<'db> {
                                         }
                                         .to_diagnostic(db),
                                     );
-                                    return Type::Never;
+                                    return;
                                 }
                             }
                         }
                         InvocationKind::SuperBody => {}
                     }
                 }
-                None => return Type::new_pou(db, pou),
+                None => (),
             }
         }
 
         if let Some(path) = expr.expr(db) {
             // resolve path steps
-            let _ = Resolver {
-                scope: path.scope_id(db),
-                walkable_typ: None,
-            }
-            .resolve_path_steps(*self, db, path, ctx);
-
-            return ctx
-                .type_of_path_expr_with_adjustments(path)
-                .unwrap_or_default();
+            return Resolver::for_scope(db, path.scope_id(db))
+                .resolve_path_steps(*self, db, path, ctx);
         }
-
-        Type::Never
     }
 
-    #[must_use]
     pub fn walk_path_expr(
         &self,
         db: &'db dyn BaseDatabase,
         report_errors: bool,
         step: &'db PathExprWalkStep<'db>,
+        place: &mut PlaceBuilder<'db>,
         ctx: &mut BodyInferenceResult<'db>,
-    ) -> Type<'db> {
+    ) {
         let expr = step.get_expr();
-        let mut result_ty = Type::Never;
 
+        match self {
+            // both variables and data types can have fields
+            // but we need to inspect their spec type
+            Type::Variable(v) => {
+                return Type::new_spec(db, v.spec(db)).walk_path_expr(
+                    db,
+                    report_errors,
+                    step,
+                    place,
+                    ctx,
+                );
+            }
+            Type::DataType(typ) => {
+                return Type::new_spec(db, typ.spec(db)).walk_path_expr(
+                    db,
+                    report_errors,
+                    step,
+                    place,
+                    ctx,
+                );
+            }
+            Type::StructElement(st) => {
+                return Type::new_spec(db, st.spec(db)).walk_path_expr(
+                    db,
+                    report_errors,
+                    step,
+                    place,
+                    ctx,
+                );
+            }
+            _ => (),
+        }
         match step {
-            PathExprWalkStep::Deref {
-                expr: _, target: _, ..
-            } => match self {
-                Type::RefTo(ref_to) => {
-                    result_ty = Type::new_spec(db, *ref_to);
-                    ctx.path_expr_adjustments
-                        .insert(*expr, vec![Adjustment::new_deref(db, result_ty)]);
-                }
-                _ => {
-                    if report_errors {
-                        ctx.errors.push(
-                            BodyInferenceError::DerefNonRefType {
-                                expr: *expr,
-                                ty: *self,
-                            }
-                            .to_diagnostic(db),
-                        );
-                    }
-                }
-            },
-
             PathExprWalkStep::Field { ident, expr: _ } => {
                 match self {
-                    Type::Variable(v) => {
-                        return Type::new_spec(db, v.spec(db)).walk_path_expr(
-                            db,
-                            report_errors,
-                            step,
-                            ctx,
-                        );
-                    }
-                    Type::DataType(typ) => {
-                        return Type::new_spec(db, typ.spec(db)).walk_path_expr(
-                            db,
-                            report_errors,
-                            step,
-                            ctx,
-                        );
-                    }
                     Type::Struct(st) => {
                         if let Some(field) = st.resolve_elements(db).get(&ident.ident) {
-                            result_ty = Type::StructElement(*field);
+                            ctx.type_of_path_expr
+                                .insert(*expr, Type::StructElement(*field));
+                            place.current_typ = Type::StructElement(*field);
+                            place.current_path = *step.get_expr();
                         } else if report_errors {
                             ctx.errors.push(
                                 BodyInferenceError::NoSuchField {
                                     expr: *expr,
                                     ident: **ident,
-                                    ty: *self,
+                                    ty: place.current_typ,
                                 }
                                 .to_diagnostic(db),
                             );
@@ -213,17 +223,24 @@ impl<'db> Type<'db> {
                             Type::Function(f) => f.scope_id(db),
                             Type::FunctionBlock(fb) => fb.scope_id(db),
                             Type::Class(c) => c.scope_id(db),
+                            // unreachable due to the match above
                             _ => unreachable!(),
                         }
                         .def_map(db);
 
+                        let ident2 = ident.ident.text(db).to_string();
+
                         // Variables
                         if let Some(var) = def_map.global_variables.get(&ident.ident) {
-                            result_ty = Type::new_var(db, *var);
+                            ctx.type_of_path_expr.insert(*expr, Type::new_var(db, *var));
+                            place.current_typ = Type::new_var(db, *var);
+                            place.current_path = *step.get_expr();
                         }
                         // Methods
                         else if let Some(m) = def_map.declared_methods.get(&ident.ident) {
-                            result_ty = Type::MethodDecl(*m);
+                            ctx.type_of_path_expr.insert(*expr, Type::MethodDecl(*m));
+                            place.current_typ = Type::MethodDecl(*m);
+                            place.current_path = *step.get_expr();
                             check_visibility(db, &ident.as_call_site(db), *m, &mut ctx.errors);
                         } else if report_errors {
                             ctx.errors.push(
@@ -251,19 +268,62 @@ impl<'db> Type<'db> {
                     }
                 }
             }
+            PathExprWalkStep::Deref { expr: _, count } => {
+                for result in iter_deref_types(db, *self).take((*count) as usize) {
+                    match result {
+                        Ok(ty) => {
+                            ctx.path_expr_adjustments
+                                .entry(place.current_path)
+                                .or_insert_with(Vec::new)
+                                .push(Adjustment::new_deref(db, ty));
 
+                            ctx.type_of_path_expr.insert(*expr, place.current_typ);
+                            ctx.path_expr_adjustments
+                                .entry(*expr)
+                                .or_insert_with(Vec::new)
+                                .push(Adjustment::new_deref(db, ty));
+                        }
+                        Err(non_ref) => {
+                            if report_errors {
+                                ctx.errors.push(
+                                    BodyInferenceError::DerefNonRefType {
+                                        expr: *expr,
+                                        ty: non_ref,
+                                    }
+                                    .to_diagnostic(db),
+                                );
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
             PathExprWalkStep::Index { expr: _ } => match self {
                 Type::Array(arr) => {
-                    result_ty = Type::new_spec(db, arr.of_type(db));
                     ctx.path_expr_adjustments
-                        .insert(*expr, vec![Adjustment::new_index(db, result_ty)]);
+                        .entry(place.current_path)
+                        .or_insert_with(Vec::new)
+                        .push(Adjustment::new_index(
+                            db,
+                            Type::new_spec(db, arr.of_type(db)),
+                        ));
+
+                    ctx.type_of_path_expr.insert(*expr, place.current_typ);
+                    ctx.path_expr_adjustments
+                        .entry(*expr)
+                        .or_insert_with(Vec::new)
+                        .push(Adjustment::new_index(
+                            db,
+                            Type::new_spec(db, arr.of_type(db)),
+                        ));
                 }
                 _ => {
                     if report_errors {
                         ctx.errors.push(
                             BodyInferenceError::IndexNonArrayType {
                                 expr: *expr,
-                                ty: *self,
+                                // an array will always be declared by a DataType or a Variable
+                                ty: place.current_typ,
                             }
                             .to_diagnostic(db),
                         );
@@ -271,9 +331,6 @@ impl<'db> Type<'db> {
                 }
             },
         }
-
-        ctx.type_of_path_expr.insert(*expr, result_ty);
-        result_ty
     }
 
     #[must_use]
@@ -284,11 +341,14 @@ impl<'db> Type<'db> {
         step: InitExprWalkStep<'db>,
         ctx: &mut InitExprInferenceResult<'db>,
     ) -> Type<'db> {
-        if let Type::DataType(dt) = self {
-            return Type::new_spec(db, dt.spec(db)).walk_init_expr(db, expr, step, ctx);
-        }
-        if let Type::StructElement(elem) = self {
-            return Type::new_spec(db, elem.spec(db)).walk_init_expr(db, expr, step, ctx);
+        match self {
+            Type::DataType(dt) => {
+                return Type::new_spec(db, dt.spec(db)).walk_init_expr(db, expr, step, ctx);
+            }
+            Type::StructElement(elem) => {
+                return Type::new_spec(db, elem.spec(db)).walk_init_expr(db, expr, step, ctx);
+            }
+            _ => (),
         }
         let mut result_ty = Type::Never;
         match step {
@@ -299,10 +359,13 @@ impl<'db> Type<'db> {
                         result_ty = Type::new_spec(db, array.of_type(db));
                     }
                     _ => {
-                        ctx.errors.push(InitInferenceError::IndexNonArrayType {
-                            expr: expr,
-                            ty: *self,
-                        });
+                        ctx.errors.push(
+                            InitInferenceError::IndexNonArrayType {
+                                expr: expr,
+                                ty: *self,
+                            }
+                            .to_diagnostic(db),
+                        );
                     }
                 }
             }
@@ -311,10 +374,13 @@ impl<'db> Type<'db> {
                     result_ty = *self;
                 }
                 _ => {
-                    ctx.errors.push(InitInferenceError::IsElementaryType {
-                        expr: expr,
-                        ty: *self,
-                    });
+                    ctx.errors.push(
+                        InitInferenceError::IsElementaryType {
+                            expr: expr,
+                            ty: *self,
+                        }
+                        .to_diagnostic(db),
+                    );
                 }
             },
             InitExprWalkStep::Field(ident) => {
@@ -323,11 +389,14 @@ impl<'db> Type<'db> {
                         if let Some(field) = st.resolve_elements(db).get(&ident.ident) {
                             result_ty = Type::StructElement(*field);
                         } else {
-                            ctx.errors.push(InitInferenceError::NoSuchField {
-                                expr: expr,
-                                ident: *ident,
-                                ty: *self,
-                            });
+                            ctx.errors.push(
+                                InitInferenceError::NoSuchField {
+                                    expr: expr,
+                                    ident: *ident,
+                                    ty: *self,
+                                }
+                                .to_diagnostic(db),
+                            );
                         }
                     }
 
@@ -344,19 +413,25 @@ impl<'db> Type<'db> {
                         if let Some(var) = def_map.global_variables.get(&ident.ident) {
                             result_ty = Type::new_var(db, *var);
                         } else {
-                            ctx.errors.push(InitInferenceError::NoSuchField {
-                                expr: expr,
-                                ident: *ident,
-                                ty: *self,
-                            });
+                            ctx.errors.push(
+                                InitInferenceError::NoSuchField {
+                                    expr: expr,
+                                    ident: *ident,
+                                    ty: *self,
+                                }
+                                .to_diagnostic(db),
+                            );
                         }
                     }
                     _ => {
-                        ctx.errors.push(InitInferenceError::NoSuchField {
-                            expr: expr,
-                            ident: *ident,
-                            ty: *self,
-                        });
+                        ctx.errors.push(
+                            InitInferenceError::NoSuchField {
+                                expr: expr,
+                                ident: *ident,
+                                ty: *self,
+                            }
+                            .to_diagnostic(db),
+                        );
                     }
                 }
             }
@@ -367,4 +442,21 @@ impl<'db> Type<'db> {
         ctx.type_of_expr.insert(expr, result_ty);
         result_ty
     }
+}
+
+fn iter_deref_types<'db>(
+    db: &'db dyn BaseDatabase,
+    mut ty: Type<'db>,
+) -> impl Iterator<Item = Result<Type<'db>, Type<'db>>> {
+    std::iter::from_fn(move || match ty {
+        Type::RefTo(inner) => {
+            let next = Type::new_spec(db, inner);
+            ty = next;
+            Some(Ok(next))
+        }
+        non_ref => {
+            ty = non_ref;
+            Some(Err(non_ref))
+        }
+    })
 }

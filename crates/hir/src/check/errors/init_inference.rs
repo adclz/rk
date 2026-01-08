@@ -9,6 +9,7 @@ use crate::{
         interned::identifier::{Ident, SpanIdent},
     },
     hir_ty::ty::Type,
+    query_string::strukt::fuzzy_struct_fields,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -69,6 +70,10 @@ impl<'db> ToIdeDiagnostic<'db> for InitInferenceError<'db> {
                     .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                     .range(expr.get_span(db))
                     .call();
+
+                if let Type::Struct(strukt) = ty {
+                    fuzzy_struct_fields(db, *strukt, &mut diag, ident.text(db).as_str())
+                };
 
                 diag
             }

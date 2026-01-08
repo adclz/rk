@@ -20,7 +20,9 @@ use crate::{
         semantic_index::get_scope,
     },
     hir_ty::{
-        body_inference::{BodyInferenceResult, infer_body_scope}, init_inference::infer_data_type, ty::Type
+        body_inference::{BodyInferenceResult, infer_body_scope},
+        init_inference::infer_data_type,
+        ty::Type,
     },
 };
 
@@ -42,7 +44,7 @@ impl<'db> Check<'db> for ScopeId<'db> {
                     if let Some(init) = dt.init(db) {
                         let result = infer_data_type(db, dt);
                         for error in result.errors.iter() {
-                            errors.push(error.to_diagnostic(db));
+                            errors.push(error.clone());
                         }
 
                         for error in result.body_infer_result.errors.iter() {

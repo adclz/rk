@@ -1,11 +1,11 @@
 use auto_lsp::default::db::BaseDatabase;
 use ide_diagnostic::IdeDiagnostic;
 
-pub mod walk;
-pub mod visibility;
+pub mod body;
 pub mod func_call;
 pub mod invocation;
-pub mod body;
+pub mod visibility;
+pub mod walk;
 
 use crate::{
     CallSite, HasVisibility, HirNodeInfo, Visibility,
@@ -19,6 +19,7 @@ use crate::{
             invocation::InvocationKind,
         },
         namespace::NamespaceDecl,
+        pous::pou::Pou,
         scope::{ScopeId, ScopeKind},
         semantic_index::{get_scope, semantic_index},
     },
@@ -28,19 +29,45 @@ use crate::{
         inheritance_solver::inherited_methods,
         init_inference::InitExprInferenceResult,
         name_res::resolve_namespace_access,
+        resolver::walk::PlaceBuilder,
         ty::Type,
     },
 };
 
 #[derive(Debug, Copy, Clone)]
 pub struct Resolver<'db> {
-    pub scope: ScopeId<'db>,
-    pub walkable_typ: Option<Type<'db>>,
+    pub root: PathResolutionRoot<'db>,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum PathResolutionRoot<'db> {
+    /// Path starts from a known value/type (THIS, SUPER, implicit self)
+    Value { base: Type<'db> },
+
+    /// Path starts from a namespace / scope
+    Namespace { scope: ScopeId<'db> },
 }
 
 impl<'db> Resolver<'db> {
-    pub fn new(scope: ScopeId<'db>, walkable_typ: Option<Type<'db>>) -> Self {
-        Self { scope, walkable_typ }
+    pub fn for_scope(db: &'db dyn BaseDatabase, scope: ScopeId<'db>) -> Self {
+        let root = match get_scope(db, scope).kind {
+            ScopeKind::Pou(pou) => match pou {
+                Pou::DataType(_) => PathResolutionRoot::Namespace { scope },
+                _ => PathResolutionRoot::Value {
+                    base: Type::new_pou(db, pou),
+                },
+            },
+            ScopeKind::MethodDecl(m) => PathResolutionRoot::Value {
+                base: Type::MethodDecl(m.into()),
+            },
+            _ => PathResolutionRoot::Namespace { scope },
+        };
+
+        Self { root }
+    }
+
+    fn allows_fq_fallback(&self) -> bool {
+        matches!(self.root, PathResolutionRoot::Value { .. })
     }
 
     fn resolve_as_fq(
@@ -48,7 +75,8 @@ impl<'db> Resolver<'db> {
         db: &'db dyn BaseDatabase,
         path_expr: PathExpr<'db>,
         infer_results: &mut BodyInferenceResult<'db>,
-    ) -> Type<'db> {
+    ) {
+        let kind = path_expr.expr(db);
         let Some((access, _)) = path_expr.to_namespace_access(db) else {
             infer_results.errors.push(
                 BodyInferenceError::NoItemInScope {
@@ -57,14 +85,14 @@ impl<'db> Resolver<'db> {
                 }
                 .to_diagnostic(db),
             );
-            return Type::Never;
+            return;
         };
 
         match resolve_namespace_access(db, &access) {
             Some(pou) => {
-                let typ = Type::new_pou(db, pou);
-                infer_results.type_of_path_expr.insert(path_expr, typ);
-                typ
+                infer_results
+                    .type_of_path_expr
+                    .insert(path_expr, Type::new_pou(db, pou));
             }
             None => {
                 infer_results.errors.push(
@@ -74,74 +102,89 @@ impl<'db> Resolver<'db> {
                     }
                     .to_diagnostic(db),
                 );
-                Type::Never
             }
         }
     }
 
-    #[must_use]
     pub fn resolve_variable_access(
         &self,
         db: &'db dyn BaseDatabase,
         var_access: VariableAccess<'db>,
         infer_results: &mut BodyInferenceResult<'db>,
-    ) -> Type<'db> {
+    ) {
         match var_access.kind(db) {
             VariableAccessKind::Direct { .. } => todo!(),
-            VariableAccessKind::Symbolic(s) => match self.walkable_typ {
-                Some(typ) => typ.walk_begin_path_expr(db, s, infer_results),
-                None => Type::Never,
-            },
+            VariableAccessKind::Symbolic(s) => self.resolve_begin_path_expr(db, s, infer_results),
         }
     }
 
-    #[must_use]
     pub fn resolve_begin_path_expr(
         &self,
         db: &'db dyn BaseDatabase,
         path_expr: BeginPathExpr<'db>,
         infer_results: &mut BodyInferenceResult<'db>,
-    ) -> Type<'db> {
-        match self.walkable_typ {
-            Some(typ) => typ.walk_begin_path_expr(db, path_expr, infer_results),
-            None => Type::Never,
-        }
+    ) {
+        match self.root {
+            PathResolutionRoot::Value { base } => {
+                base.walk_begin_path_expr(db, path_expr, infer_results)
+            }
+            PathResolutionRoot::Namespace { scope } => (),
+        };
     }
 
-    #[must_use]
     pub fn resolve_path_expr(
         &self,
         db: &'db dyn BaseDatabase,
         path_expr: PathExpr<'db>,
         infer_results: &mut BodyInferenceResult<'db>,
-    ) -> Type<'db> {
-        match self.walkable_typ {
-            Some(start) => self.resolve_path_steps(start, db, path_expr, infer_results),
-            None => self.resolve_as_fq(db, path_expr, infer_results),
+    ) {
+        match self.root {
+            PathResolutionRoot::Value { base } => {
+                self.resolve_path_steps(base, db, path_expr, infer_results)
+            }
+            PathResolutionRoot::Namespace { scope } => {
+                self.resolve_as_fq(db, path_expr, infer_results)
+            }
         }
     }
 
-    #[must_use]
     fn resolve_path_steps(
         &self,
         mut current: Type<'db>,
         db: &'db dyn BaseDatabase,
         path_expr: PathExpr<'db>,
         ctx: &mut BodyInferenceResult<'db>,
-    ) -> Type<'db> {
+    ) {
         let steps = path_expr.flatten(db);
-        for (index, step) in steps.into_iter().enumerate() {
-            match current.walk_path_expr(db, index != 0, step, ctx) {
-                Type::Never => {
-                    // no path was resolved yet
-                    if index == 0 {
-                        return self.resolve_as_fq(db, path_expr, ctx);
-                    }
-                    return Type::Never;
+        let mut place = PlaceBuilder {
+            current_typ: current,
+            current_path: match steps.first() {
+                Some(step) => *step.get_expr(),
+                None => return,
+            },
+        };
+
+        for (index, step) in steps.iter().enumerate() {
+            current.walk_path_expr(db, index != 0, step, &mut place, ctx);
+
+            if ctx
+                .type_of_path_expr
+                .get(step.get_expr())
+                .copied()
+                .unwrap_or_default()
+                .is_never()
+            {
+                // Fallback ONLY if root allows it
+                if index == 0 && self.allows_fq_fallback() {
+                    self.resolve_as_fq(db, path_expr, ctx);
                 }
-                next => current = next,
+
+                return;
             }
+
+            current = ctx
+                .type_of_path_expr_with_adjustments(*step.get_expr())
+                .unwrap_or_default();
         }
-        current
     }
 }

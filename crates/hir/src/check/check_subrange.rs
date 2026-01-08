@@ -2,15 +2,18 @@ use auto_lsp::default::db::BaseDatabase;
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
-    CallSite, check::{
+    CallSite,
+    check::{
         check_semantic_index::DataTypeCheck,
         errors::{
             analysis_error::ToIdeDiagnostic, body_inference::TypeError, subrange::SubRangeError,
         },
-    }, hir_def::expressions::spec::{ElementarySpec, SpecKind, SubRange}, hir_ty::{
+    },
+    hir_def::expressions::spec::{ElementarySpec, SpecKind, SubRange},
+    hir_ty::{
         body_inference::BodyInferenceResult, infer::expr::InferExprCtx, resolver::Resolver,
         ty::Type,
-    }
+    },
 };
 
 impl<'db> DataTypeCheck<'db> for SubRange<'db> {
@@ -57,45 +60,35 @@ impl<'db> DataTypeCheck<'db> for SubRange<'db> {
         let min = self.lower(db);
         let max = self.upper(db);
 
-        let resolver = Resolver::new(self.lower(db).scope_id(db), None);
+        let resolver = Resolver::for_scope(db, self.lower(db).scope_id(db));
         let mut infer_body = BodyInferenceResult::new(self._type(db).scope_id(db));
         let mut infer = InferExprCtx::new(resolver);
 
-        infer.infer_expr(db, min, &mut infer_body);
-        infer.infer_expr(db, max, &mut infer_body);
+        infer.resolve_expr(db, min, &mut infer_body);
+        infer.resolve_expr(db, max, &mut infer_body);
+        infer.check_expr(db, min, &mut infer_body);
+        infer.check_expr(db, max, &mut infer_body);
 
-        infer.inference_table.set_target_type(db, CallSite::from_spec(db, self._type(db)), typ);
-
-        infer
-            .inference_table
-            .resolve_completly(db, resolver, &mut infer_body);
-
-        let min_typ = infer_body
-            .type_of_expr_with_adjustments(db, min)
-            .unwrap_or_default();
-
-        if let Err(err) = min_typ.coerce_with_type(db, typ, resolver) {
+        if let Err(err) = infer.coerce_type_with_expr(db, typ, min, &mut infer_body) {
             errors.push(
                 TypeError::NotAssignable {
                     base_target: typ,
-                    target: err.expected,
-                    value: err.actual,
+                    lhs: err.expected,
+                    rhs: err.actual,
+                    adjustment: err.adjustment,
                     expr: CallSite::from_expr(db, min),
                 }
                 .to_diagnostic(db),
             )
         }
 
-        let max_typ = infer_body
-            .type_of_expr_with_adjustments(db, max)
-            .unwrap_or_default();
-
-        if let Err(err) = typ.coerce_with_type(db, max_typ, resolver) {
+        if let Err(err) = infer.coerce_type_with_expr(db, typ, max, &mut infer_body) {
             errors.push(
                 TypeError::NotAssignable {
                     base_target: typ,
-                    target: err.expected,
-                    value: err.actual,
+                    lhs: err.expected,
+                    rhs: err.actual,
+                    adjustment: err.adjustment,
                     expr: CallSite::from_expr(db, max),
                 }
                 .to_diagnostic(db),

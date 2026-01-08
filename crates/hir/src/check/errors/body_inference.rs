@@ -15,12 +15,13 @@ use crate::{
         },
         interned::identifier::{Ident, SpanIdent},
         pous::variable::VariableDecl,
-        scope::ScopeId,
+        scope::{ScopeId, ScopeKind}, semantic_index::get_scope,
     },
     hir_ty::{
-        body_inference::{BodyInferenceResult, infer_body_scope},
+        body_inference::{Adjust, Adjustment, BodyInferenceResult, infer_body_scope},
+        infer::coerce::CoerceError,
         ty::{CallableType, Type},
-    },
+    }, query_string::{method::fuzzy_callable_type_parameters, scope::query_scope_items, variables::fuzzy_variables},
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
@@ -117,7 +118,7 @@ pub enum BodyInferenceError<'db> {
     },
     InferLiteralError {
         expr: Expr<'db>,
-        source: CallSite<'db>,
+        source: Option<CallSite<'db>>,
         target: Type<'db>,
         err: InferLiteralError,
     },
@@ -214,6 +215,8 @@ impl<'db> ToIdeDiagnostic<'db> for BodyInferenceError<'db> {
                     .range(param.get_span(db))
                     .call();
 
+                fuzzy_callable_type_parameters(db, *func, &mut diag, param.text(db).as_str());
+
                 diag
             }
             Self::UnknownOutputParameter { func, param } => {
@@ -221,6 +224,8 @@ impl<'db> ToIdeDiagnostic<'db> for BodyInferenceError<'db> {
                     .message(format!("unknown output parameter '{}'", param.text(db)))
                     .range(param.get_span(db))
                     .call();
+
+                fuzzy_callable_type_parameters(db, *func, &mut diag, param.text(db).as_str());
 
                 diag
             }
@@ -283,7 +288,7 @@ impl<'db> ToIdeDiagnostic<'db> for BodyInferenceError<'db> {
                 .range(stmt.get_span(db))
                 .call(),
             Self::NoItemInScope { expr, scope } => {
-                let diag = diag()
+                let mut diag = diag()
                     .message(format!(
                         "no item {:?} found in scope",
                         expr.ident(db).text(db)
@@ -291,6 +296,14 @@ impl<'db> ToIdeDiagnostic<'db> for BodyInferenceError<'db> {
                     .range(expr.get_span(db))
                     .call();
 
+                if let ScopeKind::Pou(pou) = get_scope(db, *scope).kind {
+                    fuzzy_variables(
+                        db,
+                        pou,
+                        &mut diag,
+                        expr.ident(db).as_str(db),
+                    )
+                }
                 diag
             }
             Self::NoSpecItemInScope { spec, scope } => {
@@ -304,7 +317,7 @@ impl<'db> ToIdeDiagnostic<'db> for BodyInferenceError<'db> {
             Self::NoSuchField { expr, ident, ty } => diag()
                 .message(format!(
                     "'{}' has no field named '{}'",
-                    ty.full_type_name(db),
+                    ty.with_name(db).unwrap_or_else(|| ty.full_type_name(db)),
                     ident.text(db)
                 ))
                 .range(expr.get_span(db))
@@ -345,18 +358,21 @@ impl<'db> ToIdeDiagnostic<'db> for BodyInferenceError<'db> {
             } => {
                 let mut diag = diag()
                     .message(format!(
-                        "cannot infer to '{}': {}",
+                        "cannot infer '{}' to '{}': {}",
+                        expr.to_string(db),
                         target.full_type_name(db),
                         err.to_string()
                     ))
                     .range(expr.get_span(db))
                     .call();
 
-                diag.with_related(Related::new(
-                    format!("type is inferred from here"),
-                    source.get_scope_id(db).file(db),
-                    source.get_span(db),
-                ));
+                if let Some(source) = source {
+                    diag.with_related(Related::new(
+                        format!("'{}' is expected due to this", target.full_type_name(db)),
+                        source.get_scope_id(db).file(db),
+                        source.get_span(db),
+                    ));
+                }
 
                 target.with_location(db, &mut diag);
 
@@ -405,26 +421,40 @@ impl<'db> HirNodeInfo<'db> for InitOrExpr<'db> {
 pub enum TypeError<'db> {
     NotAssignable {
         base_target: Type<'db>,
-        target: Type<'db>,
-        value: Type<'db>,
+        lhs: Type<'db>,
+        rhs: Type<'db>,
+        adjustment: Option<Adjustment<'db>>,
         expr: CallSite<'db>,
     },
     NotComparable {
+        base_target: Type<'db>,
         lhs: Type<'db>,
         rhs: Type<'db>,
-        expr: Expr<'db>,
+        adjustment: Option<Adjustment<'db>>,
+        expr: CallSite<'db>,
     },
     NotMultiplicable {
+        base_target: Type<'db>,
         operator: MultOperatorKind,
         lhs: Type<'db>,
         rhs: Type<'db>,
-        expr: Expr<'db>,
+        adjustment: Option<Adjustment<'db>>,
+        expr: CallSite<'db>,
     },
     NotAddable {
+        base_target: Type<'db>,
         operator: AddOperatorKind,
         lhs: Type<'db>,
         rhs: Type<'db>,
-        expr: Expr<'db>,
+        adjustment: Option<Adjustment<'db>>,
+        expr: CallSite<'db>,
+    },
+    NotPowerable {
+        base_target: Type<'db>,
+        lhs: Type<'db>,
+        rhs: Type<'db>,
+        adjustment: Option<Adjustment<'db>>,
+        expr: CallSite<'db>,
     },
     NotABoolean {
         typ: Type<'db>,
@@ -445,15 +475,16 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
         match self {
             Self::NotAssignable {
                 base_target,
-                target,
-                value,
+                lhs: target,
+                rhs: value,
+                adjustment,
                 expr,
             } => {
                 let mut diag = diag()
                     .message(format!(
                         "expected '{}', got '{}'",
                         target.full_type_name(db),
-                        value.full_type_name(db),
+                        adjustment_to_string(db, *value, adjustment),
                     ))
                     .range(expr.get_span(db))
                     .call();
@@ -461,49 +492,93 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 base_target.with_location(db, &mut diag);
                 diag
             }
-            Self::NotComparable { lhs, rhs, expr } => diag()
-                .message(format!(
-                    "can't compare '{}' with '{}'",
-                    lhs.full_type_name(db),
-                    rhs.full_type_name(db)
-                ))
-                .range(expr.get_span(db))
-                .call(),
+            Self::NotComparable {
+                base_target,
+                lhs,
+                rhs,
+                expr,
+                adjustment,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "can't compare '{}' with '{}'",
+                        lhs.full_type_name(db),
+                        adjustment_to_string(db, *rhs, adjustment),
+                    ))
+                    .range(expr.get_span(db))
+                    .call();
+
+                base_target.with_location(db, &mut diag);
+                diag
+            }
             Self::NotAddable {
+                base_target,
                 lhs,
                 operator,
                 rhs,
                 expr,
-            } => diag()
-                .message(format!(
-                    "can not {} '{}' with '{}'",
-                    match operator {
-                        AddOperatorKind::Plus => "add",
-                        AddOperatorKind::Minus => "subtract",
-                    },
-                    lhs.full_type_name(db),
-                    rhs.full_type_name(db)
-                ))
-                .range(expr.get_span(db))
-                .call(),
+                adjustment,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "can not {} '{}' with '{}'",
+                        match operator {
+                            AddOperatorKind::Plus => "add",
+                            AddOperatorKind::Minus => "subtract",
+                        },
+                        lhs.full_type_name(db),
+                        adjustment_to_string(db, *rhs, adjustment)
+                    ))
+                    .range(expr.get_span(db))
+                    .call();
+
+                base_target.with_location(db, &mut diag);
+                diag
+            }
             Self::NotMultiplicable {
+                base_target,
                 lhs,
                 operator,
                 rhs,
                 expr,
-            } => diag()
-                .message(format!(
-                    "can not {} '{}' with '{}'",
-                    match operator {
-                        MultOperatorKind::Mul => "multiply",
-                        MultOperatorKind::Div => "divide",
-                        MultOperatorKind::Mod => "modulus",
-                    },
-                    rhs.full_type_name(db),
-                    lhs.full_type_name(db)
-                ))
-                .range(expr.get_span(db))
-                .call(),
+                adjustment,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "can not {} '{}' with '{}'",
+                        match operator {
+                            MultOperatorKind::Mul => "multiply",
+                            MultOperatorKind::Div => "divide",
+                            MultOperatorKind::Mod => "modulus",
+                        },
+                        rhs.full_type_name(db),
+                        adjustment_to_string(db, *rhs, adjustment)
+                    ))
+                    .range(expr.get_span(db))
+                    .call();
+
+                base_target.with_location(db, &mut diag);
+                diag
+            }
+            Self::NotPowerable {
+                base_target,
+                lhs,
+                rhs,
+                adjustment,
+                expr,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "can not power '{}' with '{}'",
+                        lhs.full_type_name(db),
+                        adjustment_to_string(db, *rhs, adjustment)
+                    ))
+                    .range(expr.get_span(db))
+                    .call();
+
+                base_target.with_location(db, &mut diag);
+                diag
+            }
             Self::NotABoolean { typ, expr } => diag()
                 .message(format!(
                     "expected a boolean, got {}",
@@ -524,5 +599,22 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 .range(expr.get_span(db))
                 .call(),
         }
+    }
+}
+
+fn adjustment_to_string(db: &dyn BaseDatabase, value: Type, adj: &Option<Adjustment>) -> String {
+    match adj {
+        Some(adj) => match adj.kind {
+            Adjust::Ref => {
+                format!("REF TO {}", adj.target.full_type_name(db))
+            }
+            Adjust::Deref => {
+                format!("DEREF {}", adj.target.full_type_name(db))
+            }
+            Adjust::Index => {
+                format!("INDEX {}", adj.target.full_type_name(db))
+            }
+        },
+        None => value.full_type_name(db),
     }
 }

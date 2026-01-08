@@ -1,13 +1,63 @@
 use auto_lsp::default::db::BaseDatabase;
+use compact_str::CompactString;
 use ide_diagnostic::{IdeDiagnostic, Related};
 
 use crate::{
     HasName, HirNodeInfo,
-    hir_def::{expressions::{expression::{Elementary, Expr, ExprKind, InitExpr, InitExprKind, PrimaryExpr, RefValue}, spec::{ElementarySpec, Spec, SpecKind}}, pous::function::Function},
+    hir_def::{
+        expressions::{
+            expression::{
+                Elementary, Expr, ExprKind, InitExpr, InitExprKind, PrimaryExpr, RefValue,
+            },
+            spec::{ElementarySpec, Spec, SpecKind},
+        },
+        pous::function::Function,
+    },
     hir_ty::ty::{CallableType, InferType, Type},
 };
 
 impl<'db> Type<'db> {
+    #[cfg(debug_assertions)]
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::Elementary(_) => "ELEMENTARY",
+            Self::Array(arr) => "ARRAY",
+            Self::ArrayConformand(_) => "ARRAY_CONFORMAND",
+            Self::Class(c) => "CLASS",
+            Self::DataType(typ) => "DATATYPE",
+            Self::Function(f) => "FUNCTION",
+            Self::FunctionBlock(fb) => "FUNCTION_BLOCK",
+            Self::Interface(i) => "INTERFACE",
+            Self::MethodDecl(m) => "METHOD",
+            Self::SubRange(_) => "SUBRANGE",
+            Self::Variable(_) => "VARIABLE",
+            Self::Struct(s) => "STRUCT",
+            Self::StructElement(_) => "STRUCT_ELEMENT",
+            Self::Enum(e) => "ENUM",
+            Self::EnumVariant(_) => "ENUM_VARIANT",
+            Self::CallableType(_) => "CALLABLE",
+            Self::RefTo(_) => "REF_TO",
+            Self::Null => "NULL",
+            Self::Infer(_) => "INFER",
+            Self::Void => "VOID",
+            Self::Never => "NEVER",
+        }
+    }
+
+    pub fn with_name(&self, db: &'db dyn BaseDatabase) -> Option<String> {
+        Some(
+            match self {
+                Self::Function(f) => f.get_name_ident(db).text(db),
+                Self::FunctionBlock(fb) => fb.get_name_ident(db).text(db),
+                Self::MethodDecl(m) => m.get_name_ident(db).text(db),
+                Self::Class(c) => c.get_name_ident(db).text(db),
+                Self::Interface(i) => i.get_name_ident(db).text(db),
+                Self::DataType(typ) => typ.get_name_ident(db).text(db),
+                _ => None?,
+            }
+            .to_string(),
+        )
+    }
     pub fn type_name(&self, db: &'db dyn BaseDatabase) -> String {
         match self {
             Self::Elementary(elem) => match elem {
@@ -43,7 +93,9 @@ impl<'db> Type<'db> {
             }
             .into(),
             Self::Function(f) => format!("FUNCTION: {}", f.get_name_ident(db).text(db)),
-            Self::FunctionBlock(fb) => format!("FUNCTION_BLOCK: {}",fb.get_name_ident(db).text(db)),
+            Self::FunctionBlock(fb) => {
+                format!("FUNCTION_BLOCK: {}", fb.get_name_ident(db).text(db))
+            }
             Self::MethodDecl(m) => format!("METHOD: {}", m.get_name_ident(db).text(db)),
             Self::Class(c) => format!("CLASS: {}", c.get_name_ident(db).text(db)),
             Self::Interface(i) => format!("INTERFACE: {}", i.get_name_ident(db).text(db)),
@@ -55,9 +107,11 @@ impl<'db> Type<'db> {
             Self::Struct(_) => "STRUCT".into(),
             Self::CallableType(typ) => match typ {
                 CallableType::Function(f) => format!("FUNCTION: {}", f.get_name_ident(db).text(db)),
-                CallableType::FunctionBlock(fb) => format!("FUNCTION_BLOCK: {}",fb.get_name_ident(db).text(db)),
+                CallableType::FunctionBlock(fb) => {
+                    format!("FUNCTION_BLOCK: {}", fb.get_name_ident(db).text(db))
+                }
                 CallableType::MethodDecl(m) => format!("METHOD: {}", m.get_name_ident(db).text(db)),
-            }
+            },
             Self::Never => "{unknown}".into(),
             Self::Void => "void".into(),
             Self::StructElement(st) => Type::new_spec(db, st.spec(db)).type_name(db),
@@ -217,7 +271,6 @@ impl<'db> Type<'db> {
     }
 }
 
-
 impl<'db> InitExpr<'db> {
     pub fn to_string(&self, db: &'db dyn BaseDatabase) -> &str {
         match self.kind(db) {
@@ -290,7 +343,7 @@ impl<'db> PrimaryExpr<'db> {
                 Elementary::AnyString(_) => "STRING literal",
                 Elementary::AnyChar(_) => "CHAR literal",
                 Elementary::InferInteger(_) => "<integer>",
-                Elementary::InferFloat(_) => "<identifier>",
+                Elementary::InferFloat(_) => "<float>",
             },
             PrimaryExpr::VariableAccess(v) => "<variable access>",
             PrimaryExpr::FuncCall(func_call) => func_call.path(db).to_string(db),

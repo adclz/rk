@@ -35,7 +35,7 @@ use crate::{
     },
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, salsa::Update)]
 pub enum Type<'db> {
     // Primitive types
     Elementary(ElementarySpec),
@@ -59,10 +59,14 @@ pub enum Type<'db> {
     MethodDecl(MethodRef<'db>),
     Variable(VariableDecl<'db>),
     Infer(InferType),
-    // Func call
+    // Func call - same as methods, functions, function blocks but we know it's being called
     CallableType(CallableType<'db>),
-    Never,
+    // Void type, usually the result of a call that does not return anything
     Void,
+    // Never type, represents an unresolvable type
+    // Important: this type will stop propagation of errors and
+    // therefore *requires* a diagnostic to be emitted when created
+    Never,
 }
 
 impl Default for Type<'_> {

@@ -55,7 +55,7 @@ impl<'db> TypeProto<'db> for Type<'db> {
         }
     }
 
-    fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize, parent: &dyn HirNodeInfo<'db>) -> Option<Hover> {
+    fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize, parent: &dyn HirNodeInfo<'db>) -> Option<Hover> {        
         match self {
             Type::Variable(var) => var.hover(db, offset),
             _ => Some(Hover {

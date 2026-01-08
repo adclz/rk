@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
 use crate::{
@@ -56,7 +57,7 @@ pub struct InitExprInferenceResult<'db> {
     /// BodyInference results
     pub body_infer_result: BodyInferenceResult<'db>,
     /// Errors encountered during inference
-    pub errors: Vec<InitInferenceError<'db>>,
+    pub errors: Vec<IdeDiagnostic>,
 }
 
 impl<'db> InitExprInferenceResult<'db> {
@@ -70,7 +71,12 @@ impl<'db> InitExprInferenceResult<'db> {
         }
     }
 
-    pub fn resolve_init_expr(&mut self, db: &'db dyn BaseDatabase, expr: InitExpr<'db>, typ: Type<'db>) {
+    pub fn resolve_init_expr(
+        &mut self,
+        db: &'db dyn BaseDatabase,
+        expr: InitExpr<'db>,
+        typ: Type<'db>,
+    ) {
         let map = expr.flatten(db);
         self.resolve_expr(db, expr, typ, &map);
     }
@@ -118,38 +124,22 @@ impl<'db> InitExprInferenceResult<'db> {
                 narrowed
             }
 
-            InitExprKind::ConstantExpr(e) => {
-                let resolver = Resolver::new(self.scope, Some(expected));
-                let mut infer_ctx = InferExprCtx::new(resolver);
-                infer_ctx.infer_expr(db, e, &mut self.body_infer_result);
+            InitExprKind::ConstantExpr(rhs) => {
+                let mut infer_ctx = InferExprCtx::new(Resolver::for_scope(db, self.scope));
+                infer_ctx.resolve_expr(db, rhs, &mut self.body_infer_result);
+                infer_ctx.check_expr(db, rhs, &mut self.body_infer_result);
 
-                infer_ctx.inference_table.set_target_type(
-                    db,
-                    CallSite::from_init_expr(db, expr),
-                    expected,
-                );
-                infer_ctx.inference_table.resolve_completly(
-                    db,
-                    resolver,
-                    &mut self.body_infer_result,
-                );
-
-                let inferred = self
-                    .body_infer_result
-                    .type_of_expr_with_adjustments(db, e)
-                    .unwrap_or_default();
-
-                if let Err(err) = expected.coerce_with_type(db, inferred, resolver) {
-                    self.errors
-                        .push(InitInferenceError::TypeMismatch(TypeError::NotAssignable {
-                            base_target: expected,
-                            target: err.expected,
-                            value: err.actual,
-                            expr: CallSite::from_init_expr(db, expr),
-                        }));
+                if let Err(err) =
+                    infer_ctx.coerce_type_with_expr(db, expected, rhs, &mut self.body_infer_result)
+                {
+                    self.errors.push(err.into_non_assignable(
+                        db,
+                        expected,
+                        CallSite::from_init_expr(db, expr),
+                    ));
                 }
 
-                inferred
+                narrowed
             }
         }
     }

@@ -1,6 +1,21 @@
 use auto_lsp::default::db::BaseDatabase;
 
-use crate::hir_ty::ty::{CallableType, Type};
+use crate::{hir_def::expressions::expression::Expr, hir_ty::{body_inference::BodyInferenceResult, ty::{CallableType, Type}}};
+
+/*
+    Normalizes a type into its identity data type.
+
+    This operation:
+    - Resolves Variable references to their declared data types
+    - Resolves DataType aliases to their underlying specifications
+    - Extracts and normalizes the return type of callable types
+    - Recursively removes all transparent layers until a concrete data type
+      (or Void / Never) is reached
+
+    This is an eager, lossy operation: information about how a value was
+    reached (variable access, path steps, call origin, etc.) is discarded.
+*/
+
 
 impl<'db> Type<'db> {
     pub fn normalize(&self, db: &'db dyn BaseDatabase) -> Type<'db> {

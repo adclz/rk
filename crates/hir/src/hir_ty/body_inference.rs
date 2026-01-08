@@ -1,7 +1,7 @@
 use ast::generated::{PrimaryExpression, Subrange};
 use auto_lsp::default::db::BaseDatabase;
 use ide_diagnostic::{IdeDiagnostic, diag};
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     HirNodeInfo,
@@ -15,7 +15,8 @@ use crate::{
         expressions::{
             expression::{
                 BeginPathExpr, Expr, ExprKind, FuncCall, InitExpr, ParamAssign, ParamAssignKind,
-                PathExpr, PathExprKind, PrimaryExpr, VarAccess, VariableAccess, VariableAccessKind,
+                PathExpr, PathExprKind, PrimaryExpr, RefValue, VarAccess, VariableAccess,
+                VariableAccessKind,
             },
             invocation::{self, Invocation, InvocationKind},
         },
@@ -28,7 +29,11 @@ use crate::{
         semantic_index::get_scope,
     },
     hir_ty::{
-        resolver::{Resolver, body::{BodyResolverCtx, NestedScope}},
+        infer::inference_table::InferenceTable,
+        resolver::{
+            Resolver,
+            body::{InferenceCtx, NestedScope},
+        },
         ty::Type,
     },
 };
@@ -40,7 +45,7 @@ pub fn infer_body_scope<'db>(
     scope: ScopeId<'db>,
 ) -> BodyInferenceResult<'db> {
     let mut result = BodyInferenceResult::new(scope);
-    let ctx = BodyResolverCtx::new(scope);
+    let ctx = InferenceCtx::new(scope);
 
     // Only Scopes with bodies can have statements
     let (scope_typ, statements) = match get_scope(db, scope).kind {
@@ -53,9 +58,9 @@ pub fn infer_body_scope<'db>(
         _ => return result,
     };
 
-    ctx.resolve_statements(
+    ctx.check_statements(
         db,
-        Resolver::new(scope, Some(scope_typ)),
+        Resolver::for_scope(db, scope),
         statements,
         NestedScope::None,
         &mut result,
@@ -64,6 +69,15 @@ pub fn infer_body_scope<'db>(
     result
 }
 
+/// Result of body inference
+///
+/// When the this struct is emitted via the [`infer_body_scope`] query, it is important to note 2 things about the type mappings:
+///
+/// 1. The types mapped to expressions and invocations are the types *before* any normalization or adjustments are applied.
+/// see the note on normalization in the normalize module.
+///
+/// 2. There should be no [`Type::Infer`] types in the mappings. All types should be fully resolved,
+/// those that can't be resolved will be represented as [`Type::Never`].
 #[derive(Debug, PartialEq, Eq, salsa::Update)]
 pub struct BodyInferenceResult<'db> {
     // Scope where this InferenceResult was emitted
@@ -101,18 +115,19 @@ impl<'db> BodyInferenceResult<'db> {
         }
     }
 
+    pub fn get_type_of_expr(&self, expr: Expr<'db>) -> Option<Type<'db>> {
+        self.type_of_expr.get(&expr).copied()
+    }
+
     pub fn type_of_expr_with_adjustments(
         &self,
         db: &'db dyn BaseDatabase,
         expr: Expr<'db>,
     ) -> Option<Type<'db>> {
         match expr.expr(db) {
-            ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(var)) => match var.kind(db) {
-                VariableAccessKind::Symbolic(sym) => {
-                    self.type_of_begin_expr_with_adjustments(db, sym)
-                }
-                _ => self.type_of_expr.get(&expr).copied(),
-            },
+            ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(var)) => {
+                self.type_of_variable_access_with_adjustments(db, *var)
+            }
             _ => self.type_of_expr.get(&expr).copied(),
         }
     }
@@ -124,6 +139,17 @@ impl<'db> BodyInferenceResult<'db> {
     ) -> Option<Type<'db>> {
         match var_access.kind(db) {
             VariableAccessKind::Symbolic(sym) => self.type_of_begin_expr_with_adjustments(db, sym),
+            _ => None,
+        }
+    }
+
+    pub fn get_type_of_variable_access(
+        &self,
+        db: &'db dyn BaseDatabase,
+        var_access: VariableAccess<'db>,
+    ) -> Option<Type<'db>> {
+        match var_access.kind(db) {
+            VariableAccessKind::Symbolic(sym) => self.get_type_of_begin_path_expr(db, sym),
             _ => None,
         }
     }
@@ -142,6 +168,20 @@ impl<'db> BodyInferenceResult<'db> {
         }
     }
 
+    pub fn get_type_of_begin_path_expr(
+        &self,
+        db: &'db dyn BaseDatabase,
+        begin: BeginPathExpr<'db>,
+    ) -> Option<Type<'db>> {
+        match begin.expr(db) {
+            Some(expr) => self.get_type_of_path_expr(db, expr),
+            None => match begin.invocation(db) {
+                Some(invocation) => self.type_of_invocation.get(&invocation).copied(),
+                None => None,
+            },
+        }
+    }
+
     pub fn type_of_path_expr_with_adjustments(&self, expr: PathExpr<'db>) -> Option<Type<'db>> {
         match self
             .path_expr_adjustments
@@ -153,12 +193,59 @@ impl<'db> BodyInferenceResult<'db> {
         }
     }
 
-    pub fn variable_for_param(&self, param: ParamAssign<'db>) -> Option<VariableDecl<'db>> {
-        self.variable_of_param.get(&param).copied()
+    pub fn get_type_of_path_expr(
+        &self,
+        db: &'db dyn BaseDatabase,
+        expr: PathExpr<'db>,
+    ) -> Option<Type<'db>> {
+        self.type_of_path_expr.get(&expr).copied()
     }
 
-    pub fn path_expr_adjustments(&self, expr: PathExpr<'db>) -> Option<&[Adjustment<'db>]> {
+    pub fn adjustments_of_expr(
+        &self,
+        db: &'db dyn BaseDatabase,
+        expr: Expr<'db>,
+    ) -> Option<&[Adjustment<'db>]> {
+        match expr.expr(db) {
+            ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(var)) => {
+                self.adjustments_of_var_access(db, *var)
+            }
+            ExprKind::PrimaryExpr(PrimaryExpr::RefValue { value }) => match value {
+                RefValue::Address(address) => self.adjustments_of_begin_path_expr(db, *address),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    pub fn adjustments_of_var_access(
+        &self,
+        db: &'db dyn BaseDatabase,
+        var: VariableAccess<'db>,
+    ) -> Option<&[Adjustment<'db>]> {
+        match var.kind(db) {
+            VariableAccessKind::Symbolic(sym) => self.adjustments_of_begin_path_expr(db, sym),
+            _ => None,
+        }
+    }
+
+    pub fn adjustments_of_begin_path_expr(
+        &self,
+        db: &'db dyn BaseDatabase,
+        begin: BeginPathExpr<'db>,
+    ) -> Option<&[Adjustment<'db>]> {
+        match begin.expr(db) {
+            Some(expr) => self.adjustments_of_path_expr(expr),
+            None => None,
+        }
+    }
+
+    pub fn adjustments_of_path_expr(&self, expr: PathExpr<'db>) -> Option<&[Adjustment<'db>]> {
         self.path_expr_adjustments.get(&expr).map(|it| &**it)
+    }
+
+    pub fn variable_for_param(&self, param: ParamAssign<'db>) -> Option<VariableDecl<'db>> {
+        self.variable_of_param.get(&param).copied()
     }
 }
 
@@ -183,16 +270,16 @@ impl<'db> Adjustment<'db> {
         }
     }
 
-    pub fn new_ref(db: &'db dyn BaseDatabase, ty: Type<'db>) -> Self {
+    pub fn new_index(db: &'db dyn BaseDatabase, ty: Type<'db>) -> Self {
         Adjustment {
-            kind: Adjust::Ref,
+            kind: Adjust::Index,
             target: ty,
         }
     }
 
-    pub fn new_index(db: &'db dyn BaseDatabase, ty: Type<'db>) -> Self {
+    pub fn new_ref(db: &'db dyn BaseDatabase, ty: Type<'db>) -> Self {
         Adjustment {
-            kind: Adjust::Index,
+            kind: Adjust::Ref,
             target: ty,
         }
     }

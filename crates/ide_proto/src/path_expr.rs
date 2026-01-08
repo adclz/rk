@@ -17,21 +17,21 @@ impl<'db> ToProtocol<'db> for PathExpr<'db> {
     fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Hover> {
         let infer = infer_body_scope(db, self.scope_id(db));
         infer
-            .type_of_path_expr_with_adjustments(*self)
+            .type_of_path_expr.get(self)
             .and_then(|typ| typ.hover(db, offset, self))
     }
 
     fn declaration(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDeclarationResponse> {
         let infer = infer_body_scope(db, self.scope_id(db));
         infer
-            .type_of_path_expr_with_adjustments(*self)
+            .type_of_path_expr.get(self)
             .and_then(|typ| typ.declaration(db))
     }
 
     fn definition(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDefinitionResponse> {
         let infer = infer_body_scope(db, self.scope_id(db));
         infer
-            .type_of_path_expr_with_adjustments(*self)
+            .type_of_path_expr.get(self)
             .and_then(|typ| typ.definition(db))
     }
 }

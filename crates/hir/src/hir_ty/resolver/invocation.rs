@@ -1,6 +1,16 @@
 use auto_lsp::default::db::BaseDatabase;
 
-use crate::{CallSite, check::errors::{analysis_error::ToIdeDiagnostic, body_inference::BodyInferenceError}, hir_def::{expressions::invocation::{Invocation, InvocationKind}, pous::pou::Pou, scope::{ScopeId, ScopeKind}, semantic_index::get_scope}, hir_ty::{body_inference::BodyInferenceResult, ty::Type}};
+use crate::{
+    CallSite,
+    check::errors::{analysis_error::ToIdeDiagnostic, body_inference::BodyInferenceError},
+    hir_def::{
+        expressions::invocation::{Invocation, InvocationKind},
+        pous::pou::Pou,
+        scope::{ScopeId, ScopeKind},
+        semantic_index::get_scope,
+    },
+    hir_ty::{body_inference::BodyInferenceResult, ty::Type},
+};
 
 pub fn resolve_invocation<'db>(
     db: &'db dyn BaseDatabase,
@@ -49,10 +59,19 @@ pub fn resolve_invocation<'db>(
                 },
                 InvocationKind::Super => match pou {
                     // fixme: SUPER only gives access to base methods from EXTENDS, not all implemented interfaces
-                    Pou::FunctionBlock(_) | Pou::Class(_) => {
-                        ctx.type_of_invocation
-                            .insert(invocation, Type::new_pou(db, pou));
-                        return Some(pou);
+                    Pou::FunctionBlock(fb) => {
+                        if let Some(extend) = fb.extends(db) {
+                            ctx.type_of_invocation
+                                .insert(invocation, Type::new_pou(db, pou));
+                            return Some(pou);
+                        }
+                    }
+                    Pou::Class(class) => {
+                        if let Some(extend) = class.extends(db) {
+                            ctx.type_of_invocation
+                                .insert(invocation, Type::new_pou(db, pou));
+                            return Some(pou);
+                        }
                     }
                     _ => {
                         ctx.errors.push(

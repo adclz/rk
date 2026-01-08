@@ -783,7 +783,7 @@ impl<'db> ParseExpr<'db> for ast::generated::VarAccess {
                     sema.db,
                     sema,
                     ref_deref.Ref.cast(sema.ast),
-                )?))
+                )?, ref_deref.children.len() as u16))
             } 
         } 
     }

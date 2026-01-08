@@ -157,7 +157,7 @@ impl IdeDiagnostic {
         let error_kind = match &self.diagnostic.severity {
             Some(auto_lsp::lsp_types::DiagnosticSeverity::ERROR) => ariadne::ReportKind::Error,
             Some(auto_lsp::lsp_types::DiagnosticSeverity::WARNING) => ariadne::ReportKind::Warning,
-            _ => ariadne::ReportKind::Advice,
+            _ => ariadne::ReportKind::Error,
         };
 
         let source = Source::from(file.document(db).as_str());

@@ -1,12 +1,15 @@
 use auto_lsp::default::db::BaseDatabase;
 
-use crate::{hir_def::{
+use crate::{
+    hir_def::{
         expressions::expression::{InitExpr, InitExprKind, PathExpr, PathExprKind, VarAccess},
         interned::{
             identifier::{Ident, SpanIdent},
             namespace::{NamespaceAccess, SpanNamespacePath},
         },
-    }, hir_ty::def_map::FxIndexMap};
+    },
+    hir_ty::def_map::FxIndexMap,
+};
 
 /// Flattened representation of a path expression.
 /// Each step in the path is represented as a [`PathExprWalkStep`].
@@ -22,8 +25,8 @@ pub enum PathExprWalkStep<'db> {
         expr: PathExpr<'db>,
     }, // By index
     Deref {
-        target: SpanIdent<'db>,
         expr: PathExpr<'db>,
+        count: u16,
     }, // For pointers
 }
 
@@ -51,10 +54,13 @@ impl<'db> PathExpr<'db> {
                         expr: self,
                         ident: *simple,
                     }),
-                    VarAccess::Deref(target) => result.push(PathExprWalkStep::Deref {
-                        expr: self,
-                        target: *target,
-                    }),
+                    VarAccess::Deref(target, count) => {
+                        result.push(PathExprWalkStep::Field {
+                            ident: *target,
+                            expr: self,
+                        });
+                        result.push(PathExprWalkStep::Deref { expr: self, count: *count })
+                    }
                 }
             }
             PathExprKind::Index(index_expr) => {
@@ -66,8 +72,14 @@ impl<'db> PathExpr<'db> {
                     expr: self,
                     ident: simple,
                 }),
-                VarAccess::Deref(target) => {
-                    result.push(PathExprWalkStep::Deref { expr: self, target })
+                VarAccess::Deref(target, count) => {
+                    // deref behaves similar to a field access
+                    // but we don't want to repeat the same logic, so we split it into two steps
+                    result.push(PathExprWalkStep::Field {
+                        expr: self,
+                        ident: target,
+                    });
+                    result.push(PathExprWalkStep::Deref { expr: self, count });
                 }
             },
         }
@@ -110,7 +122,6 @@ impl<'db> PathExpr<'db> {
         Some((access, *first)) // returning `first` is optional
     }
 }
-
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, salsa::Update)]
 pub enum InitExprWalkStep<'db> {
