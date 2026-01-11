@@ -1013,10 +1013,10 @@ impl<'db> ParseSpecInit<'db> for ast::generated::VarDecl {
             None => None,
         };
 
-        if let Some(init) = &init {
+        if let Some(init) = &self.init {
             sema.errors
                 .push(AnalysisError::SyntaxError(SyntaxError::UnexpectedVarInit(
-                    init.get_span(sema.db).clone(),
+                    init.cast(sema.ast).get_span()
                 )));
         }
 
