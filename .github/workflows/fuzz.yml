@@ -11,6 +11,7 @@ on:
       - "crates/hir/**"
       - "crates/db/**"
       - "crates/ast/**"
+      - "crates/formatter/**"
 
 permissions:
   contents: read
@@ -54,13 +55,22 @@ jobs:
             crates/fuzz/corpus
         continue-on-error: true
 
-      - name: Build fuzzer
+      - name: Build compiler fuzzer
         run: |
           cargo +nightly build --release --manifest-path crates/fuzz/Cargo.toml --bin fuzz_compiler
 
-      - name: Run fuzzer (30 minutes)
+      - name: Build formatter fuzzer
+        run: |
+          cargo +nightly build --release --manifest-path crates/fuzz/Cargo.toml --bin fuzz_formatter
+
+      - name: Run compiler fuzzer (30 minutes)
         run: |
           timeout 1800 ./target/release/fuzz_compiler crates/fuzz/corpus -max_total_time=1800 || true
+        continue-on-error: true
+
+      - name: Run formatter fuzzer (30 minutes)
+        run: |
+          timeout 1800 ./target/release/fuzz_formatter crates/fuzz/corpus -max_total_time=1800 || true
         continue-on-error: true
 
       - name: Collect crash artifacts
@@ -117,26 +127,17 @@ jobs:
               '**Date**: ' + new Date().toISOString() + '\n' +
               '**Run**: [#' + context.runNumber + '](' + context.serverUrl + '/' + context.repo.owner + '/' + context.repo.repo + '/actions/runs/' + context.runId + ')\n\n' +
               '### Summary\n' +
-              'Found ' + crashes.length + ' crash(es) during fuzzing in IEC ST compiler\n\n' +
+              'Found ' + crashes.length + ' crash(es) during fuzzing\n\n' +
               '### Crashes Found\n' +
               crashDetails + '\n' +
               '### Artifacts\n' +
               'Crash artifacts are available in the [workflow run](' + context.serverUrl + '/' + context.repo.owner + '/' + context.repo.repo + '/actions/runs/' + context.runId + ')\n\n' +
-              '### How to Reproduce\n' +
+              '### Reproduce\n' +
               '```bash\n' +
-              '# Download the crash file from artifacts\n' +
-              './target/release/fuzz_compiler <crash_file>\n\n' +
-              '# Or with backtrace\n' +
+              './target/release/fuzz_compiler <crash_file>\n' +
+              './target/release/fuzz_formatter <crash_file>\n' +
               'RUST_BACKTRACE=1 ./target/release/fuzz_compiler <crash_file>\n' +
-              '```\n\n' +
-              '### Next Steps\n' +
-              '1. Download crash artifacts from workflow run\n' +
-              '2. Reproduce locally\n' +
-              '3. Minimize the input if needed\n' +
-              '4. Add a regression test\n' +
-              '5. Fix the underlying issue\n' +
-              '6. Close this issue once resolved\n\n' +
-              '/cc @' + context.actor;
+              '```\n';
 
             await github.rest.issues.create({
               owner: context.repo.owner,
@@ -151,8 +152,8 @@ jobs:
         run: |
           echo "## Fuzzing Summary"
           echo ""
-          echo "- **Fuzzer**: fuzz_compiler"
-          echo "- **Duration**: 30 minutes"
+          echo "- **Fuzzers**: compiler + formatter"
+          echo "- **Duration**: 30 minutes each"
           echo "- **Corpus size**: $(ls crates/fuzz/corpus/ | wc -l) test cases"
           if [ "${{ steps.check_crashes.outputs.crashes_found }}" = "true" ]; then
             echo "- **Result**: ⚠️ ${{ steps.check_crashes.outputs.crash_count }} crash(es) found"

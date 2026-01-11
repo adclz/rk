@@ -18,6 +18,8 @@ db = { workspace = true }
 auto-lsp = { workspace = true }
 tree-sitter-rk = { workspace = true }
 log = { workspace = true }
+topiary-core = { workspace = true }
+formatter = { workspace = true }
 
 # Fuzzing
 libfuzzer-sys = "0.4"
@@ -35,6 +37,12 @@ path = "src/main.rs"
 [[bin]]
 name = "fuzz_compiler"
 path = "fuzz_targets/fuzz_compiler.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_formatter"
+path = "fuzz_targets/fuzz_formatter_idempotency.rs"
 test = false
 doc = false
 

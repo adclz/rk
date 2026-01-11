@@ -137,7 +137,7 @@ static NEW_LINES: &str = r#"
   ";" @append_spaced_softline
   .
   [(line_comment) (c_style_comment) (pascal_style_comment)]* @do_nothing
-)  
+)
 
 [(line_comment) (c_style_comment) (pascal_style_comment)] @prepend_input_softline
 
@@ -175,10 +175,10 @@ static BLOCKS: &str = r#"
   "]" @prepend_spaced_softline @prepend_indent_end
 )
 
-(using_directive 
+(using_directive
     . (_) "," @append_spaced_softline @append_indent_start
 	(namespace_h_name) @prepend_spaced_softline @append_indent_end
-	. 
+	.
 )
 "#;
 
@@ -206,7 +206,7 @@ static INDENTATIONS: &str = r#"
     "REPEAT"
 ] @append_indent_start
 
-("ELSE" (_) @append_indent_end) 
+("ELSE" (_) @append_indent_end)
 (case_stmt "OF" @append_indent_start)
 
 ; case selection
@@ -280,6 +280,8 @@ static LEAF: &str = r#"
 ] @leaf
 "#;
 
+// should we keep this ? semi colons are just making things worse
+#[allow(dead_code)]
 static SEMI_COLONS: &str = r#"
 (
   [
@@ -312,19 +314,19 @@ static SEMI_COLONS: &str = r#"
  .
  ";"* @do_nothing
  (#delimiter! ";")
-)) 
+))
 
 (using_directive
- "USING" (_) 
+ "USING" (_)
 	.
     ";"* @do_nothing
     (#delimiter! ";")) @append_delimiter
 
-( 
+(
     (struct_elem_decl) @append_delimiter
     .
     ";"* @do_nothing
-    (#delimiter! ";") 
+    (#delimiter! ";")
 )
 
 (case_selection ";" @delete)
@@ -341,7 +343,6 @@ pub static TOPIARY_LANG: LazyLock<Language> = LazyLock::new(|| Language {
     {INDENTATIONS}
     {ALLOW_BLANK_LINE}
     {LEAF}
-    {SEMI_COLONS}
     {BLOCKS}
     {NEW_LINES}
 "#

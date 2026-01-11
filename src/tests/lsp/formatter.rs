@@ -56,8 +56,8 @@ END_FUNCTION_BLOCK
     FUNCTION_BLOCK myFB
 
     	VAR_INPUT
-    		IN: BOOL;
-    		T1: TIME;
+    		IN: BOOL
+    		T1: TIME
     	END_VAR
 
     	VAR_OUTPUT
@@ -135,22 +135,22 @@ pub fn class_definition(mut with_db: RootDatabase) {
     CLASS CCounter
     	VAR
     		m_iCurrentValue: INT; (* Default = 0 *)
-    		m_bCountUp: BOOL := TRUE;
+    		m_bCountUp: BOOL := TRUE
     	END_VAR
 
     	VAR
     		PUBLIC
-    		m_iUpperLimit: INT := + 10000;
-    		m_iLowerLimit: INT := - 10000;
+    		m_iUpperLimit: INT := + 10000
+    		m_iLowerLimit: INT := - 10000
     	END_VAR
 
     	METHOD Count (* Only body *)
     		IF (m_bCountUp AND m_iCurrentValue < m_iUpperLimit) THEN
-    			m_iCurrentValue := m_iCurrentValue + 1;
-    		END_IF;
+    			m_iCurrentValue := m_iCurrentValue + 1
+    		END_IF
     		IF (NOT m_bCountUp AND m_iCurrentValue > m_iLowerLimit) THEN
-    			m_iCurrentValue := m_iCurrentValue - 1;
-    		END_IF;
+    			m_iCurrentValue := m_iCurrentValue - 1
+    		END_IF
     	END_METHOD
 
     	METHOD SetDirection
@@ -219,7 +219,7 @@ END_CLASS
     			QU := FALSE;
     			ELSE
     				QU := TRUE;
-    		END_IF;
+    		END_IF
     		UP := CV;
     	END_METHOD
     	METHOD PUBLIC UP5: UINT
@@ -261,18 +261,18 @@ END_FUNCTION
 
     assert_snapshot!(fmt(document), @r"
     FUNCTION fn
-    	TW := WORD_BCD_TO_INT(THUMBWHEEL);
-    	TW_ERROR := 0;
+    	TW := WORD_BCD_TO_INT(THUMBWHEEL)
+    	TW_ERROR := 0
     	CASE TW OF
-    		1, 5: DISPLAY := OVEN_TEMP;
-    		2: DISPLAY := MOTOR_SPEED;
-    		3: DISPLAY := GROSS - TARE;
-    		4, 6..10: DISPLAY := STATUS(TW - 4);
+    		1, 5: DISPLAY := OVEN_TEMP
+    		2: DISPLAY := MOTOR_SPEED
+    		3: DISPLAY := GROSS - TARE
+    		4, 6..10: DISPLAY := STATUS(TW - 4)
     		ELSE
-    			DISPLAY := 0;
-    			TW_ERROR := 1;
-    	END_CASE;
-    	QW100 := INT_TO_BCD(DISPLAY);
+    			DISPLAY := 0
+    			TW_ERROR := 1
+    	END_CASE
+    	QW100 := INT_TO_BCD(DISPLAY)
     END_FUNCTION
     ");
 }
@@ -301,7 +301,7 @@ END_FUNCTION
     	J := 1;
     	WHILE J <= 100 DO
     		J := J + 2;
-    	END_WHILE;
+    	END_WHILE
     END_FUNCTION
     ");
 }
@@ -417,7 +417,7 @@ END_FUNCTION
         .document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
-    FUNCTION fn dfgdfg(a := 1, b := 2, c := 3);
+    FUNCTION fn dfgdfg(a := 1, b := 2, c := 3)
     END_FUNCTION
     ");
 }
@@ -447,7 +447,7 @@ END_FUNCTION
     		a := 1,
     		b := 2,
     		c := 3
-    	);
+    	)
     END_FUNCTION
     ");
 }
@@ -473,7 +473,7 @@ END_FUNCTION_BLOCK
     assert_snapshot!(fmt(document), @r"
     FUNCTION_BLOCK fb1
 
-    	THIS.dfgdfg(a := 1, b := 2, c := 3);
+    	THIS.dfgdfg(a := 1, b := 2, c := 3)
 
     END_FUNCTION_BLOCK
     ");
@@ -504,7 +504,7 @@ END_FUNCTION_BLOCK
     		a := 1,
     		b := 2,
     		c := 3
-    	);
+    	)
     END_FUNCTION_BLOCK
     ");
 }
@@ -533,8 +533,8 @@ pub fn init_expr_single_line(mut with_db: RootDatabase) {
     assert_snapshot!(fmt(document), @r"
     TYPE
     	Engine: STRUCT
-    		power: INT;
-    		oil: REAL;
+    		power: INT
+    		oil: REAL
     	END_STRUCT
     END_TYPE
 
@@ -721,9 +721,9 @@ END_NAMESPACE
     assert_snapshot!(fmt(document), @r"
     NAMESPACE ns1
     	NAMESPACE nested
-    		USING nh, llkn;
+    		USING nh, llkn
     		USING ng,
-    			df;
+    			df
     		USING j;
     		FUNCTION dffd: BOOL
     		END_FUNCTION
