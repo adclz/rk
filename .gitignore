@@ -1,2 +1,9 @@
 Cargo.lock
 /target
+
+# Fuzzing
+crates/fuzz/corpus/
+crates/fuzz/artifacts/
+crates/fuzz/crash-*
+crates/fuzz/oom-*
+crates/fuzz/slow-*

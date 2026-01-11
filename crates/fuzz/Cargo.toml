@@ -1,0 +1,43 @@
+[package]
+name = "rk-fuzz"
+version = "0.1.0"
+authors = { workspace = true }
+license = { workspace = true }
+edition = { workspace = true }
+publish = false
+
+[lib]
+name = "rk_fuzz"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1.0"
+ast = { workspace = true }
+hir = { workspace = true }
+db = { workspace = true }
+auto-lsp = { workspace = true }
+tree-sitter-rk = { workspace = true }
+log = { workspace = true }
+
+# Fuzzing
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1.3", features = ["derive"] }
+
+[dev-dependencies]
+proptest = "1.4"
+thiserror = "1.0"
+tempfile = "3.8"
+
+[[bin]]
+name = "corpus_gen"
+path = "src/main.rs"
+
+[[bin]]
+name = "fuzz_compiler"
+path = "fuzz_targets/fuzz_compiler.rs"
+test = false
+doc = false
+
+[profile.release]
+lto = true
+opt-level = 3

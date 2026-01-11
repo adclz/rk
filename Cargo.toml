@@ -15,6 +15,7 @@ members = [
     "crates/ide_diagnostic",
     "crates/ide_proto",
     "crates/formatter",
+    "crates/fuzz",
     "vscode/server",
 ]
 
