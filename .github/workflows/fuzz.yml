@@ -30,19 +30,19 @@ jobs:
         uses: dtolnay/rust-toolchain@nightly
 
       - name: Cache cargo registry
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Cache cargo index
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.cargo/git
           key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Cache cargo build
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: target
           key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
@@ -60,33 +60,19 @@ jobs:
 
       - name: Run fuzzer (30 minutes)
         run: |
-          mkdir -p fuzz_artifacts
-          timeout 1800 ./target/release/fuzz_compiler crates/fuzz/corpus -max_total_time=1800 \
-            || EXIT_CODE=$?
-          echo "Fuzzer exit code: ${EXIT_CODE:-0}"
+          timeout 1800 ./target/release/fuzz_compiler crates/fuzz/corpus -max_total_time=1800 || true
         continue-on-error: true
 
       - name: Collect crash artifacts
         if: always()
         run: |
           mkdir -p crash_artifacts
-          if [ -f "crash-"* ]; then
-            cp crash-* crash_artifacts/ 2>/dev/null || true
-          fi
-          if [ -f "oom-"* ]; then
-            cp oom-* crash_artifacts/ 2>/dev/null || true
-          fi
-          if [ -f "leak-"* ]; then
-            cp leak-* crash_artifacts/ 2>/dev/null || true
-          fi
-          if [ -f "slow-"* ]; then
-            cp slow-* crash_artifacts/ 2>/dev/null || true
-          fi
+          find . -maxdepth 1 \( -name "crash-*" -o -name "oom-*" -o -name "leak-*" -o -name "slow-*" \) -exec cp {} crash_artifacts/ \; 2>/dev/null || true
           ls -la crash_artifacts/ 2>/dev/null || echo "No crash artifacts found"
 
       - name: Upload crash artifacts
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: fuzz-crashes
           path: crash_artifacts/
