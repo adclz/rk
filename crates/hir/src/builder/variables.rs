@@ -16,9 +16,11 @@ use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::{ParseInit, ParseSpec, ParseSpecInit, ParseVarSection, SpecInitResult};
 use crate::check::errors::analysis_error::AnalysisError;
 use crate::check::errors::syntax::SyntaxError;
+use crate::hir_def::config::AccessDirection;
 use crate::hir_def::expressions::spec::{ElementarySpec, Spec, SpecKind};
 use crate::hir_def::interned::identifier::Ident;
-use crate::hir_def::pous::variable::{VariableDecl, VariableKind};
+use crate::hir_def::pous::variable::{DirectVariable, VariableDecl, VariableKind};
+use crate::hir_def::program::ProgAccessDecl;
 use crate::{AstId, HirNodeInfo};
 
 impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
@@ -671,6 +673,14 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
     }
 }
 
+impl<'db> ParseVarSection<'db> for ast::generated::LocVarDecls {
+    fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<VariableDecl<'db>>) {
+        for child in self.children.iter() {
+            todo!()
+        }
+    }
+}
+
 impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
     fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<VariableDecl<'db>>) {
         for child in self.children.iter() {
@@ -853,6 +863,74 @@ impl<'db> ParseVarSection<'db> for ast::generated::LocPartlyVarDecl {
     }
 }
 
+pub trait ParseProgDecl<'db> {
+    fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<ProgAccessDecl<'db>>);
+}
+
+impl<'db> ParseProgDecl<'db> for ast::generated::ProgAccessDecls {
+    fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<ProgAccessDecl<'db>>) {
+        for child in self.children.iter() {
+            let decl = child.cast(sema.ast);
+            let spec = match decl.access.cast(sema.ast).to_spec(sema) {
+                Ok(spec) => spec,
+                Err(err) => {
+                    sema.errors.push(err);
+                    continue;
+                }
+            };
+
+            let name = match Ident::from_node(sema.db, sema.file, decl.name.cast(sema.ast)) {
+                Ok(name) => name,
+                Err(err) => {
+                    sema.errors.push(err);
+                    continue;
+                }
+            };
+
+            let direct_variable = match &decl.children {
+                Some(v) => {
+                    let v = v.cast(sema.ast);
+                    let adress = Ident::from_node(sema.db, sema.file, v.adress.cast(sema.ast)).unwrap();
+
+                    let (offset, partly) = match v.offset.cast(sema.ast) {
+                        ast::generated::Offset_Partly::Offset(offset) => {
+                            (Some(Ident::from_node(sema.db, sema.file, v).unwrap()), false)
+                        }
+                        ast::generated::Offset_Partly::Partly(partly) => (None, true),
+                    };
+
+                    Some(DirectVariable {
+                            adress,
+                            partly,
+                            offset,
+                    })
+                }
+                _ => None,
+            };
+
+            let variable = match decl.variable.cast(sema.ast).parse(sema) {
+                Ok(variable) => variable,
+                Err(err) => {
+                    sema.errors.push(err);
+                    continue;
+                }
+            };
+ 
+            let direction = match &decl.direction {
+                Some(direction) => {
+                    match direction.cast(sema.ast).children.cast(sema.ast) {
+                        ast::generated::ReadOnly_ReadWrite::ReadOnly(_) => Some(AccessDirection::ReadOnly),
+                        ast::generated::ReadOnly_ReadWrite::ReadWrite(_) => Some(AccessDirection::ReadWrite),
+                    }
+                }
+                None => None, 
+            };
+ 
+            section.push(ProgAccessDecl { spec, name, variable, direct_variable, direction })
+        }
+    }
+}
+
 impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
     fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<VariableDecl<'db>>) {
         for child in self.children.iter() {
@@ -1016,7 +1094,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::VarDecl {
         if let Some(init) = &self.init {
             sema.errors
                 .push(AnalysisError::SyntaxError(SyntaxError::UnexpectedVarInit(
-                    init.cast(sema.ast).get_span()
+                    init.cast(sema.ast).get_span(),
                 )));
         }
 

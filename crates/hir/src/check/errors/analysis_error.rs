@@ -18,11 +18,9 @@ pub trait ToIdeDiagnostic<'db> {
 pub enum AnalysisError<'db> {
     // Specific
     AutoLspError(PositionError),
-    SyntaxError(SyntaxError),
+    SyntaxError(SyntaxError<'db>),
     NamespaceError(NamespaceError<'db>),
     DuplicateError(DuplicateError<'db>),
-    //StmtError(StmtError<'db>),
-    //InitExprError(InitExprError<'db>),
     MethodError(MethodError<'db>),
     ArrayError(ArrayError<'db>),
     SubRangeError(SubRangeError<'db>),

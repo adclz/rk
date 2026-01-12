@@ -110,3 +110,10 @@ pub enum VariableKind {
     Temp,
     Config,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub struct DirectVariable {
+    pub adress: Ident,
+    pub partly: bool,
+    pub offset: Option<Ident>,
+}

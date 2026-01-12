@@ -6,14 +6,16 @@ use auto_lsp::default::db::tracked::ParsedAst;
 use auto_lsp::default::db::{BaseDatabase, file::File};
 use rustc_hash::FxHashMap;
 
+use crate::Visibility;
 use crate::check::errors::analysis_error::AnalysisError;
 use crate::check::errors::syntax::SyntaxError;
+use crate::hir_def::config::ConfigDecl;
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::Pou;
+use crate::hir_def::program::{MAIN_FILE_URL, ProgramDecl};
 use crate::hir_def::scope::{Scope, ScopeId, ScopeKind};
 use crate::hir_def::semantic_index::SemanticIndex;
-use crate::Visibility;
 
 pub struct SemanticIndexBuilder<'db> {
     pub(crate) source: &'db ast::generated::SourceFile,
@@ -28,6 +30,7 @@ pub struct SemanticIndexBuilder<'db> {
     /// Maps scope IDs to their corresponding scopes.
     pub(crate) scope_keys: FxHashMap<usize, Arc<Scope<'db>>>,
 
+    pub(crate) programs: Vec<ProgramDecl<'db>>,
     pub(crate) global_namespaces: Vec<NamespaceDecl<'db>>,
     pub(crate) global_pous: Vec<Pou<'db>>,
 
@@ -59,6 +62,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             ast,
             source,
             scope_keys: FxHashMap::default(),
+            programs: vec![],
             global_namespaces: vec![],
             global_pous: vec![],
             namespaces: vec![],
@@ -148,8 +152,15 @@ impl<'db> SemanticIndexBuilder<'db> {
                     let r = self.parse_interface(interface).unwrap();
                     self.global_pous.push(r);
                 }
-                _ => {
-                    //todo: add config and program declarations
+                SourceFileDecl::ConfigDecl(config) => {
+                    self.errors
+                        .push(AnalysisError::SyntaxError(SyntaxError::OldSyntaxConfig(
+                            config.get_span(),
+                        )))
+                }
+                SourceFileDecl::ProgDecl(prog) => {
+                    let p = self.parse_program(prog).unwrap();
+                    self.programs.push(p);
                 }
             }
         }
@@ -168,8 +179,9 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         SemanticIndex {
             file: self.file,
-            ast: self.ast.nodes.clone(),
+            ast: Arc::clone(&self.ast.nodes),
             scopes: self.scope_keys,
+            programs: self.programs,
             global_namespaces: self.global_namespaces,
             namespaces: self.namespaces,
             global_pous: self.global_pous,

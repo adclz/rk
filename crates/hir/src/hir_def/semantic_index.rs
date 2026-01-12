@@ -11,6 +11,7 @@ use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::analysis_error::AnalysisError;
 use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::Pou;
+use crate::hir_def::program::{ProgramDecl};
 use crate::hir_def::scope::{Scope, ScopeId};
 
 /// Returns the semantic index of a given file
@@ -40,6 +41,9 @@ pub struct SemanticIndex<'db> {
     /// Map of scope IDs to their corresponding scopes
     pub(crate) scopes: FxHashMap<usize, Arc<Scope<'db>>>,
 
+    /// Program declarations in the file
+    pub(crate) programs: Vec<ProgramDecl<'db>>,
+
     /// All *global* namespaces in the file
     pub global_namespaces: Vec<NamespaceDecl<'db>>,
 
@@ -59,6 +63,7 @@ impl<'db> SemanticIndex<'db> {
             file,
             ast,
             scopes: FxHashMap::default(),
+            programs: vec![],
             global_namespaces: vec![],
             global_pous: vec![],
             namespaces: vec![],
@@ -71,7 +76,11 @@ impl<'db> SemanticIndex<'db> {
     }
 
     /// Returns a [`ScopeIterator`] starting from the given scope.
-    pub fn scope_iterator(&self, db: &'db dyn BaseDatabase, scope: ScopeId<'db>) -> ScopeIterator<'_> {
+    pub fn scope_iterator(
+        &self,
+        db: &'db dyn BaseDatabase,
+        scope: ScopeId<'db>,
+    ) -> ScopeIterator<'_> {
         ScopeIterator::new(db, &self.scopes, &scope)
     }
 

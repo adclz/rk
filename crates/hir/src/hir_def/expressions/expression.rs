@@ -1,5 +1,6 @@
 use crate::hir_def::expressions::invocation::{Invocation, InvocationKind};
 use crate::hir_def::interned::identifier::{Ident, SpanIdent};
+use crate::hir_def::pous::variable::DirectVariable;
 use crate::hir_def::scope::ScopeId;
 use crate::{AstId, HirNodeInfo};
 use auto_lsp::default::db::BaseDatabase;
@@ -305,11 +306,7 @@ pub struct VariableAccess<'db> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum VariableAccessKind<'db> {
-    Direct {
-        adress: Ident,
-        partly: bool,
-        offset: Option<Ident>,
-    },
+    Direct(DirectVariable),
     Symbolic(BeginPathExpr<'db>),
 }
 

@@ -16,6 +16,7 @@ pub mod function;
 pub mod function_block;
 pub mod interface;
 pub mod namespace;
+pub mod program;
 pub mod semantic_index;
 pub mod statement;
 pub mod types;

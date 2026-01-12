@@ -6,21 +6,23 @@ use auto_lsp::{
         span::Span,
     },
     default::db::{BaseDatabase, file::File},
-    lsp_types::{DiagnosticSeverity, WorkspaceEdit},
+    lsp_types::{DiagnosticSeverity, DiagnosticTag, WorkspaceEdit},
     tree_sitter::{self, Range},
 };
 use ide_diagnostic::{IdeDiagnostic, Related, action, diag, edit};
 
-use crate::check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic};
+use crate::{HirNodeInfo, check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic}, hir_def::program::ProgramDecl};
 
-impl From<SyntaxError> for AnalysisError<'_> {
-    fn from(err: SyntaxError) -> Self {
+impl<'db> From<SyntaxError<'db>> for AnalysisError<'db> {
+    fn from(err: SyntaxError<'db>) -> Self {
         AnalysisError::SyntaxError(err)
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
-pub enum SyntaxError {
+pub enum SyntaxError<'db> {
+    OldSyntaxConfig(Span),
+    ProgramNotInMainFile(ProgramDecl<'db>),
     InvalidPouKeyword(Span),
     MultipleExtends(Span),
     MultipleImplements(Span),
@@ -93,9 +95,28 @@ impl<'db> From<(File, &ParseErrorAccumulator)> for AnalysisError<'db> {
     }
 }
 
-impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
+impl<'db> ToIdeDiagnostic<'db> for SyntaxError<'db> {
     fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
         match self {
+            Self::OldSyntaxConfig(span) => {
+                
+                let mut diag = diag()
+                .message("deprecated syntax for CONFIG declaration".into())
+                .severity(DiagnosticSeverity::INFORMATION)
+                .tags(vec![DiagnosticTag::DEPRECATED])
+                .range(span.clone())
+                .call();
+            
+                diag.with_note("use config.toml to declare resources and tasks".to_string());
+                diag
+            },
+            Self::ProgramNotInMainFile(program) => diag()
+                .message("PROGRAM declarations are only allowed in the main.st file".into())
+                .severity(DiagnosticSeverity::ERROR)
+                .tags(vec![DiagnosticTag::DEPRECATED])
+                .range(program.get_span(db).clone())
+                .call(),
+
             Self::MultipleExtends(span) => diag()
                 .message("multiple extends declarations".into())
                 .severity(DiagnosticSeverity::ERROR)

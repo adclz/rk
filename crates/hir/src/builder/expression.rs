@@ -11,6 +11,7 @@ use crate::hir_def::expressions::expression::{
 };
 use crate::hir_def::expressions::invocation::{Invocation, InvocationKind};
 use crate::hir_def::interned::identifier::SpanIdent;
+use crate::hir_def::pous::variable::DirectVariable;
 use crate::{
     hir_def::expressions::expression::{
         AddOperatorKind, BooleanOperatorKind, ComparisonOperatorKind, Elementary, Expr, ExprKind,
@@ -505,11 +506,11 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::VariableAccess {
 
                 Ok(VariableAccess::new(
                     sema.db,
-                    VariableAccessKind::Direct {
+                    VariableAccessKind::Direct(DirectVariable {
                         adress,
                         partly,
                         offset,
-                    },
+                    }),
                     multibits,
                     self.into(),
                     sema.current_scope,
@@ -546,11 +547,11 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::Variable {
 
                 Ok(VariableAccess::new(
                     sema.db,
-                    VariableAccessKind::Direct {
+                    VariableAccessKind::Direct(DirectVariable {
                         adress,
                         partly,
                         offset,
-                    },
+                    }),
                     None,
                     self.into(),
                     sema.current_scope,
@@ -585,11 +586,11 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::DirectVariable {
 
         Ok(VariableAccess::new(
             sema.db,
-            VariableAccessKind::Direct {
+            VariableAccessKind::Direct(DirectVariable {
                 adress,
                 partly,
                 offset,
-            },
+            }),
             None,
             self.into(),
             sema.current_scope,
