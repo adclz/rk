@@ -828,7 +828,21 @@
   {
     "type": "access_direction",
     "named": true,
-    "fields": {}
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "read_only",
+          "named": true
+        },
+        {
+          "type": "read_write",
+          "named": true
+        }
+      ]
+    }
   },
   {
     "type": "access_path",
@@ -1738,7 +1752,7 @@
         "required": true,
         "types": [
           {
-            "type": "config_name",
+            "type": "identifier",
             "named": true
           }
         ]
@@ -1799,21 +1813,6 @@
         },
         {
           "type": "located_at",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "config_name",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "identifier",
           "named": true
         }
       ]
@@ -4447,7 +4446,7 @@
         "required": true,
         "types": [
           {
-            "type": "prog_type_access",
+            "type": "namespace_access",
             "named": true
           }
         ]
@@ -4603,21 +4602,6 @@
           }
         ]
       }
-    }
-  },
-  {
-    "type": "prog_type_access",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "namespace_access",
-          "named": true
-        }
-      ]
     }
   },
   {
@@ -4835,26 +4819,11 @@
         "required": true,
         "types": [
           {
-            "type": "resource_type_name",
+            "type": "identifier",
             "named": true
           }
         ]
       }
-    }
-  },
-  {
-    "type": "resource_type_name",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "identifier",
-          "named": true
-        }
-      ]
     }
   },
   {
@@ -6735,14 +6704,6 @@
     "named": false
   },
   {
-    "type": "READ_ONLY",
-    "named": false
-  },
-  {
-    "type": "READ_WRITE",
-    "named": false
-  },
-  {
     "type": "REF",
     "named": false
   },
@@ -7049,6 +7010,14 @@
   },
   {
     "type": "public",
+    "named": true
+  },
+  {
+    "type": "read_only",
+    "named": true
+  },
+  {
+    "type": "read_write",
     "named": true
   },
   {

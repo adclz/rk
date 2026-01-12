@@ -15,8 +15,7 @@ END_CONFIGURATION
 
     (source_file
       (config_decl
-        (config_name
-          (identifier))
+        (identifier)
         (global_var_decls
           (global_var_decl
             (global_var_spec
@@ -25,8 +24,7 @@ END_CONFIGURATION
               (identifier))))
         (resource_decl
           (identifier)
-          (resource_type_name
-            (identifier))
+          (identifier)
           (global_var_decls
             (global_var_decl
               (global_var_spec
@@ -52,68 +50,10 @@ END_CONFIGURATION
 
     (source_file
       (config_decl
-        (config_name
-          (identifier))
+        (identifier)
         (resource_decl
           (identifier)
-          (resource_type_name
-            (identifier))
-          (global_var_decls
-            (global_var_decl
-              (global_var_spec
-                (identifier))
-              (namespace_access
-                (identifier))))
-          (single_resource_decl
-            (task_config
-              (identifier)
-              (task_init
-                (data_source
-                  (constant
-                    (time_literal
-                      (duration
-                        (time
-                          (time_type_name)
-                          (time_value))))))
-                (unsigned_int))))
-          (single_resource_decl
-            (task_config
-              (identifier)
-              (task_init
-                (data_source
-                  (constant
-                    (time_literal
-                      (duration
-                        (time
-                          (time_type_name)
-                          (time_value))))))
-                (unsigned_int)))))))
-
-
-================================================================================
-Periodic TASK - Non-periodic TASK
-================================================================================
-
-CONFIGURATION cfg
-    RESOURCE STATION_1 ON PROCESSOR_TYPE_1
-        VAR_GLOBAL z1: BYTE; END_VAR
-        
-        TASK SLOW_1(INTERVAL:= t#20ms, PRIORITY:= 2);
-        TASK FAST_1(INTERVAL:= t#10ms, PRIORITY:= 1);
-    
-    END_RESOURCE
-END_CONFIGURATION 
-
---------------------------------------------------------------------------------
-
-    (source_file
-      (config_decl
-        (config_name
-          (identifier))
-        (resource_decl
           (identifier)
-          (resource_type_name
-            (identifier))
           (global_var_decls
             (global_var_decl
               (global_var_spec
@@ -162,15 +102,13 @@ END_CONFIGURATION
 
     (source_file
       (config_decl
-        (config_name
-          (identifier))
+        (identifier)
         (single_resource_decl
           (prog_config
             (identifier)
             (identifier)
-            (prog_type_access
-              (namespace_access
-                (identifier)))
+            (namespace_access
+              (identifier))
             (prog_conf_elems
               (prog_conf_elem
                 (prog_cnxn
@@ -186,9 +124,8 @@ END_CONFIGURATION
         (single_resource_decl
           (prog_config
             (identifier)
-            (prog_type_access
-              (namespace_access
-                (identifier)))
+            (namespace_access
+              (identifier))
             (prog_conf_elems
               (prog_conf_elem
                 (fb_task
@@ -225,14 +162,12 @@ END_CONFIGURATION
 
 --------------------------------------------------------------------------------
 
-   (source_file
+    (source_file
       (config_decl
-        (config_name
-          (identifier))
+        (identifier)
         (resource_decl
           (identifier)
-          (resource_type_name
-            (identifier))
+          (identifier)
           (global_var_decls
             (global_var_decl
               (global_var_spec
@@ -276,12 +211,10 @@ END_CONFIGURATION
 
     (source_file
       (config_decl
-        (config_name
-          (identifier))
+        (identifier)
         (resource_decl
           (identifier)
-          (resource_type_name
-            (identifier))
+          (identifier)
           (global_var_decls
             (global_var_decl
               (global_var_spec
@@ -323,9 +256,8 @@ END_CONFIGURATION
             (prog_config
               (identifier)
               (identifier)
-              (prog_type_access
-                (namespace_access
-                  (identifier)))
+              (namespace_access
+                (identifier))
               (prog_conf_elems
                 (prog_conf_elem
                   (prog_cnxn
@@ -349,9 +281,8 @@ END_CONFIGURATION
             (prog_config
               (identifier)
               (identifier)
-              (prog_type_access
-                (namespace_access
-                  (identifier)))
+              (namespace_access
+                (identifier))
               (prog_conf_elems
                 (prog_conf_elem
                   (prog_cnxn
@@ -398,8 +329,7 @@ END_CONFIGURATION
 
     (source_file
       (config_decl
-        (config_name
-          (identifier))
+        (identifier)
         (access_decls
           (access_decl
             (identifier)
@@ -414,7 +344,8 @@ END_CONFIGURATION
                   (unsigned_int))))
             (bit_str_type_name
               (bool_name))
-            (access_direction))
+            (access_direction
+              (read_only)))
           (access_decl
             (identifier)
             (access_path
@@ -433,7 +364,8 @@ END_CONFIGURATION
               (int_type_name
                 (unsign_int_type_name
                   (uint_name))))
-            (access_direction))
+            (access_direction
+              (read_write)))
           (access_decl
             (identifier)
             (access_path
@@ -457,7 +389,8 @@ END_CONFIGURATION
               (int_type_name
                 (unsign_int_type_name
                   (uint_name))))
-            (access_direction))
+            (access_direction
+              (read_only)))
           (access_decl
             (identifier)
             (access_path
@@ -475,7 +408,8 @@ END_CONFIGURATION
             (bit_str_type_name
               (multibits_type_name
                 (byte_name)))
-            (access_direction))
+            (access_direction
+              (read_only)))
           (access_decl
             (identifier)
             (access_path
@@ -494,7 +428,8 @@ END_CONFIGURATION
               (int_type_name
                 (sign_int_type_name
                   (int_name))))
-            (access_direction))
+            (access_direction
+              (read_only)))
           (access_decl
             (identifier)
             (access_path
@@ -507,7 +442,8 @@ END_CONFIGURATION
                     (field)))))
             (bit_str_type_name
               (bool_name))
-            (access_direction))
+            (access_direction
+              (read_write)))
           (access_decl
             (identifier)
             (access_path
@@ -546,7 +482,8 @@ END_CONFIGURATION
                     (field)))))
             (bit_str_type_name
               (bool_name))
-            (access_direction))
+            (access_direction
+              (read_write)))
           (access_decl
             (identifier)
             (access_path
@@ -567,7 +504,8 @@ END_CONFIGURATION
                     (field)))))
             (bit_str_type_name
               (bool_name))
-            (access_direction))
+            (access_direction
+              (read_only)))
           (access_decl
             (identifier)
             (access_path
@@ -590,7 +528,8 @@ END_CONFIGURATION
               (int_type_name
                 (sign_int_type_name
                   (int_name))))
-            (access_direction)))))
+            (access_direction
+              (read_write))))))
 
 ================================================================================
 VAR_CONFIG...END_VAR
@@ -610,10 +549,10 @@ END_CONFIGURATION
 
 --------------------------------------------------------------------------------
 
+
     (source_file
       (config_decl
-        (config_name
-          (identifier))
+        (identifier)
         (config_init
           (config_inst_init
             (path_expression

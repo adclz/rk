@@ -5792,10 +5792,6 @@
         }
       ]
     },
-    "prog_type_access": {
-      "type": "SYMBOL",
-      "name": "namespace_access"
-    },
     "prog_access_decls": {
       "type": "SEQ",
       "members": [
@@ -6379,14 +6375,6 @@
         }
       ]
     },
-    "config_name": {
-      "type": "SYMBOL",
-      "name": "identifier"
-    },
-    "resource_type_name": {
-      "type": "SYMBOL",
-      "name": "identifier"
-    },
     "config_decl": {
       "type": "SEQ",
       "members": [
@@ -6399,7 +6387,7 @@
           "name": "name",
           "content": {
             "type": "SYMBOL",
-            "name": "config_name"
+            "name": "identifier"
           }
         },
         {
@@ -6500,7 +6488,7 @@
           "name": "resource_type_name",
           "content": {
             "type": "SYMBOL",
-            "name": "resource_type_name"
+            "name": "identifier"
           }
         },
         {
@@ -6710,12 +6698,22 @@
       "type": "CHOICE",
       "members": [
         {
-          "type": "STRING",
-          "value": "READ_WRITE"
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "READ_WRITE"
+          },
+          "named": true,
+          "value": "read_write"
         },
         {
-          "type": "STRING",
-          "value": "READ_ONLY"
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "READ_ONLY"
+          },
+          "named": true,
+          "value": "read_only"
         }
       ]
     },
@@ -6930,7 +6928,7 @@
           "name": "access",
           "content": {
             "type": "SYMBOL",
-            "name": "prog_type_access"
+            "name": "namespace_access"
           }
         },
         {

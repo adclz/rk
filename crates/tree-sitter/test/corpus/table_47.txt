@@ -539,7 +539,7 @@ END_PROGRAM
 
 --------------------------------------------------------------------------------
 
-    (source_file
+     (source_file
       (prog_decl
         (identifier)
         (prog_access_decls
@@ -555,7 +555,8 @@ END_PROGRAM
                 (unsigned_int)))
             (bit_str_type_name
               (bool_name))
-            (access_direction))
+            (access_direction
+              (read_only)))
           (prog_access_decl
             (identifier)
             (path_expression
@@ -573,4 +574,5 @@ END_PROGRAM
               (int_type_name
                 (unsign_int_type_name
                   (uint_name))))
-            (access_direction)))))
+            (access_direction
+              (read_write))))))

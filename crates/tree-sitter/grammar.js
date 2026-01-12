@@ -285,7 +285,8 @@ module.exports = grammar({
     // for now we will forbid function calls, until the day we implement compile time evaluation
     ERR_func_call_in_init: ($) => prec(2, $.func_call),
 
-    ERR_class_variables_after_method: ($) => prec(-1, repeat1($._class_variables)),
+    ERR_class_variables_after_method: ($) =>
+      prec(-1, repeat1($._class_variables)),
     ERR_fb_variables_after_method: ($) => prec(-1, repeat1($._fb_variables)),
 
     // Table 3 - Comments
@@ -772,7 +773,10 @@ module.exports = grammar({
     ref_addr: ($) => seq("REF", "(", $.begin_path_expression, ")"),
 
     ref_deref: ($) =>
-      prec(RK_PREC.dereference, seq(field("ref", $.identifier), repeat1(alias("^", $.deref_sign)))),
+      prec(
+        RK_PREC.dereference,
+        seq(field("ref", $.identifier), repeat1(alias("^", $.deref_sign))),
+      ),
 
     // Table 13 - Declaration of variables/Table 14 – Initialization of variables
 
@@ -1214,19 +1218,19 @@ module.exports = grammar({
 
     interface_spec_init: ($) => seq(":=", $.interface_value),
 
-    interface_value: ($) =>
-      choice($.begin_path_expression, "NULL"),
+    interface_value: ($) => choice($.begin_path_expression, "NULL"),
 
     interface_name_list: ($) => commaSep1($.namespace_access),
 
     interface_name: ($) => $.identifier,
 
-    access_spec: ($) => choice(
-      alias("PUBLIC", $.public),
-      alias("PROTECTED", $.protected),
-      alias("PRIVATE", $.private),
-      alias("INTERNAL", $.internal)
-    ),
+    access_spec: ($) =>
+      choice(
+        alias("PUBLIC", $.public),
+        alias("PROTECTED", $.protected),
+        alias("PRIVATE", $.private),
+        alias("INTERNAL", $.internal),
+      ),
 
     // Table 47 - Program declaration
 
@@ -1251,8 +1255,6 @@ module.exports = grammar({
         field("body", optional($.fb_body)),
         "END_PROGRAM",
       ),
-
-    prog_type_access: ($) => $.namespace_access,
 
     prog_access_decls: ($) =>
       seq(
@@ -1356,14 +1358,10 @@ module.exports = grammar({
 
     // Table 62 - Configuration and resource declaration
 
-    config_name: ($) => $.identifier,
-
-    resource_type_name: ($) => $.identifier,
-
     config_decl: ($) =>
       seq(
         "CONFIGURATION",
-        field("name", $.config_name),
+        field("name", $.identifier),
         field("global_variables", optional($.global_var_decls)),
         field(
           "resources",
@@ -1379,7 +1377,7 @@ module.exports = grammar({
         "RESOURCE",
         field("name", $.identifier),
         "ON",
-        field("resource_type_name", $.resource_type_name),
+        field("resource_type_name", $.identifier),
         field("global_variables", optional($.global_var_decls)),
         field("resource", repeat($.single_resource_decl)),
         "END_RESOURCE",
@@ -1415,7 +1413,7 @@ module.exports = grammar({
         optional(seq(".", field("direct", $.direct_variable))),
       ),
 
-    access_direction: ($) => choice("READ_WRITE", "READ_ONLY"),
+    access_direction: ($) => choice(alias("READ_WRITE", $.read_write), alias("READ_ONLY", $.read_only)),
 
     task_config: ($) =>
       seq("TASK", field("name", $.identifier), field("init", $.task_init)),
@@ -1441,7 +1439,7 @@ module.exports = grammar({
         field("name", $.identifier),
         field("task", optional(seq("WITH", $.identifier))),
         ":",
-        field("access", $.prog_type_access),
+        field("access", $.namespace_access),
         field("configuration_elements", optional($.prog_conf_elems)),
       ),
 
@@ -1827,14 +1825,10 @@ module.exports = grammar({
         // invocation (THIS / SUPER / SUPER()) with optional deref, optionally followed by a path_expression
         $.invocation,
         // or a plain path expression
-        $.path_expression
+        $.path_expression,
       ),
 
-    invocation: ($) =>
-      choice(
-        $.super_body_invocation,
-        $.any_invocation,
-      ),
+    invocation: ($) => choice($.super_body_invocation, $.any_invocation),
 
     any_invocation: ($) =>
       seq(
@@ -1845,21 +1839,19 @@ module.exports = grammar({
     any_invocation_kind: ($) =>
       choice(
         alias("^", $.deref_invocation),
-        seq(alias("^", $.deref_invocation), ".", field("path", $.path_expression)),
+        seq(
+          alias("^", $.deref_invocation),
+          ".",
+          field("path", $.path_expression),
+        ),
         seq(".", field("path", $.path_expression)),
       ),
 
-    this_invocation: ($) => seq(
-      field("THIS", "THIS"),
-    ),
+    this_invocation: ($) => seq(field("THIS", "THIS")),
 
-    super_invocation: ($) => seq(
-      field("SUPER", "SUPER")
-    ),
+    super_invocation: ($) => seq(field("SUPER", "SUPER")),
 
-    super_body_invocation: ($) => seq(
-      field("SUPER", "SUPER"), "()"
-    ),
+    super_body_invocation: ($) => seq(field("SUPER", "SUPER"), "()"),
 
     path_expression: ($) =>
       choice($.var_access, $.field_expression, $.index_expression),
