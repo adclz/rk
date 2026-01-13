@@ -3,10 +3,11 @@ use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{Hover, HoverParams},
 };
+use db::WorkspaceDataBase;
 use hir::hir_def::semantic_index::semantic_index;
 use ide_proto::to_proto::{AsProtocol, hir_node::descendant_at};
 
-pub fn hover(db: &impl BaseDatabase, params: HoverParams) -> anyhow::Result<Option<Hover>> {
+pub fn hover(db: &impl WorkspaceDataBase, params: HoverParams) -> anyhow::Result<Option<Hover>> {
     let _hover_span = tracing::info_span!("hover").entered();
 
     let uri = &params.text_document_position_params.text_document.uri;

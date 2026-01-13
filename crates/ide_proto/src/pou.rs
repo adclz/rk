@@ -1,3 +1,4 @@
+use db::WorkspaceDataBase;
 use hir::{
     HasName,
     hir_def::{
@@ -26,7 +27,7 @@ use crate::{
 };
 
 impl<'db> ToProtocol<'db> for Pou<'db> {
-    fn document_symbols(&self, db: &'db dyn BaseDatabase, builder: &mut DocumentSymbolsBuilder) {
+    fn document_symbols(&self, db: &'db dyn WorkspaceDataBase, builder: &mut DocumentSymbolsBuilder) {
         let mut nested_builder = DocumentSymbolsBuilder::default();
         match self {
             Pou::FunctionBlock(fb) => {
@@ -126,7 +127,7 @@ impl<'db> ToProtocol<'db> for Pou<'db> {
         });
     }
 
-    fn inlay_hint(&'db self, db: &'db dyn BaseDatabase) -> Option<InlayHint> {
+    fn inlay_hint(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<InlayHint> {
         Some(InlayHint {
             label: InlayHintLabel::String(format!(
                 "{} {}",
@@ -149,7 +150,7 @@ impl<'db> ToProtocol<'db> for Pou<'db> {
         })
     }
 
-    fn implementation(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoImplementationResponse> {
+    fn implementation(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoImplementationResponse> {
         match self {
             Pou::Class(_) | Pou::Interface(_) => {
                 let links = find_all_implementations(db, *self)
@@ -168,7 +169,7 @@ impl<'db> ToProtocol<'db> for Pou<'db> {
         }
     }
 
-    fn code_lens(&self, db: &'db dyn BaseDatabase) -> Option<CodeLens> {
+    fn code_lens(&self, db: &'db dyn WorkspaceDataBase) -> Option<CodeLens> {
         match self {
             Pou::Class(_) | Pou::Interface(_) => {
                 let implementations = find_all_implementations(db, *self);
@@ -197,7 +198,7 @@ impl<'db> ToProtocol<'db> for Pou<'db> {
         }
     }
 
-    fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Hover> {
+    fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
         let name_span = self.get_name_span(db);
 
         // Return None if the offset is outside the name span
@@ -239,7 +240,7 @@ impl<'db> ToProtocol<'db> for Pou<'db> {
         })
     }
 
-    fn definition(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDefinitionResponse> {
+    fn definition(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDefinitionResponse> {
         Some(GotoDefinitionResponse::Scalar(Location::new(
             self.get_scope_id(db).file(db).url(db).to_owned(),
             self.get_span(db).into(),
@@ -248,7 +249,7 @@ impl<'db> ToProtocol<'db> for Pou<'db> {
 
     fn completion(
         &'db self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         offset: usize,
     ) -> Option<Vec<CompletionItem>> {
         Some(

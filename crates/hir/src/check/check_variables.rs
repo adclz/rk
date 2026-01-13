@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
@@ -17,7 +18,7 @@ use crate::{
 };
 
 impl<'db> Check<'db> for [VariableDecl<'db>] {
-    fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<IdeDiagnostic>) {
+    fn check(&'db self, db: &'db dyn WorkspaceDataBase, errors: &mut Vec<IdeDiagnostic>) {
         let mut seen: FxHashMap<Ident, VariableDecl<'db>> = FxHashMap::default();
         for variable in self {
             match seen.get(&variable.get_name_ident(db)) {

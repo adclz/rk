@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 
 pub mod body;
 pub mod func_call;
@@ -39,7 +40,7 @@ pub enum PathResolutionRoot<'db> {
 }
 
 impl<'db> Resolver<'db> {
-    pub fn for_scope(db: &'db dyn BaseDatabase, scope: ScopeId<'db>) -> Self {
+    pub fn for_scope(db: &'db dyn WorkspaceDataBase, scope: ScopeId<'db>) -> Self {
         let root = match get_scope(db, scope).kind {
             ScopeKind::Pou(pou) => match pou {
                 Pou::DataType(_) => PathResolutionRoot::Namespace { scope },
@@ -62,7 +63,7 @@ impl<'db> Resolver<'db> {
 
     fn resolve_as_fq(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         path_expr: PathExpr<'db>,
         infer_results: &mut BodyInferenceResult<'db>,
     ) {
@@ -98,7 +99,7 @@ impl<'db> Resolver<'db> {
 
     pub fn resolve_variable_access(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         var_access: VariableAccess<'db>,
         infer_results: &mut BodyInferenceResult<'db>,
     ) {
@@ -110,7 +111,7 @@ impl<'db> Resolver<'db> {
 
     pub fn resolve_begin_path_expr(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         path_expr: BeginPathExpr<'db>,
         infer_results: &mut BodyInferenceResult<'db>,
     ) {
@@ -124,7 +125,7 @@ impl<'db> Resolver<'db> {
 
     pub fn resolve_path_expr(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         path_expr: PathExpr<'db>,
         infer_results: &mut BodyInferenceResult<'db>,
     ) {
@@ -141,7 +142,7 @@ impl<'db> Resolver<'db> {
     fn resolve_path_steps(
         &self,
         mut current: Type<'db>,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         path_expr: PathExpr<'db>,
         ctx: &mut BodyInferenceResult<'db>,
     ) {

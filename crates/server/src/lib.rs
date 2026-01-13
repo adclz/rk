@@ -25,6 +25,7 @@ use auto_lsp::lsp_types::FoldingRangeProviderCapability;
 use auto_lsp::lsp_types::HoverProviderCapability;
 use auto_lsp::lsp_types::ImplementationProviderCapability;
 use auto_lsp::lsp_types::ServerCapabilities;
+use auto_lsp::lsp_types::Url;
 use auto_lsp::lsp_types::WorkDoneProgressOptions;
 use auto_lsp::lsp_types::notification::Cancel;
 use auto_lsp::lsp_types::notification::DidChangeTextDocument;
@@ -59,11 +60,14 @@ use auto_lsp::server::options::InitOptions;
 use auto_lsp::server::request_registry::RequestRegistry;
 use auto_lsp::server::vendored::intent::ThreadIntent;
 use db::RootDatabase;
+use db::WorkspaceDataBase;
 use ide_proto::SUPPORTED_MODIFIERS;
 use ide_proto::SUPPORTED_TYPES;
 use salsa::EventKind;
 use std::error::Error;
 use std::panic::RefUnwindSafe;
+use std::sync::LazyLock;
+use std::sync::OnceLock;
 
 use crate::capabilties::code_actions::code_actions;
 use crate::capabilties::code_lens::code_lens;
@@ -80,16 +84,13 @@ use crate::capabilties::implementation::go_to_implementation;
 use crate::capabilties::inlay_hints::inlay_hints;
 use crate::capabilties::semantic_tokens;
 
+pub static WORKSPACE_FOLDER: OnceLock<Url> = OnceLock::new();
+
 pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
     log::info!("Starting IEC LSP");
 
     let (connection, io_threads) = Connection::stdio();
-    let db = RootDatabase::new(Some(Box::new(|event| {
-        if let EventKind::WillCheckCancellation = event.kind {
-            return;
-        }
-        eprintln!("Database event: {:?}", event);
-    })));
+    let db = RootDatabase::default();
     let mut request_registry = RequestRegistry::<RootDatabase>::default();
     let mut notification_registry = NotificationRegistry::<RootDatabase>::default();
 
@@ -148,6 +149,10 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
         db,
     )?;
 
+    params.root_uri.as_ref().map(|uri| {
+        session.db.set_workspace_uri(uri.clone());
+    });
+
     session.init_workspace(params)?;
 
     session.main_loop(
@@ -161,7 +166,7 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
     Ok(())
 }
 
-fn on_requests<Db: BaseDatabase + Clone + RefUnwindSafe>(
+fn on_requests<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
     registry: &mut RequestRegistry<Db>,
 ) -> &mut RequestRegistry<Db> {
     registry
@@ -184,7 +189,7 @@ fn on_requests<Db: BaseDatabase + Clone + RefUnwindSafe>(
         .on::<GotoImplementation, _>(ThreadIntent::Worker, go_to_implementation)
 }
 
-fn on_notifications<Db: BaseDatabase + Clone + RefUnwindSafe>(
+fn on_notifications<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
     registry: &mut NotificationRegistry<Db>,
 ) -> &mut NotificationRegistry<Db> {
     registry

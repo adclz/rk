@@ -4,6 +4,7 @@ use auto_lsp::{
     default::db::{BaseDatabase, file::File, tracked::get_ast},
 };
 use compact_str::CompactString;
+use db::WorkspaceDataBase;
 use std::{hash::Hash, ops::Deref};
 
 use crate::{
@@ -48,7 +49,7 @@ impl Hash for SpanIdent<'_> {
 
 impl<'db> SpanIdent<'db> {
     pub fn new<T: AstNode>(
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         sema: &SemanticIndexBuilder<'db>,
         ident: &AstNodeId<T>,
     ) -> anyhow::Result<Self, AnalysisError<'db>> {
@@ -58,7 +59,7 @@ impl<'db> SpanIdent<'db> {
     }
 
     pub fn from_node(
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         sema: &SemanticIndexBuilder<'db>,
         node: &impl AstNode,
     ) -> anyhow::Result<Self, AnalysisError<'db>> {
@@ -69,17 +70,17 @@ impl<'db> SpanIdent<'db> {
         })
     }
 
-    pub fn as_str(&'db self, db: &'db dyn BaseDatabase) -> &'db str {
+    pub fn as_str(&'db self, db: &'db dyn WorkspaceDataBase) -> &'db str {
         self.ident.text(db)
     }
 }
 
 impl<'db> HirNodeInfo<'db> for SpanIdent<'db> {
-    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
         self.id
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
         self.scope_id
     }
 }
@@ -94,7 +95,7 @@ pub struct Ident {
 
 impl<'db> Ident {
     pub fn from_node(
-        db: &dyn BaseDatabase,
+        db: &dyn WorkspaceDataBase,
         file: File,
         node: &impl AstNode,
     ) -> anyhow::Result<Self, AnalysisError<'db>> {
@@ -104,11 +105,11 @@ impl<'db> Ident {
         ))
     }
 
-    pub fn from_slice(db: &dyn BaseDatabase, text: &str) -> Self {
+    pub fn from_slice(db: &dyn WorkspaceDataBase, text: &str) -> Self {
         Ident::new(db, CompactString::from(text))
     }
 
-    pub fn join(db: &dyn BaseDatabase, other: &[Ident]) -> Ident {
+    pub fn join(db: &dyn WorkspaceDataBase, other: &[Ident]) -> Ident {
         Ident::new(
             db,
             other

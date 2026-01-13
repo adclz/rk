@@ -7,6 +7,7 @@ use crate::{HirNodeInfo, hir_def::interned::identifier::SpanIdent};
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::default::db::tracked::get_ast;
 use auto_lsp::{anyhow, default::db::BaseDatabase};
+use db::WorkspaceDataBase;
 use std::hash::Hash;
 use std::ops::Deref;
 
@@ -43,7 +44,7 @@ impl Deref for SpanNamespacePath<'_> {
 impl<'db> SpanNamespacePath<'db> {
     pub fn concat(
         &self,
-        db: &dyn BaseDatabase,
+        db: &dyn WorkspaceDataBase,
         other: &'db SpanNamespacePath,
         scope_id: ScopeId<'db>,
     ) -> SpanNamespacePath<'db> {
@@ -60,7 +61,7 @@ impl<'db> SpanNamespacePath<'db> {
 
     pub fn extend(
         &self,
-        db: &dyn BaseDatabase,
+        db: &dyn WorkspaceDataBase,
         ident: SpanIdent<'db>,
         scope_id: ScopeId<'db>,
     ) -> SpanNamespacePath<'db> {
@@ -75,7 +76,7 @@ impl<'db> SpanNamespacePath<'db> {
         }
     }
 
-    pub fn to_string(&self, db: &dyn BaseDatabase) -> String {
+    pub fn to_string(&self, db: &dyn WorkspaceDataBase) -> String {
         self.path
             .fragments(db)
             .iter()
@@ -86,15 +87,15 @@ impl<'db> SpanNamespacePath<'db> {
 
     pub fn get_fragment_ast_node(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         index: usize,
     ) -> &'db Box<dyn AstNode> {
         &get_ast(db, self.scope_id.file(db))[self.spans[index].0]
     }
 }
 
-impl<'db> From<(&dyn BaseDatabase, &SpanIdent<'db>)> for SpanNamespacePath<'db> {
-    fn from(from: (&dyn BaseDatabase, &SpanIdent<'db>)) -> Self {
+impl<'db> From<(&dyn WorkspaceDataBase, &SpanIdent<'db>)> for SpanNamespacePath<'db> {
+    fn from(from: (&dyn WorkspaceDataBase, &SpanIdent<'db>)) -> Self {
         SpanNamespacePath {
             scope_id: from.1.scope_id,
             spans: vec![from.1.id],
@@ -103,8 +104,8 @@ impl<'db> From<(&dyn BaseDatabase, &SpanIdent<'db>)> for SpanNamespacePath<'db> 
     }
 }
 
-impl<'db> From<(&dyn BaseDatabase, &[SpanIdent<'db>], ScopeId<'db>)> for SpanNamespacePath<'db> {
-    fn from(from: (&dyn BaseDatabase, &[SpanIdent<'db>], ScopeId<'db>)) -> Self {
+impl<'db> From<(&dyn WorkspaceDataBase, &[SpanIdent<'db>], ScopeId<'db>)> for SpanNamespacePath<'db> {
+    fn from(from: (&dyn WorkspaceDataBase, &[SpanIdent<'db>], ScopeId<'db>)) -> Self {
         let mut spans = vec![];
         let mut idents = vec![];
         for ident in from.1.iter() {
@@ -120,8 +121,8 @@ impl<'db> From<(&dyn BaseDatabase, &[SpanIdent<'db>], ScopeId<'db>)> for SpanNam
     }
 }
 
-impl<'db> From<(&dyn BaseDatabase, Vec<SpanIdent<'db>>, ScopeId<'db>)> for SpanNamespacePath<'db> {
-    fn from(from: (&dyn BaseDatabase, Vec<SpanIdent<'db>>, ScopeId<'db>)) -> Self {
+impl<'db> From<(&dyn WorkspaceDataBase, Vec<SpanIdent<'db>>, ScopeId<'db>)> for SpanNamespacePath<'db> {
+    fn from(from: (&dyn WorkspaceDataBase, Vec<SpanIdent<'db>>, ScopeId<'db>)) -> Self {
         let mut spans = vec![];
         let mut idents = vec![];
         for ident in from.1.iter() {
@@ -137,8 +138,8 @@ impl<'db> From<(&dyn BaseDatabase, Vec<SpanIdent<'db>>, ScopeId<'db>)> for SpanN
     }
 }
 
-impl<'db> From<(&dyn BaseDatabase, &Vec<SpanIdent<'db>>, ScopeId<'db>)> for SpanNamespacePath<'db> {
-    fn from(from: (&dyn BaseDatabase, &Vec<SpanIdent<'db>>, ScopeId<'db>)) -> Self {
+impl<'db> From<(&dyn WorkspaceDataBase, &Vec<SpanIdent<'db>>, ScopeId<'db>)> for SpanNamespacePath<'db> {
+    fn from(from: (&dyn WorkspaceDataBase, &Vec<SpanIdent<'db>>, ScopeId<'db>)) -> Self {
         let mut spans = vec![];
         let mut idents = vec![];
         for ident in from.1.iter() {
@@ -162,7 +163,7 @@ pub struct NamespacePath {
 }
 
 impl NamespacePath {
-    pub fn to_string(&self, db: &dyn BaseDatabase) -> String {
+    pub fn to_string(&self, db: &dyn WorkspaceDataBase) -> String {
         self.fragments(db)
             .iter()
             .map(|i| i.text(db).to_string())
@@ -171,26 +172,26 @@ impl NamespacePath {
     }
 }
 
-impl From<(&dyn BaseDatabase, &Ident)> for NamespacePath {
-    fn from(from: (&dyn BaseDatabase, &Ident)) -> Self {
+impl From<(&dyn WorkspaceDataBase, &Ident)> for NamespacePath {
+    fn from(from: (&dyn WorkspaceDataBase, &Ident)) -> Self {
         NamespacePath::new(from.0, vec![*from.1])
     }
 }
 
-impl From<(&dyn BaseDatabase, &[Ident])> for NamespacePath {
-    fn from(from: (&dyn BaseDatabase, &[Ident])) -> Self {
+impl From<(&dyn WorkspaceDataBase, &[Ident])> for NamespacePath {
+    fn from(from: (&dyn WorkspaceDataBase, &[Ident])) -> Self {
         NamespacePath::new(from.0, from.1.to_vec())
     }
 }
 
-impl From<(&dyn BaseDatabase, Vec<Ident>)> for NamespacePath {
-    fn from(from: (&dyn BaseDatabase, Vec<Ident>)) -> Self {
+impl From<(&dyn WorkspaceDataBase, Vec<Ident>)> for NamespacePath {
+    fn from(from: (&dyn WorkspaceDataBase, Vec<Ident>)) -> Self {
         NamespacePath::new(from.0, from.1)
     }
 }
 
-impl From<(&dyn BaseDatabase, &Vec<Ident>)> for NamespacePath {
-    fn from(from: (&dyn BaseDatabase, &Vec<Ident>)) -> Self {
+impl From<(&dyn WorkspaceDataBase, &Vec<Ident>)> for NamespacePath {
+    fn from(from: (&dyn WorkspaceDataBase, &Vec<Ident>)) -> Self {
         NamespacePath::new(from.0, from.1.clone())
     }
 }
@@ -216,11 +217,11 @@ impl Hash for SpanNamespaceAccess<'_> {
 }
 
 impl<'db> HirNodeInfo<'db> for SpanNamespaceAccess<'db> {
-    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
         self.id
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
         self.scope_id
     }
 }
@@ -229,7 +230,7 @@ impl Eq for SpanNamespaceAccess<'_> {}
 
 impl<'db> SpanNamespaceAccess<'db> {
     pub fn from_ast(
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         sema: &SemanticIndexBuilder<'db>,
         fq_name: &ast::generated::NamespaceAccess,
     ) -> anyhow::Result<Self, AnalysisError<'db>> {
@@ -240,7 +241,7 @@ impl<'db> SpanNamespaceAccess<'db> {
         })
     }
 
-    pub fn to_string(&self, db: &dyn BaseDatabase) -> String {
+    pub fn to_string(&self, db: &dyn WorkspaceDataBase) -> String {
         self.path.to_string(db)
     }
 }
@@ -253,14 +254,14 @@ pub struct NamespaceAccess<'db> {
 
 impl<'db> NamespaceAccess<'db> {
     pub fn new(
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         namespace: Option<SpanNamespacePath<'db>>,
         target: SpanIdent<'db>,
     ) -> Self {
         Self { namespace, target }
     }
     pub fn from_ast(
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         sema: &SemanticIndexBuilder<'db>,
         fq_name: &ast::generated::NamespaceAccess,
     ) -> anyhow::Result<Self, AnalysisError<'db>> {
@@ -306,7 +307,7 @@ impl<'db> NamespaceAccess<'db> {
         ))
     }
 
-    pub fn to_string(&self, db: &dyn BaseDatabase) -> String {
+    pub fn to_string(&self, db: &dyn WorkspaceDataBase) -> String {
         let mut path = self
             .namespace
             .as_ref()

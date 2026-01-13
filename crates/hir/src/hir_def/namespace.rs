@@ -1,5 +1,6 @@
 use auto_lsp::core::span::Span;
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 
 use crate::hir_def::interned::namespace::NamespacePath;
 use crate::hir_def::pous::pou::Pou;
@@ -30,7 +31,7 @@ pub struct NamespaceDecl<'db> {
 }
 
 impl<'db> NamespaceDecl<'db> {
-    pub fn name_span(&'db self, db: &'db dyn BaseDatabase) -> Span {
+    pub fn name_span(&'db self, db: &'db dyn WorkspaceDataBase) -> Span {
         semantic_index(db, self.get_scope_id(db).file(db))
             .ast
             .get(self.name_id(db).0)
@@ -45,11 +46,11 @@ impl<'db> NamespaceDecl<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for NamespaceDecl<'db> {
-    fn get_id(&self, db: &'db dyn BaseDatabase) -> crate::AstId {
+    fn get_id(&self, db: &'db dyn WorkspaceDataBase) -> crate::AstId {
         self.id(db)
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
         self.scope_id(db)
     }
 }

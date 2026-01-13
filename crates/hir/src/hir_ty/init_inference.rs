@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
@@ -20,7 +21,7 @@ use crate::{
 
 #[salsa::tracked(returns(ref), no_eq)]
 pub fn infer_variable<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     variable: VariableDecl<'db>,
 ) -> InitExprInferenceResult<'db> {
     let typ = Type::new_spec(db, variable.spec(db));
@@ -33,7 +34,7 @@ pub fn infer_variable<'db>(
 
 #[salsa::tracked(returns(ref), no_eq)]
 pub fn infer_data_type<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     data_type: DataType<'db>,
 ) -> InitExprInferenceResult<'db> {
     let typ = Type::new_spec(db, data_type.spec(db));
@@ -59,7 +60,7 @@ pub struct InitExprInferenceResult<'db> {
 }
 
 impl<'db> InitExprInferenceResult<'db> {
-    pub fn new(db: &'db dyn BaseDatabase, scope: ScopeId<'db>) -> Self {
+    pub fn new(db: &'db dyn WorkspaceDataBase, scope: ScopeId<'db>) -> Self {
         Self {
             type_of_expr: FxHashMap::default(),
             scope,
@@ -71,7 +72,7 @@ impl<'db> InitExprInferenceResult<'db> {
 
     pub fn resolve_init_expr(
         &mut self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         expr: InitExpr<'db>,
         typ: Type<'db>,
     ) {
@@ -81,7 +82,7 @@ impl<'db> InitExprInferenceResult<'db> {
 
     fn resolve_expr(
         &mut self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         expr: InitExpr<'db>,
         expected: Type<'db>,
         map: &FxIndexMap<InitExpr<'db>, InitExprWalkStep<'db>>,

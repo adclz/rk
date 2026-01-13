@@ -4,6 +4,7 @@ use auto_lsp::{
     core::errors::ParseErrorAccumulator,
     default::db::{BaseDatabase, file::File, tracked::get_ast},
 };
+use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
@@ -28,7 +29,7 @@ pub mod check_using;
 pub mod check_variables;
 pub mod errors;
 
-pub fn diagnostics_for_file(db: &dyn BaseDatabase, file: File) -> Arc<Vec<IdeDiagnostic>> {
+pub fn diagnostics_for_file(db: &dyn WorkspaceDataBase, file: File) -> Arc<Vec<IdeDiagnostic>> {
     let mut all_diagnostics = vec![];
 
     let lexer_errors: Vec<AnalysisError> = get_ast::accumulated::<ParseErrorAccumulator>(db, file)

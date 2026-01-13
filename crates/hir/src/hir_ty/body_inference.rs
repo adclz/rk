@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
@@ -28,7 +29,7 @@ use crate::{
 #[tracing::instrument(skip(db))]
 #[salsa::tracked(returns(ref))]
 pub fn infer_body_scope<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     scope: ScopeId<'db>,
 ) -> BodyInferenceResult<'db> {
     let mut result = BodyInferenceResult::new(scope);
@@ -108,7 +109,7 @@ impl<'db> BodyInferenceResult<'db> {
 
     pub fn type_of_expr_with_adjustments(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         expr: Expr<'db>,
     ) -> Option<Type<'db>> {
         match expr.expr(db) {
@@ -121,7 +122,7 @@ impl<'db> BodyInferenceResult<'db> {
 
     pub fn type_of_variable_access_with_adjustments(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         var_access: VariableAccess<'db>,
     ) -> Option<Type<'db>> {
         match var_access.kind(db) {
@@ -132,7 +133,7 @@ impl<'db> BodyInferenceResult<'db> {
 
     pub fn get_type_of_variable_access(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         var_access: VariableAccess<'db>,
     ) -> Option<Type<'db>> {
         match var_access.kind(db) {
@@ -143,7 +144,7 @@ impl<'db> BodyInferenceResult<'db> {
 
     pub fn type_of_begin_expr_with_adjustments(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         begin: BeginPathExpr<'db>,
     ) -> Option<Type<'db>> {
         match begin.expr(db) {
@@ -157,7 +158,7 @@ impl<'db> BodyInferenceResult<'db> {
 
     pub fn get_type_of_begin_path_expr(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         begin: BeginPathExpr<'db>,
     ) -> Option<Type<'db>> {
         match begin.expr(db) {
@@ -182,7 +183,7 @@ impl<'db> BodyInferenceResult<'db> {
 
     pub fn get_type_of_path_expr(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         expr: PathExpr<'db>,
     ) -> Option<Type<'db>> {
         self.type_of_path_expr.get(&expr).copied()
@@ -190,7 +191,7 @@ impl<'db> BodyInferenceResult<'db> {
 
     pub fn adjustments_of_expr(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         expr: Expr<'db>,
     ) -> Option<&[Adjustment<'db>]> {
         match expr.expr(db) {
@@ -207,7 +208,7 @@ impl<'db> BodyInferenceResult<'db> {
 
     pub fn adjustments_of_var_access(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         var: VariableAccess<'db>,
     ) -> Option<&[Adjustment<'db>]> {
         match var.kind(db) {
@@ -218,7 +219,7 @@ impl<'db> BodyInferenceResult<'db> {
 
     pub fn adjustments_of_begin_path_expr(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         begin: BeginPathExpr<'db>,
     ) -> Option<&[Adjustment<'db>]> {
         match begin.expr(db) {
@@ -250,21 +251,21 @@ pub struct Adjustment<'db> {
 }
 
 impl<'db> Adjustment<'db> {
-    pub fn new_deref(db: &'db dyn BaseDatabase, ty: Type<'db>) -> Self {
+    pub fn new_deref(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> Self {
         Adjustment {
             kind: Adjust::Deref,
             target: ty,
         }
     }
 
-    pub fn new_index(db: &'db dyn BaseDatabase, ty: Type<'db>) -> Self {
+    pub fn new_index(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> Self {
         Adjustment {
             kind: Adjust::Index,
             target: ty,
         }
     }
 
-    pub fn new_ref(db: &'db dyn BaseDatabase, ty: Type<'db>) -> Self {
+    pub fn new_ref(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> Self {
         Adjustment {
             kind: Adjust::Ref,
             target: ty,

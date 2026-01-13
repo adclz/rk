@@ -8,10 +8,11 @@ use auto_lsp::lsp_types::{
     WorkspaceDiagnosticReport, WorkspaceDiagnosticReportResult, WorkspaceDocumentDiagnosticReport,
     WorkspaceFullDocumentDiagnosticReport,
 };
+use db::WorkspaceDataBase;
 use hir::check::diagnostics_for_file;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
-pub fn diagnostics<Db: BaseDatabase + Clone + RefUnwindSafe>(
+pub fn diagnostics<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
     db: &Db,
     params: DocumentDiagnosticParams,
 ) -> anyhow::Result<DocumentDiagnosticReportResult> {
@@ -46,7 +47,7 @@ pub fn diagnostics<Db: BaseDatabase + Clone + RefUnwindSafe>(
     ))
 }
 
-pub fn workspace_diagnostics<Db: BaseDatabase + Clone + RefUnwindSafe>(
+pub fn workspace_diagnostics<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
     db: &Db,
     _params: WorkspaceDiagnosticParams,
 ) -> anyhow::Result<WorkspaceDiagnosticReportResult> {

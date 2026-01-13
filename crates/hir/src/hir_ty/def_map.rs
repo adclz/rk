@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
 
@@ -39,7 +40,7 @@ pub struct LocalDefMap<'db> {
 #[salsa::tracked]
 impl<'db> ScopeId<'db> {
     #[salsa::tracked(returns(ref))]
-    pub fn def_map(self, db: &'db dyn BaseDatabase) -> LocalDefMap<'db> {
+    pub fn def_map(self, db: &'db dyn WorkspaceDataBase) -> LocalDefMap<'db> {
         LocalDefMap {
             local_pous: self.local_pous(db).clone(),
             local_variables: self.local_variables(db),
@@ -48,7 +49,7 @@ impl<'db> ScopeId<'db> {
         }
     }
 
-    fn local_pous(&self, db: &'db dyn BaseDatabase) -> FxHashMap<Ident, Pou<'db>> {
+    fn local_pous(&self, db: &'db dyn WorkspaceDataBase) -> FxHashMap<Ident, Pou<'db>> {
         match get_scope(db, *self).kind {
             ScopeKind::Namespace(ns) => {
                 let mut result = FxHashMap::default();
@@ -61,7 +62,7 @@ impl<'db> ScopeId<'db> {
         }
     }
 
-    pub fn can_have_local_variables(&self, db: &'db dyn BaseDatabase) -> bool {
+    pub fn can_have_local_variables(&self, db: &'db dyn WorkspaceDataBase) -> bool {
         match get_scope(db, *self).kind {
             ScopeKind::Global | ScopeKind::Namespace(_) => false,
             ScopeKind::Pou(pou) => matches!(pou, Pou::Function(_) | Pou::FunctionBlock(_) | Pou::Class(_)),
@@ -69,7 +70,7 @@ impl<'db> ScopeId<'db> {
         }
     }
 
-    fn local_variables(&self, db: &'db dyn BaseDatabase) -> FxIndexMap<Ident, VariableDecl<'db>> {
+    fn local_variables(&self, db: &'db dyn WorkspaceDataBase) -> FxIndexMap<Ident, VariableDecl<'db>> {
         match get_scope(db, *self).kind {
             ScopeKind::Global | ScopeKind::Namespace(_) => IndexMap::default(),
             ScopeKind::Pou(pou) => match pou {
@@ -82,7 +83,7 @@ impl<'db> ScopeId<'db> {
         }
     }
 
-    fn global_variables(&self, db: &'db dyn BaseDatabase) -> FxHashMap<Ident, VariableDecl<'db>> {
+    fn global_variables(&self, db: &'db dyn WorkspaceDataBase) -> FxHashMap<Ident, VariableDecl<'db>> {
         match get_scope(db, *self).kind {
             ScopeKind::Global | ScopeKind::Namespace(_) => FxHashMap::default(),
             ScopeKind::Pou(pou) => match pou {
@@ -95,7 +96,7 @@ impl<'db> ScopeId<'db> {
         }
     }
 
-    fn declared_methods(&self, db: &'db dyn BaseDatabase) -> FxHashMap<Ident, MethodRef<'db>> {
+    fn declared_methods(&self, db: &'db dyn WorkspaceDataBase) -> FxHashMap<Ident, MethodRef<'db>> {
         match get_scope(db, *self).kind {
             ScopeKind::Global | ScopeKind::Namespace(_) | ScopeKind::MethodDecl(_) => {
                 FxHashMap::default()
@@ -122,7 +123,7 @@ impl<'db> ScopeId<'db> {
     }
 
     #[salsa::tracked(returns(ref))]
-    pub fn inheritors(self, db: &'db dyn BaseDatabase) -> Vec<Pou<'db>> {
+    pub fn inheritors(self, db: &'db dyn WorkspaceDataBase) -> Vec<Pou<'db>> {
         match get_scope(db, self).kind {
             ScopeKind::Pou(pou) => match pou {
                 Pou::Class(class) => {
@@ -177,7 +178,7 @@ impl<'db> Struct<'db> {
     #[salsa::tracked(returns(ref))]
     pub fn resolve_elements(
         self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
     ) -> FxHashMap<Ident, StructElement<'db>> {
         self.elements(db)
             .iter()
@@ -189,7 +190,7 @@ impl<'db> Struct<'db> {
 #[salsa::tracked]
 impl<'db> Expr<'db> {
     #[salsa::tracked]
-    pub fn as_range(self, db: &'db dyn BaseDatabase) -> Option<u64> {
+    pub fn as_range(self, db: &'db dyn WorkspaceDataBase) -> Option<u64> {
         match self.expr(db) {
             ExprKind::PrimaryExpr(PrimaryExpr::Literal(Elementary::InferInteger(v))) => {
                 v.as_u64(db).ok()
@@ -200,7 +201,7 @@ impl<'db> Expr<'db> {
 }
 
 fn global_variables<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     vars: &[VariableDecl<'db>],
 ) -> FxHashMap<Ident, VariableDecl<'db>> {
     let mut variables = FxHashMap::default();
@@ -211,7 +212,7 @@ fn global_variables<'db>(
 }
 
 fn local_variables<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     vars: &[VariableDecl<'db>],
 ) -> FxIndexMap<Ident, VariableDecl<'db>> {
     let mut variables = IndexMap::default();

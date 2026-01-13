@@ -7,6 +7,7 @@ use auto_lsp::{
 };
 use bitflags::bitflags;
 use compact_str::CompactString;
+use db::WorkspaceDataBase;
 
 use crate::hir_def::{
     expressions::{
@@ -69,42 +70,42 @@ impl<'db> CallSite<'db> {
         Self { scope, id }
     }
 
-    pub fn from_expr(db: &'db dyn BaseDatabase, expr: Expr<'db>) -> Self {
+    pub fn from_expr(db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> Self {
         Self {
             scope: expr.get_scope_id(db),
             id: expr.get_id(db),
         }
     }
 
-    pub fn from_init_expr(db: &'db dyn BaseDatabase, expr: InitExpr<'db>) -> Self {
+    pub fn from_init_expr(db: &'db dyn WorkspaceDataBase, expr: InitExpr<'db>) -> Self {
         Self {
             scope: expr.get_scope_id(db),
             id: expr.get_id(db),
         }
     }
 
-    pub fn from_var_access(db: &'db dyn BaseDatabase, var_access: VariableAccess<'db>) -> Self {
+    pub fn from_var_access(db: &'db dyn WorkspaceDataBase, var_access: VariableAccess<'db>) -> Self {
         Self {
             scope: var_access.get_scope_id(db),
             id: var_access.get_id(db),
         }
     }
 
-    pub fn from_var_decl(db: &'db dyn BaseDatabase, var_access: VariableDecl<'db>) -> Self {
+    pub fn from_var_decl(db: &'db dyn WorkspaceDataBase, var_access: VariableDecl<'db>) -> Self {
         Self {
             scope: var_access.get_scope_id(db),
             id: var_access.get_id(db),
         }
     }
 
-    pub fn from_spec(db: &'db dyn BaseDatabase, spec: Spec<'db>) -> Self {
+    pub fn from_spec(db: &'db dyn WorkspaceDataBase, spec: Spec<'db>) -> Self {
         Self {
             scope: spec.get_scope_id(db),
             id: spec.get_id(db),
         }
     }
 
-    pub fn to_string(&self, db: &'db dyn BaseDatabase) -> CompactString {
+    pub fn to_string(&self, db: &'db dyn WorkspaceDataBase) -> CompactString {
         let file = self.scope.file(db);
         let node = semantic_index(db, file)
             .ast
@@ -118,28 +119,28 @@ impl<'db> CallSite<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for CallSite<'db> {
-    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
         self.id
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
         self.scope
     }
 }
 
 pub trait HirNodeInfo<'db> {
-    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId;
+    fn get_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId;
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db>;
+    fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db>;
 
-    fn as_call_site(&self, db: &'db dyn BaseDatabase) -> CallSite<'db> {
+    fn as_call_site(&self, db: &'db dyn WorkspaceDataBase) -> CallSite<'db> {
         CallSite {
             scope: self.get_scope_id(db),
             id: self.get_id(db),
         }
     }
 
-    fn get_span(&self, db: &'db dyn BaseDatabase) -> Span {
+    fn get_span(&self, db: &'db dyn WorkspaceDataBase) -> Span {
         semantic_index(db, self.get_scope_id(db).file(db))
             .ast
             .get(self.get_id(db).0)
@@ -154,11 +155,11 @@ pub trait HirNodeInfo<'db> {
 }
 
 pub trait HasName<'db>: HirNodeInfo<'db> {
-    fn get_name_ident(&self, db: &'db dyn BaseDatabase) -> Ident;
+    fn get_name_ident(&self, db: &'db dyn WorkspaceDataBase) -> Ident;
 
-    fn get_name_id(&self, db: &'db dyn BaseDatabase) -> AstId;
+    fn get_name_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId;
 
-    fn get_name_span(&'db self, db: &'db dyn BaseDatabase) -> Span {
+    fn get_name_span(&'db self, db: &'db dyn WorkspaceDataBase) -> Span {
         semantic_index(db, self.get_scope_id(db).file(db))
             .ast
             .get(self.get_name_id(db).0)
@@ -187,7 +188,7 @@ impl Modifier {
 }
 
 pub trait HasModifiers<'db>: HirNodeInfo<'db> {
-    fn get_modifiers(&self, db: &'db dyn BaseDatabase) -> Modifier;
+    fn get_modifiers(&self, db: &'db dyn WorkspaceDataBase) -> Modifier;
 }
 
 bitflags! {
@@ -206,5 +207,5 @@ impl<'db> Visibility {
 }
 
 pub trait HasVisibility<'db>: HirNodeInfo<'db> {
-    fn get_visibility(&self, db: &'db dyn BaseDatabase) -> Visibility;
+    fn get_visibility(&self, db: &'db dyn WorkspaceDataBase) -> Visibility;
 }

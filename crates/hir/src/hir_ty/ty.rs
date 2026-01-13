@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 
 use crate::{
     AstId, HasName, HirNodeInfo,
@@ -107,11 +108,11 @@ pub enum InferType {
 }
 
 impl<'db> InferType {
-    pub fn to_ty(&self, db: &'db dyn BaseDatabase) -> Type<'db> {
+    pub fn to_ty(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {
         Type::Elementary(self.to_spec(db))
     }
 
-    pub fn to_spec(&self, db: &'db dyn BaseDatabase) -> ElementarySpec {
+    pub fn to_spec(&self, db: &'db dyn WorkspaceDataBase) -> ElementarySpec {
         match self {
             InferType::Integer(i) => ElementarySpec::Int,
             InferType::Float(f) => ElementarySpec::Real,
@@ -127,7 +128,7 @@ pub enum CallableType<'db> {
 }
 
 impl<'db> CallableType<'db> {
-    pub fn def_map(&self, db: &'db dyn BaseDatabase) -> &'db LocalDefMap<'db> {
+    pub fn def_map(&self, db: &'db dyn WorkspaceDataBase) -> &'db LocalDefMap<'db> {
         match self {
             CallableType::Function(f) => f.scope_id(db).def_map(db),
             CallableType::FunctionBlock(fb) => fb.scope_id(db).def_map(db),
@@ -135,13 +136,13 @@ impl<'db> CallableType<'db> {
         }
     }
 
-    pub fn var_len_params(&self, db: &'db dyn BaseDatabase) -> usize {
+    pub fn var_len_params(&self, db: &'db dyn WorkspaceDataBase) -> usize {
         self.def_map(db).local_variables.len()
     }
 }
 
 impl<'db> HirNodeInfo<'db> for CallableType<'db> {
-    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
         match self {
             CallableType::Function(f) => f.get_id(db),
             CallableType::FunctionBlock(f) => f.get_id(db),
@@ -149,7 +150,7 @@ impl<'db> HirNodeInfo<'db> for CallableType<'db> {
         }
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
         match self {
             CallableType::Function(f) => f.get_scope_id(db),
             CallableType::FunctionBlock(f) => f.get_scope_id(db),
@@ -159,7 +160,7 @@ impl<'db> HirNodeInfo<'db> for CallableType<'db> {
 }
 
 impl<'db> HasName<'db> for CallableType<'db> {
-    fn get_name_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_name_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
         match self {
             CallableType::Function(f) => f.get_name_id(db),
             CallableType::FunctionBlock(f) => f.get_name_id(db),
@@ -167,7 +168,7 @@ impl<'db> HasName<'db> for CallableType<'db> {
         }
     }
 
-    fn get_name_ident(&self, db: &'db dyn BaseDatabase) -> Ident {
+    fn get_name_ident(&self, db: &'db dyn WorkspaceDataBase) -> Ident {
         match self {
             CallableType::Function(f) => f.get_name_ident(db),
             CallableType::FunctionBlock(f) => f.get_name_ident(db),
@@ -199,7 +200,7 @@ impl<'db> Type<'db> {
         Type::Elementary(ElementarySpec::Bool)
     }
 
-    pub fn new_pou(db: &'db dyn BaseDatabase, pou: Pou<'db>) -> Self {
+    pub fn new_pou(db: &'db dyn WorkspaceDataBase, pou: Pou<'db>) -> Self {
         match pou {
             Pou::Class(cl) => Type::Class(cl),
             Pou::Function(f) => Type::Function(f),
@@ -209,12 +210,12 @@ impl<'db> Type<'db> {
         }
     }
 
-    pub fn new_var(db: &'db dyn BaseDatabase, var: VariableDecl<'db>) -> Self {
+    pub fn new_var(db: &'db dyn WorkspaceDataBase, var: VariableDecl<'db>) -> Self {
         Type::Variable(var)
     }
 
     #[salsa::tracked]
-    pub fn new_spec(db: &'db dyn BaseDatabase, spec: Spec<'db>) -> Self {
+    pub fn new_spec(db: &'db dyn WorkspaceDataBase, spec: Spec<'db>) -> Self {
         match spec.kind(db) {
             SpecKind::Simple(elem) => Type::Elementary(*elem),
             SpecKind::Ref(ref_to) => Type::RefTo(*ref_to),
@@ -230,7 +231,7 @@ impl<'db> Type<'db> {
         }
     }
 
-    pub fn as_callable(&self, db: &'db dyn BaseDatabase) -> Option<CallableType<'db>> {
+    pub fn as_callable(&self, db: &'db dyn WorkspaceDataBase) -> Option<CallableType<'db>> {
         Some(match self {
             Type::Function(f) => CallableType::Function(*f),
             Type::MethodDecl(m) => CallableType::MethodDecl(*m),
@@ -242,7 +243,7 @@ impl<'db> Type<'db> {
         })
     }
 
-    pub fn with_return_type(&self, db: &'db dyn BaseDatabase) -> Option<Type<'db>> {
+    pub fn with_return_type(&self, db: &'db dyn WorkspaceDataBase) -> Option<Type<'db>> {
         match self {
             Type::Function(f) => f.return_type(db),
             Type::MethodDecl(m) => m.return_type(db),

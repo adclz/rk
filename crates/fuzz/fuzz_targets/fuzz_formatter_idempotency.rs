@@ -1,13 +1,9 @@
 #![no_main]
 use libfuzzer_sys::{Corpus, fuzz_target};
 
-use auto_lsp::default::db::{BaseDatabase, FileManager, file::File};
-use auto_lsp::lsp_types::Url;
-use db::RootDatabase;
 use formatter::TOPIARY_LANG;
-use hir::check::diagnostics_for_file;
-use hir::hir_def::semantic_index::semantic_index;
 use topiary_core::{Operation, formatter};
+
 
 fn do_fuzz(case: &[u8]) -> Corpus {
     // Skip empty or very large inputs

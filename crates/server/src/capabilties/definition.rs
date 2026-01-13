@@ -3,10 +3,11 @@ use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{GotoDefinitionParams, GotoDefinitionResponse},
 };
+use db::WorkspaceDataBase;
 use ide_proto::to_proto::{AsProtocol, hir_node::descendant_at};
 
 pub fn go_to_definition(
-    db: &impl BaseDatabase,
+    db: &impl WorkspaceDataBase,
     params: GotoDefinitionParams,
 ) -> anyhow::Result<Option<GotoDefinitionResponse>> {
     let uri = &params.text_document_position_params.text_document.uri;

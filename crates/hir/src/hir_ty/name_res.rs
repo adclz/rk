@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 use rustc_hash::FxHashMap;
 
 use crate::{
@@ -21,7 +22,7 @@ use crate::{
 #[tracing::instrument(skip_all)]
 #[salsa::tracked(returns(ref))]
 fn global_namespace_index<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
 ) -> FxHashMap<NamespacePath, Vec<NamespaceDecl<'db>>> {
     let mut result = FxHashMap::default();
     for file in db.get_files().iter() {
@@ -38,7 +39,7 @@ fn global_namespace_index<'db>(
 #[tracing::instrument(skip(db))]
 #[salsa::tracked(returns(ref))]
 pub fn namespace_index<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     path: NamespacePath,
 ) -> Vec<NamespaceDecl<'db>> {
     global_namespace_index(db)
@@ -50,7 +51,7 @@ pub fn namespace_index<'db>(
 /// Returns all POUs *globally declared*.
 #[tracing::instrument(skip_all)]
 #[salsa::tracked(returns(ref))]
-fn global_pou_index<'db>(db: &'db dyn BaseDatabase) -> FxHashMap<Ident, Pou<'db>> {
+fn global_pou_index<'db>(db: &'db dyn WorkspaceDataBase) -> FxHashMap<Ident, Pou<'db>> {
     db.get_files()
         .iter()
         .flat_map(|file| {
@@ -64,14 +65,14 @@ fn global_pou_index<'db>(db: &'db dyn BaseDatabase) -> FxHashMap<Ident, Pou<'db>
 
 #[tracing::instrument(skip(db))]
 #[salsa::tracked(returns(ref))]
-pub fn pou_index<'db>(db: &'db dyn BaseDatabase, name: Ident) -> Option<Pou<'db>> {
+pub fn pou_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<Pou<'db>> {
     global_pou_index(db).get(&name).copied()
 }
 
 #[tracing::instrument(skip_all)]
 /// Resolve a namespace access to a POU declaration.
 pub fn resolve_namespace_access<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     access: &NamespaceAccess<'db>,
 ) -> Option<Pou<'db>> {
     let target = &access.target;
@@ -88,7 +89,7 @@ pub fn resolve_namespace_access<'db>(
 
 #[tracing::instrument(skip_all)]
 pub fn find_in_parent_pous<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     name: Ident,
     scope: ScopeId<'db>,
 ) -> Option<Pou<'db>> {
@@ -117,7 +118,7 @@ pub fn find_in_parent_pous<'db>(
 }
 
 pub fn pou_names_res<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     name: Ident,
     scope: ScopeId<'db>,
 ) -> Option<Pou<'db>> {
@@ -135,7 +136,7 @@ pub fn pou_names_res<'db>(
 
 #[cfg(debug_assertions)]
 pub fn pou_name_res_from_scope<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     scope: impl HirNodeInfo<'db>,
     name: &str,
 ) -> Option<Pou<'db>> {

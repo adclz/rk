@@ -2,6 +2,7 @@ use core::panic;
 use std::{error::Error, fmt::Display};
 
 use auto_lsp::{core::errors::PositionError, default::db::BaseDatabase};
+use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::check::errors::{
@@ -11,7 +12,7 @@ use crate::check::errors::{
 };
 
 pub trait ToIdeDiagnostic<'db> {
-    fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic;
+    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase) -> IdeDiagnostic;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
@@ -44,7 +45,7 @@ impl From<PositionError> for AnalysisError<'_> {
 }
 
 impl<'db> ToIdeDiagnostic<'db> for AnalysisError<'db> {
-    fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
+    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase) -> IdeDiagnostic {
         match self {
             Self::AutoLspError(err) => panic!("A position error happened: {}", err),
             Self::SyntaxError(err) => err.to_diagnostic(db),
@@ -63,7 +64,7 @@ impl<'db> ToIdeDiagnostic<'db> for AnalysisError<'db> {
 }
 
 pub trait DiagnosticDescription<'db> {
-    fn description(&self, db: &'db dyn BaseDatabase) -> String;
-    fn note(&self, db: &'db dyn BaseDatabase, diag: &mut IdeDiagnostic) {}
-    fn related(&self, db: &'db dyn BaseDatabase, diag: &mut IdeDiagnostic) {}
+    fn description(&self, db: &'db dyn WorkspaceDataBase) -> String;
+    fn note(&self, db: &'db dyn WorkspaceDataBase, diag: &mut IdeDiagnostic) {}
+    fn related(&self, db: &'db dyn WorkspaceDataBase, diag: &mut IdeDiagnostic) {}
 }

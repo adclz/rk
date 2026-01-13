@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 
 use crate::{
     CallSite,
@@ -13,7 +14,7 @@ use crate::{
 };
 
 pub fn resolve_invocation<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     scope: ScopeId<'db>,
     invocation: Invocation<'db>,
     ctx: &mut BodyInferenceResult<'db>,

@@ -13,6 +13,7 @@ use auto_lsp::{
     lsp_types::Url,
 };
 use db::RootDatabase;
+use db::WorkspaceDataBase;
 use hir::HasName;
 use hir::check::diagnostics_for_file;
 use hir::hir_def::namespace::NamespaceDecl;
@@ -106,7 +107,7 @@ pub fn test_diagnostics<'db>(db: &'db mut RootDatabase, source: &'db [&'db str])
 }
 
 pub fn find_pou_with_name<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     file: File,
     name: &str,
 ) -> Option<Pou<'db>> {
@@ -130,7 +131,7 @@ pub fn find_pou_with_name<'db>(
 }
 
 pub fn find_namespace_with_name<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     file: File,
     name: &str,
 ) -> Option<NamespaceDecl<'db>> {

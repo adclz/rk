@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
@@ -37,7 +38,7 @@ impl<'db> From<TypeError<'db>> for InitInferenceError<'db> {
 }
 
 impl<'db> ToIdeDiagnostic<'db> for InitInferenceError<'db> {
-    fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
+    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase) -> IdeDiagnostic {
         match self {
             Self::IndexNonArrayType { expr, ty } => {
                 

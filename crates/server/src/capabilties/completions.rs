@@ -3,10 +3,11 @@ use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{CompletionParams, CompletionResponse},
 };
+use db::WorkspaceDataBase;
 use ide_proto::to_proto::{AsProtocol, hir_node::descendant_at};
 
 pub fn completions(
-    db: &impl BaseDatabase,
+    db: &impl WorkspaceDataBase,
     params: CompletionParams,
 ) -> anyhow::Result<Option<CompletionResponse>> {
     let uri = &params.text_document_position.text_document.uri;

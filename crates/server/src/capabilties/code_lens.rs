@@ -5,11 +5,12 @@ use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{CodeLens, CodeLensParams},
 };
+use db::WorkspaceDataBase;
 use hir::hir_def::semantic_index::semantic_index;
 use ide_proto::to_proto::{AsProtocol, walk::WalkHir};
 
 pub fn code_lens(
-    db: &impl BaseDatabase,
+    db: &impl WorkspaceDataBase,
     params: CodeLensParams,
 ) -> anyhow::Result<Option<Vec<CodeLens>>> {
     let uri = &params.text_document.uri;

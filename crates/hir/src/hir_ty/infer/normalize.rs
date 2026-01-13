@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 
 use crate::hir_ty::ty::{CallableType, Type};
 
@@ -17,7 +18,7 @@ use crate::hir_ty::ty::{CallableType, Type};
 */
 
 impl<'db> Type<'db> {
-    pub fn normalize(&self, db: &'db dyn BaseDatabase) -> Type<'db> {
+    pub fn normalize(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {
         match self {
             Type::DataType(dt) => Type::new_spec(db, dt.spec(db)),
             Type::Variable(var) => Type::new_spec(db, var.spec(db)).normalize(db),

@@ -9,6 +9,7 @@ use crate::{
     hir_ty::name_res::resolve_namespace_access,
 };
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, salsa::Update, salsa::Supertype)]
@@ -18,7 +19,7 @@ pub enum MethodRef<'db> {
 }
 
 impl<'db> HasModifiers<'db> for MethodRef<'db> {
-    fn get_modifiers(&self, db: &'db dyn BaseDatabase) -> Modifier {
+    fn get_modifiers(&self, db: &'db dyn WorkspaceDataBase) -> Modifier {
         match self {
             MethodRef::Prototype(p) => Modifier::default(),
             MethodRef::Declared(d) => d.modifier(db),
@@ -27,7 +28,7 @@ impl<'db> HasModifiers<'db> for MethodRef<'db> {
 }
 
 impl<'db> HasVisibility<'db> for MethodRef<'db> {
-    fn get_visibility(&self, db: &'db dyn BaseDatabase) -> Visibility {
+    fn get_visibility(&self, db: &'db dyn WorkspaceDataBase) -> Visibility {
         match self {
             MethodRef::Prototype(p) => Visibility::default(),
             MethodRef::Declared(d) => d.visibility(db),
@@ -36,28 +37,28 @@ impl<'db> HasVisibility<'db> for MethodRef<'db> {
 }
 
 impl<'db> MethodRef<'db> {
-    pub fn return_type(&self, db: &'db dyn BaseDatabase) -> Option<&'db Spec<'db>> {
+    pub fn return_type(&self, db: &'db dyn WorkspaceDataBase) -> Option<&'db Spec<'db>> {
         match self {
             MethodRef::Prototype(p) => p.return_type(db),
             MethodRef::Declared(d) => d.return_type(db),
         }
     }
 
-    pub fn visibility(&self, db: &'db dyn BaseDatabase) -> Visibility {
+    pub fn visibility(&self, db: &'db dyn WorkspaceDataBase) -> Visibility {
         match self {
             MethodRef::Prototype(p) => Visibility::PUBLIC,
             MethodRef::Declared(d) => d.visibility(db),
         }
     }
 
-    pub fn modifier(&self, db: &'db dyn BaseDatabase) -> Modifier {
+    pub fn modifier(&self, db: &'db dyn WorkspaceDataBase) -> Modifier {
         match self {
             MethodRef::Prototype(p) => Modifier::EMPTY,
             MethodRef::Declared(d) => d.modifier(db),
         }
     }
 
-    pub fn variables(&self, db: &'db dyn BaseDatabase) -> &'db Vec<VariableDecl<'db>> {
+    pub fn variables(&self, db: &'db dyn WorkspaceDataBase) -> &'db Vec<VariableDecl<'db>> {
         match self {
             MethodRef::Prototype(p) => p.variables(db),
             MethodRef::Declared(d) => d.variables(db),
@@ -74,14 +75,14 @@ impl<'db> MethodRef<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for MethodRef<'db> {
-    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
         match self {
             MethodRef::Prototype(p) => p.get_id(db),
             MethodRef::Declared(d) => d.get_id(db),
         }
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
         match self {
             MethodRef::Prototype(p) => p.get_scope_id(db),
             MethodRef::Declared(d) => d.get_scope_id(db),
@@ -90,14 +91,14 @@ impl<'db> HirNodeInfo<'db> for MethodRef<'db> {
 }
 
 impl<'db> HasName<'db> for MethodRef<'db> {
-    fn get_name_ident(&self, db: &'db dyn BaseDatabase) -> Ident {
+    fn get_name_ident(&self, db: &'db dyn WorkspaceDataBase) -> Ident {
         match self {
             MethodRef::Prototype(p) => p.get_name_ident(db),
             MethodRef::Declared(d) => d.get_name_ident(db),
         }
     }
 
-    fn get_name_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_name_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
         match self {
             MethodRef::Prototype(p) => p.get_name_id(db),
             MethodRef::Declared(d) => d.get_name_id(db),
@@ -140,7 +141,7 @@ pub struct InheritedMethodSet<'db> {
 
 impl<'db> InheritedMethodSet<'db> {
     fn new(
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         methods: FxHashMap<Ident, InheritedMethod<'db>>,
         duplicates: Vec<(InheritedMethod<'db>, InheritedMethod<'db>)>,
         unresolved: Vec<SpanNamespaceAccess<'db>>,
@@ -166,7 +167,7 @@ impl<'db> InheritedMethod<'db> {
 }
 
 #[salsa::tracked(returns(ref))]
-pub fn inherited_methods<'db>(db: &'db dyn BaseDatabase, pou: Pou<'db>) -> InheritedMethodSet<'db> {
+pub fn inherited_methods<'db>(db: &'db dyn WorkspaceDataBase, pou: Pou<'db>) -> InheritedMethodSet<'db> {
     let mut methods = FxHashMap::default();
     let mut duplicates = vec![];
     let mut unresolved = vec![];

@@ -4,6 +4,7 @@ use std::sync::Arc;
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::default::db::tracked::get_ast;
 use auto_lsp::default::db::{BaseDatabase, file::File};
+use db::WorkspaceDataBase;
 use rustc_hash::FxHashMap;
 use tracing::info_span;
 
@@ -17,7 +18,7 @@ use crate::hir_def::scope::{Scope, ScopeId};
 /// Returns the semantic index of a given file
 #[tracing::instrument(skip_all, name = "query_semantic_index")]
 #[salsa::tracked(returns(ref), no_eq)]
-pub fn semantic_index<'db>(db: &'db dyn BaseDatabase, file: File) -> SemanticIndex<'db> {
+pub fn semantic_index<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> SemanticIndex<'db> {
     let ast = info_span!("build AST").in_scope(|| get_ast(db, file));
     let root = match ast.get_root() {
         Some(root) => root,
@@ -71,14 +72,14 @@ impl<'db> SemanticIndex<'db> {
         }
     }
 
-    pub fn pous(&'db self, db: &'db dyn BaseDatabase) -> &'db Vec<Pou<'db>> {
+    pub fn pous(&'db self, db: &'db dyn WorkspaceDataBase) -> &'db Vec<Pou<'db>> {
         &self.global_pous
     }
 
     /// Returns a [`ScopeIterator`] starting from the given scope.
     pub fn scope_iterator(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         scope: ScopeId<'db>,
     ) -> ScopeIterator<'_> {
         ScopeIterator::new(db, &self.scopes, &scope)
@@ -94,21 +95,21 @@ impl<'db> SemanticIndex<'db> {
 ///
 /// Panics if the scope does not belong to the same file as the semantic index.
 #[salsa::tracked(returns(deref))]
-pub fn get_scope<'db>(db: &'db dyn BaseDatabase, id: ScopeId<'db>) -> Arc<Scope<'db>> {
+pub fn get_scope<'db>(db: &'db dyn WorkspaceDataBase, id: ScopeId<'db>) -> Arc<Scope<'db>> {
     let sema = semantic_index(db, id.file(db));
     Arc::clone(&sema.scopes[&id.scope(db)])
 }
 
 /// Iterator over scopes in a given scope hierarchy
 pub struct ScopeIterator<'db> {
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     scopes: &'db FxHashMap<usize, Arc<Scope<'db>>>,
     next_id: Option<ScopeId<'db>>,
 }
 
 impl<'db> ScopeIterator<'db> {
     pub fn new(
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         scopes: &'db FxHashMap<usize, Arc<Scope<'db>>>,
         scope: &ScopeId<'db>,
     ) -> Self {

@@ -1,4 +1,5 @@
 use auto_lsp::default::db::{BaseDatabase, file::File};
+use db::WorkspaceDataBase;
 
 use crate::{
     HasName,
@@ -9,7 +10,7 @@ use crate::{
 // Construct a symbol index for all POUs in the given file
 #[tracing::instrument(skip_all)]
 #[salsa::tracked(no_eq)]
-pub fn file_symbol_index<'db>(db: &'db dyn BaseDatabase, file: File) -> SymbolIndex<'db> {
+pub fn file_symbol_index<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> SymbolIndex<'db> {
     let sema = semantic_index(db, file);
     let mut items = Vec::new();
 

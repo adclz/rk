@@ -3,10 +3,11 @@ use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::request::{GotoDeclarationParams, GotoDeclarationResponse},
 };
+use db::WorkspaceDataBase;
 use ide_proto::to_proto::{AsProtocol, hir_node::descendant_at};
 
 pub fn go_to_declaration(
-    db: &impl BaseDatabase,
+    db: &impl WorkspaceDataBase,
     params: GotoDeclarationParams,
 ) -> anyhow::Result<Option<GotoDeclarationResponse>> {
     let uri = &params.text_document_position_params.text_document.uri;

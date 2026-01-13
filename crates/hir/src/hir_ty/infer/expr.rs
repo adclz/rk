@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 
 use crate::{
     CallSite,
@@ -32,7 +33,7 @@ impl<'db> InferExprCtx<'db> {
 
     pub fn resolve_expr(
         &mut self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         curr_expr: Expr<'db>,
         inference_results: &mut BodyInferenceResult<'db>,
     ) -> Type<'db> {
@@ -77,7 +78,7 @@ impl<'db> InferExprCtx<'db> {
 
     fn infer_primary(
         &mut self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         to: &PrimaryExpr<'db>,
         inference_result: &mut BodyInferenceResult<'db>,
     ) -> Type<'db> {
@@ -165,7 +166,7 @@ impl<'db> InferExprCtx<'db> {
 
     pub fn check_expr(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         expr: Expr<'db>,
         inference_results: &mut BodyInferenceResult<'db>,
     ) {
@@ -297,7 +298,7 @@ impl<'db> InferExprCtx<'db> {
 
     pub fn coerce_var_decl_with_expr(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         var: VariableDecl<'db>,
         rhs: Expr<'db>,
         inference_results: &mut BodyInferenceResult<'db>,
@@ -322,7 +323,7 @@ impl<'db> InferExprCtx<'db> {
 
     pub fn coerce_var_access_with_expr(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         var: VariableAccess<'db>,
         rhs: Expr<'db>,
         inference_results: &mut BodyInferenceResult<'db>,
@@ -351,7 +352,7 @@ impl<'db> InferExprCtx<'db> {
 
     pub fn coerce_type_with_expr(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         lhs: Type<'db>,
         rhs: Expr<'db>,
         inference_results: &mut BodyInferenceResult<'db>,
@@ -376,7 +377,7 @@ impl<'db> InferExprCtx<'db> {
 
     fn coerce_expressions(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         left: Expr<'db>,
         right: Expr<'db>,
         inference_results: &mut BodyInferenceResult<'db>,

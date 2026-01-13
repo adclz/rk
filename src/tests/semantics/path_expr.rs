@@ -1,6 +1,7 @@
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::default::db::file::File;
 use db::RootDatabase;
+use db::WorkspaceDataBase;
 use hir::HirNodeInfo;
 use hir::hir_ty::body_inference::infer_body_scope;
 use insta::assert_snapshot;
@@ -14,7 +15,7 @@ use crate::tests::utils::with_db;
 /// Utility to collect all path expressions in a given source file.
 /// The output is a list of lines with the format:
 /// `<offset> <type>`
-fn collect_path_expressions(db: &dyn BaseDatabase, file: File, pou_name: &str) -> String {
+fn collect_path_expressions(db: &dyn WorkspaceDataBase, file: File, pou_name: &str) -> String {
     let pou = find_pou_with_name(db, file, pou_name).unwrap();
 
     let mut result = vec![];

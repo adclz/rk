@@ -6,6 +6,33 @@ use crate::tests::utils::test_diagnostics;
 use crate::tests::utils::with_db;
 
 #[rstest]
+fn old_syntax_config(mut with_db: RootDatabase) {
+    let source = r#"
+CONFIGURATION cfg
+    VAR_GLOBAL w: UINT; END_VAR
+    
+    RESOURCE STATION_1 ON PROCESSOR_TYPE_1
+        VAR_GLOBAL z1: BYTE; END_VAR
+    END_RESOURCE
+
+END_CONFIGURATION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    Error: 
+       ,-[ file:///test0.st:2:1 ]
+       |
+     2 | ,-> CONFIGURATION cfg
+       : :   
+     9 | |-> END_CONFIGURATION
+       | |                      
+       | `---------------------- deprecated syntax for CONFIG declaration
+       | |   
+       | |   Note: use config.toml to declare resources and tasks
+    ---'
+    ");
+}
+
+#[rstest]
 fn missing_identifier(mut with_db: RootDatabase) {
     let source = r#"
 NAMESPACE

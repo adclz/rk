@@ -3,10 +3,11 @@ use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{CodeActionOrCommand, CodeActionParams},
 };
+use db::WorkspaceDataBase;
 use hir::{check::diagnostics_for_file, hir_def::semantic_index::semantic_index};
 
 pub fn code_actions(
-    db: &impl BaseDatabase,
+    db: &impl WorkspaceDataBase,
     params: CodeActionParams,
 ) -> anyhow::Result<Option<Vec<CodeActionOrCommand>>> {
     let uri = &params.text_document.uri;

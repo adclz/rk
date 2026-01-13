@@ -11,3 +11,4 @@ publish = false
 auto-lsp = { workspace = true }
 tree-sitter-rk = { workspace = true }
 topiary-core = { workspace = true }
+db = { workspace = true }

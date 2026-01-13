@@ -3,10 +3,11 @@ use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{DocumentFormattingParams, TextEdit},
 };
+use db::WorkspaceDataBase;
 use formatter::format;
 
 pub fn formatting(
-    db: &impl BaseDatabase,
+    db: &impl WorkspaceDataBase,
     params: DocumentFormattingParams,
 ) -> anyhow::Result<Option<Vec<TextEdit>>> {
     let uri = &params.text_document.uri;

@@ -4,11 +4,12 @@ use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{DocumentSymbolParams, DocumentSymbolResponse},
 };
+use db::WorkspaceDataBase;
 use hir::hir_def::semantic_index::semantic_index;
 use ide_proto::to_proto::ToProtocol;
 
 pub fn document_symbols(
-    db: &impl BaseDatabase,
+    db: &impl WorkspaceDataBase,
     params: DocumentSymbolParams,
 ) -> anyhow::Result<Option<DocumentSymbolResponse>> {
     let uri = params.text_document.uri;

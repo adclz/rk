@@ -1,4 +1,5 @@
 use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
+use db::WorkspaceDataBase;
 use ide_diagnostic::{IdeDiagnostic, Related, diag};
 
 use crate::{
@@ -136,7 +137,7 @@ impl<'db> From<TypeError<'db>> for BodyInferenceError<'db> {
 }
 
 impl<'db> ToIdeDiagnostic<'db> for BodyInferenceError<'db> {
-    fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
+    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase) -> IdeDiagnostic {
         match self {
             Self::IsVarInput { var, access } => {
                 
@@ -401,14 +402,14 @@ impl<'db> From<InitExpr<'db>> for InitOrExpr<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for InitOrExpr<'db> {
-    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
         match self {
             InitOrExpr::Expr(expr) => expr.get_id(db),
             InitOrExpr::InitExpr(expr) => expr.get_id(db),
         }
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
         match self {
             InitOrExpr::Expr(expr) => expr.get_scope_id(db),
             InitOrExpr::InitExpr(expr) => expr.get_scope_id(db),
@@ -470,7 +471,7 @@ pub enum TypeError<'db> {
 }
 
 impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
-    fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
+    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase) -> IdeDiagnostic {
         match self {
             Self::NotAssignable {
                 base_target,
@@ -601,7 +602,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
     }
 }
 
-fn adjustment_to_string(db: &dyn BaseDatabase, value: Type, adj: &Option<Adjustment>) -> String {
+fn adjustment_to_string(db: &dyn WorkspaceDataBase, value: Type, adj: &Option<Adjustment>) -> String {
     match adj {
         Some(adj) => match adj.kind {
             Adjust::Ref => {

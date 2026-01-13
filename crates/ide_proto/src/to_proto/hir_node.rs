@@ -4,6 +4,7 @@ use auto_lsp::{
     core::span::Span,
     default::db::{BaseDatabase, file::File},
 };
+use db::WorkspaceDataBase;
 use hir::{
     AstId, HirNodeInfo,
     hir_def::{
@@ -39,11 +40,11 @@ impl<'db> SpanNamespaceAccessContext<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for SpanNamespaceAccessContext<'db> {
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
         self.get_access().get_scope_id(db)
     }
 
-    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
         self.get_access().get_id(db)
     }
 }
@@ -61,11 +62,11 @@ impl<'db> From<(InitExpr<'db>, Type<'db>)> for InitExprWithTypeContext<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for InitExprWithTypeContext<'db> {
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
         self.init_expr.get_scope_id(db)
     }
 
-    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
         self.init_expr.get_id(db)
     }
 }
@@ -89,7 +90,7 @@ pub enum HirNode<'db> {
 }
 
 impl<'db> HirNode<'db> {
-    pub fn get_span(&'db self, db: &'db dyn BaseDatabase) -> Span {
+    pub fn get_span(&'db self, db: &'db dyn WorkspaceDataBase) -> Span {
         match self {
             HirNode::Namespace(n) => n.get_span(db),
             HirNode::SpanNamespaceAccess(s) => s.get_span(db),
@@ -108,7 +109,7 @@ impl<'db> HirNode<'db> {
         }
     }
 
-    pub fn get_scope_id(&'db self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+    pub fn get_scope_id(&'db self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
         match self {
             HirNode::Namespace(n) => n.get_scope_id(db),
             HirNode::SpanNamespaceAccess(s) => s.get_scope_id(db),
@@ -129,7 +130,7 @@ impl<'db> HirNode<'db> {
 }
 
 pub fn descendant_at<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     file: File,
     offset: usize,
 ) -> Option<HirNode<'db>> {

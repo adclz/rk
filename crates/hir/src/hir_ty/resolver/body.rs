@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 
 use crate::{
     CallSite,
@@ -42,7 +43,7 @@ impl<'db> InferenceCtx<'db> {
 
     pub fn check_statements(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         resolver: Resolver<'db>,
         statements: &'db [Stmt<'db>],
         nested_scope: NestedScope,
@@ -261,7 +262,7 @@ impl<'db> InferenceCtx<'db> {
 
     fn infer_and_check_expr(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         infer: &mut InferExprCtx<'db>,
         expr: Expr<'db>,
         ctx: &mut BodyInferenceResult<'db>,

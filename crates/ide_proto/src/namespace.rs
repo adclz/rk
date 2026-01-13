@@ -6,6 +6,7 @@ use auto_lsp::{
         MarkedString,
     },
 };
+use db::WorkspaceDataBase;
 use hir::{
     HirNodeInfo,
     hir_def::{namespace::NamespaceDecl, semantic_index::get_scope},
@@ -14,7 +15,7 @@ use hir::{
 use crate::{completions, to_proto::ToProtocol};
 
 impl<'db> ToProtocol<'db> for NamespaceDecl<'db> {
-    fn hover(&'db self, db: &'db dyn BaseDatabase, _offset: usize) -> Option<Hover> {
+    fn hover(&'db self, db: &'db dyn WorkspaceDataBase, _offset: usize) -> Option<Hover> {
         let ns = self.path(db).to_string(db);
         Some(Hover {
             contents: HoverContents::Scalar(MarkedString::from_markdown(
@@ -31,7 +32,7 @@ NAMESPACE {ns}
         })
     }
 
-    fn document_symbols(&self, db: &'db dyn BaseDatabase, builder: &mut DocumentSymbolsBuilder) {
+    fn document_symbols(&self, db: &'db dyn WorkspaceDataBase, builder: &mut DocumentSymbolsBuilder) {
         let mut nested_builder = DocumentSymbolsBuilder::default();
         self.namespaces(db)
             .iter()
@@ -59,7 +60,7 @@ NAMESPACE {ns}
         });
     }
 
-    fn inlay_hint(&'db self, db: &'db dyn BaseDatabase) -> Option<auto_lsp::lsp_types::InlayHint> {
+    fn inlay_hint(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<auto_lsp::lsp_types::InlayHint> {
         Some(InlayHint {
             label: InlayHintLabel::String(format!("NAMESPACE {}", self.path(db).to_string(db))),
             position: self.get_span(db).lsp().end,
@@ -74,7 +75,7 @@ NAMESPACE {ns}
 
     fn completion(
         &'db self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         offset: usize,
     ) -> Option<Vec<CompletionItem>> {
         let _scope = get_scope(db, self.scope_id(db));

@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
@@ -21,7 +22,7 @@ use crate::{
 };
 
 impl<'db> DataTypeCheck<'db> for Enum<'db> {
-    fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<IdeDiagnostic>) {
+    fn check(&'db self, db: &'db dyn WorkspaceDataBase, errors: &mut Vec<IdeDiagnostic>) {
         // Check underlying type
         if let Some(spec) = self.typ(db) {
             let typ = Type::new_spec(db, spec);

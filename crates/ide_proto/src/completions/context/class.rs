@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 use hir::{HirNodeInfo, hir_def::pous::class::Class};
 
 use crate::completions::{
@@ -8,7 +9,7 @@ use crate::completions::{
 };
 
 impl<'db, 'scope> PrecizeCompletion<'db, 'scope> for Class<'db> {
-    fn head_completion(&'db self, db: &'db dyn BaseDatabase, ctx: PouCompletionCtx<'db, 'scope>) {
+    fn head_completion(&'db self, db: &'db dyn WorkspaceDataBase, ctx: PouCompletionCtx<'db, 'scope>) {
         if ctx.scope_ctx.offset <= ctx.name_span.start_byte {
             // Before the name of POU, returns nothing
             return;

@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
@@ -8,7 +9,7 @@ use crate::{
 
 #[salsa::tracked(returns(ref))]
 pub fn struct_symbol_index<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     strukt: Struct<'db>,
 ) -> Vec<SymbolIndex<'db>> {
     let mut struct_fields = vec![];
@@ -24,7 +25,7 @@ pub fn struct_symbol_index<'db>(
 }
 
 pub fn fuzzy_struct_fields<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     strukt: Struct<'db>,
     diag: &mut IdeDiagnostic,
     query: &str,

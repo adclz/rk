@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
@@ -11,7 +12,7 @@ use crate::{
 };
 
 impl<'db> Check<'db> for Using<'db> {
-    fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<IdeDiagnostic>) {
+    fn check(&'db self, db: &'db dyn WorkspaceDataBase, errors: &mut Vec<IdeDiagnostic>) {
         if namespace_index(db, *self.path(db)).is_empty() {
             errors.push(AccessError::InvalidUsingDirective { using: *self }.to_diagnostic(db))
         }

@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
@@ -35,7 +36,7 @@ impl<'db> Type<'db> {
     // Type coercion check
     pub fn coerce_with_type(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         to: Type<'db>,
         adjustments: Option<&[Adjustment<'db>]>,
         resolver: Resolver<'db>,
@@ -150,7 +151,7 @@ impl<'db> Type<'db> {
 
     pub fn check_assignable(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         call_site: CallSite<'db>,
         ctx: &mut BodyInferenceResult<'db>,
     ) {
@@ -208,7 +209,7 @@ impl<'db> Type<'db> {
 impl<'db> CoerceError<'db> {
     pub fn into_non_assignable(
         self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         base_target: Type<'db>,
         call_site: CallSite<'db>,
     ) -> IdeDiagnostic {
@@ -224,7 +225,7 @@ impl<'db> CoerceError<'db> {
 
     pub fn into_non_comparable(
         self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         base_target: Type<'db>,
         call_site: CallSite<'db>,
     ) -> IdeDiagnostic {
@@ -240,7 +241,7 @@ impl<'db> CoerceError<'db> {
 
     pub fn into_non_addable(
         self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         base_target: Type<'db>,
         call_site: CallSite<'db>,
         operator: AddOperatorKind,
@@ -258,7 +259,7 @@ impl<'db> CoerceError<'db> {
 
     pub fn into_non_multiplicable(
         self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         base_target: Type<'db>,
         call_site: CallSite<'db>,
         operator: MultOperatorKind,
@@ -276,7 +277,7 @@ impl<'db> CoerceError<'db> {
 
     pub fn into_non_powerable(
         self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         base_target: Type<'db>,
         call_site: CallSite<'db>,
     ) -> IdeDiagnostic {

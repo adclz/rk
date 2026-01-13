@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 use ide_diagnostic::{IdeDiagnostic, Related};
 
 use crate::{
@@ -40,7 +41,7 @@ impl<'db> Type<'db> {
         }
     }
 
-    pub fn with_name(&self, db: &'db dyn BaseDatabase) -> Option<String> {
+    pub fn with_name(&self, db: &'db dyn WorkspaceDataBase) -> Option<String> {
         Some(
             match self {
                 Self::Function(f) => f.get_name_ident(db).text(db),
@@ -54,7 +55,7 @@ impl<'db> Type<'db> {
             .to_string(),
         )
     }
-    pub fn type_name(&self, db: &'db dyn BaseDatabase) -> String {
+    pub fn type_name(&self, db: &'db dyn WorkspaceDataBase) -> String {
         match self {
             Self::Elementary(elem) => match elem {
                 ElementarySpec::Bool => "BOOL",
@@ -120,7 +121,7 @@ impl<'db> Type<'db> {
         }
     }
 
-    pub fn full_type_name(&self, db: &'db dyn BaseDatabase) -> String {
+    pub fn full_type_name(&self, db: &'db dyn WorkspaceDataBase) -> String {
         match self {
             Self::Array(array) => {
                 let elem_type = Type::new_spec(db, array.of_type(db)).type_name(db);
@@ -163,7 +164,7 @@ impl<'db> Type<'db> {
         }
     }
 
-    pub fn with_location(&self, db: &'db dyn BaseDatabase, diag: &mut IdeDiagnostic) {
+    pub fn with_location(&self, db: &'db dyn WorkspaceDataBase, diag: &mut IdeDiagnostic) {
         match self {
             Self::Variable(v) => match v.spec(db).kind(db) {
                 SpecKind::Target(t) => {
@@ -268,7 +269,7 @@ impl<'db> Type<'db> {
 }
 
 impl<'db> InitExpr<'db> {
-    pub fn to_string(&self, db: &'db dyn BaseDatabase) -> &str {
+    pub fn to_string(&self, db: &'db dyn WorkspaceDataBase) -> &str {
         match self.kind(db) {
             InitExprKind::StructInit { .. } => "STRUCT init",
             InitExprKind::ArrayInit { .. } => "ARRAY init",
@@ -280,7 +281,7 @@ impl<'db> InitExpr<'db> {
 }
 
 impl<'db> Expr<'db> {
-    pub fn to_string(&self, db: &'db dyn BaseDatabase) -> &str {
+    pub fn to_string(&self, db: &'db dyn WorkspaceDataBase) -> &str {
         match self.expr(db) {
             ExprKind::PrimaryExpr(primary_expr) => primary_expr.to_string(db),
             ExprKind::AddOperator {
@@ -310,7 +311,7 @@ impl<'db> Expr<'db> {
 }
 
 impl<'db> PrimaryExpr<'db> {
-    pub fn to_string(&self, db: &'db dyn BaseDatabase) -> &str {
+    pub fn to_string(&self, db: &'db dyn WorkspaceDataBase) -> &str {
         match self {
             PrimaryExpr::Literal(lit) => match lit {
                 Elementary::Bool(_) => "BOOL literal",

@@ -3,6 +3,7 @@ use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{CompletionItem, GotoDefinitionResponse, Hover, request::GotoDeclarationResponse},
 };
+use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
     hir_def::{interned::namespace::SpanNamespaceAccess, pous::pou::Pou},
@@ -17,21 +18,21 @@ use crate::{
 };
 
 impl<'db> ToProtocol<'db> for SpanNamespaceAccessContext<'db> {
-    fn hover(&'db self, db: &'db dyn BaseDatabase, _offset: usize) -> Option<Hover> {
+    fn hover(&'db self, db: &'db dyn WorkspaceDataBase, _offset: usize) -> Option<Hover> {
         match resolve_namespace_access(db, &self.get_access().path) {
             Some(resolved) => resolved.hover(db, resolved.get_name_span(db).start_byte),
             None => None,
         }
     }
 
-    fn declaration(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDeclarationResponse> {
+    fn declaration(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDeclarationResponse> {
         match resolve_namespace_access(db, &self.get_access().path) {
             Some(resolved) => resolved.declaration(db),
             None => None,
         }
     }
 
-    fn definition(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDefinitionResponse> {
+    fn definition(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDefinitionResponse> {
         match resolve_namespace_access(db, &self.get_access().path) {
             Some(resolved) => resolved.definition(db),
             None => None,
@@ -40,7 +41,7 @@ impl<'db> ToProtocol<'db> for SpanNamespaceAccessContext<'db> {
 
     fn completion(
         &'db self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         _offset: usize,
     ) -> Option<Vec<CompletionItem>> {
         let mut results = vec![];
@@ -84,7 +85,7 @@ impl<'db> ToProtocol<'db> for SpanNamespaceAccessContext<'db> {
         Some(results)
     }
 
-    fn semantic_tokens(&'db self, db: &'db dyn BaseDatabase, builder: &mut SemanticTokensBuilder) {
+    fn semantic_tokens(&'db self, db: &'db dyn WorkspaceDataBase, builder: &mut SemanticTokensBuilder) {
         match self {
             Self::Extends(ext) => {
                 push_fragments(db, ext, builder);
@@ -126,7 +127,7 @@ impl<'db> ToProtocol<'db> for SpanNamespaceAccessContext<'db> {
 }
 
 pub fn push_fragments(
-    db: &dyn BaseDatabase,
+    db: &dyn WorkspaceDataBase,
     access: &SpanNamespaceAccess,
     builder: &mut SemanticTokensBuilder,
 ) {

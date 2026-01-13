@@ -1,4 +1,5 @@
 use auto_lsp::{core::span::Span, default::db::BaseDatabase, lsp_types::CompletionItem};
+use db::WorkspaceDataBase;
 use hir::{
     HasName,
     hir_def::{
@@ -18,7 +19,7 @@ pub mod interface;
 pub mod method;
 
 pub trait PrecizeCompletion<'db, 'scope> {
-    fn head_completion(&'db self, db: &'db dyn BaseDatabase, ctx: PouCompletionCtx<'db, 'scope>);
+    fn head_completion(&'db self, db: &'db dyn WorkspaceDataBase, ctx: PouCompletionCtx<'db, 'scope>);
 }
 
 pub struct ScopeCompletionCtx<'db> {
@@ -47,7 +48,7 @@ impl<'db> ScopeCompletionCtx<'db> {
         std::mem::take(&mut self.items)
     }
 
-    pub fn scoped(mut self, db: &'db dyn BaseDatabase) -> Self {
+    pub fn scoped(mut self, db: &'db dyn WorkspaceDataBase) -> Self {
         match &get_scope(db, self.scope).kind {
             ScopeKind::Pou(p) => match p {
                 Pou::FunctionBlock(f) => f.head_completion(
@@ -98,7 +99,7 @@ impl<'db> ScopeCompletionCtx<'db> {
         self
     }
 
-    pub fn query_scope_items(&mut self, db: &'db dyn BaseDatabase) {
+    pub fn query_scope_items(&mut self, db: &'db dyn WorkspaceDataBase) {
         let builder = CompletionBuilder::default()
             .with_import(db, self.scope)
             .with_signature();

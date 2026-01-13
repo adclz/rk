@@ -5,6 +5,7 @@ use auto_lsp::{
         request::GotoDeclarationResponse,
     },
 };
+use db::WorkspaceDataBase;
 use hir::{
     HirNodeInfo,
     hir_def::expressions::expression::InitExprKind,
@@ -16,7 +17,7 @@ use crate::{
 };
 
 impl<'db> ToProtocol<'db> for InitExprWithTypeContext<'db> {
-    fn inlay_hint(&'db self, db: &'db dyn BaseDatabase) -> Option<InlayHint> {
+    fn inlay_hint(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<InlayHint> {
         match self.init_expr.kind(db) {
             InitExprKind::StructElement { name, value: _ } => Some(InlayHint {
                 position: name.get_span(db).lsp().end,
@@ -32,17 +33,17 @@ impl<'db> ToProtocol<'db> for InitExprWithTypeContext<'db> {
         }
     }
 
-    fn declaration(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDeclarationResponse> {
+    fn declaration(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDeclarationResponse> {
         self.ty.declaration(db)
     }
 
-    fn definition(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDefinitionResponse> {
+    fn definition(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDefinitionResponse> {
         self.ty.definition(db)
     }
 
     fn hover(
         &'db self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         offset: usize,
     ) -> Option<auto_lsp::lsp_types::Hover> {
         self.ty.hover(db, offset, &self.init_expr)

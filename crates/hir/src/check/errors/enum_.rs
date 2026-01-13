@@ -1,4 +1,5 @@
 use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
+use db::WorkspaceDataBase;
 use ide_diagnostic::{IdeDiagnostic, diag};
 
 use crate::{
@@ -25,7 +26,7 @@ impl<'db> From<EnumError<'db>> for AnalysisError<'db> {
 }
 
 impl<'db> ToIdeDiagnostic<'db> for EnumError<'db> {
-    fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
+    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase) -> IdeDiagnostic {
         match self {
             EnumError::InvalidEnumType { value, typ } => {
                 let mut diag = diag()

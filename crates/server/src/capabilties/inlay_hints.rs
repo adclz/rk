@@ -5,10 +5,11 @@ use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{InlayHint, InlayHintParams},
 };
+use db::WorkspaceDataBase;
 use hir::hir_def::semantic_index::semantic_index;
 use ide_proto::to_proto::{AsProtocol, walk::WalkHir};
 
-pub fn inlay_hints<Db: BaseDatabase + Clone + RefUnwindSafe>(
+pub fn inlay_hints<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
     db: &Db,
     params: InlayHintParams,
 ) -> anyhow::Result<Option<Vec<InlayHint>>> {

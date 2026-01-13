@@ -9,6 +9,7 @@ use auto_lsp::{
         MarkupKind, SymbolKind, request::GotoDeclarationResponse,
     },
 };
+use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
     hir_def::pous::variable::{VariableDecl, VariableKind},
@@ -18,7 +19,7 @@ use hir::{
 use crate::to_proto::{HasComment, ToProtocol};
 
 impl<'db> ToProtocol<'db> for VariableDecl<'db> {
-    fn document_symbols(&self, db: &'db dyn BaseDatabase, builder: &mut DocumentSymbolsBuilder) {
+    fn document_symbols(&self, db: &'db dyn WorkspaceDataBase, builder: &mut DocumentSymbolsBuilder) {
         let name = self.name(db).text(db).to_string();
         let name = match name.len() {
             0 => "?".into(),
@@ -37,7 +38,7 @@ impl<'db> ToProtocol<'db> for VariableDecl<'db> {
         });
     }
 
-    fn hover(&'db self, db: &'db dyn BaseDatabase, _offset: usize) -> Option<Hover> {
+    fn hover(&'db self, db: &'db dyn WorkspaceDataBase, _offset: usize) -> Option<Hover> {
         let comment = self.get_comment(db).unwrap_or_default();
         let kind = match self.kind(db) {
             VariableKind::Input => "INPUT",
@@ -70,26 +71,26 @@ impl<'db> ToProtocol<'db> for VariableDecl<'db> {
         })
     }
 
-    fn declaration(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDeclarationResponse> {
+    fn declaration(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDeclarationResponse> {
         Some(GotoDeclarationResponse::Scalar(Location::new(
             self.scope_id(db).file(db).url(db).to_owned(),
             self.get_span(db).into(),
         )))
     }
 
-    fn definition(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDefinitionResponse> {
+    fn definition(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDefinitionResponse> {
         self.spec(db).definition(db)
     }
 
     fn completion(
         &'db self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         offset: usize,
     ) -> Option<Vec<CompletionItem>> {
         self.spec(db).completion(db, offset)
     }
 
-    fn semantic_tokens(&'db self, _db: &'db dyn BaseDatabase, _builder: &mut SemanticTokensBuilder) {
+    fn semantic_tokens(&'db self, _db: &'db dyn WorkspaceDataBase, _builder: &mut SemanticTokensBuilder) {
         /*match self.spec(db).tokens(db, builder) {
             Some((typ, modi)) => {
                 builder.push(

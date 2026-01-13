@@ -9,6 +9,7 @@ use auto_lsp::{
     lsp_types::{DiagnosticSeverity, DiagnosticTag, WorkspaceEdit},
     tree_sitter::{self, Range},
 };
+use db::WorkspaceDataBase;
 use ide_diagnostic::{IdeDiagnostic, Related, action, diag, edit};
 
 use crate::{HirNodeInfo, check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic}, hir_def::program::ProgramDecl};
@@ -96,7 +97,7 @@ impl<'db> From<(File, &ParseErrorAccumulator)> for AnalysisError<'db> {
 }
 
 impl<'db> ToIdeDiagnostic<'db> for SyntaxError<'db> {
-    fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
+    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase) -> IdeDiagnostic {
         match self {
             Self::OldSyntaxConfig(span) => {
                 

@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 use rustc_hash::FxHashMap;
 
 use crate::{
@@ -61,7 +62,7 @@ impl<'db> InferenceTable<'db> {
     /// Forces the current inference to a resolved type
     pub fn set_target_type(
         &mut self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         expr: Option<CallSite<'db>>,
         ty: Type<'db>,
     ) {
@@ -82,7 +83,7 @@ impl<'db> InferenceTable<'db> {
     /// depending on the current inference mode, it may update the mode
     pub fn add_type(
         &mut self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         expr: Expr<'db>,
         value: Type<'db>,
         resolver: Resolver<'db>,
@@ -145,7 +146,7 @@ impl<'db> InferenceTable<'db> {
     /// Resolves completely all inferred types in the table
     pub fn resolve_completly(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         resolver: Resolver<'db>,
         results: &mut BodyInferenceResult<'db>,
     ) {

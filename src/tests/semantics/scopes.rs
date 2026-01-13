@@ -20,7 +20,7 @@ use crate::tests::utils::find_namespace_with_name;
 use crate::tests::utils::test_diagnostics;
 use crate::tests::utils::with_db;
 use crate::tests::utils::{add_sources, find_pou_with_name};
-use db::RootDatabase;
+use db::{RootDatabase, WorkspaceDataBase};
 use std::ops::ControlFlow;
 
 use hir::hir_def::interned::identifier::Ident;
@@ -180,7 +180,7 @@ END_NAMESPACE
 }
 
 /// Utility to collect all using in a given source file.
-fn collect_usings(db: &dyn BaseDatabase, sema: &SemanticIndex) -> String {
+fn collect_usings(db: &dyn WorkspaceDataBase, sema: &SemanticIndex) -> String {
     let mut result = vec![];
     let _ = sema.walk_hir(db, &mut |n| {
         if let HirNode::Using(path) = n {

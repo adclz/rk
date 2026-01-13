@@ -9,7 +9,8 @@ publish = false
 [dependencies]
 auto-lsp = { workspace = true }
 hir = { workspace = true }
-ast = { workspace = true}
+ast = { workspace = true }
+db = { workspace = true }
 serde_json = { workspace = true }
 camelpaste = { workspace = true }
 rustc-hash = { workspace = true }

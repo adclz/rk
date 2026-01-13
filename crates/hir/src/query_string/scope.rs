@@ -1,6 +1,7 @@
 use std::ops::ControlFlow;
 
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
@@ -31,7 +32,7 @@ pub struct ScopeSearchResult<'db> {
 ///
 /// This will return both local POUs and POUs that can be imported via USING directives
 pub fn query_scope_items<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     query: &str,
     scope: ScopeId<'db>,
     filter_pou: impl Fn(&Pou<'db>) -> bool,
@@ -99,7 +100,7 @@ pub struct LocalSearchResult<'db> {
 
 // Iterate through the local scopes and collect local POUs and seen namespaces
 pub fn discover_in_scope<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     scope: ScopeId<'db>,
 ) -> LocalSearchResult<'db> {
     let mut result = LocalSearchResult::default();

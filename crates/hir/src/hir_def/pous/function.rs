@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 
 use crate::{
     AstId, HasName, HirNodeInfo,
@@ -35,21 +36,21 @@ pub struct Function<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for Function<'db> {
-    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
         self.id(db)
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
         self.scope_id(db)
     }
 }
 
 impl<'db> HasName<'db> for Function<'db> {
-    fn get_name_ident(&self, db: &'db dyn BaseDatabase) -> Ident {
+    fn get_name_ident(&self, db: &'db dyn WorkspaceDataBase) -> Ident {
         self.name(db)
     }
 
-    fn get_name_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_name_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
         self.name_id(db)
     }
 }

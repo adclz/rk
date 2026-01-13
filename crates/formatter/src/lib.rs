@@ -2,9 +2,11 @@ use std::sync::LazyLock;
 
 use auto_lsp::{
     anyhow,
-    default::db::{BaseDatabase, file::File},
+    default::db::{file::File},
     lsp_types::{self, TextEdit},
 };
+
+use db::WorkspaceDataBase;
 use topiary_core::{Language, Operation, TopiaryQuery, formatter};
 
 static SURROUND_SPACES: &str = r#"
@@ -352,7 +354,7 @@ pub static TOPIARY_LANG: LazyLock<Language> = LazyLock::new(|| Language {
     indent: Some("\t".into()),
 });
 
-pub fn format(db: &impl BaseDatabase, file: File) -> anyhow::Result<Option<Vec<TextEdit>>> {
+pub fn format(db: &impl WorkspaceDataBase, file: File) -> anyhow::Result<Option<Vec<TextEdit>>> {
     let document = file.document(db);
 
     let mut output = vec![];

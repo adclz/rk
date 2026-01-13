@@ -1,5 +1,6 @@
 use crate::{HasName, Modifier};
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 
 use crate::{
     hir_def::{
@@ -23,7 +24,7 @@ pub enum Pou<'db> {
 }
 
 impl<'db> Pou<'db> {
-    pub fn modifier(&'db self, db: &'db dyn BaseDatabase) -> Modifier {
+    pub fn modifier(&'db self, db: &'db dyn WorkspaceDataBase) -> Modifier {
         match self {
             Pou::Class(class) => class.modifier(db),
             Pou::FunctionBlock(fb) => fb.modifier(db),
@@ -33,7 +34,7 @@ impl<'db> Pou<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for Pou<'db> {
-    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
         match self {
             Pou::Function(f) => f.get_id(db),
             Pou::FunctionBlock(fb) => fb.get_id(db),
@@ -43,7 +44,7 @@ impl<'db> HirNodeInfo<'db> for Pou<'db> {
         }
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
         match self {
             Pou::Function(f) => f.get_scope_id(db),
             Pou::FunctionBlock(fb) => fb.get_scope_id(db),
@@ -55,7 +56,7 @@ impl<'db> HirNodeInfo<'db> for Pou<'db> {
 }
 
 impl<'db> HasName<'db> for Pou<'db> {
-    fn get_name_ident(&self, db: &'db dyn BaseDatabase) -> Ident {
+    fn get_name_ident(&self, db: &'db dyn WorkspaceDataBase) -> Ident {
         match self {
             Pou::Function(f) => f.get_name_ident(db),
             Pou::FunctionBlock(fb) => fb.get_name_ident(db),
@@ -65,7 +66,7 @@ impl<'db> HasName<'db> for Pou<'db> {
         }
     }
 
-    fn get_name_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_name_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
         match self {
             Pou::Function(f) => f.get_name_id(db),
             Pou::FunctionBlock(fb) => fb.get_name_id(db),

@@ -8,6 +8,7 @@ use auto_lsp::{
     default::db::{BaseDatabase, file::File},
     lsp_types::DiagnosticRelatedInformation,
 };
+use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::{FxHashMap, FxHashSet};
 use salsa::Accumulator;
@@ -38,15 +39,15 @@ use crate::{
 };
 
 pub trait Check<'db> {
-    fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<IdeDiagnostic>);
+    fn check(&'db self, db: &'db dyn WorkspaceDataBase, errors: &mut Vec<IdeDiagnostic>);
 }
 
 pub trait DataTypeCheck<'db> {
-    fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<IdeDiagnostic>);
+    fn check(&'db self, db: &'db dyn WorkspaceDataBase, errors: &mut Vec<IdeDiagnostic>);
 }
 
 impl<'db> Check<'db> for SemanticIndex<'db> {
-    fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<IdeDiagnostic>) {
+    fn check(&'db self, db: &'db dyn WorkspaceDataBase, errors: &mut Vec<IdeDiagnostic>) {
         // Get syntax errors
         self.errors
             .iter()

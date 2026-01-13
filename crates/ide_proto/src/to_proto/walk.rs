@@ -2,6 +2,7 @@ use std::ops::ControlFlow;
 
 use auto_lsp::default::db::BaseDatabase;
 
+use db::WorkspaceDataBase;
 use hir::{
     HirNodeInfo,
     hir_def::{
@@ -26,7 +27,7 @@ use hir::{
 use crate::to_proto::hir_node::{HirNode, SpanNamespaceAccessContext};
 
 pub trait WalkHir<'db> {
-    fn walk_hir<F>(&self, db: &'db dyn BaseDatabase, f: &mut F) -> ControlFlow<()>
+    fn walk_hir<F>(&self, db: &'db dyn WorkspaceDataBase, f: &mut F) -> ControlFlow<()>
     where
         F: FnMut(HirNode<'db>) -> ControlFlow<()>;
 }
@@ -34,7 +35,7 @@ pub trait WalkHir<'db> {
 impl<'db> WalkHir<'db> for SemanticIndex<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         f: &mut F,
     ) -> ControlFlow<()> {
         for pou in &self.global_pous {
@@ -50,7 +51,7 @@ impl<'db> WalkHir<'db> for SemanticIndex<'db> {
 impl<'db> WalkHir<'db> for Using<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
         &self,
-        _db: &'db dyn BaseDatabase,
+        _db: &'db dyn WorkspaceDataBase,
         f: &mut F,
     ) -> ControlFlow<()> {
         f(HirNode::Using(*self))
@@ -60,7 +61,7 @@ impl<'db> WalkHir<'db> for Using<'db> {
 impl<'db> WalkHir<'db> for NamespaceDecl<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         f: &mut F,
     ) -> ControlFlow<()> {
         f(HirNode::Namespace(*self))?;
@@ -85,7 +86,7 @@ impl<'db> WalkHir<'db> for NamespaceDecl<'db> {
 impl<'db> WalkHir<'db> for Pou<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         f: &mut F,
     ) -> ControlFlow<()> {
         f(HirNode::PouDecl(*self))?;
@@ -195,7 +196,7 @@ impl<'db> WalkHir<'db> for Pou<'db> {
 impl<'db> WalkHir<'db> for VariableDecl<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         f: &mut F,
     ) -> ControlFlow<()> {
         f(HirNode::VariableDecl(*self))?;
@@ -213,7 +214,7 @@ impl<'db> WalkHir<'db> for VariableDecl<'db> {
 impl<'db> WalkHir<'db> for MethodRef<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         f: &mut F,
     ) -> ControlFlow<()> {
         f(HirNode::MethodRef(*self))?;
@@ -237,7 +238,7 @@ impl<'db> WalkHir<'db> for MethodRef<'db> {
 impl<'db> WalkHir<'db> for Spec<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
         &self,
-        _db: &'db dyn BaseDatabase,
+        _db: &'db dyn WorkspaceDataBase,
         f: &mut F,
     ) -> ControlFlow<()> {
         f(HirNode::Spec(*self))
@@ -247,7 +248,7 @@ impl<'db> WalkHir<'db> for Spec<'db> {
 impl<'db> WalkHir<'db> for Expr<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
         &self,
-        _db: &'db dyn BaseDatabase,
+        _db: &'db dyn WorkspaceDataBase,
         f: &mut F,
     ) -> ControlFlow<()> {
         f(HirNode::Expr(*self))?;
@@ -259,7 +260,7 @@ impl<'db> WalkHir<'db> for Expr<'db> {
 impl<'db> WalkHir<'db> for BeginPathExpr<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
         &self,
-        _db: &'db dyn BaseDatabase,
+        _db: &'db dyn WorkspaceDataBase,
         f: &mut F,
     ) -> ControlFlow<()> {
         f(HirNode::BeginPathExpr(*self))?;
@@ -271,7 +272,7 @@ impl<'db> WalkHir<'db> for BeginPathExpr<'db> {
 impl<'db> WalkHir<'db> for PathExpr<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
         &self,
-        _db: &'db dyn BaseDatabase,
+        _db: &'db dyn WorkspaceDataBase,
         f: &mut F,
     ) -> ControlFlow<()> {
         f(HirNode::PathExpr(*self))?;
@@ -283,7 +284,7 @@ impl<'db> WalkHir<'db> for PathExpr<'db> {
 impl<'db> WalkHir<'db> for VariableAccess<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
         &self,
-        _db: &'db dyn BaseDatabase,
+        _db: &'db dyn WorkspaceDataBase,
         f: &mut F,
     ) -> ControlFlow<()> {
         f(HirNode::VariableAccess(*self))?;
@@ -295,7 +296,7 @@ impl<'db> WalkHir<'db> for VariableAccess<'db> {
 impl<'db> WalkHir<'db> for ParamAssign<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
         &self,
-        _db: &'db dyn BaseDatabase,
+        _db: &'db dyn WorkspaceDataBase,
         f: &mut F,
     ) -> ControlFlow<()> {
         f(HirNode::Param(*self))?;
@@ -307,7 +308,7 @@ impl<'db> WalkHir<'db> for ParamAssign<'db> {
 impl<'db> WalkHir<'db> for Stmt<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         f: &mut F,
     ) -> ControlFlow<()> {
         match self.stmt(db) {

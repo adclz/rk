@@ -1,4 +1,5 @@
 use auto_lsp::default::db::{BaseDatabase, file::File};
+use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
@@ -8,7 +9,7 @@ use crate::{
     hir_def::{interned::identifier::Ident, pous::pou::Pou, semantic_index::semantic_index},
 };
 
-pub fn check_duplicate_pous(db: &dyn BaseDatabase, file: File) -> Vec<IdeDiagnostic> {
+pub fn check_duplicate_pous(db: &dyn WorkspaceDataBase, file: File) -> Vec<IdeDiagnostic> {
     let mut errors: Vec<IdeDiagnostic> = vec![];
     let self_pous = global_pous_in_file(db, file);
 
@@ -55,7 +56,7 @@ pub fn check_duplicate_pous(db: &dyn BaseDatabase, file: File) -> Vec<IdeDiagnos
 }
 
 pub fn global_pous_in_file<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     file: File,
 ) -> FxHashMap<Ident, Vec<Pou<'db>>> {
     let mut map: std::collections::HashMap<Ident, Vec<Pou<'db>>, rustc_hash::FxBuildHasher> =

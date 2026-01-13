@@ -4,6 +4,7 @@ use crate::hir_def::pous::variable::DirectVariable;
 use crate::hir_def::scope::ScopeId;
 use crate::{AstId, HirNodeInfo};
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 
 #[salsa::tracked(debug)]
 pub struct Expr<'db> {
@@ -125,11 +126,11 @@ pub struct BeginPathExpr<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for BeginPathExpr<'db> {
-    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
         self.id(db)
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
         self.scope_id(db)
     }
 }
@@ -146,7 +147,7 @@ pub struct PathExpr<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for PathExpr<'db> {
-    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
         match &self.expr(db) {
             PathExprKind::Field(field_expr) => match field_expr.var {
                 VarAccess::Simple(ref simple) => simple.id,
@@ -160,13 +161,13 @@ impl<'db> HirNodeInfo<'db> for PathExpr<'db> {
         }
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
         self.scope_id(db)
     }
 }
 
 impl<'db> BeginPathExpr<'db> {
-    pub fn to_string(&self, db: &'db dyn BaseDatabase) -> &'db str {
+    pub fn to_string(&self, db: &'db dyn WorkspaceDataBase) -> &'db str {
         match self.invocation(db) {
             Some(invocation) => match invocation.kind(db) {
                 InvocationKind::Super => "SUPER",
@@ -182,7 +183,7 @@ impl<'db> BeginPathExpr<'db> {
 }
 
 impl<'db> PathExpr<'db> {
-    pub fn ident(&self, db: &'db dyn BaseDatabase) -> SpanIdent<'db> {
+    pub fn ident(&self, db: &'db dyn WorkspaceDataBase) -> SpanIdent<'db> {
         match &self.expr(db) {
             PathExprKind::Field(field_expr) => match field_expr.var {
                 VarAccess::Simple(ref simple) => *simple,
@@ -241,11 +242,11 @@ pub struct ParamAssign<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for ParamAssign<'db> {
-    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
         self.id(db)
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
         self.scope_id(db)
     }
 }
@@ -311,11 +312,11 @@ pub enum VariableAccessKind<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for VariableAccess<'db> {
-    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
         self.id(db)
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
         self.scope_id(db)
     }
 }
@@ -395,11 +396,11 @@ pub enum IntegerKind {
 }
 
 impl<'db> HirNodeInfo<'db> for Expr<'db> {
-    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
         self.id(db)
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
         self.scope_id(db)
     }
 }
@@ -435,11 +436,11 @@ pub enum InitExprKind<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for InitExpr<'db> {
-    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
         self.id(db)
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
         self.scope_id(db)
     }
 }

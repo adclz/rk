@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
@@ -20,7 +21,7 @@ use crate::{
 };
 
 impl<'db> Check<'db> for ScopeId<'db> {
-    fn check(&self, db: &'db dyn BaseDatabase, errors: &mut Vec<IdeDiagnostic>) {
+    fn check(&self, db: &'db dyn WorkspaceDataBase, errors: &mut Vec<IdeDiagnostic>) {
         let scope = get_scope(db, *self);
 
         if let ScopeKind::Pou(pou) = get_scope(db, *self).kind {

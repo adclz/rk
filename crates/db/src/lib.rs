@@ -3,13 +3,15 @@ use auto_lsp::{
     lsp_types::Url,
 };
 use dashmap::DashMap;
-use salsa::Event;
+use salsa::{Database, Event};
+
 
 #[salsa::db]
 #[derive(Default, Clone)]
 pub struct RootDatabase {
     storage: salsa::Storage<Self>,
     pub(crate) files: DashMap<Url, File>,
+    pub(crate) workspace_folder: Option<Url>,
 }
 
 impl RootDatabase {
@@ -36,3 +38,21 @@ impl BaseDatabase for RootDatabase {
         self.files.get(url).map(|file| *file)
     }
 }
+
+#[salsa::db]
+pub trait WorkspaceDataBase: Database + BaseDatabase {
+    fn set_workspace_uri(&mut self, uri: Url);
+    fn get_workspace_uri(&self) -> Option<&Url>;
+}
+
+#[salsa::db]
+impl WorkspaceDataBase for RootDatabase {
+    fn set_workspace_uri(&mut self, uri: Url) {
+        self.workspace_folder = Some(uri);
+    }
+
+    fn get_workspace_uri(&self) -> Option<&Url> {
+        self.workspace_folder.as_ref()
+    }
+}
+

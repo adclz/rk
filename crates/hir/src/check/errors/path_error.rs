@@ -1,4 +1,5 @@
 use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
+use db::WorkspaceDataBase;
 use ide_diagnostic::{IdeDiagnostic, diag};
 
 use crate::{
@@ -33,7 +34,7 @@ impl<'db> From<AccessError<'db>> for AnalysisError<'db> {
     }
 }
 impl<'db> DiagnosticDescription<'db> for AccessError<'db> {
-    fn description(&self, db: &'db dyn BaseDatabase) -> String {
+    fn description(&self, db: &'db dyn WorkspaceDataBase) -> String {
         match self {
             AccessError::InvalidUsingDirective { using } => {
                 format!(
@@ -63,7 +64,7 @@ impl<'db> DiagnosticDescription<'db> for AccessError<'db> {
         }
     }
 
-    fn related(&self, db: &'db dyn BaseDatabase, diag: &mut IdeDiagnostic) {
+    fn related(&self, db: &'db dyn WorkspaceDataBase, diag: &mut IdeDiagnostic) {
         match self {
             AccessError::NoBeginLocalItemInScope { expr } => {}
             AccessError::NoLocalItemInScope { expr } => {
@@ -79,7 +80,7 @@ impl<'db> DiagnosticDescription<'db> for AccessError<'db> {
 }
 
 impl<'db> ToIdeDiagnostic<'db> for AccessError<'db> {
-    fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
+    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase) -> IdeDiagnostic {
         let mut diag = diag()
             .message(self.description(db))
             .severity(DiagnosticSeverity::ERROR)

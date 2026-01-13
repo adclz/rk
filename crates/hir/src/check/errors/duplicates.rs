@@ -1,4 +1,5 @@
 use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
+use db::WorkspaceDataBase;
 use ide_diagnostic::{IdeDiagnostic, Related, diag};
 
 use crate::{
@@ -51,7 +52,7 @@ impl<'db> From<DuplicateError<'db>> for AnalysisError<'db> {
 }
 
 impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
-    fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
+    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase) -> IdeDiagnostic {
         match self {
             Self::Pou { pou1, pou2 } => {
                 let mut diag = diag()

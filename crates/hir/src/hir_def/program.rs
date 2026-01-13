@@ -1,6 +1,7 @@
 use std::sync::{Arc, LazyLock};
 
 use auto_lsp::{default::db::{BaseDatabase}, lsp_types::Url};
+use db::WorkspaceDataBase;
 
 use crate::{AstId, HirNodeInfo, hir_def::{
     config::AccessDirection, expressions::{expression::PathExpr, spec::Spec, statement::Stmt}, interned::identifier::Ident, pous::variable::{DirectVariable, VariableDecl}, scope::ScopeId, semantic_index::semantic_index
@@ -11,7 +12,7 @@ pub static MAIN_FILE_URL: LazyLock<Arc<Url>> = LazyLock::new(|| Arc::new(Url::pa
 
 #[salsa::tracked(returns(as_ref))]
 pub fn get_programs<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
 ) -> Option<Vec<ProgramDecl<'db>>> {
     db.get_file(&MAIN_FILE_URL)
         .map(|file| {
@@ -42,11 +43,11 @@ pub struct ProgramDecl<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for ProgramDecl<'db> {
-    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
         self.id(db)
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
         self.scope_id(db)
     }
 }

@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
@@ -9,7 +10,7 @@ use crate::{
 
 #[salsa::tracked]
 pub fn variable_symbol_index<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     pou: ScopeId<'db>,
 ) -> SymbolIndex<'db> {
     let mut variables = vec![];
@@ -25,7 +26,7 @@ pub fn variable_symbol_index<'db>(
 }
 
 pub fn fuzzy_variables<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     pou: Pou<'db>,
     diag: &mut IdeDiagnostic,
     query: &str,

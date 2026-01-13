@@ -5,12 +5,13 @@ use auto_lsp::{
         request::GotoDeclarationResponse,
     },
 };
+use db::WorkspaceDataBase;
 use hir::{HirNodeInfo, hir_def::expressions::spec::StructElement, hir_ty::ty::Type};
 
 use crate::to_proto::{HasComment, ToProtocol};
 
 impl<'db> ToProtocol<'db> for StructElement<'db> {
-    fn hover(&'db self, db: &'db dyn BaseDatabase, _offset: usize) -> Option<Hover> {
+    fn hover(&'db self, db: &'db dyn WorkspaceDataBase, _offset: usize) -> Option<Hover> {
         let comment = self.get_comment(db).unwrap_or_default();
         let name = self.name(db).text(db);
         let type_name = Type::new_spec(db, self.spec(db)).type_name(db);
@@ -31,14 +32,14 @@ impl<'db> ToProtocol<'db> for StructElement<'db> {
         })
     }
 
-    fn declaration(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDeclarationResponse> {
+    fn declaration(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDeclarationResponse> {
         Some(GotoDeclarationResponse::Scalar(Location::new(
             self.scope_id(db).file(db).url(db).to_owned(),
             self.get_span(db).into(),
         )))
     }
 
-    fn definition(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDefinitionResponse> {
+    fn definition(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDefinitionResponse> {
         Some(GotoDeclarationResponse::Scalar(Location::new(
             self.scope_id(db).file(db).url(db).to_owned(),
             self.get_span(db).into(),

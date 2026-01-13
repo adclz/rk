@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 use fst::{Automaton, Streamer, raw::IndexedValue};
 use rayon::prelude::*;
 
@@ -174,7 +175,7 @@ pub struct SymbolIndex<'db> {
 
 impl<'db> SymbolIndex<'db> {
     pub fn create(
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         mut symbols: Box<[NamedSymbol<'db>]>,
     ) -> SymbolIndex<'db> {
         fn cmp(lhs: &NamedSymbol, rhs: &NamedSymbol) -> Ordering {
@@ -247,7 +248,7 @@ pub enum SymbolKind<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for NamedSymbol<'db> {
-    fn get_id(&self, db: &'db dyn BaseDatabase) -> crate::AstId {
+    fn get_id(&self, db: &'db dyn WorkspaceDataBase) -> crate::AstId {
         match self.kind {
             SymbolKind::Namespace(ns) => ns.get_id(db),
             SymbolKind::Pou(p) => p.get_id(db),
@@ -256,7 +257,7 @@ impl<'db> HirNodeInfo<'db> for NamedSymbol<'db> {
         }
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
         match self.kind {
             SymbolKind::Namespace(ns) => ns.get_scope_id(db),
             SymbolKind::Pou(p) => p.get_scope_id(db),

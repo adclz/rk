@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 
 use crate::{
     AstId, HasName, HirNodeInfo,
@@ -31,59 +32,59 @@ pub struct VariableDecl<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for VariableDecl<'db> {
-    fn get_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
         self.id(db)
     }
 
-    fn get_scope_id(&self, db: &'db dyn BaseDatabase) -> ScopeId<'db> {
+    fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
         self.scope_id(db)
     }
 }
 
 impl<'db> HasName<'db> for VariableDecl<'db> {
-    fn get_name_ident(&self, db: &'db dyn BaseDatabase) -> Ident {
+    fn get_name_ident(&self, db: &'db dyn WorkspaceDataBase) -> Ident {
         self.name(db)
     }
 
-    fn get_name_id(&self, db: &'db dyn BaseDatabase) -> AstId {
+    fn get_name_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
         self.name_id(db)
     }
 }
 
 impl<'db> VariableDecl<'db> {
-    pub fn is_input(&self, db: &'db dyn BaseDatabase) -> bool {
+    pub fn is_input(&self, db: &'db dyn WorkspaceDataBase) -> bool {
         matches!(self.kind(db), VariableKind::Input)
     }
 
-    pub fn is_output(&self, db: &'db dyn BaseDatabase) -> bool {
+    pub fn is_output(&self, db: &'db dyn WorkspaceDataBase) -> bool {
         matches!(self.kind(db), VariableKind::Output)
     }
 
-    pub fn is_var(&self, db: &'db dyn BaseDatabase) -> bool {
+    pub fn is_var(&self, db: &'db dyn WorkspaceDataBase) -> bool {
         matches!(self.kind(db), VariableKind::Var)
     }
 
-    pub fn is_in_out(&self, db: &'db dyn BaseDatabase) -> bool {
+    pub fn is_in_out(&self, db: &'db dyn WorkspaceDataBase) -> bool {
         matches!(self.kind(db), VariableKind::InOut)
     }
 
-    pub fn is_external(&self, db: &'db dyn BaseDatabase) -> bool {
+    pub fn is_external(&self, db: &'db dyn WorkspaceDataBase) -> bool {
         matches!(self.kind(db), VariableKind::External)
     }
 
-    pub fn is_global(&self, db: &'db dyn BaseDatabase) -> bool {
+    pub fn is_global(&self, db: &'db dyn WorkspaceDataBase) -> bool {
         matches!(self.kind(db), VariableKind::Global)
     }
 
-    pub fn is_access(&self, db: &'db dyn BaseDatabase) -> bool {
+    pub fn is_access(&self, db: &'db dyn WorkspaceDataBase) -> bool {
         matches!(self.kind(db), VariableKind::Access)
     }
 
-    pub fn is_temp(&self, db: &'db dyn BaseDatabase) -> bool {
+    pub fn is_temp(&self, db: &'db dyn WorkspaceDataBase) -> bool {
         matches!(self.kind(db), VariableKind::Temp)
     }
 
-    pub fn is_config(&self, db: &'db dyn BaseDatabase) -> bool {
+    pub fn is_config(&self, db: &'db dyn WorkspaceDataBase) -> bool {
         matches!(self.kind(db), VariableKind::Config)
     }
 }

@@ -2,6 +2,7 @@ use auto_lsp::{
     default::db::{BaseDatabase, file::File},
     salsa,
 };
+use db::WorkspaceDataBase;
 use hir::{
     HirNodeInfo,
     hir_def::{pous::pou::Pou, semantic_index::semantic_index},
@@ -11,7 +12,7 @@ use hir::{
 // this could be optimized by filtering out files that do not contains the pou's name
 // a custom symbol index could also be created for this purpose where only the references are stored
 // this would be a lot more efficient for large workspaces
-pub fn find_all_implementations<'db>(db: &'db dyn BaseDatabase, pou: Pou<'db>) -> Vec<Pou<'db>> {
+pub fn find_all_implementations<'db>(db: &'db dyn WorkspaceDataBase, pou: Pou<'db>) -> Vec<Pou<'db>> {
     let mut results = vec![];
     db.get_files().iter().for_each(|file| {
         results.extend(find_implementations(db, *file, pou));
@@ -21,7 +22,7 @@ pub fn find_all_implementations<'db>(db: &'db dyn BaseDatabase, pou: Pou<'db>) -
 
 #[salsa::tracked(returns(ref), no_eq)]
 fn find_implementations<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     file: File,
     implemented: Pou<'db>,
 ) -> Vec<Pou<'db>> {
@@ -42,7 +43,7 @@ fn find_implementations<'db>(
 }
 
 fn check_implementations<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     pou: Pou<'db>,
     implemented: Pou<'db>,
     pous: &mut Vec<Pou<'db>>,

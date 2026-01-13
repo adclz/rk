@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 use rustc_hash::FxHashMap;
 
 use crate::hir_def::expressions::expression::Expr;
@@ -17,7 +18,7 @@ use crate::{
 };
 
 pub fn resolve_func_call<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     resolver: Resolver<'db>,
     func_call: FuncCall<'db>,
     ctx: &mut BodyInferenceResult<'db>,
@@ -180,7 +181,7 @@ pub fn resolve_func_call<'db>(
 }
 
 fn coerce_with_var_target<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     resolver: Resolver<'db>,
     expr: Expr<'db>,
     var: VariableDecl<'db>,

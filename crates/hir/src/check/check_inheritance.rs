@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
@@ -21,7 +22,7 @@ use crate::{
 };
 
 impl<'db> Check<'db> for Vec<MethodDecl<'db>> {
-    fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<IdeDiagnostic>) {
+    fn check(&'db self, db: &'db dyn WorkspaceDataBase, errors: &mut Vec<IdeDiagnostic>) {
         let mut seen = FxHashMap::default();
         for method in self {
             for error in &infer_body_scope(db, method.get_scope_id(db)).errors {
@@ -44,7 +45,7 @@ impl<'db> Check<'db> for Vec<MethodDecl<'db>> {
 }
 
 impl<'db> Check<'db> for Vec<MethodPrototype<'db>> {
-    fn check(&'db self, db: &'db dyn BaseDatabase, errors: &mut Vec<IdeDiagnostic>) {
+    fn check(&'db self, db: &'db dyn WorkspaceDataBase, errors: &mut Vec<IdeDiagnostic>) {
         let mut seen = FxHashMap::default();
         for method in self {
             if let Some(prev) = seen.get(&method.get_name_ident(db)) {
@@ -63,7 +64,7 @@ impl<'db> Check<'db> for Vec<MethodPrototype<'db>> {
 }
 
 pub fn check_inheritance<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     implementer: Pou<'db>,
     errors: &mut Vec<IdeDiagnostic>,
 ) {
@@ -178,7 +179,7 @@ pub fn check_inheritance<'db>(
 }
 
 fn check_signature<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     m1: MethodRef<'db>,
     m2: MethodRef<'db>,
     errors: &mut Vec<IdeDiagnostic>,

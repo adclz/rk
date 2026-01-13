@@ -1,4 +1,5 @@
 use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
+use db::WorkspaceDataBase;
 use ide_diagnostic::{IdeDiagnostic, Related, diag};
 
 use crate::{
@@ -71,7 +72,7 @@ impl<'db> From<MethodError<'db>> for AnalysisError<'db> {
 }
 
 impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
-    fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
+    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase) -> IdeDiagnostic {
         match self {
             Self::UnresolvedPou { access } => diag()
                 .message(format!(

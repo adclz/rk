@@ -4,7 +4,7 @@ use crate::hir_def::{
         spec::Spec,
     },
     interned::{identifier::Ident, namespace::SpanNamespaceAccess},
-    pous::variable::VariableDecl,
+    pous::variable::{DirectVariable, VariableDecl},
 };
 
 #[salsa::tracked(debug)]
@@ -32,26 +32,26 @@ pub struct ConfigInit<'db> {
 pub struct ConfigInstInit<'db> {
     path: PathExpr<'db>,
 
-    located_at: Option<VariableDecl<'db>>, // DV
+    located_at: Option<DirectVariable>, // DV
 
     init: InitExpr<'db>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum Resource<'db> {
-    Resource(ResourceDecl<'db>),
+    Resource(ResourceDecl),
     Single(SingleResourceDecl<'db>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub struct ResourceDecl<'db> {
+pub struct ResourceDecl {
     name: Ident,
 
     resource_type_name: Ident,
 
-    variables: Vec<VariableDecl<'db>>,
-
-    resources: Vec<ResourceDecl<'db>>,
+    variables: Vec<DirectVariable>,
+ 
+    //resources: Vec<ResourceDecl<'db>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -123,7 +123,7 @@ pub enum ProgConfElement<'db> {
 pub enum ProgCnxn<'db> {
     ProgDataSource {
         path: PathExpr<'db>,
-        source: ProgDataSource<'db>,
+        source: DataSource<'db>,
     },
     DataSink {
         path: PathExpr<'db>,
@@ -133,13 +133,6 @@ pub enum ProgCnxn<'db> {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum DataSource<'db> {
-    Constant(Expr<'db>),
-    PathExpr(PathExpr<'db>),
-    Variable(VariableDecl<'db>),
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum ProgDataSource<'db> {
     Constant(Expr<'db>),
     PathExpr(PathExpr<'db>),
     Variable(VariableDecl<'db>),

@@ -5,6 +5,7 @@ use auto_lsp::{
         MarkupKind, request::GotoDeclarationResponse,
     },
 };
+use db::WorkspaceDataBase;
 use hir::{
     HirNodeInfo,
     hir_def::expressions::spec::{Spec, SpecKind},
@@ -17,7 +18,7 @@ use crate::{
 };
 
 impl<'db> ToProtocol<'db> for Spec<'db> {
-    fn hover(&'db self, db: &'db dyn BaseDatabase, _offset: usize) -> Option<Hover> {
+    fn hover(&'db self, db: &'db dyn WorkspaceDataBase, _offset: usize) -> Option<Hover> {
         let comment = match self.kind(db) {
             SpecKind::Target(t) => {
                 let pou = resolve_namespace_access(db, &t.path)?;
@@ -44,7 +45,7 @@ impl<'db> ToProtocol<'db> for Spec<'db> {
         })
     }
 
-    fn definition(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDefinitionResponse> {
+    fn definition(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDefinitionResponse> {
         match self.kind(db) {
             SpecKind::Target(target) => {
                 let pou = resolve_namespace_access(db, &target.path)?;
@@ -58,7 +59,7 @@ impl<'db> ToProtocol<'db> for Spec<'db> {
         }
     }
 
-    fn declaration(&'db self, db: &'db dyn BaseDatabase) -> Option<GotoDeclarationResponse> {
+    fn declaration(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDeclarationResponse> {
         match self.kind(db) {
             SpecKind::Target(target) => {
                 let pou = resolve_namespace_access(db, &target.path)?;
@@ -74,7 +75,7 @@ impl<'db> ToProtocol<'db> for Spec<'db> {
 
     fn completion(
         &'db self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         offset: usize,
     ) -> Option<Vec<CompletionItem>> {
         match self.kind(db) {

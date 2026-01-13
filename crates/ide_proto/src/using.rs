@@ -3,6 +3,7 @@ use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{Hover, HoverContents, MarkedString},
 };
+use db::WorkspaceDataBase;
 use hir::{
     hir_def::using::Using,
 };
@@ -10,7 +11,7 @@ use hir::{
 use crate::{NAMESPACE, SUPPORTED_TYPES, to_proto::ToProtocol};
 
 impl<'db> ToProtocol<'db> for Using<'db> {
-    fn hover(&'db self, db: &'db dyn BaseDatabase, offset: usize) -> Option<Hover> {
+    fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
         let mut accumulated_path = Vec::new();
 
         for (index, fragment) in self.path(db).fragments(db).iter().enumerate() {
@@ -36,7 +37,7 @@ impl<'db> ToProtocol<'db> for Using<'db> {
         None
     }
 
-    fn semantic_tokens(&'db self, db: &'db dyn BaseDatabase, builder: &mut SemanticTokensBuilder) {
+    fn semantic_tokens(&'db self, db: &'db dyn WorkspaceDataBase, builder: &mut SemanticTokensBuilder) {
         for (index, _fragment) in self.path(db).fragments(db).iter().enumerate() {
             let span = self.path(db).get_fragment_ast_node(db, index).get_span();
             builder.push(

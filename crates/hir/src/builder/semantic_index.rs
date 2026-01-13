@@ -2,18 +2,18 @@ use std::sync::Arc;
 
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
+use auto_lsp::default::db::file::File;
 use auto_lsp::default::db::tracked::ParsedAst;
-use auto_lsp::default::db::{BaseDatabase, file::File};
+use db::WorkspaceDataBase;
 use rustc_hash::FxHashMap;
 
 use crate::Visibility;
 use crate::check::errors::analysis_error::AnalysisError;
 use crate::check::errors::syntax::SyntaxError;
-use crate::hir_def::config::ConfigDecl;
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::Pou;
-use crate::hir_def::program::{MAIN_FILE_URL, ProgramDecl};
+use crate::hir_def::program::ProgramDecl;
 use crate::hir_def::scope::{Scope, ScopeId, ScopeKind};
 use crate::hir_def::semantic_index::SemanticIndex;
 
@@ -21,7 +21,7 @@ pub struct SemanticIndexBuilder<'db> {
     pub(crate) source: &'db ast::generated::SourceFile,
     pub(crate) ast: &'db ParsedAst,
 
-    pub(crate) db: &'db dyn BaseDatabase,
+    pub(crate) db: &'db dyn WorkspaceDataBase,
     pub(crate) file: File,
 
     /// The current scope ID being processed (by default, the global scope).
@@ -51,7 +51,7 @@ pub struct SemanticIndexBuilder<'db> {
 
 impl<'db> SemanticIndexBuilder<'db> {
     pub fn new(
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         file: File,
         ast: &'db ParsedAst,
         source: &'db ast::generated::SourceFile,

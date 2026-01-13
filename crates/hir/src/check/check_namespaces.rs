@@ -1,6 +1,7 @@
 use std::collections::hash_map::Entry;
 
 use auto_lsp::default::db::{BaseDatabase, file::File};
+use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
@@ -13,7 +14,7 @@ use crate::{
 
 #[salsa::tracked(returns(ref), no_eq)]
 pub fn check_duplicate_namespaces<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     namespace: NamespaceDecl<'db>,
 ) -> FxHashMap<File, Vec<IdeDiagnostic>> {
     let mut errors: FxHashMap<File, Vec<IdeDiagnostic>> = FxHashMap::default();

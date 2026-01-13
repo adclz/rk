@@ -21,6 +21,7 @@ and its derivations (default).
 */
 
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
@@ -34,7 +35,7 @@ use crate::{
 };
 
 pub fn check_visibility<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     call_site: &CallSite<'db>,
     target: impl HasVisibility<'db>,
     errors: &mut Vec<IdeDiagnostic>,
@@ -110,7 +111,7 @@ pub fn check_visibility<'db>(
 
 /// Check if the calling scope is in a POU that derives from the method's POU
 fn is_derived_pou<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     calling_scope: ScopeId<'db>,
     method_scope: ScopeId<'db>,
 ) -> bool {
@@ -143,7 +144,7 @@ pub enum SameNamespaceResult<'db> {
 
 /// Check if two scopes belong to the same namespace
 fn is_same_namespace<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     scope1: ScopeId<'db>,
     scope2: ScopeId<'db>,
 ) -> SameNamespaceResult<'db> {
@@ -167,7 +168,7 @@ fn is_same_namespace<'db>(
 
 /// Find the namespace that contains the given scope using the scope iterator
 fn find_containing_namespace<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     scope: ScopeId<'db>,
 ) -> Option<crate::hir_def::namespace::NamespaceDecl<'db>> {
     let sema = semantic_index(db, scope.file(db));

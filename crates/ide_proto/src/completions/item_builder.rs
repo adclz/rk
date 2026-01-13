@@ -8,6 +8,7 @@ use auto_lsp::{
         InsertTextMode, Range, TextEdit,
     },
 };
+use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
     hir_def::{
@@ -40,14 +41,14 @@ impl<'db> CompletionBuilder {
         self
     }
 
-    pub fn with_import(mut self, db: &'db dyn BaseDatabase, scope: ScopeId<'db>) -> Self {
+    pub fn with_import(mut self, db: &'db dyn WorkspaceDataBase, scope: ScopeId<'db>) -> Self {
         self.import = Some(find_using_range(db, scope));
         self
     }
 
     pub fn build_variable(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         variable: &VariableDecl<'db>,
     ) -> CompletionItem {
         let variable_name = variable.name(db).text(db);
@@ -92,7 +93,7 @@ impl<'db> CompletionBuilder {
 
     pub fn build_pou(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         pou: &Pou<'db>,
         namespace: Option<&NamespacePath>,
     ) -> CompletionItem {
@@ -141,7 +142,7 @@ impl<'db> CompletionBuilder {
 }
 
 /// Finds the range where new 'USING' statements should be inserted for the given scope.
-pub fn find_using_range<'db>(db: &'db dyn BaseDatabase, node: ScopeId<'db>) -> Range {
+pub fn find_using_range<'db>(db: &'db dyn WorkspaceDataBase, node: ScopeId<'db>) -> Range {
     let scope = get_scope(db, node);
     match scope.usings.last() {
         // Some USING directives exist; insert after the last one.
@@ -186,7 +187,7 @@ fn go_to_next_line(span: Span) -> lsp_types::Range {
 ///
 /// THis will return none if the scope has variables
 pub fn signature<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     name: &impl Display,
     scope: ScopeId<'db>,
 ) -> String {

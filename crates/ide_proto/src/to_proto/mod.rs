@@ -9,6 +9,7 @@ use auto_lsp::{
         request::{GotoDeclarationResponse, GotoImplementationResponse},
     },
 };
+use db::WorkspaceDataBase;
 use hir::HirNodeInfo;
 
 use crate::{comment_index::comment_index, to_proto::hir_node::HirNode};
@@ -17,7 +18,7 @@ pub mod hir_node;
 pub mod walk;
 
 pub trait HasComment<'db>: HirNodeInfo<'db> {
-    fn get_comment(&'db self, db: &'db dyn BaseDatabase) -> Option<String> {
+    fn get_comment(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<String> {
         let comment = match comment_index(db, self.get_scope_id(db).file(db)).find_nearby_comment(
             self.get_scope_id(db).file(db).document(db),
             &self.get_span(db),
@@ -32,41 +33,41 @@ pub trait HasComment<'db>: HirNodeInfo<'db> {
 impl<'db, T> HasComment<'db> for T where T: HirNodeInfo<'db> {}
 
 pub trait ToProtocol<'db>: HirNodeInfo<'db> {
-    fn document_symbols(&self, _db: &'db dyn BaseDatabase, _builder: &mut DocumentSymbolsBuilder) {}
+    fn document_symbols(&self, _db: &'db dyn WorkspaceDataBase, _builder: &mut DocumentSymbolsBuilder) {}
 
     fn completion(
         &'db self,
-        _db: &'db dyn BaseDatabase,
+        _db: &'db dyn WorkspaceDataBase,
         _offset: usize,
     ) -> Option<Vec<CompletionItem>> {
         None
     }
 
-    fn code_lens(&self, _db: &'db dyn BaseDatabase) -> Option<CodeLens> {
+    fn code_lens(&self, _db: &'db dyn WorkspaceDataBase) -> Option<CodeLens> {
         None
     }
 
-    fn implementation(&'db self, _db: &'db dyn BaseDatabase) -> Option<GotoImplementationResponse> {
+    fn implementation(&'db self, _db: &'db dyn WorkspaceDataBase) -> Option<GotoImplementationResponse> {
         None
     }
 
-    fn inlay_hint(&'db self, _db: &'db dyn BaseDatabase) -> Option<InlayHint> {
+    fn inlay_hint(&'db self, _db: &'db dyn WorkspaceDataBase) -> Option<InlayHint> {
         None
     }
 
-    fn hover(&'db self, _db: &'db dyn BaseDatabase, _offset: usize) -> Option<Hover> {
+    fn hover(&'db self, _db: &'db dyn WorkspaceDataBase, _offset: usize) -> Option<Hover> {
         None
     }
 
-    fn declaration(&'db self, _db: &'db dyn BaseDatabase) -> Option<GotoDeclarationResponse> {
+    fn declaration(&'db self, _db: &'db dyn WorkspaceDataBase) -> Option<GotoDeclarationResponse> {
         None
     }
 
-    fn definition(&'db self, _db: &'db dyn BaseDatabase) -> Option<GotoDefinitionResponse> {
+    fn definition(&'db self, _db: &'db dyn WorkspaceDataBase) -> Option<GotoDefinitionResponse> {
         None
     }
 
-    fn semantic_tokens(&'db self, _db: &'db dyn BaseDatabase, _builder: &mut SemanticTokensBuilder) {
+    fn semantic_tokens(&'db self, _db: &'db dyn WorkspaceDataBase, _builder: &mut SemanticTokensBuilder) {
     }
 }
 

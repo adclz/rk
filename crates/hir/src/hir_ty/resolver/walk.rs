@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 
 use crate::{
     HirNodeInfo,
@@ -34,7 +35,7 @@ pub struct PlaceBuilder<'db> {
 impl<'db> Type<'db> {
     pub fn walk_begin_path_expr(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         expr: BeginPathExpr<'db>,
         ctx: &mut BodyInferenceResult<'db>,
     ) {
@@ -150,7 +151,7 @@ impl<'db> Type<'db> {
 
     pub fn walk_path_expr(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         report_errors: bool,
         step: &'db PathExprWalkStep<'db>,
         place: &mut PlaceBuilder<'db>,
@@ -329,7 +330,7 @@ impl<'db> Type<'db> {
     #[must_use]
     pub fn walk_init_expr(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         expr: InitExpr<'db>,
         step: InitExprWalkStep<'db>,
         ctx: &mut InitExprInferenceResult<'db>,
@@ -438,7 +439,7 @@ impl<'db> Type<'db> {
 }
 
 fn iter_deref_types<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     mut ty: Type<'db>,
 ) -> impl Iterator<Item = Result<Type<'db>, Type<'db>>> {
     std::iter::from_fn(move || match ty {

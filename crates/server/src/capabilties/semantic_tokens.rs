@@ -4,11 +4,12 @@ use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{SemanticTokensParams, SemanticTokensResult},
 };
+use db::WorkspaceDataBase;
 use hir::hir_def::semantic_index::semantic_index;
 use ide_proto::to_proto::{AsProtocol, walk::WalkHir};
 
 pub fn semantic_tokens_full(
-    db: &impl BaseDatabase,
+    db: &impl WorkspaceDataBase,
     params: SemanticTokensParams,
 ) -> anyhow::Result<Option<SemanticTokensResult>> {
     let uri = params.text_document.uri;

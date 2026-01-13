@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 
 use crate::{
     check::errors::literals::InferLiteralError,
@@ -19,7 +20,7 @@ use std::{f64, num::ParseIntError, u8};
 use time::{Date, Duration, PrimitiveDateTime, Time, macros::format_description};
 
 impl<'db> Elementary {
-    pub fn check(&self, db: &'db dyn BaseDatabase) -> Result<(), InferLiteralError> {
+    pub fn check(&self, db: &'db dyn WorkspaceDataBase) -> Result<(), InferLiteralError> {
         match self {
             Elementary::Date(dt) => dt
                 .as_date(db)
@@ -305,7 +306,7 @@ impl<'db> ElementarySpec {
 impl<'db> InferType {
     pub fn check_as(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         typ: ElementarySpec,
     ) -> Result<Type<'db>, InferLiteralError> {
         match typ {
@@ -332,7 +333,7 @@ impl<'db> InferType {
 }
 
 fn check_bool<'db>(
-    db: &dyn BaseDatabase,
+    db: &dyn WorkspaceDataBase,
     value: &InferType,
 ) -> Result<Type<'db>, InferLiteralError> {
     match value {
@@ -344,7 +345,7 @@ fn check_bool<'db>(
     }
 }
 
-fn check_u8<'db>(db: &dyn BaseDatabase, value: &InferType) -> Result<Type<'db>, InferLiteralError> {
+fn check_u8<'db>(db: &dyn WorkspaceDataBase, value: &InferType) -> Result<Type<'db>, InferLiteralError> {
     match value {
         InferType::Integer(n) => n
             .as_u8(db)
@@ -355,7 +356,7 @@ fn check_u8<'db>(db: &dyn BaseDatabase, value: &InferType) -> Result<Type<'db>, 
 }
 
 fn check_u16<'db>(
-    db: &dyn BaseDatabase,
+    db: &dyn WorkspaceDataBase,
     value: &InferType,
 ) -> Result<Type<'db>, InferLiteralError> {
     match value {
@@ -368,7 +369,7 @@ fn check_u16<'db>(
 }
 
 fn check_u32<'db>(
-    db: &dyn BaseDatabase,
+    db: &dyn WorkspaceDataBase,
     value: &InferType,
 ) -> Result<Type<'db>, InferLiteralError> {
     match value {
@@ -381,7 +382,7 @@ fn check_u32<'db>(
 }
 
 fn check_u64<'db>(
-    db: &dyn BaseDatabase,
+    db: &dyn WorkspaceDataBase,
     value: &InferType,
 ) -> Result<Type<'db>, InferLiteralError> {
     match value {
@@ -393,7 +394,7 @@ fn check_u64<'db>(
     }
 }
 
-fn check_i8<'db>(db: &dyn BaseDatabase, value: &InferType) -> Result<Type<'db>, InferLiteralError> {
+fn check_i8<'db>(db: &dyn WorkspaceDataBase, value: &InferType) -> Result<Type<'db>, InferLiteralError> {
     match value {
         InferType::Integer(n) => n
             .as_i8(db)
@@ -404,7 +405,7 @@ fn check_i8<'db>(db: &dyn BaseDatabase, value: &InferType) -> Result<Type<'db>, 
 }
 
 fn check_i16<'db>(
-    db: &dyn BaseDatabase,
+    db: &dyn WorkspaceDataBase,
     value: &InferType,
 ) -> Result<Type<'db>, InferLiteralError> {
     match value {
@@ -417,7 +418,7 @@ fn check_i16<'db>(
 }
 
 fn check_i32<'db>(
-    db: &dyn BaseDatabase,
+    db: &dyn WorkspaceDataBase,
     value: &InferType,
 ) -> Result<Type<'db>, InferLiteralError> {
     match value {
@@ -430,7 +431,7 @@ fn check_i32<'db>(
 }
 
 fn check_i64<'db>(
-    db: &dyn BaseDatabase,
+    db: &dyn WorkspaceDataBase,
     value: &InferType,
 ) -> Result<Type<'db>, InferLiteralError> {
     match value {
@@ -443,7 +444,7 @@ fn check_i64<'db>(
 }
 
 fn check_f32<'db>(
-    db: &dyn BaseDatabase,
+    db: &dyn WorkspaceDataBase,
     value: &InferType,
 ) -> Result<Type<'db>, InferLiteralError> {
     match value {
@@ -462,7 +463,7 @@ fn check_f32<'db>(
 }
 
 fn check_f64<'db>(
-    db: &dyn BaseDatabase,
+    db: &dyn WorkspaceDataBase,
     value: &InferType,
 ) -> Result<Type<'db>, InferLiteralError> {
     match value {
@@ -483,7 +484,7 @@ fn check_f64<'db>(
 #[salsa::tracked]
 impl Ident {
     #[salsa::tracked]
-    pub fn as_bool(self, db: &dyn BaseDatabase) -> Result<bool, std::str::ParseBoolError> {
+    pub fn as_bool(self, db: &dyn WorkspaceDataBase) -> Result<bool, std::str::ParseBoolError> {
         match self.text(db).to_lowercase().as_str() {
             "true" | "1" => Ok(true),
             "false" | "0" => Ok(false),
@@ -492,22 +493,22 @@ impl Ident {
     }
 
     #[salsa::tracked]
-    pub fn as_u64(self, db: &dyn BaseDatabase) -> Result<u64, std::num::ParseIntError> {
+    pub fn as_u64(self, db: &dyn WorkspaceDataBase) -> Result<u64, std::num::ParseIntError> {
         self.text(db).parse()
     }
 
     #[salsa::tracked]
-    pub fn as_f32(self, db: &dyn BaseDatabase) -> Result<f32, std::num::ParseFloatError> {
+    pub fn as_f32(self, db: &dyn WorkspaceDataBase) -> Result<f32, std::num::ParseFloatError> {
         self.text(db).parse()
     }
 
     #[salsa::tracked]
-    pub fn as_f64(self, db: &dyn BaseDatabase) -> Result<f64, std::num::ParseFloatError> {
+    pub fn as_f64(self, db: &dyn WorkspaceDataBase) -> Result<f64, std::num::ParseFloatError> {
         self.text(db).parse()
     }
 
     #[salsa::tracked]
-    pub fn as_date(self, db: &dyn BaseDatabase) -> Result<Date, time::error::Parse> {
+    pub fn as_date(self, db: &dyn WorkspaceDataBase) -> Result<Date, time::error::Parse> {
         let fmt = format_description!("[year]-[month]-[day]");
         Date::parse(
             &self
@@ -521,7 +522,7 @@ impl Ident {
     }
 
     #[salsa::tracked]
-    pub fn as_long_date(self, db: &dyn BaseDatabase) -> Result<Date, time::error::Parse> {
+    pub fn as_long_date(self, db: &dyn WorkspaceDataBase) -> Result<Date, time::error::Parse> {
         let fmt = format_description!("[year]-[month]-[day]");
         Date::parse(
             &self
@@ -535,7 +536,7 @@ impl Ident {
     }
 
     #[salsa::tracked]
-    pub fn as_tod(self, db: &dyn BaseDatabase) -> Result<Time, time::error::Parse> {
+    pub fn as_tod(self, db: &dyn WorkspaceDataBase) -> Result<Time, time::error::Parse> {
         let fmt = format_description!("[hour]:[minute]:[second].[subsecond]");
         Time::parse(
             &self
@@ -549,7 +550,7 @@ impl Ident {
     }
 
     #[salsa::tracked]
-    pub fn as_long_tod(self, db: &dyn BaseDatabase) -> Result<Time, time::error::Parse> {
+    pub fn as_long_tod(self, db: &dyn WorkspaceDataBase) -> Result<Time, time::error::Parse> {
         let fmt = format_description!("[hour]:[minute]:[second].[subsecond]");
         Time::parse(
             &self
@@ -565,7 +566,7 @@ impl Ident {
     #[salsa::tracked]
     pub fn as_date_time(
         self,
-        db: &dyn BaseDatabase,
+        db: &dyn WorkspaceDataBase,
     ) -> Result<PrimitiveDateTime, time::error::Parse> {
         let fmt = format_description!("[year]-[month]-[day]-[hour]:[minute]:[second].[subsecond]");
         PrimitiveDateTime::parse(
@@ -582,7 +583,7 @@ impl Ident {
     #[salsa::tracked]
     pub fn as_long_date_time(
         self,
-        db: &dyn BaseDatabase,
+        db: &dyn WorkspaceDataBase,
     ) -> Result<PrimitiveDateTime, time::error::Parse> {
         let fmt = format_description!("[year]-[month]-[day]-[hour]:[minute]:[second].[subsecond]");
         PrimitiveDateTime::parse(
@@ -597,17 +598,17 @@ impl Ident {
     }
 
     #[salsa::tracked]
-    pub fn as_single_string(self, db: &dyn BaseDatabase) -> Result<Vec<u8>, InferLiteralError> {
+    pub fn as_single_string(self, db: &dyn WorkspaceDataBase) -> Result<Vec<u8>, InferLiteralError> {
         parse_single_byte_string(&self.text(db).replace("STRING#", ""))
     }
 
     #[salsa::tracked]
-    pub fn as_double_string(self, db: &dyn BaseDatabase) -> Result<Vec<char>, InferLiteralError> {
+    pub fn as_double_string(self, db: &dyn WorkspaceDataBase) -> Result<Vec<char>, InferLiteralError> {
         parse_double_byte_string(&self.text(db).replace("WSTRING#", ""))
     }
 
     #[salsa::tracked]
-    pub fn as_time(self, db: &dyn BaseDatabase) -> Result<Duration, InferLiteralError> {
+    pub fn as_time(self, db: &dyn WorkspaceDataBase) -> Result<Duration, InferLiteralError> {
         parse_duration_components(
             self.text(db)
                 .to_uppercase()
@@ -619,7 +620,7 @@ impl Ident {
     }
 
     #[salsa::tracked]
-    pub fn as_ltime(self, db: &dyn BaseDatabase) -> Result<Duration, InferLiteralError> {
+    pub fn as_ltime(self, db: &dyn WorkspaceDataBase) -> Result<Duration, InferLiteralError> {
         parse_duration_components(
             &self
                 .text(db)
@@ -665,7 +666,7 @@ fn check_sign(s: &str) -> Result<&str, UnsignedIntError> {
 #[salsa::tracked]
 impl Integer {
     #[salsa::tracked]
-    pub fn as_bool(self, db: &dyn BaseDatabase) -> Result<bool, std::str::ParseBoolError> {
+    pub fn as_bool(self, db: &dyn WorkspaceDataBase) -> Result<bool, std::str::ParseBoolError> {
         match self.ident(db).text(db).to_lowercase().as_str() {
             "true" | "1" => Ok(true),
             "false" | "0" => Ok(false),
@@ -674,7 +675,7 @@ impl Integer {
     }
 
     #[salsa::tracked]
-    pub fn as_u8(self, db: &dyn BaseDatabase) -> Result<u8, UnsignedIntError> {
+    pub fn as_u8(self, db: &dyn WorkspaceDataBase) -> Result<u8, UnsignedIntError> {
         match self.kind(db) {
             IntegerKind::Binary => u8::from_str_radix(
                 check_sign(self.ident(db).text(db).trim_start_matches("2#"))?,
@@ -694,7 +695,7 @@ impl Integer {
     }
 
     #[salsa::tracked]
-    pub fn as_u16(self, db: &dyn BaseDatabase) -> Result<u16, UnsignedIntError> {
+    pub fn as_u16(self, db: &dyn WorkspaceDataBase) -> Result<u16, UnsignedIntError> {
         match self.kind(db) {
             IntegerKind::Binary => u16::from_str_radix(
                 check_sign(self.ident(db).text(db).trim_start_matches("2#"))?,
@@ -714,7 +715,7 @@ impl Integer {
     }
 
     #[salsa::tracked]
-    pub fn as_u32(self, db: &dyn BaseDatabase) -> Result<u32, UnsignedIntError> {
+    pub fn as_u32(self, db: &dyn WorkspaceDataBase) -> Result<u32, UnsignedIntError> {
         match self.kind(db) {
             IntegerKind::Binary => u32::from_str_radix(
                 check_sign(self.ident(db).text(db).trim_start_matches("2#"))?,
@@ -734,7 +735,7 @@ impl Integer {
     }
 
     #[salsa::tracked]
-    pub fn as_u64(self, db: &dyn BaseDatabase) -> Result<u64, UnsignedIntError> {
+    pub fn as_u64(self, db: &dyn WorkspaceDataBase) -> Result<u64, UnsignedIntError> {
         match self.kind(db) {
             IntegerKind::Binary => u64::from_str_radix(
                 check_sign(self.ident(db).text(db).trim_start_matches("2#"))?,
@@ -754,7 +755,7 @@ impl Integer {
     }
 
     #[salsa::tracked]
-    pub fn as_i8(self, db: &dyn BaseDatabase) -> Result<i8, std::num::ParseIntError> {
+    pub fn as_i8(self, db: &dyn WorkspaceDataBase) -> Result<i8, std::num::ParseIntError> {
         match self.kind(db) {
             IntegerKind::Binary => {
                 i8::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2)
@@ -770,7 +771,7 @@ impl Integer {
     }
 
     #[salsa::tracked]
-    pub fn as_i16(self, db: &dyn BaseDatabase) -> Result<i16, std::num::ParseIntError> {
+    pub fn as_i16(self, db: &dyn WorkspaceDataBase) -> Result<i16, std::num::ParseIntError> {
         match self.kind(db) {
             IntegerKind::Binary => {
                 i16::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2)
@@ -786,7 +787,7 @@ impl Integer {
     }
 
     #[salsa::tracked]
-    pub fn as_i32(self, db: &dyn BaseDatabase) -> Result<i32, std::num::ParseIntError> {
+    pub fn as_i32(self, db: &dyn WorkspaceDataBase) -> Result<i32, std::num::ParseIntError> {
         match self.kind(db) {
             IntegerKind::Binary => {
                 i32::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2)
@@ -802,7 +803,7 @@ impl Integer {
     }
 
     #[salsa::tracked]
-    pub fn as_i64(self, db: &dyn BaseDatabase) -> Result<i64, std::num::ParseIntError> {
+    pub fn as_i64(self, db: &dyn WorkspaceDataBase) -> Result<i64, std::num::ParseIntError> {
         match self.kind(db) {
             IntegerKind::Binary => {
                 i64::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2)
@@ -817,7 +818,7 @@ impl Integer {
         }
     }
 
-    pub fn to_string(&self, db: &dyn BaseDatabase) -> String {
+    pub fn to_string(&self, db: &dyn WorkspaceDataBase) -> String {
         match self.kind(db) {
             IntegerKind::Binary => format!("[Binary] {}", self.ident(db).text(db)),
             IntegerKind::Hex => format!("[Hexa] {}", self.ident(db).text(db)),

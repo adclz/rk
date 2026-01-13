@@ -3,6 +3,7 @@ use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{DiagnosticSeverity, DiagnosticTag},
 };
+use db::WorkspaceDataBase;
 use ide_diagnostic::{IdeDiagnostic, Related, diag};
 
 use crate::{
@@ -28,7 +29,7 @@ pub enum NamespaceError<'db> {
 }
 
 impl<'db> ToIdeDiagnostic<'db> for NamespaceError<'db> {
-    fn to_diagnostic(&self, db: &'db dyn BaseDatabase) -> IdeDiagnostic {
+    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase) -> IdeDiagnostic {
         match self {
             Self::NamespaceNotFound {
                 namespace_path,

@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use db::WorkspaceDataBase;
 
 use crate::{
     hir_def::{
@@ -43,7 +44,7 @@ impl PathExprWalkStep<'_> {
 #[salsa::tracked]
 impl<'db> PathExpr<'db> {
     #[salsa::tracked(returns(ref))]
-    pub fn flatten(self, db: &'db dyn BaseDatabase) -> Vec<PathExprWalkStep<'db>> {
+    pub fn flatten(self, db: &'db dyn WorkspaceDataBase) -> Vec<PathExprWalkStep<'db>> {
         let mut result = Vec::new();
 
         match self.expr(db) {
@@ -92,7 +93,7 @@ impl<'db> PathExpr<'db> {
     #[salsa::tracked(returns(ref))]
     pub fn to_namespace_access(
         self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
     ) -> Option<(NamespaceAccess<'db>, Ident)> {
         let flatten = self.flatten(db);
 
@@ -139,7 +140,7 @@ impl<'db> InitExpr<'db> {
     #[salsa::tracked(returns(ref))]
     pub fn flatten(
         self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
     ) -> FxIndexMap<InitExpr<'db>, InitExprWalkStep<'db>> {
         let mut map = FxIndexMap::default();
         self.flat(db, &mut map);
@@ -148,7 +149,7 @@ impl<'db> InitExpr<'db> {
 
     fn flat(
         &self,
-        db: &'db dyn BaseDatabase,
+        db: &'db dyn WorkspaceDataBase,
         map: &mut FxIndexMap<InitExpr<'db>, InitExprWalkStep<'db>>,
     ) {
         // Infering init expressions can be quite long ...

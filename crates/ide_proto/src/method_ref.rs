@@ -3,6 +3,7 @@ use auto_lsp::{
     default::db::BaseDatabase,
     lsp_types::{CompletionItem, Hover, HoverContents, MarkupContent, MarkupKind, SymbolKind},
 };
+use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
     hir_ty::{inheritance_solver::MethodRef, ty::Type},
@@ -11,7 +12,7 @@ use hir::{
 use crate::to_proto::{HasComment, ToProtocol};
 
 impl<'db> ToProtocol<'db> for MethodRef<'db> {
-    fn document_symbols(&self, db: &'db dyn BaseDatabase, builder: &mut DocumentSymbolsBuilder) {
+    fn document_symbols(&self, db: &'db dyn WorkspaceDataBase, builder: &mut DocumentSymbolsBuilder) {
         let name = self.get_name_ident(db).text(db).to_string();
         let name = match name.len() {
             0 => "?".into(),
@@ -41,7 +42,7 @@ impl<'db> ToProtocol<'db> for MethodRef<'db> {
         });
     }
 
-    fn hover(&'db self, db: &'db dyn BaseDatabase, _offset: usize) -> Option<Hover> {
+    fn hover(&'db self, db: &'db dyn WorkspaceDataBase, _offset: usize) -> Option<Hover> {
         let kind = match self {
             MethodRef::Declared(_) => "METHOD",
             MethodRef::Prototype(_) => "METHOD PROTOTYPE",
@@ -77,7 +78,7 @@ impl<'db> ToProtocol<'db> for MethodRef<'db> {
 
     fn completion(
         &'db self,
-        _db: &'db dyn BaseDatabase,
+        _db: &'db dyn WorkspaceDataBase,
         _offset: usize,
     ) -> Option<Vec<CompletionItem>> {
         None
