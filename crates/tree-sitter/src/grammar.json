@@ -2679,7 +2679,7 @@
           "name": "adress",
           "content": {
             "type": "SYMBOL",
-            "name": "direct_variable_identifier"
+            "name": "adress_identifier"
           }
         },
         {
@@ -7891,40 +7891,36 @@
       ]
     },
     "multibit": {
-      "type": "CHOICE",
+      "type": "SEQ",
       "members": [
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "STRING",
+                  "value": "%"
+                },
+                {
+                  "type": "FIELD",
+                  "name": "access",
+                  "content": {
+                    "type": "SYMBOL",
+                    "name": "adress_identifier"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
         {
           "type": "SYMBOL",
           "name": "unsigned_int"
-        },
-        {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "STRING",
-              "value": "%"
-            },
-            {
-              "type": "FIELD",
-              "name": "access",
-              "content": {
-                "type": "CHOICE",
-                "members": [
-                  {
-                    "type": "SYMBOL",
-                    "name": "XBWDL"
-                  },
-                  {
-                    "type": "BLANK"
-                  }
-                ]
-              }
-            },
-            {
-              "type": "SYMBOL",
-              "name": "unsigned_int"
-            }
-          ]
         }
       ]
     },
@@ -9029,31 +9025,6 @@
         }
       ]
     },
-    "XBWDL": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "STRING",
-          "value": "X"
-        },
-        {
-          "type": "STRING",
-          "value": "B"
-        },
-        {
-          "type": "STRING",
-          "value": "W"
-        },
-        {
-          "type": "STRING",
-          "value": "D"
-        },
-        {
-          "type": "STRING",
-          "value": "L"
-        }
-      ]
-    },
     "ladder_diagram": {
       "type": "REPEAT1",
       "content": {
@@ -9096,7 +9067,7 @@
       "type": "PATTERN",
       "value": "[_\\p{XID_Start}][_\\p{XID_Continue}]*"
     },
-    "direct_variable_identifier": {
+    "adress_identifier": {
       "type": "PATTERN",
       "value": "[A-Za-z]*"
     }

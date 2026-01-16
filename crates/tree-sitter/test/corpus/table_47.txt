@@ -549,7 +549,7 @@ END_PROGRAM
               (var_access
                 (field)))
             (direct_variable
-              (direct_variable_identifier)
+              (adress_identifier)
               (offset
                 (unsigned_int)
                 (unsigned_int)))

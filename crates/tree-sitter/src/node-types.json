@@ -760,11 +760,6 @@
     }
   },
   {
-    "type": "XBWDL",
-    "named": true,
-    "fields": {}
-  },
-  {
     "type": "access_decl",
     "named": true,
     "fields": {
@@ -1980,7 +1975,7 @@
         "required": true,
         "types": [
           {
-            "type": "direct_variable_identifier",
+            "type": "adress_identifier",
             "named": true
           }
         ]
@@ -3768,7 +3763,7 @@
         "required": false,
         "types": [
           {
-            "type": "XBWDL",
+            "type": "adress_identifier",
             "named": true
           }
         ]
@@ -6428,10 +6423,6 @@
     "named": false
   },
   {
-    "type": "B",
-    "named": false
-  },
-  {
     "type": "BOOL",
     "named": false
   },
@@ -6840,10 +6831,6 @@
     "named": false
   },
   {
-    "type": "W",
-    "named": false
-  },
-  {
     "type": "WCHAR",
     "named": false
   },
@@ -6860,10 +6847,6 @@
     "named": false
   },
   {
-    "type": "X",
-    "named": false
-  },
-  {
     "type": "XOR",
     "named": false
   },
@@ -6874,6 +6857,10 @@
   {
     "type": "]",
     "named": false
+  },
+  {
+    "type": "adress_identifier",
+    "named": true
   },
   {
     "type": "bool_name",
@@ -6917,10 +6904,6 @@
   },
   {
     "type": "dint_name",
-    "named": true
-  },
-  {
-    "type": "direct_variable_identifier",
     "named": true
   },
   {

@@ -746,7 +746,7 @@ module.exports = grammar({
       seq(
         "%",
         // Parsed in the HIR
-        field("adress", $.direct_variable_identifier),
+        field("adress", $.adress_identifier),
         field("offset", choice(alias("*", $.partly), $.offset)),
       ),
 
@@ -1629,13 +1629,11 @@ module.exports = grammar({
 
     multibit_part_access: ($) => seq(".", field("path", $.multibit)),
 
-    multibit: ($) =>
-      choice(
-        // Offset
-        $.unsigned_int,
-        // Bit access + Offset
-        seq("%", field("access", optional($.XBWDL)), $.unsigned_int),
-      ),
+    multibit: ($) => // Bit access + Offset
+      seq(
+        optional(seq("%", field("access", $.adress_identifier))),
+        $.unsigned_int
+    ),
 
     func_call: ($) =>
       seq(
@@ -1867,7 +1865,6 @@ module.exports = grammar({
     empty_path_expression: ($) => prec(-1, $.path_expression),
 
     IQM: ($) => choice("I", "Q", "M"),
-    XBWDL: ($) => choice("X", "B", "W", "D", "L"),
 
     // Table 73 - 76 - Graphic languages elements
 
@@ -1888,6 +1885,6 @@ module.exports = grammar({
     _hex_digit: ($) => /[?:_0-9a-fA-F]/,
     _hex_value: ($) => /[?:_0-9a-fA-F]*/,
     identifier: (_) => /[_\p{XID_Start}][_\p{XID_Continue}]*/,
-    direct_variable_identifier: (_) => /[A-Za-z]*/,
+    adress_identifier: (_) => /[A-Za-z]*/,
   },
 });

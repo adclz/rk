@@ -64,7 +64,7 @@ END_FUNCTION
                       (identifier)
                       (variable
                         (direct_variable
-                          (direct_variable_identifier)
+                          (adress_identifier)
                           (offset
                             (unsigned_int))))))
                   (param_assign

@@ -451,7 +451,7 @@ END_TYPE
               (struct_elem_decl_attributes
                 (located_at
                   (direct_variable
-                    (direct_variable_identifier)
+                    (adress_identifier)
                     (offset
                       (unsigned_int)))))
               (simple_type_spec
@@ -464,7 +464,7 @@ END_TYPE
               (struct_elem_decl_attributes
                 (located_at
                   (direct_variable
-                    (direct_variable_identifier)
+                    (adress_identifier)
                     (offset
                       (unsigned_int)))))
               (simple_type_spec
@@ -484,7 +484,7 @@ END_TYPE
               (struct_elem_decl_attributes
                 (located_at
                   (direct_variable
-                    (direct_variable_identifier)
+                    (adress_identifier)
                     (offset
                       (unsigned_int))))
                 (multibit_part_access
@@ -498,7 +498,7 @@ END_TYPE
               (struct_elem_decl_attributes
                 (located_at
                   (direct_variable
-                    (direct_variable_identifier)
+                    (adress_identifier)
                     (offset
                       (unsigned_int)))))
               (simple_type_spec
@@ -533,7 +533,7 @@ END_TYPE
               (struct_elem_decl_attributes
                 (located_at
                   (direct_variable
-                    (direct_variable_identifier)
+                    (adress_identifier)
                     (offset
                       (unsigned_int)))))
               (simple_type_spec
@@ -546,7 +546,7 @@ END_TYPE
               (struct_elem_decl_attributes
                 (located_at
                   (direct_variable
-                    (direct_variable_identifier)
+                    (adress_identifier)
                     (offset
                       (unsigned_int)))))
               (simple_type_spec
@@ -559,7 +559,7 @@ END_TYPE
               (struct_elem_decl_attributes
                 (located_at
                   (direct_variable
-                    (direct_variable_identifier)
+                    (adress_identifier)
                     (offset
                       (unsigned_int))))
                 (multibit_part_access
@@ -573,7 +573,7 @@ END_TYPE
               (struct_elem_decl_attributes
                 (located_at
                   (direct_variable
-                    (direct_variable_identifier)
+                    (adress_identifier)
                     (offset
                       (unsigned_int)))))
               (simple_type_spec
@@ -585,7 +585,7 @@ END_TYPE
               (struct_elem_decl_attributes
                 (located_at
                   (direct_variable
-                    (direct_variable_identifier)
+                    (adress_identifier)
                     (offset
                       (unsigned_int)))))
               (simple_type_spec
@@ -597,7 +597,7 @@ END_TYPE
               (struct_elem_decl_attributes
                 (located_at
                   (direct_variable
-                    (direct_variable_identifier)
+                    (adress_identifier)
                     (offset
                       (unsigned_int)))))
               (simple_type_spec
@@ -629,7 +629,7 @@ END_TYPE
               (struct_elem_decl_attributes
                 (located_at
                   (direct_variable
-                    (direct_variable_identifier)
+                    (adress_identifier)
                     (partly))))
               (simple_type_spec
                 (bit_str_type_name
@@ -639,7 +639,7 @@ END_TYPE
               (struct_elem_decl_attributes
                 (located_at
                   (direct_variable
-                    (direct_variable_identifier)
+                    (adress_identifier)
                     (partly))))
               (simple_type_spec
                 (bit_str_type_name

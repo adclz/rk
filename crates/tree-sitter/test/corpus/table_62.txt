@@ -117,7 +117,7 @@ END_CONFIGURATION
                       (field)))
                   (prog_data_source
                     (direct_variable
-                      (direct_variable_identifier)
+                      (adress_identifier)
                       (offset
                         (unsigned_int)
                         (unsigned_int)))))))))
@@ -179,7 +179,7 @@ END_CONFIGURATION
                 (identifier)
                 (located_at
                   (direct_variable
-                    (direct_variable_identifier)
+                    (adress_identifier)
                     (offset
                       (unsigned_int)))))
               (namespace_access
@@ -226,7 +226,7 @@ END_CONFIGURATION
                 (identifier)
                 (located_at
                   (direct_variable
-                    (direct_variable_identifier)
+                    (adress_identifier)
                     (offset
                       (unsigned_int)))))
               (namespace_access
@@ -291,7 +291,7 @@ END_CONFIGURATION
                         (field)))
                     (data_sink
                       (direct_variable
-                        (direct_variable_identifier)
+                        (adress_identifier)
                         (offset
                           (unsigned_int))))))
                 (prog_conf_elem
@@ -338,7 +338,7 @@ END_CONFIGURATION
                 (var_access
                   (field)))
               (direct_variable
-                (direct_variable_identifier)
+                (adress_identifier)
                 (offset
                   (unsigned_int)
                   (unsigned_int))))
@@ -678,7 +678,7 @@ END_CONFIGURATION
                   (field))))
             (located_at
               (direct_variable
-                (direct_variable_identifier)
+                (adress_identifier)
                 (offset
                   (unsigned_int))))
             (loc_var_spec_init

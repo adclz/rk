@@ -21,7 +21,7 @@ END_PROGRAM
             (identifier)
             (located_at
               (direct_variable
-                (direct_variable_identifier)
+                (adress_identifier)
                 (offset
                   (unsigned_int))))
             (loc_var_spec_init
@@ -34,7 +34,7 @@ END_PROGRAM
             (identifier)
             (located_at
               (direct_variable
-                (direct_variable_identifier)
+                (adress_identifier)
                 (offset
                   (unsigned_int))))
             (loc_var_spec_init
@@ -47,7 +47,7 @@ END_PROGRAM
             (identifier)
             (located_at
               (direct_variable
-                (direct_variable_identifier)
+                (adress_identifier)
                 (offset
                   (unsigned_int))))
             (loc_var_spec_init
@@ -84,7 +84,7 @@ END_PROGRAM
             (identifier)
             (located_at
               (direct_variable
-                (direct_variable_identifier)
+                (adress_identifier)
                 (offset
                   (unsigned_int))))
             (loc_var_spec_init
@@ -97,7 +97,7 @@ END_PROGRAM
             (identifier)
             (located_at
               (direct_variable
-                (direct_variable_identifier)
+                (adress_identifier)
                 (offset
                   (unsigned_int))))
             (loc_var_spec_init
@@ -110,7 +110,7 @@ END_PROGRAM
             (identifier)
             (located_at
               (direct_variable
-                (direct_variable_identifier)
+                (adress_identifier)
                 (offset
                   (unsigned_int))))
             (loc_var_spec_init
@@ -123,7 +123,7 @@ END_PROGRAM
             (identifier)
             (located_at
               (direct_variable
-                (direct_variable_identifier)
+                (adress_identifier)
                 (offset
                   (unsigned_int))))
             (loc_var_spec_init
@@ -136,7 +136,7 @@ END_PROGRAM
             (identifier)
             (located_at
               (direct_variable
-                (direct_variable_identifier)
+                (adress_identifier)
                 (offset
                   (unsigned_int))))
             (loc_var_spec_init
@@ -149,7 +149,7 @@ END_PROGRAM
             (identifier)
             (located_at
               (direct_variable
-                (direct_variable_identifier)
+                (adress_identifier)
                 (offset
                   (unsigned_int))))
             (loc_var_spec_init
@@ -183,7 +183,7 @@ END_PROGRAM
             (identifier)
             (located_at
               (direct_variable
-                (direct_variable_identifier)
+                (adress_identifier)
                 (offset
                   (unsigned_int))))
             (loc_var_spec_init
@@ -196,7 +196,7 @@ END_PROGRAM
             (identifier)
             (located_at
               (direct_variable
-                (direct_variable_identifier)
+                (adress_identifier)
                 (offset
                   (unsigned_int)
                   (unsigned_int))))
@@ -210,7 +210,7 @@ END_PROGRAM
             (identifier)
             (located_at
               (direct_variable
-                (direct_variable_identifier)
+                (adress_identifier)
                 (offset
                   (unsigned_int)
                   (unsigned_int)
