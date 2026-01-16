@@ -1,17 +1,20 @@
 use auto_lsp::{
+    core::errors::DataBaseError,
     default::db::{BaseDatabase, file::File},
     lsp_types::Url,
 };
-use dashmap::DashMap;
+use dashmap::{DashMap, Entry};
 use salsa::{Database, Event};
 
+use crate::configuration::Configuration;
+
+pub mod configuration;
 
 #[salsa::db]
 #[derive(Default, Clone)]
 pub struct RootDatabase {
     storage: salsa::Storage<Self>,
     pub(crate) files: DashMap<Url, File>,
-    pub(crate) workspace_folder: Option<Url>,
 }
 
 impl RootDatabase {
@@ -41,18 +44,7 @@ impl BaseDatabase for RootDatabase {
 
 #[salsa::db]
 pub trait WorkspaceDataBase: Database + BaseDatabase {
-    fn set_workspace_uri(&mut self, uri: Url);
-    fn get_workspace_uri(&self) -> Option<&Url>;
 }
 
 #[salsa::db]
-impl WorkspaceDataBase for RootDatabase {
-    fn set_workspace_uri(&mut self, uri: Url) {
-        self.workspace_folder = Some(uri);
-    }
-
-    fn get_workspace_uri(&self) -> Option<&Url> {
-        self.workspace_folder.as_ref()
-    }
-}
-
+impl WorkspaceDataBase for RootDatabase {}
