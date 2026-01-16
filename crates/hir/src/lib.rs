@@ -1,9 +1,11 @@
 #![recursion_limit = "256"]
 #![allow(unused_variables)]
 
+use std::ops::Deref;
+
 use auto_lsp::{
-    core::{ast::AstNode, span::Span},
-    default::db::BaseDatabase,
+    core::{ast::AstNode, document::Encoding, span::Span}, lsp_types,
+
 };
 use bitflags::bitflags;
 use compact_str::CompactString;
@@ -41,21 +43,11 @@ impl AstId {
     }
 }
 
-pub trait MyTrait {
-    fn example_method(&self);
-}
+impl Deref for AstId {
+    type Target = usize;
 
-impl MyTrait for Vec<u8> {
-    fn example_method(&self) {
-        // Implementation goes here
-    }
-}
-
-pub struct WrapperVec(pub Vec<u8>);
-
-impl MyTrait for WrapperVec {
-    fn example_method(&self) {
-        self.0.example_method();
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
@@ -84,7 +76,10 @@ impl<'db> CallSite<'db> {
         }
     }
 
-    pub fn from_var_access(db: &'db dyn WorkspaceDataBase, var_access: VariableAccess<'db>) -> Self {
+    pub fn from_var_access(
+        db: &'db dyn WorkspaceDataBase,
+        var_access: VariableAccess<'db>,
+    ) -> Self {
         Self {
             scope: var_access.get_scope_id(db),
             id: var_access.get_id(db),
@@ -128,6 +123,36 @@ impl<'db> HirNodeInfo<'db> for CallSite<'db> {
     }
 }
 
+fn tree_sitter_position_adjusted(
+    encoding: Encoding,
+    line_str: &str,
+    point: auto_lsp::tree_sitter::Point,
+) -> lsp_types::Position {
+    let mut utf16_offset = 0;
+    let mut u8_offset = 0;
+    let mut u32_offset = 0;
+
+    for c in line_str.chars() {
+        if u8_offset >= point.column {
+            break;
+        }
+        utf16_offset += c.len_utf16();
+        u8_offset += c.len_utf8();
+        u32_offset += 1;
+    }
+
+    let character = match encoding {
+        Encoding::UTF8 => u8_offset,
+        Encoding::UTF16 => utf16_offset,
+        Encoding::UTF32 => u32_offset,
+    };
+
+    lsp_types::Position {
+        line: point.row as u32,
+        character: character as u32,
+    }
+}
+
 pub trait HirNodeInfo<'db> {
     fn get_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId;
 
@@ -141,16 +166,46 @@ pub trait HirNodeInfo<'db> {
     }
 
     fn get_span(&self, db: &'db dyn WorkspaceDataBase) -> Span {
-        semantic_index(db, self.get_scope_id(db).file(db))
+        let mut ts_range = *semantic_index(db, self.get_scope_id(db).file(db))
             .ast
             .get(self.get_id(db).0)
             .unwrap_or_else(|| {
                 panic!(
-                    "Invalid ID {} when attempting to retrieve span",
-                    self.get_id(db).0
+                    "invalid ID {} when attempting to retrieve span",
+                    *self.get_id(db)
                 )
             })
-            .get_span()
+            .get_range();
+
+        let document = self.get_scope_id(db).file(db).document(db);
+
+        let line_str = self
+            .get_scope_id(db)
+            .file(db)
+            .document(db)
+            .texter
+            .get_row(ts_range.start_point.row)
+            .expect("Failed to get line string for start point; this is a bug!");
+
+        let start =
+            tree_sitter_position_adjusted(document.encoding, line_str, ts_range.start_point);
+
+        let line_str = self
+            .get_scope_id(db)
+            .file(db)
+            .document(db)
+            .texter
+            .get_row(ts_range.end_point.row)
+            .expect("Failed to get line string for end point; this is a bug!");
+
+        let end = tree_sitter_position_adjusted(document.encoding, line_str, ts_range.end_point);
+
+        ts_range.start_point.column = start.character as usize;
+        ts_range.start_point.row = start.line as usize;
+        ts_range.end_point.column = end.character as usize;
+        ts_range.end_point.row = end.line as usize;
+
+        ts_range.into()
     }
 }
 
@@ -160,16 +215,47 @@ pub trait HasName<'db>: HirNodeInfo<'db> {
     fn get_name_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId;
 
     fn get_name_span(&'db self, db: &'db dyn WorkspaceDataBase) -> Span {
-        semantic_index(db, self.get_scope_id(db).file(db))
+        let mut ts_range = *semantic_index(db, self.get_scope_id(db).file(db))
             .ast
             .get(self.get_name_id(db).0)
             .unwrap_or_else(|| {
                 panic!(
-                    "Invalid name ID {} when attempting to retrieve name span",
-                    self.get_name_id(db).0
+                    "invalid name ID {} when attempting to retrieve name span",
+                    *self.get_name_id(db)
                 )
             })
-            .get_span()
+            .get_range();
+        
+        let document = self.get_scope_id(db).file(db).document(db);
+
+        let line_str = self
+            .get_scope_id(db)
+            .file(db)
+            .document(db)
+            .texter
+            .get_row(ts_range.start_point.row)
+             .expect("Failed to get line string for start point; this is a bug!");
+
+
+        let start =
+            tree_sitter_position_adjusted(document.encoding, line_str, ts_range.start_point);
+
+        let line_str = self
+            .get_scope_id(db)
+            .file(db)
+            .document(db)
+            .texter
+            .get_row(ts_range.end_point.row)
+            .expect("Failed to get line string for end point; this is a bug!");
+
+        let end = tree_sitter_position_adjusted(document.encoding, line_str, ts_range.end_point);
+
+        ts_range.start_point.column = start.character as usize;
+        ts_range.start_point.row = start.line as usize;
+        ts_range.end_point.column = end.character as usize;
+        ts_range.end_point.row = end.line as usize;
+
+        ts_range.into()
     }
 }
 
