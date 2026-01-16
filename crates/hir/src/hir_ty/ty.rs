@@ -7,21 +7,18 @@ use crate::{
         expressions::{
             expression::{
                 Elementary,
-                Integer,
+                Integer, MultibitsPart,
             },
             spec::{Array, ElementarySpec, Enum, Spec, SpecKind, Struct, StructElement, SubRange},
-        },
-        interned::identifier::Ident,
-        pous::{
+        }, interned::identifier::Ident, pous::{
             class::Class,
             data_type::DataType,
             function::Function,
             function_block::FunctionBlock,
             interface::Interface,
             pou::Pou,
-            variable::VariableDecl,
-        },
-        scope::ScopeId,
+            variable::{DirectVariable, VariableDecl},
+        }, program::ProgramDecl, scope::ScopeId
     },
     hir_ty::{
         def_map::LocalDefMap,
@@ -53,8 +50,12 @@ pub enum Type<'db> {
     DataType(DataType<'db>),
     // Methods
     MethodDecl(MethodRef<'db>),
-    Variable(VariableDecl<'db>),
+    Variable((VariableDecl<'db>, Option<MultibitsPart>)),
+    // HW bindings
+    DirectVariable((DirectVariable, Option<MultibitsPart>)),
     Infer(InferType),
+    // Program (cannot be seen by other types, only used here for body inference)
+    Program(ProgramDecl<'db>),
     // Func call - same as methods, functions, function blocks but we know it's being called
     CallableType(CallableType<'db>),
     // Void type, usually the result of a call that does not return anything
@@ -211,7 +212,11 @@ impl<'db> Type<'db> {
     }
 
     pub fn new_var(db: &'db dyn WorkspaceDataBase, var: VariableDecl<'db>) -> Self {
-        Type::Variable(var)
+        Type::Variable((var, None))
+    }
+
+    pub fn new_var_with_multibits(db: &'db dyn WorkspaceDataBase, var: VariableDecl<'db>, multibits: Option<MultibitsPart>) -> Self {
+        Type::Variable((var, multibits))
     }
 
     #[salsa::tracked]
@@ -235,7 +240,7 @@ impl<'db> Type<'db> {
         Some(match self {
             Type::Function(f) => CallableType::Function(*f),
             Type::MethodDecl(m) => CallableType::MethodDecl(*m),
-            Type::Variable(var) => match Type::new_spec(db, var.spec(db)) {
+            Type::Variable((var, multibits)) => match Type::new_spec(db, var.spec(db)) {
                 Type::FunctionBlock(fb) => CallableType::FunctionBlock(fb),
                 _ => None?,
             },

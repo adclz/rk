@@ -17,6 +17,7 @@ impl<'db> Type<'db> {
     #[cfg(debug_assertions)]
     pub fn kind(&self) -> &'static str {
         match self {
+            Self::Program(program) => "PROGRAM",
             Self::Elementary(_) => "ELEMENTARY",
             Self::Array(arr) => "ARRAY",
             Self::ArrayConformand(_) => "ARRAY_CONFORMAND",
@@ -27,6 +28,7 @@ impl<'db> Type<'db> {
             Self::Interface(i) => "INTERFACE",
             Self::MethodDecl(m) => "METHOD",
             Self::SubRange(_) => "SUBRANGE",
+            Self::DirectVariable(_) => "DIRECT_VARIABLE",
             Self::Variable(_) => "VARIABLE",
             Self::Struct(s) => "STRUCT",
             Self::StructElement(_) => "STRUCT_ELEMENT",
@@ -88,7 +90,8 @@ impl<'db> Type<'db> {
                 ElementarySpec::Tod => "TOD",
                 ElementarySpec::LTod => "LTOD",
             }
-            .into(),
+            .into(), 
+            Self::Program(program) => format!("PROGRAM: {}", program.get_name_ident(db).text(db)),
             Self::Function(f) => format!("FUNCTION: {}", f.get_name_ident(db).text(db)),
             Self::FunctionBlock(fb) => {
                 format!("FUNCTION_BLOCK: {}", fb.get_name_ident(db).text(db))
@@ -112,7 +115,8 @@ impl<'db> Type<'db> {
             Self::Never => "{unknown}".into(),
             Self::Void => "void".into(),
             Self::StructElement(st) => Type::new_spec(db, st.spec(db)).type_name(db),
-            Self::Variable(var) => Type::new_spec(db, var.spec(db)).type_name(db),
+            Self::Variable((var, multibits)) => Type::new_spec(db, var.spec(db)).type_name(db),
+            Self::DirectVariable((dv, multibits )) => format!("DIRECT VARIABLE: {}", dv.adress.text(db)),
             Self::Infer(infer) => match infer {
                 InferType::Integer(i) => format!("{{integer}} {}", i.ident(db).text(db)),
                 InferType::Float(f) => format!("{{float}} {}", f.text(db)),
@@ -166,7 +170,7 @@ impl<'db> Type<'db> {
 
     pub fn with_location(&self, db: &'db dyn WorkspaceDataBase, diag: &mut IdeDiagnostic) {
         match self {
-            Self::Variable(v) => match v.spec(db).kind(db) {
+            Self::Variable((v, multibits)) => match v.spec(db).kind(db) {
                 SpecKind::Target(t) => {
                     Type::new_spec(db, v.spec(db)).with_location(db, diag);
                 }

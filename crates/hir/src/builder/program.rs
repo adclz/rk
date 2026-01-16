@@ -1,10 +1,18 @@
+use std::sync::Arc;
+
 use auto_lsp::anyhow;
 
 use crate::{
-    builder::{ParseVarSection, semantic_index::SemanticIndexBuilder, statement::ParseStatement, variables::ParseProgDecl},
+    Visibility,
+    builder::{
+        ParseVarSection, semantic_index::SemanticIndexBuilder, statement::ParseStatement,
+        variables::ParseProgDecl,
+    },
     hir_def::{
-        interned::identifier::Ident, pous::variable::VariableDecl,
+        interned::identifier::Ident,
+        pous::variable::VariableDecl,
         program::{ProgAccessDecl, ProgramDecl},
+        scope::{Scope, ScopeKind},
     },
 };
 
@@ -13,6 +21,10 @@ impl<'db> SemanticIndexBuilder<'db> {
         &mut self,
         program: &ast::generated::ProgDecl,
     ) -> anyhow::Result<ProgramDecl<'db>> {
+        let scope_id = self.generate_scope_id();
+        let previous_scope = self.current_scope;
+        self.current_scope = scope_id;
+
         let (prog_access_decls, variables) = program.parse_variables(self);
 
         let name = Ident::from_node(self.db, self.file, program.name.cast(self.ast))?;
@@ -34,16 +46,45 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
         });
 
-        Ok(ProgramDecl::new(self.db, name, prog_access_decls, variables, statements, program.into(), self.current_scope))
+        let program = ProgramDecl::new(
+            self.db,
+            name,
+            program.name.cast(self.ast).into(),
+            prog_access_decls,
+            variables,
+            statements,
+            program.into(),
+            scope_id,
+        );
+
+        let scope = Scope::new(
+            self.file,
+            ScopeKind::Program(program),
+            vec![],
+            scope_id,
+            Visibility::empty(),
+            Some(previous_scope),
+        );
+
+        self.scope_keys
+            .insert(scope_id.scope(self.db), Arc::new(scope));
+
+        Ok(program)
     }
 }
 
 trait ParseVariable<'db> {
-    fn parse_variables(&self, sema: &mut SemanticIndexBuilder<'db>) -> (Vec<ProgAccessDecl<'db>>, Vec<VariableDecl<'db>>);
+    fn parse_variables(
+        &self,
+        sema: &mut SemanticIndexBuilder<'db>,
+    ) -> (Vec<ProgAccessDecl<'db>>, Vec<VariableDecl<'db>>);
 }
 
 impl<'db> ParseVariable<'db> for ast::generated::ProgDecl {
-    fn parse_variables(&self, sema: &mut SemanticIndexBuilder<'db>) -> (Vec<ProgAccessDecl<'db>>, Vec<VariableDecl<'db>>) {
+    fn parse_variables(
+        &self,
+        sema: &mut SemanticIndexBuilder<'db>,
+    ) -> (Vec<ProgAccessDecl<'db>>, Vec<VariableDecl<'db>>) {
         let mut prog_decls = vec![];
         let mut variables = vec![];
         type ProgVariables = ast::generated::ExternalVarDecls_GlobalVarDecls_InOutDecls_InputDecls_LocPartlyVarDecl_LocVarDecls_NoRetainVarDecls_OutputDecls_ProgAccessDecls_RetainVarDecls_TempVarDecls_VarDecls;

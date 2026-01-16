@@ -161,7 +161,7 @@ impl<'db> Type<'db> {
 
         // Additional checks for variable assignments
         match self {
-            Type::Variable(variable) => {
+            Type::Variable((variable, multibits)) => {
                 // a variable of kind INPUT cannot be assigned to
                 if variable.is_input(db) {
                     ctx.errors.push(

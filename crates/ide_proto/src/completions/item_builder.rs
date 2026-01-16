@@ -168,7 +168,8 @@ pub fn find_using_range<'db>(db: &'db dyn WorkspaceDataBase, node: ScopeId<'db>)
                     .parent
                     .expect("All methods should have a parent scope");
                 find_using_range(db, parent_scope)
-            }
+            },
+            _ => unreachable!(),
         },
     }
 }

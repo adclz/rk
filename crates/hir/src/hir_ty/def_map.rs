@@ -66,13 +66,14 @@ impl<'db> ScopeId<'db> {
         match get_scope(db, *self).kind {
             ScopeKind::Global | ScopeKind::Namespace(_) => false,
             ScopeKind::Pou(pou) => matches!(pou, Pou::Function(_) | Pou::FunctionBlock(_) | Pou::Class(_)),
+            ScopeKind::Program(_) => true,
             ScopeKind::MethodDecl(m) => true,
         }
     }
 
     fn local_variables(&self, db: &'db dyn WorkspaceDataBase) -> FxIndexMap<Ident, VariableDecl<'db>> {
         match get_scope(db, *self).kind {
-            ScopeKind::Global | ScopeKind::Namespace(_) => IndexMap::default(),
+            ScopeKind::Global | ScopeKind::Namespace(_) | ScopeKind::Program(_) => IndexMap::default(),
             ScopeKind::Pou(pou) => match pou {
                 Pou::Function(f) => local_variables(db, f.variables(db)),
                 Pou::FunctionBlock(fb) => local_variables(db, fb.variables(db)),
@@ -93,12 +94,13 @@ impl<'db> ScopeId<'db> {
                 _ => FxHashMap::default(),
             },
             ScopeKind::MethodDecl(m) => global_variables(db, m.variables(db)),
+            ScopeKind::Program(program) => global_variables(db, program.variables(db)),
         }
     }
 
     fn declared_methods(&self, db: &'db dyn WorkspaceDataBase) -> FxHashMap<Ident, MethodRef<'db>> {
         match get_scope(db, *self).kind {
-            ScopeKind::Global | ScopeKind::Namespace(_) | ScopeKind::MethodDecl(_) => {
+            ScopeKind::Global | ScopeKind::Namespace(_) | ScopeKind::MethodDecl(_) | ScopeKind::Program(_) => {
                 FxHashMap::default()
             }
             ScopeKind::Pou(pou) => match pou {

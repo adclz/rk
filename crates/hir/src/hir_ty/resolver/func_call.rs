@@ -23,7 +23,7 @@ pub fn resolve_func_call<'db>(
     func_call: FuncCall<'db>,
     ctx: &mut BodyInferenceResult<'db>,
 ) {
-    resolver.resolve_begin_path_expr(db, func_call.path(db), ctx);
+    resolver.resolve_begin_path_expr(db, func_call.path(db), None, ctx);
     let typ = ctx
         .type_of_begin_expr_with_adjustments(db, func_call.path(db))
         .unwrap_or_default();

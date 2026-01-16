@@ -61,6 +61,7 @@ use auto_lsp::server::request_registry::RequestRegistry;
 use auto_lsp::server::vendored::intent::ThreadIntent;
 use db::RootDatabase;
 use db::WorkspaceDataBase;
+use db::configuration::Configuration;
 use ide_proto::SUPPORTED_MODIFIERS;
 use ide_proto::SUPPORTED_TYPES;
 use salsa::EventKind;
@@ -150,7 +151,7 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
     )?;
 
     params.root_uri.as_ref().map(|uri| {
-        session.db.set_workspace_uri(uri.clone());
+        Configuration::init_or_update(&mut session.db, Some(uri.clone()));
     });
 
     session.init_workspace(params)?;

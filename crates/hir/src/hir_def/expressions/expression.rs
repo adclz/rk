@@ -217,7 +217,7 @@ pub struct IndexExpr<'db> {
     pub index: Vec<Expr<'db>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum MultibitsPart {
     Offset(Integer),
     // XBWDL

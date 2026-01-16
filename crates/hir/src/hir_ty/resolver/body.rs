@@ -1,4 +1,3 @@
-use auto_lsp::default::db::BaseDatabase;
 use db::WorkspaceDataBase;
 
 use crate::{
@@ -54,7 +53,7 @@ impl<'db> InferenceCtx<'db> {
         for stmt in statements {
             match stmt.stmt(db) {
                 StmtKind::EmptyPathExpression(expr) => {
-                    resolver.resolve_begin_path_expr(db, *expr, ctx);
+                    resolver.resolve_begin_path_expr(db, *expr, None, ctx);
                 }
 
                 StmtKind::AssignmentAttempt { var, target } => { /* todo */ }

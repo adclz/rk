@@ -11,7 +11,7 @@ use auto_lsp::{
 };
 use salsa::Accumulator;
 
-use crate::builder::expression::ParseExpr;
+use crate::builder::expression::{ParseDirectVariable, ParseExpr};
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::{ParseInit, ParseSpec, ParseSpecInit, ParseVarSection, SpecInitResult};
 use crate::check::errors::analysis_error::AnalysisError;
@@ -889,20 +889,12 @@ impl<'db> ParseProgDecl<'db> for ast::generated::ProgAccessDecls {
 
             let direct_variable = match &decl.children {
                 Some(v) => {
-                    let v = v.cast(sema.ast);
-                    let adress = Ident::from_node(sema.db, sema.file, v.adress.cast(sema.ast)).unwrap();
-
-                    let (offset, partly) = match v.offset.cast(sema.ast) {
-                        ast::generated::Offset_Partly::Offset(offset) => {
-                            (Some(Ident::from_node(sema.db, sema.file, v).unwrap()), false)
+                    Some(match v.cast(sema.ast).to_direct_variable(sema) {
+                        Ok(direct_variable) => direct_variable,
+                        Err(err) => {
+                            sema.errors.push(err);
+                            continue;
                         }
-                        ast::generated::Offset_Partly::Partly(partly) => (None, true),
-                    };
-
-                    Some(DirectVariable {
-                            adress,
-                            partly,
-                            offset,
                     })
                 }
                 _ => None,

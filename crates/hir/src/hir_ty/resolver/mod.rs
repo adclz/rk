@@ -8,20 +8,16 @@ pub mod visibility;
 pub mod walk;
 
 use crate::{
-    check::errors::{
-        analysis_error::ToIdeDiagnostic, body_inference::BodyInferenceError,
-    },
+    check::errors::{analysis_error::ToIdeDiagnostic, body_inference::BodyInferenceError},
     hir_def::{
-        expressions::expression::{BeginPathExpr, PathExpr, VariableAccess, VariableAccessKind},
+        expressions::expression::{BeginPathExpr, MultibitsPart, PathExpr, VariableAccess, VariableAccessKind},
         pous::pou::Pou,
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
     hir_ty::{
-        body_inference::BodyInferenceResult,
-        name_res::resolve_namespace_access,
-        resolver::walk::PlaceBuilder,
-        ty::Type,
+        body_inference::BodyInferenceResult, name_res::resolve_namespace_access,
+        resolver::walk::PlaceBuilder, ty::Type,
     },
 };
 
@@ -50,6 +46,9 @@ impl<'db> Resolver<'db> {
             },
             ScopeKind::MethodDecl(m) => PathResolutionRoot::Value {
                 base: Type::MethodDecl(m.into()),
+            },
+            ScopeKind::Program(program) => PathResolutionRoot::Value {
+                base: Type::Program(program),
             },
             _ => PathResolutionRoot::Namespace { scope },
         };
@@ -98,14 +97,21 @@ impl<'db> Resolver<'db> {
     }
 
     pub fn resolve_variable_access(
-        &self,
+        &self, 
         db: &'db dyn WorkspaceDataBase,
         var_access: VariableAccess<'db>,
         infer_results: &mut BodyInferenceResult<'db>,
     ) {
         match var_access.kind(db) {
-            VariableAccessKind::Direct { .. } => todo!(),
-            VariableAccessKind::Symbolic(s) => self.resolve_begin_path_expr(db, s, infer_results),
+            VariableAccessKind::Direct(dv) => {
+                infer_results.type_of_direct_variable.insert(
+                    dv,
+                    Type::DirectVariable((dv, var_access.multibits(db))),
+                );
+            },
+            VariableAccessKind::Symbolic(s) => {
+                self.resolve_begin_path_expr(db, s, var_access.multibits(db), infer_results);
+            },
         }
     }
 
@@ -113,13 +119,16 @@ impl<'db> Resolver<'db> {
         &self,
         db: &'db dyn WorkspaceDataBase,
         path_expr: BeginPathExpr<'db>,
+        multibits: Option<MultibitsPart>,
         infer_results: &mut BodyInferenceResult<'db>,
     ) {
         match self.root {
             PathResolutionRoot::Value { base } => {
-                base.walk_begin_path_expr(db, path_expr, infer_results)
+                base.walk_begin_path_expr(db, path_expr, multibits,  infer_results);
             }
-            PathResolutionRoot::Namespace { scope } => (),
+            PathResolutionRoot::Namespace { scope } => {
+                // a begin path expr will always refer to a local variable in this context
+            },
         };
     }
 
@@ -127,11 +136,12 @@ impl<'db> Resolver<'db> {
         &self,
         db: &'db dyn WorkspaceDataBase,
         path_expr: PathExpr<'db>,
+        multibits: Option<MultibitsPart>,
         infer_results: &mut BodyInferenceResult<'db>,
     ) {
         match self.root {
             PathResolutionRoot::Value { base } => {
-                self.resolve_path_steps(base, db, path_expr, infer_results)
+                self.resolve_path_steps(base, db, path_expr, multibits, infer_results)
             }
             PathResolutionRoot::Namespace { scope } => {
                 self.resolve_as_fq(db, path_expr, infer_results)
@@ -144,6 +154,7 @@ impl<'db> Resolver<'db> {
         mut current: Type<'db>,
         db: &'db dyn WorkspaceDataBase,
         path_expr: PathExpr<'db>,
+        multibits: Option<MultibitsPart>,
         ctx: &mut BodyInferenceResult<'db>,
     ) {
         let steps = path_expr.flatten(db);
@@ -156,7 +167,7 @@ impl<'db> Resolver<'db> {
         };
 
         for (index, step) in steps.iter().enumerate() {
-            current.walk_path_expr(db, index != 0, step, &mut place, ctx);
+            current.walk_path_expr(db, index != 0, step, multibits, &mut place, ctx);
 
             if ctx
                 .type_of_path_expr

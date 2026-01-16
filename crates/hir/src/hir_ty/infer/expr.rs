@@ -3,14 +3,10 @@ use db::WorkspaceDataBase;
 
 use crate::{
     CallSite,
-    check::errors::{
-        analysis_error::ToIdeDiagnostic,
-        body_inference::BodyInferenceError,
-    },
+    check::errors::{analysis_error::ToIdeDiagnostic, body_inference::BodyInferenceError},
     hir_def::{
         expressions::expression::{
-            Expr, ExprKind, PrimaryExpr, RefValue, UnaryOperatorKind,
-            VariableAccess,
+            Expr, ExprKind, PrimaryExpr, RefValue, UnaryOperatorKind, VariableAccess,
         },
         pous::variable::VariableDecl,
     },
@@ -100,7 +96,7 @@ impl<'db> InferExprCtx<'db> {
             }
             PrimaryExpr::EnumValue { name, variant } => {
                 self.resolver
-                    .resolve_begin_path_expr(db, *name, inference_result);
+                    .resolve_begin_path_expr(db, *name, None, inference_result);
 
                 let find_enm = inference_result
                     .type_of_begin_expr_with_adjustments(db, *name)
@@ -140,7 +136,7 @@ impl<'db> InferExprCtx<'db> {
             PrimaryExpr::RefValue { value } => match value {
                 RefValue::Address(adress) => {
                     self.resolver
-                        .resolve_begin_path_expr(db, *adress, inference_result);
+                        .resolve_begin_path_expr(db, *adress, None, inference_result);
 
                     let typ = inference_result
                         .get_type_of_begin_path_expr(db, *adress)

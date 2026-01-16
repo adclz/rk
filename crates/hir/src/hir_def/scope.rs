@@ -2,6 +2,7 @@ use auto_lsp::default::db::{BaseDatabase, file::File};
 use db::WorkspaceDataBase;
 
 use crate::hir_def::pous::interface::MethodPrototype;
+use crate::hir_def::program::ProgramDecl;
 use crate::hir_def::{
     namespace::NamespaceDecl,
     pous::{class::MethodDecl, pou::Pou, variable::VariableDecl},
@@ -119,6 +120,7 @@ impl<'db> Scope<'db> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ScopeKind<'db> {
     Global,
+    Program(ProgramDecl<'db>),
     Namespace(NamespaceDecl<'db>),
     Pou(Pou<'db>),
     MethodDecl(MethodDecl<'db>),

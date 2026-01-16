@@ -471,6 +471,35 @@ impl<'db> ParseExpression<'db> for ast::generated::Constant {
     }
 }
 
+pub trait ParseDirectVariable<'db> {
+    fn to_direct_variable(
+        &self,
+        sema: &mut SemanticIndexBuilder<'db>,
+    ) -> anyhow::Result<DirectVariable, AnalysisError<'db>>;
+}
+
+impl<'db> ParseDirectVariable<'db> for ast::generated::DirectVariable {
+    fn to_direct_variable(
+        &self,
+        sema: &mut SemanticIndexBuilder<'db>,
+    ) -> anyhow::Result<DirectVariable, AnalysisError<'db>> {
+        let adress = Ident::from_node(sema.db, sema.file, self.adress.cast(sema.ast))?;
+
+        let (offset, partly) = match self.offset.cast(sema.ast) {
+            ast::generated::Offset_Partly::Offset(offset) => {
+                (Some(Ident::from_node(sema.db, sema.file, offset)?), false)
+            }
+            ast::generated::Offset_Partly::Partly(partly) => (None, true),
+        };
+
+        Ok(DirectVariable {
+            adress,
+            partly,
+            offset,
+        })
+    }
+}
+
 pub trait ParseVariableAccess<'db> {
     fn to_access(
         &self,
@@ -495,22 +524,9 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::VariableAccess {
 
         match self.variable.cast(sema.ast).children.cast(sema.ast) {
             ast::generated::BeginPathExpression_DirectVariable::DirectVariable(v) => {
-                let adress = Ident::from_node(sema.db, sema.file, v.adress.cast(sema.ast))?;
-
-                let (offset, partly) = match v.offset.cast(sema.ast) {
-                    ast::generated::Offset_Partly::Offset(offset) => {
-                        (Some(Ident::from_node(sema.db, sema.file, v)?), false)
-                    }
-                    ast::generated::Offset_Partly::Partly(partly) => (None, true),
-                };
-
                 Ok(VariableAccess::new(
                     sema.db,
-                    VariableAccessKind::Direct(DirectVariable {
-                        adress,
-                        partly,
-                        offset,
-                    }),
+                    VariableAccessKind::Direct(v.to_direct_variable(sema)?),
                     multibits,
                     self.into(),
                     sema.current_scope,
@@ -547,11 +563,7 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::Variable {
 
                 Ok(VariableAccess::new(
                     sema.db,
-                    VariableAccessKind::Direct(DirectVariable {
-                        adress,
-                        partly,
-                        offset,
-                    }),
+                    VariableAccessKind::Direct(v.to_direct_variable(sema)?),
                     None,
                     self.into(),
                     sema.current_scope,
@@ -575,22 +587,9 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::DirectVariable {
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<VariableAccess<'db>, AnalysisError<'db>> {
-        let adress = Ident::from_node(sema.db, sema.file, self.adress.cast(sema.ast))?;
-
-        let (offset, partly) = match self.offset.cast(sema.ast) {
-            ast::generated::Offset_Partly::Offset(offset) => {
-                (Some(Ident::from_node(sema.db, sema.file, self)?), false)
-            }
-            ast::generated::Offset_Partly::Partly(partly) => (None, true),
-        };
-
         Ok(VariableAccess::new(
             sema.db,
-            VariableAccessKind::Direct(DirectVariable {
-                adress,
-                partly,
-                offset,
-            }),
+            VariableAccessKind::Direct(self.to_direct_variable(sema)?),
             None,
             self.into(),
             sema.current_scope,

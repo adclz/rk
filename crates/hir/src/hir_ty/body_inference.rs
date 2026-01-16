@@ -13,7 +13,7 @@ use crate::{
             },
             invocation::Invocation,
         },
-        pous::{pou::Pou, variable::VariableDecl},
+        pous::{pou::Pou, variable::{DirectVariable, VariableDecl}},
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
@@ -36,13 +36,14 @@ pub fn infer_body_scope<'db>(
     let ctx = InferenceCtx::new(scope);
 
     // Only Scopes with bodies can have statements
-    let (scope_typ, statements) = match get_scope(db, scope).kind {
+    let statements = match get_scope(db, scope).kind {
         ScopeKind::Pou(pou) => match pou {
-            Pou::Function(f) => (Type::Function(f), f.statements(db)),
-            Pou::FunctionBlock(fb) => (Type::FunctionBlock(fb), fb.statements(db)),
+            Pou::Function(f) => f.statements(db),
+            Pou::FunctionBlock(fb) => fb.statements(db),
             _ => return result,
         },
-        ScopeKind::MethodDecl(m) => (Type::MethodDecl(m.into()), m.stmts(db)),
+        ScopeKind::MethodDecl(m) => m.stmts(db),
+        ScopeKind::Program(program) => program.statements(db),
         _ => return result,
     };
 
@@ -74,6 +75,9 @@ pub struct BodyInferenceResult<'db> {
     // Mapping from parameter assignments to variables
     pub variable_of_param: FxHashMap<ParamAssign<'db>, VariableDecl<'db>>,
 
+    // Mapping of direct variables to their types
+    pub type_of_direct_variable: FxHashMap<DirectVariable, Type<'db>>,
+
     // Mapping from invocations to their resolved types.
     pub type_of_invocation: FxHashMap<Invocation<'db>, Type<'db>>,
 
@@ -95,6 +99,7 @@ impl<'db> BodyInferenceResult<'db> {
         Self {
             scope,
             variable_of_param: FxHashMap::default(),
+            type_of_direct_variable: FxHashMap::default(),
             type_of_invocation: FxHashMap::default(),
             type_of_expr: FxHashMap::default(),
             type_of_path_expr: FxHashMap::default(),
@@ -127,7 +132,7 @@ impl<'db> BodyInferenceResult<'db> {
     ) -> Option<Type<'db>> {
         match var_access.kind(db) {
             VariableAccessKind::Symbolic(sym) => self.type_of_begin_expr_with_adjustments(db, sym),
-            _ => None,
+            VariableAccessKind::Direct(dv) => self.type_of_direct_variable.get(&dv).copied(),
         }
     }
 
@@ -138,7 +143,7 @@ impl<'db> BodyInferenceResult<'db> {
     ) -> Option<Type<'db>> {
         match var_access.kind(db) {
             VariableAccessKind::Symbolic(sym) => self.get_type_of_begin_path_expr(db, sym),
-            _ => None,
+            VariableAccessKind::Direct(dv) => self.type_of_direct_variable.get(&dv).copied(),
         }
     }
 

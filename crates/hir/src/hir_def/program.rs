@@ -3,7 +3,7 @@ use std::sync::{Arc, LazyLock};
 use auto_lsp::{default::db::{BaseDatabase}, lsp_types::Url};
 use db::WorkspaceDataBase;
 
-use crate::{AstId, HirNodeInfo, hir_def::{
+use crate::{AstId, HasName, HirNodeInfo, hir_def::{
     config::AccessDirection, expressions::{expression::PathExpr, spec::Spec, statement::Stmt}, interned::identifier::Ident, pous::variable::{DirectVariable, VariableDecl}, scope::ScopeId, semantic_index::semantic_index
 }};
 
@@ -24,16 +24,22 @@ pub fn get_programs<'db>(
 
 #[salsa::tracked(debug)]
 pub struct ProgramDecl<'db> {
-    name: Ident,
+    pub name: Ident,
+
+    #[tracked]
+    #[no_eq]
+    pub name_id: AstId,
 
     #[returns(ref)]
-    prog_access_decls: Vec<ProgAccessDecl<'db>>,
+    pub prog_access_decls: Vec<ProgAccessDecl<'db>>,
 
     #[returns(ref)]
-    variables: Vec<VariableDecl<'db>>,
+    pub variables: Vec<VariableDecl<'db>>,
 
+    #[tracked]
+    #[no_eq]
     #[returns(ref)]
-    statements: Vec<Stmt<'db>>,
+    pub statements: Vec<Stmt<'db>>,
 
     #[tracked]
     #[no_eq]
@@ -49,6 +55,16 @@ impl<'db> HirNodeInfo<'db> for ProgramDecl<'db> {
 
     fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
         self.scope_id(db)
+    }
+}
+
+impl<'db> HasName<'db> for ProgramDecl<'db> {
+    fn get_name_ident(&self, db: &'db dyn WorkspaceDataBase) -> Ident {
+        self.name(db)
+    }
+
+    fn get_name_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
+        self.name_id(db)
     }
 }
 

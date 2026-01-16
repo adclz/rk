@@ -14,10 +14,7 @@ use crate::{
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
-    hir_ty::{
-        body_inference::infer_body_scope,
-        init_inference::infer_data_type,
-    },
+    hir_ty::{body_inference::infer_body_scope, init_inference::infer_data_type},
 };
 
 impl<'db> Check<'db> for ScopeId<'db> {
@@ -53,17 +50,25 @@ impl<'db> Check<'db> for ScopeId<'db> {
         });
 
         // check pous
-        if let Some(pous) = self.pous(db) { pous.iter().for_each(|pou| {
+        if let Some(pous) = self.pous(db) {
+            pous.iter().for_each(|pou| {
                 pou.get_scope_id(db).check(db, errors);
-            }); }
+            });
+        }
 
-        if let Some(methods) = self.method_prototypes(db) { methods.check(db, errors); }
+        if let Some(methods) = self.method_prototypes(db) {
+            methods.check(db, errors);
+        }
 
         // check methods
-        if let Some(methods) = self.method_declarations(db) { methods.check(db, errors); }
+        if let Some(methods) = self.method_declarations(db) {
+            methods.check(db, errors);
+        }
 
         // check variables
-        if let Some(variables) = self.variables(db) { variables.check(db, errors); }
+        if let Some(variables) = self.variables(db) {
+            variables.check(db, errors);
+        }
 
         // check body
         let infer = infer_body_scope(db, *self);

@@ -8,7 +8,7 @@ use crate::{
         init_inference::InitInferenceError,
     },
     hir_def::expressions::{
-            expression::{BeginPathExpr, InitExpr, PathExpr},
+            expression::{BeginPathExpr, InitExpr, MultibitsPart, PathExpr},
             invocation::InvocationKind,
         },
     hir_ty::{
@@ -37,6 +37,7 @@ impl<'db> Type<'db> {
         &self,
         db: &'db dyn WorkspaceDataBase,
         expr: BeginPathExpr<'db>,
+        multibits: Option<MultibitsPart>,
         ctx: &mut BodyInferenceResult<'db>,
     ) {
         // a begin path expr can either have:
@@ -78,7 +79,7 @@ impl<'db> Type<'db> {
                             current_path: path_expr,
                         };
                         for step in steps {
-                            current.walk_path_expr(db, true, step, &mut place, ctx);
+                            current.walk_path_expr(db, true, step,multibits, &mut place, ctx);
                             // it is necessary to apply adjustments at each step
                             current = ctx
                                 .type_of_path_expr_with_adjustments(*step.get_expr())
@@ -145,7 +146,7 @@ impl<'db> Type<'db> {
         if let Some(path) = expr.expr(db) {
             // resolve path steps
             Resolver::for_scope(db, path.scope_id(db))
-                .resolve_path_steps(*self, db, path, ctx)
+                .resolve_path_steps(*self, db, path, multibits, ctx)
         }
     }
 
@@ -154,6 +155,7 @@ impl<'db> Type<'db> {
         db: &'db dyn WorkspaceDataBase,
         report_errors: bool,
         step: &'db PathExprWalkStep<'db>,
+        multibits: Option<MultibitsPart>,
         place: &mut PlaceBuilder<'db>,
         ctx: &mut BodyInferenceResult<'db>,
     ) {
@@ -162,11 +164,12 @@ impl<'db> Type<'db> {
         match self {
             // both variables and data types can have fields
             // but we need to inspect their spec type
-            Type::Variable(v) => {
+            Type::Variable((v, multibits)) => {
                 return Type::new_spec(db, v.spec(db)).walk_path_expr(
                     db,
                     report_errors,
                     step,
+                    *multibits,
                     place,
                     ctx,
                 );
@@ -176,6 +179,7 @@ impl<'db> Type<'db> {
                     db,
                     report_errors,
                     step,
+                    multibits,
                     place,
                     ctx,
                 );
@@ -185,6 +189,7 @@ impl<'db> Type<'db> {
                     db,
                     report_errors,
                     step,
+                    multibits,
                     place,
                     ctx,
                 );
@@ -212,22 +217,21 @@ impl<'db> Type<'db> {
                         }
                     }
 
-                    Type::Function(_) | Type::FunctionBlock(_) | Type::Class(_) => {
+                    Type::Function(_) | Type::FunctionBlock(_) | Type::Class(_) | Type::Program(_) => {
                         let def_map = match self {
                             Type::Function(f) => f.scope_id(db),
                             Type::FunctionBlock(fb) => fb.scope_id(db),
                             Type::Class(c) => c.scope_id(db),
+                            Type::Program(p) => p.scope_id(db),
                             // unreachable due to the match above
                             _ => unreachable!(),
                         }
                         .def_map(db);
 
-                        let ident2 = ident.ident.text(db).to_string();
-
                         // Variables
                         if let Some(var) = def_map.global_variables.get(&ident.ident) {
-                            ctx.type_of_path_expr.insert(*expr, Type::new_var(db, *var));
-                            place.current_typ = Type::new_var(db, *var);
+                            ctx.type_of_path_expr.insert(*expr, Type::new_var_with_multibits(db, *var, multibits));
+                            place.current_typ = Type::new_var_with_multibits(db, *var, multibits);
                             place.current_path = *step.get_expr();
                         }
                         // Methods
