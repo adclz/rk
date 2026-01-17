@@ -174,7 +174,7 @@ impl<'db> Type<'db> {
                 }
 
                 // a variable of callable type cannot be assigned to
-                if let Some(callable_typ) = Type::new_var(db, *variable).as_callable(db) {
+                if let Some(callable_typ) = Type::new_spec(db, variable.spec(db)).as_callable(db) {
                     ctx.errors.push(
                         BodyInferenceError::AssignCallableType {
                             typ: callable_typ,

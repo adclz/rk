@@ -23,10 +23,7 @@ use crate::{
         body_inference::{Adjust, Adjustment},
         ty::{CallableType, Type},
     },
-    query_string::{
-        method::fuzzy_callable_type_parameters,
-        variables::fuzzy_variables,
-    },
+    query_string::{method::fuzzy_callable_type_parameters, variables::fuzzy_variables},
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
@@ -139,27 +136,20 @@ impl<'db> From<TypeError<'db>> for BodyInferenceError<'db> {
 impl<'db> ToIdeDiagnostic<'db> for BodyInferenceError<'db> {
     fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase) -> IdeDiagnostic {
         match self {
-            Self::IsVarInput { var, access } => {
-                
-                diag()
-                    .message(format!(
-                        "{} is an input variable and can not be assigned",
-                        var.get_name_ident(db).text(db)
-                    ))
-                    .range(access.get_span(db))
-                    .call()
-            }
-            Self::AssignCallableType { typ, access } => {
-                
-
-                diag()
-                    .message(format!(
-                        "'{}' is a callable type and can not be assigned",
-                        typ.get_name_ident(db).text(db)
-                    ))
-                    .range(access.get_span(db))
-                    .call()
-            }
+            Self::IsVarInput { var, access } => diag()
+                .message(format!(
+                    "{} is an input variable and can not be assigned",
+                    var.get_name_ident(db).text(db)
+                ))
+                .range(access.get_span(db))
+                .call(),
+            Self::AssignCallableType { typ, access } => diag()
+                .message(format!(
+                    "'{}' is a callable type and can not be assigned",
+                    typ.get_name_ident(db).text(db)
+                ))
+                .range(access.get_span(db))
+                .call(),
             Self::DirectType { expr, typ } => diag()
                 .message(format!(
                     "cannot use direct type '{}' here",
@@ -189,31 +179,23 @@ impl<'db> ToIdeDiagnostic<'db> for BodyInferenceError<'db> {
                 actual,
                 func_call,
                 callable,
-            } => {
-                
-
-                diag()
-                    .message(format!(
-                        "'{}' expects {} parameter{}, but got {}",
-                        callable.get_name_ident(db).text(db),
-                        expected,
-                        match expected {
-                            1 => "",
-                            _ => "s",
-                        },
-                        actual
-                    ))
-                    .range(func_call.path(db).get_span(db))
-                    .call()
-            }
-            Self::UnknownNonFormalParameter { func, expr, param } => {
-                
-
-                diag()
-                    .message(format!("no parameter at index '{}'", param))
-                    .range(expr.get_span(db))
-                    .call()
-            }
+            } => diag()
+                .message(format!(
+                    "'{}' expects {} parameter{}, but got {}",
+                    callable.get_name_ident(db).text(db),
+                    expected,
+                    match expected {
+                        1 => "",
+                        _ => "s",
+                    },
+                    actual
+                ))
+                .range(func_call.path(db).get_span(db))
+                .call(),
+            Self::UnknownNonFormalParameter { func, expr, param } => diag()
+                .message(format!("no parameter at index '{}'", param))
+                .range(expr.get_span(db))
+                .call(),
             Self::UnknownInputParameter { func, param } => {
                 let mut diag = diag()
                     .message(format!("unknown input parameter '{}'", param.text(db)))
@@ -306,14 +288,10 @@ impl<'db> ToIdeDiagnostic<'db> for BodyInferenceError<'db> {
                 }
                 diag
             }
-            Self::NoSpecItemInScope { spec, scope } => {
-                
-
-                diag()
-                    .message("no item found in scope".to_string())
-                    .range(spec.get_span(db))
-                    .call()
-            }
+            Self::NoSpecItemInScope { spec, scope } => diag()
+                .message("no item found in scope".to_string())
+                .range(spec.get_span(db))
+                .call(),
             Self::NoSuchField { expr, ident, ty } => diag()
                 .message(format!(
                     "'{}' has no field named '{}'",
@@ -480,6 +458,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 adjustment,
                 expr,
             } => {
+                let _value = value.full_type_name(db);
                 let mut diag = diag()
                     .message(format!(
                         "expected '{}', got '{}'",
@@ -602,7 +581,11 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
     }
 }
 
-fn adjustment_to_string(db: &dyn WorkspaceDataBase, value: Type, adj: &Option<Adjustment>) -> String {
+fn adjustment_to_string(
+    db: &dyn WorkspaceDataBase,
+    value: Type,
+    adj: &Option<Adjustment>,
+) -> String {
     match adj {
         Some(adj) => match adj.kind {
             Adjust::Ref => {

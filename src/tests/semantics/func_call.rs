@@ -52,6 +52,26 @@ END_FUNCTION_BLOCK
     ");
 }
 
+// should not emit any errors
+#[rstest]
+fn array_of_fb_instances(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK fb2
+    VAR
+        instances: ARRAY[0..1] OF fb1;
+    END_VAR
+
+    instances[0]();
+
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
 #[rstest]
 fn unknown_input_param(mut with_db: RootDatabase) {
     let source = r#"
