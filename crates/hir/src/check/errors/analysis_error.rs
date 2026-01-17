@@ -19,7 +19,7 @@ pub trait ToIdeDiagnostic<'db> {
 pub enum AnalysisError<'db> {
     // Specific
     AutoLspError(PositionError),
-    SyntaxError(SyntaxError<'db>),
+    SyntaxError(SyntaxError),
     NamespaceError(NamespaceError<'db>),
     DuplicateError(DuplicateError<'db>),
     MethodError(MethodError<'db>),

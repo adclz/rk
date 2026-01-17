@@ -14,16 +14,14 @@ use ide_diagnostic::{IdeDiagnostic, Related, action, diag, edit};
 
 use crate::{HirNodeInfo, check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic}, hir_def::program::ProgramDecl};
 
-impl<'db> From<SyntaxError<'db>> for AnalysisError<'db> {
-    fn from(err: SyntaxError<'db>) -> Self {
+impl<'db> From<SyntaxError> for AnalysisError<'db> {
+    fn from(err: SyntaxError) -> Self {
         AnalysisError::SyntaxError(err)
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
-pub enum SyntaxError<'db> {
-    OldSyntaxConfig(Span),
-    ProgramNotInMainFile(ProgramDecl<'db>),
+pub enum SyntaxError {
     InvalidPouKeyword(Span),
     MultipleExtends(Span),
     MultipleImplements(Span),
@@ -96,28 +94,9 @@ impl<'db> From<(File, &ParseErrorAccumulator)> for AnalysisError<'db> {
     }
 }
 
-impl<'db> ToIdeDiagnostic<'db> for SyntaxError<'db> {
+impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
     fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase) -> IdeDiagnostic {
         match self {
-            Self::OldSyntaxConfig(span) => {
-                
-                let mut diag = diag()
-                .message("deprecated syntax for CONFIG declaration".into())
-                .severity(DiagnosticSeverity::INFORMATION)
-                .tags(vec![DiagnosticTag::DEPRECATED])
-                .range(span.clone())
-                .call();
-            
-                diag.with_note("use config.toml to declare resources and tasks".to_string());
-                diag
-            },
-            Self::ProgramNotInMainFile(program) => diag()
-                .message("PROGRAM declarations are only allowed in the main.st file".into())
-                .severity(DiagnosticSeverity::ERROR)
-                .tags(vec![DiagnosticTag::DEPRECATED])
-                .range(program.get_span(db).clone())
-                .call(),
-
             Self::MultipleExtends(span) => diag()
                 .message("multiple extends declarations".into())
                 .severity(DiagnosticSeverity::ERROR)
