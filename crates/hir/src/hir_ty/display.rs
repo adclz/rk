@@ -62,7 +62,7 @@ impl<'db> Type<'db> {
             Self::Elementary(elem) => match elem {
                 ElementarySpec::Bool => "BOOL",
                 ElementarySpec::REDGEBool => "BOOL (RISING EDGE)",
-                ElementarySpec::FEDGEBool => "BOOl (FALLING EDGE)",
+                ElementarySpec::FEDGEBool => "BOOL (FALLING EDGE)",
                 ElementarySpec::Byte => "BYTE",
                 ElementarySpec::Word => "WORD",
                 ElementarySpec::DWord => "DWORD",
@@ -116,7 +116,7 @@ impl<'db> Type<'db> {
             Self::Void => "void".into(),
             Self::StructElement(st) => Type::new_spec(db, st.spec(db)).type_name(db),
             Self::Variable((var, multibits)) => Type::new_spec(db, var.spec(db)).type_name(db),
-            Self::DirectVariable((dv, multibits )) => format!("DIRECT VARIABLE: {}", dv.adress.text(db)),
+            Self::DirectVariable((dv, multibits )) => format!("DIRECT VARIABLE: {}", dv.adress(db).text(db)),
             Self::Infer(infer) => match infer {
                 InferType::Integer(i) => format!("{{integer}} {}", i.ident(db).text(db)),
                 InferType::Float(f) => format!("{{float}} {}", f.text(db)),

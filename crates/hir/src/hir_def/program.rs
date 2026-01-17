@@ -4,7 +4,7 @@ use auto_lsp::{default::db::{BaseDatabase}, lsp_types::Url};
 use db::WorkspaceDataBase;
 
 use crate::{AstId, HasName, HirNodeInfo, hir_def::{
-    config::AccessDirection, expressions::{expression::PathExpr, spec::Spec, statement::Stmt}, interned::identifier::Ident, pous::variable::{DirectVariable, VariableDecl}, scope::ScopeId, semantic_index::semantic_index
+    config::AccessDirection, expressions::{expression::PathExpr, spec::Spec, statement::Stmt}, interned::identifier::Ident, pous::variable::{DirectVariable, LocatedVariable, VariableDecl}, scope::ScopeId, semantic_index::semantic_index
 }};
 
 pub static MAIN_FILE_URL: LazyLock<Arc<Url>> = LazyLock::new(|| Arc::new(Url::parse("file:///main.st").unwrap()));
@@ -35,6 +35,9 @@ pub struct ProgramDecl<'db> {
 
     #[returns(ref)]
     pub variables: Vec<VariableDecl<'db>>,
+
+    #[returns(ref)]
+    pub located_variables: Vec<LocatedVariable<'db>>,
 
     #[tracked]
     #[no_eq]
@@ -74,7 +77,7 @@ pub struct ProgAccessDecl<'db> {
 
     pub variable: PathExpr<'db>,
 
-    pub direct_variable: Option<DirectVariable>,
+    pub direct_variable: Option<DirectVariable<'db>>,
 
     pub spec: Spec<'db>,
 

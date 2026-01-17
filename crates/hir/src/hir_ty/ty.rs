@@ -5,12 +5,11 @@ use crate::{
     AstId, HasName, HirNodeInfo,
     hir_def::{
         expressions::{
-            expression::{
-                Elementary,
-                Integer, MultibitsPart,
-            },
+            expression::{Elementary, Integer, MultibitsPart},
             spec::{Array, ElementarySpec, Enum, Spec, SpecKind, Struct, StructElement, SubRange},
-        }, interned::identifier::Ident, pous::{
+        },
+        interned::identifier::Ident,
+        pous::{
             class::Class,
             data_type::DataType,
             function::Function,
@@ -18,17 +17,16 @@ use crate::{
             interface::Interface,
             pou::Pou,
             variable::{DirectVariable, VariableDecl},
-        }, program::ProgramDecl, scope::ScopeId
+        },
+        program::ProgramDecl,
+        scope::ScopeId,
     },
     hir_ty::{
-        def_map::LocalDefMap,
-        inheritance_solver::MethodRef,
-        name_res::resolve_namespace_access,
+        def_map::LocalDefMap, inheritance_solver::MethodRef, name_res::resolve_namespace_access,
     },
 };
 
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, salsa::Update)]
-#[derive(Default)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, salsa::Update, Default)]
 pub enum Type<'db> {
     // Primitive types
     Elementary(ElementarySpec),
@@ -52,7 +50,7 @@ pub enum Type<'db> {
     MethodDecl(MethodRef<'db>),
     Variable((VariableDecl<'db>, Option<MultibitsPart>)),
     // HW bindings
-    DirectVariable((DirectVariable, Option<MultibitsPart>)),
+    DirectVariable((DirectVariable<'db>, Option<MultibitsPart>)),
     Infer(InferType),
     // Program (cannot be seen by other types, only used here for body inference)
     Program(ProgramDecl<'db>),
@@ -66,7 +64,6 @@ pub enum Type<'db> {
     #[default]
     Never,
 }
-
 
 impl From<Elementary> for Type<'_> {
     fn from(elem: Elementary) -> Self {
@@ -215,7 +212,11 @@ impl<'db> Type<'db> {
         Type::Variable((var, None))
     }
 
-    pub fn new_var_with_multibits(db: &'db dyn WorkspaceDataBase, var: VariableDecl<'db>, multibits: Option<MultibitsPart>) -> Self {
+    pub fn new_var_with_multibits(
+        db: &'db dyn WorkspaceDataBase,
+        var: VariableDecl<'db>,
+        multibits: Option<MultibitsPart>,
+    ) -> Self {
         Type::Variable((var, multibits))
     }
 
@@ -239,11 +240,8 @@ impl<'db> Type<'db> {
     pub fn as_callable(&self, db: &'db dyn WorkspaceDataBase) -> Option<CallableType<'db>> {
         Some(match self {
             Type::Function(f) => CallableType::Function(*f),
+            Type::FunctionBlock(fb) => CallableType::FunctionBlock(*fb),
             Type::MethodDecl(m) => CallableType::MethodDecl(*m),
-            Type::Variable((var, multibits)) => match Type::new_spec(db, var.spec(db)) {
-                Type::FunctionBlock(fb) => CallableType::FunctionBlock(fb),
-                _ => None?,
-            },
             _ => None?,
         })
     }
@@ -372,5 +370,13 @@ impl<'db> Type<'db> {
 
     pub fn has_infer(&self) -> bool {
         matches!(self, Type::Infer(_))
+    }
+
+    pub fn is_variable(&self) -> bool {
+        matches!(self, Type::Variable(_))
+    }
+
+    pub fn is_fb(&self) -> bool {
+        matches!(self, Type::FunctionBlock(_))
     }
 }

@@ -32,24 +32,24 @@ pub struct ConfigInit<'db> {
 pub struct ConfigInstInit<'db> {
     path: PathExpr<'db>,
 
-    located_at: Option<DirectVariable>, // DV
+    located_at: Option<DirectVariable<'db>>, // DV
 
     init: InitExpr<'db>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum Resource<'db> {
-    Resource(ResourceDecl),
+    Resource(ResourceDecl<'db>),
     Single(SingleResourceDecl<'db>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub struct ResourceDecl {
+pub struct ResourceDecl<'db> {
     name: Ident,
 
     resource_type_name: Ident,
 
-    variables: Vec<DirectVariable>,
+    variables: Vec<DirectVariable<'db>>,
  
     //resources: Vec<ResourceDecl<'db>>,
 }

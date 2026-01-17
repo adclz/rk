@@ -76,7 +76,7 @@ pub struct BodyInferenceResult<'db> {
     pub variable_of_param: FxHashMap<ParamAssign<'db>, VariableDecl<'db>>,
 
     // Mapping of direct variables to their types
-    pub type_of_direct_variable: FxHashMap<DirectVariable, Type<'db>>,
+    pub type_of_direct_variable: FxHashMap<DirectVariable<'db>, Type<'db>>,
 
     // Mapping from invocations to their resolved types.
     pub type_of_invocation: FxHashMap<Invocation<'db>, Type<'db>>,

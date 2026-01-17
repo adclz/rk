@@ -4,7 +4,7 @@ use db::WorkspaceDataBase;
 use crate::{
     AstId, HasName, HirNodeInfo,
     hir_def::{
-        expressions::{expression::{InitExpr, MultibitsPart}, spec::Spec},
+        expressions::{expression::{InitExpr, Integer, MultibitsPart}, spec::Spec},
         interned::identifier::Ident,
         scope::ScopeId,
     },
@@ -112,9 +112,21 @@ pub enum VariableKind {
     Config,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub struct DirectVariable {
+#[salsa::tracked(debug)]
+pub struct DirectVariable<'db> {
     pub adress: Ident,
     pub partly: bool,
-    pub offset: Option<Ident>
+    pub offset: Vec<Integer>
 }
+
+#[salsa::tracked(debug)]
+pub struct LocatedVariable<'db> {
+    pub name: Option<Ident>,
+
+    pub located_at: DirectVariable<'db>,
+
+    pub spec: Spec<'db>,
+
+    pub init: Option<InitExpr<'db>>,
+}
+

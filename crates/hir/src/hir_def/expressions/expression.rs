@@ -307,7 +307,7 @@ pub struct VariableAccess<'db> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum VariableAccessKind<'db> {
-    Direct(DirectVariable),
+    Direct(DirectVariable<'db>),
     Symbolic(BeginPathExpr<'db>),
 }
 
