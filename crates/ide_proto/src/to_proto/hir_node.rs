@@ -2,7 +2,7 @@ use std::ops::ControlFlow;
 
 use auto_lsp::{
     core::span::Span,
-    default::db::{BaseDatabase, file::File},
+    default::db::file::File,
 };
 use db::WorkspaceDataBase;
 use hir::{

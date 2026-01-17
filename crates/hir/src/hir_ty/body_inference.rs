@@ -7,13 +7,15 @@ use crate::{
     hir_def::{
         expressions::{
             expression::{
-                BeginPathExpr, Expr, ExprKind, ParamAssign,
-                PathExpr, PrimaryExpr, RefValue, VariableAccess,
-                VariableAccessKind,
+                BeginPathExpr, Expr, ExprKind, ParamAssign, PathExpr, PrimaryExpr, RefValue,
+                VariableAccess, VariableAccessKind,
             },
             invocation::Invocation,
         },
-        pous::{pou::Pou, variable::{DirectVariable, VariableDecl}},
+        pous::{
+            pou::Pou,
+            variable::{DirectVariable, VariableDecl},
+        },
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },

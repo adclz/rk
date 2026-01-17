@@ -4,8 +4,8 @@
 use std::ops::Deref;
 
 use auto_lsp::{
-    core::{ast::AstNode, document::Encoding, span::Span}, lsp_types,
-
+    core::{ast::AstNode, document::Encoding, span::Span},
+    lsp_types,
 };
 use bitflags::bitflags;
 use compact_str::CompactString;
@@ -225,7 +225,7 @@ pub trait HasName<'db>: HirNodeInfo<'db> {
                 )
             })
             .get_range();
-        
+
         let document = self.get_scope_id(db).file(db).document(db);
 
         let line_str = self
@@ -234,8 +234,7 @@ pub trait HasName<'db>: HirNodeInfo<'db> {
             .document(db)
             .texter
             .get_row(ts_range.start_point.row)
-             .expect("Failed to get line string for start point; this is a bug!");
-
+            .expect("Failed to get line string for start point; this is a bug!");
 
         let start =
             tree_sitter_position_adjusted(document.encoding, line_str, ts_range.start_point);

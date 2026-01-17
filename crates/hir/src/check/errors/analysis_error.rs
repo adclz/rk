@@ -1,7 +1,7 @@
 use core::panic;
 use std::{error::Error, fmt::Display};
 
-use auto_lsp::{core::errors::PositionError, default::db::BaseDatabase};
+use auto_lsp::core::errors::PositionError;
 use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 

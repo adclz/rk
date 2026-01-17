@@ -1,7 +1,5 @@
 #![allow(deprecated)]
-use auto_lsp::{
-    define_semantic_token_modifiers, define_semantic_token_types,
-};
+use auto_lsp::{define_semantic_token_modifiers, define_semantic_token_types};
 
 pub mod begin_path_expr;
 pub mod comment_index;

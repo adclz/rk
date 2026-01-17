@@ -1,6 +1,7 @@
-use auto_lsp::default::db::{BaseDatabase, file::File};
+use auto_lsp::default::db::file::File;
 use db::WorkspaceDataBase;
 
+use crate::Visibility;
 use crate::hir_def::pous::interface::MethodPrototype;
 use crate::hir_def::program::ProgramDecl;
 use crate::hir_def::{
@@ -9,7 +10,6 @@ use crate::hir_def::{
     semantic_index::get_scope,
     using::Using,
 };
-use crate::Visibility;
 
 #[salsa::tracked(debug)]
 pub struct ScopeId<'db> {
@@ -34,7 +34,10 @@ impl<'db> ScopeId<'db> {
         })
     }
 
-    pub fn method_declarations(&self, db: &'db dyn WorkspaceDataBase) -> Option<&Vec<MethodDecl<'db>>> {
+    pub fn method_declarations(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> Option<&Vec<MethodDecl<'db>>> {
         Some(match get_scope(db, *self).kind {
             ScopeKind::Pou(pou) => match pou {
                 Pou::Class(cl) => cl.methods(db),

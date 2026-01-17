@@ -1,7 +1,7 @@
 use auto_lsp::{
     anyhow,
     core::ast::{AstNode, AstNodeId},
-    default::db::{BaseDatabase, file::File, tracked::get_ast},
+    default::db::{file::File, tracked::get_ast},
 };
 use compact_str::CompactString;
 use db::WorkspaceDataBase;

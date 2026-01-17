@@ -4,7 +4,6 @@ mod capabilties;
 
 use ast::RK_PARSER;
 use auto_lsp::anyhow;
-use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::default::server::capabilities::TEXT_DOCUMENT_SYNC;
 use auto_lsp::default::server::capabilities::WORKSPACE_PROVIDER;
 use auto_lsp::default::server::file_events::change_text_document;
@@ -64,10 +63,8 @@ use db::WorkspaceDataBase;
 use db::configuration::Configuration;
 use ide_proto::SUPPORTED_MODIFIERS;
 use ide_proto::SUPPORTED_TYPES;
-use salsa::EventKind;
 use std::error::Error;
 use std::panic::RefUnwindSafe;
-use std::sync::LazyLock;
 use std::sync::OnceLock;
 
 use crate::capabilties::code_actions::code_actions;
@@ -150,9 +147,7 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
         db,
     )?;
 
-    params.root_uri.as_ref().map(|uri| {
-        Configuration::init_or_update(&mut session.db, Some(uri.clone()));
-    });
+    if let Some(uri) = params.root_uri.as_ref() { Configuration::init_or_update(&mut session.db, Some(uri.clone())); }
 
     session.init_workspace(params)?;
 

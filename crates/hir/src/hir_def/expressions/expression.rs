@@ -3,7 +3,6 @@ use crate::hir_def::interned::identifier::{Ident, SpanIdent};
 use crate::hir_def::pous::variable::DirectVariable;
 use crate::hir_def::scope::ScopeId;
 use crate::{AstId, HirNodeInfo};
-use auto_lsp::default::db::BaseDatabase;
 use db::WorkspaceDataBase;
 
 #[salsa::tracked(debug)]

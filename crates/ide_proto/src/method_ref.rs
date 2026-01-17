@@ -1,6 +1,5 @@
 use auto_lsp::{
     core::document_symbols_builder::DocumentSymbolsBuilder,
-    default::db::BaseDatabase,
     lsp_types::{CompletionItem, Hover, HoverContents, MarkupContent, MarkupKind, SymbolKind},
 };
 use db::WorkspaceDataBase;
@@ -12,7 +11,11 @@ use hir::{
 use crate::to_proto::{HasComment, ToProtocol};
 
 impl<'db> ToProtocol<'db> for MethodRef<'db> {
-    fn document_symbols(&self, db: &'db dyn WorkspaceDataBase, builder: &mut DocumentSymbolsBuilder) {
+    fn document_symbols(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        builder: &mut DocumentSymbolsBuilder,
+    ) {
         let name = self.get_name_ident(db).text(db).to_string();
         let name = match name.len() {
             0 => "?".into(),

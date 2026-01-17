@@ -1,10 +1,7 @@
-use auto_lsp::{
-    default::db::BaseDatabase,
-    lsp_types::{
+use auto_lsp::lsp_types::{
         GotoDefinitionResponse, Hover, HoverContents, InlayHint, InlayHintKind, InlayHintLabel,
         MarkupContent, MarkupKind, request::GotoDeclarationResponse,
-    },
-};
+    };
 use db::WorkspaceDataBase;
 use hir::{HirNodeInfo, hir_ty::ty::Type};
 
@@ -36,7 +33,7 @@ impl<'db> TypeProto<'db> for Type<'db> {
         parent: &dyn HirNodeInfo<'db>,
     ) -> Option<InlayHint> {
         match self {
-            Type::Variable((var, multibits)) => Some(InlayHint {
+            Type::Variable((var, _multibits)) => Some(InlayHint {
                 position: parent.get_span(db).lsp().end,
                 label: InlayHintLabel::String(format!(
                     ": {}",
@@ -60,7 +57,7 @@ impl<'db> TypeProto<'db> for Type<'db> {
         parent: &dyn HirNodeInfo<'db>,
     ) -> Option<Hover> {
         match self {
-            Type::Variable((var, multibits)) => var.hover(db, offset),
+            Type::Variable((var, _multibits)) => var.hover(db, offset),
             _ => Some(Hover {
                 contents: HoverContents::Markup(MarkupContent {
                     kind: MarkupKind::Markdown,
@@ -81,14 +78,14 @@ impl<'db> TypeProto<'db> for Type<'db> {
 
     fn definition(&'db self, _db: &'db dyn WorkspaceDataBase) -> Option<GotoDefinitionResponse> {
         match self {
-            Type::Variable((var, multibits)) => var.definition(_db),
+            Type::Variable((var, _multibits)) => var.definition(_db),
             _ => None,
         }
     }
 
     fn declaration(&'db self, _db: &'db dyn WorkspaceDataBase) -> Option<GotoDeclarationResponse> {
         match self {
-            Type::Variable((var, multibits)) => var.declaration(_db),
+            Type::Variable((var, _multibits)) => var.declaration(_db),
             _ => None,
         }
     }

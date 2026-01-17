@@ -5,7 +5,9 @@ use auto_lsp::anyhow;
 use crate::{
     Visibility,
     builder::{
-        ParseVarSection, semantic_index::SemanticIndexBuilder, statement::ParseStatement,
+        ParseVarSection,
+        semantic_index::SemanticIndexBuilder,
+        statement::ParseStatement,
         variables::{ParseLocatedVar, ParseProgDecl},
     },
     hir_def::{
@@ -78,14 +80,22 @@ trait ParseVariable<'db> {
     fn parse_variables(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> (Vec<ProgAccessDecl<'db>>, Vec<VariableDecl<'db>>, Vec<LocatedVariable<'db>>);
+    ) -> (
+        Vec<ProgAccessDecl<'db>>,
+        Vec<VariableDecl<'db>>,
+        Vec<LocatedVariable<'db>>,
+    );
 }
 
 impl<'db> ParseVariable<'db> for ast::generated::ProgDecl {
     fn parse_variables(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> (Vec<ProgAccessDecl<'db>>, Vec<VariableDecl<'db>>, Vec<LocatedVariable<'db>>) {
+    ) -> (
+        Vec<ProgAccessDecl<'db>>,
+        Vec<VariableDecl<'db>>,
+        Vec<LocatedVariable<'db>>,
+    ) {
         let mut prog_decls = vec![];
         let mut variables = vec![];
         let mut located_variables = vec![];

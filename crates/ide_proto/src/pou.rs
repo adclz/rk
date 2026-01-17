@@ -10,7 +10,6 @@ use hir::{
 
 use auto_lsp::{
     core::document_symbols_builder::DocumentSymbolsBuilder,
-    default::db::BaseDatabase,
     lsp_types::{
         CodeLens, Command, CompletionItem, GotoDefinitionResponse, Hover, HoverContents, InlayHint,
         InlayHintKind, InlayHintLabel, Location, LocationLink, MarkupContent, MarkupKind,
@@ -27,7 +26,11 @@ use crate::{
 };
 
 impl<'db> ToProtocol<'db> for Pou<'db> {
-    fn document_symbols(&self, db: &'db dyn WorkspaceDataBase, builder: &mut DocumentSymbolsBuilder) {
+    fn document_symbols(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        builder: &mut DocumentSymbolsBuilder,
+    ) {
         let mut nested_builder = DocumentSymbolsBuilder::default();
         match self {
             Pou::FunctionBlock(fb) => {
@@ -150,7 +153,10 @@ impl<'db> ToProtocol<'db> for Pou<'db> {
         })
     }
 
-    fn implementation(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoImplementationResponse> {
+    fn implementation(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> Option<GotoImplementationResponse> {
         match self {
             Pou::Class(_) | Pou::Interface(_) => {
                 let links = find_all_implementations(db, *self)

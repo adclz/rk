@@ -8,7 +8,6 @@ use crate::{
     },
     hir_ty::name_res::resolve_namespace_access,
 };
-use auto_lsp::default::db::BaseDatabase;
 use db::WorkspaceDataBase;
 use rustc_hash::FxHashMap;
 
@@ -167,7 +166,10 @@ impl<'db> InheritedMethod<'db> {
 }
 
 #[salsa::tracked(returns(ref))]
-pub fn inherited_methods<'db>(db: &'db dyn WorkspaceDataBase, pou: Pou<'db>) -> InheritedMethodSet<'db> {
+pub fn inherited_methods<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    pou: Pou<'db>,
+) -> InheritedMethodSet<'db> {
     let mut methods = FxHashMap::default();
     let mut duplicates = vec![];
     let mut unresolved = vec![];

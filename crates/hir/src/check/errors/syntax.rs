@@ -5,14 +5,14 @@ use auto_lsp::{
         errors::{LexerError, ParseError, ParseErrorAccumulator},
         span::Span,
     },
-    default::db::{BaseDatabase, file::File},
-    lsp_types::{DiagnosticSeverity, DiagnosticTag, WorkspaceEdit},
+    default::db::file::File,
+    lsp_types::{DiagnosticSeverity, WorkspaceEdit},
     tree_sitter::{self, Range},
 };
 use db::WorkspaceDataBase;
 use ide_diagnostic::{IdeDiagnostic, Related, action, diag, edit};
 
-use crate::{HirNodeInfo, check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic}, hir_def::program::ProgramDecl};
+use crate::check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic};
 
 impl<'db> From<SyntaxError> for AnalysisError<'db> {
     fn from(err: SyntaxError) -> Self {

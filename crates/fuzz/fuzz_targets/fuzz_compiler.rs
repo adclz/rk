@@ -7,7 +7,6 @@ use auto_lsp::lsp_types::Url;
 use db::RootDatabase;
 use hir::check::diagnostics_for_file;
 use hir::hir_def::semantic_index::semantic_index;
-use db::WorkspaceDataBase;
 
 fn do_fuzz(case: &[u8]) -> Corpus {
     // Skip empty or very large inputs
@@ -45,7 +44,7 @@ fn do_fuzz(case: &[u8]) -> Corpus {
     // Add the file to the database
     if db.add_file(file).is_err() {
         return Corpus::Reject;
-    } 
+    }
 
     // Retrieve the file from the database
     let file = match db.get_file(&url) {

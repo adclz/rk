@@ -1,4 +1,3 @@
-use auto_lsp::default::db::BaseDatabase;
 use db::WorkspaceDataBase;
 use rustc_hash::FxHashMap;
 
@@ -29,8 +28,7 @@ pub struct InferenceTable<'db> {
     pub types: FxHashMap<Expr<'db>, Type<'db>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum InferMode<'db> {
     // No inference needed
     #[default]
@@ -49,7 +47,6 @@ pub enum InferMode<'db> {
         expr: Option<CallSite<'db>>,
     },
 }
-
 
 impl<'db> InferenceTable<'db> {
     pub fn new() -> Self {

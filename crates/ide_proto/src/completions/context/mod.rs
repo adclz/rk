@@ -1,4 +1,4 @@
-use auto_lsp::{core::span::Span, default::db::BaseDatabase, lsp_types::CompletionItem};
+use auto_lsp::{core::span::Span, lsp_types::CompletionItem};
 use db::WorkspaceDataBase;
 use hir::{
     HasName,
@@ -19,7 +19,11 @@ pub mod interface;
 pub mod method;
 
 pub trait PrecizeCompletion<'db, 'scope> {
-    fn head_completion(&'db self, db: &'db dyn WorkspaceDataBase, ctx: PouCompletionCtx<'db, 'scope>);
+    fn head_completion(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        ctx: PouCompletionCtx<'db, 'scope>,
+    );
 }
 
 pub struct ScopeCompletionCtx<'db> {

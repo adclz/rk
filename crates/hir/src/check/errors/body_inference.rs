@@ -1,4 +1,4 @@
-use auto_lsp::{default::db::BaseDatabase, lsp_types::DiagnosticSeverity};
+use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
 use ide_diagnostic::{IdeDiagnostic, Related, diag};
 

@@ -6,7 +6,7 @@ use crate::hir_def::scope::ScopeId;
 use crate::{HirNodeInfo, hir_def::interned::identifier::SpanIdent};
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::default::db::tracked::get_ast;
-use auto_lsp::{anyhow, default::db::BaseDatabase};
+use auto_lsp::anyhow;
 use db::WorkspaceDataBase;
 use std::hash::Hash;
 use std::ops::Deref;
@@ -104,7 +104,9 @@ impl<'db> From<(&dyn WorkspaceDataBase, &SpanIdent<'db>)> for SpanNamespacePath<
     }
 }
 
-impl<'db> From<(&dyn WorkspaceDataBase, &[SpanIdent<'db>], ScopeId<'db>)> for SpanNamespacePath<'db> {
+impl<'db> From<(&dyn WorkspaceDataBase, &[SpanIdent<'db>], ScopeId<'db>)>
+    for SpanNamespacePath<'db>
+{
     fn from(from: (&dyn WorkspaceDataBase, &[SpanIdent<'db>], ScopeId<'db>)) -> Self {
         let mut spans = vec![];
         let mut idents = vec![];
@@ -121,7 +123,9 @@ impl<'db> From<(&dyn WorkspaceDataBase, &[SpanIdent<'db>], ScopeId<'db>)> for Sp
     }
 }
 
-impl<'db> From<(&dyn WorkspaceDataBase, Vec<SpanIdent<'db>>, ScopeId<'db>)> for SpanNamespacePath<'db> {
+impl<'db> From<(&dyn WorkspaceDataBase, Vec<SpanIdent<'db>>, ScopeId<'db>)>
+    for SpanNamespacePath<'db>
+{
     fn from(from: (&dyn WorkspaceDataBase, Vec<SpanIdent<'db>>, ScopeId<'db>)) -> Self {
         let mut spans = vec![];
         let mut idents = vec![];
@@ -138,7 +142,9 @@ impl<'db> From<(&dyn WorkspaceDataBase, Vec<SpanIdent<'db>>, ScopeId<'db>)> for 
     }
 }
 
-impl<'db> From<(&dyn WorkspaceDataBase, &Vec<SpanIdent<'db>>, ScopeId<'db>)> for SpanNamespacePath<'db> {
+impl<'db> From<(&dyn WorkspaceDataBase, &Vec<SpanIdent<'db>>, ScopeId<'db>)>
+    for SpanNamespacePath<'db>
+{
     fn from(from: (&dyn WorkspaceDataBase, &Vec<SpanIdent<'db>>, ScopeId<'db>)) -> Self {
         let mut spans = vec![];
         let mut idents = vec![];

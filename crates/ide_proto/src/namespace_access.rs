@@ -1,6 +1,5 @@
 use auto_lsp::{
     core::semantic_tokens_builder::SemanticTokensBuilder,
-    default::db::BaseDatabase,
     lsp_types::{CompletionItem, GotoDefinitionResponse, Hover, request::GotoDeclarationResponse},
 };
 use db::WorkspaceDataBase;
@@ -85,7 +84,11 @@ impl<'db> ToProtocol<'db> for SpanNamespaceAccessContext<'db> {
         Some(results)
     }
 
-    fn semantic_tokens(&'db self, db: &'db dyn WorkspaceDataBase, builder: &mut SemanticTokensBuilder) {
+    fn semantic_tokens(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        builder: &mut SemanticTokensBuilder,
+    ) {
         match self {
             Self::Extends(ext) => {
                 push_fragments(db, ext, builder);

@@ -2,7 +2,6 @@ use std::fmt::Display;
 
 use auto_lsp::{
     core::span::Span,
-    default::db::BaseDatabase,
     lsp_types::{
         self, CompletionItem, CompletionItemKind, CompletionItemLabelDetails, InsertTextFormat,
         InsertTextMode, Range, TextEdit,
@@ -168,7 +167,7 @@ pub fn find_using_range<'db>(db: &'db dyn WorkspaceDataBase, node: ScopeId<'db>)
                     .parent
                     .expect("All methods should have a parent scope");
                 find_using_range(db, parent_scope)
-            },
+            }
             _ => unreachable!(),
         },
     }

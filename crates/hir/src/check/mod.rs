@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use auto_lsp::{
     core::errors::ParseErrorAccumulator,
-    default::db::{BaseDatabase, file::File, tracked::get_ast},
+    default::db::{file::File, tracked::get_ast},
 };
 use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;

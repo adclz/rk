@@ -1,15 +1,9 @@
-use auto_lsp::{
-    default::db::BaseDatabase,
-    lsp_types::{
+use auto_lsp::lsp_types::{
         GotoDefinitionResponse, InlayHint, InlayHintKind, InlayHintLabel,
         request::GotoDeclarationResponse,
-    },
-};
+    };
 use db::WorkspaceDataBase;
-use hir::{
-    HirNodeInfo,
-    hir_def::expressions::expression::InitExprKind,
-};
+use hir::{HirNodeInfo, hir_def::expressions::expression::InitExprKind};
 
 use crate::{
     to_proto::{ToProtocol, hir_node::InitExprWithTypeContext},

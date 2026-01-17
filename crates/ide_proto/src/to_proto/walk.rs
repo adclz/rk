@@ -1,15 +1,12 @@
 use std::ops::ControlFlow;
 
-use auto_lsp::default::db::BaseDatabase;
 
 use db::WorkspaceDataBase;
 use hir::{
     HirNodeInfo,
     hir_def::{
         expressions::{
-            expression::{
-                BeginPathExpr, Expr, ParamAssign, PathExpr, VariableAccess,
-            },
+            expression::{BeginPathExpr, Expr, ParamAssign, PathExpr, VariableAccess},
             spec::{Spec, SpecKind},
             statement::{CaseKind, Stmt, StmtKind},
         },

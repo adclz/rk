@@ -1,15 +1,12 @@
-use auto_lsp::default::db::BaseDatabase;
 use db::WorkspaceDataBase;
 use ide_diagnostic::{IdeDiagnostic, Related};
 
 use crate::{
     HasName, HirNodeInfo,
     hir_def::expressions::{
-            expression::{
-                Elementary, Expr, ExprKind, InitExpr, InitExprKind, PrimaryExpr, RefValue,
-            },
-            spec::{ElementarySpec, SpecKind},
-        },
+        expression::{Elementary, Expr, ExprKind, InitExpr, InitExprKind, PrimaryExpr, RefValue},
+        spec::{ElementarySpec, SpecKind},
+    },
     hir_ty::ty::{CallableType, InferType, Type},
 };
 
@@ -90,7 +87,7 @@ impl<'db> Type<'db> {
                 ElementarySpec::Tod => "TOD",
                 ElementarySpec::LTod => "LTOD",
             }
-            .into(), 
+            .into(),
             Self::Program(program) => format!("PROGRAM: {}", program.get_name_ident(db).text(db)),
             Self::Function(f) => format!("FUNCTION: {}", f.get_name_ident(db).text(db)),
             Self::FunctionBlock(fb) => {
@@ -116,7 +113,9 @@ impl<'db> Type<'db> {
             Self::Void => "void".into(),
             Self::StructElement(st) => Type::new_spec(db, st.spec(db)).type_name(db),
             Self::Variable((var, multibits)) => Type::new_spec(db, var.spec(db)).type_name(db),
-            Self::DirectVariable((dv, multibits )) => format!("DIRECT VARIABLE: {}", dv.adress(db).text(db)),
+            Self::DirectVariable((dv, multibits)) => {
+                format!("DIRECT VARIABLE: {}", dv.adress(db).text(db))
+            }
             Self::Infer(infer) => match infer {
                 InferType::Integer(i) => format!("{{integer}} {}", i.ident(db).text(db)),
                 InferType::Float(f) => format!("{{float}} {}", f.text(db)),

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use auto_lsp::{default::db::file::File, lsp_types::Url};
+use auto_lsp::lsp_types::Url;
 use salsa::{Durability, Setter};
 
 use crate::WorkspaceDataBase;
@@ -24,25 +24,17 @@ impl Configuration {
 
     fn from_uri(db: &dyn WorkspaceDataBase, uri: Option<Url>) -> Self {
         let uri = match uri {
-            Some(uri) => match uri.to_file_path() {
-                Ok(path) => Some(path),
-                Err(()) => None,
-            },
-            None => None
+            Some(uri) => uri.to_file_path().ok(),
+            None => None,
         };
 
-        Self::builder(uri)
-            .durability(Durability::HIGH)
-            .new(db)
+        Self::builder(uri).durability(Durability::HIGH).new(db)
     }
 
     fn update(&self, db: &mut dyn WorkspaceDataBase, uri: Option<Url>) {
-              let uri = match uri {
-            Some(uri) => match uri.to_file_path() {
-                Ok(path) => Some(path),
-                Err(err) => None,
-            },
-            None => None
+        let uri = match uri {
+            Some(uri) => uri.to_file_path().ok(),
+            None => None,
         };
         self.set_workspace_folder(db).to(uri);
     }

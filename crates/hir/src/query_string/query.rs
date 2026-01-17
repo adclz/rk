@@ -153,9 +153,9 @@ impl Query {
                         && self
                             .mode
                             .check(&self.query, self.case_sensitive, symbol_name)
-                        {
-                            return Some(b);
-                        }
+                    {
+                        return Some(b);
+                    }
                 }
             }
         }
@@ -192,9 +192,10 @@ impl<'db> SymbolIndex<'db> {
 
         for idx in 0..symbols.len() {
             if let Some(next_symbol) = symbols.get(idx + 1)
-                && cmp(&symbols[last_batch_start], next_symbol) == Ordering::Equal {
-                    continue;
-                }
+                && cmp(&symbols[last_batch_start], next_symbol) == Ordering::Equal
+            {
+                continue;
+            }
 
             let start = last_batch_start;
             let end = idx + 1;

@@ -1,4 +1,3 @@
-use auto_lsp::default::db::BaseDatabase;
 use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 
@@ -60,31 +59,27 @@ impl<'db> Type<'db> {
             // variant is already solved by the resolver
             (Type::Enum(e1), Type::EnumVariant(e2)) => Ok(()),
             // same types are assignable
-            (Type::Struct(s1), Type::Struct(s2)) => {
-                match s1.eq(s2) {
-                    true => Ok(()),
-                    false => Err(CoerceError {
-                        expected: *self,
-                        actual: to,
-                        adjustment: None,
-                    }),
-                }
-            }
+            (Type::Struct(s1), Type::Struct(s2)) => match s1.eq(s2) {
+                true => Ok(()),
+                false => Err(CoerceError {
+                    expected: *self,
+                    actual: to,
+                    adjustment: None,
+                }),
+            },
             // check element spec equality
             (Type::StructElement(elem), rhs) => {
                 Type::new_spec(db, elem.spec(db)).coerce_with_type(db, *rhs, adjustments, resolver)
             }
             // same types are assignable
-            (Type::Array(a1), Type::Array(a2)) => {
-                match a1.eq(a2) {
-                    true => Ok(()),
-                    false => Err(CoerceError {
-                        expected: *self,
-                        actual: to,
-                        adjustment: None,
-                    }),
-                }
-            }
+            (Type::Array(a1), Type::Array(a2)) => match a1.eq(a2) {
+                true => Ok(()),
+                false => Err(CoerceError {
+                    expected: *self,
+                    actual: to,
+                    adjustment: None,
+                }),
+            },
             // check array spec equality
             (Type::Array(a1), rhs) => {
                 Type::new_spec(db, a1.of_type(db)).coerce_with_type(db, *rhs, adjustments, resolver)

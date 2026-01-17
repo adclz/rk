@@ -1,4 +1,3 @@
-use auto_lsp::default::db::BaseDatabase;
 use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
@@ -8,9 +7,7 @@ use crate::{
     check::{
         check_semantic_index::DataTypeCheck,
         errors::{
-            analysis_error::ToIdeDiagnostic,
-            body_inference::TypeError,
-            duplicates::DuplicateError,
+            analysis_error::ToIdeDiagnostic, body_inference::TypeError, duplicates::DuplicateError,
             enum_::EnumError,
         },
     },

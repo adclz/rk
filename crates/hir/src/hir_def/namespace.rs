@@ -1,5 +1,4 @@
 use auto_lsp::core::span::Span;
-use auto_lsp::default::db::BaseDatabase;
 use db::WorkspaceDataBase;
 
 use crate::hir_def::interned::namespace::NamespacePath;

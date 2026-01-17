@@ -1,4 +1,3 @@
-use auto_lsp::default::db::BaseDatabase;
 use db::WorkspaceDataBase;
 
 use crate::{
@@ -345,7 +344,10 @@ fn check_bool<'db>(
     }
 }
 
-fn check_u8<'db>(db: &dyn WorkspaceDataBase, value: &InferType) -> Result<Type<'db>, InferLiteralError> {
+fn check_u8<'db>(
+    db: &dyn WorkspaceDataBase,
+    value: &InferType,
+) -> Result<Type<'db>, InferLiteralError> {
     match value {
         InferType::Integer(n) => n
             .as_u8(db)
@@ -394,7 +396,10 @@ fn check_u64<'db>(
     }
 }
 
-fn check_i8<'db>(db: &dyn WorkspaceDataBase, value: &InferType) -> Result<Type<'db>, InferLiteralError> {
+fn check_i8<'db>(
+    db: &dyn WorkspaceDataBase,
+    value: &InferType,
+) -> Result<Type<'db>, InferLiteralError> {
     match value {
         InferType::Integer(n) => n
             .as_i8(db)
@@ -598,12 +603,18 @@ impl Ident {
     }
 
     #[salsa::tracked]
-    pub fn as_single_string(self, db: &dyn WorkspaceDataBase) -> Result<Vec<u8>, InferLiteralError> {
+    pub fn as_single_string(
+        self,
+        db: &dyn WorkspaceDataBase,
+    ) -> Result<Vec<u8>, InferLiteralError> {
         parse_single_byte_string(&self.text(db).replace("STRING#", ""))
     }
 
     #[salsa::tracked]
-    pub fn as_double_string(self, db: &dyn WorkspaceDataBase) -> Result<Vec<char>, InferLiteralError> {
+    pub fn as_double_string(
+        self,
+        db: &dyn WorkspaceDataBase,
+    ) -> Result<Vec<char>, InferLiteralError> {
         parse_double_byte_string(&self.text(db).replace("WSTRING#", ""))
     }
 

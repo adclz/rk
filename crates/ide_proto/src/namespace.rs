@@ -1,6 +1,5 @@
 use auto_lsp::{
     core::document_symbols_builder::DocumentSymbolsBuilder,
-    default::db::BaseDatabase,
     lsp_types::{
         CompletionItem, Hover, HoverContents, InlayHint, InlayHintKind, InlayHintLabel,
         MarkedString,
@@ -32,7 +31,11 @@ NAMESPACE {ns}
         })
     }
 
-    fn document_symbols(&self, db: &'db dyn WorkspaceDataBase, builder: &mut DocumentSymbolsBuilder) {
+    fn document_symbols(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        builder: &mut DocumentSymbolsBuilder,
+    ) {
         let mut nested_builder = DocumentSymbolsBuilder::default();
         self.namespaces(db)
             .iter()
@@ -60,7 +63,10 @@ NAMESPACE {ns}
         });
     }
 
-    fn inlay_hint(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<auto_lsp::lsp_types::InlayHint> {
+    fn inlay_hint(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> Option<auto_lsp::lsp_types::InlayHint> {
         Some(InlayHint {
             label: InlayHintLabel::String(format!("NAMESPACE {}", self.path(db).to_string(db))),
             position: self.get_span(db).lsp().end,

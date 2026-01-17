@@ -1,10 +1,12 @@
-use auto_lsp::default::db::BaseDatabase;
 use db::WorkspaceDataBase;
 
 use crate::{
     AstId, HasName, HirNodeInfo,
     hir_def::{
-        expressions::{expression::{InitExpr, Integer, MultibitsPart}, spec::Spec},
+        expressions::{
+            expression::{InitExpr, Integer},
+            spec::Spec,
+        },
         interned::identifier::Ident,
         scope::ScopeId,
     },
@@ -116,7 +118,7 @@ pub enum VariableKind {
 pub struct DirectVariable<'db> {
     pub adress: Ident,
     pub partly: bool,
-    pub offset: Vec<Integer>
+    pub offset: Vec<Integer>,
 }
 
 #[salsa::tracked(debug)]
@@ -129,4 +131,3 @@ pub struct LocatedVariable<'db> {
 
     pub init: Option<InitExpr<'db>>,
 }
-

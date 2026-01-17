@@ -3,7 +3,6 @@ use auto_lsp::{
         document_symbols_builder::DocumentSymbolsBuilder,
         semantic_tokens_builder::SemanticTokensBuilder,
     },
-    default::db::BaseDatabase,
     lsp_types::{
         CodeLens, CompletionItem, GotoDefinitionResponse, Hover, InlayHint,
         request::{GotoDeclarationResponse, GotoImplementationResponse},
@@ -33,7 +32,12 @@ pub trait HasComment<'db>: HirNodeInfo<'db> {
 impl<'db, T> HasComment<'db> for T where T: HirNodeInfo<'db> {}
 
 pub trait ToProtocol<'db>: HirNodeInfo<'db> {
-    fn document_symbols(&self, _db: &'db dyn WorkspaceDataBase, _builder: &mut DocumentSymbolsBuilder) {}
+    fn document_symbols(
+        &self,
+        _db: &'db dyn WorkspaceDataBase,
+        _builder: &mut DocumentSymbolsBuilder,
+    ) {
+    }
 
     fn completion(
         &'db self,
@@ -47,7 +51,10 @@ pub trait ToProtocol<'db>: HirNodeInfo<'db> {
         None
     }
 
-    fn implementation(&'db self, _db: &'db dyn WorkspaceDataBase) -> Option<GotoImplementationResponse> {
+    fn implementation(
+        &'db self,
+        _db: &'db dyn WorkspaceDataBase,
+    ) -> Option<GotoImplementationResponse> {
         None
     }
 
@@ -67,7 +74,11 @@ pub trait ToProtocol<'db>: HirNodeInfo<'db> {
         None
     }
 
-    fn semantic_tokens(&'db self, _db: &'db dyn WorkspaceDataBase, _builder: &mut SemanticTokensBuilder) {
+    fn semantic_tokens(
+        &'db self,
+        _db: &'db dyn WorkspaceDataBase,
+        _builder: &mut SemanticTokensBuilder,
+    ) {
     }
 }
 

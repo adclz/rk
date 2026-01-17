@@ -1,4 +1,3 @@
-use auto_lsp::default::db::BaseDatabase;
 use db::WorkspaceDataBase;
 
 pub mod body;
@@ -10,7 +9,9 @@ pub mod walk;
 use crate::{
     check::errors::{analysis_error::ToIdeDiagnostic, body_inference::BodyInferenceError},
     hir_def::{
-        expressions::expression::{BeginPathExpr, MultibitsPart, PathExpr, VariableAccess, VariableAccessKind},
+        expressions::expression::{
+            BeginPathExpr, MultibitsPart, PathExpr, VariableAccess, VariableAccessKind,
+        },
         pous::pou::Pou,
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
@@ -97,21 +98,20 @@ impl<'db> Resolver<'db> {
     }
 
     pub fn resolve_variable_access(
-        &self, 
+        &self,
         db: &'db dyn WorkspaceDataBase,
         var_access: VariableAccess<'db>,
         infer_results: &mut BodyInferenceResult<'db>,
     ) {
         match var_access.kind(db) {
             VariableAccessKind::Direct(dv) => {
-                infer_results.type_of_direct_variable.insert(
-                    dv,
-                    Type::DirectVariable((dv, var_access.multibits(db))),
-                );
-            },
+                infer_results
+                    .type_of_direct_variable
+                    .insert(dv, Type::DirectVariable((dv, var_access.multibits(db))));
+            }
             VariableAccessKind::Symbolic(s) => {
                 self.resolve_begin_path_expr(db, s, var_access.multibits(db), infer_results);
-            },
+            }
         }
     }
 
@@ -124,11 +124,11 @@ impl<'db> Resolver<'db> {
     ) {
         match self.root {
             PathResolutionRoot::Value { base } => {
-                base.walk_begin_path_expr(db, path_expr, multibits,  infer_results);
+                base.walk_begin_path_expr(db, path_expr, multibits, infer_results);
             }
             PathResolutionRoot::Namespace { scope } => {
                 // a begin path expr will always refer to a local variable in this context
-            },
+            }
         };
     }
 

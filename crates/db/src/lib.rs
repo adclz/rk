@@ -1,12 +1,10 @@
 use auto_lsp::{
-    core::errors::DataBaseError,
     default::db::{BaseDatabase, file::File},
     lsp_types::Url,
 };
-use dashmap::{DashMap, Entry};
+use dashmap::DashMap;
 use salsa::{Database, Event};
 
-use crate::configuration::Configuration;
 
 pub mod configuration;
 
@@ -43,8 +41,7 @@ impl BaseDatabase for RootDatabase {
 }
 
 #[salsa::db]
-pub trait WorkspaceDataBase: Database + BaseDatabase {
-}
+pub trait WorkspaceDataBase: Database + BaseDatabase {}
 
 #[salsa::db]
 impl WorkspaceDataBase for RootDatabase {}

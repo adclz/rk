@@ -1,5 +1,6 @@
 pub mod array;
 pub mod assignment;
+pub mod direct_variables;
 pub mod duplicates;
 pub mod enums;
 pub mod floats;
@@ -23,4 +24,3 @@ pub mod time;
 pub mod tod;
 pub mod visibility;
 pub mod walk_hir;
-pub mod direct_variables;

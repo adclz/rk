@@ -4,7 +4,6 @@ use libfuzzer_sys::{Corpus, fuzz_target};
 use formatter::TOPIARY_LANG;
 use topiary_core::{Operation, formatter};
 
-
 fn do_fuzz(case: &[u8]) -> Corpus {
     // Skip empty or very large inputs
     if case.is_empty() || case.len() > 1_000_000 {

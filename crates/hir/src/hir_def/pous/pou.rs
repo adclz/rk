@@ -1,5 +1,4 @@
 use crate::{HasName, Modifier};
-use auto_lsp::default::db::BaseDatabase;
 use db::WorkspaceDataBase;
 
 use crate::{

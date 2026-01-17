@@ -1,14 +1,10 @@
-use auto_lsp::default::db::BaseDatabase;
 use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
     HirNodeInfo,
     check::errors::{analysis_error::ToIdeDiagnostic, body_inference::TypeError},
-    hir_def::{
-        expressions::expression::InitExpr,
-        interned::identifier::Ident,
-    },
+    hir_def::{expressions::expression::InitExpr, interned::identifier::Ident},
     hir_ty::ty::Type,
     query_string::strukt::fuzzy_struct_fields,
 };
@@ -40,27 +36,19 @@ impl<'db> From<TypeError<'db>> for InitInferenceError<'db> {
 impl<'db> ToIdeDiagnostic<'db> for InitInferenceError<'db> {
     fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase) -> IdeDiagnostic {
         match self {
-            Self::IndexNonArrayType { expr, ty } => {
-                
-
-                ide_diagnostic::diag()
-                    .message(format!("cannot index into type '{}'", ty.type_name(db)))
-                    .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
-                    .range(expr.get_span(db))
-                    .call()
-            }
-            Self::IsElementaryType { expr, ty } => {
-                
-
-                ide_diagnostic::diag()
-                    .message(format!(
-                        "type '{}' is an elementary type and cannot be initiliazed with '()'",
-                        ty.type_name(db)
-                    ))
-                    .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
-                    .range(expr.get_span(db))
-                    .call()
-            }
+            Self::IndexNonArrayType { expr, ty } => ide_diagnostic::diag()
+                .message(format!("cannot index into type '{}'", ty.type_name(db)))
+                .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+                .range(expr.get_span(db))
+                .call(),
+            Self::IsElementaryType { expr, ty } => ide_diagnostic::diag()
+                .message(format!(
+                    "type '{}' is an elementary type and cannot be initiliazed with '()'",
+                    ty.type_name(db)
+                ))
+                .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+                .range(expr.get_span(db))
+                .call(),
             Self::NoSuchField { expr, ident, ty } => {
                 let mut diag = ide_diagnostic::diag()
                     .message(format!(

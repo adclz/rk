@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::default::db::tracked::get_ast;
-use auto_lsp::default::db::{BaseDatabase, file::File};
+use auto_lsp::default::db::file::File;
 use db::WorkspaceDataBase;
 use rustc_hash::FxHashMap;
 use tracing::info_span;
@@ -12,7 +12,7 @@ use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::analysis_error::AnalysisError;
 use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::Pou;
-use crate::hir_def::program::{ProgramDecl};
+use crate::hir_def::program::ProgramDecl;
 use crate::hir_def::scope::{Scope, ScopeId};
 
 /// Returns the semantic index of a given file

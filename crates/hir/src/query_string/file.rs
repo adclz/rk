@@ -1,4 +1,4 @@
-use auto_lsp::default::db::{BaseDatabase, file::File};
+use auto_lsp::default::db::file::File;
 use db::WorkspaceDataBase;
 
 use crate::{

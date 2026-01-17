@@ -1,6 +1,5 @@
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
-use auto_lsp::default::db::BaseDatabase;
 use db::WorkspaceDataBase;
 
 use crate::hir_def::expressions::expression::{InitExpr, VariableAccess};

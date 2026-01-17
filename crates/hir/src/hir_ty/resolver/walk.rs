@@ -1,4 +1,3 @@
-use auto_lsp::default::db::BaseDatabase;
 use db::WorkspaceDataBase;
 
 use crate::{
@@ -8,9 +7,9 @@ use crate::{
         init_inference::InitInferenceError,
     },
     hir_def::expressions::{
-            expression::{BeginPathExpr, InitExpr, MultibitsPart, PathExpr},
-            invocation::InvocationKind,
-        },
+        expression::{BeginPathExpr, InitExpr, MultibitsPart, PathExpr},
+        invocation::InvocationKind,
+    },
     hir_ty::{
         body_inference::{Adjustment, BodyInferenceResult},
         expr_store::{InitExprWalkStep, PathExprWalkStep},
@@ -79,7 +78,7 @@ impl<'db> Type<'db> {
                             current_path: path_expr,
                         };
                         for step in steps {
-                            current.walk_path_expr(db, true, step,multibits, &mut place, ctx);
+                            current.walk_path_expr(db, true, step, multibits, &mut place, ctx);
                             // it is necessary to apply adjustments at each step
                             current = ctx
                                 .type_of_path_expr_with_adjustments(*step.get_expr())
@@ -91,12 +90,7 @@ impl<'db> Type<'db> {
                         }
 
                         if let Type::MethodDecl(m) = current {
-                            check_visibility(
-                                db,
-                                &invocation.as_call_site(db),
-                                m,
-                                &mut ctx.errors,
-                            );
+                            check_visibility(db, &invocation.as_call_site(db), m, &mut ctx.errors);
                             ctx.type_of_path_expr.insert(path_expr, Type::MethodDecl(m));
                             return;
                         } else {
@@ -217,7 +211,10 @@ impl<'db> Type<'db> {
                         }
                     }
 
-                    Type::Function(_) | Type::FunctionBlock(_) | Type::Class(_) | Type::Program(_) => {
+                    Type::Function(_)
+                    | Type::FunctionBlock(_)
+                    | Type::Class(_)
+                    | Type::Program(_) => {
                         let def_map = match self {
                             Type::Function(f) => f.scope_id(db),
                             Type::FunctionBlock(fb) => fb.scope_id(db),
@@ -230,7 +227,8 @@ impl<'db> Type<'db> {
 
                         // Variables
                         if let Some(var) = def_map.global_variables.get(&ident.ident) {
-                            ctx.type_of_path_expr.insert(*expr, Type::new_var_with_multibits(db, *var, multibits));
+                            ctx.type_of_path_expr
+                                .insert(*expr, Type::new_var_with_multibits(db, *var, multibits));
                             place.current_typ = Type::new_var_with_multibits(db, *var, multibits);
                             place.current_path = *step.get_expr();
                         }
@@ -307,13 +305,9 @@ impl<'db> Type<'db> {
                         ));
 
                     ctx.type_of_path_expr.insert(*expr, place.current_typ);
-                    ctx.path_expr_adjustments
-                        .entry(*expr)
-                        .or_default()
-                        .push(Adjustment::new_index(
-                            db,
-                            Type::new_spec(db, arr.of_type(db)),
-                        ));
+                    ctx.path_expr_adjustments.entry(*expr).or_default().push(
+                        Adjustment::new_index(db, Type::new_spec(db, arr.of_type(db))),
+                    );
                 }
                 _ => {
                     if report_errors {
@@ -358,11 +352,8 @@ impl<'db> Type<'db> {
                     }
                     _ => {
                         ctx.errors.push(
-                            InitInferenceError::IndexNonArrayType {
-                                expr,
-                                ty: *self,
-                            }
-                            .to_diagnostic(db),
+                            InitInferenceError::IndexNonArrayType { expr, ty: *self }
+                                .to_diagnostic(db),
                         );
                     }
                 }
@@ -373,11 +364,7 @@ impl<'db> Type<'db> {
                 }
                 _ => {
                     ctx.errors.push(
-                        InitInferenceError::IsElementaryType {
-                            expr,
-                            ty: *self,
-                        }
-                        .to_diagnostic(db),
+                        InitInferenceError::IsElementaryType { expr, ty: *self }.to_diagnostic(db),
                     );
                 }
             },

@@ -20,7 +20,6 @@ namespace.
 and its derivations (default).
 */
 
-use auto_lsp::default::db::BaseDatabase;
 use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 

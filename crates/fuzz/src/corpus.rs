@@ -42,8 +42,8 @@ pub fn create_seed_corpus(source_dir: &Path, output_dir: &Path) -> anyhow::Resul
         let entry = entry?;
         let path = entry.path();
 
-        if path.is_file() && path.extension().map_or(false, |ext| ext == "txt") {
-            if let Ok(contents) = std::fs::read_to_string(&path) {
+        if path.is_file() && path.extension().is_some_and(|ext| ext == "txt")
+            && let Ok(contents) = std::fs::read_to_string(&path) {
                 let extracted_list = extract_all_sources_from_corpus(&contents);
                 for extracted in extracted_list {
                     if !extracted.is_empty() {
@@ -51,7 +51,6 @@ pub fn create_seed_corpus(source_dir: &Path, output_dir: &Path) -> anyhow::Resul
                     }
                 }
             }
-        }
     }
 
     Ok(count)
@@ -97,7 +96,7 @@ fn extract_all_sources_from_corpus(content: &str) -> Vec<String> {
             }
 
             // Remove trailing empty lines
-            while source_lines.last().map_or(false, |l| l.is_empty()) {
+            while source_lines.last().is_some_and(|l| l.is_empty()) {
                 source_lines.pop();
             }
 

@@ -101,10 +101,11 @@ impl CommentIndex {
                 }
             }
             if let Some(line_content) = document.texter.get_row(row)
-                && !line_content.is_empty() {
-                    // Still no comment, but there's a non-empty line
-                    break;
-                }
+                && !line_content.is_empty()
+            {
+                // Still no comment, but there's a non-empty line
+                break;
+            }
         }
 
         // Second: check for comments on the same line
@@ -112,16 +113,17 @@ impl CommentIndex {
         let mut best_right: Option<&Comment> = None;
 
         if let Some(comment) = same_line_comments
-            && comment.range.start_point.column >= column {
-                match &best_right {
-                    Some(existing) => {
-                        if comment.range.start_point.column < existing.range.start_point.column {
-                            best_right = Some(comment);
-                        }
+            && comment.range.start_point.column >= column
+        {
+            match &best_right {
+                Some(existing) => {
+                    if comment.range.start_point.column < existing.range.start_point.column {
+                        best_right = Some(comment);
                     }
-                    None => best_right = Some(comment),
                 }
+                None => best_right = Some(comment),
             }
+        }
 
         if best_right.is_some() {
             return best_right;

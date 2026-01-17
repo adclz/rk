@@ -1,12 +1,9 @@
 use auto_lsp::{
     core::semantic_tokens_builder::SemanticTokensBuilder,
-    default::db::BaseDatabase,
     lsp_types::{Hover, HoverContents, MarkedString},
 };
 use db::WorkspaceDataBase;
-use hir::{
-    hir_def::using::Using,
-};
+use hir::hir_def::using::Using;
 
 use crate::{NAMESPACE, SUPPORTED_TYPES, to_proto::ToProtocol};
 
@@ -37,7 +34,11 @@ impl<'db> ToProtocol<'db> for Using<'db> {
         None
     }
 
-    fn semantic_tokens(&'db self, db: &'db dyn WorkspaceDataBase, builder: &mut SemanticTokensBuilder) {
+    fn semantic_tokens(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        builder: &mut SemanticTokensBuilder,
+    ) {
         for (index, _fragment) in self.path(db).fragments(db).iter().enumerate() {
             let span = self.path(db).get_fragment_ast_node(db, index).get_span();
             builder.push(

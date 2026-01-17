@@ -2,7 +2,7 @@ use std::sync::LazyLock;
 
 use auto_lsp::{
     anyhow,
-    default::db::{file::File},
+    default::db::file::File,
     lsp_types::{self, TextEdit},
 };
 

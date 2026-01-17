@@ -1,4 +1,3 @@
-use auto_lsp::default::db::BaseDatabase;
 use db::WorkspaceDataBase;
 use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
@@ -65,15 +64,23 @@ impl<'db> ScopeId<'db> {
     pub fn can_have_local_variables(&self, db: &'db dyn WorkspaceDataBase) -> bool {
         match get_scope(db, *self).kind {
             ScopeKind::Global | ScopeKind::Namespace(_) => false,
-            ScopeKind::Pou(pou) => matches!(pou, Pou::Function(_) | Pou::FunctionBlock(_) | Pou::Class(_)),
+            ScopeKind::Pou(pou) => matches!(
+                pou,
+                Pou::Function(_) | Pou::FunctionBlock(_) | Pou::Class(_)
+            ),
             ScopeKind::Program(_) => true,
             ScopeKind::MethodDecl(m) => true,
         }
     }
 
-    fn local_variables(&self, db: &'db dyn WorkspaceDataBase) -> FxIndexMap<Ident, VariableDecl<'db>> {
+    fn local_variables(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> FxIndexMap<Ident, VariableDecl<'db>> {
         match get_scope(db, *self).kind {
-            ScopeKind::Global | ScopeKind::Namespace(_) | ScopeKind::Program(_) => IndexMap::default(),
+            ScopeKind::Global | ScopeKind::Namespace(_) | ScopeKind::Program(_) => {
+                IndexMap::default()
+            }
             ScopeKind::Pou(pou) => match pou {
                 Pou::Function(f) => local_variables(db, f.variables(db)),
                 Pou::FunctionBlock(fb) => local_variables(db, fb.variables(db)),
@@ -84,7 +91,10 @@ impl<'db> ScopeId<'db> {
         }
     }
 
-    fn global_variables(&self, db: &'db dyn WorkspaceDataBase) -> FxHashMap<Ident, VariableDecl<'db>> {
+    fn global_variables(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> FxHashMap<Ident, VariableDecl<'db>> {
         match get_scope(db, *self).kind {
             ScopeKind::Global | ScopeKind::Namespace(_) => FxHashMap::default(),
             ScopeKind::Pou(pou) => match pou {
@@ -100,9 +110,10 @@ impl<'db> ScopeId<'db> {
 
     fn declared_methods(&self, db: &'db dyn WorkspaceDataBase) -> FxHashMap<Ident, MethodRef<'db>> {
         match get_scope(db, *self).kind {
-            ScopeKind::Global | ScopeKind::Namespace(_) | ScopeKind::MethodDecl(_) | ScopeKind::Program(_) => {
-                FxHashMap::default()
-            }
+            ScopeKind::Global
+            | ScopeKind::Namespace(_)
+            | ScopeKind::MethodDecl(_)
+            | ScopeKind::Program(_) => FxHashMap::default(),
             ScopeKind::Pou(pou) => match pou {
                 Pou::Class(class) => class
                     .methods(db)

@@ -50,7 +50,6 @@ pub struct ResourceDecl<'db> {
     resource_type_name: Ident,
 
     variables: Vec<DirectVariable<'db>>,
- 
     //resources: Vec<ResourceDecl<'db>>,
 }
 

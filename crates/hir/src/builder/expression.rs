@@ -501,12 +501,7 @@ impl<'db> ParseDirectVariable<'db> for ast::generated::DirectVariable {
             ast::generated::Offset_Partly::Partly(partly) => (vec![], true),
         };
 
-        Ok(DirectVariable::new(
-            sema.db,
-            adress,
-            partly,
-            offset
-        ))
+        Ok(DirectVariable::new(sema.db, adress, partly, offset))
     }
 }
 

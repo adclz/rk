@@ -1,6 +1,5 @@
 use auto_lsp::{
     core::span::Span,
-    default::db::BaseDatabase,
     lsp_types::{DiagnosticSeverity, DiagnosticTag},
 };
 use db::WorkspaceDataBase;

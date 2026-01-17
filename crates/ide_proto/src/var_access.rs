@@ -1,13 +1,7 @@
-use auto_lsp::{
-    default::db::BaseDatabase,
-    lsp_types::{
-        GotoDefinitionResponse, Hover, request::GotoDeclarationResponse,
-    },
-};
+use auto_lsp::lsp_types::{GotoDefinitionResponse, Hover, request::GotoDeclarationResponse};
 use db::WorkspaceDataBase;
 use hir::{
-    hir_def::expressions::expression::VariableAccess,
-    hir_ty::body_inference::infer_body_scope,
+    hir_def::expressions::expression::VariableAccess, hir_ty::body_inference::infer_body_scope,
 };
 
 use crate::{to_proto::ToProtocol, typ::TypeProto};

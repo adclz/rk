@@ -3,7 +3,6 @@ use auto_lsp::{
         document_symbols_builder::DocumentSymbolsBuilder,
         semantic_tokens_builder::SemanticTokensBuilder,
     },
-    default::db::BaseDatabase,
     lsp_types::{
         CompletionItem, GotoDefinitionResponse, Hover, HoverContents, Location, MarkupContent,
         MarkupKind, SymbolKind, request::GotoDeclarationResponse,
@@ -19,7 +18,11 @@ use hir::{
 use crate::to_proto::{HasComment, ToProtocol};
 
 impl<'db> ToProtocol<'db> for VariableDecl<'db> {
-    fn document_symbols(&self, db: &'db dyn WorkspaceDataBase, builder: &mut DocumentSymbolsBuilder) {
+    fn document_symbols(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        builder: &mut DocumentSymbolsBuilder,
+    ) {
         let name = self.name(db).text(db).to_string();
         let name = match name.len() {
             0 => "?".into(),
@@ -90,7 +93,11 @@ impl<'db> ToProtocol<'db> for VariableDecl<'db> {
         self.spec(db).completion(db, offset)
     }
 
-    fn semantic_tokens(&'db self, _db: &'db dyn WorkspaceDataBase, _builder: &mut SemanticTokensBuilder) {
+    fn semantic_tokens(
+        &'db self,
+        _db: &'db dyn WorkspaceDataBase,
+        _builder: &mut SemanticTokensBuilder,
+    ) {
         /*match self.spec(db).tokens(db, builder) {
             Some((typ, modi)) => {
                 builder.push(

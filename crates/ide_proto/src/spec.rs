@@ -1,10 +1,7 @@
-use auto_lsp::{
-    default::db::BaseDatabase,
-    lsp_types::{
+use auto_lsp::lsp_types::{
         CompletionItem, GotoDefinitionResponse, Hover, HoverContents, Location, MarkupContent,
         MarkupKind, request::GotoDeclarationResponse,
-    },
-};
+    };
 use db::WorkspaceDataBase;
 use hir::{
     HirNodeInfo,

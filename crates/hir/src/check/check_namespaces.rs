@@ -1,6 +1,6 @@
 use std::collections::hash_map::Entry;
 
-use auto_lsp::default::db::{BaseDatabase, file::File};
+use auto_lsp::default::db::file::File;
 use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
