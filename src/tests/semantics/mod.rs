@@ -23,3 +23,4 @@ pub mod time;
 pub mod tod;
 pub mod visibility;
 pub mod walk_hir;
+pub mod direct_variables;
