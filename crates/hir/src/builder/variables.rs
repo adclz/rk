@@ -19,7 +19,7 @@ use crate::check::errors::syntax::SyntaxError;
 use crate::hir_def::config::AccessDirection;
 use crate::hir_def::expressions::spec::{ElementarySpec, Spec, SpecKind};
 use crate::hir_def::interned::identifier::Ident;
-use crate::hir_def::pous::variable::{DirectVariable, VariableDecl, VariableKind};
+use crate::hir_def::pous::variable::{DirectVariable, LocatedVariable, VariableDecl, VariableKind};
 use crate::hir_def::program::ProgAccessDecl;
 use crate::{AstId, HirNodeInfo};
 
@@ -673,10 +673,55 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
     }
 }
 
-impl<'db> ParseVarSection<'db> for ast::generated::LocVarDecls {
-    fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<VariableDecl<'db>>) {
-        for child in self.children.iter() {
-            todo!()
+pub trait ParseLocatedVar<'db> {
+    fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<LocatedVariable<'db>>);
+}
+
+impl<'db> ParseLocatedVar<'db> for ast::generated::LocVarDecls {
+    fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<LocatedVariable<'db>>) {
+        for variable in self.children.iter() {
+            let variable = variable.cast(sema.ast);
+            let var_name = if let Some(name) = &variable.variable_name {
+                match Ident::from_node(sema.db, sema.file, name.cast(sema.ast)) {
+                    Ok(name) => Some(name),
+                    Err(err) => {
+                        sema.errors.push(err);
+                        continue;
+                    }
+                }
+            } else {
+                None
+            };
+
+            let located_at = match variable
+                .located_at
+                .cast(sema.ast)
+                .children
+                .cast(sema.ast)
+                .to_direct_variable(sema)
+            {
+                Ok(result) => result,
+                Err(err) => {
+                    sema.errors.push(err);
+                    continue;
+                }
+            };
+
+            let spec_init = match variable.spec_init.cast(sema.ast).to_spec_init(sema) {
+                Ok(result) => result,
+                Err(err) => {
+                    sema.errors.push(err);
+                    continue;
+                }
+            };
+
+            section.push(LocatedVariable::new(
+                sema.db,
+                var_name,
+                located_at,
+                spec_init.spec,
+                spec_init.init,
+            ));
         }
     }
 }
@@ -888,15 +933,13 @@ impl<'db> ParseProgDecl<'db> for ast::generated::ProgAccessDecls {
             };
 
             let direct_variable = match &decl.children {
-                Some(v) => {
-                    Some(match v.cast(sema.ast).to_direct_variable(sema) {
-                        Ok(direct_variable) => direct_variable,
-                        Err(err) => {
-                            sema.errors.push(err);
-                            continue;
-                        }
-                    })
-                }
+                Some(v) => Some(match v.cast(sema.ast).to_direct_variable(sema) {
+                    Ok(direct_variable) => direct_variable,
+                    Err(err) => {
+                        sema.errors.push(err);
+                        continue;
+                    }
+                }),
                 _ => None,
             };
 
@@ -907,18 +950,26 @@ impl<'db> ParseProgDecl<'db> for ast::generated::ProgAccessDecls {
                     continue;
                 }
             };
- 
+
             let direction = match &decl.direction {
-                Some(direction) => {
-                    match direction.cast(sema.ast).children.cast(sema.ast) {
-                        ast::generated::ReadOnly_ReadWrite::ReadOnly(_) => Some(AccessDirection::ReadOnly),
-                        ast::generated::ReadOnly_ReadWrite::ReadWrite(_) => Some(AccessDirection::ReadWrite),
+                Some(direction) => match direction.cast(sema.ast).children.cast(sema.ast) {
+                    ast::generated::ReadOnly_ReadWrite::ReadOnly(_) => {
+                        Some(AccessDirection::ReadOnly)
                     }
-                }
-                None => None, 
+                    ast::generated::ReadOnly_ReadWrite::ReadWrite(_) => {
+                        Some(AccessDirection::ReadWrite)
+                    }
+                },
+                None => None,
             };
- 
-            section.push(ProgAccessDecl { spec, name, variable, direct_variable, direction })
+
+            section.push(ProgAccessDecl {
+                spec,
+                name,
+                variable,
+                direct_variable,
+                direction,
+            })
         }
     }
 }

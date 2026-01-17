@@ -475,28 +475,38 @@ pub trait ParseDirectVariable<'db> {
     fn to_direct_variable(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<DirectVariable, AnalysisError<'db>>;
+    ) -> anyhow::Result<DirectVariable<'db>, AnalysisError<'db>>;
 }
 
 impl<'db> ParseDirectVariable<'db> for ast::generated::DirectVariable {
     fn to_direct_variable(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<DirectVariable, AnalysisError<'db>> {
+    ) -> anyhow::Result<DirectVariable<'db>, AnalysisError<'db>> {
         let adress = Ident::from_node(sema.db, sema.file, self.adress.cast(sema.ast))?;
 
         let (offset, partly) = match self.offset.cast(sema.ast) {
             ast::generated::Offset_Partly::Offset(offset) => {
-                (Some(Ident::from_node(sema.db, sema.file, offset)?), false)
+                let mut offsets = vec![];
+                for offset in offset.children.iter() {
+                    let integer = Integer::new(
+                        sema.db,
+                        Ident::from_node(sema.db, sema.file, offset.cast(sema.ast))?,
+                        IntegerKind::Signed,
+                    );
+                    offsets.push(integer);
+                }
+                (offsets, false)
             }
-            ast::generated::Offset_Partly::Partly(partly) => (None, true),
+            ast::generated::Offset_Partly::Partly(partly) => (vec![], true),
         };
 
-        Ok(DirectVariable {
+        Ok(DirectVariable::new(
+            sema.db,
             adress,
             partly,
-            offset,
-        })
+            offset
+        ))
     }
 }
 

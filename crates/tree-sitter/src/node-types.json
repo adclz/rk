@@ -3335,6 +3335,26 @@
     "type": "loc_var_decl",
     "named": true,
     "fields": {
+      "located_at": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "located_at",
+            "named": true
+          }
+        ]
+      },
+      "spec_init": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "loc_var_spec_init",
+            "named": true
+          }
+        ]
+      },
       "variable_name": {
         "multiple": false,
         "required": false,
@@ -3345,20 +3365,6 @@
           }
         ]
       }
-    },
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "loc_var_spec_init",
-          "named": true
-        },
-        {
-          "type": "located_at",
-          "named": true
-        }
-      ]
     }
   },
   {

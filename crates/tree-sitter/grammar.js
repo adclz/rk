@@ -941,8 +941,8 @@ module.exports = grammar({
     loc_var_decl: ($) =>
       seq(
         optional(field("variable_name", $.identifier)),
-        $.located_at,
-        $.loc_var_spec_init,
+        field("located_at", $.located_at),
+        field("spec_init", $.loc_var_spec_init),
       ),
 
     temp_var_decls: ($) =>

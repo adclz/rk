@@ -6,11 +6,11 @@ use crate::{
     Visibility,
     builder::{
         ParseVarSection, semantic_index::SemanticIndexBuilder, statement::ParseStatement,
-        variables::ParseProgDecl,
+        variables::{ParseLocatedVar, ParseProgDecl},
     },
     hir_def::{
         interned::identifier::Ident,
-        pous::variable::VariableDecl,
+        pous::variable::{LocatedVariable, VariableDecl},
         program::{ProgAccessDecl, ProgramDecl},
         scope::{Scope, ScopeKind},
     },
@@ -25,7 +25,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         let previous_scope = self.current_scope;
         self.current_scope = scope_id;
 
-        let (prog_access_decls, variables) = program.parse_variables(self);
+        let (prog_access_decls, variables, located_vars) = program.parse_variables(self);
 
         let name = Ident::from_node(self.db, self.file, program.name.cast(self.ast))?;
 
@@ -52,6 +52,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             program.name.cast(self.ast).into(),
             prog_access_decls,
             variables,
+            located_vars,
             statements,
             program.into(),
             scope_id,
@@ -77,28 +78,29 @@ trait ParseVariable<'db> {
     fn parse_variables(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> (Vec<ProgAccessDecl<'db>>, Vec<VariableDecl<'db>>);
+    ) -> (Vec<ProgAccessDecl<'db>>, Vec<VariableDecl<'db>>, Vec<LocatedVariable<'db>>);
 }
 
 impl<'db> ParseVariable<'db> for ast::generated::ProgDecl {
     fn parse_variables(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> (Vec<ProgAccessDecl<'db>>, Vec<VariableDecl<'db>>) {
+    ) -> (Vec<ProgAccessDecl<'db>>, Vec<VariableDecl<'db>>, Vec<LocatedVariable<'db>>) {
         let mut prog_decls = vec![];
         let mut variables = vec![];
+        let mut located_variables = vec![];
         type ProgVariables = ast::generated::ExternalVarDecls_GlobalVarDecls_InOutDecls_InputDecls_LocPartlyVarDecl_LocVarDecls_NoRetainVarDecls_OutputDecls_ProgAccessDecls_RetainVarDecls_TempVarDecls_VarDecls;
 
         for variable in self.declarations.iter() {
             match variable.cast(sema.ast) {
                 ProgVariables::ProgAccessDecls(decls) => decls.parse(sema, &mut prog_decls),
+                ProgVariables::LocVarDecls(decls) => decls.parse(sema, &mut located_variables),
                 ProgVariables::GlobalVarDecls(decls) => decls.parse(sema, &mut variables),
                 ProgVariables::InputDecls(decls) => decls.parse(sema, &mut variables),
                 ProgVariables::OutputDecls(decls) => decls.parse(sema, &mut variables),
                 ProgVariables::InOutDecls(decls) => decls.parse(sema, &mut variables),
                 ProgVariables::ExternalVarDecls(decls) => decls.parse(sema, &mut variables),
                 ProgVariables::TempVarDecls(decls) => decls.parse(sema, &mut variables),
-                ProgVariables::LocVarDecls(decls) => decls.parse(sema, &mut variables),
                 ProgVariables::VarDecls(decls) => decls.parse(sema, &mut variables),
                 ProgVariables::LocPartlyVarDecl(loc_partly_var_decl) => {
                     loc_partly_var_decl.parse(sema, &mut variables)
@@ -112,6 +114,6 @@ impl<'db> ParseVariable<'db> for ast::generated::ProgDecl {
             }
         }
 
-        (prog_decls, variables)
+        (prog_decls, variables, located_variables)
     }
 }

@@ -153,10 +153,7 @@ impl<'db> SemanticIndexBuilder<'db> {
                     self.global_pous.push(r);
                 }
                 SourceFileDecl::ConfigDecl(config) => {
-                    self.errors
-                        .push(AnalysisError::SyntaxError(SyntaxError::OldSyntaxConfig(
-                            config.get_span(),
-                        )))
+                    /* todo */
                 }
                 SourceFileDecl::ProgDecl(prog) => {
                     let p = self.parse_program(prog).unwrap();

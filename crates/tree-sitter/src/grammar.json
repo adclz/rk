@@ -3792,12 +3792,20 @@
           ]
         },
         {
-          "type": "SYMBOL",
-          "name": "located_at"
+          "type": "FIELD",
+          "name": "located_at",
+          "content": {
+            "type": "SYMBOL",
+            "name": "located_at"
+          }
         },
         {
-          "type": "SYMBOL",
-          "name": "loc_var_spec_init"
+          "type": "FIELD",
+          "name": "spec_init",
+          "content": {
+            "type": "SYMBOL",
+            "name": "loc_var_spec_init"
+          }
         }
       ]
     },
