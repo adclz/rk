@@ -11,3 +11,4 @@ publish = false
 auto-lsp = { workspace = true }
 ariadne = { workspace = true }
 bon = { workspace = true }
+yansi = { workspace = true }

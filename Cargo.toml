@@ -16,6 +16,7 @@ members = [
     "crates/ide_proto",
     "crates/formatter",
     "crates/fuzz",
+    "crates/cli",
     "vscode/server",
 ]
 
@@ -56,6 +57,10 @@ stderrlog = "0.6.0"
 indexmap = "2.11.4"
 # salsa version must be kept in sync with auto-lsp's one
 salsa = "0.23.0"
+# cli dependencies
+clap = { version = "4.5.54" }
+yansi = { version = "1.0.1" }
+notify = "8.1.0"
 
 [package]
 name = "rk-tests"

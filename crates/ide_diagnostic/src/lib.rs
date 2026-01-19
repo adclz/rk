@@ -1,4 +1,7 @@
-use ariadne::{ColorGenerator, Label, Report, Source};
+use std::fmt::Pointer;
+
+use ariadne::{ColorGenerator, Fmt, Label, Report, Source};
+use yansi::Paint;
 use auto_lsp::{
     core::{errors::ParseErrorAccumulator, span::Span},
     default::db::{BaseDatabase, file::File},
@@ -10,7 +13,7 @@ use auto_lsp::{
 
 #[derive(Clone, Debug)]
 pub struct IdeDiagnostic {
-    diagnostic: auto_lsp::lsp_types::Diagnostic,
+    pub diagnostic: auto_lsp::lsp_types::Diagnostic,
     related: Vec<Related>,
     fixes: Vec<auto_lsp::lsp_types::CodeAction>,
     notes: Vec<String>,
@@ -147,13 +150,8 @@ impl IdeDiagnostic {
         db: &'report dyn BaseDatabase,
         file: File,
         config: Option<ariadne::Config>,
+        format: bool,
     ) -> Report<'report, (&'report str, std::ops::Range<usize>)> {
-        let mut colors = ColorGenerator::new();
-
-        // fixme: colors should be used *only* when ariadne::Config is None or .color is true
-        // The reason is that insta snapshots render incorrectly with colors enabled
-        let _curr_color = colors.next();
-
         let error_kind = match &self.diagnostic.severity {
             Some(auto_lsp::lsp_types::DiagnosticSeverity::ERROR) => ariadne::ReportKind::Error,
             Some(auto_lsp::lsp_types::DiagnosticSeverity::WARNING) => ariadne::ReportKind::Warning,
@@ -175,7 +173,17 @@ impl IdeDiagnostic {
 
         report.add_label(
             Label::new((file.url(db).as_str(), start..end))
-                .with_message(self.diagnostic.message.as_str()),
+                .with_message(match format {
+                    true => Paint::bold(&self.diagnostic.message).to_string(),
+                    false => self.diagnostic.message.clone(),
+                })
+                .with_color(match self.diagnostic.severity {
+                    Some(DiagnosticSeverity::ERROR) => ariadne::Color::Red,
+                    Some(DiagnosticSeverity::WARNING) => ariadne::Color::Yellow,
+                    Some(DiagnosticSeverity::INFORMATION) => ariadne::Color::Blue,
+                    Some(DiagnosticSeverity::HINT) => ariadne::Color::Cyan,
+                    _ => ariadne::Color::Red
+                }),
         );
 
         for related in &self.related {
@@ -184,7 +192,11 @@ impl IdeDiagnostic {
                     related.file.url(db).as_str(),
                     related.range.start_byte..related.range.end_byte,
                 ))
-                .with_message(related.message.as_str()),
+                .with_message(match format {
+                    true => Paint::italic(&related.message).to_string(),
+                    false => related.message.clone(),
+                })
+                .with_color(ariadne::Color::BrightBlue)
             )
         }
 
