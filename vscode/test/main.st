@@ -1,0 +1,14 @@
+FUNCTION_BLOCK fb 
+
+END_FUNCTION_BLOCK
+
+
+FUNCTION_BLOCK fb2
+	VAR 
+		test : ARRAY[0..10] OF fb;
+	END_VAR
+
+	fb();
+	test[0]();
+
+END_FUNCTION_BLOCK
