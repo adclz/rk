@@ -3,13 +3,13 @@ use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    HasName,
+    CallSite, HasName,
     hir_def::{
         expressions::{
             expression::{Elementary, Expr, ExprKind, PrimaryExpr},
             spec::{Struct, StructElement},
         },
-        interned::identifier::Ident,
+        interned::{identifier::Ident, namespace::SpanNamespaceAccess},
         pous::{
             pou::Pou,
             variable::{VariableDecl, VariableKind},
@@ -136,52 +136,52 @@ impl<'db> ScopeId<'db> {
     }
 
     #[salsa::tracked(returns(ref))]
-    pub fn inheritors(self, db: &'db dyn WorkspaceDataBase) -> Vec<Pou<'db>> {
+    pub fn inheritors(self, db: &'db dyn WorkspaceDataBase) -> FxHashMap<CallSite<'db>, Pou<'db>> {
         match get_scope(db, self).kind {
             ScopeKind::Pou(pou) => match pou {
-                Pou::Class(class) => {
-                    let mut inheritors = vec![];
-                    if let Some(base) = class.extends(db)
-                        && let Some(base) = resolve_namespace_access(db, &base.path)
-                    {
-                        inheritors.push(base);
-                    }
-                    for iface in class.implements(db) {
-                        if let Some(iface) = resolve_namespace_access(db, &iface.path) {
-                            inheritors.push(iface);
-                        }
-                    }
-                    inheritors
-                }
                 Pou::Interface(interface) => {
-                    let mut inheritors = vec![];
+                    let mut inheritors = FxHashMap::default();
                     if let Some(extends) = interface.extends(db) {
-                        for iface in extends {
-                            if let Some(iface) = resolve_namespace_access(db, &iface.path) {
-                                inheritors.push(iface);
+                        for base in extends {
+                            if let Some(iface) = resolve_namespace_access(db, &base.path) {
+                                inheritors.insert(CallSite::from_namespace_access(db, base), iface);
                             }
                         }
                     }
                     inheritors
                 }
-                Pou::FunctionBlock(fb) => {
-                    let mut inheritors = vec![];
-                    if let Some(base) = fb.extends(db)
-                        && let Some(base) = resolve_namespace_access(db, &base.path)
+                Pou::Class(class) => {
+                    let mut inheritors = FxHashMap::default();
+                    if let Some(base) = class.extends(db)
+                        && let Some(pou) = resolve_namespace_access(db, &base.path)
                     {
-                        inheritors.push(base);
+                        inheritors.insert(CallSite::from_namespace_access(db, base), pou);
                     }
-
-                    for iface in fb.implements(db) {
-                        if let Some(iface) = resolve_namespace_access(db, &iface.path) {
-                            inheritors.push(iface);
+                    for base in class.implements(db) {
+                        if let Some(iface) = resolve_namespace_access(db, &base.path) {
+                            inheritors.insert(CallSite::from_namespace_access(db, base), iface);
                         }
                     }
                     inheritors
                 }
-                _ => vec![],
+                Pou::FunctionBlock(fb) => {
+                    let mut inheritors = FxHashMap::default();
+                    if let Some(base) = fb.extends(db)
+                        && let Some(pou) = resolve_namespace_access(db, &base.path)
+                    {
+                        inheritors.insert(CallSite::from_namespace_access(db, base), pou);
+                    }
+
+                    for base in fb.implements(db) {
+                        if let Some(iface) = resolve_namespace_access(db, &base.path) {
+                            inheritors.insert(CallSite::from_namespace_access(db, base), iface);
+                        }
+                    }
+                    inheritors
+                }
+                _ => FxHashMap::default(),
             },
-            _ => vec![],
+            _ => FxHashMap::default(),
         }
     }
 }

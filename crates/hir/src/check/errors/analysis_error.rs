@@ -7,8 +7,8 @@ use ide_diagnostic::IdeDiagnostic;
 
 use crate::check::errors::{
     array::ArrayError, duplicates::DuplicateError, enum_::EnumError, inheritance::MethodError,
-    path_error::AccessError, scope::NamespaceError, subrange::SubRangeError, syntax::SyntaxError,
-    visibility::VisibilityError,
+    path_error::AccessError, recursion::RecursionError, scope::NamespaceError,
+    subrange::SubRangeError, syntax::SyntaxError, visibility::VisibilityError,
 };
 
 pub trait ToIdeDiagnostic<'db> {
@@ -28,6 +28,7 @@ pub enum AnalysisError<'db> {
     EnumError(EnumError<'db>),
     VisibilityError(VisibilityError<'db>),
     AccessError(AccessError<'db>),
+    RecursionError(RecursionError<'db>),
 }
 
 impl Error for AnalysisError<'_> {}
@@ -51,14 +52,13 @@ impl<'db> ToIdeDiagnostic<'db> for AnalysisError<'db> {
             Self::SyntaxError(err) => err.to_diagnostic(db),
             Self::NamespaceError(err) => err.to_diagnostic(db),
             Self::DuplicateError(err) => err.to_diagnostic(db),
-            //Self::StmtError(err) => err.to_diagnostic(db),
-            //Self::InitExprError(err) => err.to_diagnostic(db),
             Self::MethodError(err) => err.to_diagnostic(db),
             Self::ArrayError(err) => err.to_diagnostic(db),
             Self::SubRangeError(err) => err.to_diagnostic(db),
             Self::EnumError(err) => err.to_diagnostic(db),
             Self::VisibilityError(err) => err.to_diagnostic(db),
             Self::AccessError(err) => err.to_diagnostic(db),
+            Self::RecursionError(err) => err.to_diagnostic(db),
         }
     }
 }

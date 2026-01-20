@@ -11,3 +11,4 @@ pub mod scope;
 pub mod subrange;
 pub mod syntax;
 pub mod visibility;
+pub mod recursion;

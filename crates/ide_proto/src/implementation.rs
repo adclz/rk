@@ -51,7 +51,7 @@ fn check_implementations<'db>(
     implemented: Pou<'db>,
     pous: &mut Vec<Pou<'db>>,
 ) {
-    for candidate in pou.get_scope_id(db).inheritors(db) {
+    for (_, candidate) in pou.get_scope_id(db).inheritors(db) {
         if *candidate == implemented {
             pous.push(pou);
             return;

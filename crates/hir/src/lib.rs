@@ -11,16 +11,16 @@ use bitflags::bitflags;
 use compact_str::CompactString;
 use db::WorkspaceDataBase;
 
-use crate::hir_def::{
+use crate::{hir_def::{
     expressions::{
         expression::{Expr, InitExpr, VariableAccess},
-        spec::Spec,
+        spec::{Spec, StructElement},
     },
-    interned::identifier::Ident,
-    pous::variable::VariableDecl,
+    interned::{identifier::Ident, namespace::SpanNamespaceAccess},
+    pous::{class::MethodDecl, pou::Pou, variable::VariableDecl},
     scope::ScopeId,
     semantic_index::semantic_index,
-};
+}, hir_ty::inheritance_solver::MethodRef};
 
 pub mod builder;
 pub mod check;
@@ -86,6 +86,16 @@ impl<'db> CallSite<'db> {
         }
     }
 
+    pub fn from_namespace_access(
+        db: &'db dyn WorkspaceDataBase,
+        access: &SpanNamespaceAccess<'db>,
+    ) -> Self {
+        Self {
+            scope: access.get_scope_id(db),
+            id: access.get_id(db),
+        }
+    }
+
     pub fn from_var_decl(db: &'db dyn WorkspaceDataBase, var_access: VariableDecl<'db>) -> Self {
         Self {
             scope: var_access.get_scope_id(db),
@@ -97,6 +107,36 @@ impl<'db> CallSite<'db> {
         Self {
             scope: spec.get_scope_id(db),
             id: spec.get_id(db),
+        }
+    }
+
+    pub fn from_struct_element(
+        db: &'db dyn WorkspaceDataBase,
+        element: StructElement<'db>,
+    ) -> Self {
+        Self {
+            scope: element.get_scope_id(db),
+            id: element.get_id(db),
+        }
+    }
+
+    pub fn from_method_ref(
+        db: &'db dyn WorkspaceDataBase,
+        method: MethodRef<'db>,
+    ) -> Self {
+        Self {
+            scope: method.get_scope_id(db),
+            id: method.get_id(db),
+        }
+    }
+
+    pub fn from_pou(
+        db: &'db dyn WorkspaceDataBase,
+        pou: Pou<'db>,
+    ) -> Self {
+        Self {
+            scope: pou.get_scope_id(db),
+            id: pou.get_id(db),
         }
     }
 
