@@ -744,7 +744,7 @@ END_FUNCTION_BLOCK
 
     let inehrited = fb.get_scope_id(&with_db).inheritors(&with_db);
     assert_eq!(inehrited.len(), 1);
-    assert_eq!(inehrited[0].get_name_ident(&with_db).text(&with_db), "cl1");
+    assert_eq!(inehrited.values().nth(0).unwrap().get_name_ident(&with_db).text(&with_db), "cl1");
 }
 
 // usage of fully qualified paths in IMPLEMENTS clause
@@ -774,5 +774,5 @@ END_FUNCTION_BLOCK
 
     let inehrited = fb.get_scope_id(&with_db).inheritors(&with_db);
     assert_eq!(inehrited.len(), 1);
-    assert_eq!(inehrited[0].get_name_ident(&with_db).text(&with_db), "in1");
+    assert_eq!(inehrited.values().nth(0).unwrap().get_name_ident(&with_db).text(&with_db), "in1");
 }

@@ -1,28 +1,7 @@
-use std::sync::{Arc, RwLock};
-
-use crate::tests::utils::{add_sources, with_log_db};
-use auto_lsp::salsa::Event;
+use crate::tests::utils::{test_diagnostics, with_db};
 use db::RootDatabase;
-use insta::assert_debug_snapshot;
+use insta::assert_snapshot;
 use rstest::rstest;
-
-/*
-#[rstest]
-fn self_extends_bo_cycle(mut with_log_db: (RootDatabase, Arc<RwLock<Vec<Event>>>)) {
-    let source = r#"
-        CLASS MyClass EXTENDS MyClass
-        END_CLASS
-        "#;
-
-    add_sources(&mut with_log_db.0, &[source]);
-
-    let lock = with_log_db.1.read().unwrap();
-    let logs = lock
-      .iter().collect::<Vec<_>>();
-
-    assert_debug_snapshot!(logs, @"[]");
-}
-
 
 #[rstest]
 fn self_referential(mut with_db: RootDatabase) {
@@ -42,20 +21,11 @@ fn self_referential(mut with_db: RootDatabase) {
        |
      2 |       FUNCTION_BLOCK fb
        |                      ^|  
-       |                       `-- 'fb' is recursive
-    ---'
-    Error: 
-       ,-[ file:///test0.st:4:17 ]
-       |
-     2 |       FUNCTION_BLOCK fb
-       |                      ^|  
-       |                       `-- 'fb' is originally declared here
+       |                       `-- type 'fb' is recursive (contains itself)
        | 
      4 |                 invalid : fb;
-       |                 ^^^|^^|^^^^^  
-       |                    `---------- ... and recurse at this location
-       |                       |       
-       |                       `------- 'invalid' creates a recursion with 'fb'
+       |                           ^|  
+       |                            `-- 'fb' references itself here
     ---'
     ");
 }
@@ -80,44 +50,20 @@ fn recursive_function_blocks(mut with_db: RootDatabase) {
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     Error: 
-       ,-[ file:///test0.st:2:24 ]
-       |
-     2 |         FUNCTION_BLOCK fb1
-       |                        ^|^  
-       |                         `--- 'fb1' is recursive
-    ---'
-    Error: 
-       ,-[ file:///test0.st:4:19 ]
-       |
-     4 |                   invalid : fb2;
-       |                   ^^^|^^|^^^^^^  
-       |                      `----------- ... and recurse at this location
-       |                         |        
-       |                         `-------- 'invalid' creates a recursion with 'fb2'
-       | 
-     9 |         FUNCTION_BLOCK fb2
-       |                        ^|^  
-       |                         `--- 'fb2' is originally declared here
-    ---'
-    Error: 
-       ,-[ file:///test0.st:9:24 ]
-       |
-     9 |         FUNCTION_BLOCK fb2
-       |                        ^|^  
-       |                         `--- 'fb2' is recursive
-    ---'
-    Error: 
-        ,-[ file:///test0.st:11:19 ]
+        ,-[ file:///test0.st:2:24 ]
         |
       2 |         FUNCTION_BLOCK fb1
         |                        ^|^  
-        |                         `--- 'fb1' is originally declared here
+        |                         `--- type 'fb1' is recursive
         | 
      11 |                   invalid : fb1;
-        |                   ^^^|^^|^^^^^^  
-        |                      `----------- ... and recurse at this location
-        |                         |        
-        |                         `-------- 'invalid' creates a recursion with 'fb1'
+        |                             ^|^  
+        |                              `--- recurse at this location
+        | 
+        | Note: cycles goes
+        |       -> fb1
+        |       -> fb2
+        |       ... and back to fb1
     ----'
     ");
 }
@@ -137,20 +83,168 @@ fn self_referential_struct(mut with_db: RootDatabase) {
        |
      2 |         TYPE Engine: STRUCT
        |              ^^^|^^  
-       |                 `---- 'Engine' is recursive
-    ---'
-    Error: 
-       ,-[ file:///test0.st:3:17 ]
-       |
-     2 |         TYPE Engine: STRUCT
-       |              ^^^|^^  
-       |                 `---- 'Engine' is originally declared here
+       |                 `---- type 'Engine' is recursive (contains itself)
      3 |                 sub_engine: Engine;
-       |                 ^^^^^|^^^|^^^^^^^^  
-       |                      `-------------- ... and recurse at this location
-       |                          |          
-       |                          `---------- 'sub_engine' creates a recursion with 'Engine'
+       |                 ^^^^^^^^^|^^^^^^^^  
+       |                          `---------- 'Engine' references itself here
     ---'
     ");
 }
-*/
+
+#[rstest]
+fn mutually_referential_types(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE
+            A: B;
+            B: A;
+        END_TYPE
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    Error: 
+       ,-[ file:///test0.st:3:13 ]
+       |
+     3 |             A: B;
+       |             |  
+       |             `-- type 'A' is recursive
+     4 |             B: A;
+       |                |  
+       |                `-- recurse at this location
+       | 
+       | Note: cycles goes
+       |       -> A
+       |       -> B
+       |       ... and back to A
+    ---'
+    ");
+}
+
+#[rstest]
+fn mutually_referential_type_and_array(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE
+            A: B;
+            B: ARRAY[1..2] OF A;
+        END_TYPE
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    Error: 
+       ,-[ file:///test0.st:3:13 ]
+       |
+     3 |             A: B;
+       |             |  
+       |             `-- type 'A' is recursive
+     4 |             B: ARRAY[1..2] OF A;
+       |                               |  
+       |                               `-- recurse at this location
+       | 
+       | Note: cycles goes
+       |       -> A
+       |       -> B
+       |       ... and back to A
+    ---'
+    ");
+}
+
+#[rstest]
+fn class_extends_itself(mut with_db: RootDatabase) {
+    let source = r#"
+    CLASS MyClass EXTENDS MyClass
+    END_CLASS
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    Error: 
+       ,-[ file:///test0.st:2:11 ]
+       |
+     2 |     CLASS MyClass EXTENDS MyClass
+       |           ^^^|^^^         ^^^|^^^  
+       |              `--------------------- type 'MyClass' is recursive (contains itself)
+       |                              |     
+       |                              `----- 'MyClass' references itself here
+    ---'
+    ");
+}
+
+#[rstest]
+fn fb_extends_itself(mut with_db: RootDatabase) {
+    let source = r#"
+    FUNCTION_BLOCK MyFb EXTENDS MyFb
+    END_FUNCTION_BLOCK
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    Error: 
+       ,-[ file:///test0.st:2:20 ]
+       |
+     2 |     FUNCTION_BLOCK MyFb EXTENDS MyFb
+       |                    ^^|^         ^^|^  
+       |                      `---------------- type 'MyFb' is recursive (contains itself)
+       |                                   |   
+       |                                   `--- 'MyFb' references itself here
+    ---'
+    ");
+}
+
+#[rstest]
+fn interface_extends_itself(mut with_db: RootDatabase) {
+    let source = r#"
+    INTERFACE MyInterface EXTENDS MyInterface
+    END_INTERFACE
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    Error: 
+       ,-[ file:///test0.st:2:15 ]
+       |
+     2 |     INTERFACE MyInterface EXTENDS MyInterface
+       |               ^^^^^|^^^^^         ^^^^^|^^^^^  
+       |                    `--------------------------- type 'MyInterface' is recursive (contains itself)
+       |                                        |       
+       |                                        `------- 'MyInterface' references itself here
+    ---'
+    ");
+}
+
+#[rstest]
+fn recursion_in_namespace(mut with_db: RootDatabase) {
+    let source = r#"
+    NAMESPACE ns 
+        FUNCTION_BLOCK fb1
+              VAR_INPUT
+                  invalid : ns.ns2.fb2;
+              END_VAR
+
+        END_FUNCTION_BLOCK
+
+        NAMESPACE ns2 
+            FUNCTION_BLOCK fb2
+                  VAR_INPUT
+                      invalid : ns.fb1;
+                END_VAR
+
+            END_FUNCTION_BLOCK
+        END_NAMESPACE
+    END_NAMESPACE
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    Error: 
+        ,-[ file:///test0.st:11:28 ]
+        |
+      5 |                   invalid : ns.ns2.fb2;
+        |                             ^^^^^|^^^^  
+        |                                  `------ recurse at this location
+        | 
+     11 |             FUNCTION_BLOCK fb2
+        |                            ^|^  
+        |                             `--- type 'fb2' is recursive
+        | 
+        | Note: cycles goes
+        |       -> fb2
+        |       -> fb1
+        |       ... and back to fb2
+    ----'
+    ");
+}
