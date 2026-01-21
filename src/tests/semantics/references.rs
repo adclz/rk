@@ -209,26 +209,7 @@ FUNCTION fn: BOOL
 END_FUNCTION
         "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
-        ,-[ file:///test0.st:10:24 ]
-        |
-     10 |        myRefInt: REF_TO INT := REF(myA1[1]);
-        |                             ^^^^^^^|^^^^^^^  
-        |                                    `--------- expected 'REF TO INT', got 'REF TO ARRAY [1..99] OF INT'
-    ----'
-    Error: 
-        ,-[ file:///test0.st:13:14 ]
-        |
-     10 |        myRefInt: REF_TO INT := REF(myA1[1]);
-        |        ^^^^|^^^  
-        |            `----- type is declared by variable 'myRefInt' here
-        | 
-     13 |     myRefInt := REF(myA1[11]);
-        |                 ^^^^^^|^^^^^^  
-        |                       `-------- expected 'REF TO INT', got 'REF TO ARRAY [1..99] OF INT'
-    ----'
-    ");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 #[rstest]

@@ -90,6 +90,32 @@ END_FUNCTION
 }
 
 #[rstest]
+fn ref_to_array_index(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE
+	A1: ARRAY[1..99] OF INT;
+END_TYPE
+
+FUNCTION fn: BOOL
+
+	VAR
+		myA1: A1;
+		myRefInt: REF_TO INT := REF(myA1[1]);
+	END_VAR
+
+	myRefInt := REF(myA1[11]);
+
+END_FUNCTION
+        "#;
+    add_sources(&mut with_db, &[source]);
+    assert_snapshot!(collect_path_expressions(&with_db, *with_db.get_files().iter().last().unwrap(), &"fn"), @r"
+    68 VARIABLE <none>
+    77 VARIABLE [Adjustment { kind: Index, target: Elementary(Int) }]
+    77 VARIABLE [Adjustment { kind: Index, target: Elementary(Int) }, Adjustment { kind: Ref, target: Elementary(Int) }]
+    ");
+}
+
+#[rstest]
 fn invalid_type_access_array_index(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION fn: BOOL

@@ -138,7 +138,7 @@ impl<'db> InferExprCtx<'db> {
                         .resolve_begin_path_expr(db, *adress, None, inference_result);
 
                     let typ = inference_result
-                        .get_type_of_begin_path_expr(db, *adress)
+                        .type_of_begin_expr_with_adjustments(db, *adress)
                         .unwrap_or_default();
 
                     if let Some(path) = adress.expr(db) {
