@@ -9,6 +9,7 @@ pub mod implicit_casts;
 pub mod inference;
 pub mod inheritance;
 pub mod init_expr;
+pub mod array_init_multi_dim;
 pub mod invalid_literals;
 pub mod invocation;
 pub mod loops;

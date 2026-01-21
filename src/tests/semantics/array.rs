@@ -41,7 +41,7 @@ fn invalid_lower_bound_in_array(mut with_db: RootDatabase) {
        |
      3 |             List: ARRAY[-1..10] OF INT;
        |                         ^|  
-       |                          `-- Invalid lower bound value for ARRAY
+       |                          `-- invalid lower bound value for ARRAY
     ---'
     ");
 }
@@ -60,7 +60,7 @@ fn invalid_upper_bound_in_array(mut with_db: RootDatabase) {
        |
      3 |             List: ARRAY[0..-10] OF INT;
        |                            ^|^  
-       |                             `--- Invalid upper bound value for ARRAY
+       |                             `--- invalid upper bound value for ARRAY
     ---'
     ");
 }
@@ -79,7 +79,7 @@ fn inferior_upper_bound_in_array(mut with_db: RootDatabase) {
        |
      3 |             List: ARRAY[10..1] OF INT;
        |                             |  
-       |                             `-- Upper bound value must be greater than lower bound value
+       |                             `-- upper bound value must be greater than lower bound value
     ---'
     ");
 }
@@ -98,7 +98,7 @@ fn nested_array_invalid_bound(mut with_db: RootDatabase) {
        |
      3 |             List: ARRAY[0..3, -2..1] OF INT;
        |                               ^|  
-       |                                `-- Invalid lower bound value for ARRAY
+       |                                `-- invalid lower bound value for ARRAY
     ---'
     ");
 }

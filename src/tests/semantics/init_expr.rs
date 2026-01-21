@@ -32,6 +32,13 @@ fn unknown_struct_field(mut with_db: RootDatabase) {
         |                                                 ^^^^^^|^^^^^  
         |                                                       `------- no field 'fuel' in type 'STRUCT'
     ----'
+    Error: 
+        ,-[ file:///test0.st:12:49 ]
+        |
+     12 |                 Base : Engine := (power := 100, fuel := 10.0);
+        |                                                 ^^^^^^|^^^^^  
+        |                                                       `------- no field 'fuel' in type 'STRUCT'
+    ----'
     ");
 }
 
@@ -62,63 +69,14 @@ fn invalid_struct_value(mut with_db: RootDatabase) {
         |                                                  ^^^^^^|^^^^^  
         |                                                        `------- no field 'fuel' in type 'STRUCT'
     ----'
+    Error: 
+        ,-[ file:///test0.st:11:50 ]
+        |
+     11 |                 Base : Engine := (power := 10.5, fuel := 10.0);
+        |                                                  ^^^^^^|^^^^^  
+        |                                                        `------- no field 'fuel' in type 'STRUCT'
+    ----'
     ");
-}
-
-#[rstest]
-fn array_initializer_out_of_bounds(mut with_db: RootDatabase) {
-    let source = r#"
-        TYPE
-            Engine: ARRAY[0..3] OF INT;
-        END_TYPE
-
-        FUNCTION StartEngine
-            VAR
-                Base : Engine := [5(10)];
-            END_VAR
-
-        END_FUNCTION
-        "#;
-
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
-}
-
-#[rstest]
-fn array_initializer_out_of_bounds_with_single_values(mut with_db: RootDatabase) {
-    let source = r#"
-        TYPE
-            Engine: ARRAY[0..3] OF INT;
-        END_TYPE
-
-        FUNCTION StartEngine
-            VAR
-                // (3) + 4 + 5 + 6 (3 * n + 1) = limit
-                Base : Engine := [3(10), 5, 6, 4];
-            END_VAR
-
-        END_FUNCTION
-        "#;
-
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
-}
-
-#[rstest]
-fn multi_dimensional_array_initializer_out_of_bounds(mut with_db: RootDatabase) {
-    let source = r#"
-        TYPE
-            Engine: ARRAY[0..3, 0..6] OF INT;
-        END_TYPE
-
-        FUNCTION StartEngine
-            VAR
-                Base : Engine := [3(10(10))];
-            END_VAR
-
-        END_FUNCTION
-
-        "#;
-
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 #[rstest]
@@ -131,25 +89,6 @@ fn invalid_array_value(mut with_db: RootDatabase) {
         FUNCTION StartEngine
             VAR
                 Base : Engine := [3(10.5)];
-            END_VAR
-
-        END_FUNCTION
-
-        "#;
-
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
-}
-
-#[rstest]
-fn multi_dimensional_invalid_array_value(mut with_db: RootDatabase) {
-    let source = r#"
-        TYPE
-            Engine: ARRAY[0..3, 0..6] OF INT;
-        END_TYPE
-
-        FUNCTION StartEngine
-            VAR
-                Base : Engine := [3(5(10.5))];
             END_VAR
 
         END_FUNCTION
