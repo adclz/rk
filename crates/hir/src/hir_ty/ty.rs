@@ -378,4 +378,8 @@ impl<'db> Type<'db> {
     pub fn is_fb(&self) -> bool {
         matches!(self, Type::FunctionBlock(_))
     }
+
+    pub fn is_array(&self) -> bool {
+        matches!(self, Type::Array(_))
+    }
 }

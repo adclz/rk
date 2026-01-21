@@ -1,10 +1,15 @@
+use std::num::ParseIntError;
+
 use db::WorkspaceDataBase;
-use ide_diagnostic::IdeDiagnostic;
+use ide_diagnostic::{IdeDiagnostic, diag};
 
 use crate::{
     HirNodeInfo,
     check::errors::{analysis_error::ToIdeDiagnostic, body_inference::TypeError},
-    hir_def::{expressions::expression::InitExpr, interned::identifier::Ident},
+    hir_def::{
+        expressions::expression::InitExpr,
+        interned::identifier::{Ident, SpanIdent},
+    },
     hir_ty::ty::Type,
     query_string::strukt::fuzzy_struct_fields,
 };
@@ -24,7 +29,23 @@ pub enum InitInferenceError<'db> {
         expr: InitExpr<'db>,
         ty: Type<'db>,
     },
+    InvalidIndex {
+        size: SpanIdent<'db>,
+        err: String,
+    },
+    IndexOutOfBounds {
+        size: SpanIdent<'db>,
+        dimension: usize,
+        index: u64,
+        min: u64,
+        max: u64,
+    },
     TypeMismatch(TypeError<'db>),
+    TooManyElements {
+        expr: InitExpr<'db>,
+        dimension: usize,
+        max_size: usize,
+    },
 }
 
 impl<'db> From<TypeError<'db>> for InitInferenceError<'db> {
@@ -63,6 +84,59 @@ impl<'db> ToIdeDiagnostic<'db> for InitInferenceError<'db> {
                 if let Type::Struct(strukt) = ty {
                     fuzzy_struct_fields(db, *strukt, &mut diag, ident.text(db).as_str())
                 };
+
+                diag
+            }
+            Self::InvalidIndex { size, err } => diag()
+                .message(format!("invalid index value '{}': {err}", size.text(db)))
+                .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+                .range(size.get_span(db))
+                .call(),
+            Self::IndexOutOfBounds {
+                size,
+                dimension,
+                index,
+                min,
+                max,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "index '{}' is out of bounds (expected between {} and {})",
+                        index, min, max
+                    ))
+                    .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+                    .range(size.get_span(db))
+                    .call();
+
+                if *dimension > 0_usize {
+                    diag.with_note(format!(
+                        "this error occurred in array dimension {}",
+                        dimension + 1
+                    ))
+                }
+
+                diag
+            }
+            Self::TooManyElements {
+                expr,
+                dimension,
+                max_size,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "too many elements in array initializer (expected at most {})",
+                        max_size
+                    ))
+                    .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+                    .range(expr.get_span(db))
+                    .call();
+
+                if *dimension > 0_usize {
+                    diag.with_note(format!(
+                        "this error occurred in array dimension {}",
+                        dimension + 1
+                    ))
+                }
 
                 diag
             }

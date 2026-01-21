@@ -34,12 +34,12 @@ impl<'db> ToIdeDiagnostic<'db> for ArrayError<'db> {
     fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase) -> IdeDiagnostic {
         match self {
             ArrayError::InvalidArrayLowerValue { value } => diag()
-                .message("Invalid lower bound value for ARRAY".to_string())
+                .message("invalid lower bound value for ARRAY".to_string())
                 .severity(DiagnosticSeverity::ERROR)
                 .range(value.get_span(db))
                 .call(),
             ArrayError::InvalidArrayUpperValue { value } => diag()
-                .message("Invalid upper bound value for ARRAY".to_string())
+                .message("invalid upper bound value for ARRAY".to_string())
                 .severity(DiagnosticSeverity::ERROR)
                 .range(value.get_span(db))
                 .call(),
@@ -48,7 +48,7 @@ impl<'db> ToIdeDiagnostic<'db> for ArrayError<'db> {
                 upper,
                 upper_expr,
             } => diag()
-                .message("Upper bound value must be greater than lower bound value".to_string())
+                .message("upper bound value must be greater than lower bound value".to_string())
                 .severity(DiagnosticSeverity::ERROR)
                 .range(upper_expr.get_span(db))
                 .call(),
