@@ -43,6 +43,9 @@ impl<'db> Type<'db> {
                 }
                 var_typ
             }
+            Type::StructElement(element) => {
+                Type::new_spec(db, element.spec(db)).normalize(db)
+            }
             _ => *self,
         }
     }

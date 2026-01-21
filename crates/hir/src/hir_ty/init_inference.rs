@@ -142,10 +142,7 @@ impl<'db> InitExprInferenceResult<'db> {
 
             InitExprKind::StructElement { value, .. } => {
                 // Get the actual field type (narrowed might be StructElement, we need its inner type)
-                let field_type = match narrowed.normalize(db) {
-                    Type::StructElement(se) => Type::new_spec(db, se.spec(db)),
-                    _ => narrowed,
-                };
+                let field_type = narrowed.normalize(db);
 
                 // If the field value is an array, set up array context for it
                 let value_is_array = matches!(field_type.normalize(db), Type::Array(_));
