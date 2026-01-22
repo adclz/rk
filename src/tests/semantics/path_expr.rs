@@ -116,6 +116,52 @@ END_FUNCTION
 }
 
 #[rstest]
+fn multidim_array_index(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn: BOOL
+
+	VAR
+		myA1: ARRAY[1..10, 1..10] OF INT;
+        myInt: INT;
+	END_VAR
+
+	myInt := myA1[2][3];
+
+END_FUNCTION
+        "#;
+    add_sources(&mut with_db, &[source]);
+    assert_snapshot!(collect_path_expressions(&with_db, *with_db.get_files().iter().last().unwrap(), &"fn"), @r"
+    58 VARIABLE <none>
+    69 VARIABLE [Adjustment { kind: Index, target: Array(Array { [salsa id]: Id(1800) }) }, Adjustment { kind: Index, target: Elementary(Int) }]
+    69 VARIABLE [Adjustment { kind: Index, target: Elementary(Int) }]
+    69 VARIABLE [Adjustment { kind: Index, target: Array(Array { [salsa id]: Id(1800) }) }]
+    ");
+}
+
+#[rstest]
+fn ref_to_multidim_array_index(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn: BOOL
+
+	VAR
+		myA1: ARRAY[1..10, 1..10] OF INT;
+        myInt: REF_TO INT;
+	END_VAR
+
+	myInt := REF(myA1[2][3]);
+
+END_FUNCTION
+        "#;
+    add_sources(&mut with_db, &[source]);
+    assert_snapshot!(collect_path_expressions(&with_db, *with_db.get_files().iter().last().unwrap(), &"fn"), @r"
+    58 VARIABLE <none>
+    69 VARIABLE [Adjustment { kind: Index, target: Array(Array { [salsa id]: Id(1800) }) }]
+    69 VARIABLE [Adjustment { kind: Index, target: Array(Array { [salsa id]: Id(1800) }) }, Adjustment { kind: Index, target: Elementary(Int) }]
+    69 VARIABLE [Adjustment { kind: Index, target: Elementary(Int) }, Adjustment { kind: Ref, target: Elementary(Int) }]
+    ");
+}
+
+#[rstest]
 fn invalid_type_access_array_index(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION fn: BOOL

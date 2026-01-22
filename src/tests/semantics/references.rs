@@ -213,6 +213,37 @@ END_FUNCTION
 }
 
 #[rstest]
+fn invalid_using_array_as_ref_type(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn: BOOL
+
+	VAR
+		myA1: ARRAY[1..10, 1..10] OF INT;
+		myInt: INT;
+	END_VAR
+
+	myInt := REF(myA1[2][9]);
+
+END_FUNCTION
+
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    Error: 
+       ,-[ file:///test0.st:9:11 ]
+       |
+     6 |        myInt: INT;
+       |        ^^|^^  
+       |          `---- type is declared by variable 'myInt' here
+       | 
+     9 |     myInt := REF(myA1[2][9]);
+       |              ^^^^^^^|^^^^^^^  
+       |                     `--------- expected 'INT', got 'REF TO INT'
+    ---'
+    ");
+}
+
+#[rstest]
 fn valid_using_deref_array_as_ref_type(mut with_db: RootDatabase) {
     let source = r#"
 TYPE
