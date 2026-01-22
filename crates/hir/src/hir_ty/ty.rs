@@ -50,6 +50,7 @@ pub enum Type<'db> {
     Variable((VariableDecl<'db>, Option<MultibitsPart>)),
     // HW bindings
     DirectVariable((DirectVariable<'db>, Option<MultibitsPart>)),
+    // A reference created inside a body
     Infer(InferType),
     // Program (cannot be seen by other types, only used here for body inference)
     Program(ProgramDecl<'db>),

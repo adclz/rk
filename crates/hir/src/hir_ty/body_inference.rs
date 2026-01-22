@@ -279,3 +279,46 @@ impl<'db> Adjustment<'db> {
         }
     }
 }
+
+pub trait AdjustmentInfo<'db> {
+    fn as_reference(&self) -> Option<Type<'db>>;
+    fn as_dereference(&self) -> Option<Type<'db>>;
+    fn as_index(&self) -> Option<Type<'db>>;
+    fn array_dimensions(&self, array_type: &Type<'db>) -> usize;
+}
+
+impl<'db> AdjustmentInfo<'db> for [Adjustment<'db>] {
+    fn as_reference(&self) -> Option<Type<'db>> {
+        if let Some(adj) = self.last() {
+            if adj.kind == Adjust::Ref {
+                return Some(adj.target);
+            }
+        }
+        None
+    }
+
+    fn as_dereference(&self) -> Option<Type<'db>> {
+        if let Some(adj) = self.last() {
+            if adj.kind == Adjust::Deref {
+                return Some(adj.target);
+            }
+        }
+        None
+    }
+
+    fn as_index(&self) -> Option<Type<'db>> {
+        if let Some(adj) = self.last() {
+            if adj.kind == Adjust::Index {
+                return Some(adj.target);
+            }
+        }
+        None
+    }
+
+    fn array_dimensions(&self, array_type: &Type<'db>) -> usize {
+        self.iter()
+            .rev()
+            .take_while(|adj| matches!(adj.kind, Adjust::Index { .. }) && adj.target.eq(array_type))
+            .count()
+    }
+}

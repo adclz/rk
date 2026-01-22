@@ -140,10 +140,10 @@ impl<'db> Type<'db> {
                             .as_range(db)
                             .map(|n| n.to_string())
                             .unwrap_or_default();
-                        format!("[{lower}..{upper}]")
+                        format!("{lower}..{upper}")
                     })
                     .collect();
-                format!("ARRAY {} OF {}", dimensions.join(" "), elem_type)
+                format!("ARRAY [{}] OF {}", dimensions.join(", "), elem_type)
             }
             Self::Enum(enum_) => format!("ENUM ({} members)", enum_.variants(db).len()),
             Self::SubRange(subrange) => {

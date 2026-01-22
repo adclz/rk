@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use db::WorkspaceDataBase;
 
 use crate::{
@@ -11,7 +13,7 @@ use crate::{
         invocation::InvocationKind,
     },
     hir_ty::{
-        body_inference::{Adjustment, BodyInferenceResult},
+        body_inference::{Adjust, Adjustment, AdjustmentInfo, BodyInferenceResult},
         expr_store::{InitExprWalkStep, PathExprWalkStep},
         inheritance_solver::inherited_methods,
         init_inference::InitExprInferenceResult,
@@ -296,18 +298,39 @@ impl<'db> Type<'db> {
             }
             PathExprWalkStep::Index { expr: _ } => match self {
                 Type::Array(arr) => {
+                    let curr_dimension = ctx
+                        .adjustments_of_path_expr(place.current_path)
+                        .map(|adjs| adjs.array_dimensions(&self))
+                        .unwrap_or(0);
+
+                    let dimensions = arr.subranges(db).len() - 1;
+                    let array_type = match curr_dimension.cmp(&dimensions) {
+                        Ordering::Less if arr.subranges(db).len() > 1 => *self,
+                        Ordering::Less | Ordering::Equal => Type::new_spec(db, arr.of_type(db)),
+                        Ordering::Greater => {
+                            if report_errors {
+                                ctx.errors.push(
+                                    BodyInferenceError::IndexNonArrayType {
+                                        expr: *expr,
+                                        ty: place.current_typ,
+                                    }
+                                    .to_diagnostic(db),
+                                );
+                            }
+                            return;
+                        }
+                    };
+
                     ctx.path_expr_adjustments
                         .entry(place.current_path)
                         .or_default()
-                        .push(Adjustment::new_index(
-                            db,
-                            Type::new_spec(db, arr.of_type(db)),
-                        ));
+                        .push(Adjustment::new_index(db, array_type));
 
                     ctx.type_of_path_expr.insert(*expr, place.current_typ);
-                    ctx.path_expr_adjustments.entry(*expr).or_default().push(
-                        Adjustment::new_index(db, Type::new_spec(db, arr.of_type(db))),
-                    );
+                    ctx.path_expr_adjustments
+                        .entry(*expr)
+                        .or_default()
+                        .push(Adjustment::new_index(db, array_type));
                 }
                 _ => {
                     if report_errors {

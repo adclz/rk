@@ -9,7 +9,7 @@ use crate::{
     },
     hir_def::expressions::expression::{AddOperatorKind, MultOperatorKind},
     hir_ty::{
-        body_inference::{Adjust, Adjustment, BodyInferenceResult},
+        body_inference::{Adjust, Adjustment, AdjustmentInfo, BodyInferenceResult},
         resolver::Resolver,
         ty::Type,
     },
@@ -54,6 +54,30 @@ impl<'db> Type<'db> {
         // normalizing here is necessary here to avoid matching on wrapped types
         let lhs = self.normalize(db);
         let to = to.normalize(db);
+
+        if let Some(adjs) = adjustments
+            && let Some(typ) = adjs.as_reference()
+        {
+            if let Type::RefTo(spec) = lhs {
+                return match Type::new_spec(db, spec).coerce_with_type(db, to, None, resolver) {
+                    Ok(()) => Ok(()),
+                    Err(_) => match Type::new_spec(db, spec).eq(&to) {
+                        true => Ok(()),
+                        false => Err(CoerceError {
+                            expected: *self,
+                            actual: to,
+                            adjustment: adjs.iter().last().cloned(),
+                        }),
+                    },
+                };
+            } else {
+                return Err(CoerceError {
+                    expected: *self,
+                    actual: to,
+                    adjustment: adjs.iter().last().cloned(),
+                });
+            }
+        }
 
         match (lhs, &to) {
             // variant is already solved by the resolver
@@ -103,39 +127,6 @@ impl<'db> Type<'db> {
                 }
             }
             (Type::RefTo(_), Type::Null) => Ok(()),
-            (Type::RefTo(spec), rhs) => {
-                let expected = Type::new_spec(db, spec);
-
-                // Case 2: RHS was auto-ref'd to &T
-                if let Some(adjs) = adjustments {
-                    return match adjs.iter().last() {
-                        Some(adj) if adj.kind == Adjust::Ref => {
-                            match expected.coerce_with_type(db, *rhs, None, resolver) {
-                                Ok(()) => Ok(()),
-                                Err(_) => match expected.eq(rhs) {
-                                    true => Ok(()),
-                                    false => Err(CoerceError {
-                                        expected: *self,
-                                        actual: *rhs,
-                                        adjustment: adjs.iter().last().cloned(),
-                                    }),
-                                },
-                            }
-                        }
-                        _ => Err(CoerceError {
-                            expected: *self,
-                            actual: *rhs,
-                            adjustment: adjs.iter().last().cloned(),
-                        }),
-                    };
-                }
-
-                Err(CoerceError {
-                    expected: *self,
-                    actual: *rhs,
-                    adjustment: None,
-                })
-            }
             _ => Err(CoerceError {
                 expected: *self,
                 actual: to,
