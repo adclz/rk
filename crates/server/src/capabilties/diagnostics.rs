@@ -1,12 +1,10 @@
 use std::panic::RefUnwindSafe;
 
 use auto_lsp::anyhow;
-use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::{
     DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
     FullDocumentDiagnosticReport, RelatedFullDocumentDiagnosticReport, WorkspaceDiagnosticParams,
-    WorkspaceDiagnosticReport, WorkspaceDiagnosticReportResult, WorkspaceDocumentDiagnosticReport,
-    WorkspaceFullDocumentDiagnosticReport,
+    WorkspaceDiagnosticReport, WorkspaceDiagnosticReportResult, WorkspaceDocumentDiagnosticReport, WorkspaceFullDocumentDiagnosticReport,
 };
 use db::WorkspaceDataBase;
 use hir::check::diagnostics_for_file;
@@ -57,18 +55,14 @@ pub fn workspace_diagnostics<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
         .map_with(db.clone(), |db, file| {
             let file = *file;
 
-            let errors = match salsa::Cancelled::catch(|| {
+            let errors = salsa::Cancelled::catch(|| {
                 diagnostics_for_file(db, file)
                     .iter()
                     .map(|d| d.to_lsp_diagnostic(db))
                     .collect::<Vec<_>>()
             })
             // ignore salsa errors
-            .ok()
-            {
-                Some(errors) => errors,
-                None => vec![],
-            };
+            .unwrap_or_default();
 
             WorkspaceDocumentDiagnosticReport::Full(WorkspaceFullDocumentDiagnosticReport {
                 version: file.version(db).map(|i| i.into()),

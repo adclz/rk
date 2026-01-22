@@ -50,7 +50,7 @@ impl<'db> TypeDependencyGraph<'db> {
             Self::namespace_edges(db, edges, ns.namespaces(db));
 
             for &pou in ns.pous(db).iter() {
-                edges.entry(pou).or_insert_with(FxHashSet::default);
+                edges.entry(pou).or_default();
             }
         }
     }
@@ -58,7 +58,7 @@ impl<'db> TypeDependencyGraph<'db> {
     /// Lazily ensure that `pou` has its dependencies extracted
     fn ensure_edges(&mut self, pou: Pou<'db>) {
         // Already expanded
-        if !self.edges.get(&pou).map_or(true, FxHashSet::is_empty) {
+        if !self.edges.get(&pou).is_none_or(FxHashSet::is_empty) {
             return;
         }
 
@@ -70,7 +70,7 @@ impl<'db> TypeDependencyGraph<'db> {
 
         // Ensure referenced POUs exist as nodes
         for dep in deps {
-            self.edges.entry(dep).or_insert_with(FxHashSet::default);
+            self.edges.entry(dep).or_default();
         }
     }
 
@@ -83,7 +83,7 @@ impl<'db> TypeDependencyGraph<'db> {
         let def_map = pou.get_scope_id(db).def_map(db);
 
         // check variables
-        for (_, var) in &def_map.global_variables {
+        for var in def_map.global_variables.values() {
             let typ = Type::new_spec(db, var.spec(db));
             let callsite = CallSite::from_spec(db, var.spec(db));
             Self::extract_pou_from_type(db, pou, typ, deps, callsites, callsite);

@@ -2,7 +2,6 @@ use std::{ops::ControlFlow, panic::RefUnwindSafe};
 
 use auto_lsp::{
     anyhow,
-    default::db::BaseDatabase,
     lsp_types::{InlayHint, InlayHintParams},
 };
 use db::WorkspaceDataBase;

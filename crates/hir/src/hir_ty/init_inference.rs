@@ -267,8 +267,7 @@ impl<'db> InitExprInferenceResult<'db> {
 
         let dim = ctx.current_dim();
         if let Some((_lower, _upper, array_size)) = Self::get_array_bounds(db, ctx.array_root, dim)
-        {
-            if end_position > array_size {
+            && end_position > array_size {
                 ctx.set_overflow_reported();
                 self.errors.push(
                     InitInferenceError::TooManyElements {
@@ -279,7 +278,6 @@ impl<'db> InitExprInferenceResult<'db> {
                     .to_diagnostic(db),
                 );
             }
-        }
     }
 }
 

@@ -1,6 +1,5 @@
 use std::ops::ControlFlow;
 
-
 use db::WorkspaceDataBase;
 use hir::{
     HirNodeInfo,

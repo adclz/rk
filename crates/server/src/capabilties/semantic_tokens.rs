@@ -1,7 +1,6 @@
 use auto_lsp::{
     anyhow,
     core::semantic_tokens_builder::SemanticTokensBuilder,
-    default::db::BaseDatabase,
     lsp_types::{SemanticTokensParams, SemanticTokensResult},
 };
 use db::WorkspaceDataBase;

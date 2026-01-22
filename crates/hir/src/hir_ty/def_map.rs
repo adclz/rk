@@ -9,7 +9,7 @@ use crate::{
             expression::{Elementary, Expr, ExprKind, PrimaryExpr},
             spec::{Struct, StructElement},
         },
-        interned::{identifier::Ident, namespace::SpanNamespaceAccess},
+        interned::identifier::Ident,
         pous::{
             pou::Pou,
             variable::{VariableDecl, VariableKind},

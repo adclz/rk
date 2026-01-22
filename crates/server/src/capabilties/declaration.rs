@@ -1,6 +1,5 @@
 use auto_lsp::{
     anyhow,
-    default::db::BaseDatabase,
     lsp_types::request::{GotoDeclarationParams, GotoDeclarationResponse},
 };
 use db::WorkspaceDataBase;

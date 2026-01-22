@@ -1,7 +1,7 @@
 use auto_lsp::lsp_types::{
-        GotoDefinitionResponse, Hover, HoverContents, Location, MarkupContent, MarkupKind,
-        request::GotoDeclarationResponse,
-    };
+    GotoDefinitionResponse, Hover, HoverContents, Location, MarkupContent, MarkupKind,
+    request::GotoDeclarationResponse,
+};
 use db::WorkspaceDataBase;
 use hir::{HirNodeInfo, hir_def::expressions::spec::StructElement, hir_ty::ty::Type};
 

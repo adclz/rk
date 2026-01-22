@@ -147,7 +147,9 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
         db,
     )?;
 
-    if let Some(uri) = params.root_uri.as_ref() { Configuration::init_or_update(&mut session.db, Some(uri.clone())); }
+    if let Some(uri) = params.root_uri.as_ref() {
+        Configuration::init_or_update(&mut session.db, Some(uri.clone()));
+    }
 
     session.init_workspace(params)?;
 

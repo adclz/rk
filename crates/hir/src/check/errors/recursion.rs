@@ -69,7 +69,7 @@ impl<'db> ToIdeDiagnostic<'db> for RecursionError<'db> {
 
                 for cs in callsite {
                     diag.with_related(Related::new(
-                        format!("recurse at this location",),
+                        "recurse at this location".to_string(),
                         cs.get_scope_id(db).file(db),
                         cs.get_span(db),
                     ));

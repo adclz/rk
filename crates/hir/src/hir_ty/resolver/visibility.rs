@@ -131,8 +131,7 @@ fn is_derived_pou<'db>(
                 .get_scope_id(db)
                 .inheritors(db)
                 .values()
-                .find(|p| **p == parent)
-                .is_some()
+                .any(|p| *p == parent)
         }
         _ => false, // One or both are not POUs
     }

@@ -1,9 +1,6 @@
 use std::ops::ControlFlow;
 
-use auto_lsp::{
-    core::span::Span,
-    default::db::file::File,
-};
+use auto_lsp::{core::span::Span, default::db::file::File};
 use db::WorkspaceDataBase;
 use hir::{
     AstId, HirNodeInfo,

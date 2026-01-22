@@ -1,4 +1,3 @@
-use std::num::ParseIntError;
 
 use db::WorkspaceDataBase;
 use ide_diagnostic::{IdeDiagnostic, diag};

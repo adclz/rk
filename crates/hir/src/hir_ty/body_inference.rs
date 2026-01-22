@@ -1,4 +1,3 @@
-use auto_lsp::default::db::BaseDatabase;
 use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
@@ -289,36 +288,33 @@ pub trait AdjustmentInfo<'db> {
 
 impl<'db> AdjustmentInfo<'db> for [Adjustment<'db>] {
     fn as_reference(&self) -> Option<Type<'db>> {
-        if let Some(adj) = self.last() {
-            if adj.kind == Adjust::Ref {
+        if let Some(adj) = self.last()
+            && adj.kind == Adjust::Ref {
                 return Some(adj.target);
             }
-        }
         None
     }
 
     fn as_dereference(&self) -> Option<Type<'db>> {
-        if let Some(adj) = self.last() {
-            if adj.kind == Adjust::Deref {
+        if let Some(adj) = self.last()
+            && adj.kind == Adjust::Deref {
                 return Some(adj.target);
             }
-        }
         None
     }
 
     fn as_index(&self) -> Option<Type<'db>> {
-        if let Some(adj) = self.last() {
-            if adj.kind == Adjust::Index {
+        if let Some(adj) = self.last()
+            && adj.kind == Adjust::Index {
                 return Some(adj.target);
             }
-        }
         None
     }
 
     fn array_dimensions(&self, array_type: &Type<'db>) -> usize {
         self.iter()
             .rev()
-            .take_while(|adj| matches!(adj.kind, Adjust::Index { .. }) && adj.target.eq(array_type))
+            .take_while(|adj| matches!(adj.kind, Adjust::Index) && adj.target.eq(array_type))
             .count()
     }
 }

@@ -1,7 +1,6 @@
 use auto_lsp::{
     anyhow,
     core::document_symbols_builder::DocumentSymbolsBuilder,
-    default::db::BaseDatabase,
     lsp_types::{DocumentSymbolParams, DocumentSymbolResponse},
 };
 use db::WorkspaceDataBase;

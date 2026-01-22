@@ -1,4 +1,4 @@
-use auto_lsp::core::document_symbols_builder::DocumentSymbolsBuilder;
+/*use auto_lsp::core::document_symbols_builder::DocumentSymbolsBuilder;
 use auto_lsp::core::semantic_tokens_builder::SemanticTokensBuilder;
 use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
@@ -14,7 +14,7 @@ use rstest::rstest;
 
 use crate::tests::utils::add_sources;
 use crate::tests::utils::with_db;
-/*
+
 #[rstest]
 pub fn pou_tokens_in_variable_type(mut with_db: RootDatabase) {
     let source = r#"

@@ -1,6 +1,5 @@
 use std::ops::ControlFlow;
 
-use auto_lsp::default::db::BaseDatabase;
 use db::WorkspaceDataBase;
 use rustc_hash::{FxHashMap, FxHashSet};
 

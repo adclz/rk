@@ -11,16 +11,19 @@ use bitflags::bitflags;
 use compact_str::CompactString;
 use db::WorkspaceDataBase;
 
-use crate::{hir_def::{
-    expressions::{
-        expression::{Expr, InitExpr, VariableAccess},
-        spec::{Spec, StructElement},
+use crate::{
+    hir_def::{
+        expressions::{
+            expression::{Expr, InitExpr, VariableAccess},
+            spec::{Spec, StructElement},
+        },
+        interned::{identifier::Ident, namespace::SpanNamespaceAccess},
+        pous::{pou::Pou, variable::VariableDecl},
+        scope::ScopeId,
+        semantic_index::semantic_index,
     },
-    interned::{identifier::Ident, namespace::SpanNamespaceAccess},
-    pous::{class::MethodDecl, pou::Pou, variable::VariableDecl},
-    scope::ScopeId,
-    semantic_index::semantic_index,
-}, hir_ty::inheritance_solver::MethodRef};
+    hir_ty::inheritance_solver::MethodRef,
+};
 
 pub mod builder;
 pub mod check;
@@ -120,20 +123,14 @@ impl<'db> CallSite<'db> {
         }
     }
 
-    pub fn from_method_ref(
-        db: &'db dyn WorkspaceDataBase,
-        method: MethodRef<'db>,
-    ) -> Self {
+    pub fn from_method_ref(db: &'db dyn WorkspaceDataBase, method: MethodRef<'db>) -> Self {
         Self {
             scope: method.get_scope_id(db),
             id: method.get_id(db),
         }
     }
 
-    pub fn from_pou(
-        db: &'db dyn WorkspaceDataBase,
-        pou: Pou<'db>,
-    ) -> Self {
+    pub fn from_pou(db: &'db dyn WorkspaceDataBase, pou: Pou<'db>) -> Self {
         Self {
             scope: pou.get_scope_id(db),
             id: pou.get_id(db),

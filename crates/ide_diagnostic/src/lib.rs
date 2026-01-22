@@ -1,7 +1,4 @@
-use std::fmt::Pointer;
-
-use ariadne::{ColorGenerator, Fmt, Label, Report, Source};
-use yansi::Paint;
+use ariadne::{Label, Report, Source};
 use auto_lsp::{
     core::{errors::ParseErrorAccumulator, span::Span},
     default::db::{BaseDatabase, file::File},
@@ -10,6 +7,7 @@ use auto_lsp::{
         DiagnosticSeverity, DiagnosticTag, Location, NumberOrString, Range, TextEdit,
     },
 };
+use yansi::Paint;
 
 #[derive(Clone, Debug)]
 pub struct IdeDiagnostic {
@@ -182,7 +180,7 @@ impl IdeDiagnostic {
                     Some(DiagnosticSeverity::WARNING) => ariadne::Color::Yellow,
                     Some(DiagnosticSeverity::INFORMATION) => ariadne::Color::Blue,
                     Some(DiagnosticSeverity::HINT) => ariadne::Color::Cyan,
-                    _ => ariadne::Color::Red
+                    _ => ariadne::Color::Red,
                 }),
         );
 
@@ -196,7 +194,7 @@ impl IdeDiagnostic {
                     true => Paint::italic(&related.message).to_string(),
                     false => related.message.clone(),
                 })
-                .with_color(ariadne::Color::BrightBlue)
+                .with_color(ariadne::Color::BrightBlue),
             )
         }
 

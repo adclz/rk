@@ -1,7 +1,7 @@
 use auto_lsp::lsp_types::{
-        GotoDefinitionResponse, Hover, HoverContents, InlayHint, InlayHintKind, InlayHintLabel,
-        MarkupContent, MarkupKind, request::GotoDeclarationResponse,
-    };
+    GotoDefinitionResponse, Hover, HoverContents, InlayHint, InlayHintKind, InlayHintLabel,
+    MarkupContent, MarkupKind, request::GotoDeclarationResponse,
+};
 use db::WorkspaceDataBase;
 use hir::{HirNodeInfo, hir_ty::ty::Type};
 

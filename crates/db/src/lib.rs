@@ -5,7 +5,6 @@ use auto_lsp::{
 use dashmap::DashMap;
 use salsa::{Database, Event};
 
-
 pub mod configuration;
 
 #[salsa::db]

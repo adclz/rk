@@ -1,6 +1,9 @@
 use std::path::Path;
 
-use auto_lsp::{default::db::{FileManager, file::File}, lsp_types::Url};
+use auto_lsp::{
+    default::db::{FileManager, file::File},
+    lsp_types::Url,
+};
 use db::RootDatabase;
 
 pub fn load_file_into_db(
@@ -23,6 +26,6 @@ pub fn load_file_into_db(
         .source(content)
         .call()?;
 
-    db.add_file(file)?;;
+    db.add_file(file)?;
     Ok(file)
 }

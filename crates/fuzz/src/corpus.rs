@@ -42,15 +42,17 @@ pub fn create_seed_corpus(source_dir: &Path, output_dir: &Path) -> anyhow::Resul
         let entry = entry?;
         let path = entry.path();
 
-        if path.is_file() && path.extension().is_some_and(|ext| ext == "txt")
-            && let Ok(contents) = std::fs::read_to_string(&path) {
-                let extracted_list = extract_all_sources_from_corpus(&contents);
-                for extracted in extracted_list {
-                    if !extracted.is_empty() {
-                        save_corpus_entry(&extracted, output_dir, &mut count)?;
-                    }
+        if path.is_file()
+            && path.extension().is_some_and(|ext| ext == "txt")
+            && let Ok(contents) = std::fs::read_to_string(&path)
+        {
+            let extracted_list = extract_all_sources_from_corpus(&contents);
+            for extracted in extracted_list {
+                if !extracted.is_empty() {
+                    save_corpus_entry(&extracted, output_dir, &mut count)?;
                 }
             }
+        }
     }
 
     Ok(count)

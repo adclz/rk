@@ -2,8 +2,8 @@ use std::iter::FusedIterator;
 use std::sync::Arc;
 
 use auto_lsp::core::ast::AstNode;
-use auto_lsp::default::db::tracked::get_ast;
 use auto_lsp::default::db::file::File;
+use auto_lsp::default::db::tracked::get_ast;
 use db::WorkspaceDataBase;
 use rustc_hash::FxHashMap;
 use tracing::info_span;

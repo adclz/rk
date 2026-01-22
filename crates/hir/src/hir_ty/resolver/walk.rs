@@ -13,7 +13,7 @@ use crate::{
         invocation::InvocationKind,
     },
     hir_ty::{
-        body_inference::{Adjust, Adjustment, AdjustmentInfo, BodyInferenceResult},
+        body_inference::{Adjustment, AdjustmentInfo, BodyInferenceResult},
         expr_store::{InitExprWalkStep, PathExprWalkStep},
         inheritance_solver::inherited_methods,
         init_inference::InitExprInferenceResult,
@@ -300,7 +300,7 @@ impl<'db> Type<'db> {
                 Type::Array(arr) => {
                     let curr_dimension = ctx
                         .adjustments_of_path_expr(place.current_path)
-                        .map(|adjs| adjs.array_dimensions(&self))
+                        .map(|adjs| adjs.array_dimensions(self))
                         .unwrap_or(0);
 
                     let dimensions = arr.subranges(db).len() - 1;

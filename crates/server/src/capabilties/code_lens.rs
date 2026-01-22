@@ -2,7 +2,6 @@ use std::ops::ControlFlow;
 
 use auto_lsp::{
     anyhow,
-    default::db::BaseDatabase,
     lsp_types::{CodeLens, CodeLensParams},
 };
 use db::WorkspaceDataBase;
