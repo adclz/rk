@@ -14,7 +14,7 @@ fn invalid_subrange_type(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0801] Error: subrange type violation
+    [E0801] Error: invalid subrange type
        ,-[ file:///test0.st:3:20 ]
        |
      3 |             Range: BOOL (0..5);
@@ -35,7 +35,7 @@ fn invalid_start_value(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: type mismatch
+    [E0309] Error: invalid literal
        ,-[ file:///test0.st:3:26 ]
        |
      3 |             Range: UINT (-10..0);
@@ -54,7 +54,7 @@ fn invalid_end_value(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: type mismatch
+    [E0309] Error: invalid literal
        ,-[ file:///test0.st:3:29 ]
        |
      3 |             Range: UINT (0..-5);
@@ -82,7 +82,7 @@ fn invalid_subrange_value_type(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: type mismatch
+    [E0309] Error: invalid literal
         ,-[ file:///test0.st:11:22 ]
         |
      11 |             test :=  -1 // -1 should not be allowed here (UINT)

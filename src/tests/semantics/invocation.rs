@@ -17,9 +17,13 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0211] Error: resolution failure
+    [E0211] Error: no such field
        ,-[ file:///test0.st:6:7 ]
        |
+     2 | FUNCTION_BLOCK fb1
+       |                ^|^  
+       |                 `--- FUNCTION_BLOCK 'fb1' is defined here
+       | 
      6 |     THIS.decl1();
        |          ^^|^^  
        |            `---- 'fb1' has no field named 'decl1'
@@ -55,9 +59,13 @@ FUNCTION_BLOCK fb1 EXTENDS base
 
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0211] Error: resolution failure
+    [E0211] Error: no such field
        ,-[ file:///test0.st:8:11 ]
        |
+     6 | FUNCTION_BLOCK fb1 EXTENDS base
+       |                ^|^  
+       |                 `--- FUNCTION_BLOCK 'fb1' is defined here
+       | 
      8 |     SUPER.super_method1()
        |           ^^^^^^|^^^^^^  
        |                 `-------- 'fb1' has no field named 'super_method1'
@@ -74,7 +82,7 @@ CLASS fb1
     END_METHOD
 END_CLASS"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0501] Error: inheritance violation
+    [E0501] Error: invalid use of SUPER or THIS
        ,-[ file:///test0.st:4:9 ]
        |
      4 |         SUPER()
@@ -92,7 +100,7 @@ FUNCTION fn1
 END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0501] Error: inheritance violation
+    [E0501] Error: invalid use of SUPER or THIS
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     SUPER()
@@ -110,7 +118,7 @@ FUNCTION fn1
 END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0502] Error: inheritance violation
+    [E0502] Error: invalid use of SUPER or THIS
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     SUPER.something()
@@ -128,7 +136,7 @@ FUNCTION fn1
 END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0503] Error: inheritance violation
+    [E0503] Error: invalid use of SUPER or THIS
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     THIS.something()
@@ -154,7 +162,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: type mismatch
+    [E0309] Error: invalid literal
        ,-[ file:///test0.st:7:12 ]
        |
      4 |         VAR_INPUT input1 : BOOL; END_VAR
@@ -187,7 +195,7 @@ END_CLASS
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: type mismatch
+    [E0309] Error: invalid literal
         ,-[ file:///test0.st:10:17 ]
         |
       4 |         VAR_INPUT input1 : BOOL; END_VAR
@@ -220,7 +228,7 @@ END_FUNCTION_BLOCK
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: type mismatch
+    [E0309] Error: invalid literal
         ,-[ file:///test0.st:10:17 ]
         |
       4 |         VAR_INPUT input1 : BOOL; END_VAR

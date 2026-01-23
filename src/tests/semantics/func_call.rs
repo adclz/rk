@@ -89,12 +89,12 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0208] Error: resolution failure
+    [E0208] Error: function call parameter mismatch
         ,-[ file:///test0.st:10:9 ]
         |
      10 |         unknown := TRUE
         |         ^^^|^^^  
-        |            `----- Unknown input parameter 'unknown'
+        |            `----- unknown input parameter 'unknown'
     ----'
     ");
 }
@@ -113,19 +113,19 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0205] Error: resolution failure
+    [E0205] Error: function call parameter mismatch
        ,-[ file:///test0.st:6:5 ]
        |
      6 |     fn(
        |     ^|  
        |      `-- 'fn' expects 0 parameters, but got 1
     ---'
-    [E0209] Error: resolution failure
+    [E0209] Error: function call parameter mismatch
        ,-[ file:///test0.st:7:9 ]
        |
      7 |         unknown => TRUE
        |         ^^^|^^^  
-       |            `----- Unknown output parameter 'unknown'
+       |            `----- unknown output parameter 'unknown'
     ---'
     ");
 }
@@ -149,7 +149,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: type mismatch
+    [E0309] Error: invalid literal
         ,-[ file:///test0.st:11:19 ]
         |
       4 |     param1: LINT;
@@ -274,19 +274,19 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0205] Error: resolution failure
+    [E0205] Error: function call parameter mismatch
         ,-[ file:///test0.st:11:2 ]
         |
      11 |     fn(0, 1.5, 5);
         |     ^|  
         |      `-- 'fn' expects 2 parameters, but got 3
     ----'
-    [E0206] Error: resolution failure
+    [E0206] Error: function call parameter mismatch
         ,-[ file:///test0.st:11:13 ]
         |
      11 |     fn(0, 1.5, 5);
         |                |  
-        |                `-- No parameter at index '2'
+        |                `-- no parameter at index '2'
     ----'
     ");
 }

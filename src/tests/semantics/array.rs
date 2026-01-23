@@ -16,15 +16,15 @@ fn unknown_type(mut with_db: RootDatabase) {
         END_FUNCTION_BLOCK
         "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0204] Error: resolution failure
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
+    [E0204] Error: no item found in scope
        ,-[ file:///test0.st:4:25 ]
        |
      4 |                 input : something;
        |                         ^^^^|^^^^  
-       |                             `------ No item found in scope
+       |                             `------ no item "something" found in scope
     ---'
-    ");
+    "#);
 }
 
 #[rstest]
@@ -36,7 +36,7 @@ fn invalid_lower_bound_in_array(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0601] Error: array type violation
+    [E0601] Error: invalid array bounds
        ,-[ file:///test0.st:3:25 ]
        |
      3 |             List: ARRAY[-1..10] OF INT;
@@ -55,7 +55,7 @@ fn invalid_upper_bound_in_array(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0602] Error: array type violation
+    [E0602] Error: invalid array bounds
        ,-[ file:///test0.st:3:28 ]
        |
      3 |             List: ARRAY[0..-10] OF INT;
@@ -74,7 +74,7 @@ fn inferior_upper_bound_in_array(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0603] Error: array type violation
+    [E0603] Error: invalid array bounds
        ,-[ file:///test0.st:3:29 ]
        |
      3 |             List: ARRAY[10..1] OF INT;
@@ -93,7 +93,7 @@ fn nested_array_invalid_bound(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0601] Error: array type violation
+    [E0601] Error: invalid array bounds
        ,-[ file:///test0.st:3:31 ]
        |
      3 |             List: ARRAY[0..3, -2..1] OF INT;

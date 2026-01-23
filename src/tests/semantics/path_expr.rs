@@ -175,7 +175,7 @@ END_FUNCTION
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: type mismatch
+    [E0309] Error: invalid literal
        ,-[ file:///test0.st:7:13 ]
        |
      7 |     test[0] := 0.5;
@@ -212,12 +212,18 @@ END_FUNCTION
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0211] Error: resolution failure
+    [E0211] Error: no such field
         ,-[ file:///test0.st:14:7 ]
         |
-     14 |     test.powerr := 0.2;
-        |          ^^^|^^  
-        |             `---- 'STRUCT' has no field named 'powerr'
+      2 | ,-> TYPE Engine:
+        : :   
+      6 | |->     END_STRUCT
+        | |                    
+        | `-------------------- type is defined by 'Engine' here
+        | 
+     14 |         test.powerr := 0.2;
+        |              ^^^|^^  
+        |                 `---- 'Engine' has no field named 'powerr'
     ----'
     ");
 }
@@ -266,12 +272,12 @@ END_FUNCTION
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0213] Error: resolution failure
+    [E0213] Error: invalid operation
         ,-[ file:///test0.st:14:2 ]
         |
      14 |     test[0] := 0.2;
         |     ^^|^  
-        |       `--- Cannot index into type 'STRUCT'
+        |       `--- cannot index into type 'Engine'
     ----'
     ");
 }
@@ -290,9 +296,13 @@ END_FUNCTION
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0211] Error: resolution failure
+    [E0211] Error: no such field
        ,-[ file:///test0.st:7:7 ]
        |
+     4 |        test: ARRAY[0..1] OF INT;
+       |        ^^|^  
+       |          `--- type is declared by variable 'test' here
+       | 
      7 |     test.not_a_field := 0.2;
        |          ^^^^^|^^^^^  
        |               `------- 'ARRAY [0..1] OF INT' has no field named 'not_a_field'

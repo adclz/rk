@@ -18,7 +18,7 @@ fn missing_override(mut with_db: RootDatabase) {
         END_CLASS"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0503] Error: inheritance violation
+    [E0503] Error: override violation
        ,-[ file:///test0.st:8:20 ]
        |
      3 |             METHOD Tick : INT END_METHOD
@@ -47,7 +47,7 @@ fn override_final_method(mut with_db: RootDatabase) {
         END_CLASS"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0502] Error: inheritance violation
+    [E0502] Error: override violation
        ,-[ file:///test0.st:8:29 ]
        |
      3 |             METHOD FINAL Tick : INT END_METHOD
@@ -177,7 +177,7 @@ fn method_signature_count_mismatch_in_implementer(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0510] Error: inheritance violation
+    [E0510] Error: method signature mismatch
         ,-[ file:///test0.st:11:29 ]
         |
       3 |             METHOD DAYTIME
@@ -209,7 +209,7 @@ fn method_signature_count_mismatch_in_base(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0510] Error: inheritance violation
+    [E0510] Error: method signature mismatch
        ,-[ file:///test0.st:8:29 ]
        |
      3 |             METHOD DAYTIME
@@ -246,7 +246,7 @@ fn method_signature_type_mismatch(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0511] Error: inheritance violation
+    [E0511] Error: method signature mismatch
        ,-[ file:///test0.st:3:20 ]
        |
      3 |             METHOD DAYTIME
