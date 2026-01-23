@@ -19,7 +19,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0301] Error: type mismatch
        ,-[ file:///test0.st:7:13 ]
        |
      4 |         test: REAL;
@@ -47,7 +47,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0301] Error: type mismatch
        ,-[ file:///test0.st:7:13 ]
        |
      4 |         test: REAL;
@@ -75,7 +75,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0301] Error: type mismatch
        ,-[ file:///test0.st:7:13 ]
        |
      4 |         test: REAL;
@@ -103,7 +103,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0301] Error: type mismatch
        ,-[ file:///test0.st:7:13 ]
        |
      4 |         test: REAL;
@@ -131,7 +131,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0301] Error: type mismatch
        ,-[ file:///test0.st:7:13 ]
        |
      4 |         test: REAL;
@@ -182,7 +182,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0301] Error: type mismatch
        ,-[ file:///test0.st:8:10 ]
        |
      4 |         By: REAL;
@@ -193,7 +193,7 @@ END_FUNCTION_BLOCK"#;
        |          ^^^|^^  
        |             `---- expected 'REAL', got 'BOOL'
     ---'
-    Error: 
+    [E0301] Error: type mismatch
        ,-[ file:///test0.st:9:10 ]
        |
      4 |         By: REAL;
@@ -221,7 +221,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0301] Error: type mismatch
        ,-[ file:///test0.st:8:10 ]
        |
      4 |         By: REAL;
@@ -249,7 +249,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0301] Error: type mismatch
        ,-[ file:///test0.st:8:10 ]
        |
      4 |         By: REAL;
@@ -277,7 +277,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0301] Error: type mismatch
        ,-[ file:///test0.st:8:10 ]
        |
      4 |         By: REAL;
@@ -305,7 +305,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0301] Error: type mismatch
        ,-[ file:///test0.st:8:10 ]
        |
      4 |         By: REAL;

@@ -18,7 +18,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E1004] Error: control flow violation
        ,-[ file:///test0.st:7:5 ]
        |
      7 |     test();
@@ -40,7 +40,7 @@ END_FUNCTION_BLOCK
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E1004] Error: control flow violation
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     fb2();
@@ -89,12 +89,12 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0208] Error: resolution failure
         ,-[ file:///test0.st:10:9 ]
         |
      10 |         unknown := TRUE
         |         ^^^|^^^  
-        |            `----- unknown input parameter 'unknown'
+        |            `----- Unknown input parameter 'unknown'
     ----'
     ");
 }
@@ -113,19 +113,19 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0205] Error: resolution failure
        ,-[ file:///test0.st:6:5 ]
        |
      6 |     fn(
        |     ^|  
        |      `-- 'fn' expects 0 parameters, but got 1
     ---'
-    Error: 
+    [E0209] Error: resolution failure
        ,-[ file:///test0.st:7:9 ]
        |
      7 |         unknown => TRUE
        |         ^^^|^^^  
-       |            `----- unknown output parameter 'unknown'
+       |            `----- Unknown output parameter 'unknown'
     ---'
     ");
 }
@@ -149,7 +149,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0309] Error: type mismatch
         ,-[ file:///test0.st:11:19 ]
         |
       4 |     param1: LINT;
@@ -160,7 +160,7 @@ END_FUNCTION_BLOCK"#;
         |                   ^|^  
         |                    `--- cannot infer '<float>' to 'LINT': invalid LINT literal
     ----'
-    Error: 
+    [E0301] Error: type mismatch
         ,-[ file:///test0.st:12:19 ]
         |
       5 |     param2: LREAL;
@@ -202,7 +202,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0301] Error: type mismatch
         ,-[ file:///test0.st:19:19 ]
         |
       4 |     param1: INT;
@@ -213,7 +213,7 @@ END_FUNCTION_BLOCK"#;
         |                   ^^|^  
         |                     `--- expected 'INT', got 'BOOL'
     ----'
-    Error: 
+    [E0301] Error: type mismatch
         ,-[ file:///test0.st:20:19 ]
         |
       5 |     param2: REAL;
@@ -224,7 +224,7 @@ END_FUNCTION_BLOCK"#;
         |                   ^^|^  
         |                     `--- expected 'REAL', got 'BOOL'
     ----'
-    Error: 
+    [E0301] Error: type mismatch
         ,-[ file:///test0.st:21:19 ]
         |
      15 |         variable1: BOOL;
@@ -274,19 +274,19 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0205] Error: resolution failure
         ,-[ file:///test0.st:11:2 ]
         |
      11 |     fn(0, 1.5, 5);
         |     ^|  
         |      `-- 'fn' expects 2 parameters, but got 3
     ----'
-    Error: 
+    [E0206] Error: resolution failure
         ,-[ file:///test0.st:11:13 ]
         |
      11 |     fn(0, 1.5, 5);
         |                |  
-        |                `-- no parameter at index '2'
+        |                `-- No parameter at index '2'
     ----'
     ");
 }
@@ -308,7 +308,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0108] Error: duplicate definitions
         ,-[ file:///test0.st:11:21 ]
         |
      11 |     fn(param1 := 0, param1 := 1);
@@ -341,7 +341,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0108] Error: duplicate definitions
         ,-[ file:///test0.st:15:22 ]
         |
      15 |     fn(param1 => a1, param1 => a2);
@@ -372,7 +372,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E1003] Error: assignment violation
         ,-[ file:///test0.st:13:18 ]
         |
      13 |     fn(param1 => b1);
@@ -401,7 +401,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E1002] Error: assignment violation
         ,-[ file:///test0.st:13:18 ]
         |
      13 |     fn(param1 => b1);

@@ -18,7 +18,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0301] Error: type mismatch
        ,-[ file:///test0.st:7:13 ]
        |
      4 |         test: INT;
@@ -46,14 +46,14 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E1003] Error: assignment violation
        ,-[ file:///test0.st:8:5 ]
        |
      8 |     fb2 := ULINT#5;
        |     ^|^  
        |      `--- cannot use direct type 'FUNCTION_BLOCK: fb2' here
     ---'
-    Error: 
+    [E0301] Error: type mismatch
        ,-[ file:///test0.st:8:12 ]
        |
      2 | FUNCTION_BLOCK fb2
@@ -77,7 +77,7 @@ FUNCTION fn1 : INT
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0301] Error: type mismatch
        ,-[ file:///test0.st:4:12 ]
        |
      2 | FUNCTION fn1 : INT
@@ -105,14 +105,14 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E1003] Error: assignment violation
        ,-[ file:///test0.st:8:5 ]
        |
      8 |     T1 := ULINT#5;
        |     ^|  
        |      `-- cannot use direct type 'INT' here
     ---'
-    Error: 
+    [E0301] Error: type mismatch
        ,-[ file:///test0.st:8:11 ]
        |
      3 |     T1 : INT;
@@ -143,14 +143,14 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E1001] Error: assignment violation
         ,-[ file:///test0.st:11:5 ]
         |
      11 |     d_fb2 := ULINT#5;
         |     ^^|^^  
         |       `---- 'fb2' is a callable type and can not be assigned
     ----'
-    Error: 
+    [E0301] Error: type mismatch
         ,-[ file:///test0.st:11:14 ]
         |
       2 | FUNCTION_BLOCK fb2
@@ -177,7 +177,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E1002] Error: assignment violation
        ,-[ file:///test0.st:7:5 ]
        |
      7 |     test := 5;
@@ -204,7 +204,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0301] Error: type mismatch
         ,-[ file:///test0.st:11:13 ]
         |
       8 |         test: INT;
@@ -235,7 +235,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0301] Error: type mismatch
         ,-[ file:///test0.st:11:13 ]
         |
       8 |         test: INT;
@@ -262,7 +262,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0301] Error: type mismatch
        ,-[ file:///test0.st:7:13 ]
        |
      4 |         test: INT;

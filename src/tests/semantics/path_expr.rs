@@ -175,7 +175,7 @@ END_FUNCTION
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0309] Error: type mismatch
        ,-[ file:///test0.st:7:13 ]
        |
      7 |     test[0] := 0.5;
@@ -212,7 +212,7 @@ END_FUNCTION
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0211] Error: resolution failure
         ,-[ file:///test0.st:14:7 ]
         |
      14 |     test.powerr := 0.2;
@@ -266,12 +266,12 @@ END_FUNCTION
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0213] Error: resolution failure
         ,-[ file:///test0.st:14:2 ]
         |
      14 |     test[0] := 0.2;
         |     ^^|^  
-        |       `--- cannot index non-array type 'STRUCT'
+        |       `--- Cannot index into type 'STRUCT'
     ----'
     ");
 }
@@ -290,7 +290,7 @@ END_FUNCTION
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0211] Error: resolution failure
        ,-[ file:///test0.st:7:7 ]
        |
      7 |     test.not_a_field := 0.2;

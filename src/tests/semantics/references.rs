@@ -31,7 +31,7 @@ fn invalid_ref_to_elementary_type(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0301] Error: type mismatch
        ,-[ file:///test0.st:5:31 ]
        |
      5 |             test2: REF_TO INT := REF(test); // Reference to INT, but test is UINT
@@ -91,7 +91,7 @@ fn invalid_ref_to_pou_type(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0301] Error: type mismatch
        ,-[ file:///test0.st:8:31 ]
        |
      8 |             test2: REF_TO fb1 := REF(test); // Reference to fb1, but test is fb2
@@ -115,7 +115,7 @@ fn assign_non_ref_type(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0301] Error: type mismatch
        ,-[ file:///test0.st:7:17 ]
        |
      4 |             test: REF_TO INT;
@@ -229,7 +229,7 @@ END_FUNCTION
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0301] Error: type mismatch
        ,-[ file:///test0.st:9:11 ]
        |
      6 |        myInt: INT;

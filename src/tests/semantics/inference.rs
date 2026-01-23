@@ -47,7 +47,7 @@ FUNCTION fn1
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0309] Error: type mismatch
        ,-[ file:///test0.st:7:5 ]
        |
      7 |     IF 0.0 + test = 6 THEN
@@ -56,7 +56,7 @@ END_FUNCTION"#;
        |                |   
        |                `--- 'BOOL' is expected due to this
     ---'
-    Error: 
+    [E0309] Error: type mismatch
        ,-[ file:///test0.st:7:18 ]
        |
      7 |     IF 0.0 + test = 6 THEN

@@ -29,12 +29,12 @@ fn fuzzy_struct_fields(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0211] Error: resolution failure
         ,-[ file:///test0.st:15:49 ]
         |
      15 |                 Base : Engine := (power := 100, fuel := 10.0);
         |                                                 ^^^^^^|^^^^^  
-        |                                                       `------- no field 'fuel' in type 'STRUCT'
+        |                                                       `------- No field 'fuel' in type 'STRUCT'
         | 
         | Note: STRUCT has fields with similar name:
         |       - fuel1
@@ -42,12 +42,12 @@ fn fuzzy_struct_fields(mut with_db: RootDatabase) {
         |       - fuel3
         |       - fuel4
     ----'
-    Error: 
+    [E0211] Error: resolution failure
         ,-[ file:///test0.st:15:49 ]
         |
      15 |                 Base : Engine := (power := 100, fuel := 10.0);
         |                                                 ^^^^^^|^^^^^  
-        |                                                       `------- no field 'fuel' in type 'STRUCT'
+        |                                                       `------- No field 'fuel' in type 'STRUCT'
         | 
         | Note: STRUCT has fields with similar name:
         |       - fuel1
@@ -74,12 +74,12 @@ fn fuzzy_pou_local_variables(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
-    Error: 
+    [E0204] Error: resolution failure
        ,-[ file:///test0.st:9:13 ]
        |
      9 |             engine := ULINT#5;
        |             ^^^|^^  
-       |                `---- no item "engine" found in scope
+       |                `---- No item "engine" found in scope
        | 
        | Note: 'fb1' has items with similar name:
        |       - engine2
@@ -105,12 +105,12 @@ END_FUNCTION_BLOCK
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0208] Error: resolution failure
         ,-[ file:///test0.st:11:5 ]
         |
      11 |     fn(param := 0);
         |        ^^|^^  
-        |          `---- unknown input parameter 'param'
+        |          `---- Unknown input parameter 'param'
         | 
         | Note: 'fn' has parameters with similar name:
         |       - param1
@@ -139,12 +139,12 @@ END_FUNCTION_BLOCK
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0209] Error: resolution failure
         ,-[ file:///test0.st:14:5 ]
         |
      14 |     fn(param => param_out);
         |        ^^|^^  
-        |          `---- unknown output parameter 'param'
+        |          `---- Unknown output parameter 'param'
         | 
         | Note: 'fn' has parameters with similar name:
         |       - param1

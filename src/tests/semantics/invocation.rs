@@ -17,7 +17,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0211] Error: resolution failure
        ,-[ file:///test0.st:6:7 ]
        |
      6 |     THIS.decl1();
@@ -55,7 +55,7 @@ FUNCTION_BLOCK fb1 EXTENDS base
 
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0211] Error: resolution failure
        ,-[ file:///test0.st:8:11 ]
        |
      8 |     SUPER.super_method1()
@@ -74,7 +74,7 @@ CLASS fb1
     END_METHOD
 END_CLASS"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0501] Error: inheritance violation
        ,-[ file:///test0.st:4:9 ]
        |
      4 |         SUPER()
@@ -92,7 +92,7 @@ FUNCTION fn1
 END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0501] Error: inheritance violation
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     SUPER()
@@ -110,7 +110,7 @@ FUNCTION fn1
 END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0502] Error: inheritance violation
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     SUPER.something()
@@ -128,7 +128,7 @@ FUNCTION fn1
 END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0503] Error: inheritance violation
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     THIS.something()
@@ -154,7 +154,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0309] Error: type mismatch
        ,-[ file:///test0.st:7:12 ]
        |
      4 |         VAR_INPUT input1 : BOOL; END_VAR
@@ -187,7 +187,7 @@ END_CLASS
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0309] Error: type mismatch
         ,-[ file:///test0.st:10:17 ]
         |
       4 |         VAR_INPUT input1 : BOOL; END_VAR
@@ -220,7 +220,7 @@ END_FUNCTION_BLOCK
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0309] Error: type mismatch
         ,-[ file:///test0.st:10:17 ]
         |
       4 |         VAR_INPUT input1 : BOOL; END_VAR

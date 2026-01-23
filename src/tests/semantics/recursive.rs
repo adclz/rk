@@ -16,7 +16,7 @@ fn self_referential(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0901] Error: recursion detected
        ,-[ file:///test0.st:2:22 ]
        |
      2 |       FUNCTION_BLOCK fb
@@ -49,7 +49,7 @@ fn recursive_function_blocks(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0902] Error: recursion detected
         ,-[ file:///test0.st:2:24 ]
         |
       2 |         FUNCTION_BLOCK fb1
@@ -78,7 +78,7 @@ fn self_referential_struct(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0901] Error: recursion detected
        ,-[ file:///test0.st:2:14 ]
        |
      2 |         TYPE Engine: STRUCT
@@ -101,7 +101,7 @@ fn mutually_referential_types(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0902] Error: recursion detected
        ,-[ file:///test0.st:3:13 ]
        |
      3 |             A: B;
@@ -129,7 +129,7 @@ fn mutually_referential_type_and_array(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0902] Error: recursion detected
        ,-[ file:///test0.st:3:13 ]
        |
      3 |             A: B;
@@ -155,7 +155,7 @@ fn class_extends_itself(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0901] Error: recursion detected
        ,-[ file:///test0.st:2:11 ]
        |
      2 |     CLASS MyClass EXTENDS MyClass
@@ -175,7 +175,7 @@ fn fb_extends_itself(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0901] Error: recursion detected
        ,-[ file:///test0.st:2:20 ]
        |
      2 |     FUNCTION_BLOCK MyFb EXTENDS MyFb
@@ -195,7 +195,7 @@ fn interface_extends_itself(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0901] Error: recursion detected
        ,-[ file:///test0.st:2:15 ]
        |
      2 |     INTERFACE MyInterface EXTENDS MyInterface
@@ -230,7 +230,7 @@ fn recursion_in_namespace(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0902] Error: recursion detected
         ,-[ file:///test0.st:11:28 ]
         |
       5 |                   invalid : ns.ns2.fb2;

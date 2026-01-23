@@ -14,12 +14,12 @@ fn invalid_enum_type(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0701] Error: enum type violation
        ,-[ file:///test0.st:3:19 ]
        |
      3 |             List: BOOL (A, B, C);
        |                   ^^|^  
-       |                     `--- invalid enum type 'BOOL'
+       |                     `--- Invalid enum type 'BOOL'
        | 
        | Note: only numeric integer types are allowed for ENUM
     ---'
@@ -35,7 +35,7 @@ fn type_mismatch_enum_variant_decl(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0309] Error: type mismatch
        ,-[ file:///test0.st:3:33 ]
        |
      3 |             List: UINT (A, B := -5, C);
@@ -63,7 +63,7 @@ fn unknown_enum_variant(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0703] Error: enum type violation
         ,-[ file:///test0.st:11:26 ]
         |
      11 |             test := List#D; // D is not a valid enum variant

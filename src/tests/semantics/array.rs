@@ -17,12 +17,12 @@ fn unknown_type(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0204] Error: resolution failure
        ,-[ file:///test0.st:4:25 ]
        |
      4 |                 input : something;
        |                         ^^^^|^^^^  
-       |                             `------ no item found in scope
+       |                             `------ No item found in scope
     ---'
     ");
 }
@@ -36,7 +36,7 @@ fn invalid_lower_bound_in_array(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0601] Error: array type violation
        ,-[ file:///test0.st:3:25 ]
        |
      3 |             List: ARRAY[-1..10] OF INT;
@@ -55,7 +55,7 @@ fn invalid_upper_bound_in_array(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0602] Error: array type violation
        ,-[ file:///test0.st:3:28 ]
        |
      3 |             List: ARRAY[0..-10] OF INT;
@@ -74,7 +74,7 @@ fn inferior_upper_bound_in_array(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0603] Error: array type violation
        ,-[ file:///test0.st:3:29 ]
        |
      3 |             List: ARRAY[10..1] OF INT;
@@ -93,7 +93,7 @@ fn nested_array_invalid_bound(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0601] Error: array type violation
        ,-[ file:///test0.st:3:31 ]
        |
      3 |             List: ARRAY[0..3, -2..1] OF INT;

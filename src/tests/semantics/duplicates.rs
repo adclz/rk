@@ -20,7 +20,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0102] Error: duplicate definitions
        ,-[ file:///test0.st:5:9 ]
        |
      4 |         test: INT;
@@ -44,7 +44,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0102] Error: duplicate definitions
        ,-[ file:///test0.st:4:15 ]
        |
      4 |         test, test: INT;
@@ -67,7 +67,7 @@ TYPE
 END_TYPE"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0103] Error: duplicate definitions
        ,-[ file:///test0.st:5:9 ]
        |
      4 |         test: INT;
@@ -93,7 +93,7 @@ END_FUNCTION_BLOCK
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0101] Error: duplicate definitions
        ,-[ file:///test0.st:6:16 ]
        |
      2 | FUNCTION_BLOCK fb1
@@ -116,7 +116,7 @@ END_TYPE
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0104] Error: duplicate definitions
        ,-[ file:///test0.st:3:11 ]
        |
      3 |     E1 : (A, B, A);
@@ -143,7 +143,7 @@ END_NAMESPACE
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0101] Error: duplicate definitions
        ,-[ file:///test0.st:7:20 ]
        |
      3 |     FUNCTION_BLOCK fb1
@@ -228,7 +228,7 @@ END_INTERFACE
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0106] Error: duplicate definitions
        ,-[ file:///test0.st:3:12 ]
        |
      3 |     METHOD m1 END_METHOD
@@ -251,7 +251,7 @@ END_CLASS
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0105] Error: duplicate definitions
        ,-[ file:///test0.st:3:12 ]
        |
      3 |     METHOD m1 END_METHOD
@@ -274,7 +274,7 @@ END_FUNCTION_BLOCK
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0105] Error: duplicate definitions
        ,-[ file:///test0.st:3:12 ]
        |
      3 |     METHOD m1 END_METHOD
@@ -304,7 +304,7 @@ END_CLASS
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0107] Error: duplicate definitions
        ,-[ file:///test0.st:3:12 ]
        |
      3 |     METHOD m1 END_METHOD

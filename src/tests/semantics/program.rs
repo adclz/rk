@@ -18,7 +18,7 @@ PROGRAM program
 END_PROGRAM"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0301] Error: type mismatch
        ,-[ file:///test0.st:7:13 ]
        |
      4 |         test: INT;

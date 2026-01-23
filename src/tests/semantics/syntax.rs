@@ -12,7 +12,7 @@ NAMESPACE
 END_NAMESPACE"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0019] Error: syntax
        ,-[ file:///test0.st:2:10 ]
        |
      2 | NAMESPACE
@@ -33,7 +33,7 @@ fn missing_end_keyword(mut with_db: RootDatabase) {
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0019] Error: syntax
        ,-[ file:///test0.st:2:26 ]
        |
      2 |     FUNCTION myFunc : INT
@@ -52,7 +52,7 @@ NAMESPACE test ;
 END_NAMESPACE"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0050] Error: syntax
        ,-[ file:///test0.st:2:16 ]
        |
      2 | NAMESPACE test ;
@@ -73,7 +73,7 @@ FUNCTION_BLOCK fn IMPLEMENTS a EXTENDS b
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0003] Error: syntax
        ,-[ file:///test0.st:5:19 ]
        |
      5 | FUNCTION_BLOCK fn IMPLEMENTS a EXTENDS b
@@ -97,7 +97,7 @@ FUNCTION_BLOCK fn IMPLEMENTS a IMPLEMENTS b
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0002] Error: syntax
        ,-[ file:///test0.st:8:32 ]
        |
      8 | FUNCTION_BLOCK fn IMPLEMENTS a IMPLEMENTS b
@@ -121,7 +121,7 @@ FUNCTION_BLOCK fn EXTENDS a EXTENDS b
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0001] Error: syntax
        ,-[ file:///test0.st:8:29 ]
        |
      8 | FUNCTION_BLOCK fn EXTENDS a EXTENDS b
@@ -142,7 +142,7 @@ FUNCTION_BLOCK fn
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0006] Error: syntax
        ,-[ file:///test0.st:4:9 ]
        |
      4 |         empty
@@ -160,7 +160,7 @@ FUNCTION_BLOCK fn
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0011] Error: syntax
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     fn() := 0;
@@ -178,7 +178,7 @@ FUNCTION_BLOCK fn
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0009] Error: syntax
        ,-[ file:///test0.st:3:8 ]
        |
      3 |     fn.THIS.p := 5
@@ -196,7 +196,7 @@ FUNCTION_BLOCK fn
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0010] Error: syntax
        ,-[ file:///test0.st:3:8 ]
        |
      3 |     fn.SUPER.p := 5
@@ -214,7 +214,7 @@ FUNCTION_BLOCK fn
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0012] Error: syntax
        ,-[ file:///test0.st:3:7 ]
        |
      3 |     a :=
@@ -235,7 +235,7 @@ FUNCTION_BLOCK fn
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0017] Error: syntax
        ,-[ file:///test0.st:4:37 ]
        |
      4 |     ml : ARRAY [0..2] OF TON := [10(call(IN := 5, OUT => OUT))]
@@ -253,7 +253,7 @@ FUNCTION_BLOCK fn
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0013] Error: syntax
        ,-[ file:///test0.st:3:7 ]
        |
      3 |     a = 0;
@@ -273,7 +273,7 @@ FUNCTION_BLOCK fn
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0014] Error: syntax
        ,-[ file:///test0.st:3:7 ]
        |
      3 |     a : 0;
@@ -294,7 +294,7 @@ FUNCTION fn
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0015] Error: syntax
        ,-[ file:///test0.st:4:8 ]
        |
      4 |     FOR i = 0 TO 10 END_FOR
@@ -315,7 +315,7 @@ FUNCTION fn
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0016] Error: syntax
        ,-[ file:///test0.st:4:8 ]
        |
      4 |     FOR i : 0 TO 10 END_FOR
@@ -345,7 +345,7 @@ CLASS base
 END_CLASS"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0004] Error: syntax
         ,-[ file:///test0.st:6:5 ]
         |
       6 | ,->     VAR
@@ -375,7 +375,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0005] Error: syntax
         ,-[ file:///test0.st:6:5 ]
         |
       6 | ,->     VAR

@@ -21,7 +21,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0301] Error: type mismatch
        ,-[ file:///test0.st:8:14 ]
        |
      4 |         I: INT;
@@ -51,7 +51,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0302] Error: type mismatch
        ,-[ file:///test0.st:8:20 ]
        |
      4 |         I: INT;
@@ -81,7 +81,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0302] Error: type mismatch
        ,-[ file:///test0.st:8:25 ]
        |
      4 |         I: INT;
@@ -111,7 +111,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0301] Error: type mismatch
        ,-[ file:///test0.st:8:11 ]
        |
      8 |     WHILE I DO
@@ -137,7 +137,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0301] Error: type mismatch
        ,-[ file:///test0.st:9:15 ]
        |
      9 |         UNTIL I

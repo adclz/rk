@@ -35,7 +35,7 @@ fn invalid_access_private_method(mut with_db: RootDatabase) {
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0401] Error: access control violation
        ,-[ file:///test0.st:8:19 ]
        |
      8 |             SUPER.myPrivateMethod();
@@ -68,7 +68,7 @@ END_NAMESPACE
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0402] Error: access control violation
         ,-[ file:///test0.st:13:19 ]
         |
      13 |             SUPER.myInternalMethod();
@@ -99,7 +99,7 @@ END_NAMESPACE
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0402] Error: access control violation
        ,-[ file:///test0.st:6:15 ]
        |
      6 |         SUPER.myInternalMethod();
@@ -128,7 +128,7 @@ END_NAMESPACE
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0402] Error: access control violation
        ,-[ file:///test0.st:9:19 ]
        |
      9 |             SUPER.myInternalMethod();
@@ -178,7 +178,7 @@ END_FUNCTION_BLOCK
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0403] Error: access control violation
         ,-[ file:///test0.st:11:9 ]
         |
      11 |     obj.myProtectedMethod();

@@ -25,19 +25,19 @@ fn unknown_struct_field(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0211] Error: resolution failure
         ,-[ file:///test0.st:12:49 ]
         |
      12 |                 Base : Engine := (power := 100, fuel := 10.0);
         |                                                 ^^^^^^|^^^^^  
-        |                                                       `------- no field 'fuel' in type 'STRUCT'
+        |                                                       `------- No field 'fuel' in type 'STRUCT'
     ----'
-    Error: 
+    [E0211] Error: resolution failure
         ,-[ file:///test0.st:12:49 ]
         |
      12 |                 Base : Engine := (power := 100, fuel := 10.0);
         |                                                 ^^^^^^|^^^^^  
-        |                                                       `------- no field 'fuel' in type 'STRUCT'
+        |                                                       `------- No field 'fuel' in type 'STRUCT'
     ----'
     ");
 }
@@ -62,19 +62,19 @@ fn invalid_struct_value(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0211] Error: resolution failure
         ,-[ file:///test0.st:11:50 ]
         |
      11 |                 Base : Engine := (power := 10.5, fuel := 10.0);
         |                                                  ^^^^^^|^^^^^  
-        |                                                        `------- no field 'fuel' in type 'STRUCT'
+        |                                                        `------- No field 'fuel' in type 'STRUCT'
     ----'
-    Error: 
+    [E0211] Error: resolution failure
         ,-[ file:///test0.st:11:50 ]
         |
      11 |                 Base : Engine := (power := 10.5, fuel := 10.0);
         |                                                  ^^^^^^|^^^^^  
-        |                                                        `------- no field 'fuel' in type 'STRUCT'
+        |                                                        `------- No field 'fuel' in type 'STRUCT'
     ----'
     ");
 }
@@ -158,12 +158,12 @@ fn unexpected_struct_field(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0211] Error: resolution failure
        ,-[ file:///test0.st:8:37 ]
        |
      8 |                 Base : Engine := [2(param1 := 0)];
        |                                     ^^^^^|^^^^^  
-       |                                          `------- no field 'param1' in type 'INT'
+       |                                          `------- No field 'param1' in type 'INT'
     ---'
     ");
 }
@@ -185,12 +185,12 @@ fn unexpected_array(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    Error: 
+    [E0213] Error: resolution failure
        ,-[ file:///test0.st:8:31 ]
        |
      8 |                 Base : Engine := [2];
        |                               ^^^|^^  
-       |                                  `---- cannot index into type 'INT'
+       |                                  `---- Cannot index into type 'INT'
     ---'
     ");
 }
