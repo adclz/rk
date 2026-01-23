@@ -3,8 +3,7 @@ use db::WorkspaceDataBase;
 use crate::{
     CallSite,
     check::errors::{
-        analysis_error::ToIdeDiagnostic,
-        body_inference::{BodyInferenceError, TypeError},
+        analysis_error::ToIdeDiagnostic, e3_type::TypeError, e10_control_flow::ControlFlowError,
     },
     hir_def::{
         expressions::{
@@ -222,8 +221,7 @@ impl<'db> InferenceCtx<'db> {
                 StmtKind::Continue | StmtKind::Exit => {
                     if nested_scope != NestedScope::Loop {
                         ctx.errors.push(
-                            BodyInferenceError::ContinueOutsideLoop { stmt: *stmt }
-                                .to_diagnostic(db),
+                            ControlFlowError::ContinueOutsideLoop { stmt: *stmt }.to_diagnostic(db),
                         );
                     }
                 }

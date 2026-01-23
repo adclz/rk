@@ -20,8 +20,8 @@ use crate::{
         check_namespaces::check_duplicate_namespaces,
         errors::{
             analysis_error::{AnalysisError, ToIdeDiagnostic},
-            duplicates::DuplicateError,
-            syntax::SyntaxError,
+            e0_syntax::SyntaxError,
+            e1_duplicates::DuplicateError,
         },
     },
     hir_def::{

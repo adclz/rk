@@ -1,22 +1,27 @@
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
-use ide_diagnostic::{IdeDiagnostic, Related, diag};
+use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 use crate::{
-    HasName, HirNodeInfo,
+    CallSite, HasName, HirNodeInfo,
     check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic},
     hir_def::{
         expressions::{expression::PathExpr, invocation::Invocation},
-        interned::namespace::SpanNamespaceAccess,
         pous::pou::Pou,
     },
     hir_ty::{inheritance_solver::MethodRef, ty::Type},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum MethodError<'db> {
-    UnresolvedPou {
-        access: SpanNamespaceAccess<'db>,
+pub enum InheritanceError<'db> {
+    SuperBodyOnIncompatiblePou {
+        call_site: CallSite<'db>,
+    },
+    SuperOnIncompatiblePou {
+        call_site: CallSite<'db>,
+    },
+    ThisOnIncompatiblePou {
+        call_site: CallSite<'db>,
     },
     OverrideFinalMethod {
         base_method: MethodRef<'db>,
@@ -65,24 +70,57 @@ pub enum MethodError<'db> {
     },
 }
 
-impl<'db> From<MethodError<'db>> for AnalysisError<'db> {
-    fn from(err: MethodError<'db>) -> Self {
-        AnalysisError::MethodError(err)
+impl<'db> From<InheritanceError<'db>> for AnalysisError<'db> {
+    fn from(err: InheritanceError<'db>) -> Self {
+        AnalysisError::Inheritance(err)
     }
 }
 
-impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
+impl<'db> ErrorCode for InheritanceError<'db> {
+    fn code(&self) -> &'static str {
+        match self {
+            Self::SuperBodyOnIncompatiblePou { .. } => "E0501",
+            Self::SuperOnIncompatiblePou { .. } => "E0502",
+            Self::ThisOnIncompatiblePou { .. } => "E0503",
+            Self::OverrideFinalMethod { .. } => "E0502",
+            Self::MissingOverride { .. } => "E0503",
+            Self::MissingAbstractMethod { .. } => "E0504",
+            Self::EmptyOverride { .. } => "E0505",
+            Self::AbstractClassHasNoAbstractMethods { .. } => "E0506",
+            Self::UnimplementedInterfaceMethod { .. } => "E0507",
+            Self::UnresolvedThisMethod { .. } => "E0508",
+            Self::UnresolvedSuperMethod { .. } => "E0509",
+            Self::SignatureParametersCountMismatch { .. } => "E0510",
+            Self::SignatureTypeMismatch { .. } => "E0511",
+        }
+    }
+
+    fn description(&self) -> &'static str {
+        "inheritance violation"
+    }
+}
+
+impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
     fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase) -> IdeDiagnostic {
         match self {
-            Self::UnresolvedPou { access } => diag()
-                .message(format!(
-                    "no item '{}' found in the current scope",
-                    access.to_string(db)
-                ))
+            Self::SuperBodyOnIncompatiblePou { call_site } => diag()
+                .message("'SUPER()' is not valid in this context".to_string())
+                .range(call_site.get_span(db))
                 .severity(DiagnosticSeverity::ERROR)
-                .range(access.get_span(db).clone())
+                .desc(self)
                 .call(),
-
+            Self::SuperOnIncompatiblePou { call_site } => diag()
+                .message("'SUPER' is not valid in this context".to_string())
+                .range(call_site.get_span(db))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .call(),
+            Self::ThisOnIncompatiblePou { call_site } => diag()
+                .message("'THIS' is not valid in this context".to_string())
+                .range(call_site.get_span(db))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .call(),
             Self::MissingOverride {
                 base_method,
                 derived_method,
@@ -93,6 +131,7 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                         derived_method.get_name_ident(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
                     .range(derived_method.get_name_span(db))
                     .call();
 
@@ -117,6 +156,7 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                         base_method.get_name_ident(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
                     .range(derived_method.get_name_span(db))
                     .call();
 
@@ -142,6 +182,7 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                         base_method.get_name_ident(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
                     .range(implementer.get_name_span(db))
                     .call();
 
@@ -163,6 +204,7 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                         base_method.get_name_ident(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
                     .range(base_method.get_name_span(db))
                     .call();
 
@@ -177,6 +219,7 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                         class.get_name_ident(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
                     .range(class.get_name_span(db))
                     .call();
 
@@ -194,6 +237,7 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                         method.get_name_ident(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
                     .range(implementer.get_name_span(db))
                     .call();
 
@@ -215,6 +259,7 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                     ctx.get_name_ident(db).text(db)
                 ))
                 .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
                 .range(method.get_span(db).clone())
                 .call(),
             Self::UnresolvedSuperMethod { ctx, path, method } => {
@@ -224,6 +269,7 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                         path.ident(db).ident.text(db),
                     ))
                     .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
                     .range(method.get_span(db).clone())
                     .call();
 
@@ -253,6 +299,7 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                         got
                     ))
                     .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
                     .range(m2.get_name_span(db).clone())
                     .call();
 
@@ -279,6 +326,7 @@ impl<'db> ToIdeDiagnostic<'db> for MethodError<'db> {
                         got.full_type_name(db),
                     ))
                     .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
                     .range(method.get_name_span(db).clone())
                     .call();
 

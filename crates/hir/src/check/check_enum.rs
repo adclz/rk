@@ -7,8 +7,8 @@ use crate::{
     check::{
         check_semantic_index::DataTypeCheck,
         errors::{
-            analysis_error::ToIdeDiagnostic, body_inference::TypeError, duplicates::DuplicateError,
-            enum_::EnumError,
+            analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError, e3_type::TypeError,
+            e7_enum::EnumError,
         },
     },
     hir_def::expressions::spec::{ElementarySpec, Enum},

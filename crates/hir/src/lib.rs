@@ -324,7 +324,7 @@ bitflags! {
     }
 }
 
-impl<'db> Visibility {
+impl Visibility {
     pub const EMPTY: Visibility = Visibility::empty();
 }
 

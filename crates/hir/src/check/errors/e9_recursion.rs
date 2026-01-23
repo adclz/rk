@@ -1,6 +1,6 @@
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
-use ide_diagnostic::{IdeDiagnostic, Related, diag};
+use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 use crate::{
     CallSite, HasName, HirNodeInfo,
@@ -23,7 +23,20 @@ pub enum RecursionError<'db> {
 
 impl<'db> From<RecursionError<'db>> for AnalysisError<'db> {
     fn from(err: RecursionError<'db>) -> Self {
-        AnalysisError::RecursionError(err)
+        AnalysisError::Recursion(err)
+    }
+}
+
+impl ErrorCode for RecursionError<'_> {
+    fn code(&self) -> &'static str {
+        match self {
+            Self::DirectRecursion { .. } => "E0901",
+            Self::MutualRecursion { .. } => "E0902",
+        }
+    }
+
+    fn description(&self) -> &'static str {
+        "recursion detected"
     }
 }
 
@@ -37,6 +50,7 @@ impl<'db> ToIdeDiagnostic<'db> for RecursionError<'db> {
                         pou.get_name_ident(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
                     .range(pou.get_name_span(db))
                     .call();
 
@@ -64,6 +78,7 @@ impl<'db> ToIdeDiagnostic<'db> for RecursionError<'db> {
                         pou.get_name_ident(db).text(db),
                     ))
                     .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
                     .range(pou.get_name_span(db))
                     .call();
 

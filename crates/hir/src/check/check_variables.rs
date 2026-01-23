@@ -7,8 +7,8 @@ use crate::{
     check::{
         check_semantic_index::Check,
         errors::{
-            analysis_error::ToIdeDiagnostic, body_inference::BodyInferenceError,
-            duplicates::DuplicateError,
+            analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError,
+            e2_resolve::ResolveError,
         },
     },
     hir_def::{interned::identifier::Ident, pous::variable::VariableDecl},
@@ -37,7 +37,7 @@ impl<'db> Check<'db> for [VariableDecl<'db>] {
             let var_typ = Type::new_spec(db, variable.spec(db));
             if var_typ.is_never() {
                 errors.push(
-                    BodyInferenceError::NoSpecItemInScope {
+                    ResolveError::NoSpecItemInScope {
                         spec: variable.spec(db),
                         scope: variable.scope_id(db),
                     }

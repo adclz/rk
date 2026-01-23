@@ -4,8 +4,7 @@ use ide_diagnostic::IdeDiagnostic;
 use crate::{
     CallSite, HirNodeInfo,
     check::errors::{
-        analysis_error::ToIdeDiagnostic,
-        body_inference::{BodyInferenceError, TypeError},
+        analysis_error::ToIdeDiagnostic, e3_type::TypeError, e10_control_flow::ControlFlowError,
     },
     hir_def::expressions::expression::{AddOperatorKind, MultOperatorKind},
     hir_ty::{
@@ -151,7 +150,7 @@ impl<'db> Type<'db> {
                 // a variable of kind INPUT cannot be assigned to
                 if variable.is_input(db) {
                     ctx.errors.push(
-                        BodyInferenceError::IsVarInput {
+                        ControlFlowError::IsVarInput {
                             var: *variable,
                             access: call_site,
                         }
@@ -162,7 +161,7 @@ impl<'db> Type<'db> {
                 // a variable of callable type cannot be assigned to
                 if let Some(callable_typ) = Type::new_spec(db, variable.spec(db)).as_callable(db) {
                     ctx.errors.push(
-                        BodyInferenceError::AssignCallableType {
+                        ControlFlowError::AssignCallableType {
                             typ: callable_typ,
                             access: call_site,
                         }
@@ -180,7 +179,7 @@ impl<'db> Type<'db> {
                 };
                 if !self_assign {
                     ctx.errors.push(
-                        BodyInferenceError::DirectType {
+                        ControlFlowError::DirectType {
                             expr: call_site,
                             typ: *self,
                         }

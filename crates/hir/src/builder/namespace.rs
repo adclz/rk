@@ -7,7 +7,7 @@ use auto_lsp::core::ast::AstNode;
 use super::semantic_index::SemanticIndexBuilder;
 use crate::Visibility;
 use crate::check::errors::analysis_error::AnalysisError;
-use crate::check::errors::syntax::SyntaxError;
+use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::interned::namespace::SpanNamespacePath;
 use crate::hir_def::namespace::NamespaceDecl;
@@ -69,9 +69,10 @@ impl<'db> SemanticIndexBuilder<'db> {
                         pous.push(self.parse_interface(interface)?);
                     }
                     Decl::ERRInvalidPouKeyword(err) => {
-                        self.errors.push(AnalysisError::SyntaxError(
-                            SyntaxError::InvalidPouKeyword(err.get_span()),
-                        ));
+                        self.errors
+                            .push(AnalysisError::Syntax(SyntaxError::InvalidPouKeyword(
+                                err.get_span(),
+                            )));
                     }
                 }
             }

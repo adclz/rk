@@ -7,7 +7,7 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     HasName, HirNodeInfo,
-    check::errors::{analysis_error::ToIdeDiagnostic, duplicates::DuplicateError},
+    check::errors::{analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError},
     hir_def::{interned::identifier::Ident, namespace::NamespaceDecl, pous::pou::Pou},
     hir_ty::name_res::namespace_index,
 };

@@ -289,25 +289,28 @@ pub trait AdjustmentInfo<'db> {
 impl<'db> AdjustmentInfo<'db> for [Adjustment<'db>] {
     fn as_reference(&self) -> Option<Type<'db>> {
         if let Some(adj) = self.last()
-            && adj.kind == Adjust::Ref {
-                return Some(adj.target);
-            }
+            && adj.kind == Adjust::Ref
+        {
+            return Some(adj.target);
+        }
         None
     }
 
     fn as_dereference(&self) -> Option<Type<'db>> {
         if let Some(adj) = self.last()
-            && adj.kind == Adjust::Deref {
-                return Some(adj.target);
-            }
+            && adj.kind == Adjust::Deref
+        {
+            return Some(adj.target);
+        }
         None
     }
 
     fn as_index(&self) -> Option<Type<'db>> {
         if let Some(adj) = self.last()
-            && adj.kind == Adjust::Index {
-                return Some(adj.target);
-            }
+            && adj.kind == Adjust::Index
+        {
+            return Some(adj.target);
+        }
         None
     }
 

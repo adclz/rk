@@ -10,13 +10,13 @@ use auto_lsp::{
     tree_sitter::{self, Range},
 };
 use db::WorkspaceDataBase;
-use ide_diagnostic::{IdeDiagnostic, Related, action, diag, edit};
+use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, action, diag, edit};
 
 use crate::check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic};
 
 impl<'db> From<SyntaxError> for AnalysisError<'db> {
     fn from(err: SyntaxError) -> Self {
-        AnalysisError::SyntaxError(err)
+        AnalysisError::Syntax(err)
     }
 }
 
@@ -66,6 +66,37 @@ pub enum SyntaxError {
     },
 }
 
+impl ErrorCode for SyntaxError {
+    fn code(&self) -> &'static str {
+        match self {
+            SyntaxError::MultipleExtends(_) => "E0001",
+            SyntaxError::MultipleImplements(_) => "E0002",
+            SyntaxError::ImplementsBeforeExtends(_) => "E0003",
+            SyntaxError::ClassVariablesAfterMethod(_) => "E0004",
+            SyntaxError::FbVariablesAfterMethod(_) => "E0005",
+            SyntaxError::MissingVarType(_) => "E0006",
+            SyntaxError::UnexpectedVarInit(_) => "E0007",
+            SyntaxError::IncompleteEdgeQualifier(_) => "E0008",
+            SyntaxError::UnexpectedThis(_) => "E0009",
+            SyntaxError::UnexpectedSuper(_) => "E0010",
+            SyntaxError::AssignToFunctionCall(_) => "E0011",
+            SyntaxError::EmptyRightHandSide(_) => "E0012",
+            SyntaxError::MissingDotInAssignment { .. } => "E0013",
+            SyntaxError::MissingEqualInAssignment { .. } => "E0014",
+            SyntaxError::MissingDotInForList { .. } => "E0015",
+            SyntaxError::MissingEqualInForList { .. } => "E0016",
+            SyntaxError::FunctionCallInInitExpression(_) => "E0017",
+            SyntaxError::InvalidPouKeyword(_) => "E0018",
+            SyntaxError::MissingNode { .. } => "E0019",
+            SyntaxError::SyntaxError { .. } => "E0050",
+        }
+    }
+
+    fn description(&self) -> &'static str {
+        "syntax"
+    }
+}
+
 impl<'db> From<(File, &ParseErrorAccumulator)> for AnalysisError<'db> {
     fn from((file, err): (File, &ParseErrorAccumulator)) -> Self {
         match &err.0 {
@@ -74,7 +105,7 @@ impl<'db> From<(File, &ParseErrorAccumulator)> for AnalysisError<'db> {
                     range,
                     error,
                     grammar_name,
-                } => AnalysisError::SyntaxError(SyntaxError::MissingNode {
+                } => AnalysisError::Syntax(SyntaxError::MissingNode {
                     file,
                     span: range.into(),
                     err: error.to_owned(),
@@ -84,7 +115,7 @@ impl<'db> From<(File, &ParseErrorAccumulator)> for AnalysisError<'db> {
                     range,
                     error,
                     affected,
-                } => AnalysisError::SyntaxError(SyntaxError::SyntaxError {
+                } => AnalysisError::Syntax(SyntaxError::SyntaxError {
                     span: range.into(),
                     err: error.to_owned(),
                 }),
@@ -100,67 +131,80 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
             Self::MultipleExtends(span) => diag()
                 .message("multiple extends declarations".into())
                 .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
                 .range(span.clone())
                 .call(),
             Self::MultipleImplements(span) => diag()
                 .message("multiple implements declarations".into())
                 .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
                 .range(span.clone())
                 .call(),
             Self::ImplementsBeforeExtends(span) => diag()
                 .message("implements must be declared after extends".into())
                 .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
                 .range(span.clone())
                 .call(),
             Self::ClassVariablesAfterMethod(span) => diag()
                 .message("class variable declarations must appear before methods".into())
                 .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
                 .range(span.clone())
                 .call(),
             Self::FbVariablesAfterMethod(span) => diag()
                 .message("FB variable declarations must appear before methods".into())
                 .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
                 .range(span.clone())
                 .call(),
             Self::MissingVarType(span) => diag()
                 .message("variable type is missing".into())
                 .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
                 .range(span.clone())
                 .call(),
             Self::IncompleteEdgeQualifier(span) => diag()
                 .message("incomplete edge qualifier".into())
                 .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
                 .range(span.clone())
                 .call(),
             Self::UnexpectedVarInit(span) => diag()
                 .message("unexpected variable initialization".into())
                 .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
                 .range(span.clone())
                 .call(),
             Self::UnexpectedThis(span) => diag()
                 .message("'THIS' is not valid in this context".into())
                 .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
                 .range(span.clone())
                 .call(),
             Self::UnexpectedSuper(span) => diag()
                 .message("'SUPER' is not valid in this context".into())
                 .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
                 .range(span.clone())
                 .call(),
             Self::AssignToFunctionCall(span) => diag()
                 .message("assignment to function call is not allowed".into())
                 .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
                 .range(span.clone())
                 .call(),
             Self::EmptyRightHandSide(span) => diag()
                 .message("right-hand side of assignment cannot be empty".into())
                 .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
                 .range(span.clone())
                 .call(),
             Self::MissingDotInAssignment { file, span } => {
                 let mut diag = diag()
                     .message("'=' is not a valid assignment sign".into())
                     .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
                     .range(span.clone())
                     .call();
 
@@ -194,6 +238,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 let mut diag = diag()
                     .message("':' is not a valid assignment sign".into())
                     .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
                     .range(span.clone())
                     .call();
 
@@ -227,6 +272,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 let mut diag = diag()
                     .message("'=' is not a valid assignment sign".into())
                     .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
                     .range(span.clone())
                     .call();
 
@@ -260,6 +306,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 let mut diag = diag()
                     .message("':' is not a valid assignment sign".into())
                     .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
                     .range(span.clone())
                     .call();
 
@@ -292,11 +339,13 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
             Self::InvalidPouKeyword(span) => diag()
                 .message("invalid POU keyword".into())
                 .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
                 .range(span.clone())
                 .call(),
             Self::FunctionCallInInitExpression(span) => diag()
                 .message("function call in initialization expression is not allowed".into())
                 .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
                 .range(span.clone())
                 .call(),
             Self::MissingNode {
@@ -309,6 +358,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .range(span.clone())
                     .message(err.to_string())
                     .source("IEC".into())
+                    .desc(self)
                     .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                     .call();
 
@@ -343,6 +393,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
             Self::SyntaxError { span, err } => diag()
                 .message(err.to_string())
                 .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
                 .range(span.clone())
                 .call(),
         }

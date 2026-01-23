@@ -4,7 +4,7 @@ use auto_lsp::core::ast::AstNode;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::types::ParseMultiBits;
 use crate::check::errors::analysis_error::AnalysisError;
-use crate::check::errors::syntax::SyntaxError;
+use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::expressions::expression::{
     BeginPathExpr, FieldExpr, FuncCall, IndexExpr, Integer, IntegerKind, ParamAssignKind, PathExpr,
     VariableAccessKind,
@@ -772,12 +772,12 @@ impl<'db> ParseExpr<'db> for ast::generated::VarAccess {
         match self.children.cast(sema.ast) {
             ast::generated::ERRUnexpectedSuperInPath_ERRUnexpectedThisInPath_Field_RefDeref::ERRUnexpectedThisInPath(
                 direct_variable,
-            ) => Err(AnalysisError::SyntaxError(SyntaxError::UnexpectedThis(
+            ) => Err(AnalysisError::Syntax(SyntaxError::UnexpectedThis(
                 direct_variable.get_span(),
             ))),
             ast::generated::ERRUnexpectedSuperInPath_ERRUnexpectedThisInPath_Field_RefDeref::ERRUnexpectedSuperInPath(
                 direct_variable,
-            ) => Err(AnalysisError::SyntaxError(SyntaxError::UnexpectedSuper(
+            ) => Err(AnalysisError::Syntax(SyntaxError::UnexpectedSuper(
                 direct_variable.get_span(),
             ))),
             ast::generated::ERRUnexpectedSuperInPath_ERRUnexpectedThisInPath_Field_RefDeref::Field(field) => Ok(

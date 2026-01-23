@@ -15,7 +15,7 @@ use crate::builder::expression::{ParseDirectVariable, ParseExpr};
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::{ParseInit, ParseSpec, ParseSpecInit, ParseVarSection, SpecInitResult};
 use crate::check::errors::analysis_error::AnalysisError;
-use crate::check::errors::syntax::SyntaxError;
+use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::config::AccessDirection;
 use crate::hir_def::expressions::spec::{ElementarySpec, Spec, SpecKind};
 use crate::hir_def::interned::identifier::Ident;
@@ -29,7 +29,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_InputVar::ERRVariableWithNoSpec(child) => {
                     sema.errors
-                        .push(AnalysisError::SyntaxError(SyntaxError::MissingVarType(
+                        .push(AnalysisError::Syntax(SyntaxError::MissingVarType(
                             child.get_span(),
                         )));
                     continue;
@@ -145,7 +145,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_FbInputVar::ERRVariableWithNoSpec(child) => {
                     sema.errors
-                        .push(AnalysisError::SyntaxError(SyntaxError::MissingVarType(
+                        .push(AnalysisError::Syntax(SyntaxError::MissingVarType(
                             child.get_span(),
                         )));
                     continue;
@@ -261,7 +261,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::OutputDecls {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_OutputVar::ERRVariableWithNoSpec(child) => {
                     sema.errors
-                        .push(AnalysisError::SyntaxError(SyntaxError::MissingVarType(
+                        .push(AnalysisError::Syntax(SyntaxError::MissingVarType(
                             child.get_span(),
                         )));
                     continue;
@@ -345,7 +345,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbOutputDecls {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_FbOutputVar::ERRVariableWithNoSpec(child) => {
                     sema.errors
-                        .push(AnalysisError::SyntaxError(SyntaxError::MissingVarType(
+                        .push(AnalysisError::Syntax(SyntaxError::MissingVarType(
                             child.get_span(),
                         )));
                     continue;
@@ -429,7 +429,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::TempVarDecls {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_TempVar::ERRVariableWithNoSpec(child) => {
                     sema.errors
-                        .push(AnalysisError::SyntaxError(SyntaxError::MissingVarType(
+                        .push(AnalysisError::Syntax(SyntaxError::MissingVarType(
                             child.get_span(),
                         )));
                     continue;
@@ -513,7 +513,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_InOutVar::ERRVariableWithNoSpec(child) => {
                     sema.errors
-                        .push(AnalysisError::SyntaxError(SyntaxError::MissingVarType(
+                        .push(AnalysisError::Syntax(SyntaxError::MissingVarType(
                             child.get_span(),
                         )));
                     continue;
@@ -663,7 +663,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
                     child,
                 ) => {
                     sema.errors
-                        .push(AnalysisError::SyntaxError(SyntaxError::MissingVarType(
+                        .push(AnalysisError::Syntax(SyntaxError::MissingVarType(
                             child.get_span(),
                         )));
                     continue;
@@ -734,7 +734,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
                     child,
                 ) => {
                     sema.errors
-                        .push(AnalysisError::SyntaxError(SyntaxError::MissingVarType(
+                        .push(AnalysisError::Syntax(SyntaxError::MissingVarType(
                             child.get_span(),
                         )));
                     continue;
@@ -783,7 +783,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::RetainVarDecls {
                     child,
                 ) => {
                     sema.errors
-                        .push(AnalysisError::SyntaxError(SyntaxError::MissingVarType(
+                        .push(AnalysisError::Syntax(SyntaxError::MissingVarType(
                             child.get_span(),
                         )));
                     continue;
@@ -832,7 +832,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::NoRetainVarDecls {
                     err,
                 ) => {
                     sema.errors
-                        .push(AnalysisError::SyntaxError(SyntaxError::MissingVarType(
+                        .push(AnalysisError::Syntax(SyntaxError::MissingVarType(
                             err.get_span(),
                         )));
                     continue;
@@ -1050,9 +1050,10 @@ impl<'db> ParseSpecInit<'db> for ast::generated::EdgeDecl {
     ) -> anyhow::Result<SpecInitResult<'db>, AnalysisError<'db>> {
         let spec = match self.edge.cast(sema.ast) {
             ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::ERRInvalidEdgeQualifier(err) => {
-                sema.errors.push(AnalysisError::SyntaxError(
-                    SyntaxError::IncompleteEdgeQualifier(err.get_span()),
-                ));
+                sema.errors
+                    .push(AnalysisError::Syntax(SyntaxError::IncompleteEdgeQualifier(
+                        err.get_span(),
+                    )));
                 Spec::new(
                     sema.db,
                     SpecKind::Simple(ElementarySpec::Bool),
@@ -1136,7 +1137,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::VarDecl {
 
         if let Some(init) = &self.init {
             sema.errors
-                .push(AnalysisError::SyntaxError(SyntaxError::UnexpectedVarInit(
+                .push(AnalysisError::Syntax(SyntaxError::UnexpectedVarInit(
                     init.cast(sema.ast).get_span(),
                 )));
         }

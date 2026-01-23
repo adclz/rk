@@ -1,7 +1,4 @@
-use auto_lsp::{
-    default::db::{file::File},
-    salsa,
-};
+use auto_lsp::{default::db::file::File, salsa};
 use db::WorkspaceDataBase;
 use hir::{
     HirNodeInfo,

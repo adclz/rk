@@ -1,6 +1,6 @@
 use std::sync::{Arc, LazyLock};
 
-use auto_lsp::{lsp_types::Url};
+use auto_lsp::lsp_types::Url;
 use db::WorkspaceDataBase;
 
 use crate::{

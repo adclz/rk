@@ -6,7 +6,7 @@ use crate::{
     HasName,
     check::{
         check_semantic_index::DataTypeCheck,
-        errors::{analysis_error::ToIdeDiagnostic, duplicates::DuplicateError},
+        errors::{analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError},
     },
     hir_def::{
         expressions::spec::{Struct, StructElement},

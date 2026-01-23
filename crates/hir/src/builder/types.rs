@@ -1,7 +1,7 @@
 use auto_lsp::anyhow::{self};
 use auto_lsp::core::ast::AstNode;
 
-use crate::check::errors::syntax::SyntaxError;
+use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::expressions::spec::Array;
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
@@ -449,7 +449,7 @@ impl<'db> ParseExpr<'db> for ast::generated::InitElem {
                 self.into(),
                 sema.current_scope,
             )),
-            InitElem::ERRFuncCallInInit(err) => Err(AnalysisError::SyntaxError(
+            InitElem::ERRFuncCallInInit(err) => Err(AnalysisError::Syntax(
                 SyntaxError::FunctionCallInInitExpression(err.get_span()),
             )),
         }

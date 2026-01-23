@@ -9,7 +9,7 @@ use rustc_hash::FxHashMap;
 
 use crate::Visibility;
 use crate::check::errors::analysis_error::AnalysisError;
-use crate::check::errors::syntax::SyntaxError;
+use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::Pou;
@@ -104,7 +104,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             match child.cast(self.ast) {
                 SourceFileDecl::ERRInvalidPouKeyword(err) => {
                     self.errors
-                        .push(AnalysisError::SyntaxError(SyntaxError::InvalidPouKeyword(
+                        .push(AnalysisError::Syntax(SyntaxError::InvalidPouKeyword(
                             err.get_span(),
                         )))
                 }

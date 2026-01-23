@@ -1,7 +1,7 @@
 use crate::builder::expression::{ParseExpr, ParseExpression, ParseVariableAccess};
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::analysis_error::AnalysisError;
-use crate::check::errors::syntax::SyntaxError;
+use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::expressions::expression::{FuncCall, ParamAssign, ParamAssignKind};
 use crate::hir_def::expressions::statement::{CaseKind, Stmt, StmtKind};
 use crate::hir_def::interned::identifier::SpanIdent;
@@ -132,13 +132,13 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                 for_list.children.as_ref().map(|err| {
                     match err.cast(sema.ast) {
                         ast::generated::ERRMissingDotInForControl_ERRMissingEqualInForControl::ERRMissingDotInForControl(err) => {
-                            sema.errors.push(AnalysisError::SyntaxError(SyntaxError::MissingDotInForList {
+                            sema.errors.push(AnalysisError::Syntax(SyntaxError::MissingDotInForList {
                                 file: sema.file,
                                 span: err.get_span(),
                             }))
                         }
                         ast::generated::ERRMissingDotInForControl_ERRMissingEqualInForControl::ERRMissingEqualInForControl(err) => {
-                            sema.errors.push(AnalysisError::SyntaxError(SyntaxError::MissingEqualInForList {
+                            sema.errors.push(AnalysisError::Syntax(SyntaxError::MissingEqualInForList {
                                 file: sema.file,
                                 span: err.get_span(),
                             }))
@@ -328,23 +328,23 @@ impl<'db> ParseStatement<'db> for ast::generated::Assign {
     ) -> anyhow::Result<Stmt<'db>, AnalysisError<'db>> {
         let var = match self.variable.cast(sema.ast) {
             ast::generated::ERRAssignFuncCall_Variable::ERRAssignFuncCall(err) => Err(
-                AnalysisError::SyntaxError(SyntaxError::AssignToFunctionCall(err.get_span())),
+                AnalysisError::Syntax(SyntaxError::AssignToFunctionCall(err.get_span())),
             ),
             ast::generated::ERRAssignFuncCall_Variable::Variable(var) => var.to_access(sema),
         }?;
 
         type TargetType = ast::generated::ERREmptyRightHandAssignment_ERRMissingDotInAssignment_ERRMissingEqualInAssignment_Assignment_AssignmentAttempt;
         match self.target.cast(sema.ast) {
-            TargetType::ERREmptyRightHandAssignment(err) => Err(AnalysisError::SyntaxError(
+            TargetType::ERREmptyRightHandAssignment(err) => Err(AnalysisError::Syntax(
                 SyntaxError::EmptyRightHandSide(err.get_span()),
             )),
-            TargetType::ERRMissingDotInAssignment(err) => Err(AnalysisError::SyntaxError(
-                SyntaxError::MissingDotInAssignment {
+            TargetType::ERRMissingDotInAssignment(err) => {
+                Err(AnalysisError::Syntax(SyntaxError::MissingDotInAssignment {
                     file: sema.file,
                     span: err.get_span(),
-                },
-            )),
-            TargetType::ERRMissingEqualInAssignment(err) => Err(AnalysisError::SyntaxError(
+                }))
+            }
+            TargetType::ERRMissingEqualInAssignment(err) => Err(AnalysisError::Syntax(
                 SyntaxError::MissingEqualInAssignment {
                     file: sema.file,
                     span: err.get_span(),

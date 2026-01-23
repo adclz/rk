@@ -1,11 +1,11 @@
-use auto_lsp::default::db::{file::File};
+use auto_lsp::default::db::file::File;
 use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
 use crate::{
     HasName,
-    check::errors::{analysis_error::ToIdeDiagnostic, duplicates::DuplicateError},
+    check::errors::{analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError},
     hir_def::{interned::identifier::Ident, pous::pou::Pou, semantic_index::semantic_index},
 };
 

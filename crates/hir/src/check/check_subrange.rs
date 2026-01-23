@@ -5,9 +5,7 @@ use crate::{
     CallSite,
     check::{
         check_semantic_index::DataTypeCheck,
-        errors::{
-            analysis_error::ToIdeDiagnostic, body_inference::TypeError, subrange::SubRangeError,
-        },
+        errors::{analysis_error::ToIdeDiagnostic, e3_type::TypeError, e8_subrange::SubRangeError},
     },
     hir_def::expressions::spec::{ElementarySpec, SubRange},
     hir_ty::{

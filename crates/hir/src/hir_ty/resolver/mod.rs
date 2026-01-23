@@ -7,7 +7,7 @@ pub mod visibility;
 pub mod walk;
 
 use crate::{
-    check::errors::{analysis_error::ToIdeDiagnostic, body_inference::BodyInferenceError},
+    check::errors::{analysis_error::ToIdeDiagnostic, e2_resolve::ResolveError},
     hir_def::{
         expressions::expression::{
             BeginPathExpr, MultibitsPart, PathExpr, VariableAccess, VariableAccessKind,
@@ -70,7 +70,7 @@ impl<'db> Resolver<'db> {
         let kind = path_expr.expr(db);
         let Some((access, _)) = path_expr.to_namespace_access(db) else {
             infer_results.errors.push(
-                BodyInferenceError::NoItemInScope {
+                ResolveError::NoItemInScope {
                     expr: path_expr,
                     scope: path_expr.scope_id(db),
                 }
@@ -87,7 +87,7 @@ impl<'db> Resolver<'db> {
             }
             None => {
                 infer_results.errors.push(
-                    BodyInferenceError::NoItemInScope {
+                    ResolveError::NoItemInScope {
                         expr: path_expr,
                         scope: path_expr.scope_id(db),
                     }

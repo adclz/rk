@@ -1,6 +1,6 @@
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
-use ide_diagnostic::{IdeDiagnostic, diag};
+use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 use crate::{
     CallSite, HirNodeInfo,
@@ -25,9 +25,23 @@ pub enum VisibilityError<'db> {
     },
 }
 
+impl ErrorCode for VisibilityError<'_> {
+    fn code(&self) -> &'static str {
+        match self {
+            Self::Private { .. } => "E0401",
+            Self::Internal { .. } => "E0402",
+            Self::Protected { .. } => "E0403",
+        }
+    }
+
+    fn description(&self) -> &'static str {
+        "access control violation"
+    }
+}
+
 impl<'db> From<VisibilityError<'db>> for AnalysisError<'db> {
     fn from(err: VisibilityError<'db>) -> Self {
-        AnalysisError::VisibilityError(err)
+        AnalysisError::Visibility(err)
     }
 }
 
@@ -41,6 +55,7 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
                         call_site.to_string(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
                     .range(call_site.get_span(db))
                     .call();
 
@@ -61,6 +76,7 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
                         call_site.to_string(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
                     .range(call_site.get_span(db))
                     .call();
 
@@ -95,6 +111,7 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
                         call_site.to_string(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
                     .range(call_site.get_span(db))
                     .call();
 

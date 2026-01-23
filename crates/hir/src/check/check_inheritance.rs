@@ -7,9 +7,8 @@ use crate::{
     check::{
         check_semantic_index::Check,
         errors::{
-            analysis_error::{AnalysisError, ToIdeDiagnostic},
-            duplicates::DuplicateError,
-            inheritance::MethodError,
+            analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError,
+            e2_resolve::ResolveError, e5_inheritance::InheritanceError,
         },
     },
     hir_def::pous::{class::MethodDecl, interface::MethodPrototype, pou::Pou},
@@ -78,10 +77,8 @@ pub fn check_inheritance<'db>(
                 .any(|(_, m)| m.modifier(db).contains(Modifier::ABSTRACT))
         {
             errors.push(
-                AnalysisError::MethodError(MethodError::AbstractClassHasNoAbstractMethods {
-                    class: implementer,
-                })
-                .to_diagnostic(db),
+                InheritanceError::AbstractClassHasNoAbstractMethods { class: implementer }
+                    .to_diagnostic(db),
             );
         };
     };
@@ -100,9 +97,9 @@ pub fn check_inheritance<'db>(
     // check unresolved
     for unresolved in &inherited_methods.unresolved {
         errors.push(
-            AnalysisError::MethodError(MethodError::UnresolvedPou {
-                access: unresolved.clone(),
-            })
+            ResolveError::NoNamespaceItemFound {
+                path: unresolved.clone(),
+            }
             .to_diagnostic(db),
         );
     }
@@ -118,20 +115,20 @@ pub fn check_inheritance<'db>(
                 // Override of a final method
                 (Modifier::FINAL, Modifier::OVERRIDE) => {
                     errors.push(
-                        AnalysisError::MethodError(MethodError::OverrideFinalMethod {
+                        InheritanceError::OverrideFinalMethod {
                             base_method: inherited_method,
                             derived_method: *declared_method,
-                        })
+                        }
                         .to_diagnostic(db),
                     );
                 }
                 // Override of method without override
                 (_, Modifier::EMPTY) => {
                     errors.push(
-                        AnalysisError::MethodError(MethodError::MissingOverride {
+                        InheritanceError::MissingOverride {
                             base_method: inherited_method,
                             derived_method: *declared_method,
-                        })
+                        }
                         .to_diagnostic(db),
                     );
                 }
@@ -143,20 +140,20 @@ pub fn check_inheritance<'db>(
             // method is from an interface
             if inherited_method.is_prototype() {
                 errors.push(
-                    AnalysisError::MethodError(MethodError::UnimplementedInterfaceMethod {
+                    InheritanceError::UnimplementedInterfaceMethod {
                         implementer,
                         method: inherited_method,
-                    })
+                    }
                     .to_diagnostic(db),
                 );
             }
 
             if let Modifier::ABSTRACT = inherited_method.modifier(db) {
                 errors.push(
-                    AnalysisError::MethodError(MethodError::MissingAbstractMethod {
+                    InheritanceError::MissingAbstractMethod {
                         implementer,
                         base_method: inherited_method,
-                    })
+                    }
                     .to_diagnostic(db),
                 );
             }
@@ -168,9 +165,9 @@ pub fn check_inheritance<'db>(
         if inherited_methods.methods.contains_key(base_name) {
         } else if base_method.modifier(db) == Modifier::OVERRIDE {
             errors.push(
-                AnalysisError::MethodError(MethodError::EmptyOverride {
+                InheritanceError::EmptyOverride {
                     base_method: *base_method,
-                })
+                }
                 .to_diagnostic(db),
             );
         }
@@ -187,7 +184,7 @@ fn check_signature<'db>(
     let sig2 = m2.variables(db);
     if sig1.len() != sig2.len() {
         errors.push(
-            MethodError::SignatureParametersCountMismatch {
+            InheritanceError::SignatureParametersCountMismatch {
                 m1,
                 expected: sig1.len(),
                 m2,
@@ -203,7 +200,7 @@ fn check_signature<'db>(
 
         if !var1_typ.normalize(db).eq(&var2_typ.normalize(db)) {
             errors.push(
-                MethodError::SignatureTypeMismatch {
+                InheritanceError::SignatureTypeMismatch {
                     expected: var1_typ,
                     got: var2_typ,
                     method: m1,

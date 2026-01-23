@@ -3,7 +3,7 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     CallSite,
-    check::errors::{analysis_error::ToIdeDiagnostic, body_inference::BodyInferenceError},
+    check::errors::{analysis_error::ToIdeDiagnostic, e3_type::TypeError},
     hir_def::expressions::expression::Expr,
     hir_ty::{
         body_inference::BodyInferenceResult,
@@ -197,7 +197,7 @@ impl<'db> InferenceTable<'db> {
                                 InferType::Integer(int) => int.ident(db).text(db).to_string(),
                             };
                             results.errors.push(
-                                BodyInferenceError::InferLiteralError {
+                                TypeError::InferLiteralError {
                                     expr: *expr,
                                     source,
                                     target: final_ty,

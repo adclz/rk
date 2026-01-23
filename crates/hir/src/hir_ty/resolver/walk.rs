@@ -4,10 +4,7 @@ use db::WorkspaceDataBase;
 
 use crate::{
     HirNodeInfo,
-    check::errors::{
-        analysis_error::ToIdeDiagnostic, body_inference::BodyInferenceError,
-        init_inference::InitInferenceError,
-    },
+    check::errors::{analysis_error::ToIdeDiagnostic, e2_resolve::ResolveError},
     hir_def::expressions::{
         expression::{BeginPathExpr, InitExpr, MultibitsPart, PathExpr},
         invocation::InvocationKind,
@@ -97,7 +94,7 @@ impl<'db> Type<'db> {
                             return;
                         } else {
                             ctx.errors.push(
-                                BodyInferenceError::NoSuchField {
+                                ResolveError::NoSuchFieldPathExpr {
                                     expr: path_expr,
                                     ident: *path_expr.ident(db),
                                     ty: current,
@@ -123,7 +120,7 @@ impl<'db> Type<'db> {
                                     .insert(*expr, Type::MethodDecl(method.method));
                             } else {
                                 ctx.errors.push(
-                                    BodyInferenceError::NoSuchField {
+                                    ResolveError::NoSuchFieldPathExpr {
                                         expr: path_expr,
                                         ident: **ident,
                                         ty: current,
@@ -203,7 +200,7 @@ impl<'db> Type<'db> {
                             place.current_path = *step.get_expr();
                         } else if report_errors {
                             ctx.errors.push(
-                                BodyInferenceError::NoSuchField {
+                                ResolveError::NoSuchFieldPathExpr {
                                     expr: *expr,
                                     ident: **ident,
                                     ty: place.current_typ,
@@ -242,7 +239,7 @@ impl<'db> Type<'db> {
                             check_visibility(db, &ident.as_call_site(db), *m, &mut ctx.errors);
                         } else if report_errors {
                             ctx.errors.push(
-                                BodyInferenceError::NoSuchField {
+                                ResolveError::NoSuchFieldPathExpr {
                                     expr: *expr,
                                     ident: **ident,
                                     ty: *self,
@@ -255,7 +252,7 @@ impl<'db> Type<'db> {
                     _ => {
                         if report_errors {
                             ctx.errors.push(
-                                BodyInferenceError::NoSuchField {
+                                ResolveError::NoSuchFieldPathExpr {
                                     expr: *expr,
                                     ident: **ident,
                                     ty: *self,
@@ -284,7 +281,7 @@ impl<'db> Type<'db> {
                         Err(non_ref) => {
                             if report_errors {
                                 ctx.errors.push(
-                                    BodyInferenceError::DerefNonRefType {
+                                    ResolveError::DerefNonRefType {
                                         expr: *expr,
                                         ty: non_ref,
                                     }
@@ -310,7 +307,7 @@ impl<'db> Type<'db> {
                         Ordering::Greater => {
                             if report_errors {
                                 ctx.errors.push(
-                                    BodyInferenceError::IndexNonArrayType {
+                                    ResolveError::IndexNonArrayTypePathExpr {
                                         expr: *expr,
                                         ty: place.current_typ,
                                     }
@@ -335,7 +332,7 @@ impl<'db> Type<'db> {
                 _ => {
                     if report_errors {
                         ctx.errors.push(
-                            BodyInferenceError::IndexNonArrayType {
+                            ResolveError::IndexNonArrayTypePathExpr {
                                 expr: *expr,
                                 // an array will always be declared by a DataType or a Variable
                                 ty: place.current_typ,
@@ -375,7 +372,7 @@ impl<'db> Type<'db> {
                     }
                     _ => {
                         ctx.errors.push(
-                            InitInferenceError::IndexNonArrayType { expr, ty: *self }
+                            ResolveError::IndexNonArrayTypeInitExpr { expr, ty: *self }
                                 .to_diagnostic(db),
                         );
                     }
@@ -386,9 +383,8 @@ impl<'db> Type<'db> {
                     result_ty = *self;
                 }
                 _ => {
-                    ctx.errors.push(
-                        InitInferenceError::IsElementaryType { expr, ty: *self }.to_diagnostic(db),
-                    );
+                    ctx.errors
+                        .push(ResolveError::IsElementaryType { expr, ty: *self }.to_diagnostic(db));
                 }
             },
             InitExprWalkStep::Field(ident) => {
@@ -398,7 +394,7 @@ impl<'db> Type<'db> {
                             result_ty = Type::StructElement(*field);
                         } else {
                             ctx.errors.push(
-                                InitInferenceError::NoSuchField {
+                                ResolveError::NoSuchFieldInitExpr {
                                     expr,
                                     ident: *ident,
                                     ty: *self,
@@ -422,7 +418,7 @@ impl<'db> Type<'db> {
                             result_ty = Type::new_var(db, *var);
                         } else {
                             ctx.errors.push(
-                                InitInferenceError::NoSuchField {
+                                ResolveError::NoSuchFieldInitExpr {
                                     expr,
                                     ident: *ident,
                                     ty: *self,
@@ -433,7 +429,7 @@ impl<'db> Type<'db> {
                     }
                     _ => {
                         ctx.errors.push(
-                            InitInferenceError::NoSuchField {
+                            ResolveError::NoSuchFieldInitExpr {
                                 expr,
                                 ident: *ident,
                                 ty: *self,

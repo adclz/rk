@@ -4,7 +4,7 @@ use crate::builder::ParseVarSection;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::statement::ParseStatement;
 use crate::check::errors::analysis_error::AnalysisError;
-use crate::check::errors::syntax::SyntaxError;
+use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use crate::hir_def::pous::function_block::FunctionBlock;
@@ -61,16 +61,16 @@ impl<'db> SemanticIndexBuilder<'db> {
             type Error = ast::generated::ERRExtendsMultipleTimes_ERRFbVariablesAfterMethod_ERRImplementsBeforeExtends_ERRImplementsMultipleTimes;
             match f.cast(self.ast) {
                 Error::ERRExtendsMultipleTimes(err) => {
-                    self.errors.push(AnalysisError::SyntaxError(SyntaxError::MultipleExtends(err.get_span())));
+                    self.errors.push(AnalysisError::Syntax(SyntaxError::MultipleExtends(err.get_span())));
                 },
                 Error::ERRImplementsBeforeExtends(err) => {
-                    self.errors.push(AnalysisError::SyntaxError(SyntaxError::ImplementsBeforeExtends(err.get_span())));
+                    self.errors.push(AnalysisError::Syntax(SyntaxError::ImplementsBeforeExtends(err.get_span())));
                 },
                 Error::ERRImplementsMultipleTimes(err) => {
-                    self.errors.push(AnalysisError::SyntaxError(SyntaxError::MultipleImplements(err.get_span())));
+                    self.errors.push(AnalysisError::Syntax(SyntaxError::MultipleImplements(err.get_span())));
                 },
                 Error::ERRFbVariablesAfterMethod(err) => {
-                    self.errors.push(AnalysisError::SyntaxError(SyntaxError::FbVariablesAfterMethod(err.get_span())));
+                    self.errors.push(AnalysisError::Syntax(SyntaxError::FbVariablesAfterMethod(err.get_span())));
                 },
             }
         });

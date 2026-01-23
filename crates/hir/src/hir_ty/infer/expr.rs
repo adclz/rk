@@ -2,7 +2,7 @@ use db::WorkspaceDataBase;
 
 use crate::{
     CallSite,
-    check::errors::{analysis_error::ToIdeDiagnostic, body_inference::BodyInferenceError},
+    check::errors::{analysis_error::ToIdeDiagnostic, e7_enum::EnumError},
     hir_def::{
         expressions::expression::{
             Expr, ExprKind, PrimaryExpr, RefValue, UnaryOperatorKind, VariableAccess,
@@ -111,7 +111,7 @@ impl<'db> InferExprCtx<'db> {
                         .unwrap_or_else(|| {
                             // variant not found
                             inference_result.errors.push(
-                                BodyInferenceError::EnumVariantNotFound {
+                                EnumError::EnumVariantNotFound {
                                     enum_: enm,
                                     variant_name: *variant,
                                 }
@@ -122,7 +122,7 @@ impl<'db> InferExprCtx<'db> {
                     _ => {
                         // not an enum
                         inference_result.errors.push(
-                            BodyInferenceError::NotAnEnum {
+                            EnumError::NotAnEnum {
                                 expr: *name,
                                 item: find_enm,
                             }

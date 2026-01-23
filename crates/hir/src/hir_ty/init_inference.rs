@@ -4,7 +4,7 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     CallSite,
-    check::errors::{analysis_error::ToIdeDiagnostic, init_inference::InitInferenceError},
+    check::errors::{analysis_error::ToIdeDiagnostic, e6_array::ArrayError},
     hir_def::{
         expressions::expression::{InitExpr, InitExprKind},
         pous::{data_type::DataType, variable::VariableDecl},
@@ -172,7 +172,7 @@ impl<'db> InitExprInferenceResult<'db> {
             InitExprKind::ArrayIndexedElement { values, size } => {
                 let repeat_count = size.as_u64(db).unwrap_or_else(|err| {
                     self.errors.push(
-                        InitInferenceError::InvalidIndex {
+                        ArrayError::InvalidIndex {
                             size,
                             err: err.to_string(),
                         }
@@ -267,17 +267,18 @@ impl<'db> InitExprInferenceResult<'db> {
 
         let dim = ctx.current_dim();
         if let Some((_lower, _upper, array_size)) = Self::get_array_bounds(db, ctx.array_root, dim)
-            && end_position > array_size {
-                ctx.set_overflow_reported();
-                self.errors.push(
-                    InitInferenceError::TooManyElements {
-                        expr,
-                        dimension: dim,
-                        max_size: array_size,
-                    }
-                    .to_diagnostic(db),
-                );
-            }
+            && end_position > array_size
+        {
+            ctx.set_overflow_reported();
+            self.errors.push(
+                ArrayError::TooManyElements {
+                    expr,
+                    dimension: dim,
+                    max_size: array_size,
+                }
+                .to_diagnostic(db),
+            );
+        }
     }
 }
 

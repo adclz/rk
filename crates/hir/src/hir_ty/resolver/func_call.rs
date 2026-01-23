@@ -1,14 +1,14 @@
 use db::WorkspaceDataBase;
 use rustc_hash::FxHashMap;
 
+use crate::check::errors::e1_duplicates::DuplicateError;
+use crate::check::errors::e3_type::TypeError;
+use crate::check::errors::e10_control_flow::ControlFlowError;
 use crate::hir_def::expressions::expression::Expr;
 use crate::hir_def::pous::variable::VariableDecl;
 use crate::{
     CallSite,
-    check::errors::{
-        analysis_error::ToIdeDiagnostic,
-        body_inference::{BodyInferenceError, TypeError},
-    },
+    check::errors::{analysis_error::ToIdeDiagnostic, e2_resolve::ResolveError},
     hir_def::expressions::expression::{FuncCall, ParamAssignKind},
     hir_ty::{
         body_inference::BodyInferenceResult, infer::expr::InferExprCtx, resolver::Resolver,
@@ -39,7 +39,7 @@ pub fn resolve_func_call<'db>(
     // FUNCTION_BLOCKs can only be called if they are variables
     if !access_typ.is_variable() && typ.is_fb() {
         ctx.errors
-            .push(BodyInferenceError::CallNonCallableType { typ, func_call }.to_diagnostic(db));
+            .push(ControlFlowError::CallNonCallableType { typ, func_call }.to_diagnostic(db));
         return;
     }
 
@@ -47,7 +47,7 @@ pub fn resolve_func_call<'db>(
         Some(callable) => callable,
         None => {
             ctx.errors
-                .push(BodyInferenceError::CallNonCallableType { typ, func_call }.to_diagnostic(db));
+                .push(ControlFlowError::CallNonCallableType { typ, func_call }.to_diagnostic(db));
             return;
         }
     };
@@ -65,7 +65,7 @@ pub fn resolve_func_call<'db>(
 
     if len > callable.var_len_params(db) {
         ctx.errors.push(
-            BodyInferenceError::IncorrectNumberOfParameters {
+            ResolveError::IncorrectNumberOfParameters {
                 expected: callable.var_len_params(db),
                 actual: len,
                 func_call,
@@ -90,7 +90,7 @@ pub fn resolve_func_call<'db>(
 
                     if var.is_output(db) {
                         ctx.errors.push(
-                            BodyInferenceError::OutputParameterUsedAsInput {
+                            ResolveError::OutputParameterUsedAsInput {
                                 func: callable,
                                 var: *var,
                                 expr: value,
@@ -102,7 +102,7 @@ pub fn resolve_func_call<'db>(
                     ctx.variable_of_param.insert(parameter, *var);
                 } else {
                     ctx.errors.push(
-                        BodyInferenceError::UnknownNonFormalParameter {
+                        ResolveError::UnknownNonFormalParameter {
                             func: callable,
                             expr: value,
                             param: formal_idx,
@@ -115,7 +115,7 @@ pub fn resolve_func_call<'db>(
             ParamAssignKind::FormalInput { param, value } => {
                 if let Some(seen) = seen.insert(param.ident, parameter) {
                     ctx.errors.push(
-                        BodyInferenceError::DuplicateParameter {
+                        DuplicateError::Parameter {
                             param_1: seen,
                             param_2: parameter,
                             name: param.ident,
@@ -131,7 +131,7 @@ pub fn resolve_func_call<'db>(
                     ctx.variable_of_param.insert(parameter, *var);
                 } else {
                     ctx.errors.push(
-                        BodyInferenceError::UnknownInputParameter {
+                        ResolveError::UnknownInputParameter {
                             func: callable,
                             param,
                         }
@@ -147,7 +147,7 @@ pub fn resolve_func_call<'db>(
                 // check duplicates
                 if let Some(seen) = seen.insert(param.ident, parameter) {
                     ctx.errors.push(
-                        BodyInferenceError::DuplicateParameter {
+                        DuplicateError::Parameter {
                             param_1: seen,
                             param_2: parameter,
                             name: param.ident,
@@ -182,7 +182,7 @@ pub fn resolve_func_call<'db>(
                     ctx.variable_of_param.insert(parameter, *lhs_var);
                 } else {
                     ctx.errors.push(
-                        BodyInferenceError::UnknownOutputParameter {
+                        ResolveError::UnknownOutputParameter {
                             func: callable,
                             param,
                         }

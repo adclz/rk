@@ -2,7 +2,7 @@ use db::WorkspaceDataBase;
 
 use crate::{
     CallSite,
-    check::errors::{analysis_error::ToIdeDiagnostic, body_inference::BodyInferenceError},
+    check::errors::{analysis_error::ToIdeDiagnostic, e5_inheritance::InheritanceError},
     hir_def::{
         expressions::invocation::{Invocation, InvocationKind},
         pous::pou::Pou,
@@ -50,7 +50,7 @@ pub fn resolve_invocation<'db>(
                     }
                     _ => {
                         ctx.errors.push(
-                            BodyInferenceError::SuperBodyOnIncompatiblePou {
+                            InheritanceError::SuperBodyOnIncompatiblePou {
                                 call_site: CallSite::new(scope, invocation.keyword_id(db)),
                             }
                             .to_diagnostic(db),
@@ -75,7 +75,7 @@ pub fn resolve_invocation<'db>(
                     }
                     _ => {
                         ctx.errors.push(
-                            BodyInferenceError::SuperOnIncompatiblePou {
+                            InheritanceError::SuperOnIncompatiblePou {
                                 call_site: CallSite::new(scope, invocation.keyword_id(db)),
                             }
                             .to_diagnostic(db),
@@ -90,7 +90,7 @@ pub fn resolve_invocation<'db>(
                     }
                     _ => {
                         ctx.errors.push(
-                            BodyInferenceError::ThisOnIncompatiblePou {
+                            InheritanceError::ThisOnIncompatiblePou {
                                 call_site: CallSite::new(scope, invocation.keyword_id(db)),
                             }
                             .to_diagnostic(db),

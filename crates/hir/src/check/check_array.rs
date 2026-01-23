@@ -4,7 +4,7 @@ use ide_diagnostic::IdeDiagnostic;
 use crate::{
     check::{
         check_semantic_index::DataTypeCheck,
-        errors::{analysis_error::ToIdeDiagnostic, array::ArrayError},
+        errors::{analysis_error::ToIdeDiagnostic, e6_array::ArrayError},
     },
     hir_def::expressions::spec::Array,
 };

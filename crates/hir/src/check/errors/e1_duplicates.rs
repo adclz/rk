@@ -1,17 +1,38 @@
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
-use ide_diagnostic::{IdeDiagnostic, Related, diag};
+use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 use crate::{
     HasName, HirNodeInfo,
     check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic},
     hir_def::{
-        expressions::spec::StructElement,
-        interned::identifier::SpanIdent,
+        expressions::{expression::ParamAssign, spec::StructElement},
+        interned::identifier::{Ident, SpanIdent},
         pous::{class::MethodDecl, interface::MethodPrototype, pou::Pou, variable::VariableDecl},
+        using::Using,
     },
     hir_ty::inheritance_solver::InheritedMethod,
 };
+
+impl ErrorCode for DuplicateError<'_> {
+    fn code(&self) -> &'static str {
+        match self {
+            Self::Pou { .. } => "E0101",
+            Self::Variable { .. } => "E0102",
+            Self::StructField { .. } => "E0103",
+            Self::EnumVariant { .. } => "E0104",
+            Self::MethodDecl { .. } => "E0105",
+            Self::MethodProt { .. } => "E0106",
+            Self::InheritedMethod { .. } => "E0107",
+            Self::Parameter { .. } => "E0108",
+            Self::Using { .. } => "E0109",
+        }
+    }
+
+    fn description(&self) -> &'static str {
+        "duplicate definitions"
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum DuplicateError<'db> {
@@ -43,11 +64,20 @@ pub enum DuplicateError<'db> {
         method1: InheritedMethod<'db>,
         method2: InheritedMethod<'db>,
     },
+    Parameter {
+        param_1: ParamAssign<'db>,
+        param_2: ParamAssign<'db>,
+        name: Ident,
+    },
+    Using {
+        using: Using<'db>,
+        other: Using<'db>,
+    },
 }
 
 impl<'db> From<DuplicateError<'db>> for AnalysisError<'db> {
     fn from(err: DuplicateError<'db>) -> Self {
-        AnalysisError::DuplicateError(err)
+        AnalysisError::Duplicate(err)
     }
 }
 
@@ -61,6 +91,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                         pou1.get_name_ident(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
                     .range(pou1.get_name_span(db))
                     .call();
 
@@ -82,6 +113,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                         var1.get_name_ident(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
                     .range(var1.get_name_span(db))
                     .call();
 
@@ -103,6 +135,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                         variant1.ident.text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
                     .range(variant1.get_span(db))
                     .call();
 
@@ -124,6 +157,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                         field1.get_name_ident(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
                     .range(field1.get_name_span(db))
                     .call();
 
@@ -145,6 +179,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                         method1.get_name_ident(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
                     .range(method1.get_name_span(db))
                     .call();
 
@@ -166,6 +201,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                         method1.get_name_ident(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
                     .range(method1.get_name_span(db))
                     .call();
 
@@ -187,6 +223,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                         method1.method.get_name_ident(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
                     .range(method1.method.get_name_span(db))
                     .call();
 
@@ -204,6 +241,48 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                     method1.source.get_name_ident(db).text(db),
                     method2.source.get_name_ident(db).text(db),
                     method1.method.get_name_ident(db).text(db)
+                ));
+
+                diag
+            }
+            Self::Parameter {
+                param_1,
+                param_2,
+                name,
+            } => {
+                let mut diag = diag()
+                    .message(format!("duplicate parameter '{}' found", name.text(db)))
+                    .range(param_2.get_span(db))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .call();
+
+                diag.with_related(Related::new(
+                    "previously defined here".to_string(),
+                    param_1.get_scope_id(db).file(db),
+                    param_1.get_span(db),
+                ));
+
+                diag
+            }
+            Self::Using { using, other } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "duplicate `USING` for namespace '{}'",
+                        using.path(db).to_string(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(using.get_span(db).clone())
+                    .call();
+
+                diag.with_related(Related::new(
+                    format!(
+                        "namespace '{}' is already imported here",
+                        other.path(db).to_string(db)
+                    ),
+                    other.scope_id(db).file(db),
+                    other.get_span(db),
                 ));
 
                 diag

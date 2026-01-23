@@ -1,7 +1,7 @@
 use db::WorkspaceDataBase;
 
 use crate::{
-    check::errors::literals::InferLiteralError,
+    check::errors::e3_type::InferLiteralError,
     hir_def::{
         expressions::{
             expression::{Elementary, Integer, IntegerKind},
