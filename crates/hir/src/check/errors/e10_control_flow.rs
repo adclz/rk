@@ -36,6 +36,10 @@ pub enum ControlFlowError<'db> {
     ExitOutsideLoop {
         stmt: Stmt<'db>,
     },
+    UnusedReturnType {
+        typ: Type<'db>,
+        expr: Stmt<'db>,
+    },
 }
 
 impl<'db> From<ControlFlowError<'db>> for AnalysisError<'db> {
@@ -53,6 +57,7 @@ impl<'db> ErrorCode for ControlFlowError<'db> {
             Self::CallNonCallableType { .. } => "E1004",
             Self::ContinueOutsideLoop { .. } => "E1005",
             Self::ExitOutsideLoop { .. } => "E1006",
+            Self::UnusedReturnType { .. } => "E1007",
         }
     }
 
@@ -126,6 +131,15 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                 .range(stmt.get_span(db))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
+                .call(),
+            Self::UnusedReturnType { typ, expr } => diag()
+                .message(format!(
+                    "unused return value of '{}'",
+                    typ.full_type_name(db)
+                ))
+                .desc(self)
+                .range(expr.get_span(db))
+                .severity(DiagnosticSeverity::INFORMATION)
                 .call(),
         }
     }

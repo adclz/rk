@@ -5,10 +5,7 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 use crate::{
     CallSite, HirNodeInfo,
     check::errors::analysis_error::ToIdeDiagnostic,
-    hir_def::expressions::{
-        expression::{AddOperatorKind, Expr, MultOperatorKind},
-        statement::Stmt,
-    },
+    hir_def::expressions::expression::{AddOperatorKind, Expr, MultOperatorKind},
     hir_ty::{
         body_inference::{Adjust, Adjustment},
         ty::Type,
@@ -58,10 +55,6 @@ pub enum TypeError<'db> {
         typ: Type<'db>,
         expr: Expr<'db>,
     },
-    UnusedReturnType {
-        typ: Type<'db>,
-        expr: Stmt<'db>,
-    },
     Other {
         message: String,
         expr: Expr<'db>,
@@ -83,14 +76,16 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::NotMultiplicable { .. } => "E0304",
             Self::NotPowerable { .. } => "E0305",
             Self::NotABoolean { .. } => "E0306",
-            Self::UnusedReturnType { .. } => "E0307",
             Self::InferLiteralError { .. } => "E0309",
             Self::Other { .. } => "E0350",
         }
     }
 
     fn description(&self) -> &'static str {
-        "type mismatch"
+        match self {
+            Self::InferLiteralError { .. } => "invalid literal",
+            _ => "type mismatch",
+        }
     }
 }
 
@@ -111,6 +106,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                         target.full_type_name(db),
                         adjustment_to_string(db, *value, adjustment),
                     ))
+                    .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(expr.get_span(db))
                     .call();
@@ -131,6 +127,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                         lhs.full_type_name(db),
                         adjustment_to_string(db, *rhs, adjustment),
                     ))
+                    .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(expr.get_span(db))
                     .call();
@@ -182,6 +179,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                         rhs.full_type_name(db),
                         adjustment_to_string(db, *rhs, adjustment)
                     ))
+                    .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(expr.get_span(db))
                     .call();
@@ -202,6 +200,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                         lhs.full_type_name(db),
                         adjustment_to_string(db, *rhs, adjustment)
                     ))
+                    .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(expr.get_span(db))
                     .call();
@@ -214,20 +213,13 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                     "expected a boolean, got {}",
                     typ.full_type_name(db)
                 ))
+                .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(expr.get_span(db))
-                .call(),
-            Self::UnusedReturnType { typ, expr } => diag()
-                .message(format!(
-                    "unused return value of '{}'",
-                    typ.full_type_name(db)
-                ))
-                .desc(self)
-                .range(expr.get_span(db))
-                .severity(DiagnosticSeverity::INFORMATION)
                 .call(),
             Self::Other { message, expr } => diag()
                 .message(message.clone())
+                .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(expr.get_span(db))
                 .call(),
@@ -244,6 +236,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                         target.full_type_name(db),
                         err.to_string()
                     ))
+                    .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(expr.get_span(db))
                     .call();

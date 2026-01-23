@@ -97,7 +97,10 @@ impl<'db> Type<'db> {
             Self::Class(c) => format!("CLASS: {}", c.get_name_ident(db).text(db)),
             Self::Interface(i) => format!("INTERFACE: {}", i.get_name_ident(db).text(db)),
             Self::DataType(typ) => match typ.spec(db).kind(db) {
-                SpecKind::Target(e) => Type::new_spec(db, typ.spec(db)).type_name(db),
+                SpecKind::Target(_)
+                | SpecKind::Array(_)
+                | SpecKind::Struct(_)
+                | SpecKind::Subrange(_) => format!("{}", typ.get_name_ident(db).text(db),),
                 _ => Type::new_spec(db, typ.spec(db)).type_name(db),
             },
             Self::Enum(_) => "ENUM".into(),

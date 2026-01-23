@@ -48,7 +48,10 @@ impl<'db> ErrorCode for EnumError<'db> {
     }
 
     fn description(&self) -> &'static str {
-        "enum type violation"
+        match self {
+            Self::InvalidEnumType { .. } => "invalid enum type",
+            _ => "invalid enum access",
+        }
     }
 }
 
@@ -57,7 +60,7 @@ impl<'db> ToIdeDiagnostic<'db> for EnumError<'db> {
         match self {
             EnumError::InvalidEnumType { value, typ } => {
                 let mut diag = diag()
-                    .message(format!("Invalid enum type '{}'", typ.type_name(db)))
+                    .message(format!("I=invalid enum type '{}'", typ.type_name(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(value.get_span(db))

@@ -97,7 +97,7 @@ impl<'db> Type<'db> {
                                 ResolveError::NoSuchFieldPathExpr {
                                     expr: path_expr,
                                     ident: *path_expr.ident(db),
-                                    ty: current,
+                                    ty: place.current_typ,
                                 }
                                 .to_diagnostic(db),
                             );
@@ -242,7 +242,7 @@ impl<'db> Type<'db> {
                                 ResolveError::NoSuchFieldPathExpr {
                                     expr: *expr,
                                     ident: **ident,
-                                    ty: *self,
+                                    ty: place.current_typ,
                                 }
                                 .to_diagnostic(db),
                             );
@@ -255,7 +255,7 @@ impl<'db> Type<'db> {
                                 ResolveError::NoSuchFieldPathExpr {
                                     expr: *expr,
                                     ident: **ident,
-                                    ty: *self,
+                                    ty: place.current_typ,
                                 }
                                 .to_diagnostic(db),
                             );
@@ -384,7 +384,7 @@ impl<'db> Type<'db> {
                 }
                 _ => {
                     ctx.errors
-                        .push(ResolveError::IsElementaryType { expr, ty: *self }.to_diagnostic(db));
+                        .push(ResolveError::NoFieldOnElementaryType { expr, ty: *self }.to_diagnostic(db));
                 }
             },
             InitExprWalkStep::Field(ident) => {

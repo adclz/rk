@@ -63,7 +63,14 @@ impl<'db> ErrorCode for ArrayError<'db> {
     }
 
     fn description(&self) -> &'static str {
-        "array type violation"
+        match self {
+            Self::InvalidArrayLowerValue { .. }
+            | Self::InvalidArrayUpperValue { .. }
+            | Self::InferiorUpperBound { .. } => "invalid array bounds",
+            Self::TooManyElements { .. }
+            | Self::InvalidIndex { .. }
+            | Self::IndexOutOfBounds { .. } => "invalid array access",
+        }
     }
 }
 

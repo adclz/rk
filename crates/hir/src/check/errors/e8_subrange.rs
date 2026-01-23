@@ -29,7 +29,7 @@ impl<'db> ErrorCode for SubRangeError<'db> {
     }
 
     fn description(&self) -> &'static str {
-        "subrange type violation"
+        "invalid subrange type"
     }
 }
 

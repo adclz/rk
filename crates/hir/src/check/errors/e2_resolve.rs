@@ -8,7 +8,7 @@ use crate::{
     hir_def::{
         expressions::{
             expression::{Expr, FuncCall, InitExpr, PathExpr},
-            spec::Spec,
+            spec::{Spec, SpecKind},
         },
         interned::{
             identifier::{Ident, SpanIdent},
@@ -85,7 +85,7 @@ pub enum ResolveError<'db> {
         expr: PathExpr<'db>,
         ty: Type<'db>,
     },
-    IsElementaryType {
+    NoFieldOnElementaryType {
         expr: InitExpr<'db>,
         ty: Type<'db>,
     },
@@ -107,12 +107,25 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::DerefNonRefType { .. } => "E0212",
             Self::IndexNonArrayTypeInitExpr { .. } => "E0213",
             Self::IndexNonArrayTypePathExpr { .. } => "E0213",
-            Self::IsElementaryType { .. } => "E0214",
+            Self::NoFieldOnElementaryType { .. } => "E0214",
         }
     }
 
     fn description(&self) -> &'static str {
-        "resolution failure"
+        match self {
+            Self::NoItemInScope { .. } | Self::NoSpecItemInScope { .. } => "no item found in scope",
+            Self::NoNamespaceItemFound { .. } => "no namespace item found",
+            Self::IncorrectNumberOfParameters { .. }
+            | Self::UnknownNonFormalParameter { .. }
+            | Self::OutputParameterUsedAsInput { .. }
+            | Self::UnknownInputParameter { .. }
+            | Self::UnknownOutputParameter { .. } => "function call parameter mismatch",
+            Self::NoSuchFieldInitExpr { .. } | Self::NoSuchFieldPathExpr { .. } => "no such field",
+            Self::DerefNonRefType { .. }
+            | Self::NoFieldOnElementaryType { .. }
+            | Self::IndexNonArrayTypeInitExpr { .. }
+            | Self::IndexNonArrayTypePathExpr { .. } => "invalid operation",
+        }
     }
 }
 
@@ -140,14 +153,14 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 .range(func_call.path(db).get_span(db))
                 .call(),
             Self::UnknownNonFormalParameter { func, expr, param } => diag()
-                .message(format!("No parameter at index '{}'", param))
+                .message(format!("no parameter at index '{}'", param))
                 .range(expr.get_span(db))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .call(),
             Self::UnknownInputParameter { func, param } => {
                 let mut diag = diag()
-                    .message(format!("Unknown input parameter '{}'", param.text(db)))
+                    .message(format!("unknown input parameter '{}'", param.text(db)))
                     .range(param.get_span(db))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -159,7 +172,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
             }
             Self::UnknownOutputParameter { func, param } => {
                 let mut diag = diag()
-                    .message(format!("Unknown output parameter '{}'", param.text(db)))
+                    .message(format!("unknown output parameter '{}'", param.text(db)))
                     .range(param.get_span(db))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -177,7 +190,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
             } => {
                 let mut diag = diag()
                     .message(format!(
-                        "Output parameter at index '{}' cannot be used as input",
+                        "output parameter at index '{}' cannot be used as input",
                         param
                     ))
                     .range(expr.get_span(db))
@@ -194,7 +207,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
             Self::NoItemInScope { expr, scope } => {
                 let mut diag = diag()
                     .message(format!(
-                        "No item {:?} found in scope",
+                        "no item {:?} found in scope",
                         expr.ident(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
@@ -207,26 +220,40 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 }
                 diag
             }
-            Self::NoSpecItemInScope { spec, scope } => diag()
-                .message("No item found in scope".to_string())
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(spec.get_span(db))
-                .call(),
-            Self::NoSuchFieldPathExpr { expr, ident, ty } => diag()
-                .message(format!(
-                    "'{}' has no field named '{}'",
-                    ty.with_name(db).unwrap_or_else(|| ty.full_type_name(db)),
-                    ident.text(db)
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(expr.get_span(db))
-                .call(),
+            Self::NoSpecItemInScope { spec, scope } => {
+                let message = if let SpecKind::Target(access) = spec.kind(db) {
+                    format!("no item {:?} found in scope", access.to_string(db))
+                } else {
+                    "no item found in scope".to_string()
+                };
+                let diag = diag()
+                    .message(message)
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(spec.get_span(db))
+                    .call();
+
+                diag
+            }
+            Self::NoSuchFieldPathExpr { expr, ident, ty } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' has no field named '{}'",
+                        ty.with_name(db).unwrap_or_else(|| ty.full_type_name(db)),
+                        ident.text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(expr.get_span(db))
+                    .call();
+
+                ty.with_location(db, &mut diag);
+                diag
+            }
             Self::NoSuchFieldInitExpr { expr, ident, ty } => {
                 let mut diag = ide_diagnostic::diag()
                     .message(format!(
-                        "No field '{}' in type '{}'",
+                        "no field '{}' in type '{}'",
                         ident.text(db),
                         ty.type_name(db)
                     ))
@@ -243,7 +270,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
             }
             Self::DerefNonRefType { expr, ty } => diag()
                 .message(format!(
-                    "Cannot dereference non-reference type '{}'",
+                    "cannot dereference non-reference type '{}'",
                     ty.full_type_name(db)
                 ))
                 .severity(DiagnosticSeverity::ERROR)
@@ -251,20 +278,20 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 .range(expr.get_span(db))
                 .call(),
             Self::IndexNonArrayTypeInitExpr { expr, ty } => ide_diagnostic::diag()
-                .message(format!("Cannot index into type '{}'", ty.type_name(db)))
+                .message(format!("cannot index into type '{}'", ty.type_name(db)))
                 .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(expr.get_span(db))
                 .call(),
             Self::IndexNonArrayTypePathExpr { expr, ty } => ide_diagnostic::diag()
-                .message(format!("Cannot index into type '{}'", ty.type_name(db)))
+                .message(format!("cannot index into type '{}'", ty.type_name(db)))
                 .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(expr.get_span(db))
                 .call(),
-            Self::IsElementaryType { expr, ty } => ide_diagnostic::diag()
+            Self::NoFieldOnElementaryType { expr, ty } => ide_diagnostic::diag()
                 .message(format!(
-                    "Type '{}' is an elementary type and cannot be initiliazed with '()'",
+                    "type '{}' is an elementary type and cannot be initiliazed with '()'",
                     ty.type_name(db)
                 ))
                 .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)

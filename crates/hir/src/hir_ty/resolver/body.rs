@@ -3,7 +3,7 @@ use db::WorkspaceDataBase;
 use crate::{
     CallSite,
     check::errors::{
-        analysis_error::ToIdeDiagnostic, e3_type::TypeError, e10_control_flow::ControlFlowError,
+        analysis_error::ToIdeDiagnostic, e10_control_flow::ControlFlowError,
     },
     hir_def::{
         expressions::{
@@ -213,7 +213,7 @@ impl<'db> InferenceCtx<'db> {
 
                     if typ.with_return_type(db).is_some() {
                         ctx.errors.push(
-                            TypeError::UnusedReturnType { typ, expr: *stmt }.to_diagnostic(db),
+                            ControlFlowError::UnusedReturnType { typ, expr: *stmt }.to_diagnostic(db),
                         );
                     }
                 }

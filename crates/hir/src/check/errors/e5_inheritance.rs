@@ -96,7 +96,22 @@ impl<'db> ErrorCode for InheritanceError<'db> {
     }
 
     fn description(&self) -> &'static str {
-        "inheritance violation"
+        match self {
+            Self::SuperBodyOnIncompatiblePou { .. }
+            | Self::SuperOnIncompatiblePou { .. }
+            | Self::ThisOnIncompatiblePou { .. } => "invalid use of SUPER or THIS",
+            Self::OverrideFinalMethod { .. } | Self::MissingOverride { .. } => "override violation",
+            Self::MissingAbstractMethod { .. }
+            | Self::EmptyOverride { .. }
+            | Self::AbstractClassHasNoAbstractMethods { .. }
+            | Self::UnimplementedInterfaceMethod { .. } => "inheritance violation",
+            Self::UnresolvedThisMethod { .. } | Self::UnresolvedSuperMethod { .. } => {
+                "unresolved method in inheritance context"
+            }
+            Self::SignatureParametersCountMismatch { .. } | Self::SignatureTypeMismatch { .. } => {
+                "method signature mismatch"
+            }
+        }
     }
 }
 
