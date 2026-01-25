@@ -17,18 +17,13 @@ use crate::{
     hir_def::semantic_index::semantic_index,
 };
 
-pub mod check_array;
-pub mod check_enum;
 pub mod check_global_pous;
 pub mod check_inheritance;
 pub mod check_namespaces;
 pub mod check_recursion;
 pub mod check_scope;
 pub mod check_semantic_index;
-pub mod check_struct;
-pub mod check_subrange;
 pub mod check_using;
-pub mod check_variables;
 pub mod errors;
 
 pub fn diagnostics_for_file(db: &dyn WorkspaceDataBase, file: File) -> Arc<Vec<IdeDiagnostic>> {

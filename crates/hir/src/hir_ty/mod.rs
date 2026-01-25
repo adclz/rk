@@ -8,3 +8,4 @@ pub mod init_inference;
 pub mod name_res;
 pub mod resolver;
 pub mod ty;
+pub mod signature;

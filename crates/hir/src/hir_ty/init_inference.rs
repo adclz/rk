@@ -22,7 +22,7 @@ pub fn infer_variable<'db>(
     variable: VariableDecl<'db>,
 ) -> InitExprInferenceResult<'db> {
     let typ = Type::new_spec(db, variable.spec(db));
-    let mut infer = InitExprInferenceResult::new(db, variable.scope_id(db));
+    let mut infer = InitExprInferenceResult::new(variable.scope_id(db));
     if let Some(expr) = variable.init(db) {
         infer.resolve_init_expr(db, expr, typ);
     };
@@ -35,7 +35,7 @@ pub fn infer_data_type<'db>(
     data_type: DataType<'db>,
 ) -> InitExprInferenceResult<'db> {
     let typ = Type::new_spec(db, data_type.spec(db));
-    let mut infer = InitExprInferenceResult::new(db, data_type.scope_id(db));
+    let mut infer = InitExprInferenceResult::new(data_type.scope_id(db));
     if let Some(expr) = data_type.init(db) {
         infer.resolve_init_expr(db, expr, typ);
     };
@@ -66,7 +66,7 @@ pub struct InitExprInferenceResult<'db> {
 }
 
 impl<'db> InitExprInferenceResult<'db> {
-    pub fn new(db: &'db dyn WorkspaceDataBase, scope: ScopeId<'db>) -> Self {
+    pub fn new(scope: ScopeId<'db>) -> Self {
         Self {
             type_of_expr: FxHashMap::default(),
             array_positions: FxHashMap::default(),

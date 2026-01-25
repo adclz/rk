@@ -13,7 +13,7 @@ use crate::{
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
-    hir_ty::{body_inference::infer_body_scope, init_inference::infer_data_type},
+    hir_ty::{body_inference::infer_body_scope, signature::infer_signature},
 };
 
 impl<'db> Check<'db> for ScopeId<'db> {
@@ -22,31 +22,17 @@ impl<'db> Check<'db> for ScopeId<'db> {
 
         if let ScopeKind::Pou(pou) = get_scope(db, *self).kind {
             check_inheritance(db, pou, errors);
-            if let Pou::DataType(dt) = pou {
-                match dt.spec(db).kind(db) {
-                    SpecKind::Array(arr) => arr.check(db, errors),
-                    SpecKind::Enum(enu) => enu.check(db, errors),
-                    SpecKind::Struct(struc) => struc.check(db, errors),
-                    SpecKind::Subrange(sub) => sub.check(db, errors),
-                    _ => {}
-                }
-                if let Some(init) = dt.init(db) {
-                    let result = infer_data_type(db, dt);
-                    for error in result.errors.iter() {
-                        errors.push(error.clone());
-                    }
-
-                    for error in result.body_infer_result.errors.iter() {
-                        errors.push(error.clone());
-                    }
-                }
-            }
         }
 
         // check usings
         scope.usings.iter().for_each(|u| {
             u.check(db, errors);
         });
+
+        let signature = infer_signature(db, *self);
+        for error in signature.errors.iter() {
+            errors.push(error.clone());
+        }
 
         // check pous
         if let Some(pous) = self.pous(db) {
@@ -62,11 +48,6 @@ impl<'db> Check<'db> for ScopeId<'db> {
         // check methods
         if let Some(methods) = self.method_declarations(db) {
             methods.check(db, errors);
-        }
-
-        // check variables
-        if let Some(variables) = self.variables(db) {
-            variables.check(db, errors);
         }
 
         // check body
