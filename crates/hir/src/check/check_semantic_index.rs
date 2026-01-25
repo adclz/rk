@@ -16,13 +16,11 @@ use salsa::Accumulator;
 use crate::{
     HirNodeInfo,
     check::{
-        check_inheritance::check_inheritance,
-        check_namespaces::check_duplicate_namespaces,
-        errors::{
+        check_duplicates::check_duplicate_namespaces, check_inheritance::check_inheritance, errors::{
             analysis_error::{AnalysisError, ToIdeDiagnostic},
             e0_syntax::SyntaxError,
             e1_duplicates::DuplicateError,
-        },
+        }
     },
     hir_def::{
         expressions::{

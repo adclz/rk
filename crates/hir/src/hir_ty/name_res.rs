@@ -47,6 +47,30 @@ pub fn namespace_index<'db>(
         .unwrap_or_default()
 }
 
+/// Returns all POUs within namespaces that share the same path, indexed by name.
+#[tracing::instrument(skip_all)]
+#[salsa::tracked(returns(ref))]
+fn global_namespace_pou_index<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    path: NamespacePath,
+) -> FxHashMap<Ident, Pou<'db>> {
+    namespace_index(db, path)
+        .iter()
+        .flat_map(|ns| ns.pous(db).iter().map(|p| (p.get_name_ident(db), *p)))
+        .collect()
+}
+
+/// Returns the canonical POU for a given name within a namespace path.
+#[tracing::instrument(skip(db))]
+#[salsa::tracked(returns(ref))]
+pub fn namespace_pou_index<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    path: NamespacePath,
+    name: Ident,
+) -> Option<Pou<'db>> {
+    global_namespace_pou_index(db, path).get(&name).copied()
+}
+
 /// Returns all POUs *globally declared*.
 #[tracing::instrument(skip_all)]
 #[salsa::tracked(returns(ref))]

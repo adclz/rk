@@ -94,15 +94,15 @@ END_FUNCTION_BLOCK
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0101] Error: duplicate definitions
-       ,-[ file:///test0.st:6:16 ]
+       ,-[ file:///test0.st:2:16 ]
        |
      2 | FUNCTION_BLOCK fb1
        |                ^|^  
-       |                 `--- POU 'fb1' is already defined here
+       |                 `--- duplicate POU 'fb1'
        | 
      6 | FUNCTION_BLOCK fb1
        |                ^|^  
-       |                 `--- duplicate POU 'fb1'
+       |                 `--- POU 'fb1' is already defined here
     ---'
     ");
 }
@@ -144,15 +144,15 @@ END_NAMESPACE
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0101] Error: duplicate definitions
-       ,-[ file:///test0.st:7:20 ]
+       ,-[ file:///test0.st:3:20 ]
        |
      3 |     FUNCTION_BLOCK fb1
        |                    ^|^  
-       |                     `--- POU 'fb1' is already defined here
+       |                     `--- duplicate POU 'fb1'
        | 
      7 |     FUNCTION_BLOCK fb1
        |                    ^|^  
-       |                     `--- duplicate POU 'fb1'
+       |                     `--- POU 'fb1' is already defined here
     ---'
     ");
 }

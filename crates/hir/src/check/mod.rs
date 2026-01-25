@@ -9,7 +9,7 @@ use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
     check::{
-        check_global_pous::check_duplicate_pous,
+        check_duplicates::check_duplicate_pous,
         check_recursion::TypeDependencyGraph,
         check_semantic_index::Check,
         errors::analysis_error::{AnalysisError, ToIdeDiagnostic},
@@ -17,9 +17,8 @@ use crate::{
     hir_def::semantic_index::semantic_index,
 };
 
-pub mod check_global_pous;
+pub mod check_duplicates;
 pub mod check_inheritance;
-pub mod check_namespaces;
 pub mod check_recursion;
 pub mod check_scope;
 pub mod check_semantic_index;
