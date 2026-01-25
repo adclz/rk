@@ -16,32 +16,6 @@ use crate::{
     },
 };
 
-#[salsa::tracked(returns(ref), no_eq)]
-pub fn infer_variable<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    variable: VariableDecl<'db>,
-) -> InitExprInferenceResult<'db> {
-    let typ = Type::new_spec(db, variable.spec(db));
-    let mut infer = InitExprInferenceResult::new(variable.scope_id(db));
-    if let Some(expr) = variable.init(db) {
-        infer.resolve_init_expr(db, expr, typ);
-    };
-    infer
-}
-
-#[salsa::tracked(returns(ref), no_eq)]
-pub fn infer_data_type<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    data_type: DataType<'db>,
-) -> InitExprInferenceResult<'db> {
-    let typ = Type::new_spec(db, data_type.spec(db));
-    let mut infer = InitExprInferenceResult::new(data_type.scope_id(db));
-    if let Some(expr) = data_type.init(db) {
-        infer.resolve_init_expr(db, expr, typ);
-    };
-    infer
-}
-
 /// Information about an element's position in an array initializer
 #[derive(Debug, Clone, Copy, PartialEq, Eq, salsa::Update)]
 pub struct ArrayElementPosition {

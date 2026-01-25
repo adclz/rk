@@ -16,7 +16,6 @@ use hir::{
     },
     hir_ty::{
         inheritance_solver::MethodRef,
-        init_inference::{infer_data_type, infer_variable},
     },
 };
 
