@@ -7,7 +7,6 @@ use crate::{
     check::errors::{analysis_error::ToIdeDiagnostic, e6_array::ArrayError},
     hir_def::{
         expressions::expression::{InitExpr, InitExprKind},
-        pous::{data_type::DataType, variable::VariableDecl},
         scope::ScopeId,
     },
     hir_ty::{

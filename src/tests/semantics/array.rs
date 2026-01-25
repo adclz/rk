@@ -16,15 +16,15 @@ fn unknown_type(mut with_db: RootDatabase) {
         END_FUNCTION_BLOCK
         "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
-    [E0204] Error: no item found in scope
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0210] Error: no namespace item found
        ,-[ file:///test0.st:4:25 ]
        |
      4 |                 input : something;
        |                         ^^^^|^^^^  
-       |                             `------ no item "something" found in scope
+       |                             `------ io item found for path 'something'
     ---'
-    "#);
+    ");
 }
 
 #[rstest]

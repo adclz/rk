@@ -1,8 +1,9 @@
+use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     CallSite, HirNodeInfo,
-    check::errors::e9_recursion::RecursionError,
+    check::errors::{analysis_error::ToIdeDiagnostic, e9_recursion::RecursionError},
     hir_def::{namespace::NamespaceDecl, pous::pou::Pou, semantic_index::SemanticIndex},
     hir_ty::ty::Type,
 };
@@ -164,25 +165,18 @@ impl<'db> TypeDependencyGraph<'db> {
         }
     }
 
-    pub fn find_recursion(
+    pub fn check_recursions(
         &mut self,
         semantic_index: &SemanticIndex<'db>,
-    ) -> Vec<RecursionError<'db>> {
-        let mut errors = Vec::new();
+        errors: &mut Vec<IdeDiagnostic>,
+    ) {
         let mut visited = FxHashSet::default();
         let mut stack = Vec::new();
         let mut stack_set = FxHashSet::default();
 
         for &root in &semantic_index.global_pous {
             if !visited.contains(&root) {
-                self.dfs(
-                    root,
-                    root,
-                    &mut visited,
-                    &mut stack,
-                    &mut stack_set,
-                    &mut errors,
-                );
+                self.dfs(root, root, &mut visited, &mut stack, &mut stack_set, errors);
             }
         }
 
@@ -191,10 +185,8 @@ impl<'db> TypeDependencyGraph<'db> {
             &mut visited,
             &mut stack,
             &mut stack_set,
-            &mut errors,
+            errors,
         );
-
-        errors
     }
 
     fn namespace_recursion(
@@ -203,7 +195,7 @@ impl<'db> TypeDependencyGraph<'db> {
         visited: &mut FxHashSet<Pou<'db>>,
         stack: &mut Vec<Pou<'db>>,
         stack_set: &mut FxHashSet<Pou<'db>>,
-        errors: &mut Vec<RecursionError<'db>>,
+        errors: &mut Vec<IdeDiagnostic>,
     ) {
         for &ns in namespaces {
             self.namespace_recursion(ns.namespaces(self.db), visited, stack, stack_set, errors);
@@ -223,7 +215,7 @@ impl<'db> TypeDependencyGraph<'db> {
         visited: &mut FxHashSet<Pou<'db>>,
         stack: &mut Vec<Pou<'db>>,
         stack_set: &mut FxHashSet<Pou<'db>>,
-        errors: &mut Vec<RecursionError<'db>>,
+        errors: &mut Vec<IdeDiagnostic>,
     ) {
         self.ensure_edges(node);
 
@@ -234,14 +226,17 @@ impl<'db> TypeDependencyGraph<'db> {
         for dep in self.edges.get(&node).cloned().unwrap_or_default() {
             if dep == node {
                 // direct recursion anchored to file-local root
-                errors.push(RecursionError::DirectRecursion {
-                    pou: node,
-                    callsite: self
-                        .callsites
-                        .get(&(node, node))
-                        .and_then(|v| v.first())
-                        .copied(),
-                });
+                errors.push(
+                    RecursionError::DirectRecursion {
+                        pou: node,
+                        callsite: self
+                            .callsites
+                            .get(&(node, node))
+                            .and_then(|v| v.first())
+                            .copied(),
+                    }
+                    .to_diagnostic(self.db),
+                );
                 continue;
             }
 
@@ -249,15 +244,18 @@ impl<'db> TypeDependencyGraph<'db> {
                 let start = stack.iter().position(|p| *p == dep).unwrap();
                 let cycle = &stack[start..];
 
-                errors.push(RecursionError::MutualRecursion {
-                    pou: root, // always the file-local root
-                    pous: cycle.to_vec(),
-                    callsite: self
-                        .callsites
-                        .get(&(node, dep))
-                        .cloned()
-                        .unwrap_or_default(),
-                });
+                errors.push(
+                    RecursionError::MutualRecursion {
+                        pou: root, // always the file-local root
+                        pous: cycle.to_vec(),
+                        callsite: self
+                            .callsites
+                            .get(&(node, dep))
+                            .cloned()
+                            .unwrap_or_default(),
+                    }
+                    .to_diagnostic(self.db),
+                );
                 continue;
             }
 

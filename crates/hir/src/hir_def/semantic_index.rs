@@ -72,10 +72,6 @@ impl<'db> SemanticIndex<'db> {
         }
     }
 
-    pub fn pous(&'db self, db: &'db dyn WorkspaceDataBase) -> &'db Vec<Pou<'db>> {
-        &self.global_pous
-    }
-
     /// Returns a [`ScopeIterator`] starting from the given scope.
     pub fn scope_iterator(
         &self,

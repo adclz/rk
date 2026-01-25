@@ -3,10 +3,11 @@ use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    CallSite, HasName,
+    CallSite, HasName, HirNodeInfo, Modifier,
     check::errors::{
         analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError, e2_resolve::ResolveError,
-        e3_type::TypeError, e6_array::ArrayError, e7_enum::EnumError, e8_subrange::SubRangeError,
+        e3_type::TypeError, e5_inheritance::InheritanceError, e6_array::ArrayError,
+        e7_enum::EnumError, e8_subrange::SubRangeError,
     },
     hir_def::{
         expressions::{
@@ -19,8 +20,12 @@ use crate::{
         semantic_index::get_scope,
     },
     hir_ty::{
-        body_inference::BodyInferenceResult, infer::expr::InferExprCtx,
-        init_inference::InitExprInferenceResult, resolver::Resolver, ty::Type,
+        body_inference::BodyInferenceResult,
+        infer::expr::InferExprCtx,
+        inheritance_solver::{MethodRef, inherited_methods},
+        init_inference::InitExprInferenceResult,
+        resolver::Resolver,
+        ty::Type,
     },
 };
 
@@ -102,14 +107,18 @@ impl<'db> PouSignature<'db> {
                         }
                         _ => {}
                     }
-                    let typ = Type::new_spec(db, dt.spec(db));
                     if let Some(expr) = dt.init(db) {
-                        self.init_expr_result.resolve_init_expr(db, expr, typ);
+                        self.init_expr_result.resolve_init_expr(
+                            db,
+                            expr,
+                            Type::new_spec(db, dt.spec(db)),
+                        );
                     };
                 }
                 _ => {
                     self.infer_variables(db);
                     self.infer_return_type(db);
+                    check_inheritance(db, pou, &mut self.errors);
                 }
             },
             _ => {
@@ -408,6 +417,156 @@ impl<'db> PouSignature<'db> {
                     seen.insert(field.get_name_ident(db), *field);
                 }
             }
+        }
+    }
+}
+
+pub fn check_inheritance<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    implementer: Pou<'db>,
+    errors: &mut Vec<IdeDiagnostic>,
+) {
+    let declared_methods = &implementer.get_scope_id(db).def_map(db).declared_methods;
+    let inherited_methods = inherited_methods(db, implementer);
+
+    if let Pou::Class(cl) = implementer {
+        // If the class is abstract, it must have at least one abstract method
+        if cl.modifier(db).contains(Modifier::ABSTRACT)
+            && !declared_methods
+                .iter()
+                .any(|(_, m)| m.modifier(db).contains(Modifier::ABSTRACT))
+        {
+            errors.push(
+                InheritanceError::AbstractClassHasNoAbstractMethods { class: implementer }
+                    .to_diagnostic(db),
+            );
+        };
+    };
+
+    // check dups in inherited methods
+    for (m1, m2) in &inherited_methods.duplicates {
+        errors.push(
+            DuplicateError::InheritedMethod {
+                method1: *m1,
+                method2: *m2,
+            }
+            .to_diagnostic(db),
+        );
+    }
+
+    // check unresolved
+    for unresolved in &inherited_methods.unresolved {
+        errors.push(
+            ResolveError::NoNamespaceItemFound {
+                path: unresolved.clone(),
+            }
+            .to_diagnostic(db),
+        );
+    }
+
+    // look at the inherited methods first
+    for (inherited_name, inherited_method) in inherited_methods.methods.iter() {
+        let inherited_method = inherited_method.method;
+        // method is inherited from a base interface/class
+        if let Some(declared_method) = declared_methods.get(inherited_name) {
+            check_signature(db, inherited_method, *declared_method, errors);
+
+            match (inherited_method.modifier(db), declared_method.modifier(db)) {
+                // Override of a final method
+                (Modifier::FINAL, Modifier::OVERRIDE) => {
+                    errors.push(
+                        InheritanceError::OverrideFinalMethod {
+                            base_method: inherited_method,
+                            derived_method: *declared_method,
+                        }
+                        .to_diagnostic(db),
+                    );
+                }
+                // Override of method without override
+                (_, Modifier::EMPTY) => {
+                    errors.push(
+                        InheritanceError::MissingOverride {
+                            base_method: inherited_method,
+                            derived_method: *declared_method,
+                        }
+                        .to_diagnostic(db),
+                    );
+                }
+                _ => {}
+            }
+        } else {
+            // inherited method is not present
+
+            // method is from an interface
+            if inherited_method.is_prototype() {
+                errors.push(
+                    InheritanceError::UnimplementedInterfaceMethod {
+                        implementer,
+                        method: inherited_method,
+                    }
+                    .to_diagnostic(db),
+                );
+            }
+
+            if let Modifier::ABSTRACT = inherited_method.modifier(db) {
+                errors.push(
+                    InheritanceError::MissingAbstractMethod {
+                        implementer,
+                        base_method: inherited_method,
+                    }
+                    .to_diagnostic(db),
+                );
+            }
+        }
+    }
+    // Look at the declared methods
+
+    for (base_name, base_method) in declared_methods {
+        if inherited_methods.methods.contains_key(base_name) {
+        } else if base_method.modifier(db) == Modifier::OVERRIDE {
+            errors.push(
+                InheritanceError::EmptyOverride {
+                    base_method: *base_method,
+                }
+                .to_diagnostic(db),
+            );
+        }
+    }
+}
+
+fn check_signature<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    m1: MethodRef<'db>,
+    m2: MethodRef<'db>,
+    errors: &mut Vec<IdeDiagnostic>,
+) {
+    let sig1 = m1.variables(db);
+    let sig2 = m2.variables(db);
+    if sig1.len() != sig2.len() {
+        errors.push(
+            InheritanceError::SignatureParametersCountMismatch {
+                m1,
+                expected: sig1.len(),
+                m2,
+                got: sig2.len(),
+            }
+            .to_diagnostic(db),
+        );
+    }
+
+    for (var1, var2) in sig1.iter().zip(sig2.iter()) {
+        let var1_typ = Type::new_var(db, *var1);
+        let var2_typ = Type::new_var(db, *var2);
+
+        if !var1_typ.normalize(db).eq(&var2_typ.normalize(db)) {
+            errors.push(
+                InheritanceError::SignatureTypeMismatch {
+                    expected: var1_typ,
+                    got: var2_typ,
+                    method: m1,
+                }
+                .to_diagnostic(db),
+            )
         }
     }
 }

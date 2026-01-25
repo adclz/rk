@@ -15,7 +15,7 @@ use hir::{
         using::Using,
     },
     hir_ty::{
-        inheritance_solver::MethodRef,
+        inheritance_solver::MethodRef, signature::infer_signature,
     },
 };
 
@@ -176,12 +176,12 @@ impl<'db> WalkHir<'db> for Pou<'db> {
                     }
                 }
 
-                /*if let Some(_init_expr) = dt.init(db) {
-                    let infer = infer_data_type(db, *dt);
-                    for (init_expr, typ) in &infer.type_of_expr {
+                if let Some(_init_expr) = dt.init(db) {
+                    let infer = infer_signature(db, dt.scope_id(db));
+                    for (init_expr, typ) in &infer.init_expr_result.type_of_expr {
                         f(HirNode::InitExprWithType((*init_expr, *typ).into()))?;
                     }
-                }*/
+                }
             }
         }
         ControlFlow::Continue(())
@@ -196,12 +196,12 @@ impl<'db> WalkHir<'db> for VariableDecl<'db> {
     ) -> ControlFlow<()> {
         f(HirNode::VariableDecl(*self))?;
         f(HirNode::Spec(self.spec(db)))?;
-        /*if let Some(_init_expr) = self.init(db) {
-            let infer = infer_variable(db, *self);
-            for (init_expr, typ) in &infer.type_of_expr {
+        if let Some(_init_expr) = self.init(db) {
+            let infer = infer_signature(db, self.scope_id(db));
+            for (init_expr, typ) in &infer.init_expr_result.type_of_expr {
                 f(HirNode::InitExprWithType((*init_expr, *typ).into()))?;
             }
-        }*/
+        }
         ControlFlow::Continue(())
     }
 }
