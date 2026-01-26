@@ -9,7 +9,7 @@ use crate::{
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
-    hir_ty::{body_inference::BodyInferenceResult, ty::Type},
+    hir_ty::{body::BodyInferenceResult, ty::Type},
 };
 
 pub fn resolve_invocation<'db>(

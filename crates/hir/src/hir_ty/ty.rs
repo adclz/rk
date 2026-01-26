@@ -21,7 +21,7 @@ use crate::{
         scope::ScopeId,
     },
     hir_ty::{
-        def_map::LocalDefMap, inheritance_solver::MethodRef, name_res::resolve_namespace_access,
+        def_map::LocalDefMap, signature::inheritance::MethodRef, name_res::resolve_namespace_access,
     },
 };
 

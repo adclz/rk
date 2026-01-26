@@ -5,7 +5,7 @@ use hir::{
         expressions::spec::{ElementarySpec, SpecKind},
         pous::pou::Pou,
     },
-    hir_ty::{inheritance_solver::MethodRef, ty::Type},
+    hir_ty::{signature::inheritance::MethodRef, ty::Type},
 };
 
 use auto_lsp::{

@@ -19,22 +19,20 @@ use crate::{
         semantic_index::get_scope,
     },
     hir_ty::{
-        resolver::{
-            Resolver,
-            body::{InferenceCtx, NestedScope},
-        },
-        ty::Type,
+        body::statements::{StmtsResolverCtx, NestedScope}, resolver::Resolver, ty::Type
     },
 };
 
+pub mod statements;
+
 #[tracing::instrument(skip(db))]
 #[salsa::tracked(returns(ref))]
-pub fn infer_body_scope<'db>(
+pub fn infer_body<'db>(
     db: &'db dyn WorkspaceDataBase,
     scope: ScopeId<'db>,
 ) -> BodyInferenceResult<'db> {
     let mut result = BodyInferenceResult::new(scope);
-    let ctx = InferenceCtx::new(scope);
+    let ctx = StmtsResolverCtx::new(scope);
 
     // Only Scopes with bodies can have statements
     let statements = match get_scope(db, scope).kind {

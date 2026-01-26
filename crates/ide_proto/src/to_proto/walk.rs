@@ -15,7 +15,7 @@ use hir::{
         using::Using,
     },
     hir_ty::{
-        inheritance_solver::MethodRef, signature::infer_signature,
+        signature::inheritance::MethodRef, signature::infer_signature,
     },
 };
 

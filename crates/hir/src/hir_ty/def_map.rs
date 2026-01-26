@@ -5,9 +5,7 @@ use rustc_hash::FxHashMap;
 use crate::{
     CallSite, HasName,
     hir_def::{
-        expressions::{
-            spec::{Enum, EnumVariant, Struct, StructElement},
-        },
+        expressions::spec::{Enum, EnumVariant, Struct, StructElement},
         interned::identifier::Ident,
         pous::{
             pou::Pou,
@@ -16,7 +14,7 @@ use crate::{
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
-    hir_ty::{inheritance_solver::MethodRef, name_res::resolve_namespace_access},
+    hir_ty::{name_res::resolve_namespace_access, signature::inheritance::MethodRef},
 };
 
 pub type FxIndexMap<K, V> = IndexMap<K, V, rustc_hash::FxBuildHasher>;

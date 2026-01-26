@@ -10,7 +10,7 @@ use crate::{
         scope::ScopeId,
     },
     hir_ty::{
-        body_inference::BodyInferenceResult, def_map::FxIndexMap, expr_store::InitExprWalkStep,
+        body::BodyInferenceResult, def_map::FxIndexMap, expr_store::InitExprWalkStep,
         infer::expr::InferExprCtx, resolver::Resolver, ty::Type,
     },
 };

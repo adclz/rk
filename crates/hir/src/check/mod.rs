@@ -20,7 +20,7 @@ use crate::{
     HirNodeInfo,
     check::check_duplicates::check_duplicate_namespaces,
     hir_def::{scope::ScopeId, semantic_index::SemanticIndex},
-    hir_ty::{body_inference::infer_body_scope, signature::infer_signature},
+    hir_ty::{body::infer_body, signature::infer_signature},
 };
 
 pub mod check_duplicates;
@@ -81,24 +81,20 @@ impl<'db> ScopeId<'db> {
             errors.push(err.clone());
         });
 
-        infer_body_scope(db, *self).errors.iter().for_each(|err| {
+        infer_body(db, *self).errors.iter().for_each(|err| {
             errors.push(err.clone());
         });
 
         // Methods and nested POUs are not inferred by the result of scope inference
         // so we need to treat them separately by calling check again on their scopes
 
-        self.pous(db).map(|pous| {
-            pous.iter().for_each(|pou| {
+        if let Some(pous) = self.pous(db) { pous.iter().for_each(|pou| {
                 pou.get_scope_id(db).check(db, errors);
-            });
-        });
+            }); }
 
-        self.method_declarations(db).map(|methods| {
-            methods.iter().for_each(|method| {
+        if let Some(methods) = self.method_declarations(db) { methods.iter().for_each(|method| {
                 method.get_scope_id(db).check(db, errors);
-            });
-        });
+            }); }
 
         self.method_prototypes(db).iter().for_each(|methods| {
             methods.iter().for_each(|method| {

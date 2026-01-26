@@ -7,7 +7,7 @@ use crate::{
     check::errors::analysis_error::ToIdeDiagnostic,
     hir_def::expressions::expression::{AddOperatorKind, Expr, MultOperatorKind},
     hir_ty::{
-        body_inference::{Adjust, Adjustment},
+        body::{Adjust, Adjustment},
         ty::Type,
     },
 };

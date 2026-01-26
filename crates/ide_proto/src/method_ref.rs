@@ -5,7 +5,7 @@ use auto_lsp::{
 use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
-    hir_ty::{inheritance_solver::MethodRef, ty::Type},
+    hir_ty::{signature::inheritance::MethodRef, ty::Type},
 };
 
 use crate::to_proto::{HasComment, ToProtocol};

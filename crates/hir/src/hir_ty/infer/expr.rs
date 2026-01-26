@@ -10,8 +10,8 @@ use crate::{
         pous::variable::VariableDecl,
     },
     hir_ty::{
-        body_inference::{Adjustment, BodyInferenceResult},
-        infer::{coerce::CoerceResult, inference_table::InferenceTable},
+        body::{Adjustment, BodyInferenceResult},
+        infer::{coerce::CoerceResult, table::InferenceTable},
         resolver::{Resolver, func_call::resolve_func_call},
         ty::Type,
     },

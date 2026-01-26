@@ -11,7 +11,7 @@ use crate::{
         pous::{class::MethodDecl, interface::MethodPrototype, pou::Pou, variable::VariableDecl},
         using::Using,
     },
-    hir_ty::inheritance_solver::InheritedMethod,
+    hir_ty::signature::inheritance::InheritedMethod,
 };
 
 impl ErrorCode for DuplicateError<'_> {

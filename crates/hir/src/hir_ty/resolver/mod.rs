@@ -1,6 +1,5 @@
 use db::WorkspaceDataBase;
 
-pub mod body;
 pub mod func_call;
 pub mod invocation;
 pub mod visibility;
@@ -17,7 +16,7 @@ use crate::{
         semantic_index::get_scope,
     },
     hir_ty::{
-        body_inference::BodyInferenceResult, name_res::resolve_namespace_access,
+        body::BodyInferenceResult, name_res::resolve_namespace_access,
         resolver::walk::PlaceBuilder, ty::Type,
     },
 };

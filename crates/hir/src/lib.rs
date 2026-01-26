@@ -22,7 +22,7 @@ use crate::{
         scope::ScopeId,
         semantic_index::semantic_index,
     },
-    hir_ty::inheritance_solver::MethodRef,
+    hir_ty::signature::inheritance::MethodRef,
 };
 
 pub mod builder;

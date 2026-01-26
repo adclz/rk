@@ -16,7 +16,7 @@ use hir::{
         semantic_index::semantic_index,
         using::Using,
     },
-    hir_ty::{inheritance_solver::MethodRef, ty::Type},
+    hir_ty::{signature::inheritance::MethodRef, ty::Type},
 };
 
 use crate::to_proto::walk::WalkHir;

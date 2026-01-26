@@ -1,10 +1,8 @@
-pub mod body_inference;
+pub mod body;
 pub mod def_map;
 pub mod display;
 pub mod expr_store;
 pub mod infer;
-pub mod inheritance_solver;
-pub mod init_inference;
 pub mod name_res;
 pub mod resolver;
 pub mod ty;

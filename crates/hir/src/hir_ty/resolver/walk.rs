@@ -10,10 +10,10 @@ use crate::{
         invocation::InvocationKind,
     },
     hir_ty::{
-        body_inference::{Adjustment, AdjustmentInfo, BodyInferenceResult},
+        body::{Adjustment, AdjustmentInfo, BodyInferenceResult},
         expr_store::{InitExprWalkStep, PathExprWalkStep},
-        inheritance_solver::inherited_methods,
-        init_inference::InitExprInferenceResult,
+        signature::inheritance::inherited_methods,
+        signature::init_inference::InitExprInferenceResult,
         resolver::{Resolver, invocation::resolve_invocation, visibility::check_visibility},
         ty::Type,
     },

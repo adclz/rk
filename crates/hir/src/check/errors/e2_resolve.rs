@@ -226,14 +226,14 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 } else {
                     "no item found in scope".to_string()
                 };
-                let diag = diag()
+                
+
+                diag()
                     .message(message)
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(spec.get_span(db))
-                    .call();
-
-                diag
+                    .call()
             }
             Self::NoSuchFieldPathExpr { expr, ident, ty } => {
                 let mut diag = diag()

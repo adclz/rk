@@ -6,7 +6,7 @@ use crate::{
     check::errors::{analysis_error::ToIdeDiagnostic, e3_type::TypeError},
     hir_def::expressions::expression::Expr,
     hir_ty::{
-        body_inference::BodyInferenceResult,
+        body::BodyInferenceResult,
         resolver::Resolver,
         ty::{InferType, Type},
     },

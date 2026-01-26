@@ -8,7 +8,7 @@ use crate::{
     },
     hir_def::expressions::expression::{AddOperatorKind, MultOperatorKind},
     hir_ty::{
-        body_inference::{Adjustment, AdjustmentInfo, BodyInferenceResult},
+        body::{Adjustment, AdjustmentInfo, BodyInferenceResult},
         resolver::Resolver,
         ty::Type,
     },

@@ -3,7 +3,7 @@ use auto_lsp::default::db::file::File;
 use db::RootDatabase;
 use db::WorkspaceDataBase;
 use hir::HirNodeInfo;
-use hir::hir_ty::body_inference::infer_body_scope;
+use hir::hir_ty::body::infer_body;
 use insta::assert_snapshot;
 use rstest::rstest;
 
@@ -19,7 +19,7 @@ fn collect_path_expressions(db: &dyn WorkspaceDataBase, file: File, pou_name: &s
     let pou = find_pou_with_name(db, file, pou_name).unwrap();
 
     let mut result = vec![];
-    let infer_result = infer_body_scope(db, pou.get_scope_id(db));
+    let infer_result = infer_body(db, pou.get_scope_id(db));
 
     for (path_expr, typ) in &infer_result.type_of_path_expr {
         result.push(format!(

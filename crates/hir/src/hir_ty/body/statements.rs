@@ -13,7 +13,7 @@ use crate::{
         scope::ScopeId,
     },
     hir_ty::{
-        body_inference::BodyInferenceResult,
+        body::BodyInferenceResult,
         infer::expr::InferExprCtx,
         resolver::{Resolver, func_call::resolve_func_call},
         ty::Type,
@@ -26,14 +26,14 @@ pub enum NestedScope {
     None,
 }
 
-pub struct InferenceCtx<'db> {
+pub struct StmtsResolverCtx<'db> {
     pub scope: ScopeId<'db>,
     pub nested_scope: NestedScope,
 }
 
-impl<'db> InferenceCtx<'db> {
+impl<'db> StmtsResolverCtx<'db> {
     pub fn new(scope: ScopeId<'db>) -> Self {
-        InferenceCtx {
+        StmtsResolverCtx {
             scope,
             nested_scope: NestedScope::None,
         }
