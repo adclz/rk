@@ -139,7 +139,7 @@ pub struct Enum<'db> {
     pub variants: Vec<EnumVariant<'db>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct EnumVariant<'db> {
     pub name: SpanIdent<'db>,
     pub value: Option<Expr<'db>>,

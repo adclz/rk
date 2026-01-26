@@ -104,9 +104,8 @@ impl<'db> InferExprCtx<'db> {
                 // normalizing here is necessary, but the type itself should be stored as is
                 match find_enm.normalize(db) {
                     Type::Enum(enm) => enm
-                        .variants(db)
-                        .iter()
-                        .find(|v| *v.name == **variant)
+                        .enum_variants(db)
+                        .get(variant)
                         .map(|v| Type::EnumVariant(*v.name))
                         .unwrap_or_else(|| {
                             // variant not found

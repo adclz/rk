@@ -2,7 +2,7 @@ use db::WorkspaceDataBase;
 
 use crate::{
     hir_def::{
-        expressions::expression::{InitExpr, InitExprKind, PathExpr, PathExprKind, VarAccess},
+        expressions::expression::{Elementary, Expr, ExprKind, InitExpr, InitExprKind, PathExpr, PathExprKind, PrimaryExpr, VarAccess},
         interned::{
             identifier::{Ident, SpanIdent},
             namespace::{NamespaceAccess, SpanNamespacePath},
@@ -178,6 +178,17 @@ impl<'db> InitExpr<'db> {
             InitExprKind::ConstantExpr(expr) => {
                 map.insert(*self, InitExprWalkStep::NoOp);
             }
+        }
+    }
+}
+
+impl<'db> Expr<'db> {
+    pub fn as_range(self, db: &'db dyn WorkspaceDataBase) -> Option<u64> {
+        match self.expr(db) {
+            ExprKind::PrimaryExpr(PrimaryExpr::Literal(Elementary::InferInteger(v))) => {
+                v.as_u64(db).ok()
+            }
+            _ => None,
         }
     }
 }

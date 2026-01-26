@@ -6,8 +6,7 @@ use crate::{
     CallSite, HasName,
     hir_def::{
         expressions::{
-            expression::{Elementary, Expr, ExprKind, PrimaryExpr},
-            spec::{Struct, StructElement},
+            spec::{Enum, EnumVariant, Struct, StructElement},
         },
         interned::identifier::Ident,
         pous::{
@@ -189,7 +188,7 @@ impl<'db> ScopeId<'db> {
 #[salsa::tracked]
 impl<'db> Struct<'db> {
     #[salsa::tracked(returns(ref))]
-    pub fn resolve_elements(
+    pub fn struct_elements(
         self,
         db: &'db dyn WorkspaceDataBase,
     ) -> FxHashMap<Ident, StructElement<'db>> {
@@ -201,15 +200,16 @@ impl<'db> Struct<'db> {
 }
 
 #[salsa::tracked]
-impl<'db> Expr<'db> {
-    #[salsa::tracked]
-    pub fn as_range(self, db: &'db dyn WorkspaceDataBase) -> Option<u64> {
-        match self.expr(db) {
-            ExprKind::PrimaryExpr(PrimaryExpr::Literal(Elementary::InferInteger(v))) => {
-                v.as_u64(db).ok()
-            }
-            _ => None,
-        }
+impl<'db> Enum<'db> {
+    #[salsa::tracked(returns(ref))]
+    pub fn enum_variants(
+        self,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> FxHashMap<Ident, EnumVariant<'db>> {
+        self.variants(db)
+            .iter()
+            .map(|element| (*element.name, *element))
+            .collect()
     }
 }
 

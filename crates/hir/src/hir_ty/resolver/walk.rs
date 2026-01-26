@@ -193,7 +193,7 @@ impl<'db> Type<'db> {
             PathExprWalkStep::Field { ident, expr: _ } => {
                 match self {
                     Type::Struct(st) => {
-                        if let Some(field) = st.resolve_elements(db).get(&ident.ident) {
+                        if let Some(field) = st.struct_elements(db).get(&ident.ident) {
                             ctx.type_of_path_expr
                                 .insert(*expr, Type::StructElement(*field));
                             place.current_typ = Type::StructElement(*field);
@@ -390,7 +390,7 @@ impl<'db> Type<'db> {
             InitExprWalkStep::Field(ident) => {
                 match self {
                     Type::Struct(st) => {
-                        if let Some(field) = st.resolve_elements(db).get(&ident.ident) {
+                        if let Some(field) = st.struct_elements(db).get(&ident.ident) {
                             result_ty = Type::StructElement(*field);
                         } else {
                             ctx.errors.push(
