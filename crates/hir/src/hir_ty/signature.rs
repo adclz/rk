@@ -1,3 +1,5 @@
+use core::panic;
+
 use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
@@ -35,11 +37,7 @@ pub fn infer_signature<'db>(
     db: &'db dyn WorkspaceDataBase,
     scope: ScopeId<'db>,
 ) -> PouSignature<'db> {
-    let mut result = PouSignature::new(scope);
-
-    result.infer_signature(db);
-
-    result
+    PouSignature::new(scope).infer_signature(db)
 }
 
 /// Information about an element's position in an array initializer
@@ -56,7 +54,7 @@ pub struct PouSignature<'db> {
     // Scope where this InferenceResult was emitted
     pub scope: ScopeId<'db>,
 
-    /// Main type (if any) returned by this scope (e.g., function return type, or value of a data type)
+    /// Main type (if any) returned by this scope (e.g., function return type)
     pub type_of_self: Option<Type<'db>>,
 
     /// Mapping of variables to their inferred types
@@ -88,10 +86,11 @@ impl<'db> PouSignature<'db> {
         }
     }
 
-    pub fn infer_signature(&mut self, db: &'db dyn WorkspaceDataBase) {
+    pub fn infer_signature(mut self, db: &'db dyn WorkspaceDataBase) -> Self {
         match get_scope(db, self.scope).kind {
             ScopeKind::Pou(pou) => match pou {
                 Pou::DataType(dt) => {
+                    let typ = Type::new_spec(db, dt.spec(db));
                     match dt.spec(db).kind(db) {
                         SpecKind::Array(arr) => {
                             self.infer_array(db, *arr);
@@ -105,27 +104,31 @@ impl<'db> PouSignature<'db> {
                         SpecKind::Struct(strukt) => {
                             self.infer_struct(db, *strukt);
                         }
+                        SpecKind::Target(target) => {
+                            if typ.is_never() {
+                                self.errors.push(
+                                    ResolveError::NoNamespaceItemFound {
+                                        path: target.clone(),
+                                    }
+                                    .to_diagnostic(db),
+                                )
+                            };
+                        }
                         _ => {}
                     }
                     if let Some(expr) = dt.init(db) {
-                        self.init_expr_result.resolve_init_expr(
-                            db,
-                            expr,
-                            Type::new_spec(db, dt.spec(db)),
-                        );
+                        self.init_expr_result.resolve_init_expr(db, expr, typ);
                     };
                 }
-                _ => {
-                    self.infer_variables(db);
-                    self.infer_return_type(db);
-                    check_inheritance(db, pou, &mut self.errors);
-                }
+                _ => {}
             },
-            _ => {
-                self.infer_variables(db);
-                self.infer_return_type(db);
-            }
+            _ => {}
         }
+
+        self.infer_variables(db);
+        self.infer_return_type(db);
+        self.check_methods(db);
+        self.check_inheritance(db);
 
         for error in &self.init_expr_result.errors {
             self.errors.push(error.clone());
@@ -138,6 +141,8 @@ impl<'db> PouSignature<'db> {
         for error in &self.body_infer_result.errors {
             self.errors.push(error.clone());
         }
+
+        self
     }
 
     fn infer_variables(&mut self, db: &'db dyn WorkspaceDataBase) {
@@ -146,7 +151,7 @@ impl<'db> PouSignature<'db> {
             None => return,
         };
 
-        let mut seen: FxHashMap<Ident, VariableDecl<'db>> = FxHashMap::default();
+        let mut seen = FxHashMap::default();
         for var in variables.iter() {
             match seen.get(&var.get_name_ident(db)) {
                 Some(prev) => {
@@ -164,19 +169,16 @@ impl<'db> PouSignature<'db> {
             }
 
             let var_type = Type::new_spec(db, var.spec(db));
-            match var_type {
-                Type::Infer(_) | Type::Never => {
-                    if let SpecKind::Target(target) = var.spec(db).kind(db) {
-                        self.errors.push(
-                            ResolveError::NoNamespaceItemFound {
-                                path: target.clone(),
-                            }
-                            .to_diagnostic(db),
-                        );
-                        self.type_of_variables.insert(*var, Type::Never);
-                    }
-                }
-                _ => {
+            if var_type.is_never() {
+                if let SpecKind::Target(target) = var.spec(db).kind(db) {
+                    self.errors.push(
+                        ResolveError::NoNamespaceItemFound {
+                            path: target.clone(),
+                        }
+                        .to_diagnostic(db),
+                    );
+                    self.type_of_variables.insert(*var, Type::Never);
+                } else {
                     self.type_of_variables.insert(*var, var_type);
                 }
             }
@@ -192,7 +194,6 @@ impl<'db> PouSignature<'db> {
         let return_typ = match get_scope(db, self.scope).kind {
             ScopeKind::Pou(pou) => match pou {
                 Pou::Function(f) => f.return_type(db).copied(),
-                Pou::DataType(dt) => Some(dt.spec(db)),
                 _ => None,
             },
             ScopeKind::MethodDecl(m) => m.return_type(db).copied(),
@@ -218,6 +219,160 @@ impl<'db> PouSignature<'db> {
                 }
             }
         }
+    }
+
+    fn check_inheritance(&mut self, db: &'db dyn WorkspaceDataBase) {
+        let implementer = match get_scope(db, self.scope).kind {
+            ScopeKind::Pou(pou) => pou,
+            _ => return,
+        };
+
+        let declared_methods = &implementer.get_scope_id(db).def_map(db).declared_methods;
+        let inherited_methods = inherited_methods(db, implementer);
+
+        if let Pou::Class(cl) = implementer {
+            // If the class is abstract, it must have at least one abstract method
+            if cl.modifier(db).contains(Modifier::ABSTRACT)
+                && !declared_methods
+                    .iter()
+                    .any(|(_, m)| m.modifier(db).contains(Modifier::ABSTRACT))
+            {
+                self.errors.push(
+                    InheritanceError::AbstractClassHasNoAbstractMethods { class: implementer }
+                        .to_diagnostic(db),
+                );
+            };
+        };
+
+        // check dups in inherited methods
+        for (m1, m2) in &inherited_methods.duplicates {
+            self.errors.push(
+                DuplicateError::InheritedMethod {
+                    method1: *m1,
+                    method2: *m2,
+                }
+                .to_diagnostic(db),
+            );
+        }
+
+        // check unresolved
+        for unresolved in &inherited_methods.unresolved {
+            self.errors.push(
+                ResolveError::NoNamespaceItemFound {
+                    path: unresolved.clone(),
+                }
+                .to_diagnostic(db),
+            );
+        }
+
+        // look at the inherited methods first
+        for (inherited_name, inherited_method) in inherited_methods.methods.iter() {
+            let inherited_method = inherited_method.method;
+            // method is inherited from a base interface/class
+            if let Some(declared_method) = declared_methods.get(inherited_name) {
+                check_signature(db, inherited_method, *declared_method, &mut self.errors);
+
+                match (inherited_method.modifier(db), declared_method.modifier(db)) {
+                    // Override of a final method
+                    (Modifier::FINAL, Modifier::OVERRIDE) => {
+                        self.errors.push(
+                            InheritanceError::OverrideFinalMethod {
+                                base_method: inherited_method,
+                                derived_method: *declared_method,
+                            }
+                            .to_diagnostic(db),
+                        );
+                    }
+                    // Override of method without override
+                    (_, Modifier::EMPTY) => {
+                        self.errors.push(
+                            InheritanceError::MissingOverride {
+                                base_method: inherited_method,
+                                derived_method: *declared_method,
+                            }
+                            .to_diagnostic(db),
+                        );
+                    }
+                    _ => {}
+                }
+            } else {
+                // inherited method is not present
+
+                // method is from an interface
+                if inherited_method.is_prototype() {
+                    self.errors.push(
+                        InheritanceError::UnimplementedInterfaceMethod {
+                            implementer,
+                            method: inherited_method,
+                        }
+                        .to_diagnostic(db),
+                    );
+                }
+
+                if let Modifier::ABSTRACT = inherited_method.modifier(db) {
+                    self.errors.push(
+                        InheritanceError::MissingAbstractMethod {
+                            implementer,
+                            base_method: inherited_method,
+                        }
+                        .to_diagnostic(db),
+                    );
+                }
+            }
+        }
+        // Look at the declared methods
+
+        for (base_name, base_method) in declared_methods {
+            if inherited_methods.methods.contains_key(base_name) {
+            } else if base_method.modifier(db) == Modifier::OVERRIDE {
+                self.errors.push(
+                    InheritanceError::EmptyOverride {
+                        base_method: *base_method,
+                    }
+                    .to_diagnostic(db),
+                );
+            }
+        }
+    }
+
+    fn check_methods(&mut self, db: &'db dyn WorkspaceDataBase) {
+        if let Some(methods) = self.scope.method_declarations(db) {
+            let mut seen = FxHashMap::default();
+            for method in methods.iter() {
+                match seen.get(&method.name(db)) {
+                    Some(prev) => {
+                        self.errors.push(
+                            DuplicateError::MethodDecl {
+                                method1: *method,
+                                method2: *prev,
+                            }
+                            .to_diagnostic(db),
+                        );
+                    }
+                    None => {
+                        seen.insert(method.name(db), *method);
+                    }
+                }
+            }
+        };
+
+        if let Some(prototypes) = self.scope.method_prototypes(db) {
+            let mut seen_prots = FxHashMap::default();
+            for method in prototypes.iter() {
+                match seen_prots.get(&method.name(db)) {
+                    Some(prev) => self.errors.push(
+                        DuplicateError::MethodProt {
+                            method1: *method,
+                            method2: *prev,
+                        }
+                        .to_diagnostic(db),
+                    ),
+                    None => {
+                        seen_prots.insert(method.name(db), *method);
+                    }
+                }
+            }
+        };
     }
 
     fn infer_array(&mut self, db: &'db dyn WorkspaceDataBase, array: Array<'db>) {
@@ -417,119 +572,6 @@ impl<'db> PouSignature<'db> {
                     seen.insert(field.get_name_ident(db), *field);
                 }
             }
-        }
-    }
-}
-
-pub fn check_inheritance<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    implementer: Pou<'db>,
-    errors: &mut Vec<IdeDiagnostic>,
-) {
-    let declared_methods = &implementer.get_scope_id(db).def_map(db).declared_methods;
-    let inherited_methods = inherited_methods(db, implementer);
-
-    if let Pou::Class(cl) = implementer {
-        // If the class is abstract, it must have at least one abstract method
-        if cl.modifier(db).contains(Modifier::ABSTRACT)
-            && !declared_methods
-                .iter()
-                .any(|(_, m)| m.modifier(db).contains(Modifier::ABSTRACT))
-        {
-            errors.push(
-                InheritanceError::AbstractClassHasNoAbstractMethods { class: implementer }
-                    .to_diagnostic(db),
-            );
-        };
-    };
-
-    // check dups in inherited methods
-    for (m1, m2) in &inherited_methods.duplicates {
-        errors.push(
-            DuplicateError::InheritedMethod {
-                method1: *m1,
-                method2: *m2,
-            }
-            .to_diagnostic(db),
-        );
-    }
-
-    // check unresolved
-    for unresolved in &inherited_methods.unresolved {
-        errors.push(
-            ResolveError::NoNamespaceItemFound {
-                path: unresolved.clone(),
-            }
-            .to_diagnostic(db),
-        );
-    }
-
-    // look at the inherited methods first
-    for (inherited_name, inherited_method) in inherited_methods.methods.iter() {
-        let inherited_method = inherited_method.method;
-        // method is inherited from a base interface/class
-        if let Some(declared_method) = declared_methods.get(inherited_name) {
-            check_signature(db, inherited_method, *declared_method, errors);
-
-            match (inherited_method.modifier(db), declared_method.modifier(db)) {
-                // Override of a final method
-                (Modifier::FINAL, Modifier::OVERRIDE) => {
-                    errors.push(
-                        InheritanceError::OverrideFinalMethod {
-                            base_method: inherited_method,
-                            derived_method: *declared_method,
-                        }
-                        .to_diagnostic(db),
-                    );
-                }
-                // Override of method without override
-                (_, Modifier::EMPTY) => {
-                    errors.push(
-                        InheritanceError::MissingOverride {
-                            base_method: inherited_method,
-                            derived_method: *declared_method,
-                        }
-                        .to_diagnostic(db),
-                    );
-                }
-                _ => {}
-            }
-        } else {
-            // inherited method is not present
-
-            // method is from an interface
-            if inherited_method.is_prototype() {
-                errors.push(
-                    InheritanceError::UnimplementedInterfaceMethod {
-                        implementer,
-                        method: inherited_method,
-                    }
-                    .to_diagnostic(db),
-                );
-            }
-
-            if let Modifier::ABSTRACT = inherited_method.modifier(db) {
-                errors.push(
-                    InheritanceError::MissingAbstractMethod {
-                        implementer,
-                        base_method: inherited_method,
-                    }
-                    .to_diagnostic(db),
-                );
-            }
-        }
-    }
-    // Look at the declared methods
-
-    for (base_name, base_method) in declared_methods {
-        if inherited_methods.methods.contains_key(base_name) {
-        } else if base_method.modifier(db) == Modifier::OVERRIDE {
-            errors.push(
-                InheritanceError::EmptyOverride {
-                    base_method: *base_method,
-                }
-                .to_diagnostic(db),
-            );
         }
     }
 }

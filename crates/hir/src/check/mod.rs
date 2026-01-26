@@ -19,7 +19,7 @@ use crate::{
 use crate::{
     HirNodeInfo,
     check::check_duplicates::{
-        check_duplicate_method_decls, check_duplicate_method_prots, check_duplicate_namespaces,
+        check_duplicate_namespaces,
     },
     hir_def::{scope::ScopeId, semantic_index::SemanticIndex},
     hir_ty::{body_inference::infer_body_scope, signature::infer_signature},
@@ -86,15 +86,18 @@ impl<'db> ScopeId<'db> {
             errors.push(err.clone());
         });
 
+
+        // Methods and nested POUs are not part of the scope signature inference,
+        // so we need to check them separately.
+
         self.method_declarations(db).iter().for_each(|methods| {
-            check_duplicate_method_decls(db, methods, errors);
             methods.iter().for_each(|method| {
                 method.get_scope_id(db).check(db, errors);
             });
         });
 
         self.method_prototypes(db).iter().for_each(|methods| {
-            check_duplicate_method_prots(db, methods, errors);
+            
         });
 
         self.pous(db).iter().for_each(|pous| {

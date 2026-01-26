@@ -8,7 +8,7 @@ use crate::{
     check::errors::{analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError},
     hir_def::{
         namespace::NamespaceDecl,
-        pous::{class::MethodDecl, interface::MethodPrototype, pou::Pou},
+        pous::{pou::Pou},
     },
     hir_ty::name_res::{namespace_pou_index, pou_index},
 };
@@ -65,46 +65,4 @@ pub fn check_duplicate_namespaces<'db>(
     }
 
     errors
-}
-
-pub fn check_duplicate_method_decls<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    methods: &'db [MethodDecl<'db>],
-    errors: &mut Vec<IdeDiagnostic>,
-) {
-    let mut seen = FxHashMap::default();
-    for method in methods {
-        if let Some(prev) = seen.get(&method.get_name_ident(db)) {
-            errors.push(
-                DuplicateError::MethodDecl {
-                    method1: *prev,
-                    method2: *method,
-                }
-                .to_diagnostic(db),
-            );
-        } else {
-            seen.insert(method.get_name_ident(db), *method);
-        }
-    }
-}
-
-pub fn check_duplicate_method_prots<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    methods: &'db [MethodPrototype<'db>],
-    errors: &mut Vec<IdeDiagnostic>,
-) {
-    let mut seen = FxHashMap::default();
-    for method in methods {
-        if let Some(prev) = seen.get(&method.get_name_ident(db)) {
-            errors.push(
-                DuplicateError::MethodProt {
-                    method1: *prev,
-                    method2: *method,
-                }
-                .to_diagnostic(db),
-            );
-        } else {
-            seen.insert(method.name(db), *method);
-        }
-    }
 }

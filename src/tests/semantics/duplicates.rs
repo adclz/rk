@@ -229,14 +229,14 @@ END_INTERFACE
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0106] Error: duplicate definitions
-       ,-[ file:///test0.st:3:12 ]
+       ,-[ file:///test0.st:4:12 ]
        |
      3 |     METHOD m1 END_METHOD
        |            ^|  
-       |             `-- duplicate method 'm1'
+       |             `-- method 'm1' is already defined here
      4 |     METHOD m1 END_METHOD
        |            ^|  
-       |             `-- method 'm1' is already defined here
+       |             `-- duplicate method 'm1'
     ---'
     ");
 }
@@ -252,14 +252,14 @@ END_CLASS
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0105] Error: duplicate definitions
-       ,-[ file:///test0.st:3:12 ]
+       ,-[ file:///test0.st:4:12 ]
        |
      3 |     METHOD m1 END_METHOD
        |            ^|  
-       |             `-- duplicate method 'm1'
+       |             `-- method 'm1' is already defined here
      4 |     METHOD m1 END_METHOD
        |            ^|  
-       |             `-- method 'm1' is already defined here
+       |             `-- duplicate method 'm1'
     ---'
     ");
 }
@@ -275,14 +275,14 @@ END_FUNCTION_BLOCK
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0105] Error: duplicate definitions
-       ,-[ file:///test0.st:3:12 ]
+       ,-[ file:///test0.st:4:12 ]
        |
      3 |     METHOD m1 END_METHOD
        |            ^|  
-       |             `-- duplicate method 'm1'
+       |             `-- method 'm1' is already defined here
      4 |     METHOD m1 END_METHOD
        |            ^|  
-       |             `-- method 'm1' is already defined here
+       |             `-- duplicate method 'm1'
     ---'
     ");
 }
