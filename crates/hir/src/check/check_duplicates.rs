@@ -1,15 +1,10 @@
-use auto_lsp::default::db::file::File;
 use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
-use rustc_hash::FxHashMap;
 
 use crate::{
-    HasName, HirNodeInfo,
+    HasName,
     check::errors::{analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError},
-    hir_def::{
-        namespace::NamespaceDecl,
-        pous::{pou::Pou},
-    },
+    hir_def::{namespace::NamespaceDecl, pous::pou::Pou},
     hir_ty::name_res::{namespace_pou_index, pou_index},
 };
 
@@ -22,6 +17,7 @@ pub fn check_duplicate_pous<'db>(
 ) {
     let indexed = match *pou_index(db, pou.get_name_ident(db)) {
         Some(indexed) => indexed,
+        // If a POU is not in the index, we can't say it's a duplicate
         None => return,
     };
 
@@ -42,27 +38,24 @@ pub fn check_duplicate_pous<'db>(
 pub fn check_duplicate_namespaces<'db>(
     db: &'db dyn WorkspaceDataBase,
     namespace: NamespaceDecl<'db>,
-) -> FxHashMap<File, Vec<IdeDiagnostic>> {
-    let mut errors: FxHashMap<File, Vec<IdeDiagnostic>> = FxHashMap::default();
-    let path = *namespace.path(db);
-
+    errors: &mut Vec<IdeDiagnostic>,
+) {
     for pou in namespace.pous(db).iter() {
-        if let Some(indexed) = *namespace_pou_index(db, path, pou.get_name_ident(db)) {
-            // If this POU is not the indexed one, it's a duplicate
-            if *pou != indexed {
-                errors
-                    .entry(pou.get_scope_id(db).file(db))
-                    .or_default()
-                    .push(
+        match *namespace_pou_index(db, *namespace.path(db), pou.get_name_ident(db)) {
+            Some(indexed) => {
+                // If this POU is not the indexed one, it's a duplicate
+                if *pou != indexed {
+                    errors.push(
                         DuplicateError::Pou {
                             pou1: *pou,
                             pou2: indexed,
                         }
                         .to_diagnostic(db),
                     );
+                }
             }
+            // If a POU is not in the index, we can't say it's a duplicate
+            _ => (),
         }
     }
-
-    errors
 }

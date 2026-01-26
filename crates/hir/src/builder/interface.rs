@@ -8,7 +8,7 @@ use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use crate::hir_def::pous::interface::{Interface, MethodPrototype};
 use crate::hir_def::pous::pou::Pou;
-use crate::hir_def::scope::{Scope, ScopeKind};
+use crate::hir_def::scope::{Scope, ScopeId, ScopeKind};
 use auto_lsp::anyhow;
 
 impl<'db> SemanticIndexBuilder<'db> {
@@ -44,11 +44,15 @@ impl<'db> SemanticIndexBuilder<'db> {
         let methods = interface
             .prototype
             .iter()
-            .filter_map(|m| match self.parse_method_prototype(m.cast(self.ast)) {
-                Ok(method) => Some(method),
-                Err(error) => {
-                    self.errors.push(error);
-                    None
+            .filter_map(|m| {
+                let previous_scope = self.current_scope;
+
+                match self.parse_method_prototype(m.cast(self.ast), previous_scope) {
+                    Ok(method) => Some(method),
+                    Err(error) => {
+                        self.errors.push(error);
+                        None
+                    }
                 }
             })
             .collect::<Vec<_>>();
@@ -89,7 +93,11 @@ impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_method_prototype(
         &mut self,
         method: &ast::generated::MethodPrototype,
+        previous_scope: ScopeId<'db>,
     ) -> anyhow::Result<MethodPrototype<'db>, AnalysisError<'db>> {
+        let scope_id = self.generate_scope_id();
+        self.current_scope = scope_id;
+
         let name = Ident::from_node(self.db, self.file, method.name.cast(self.ast))?;
         let return_type = method
             .data_type
@@ -117,14 +125,28 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
         }
 
-        Ok(MethodPrototype::new(
+        let result = MethodPrototype::new(
             self.db,
             name,
             method.name.cast(self.ast).into(),
             return_type,
             variables,
             method.into(),
-            self.current_scope,
-        ))
+            scope_id,
+        );
+
+        let scope = Scope::new(
+            self.file,
+            ScopeKind::MethodProt(result),
+            vec![],
+            scope_id,
+            Visibility::empty(),
+            Some(previous_scope),
+        );
+
+        self.scope_keys
+            .insert(scope_id.scope(self.db), Arc::new(scope));
+
+        Ok(result)
     }
 }

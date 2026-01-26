@@ -18,9 +18,7 @@ use crate::{
 
 use crate::{
     HirNodeInfo,
-    check::check_duplicates::{
-        check_duplicate_namespaces,
-    },
+    check::check_duplicates::check_duplicate_namespaces,
     hir_def::{scope::ScopeId, semantic_index::SemanticIndex},
     hir_ty::{body_inference::infer_body_scope, signature::infer_signature},
 };
@@ -56,16 +54,15 @@ impl<'db> SemanticIndex<'db> {
             .iter()
             .for_each(|err| errors.push(err.to_diagnostic(db)));
 
+        // POUs declared globally 
         self.global_pous.iter().for_each(|pou| {
             check_duplicate_pous(db, *pou, errors);
             pou.get_scope_id(db).check(db, errors);
         });
 
-        // Namespaces
+        // Namespaces are stored as vec inside SemanticIndex so we don't need to recurse
         self.namespaces.iter().for_each(|namespace| {
-            check_duplicate_namespaces(db, *namespace)
-                .values()
-                .for_each(|diags| errors.extend_from_slice(diags));
+            check_duplicate_namespaces(db, *namespace, errors);
             namespace.scope_id(db).check(db, errors)
         });
 
@@ -78,6 +75,8 @@ impl<'db> SemanticIndex<'db> {
 
 impl<'db> ScopeId<'db> {
     fn check(&self, db: &'db dyn WorkspaceDataBase, errors: &mut Vec<IdeDiagnostic>) {
+        // Runs both inference queries and collects errors
+
         infer_signature(db, *self).errors.iter().for_each(|err| {
             errors.push(err.clone());
         });
@@ -86,23 +85,24 @@ impl<'db> ScopeId<'db> {
             errors.push(err.clone());
         });
 
+        // Methods and nested POUs are not inferred by the result of scope inference
+        // so we need to treat them separately by calling check again on their scopes
 
-        // Methods and nested POUs are not part of the scope signature inference,
-        // so we need to check them separately.
+        self.pous(db).map(|pous| {
+            pous.iter().for_each(|pou| {
+                pou.get_scope_id(db).check(db, errors);
+            });
+        });
 
-        self.method_declarations(db).iter().for_each(|methods| {
+        self.method_declarations(db).map(|methods| {
             methods.iter().for_each(|method| {
                 method.get_scope_id(db).check(db, errors);
             });
         });
 
         self.method_prototypes(db).iter().for_each(|methods| {
-            
-        });
-
-        self.pous(db).iter().for_each(|pous| {
-            pous.iter().for_each(|pou| {
-                pou.get_scope_id(db).check(db, errors);
+            methods.iter().for_each(|method| {
+                method.get_scope_id(db).check(db, errors);
             });
         });
     }
