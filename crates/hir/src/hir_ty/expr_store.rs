@@ -2,7 +2,10 @@ use db::WorkspaceDataBase;
 
 use crate::{
     hir_def::{
-        expressions::expression::{Elementary, Expr, ExprKind, InitExpr, InitExprKind, PathExpr, PathExprKind, PrimaryExpr, VarAccess},
+        expressions::expression::{
+            Elementary, Expr, ExprKind, InitExpr, InitExprKind, PathExpr, PathExprKind,
+            PrimaryExpr, VarAccess,
+        },
         interned::{
             identifier::{Ident, SpanIdent},
             namespace::{NamespaceAccess, SpanNamespacePath},
@@ -96,33 +99,35 @@ impl<'db> PathExpr<'db> {
     ) -> Option<(NamespaceAccess<'db>, Ident)> {
         let flatten = self.flatten(db);
 
-        // Collect FIELD.FIELD.FIELD prefix
-        let mut frags = Vec::new();
+        // Extract only FIELD accesses (ignore INDEX and DEREF)
+        let mut field_idents: Vec<SpanIdent<'db>> = flatten
+            .iter()
+            .filter_map(|step| match step {
+                PathExprWalkStep::Field { ident, .. } => Some(*ident),
+                _ => None,
+            })
+            .collect();
 
-        for step in flatten.iter().rev() {
-            match step {
-                PathExprWalkStep::Field { ident, .. } => frags.push(*ident),
-                _ => break,
-            }
-        }
-
-        if frags.is_empty() {
+        if field_idents.is_empty() {
             return None;
         }
 
-        let first = frags.remove(0);
+        // NamespaceAccess expects: target (last ident) + prefix (all before)
+        // flatten gives us [a, b, c, d] for a.b.c.d
+        // We want: target=d, prefix=[a, b, c]
+        let target = field_idents.pop().unwrap();
 
         let scope = self.scope_id(db);
         let access = NamespaceAccess::new(
             db,
-            match frags.len() {
-                0 => None,
-                _ => Some(SpanNamespacePath::from((db, &frags, scope))),
+            match field_idents.is_empty() {
+                true => None,
+                false => Some(SpanNamespacePath::from((db, &field_idents, scope))),
             },
-            first,
+            target,
         );
 
-        Some((access, *first)) // returning `first` is optional
+        Some((access, *target))
     }
 }
 
