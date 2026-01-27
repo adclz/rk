@@ -3,7 +3,7 @@ use auto_lsp::{
     lsp_types::request::{GotoImplementationParams, GotoImplementationResponse},
 };
 use db::WorkspaceDataBase;
-use ide_proto::to_proto::{AsProtocol, hir_node::descendant_at};
+use ide_proto::{walk::descendant_at};
 
 pub fn go_to_implementation(
     db: &impl WorkspaceDataBase,
@@ -26,5 +26,5 @@ pub fn go_to_implementation(
                 params.text_document_position_params.position
             )
         })?;
-    Ok(descendant_at(db, file, position).and_then(|s| s.as_proto().implementation(db)))
+    Ok(descendant_at(db, file, position).and_then(|s| s.implementation(db)))
 }

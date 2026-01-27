@@ -3,7 +3,7 @@ use auto_lsp::{
     lsp_types::{GotoDefinitionParams, GotoDefinitionResponse},
 };
 use db::WorkspaceDataBase;
-use ide_proto::to_proto::{AsProtocol, hir_node::descendant_at};
+use ide_proto::{walk::descendant_at};
 
 pub fn go_to_definition(
     db: &impl WorkspaceDataBase,
@@ -26,5 +26,5 @@ pub fn go_to_definition(
                 params.text_document_position_params.position
             )
         })?;
-    Ok(descendant_at(db, file, position).and_then(|s| s.as_proto().definition(db)))
+    Ok(descendant_at(db, file, position).and_then(|s| s.definition(db)))
 }

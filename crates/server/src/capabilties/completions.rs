@@ -3,7 +3,7 @@ use auto_lsp::{
     lsp_types::{CompletionParams, CompletionResponse},
 };
 use db::WorkspaceDataBase;
-use ide_proto::to_proto::{AsProtocol, hir_node::descendant_at};
+use ide_proto::{walk::descendant_at};
 
 pub fn completions(
     db: &impl WorkspaceDataBase,
@@ -28,15 +28,15 @@ pub fn completions(
     };
 
     Ok(descendant_at(db, file, offset)
-        .map(|s| CompletionResponse::Array(s.as_proto().completion(db, offset).unwrap_or_default()))
+        .map(|s| CompletionResponse::Array(s.completion(db, offset).unwrap_or_default()))
         .or_else(|| {
             Some(CompletionResponse::Array(vec![
-                ide_proto::completions::static_snippets::namespace(),
-                ide_proto::completions::static_snippets::function(),
-                ide_proto::completions::static_snippets::function_block(),
-                ide_proto::completions::static_snippets::class(),
-                ide_proto::completions::static_snippets::interface(),
-                ide_proto::completions::static_snippets::type_(),
+                ide_proto::handlers::completion::static_snippets::namespace(),
+                ide_proto::handlers::completion::static_snippets::function(),
+                ide_proto::handlers::completion::static_snippets::function_block(),
+                ide_proto::handlers::completion::static_snippets::class(),
+                ide_proto::handlers::completion::static_snippets::interface(),
+                ide_proto::handlers::completion::static_snippets::type_(),
             ]))
         }))
 }

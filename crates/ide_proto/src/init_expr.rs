@@ -6,7 +6,8 @@ use db::WorkspaceDataBase;
 use hir::{HirNodeInfo, hir_def::expressions::expression::InitExprKind};
 
 use crate::{
-    to_proto::{ToProtocol, hir_node::InitExprWithTypeContext},
+    hir_node::InitExprWithTypeContext,
+    to_proto::{ToProtocol},
     typ::TypeProto,
 };
 

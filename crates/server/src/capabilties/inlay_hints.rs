@@ -6,7 +6,7 @@ use auto_lsp::{
 };
 use db::WorkspaceDataBase;
 use hir::hir_def::semantic_index::semantic_index;
-use ide_proto::to_proto::{AsProtocol, walk::WalkHir};
+use ide_proto::{walk::WalkHir};
 
 pub fn inlay_hints<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
     db: &Db,
@@ -24,7 +24,7 @@ pub fn inlay_hints<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
 
     let sema = semantic_index(db, file);
     let _ = sema.walk_hir(db, &mut |node| {
-        if let Some(inlay_hint) = node.as_proto().inlay_hint(db) {
+        if let Some(inlay_hint) = node.inlay_hint(db) {
             results.push(inlay_hint);
         }
         ControlFlow::Continue(())

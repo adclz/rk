@@ -4,9 +4,9 @@ use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::InlayHint;
 use db::RootDatabase;
 use hir::hir_def::semantic_index::semantic_index;
-use ide_proto::to_proto::ToProtocol;
-use ide_proto::to_proto::hir_node::HirNode;
-use ide_proto::to_proto::walk::WalkHir;
+use ide_proto::handlers::InlayHintHandler;
+use ide_proto::hir_node::HirNode;
+use ide_proto::walk::WalkHir;
 use insta::assert_debug_snapshot;
 use rstest::rstest;
 
@@ -306,7 +306,7 @@ END_FUNCTION"#;
     let mut result = vec![];
     let _ = sema.walk_hir(&with_db, &mut |n| {
         match n {
-            HirNode::InitExprWithType(stmt) => {
+            HirNode::InitExpr(stmt) => {
                 if let Some(inlay_hint) = stmt.inlay_hint(&with_db) {
                     result.push(inlay_hint);
                 }

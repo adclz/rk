@@ -5,7 +5,7 @@ use auto_lsp::{
 };
 use db::WorkspaceDataBase;
 use hir::hir_def::semantic_index::semantic_index;
-use ide_proto::to_proto::{AsProtocol, walk::WalkHir};
+use ide_proto::{walk::WalkHir};
 
 pub fn semantic_tokens_full(
     db: &impl WorkspaceDataBase,
@@ -22,7 +22,7 @@ pub fn semantic_tokens_full(
     let sema = semantic_index(db, file);
 
     let _ = sema.walk_hir(db, &mut |node| {
-        node.as_proto().semantic_tokens(db, &mut builder);
+        node.semantic_tokens(db, &mut builder);
         std::ops::ControlFlow::Continue(())
     });
 

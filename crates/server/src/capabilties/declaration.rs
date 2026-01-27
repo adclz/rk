@@ -3,7 +3,7 @@ use auto_lsp::{
     lsp_types::request::{GotoDeclarationParams, GotoDeclarationResponse},
 };
 use db::WorkspaceDataBase;
-use ide_proto::to_proto::{AsProtocol, hir_node::descendant_at};
+use ide_proto::{walk::descendant_at};
 
 pub fn go_to_declaration(
     db: &impl WorkspaceDataBase,
@@ -27,5 +27,5 @@ pub fn go_to_declaration(
             )
         })?;
 
-    Ok(descendant_at(db, file, position).and_then(|s| s.as_proto().declaration(db)))
+    Ok(descendant_at(db, file, position).and_then(|s| s.declaration(db)))
 }

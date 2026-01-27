@@ -4,7 +4,7 @@ use auto_lsp::{
 };
 use db::WorkspaceDataBase;
 use hir::hir_def::semantic_index::semantic_index;
-use ide_proto::to_proto::{AsProtocol, hir_node::descendant_at};
+use ide_proto::{walk::descendant_at};
 
 pub fn hover(db: &impl WorkspaceDataBase, params: HoverParams) -> anyhow::Result<Option<Hover>> {
     let _hover_span = tracing::info_span!("hover").entered();
@@ -30,7 +30,7 @@ pub fn hover(db: &impl WorkspaceDataBase, params: HoverParams) -> anyhow::Result
     let sema = semantic_index(db, file);
 
     let symbol = descendant_at(db, file, position);
-    match symbol.and_then(|s| s.as_proto().hover(db, position)) {
+    match symbol.and_then(|s| s.hover(db, position)) {
         Some(hover) => Ok(Some(hover)),
         None => Ok(None),
     }

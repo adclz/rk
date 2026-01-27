@@ -5,9 +5,9 @@ use auto_lsp::lsp_types::HoverContents;
 use db::RootDatabase;
 use hir::HasName;
 use hir::hir_def::semantic_index::semantic_index;
-use ide_proto::to_proto::ToProtocol;
-use ide_proto::to_proto::hir_node::HirNode;
-use ide_proto::to_proto::walk::WalkHir;
+use ide_proto::handlers::HoverHandler;
+use ide_proto::hir_node::HirNode;
+use ide_proto::walk::WalkHir;
 use insta::assert_snapshot;
 use rstest::rstest;
 

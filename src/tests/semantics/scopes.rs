@@ -14,7 +14,7 @@ use hir::{
         ty::Type,
     },
 };
-use ide_proto::to_proto::{hir_node::HirNode, walk::WalkHir};
+use ide_proto::{hir_node::HirNode, walk::WalkHir};
 
 use crate::tests::utils::find_namespace_with_name;
 use crate::tests::utils::test_diagnostics;

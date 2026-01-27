@@ -12,7 +12,7 @@ impl<'db> ToProtocol<'db> for VariableAccess<'db> {
         infer
             .type_of_variable_access_with_adjustments(db, *self)
             .and_then(|typ| typ.declaration(db))
-    }
+    } 
 
     fn definition(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDefinitionResponse> {
         let infer = infer_body(db, self.scope_id(db));

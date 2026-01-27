@@ -6,7 +6,7 @@ use auto_lsp::{
 };
 use db::WorkspaceDataBase;
 use hir::hir_def::semantic_index::semantic_index;
-use ide_proto::to_proto::{AsProtocol, walk::WalkHir};
+use ide_proto::{walk::WalkHir};
 
 pub fn code_lens(
     db: &impl WorkspaceDataBase,
@@ -24,7 +24,7 @@ pub fn code_lens(
     let sema = semantic_index(db, file);
 
     let _ = sema.walk_hir(db, &mut |node| {
-        if let Some(code_lens) = node.as_proto().code_lens(db) {
+        if let Some(code_lens) = node.code_lens(db) {
             results.push(code_lens);
         }
         ControlFlow::Continue(())

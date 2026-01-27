@@ -5,7 +5,7 @@ use auto_lsp::{
 };
 use db::WorkspaceDataBase;
 use hir::hir_def::semantic_index::semantic_index;
-use ide_proto::to_proto::ToProtocol;
+use ide_proto::handlers::DocumentSymbolsHandler;
 
 pub fn document_symbols(
     db: &impl WorkspaceDataBase,

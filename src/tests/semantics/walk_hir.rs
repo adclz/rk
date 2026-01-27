@@ -2,9 +2,9 @@ use std::ops::ControlFlow;
 
 use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
+use hir::HirNodeInfo;
 use hir::hir_def::semantic_index::semantic_index;
-use ide_proto::to_proto::AsProtocol;
-use ide_proto::to_proto::walk::WalkHir;
+use ide_proto::walk::WalkHir;
 use insta::assert_debug_snapshot;
 use insta::assert_snapshot;
 use rstest::rstest;
@@ -212,7 +212,7 @@ END_FUNCTION_BLOCK"#;
     let mut nodes = vec![];
 
     let _ = sema.walk_hir(&with_db, &mut |node| {
-        nodes.push(node.as_proto().get_id(&with_db).id());
+        nodes.push(node.get_id(&with_db).id());
         ControlFlow::Continue(())
     });
 
@@ -255,7 +255,7 @@ END_FUNCTION_BLOCK"#;
     let mut nodes = vec![];
 
     let _ = sema.walk_hir(&with_db, &mut |node| {
-        nodes.push(node.as_proto().get_id(&with_db).id());
+        nodes.push(node.get_id(&with_db).id());
         ControlFlow::Continue(())
     });
 

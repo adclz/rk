@@ -1,5 +1,6 @@
 use std::ops::ControlFlow;
 
+use auto_lsp::default::db::file::File;
 use db::WorkspaceDataBase;
 use hir::{
     HirNodeInfo,
@@ -11,15 +12,36 @@ use hir::{
         },
         namespace::NamespaceDecl,
         pous::{pou::Pou, variable::VariableDecl},
-        semantic_index::{SemanticIndex, get_scope},
+        semantic_index::{SemanticIndex, get_scope, semantic_index},
         using::Using,
     },
-    hir_ty::{
-        signature::inheritance::MethodRef, signature::infer_signature,
-    },
+    hir_ty::signature::{infer_signature, inheritance::MethodRef},
 };
 
-use crate::to_proto::hir_node::{HirNode, SpanNamespaceAccessContext};
+use crate::hir_node::{HirNode};
+
+
+pub fn descendant_at<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    file: File,
+    offset: usize,
+) -> Option<HirNode<'db>> {
+    let mut best_match: Option<HirNode<'db>> = None;
+
+    let _ = semantic_index(db, file).walk_hir(db, &mut |node| {
+        let range = node.get_span(db);
+        // Only consider nodes that contain the offset
+        if range.start_byte <= offset && offset <= range.end_byte {
+            // Always update the best match when we find a containing node
+            // This ensures we get the deepest (last visited) node in the tree
+            best_match = Some(node);
+        }
+        ControlFlow::Continue(())
+    });
+
+    best_match
+}
+
 
 pub trait WalkHir<'db> {
     fn walk_hir<F>(&self, db: &'db dyn WorkspaceDataBase, f: &mut F) -> ControlFlow<()>
@@ -104,15 +126,15 @@ impl<'db> WalkHir<'db> for Pou<'db> {
             }
             Pou::FunctionBlock(fb) => {
                 if let Some(extends) = fb.extends(db) {
-                    f(HirNode::SpanNamespaceAccess(
+                    /*f(HirNode::SpanNamespaceAccess(
                         SpanNamespaceAccessContext::Extends(extends),
-                    ))?;
+                    ))?;*/
                 }
 
                 for implements in fb.implements(db) {
-                    f(HirNode::SpanNamespaceAccess(
+                    /*f(HirNode::SpanNamespaceAccess(
                         SpanNamespaceAccessContext::Implements(implements),
-                    ))?;
+                    ))?;*/
                 }
 
                 for using in &scope.usings {
@@ -133,15 +155,15 @@ impl<'db> WalkHir<'db> for Pou<'db> {
             }
             Pou::Class(class) => {
                 if let Some(extends) = class.extends(db) {
-                    f(HirNode::SpanNamespaceAccess(
+                    /*f(HirNode::SpanNamespaceAccess(
                         SpanNamespaceAccessContext::Extends(extends),
-                    ))?;
+                    ))?;*/
                 }
 
                 for implements in class.implements(db) {
-                    f(HirNode::SpanNamespaceAccess(
+                    /*f(HirNode::SpanNamespaceAccess(
                         SpanNamespaceAccessContext::Implements(implements),
-                    ))?;
+                    ))?;*/
                 }
 
                 for using in &scope.usings {
@@ -158,9 +180,9 @@ impl<'db> WalkHir<'db> for Pou<'db> {
             Pou::Interface(it) => {
                 if let Some(extends) = it.extends(db) {
                     for implements in extends {
-                        f(HirNode::SpanNamespaceAccess(
+                        /*f(HirNode::SpanNamespaceAccess(
                             SpanNamespaceAccessContext::Implements(implements),
-                        ))?
+                        ))?*/
                     }
                 }
 
@@ -179,7 +201,7 @@ impl<'db> WalkHir<'db> for Pou<'db> {
                 if let Some(_init_expr) = dt.init(db) {
                     let infer = infer_signature(db, dt.scope_id(db));
                     for (init_expr, typ) in &infer.init_expr_result.type_of_expr {
-                        f(HirNode::InitExprWithType((*init_expr, *typ).into()))?;
+                        //f(HirNode::InitExprWithType((*init_expr, *typ).into()))?;
                     }
                 }
             }
@@ -199,7 +221,7 @@ impl<'db> WalkHir<'db> for VariableDecl<'db> {
         if let Some(_init_expr) = self.init(db) {
             let infer = infer_signature(db, self.scope_id(db));
             for (init_expr, typ) in &infer.init_expr_result.type_of_expr {
-                f(HirNode::InitExprWithType((*init_expr, *typ).into()))?;
+                //f(HirNode::InitExprWithType((*init_expr, *typ).into()))?;
             }
         }
         ControlFlow::Continue(())

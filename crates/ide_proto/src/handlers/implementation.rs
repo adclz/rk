@@ -1,9 +1,39 @@
-use auto_lsp::{default::db::file::File, salsa};
+use auto_lsp::{
+    default::db::file::File,
+    lsp_types::{LocationLink, request::GotoImplementationResponse},
+    salsa,
+};
 use db::WorkspaceDataBase;
 use hir::{
     HirNodeInfo,
     hir_def::{pous::pou::Pou, semantic_index::semantic_index},
 };
+
+use crate::handlers::ImplementationHandler;
+
+impl<'db> ImplementationHandler<'db> for Pou<'db> {
+    fn implementation(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> Option<GotoImplementationResponse> {
+        match self {
+            Pou::Class(_) | Pou::Interface(_) => {
+                let links = find_all_implementations(db, *self)
+                    .iter()
+                    .map(|pou| LocationLink {
+                        target_uri: pou.get_scope_id(db).file(db).url(db).clone(),
+                        target_range: pou.get_span(db).lsp(),
+                        target_selection_range: pou.get_span(db).lsp(),
+                        origin_selection_range: Some(self.get_span(db).lsp()),
+                    })
+                    .collect();
+
+                Some(GotoImplementationResponse::Link(links))
+            }
+            _ => None,
+        }
+    }
+}
 
 // todo
 // this could be optimized by filtering out files that do not contains the pou's name
