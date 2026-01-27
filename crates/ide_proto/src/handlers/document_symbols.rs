@@ -1,25 +1,214 @@
-use auto_lsp::core::document_symbols_builder::DocumentSymbolsBuilder;
+use auto_lsp::{core::document_symbols_builder::DocumentSymbolsBuilder, lsp_types::SymbolKind};
 use db::WorkspaceDataBase;
-use hir::hir_def::{interned::namespace::NamespaceAccess, namespace::NamespaceDecl, pous::pou::Pou};
+use hir::{
+    HasName, HirNodeInfo,
+    hir_def::{
+        expressions::spec::{ElementarySpec, SpecKind},
+        namespace::NamespaceDecl,
+        pous::{pou::Pou, variable::VariableDecl},
+    },
+    hir_ty::{signature::inheritance::MethodRef, ty::Type},
+};
 
 use crate::handlers::DocumentSymbolsHandler;
 
 impl<'db> DocumentSymbolsHandler<'db> for NamespaceDecl<'db> {
     fn document_symbols(
-            &'db self,
-            db: &'db dyn WorkspaceDataBase,
-            builder: &mut DocumentSymbolsBuilder,
-        ) {
-        
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        builder: &mut DocumentSymbolsBuilder,
+    ) {
+        let mut nested_builder = DocumentSymbolsBuilder::default();
+        self.namespaces(db)
+            .iter()
+            .for_each(|ns| ns.document_symbols(db, &mut nested_builder));
+
+        self.pous(db)
+            .iter()
+            .for_each(|pou| pou.document_symbols(db, &mut nested_builder));
+
+        let name = self.path(db).to_string(db);
+        let name = match name.len() {
+            0 => "?".into(),
+            _ => name,
+        };
+
+        builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
+            name,
+            detail: Some("NAMESPACE".to_string()),
+            kind: auto_lsp::lsp_types::SymbolKind::NAMESPACE, // Namespace
+            deprecated: None,
+            range: self.get_span(db).lsp(),
+            selection_range: self.name_span(db).lsp(),
+            children: Some(nested_builder.finalize()),
+            tags: None,
+        });
     }
 }
 
 impl<'db> DocumentSymbolsHandler<'db> for Pou<'db> {
     fn document_symbols(
-            &'db self,
-            db: &'db dyn WorkspaceDataBase,
-            builder: &mut DocumentSymbolsBuilder,
-        ) {
-        
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        builder: &mut DocumentSymbolsBuilder,
+    ) {
+        let mut nested_builder = DocumentSymbolsBuilder::default();
+        match self {
+            Pou::FunctionBlock(fb) => {
+                fb.variables(db)
+                    .iter()
+                    .for_each(|var| var.document_symbols(db, &mut nested_builder));
+                fb.methods(db)
+                    .iter()
+                    .for_each(|m| MethodRef::from(m).document_symbols(db, &mut nested_builder));
+            }
+            Pou::Function(f) => {
+                f.variables(db)
+                    .iter()
+                    .for_each(|var| var.document_symbols(db, &mut nested_builder));
+            }
+            Pou::Class(c) => {
+                c.variables(db)
+                    .iter()
+                    .for_each(|var| var.document_symbols(db, &mut nested_builder));
+                c.methods(db)
+                    .iter()
+                    .for_each(|m| MethodRef::from(m).document_symbols(db, &mut nested_builder));
+            }
+            Pou::Interface(i) => {
+                i.methods(db)
+                    .iter()
+                    .for_each(|m| MethodRef::from(m).document_symbols(db, &mut nested_builder));
+            }
+            _ => {}
+        }
+
+        let name = self.get_name_ident(db).text(db).to_string();
+        let name = match name.len() {
+            0 => "?".into(),
+            _ => name,
+        };
+
+        builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
+            name,
+            detail: Some(match self {
+                Pou::FunctionBlock(_) => "FUNCTION_BLOCK".to_string(),
+                Pou::Function(_) => "FUNCTION".to_string(),
+                Pou::Class(_) => "CLASS".to_string(),
+                Pou::DataType(dt) => Type::new_spec(db, dt.spec(db)).type_name(db),
+                Pou::Interface(_) => "INTERFACE".to_string(),
+            }),
+            kind: match self {
+                Pou::FunctionBlock(_) => SymbolKind::FUNCTION,
+                Pou::Function(_) => SymbolKind::FUNCTION,
+                Pou::Class(_) => SymbolKind::CLASS,
+                Pou::DataType(dt) => match dt.spec(db).kind(db) {
+                    SpecKind::Enum(_) => SymbolKind::ENUM,
+                    SpecKind::Struct(_) => SymbolKind::STRUCT,
+                    SpecKind::Array(_) | SpecKind::ArrayConformand(_) | SpecKind::Subrange(_) => {
+                        SymbolKind::ARRAY
+                    }
+                    SpecKind::Simple(simple) => match simple {
+                        ElementarySpec::Bool
+                        | ElementarySpec::FEDGEBool
+                        | ElementarySpec::REDGEBool => SymbolKind::BOOLEAN,
+                        ElementarySpec::Byte
+                        | ElementarySpec::Word
+                        | ElementarySpec::DWord
+                        | ElementarySpec::LWord
+                        | ElementarySpec::SInt
+                        | ElementarySpec::Int
+                        | ElementarySpec::DInt
+                        | ElementarySpec::LInt
+                        | ElementarySpec::USInt
+                        | ElementarySpec::UInt
+                        | ElementarySpec::UDInt
+                        | ElementarySpec::ULInt
+                        | ElementarySpec::Real
+                        | ElementarySpec::LReal => SymbolKind::NUMBER,
+                        ElementarySpec::Char
+                        | ElementarySpec::WChar
+                        | ElementarySpec::String
+                        | ElementarySpec::WString => SymbolKind::STRING,
+                        ElementarySpec::Time
+                        | ElementarySpec::LTime
+                        | ElementarySpec::Tod
+                        | ElementarySpec::LTod
+                        | ElementarySpec::DateAndTime
+                        | ElementarySpec::LDateTime
+                        | ElementarySpec::Date
+                        | ElementarySpec::LDate => SymbolKind::EVENT,
+                    },
+                    _ => SymbolKind::TYPE_PARAMETER,
+                },
+                Pou::Interface(_) => SymbolKind::INTERFACE,
+            },
+            deprecated: None,
+            range: self.get_span(db).lsp(),
+            selection_range: self.get_name_span(db).lsp(),
+            children: Some(nested_builder.finalize()),
+            tags: None,
+        });
+    }
+}
+
+impl<'db> DocumentSymbolsHandler<'db> for VariableDecl<'db> {
+    fn document_symbols(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        builder: &mut DocumentSymbolsBuilder,
+    ) {
+        let name = self.name(db).text(db).to_string();
+        let name = match name.len() {
+            0 => "?".into(),
+            _ => name,
+        };
+
+        builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
+            name,
+            detail: Some(Type::new_spec(db, self.spec(db)).type_name(db)),
+            kind: SymbolKind::VARIABLE,
+            deprecated: None,
+            range: self.get_span(db).lsp(),
+            selection_range: self.get_name_span(db).lsp(),
+            children: None,
+            tags: None,
+        });
+    }
+}
+
+impl<'db> DocumentSymbolsHandler<'db> for MethodRef<'db> {
+    fn document_symbols(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        builder: &mut DocumentSymbolsBuilder,
+    ) {
+        let name = self.get_name_ident(db).text(db).to_string();
+        let name = match name.len() {
+            0 => "?".into(),
+            _ => name,
+        };
+
+        let mut nested_builder = DocumentSymbolsBuilder::default();
+        self.variables(db)
+            .iter()
+            .for_each(|var| var.document_symbols(db, &mut nested_builder));
+
+        builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
+            name,
+            detail: Some(format!(
+                "METHOD{}",
+                match self.return_type(db) {
+                    Some(dt) => format!(" : {}", Type::new_spec(db, *dt).type_name(db)),
+                    None => "".into(),
+                }
+            )),
+            kind: SymbolKind::METHOD,
+            deprecated: None,
+            range: self.get_span(db).lsp(),
+            selection_range: self.get_name_span(db).lsp(),
+            children: Some(nested_builder.finalize()),
+            tags: None,
+        });
     }
 }

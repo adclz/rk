@@ -1,6 +1,5 @@
 use auto_lsp::{core::{document_symbols_builder::DocumentSymbolsBuilder, semantic_tokens_builder::SemanticTokensBuilder}, lsp_types::{CodeLens, CompletionItem, GotoDefinitionResponse, Hover, InlayHint, request::{GotoDeclarationResponse, GotoImplementationResponse}}};
 use db::WorkspaceDataBase;
-use hir::hir_def::pous::pou::Pou;
 
 pub mod code_lens;
 pub mod completion;
