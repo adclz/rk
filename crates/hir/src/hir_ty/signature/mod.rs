@@ -9,10 +9,7 @@ use crate::{
         analysis_error::ToIdeDiagnostic, e2_resolve::ResolveError,
     },
     hir_def::{
-        expressions::spec::{Spec, SpecKind},
-        pous::{pou::Pou},
-        scope::{ScopeId, ScopeKind},
-        semantic_index::get_scope,
+        expressions::spec::{Spec, SpecKind}, interned::namespace::NamespaceAccess, pous::pou::Pou, scope::{ScopeId, ScopeKind}, semantic_index::get_scope
     },
     hir_ty::{
         body::BodyInferenceResult,
@@ -56,6 +53,9 @@ pub struct Signature<'db> {
     /// Mapping of specs to their inferred types
     pub type_of_specs: FxHashMap<Spec<'db>, Type<'db>>,
 
+    /// Mapping of namespace accesses to their inferred POUs
+    pub namespace_access_to_pou: FxHashMap<NamespaceAccess<'db>, Type<'db>>,
+
     /// Initializer expression inference results
     pub init_expr_result: InitExprInferenceResult<'db>,
 
@@ -71,6 +71,7 @@ impl<'db> Signature<'db> {
         Self {
             scope,
             type_of_specs: FxHashMap::default(),
+            namespace_access_to_pou: FxHashMap::default(),
             init_expr_result: InitExprInferenceResult::new(scope),
             body_infer_result: BodyInferenceResult::new(scope),
             errors: Vec::new(),

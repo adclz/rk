@@ -4,11 +4,11 @@ use hir::{
     AstId, HirNodeInfo,
     hir_def::{
         expressions::{
-            expression::{BeginPathExpr, Expr, InitExpr, ParamAssign, ParamAssignKind, PathExpr, VariableAccess},
+            expression::{Expr, InitExpr, ParamAssign, ParamAssignKind, PathExpr, VariableAccess},
             spec::{Spec, StructElement},
         }, interned::namespace::SpanNamespaceAccess, namespace::NamespaceDecl, pous::{pou::Pou, variable::VariableDecl}, scope::ScopeId, using::Using
     },
-    hir_ty::signature::inheritance::MethodRef,
+    hir_ty::{signature::inheritance::MethodRef, ty::Type},
 };
 
 use crate::{comment_index::comment_index, handlers::{CodeLensHandler, DeclarationHandler, DefinitionHandler, DocumentSymbolsHandler, HoverHandler, InlayHintHandler, SemanticTokensHandler}};
@@ -16,19 +16,18 @@ use crate::{comment_index::comment_index, handlers::{CodeLensHandler, Declaratio
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HirNode<'db> {
     Namespace(NamespaceDecl<'db>),
-    NamespaceAccess(SpanNamespaceAccess<'db>),
+    Using(Using<'db>),
     PouDecl(Pou<'db>),
-    VariableDecl(VariableDecl<'db>),
-    StructElement(StructElement<'db>),
-    Spec(Spec<'db>),
+    NamespaceAccess(SpanNamespaceAccess<'db>),
     MethodRef(MethodRef<'db>),
-    BeginPathExpr(BeginPathExpr<'db>),
-    Expr(Expr<'db>),
+    VariableDecl(VariableDecl<'db>),
+    Spec(Spec<'db>),
+    InitExpr(InitExpr<'db>),
+    StructElement(StructElement<'db>),
     PathExpr(PathExpr<'db>),
     VariableAccess(VariableAccess<'db>),
-    Using(Using<'db>),
+    Expr(Expr<'db>),
     Param(ParamAssign<'db>),
-    InitExpr(InitExpr<'db>),
 }
 
 impl<'db> HirNode<'db> {
@@ -83,10 +82,10 @@ impl<'db> HirNode<'db> {
             HirNode::Namespace(n) => n.hover(db, offset),
             HirNode::PouDecl(p) => p.hover(db, offset),
             HirNode::VariableDecl(v) => v.hover(db, offset),
+            HirNode::InitExpr(e) => e.hover(db, offset),
             HirNode::Spec(s) => s.hover(db, offset),
             HirNode::MethodRef(m) => m.hover(db, offset),
             HirNode::StructElement(st) => st.hover(db, offset),
-            HirNode::BeginPathExpr(b) => b.hover(db, offset),
             HirNode::PathExpr(p) => p.hover(db, offset),
             HirNode::VariableAccess(v) => v.hover(db, offset),
             HirNode::Expr(e) => e.hover(db, offset),
@@ -101,7 +100,6 @@ impl<'db> HirNode<'db> {
             HirNode::VariableDecl(v) => v.declaration(db),
             HirNode::StructElement(s) => s.declaration(db),
             HirNode::Spec(s) => s.declaration(db),
-            HirNode::BeginPathExpr(b) => b.declaration(db),
             HirNode::PathExpr(p) => p.declaration(db),
             HirNode::VariableAccess(v) => v.declaration(db),
             HirNode::Expr(e) => e.declaration(db),
@@ -116,7 +114,6 @@ impl<'db> HirNode<'db> {
             HirNode::VariableDecl(v) => v.definition(db),
             HirNode::StructElement(s) => s.definition(db),
             HirNode::Spec(s) => s.definition(db),
-            HirNode::BeginPathExpr(b) => b.definition(db),
             HirNode::PathExpr(p) => p.definition(db),
             HirNode::VariableAccess(v) => v.definition(db),
             HirNode::Expr(e) => e.definition(db),
@@ -127,11 +124,18 @@ impl<'db> HirNode<'db> {
 
     pub fn semantic_tokens(
         &'db self,
-        _db: &'db dyn WorkspaceDataBase,
-        _builder: &mut SemanticTokensBuilder,
+        db: &'db dyn WorkspaceDataBase,
+        builder: &mut SemanticTokensBuilder,
     ) {
         match self {
-            HirNode::VariableDecl(v) => v.semantic_tokens(_db, _builder),
+            HirNode::NamespaceAccess(n) => n.semantic_tokens(db, builder),
+            HirNode::PouDecl(p) => p.semantic_tokens(db, builder),
+            HirNode::MethodRef(m) => m.semantic_tokens(db, builder),
+            HirNode::VariableDecl(v) => v.semantic_tokens(db, builder),
+            HirNode::StructElement(st) => st.semantic_tokens(db, builder),
+            HirNode::PathExpr(p) => p.semantic_tokens(db, builder),
+            HirNode::VariableAccess(v) => v.semantic_tokens(db, builder),
+            HirNode::Expr(e) => e.semantic_tokens(db, builder),
             _ => {}
         }
     }
@@ -147,7 +151,6 @@ impl<'db> HirNodeInfo<'db> for HirNode<'db> {
             HirNode::StructElement(s) => s.get_scope_id(db),
             HirNode::Spec(s) => s.get_scope_id(db),
             HirNode::MethodRef(m) => m.get_scope_id(db),
-            HirNode::BeginPathExpr(b) => b.get_scope_id(db),
             HirNode::Expr(e) => e.get_scope_id(db),
             HirNode::PathExpr(p) => p.get_scope_id(db),
             HirNode::VariableAccess(v) => v.get_scope_id(db),
@@ -166,13 +169,31 @@ impl<'db> HirNodeInfo<'db> for HirNode<'db> {
             HirNode::StructElement(s) => s.get_id(db),
             HirNode::Spec(s) => s.get_id(db),
             HirNode::MethodRef(m) => m.get_id(db),
-            HirNode::BeginPathExpr(b) => b.get_id(db),
             HirNode::Expr(e) => e.get_id(db),
             HirNode::PathExpr(p) => p.get_id(db),
             HirNode::VariableAccess(v) => v.get_id(db),
             HirNode::Using(u) => u.get_id(db),
             HirNode::Param(p) => p.get_id(db),
             HirNode::InitExpr(i) => i.get_id(db),
+        }
+    }
+}
+
+pub trait MaybeHirNode<'db> {
+    fn as_hir_node(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<&'db dyn HirNodeInfo<'db>>;
+}
+
+impl<'db> MaybeHirNode<'db> for Type<'db> {
+    fn as_hir_node(&'db self, _db: &'db dyn WorkspaceDataBase) -> Option<&'db dyn HirNodeInfo<'db>> {
+        match self {
+            Type::Function(f) => Some(f),
+            Type::FunctionBlock(fb) => Some(fb),
+            Type::Class(c) => Some(c),
+            Type::Interface(i) => Some(i),
+            Type::DataType(dt) => Some(dt),
+            Type::Variable((v, _)) => Some(v),
+            Type::StructElement(st) => Some(st),
+            _ => None,
         }
     }
 }
@@ -190,7 +211,7 @@ pub trait HasComment<'db>: HirNodeInfo<'db> {
     }
 }
 
-impl<'db, T> HasComment<'db> for T where T: HirNodeInfo<'db> {}
+impl<'db, T> HasComment<'db> for T where T: HirNodeInfo<'db> + ?Sized {}
 
 pub fn get_param_start_pos<'db>(
     db: &'db dyn WorkspaceDataBase,

@@ -27,6 +27,9 @@ impl<'db> Signature<'db> {
 
         let declared_methods = &implementer.get_scope_id(db).def_map(db).declared_methods;
         let inherited_methods = inherited_methods(db, implementer);
+        for (ns, typ) in &inherited_methods.type_of_namespace_accesses {
+            self.namespace_access_to_pou.insert(ns.clone(), *typ);
+        }
 
         if let Pou::Class(cl) = implementer {
             // If the class is abstract, it must have at least one abstract method

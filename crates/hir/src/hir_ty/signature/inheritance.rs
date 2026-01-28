@@ -2,11 +2,11 @@ use crate::{
     AstId, HasModifiers, HasName, HasVisibility, HirNodeInfo, Modifier, Visibility,
     hir_def::{
         expressions::spec::Spec,
-        interned::{identifier::Ident, namespace::SpanNamespaceAccess},
+        interned::{identifier::Ident, namespace::{NamespaceAccess, SpanNamespaceAccess}},
         pous::{class::MethodDecl, interface::MethodPrototype, pou::Pou, variable::VariableDecl},
         scope::ScopeId,
     },
-    hir_ty::name_res::resolve_namespace_access,
+    hir_ty::{name_res::resolve_namespace_access, ty::Type},
 };
 use db::WorkspaceDataBase;
 use rustc_hash::FxHashMap;
@@ -129,11 +129,13 @@ impl<'db> From<&MethodDecl<'db>> for MethodRef<'db> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub struct InheritedMethodSet<'db> {
     pub methods: FxHashMap<Ident, InheritedMethod<'db>>,
 
     pub duplicates: Vec<(InheritedMethod<'db>, InheritedMethod<'db>)>,
+
+    pub type_of_namespace_accesses: FxHashMap<NamespaceAccess<'db>, Type<'db>>,
 
     pub unresolved: Vec<SpanNamespaceAccess<'db>>,
 }
@@ -143,11 +145,13 @@ impl<'db> InheritedMethodSet<'db> {
         db: &'db dyn WorkspaceDataBase,
         methods: FxHashMap<Ident, InheritedMethod<'db>>,
         duplicates: Vec<(InheritedMethod<'db>, InheritedMethod<'db>)>,
+        type_of_namespace_accesses: FxHashMap<NamespaceAccess<'db>, Type<'db>>,
         unresolved: Vec<SpanNamespaceAccess<'db>>,
     ) -> Self {
         InheritedMethodSet {
             methods,
             duplicates,
+            type_of_namespace_accesses,
             unresolved,
         }
     }
@@ -165,16 +169,25 @@ impl<'db> InheritedMethod<'db> {
     }
 }
 
-#[salsa::tracked(returns(ref))]
+fn inherit_result<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    pou: Pou<'db>,
+) -> InheritedMethodSet<'db> {
+    InheritedMethodSet::default()
+}
+
+#[salsa::tracked(returns(ref), cycle_result = inherit_result)]
 pub fn inherited_methods<'db>(
     db: &'db dyn WorkspaceDataBase,
     pou: Pou<'db>,
 ) -> InheritedMethodSet<'db> {
     let mut methods = FxHashMap::default();
     let mut duplicates = vec![];
+    let mut type_of_namespace_accesses = FxHashMap::default();
     let mut unresolved = vec![];
 
-    let mut inherit_from = |src: Pou<'db>| {
+    let mut inherit_from = |access: NamespaceAccess<'db>, src: Pou<'db>| {
+        type_of_namespace_accesses.insert(access.clone(), Type::new_pou(db, src));
         for method in src.get_scope_id(db).def_map(db).declared_methods.iter() {
             let m = InheritedMethod::new(src, *method.1);
             if let Some(dup) = methods.insert(*method.0, m) {
@@ -186,19 +199,25 @@ pub fn inherited_methods<'db>(
     match pou {
         Pou::Class(class) => {
             if let Some(base) = class.extends(db) {
+
                 debug_assert!(base.scope_id == pou.get_scope_id(db));
                 debug_assert!(base.path.target.scope_id == pou.get_scope_id(db));
+
                 match resolve_namespace_access(db, &base.path) {
-                    Some(base) => {
-                        inherit_from(base);
+                    Some(pou) => {
+                        inherit_from(base.path.clone(), pou);
                     }
                     _ => unresolved.push(base.clone()),
                 }
             }
             for iface in class.implements(db) {
+
+                debug_assert!(iface.scope_id == pou.get_scope_id(db));
+                debug_assert!(iface.path.target.scope_id == pou.get_scope_id(db));
+
                 match resolve_namespace_access(db, &iface.path) {
-                    Some(iface) if matches!(iface, Pou::Interface(_)) => {
-                        inherit_from(iface);
+                    Some(pou) if matches!(pou, Pou::Interface(_)) => {
+                        inherit_from(iface.path.clone(), pou);
                     }
                     _ => unresolved.push(iface.clone()),
                 }
@@ -208,9 +227,13 @@ pub fn inherited_methods<'db>(
         Pou::Interface(iface) => {
             if let Some(extends) = iface.extends(db) {
                 for iface in extends {
+
+                    debug_assert!(iface.scope_id == pou.get_scope_id(db));
+                    debug_assert!(iface.path.target.scope_id == pou.get_scope_id(db));
+
                     match resolve_namespace_access(db, &iface.path) {
-                        Some(iface) => {
-                            inherit_from(iface);
+                        Some(pou) => {
+                            inherit_from(iface.path.clone(), pou);
                         }
                         _ => unresolved.push(iface.clone()),
                     }
@@ -220,20 +243,26 @@ pub fn inherited_methods<'db>(
 
         Pou::FunctionBlock(fb) => {
             if let Some(base) = fb.extends(db) {
+
+                debug_assert!(base.scope_id == pou.get_scope_id(db));
+                debug_assert!(base.path.target.scope_id == pou.get_scope_id(db));
+
                 match resolve_namespace_access(db, &base.path) {
-                    Some(base) => {
-                        inherit_from(base);
+                    Some(pou) => {
+                        inherit_from(base.path.clone(), pou);
                     }
                     _ => unresolved.push(base.clone()),
                 }
             }
 
             for iface in fb.implements(db) {
+
                 debug_assert!(iface.scope_id == pou.get_scope_id(db));
                 debug_assert!(iface.path.target.scope_id == pou.get_scope_id(db));
+
                 match resolve_namespace_access(db, &iface.path) {
-                    Some(iface) if matches!(iface, Pou::Interface(_)) => {
-                        inherit_from(iface);
+                    Some(pou) if matches!(pou, Pou::Interface(_)) => {
+                        inherit_from(iface.path.clone(), pou);
                     }
                     _ => {
                         unresolved.push(iface.clone());
@@ -245,5 +274,5 @@ pub fn inherited_methods<'db>(
         _ => {}
     }
 
-    InheritedMethodSet::new(db, methods, duplicates, unresolved)
+    InheritedMethodSet::new(db, methods, duplicates, type_of_namespace_accesses, unresolved)
 }

@@ -357,6 +357,9 @@ impl<'db> Type<'db> {
             Type::DataType(dt) => {
                 return Type::new_spec(db, dt.spec(db)).walk_init_expr(db, expr, step, ctx);
             }
+            Type::Variable((dt, _)) => {
+                return Type::new_spec(db, dt.spec(db)).walk_init_expr(db, expr, step, ctx);
+            }
             Type::StructElement(elem) => {
                 return Type::new_spec(db, elem.spec(db)).walk_init_expr(db, expr, step, ctx);
             }

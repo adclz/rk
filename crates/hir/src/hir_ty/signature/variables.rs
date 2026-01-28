@@ -1,4 +1,3 @@
-
 use db::WorkspaceDataBase;
 use rustc_hash::FxHashMap;
 
@@ -8,9 +7,7 @@ use crate::{
         analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError, e2_resolve::ResolveError,
     },
     hir_def::expressions::spec::SpecKind,
-    hir_ty::{
-        signature::Signature, ty::Type
-    },
+    hir_ty::{signature::Signature, ty::Type},
 };
 
 impl<'db> Signature<'db> {
@@ -46,9 +43,9 @@ impl<'db> Signature<'db> {
                         }
                         .to_diagnostic(db),
                     );
-                    self.type_of_specs.insert(var.spec(db), Type::Never);
-                    continue;
-                } 
+                }
+                self.type_of_specs.insert(var.spec(db), Type::Never);
+                continue;
             }
             self.type_of_specs.insert(var.spec(db), var_type);
 
@@ -58,5 +55,4 @@ impl<'db> Signature<'db> {
             }
         }
     }
-
 }

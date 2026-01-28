@@ -20,6 +20,8 @@ impl<'db> Signature<'db> {
     pub(crate) fn infer_enum(&mut self, db: &'db dyn WorkspaceDataBase, enm: Enum<'db>) {
         if let Some(spec) = enm.typ(db) {
             let typ = Type::new_spec(db, spec);
+            self.type_of_specs.insert(spec, typ);
+
             match typ {
                 Type::Elementary(elementary) => match elementary {
                     ElementarySpec::Byte
@@ -42,7 +44,7 @@ impl<'db> Signature<'db> {
                     .errors
                     .push(EnumError::InvalidEnumType { value: spec, typ }.to_diagnostic(db)),
             }
-        };
+        }
 
         let mut seen = FxHashMap::default();
         for variant in &enm.variants(db) {

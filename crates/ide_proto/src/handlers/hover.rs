@@ -1,11 +1,12 @@
 #![allow(unused)]
+use ast::generated::InitElem;
 use auto_lsp::lsp_types::{Hover, HoverContents, MarkedString, MarkupContent, MarkupKind};
 use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
     hir_def::{
         expressions::{
-            expression::{BeginPathExpr, Expr, ParamAssign, PathExpr, VariableAccess},
+            expression::{BeginPathExpr, Expr, InitExpr, ParamAssign, PathExpr, VariableAccess},
             spec::{Spec, SpecKind, StructElement},
         },
         namespace::NamespaceDecl,
@@ -16,12 +17,16 @@ use hir::{
         using::Using,
     },
     hir_ty::{
-        body::infer_body, name_res::resolve_namespace_access, signature::{infer_signature, inheritance::MethodRef},
+        body::infer_body,
+        signature::{infer_signature, inheritance::MethodRef},
         ty::Type,
     },
 };
 
-use crate::{handlers::HoverHandler, hir_node::{HasComment, get_param_start_pos}};
+use crate::{
+    handlers::HoverHandler,
+    hir_node::{HasComment, MaybeHirNode, get_param_start_pos},
+};
 
 impl<'db> HoverHandler<'db> for NamespaceDecl<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
@@ -66,7 +71,7 @@ impl<'db> HoverHandler<'db> for Pou<'db> {
         let return_type = match self {
             Pou::Function(f) => f
                 .return_type(db)
-                .map(|spec| format!(": {}",  infer.type_of_specs[&spec].type_name(db)))
+                .map(|spec| format!(": {}", infer.type_of_specs[&spec].type_name(db)))
                 .unwrap_or_default(),
             _ => "".to_string(),
         };
@@ -105,7 +110,7 @@ impl<'db> HoverHandler<'db> for VariableDecl<'db> {
 
         let infer = infer_signature(db, self.get_scope_id(db));
         let name = self.name(db).text(db);
-        let type_name =  infer.type_of_specs[&self.spec(db)].type_name(db);
+        let type_name = infer.type_of_specs[&self.spec(db)].type_name(db);
 
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
@@ -126,17 +131,42 @@ impl<'db> HoverHandler<'db> for VariableDecl<'db> {
 
 impl<'db> HoverHandler<'db> for Spec<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
-        let comment = match self.kind(db) {
-            SpecKind::Target(t) => {
-                let pou = resolve_namespace_access(db, &t.path)?;
-                pou.get_comment(db).unwrap_or_default()
-            }
-            SpecKind::Ref(r) => r.get_comment(db).unwrap_or_default(),
-            _ => Default::default(),
-        };
+        let infer = infer_signature(db, self.scope_id(db));
 
-        let infer = infer_signature(db, self.get_scope_id(db));
-        let desc =  infer.type_of_specs[&self].full_type_name(db);
+        let comment = infer.type_of_specs[&self]
+            .as_hir_node(db)
+            .and_then(|n| n.get_comment(db))
+            .unwrap_or_default();
+
+        let desc = infer.type_of_specs[&self].full_type_name(db);
+
+        Some(Hover {
+            contents: HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: format!(
+                    r#"
+{comment}
+```iecst
+{desc}
+```
+                "#
+                ),
+            }),
+            range: Some(self.get_span(db).into()),
+        })
+    }
+}
+
+impl<'db> HoverHandler<'db> for InitExpr<'db> {
+    fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
+        let infer = infer_signature(db, self.scope_id(db));
+        let typ = infer.init_expr_result.type_of_expr.get(self)?;
+        let comment = typ
+            .as_hir_node(db)
+            .and_then(|n| n.get_comment(db))
+            .unwrap_or_default();
+
+        let desc = typ.full_type_name(db);
 
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
@@ -165,7 +195,7 @@ impl<'db> HoverHandler<'db> for MethodRef<'db> {
         let name = self.get_name_ident(db).text(db);
         let return_type = match self {
             MethodRef::Declared(decl) => match decl.return_type(db) {
-                Some(ret_ty) => format!(": {}",  infer.type_of_specs[&ret_ty].type_name(db)),
+                Some(ret_ty) => format!(": {}", infer.type_of_specs[&ret_ty].type_name(db)),
                 None => "".to_string(),
             },
             MethodRef::Prototype(proto) => match proto.return_type(db) {
@@ -274,7 +304,7 @@ impl<'db> HoverHandler<'db> for VariableAccess<'db> {
 
 impl<'db> HoverHandler<'db> for ParamAssign<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
-       let infer = infer_body(db, self.scope_id(db));
+        let infer = infer_body(db, self.scope_id(db));
         infer.variable_of_param.get(self).and_then(|var| {
             Type::new_var(db, *var).hover(db, offset).map(|mut hover| {
                 hover.range = Some(get_param_start_pos(db, self).get_span(db).lsp());

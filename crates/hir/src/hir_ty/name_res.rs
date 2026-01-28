@@ -94,7 +94,7 @@ pub fn pou_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<Pou
 
 #[tracing::instrument(skip_all)]
 /// Resolve a namespace access to a POU declaration.
-pub fn resolve_namespace_access<'db>(
+pub(crate) fn resolve_namespace_access<'db>(
     db: &'db dyn WorkspaceDataBase,
     access: &NamespaceAccess<'db>,
 ) -> Option<Pou<'db>> {

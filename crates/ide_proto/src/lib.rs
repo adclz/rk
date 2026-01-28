@@ -10,8 +10,11 @@ define_semantic_token_types![
     standard {
         NAMESPACE,
         FUNCTION,
+        METHOD,
         INTERFACE,
         CLASS,
+        STRUCT,
+        ENUM
     }
 
     custom {

@@ -5,11 +5,11 @@ use hir::{
     hir_def::{
         expressions::{
             expression::{BeginPathExpr, Expr, ParamAssign, PathExpr, VariableAccess},
-            spec::{Spec, SpecKind, StructElement},
+            spec::{Spec, StructElement},
         },
         pous::{pou::Pou, variable::VariableDecl},
     },
-    hir_ty::{body::infer_body, name_res::resolve_namespace_access, ty::Type},
+    hir_ty::{body::infer_body, ty::Type},
 };
 
 use crate::handlers::DefinitionHandler;
@@ -40,17 +40,10 @@ impl<'db> DefinitionHandler<'db> for StructElement<'db> {
 
 impl<'db> DefinitionHandler<'db> for Spec<'db> {
     fn definition(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDefinitionResponse> {
-        match self.kind(db) {
-            SpecKind::Target(target) => {
-                let pou = resolve_namespace_access(db, &target.path)?;
-                pou.definition(db)
-            }
-            SpecKind::Ref(_ref) => _ref.definition(db),
-            _ => Some(GotoDefinitionResponse::Scalar(Location::new(
-                self.scope_id(db).file(db).url(db).to_owned(),
-                self.get_span(db).into(),
-            ))),
-        }
+         Some(GotoDefinitionResponse::Scalar(Location::new(
+            self.get_scope_id(db).file(db).url(db).to_owned(),
+            self.get_span(db).into(),
+        )))
     }
 }
 
@@ -102,9 +95,19 @@ impl<'db> DefinitionHandler<'db> for ParamAssign<'db> {
 
 impl<'db> DefinitionHandler<'db> for Type<'db> {
     fn definition(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDefinitionResponse> {
-        match self {
-            Type::Variable((var, _multibits)) => var.definition(db),
-            _ => None,
-        }
+        let loc: &'db dyn HirNodeInfo<'db> = match self {
+            Type::Function(f) => f as _,
+            Type::FunctionBlock(f) => f as _,
+            Type::Class(c) => c as _,
+            Type::Interface(i) => i as _,
+            Type::DataType(dt) =>  return dt.spec(db).definition(db),
+            Type::Variable((var, _multibits)) => return var.definition(db),
+            _ => None?,
+        };
+
+        Some(GotoDefinitionResponse::Scalar(Location::new(
+            loc.get_scope_id(db).file(db).url(db).to_owned(),
+            loc.get_span(db).into(),
+        )))
     }
 }
