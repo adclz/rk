@@ -1,4 +1,3 @@
-/*use auto_lsp::core::document_symbols_builder::DocumentSymbolsBuilder;
 use auto_lsp::core::semantic_tokens_builder::SemanticTokensBuilder;
 use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
@@ -7,9 +6,7 @@ use ide_proto::CLASS;
 use ide_proto::FUNCTION;
 use ide_proto::INTERFACE;
 use ide_proto::SUPPORTED_TYPES;
-use ide_proto::to_proto::AsProtocol;
-use ide_proto::to_proto::walk::WalkHir;
-use insta::assert_debug_snapshot;
+use ide_proto::walk::WalkHir;
 use rstest::rstest;
 
 use crate::tests::utils::add_sources;
@@ -40,7 +37,7 @@ END_FUNCTION_BLOCK"#;
     let mut builder = SemanticTokensBuilder::new("".into());
 
     let _ = sema.walk_hir(&with_db, &mut |node| {
-        node.as_proto().semantic_tokens(&with_db, &mut builder);
+        node.semantic_tokens(&with_db, &mut builder);
         std::ops::ControlFlow::Continue(())
     });
 
@@ -80,7 +77,7 @@ END_FUNCTION_BLOCK"#;
     let mut builder = SemanticTokensBuilder::new("".into());
 
     let _ = sema.walk_hir(&with_db, &mut |node| {
-        node.as_proto().semantic_tokens(&with_db, &mut builder);
+        node.semantic_tokens(&with_db, &mut builder);
         std::ops::ControlFlow::Continue(())
     });
 
@@ -90,7 +87,11 @@ END_FUNCTION_BLOCK"#;
     assert_eq!(result.data[0].token_type, SUPPORTED_TYPES.iter().position(|x| *x == FUNCTION).unwrap() as u32);
     assert_eq!(result.data[1].token_type, SUPPORTED_TYPES.iter().position(|x| *x == CLASS).unwrap() as u32);
     assert_eq!(result.data[2].token_type, SUPPORTED_TYPES.iter().position(|x| *x == FUNCTION).unwrap() as u32);
-    assert_eq!(result.data[3].token_type, SUPPORTED_TYPES.iter().position(|x| *x == CLASS).unwrap() as u32);
+    assert_eq!(result.data[3].token_type, SUPPORTED_TYPES.iter().position(|x| *x == FUNCTION).unwrap() as u32);
+    assert_eq!(result.data[4].token_type, SUPPORTED_TYPES.iter().position(|x| *x == CLASS).unwrap() as u32);
+    assert_eq!(result.data[5].token_type, SUPPORTED_TYPES.iter().position(|x| *x == FUNCTION).unwrap() as u32);
+    assert_eq!(result.data[6].token_type, SUPPORTED_TYPES.iter().position(|x| *x == CLASS).unwrap() as u32);
+
 }
 
 
@@ -115,7 +116,7 @@ END_FUNCTION_BLOCK"#;
     let mut builder = SemanticTokensBuilder::new("".into());
 
     let _ = sema.walk_hir(&with_db, &mut |node| {
-        node.as_proto().semantic_tokens(&with_db, &mut builder);
+        node.semantic_tokens(&with_db, &mut builder);
         std::ops::ControlFlow::Continue(())
     });
 
@@ -150,7 +151,7 @@ END_FUNCTION_BLOCK"#;
     let mut builder = SemanticTokensBuilder::new("".into());
 
     let _ = sema.walk_hir(&with_db, &mut |node| {
-        node.as_proto().semantic_tokens(&with_db, &mut builder);
+        node.semantic_tokens(&with_db, &mut builder);
         std::ops::ControlFlow::Continue(())
     });
 
@@ -163,4 +164,4 @@ END_FUNCTION_BLOCK"#;
     assert_eq!(result.data[4].token_type, SUPPORTED_TYPES.iter().position(|x| *x == INTERFACE).unwrap() as u32);
     assert_eq!(result.data[5].token_type, SUPPORTED_TYPES.iter().position(|x| *x == INTERFACE).unwrap() as u32);
 }
-*/
+

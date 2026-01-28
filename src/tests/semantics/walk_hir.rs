@@ -139,7 +139,7 @@ END_FUNCTION_BLOCK"#;
     PouDecl(FunctionBlock(FunctionBlock { [salsa id]: Id(2c00) }))
     VariableAccess(VariableAccess { [salsa id]: Id(1400) })
     Expr(Expr { [salsa id]: Id(1c00) })
-    BeginPathExpr(BeginPathExpr { [salsa id]: Id(1002) })
+    PathExpr(PathExpr { [salsa id]: Id(c02) })
     Param(ParamAssign { [salsa id]: Id(2800) })
     Param(ParamAssign { [salsa id]: Id(2801) })
     Expr(Expr { [salsa id]: Id(1c04) })
@@ -179,7 +179,7 @@ END_FUNCTION_BLOCK"#;
     MethodRef(Declared(MethodDecl { [salsa id]: Id(3000) }))
     VariableDecl(VariableDecl { [salsa id]: Id(2c00) })
     Spec(Spec { [salsa id]: Id(2800) })
-    BeginPathExpr(BeginPathExpr { [salsa id]: Id(1400) })
+    PathExpr(PathExpr { [salsa id]: Id(c00) })
     Param(ParamAssign { [salsa id]: Id(1c00) })
     ");
 }
@@ -221,7 +221,7 @@ END_FUNCTION_BLOCK"#;
         1,
         6,
         12,
-        18,
+        21,
         23,
         32,
         41,
@@ -267,7 +267,7 @@ END_FUNCTION_BLOCK"#;
         13,
         18,
         21,
-        26,
+        29,
         31,
         39,
         46,
