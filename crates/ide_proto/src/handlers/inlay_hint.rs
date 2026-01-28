@@ -57,7 +57,7 @@ impl<'db> InlayHintHandler<'db> for ParamAssign<'db> {
             .get(self)
             .and_then(|var| Type::new_var(db, *var).inlay_hint(db).map(|inlay_hint| {
                 InlayHint {
-                    position: get_param_start_pos(db, self).get_span(db).lsp().start,
+                    position: get_param_start_pos(db, self).get_span(db).lsp().end,
                     ..inlay_hint
                 }
             }))
@@ -91,11 +91,11 @@ impl<'db> InlayHintHandler<'db> for Type<'db> {
         db: &'db dyn WorkspaceDataBase,
     ) -> Option<InlayHint> {
         match self {
-            Type::Variable((var, _multibits)) => Some(InlayHint {
+            Type::Variable((_, _multibits)) => Some(InlayHint {
                 position: Position::default(),
                 label: InlayHintLabel::String(format!(
                     ": {}",
-                    Type::new_spec(db, var.spec(db)).type_name(db)
+                    self.type_name(db)
                 )),
                 kind: Some(InlayHintKind::TYPE),
                 padding_left: Some(false),

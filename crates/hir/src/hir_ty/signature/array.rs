@@ -7,7 +7,7 @@ use crate::{
 };
 
 impl<'db> Signature<'db> {
-    pub fn infer_array(&mut self, db: &'db dyn WorkspaceDataBase, array: Array<'db>) {
+    pub(crate) fn infer_array(&mut self, db: &'db dyn WorkspaceDataBase, array: Array<'db>) {
         for range in array.subranges(db) {
             let lower = range.0;
             let upper = range.1;

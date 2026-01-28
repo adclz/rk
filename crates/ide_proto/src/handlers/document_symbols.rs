@@ -1,13 +1,11 @@
 use auto_lsp::{core::document_symbols_builder::DocumentSymbolsBuilder, lsp_types::SymbolKind};
 use db::WorkspaceDataBase;
 use hir::{
-    HasName, HirNodeInfo,
-    hir_def::{
+    HasName, HirNodeInfo, hir_def::{
         expressions::spec::{ElementarySpec, SpecKind},
         namespace::NamespaceDecl,
         pous::{pou::Pou, variable::VariableDecl},
-    },
-    hir_ty::{signature::inheritance::MethodRef, ty::Type},
+    }, hir_ty::{signature::{infer_signature, inheritance::MethodRef}}
 };
 
 use crate::handlers::DocumentSymbolsHandler;
@@ -89,13 +87,15 @@ impl<'db> DocumentSymbolsHandler<'db> for Pou<'db> {
             _ => name,
         };
 
+        let infer  = infer_signature(db, self.get_scope_id(db));
+
         builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
             name,
             detail: Some(match self {
                 Pou::FunctionBlock(_) => "FUNCTION_BLOCK".to_string(),
                 Pou::Function(_) => "FUNCTION".to_string(),
                 Pou::Class(_) => "CLASS".to_string(),
-                Pou::DataType(dt) => Type::new_spec(db, dt.spec(db)).type_name(db),
+                Pou::DataType(dt) => infer.type_of_specs[&dt.spec(db)].type_name(db),
                 Pou::Interface(_) => "INTERFACE".to_string(),
             }),
             kind: match self {
@@ -164,9 +164,11 @@ impl<'db> DocumentSymbolsHandler<'db> for VariableDecl<'db> {
             _ => name,
         };
 
+        let infer = infer_signature(db, self.get_scope_id(db));
+
         builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
             name,
-            detail: Some(Type::new_spec(db, self.spec(db)).type_name(db)),
+            detail: Some(infer.type_of_specs[&self.spec(db)].type_name(db)),
             kind: SymbolKind::VARIABLE,
             deprecated: None,
             range: self.get_span(db).lsp(),
@@ -194,12 +196,14 @@ impl<'db> DocumentSymbolsHandler<'db> for MethodRef<'db> {
             .iter()
             .for_each(|var| var.document_symbols(db, &mut nested_builder));
 
+        let infer = infer_signature(db, self.get_scope_id(db));
+
         builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
             name,
             detail: Some(format!(
                 "METHOD{}",
                 match self.return_type(db) {
-                    Some(dt) => format!(" : {}", Type::new_spec(db, *dt).type_name(db)),
+                    Some(dt) => format!(" : {}", infer.type_of_specs[dt].type_name(db)),
                     None => "".into(),
                 }
             )),

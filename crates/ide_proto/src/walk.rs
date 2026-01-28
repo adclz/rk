@@ -15,7 +15,7 @@ use hir::{
         semantic_index::{SemanticIndex, get_scope, semantic_index},
         using::Using,
     },
-    hir_ty::signature::{infer_signature, inheritance::MethodRef},
+    hir_ty::signature::{inheritance::MethodRef},
 };
 
 use crate::hir_node::{HirNode};
@@ -126,15 +126,11 @@ impl<'db> WalkHir<'db> for Pou<'db> {
             }
             Pou::FunctionBlock(fb) => {
                 if let Some(extends) = fb.extends(db) {
-                    /*f(HirNode::SpanNamespaceAccess(
-                        SpanNamespaceAccessContext::Extends(extends),
-                    ))?;*/
+                    f(HirNode::NamespaceAccess(extends.clone()))?;
                 }
 
                 for implements in fb.implements(db) {
-                    /*f(HirNode::SpanNamespaceAccess(
-                        SpanNamespaceAccessContext::Implements(implements),
-                    ))?;*/
+                    f(HirNode::NamespaceAccess(implements.clone()))?;
                 }
 
                 for using in &scope.usings {
@@ -155,15 +151,11 @@ impl<'db> WalkHir<'db> for Pou<'db> {
             }
             Pou::Class(class) => {
                 if let Some(extends) = class.extends(db) {
-                    /*f(HirNode::SpanNamespaceAccess(
-                        SpanNamespaceAccessContext::Extends(extends),
-                    ))?;*/
+                    f(HirNode::NamespaceAccess(extends.clone()))?;
                 }
 
                 for implements in class.implements(db) {
-                    /*f(HirNode::SpanNamespaceAccess(
-                        SpanNamespaceAccessContext::Implements(implements),
-                    ))?;*/
+                    f(HirNode::NamespaceAccess(implements.clone()))?;
                 }
 
                 for using in &scope.usings {
@@ -180,9 +172,7 @@ impl<'db> WalkHir<'db> for Pou<'db> {
             Pou::Interface(it) => {
                 if let Some(extends) = it.extends(db) {
                     for implements in extends {
-                        /*f(HirNode::SpanNamespaceAccess(
-                            SpanNamespaceAccessContext::Implements(implements),
-                        ))?*/
+                        f(HirNode::NamespaceAccess(implements.clone()))?;
                     }
                 }
 
@@ -198,11 +188,8 @@ impl<'db> WalkHir<'db> for Pou<'db> {
                     }
                 }
 
-                if let Some(_init_expr) = dt.init(db) {
-                    let infer = infer_signature(db, dt.scope_id(db));
-                    for (init_expr, typ) in &infer.init_expr_result.type_of_expr {
-                        //f(HirNode::InitExprWithType((*init_expr, *typ).into()))?;
-                    }
+                if let Some(init_expr) = dt.init(db) {
+                    f(HirNode::InitExpr(init_expr))?;
                 }
             }
         }
@@ -219,10 +206,7 @@ impl<'db> WalkHir<'db> for VariableDecl<'db> {
         f(HirNode::VariableDecl(*self))?;
         f(HirNode::Spec(self.spec(db)))?;
         if let Some(_init_expr) = self.init(db) {
-            let infer = infer_signature(db, self.scope_id(db));
-            for (init_expr, typ) in &infer.init_expr_result.type_of_expr {
-                //f(HirNode::InitExprWithType((*init_expr, *typ).into()))?;
-            }
+            f(HirNode::InitExpr(_init_expr))?;
         }
         ControlFlow::Continue(())
     }

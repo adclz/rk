@@ -14,7 +14,7 @@ use crate::{
 };
 
 impl<'db> Signature<'db> {
-    pub fn infer_subrange(&mut self, db: &'db dyn WorkspaceDataBase, subrange: SubRange<'db>) {
+    pub(crate) fn infer_subrange(&mut self, db: &'db dyn WorkspaceDataBase, subrange: SubRange<'db>) {
         let typ = Type::new_spec(db, subrange._type(db));
 
         match typ {

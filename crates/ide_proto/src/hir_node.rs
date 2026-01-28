@@ -6,13 +6,9 @@ use hir::{
         expressions::{
             expression::{BeginPathExpr, Expr, InitExpr, ParamAssign, ParamAssignKind, PathExpr, VariableAccess},
             spec::{Spec, StructElement},
-        },
-        namespace::NamespaceDecl,
-        pous::{pou::Pou, variable::VariableDecl},
-        scope::ScopeId,
-        using::Using,
+        }, interned::namespace::SpanNamespaceAccess, namespace::NamespaceDecl, pous::{pou::Pou, variable::VariableDecl}, scope::ScopeId, using::Using
     },
-    hir_ty::{signature::inheritance::MethodRef},
+    hir_ty::signature::inheritance::MethodRef,
 };
 
 use crate::{comment_index::comment_index, handlers::{CodeLensHandler, DeclarationHandler, DefinitionHandler, DocumentSymbolsHandler, HoverHandler, InlayHintHandler, SemanticTokensHandler}};
@@ -20,6 +16,7 @@ use crate::{comment_index::comment_index, handlers::{CodeLensHandler, Declaratio
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HirNode<'db> {
     Namespace(NamespaceDecl<'db>),
+    NamespaceAccess(SpanNamespaceAccess<'db>),
     PouDecl(Pou<'db>),
     VariableDecl(VariableDecl<'db>),
     StructElement(StructElement<'db>),
@@ -144,6 +141,7 @@ impl<'db> HirNodeInfo<'db> for HirNode<'db> {
     fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
         match self {
             HirNode::Namespace(n) => n.get_scope_id(db),
+            HirNode::NamespaceAccess(n) => n.get_scope_id(db),
             HirNode::PouDecl(p) => p.get_scope_id(db),
             HirNode::VariableDecl(v) => v.get_scope_id(db),
             HirNode::StructElement(s) => s.get_scope_id(db),
@@ -162,6 +160,7 @@ impl<'db> HirNodeInfo<'db> for HirNode<'db> {
     fn get_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
         match self {
             HirNode::Namespace(n) => n.get_id(db),
+            HirNode::NamespaceAccess(n) => n.get_id(db),
             HirNode::PouDecl(p) => p.get_id(db),
             HirNode::VariableDecl(v) => v.get_id(db),
             HirNode::StructElement(s) => s.get_id(db),

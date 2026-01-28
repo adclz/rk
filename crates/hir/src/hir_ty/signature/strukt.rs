@@ -15,8 +15,7 @@ use crate::{
 };
 
 impl<'db> Signature<'db> {
-    pub 
-    fn infer_struct(&mut self, db: &'db dyn WorkspaceDataBase, strukt: Struct<'db>) {
+    pub(crate) fn infer_struct(&mut self, db: &'db dyn WorkspaceDataBase, strukt: Struct<'db>) {
         let mut seen: FxHashMap<Ident, StructElement> = FxHashMap::default();
         for field in &strukt.elements(db) {
             match seen.get(&field.get_name_ident(db)) {

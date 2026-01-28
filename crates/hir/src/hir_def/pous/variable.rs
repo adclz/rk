@@ -1,15 +1,14 @@
 use db::WorkspaceDataBase;
 
 use crate::{
-    AstId, HasName, HirNodeInfo,
-    hir_def::{
+    AstId, HasName, HirNodeInfo, hir_def::{
         expressions::{
             expression::{InitExpr, Integer},
             spec::Spec,
         },
         interned::identifier::Ident,
         scope::ScopeId,
-    },
+    }
 };
 
 #[salsa::tracked(debug)]

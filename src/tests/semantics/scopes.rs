@@ -10,8 +10,7 @@ use hir::{
         semantic_index::{get_scope, semantic_index},
     },
     hir_ty::{
-        name_res::{namespace_index, pou_name_res_from_scope},
-        ty::Type,
+        name_res::{namespace_index, pou_name_res_from_scope}, signature::infer_signature, ty::Type
     },
 };
 use ide_proto::{hir_node::HirNode, walk::WalkHir};
@@ -712,7 +711,8 @@ END_FUNCTION_BLOCK
     let fb = find_pou_with_name(&with_db, *file1, "fb").unwrap();
     let variables = &fb.get_scope_id(&with_db).def_map(&with_db).global_variables;
     let var_i1 = variables.get(&Ident::from_slice(&with_db, "i1")).unwrap();
-    let ty = Type::new_spec(&with_db, var_i1.spec(&with_db));
+    let infer = infer_signature(&with_db, var_i1.scope_id(&with_db));
+    let ty = infer.type_of_specs[&var_i1.spec(&with_db)];
 
     assert!(matches!(ty, Type::FunctionBlock(_)));
 }

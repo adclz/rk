@@ -14,7 +14,7 @@ use crate::{
 };
 
 impl<'db> Signature<'db> {
-    pub fn infer_variables(&mut self, db: &'db dyn WorkspaceDataBase) {
+    pub(crate) fn infer_variables(&mut self, db: &'db dyn WorkspaceDataBase) {
         let variables = match self.scope.variables(db) {
             Some(vars) => vars,
             None => return,
@@ -46,11 +46,11 @@ impl<'db> Signature<'db> {
                         }
                         .to_diagnostic(db),
                     );
-                    self.type_of_variables.insert(*var, Type::Never);
-                } else {
-                    self.type_of_variables.insert(*var, var_type);
-                }
+                    self.type_of_specs.insert(var.spec(db), Type::Never);
+                    continue;
+                } 
             }
+            self.type_of_specs.insert(var.spec(db), var_type);
 
             if let Some(init_expr) = var.init(db) {
                 self.init_expr_result

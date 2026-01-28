@@ -19,7 +19,7 @@ use crate::{
 };
 
 impl<'db> Signature<'db> {
-    pub fn check_inheritance(&mut self, db: &'db dyn WorkspaceDataBase) {
+    pub(crate) fn check_inheritance(&mut self, db: &'db dyn WorkspaceDataBase) {
         let implementer = match get_scope(db, self.scope).kind {
             ScopeKind::Pou(pou) => pou,
             _ => return,
@@ -133,7 +133,7 @@ impl<'db> Signature<'db> {
         }
     }
 
-    pub fn check_methods(&mut self, db: &'db dyn WorkspaceDataBase) {
+    pub(crate) fn check_methods(&mut self, db: &'db dyn WorkspaceDataBase) {
         if let Some(methods) = self.scope.method_declarations(db) {
             let mut seen = FxHashMap::default();
             for method in methods.iter() {

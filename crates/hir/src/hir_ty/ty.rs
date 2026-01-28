@@ -194,6 +194,24 @@ impl PartialOrd for Size {
 
 #[salsa::tracked]
 impl<'db> Type<'db> {
+    
+    #[salsa::tracked]
+    pub(crate) fn new_spec(db: &'db dyn WorkspaceDataBase, spec: Spec<'db>) -> Self {
+        match spec.kind(db) {
+            SpecKind::Simple(elem) => Type::Elementary(*elem),
+            SpecKind::Ref(ref_to) => Type::RefTo(*ref_to),
+            SpecKind::Struct(strukt) => Type::Struct(*strukt),
+            SpecKind::Array(arr) => Type::Array(*arr),
+            SpecKind::ArrayConformand(a) => Type::ArrayConformand(*a),
+            SpecKind::Enum(enm) => Type::Enum(*enm),
+            SpecKind::Subrange(sub) => Type::SubRange(*sub),
+            SpecKind::Target(t) => match resolve_namespace_access(db, &t.path) {
+                Some(pou) => Type::new_pou(db, pou),
+                None => Type::Never,
+            },
+        }
+    }
+
     pub const fn new_bool() -> Self {
         Type::Elementary(ElementarySpec::Bool)
     }
@@ -218,23 +236,6 @@ impl<'db> Type<'db> {
         multibits: Option<MultibitsPart>,
     ) -> Self {
         Type::Variable((var, multibits))
-    }
-
-    #[salsa::tracked]
-    pub fn new_spec(db: &'db dyn WorkspaceDataBase, spec: Spec<'db>) -> Self {
-        match spec.kind(db) {
-            SpecKind::Simple(elem) => Type::Elementary(*elem),
-            SpecKind::Ref(ref_to) => Type::RefTo(*ref_to),
-            SpecKind::Struct(strukt) => Type::Struct(*strukt),
-            SpecKind::Array(arr) => Type::Array(*arr),
-            SpecKind::ArrayConformand(a) => Type::ArrayConformand(*a),
-            SpecKind::Enum(enm) => Type::Enum(*enm),
-            SpecKind::Subrange(sub) => Type::SubRange(*sub),
-            SpecKind::Target(t) => match resolve_namespace_access(db, &t.path) {
-                Some(pou) => Type::new_pou(db, pou),
-                None => Type::Never,
-            },
-        }
     }
 
     pub fn as_callable(&self, db: &'db dyn WorkspaceDataBase) -> Option<CallableType<'db>> {

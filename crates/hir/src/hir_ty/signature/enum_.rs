@@ -17,7 +17,7 @@ use crate::{
 
 
 impl<'db> Signature<'db> {
-    pub fn infer_enum(&mut self, db: &'db dyn WorkspaceDataBase, enm: Enum<'db>) {
+    pub(crate) fn infer_enum(&mut self, db: &'db dyn WorkspaceDataBase, enm: Enum<'db>) {
         if let Some(spec) = enm.typ(db) {
             let typ = Type::new_spec(db, spec);
             match typ {

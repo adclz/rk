@@ -40,7 +40,7 @@ END_FUNCTION_BLOCK"#;
     PouDecl(FunctionBlock(FunctionBlock { [salsa id]: Id(2000) }))
     VariableDecl(VariableDecl { [salsa id]: Id(1c00) })
     Spec(Spec { [salsa id]: Id(c00) })
-    InitExprWithType(InitExprWithTypeContext { init_expr: InitExpr { [salsa id]: Id(1800) }, ty: Elementary(Int) })
+    InitExpr(InitExpr { [salsa id]: Id(1800) })
     ");
 }
 
@@ -175,7 +175,7 @@ END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(nodes.join("\n"), @r"
     PouDecl(FunctionBlock(FunctionBlock { [salsa id]: Id(3400) }))
-    SpanNamespaceAccess(Extends(SpanNamespaceAccess { id: AstId(3), scope_id: ScopeId { [salsa id]: Id(402) }, path: NamespaceAccess { namespace: None, target: SpanIdent { id: AstId(4), scope_id: ScopeId { [salsa id]: Id(402) }, ident: Ident(Id(800)) } } }))
+    NamespaceAccess(SpanNamespaceAccess { id: AstId(3), scope_id: ScopeId { [salsa id]: Id(402) }, path: NamespaceAccess { namespace: None, target: SpanIdent { id: AstId(4), scope_id: ScopeId { [salsa id]: Id(402) }, ident: Ident(Id(800)) } } })
     MethodRef(Declared(MethodDecl { [salsa id]: Id(3000) }))
     VariableDecl(VariableDecl { [salsa id]: Id(2c00) })
     Spec(Spec { [salsa id]: Id(2800) })

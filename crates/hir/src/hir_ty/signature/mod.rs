@@ -10,7 +10,7 @@ use crate::{
     },
     hir_def::{
         expressions::spec::{Spec, SpecKind},
-        pous::{pou::Pou, variable::VariableDecl},
+        pous::{pou::Pou},
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
@@ -56,9 +56,6 @@ pub struct Signature<'db> {
     /// Mapping of specs to their inferred types
     pub type_of_specs: FxHashMap<Spec<'db>, Type<'db>>,
 
-    /// Mapping of variables to their inferred types
-    pub type_of_variables: FxHashMap<VariableDecl<'db>, Type<'db>>,
-
     /// Initializer expression inference results
     pub init_expr_result: InitExprInferenceResult<'db>,
 
@@ -74,14 +71,13 @@ impl<'db> Signature<'db> {
         Self {
             scope,
             type_of_specs: FxHashMap::default(),
-            type_of_variables: FxHashMap::default(),
             init_expr_result: InitExprInferenceResult::new(scope),
             body_infer_result: BodyInferenceResult::new(scope),
             errors: Vec::new(),
         }
     }
 
-    pub fn infer_signature(mut self, db: &'db dyn WorkspaceDataBase) -> Self {
+    fn infer_signature(mut self, db: &'db dyn WorkspaceDataBase) -> Self {
         if let ScopeKind::Pou(pou) = get_scope(db, self.scope).kind { if let Pou::DataType(dt) = pou {
             let typ = Type::new_spec(db, dt.spec(db));
             match dt.spec(db).kind(db) {
@@ -109,6 +105,7 @@ impl<'db> Signature<'db> {
                 }
                 _ => {}
             }
+            self.type_of_specs.insert(dt.spec(db), typ);
             if let Some(expr) = dt.init(db) {
                 self.init_expr_result.resolve_init_expr(db, expr, typ);
             };
