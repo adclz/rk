@@ -226,7 +226,6 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 } else {
                     "no item found in scope".to_string()
                 };
-                
 
                 diag()
                     .message(message)
@@ -253,17 +252,18 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
             Self::NoSuchFieldInitExpr { expr, ident, ty } => {
                 let mut diag = ide_diagnostic::diag()
                     .message(format!(
-                        "no field '{}' in type '{}'",
-                        ident.text(db),
-                        ty.type_name(db)
+                        "'{}' has no field named '{}'",
+                        ty.with_name(db).unwrap_or_else(|| ty.full_type_name(db)),
+                        ident.text(db)
                     ))
-                    .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+                    .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(expr.get_span(db))
                     .call();
 
-                if let Type::Struct(strukt) = ty {
-                    fuzzy_struct_fields(db, *strukt, &mut diag, ident.text(db).as_str())
+                eprintln!("TYPE: {:?}", ty); 
+                if let Type::Struct(strukt) = ty.normalize(db) {
+                    fuzzy_struct_fields(db, strukt, &mut diag, ident.text(db).as_str())
                 };
 
                 diag

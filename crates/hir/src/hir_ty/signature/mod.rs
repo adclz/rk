@@ -108,7 +108,7 @@ impl<'db> Signature<'db> {
             }
             self.type_of_specs.insert(dt.spec(db), typ);
             if let Some(expr) = dt.init(db) {
-                self.init_expr_result.resolve_init_expr(db, expr, typ);
+                self.init_expr_result.resolve_init_expr(db, expr, &mut self.body_infer_result, typ);
             };
         } }
 
@@ -117,10 +117,6 @@ impl<'db> Signature<'db> {
         self.check_methods(db);
 
         for error in &self.init_expr_result.errors {
-            self.errors.push(error.clone());
-        }
-
-        for error in &self.init_expr_result.body_infer_result.errors {
             self.errors.push(error.clone());
         }
 

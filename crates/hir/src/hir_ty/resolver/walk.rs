@@ -6,15 +6,15 @@ use crate::{
     HirNodeInfo,
     check::errors::{analysis_error::ToIdeDiagnostic, e2_resolve::ResolveError},
     hir_def::expressions::{
-        expression::{BeginPathExpr, InitExpr, MultibitsPart, PathExpr},
+        expression::{BeginPathExpr, MultibitsPart, PathExpr},
         invocation::InvocationKind,
     },
     hir_ty::{
         body::{Adjustment, AdjustmentInfo, BodyInferenceResult},
         expr_store::{InitExprWalkStep, PathExprWalkStep},
+        resolver::{Resolver, invocation::resolve_invocation, visibility::check_visibility},
         signature::inheritance::inherited_methods,
         signature::init_inference::InitExprInferenceResult,
-        resolver::{Resolver, invocation::resolve_invocation, visibility::check_visibility},
         ty::Type,
     },
 };
@@ -25,9 +25,19 @@ use crate::{
 ///
 /// This is only useful to create accurate diagnostics
 #[derive(Debug, Copy, Clone)]
-pub struct PlaceBuilder<'db> {
+pub struct PathPlaceBuilder<'db> {
     pub current_typ: Type<'db>,
     pub current_path: PathExpr<'db>,
+}
+
+/// When waking a init expression, we need to keep track of the parent type
+///
+/// The parent type is either a variable or a data type
+///
+/// This is only useful to create accurate diagnostics
+#[derive(Debug, Copy, Clone)]
+pub struct InitPlaceBuilder<'db> {
+    pub current_init_typ: Type<'db>,
 }
 
 impl<'db> Type<'db> {
@@ -72,7 +82,7 @@ impl<'db> Type<'db> {
                 match invocation.kind(db) {
                     InvocationKind::This => {
                         let steps = path_expr.flatten(db);
-                        let mut place = PlaceBuilder {
+                        let mut place = PathPlaceBuilder {
                             current_typ: current,
                             current_path: path_expr,
                         };
@@ -149,7 +159,7 @@ impl<'db> Type<'db> {
         report_errors: bool,
         step: &'db PathExprWalkStep<'db>,
         multibits: Option<MultibitsPart>,
-        place: &mut PlaceBuilder<'db>,
+        place: &mut PathPlaceBuilder<'db>,
         ctx: &mut BodyInferenceResult<'db>,
     ) {
         let expr = step.get_expr();
@@ -345,62 +355,73 @@ impl<'db> Type<'db> {
         }
     }
 
-    #[must_use]
     pub fn walk_init_expr(
         &self,
         db: &'db dyn WorkspaceDataBase,
-        expr: InitExpr<'db>,
-        step: InitExprWalkStep<'db>,
+        step: &'db InitExprWalkStep<'db>,
+        place: &mut InitPlaceBuilder<'db>,
         ctx: &mut InitExprInferenceResult<'db>,
-    ) -> Type<'db> {
+    ) {
         match self {
             Type::DataType(dt) => {
-                return Type::new_spec(db, dt.spec(db)).walk_init_expr(db, expr, step, ctx);
+                return Type::new_spec(db, dt.spec(db)).walk_init_expr(db, step, place, ctx);
             }
-            Type::Variable((dt, _)) => {
-                return Type::new_spec(db, dt.spec(db)).walk_init_expr(db, expr, step, ctx);
+            Type::Variable((dt, mul)) => {
+                return Type::new_spec(db, dt.spec(db)).walk_init_expr(db, step, place, ctx);
             }
             Type::StructElement(elem) => {
-                return Type::new_spec(db, elem.spec(db)).walk_init_expr(db, expr, step, ctx);
+                return Type::new_spec(db, elem.spec(db)).walk_init_expr(db, step, place, ctx);
             }
             _ => (),
         }
-        let mut result_ty = Type::Never;
+        let expr = step.get_expr();
         match step {
-            InitExprWalkStep::Index => {
-                match self {
-                    Type::Array(array) => {
-                        // return array type
-                        result_ty = Type::new_spec(db, array.of_type(db));
-                    }
-                    _ => {
-                        ctx.errors.push(
-                            ResolveError::IndexNonArrayTypeInitExpr { expr, ty: *self }
-                                .to_diagnostic(db),
-                        );
-                    }
-                }
-            }
-            InitExprWalkStep::Access => match self {
-                Type::Class(_) | Type::FunctionBlock(_) | Type::Interface(_) | Type::Struct(_) => {
-                    result_ty = *self;
+            InitExprWalkStep::ArrayInit { .. } => match self {
+                Type::Array(array) => {
+                    ctx.type_of_init_expr
+                        .insert(*expr, Type::new_spec(db, array.of_type(db)));
                 }
                 _ => {
-                    ctx.errors
-                        .push(ResolveError::NoFieldOnElementaryType { expr, ty: *self }.to_diagnostic(db));
+                    ctx.errors.push(
+                        ResolveError::IndexNonArrayTypeInitExpr {
+                            expr: *expr,
+                            ty: place.current_init_typ,
+                        }
+                        .to_diagnostic(db),
+                    );
                 }
             },
-            InitExprWalkStep::Field(ident) => {
+
+            InitExprWalkStep::FieldInit { .. } => match self {
+                Type::Class(_) | Type::FunctionBlock(_) | Type::Interface(_) => {
+                    place.current_init_typ = *self;
+                    ctx.type_of_init_expr.insert(*expr, place.current_init_typ);
+                }
+                Type::Struct(_) => {
+                    ctx.type_of_init_expr.insert(*expr, *self);
+                }
+                _ => {
+                    ctx.errors.push(
+                        ResolveError::NoFieldOnElementaryType {
+                            expr: *expr,
+                            ty: *self,
+                        }
+                        .to_diagnostic(db),
+                    );
+                }
+            },
+            InitExprWalkStep::Field { name, .. } => {
                 match self {
                     Type::Struct(st) => {
-                        if let Some(field) = st.struct_elements(db).get(&ident.ident) {
-                            result_ty = Type::StructElement(*field);
+                        if let Some(field) = st.struct_elements(db).get(&name.ident) {
+                            place.current_init_typ = Type::StructElement(*field);
+                            ctx.type_of_init_expr.insert(*expr, place.current_init_typ);
                         } else {
                             ctx.errors.push(
                                 ResolveError::NoSuchFieldInitExpr {
-                                    expr,
-                                    ident: *ident,
-                                    ty: *self,
+                                    expr: *expr,
+                                    ident: **name,
+                                    ty: place.current_init_typ,
                                 }
                                 .to_diagnostic(db),
                             );
@@ -417,14 +438,15 @@ impl<'db> Type<'db> {
                         .def_map(db);
 
                         // Variables
-                        if let Some(var) = def_map.global_variables.get(&ident.ident) {
-                            result_ty = Type::new_var(db, *var);
+                        if let Some(var) = def_map.global_variables.get(&name.ident) {
+                            place.current_init_typ = Type::new_var(db, *var);
+                            ctx.type_of_init_expr.insert(*expr, place.current_init_typ);
                         } else {
                             ctx.errors.push(
                                 ResolveError::NoSuchFieldInitExpr {
-                                    expr,
-                                    ident: *ident,
-                                    ty: *self,
+                                    expr: *expr,
+                                    ident: **name,
+                                    ty: place.current_init_typ,
                                 }
                                 .to_diagnostic(db),
                             );
@@ -433,21 +455,17 @@ impl<'db> Type<'db> {
                     _ => {
                         ctx.errors.push(
                             ResolveError::NoSuchFieldInitExpr {
-                                expr,
-                                ident: *ident,
-                                ty: *self,
+                                expr: *expr,
+                                ident: **name,
+                                ty: place.current_init_typ,
                             }
                             .to_diagnostic(db),
                         );
                     }
                 }
             }
-            InitExprWalkStep::NoOp => {
-                result_ty = *self;
-            }
+            InitExprWalkStep::ConstantExpr { .. } | InitExprWalkStep::SizedIndex { .. } => { /*  handled by the inference layer */ }
         }
-        ctx.type_of_expr.insert(expr, result_ty);
-        result_ty
     }
 }
 

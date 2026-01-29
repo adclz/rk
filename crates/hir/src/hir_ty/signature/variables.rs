@@ -51,7 +51,7 @@ impl<'db> Signature<'db> {
 
             if let Some(init_expr) = var.init(db) {
                 self.init_expr_result
-                    .resolve_init_expr(db, init_expr, var_type);
+                    .resolve_init_expr(db, init_expr, &mut self.body_infer_result, var_type);
             }
         }
     }

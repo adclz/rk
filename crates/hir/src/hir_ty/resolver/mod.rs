@@ -17,7 +17,7 @@ use crate::{
     },
     hir_ty::{
         body::BodyInferenceResult, name_res::resolve_namespace_access,
-        resolver::walk::PlaceBuilder, ty::Type,
+        resolver::walk::PathPlaceBuilder, ty::Type,
     },
 };
 
@@ -157,7 +157,7 @@ impl<'db> Resolver<'db> {
         ctx: &mut BodyInferenceResult<'db>,
     ) {
         let steps = path_expr.flatten(db);
-        let mut place = PlaceBuilder {
+        let mut place = PathPlaceBuilder {
             current_typ: current,
             current_path: match steps.first() {
                 Some(step) => *step.get_expr(),
