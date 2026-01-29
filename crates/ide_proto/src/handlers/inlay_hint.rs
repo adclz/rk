@@ -68,7 +68,7 @@ impl<'db> InlayHintHandler<'db> for ParamAssign<'db> {
 impl<'db> InlayHintHandler<'db> for InitExpr<'db> {
     fn inlay_hint(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<InlayHint> {
         let infer = infer_signature(db, self.scope_id(db));
-        let typ = infer.init_expr_result.type_of_expr.get(self)?;
+        let typ = infer.init_expr_result.type_of_init_expr.get(self)?;
         match self.kind(db) {
             InitExprKind::StructElement { name, value: _ } => Some(InlayHint {
                 position: name.get_span(db).lsp().end,

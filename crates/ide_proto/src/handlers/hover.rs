@@ -6,7 +6,9 @@ use hir::{
     HasName, HirNodeInfo,
     hir_def::{
         expressions::{
-            expression::{BeginPathExpr, Expr, InitExpr, ParamAssign, PathExpr, VariableAccess},
+            expression::{
+                BeginPathExpr, Expr, InitExpr, InitExprKind, ParamAssign, PathExpr, VariableAccess,
+            },
             spec::{Spec, SpecKind, StructElement},
         },
         namespace::NamespaceDecl,
@@ -160,7 +162,8 @@ impl<'db> HoverHandler<'db> for Spec<'db> {
 impl<'db> HoverHandler<'db> for InitExpr<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
         let infer = infer_signature(db, self.scope_id(db));
-        let typ = infer.init_expr_result.type_of_expr.get(self)?;
+        let typ = infer.init_expr_result.type_of_init_expr.get(self)?;
+        
         let comment = typ
             .as_hir_node(db)
             .and_then(|n| n.get_comment(db))
@@ -250,7 +253,7 @@ impl<'db> HoverHandler<'db> for BeginPathExpr<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
         let infer = infer_body(db, self.scope_id(db));
         infer
-            .type_of_begin_expr_with_adjustments(db, *self)
+            .get_type_of_begin_path_expr(db, *self)
             .and_then(|typ| {
                 typ.hover(db, offset).map(|mut hover| {
                     hover.range = Some(self.get_span(db).lsp());
@@ -264,7 +267,7 @@ impl<'db> HoverHandler<'db> for PathExpr<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
         let infer = infer_body(db, self.scope_id(db));
         infer
-            .type_of_path_expr_with_adjustments(*self)
+            .get_type_of_path_expr(db, *self)
             .and_then(|typ| {
                 typ.hover(db, offset).map(|mut hover| {
                     hover.range = Some(self.get_span(db).lsp());
@@ -276,14 +279,18 @@ impl<'db> HoverHandler<'db> for PathExpr<'db> {
 
 impl<'db> HoverHandler<'db> for Expr<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
-        let infer = infer_body(db, self.scope_id(db));
-        infer
-            .type_of_expr_with_adjustments(db, *self)
+        if let Some(r) = infer_signature(db, self.scope_id(db))
+            .body_infer_result
+            .get_type_of_expr(*self)
+            .and_then(|typ| typ.hover(db, offset))
+        {
+            return Some(r);
+        }
+
+        infer_body(db, self.scope_id(db))
+            .get_type_of_expr(*self)
             .and_then(|typ| {
-                typ.hover(db, offset).map(|mut hover| {
-                    hover.range = Some(self.get_span(db).lsp());
-                    hover
-                })
+                typ.hover(db, offset)
             })
     }
 }
@@ -292,7 +299,7 @@ impl<'db> HoverHandler<'db> for VariableAccess<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
         let infer = infer_body(db, self.scope_id(db));
         infer
-            .type_of_variable_access_with_adjustments(db, *self)
+            .get_type_of_variable_access(db, *self)
             .and_then(|typ| {
                 typ.hover(db, offset).map(|mut hover| {
                     hover.range = Some(self.get_span(db).lsp());

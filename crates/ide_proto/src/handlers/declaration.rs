@@ -12,7 +12,7 @@ use hir::{
     hir_ty::{body::infer_body, signature::infer_signature, ty::Type},
 };
 
-use crate::handlers::{DeclarationHandler};
+use crate::handlers::DeclarationHandler;
 
 impl<'db> DeclarationHandler<'db> for VariableDecl<'db> {
     fn declaration(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDeclarationResponse> {
@@ -44,7 +44,7 @@ impl<'db> DeclarationHandler<'db> for BeginPathExpr<'db> {
     fn declaration(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDeclarationResponse> {
         let infer = infer_body(db, self.scope_id(db));
         infer
-            .type_of_begin_expr_with_adjustments(db, *self)
+            .get_type_of_begin_path_expr(db, *self)
             .and_then(|typ| typ.declaration(db))
     }
 }
@@ -53,16 +53,23 @@ impl<'db> DeclarationHandler<'db> for PathExpr<'db> {
     fn declaration(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDeclarationResponse> {
         let infer = infer_body(db, self.scope_id(db));
         infer
-            .type_of_path_expr_with_adjustments(*self)
+            .get_type_of_path_expr(db, *self)
             .and_then(|typ| typ.declaration(db))
     }
 }
 
 impl<'db> DeclarationHandler<'db> for Expr<'db> {
     fn declaration(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDeclarationResponse> {
-        let infer = infer_body(db, self.scope_id(db));
-        infer
-            .type_of_expr_with_adjustments(db, *self)
+        if let Some(r) = infer_signature(db, self.scope_id(db))
+            .body_infer_result
+            .get_type_of_expr(*self)
+            .and_then(|typ| typ.declaration(db))
+        {
+            return Some(r);
+        }
+
+        infer_body(db, self.scope_id(db))
+            .get_type_of_expr(*self)
             .and_then(|typ| typ.declaration(db))
     }
 }
@@ -71,14 +78,14 @@ impl<'db> DeclarationHandler<'db> for VariableAccess<'db> {
     fn declaration(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDeclarationResponse> {
         let infer = infer_body(db, self.scope_id(db));
         infer
-            .type_of_variable_access_with_adjustments(db, *self)
+            .get_type_of_variable_access(db, *self)
             .and_then(|typ| typ.declaration(db))
     }
 }
 
 impl<'db> DeclarationHandler<'db> for ParamAssign<'db> {
     fn declaration(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDeclarationResponse> {
-       let infer = infer_body(db, self.scope_id(db));
+        let infer = infer_body(db, self.scope_id(db));
         infer
             .variable_of_param
             .get(self)

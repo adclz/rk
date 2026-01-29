@@ -3,13 +3,18 @@ use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
     hir_def::{
-        expressions::{expression::{BeginPathExpr, Expr, PathExpr, VariableAccess}, spec::StructElement},
+        expressions::{
+            expression::{BeginPathExpr, Expr, PathExpr, VariableAccess},
+            spec::StructElement,
+        },
         interned::namespace::{NamespaceAccess, SpanNamespaceAccess},
         pous::{pou::Pou, variable::VariableDecl},
         using::Using,
     },
     hir_ty::{
-        body::infer_body, signature::{infer_signature, inheritance::MethodRef}, ty::Type
+        body::infer_body,
+        signature::{infer_signature, inheritance::MethodRef},
+        ty::Type,
     },
 };
 
@@ -104,7 +109,9 @@ impl<'db> SemanticTokensHandler<'db> for BeginPathExpr<'db> {
         builder: &mut SemanticTokensBuilder,
     ) {
         let infer = infer_body(db, self.get_scope_id(db));
-        let typ = infer.get_type_of_begin_path_expr(db, *self).unwrap_or_default();
+        let typ = infer
+            .get_type_of_begin_path_expr(db, *self)
+            .unwrap_or_default();
         semantic_tokens_for_type(db, typ, builder, self.get_span(db));
     }
 }
@@ -128,7 +135,9 @@ impl<'db> SemanticTokensHandler<'db> for VariableAccess<'db> {
         builder: &mut SemanticTokensBuilder,
     ) {
         let infer = infer_body(db, self.get_scope_id(db));
-        let typ = infer.get_type_of_variable_access(db, *self).unwrap_or_default();
+        let typ = infer
+            .get_type_of_variable_access(db, *self)
+            .unwrap_or_default();
         semantic_tokens_for_type(db, typ, builder, self.get_span(db));
     }
 }
@@ -139,9 +148,18 @@ impl<'db> SemanticTokensHandler<'db> for Expr<'db> {
         db: &'db dyn WorkspaceDataBase,
         builder: &mut SemanticTokensBuilder,
     ) {
-        let infer = infer_body(db, self.get_scope_id(db));
-        let typ = infer.get_type_of_expr(*self).unwrap_or_default();
-        semantic_tokens_for_type(db, typ, builder, self.get_span(db));
+        infer_signature(db, self.scope_id(db))
+            .body_infer_result
+            .get_type_of_expr(*self)
+            .map(|typ| {
+                semantic_tokens_for_type(db, typ, builder, self.get_span(db));
+            });
+
+        infer_body(db, self.scope_id(db))
+            .get_type_of_expr(*self)
+            .map(|typ| {
+                semantic_tokens_for_type(db, typ, builder, self.get_span(db));
+            });
     }
 }
 

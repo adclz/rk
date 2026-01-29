@@ -6,7 +6,7 @@ use hir::{
     HirNodeInfo,
     hir_def::{
         expressions::{
-            expression::{BeginPathExpr, Expr, InitExpr, ParamAssign, PathExpr, VariableAccess},
+            expression::{BeginPathExpr, Expr, InitExpr, InitExprKind, ParamAssign, PathExpr, VariableAccess},
             spec::{Spec, SpecKind},
             statement::{CaseKind, Stmt, StmtKind},
         },
@@ -15,7 +15,7 @@ use hir::{
         semantic_index::{SemanticIndex, get_scope, semantic_index},
         using::Using,
     },
-    hir_ty::signature::inheritance::MethodRef,
+    hir_ty::{expr_store::InitExprIterator, signature::inheritance::MethodRef},
 };
 
 use crate::hir_node::{HirNode};
@@ -254,8 +254,11 @@ impl<'db> WalkHir<'db> for InitExpr<'db> {
     ) -> ControlFlow<()> {
 
         let exprs = self.flatten(db);
-        for (expr, _init) in exprs {
-            f(HirNode::InitExpr(*expr))?;
+        for init in InitExprIterator::new(&exprs[0]) {
+            f(HirNode::InitExpr(*init.get_expr()))?;
+            if let InitExprKind::ConstantExpr(expr) = init.get_expr().kind(db) {
+                expr.walk_hir(db, f)?;
+            }
         }
         ControlFlow::Continue(())
         
