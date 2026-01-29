@@ -34,20 +34,7 @@ fn fuzzy_struct_fields(mut with_db: RootDatabase) {
         |
      15 |                 Base : Engine := (power := 100, fuel := 10.0);
         |                                                 ^^^^^^|^^^^^  
-        |                                                       `------- no field 'fuel' in type 'STRUCT'
-        | 
-        | Note: STRUCT has fields with similar name:
-        |       - fuel1
-        |       - fuel2
-        |       - fuel3
-        |       - fuel4
-    ----'
-    [E0211] Error: no such field
-        ,-[ file:///test0.st:15:49 ]
-        |
-     15 |                 Base : Engine := (power := 100, fuel := 10.0);
-        |                                                 ^^^^^^|^^^^^  
-        |                                                       `------- no field 'fuel' in type 'STRUCT'
+        |                                                       `------- 'Engine' has no field named 'fuel'
         | 
         | Note: STRUCT has fields with similar name:
         |       - fuel1

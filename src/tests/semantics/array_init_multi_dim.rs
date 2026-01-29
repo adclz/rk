@@ -333,11 +333,11 @@ fn array_of_struct_overflow(mut with_db: RootDatabase) {
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0605] Error: invalid array access
-        ,-[ file:///test0.st:11:70 ]
+        ,-[ file:///test0.st:11:80 ]
         |
      11 |                 Base : EngineArray := [(Power := 10), (Power := 20), (Power := 30)];
-        |                                                                      ^^^^^^|^^^^^^  
-        |                                                                            `-------- too many elements in array initializer (expected at most 2)
+        |                                                                                ^|  
+        |                                                                                 `-- too many elements in array initializer (expected at most 2)
     ----'
     ");
 }

@@ -41,6 +41,7 @@ END_FUNCTION_BLOCK"#;
     VariableDecl(VariableDecl { [salsa id]: Id(1c00) })
     Spec(Spec { [salsa id]: Id(c00) })
     InitExpr(InitExpr { [salsa id]: Id(1800) })
+    Expr(Expr { [salsa id]: Id(1400) })
     ");
 }
 
