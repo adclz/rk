@@ -58,12 +58,19 @@ pub fn resolve_invocation<'db>(
                     }
                 },
                 InvocationKind::Super => match pou {
-                    // fixme: SUPER only gives access to base methods from EXTENDS, not all implemented interfaces
                     Pou::FunctionBlock(fb) => {
                         if let Some(extend) = fb.extends(db) {
                             ctx.type_of_invocation
                                 .insert(invocation, Type::new_pou(db, pou));
                             return Some(pou);
+                        } else {
+                            ctx.errors.push(
+                                InheritanceError::SuperButNoExtends {
+                                    pou,
+                                    call_site: CallSite::new(scope, invocation.keyword_id(db)),
+                                }
+                                .to_diagnostic(db),
+                            );
                         }
                     }
                     Pou::Class(class) => {
@@ -71,6 +78,14 @@ pub fn resolve_invocation<'db>(
                             ctx.type_of_invocation
                                 .insert(invocation, Type::new_pou(db, pou));
                             return Some(pou);
+                        } else {
+                            ctx.errors.push(
+                                InheritanceError::SuperButNoExtends {
+                                    pou,
+                                    call_site: CallSite::new(scope, invocation.keyword_id(db)),
+                                }
+                                .to_diagnostic(db),
+                            );
                         }
                     }
                     _ => {

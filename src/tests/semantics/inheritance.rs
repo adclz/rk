@@ -257,3 +257,41 @@ fn method_signature_type_mismatch(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+#[rstest]
+fn super_without_extends_clause_on_fb(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK fb
+            SUPER.something
+        END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0512] Error: invalid use of SUPER or THIS
+       ,-[ file:///test0.st:3:13 ]
+       |
+     3 |             SUPER.something
+       |             ^^|^^  
+       |               `---- 'SUPER' used but no EXTENDS clause found on 'fb'
+    ---'
+    ");
+}
+
+#[rstest]
+fn super_without_extends_clause_on_class(mut with_db: RootDatabase) {
+    let source = r#"
+        CLASS class
+           METHOD doSomething
+                SUPER.something
+           END_METHOD
+        END_CLASS"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0512] Error: invalid use of SUPER or THIS
+       ,-[ file:///test0.st:4:17 ]
+       |
+     4 |                 SUPER.something
+       |                 ^^|^^  
+       |                   `---- 'SUPER' used but no EXTENDS clause found on 'class'
+    ---'
+    ");
+}

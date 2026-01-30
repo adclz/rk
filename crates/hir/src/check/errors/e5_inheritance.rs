@@ -68,6 +68,10 @@ pub enum InheritanceError<'db> {
         got: Type<'db>,
         method: MethodRef<'db>,
     },
+    SuperButNoExtends {
+        pou: Pou<'db>,
+        call_site: CallSite<'db>,
+    },
 }
 
 impl<'db> From<InheritanceError<'db>> for AnalysisError<'db> {
@@ -92,6 +96,7 @@ impl<'db> ErrorCode for InheritanceError<'db> {
             Self::UnresolvedSuperMethod { .. } => "E0509",
             Self::SignatureParametersCountMismatch { .. } => "E0510",
             Self::SignatureTypeMismatch { .. } => "E0511",
+            Self::SuperButNoExtends { .. } => "E0512",
         }
     }
 
@@ -99,7 +104,8 @@ impl<'db> ErrorCode for InheritanceError<'db> {
         match self {
             Self::SuperBodyOnIncompatiblePou { .. }
             | Self::SuperOnIncompatiblePou { .. }
-            | Self::ThisOnIncompatiblePou { .. } => "invalid use of SUPER or THIS",
+            | Self::ThisOnIncompatiblePou { .. }
+            | Self::SuperButNoExtends { .. } => "invalid use of SUPER or THIS",
             Self::OverrideFinalMethod { .. } | Self::MissingOverride { .. } => "override violation",
             Self::MissingAbstractMethod { .. }
             | Self::EmptyOverride { .. }
@@ -349,6 +355,15 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
 
                 diag
             }
+            Self::SuperButNoExtends { call_site, pou } => diag()
+                .message(format!(
+                    "'SUPER' used but no EXTENDS clause found on '{}'",
+                    pou.get_name_ident(db).text(db)
+                ))
+                .range(call_site.get_span(db))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .call(),
         }
     }
 }
