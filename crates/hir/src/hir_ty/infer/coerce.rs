@@ -126,6 +126,31 @@ impl<'db> Type<'db> {
                 }
             }
             (Type::RefTo(_), Type::Null) => Ok(()),
+            // self-assignments
+            (Type::Function(f), rhs) => {
+                return match f.return_type(db) {
+                    Some(ret) => {
+                        Type::new_spec(db, *ret).coerce_with_type(db, *rhs, adjustments, resolver)
+                    }
+                    None => Err(CoerceError {
+                        expected: Type::Void,
+                        actual: to,
+                        adjustment: None,
+                    }),
+                };
+            }
+            (Type::MethodDecl(f), rhs) => {
+                return match f.return_type(db) {
+                    Some(ret) => {
+                        Type::new_spec(db, *ret).coerce_with_type(db, *rhs, adjustments, resolver)
+                    }
+                    None => Err(CoerceError {
+                        expected: Type::Void,
+                        actual: to,
+                        adjustment: None,
+                    }),
+                };
+            }
             _ => Err(CoerceError {
                 expected: *self,
                 actual: to,
@@ -171,7 +196,7 @@ impl<'db> Type<'db> {
             }
             Type::StructElement(element) => (),
             _ => {
-                // function and methods can be assigned IF they are the same
+                // function and methods can be assigned IF they are in the same scope (self-assignment)
                 let self_assign = match self {
                     Type::Function(f) => f.get_scope_id(db) == call_site.get_scope_id(db),
                     Type::MethodDecl(m) => m.get_scope_id(db) == call_site.get_scope_id(db),

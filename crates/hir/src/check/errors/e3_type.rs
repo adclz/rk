@@ -99,13 +99,17 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 adjustment,
                 expr,
             } => {
-                let _value = value.full_type_name(db);
-                let mut diag = diag()
-                    .message(format!(
+                let message = if target.is_void() {
+                    format!("'{}' is void and can not be assigned", base_target.type_name(db))
+                } else {
+                    format!(
                         "expected '{}', got '{}'",
                         target.full_type_name(db),
                         adjustment_to_string(db, *value, adjustment),
-                    ))
+                    )
+                };
+                let mut diag = diag()
+                    .message(message)
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(expr.get_span(db))

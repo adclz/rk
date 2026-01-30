@@ -369,6 +369,10 @@ impl<'db> Type<'db> {
         matches!(self, Type::Never)
     }
 
+    pub fn is_void(&self) -> bool {
+        matches!(self, Type::Void)
+    }
+
     pub fn has_infer(&self) -> bool {
         matches!(self, Type::Infer(_))
     }

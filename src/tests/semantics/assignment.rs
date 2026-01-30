@@ -86,10 +86,35 @@ END_FUNCTION"#;
        | 
      4 |     fn1 := ULINT#5;
        |            ^^^|^^^  
-       |               `----- expected 'FUNCTION: fn1', got 'ULINT'
+       |               `----- expected 'INT', got 'ULINT'
     ---'
     ");
 }
+
+#[rstest]
+fn assign_function_with_no_return_type(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1
+
+    fn1 := ULINT#5;
+
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:4:12 ]
+       |
+     2 | FUNCTION fn1
+       |          ^|^  
+       |           `--- FUNCTION 'fn1' is defined here
+       | 
+     4 |     fn1 := ULINT#5;
+       |            ^^^|^^^  
+       |               `----- 'FUNCTION: fn1' is void and can not be assigned
+    ---'
+    ");
+}
+
 
 #[rstest]
 fn assign_undeclared_type(mut with_db: RootDatabase) {
