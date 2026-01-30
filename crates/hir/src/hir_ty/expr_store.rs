@@ -2,16 +2,14 @@ use std::iter::FusedIterator;
 
 use db::WorkspaceDataBase;
 
-use crate::{
-    hir_def::{
-        expressions::expression::{
-            Elementary, Expr, ExprKind, InitExpr, InitExprKind, PathExpr, PathExprKind,
-            PrimaryExpr, VarAccess,
-        },
-        interned::{
-            identifier::{Ident, SpanIdent},
-            namespace::{NamespaceAccess, SpanNamespacePath},
-        },
+use crate::hir_def::{
+    expressions::expression::{
+        Elementary, Expr, ExprKind, InitExpr, InitExprKind, PathExpr, PathExprKind, PrimaryExpr,
+        VarAccess,
+    },
+    interned::{
+        identifier::{Ident, SpanIdent},
+        namespace::{NamespaceAccess, SpanNamespacePath},
     },
 };
 
@@ -48,45 +46,49 @@ impl PathExprWalkStep<'_> {
 impl<'db> PathExpr<'db> {
     #[salsa::tracked(returns(ref))]
     pub fn flatten(self, db: &'db dyn WorkspaceDataBase) -> Vec<PathExprWalkStep<'db>> {
+        self.flat(db)
+    }
+
+    fn flat(&self, db: &'db dyn WorkspaceDataBase) -> Vec<PathExprWalkStep<'db>> {
         let mut result = Vec::new();
 
         match self.expr(db) {
             PathExprKind::Field(field_expr) => {
-                result.extend(field_expr.path.flatten(db).iter().cloned());
+                result.extend(field_expr.path.flat(db));
                 match &field_expr.var {
                     VarAccess::Simple(simple) => result.push(PathExprWalkStep::Field {
-                        expr: self,
+                        expr: *self,
                         ident: *simple,
                     }),
                     VarAccess::Deref(target, count) => {
                         result.push(PathExprWalkStep::Field {
                             ident: *target,
-                            expr: self,
+                            expr: *self,
                         });
                         result.push(PathExprWalkStep::Deref {
-                            expr: self,
+                            expr: *self,
                             count: *count,
                         })
                     }
                 }
             }
             PathExprKind::Index(index_expr) => {
-                result.extend(index_expr.path.flatten(db).iter().cloned());
-                result.push(PathExprWalkStep::Index { expr: self });
+                result.extend(index_expr.path.flat(db));
+                result.push(PathExprWalkStep::Index { expr: *self });
             }
             PathExprKind::VarAccess(var_access) => match var_access {
                 VarAccess::Simple(simple) => result.push(PathExprWalkStep::Field {
-                    expr: self,
+                    expr: *self,
                     ident: simple,
                 }),
                 VarAccess::Deref(target, count) => {
                     // deref behaves similar to a field access
                     // but we don't want to repeat the same logic, so we split it into two steps
                     result.push(PathExprWalkStep::Field {
-                        expr: self,
+                        expr: *self,
                         ident: target,
                     });
-                    result.push(PathExprWalkStep::Deref { expr: self, count });
+                    result.push(PathExprWalkStep::Deref { expr: *self, count });
                 }
             },
         }
@@ -156,10 +158,11 @@ pub enum InitExprWalkStep<'db> {
         name: SpanIdent<'db>,
         value: Box<InitExprWalkStep<'db>>,
     },
-    ConstantExpr { // A constant expression (evaluated by the body inference)
+    ConstantExpr {
+        // A constant expression (evaluated by the body inference)
         expr: InitExpr<'db>,
         value: Expr<'db>,
-    }, 
+    },
 }
 
 impl InitExprWalkStep<'_> {
@@ -190,9 +193,7 @@ pub struct InitExprIterator<'db> {
 
 impl<'db> InitExprIterator<'db> {
     pub fn new(root: &'db InitExprWalkStep<'db>) -> Self {
-        Self {
-            stack: vec![root],
-        }
+        Self { stack: vec![root] }
     }
 }
 
