@@ -261,7 +261,6 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     .range(expr.get_span(db))
                     .call();
 
-                eprintln!("TYPE: {:?}", ty); 
                 if let Type::Struct(strukt) = ty.normalize(db) {
                     fuzzy_struct_fields(db, strukt, &mut diag, ident.text(db).as_str())
                 };

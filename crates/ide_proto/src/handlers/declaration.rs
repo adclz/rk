@@ -4,7 +4,7 @@ use hir::{
     HirNodeInfo,
     hir_def::{
         expressions::{
-            expression::{BeginPathExpr, Expr, ParamAssign, PathExpr, VariableAccess},
+            expression::{BeginPathExpr, Expr, InitExpr, ParamAssign, PathExpr, VariableAccess},
             spec::{Spec, StructElement},
         },
         pous::variable::VariableDecl,
@@ -37,6 +37,16 @@ impl<'db> DeclarationHandler<'db> for Spec<'db> {
         let infer = infer_signature(db, self.scope_id(db));
         let typ = infer.type_of_specs.get(self)?;
         typ.declaration(db)
+    }
+}
+
+impl<'db> DeclarationHandler<'db> for InitExpr<'db> {
+    fn declaration(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDeclarationResponse> {
+        let infer = infer_signature(db, self.scope_id(db));
+        infer
+            .init_expr_result
+            .type_of_init_expr.get(self)
+            .and_then(|typ| typ.declaration(db))
     }
 }
 

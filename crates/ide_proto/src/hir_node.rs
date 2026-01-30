@@ -99,6 +99,7 @@ impl<'db> HirNode<'db> {
         match self {
             HirNode::VariableDecl(v) => v.declaration(db),
             HirNode::StructElement(s) => s.declaration(db),
+            HirNode::InitExpr(i) => i.declaration(db),
             HirNode::Spec(s) => s.declaration(db),
             HirNode::PathExpr(p) => p.declaration(db),
             HirNode::VariableAccess(v) => v.declaration(db),
@@ -113,6 +114,7 @@ impl<'db> HirNode<'db> {
             HirNode::PouDecl(pou) => pou.definition(db),
             HirNode::VariableDecl(v) => v.definition(db),
             HirNode::StructElement(s) => s.definition(db),
+            HirNode::InitExpr(i) => i.definition(db),
             HirNode::Spec(s) => s.definition(db),
             HirNode::PathExpr(p) => p.definition(db),
             HirNode::VariableAccess(v) => v.definition(db),

@@ -57,7 +57,9 @@ impl<'db> InitExprInferenceResult<'db> {
         let normalized = typ.normalize(db);
         let array_root = matches!(normalized, Type::Array(_)).then_some(typ);
         let mut ctx = ArrayInitContext::new(array_root);
-        let mut place = InitPlaceBuilder { current_init_typ: typ };
+        let mut place = InitPlaceBuilder {
+            current_init_typ: typ,
+        };
         self.resolve_steps(db, typ, &mut place, body_ctx, &mut ctx, map);
     }
 
@@ -98,7 +100,13 @@ impl<'db> InitExprInferenceResult<'db> {
                     .type_of_init_expr
                     .get(expr)
                     .copied()
-                    .unwrap_or_default();
+                    .unwrap_or_default()
+                    .normalize(db);
+
+                let expected = match expected.normalize(db) {
+                    Type::Array(array) => Type::new_spec(db, array.of_type(db)),
+                    _ => expected,
+                };
 
                 self.resolve_steps(db, expected, place, body_ctx, ctx, values);
             }
@@ -141,7 +149,13 @@ impl<'db> InitExprInferenceResult<'db> {
                     .type_of_init_expr
                     .get(expr)
                     .copied()
-                    .unwrap_or_default();
+                    .unwrap_or_default()
+                    .normalize(db);
+
+                let expected = match expected.normalize(db) {
+                    Type::Array(array) => Type::new_spec(db, array.of_type(db)),
+                    _ => expected,
+                };
 
                 // Save and restore context for struct
                 let saved_root = ctx.array_root;
@@ -164,7 +178,8 @@ impl<'db> InitExprInferenceResult<'db> {
                     .type_of_init_expr
                     .get(expr)
                     .copied()
-                    .unwrap_or_default();
+                    .unwrap_or_default()
+                    .normalize(db);
 
                 // If field is an array, reset context for it
                 let value_is_array = matches!(field_type.normalize(db), Type::Array(_));

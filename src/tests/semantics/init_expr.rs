@@ -219,7 +219,7 @@ fn walk_array_path_expression(mut with_db: RootDatabase) {
         END_FUNCTION
 "#;
     add_sources(&mut with_db, &[source]);
-    assert_snapshot!(collect_init_expressions(&with_db, *with_db.get_files().iter().last().unwrap(), &"fn"), @"33 ELEMENTARY");
+    assert_snapshot!(collect_init_expressions(&with_db, *with_db.get_files().iter().last().unwrap(), &"fn"), @"33 DATATYPE");
 }
 
 #[rstest]
@@ -244,6 +244,6 @@ fn struct_fields(mut with_db: RootDatabase) {
     assert_snapshot!(collect_init_expressions(&with_db, *with_db.get_files().iter().last().unwrap(), &"fn"), @r"
     30 STRUCT_ELEMENT
     40 STRUCT_ELEMENT
-    28 STRUCT
+    28 DATATYPE
     ");
 }

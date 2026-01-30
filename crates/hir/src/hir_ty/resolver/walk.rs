@@ -378,8 +378,7 @@ impl<'db> Type<'db> {
         match step {
             InitExprWalkStep::ArrayInit { .. } => match self {
                 Type::Array(array) => {
-                    ctx.type_of_init_expr
-                        .insert(*expr, Type::new_spec(db, array.of_type(db)));
+                    ctx.type_of_init_expr.insert(*expr, place.current_init_typ);
                 }
                 _ => {
                     ctx.errors.push(
@@ -398,7 +397,7 @@ impl<'db> Type<'db> {
                     ctx.type_of_init_expr.insert(*expr, place.current_init_typ);
                 }
                 Type::Struct(_) => {
-                    ctx.type_of_init_expr.insert(*expr, *self);
+                    ctx.type_of_init_expr.insert(*expr, place.current_init_typ);
                 }
                 _ => {
                     ctx.errors.push(
@@ -464,7 +463,8 @@ impl<'db> Type<'db> {
                     }
                 }
             }
-            InitExprWalkStep::ConstantExpr { .. } | InitExprWalkStep::SizedIndex { .. } => { /*  handled by the inference layer */ }
+            InitExprWalkStep::ConstantExpr { .. } | InitExprWalkStep::SizedIndex { .. } => { /*  handled by the inference layer */
+            }
         }
     }
 }
