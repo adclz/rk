@@ -319,3 +319,35 @@ END_CLASS
     ---'
     ");
 }
+
+
+#[rstest]
+fn duplicate_init_expr(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Engine:
+            STRUCT
+                power : INT;
+                oil : REAL;
+            END_STRUCT
+        END_TYPE
+
+        FUNCTION fn
+            VAR
+                Base : Engine := (power := 100, power := 100);
+            END_VAR
+
+        END_FUNCTION
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0110] Error: duplicate definitions
+        ,-[ file:///test0.st:11:35 ]
+        |
+     11 |                 Base : Engine := (power := 100, power := 100);
+        |                                   ^^^^^^|^^^^^  ^^^^^^|^^^^^  
+        |                                         `--------------------- duplicate field 'power' in initializer expression
+        |                                                       |       
+        |                                                       `------- field 'power' is already initialized here
+    ----'
+    ");
+}

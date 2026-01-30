@@ -6,7 +6,7 @@ use crate::{
     HasName, HirNodeInfo,
     check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic},
     hir_def::{
-        expressions::{expression::ParamAssign, spec::StructElement},
+        expressions::{expression::{InitExpr, ParamAssign}, spec::StructElement},
         interned::identifier::{Ident, SpanIdent},
         pous::{class::MethodDecl, interface::MethodPrototype, pou::Pou, variable::VariableDecl},
         using::Using,
@@ -26,6 +26,7 @@ impl ErrorCode for DuplicateError<'_> {
             Self::InheritedMethod { .. } => "E0107",
             Self::Parameter { .. } => "E0108",
             Self::Using { .. } => "E0109",
+            Self::InitExprField { .. } => "E0110",
         }
     }
 
@@ -72,6 +73,11 @@ pub enum DuplicateError<'db> {
     Using {
         using: Using<'db>,
         other: Using<'db>,
+    },
+    InitExprField {
+        name: Ident,
+        field1: InitExpr<'db>,
+        field2: InitExpr<'db>,
     },
 }
 
@@ -283,6 +289,28 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                     ),
                     other.scope_id(db).file(db),
                     other.get_span(db),
+                ));
+
+                diag
+            }
+            Self::InitExprField { name, field1, field2 } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "duplicate field '{}' in initializer expression",
+                        name.text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(field1.get_span(db))
+                    .call();
+
+                diag.with_related(Related::new(
+                    format!(
+                        "field '{}' is already initialized here",
+                        name.text(db)
+                    ),
+                    field2.get_scope_id(db).file(db),
+                    field2.get_span(db),
                 ));
 
                 diag

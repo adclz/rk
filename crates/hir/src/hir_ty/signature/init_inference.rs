@@ -4,8 +4,8 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     CallSite,
-    check::errors::{analysis_error::ToIdeDiagnostic, e6_array::ArrayError},
-    hir_def::{expressions::expression::InitExpr, scope::ScopeId},
+    check::errors::{analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError, e6_array::ArrayError},
+    hir_def::{expressions::expression::InitExpr, interned::identifier::Ident, scope::ScopeId},
     hir_ty::{
         body::BodyInferenceResult,
         expr_store::InitExprWalkStep,
@@ -56,7 +56,7 @@ impl<'db> InitExprInferenceResult<'db> {
         let map = expr.flatten(db);
         let normalized = typ.normalize(db);
         let array_root = matches!(normalized, Type::Array(_)).then_some(typ);
-        let mut ctx = ArrayInitContext::new(array_root);
+        let mut ctx = InitContext::new(array_root);
         let mut place = InitPlaceBuilder {
             current_init_typ: typ,
         };
@@ -69,7 +69,7 @@ impl<'db> InitExprInferenceResult<'db> {
         expected: Type<'db>,
         place: &mut InitPlaceBuilder<'db>,
         body_ctx: &mut BodyInferenceResult<'db>,
-        ctx: &mut ArrayInitContext<'db>,
+        ctx: &mut InitContext<'db>,
         map: &'db [InitExprWalkStep],
     ) {
         for step in map {
@@ -84,17 +84,12 @@ impl<'db> InitExprInferenceResult<'db> {
         expected: Type<'db>,
         place: &mut InitPlaceBuilder<'db>,
         body_ctx: &mut BodyInferenceResult<'db>,
-        ctx: &mut ArrayInitContext<'db>,
+        ctx: &mut InitContext<'db>,
         step: &'db InitExprWalkStep,
     ) {
         match step {
             InitExprWalkStep::ArrayInit { expr, values } => {
                 expected.walk_init_expr(db, step, place, self);
-
-                // Set array root if not already set
-                if ctx.array_root.is_none() && matches!(expected.normalize(db), Type::Array(_)) {
-                    ctx.array_root = Some(expected);
-                };
 
                 let expected = self
                     .type_of_init_expr
@@ -103,8 +98,14 @@ impl<'db> InitExprInferenceResult<'db> {
                     .unwrap_or_default()
                     .normalize(db);
 
-                let expected = match expected.normalize(db) {
-                    Type::Array(array) => Type::new_spec(db, array.of_type(db)),
+                let expected = match expected {
+                    Type::Array(array) => {
+                        // Set array root if not already set
+                        if ctx.array_root.is_none() {
+                            ctx.array_root = Some(expected);
+                        };
+                        Type::new_spec(db, array.of_type(db))
+                    }
                     _ => expected,
                 };
 
@@ -152,10 +153,13 @@ impl<'db> InitExprInferenceResult<'db> {
                     .unwrap_or_default()
                     .normalize(db);
 
-                let expected = match expected.normalize(db) {
+                let expected = match expected {
                     Type::Array(array) => Type::new_spec(db, array.of_type(db)),
                     _ => expected,
                 };
+
+                // Clear seen fields for new struct
+                ctx.clear_fields();
 
                 // Save and restore context for struct
                 let saved_root = ctx.array_root;
@@ -172,7 +176,7 @@ impl<'db> InitExprInferenceResult<'db> {
                 // Struct counts as 1 element in parent array
                 ctx.advance(1);
             }
-            InitExprWalkStep::Field { expr, value, .. } => {
+            InitExprWalkStep::Field { expr, value, name } => {
                 expected.walk_init_expr(db, step, place, self);
                 let field_type = self
                     .type_of_init_expr
@@ -180,6 +184,17 @@ impl<'db> InitExprInferenceResult<'db> {
                     .copied()
                     .unwrap_or_default()
                     .normalize(db);
+
+                if let Some(prev) = ctx.seen_fields.insert(name.ident, *expr) {
+                    self.errors.push(
+                        DuplicateError::InitExprField {
+                            name: name.ident,
+                            field1: prev,
+                            field2: *expr,
+                        }
+                        .to_diagnostic(db),
+                    );
+                }
 
                 // If field is an array, reset context for it
                 let value_is_array = matches!(field_type.normalize(db), Type::Array(_));
@@ -243,7 +258,7 @@ impl<'db> InitExprInferenceResult<'db> {
         &mut self,
         db: &'db dyn WorkspaceDataBase,
         expr: InitExpr<'db>,
-        ctx: &mut ArrayInitContext<'db>,
+        ctx: &mut InitContext<'db>,
         end_position: usize,
     ) {
         if ctx.is_overflow_reported() {
@@ -268,21 +283,24 @@ impl<'db> InitExprInferenceResult<'db> {
 }
 
 /// Mutable context for tracking position during array init traversal
-struct ArrayInitContext<'db> {
+struct InitContext<'db> {
     /// Current position per dimension (index = dimension)
     positions: Vec<usize>,
     /// Root array type for bounds checking
     array_root: Option<Type<'db>>,
     /// Whether overflow has been reported per dimension
     overflow_reported: Vec<bool>,
+    /// Seen fields in current struct (for duplicate detection)
+    seen_fields: FxHashMap<Ident, InitExpr<'db>>,
 }
 
-impl<'db> ArrayInitContext<'db> {
+impl<'db> InitContext<'db> {
     fn new(array_root: Option<Type<'db>>) -> Self {
         Self {
             positions: vec![0],
             array_root,
             overflow_reported: vec![false],
+            seen_fields: FxHashMap::default(),
         }
     }
 
@@ -326,4 +344,9 @@ impl<'db> ArrayInitContext<'db> {
         self.overflow_reported.push(false);
         self.array_root = new_root;
     }
+
+    fn clear_fields(&mut self) {
+        self.seen_fields.clear();
+    }
+
 }
