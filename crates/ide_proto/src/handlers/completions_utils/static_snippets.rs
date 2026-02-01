@@ -127,7 +127,7 @@ pub fn var_in_out() -> CompletionItem {
         label: "VAR_IN_OUT".into(),
         kind: Some(lsp_types::CompletionItemKind::VARIABLE),
         insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
-        insert_text: Some("VAR_OUTPUT \n\nEND_VAR".into()),
+        insert_text: Some("VAR_IN_OUT \n\nEND_VAR".into()),
         ..Default::default()
     }
 }
@@ -152,26 +152,6 @@ pub fn var() -> CompletionItem {
         insert_text: Some("VAR \n\nEND_VAR".into()),
         ..Default::default()
     }
-}
-
-#[inline]
-pub fn fn_var_snippets() -> Vec<CompletionItem> {
-    vec![var_input(), var_output(), var_in_out(), var_temp(), var()]
-}
-
-#[inline]
-pub fn fb_var_snippets() -> Vec<CompletionItem> {
-    vec![var_input(), var_output(), var_in_out(), var_temp(), var()]
-}
-
-#[inline]
-pub fn class_var_snippets() -> Vec<CompletionItem> {
-    vec![var_input(), var_output(), var_in_out(), var_temp(), var()]
-}
-
-#[inline]
-pub fn method_var_snippets() -> Vec<CompletionItem> {
-    vec![var_input(), var_output(), var_in_out(), var_temp(), var()]
 }
 
 #[inline]

@@ -31,12 +31,13 @@ pub fn completions(
         .map(|s| CompletionResponse::Array(s.completion(db, offset).unwrap_or_default()))
         .or_else(|| {
             Some(CompletionResponse::Array(vec![
-                ide_proto::handlers::completion::static_snippets::namespace(),
-                ide_proto::handlers::completion::static_snippets::function(),
-                ide_proto::handlers::completion::static_snippets::function_block(),
-                ide_proto::handlers::completion::static_snippets::class(),
-                ide_proto::handlers::completion::static_snippets::interface(),
-                ide_proto::handlers::completion::static_snippets::type_(),
+                ide_proto::handlers::completions_utils::static_snippets::namespace(),
+                ide_proto::handlers::completions_utils::static_snippets::using(),
+                ide_proto::handlers::completions_utils::static_snippets::function(),
+                ide_proto::handlers::completions_utils::static_snippets::function_block(),
+                ide_proto::handlers::completions_utils::static_snippets::class(),
+                ide_proto::handlers::completions_utils::static_snippets::interface(),
+                ide_proto::handlers::completions_utils::static_snippets::type_(),
             ]))
         }))
 }

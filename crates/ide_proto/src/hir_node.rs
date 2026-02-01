@@ -11,7 +11,8 @@ use hir::{
     hir_ty::{signature::inheritance::MethodRef, ty::Type},
 };
 
-use crate::{comment_index::comment_index, handlers::{CodeLensHandler, DeclarationHandler, DefinitionHandler, DocumentSymbolsHandler, HoverHandler, InlayHintHandler, SemanticTokensHandler}};
+use crate::{comment_index::comment_index, handlers::{CodeLensHandler, CompletionHandler, DeclarationHandler, DefinitionHandler, DocumentSymbolsHandler, HoverHandler, InlayHintHandler, SemanticTokensHandler}};
+
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HirNode<'db> {
@@ -47,10 +48,15 @@ impl<'db> HirNode<'db> {
 
     pub fn completion(
         &'db self,
-        _db: &'db dyn WorkspaceDataBase,
-        _offset: usize,
+        db: &'db dyn WorkspaceDataBase,
+        offset: usize,
     ) -> Option<Vec<CompletionItem>> {
-        None
+        match self {
+            HirNode::Namespace(ns) => ns.completion(db, offset),
+            HirNode::PouDecl(pou) => pou.completion(db, offset),
+            HirNode::PathExpr(e) => e.completion(db, offset),
+            _ => None,
+        }
     }
 
     pub fn code_lens(&self, db: &'db dyn WorkspaceDataBase) -> Option<CodeLens> {

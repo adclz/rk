@@ -2,7 +2,7 @@ use auto_lsp::{core::{document_symbols_builder::DocumentSymbolsBuilder, semantic
 use db::WorkspaceDataBase;
 
 pub mod code_lens;
-pub mod completion;
+pub mod completions_utils;
 pub mod definition;
 pub mod declaration;
 pub mod document_symbols;
@@ -10,6 +10,7 @@ pub mod hover;
 pub mod implementation;
 pub mod inlay_hint;
 pub mod semantic_tokens;
+pub mod completions;
 
 
 pub trait SemanticTokensHandler<'db> {

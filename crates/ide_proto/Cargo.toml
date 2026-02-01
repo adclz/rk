@@ -17,3 +17,4 @@ rustc-hash = { workspace = true }
 tree-sitter-rk = { workspace = true }
 tracing = { workspace = true }
 salsa = { workspace = true }
+bitflags = { workspace = true }
