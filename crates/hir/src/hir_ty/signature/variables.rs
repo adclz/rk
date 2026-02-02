@@ -35,19 +35,32 @@ impl<'db> Signature<'db> {
             }
 
             let var_type = Type::new_spec(db, var.spec(db));
-            if var_type.is_never() {
-                if let SpecKind::Target(target) = var.spec(db).kind(db) {
+            match var_type {
+                Type::Never => {
+                    if let SpecKind::Target(target) = var.spec(db).kind(db) {
+                        self.errors.push(
+                            ResolveError::NoNamespaceItemFound {
+                                path: target.clone(),
+                            }
+                            .to_diagnostic(db),
+                        );
+                    }
+                    self.type_of_specs.insert(var.spec(db), Type::Never);
+                    continue;
+                }
+                Type::Function(_) => {
                     self.errors.push(
-                        ResolveError::NoNamespaceItemFound {
-                            path: target.clone(),
+                        ResolveError::FunctionAsVariableType {
+                            expr: var.spec(db),
+                            ty: var_type.clone(),
                         }
                         .to_diagnostic(db),
                     );
-                }
-                self.type_of_specs.insert(var.spec(db), Type::Never);
-                continue;
-            }
-            self.type_of_specs.insert(var.spec(db), var_type);
+                    self.type_of_specs.insert(var.spec(db), var_type);
+                    continue;
+                },
+                _ => self.type_of_specs.insert(var.spec(db), var_type)
+            };
 
             if let Some(init_expr) = var.init(db) {
                 self.init_expr_result

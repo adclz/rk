@@ -89,6 +89,10 @@ pub enum ResolveError<'db> {
         expr: InitExpr<'db>,
         ty: Type<'db>,
     },
+    FunctionAsVariableType {
+        expr: Spec<'db>,
+        ty: Type<'db>,
+    },
 }
 
 impl<'db> ErrorCode for ResolveError<'db> {
@@ -108,6 +112,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::IndexNonArrayTypeInitExpr { .. } => "E0213",
             Self::IndexNonArrayTypePathExpr { .. } => "E0213",
             Self::NoFieldOnElementaryType { .. } => "E0214",
+            Self::FunctionAsVariableType { .. } => "E0215",
         }
     }
 
@@ -125,6 +130,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             | Self::NoFieldOnElementaryType { .. }
             | Self::IndexNonArrayTypeInitExpr { .. }
             | Self::IndexNonArrayTypePathExpr { .. } => "invalid operation",
+            Self::FunctionAsVariableType { .. } => "invalid variable type",
         }
     }
 }
@@ -302,6 +308,15 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(path.get_span(db))
+                .call(),
+            Self::FunctionAsVariableType { expr, ty } => diag()
+                .message(format!(
+                    "'{}' is a function and cannot be used as a variable type",
+                    ty.type_name(db)
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(expr.get_span(db))
                 .call(),
         }
     }
