@@ -9,6 +9,8 @@ use hir::{
         },
         namespace::NamespaceDecl,
         pous::pou::Pou,
+        scope::ScopeKind,
+        semantic_index::get_scope,
     },
     hir_ty::body::infer_body,
 };
@@ -17,7 +19,7 @@ use crate::handlers::{
     CompletionHandler,
     completions_utils::{
         field::FieldCompletion,
-        pou_strategy,
+        pou_strategy::{self, complete_pou},
         scope::{QueryMode, ScopeCompletionCtx},
         static_snippets,
     },
@@ -91,12 +93,21 @@ impl<'db> CompletionHandler<'db> for PathExpr<'db> {
             return ty.normalize(db).field_completion(db, offset);
         }
 
-        // Fallback to scope-based completions
         let mut items = vec![];
+        // Checks if the body is empty
+        if infer.type_of_path_expr.is_empty() {
+            match get_scope(db, self.get_scope_id(db)).kind {
+                ScopeKind::Pou(p) => {
+                    complete_pou(p, db, offset, &mut items);
+                }
+                _ => items.extend(static_snippets::all_stmts()),
+            }
+        }
+
+        // Fallback to scope-based completions
         let mut scope_ctx =
             ScopeCompletionCtx::new(QueryMode::Body, self.get_scope_id(db), offset, "");
         scope_ctx.query_scope_items(db);
-        items.extend(static_snippets::all_stmts());
         items.extend(scope_ctx.take_items());
         Some(items)
     }
@@ -113,8 +124,9 @@ impl<'db> CompletionHandler<'db> for VariableAccess<'db> {
             return ty.normalize(db).field_completion(db, offset);
         }
 
-        // Fallback to scope-based completions
         let mut items = vec![];
+
+        // Fallback to scope-based completions
         let mut scope_ctx =
             ScopeCompletionCtx::new(QueryMode::Body, self.get_scope_id(db), offset, "");
         scope_ctx.query_scope_items(db);

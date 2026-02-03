@@ -24,11 +24,14 @@ pub fn complete_pou(
 
     let ctx = HeadResult::query_var_decls(root_node, source, range, offset);
     
+    eprintln!("Pou completion context: {:?}", ctx.inside_head);
+
     // If we're inside a variable declaration, don't provide completions
     // (they should be handled by that context)
     if ctx.is_inside_var_section() {
         return None;
     }
+
 
     match pou {
         Pou::Class(cl) => complete_class(cl, ctx, db, items),
@@ -133,7 +136,7 @@ fn complete_function_block(
     complete_function(pou, ctx, db, offset, items)
 }
 
-fn add_var_snippets(include: VarSection, items: &mut Vec<CompletionItem>) {
+pub fn add_var_snippets(include: VarSection, items: &mut Vec<CompletionItem>) {
     if include.contains(VarSection::INPUTS) {
         items.push(static_snippets::var_input());
     }
