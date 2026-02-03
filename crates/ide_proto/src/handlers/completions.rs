@@ -61,8 +61,9 @@ impl<'db> CompletionHandler<'db> for Spec<'db> {
     ) -> Option<Vec<CompletionItem>> {
         let mut items = vec![];
         items.extend(static_snippets::elem_type_names());
-        
-        let mut scope_ctx = ScopeCompletionCtx::new(QueryMode::Signature, self.get_scope_id(db), offset, "");
+
+        let mut scope_ctx =
+            ScopeCompletionCtx::new(QueryMode::Signature, self.get_scope_id(db), offset, "");
         scope_ctx.query_scope_items(db);
         items.extend(scope_ctx.take_items());
         Some(items)
@@ -89,11 +90,13 @@ impl<'db> CompletionHandler<'db> for PathExpr<'db> {
         if let Some(ty) = infer.get_type_of_path_expr(db, *self) {
             return ty.normalize(db).field_completion(db, offset);
         }
-        
+
         // Fallback to scope-based completions
         let mut items = vec![];
-        let mut scope_ctx = ScopeCompletionCtx::new(QueryMode::Body, self.get_scope_id(db), offset, "");
+        let mut scope_ctx =
+            ScopeCompletionCtx::new(QueryMode::Body, self.get_scope_id(db), offset, "");
         scope_ctx.query_scope_items(db);
+        items.extend(static_snippets::all_stmts());
         items.extend(scope_ctx.take_items());
         Some(items)
     }
@@ -109,10 +112,11 @@ impl<'db> CompletionHandler<'db> for VariableAccess<'db> {
         if let Some(ty) = infer.get_type_of_variable_access(db, *self) {
             return ty.normalize(db).field_completion(db, offset);
         }
-        
+
         // Fallback to scope-based completions
         let mut items = vec![];
-        let mut scope_ctx = ScopeCompletionCtx::new(QueryMode::Body, self.get_scope_id(db), offset, "");
+        let mut scope_ctx =
+            ScopeCompletionCtx::new(QueryMode::Body, self.get_scope_id(db), offset, "");
         scope_ctx.query_scope_items(db);
         items.extend(scope_ctx.take_items());
         Some(items)
@@ -122,9 +126,22 @@ impl<'db> CompletionHandler<'db> for VariableAccess<'db> {
 impl<'db> CompletionHandler<'db> for Expr<'db> {
     fn completion(
         &'db self,
-        _db: &'db dyn WorkspaceDataBase,
-        _offset: usize,
+        db: &'db dyn WorkspaceDataBase,
+        offset: usize,
     ) -> Option<Vec<CompletionItem>> {
-        None
+        let infer = infer_body(db, self.get_scope_id(db));
+        if let Some(ty) = infer.get_type_of_expr(*self)
+            && !ty.is_never()
+        {
+            return ty.normalize(db).field_completion(db, offset);
+        }
+
+        // Fallback to scope-based completions
+        let mut items = vec![];
+        let mut scope_ctx =
+            ScopeCompletionCtx::new(QueryMode::Body, self.get_scope_id(db), offset, "");
+        scope_ctx.query_scope_items(db);
+        items.extend(scope_ctx.take_items());
+        Some(items)
     }
 }

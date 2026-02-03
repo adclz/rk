@@ -56,8 +56,19 @@ pub fn completions(
             Some(curr) => {
                 let range = curr.get_span(db);
                 if range.start_byte <= offset && offset <= range.end_byte {
-                    prev.unwrap_or(target)
+                    // Latest is valid (contains offset), use it
+                    curr
+                } else if let Some(parent) = &prev {
+                    // Latest is not valid, check if parent is
+                    let parent_range = parent.get_span(db);
+                    if parent_range.start_byte <= offset && offset <= parent_range.end_byte {
+                        parent.clone()
+                    } else {
+                        // Neither is valid, use target
+                        target
+                    }
                 } else {
+                    // No parent to try, use target
                     target
                 }
             }
