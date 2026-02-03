@@ -7,6 +7,7 @@ pub mod enums;
 pub mod floats;
 pub mod func_call;
 pub mod implicit_casts;
+pub mod var_decls;
 pub mod inference;
 pub mod inheritance;
 pub mod init_expr;

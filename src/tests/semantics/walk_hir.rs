@@ -139,6 +139,7 @@ END_FUNCTION_BLOCK"#;
     assert_snapshot!(nodes.join("\n"), @r"
     PouDecl(FunctionBlock(FunctionBlock { [salsa id]: Id(2c00) }))
     VariableAccess(VariableAccess { [salsa id]: Id(1400) })
+    PathExpr(PathExpr { [salsa id]: Id(c00) })
     Expr(Expr { [salsa id]: Id(1c00) })
     PathExpr(PathExpr { [salsa id]: Id(c02) })
     Param(ParamAssign { [salsa id]: Id(2800) })
@@ -221,6 +222,7 @@ END_FUNCTION_BLOCK"#;
     [
         1,
         6,
+        10,
         12,
         21,
         23,
