@@ -54,7 +54,11 @@ impl<'db> HirNode<'db> {
         match self {
             HirNode::Namespace(ns) => ns.completion(db, offset),
             HirNode::PouDecl(pou) => pou.completion(db, offset),
+            HirNode::Spec(s) => s.completion(db, offset),
+            HirNode::InitExpr(e) => e.completion(db, offset),
             HirNode::PathExpr(e) => e.completion(db, offset),
+            HirNode::VariableAccess(v) => v.completion(db, offset),
+            HirNode::Expr(e) => e.completion(db, offset),
             _ => None,
         }
     }

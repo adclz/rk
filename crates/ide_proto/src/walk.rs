@@ -6,7 +6,9 @@ use hir::{
     HirNodeInfo,
     hir_def::{
         expressions::{
-            expression::{BeginPathExpr, Expr, InitExpr, InitExprKind, ParamAssign, PathExpr, VariableAccess},
+            expression::{
+                BeginPathExpr, Expr, InitExpr, InitExprKind, ParamAssign, PathExpr, VariableAccess, VariableAccessKind,
+            },
             spec::{Spec, SpecKind},
             statement::{CaseKind, Stmt, StmtKind},
         },
@@ -18,8 +20,7 @@ use hir::{
     hir_ty::{expr_store::InitExprIterator, signature::inheritance::MethodRef},
 };
 
-use crate::hir_node::{HirNode};
-
+use crate::hir_node::HirNode;
 
 pub fn descendant_at<'db>(
     db: &'db dyn WorkspaceDataBase,
@@ -36,12 +37,43 @@ pub fn descendant_at<'db>(
             // This ensures we get the deepest (last visited) node in the tree
             best_match = Some(node);
         }
+        if range.start_byte > offset {
+            return ControlFlow::Break(());
+        }
         ControlFlow::Continue(())
     });
 
     best_match
 }
 
+pub fn descendant_at_with<'db, F>(
+    db: &'db dyn WorkspaceDataBase,
+    file: File,
+    offset: usize,
+    mut f: F,
+) -> Option<HirNode<'db>>
+where
+    F: FnMut(HirNode<'db>) -> ControlFlow<()>,
+{
+    let mut best_match: Option<HirNode<'db>> = None;
+
+    let _ = semantic_index(db, file).walk_hir(db, &mut |node| {
+        let range = node.get_span(db);
+        // Only consider nodes that contain the offset
+        f(node.clone())?;
+        if range.start_byte <= offset && offset <= range.end_byte {
+            // Always update the best match when we find a containing node
+            // This ensures we get the deepest (last visited) node in the tree
+            best_match = Some(node);
+            if range.start_byte > offset {
+                return ControlFlow::Break(());
+            }
+        }
+        ControlFlow::Continue(())
+    });
+
+    best_match
+}
 
 pub trait WalkHir<'db> {
     fn walk_hir<F>(&self, db: &'db dyn WorkspaceDataBase, f: &mut F) -> ControlFlow<()>
@@ -252,8 +284,8 @@ impl<'db> WalkHir<'db> for InitExpr<'db> {
         db: &'db dyn WorkspaceDataBase,
         f: &mut F,
     ) -> ControlFlow<()> {
-
         let exprs = self.flatten(db);
+
         for init in InitExprIterator::new(&exprs[0]) {
             f(HirNode::InitExpr(*init.get_expr()))?;
             if let InitExprKind::ConstantExpr(expr) = init.get_expr().kind(db) {
@@ -261,7 +293,6 @@ impl<'db> WalkHir<'db> for InitExpr<'db> {
             }
         }
         ControlFlow::Continue(())
-        
     }
 }
 
@@ -311,10 +342,20 @@ impl<'db> WalkHir<'db> for PathExpr<'db> {
 impl<'db> WalkHir<'db> for VariableAccess<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
         &self,
-        _db: &'db dyn WorkspaceDataBase,
+        db: &'db dyn WorkspaceDataBase,
         f: &mut F,
     ) -> ControlFlow<()> {
         f(HirNode::VariableAccess(*self))?;
+        match self.kind(db) {
+            VariableAccessKind::Direct(_) => {
+                /* HW Bindings */
+            }
+            VariableAccessKind::Symbolic(v) => {
+                if let Some(expr) = v.expr(db) {
+                    expr.walk_hir(db, f)?;
+                }
+            }
+        }
 
         ControlFlow::Continue(())
     }

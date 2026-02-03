@@ -2,13 +2,23 @@ use auto_lsp::lsp_types::CompletionItem;
 use db::WorkspaceDataBase;
 use hir::{
     HirNodeInfo,
-    hir_def::{expressions::expression::PathExpr, namespace::NamespaceDecl, pous::pou::Pou},
+    hir_def::{
+        expressions::{
+            expression::{Expr, InitExpr, PathExpr, VariableAccess},
+            spec::Spec,
+        },
+        namespace::NamespaceDecl,
+        pous::pou::Pou,
+    },
+    hir_ty::body::infer_body,
 };
 
 use crate::handlers::{
     CompletionHandler,
     completions_utils::{
-        pou_context::{HeadLocation, HeadResult, VarSection},
+        field::FieldCompletion,
+        pou_strategy,
+        scope::{QueryMode, ScopeCompletionCtx},
         static_snippets,
     },
 };
@@ -19,7 +29,7 @@ impl<'db> CompletionHandler<'db> for NamespaceDecl<'db> {
         _db: &'db dyn WorkspaceDataBase,
         _offset: usize,
     ) -> Option<Vec<CompletionItem>> {
-        return Some(vec![
+        Some(vec![
             static_snippets::namespace(),
             static_snippets::using(),
             static_snippets::function(),
@@ -27,7 +37,7 @@ impl<'db> CompletionHandler<'db> for NamespaceDecl<'db> {
             static_snippets::class(),
             static_snippets::interface(),
             static_snippets::type_(),
-        ]);
+        ])
     }
 }
 
@@ -37,116 +47,84 @@ impl<'db> CompletionHandler<'db> for Pou<'db> {
         db: &'db dyn WorkspaceDataBase,
         offset: usize,
     ) -> Option<Vec<CompletionItem>> {
-        let doc = self.get_scope_id(db).file(db).document(db);
+        let mut items = vec![];
+        pou_strategy::complete_pou(*self, db, offset, &mut items)?;
+        Some(items)
+    }
+}
 
-        let root_node = doc.tree.root_node();
-        let source = &doc.texter.text;
-        let range = *self.get_span(db).ts();
-
-        let ctx = HeadResult::query_var_decls(root_node, source, range, offset);
-        if ctx.is_inside_var_section() {
-            return None;
-        }
+impl<'db> CompletionHandler<'db> for Spec<'db> {
+    fn completion(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        offset: usize,
+    ) -> Option<Vec<CompletionItem>> {
+        let mut items = vec![];
+        items.extend(static_snippets::elem_type_names());
         
-        let mut results = vec![];
-        match self {
-            Pou::Class(cl) => match ctx.inside_head {
-                HeadLocation::BeforeVars => {
-                    var_snippets_filtered(
-                        allowed_vars(*self).difference(ctx.active_variable_sections()),
-                        &mut results,
-                    );
-                    if cl.extends(db).is_none() {
-                        results.push(static_snippets::extends());
-                    }
-                    if cl.implements(db).is_empty() {
-                        results.push(static_snippets::implements());
-                    }
-                    return Some(results);
-                }
-                HeadLocation::InVars => {
-                    return Some(results);
-                }
-                HeadLocation::BeforeMethods => {
-                    var_snippets_filtered(
-                        allowed_vars(*self).difference(ctx.active_variable_sections()),
-                        &mut results,
-                    );
-                    results.push(static_snippets::method());
-                    return Some(results);
-                }
-                HeadLocation::InMethods => {
-                    return Some(vec![static_snippets::method()]);
-                }
-                HeadLocation::InStmts => {
-                    return Some(static_snippets::all_stmts());
-                }
-            },
-            Pou::Function(_) => match ctx.inside_head {
-                HeadLocation::BeforeVars => {
-                    var_snippets_filtered(
-                        allowed_vars(*self).difference(ctx.active_variable_sections()),
-                        &mut results,
-                    );
-                    return Some(results);
-                }
-                HeadLocation::InVars => {
-                    var_snippets_filtered(
-                        allowed_vars(*self).difference(ctx.active_variable_sections()),
-                        &mut results,
-                    );
-                    return Some(results);
-                }
-                HeadLocation::BeforeMethods | HeadLocation::InMethods | HeadLocation::InStmts => {
-                    return Some(static_snippets::all_stmts());
-                }
-            },
-            Pou::FunctionBlock(_) => {}
-            Pou::Interface(_) => {}
-            Pou::DataType(_) => {}
-        }
-        None
+        let mut scope_ctx = ScopeCompletionCtx::new(QueryMode::Signature, self.get_scope_id(db), offset, "");
+        scope_ctx.query_scope_items(db);
+        items.extend(scope_ctx.take_items());
+        Some(items)
     }
 }
 
-#[inline]
-fn allowed_vars(pou: Pou<'_>) -> VarSection {
-    match pou {
-        Pou::Class(_) | Pou::FunctionBlock(_) | Pou::Function(_) => {
-            VarSection::INPUTS
-                | VarSection::OUTPUTS
-                | VarSection::IN_OUTS
-                | VarSection::TEMPS
-                | VarSection::VARS
-        }
-        Pou::Interface(_) | Pou::DataType(_) => VarSection::empty(),
-    }
-}
-
-fn var_snippets_filtered(
-    include: VarSection,
-    items: &mut Vec<CompletionItem>,
-) {
-    if include.contains(VarSection::INPUTS) {
-        items.push(static_snippets::var_input());
-    }
-    if include.contains(VarSection::OUTPUTS) {
-        items.push(static_snippets::var_output());
-    }
-    if include.contains(VarSection::IN_OUTS) {
-        items.push(static_snippets::var_in_out());
-    }
-    if include.contains(VarSection::TEMPS) {
-        items.push(static_snippets::var_temp());
-    }
-    if include.contains(VarSection::VARS) {
-        items.push(static_snippets::var());
+impl<'db> CompletionHandler<'db> for InitExpr<'db> {
+    fn completion(
+        &'db self,
+        _db: &'db dyn WorkspaceDataBase,
+        _offset: usize,
+    ) -> Option<Vec<CompletionItem>> {
+        Some(static_snippets::elem_type_names())
     }
 }
 
 impl<'db> CompletionHandler<'db> for PathExpr<'db> {
-    fn completion(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Vec<CompletionItem>> {
-        eprintln!("PathExpr completion called at offset {}", offset);
-        Some(static_snippets::all_stmts())
+    fn completion(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        offset: usize,
+    ) -> Option<Vec<CompletionItem>> {
+        let infer = infer_body(db, self.get_scope_id(db));
+        if let Some(ty) = infer.get_type_of_path_expr(db, *self) {
+            return ty.normalize(db).field_completion(db, offset);
+        }
+        
+        // Fallback to scope-based completions
+        let mut items = vec![];
+        let mut scope_ctx = ScopeCompletionCtx::new(QueryMode::Body, self.get_scope_id(db), offset, "");
+        scope_ctx.query_scope_items(db);
+        items.extend(scope_ctx.take_items());
+        Some(items)
+    }
+}
+
+impl<'db> CompletionHandler<'db> for VariableAccess<'db> {
+    fn completion(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        offset: usize,
+    ) -> Option<Vec<CompletionItem>> {
+        let infer = infer_body(db, self.get_scope_id(db));
+        if let Some(ty) = infer.get_type_of_variable_access(db, *self) {
+            return ty.normalize(db).field_completion(db, offset);
+        }
+        
+        // Fallback to scope-based completions
+        let mut items = vec![];
+        let mut scope_ctx = ScopeCompletionCtx::new(QueryMode::Body, self.get_scope_id(db), offset, "");
+        scope_ctx.query_scope_items(db);
+        items.extend(scope_ctx.take_items());
+        Some(items)
+    }
+}
+
+impl<'db> CompletionHandler<'db> for Expr<'db> {
+    fn completion(
+        &'db self,
+        _db: &'db dyn WorkspaceDataBase,
+        _offset: usize,
+    ) -> Option<Vec<CompletionItem>> {
+        None
     }
 }

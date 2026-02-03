@@ -194,8 +194,6 @@ impl PartialOrd for Size {
 
 #[salsa::tracked]
 impl<'db> Type<'db> {
-    
-    #[salsa::tracked]
     pub(crate) fn new_spec(db: &'db dyn WorkspaceDataBase, spec: Spec<'db>) -> Self {
         match spec.kind(db) {
             SpecKind::Simple(elem) => Type::Elementary(*elem),

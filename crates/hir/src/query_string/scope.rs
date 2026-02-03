@@ -55,29 +55,28 @@ pub fn query_scope_items<'db>(
     fast_query.search(db, &indexes, |symbol| {
         match symbol.kind {
             SymbolKind::Pou(pou) => {
-                if let Some(ns) = symbol.namespace {
-                    // Check if we have already seen this symbol in the local scopes
-                    if local.seen_namespaces.contains(&ns) {
-                        return ControlFlow::Continue::<()>(());
-                    }
-
-                    // Then, check if we have already added this POU
-                    if local.pous.contains_key(&pou.get_name_ident(db)) {
-                        return ControlFlow::Continue::<()>(());
-                    }
-
-                    // Apply the filter
-                    if !filter_pou(&pou) {
-                        return ControlFlow::Continue::<()>(());
-                    }
-
-                    search_result.need_imports.push((ns, pou));
+                // Check if we have already added this POU locally
+                if local.pous.contains_key(&pou.get_name_ident(db)) {
                     return ControlFlow::Continue::<()>(());
                 }
+
                 // Apply the filter
                 if !filter_pou(&pou) {
                     return ControlFlow::Continue::<()>(());
                 }
+
+                if let Some(ns) = symbol.namespace {
+                    // Check if the namespace is already seen (imported via USING or in scope)
+                    if local.seen_namespaces.contains(&ns) {
+                        // Add as local POU (no USING directive needed)
+                        search_result.local_pous.push(pou);
+                    } else {
+                        // Add to need_imports (USING directive will be added)
+                        search_result.need_imports.push((ns, pou));
+                    }
+                    return ControlFlow::Continue::<()>(());
+                }
+                
                 search_result.local_pous.push(pou);
             }
             SymbolKind::Variable(v) => {
