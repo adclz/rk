@@ -7,11 +7,7 @@ use crate::{
         interned::{
             identifier::{Ident, SpanIdent},
             namespace::{NamespaceAccess, NamespacePath},
-        },
-        namespace::NamespaceDecl,
-        pous::pou::Pou,
-        scope::{ScopeId, ScopeKind},
-        semantic_index::semantic_index,
+        }, namespace::NamespaceDecl, pous::pou::Pou, program::ProgramDecl, scope::{ScopeId, ScopeKind}, semantic_index::semantic_index
     },
 };
 
@@ -90,6 +86,27 @@ fn global_pou_index<'db>(db: &'db dyn WorkspaceDataBase) -> FxHashMap<Ident, Pou
 #[salsa::tracked(returns(ref))]
 pub fn pou_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<Pou<'db>> {
     global_pou_index(db).get(&name).copied()
+}
+
+/// Returns all POUs *globally declared*.
+#[tracing::instrument(skip_all)]
+#[salsa::tracked(returns(ref))]
+fn global_program_index<'db>(db: &'db dyn WorkspaceDataBase) -> FxHashMap<Ident, ProgramDecl<'db>> {
+    db.get_files()
+        .iter()
+        .flat_map(|file| {
+            semantic_index(db, *file)
+                .programs
+                .iter()
+                .map(|p| (p.get_name_ident(db), *p))
+        })
+        .collect()
+}
+
+#[tracing::instrument(skip(db))]
+#[salsa::tracked(returns(ref))]
+pub fn program_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<ProgramDecl<'db>> {
+    global_program_index(db).get(&name).copied()
 }
 
 #[tracing::instrument(skip_all)]

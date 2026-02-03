@@ -9,7 +9,7 @@ use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
     check::{
-        check_duplicates::check_duplicate_pous,
+        check_duplicates::{check_duplicate_pous, check_duplicate_programs},
         check_recursion::TypeDependencyGraph,
         errors::analysis_error::{AnalysisError, ToIdeDiagnostic},
     },
@@ -68,6 +68,7 @@ impl<'db> SemanticIndex<'db> {
 
         // Programs
         self.programs.iter().for_each(|program| {
+            check_duplicate_programs(db, *program, errors);
             program.get_scope_id(db).check(db, errors);
         });
     }

@@ -378,3 +378,28 @@ fn duplicate_usings(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+#[rstest]
+fn duplicate_prorams(mut with_db: RootDatabase) {
+    let source = r#"
+        PROGRAM prog1
+        END_PROGRAM
+
+        PROGRAM prog1
+        END_PROGRAM
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0111] Error: duplicate definitions
+       ,-[ file:///test0.st:2:17 ]
+       |
+     2 |         PROGRAM prog1
+       |                 ^^|^^  
+       |                   `---- duplicate program 'prog1'
+       | 
+     5 |         PROGRAM prog1
+       |                 ^^|^^  
+       |                   `---- program 'prog1' is already defined here
+    ---'
+    ");
+}
