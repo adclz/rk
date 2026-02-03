@@ -351,3 +351,30 @@ fn duplicate_init_expr(mut with_db: RootDatabase) {
     ----'
     ");
 }
+
+#[rstest]
+fn duplicate_usings(mut with_db: RootDatabase) {
+    let source = r#"
+        NAMESPACE ns1
+        END_NAMESPACE
+
+        FUNCTION fn
+            USING ns1;
+            USING ns1;
+            
+        END_FUNCTION
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0109] Error: duplicate definitions
+       ,-[ file:///test0.st:7:19 ]
+       |
+     6 |             USING ns1;
+       |                   ^|^  
+       |                    `--- namespace 'ns1' is already imported here
+     7 |             USING ns1;
+       |                   ^|^  
+       |                    `--- duplicate `USING` for namespace 'ns1'
+    ---'
+    ");
+}

@@ -3,26 +3,22 @@ use db::WorkspaceDataBase;
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 use crate::{
-    HasName, HirNodeInfo,
-    check::errors::analysis_error::ToIdeDiagnostic,
-    hir_def::{
+    CallSite, HasName, HirNodeInfo, check::errors::analysis_error::ToIdeDiagnostic, hir_def::{
         expressions::{
             expression::{Expr, FuncCall, InitExpr, PathExpr},
             spec::{Spec, SpecKind},
         },
         interned::{
             identifier::{Ident, SpanIdent},
-            namespace::SpanNamespaceAccess,
+            namespace::{NamespacePath, SpanNamespaceAccess},
         },
         pous::variable::VariableDecl,
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
-    },
-    hir_ty::ty::{CallableType, Type},
-    query_string::{
+    }, hir_ty::ty::{CallableType, Type}, query_string::{
         method::fuzzy_callable_type_parameters, strukt::fuzzy_struct_fields,
         variables::fuzzy_variables,
-    },
+    }
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
@@ -93,6 +89,10 @@ pub enum ResolveError<'db> {
         expr: Spec<'db>,
         ty: Type<'db>,
     },
+    NamespaceNotFound {
+        call_site: CallSite<'db>,
+        path: NamespacePath,
+    },
 }
 
 impl<'db> ErrorCode for ResolveError<'db> {
@@ -113,6 +113,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::IndexNonArrayTypePathExpr { .. } => "E0213",
             Self::NoFieldOnElementaryType { .. } => "E0214",
             Self::FunctionAsVariableType { .. } => "E0215",
+            Self::NamespaceNotFound { .. } => "E0216",
         }
     }
 
@@ -120,6 +121,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
         match self {
             Self::NoItemInScope { .. } | Self::NoSpecItemInScope { .. } => "no item found in scope",
             Self::NoNamespaceItemFound { .. } => "no namespace item found",
+            Self::NamespaceNotFound { .. } => "namespace not found",
             Self::IncorrectNumberOfParameters { .. }
             | Self::UnknownNonFormalParameter { .. }
             | Self::OutputParameterUsedAsInput { .. }
@@ -309,6 +311,15 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 .desc(self)
                 .range(path.get_span(db))
                 .call(),
+            Self::NamespaceNotFound { call_site, path } => diag()
+                .message(format!(
+                    "namespace '{}' not found",
+                    path.to_string(db)
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(call_site.get_span(db))
+                .call(), // add recovery checks?
             Self::FunctionAsVariableType { expr, ty } => diag()
                 .message(format!(
                     "'{}' is a function and cannot be used as a variable type",

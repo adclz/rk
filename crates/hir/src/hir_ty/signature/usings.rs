@@ -1,0 +1,63 @@
+use std::hash::{BuildHasher, Hash, Hasher};
+
+use db::WorkspaceDataBase;
+use ide_diagnostic::IdeDiagnostic;
+use rustc_hash::{FxBuildHasher, FxHashMap};
+
+use crate::{
+    CallSite, HirNodeInfo, Modifier,
+    check::errors::{
+        analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError, e2_resolve::ResolveError,
+        e5_inheritance::InheritanceError,
+    },
+    hir_def::{pous::pou::Pou, scope::ScopeKind, semantic_index::get_scope},
+    hir_ty::{
+        name_res::namespace_index,
+        signature::{
+            Signature,
+            inheritance::{MethodRef, inherited_methods},
+        },
+        ty::Type,
+    },
+};
+
+impl<'db> Signature<'db> {
+    pub(crate) fn check_usings(&mut self, db: &'db dyn WorkspaceDataBase) {
+        let scope = get_scope(db, self.scope);
+        let usings = &scope.usings;
+
+        let mut seen = FxHashMap::default();
+
+        for using in usings.iter() {
+            let mut hasher = FxBuildHasher::default().build_hasher();
+
+            using.path(db).fragments(db).iter().for_each(|f| {
+                f.hash(&mut hasher);
+            });
+
+            let frag_hash = hasher.finish();
+
+            seen.entry(frag_hash)
+                .and_modify(|prev| {
+                    self.errors.push(
+                        DuplicateError::Using {
+                            other: *prev,
+                            using: *using,
+                        }
+                        .to_diagnostic(db),
+                    );
+                })
+                .or_insert(*using);
+
+            if namespace_index(db, using.path(db).path).is_empty() {
+                self.errors.push(
+                    ResolveError::NamespaceNotFound {
+                        path: using.path(db).path,
+                        call_site: CallSite::from_using(db, *using),
+                    }
+                    .to_diagnostic(db),
+                )
+            }
+        }
+    }
+}

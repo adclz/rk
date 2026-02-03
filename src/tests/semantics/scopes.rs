@@ -682,6 +682,37 @@ END_NAMESPACE"#;
     );
 }
 
+
+#[rstest]
+fn unknown_namespace_in_using(mut with_db: RootDatabase) {
+    let source = r#"
+NAMESPACE ns1
+    USING unknown_ns; // unknown namespace
+END_NAMESPACE
+
+FUNCTION_BLOCK fb1
+    USING unknown_ns2; // unknown namespace
+END_FUNCTION_BLOCK
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0216] Error: namespace not found
+       ,-[ file:///test0.st:7:11 ]
+       |
+     7 |     USING unknown_ns2; // unknown namespace
+       |           ^^^^^|^^^^^  
+       |                `------- namespace 'unknown_ns2' not found
+    ---'
+    [E0216] Error: namespace not found
+       ,-[ file:///test0.st:3:11 ]
+       |
+     3 |     USING unknown_ns; // unknown namespace
+       |           ^^^^^|^^^^  
+       |                `------ namespace 'unknown_ns' not found
+    ---'
+    ");
+}
+
 // usage of fully qualified paths in variable type
 #[rstest]
 fn fully_qualified_path_in_var_type(mut with_db: RootDatabase) {

@@ -20,7 +20,7 @@ use crate::{
         interned::{identifier::Ident, namespace::SpanNamespaceAccess},
         pous::{pou::Pou, variable::VariableDecl},
         scope::ScopeId,
-        semantic_index::semantic_index,
+        semantic_index::semantic_index, using::Using,
     },
     hir_ty::signature::inheritance::MethodRef,
 };
@@ -134,6 +134,13 @@ impl<'db> CallSite<'db> {
         Self {
             scope: pou.get_scope_id(db),
             id: pou.get_id(db),
+        }
+    }
+
+    pub fn from_using(db: &'db dyn WorkspaceDataBase, using: Using<'db>) -> Self {
+        Self {
+            scope: using.get_scope_id(db),
+            id: using.get_id(db),
         }
     }
 

@@ -24,6 +24,7 @@ pub(crate) mod variables;
 pub(crate) mod subrange;
 pub(crate) mod strukt;
 pub(crate) mod methods;
+pub(crate) mod usings;
 pub mod inheritance;
 pub mod init_inference;
 
@@ -114,6 +115,7 @@ impl<'db> Signature<'db> {
 
         self.infer_variables(db);
         self.infer_return_type(db);
+        self.check_usings(db);
         self.check_methods(db);
 
         for error in &self.init_expr_result.errors {
