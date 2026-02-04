@@ -128,7 +128,7 @@ impl<'db> Type<'db> {
             (Type::RefTo(_), Type::Null) => Ok(()),
             // self-assignments
             (Type::Function(f), rhs) => {
-                return match f.return_type(db) {
+                match f.return_type(db) {
                     Some(ret) => {
                         Type::new_spec(db, *ret).coerce_with_type(db, *rhs, adjustments, resolver)
                     }
@@ -137,10 +137,10 @@ impl<'db> Type<'db> {
                         actual: to,
                         adjustment: None,
                     }),
-                };
+                }
             }
             (Type::MethodDecl(f), rhs) => {
-                return match f.return_type(db) {
+                match f.return_type(db) {
                     Some(ret) => {
                         Type::new_spec(db, *ret).coerce_with_type(db, *rhs, adjustments, resolver)
                     }
@@ -149,7 +149,7 @@ impl<'db> Type<'db> {
                         actual: to,
                         adjustment: None,
                     }),
-                };
+                }
             }
             _ => Err(CoerceError {
                 expected: *self,

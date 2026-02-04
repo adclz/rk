@@ -65,7 +65,7 @@ impl<'db> SemanticTokensHandler<'db> for MethodRef<'db> {
         );
         if let Some(ret) = self.return_type(db) {
             let infer = infer_signature(db, self.get_scope_id(db));
-            semantic_tokens_for_type(db, infer.type_of_specs[&ret], builder, ret.get_span(db));
+            semantic_tokens_for_type(db, infer.type_of_specs[ret], builder, ret.get_span(db));
         }
     }
 }
@@ -148,18 +148,12 @@ impl<'db> SemanticTokensHandler<'db> for Expr<'db> {
         db: &'db dyn WorkspaceDataBase,
         builder: &mut SemanticTokensBuilder,
     ) {
-        infer_signature(db, self.scope_id(db))
+        if let Some(typ) = infer_signature(db, self.scope_id(db))
             .body_infer_result
-            .get_type_of_expr(*self)
-            .map(|typ| {
-                semantic_tokens_for_type(db, typ, builder, self.get_span(db));
-            });
+            .get_type_of_expr(*self) { semantic_tokens_for_type(db, typ, builder, self.get_span(db)); }
 
-        infer_body(db, self.scope_id(db))
-            .get_type_of_expr(*self)
-            .map(|typ| {
-                semantic_tokens_for_type(db, typ, builder, self.get_span(db));
-            });
+        if let Some(typ) = infer_body(db, self.scope_id(db))
+            .get_type_of_expr(*self) { semantic_tokens_for_type(db, typ, builder, self.get_span(db)); }
     }
 }
 

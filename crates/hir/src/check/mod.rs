@@ -54,7 +54,7 @@ impl<'db> SemanticIndex<'db> {
             .iter()
             .for_each(|err| errors.push(err.to_diagnostic(db)));
 
-        // POUs declared globally 
+        // POUs declared globally
         self.global_pous.iter().for_each(|pou| {
             check_duplicate_pous(db, *pou, errors);
             pou.get_scope_id(db).check(db, errors);
@@ -89,13 +89,17 @@ impl<'db> ScopeId<'db> {
         // Methods and nested POUs are not inferred by the result of scope inference
         // so we need to treat them separately by calling check again on their scopes
 
-        if let Some(pous) = self.pous(db) { pous.iter().for_each(|pou| {
+        if let Some(pous) = self.pous(db) {
+            pous.iter().for_each(|pou| {
                 pou.get_scope_id(db).check(db, errors);
-            }); }
+            });
+        }
 
-        if let Some(methods) = self.method_declarations(db) { methods.iter().for_each(|method| {
+        if let Some(methods) = self.method_declarations(db) {
+            methods.iter().for_each(|method| {
                 method.get_scope_id(db).check(db, errors);
-            }); }
+            });
+        }
 
         self.method_prototypes(db).iter().for_each(|methods| {
             methods.iter().for_each(|method| {

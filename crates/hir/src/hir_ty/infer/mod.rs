@@ -1,5 +1,5 @@
 pub mod coerce;
-pub mod table;
+pub mod expr;
 pub mod literals;
 pub mod normalize;
-pub mod expr;
+pub mod table;

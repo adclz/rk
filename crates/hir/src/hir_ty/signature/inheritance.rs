@@ -2,7 +2,10 @@ use crate::{
     AstId, HasModifiers, HasName, HasVisibility, HirNodeInfo, Modifier, Visibility,
     hir_def::{
         expressions::spec::Spec,
-        interned::{identifier::Ident, namespace::{NamespaceAccess, SpanNamespaceAccess}},
+        interned::{
+            identifier::Ident,
+            namespace::{NamespaceAccess, SpanNamespaceAccess},
+        },
         pous::{class::MethodDecl, interface::MethodPrototype, pou::Pou, variable::VariableDecl},
         scope::ScopeId,
     },
@@ -169,10 +172,7 @@ impl<'db> InheritedMethod<'db> {
     }
 }
 
-fn inherit_result<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    pou: Pou<'db>,
-) -> InheritedMethodSet<'db> {
+fn inherit_result<'db>(db: &'db dyn WorkspaceDataBase, pou: Pou<'db>) -> InheritedMethodSet<'db> {
     InheritedMethodSet::default()
 }
 
@@ -199,7 +199,6 @@ pub fn inherited_methods<'db>(
     match pou {
         Pou::Class(class) => {
             if let Some(base) = class.extends(db) {
-
                 debug_assert!(base.scope_id == pou.get_scope_id(db));
                 debug_assert!(base.path.target.scope_id == pou.get_scope_id(db));
 
@@ -211,7 +210,6 @@ pub fn inherited_methods<'db>(
                 }
             }
             for iface in class.implements(db) {
-
                 debug_assert!(iface.scope_id == pou.get_scope_id(db));
                 debug_assert!(iface.path.target.scope_id == pou.get_scope_id(db));
 
@@ -227,7 +225,6 @@ pub fn inherited_methods<'db>(
         Pou::Interface(iface) => {
             if let Some(extends) = iface.extends(db) {
                 for iface in extends {
-
                     debug_assert!(iface.scope_id == pou.get_scope_id(db));
                     debug_assert!(iface.path.target.scope_id == pou.get_scope_id(db));
 
@@ -243,7 +240,6 @@ pub fn inherited_methods<'db>(
 
         Pou::FunctionBlock(fb) => {
             if let Some(base) = fb.extends(db) {
-
                 debug_assert!(base.scope_id == pou.get_scope_id(db));
                 debug_assert!(base.path.target.scope_id == pou.get_scope_id(db));
 
@@ -256,7 +252,6 @@ pub fn inherited_methods<'db>(
             }
 
             for iface in fb.implements(db) {
-
                 debug_assert!(iface.scope_id == pou.get_scope_id(db));
                 debug_assert!(iface.path.target.scope_id == pou.get_scope_id(db));
 
@@ -274,5 +269,11 @@ pub fn inherited_methods<'db>(
         _ => {}
     }
 
-    InheritedMethodSet::new(db, methods, duplicates, type_of_namespace_accesses, unresolved)
+    InheritedMethodSet::new(
+        db,
+        methods,
+        duplicates,
+        type_of_namespace_accesses,
+        unresolved,
+    )
 }

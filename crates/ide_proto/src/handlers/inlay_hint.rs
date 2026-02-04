@@ -1,10 +1,14 @@
 use auto_lsp::lsp_types::{InlayHint, InlayHintKind, InlayHintLabel, Position};
 use db::WorkspaceDataBase;
-use hir::{HasName, HirNodeInfo, hir_def::{
-    expressions::expression::{InitExpr, InitExprKind, ParamAssign},
-    namespace::NamespaceDecl,
-    pous::{pou::Pou},
-}, hir_ty::{body::infer_body, signature::infer_signature, ty::Type}};
+use hir::{
+    HasName, HirNodeInfo,
+    hir_def::{
+        expressions::expression::{InitExpr, InitExprKind, ParamAssign},
+        namespace::NamespaceDecl,
+        pous::pou::Pou,
+    },
+    hir_ty::{body::infer_body, signature::infer_signature, ty::Type},
+};
 
 use crate::{handlers::InlayHintHandler, hir_node::get_param_start_pos};
 
@@ -48,20 +52,17 @@ impl<'db> InlayHintHandler<'db> for Pou<'db> {
     }
 }
 
-
 impl<'db> InlayHintHandler<'db> for ParamAssign<'db> {
     fn inlay_hint(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<InlayHint> {
         let infer = infer_body(db, self.scope_id(db));
-        infer
-            .variable_of_param
-            .get(self)
-            .and_then(|var| Type::new_var(db, *var).inlay_hint(db).map(|inlay_hint| {
-                InlayHint {
+        infer.variable_of_param.get(self).and_then(|var| {
+            Type::new_var(db, *var)
+                .inlay_hint(db)
+                .map(|inlay_hint| InlayHint {
                     position: get_param_start_pos(db, self).get_span(db).lsp().end,
                     ..inlay_hint
-                }
-            }))
-   
+                })
+        })
     }
 }
 
@@ -86,17 +87,11 @@ impl<'db> InlayHintHandler<'db> for InitExpr<'db> {
 }
 
 impl<'db> InlayHintHandler<'db> for Type<'db> {
-    fn inlay_hint(
-        &'db self,
-        db: &'db dyn WorkspaceDataBase,
-    ) -> Option<InlayHint> {
+    fn inlay_hint(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<InlayHint> {
         match self {
             Type::Variable((_, _multibits)) => Some(InlayHint {
                 position: Position::default(),
-                label: InlayHintLabel::String(format!(
-                    ": {}",
-                    self.type_name(db)
-                )),
+                label: InlayHintLabel::String(format!(": {}", self.type_name(db))),
                 kind: Some(InlayHintKind::TYPE),
                 padding_left: Some(false),
                 padding_right: Some(false),

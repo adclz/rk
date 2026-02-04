@@ -1,4 +1,13 @@
-use auto_lsp::{core::{document_symbols_builder::DocumentSymbolsBuilder, semantic_tokens_builder::SemanticTokensBuilder}, lsp_types::{CodeLens, CompletionItem, GotoDefinitionResponse, Hover, InlayHint, request::{GotoDeclarationResponse, GotoImplementationResponse}}};
+use auto_lsp::{
+    core::{
+        document_symbols_builder::DocumentSymbolsBuilder,
+        semantic_tokens_builder::SemanticTokensBuilder,
+    },
+    lsp_types::{
+        CodeLens, CompletionItem, GotoDefinitionResponse, Hover, InlayHint,
+        request::{GotoDeclarationResponse, GotoImplementationResponse},
+    },
+};
 use db::WorkspaceDataBase;
 use hir::{
     AstId, HirNodeInfo,
@@ -6,13 +15,23 @@ use hir::{
         expressions::{
             expression::{Expr, InitExpr, ParamAssign, ParamAssignKind, PathExpr, VariableAccess},
             spec::{Spec, StructElement},
-        }, interned::namespace::SpanNamespaceAccess, namespace::NamespaceDecl, pous::{pou::Pou, variable::VariableDecl}, scope::ScopeId, using::Using
+        },
+        interned::namespace::SpanNamespaceAccess,
+        namespace::NamespaceDecl,
+        pous::{pou::Pou, variable::VariableDecl},
+        scope::ScopeId,
+        using::Using,
     },
     hir_ty::{signature::inheritance::MethodRef, ty::Type},
 };
 
-use crate::{comment_index::comment_index, handlers::{CodeLensHandler, CompletionHandler, DeclarationHandler, DefinitionHandler, DocumentSymbolsHandler, HoverHandler, InlayHintHandler, SemanticTokensHandler}};
-
+use crate::{
+    comment_index::comment_index,
+    handlers::{
+        CodeLensHandler, CompletionHandler, DeclarationHandler, DefinitionHandler,
+        DocumentSymbolsHandler, HoverHandler, InlayHintHandler, SemanticTokensHandler,
+    },
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HirNode<'db> {
@@ -42,7 +61,7 @@ impl<'db> HirNode<'db> {
             HirNode::PouDecl(p) => p.document_symbols(db, builder),
             HirNode::VariableDecl(v) => v.document_symbols(db, builder),
             HirNode::MethodRef(m) => m.document_symbols(db, builder),
-            _ => ()
+            _ => (),
         }
     }
 
@@ -105,7 +124,10 @@ impl<'db> HirNode<'db> {
         }
     }
 
-    pub fn declaration(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDeclarationResponse> {
+    pub fn declaration(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> Option<GotoDeclarationResponse> {
         match self {
             HirNode::VariableDecl(v) => v.declaration(db),
             HirNode::StructElement(s) => s.declaration(db),
@@ -196,7 +218,10 @@ pub trait MaybeHirNode<'db> {
 }
 
 impl<'db> MaybeHirNode<'db> for Type<'db> {
-    fn as_hir_node(&'db self, _db: &'db dyn WorkspaceDataBase) -> Option<&'db dyn HirNodeInfo<'db>> {
+    fn as_hir_node(
+        &'db self,
+        _db: &'db dyn WorkspaceDataBase,
+    ) -> Option<&'db dyn HirNodeInfo<'db>> {
         match self {
             Type::Function(f) => Some(f),
             Type::FunctionBlock(fb) => Some(fb),

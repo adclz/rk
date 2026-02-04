@@ -320,7 +320,6 @@ END_CLASS
     ");
 }
 
-
 #[rstest]
 fn duplicate_init_expr(mut with_db: RootDatabase) {
     let source = r#"

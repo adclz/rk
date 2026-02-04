@@ -1,23 +1,17 @@
 use std::hash::{BuildHasher, Hash, Hasher};
 
 use db::WorkspaceDataBase;
-use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::{FxBuildHasher, FxHashMap};
 
 use crate::{
-    CallSite, HirNodeInfo, Modifier,
+    CallSite,
     check::errors::{
         analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError, e2_resolve::ResolveError,
-        e5_inheritance::InheritanceError,
     },
-    hir_def::{pous::pou::Pou, scope::ScopeKind, semantic_index::get_scope},
+    hir_def::semantic_index::get_scope,
     hir_ty::{
         name_res::namespace_index,
-        signature::{
-            Signature,
-            inheritance::{MethodRef, inherited_methods},
-        },
-        ty::Type,
+        signature::Signature,
     },
 };
 
@@ -29,7 +23,7 @@ impl<'db> Signature<'db> {
         let mut seen = FxHashMap::default();
 
         for using in usings.iter() {
-            let mut hasher = FxBuildHasher::default().build_hasher();
+            let mut hasher = FxBuildHasher.build_hasher();
 
             using.path(db).fragments(db).iter().for_each(|f| {
                 f.hash(&mut hasher);

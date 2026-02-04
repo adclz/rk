@@ -1,17 +1,25 @@
-use auto_lsp::{core::{document_symbols_builder::DocumentSymbolsBuilder, semantic_tokens_builder::SemanticTokensBuilder}, lsp_types::{CodeLens, CompletionItem, GotoDefinitionResponse, Hover, InlayHint, request::{GotoDeclarationResponse, GotoImplementationResponse}}};
+use auto_lsp::{
+    core::{
+        document_symbols_builder::DocumentSymbolsBuilder,
+        semantic_tokens_builder::SemanticTokensBuilder,
+    },
+    lsp_types::{
+        CodeLens, CompletionItem, GotoDefinitionResponse, Hover, InlayHint,
+        request::{GotoDeclarationResponse, GotoImplementationResponse},
+    },
+};
 use db::WorkspaceDataBase;
 
 pub mod code_lens;
+pub mod completions;
 pub mod completions_utils;
-pub mod definition;
 pub mod declaration;
+pub mod definition;
 pub mod document_symbols;
 pub mod hover;
 pub mod implementation;
 pub mod inlay_hint;
 pub mod semantic_tokens;
-pub mod completions;
-
 
 pub trait SemanticTokensHandler<'db> {
     fn semantic_tokens(
@@ -26,7 +34,11 @@ pub trait HoverHandler<'db> {
 }
 
 pub trait CompletionHandler<'db> {
-    fn completion(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Vec<CompletionItem>>;
+    fn completion(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        offset: usize,
+    ) -> Option<Vec<CompletionItem>>;
 }
 
 pub trait DefinitionHandler<'db> {
@@ -38,7 +50,10 @@ pub trait DeclarationHandler<'db> {
 }
 
 pub trait ImplementationHandler<'db> {
-    fn implementation(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoImplementationResponse>;
+    fn implementation(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> Option<GotoImplementationResponse>;
 }
 
 pub trait InlayHintHandler<'db> {

@@ -40,7 +40,7 @@ impl<'db> DefinitionHandler<'db> for StructElement<'db> {
 
 impl<'db> DefinitionHandler<'db> for Spec<'db> {
     fn definition(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDefinitionResponse> {
-         Some(GotoDefinitionResponse::Scalar(Location::new(
+        Some(GotoDefinitionResponse::Scalar(Location::new(
             self.get_scope_id(db).file(db).url(db).to_owned(),
             self.get_span(db).into(),
         )))
@@ -52,7 +52,8 @@ impl<'db> DefinitionHandler<'db> for InitExpr<'db> {
         let infer = infer_signature(db, self.scope_id(db));
         infer
             .init_expr_result
-            .type_of_init_expr.get(self)
+            .type_of_init_expr
+            .get(self)
             .and_then(|typ| typ.definition(db))
     }
 }
@@ -117,7 +118,7 @@ impl<'db> DefinitionHandler<'db> for Type<'db> {
             Type::FunctionBlock(f) => f as _,
             Type::Class(c) => c as _,
             Type::Interface(i) => i as _,
-            Type::DataType(dt) =>  return dt.spec(db).definition(db),
+            Type::DataType(dt) => return dt.spec(db).definition(db),
             Type::Variable((var, _multibits)) => return var.definition(db),
             Type::StructElement(st) => return st.definition(db),
             _ => None?,

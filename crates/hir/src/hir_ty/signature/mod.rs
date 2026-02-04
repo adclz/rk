@@ -5,35 +5,32 @@ use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    check::errors::{
-        analysis_error::ToIdeDiagnostic, e2_resolve::ResolveError,
-    },
+    check::errors::{analysis_error::ToIdeDiagnostic, e2_resolve::ResolveError},
     hir_def::{
-        expressions::spec::{Spec, SpecKind}, interned::namespace::NamespaceAccess, pous::pou::Pou, scope::{ScopeId, ScopeKind}, semantic_index::get_scope
+        expressions::spec::{Spec, SpecKind},
+        interned::namespace::NamespaceAccess,
+        pous::pou::Pou,
+        scope::{ScopeId, ScopeKind},
+        semantic_index::get_scope,
     },
     hir_ty::{
-        body::BodyInferenceResult,
-        signature::init_inference::InitExprInferenceResult,
-        ty::Type,
+        body::BodyInferenceResult, signature::init_inference::InitExprInferenceResult, ty::Type,
     },
 };
 
 pub(crate) mod array;
 pub(crate) mod enum_;
-pub(crate) mod variables;
-pub(crate) mod subrange;
-pub(crate) mod strukt;
-pub(crate) mod methods;
-pub(crate) mod usings;
 pub mod inheritance;
 pub mod init_inference;
+pub(crate) mod methods;
+pub(crate) mod strukt;
+pub(crate) mod subrange;
+pub(crate) mod usings;
+pub(crate) mod variables;
 
 #[tracing::instrument(skip(db))]
 #[salsa::tracked(returns(ref))]
-pub fn infer_signature<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    scope: ScopeId<'db>,
-) -> Signature<'db> {
+pub fn infer_signature<'db>(db: &'db dyn WorkspaceDataBase, scope: ScopeId<'db>) -> Signature<'db> {
     Signature::new(scope).infer_signature(db)
 }
 
@@ -80,38 +77,44 @@ impl<'db> Signature<'db> {
     }
 
     fn infer_signature(mut self, db: &'db dyn WorkspaceDataBase) -> Self {
-        if let ScopeKind::Pou(pou) = get_scope(db, self.scope).kind { if let Pou::DataType(dt) = pou {
-            let typ = Type::new_spec(db, dt.spec(db));
-            match dt.spec(db).kind(db) {
-                SpecKind::Array(arr) => {
-                    self.infer_array(db, *arr);
+        if let ScopeKind::Pou(pou) = get_scope(db, self.scope).kind
+            && let Pou::DataType(dt) = pou {
+                let typ = Type::new_spec(db, dt.spec(db));
+                match dt.spec(db).kind(db) {
+                    SpecKind::Array(arr) => {
+                        self.infer_array(db, *arr);
+                    }
+                    SpecKind::Enum(enm) => {
+                        self.infer_enum(db, *enm);
+                    }
+                    SpecKind::Subrange(subrange) => {
+                        self.infer_subrange(db, *subrange);
+                    }
+                    SpecKind::Struct(strukt) => {
+                        self.infer_struct(db, *strukt);
+                    }
+                    SpecKind::Target(target) => {
+                        if typ.is_never() {
+                            self.errors.push(
+                                ResolveError::NoNamespaceItemFound {
+                                    path: target.clone(),
+                                }
+                                .to_diagnostic(db),
+                            )
+                        };
+                    }
+                    _ => {}
                 }
-                SpecKind::Enum(enm) => {
-                    self.infer_enum(db, *enm);
-                }
-                SpecKind::Subrange(subrange) => {
-                    self.infer_subrange(db, *subrange);
-                }
-                SpecKind::Struct(strukt) => {
-                    self.infer_struct(db, *strukt);
-                }
-                SpecKind::Target(target) => {
-                    if typ.is_never() {
-                        self.errors.push(
-                            ResolveError::NoNamespaceItemFound {
-                                path: target.clone(),
-                            }
-                            .to_diagnostic(db),
-                        )
-                    };
-                }
-                _ => {}
+                self.type_of_specs.insert(dt.spec(db), typ);
+                if let Some(expr) = dt.init(db) {
+                    self.init_expr_result.resolve_init_expr(
+                        db,
+                        expr,
+                        &mut self.body_infer_result,
+                        typ,
+                    );
+                };
             }
-            self.type_of_specs.insert(dt.spec(db), typ);
-            if let Some(expr) = dt.init(db) {
-                self.init_expr_result.resolve_init_expr(db, expr, &mut self.body_infer_result, typ);
-            };
-        } }
 
         self.infer_variables(db);
         self.infer_return_type(db);

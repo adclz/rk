@@ -1,11 +1,13 @@
 use auto_lsp::{core::document_symbols_builder::DocumentSymbolsBuilder, lsp_types::SymbolKind};
 use db::WorkspaceDataBase;
 use hir::{
-    HasName, HirNodeInfo, hir_def::{
+    HasName, HirNodeInfo,
+    hir_def::{
         expressions::spec::{ElementarySpec, SpecKind},
         namespace::NamespaceDecl,
         pous::{pou::Pou, variable::VariableDecl},
-    }, hir_ty::{signature::{infer_signature, inheritance::MethodRef}}
+    },
+    hir_ty::signature::{infer_signature, inheritance::MethodRef},
 };
 
 use crate::handlers::DocumentSymbolsHandler;
@@ -87,7 +89,7 @@ impl<'db> DocumentSymbolsHandler<'db> for Pou<'db> {
             _ => name,
         };
 
-        let infer  = infer_signature(db, self.get_scope_id(db));
+        let infer = infer_signature(db, self.get_scope_id(db));
 
         builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
             name,

@@ -12,7 +12,7 @@ pub struct ConfigDecl<'db> {
     name: Ident,
 
     #[returns(ref)]
-    variables: Vec<VariableDecl<'db>>, 
+    variables: Vec<VariableDecl<'db>>,
 
     #[returns(ref)]
     resources: Vec<Resource<'db>>,

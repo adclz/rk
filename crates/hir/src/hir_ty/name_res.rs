@@ -7,7 +7,12 @@ use crate::{
         interned::{
             identifier::{Ident, SpanIdent},
             namespace::{NamespaceAccess, NamespacePath},
-        }, namespace::NamespaceDecl, pous::pou::Pou, program::ProgramDecl, scope::{ScopeId, ScopeKind}, semantic_index::semantic_index
+        },
+        namespace::NamespaceDecl,
+        pous::pou::Pou,
+        program::ProgramDecl,
+        scope::{ScopeId, ScopeKind},
+        semantic_index::semantic_index,
     },
 };
 

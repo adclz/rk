@@ -7,7 +7,7 @@ use crate::handlers::{CodeLensHandler, implementation::find_all_implementations}
 
 impl<'db> CodeLensHandler<'db> for Pou<'db> {
     fn code_lens(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<CodeLens> {
-              match self {
+        match self {
             Pou::Class(_) | Pou::Interface(_) => {
                 let implementations = find_all_implementations(db, *self);
                 if implementations.is_empty() {

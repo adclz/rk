@@ -1,13 +1,11 @@
 use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
-use hir::{HirNodeInfo, hir_ty::body::infer_body};
 use ide_proto::{
-    handlers::completions_utils::{CompletionCtx, QueryMode},
-    walk::{descendant_at, descendant_at_with},
+    walk::{descendant_at},
 };
 use rstest::rstest;
 
-use crate::tests::utils::{add_sources, find_pou_with_name, with_db};
+use crate::tests::utils::{add_sources, with_db};
 
 #[rstest]
 pub fn struct_field_completion(mut with_db: RootDatabase) {

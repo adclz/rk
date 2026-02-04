@@ -44,8 +44,14 @@ END_FUNCTION_BLOCK"#;
     let result = builder.build();
 
     // fb0 and cl0 should be highlighted in variable types
-    assert_eq!(result.data[0].token_type, SUPPORTED_TYPES.iter().position(|x| *x == FUNCTION).unwrap() as u32);
-    assert_eq!(result.data[1].token_type, SUPPORTED_TYPES.iter().position(|x| *x == CLASS).unwrap() as u32);
+    assert_eq!(
+        result.data[0].token_type,
+        SUPPORTED_TYPES.iter().position(|x| *x == FUNCTION).unwrap() as u32
+    );
+    assert_eq!(
+        result.data[1].token_type,
+        SUPPORTED_TYPES.iter().position(|x| *x == CLASS).unwrap() as u32
+    );
 }
 
 #[rstest]
@@ -84,16 +90,35 @@ END_FUNCTION_BLOCK"#;
     let result = builder.build();
 
     // fb0 and cl0 should be highlighted in variable types (twice each)
-    assert_eq!(result.data[0].token_type, SUPPORTED_TYPES.iter().position(|x| *x == FUNCTION).unwrap() as u32);
-    assert_eq!(result.data[1].token_type, SUPPORTED_TYPES.iter().position(|x| *x == CLASS).unwrap() as u32);
-    assert_eq!(result.data[2].token_type, SUPPORTED_TYPES.iter().position(|x| *x == FUNCTION).unwrap() as u32);
-    assert_eq!(result.data[3].token_type, SUPPORTED_TYPES.iter().position(|x| *x == FUNCTION).unwrap() as u32);
-    assert_eq!(result.data[4].token_type, SUPPORTED_TYPES.iter().position(|x| *x == CLASS).unwrap() as u32);
-    assert_eq!(result.data[5].token_type, SUPPORTED_TYPES.iter().position(|x| *x == FUNCTION).unwrap() as u32);
-    assert_eq!(result.data[6].token_type, SUPPORTED_TYPES.iter().position(|x| *x == CLASS).unwrap() as u32);
-
+    assert_eq!(
+        result.data[0].token_type,
+        SUPPORTED_TYPES.iter().position(|x| *x == FUNCTION).unwrap() as u32
+    );
+    assert_eq!(
+        result.data[1].token_type,
+        SUPPORTED_TYPES.iter().position(|x| *x == CLASS).unwrap() as u32
+    );
+    assert_eq!(
+        result.data[2].token_type,
+        SUPPORTED_TYPES.iter().position(|x| *x == FUNCTION).unwrap() as u32
+    );
+    assert_eq!(
+        result.data[3].token_type,
+        SUPPORTED_TYPES.iter().position(|x| *x == FUNCTION).unwrap() as u32
+    );
+    assert_eq!(
+        result.data[4].token_type,
+        SUPPORTED_TYPES.iter().position(|x| *x == CLASS).unwrap() as u32
+    );
+    assert_eq!(
+        result.data[5].token_type,
+        SUPPORTED_TYPES.iter().position(|x| *x == FUNCTION).unwrap() as u32
+    );
+    assert_eq!(
+        result.data[6].token_type,
+        SUPPORTED_TYPES.iter().position(|x| *x == CLASS).unwrap() as u32
+    );
 }
-
 
 #[rstest]
 pub fn class_and_fb_tokens_in_extends(mut with_db: RootDatabase) {
@@ -123,8 +148,14 @@ END_FUNCTION_BLOCK"#;
     let result = builder.build();
 
     // fb0 and cl0 should be highlighted in variable types
-    assert_eq!(result.data[0].token_type, SUPPORTED_TYPES.iter().position(|x| *x == CLASS).unwrap() as u32);
-    assert_eq!(result.data[1].token_type, SUPPORTED_TYPES.iter().position(|x| *x == FUNCTION).unwrap() as u32);
+    assert_eq!(
+        result.data[0].token_type,
+        SUPPORTED_TYPES.iter().position(|x| *x == CLASS).unwrap() as u32
+    );
+    assert_eq!(
+        result.data[1].token_type,
+        SUPPORTED_TYPES.iter().position(|x| *x == FUNCTION).unwrap() as u32
+    );
 }
 
 #[rstest]
@@ -157,11 +188,46 @@ END_FUNCTION_BLOCK"#;
 
     let result = builder.build();
 
-    assert_eq!(result.data[0].token_type, SUPPORTED_TYPES.iter().position(|x| *x == INTERFACE).unwrap() as u32);
-    assert_eq!(result.data[1].token_type, SUPPORTED_TYPES.iter().position(|x| *x == INTERFACE).unwrap() as u32);
-    assert_eq!(result.data[2].token_type, SUPPORTED_TYPES.iter().position(|x| *x == INTERFACE).unwrap() as u32);
-    assert_eq!(result.data[3].token_type, SUPPORTED_TYPES.iter().position(|x| *x == INTERFACE).unwrap() as u32);
-    assert_eq!(result.data[4].token_type, SUPPORTED_TYPES.iter().position(|x| *x == INTERFACE).unwrap() as u32);
-    assert_eq!(result.data[5].token_type, SUPPORTED_TYPES.iter().position(|x| *x == INTERFACE).unwrap() as u32);
+    assert_eq!(
+        result.data[0].token_type,
+        SUPPORTED_TYPES
+            .iter()
+            .position(|x| *x == INTERFACE)
+            .unwrap() as u32
+    );
+    assert_eq!(
+        result.data[1].token_type,
+        SUPPORTED_TYPES
+            .iter()
+            .position(|x| *x == INTERFACE)
+            .unwrap() as u32
+    );
+    assert_eq!(
+        result.data[2].token_type,
+        SUPPORTED_TYPES
+            .iter()
+            .position(|x| *x == INTERFACE)
+            .unwrap() as u32
+    );
+    assert_eq!(
+        result.data[3].token_type,
+        SUPPORTED_TYPES
+            .iter()
+            .position(|x| *x == INTERFACE)
+            .unwrap() as u32
+    );
+    assert_eq!(
+        result.data[4].token_type,
+        SUPPORTED_TYPES
+            .iter()
+            .position(|x| *x == INTERFACE)
+            .unwrap() as u32
+    );
+    assert_eq!(
+        result.data[5].token_type,
+        SUPPORTED_TYPES
+            .iter()
+            .position(|x| *x == INTERFACE)
+            .unwrap() as u32
+    );
 }
-

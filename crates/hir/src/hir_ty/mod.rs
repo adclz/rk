@@ -5,5 +5,5 @@ pub mod expr_store;
 pub mod infer;
 pub mod name_res;
 pub mod resolver;
-pub mod ty;
 pub mod signature;
+pub mod ty;

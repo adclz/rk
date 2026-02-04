@@ -1,20 +1,20 @@
-
 use db::WorkspaceDataBase;
 
 use crate::{
     CallSite,
     check::errors::{
-        analysis_error::ToIdeDiagnostic,
-        e3_type::TypeError, e8_subrange::SubRangeError,
+        analysis_error::ToIdeDiagnostic, e3_type::TypeError, e8_subrange::SubRangeError,
     },
     hir_def::expressions::spec::{ElementarySpec, SubRange},
-    hir_ty::{
-        infer::expr::InferExprCtx, resolver::Resolver, signature::Signature, ty::Type
-    },
+    hir_ty::{infer::expr::InferExprCtx, resolver::Resolver, signature::Signature, ty::Type},
 };
 
 impl<'db> Signature<'db> {
-    pub(crate) fn infer_subrange(&mut self, db: &'db dyn WorkspaceDataBase, subrange: SubRange<'db>) {
+    pub(crate) fn infer_subrange(
+        &mut self,
+        db: &'db dyn WorkspaceDataBase,
+        subrange: SubRange<'db>,
+    ) {
         let typ = Type::new_spec(db, subrange._type(db));
 
         match typ {

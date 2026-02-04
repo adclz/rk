@@ -10,10 +10,7 @@ use crate::{
     CallSite,
     check::errors::{analysis_error::ToIdeDiagnostic, e2_resolve::ResolveError},
     hir_def::expressions::expression::{FuncCall, ParamAssignKind},
-    hir_ty::{
-        body::BodyInferenceResult, infer::expr::InferExprCtx, resolver::Resolver,
-        ty::Type,
-    },
+    hir_ty::{body::BodyInferenceResult, infer::expr::InferExprCtx, resolver::Resolver, ty::Type},
 };
 
 pub fn resolve_func_call<'db>(

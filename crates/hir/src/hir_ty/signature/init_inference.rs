@@ -4,7 +4,9 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     CallSite,
-    check::errors::{analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError, e6_array::ArrayError},
+    check::errors::{
+        analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError, e6_array::ArrayError,
+    },
     hir_def::{expressions::expression::InitExpr, interned::identifier::Ident, scope::ScopeId},
     hir_ty::{
         body::BodyInferenceResult,
@@ -73,7 +75,7 @@ impl<'db> InitExprInferenceResult<'db> {
         map: &'db [InitExprWalkStep],
     ) {
         for step in map {
-            let mut child_place = place.clone();
+            let mut child_place = *place;
             self.resolve_step(db, expected, &mut child_place, body_ctx, ctx, step);
         }
     }
@@ -115,7 +117,7 @@ impl<'db> InitExprInferenceResult<'db> {
                 let repeat_count = size.as_u64(db).unwrap_or_else(|err| {
                     self.errors.push(
                         ArrayError::InvalidIndex {
-                            size: size.clone(),
+                            size: *size,
                             err: err.to_string(),
                         }
                         .to_diagnostic(db),
@@ -348,5 +350,4 @@ impl<'db> InitContext<'db> {
     fn clear_fields(&mut self) {
         self.seen_fields.clear();
     }
-
 }

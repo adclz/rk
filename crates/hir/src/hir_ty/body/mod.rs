@@ -19,7 +19,9 @@ use crate::{
         semantic_index::get_scope,
     },
     hir_ty::{
-        body::statements::{StmtsResolverCtx, NestedScope}, resolver::Resolver, ty::Type
+        body::statements::{NestedScope, StmtsResolverCtx},
+        resolver::Resolver,
+        ty::Type,
     },
 };
 

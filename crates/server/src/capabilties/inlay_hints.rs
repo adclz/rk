@@ -6,7 +6,7 @@ use auto_lsp::{
 };
 use db::WorkspaceDataBase;
 use hir::hir_def::semantic_index::semantic_index;
-use ide_proto::{walk::WalkHir};
+use ide_proto::walk::WalkHir;
 
 pub fn inlay_hints<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
     db: &Db,

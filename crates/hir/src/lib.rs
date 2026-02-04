@@ -20,7 +20,8 @@ use crate::{
         interned::{identifier::Ident, namespace::SpanNamespaceAccess},
         pous::{pou::Pou, variable::VariableDecl},
         scope::ScopeId,
-        semantic_index::semantic_index, using::Using,
+        semantic_index::semantic_index,
+        using::Using,
     },
     hir_ty::signature::inheritance::MethodRef,
 };

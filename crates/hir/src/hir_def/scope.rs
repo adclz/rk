@@ -127,5 +127,5 @@ pub enum ScopeKind<'db> {
     Namespace(NamespaceDecl<'db>),
     Pou(Pou<'db>),
     MethodDecl(MethodDecl<'db>),
-    MethodProt(MethodPrototype<'db>)
+    MethodProt(MethodPrototype<'db>),
 }

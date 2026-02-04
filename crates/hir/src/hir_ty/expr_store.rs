@@ -229,26 +229,26 @@ impl<'db> InitExpr<'db> {
             InitExprKind::ArrayInit { values } => {
                 result.push(InitExprWalkStep::ArrayInit {
                     expr: *self,
-                    values: values.iter().map(|v| v.flat(db)).flatten().collect(),
+                    values: values.iter().flat_map(|v| v.flat(db)).collect(),
                 });
             }
             InitExprKind::ArrayIndexedElement { size, values } => {
                 result.push(InitExprWalkStep::SizedIndex {
                     expr: *self,
-                    size: size.clone(),
-                    values: values.iter().map(|v| v.flat(db)).flatten().collect(),
+                    size: size,
+                    values: values.iter().flat_map(|v| v.flat(db)).collect(),
                 });
             }
             InitExprKind::StructInit { values } => {
                 result.push(InitExprWalkStep::FieldInit {
                     expr: *self,
-                    values: values.iter().map(|v| v.flat(db)).flatten().collect(),
+                    values: values.iter().flat_map(|v| v.flat(db)).collect(),
                 });
             }
             InitExprKind::StructElement { name, value } => {
                 result.push(InitExprWalkStep::Field {
                     expr: *self,
-                    name: name.clone(),
+                    name: name,
                     value: Box::new(value.flat(db).pop().unwrap()),
                 });
             }

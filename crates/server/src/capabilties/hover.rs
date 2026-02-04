@@ -4,7 +4,7 @@ use auto_lsp::{
 };
 use db::WorkspaceDataBase;
 use hir::hir_def::semantic_index::semantic_index;
-use ide_proto::{walk::descendant_at};
+use ide_proto::walk::descendant_at;
 
 pub fn hover(db: &impl WorkspaceDataBase, params: HoverParams) -> anyhow::Result<Option<Hover>> {
     let _hover_span = tracing::info_span!("hover").entered();

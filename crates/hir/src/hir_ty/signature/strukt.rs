@@ -6,15 +6,13 @@ use crate::{
     check::errors::{
         analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError, e2_resolve::ResolveError,
     },
-    hir_def::{
-        expressions::spec::{SpecKind, Struct, StructElement},
-    },
+    hir_def::expressions::spec::{SpecKind, Struct, StructElement},
     hir_ty::{signature::Signature, ty::Type},
 };
 
 impl<'db> Signature<'db> {
     pub(crate) fn infer_struct(&mut self, db: &'db dyn WorkspaceDataBase, strukt: Struct<'db>) {
-        let mut seen= FxHashMap::default();
+        let mut seen = FxHashMap::default();
         for field in &strukt.elements(db) {
             match seen.get(&field.get_name_ident(db)) {
                 Some(prev) => {
@@ -40,8 +38,8 @@ impl<'db> Signature<'db> {
         element: StructElement<'db>,
     ) {
         let element_type = Type::new_spec(db, element.spec(db));
-        if element_type.is_never() {
-            if let SpecKind::Target(target) = element.spec(db).kind(db) {
+        if element_type.is_never()
+            && let SpecKind::Target(target) = element.spec(db).kind(db) {
                 self.errors.push(
                     ResolveError::NoNamespaceItemFound {
                         path: target.clone(),
@@ -49,7 +47,6 @@ impl<'db> Signature<'db> {
                     .to_diagnostic(db),
                 );
             }
-        }
         self.type_of_specs.insert(element.spec(db), element_type);
     }
 }

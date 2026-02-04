@@ -2,8 +2,8 @@
 use auto_lsp::{define_semantic_token_modifiers, define_semantic_token_types};
 
 pub mod comment_index;
-pub mod hir_node;
 pub mod handlers;
+pub mod hir_node;
 pub mod walk;
 
 define_semantic_token_types![

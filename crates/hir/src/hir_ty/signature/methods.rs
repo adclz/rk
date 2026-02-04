@@ -1,4 +1,3 @@
-
 use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
@@ -6,15 +5,16 @@ use rustc_hash::FxHashMap;
 use crate::{
     HirNodeInfo, Modifier,
     check::errors::{
-        analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError, e2_resolve::ResolveError, e5_inheritance::InheritanceError,
+        analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError, e2_resolve::ResolveError,
+        e5_inheritance::InheritanceError,
     },
-    hir_def::{
-        pous::pou::Pou,
-        scope::ScopeKind,
-        semantic_index::get_scope,
-    },
+    hir_def::{pous::pou::Pou, scope::ScopeKind, semantic_index::get_scope},
     hir_ty::{
-        signature::{Signature, inheritance::{MethodRef, inherited_methods}}, ty::Type
+        signature::{
+            Signature,
+            inheritance::{MethodRef, inherited_methods},
+        },
+        ty::Type,
     },
 };
 
@@ -178,7 +178,6 @@ impl<'db> Signature<'db> {
         self.check_inheritance(db);
     }
 }
-
 
 fn check_signature<'db>(
     db: &'db dyn WorkspaceDataBase,

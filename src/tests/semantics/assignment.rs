@@ -115,7 +115,6 @@ END_FUNCTION"#;
     ");
 }
 
-
 #[rstest]
 fn assign_undeclared_type(mut with_db: RootDatabase) {
     let source = r#"

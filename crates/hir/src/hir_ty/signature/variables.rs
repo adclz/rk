@@ -52,19 +52,23 @@ impl<'db> Signature<'db> {
                     self.errors.push(
                         ResolveError::FunctionAsVariableType {
                             expr: var.spec(db),
-                            ty: var_type.clone(),
+                            ty: var_type,
                         }
                         .to_diagnostic(db),
                     );
                     self.type_of_specs.insert(var.spec(db), var_type);
                     continue;
-                },
-                _ => self.type_of_specs.insert(var.spec(db), var_type)
+                }
+                _ => self.type_of_specs.insert(var.spec(db), var_type),
             };
 
             if let Some(init_expr) = var.init(db) {
-                self.init_expr_result
-                    .resolve_init_expr(db, init_expr, &mut self.body_infer_result, var_type);
+                self.init_expr_result.resolve_init_expr(
+                    db,
+                    init_expr,
+                    &mut self.body_infer_result,
+                    var_type,
+                );
             }
         }
     }

@@ -8,7 +8,7 @@ use db::WorkspaceDataBase;
 use hir::HirNodeInfo;
 use ide_proto::{
     hir_node::HirNode,
-    walk::{descendant_at, descendant_at_with},
+    walk::descendant_at_with,
 };
 
 pub fn completions(
@@ -30,12 +30,11 @@ pub fn completions(
             Some(str) if str == "." || str == "#" => {
                 eprintln!("character {}", str);
                 offset.saturating_sub(1)
-            },
+            }
             _ => offset,
         },
         None => return Ok(None),
     };
-
 
     // we need to keep track of the previous node in case we need to fallback
     let mut prev = None;

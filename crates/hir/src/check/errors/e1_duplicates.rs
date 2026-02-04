@@ -6,7 +6,14 @@ use crate::{
     HasName, HirNodeInfo,
     check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic},
     hir_def::{
-        expressions::{expression::{InitExpr, ParamAssign}, spec::StructElement}, interned::identifier::{Ident, SpanIdent}, pous::{class::MethodDecl, interface::MethodPrototype, pou::Pou, variable::VariableDecl}, program::ProgramDecl, using::Using
+        expressions::{
+            expression::{InitExpr, ParamAssign},
+            spec::StructElement,
+        },
+        interned::identifier::{Ident, SpanIdent},
+        pous::{class::MethodDecl, interface::MethodPrototype, pou::Pou, variable::VariableDecl},
+        program::ProgramDecl,
+        using::Using,
     },
     hir_ty::signature::inheritance::InheritedMethod,
 };
@@ -80,7 +87,7 @@ pub enum DuplicateError<'db> {
     Program {
         prog1: ProgramDecl<'db>,
         prog2: ProgramDecl<'db>,
-    }
+    },
 }
 
 impl<'db> From<DuplicateError<'db>> for AnalysisError<'db> {
@@ -295,7 +302,11 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
 
                 diag
             }
-            Self::InitExprField { name, field1, field2 } => {
+            Self::InitExprField {
+                name,
+                field1,
+                field2,
+            } => {
                 let mut diag = diag()
                     .message(format!(
                         "duplicate field '{}' in initializer expression",
@@ -307,10 +318,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                     .call();
 
                 diag.with_related(Related::new(
-                    format!(
-                        "field '{}' is already initialized here",
-                        name.text(db)
-                    ),
+                    format!("field '{}' is already initialized here", name.text(db)),
                     field2.get_scope_id(db).file(db),
                     field2.get_span(db),
                 ));

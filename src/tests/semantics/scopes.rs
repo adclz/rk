@@ -10,7 +10,9 @@ use hir::{
         semantic_index::{get_scope, semantic_index},
     },
     hir_ty::{
-        name_res::{namespace_index, pou_name_res_from_scope}, signature::infer_signature, ty::Type
+        name_res::{namespace_index, pou_name_res_from_scope},
+        signature::infer_signature,
+        ty::Type,
     },
 };
 use ide_proto::{hir_node::HirNode, walk::WalkHir};
@@ -681,7 +683,6 @@ END_NAMESPACE"#;
         Some(ns2.scope_id(&with_db)) // ns2 namespace scope (but available in ns1 due to USING)
     );
 }
-
 
 #[rstest]
 fn unknown_namespace_in_using(mut with_db: RootDatabase) {

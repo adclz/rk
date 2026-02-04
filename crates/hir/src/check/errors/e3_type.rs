@@ -100,7 +100,10 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 expr,
             } => {
                 let message = if target.is_void() {
-                    format!("'{}' is void and can not be assigned", base_target.type_name(db))
+                    format!(
+                        "'{}' is void and can not be assigned",
+                        base_target.type_name(db)
+                    )
                 } else {
                     format!(
                         "expected '{}', got '{}'",

@@ -7,7 +7,8 @@ use hir::{
     hir_def::{
         expressions::{
             expression::{
-                BeginPathExpr, Expr, InitExpr, InitExprKind, ParamAssign, PathExpr, VariableAccess, VariableAccessKind,
+                BeginPathExpr, Expr, InitExpr, InitExprKind, ParamAssign, PathExpr, VariableAccess,
+                VariableAccessKind,
             },
             spec::{Spec, SpecKind},
             statement::{CaseKind, Stmt, StmtKind},
@@ -347,9 +348,7 @@ impl<'db> WalkHir<'db> for VariableAccess<'db> {
     ) -> ControlFlow<()> {
         f(HirNode::VariableAccess(*self))?;
         match self.kind(db) {
-            VariableAccessKind::Direct(_) => {
-                /* HW Bindings */
-            }
+            VariableAccessKind::Direct(_) => { /* HW Bindings */ }
             VariableAccessKind::Symbolic(v) => {
                 if let Some(expr) = v.expr(db) {
                     expr.walk_hir(db, f)?;

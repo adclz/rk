@@ -45,7 +45,8 @@ impl<'db> DeclarationHandler<'db> for InitExpr<'db> {
         let infer = infer_signature(db, self.scope_id(db));
         infer
             .init_expr_result
-            .type_of_init_expr.get(self)
+            .type_of_init_expr
+            .get(self)
             .and_then(|typ| typ.declaration(db))
     }
 }

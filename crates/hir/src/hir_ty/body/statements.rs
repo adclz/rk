@@ -2,9 +2,7 @@ use db::WorkspaceDataBase;
 
 use crate::{
     CallSite,
-    check::errors::{
-        analysis_error::ToIdeDiagnostic, e10_control_flow::ControlFlowError,
-    },
+    check::errors::{analysis_error::ToIdeDiagnostic, e10_control_flow::ControlFlowError},
     hir_def::{
         expressions::{
             expression::Expr,
@@ -213,7 +211,8 @@ impl<'db> StmtsResolverCtx<'db> {
 
                     if typ.with_return_type(db).is_some() {
                         ctx.errors.push(
-                            ControlFlowError::UnusedReturnType { typ, expr: *stmt }.to_diagnostic(db),
+                            ControlFlowError::UnusedReturnType { typ, expr: *stmt }
+                                .to_diagnostic(db),
                         );
                     }
                 }
