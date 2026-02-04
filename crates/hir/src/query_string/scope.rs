@@ -19,75 +19,225 @@ use crate::{
     },
 };
 
-#[derive(Default)]
-pub struct ScopeSearchResult<'db> {
-    /// POUs that need to be imported via USING directives
-    pub need_imports: Vec<(NamespacePath, Pou<'db>)>,
-    pub local_variables: Vec<VariableDecl<'db>>,
-    pub local_pous: Vec<Pou<'db>>,
+pub struct ScopeSearchCtx<'db> {
+    scope: ScopeId<'db>,
+    query: Option<Query>,
+    include_variables: bool,
+    include_pous: bool,
 }
 
-/// Discover POUs and variables available for a given query in the given scope
-///
-/// This will return both local POUs and POUs that can be imported via USING directives
-pub fn query_scope_items<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    query: &str,
-    scope: ScopeId<'db>,
-    filter_pou: impl Fn(&Pou<'db>) -> bool,
-) -> ScopeSearchResult<'db> {
-    let local = discover_in_scope(db, scope);
-    let mut search_result = ScopeSearchResult::default();
+impl<'db> ScopeSearchCtx<'db> {
+    /// Create a new search context for a scope
+    pub fn new(scope: ScopeId<'db>) -> Self {
+        Self {
+            scope,
+            query: None,
+            include_variables: true,
+            include_pous: true,
+        }
+    }
 
-    // Collects all symbol indexes to search
-    let mut indexes: Vec<_> = db
+    /// Set the query to search for
+    pub fn with_query(mut self, query: Query) -> Self {
+        self.query = Some(query);
+        self
+    }
+
+    /// Include variables in the search (default: true)
+    pub fn with_variables(mut self, include: bool) -> Self {
+        self.include_variables = include;
+        self
+    }
+
+    /// Include POUs in the search (default: true)
+    pub fn with_pous(mut self, include: bool) -> Self {
+        self.include_pous = include;
+        self
+    }
+
+    /// Only search for variables (skip POUs)
+    pub fn only_variables(mut self) -> Self {
+        self.include_variables = true;
+        self.include_pous = false;
+        self
+    }
+
+    /// Only search for POUs (skip variables)
+    pub fn only_pous(mut self) -> Self {
+        self.include_variables = false;
+        self.include_pous = true;
+        self
+    }
+
+    /// Execute the search and return results
+    pub fn search<F: Fn(&Pou<'db>) -> bool>(
+        self,
+        db: &'db dyn WorkspaceDataBase,
+        filter_pou: F,
+    ) -> ScopeSearchResult<'db> {
+        let query = self.query.unwrap_or_else(|| Query::new(String::new()));
+
+        let local = discover_in_scope(db, self.scope);
+        let mut search_result = ScopeSearchResult::default();
+
+        // Phase 1: Collect variables from current scope
+        let scope_variables = if self.include_variables {
+            collect_scope_variables(db, self.scope, &mut search_result, &query)
+        } else {
+            FxHashSet::default()
+        };
+
+        // Phase 2: Search for POUs, excluding those shadowed by variables
+        if self.include_pous {
+            search_pous(
+                db,
+                &query,
+                self.scope,
+                &local,
+                &scope_variables,
+                &filter_pou,
+                &mut search_result,
+            );
+        }
+
+        search_result
+    }
+
+    /// Execute the search without any POU filter
+    pub fn search_unfiltered(self, db: &'db dyn WorkspaceDataBase) -> ScopeSearchResult<'db> {
+        self.search(db, |_| true)
+    }
+}
+
+/// A symbol found in scope, either a variable, a locally accessible POU, or one that needs imports
+#[derive(Clone)]
+pub enum ScopedSymbol<'db> {
+    Variable(VariableDecl<'db>),
+    LocalPou(Pou<'db>),
+    ImportedPou(NamespacePath, Pou<'db>),
+}
+
+#[derive(Default)]
+pub struct ScopeSearchResult<'db> {
+    /// All symbols found in scope (variables, POUs, etc.)
+    pub symbols: Vec<ScopedSymbol<'db>>,
+}
+
+impl<'db> ScopeSearchResult<'db> {
+    /// Get all variables from the result
+    pub fn variables(&self) -> impl Iterator<Item = &VariableDecl<'db>> {
+        self.symbols.iter().filter_map(|s| match s {
+            ScopedSymbol::Variable(v) => Some(v),
+            _ => None,
+        })
+    }
+
+    /// Get all locally accessible POUs (no imports needed)
+    pub fn local_pous(&self) -> impl Iterator<Item = &Pou<'db>> {
+        self.symbols.iter().filter_map(|s| match s {
+            ScopedSymbol::LocalPou(p) => Some(p),
+            _ => None,
+        })
+    }
+
+    /// Get all POUs that need imports (with their namespace)
+    pub fn imported_pous(&self) -> impl Iterator<Item = (NamespacePath, Pou<'db>)> + '_ {
+        self.symbols.iter().filter_map(|s| match s {
+            ScopedSymbol::ImportedPou(ns, p) => Some((*ns, *p)),
+            _ => None,
+        })
+    }
+}
+
+/// Collect variables from the current scope that match the query
+fn collect_scope_variables<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    scope: ScopeId<'db>,
+    search_result: &mut ScopeSearchResult<'db>,
+    fast_query: &Query,
+) -> FxHashSet<String> {
+    // Collect ALL variable names first for deduplication
+    let mut all_variable_names = FxHashSet::default();
+    scope
+        .def_map(db)
+        .global_variables
+        .iter()
+        .for_each(|(_, v)| {
+            all_variable_names.insert(v.name(db).text(db).to_string());
+        });
+
+    // Now search for variables that match the query
+    let index = variable_symbol_index(db, scope);
+    let indexes = vec![index];
+
+    fast_query.search(db, &indexes, |symbol| {
+        if let SymbolKind::Variable(v) = symbol.kind {
+            search_result.symbols.push(ScopedSymbol::Variable(v));
+        }
+        ControlFlow::Continue::<()>(())
+    });
+
+    all_variable_names
+}
+
+/// Search for POUs that match the query and aren't shadowed by variables
+fn search_pous<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    fast_query: &Query,
+    scope: ScopeId<'db>,
+    local: &LocalSearchResult<'db>,
+    scope_variables: &FxHashSet<String>,
+    filter_pou: &dyn Fn(&Pou<'db>) -> bool,
+    search_result: &mut ScopeSearchResult<'db>,
+) {
+    // Collect all POU symbol indexes from all files
+    let indexes: Vec<_> = db
         .get_files()
         .iter()
         .map(|file| file_symbol_index(db, *file))
         .collect();
 
-    // Add variable index for the current scope
-    indexes.push(variable_symbol_index(db, scope));
-
-    let mut fast_query = Query::new(query.to_string());
-    fast_query.fuzzy();
+    // Track POUs we've already added to avoid duplicates from the same namespace
+    let mut seen_pous: FxHashSet<(Option<NamespacePath>, String)> = FxHashSet::default();
 
     fast_query.search(db, &indexes, |symbol| {
-        match symbol.kind {
-            SymbolKind::Pou(pou) => {
-                // Check if we have already added this POU locally
-                if local.pous.contains_key(&pou.get_name_ident(db)) {
-                    return ControlFlow::Continue::<()>(());
-                }
-
-                // Apply the filter
-                if !filter_pou(&pou) {
-                    return ControlFlow::Continue::<()>(());
-                }
-
-                if let Some(ns) = symbol.namespace {
-                    // Check if the namespace is already seen (imported via USING or in scope)
-                    if local.seen_namespaces.contains(&ns) {
-                        // Add as local POU (no USING directive needed)
-                        search_result.local_pous.push(pou);
-                    } else {
-                        // Add to need_imports (USING directive will be added)
-                        search_result.need_imports.push((ns, pou));
-                    }
-                    return ControlFlow::Continue::<()>(());
-                }
-                
-                search_result.local_pous.push(pou);
+        if let SymbolKind::Pou(pou) = symbol.kind {
+            // Skip if already defined locally in this scope
+            if local.pous.contains_key(&pou.get_name_ident(db)) {
+                return ControlFlow::Continue::<()>(());
             }
-            SymbolKind::Variable(v) => {
-                search_result.local_variables.push(v);
+
+            // Skip if a variable with the same name exists (variables take priority)
+            if scope_variables.contains(&symbol.name) {
+                return ControlFlow::Continue::<()>(());
             }
-            _ => {}
+
+            // Apply the user-provided filter
+            if !filter_pou(&pou) {
+                return ControlFlow::Continue::<()>(());
+            }
+
+            // Skip if we've already added a POU with this name from this namespace
+            let pou_key = (symbol.namespace, symbol.name.clone());
+            if !seen_pous.insert(pou_key) {
+                return ControlFlow::Continue::<()>(());
+            }
+
+            // Handle namespace imports
+            if let Some(ns) = symbol.namespace {
+                if local.seen_namespaces.contains(&ns) {
+                    search_result.symbols.push(ScopedSymbol::LocalPou(pou));
+                } else {
+                    search_result
+                        .symbols
+                        .push(ScopedSymbol::ImportedPou(ns, pou));
+                }
+            } else {
+                search_result.symbols.push(ScopedSymbol::LocalPou(pou));
+            }
         }
         ControlFlow::Continue::<()>(())
     });
-
-    search_result
 }
 
 #[derive(Default)]

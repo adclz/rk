@@ -239,10 +239,7 @@ impl<'db> SymbolIndex<'db> {
                 })
             })
             .unwrap();
-        SymbolIndex {
-            symbols,
-            map,
-        }
+        SymbolIndex { symbols, map }
     }
 
     fn range_to_map_value(start: usize, end: usize) -> u64 {
