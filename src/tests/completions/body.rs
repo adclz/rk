@@ -1,11 +1,7 @@
 use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
-use hir::{
-    HirNodeInfo
-};
-use ide_proto::{
-    handlers::completions_utils::scope::{QueryMode, ScopeCompletionCtx},
-};
+use hir::HirNodeInfo;
+use ide_proto::handlers::completions_utils::{CompletionCtx, QueryMode};
 use rstest::rstest;
 
 use crate::tests::utils::{add_sources, find_pou_with_name, with_db};
@@ -26,13 +22,17 @@ END_FUNCTION
 "#;
 
     add_sources(&mut with_db, &[source]);
-    let pou = find_pou_with_name(&with_db, *with_db.get_files().iter().last().unwrap(), "test_fn")
-        .unwrap();
+    let pou = find_pou_with_name(
+        &with_db,
+        *with_db.get_files().iter().last().unwrap(),
+        "test_fn",
+    )
+    .unwrap();
 
     // Test completion at line with assignment (before the path expression starts)
     let offset = source.find("END_VAR").unwrap() + 7; // Position after END_VAR, before any statement
-    let mut ctx = ScopeCompletionCtx::new(QueryMode::Body, pou.get_scope_id(&with_db), offset, "");
-    ctx.query_scope_items(&with_db);
+    let mut ctx = CompletionCtx::new(offset, QueryMode::Body);
+    ctx.scope_completion(pou.get_scope_id(&with_db), "", &with_db);
     let completions = ctx.take_items();
 
     assert!(!completions.is_empty());
@@ -56,13 +56,17 @@ END_FUNCTION
 "#;
 
     add_sources(&mut with_db, &[source]);
-    let pou = find_pou_with_name(&with_db, *with_db.get_files().iter().last().unwrap(), "test_fn")
-        .unwrap();
+    let pou = find_pou_with_name(
+        &with_db,
+        *with_db.get_files().iter().last().unwrap(),
+        "test_fn",
+    )
+    .unwrap();
 
     // Test completion INSIDE the variable name itself (within PathExpr/VariableAccess)
     let offset = source.find("my_var := 10").unwrap() + 1; // Position inside "my_var"
-    let mut ctx = ScopeCompletionCtx::new(QueryMode::Body, pou.get_scope_id(&with_db), offset, "");
-    ctx.query_scope_items(&with_db);
+    let mut ctx = CompletionCtx::new(offset, QueryMode::Body);
+    ctx.scope_completion(pou.get_scope_id(&with_db), "", &with_db);
     let completions = ctx.take_items();
 
     assert!(!completions.is_empty());
@@ -86,13 +90,17 @@ END_FUNCTION
 "#;
 
     add_sources(&mut with_db, &[source]);
-    let pou = find_pou_with_name(&with_db, *with_db.get_files().iter().last().unwrap(), "test_fn")
-        .unwrap();
+    let pou = find_pou_with_name(
+        &with_db,
+        *with_db.get_files().iter().last().unwrap(),
+        "test_fn",
+    )
+    .unwrap();
 
     // Test completion after the variable (at the space after "my_var")
     let offset = source.find("my_var :=").unwrap() + 6; // Position just after "my_var"
-    let mut ctx = ScopeCompletionCtx::new(QueryMode::Body, pou.get_scope_id(&with_db), offset, "");
-    ctx.query_scope_items(&with_db);
+    let mut ctx = CompletionCtx::new(offset, QueryMode::Body);
+    ctx.scope_completion(pou.get_scope_id(&with_db), "", &with_db);
     let completions = ctx.take_items();
 
     // Should have completions from scope (fallback worked)
@@ -113,13 +121,17 @@ END_FUNCTION_BLOCK
 "#;
 
     add_sources(&mut with_db, &[source]);
-    let pou = find_pou_with_name(&with_db, *with_db.get_files().iter().last().unwrap(), "my_fb")
-        .unwrap();
+    let pou = find_pou_with_name(
+        &with_db,
+        *with_db.get_files().iter().last().unwrap(),
+        "my_fb",
+    )
+    .unwrap();
 
     // Get completions in function block (which is the scope)
     let offset = source.find("END_FUNCTION_BLOCK").unwrap();
-    let mut ctx = ScopeCompletionCtx::new(QueryMode::Body, pou.get_scope_id(&with_db), offset, "");
-    ctx.query_scope_items(&with_db);
+    let mut ctx = CompletionCtx::new(offset, QueryMode::Body);
+    ctx.scope_completion(pou.get_scope_id(&with_db), "", &with_db);
     let completions = ctx.take_items();
 
     assert!(!completions.is_empty());
@@ -146,12 +158,16 @@ END_FUNCTION
 "#;
 
     add_sources(&mut with_db, &[source]);
-    let pou = find_pou_with_name(&with_db, *with_db.get_files().iter().last().unwrap(), "main")
-        .unwrap();
+    let pou = find_pou_with_name(
+        &with_db,
+        *with_db.get_files().iter().last().unwrap(),
+        "main",
+    )
+    .unwrap();
 
     let offset = source.find("fn_in_ns()").unwrap();
-    let mut ctx = ScopeCompletionCtx::new(QueryMode::Body, pou.get_scope_id(&with_db), offset, "");
-    ctx.query_scope_items(&with_db);
+    let mut ctx = CompletionCtx::new(offset, QueryMode::Body);
+    ctx.scope_completion(pou.get_scope_id(&with_db), "", &with_db);
     let completions = ctx.take_items();
 
     assert!(!completions.is_empty());
@@ -184,12 +200,16 @@ END_FUNCTION
 "#;
 
     add_sources(&mut with_db, &[source]);
-    let pou = find_pou_with_name(&with_db, *with_db.get_files().iter().last().unwrap(), "complex_fn")
-        .unwrap();
+    let pou = find_pou_with_name(
+        &with_db,
+        *with_db.get_files().iter().last().unwrap(),
+        "complex_fn",
+    )
+    .unwrap();
 
     let offset = source.find("temp := input_x").unwrap();
-    let mut ctx = ScopeCompletionCtx::new(QueryMode::Body, pou.get_scope_id(&with_db), offset, "");
-    ctx.query_scope_items(&with_db);
+    let mut ctx = CompletionCtx::new(offset, QueryMode::Body);
+    ctx.scope_completion(pou.get_scope_id(&with_db), "", &with_db);
     let completions = ctx.take_items();
 
     assert!(!completions.is_empty());
