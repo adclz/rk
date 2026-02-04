@@ -111,7 +111,7 @@ impl Query {
                 let automaton = fst::automaton::Str::new(&self.lowercased);
 
                 for index in indices.iter() {
-                    op = op.add(index.map(db).search(&automaton));
+                    op = op.add(index.map.search(&automaton));
                 }
                 self.search_maps(db, indices, op.union(), cb)
             }
@@ -119,7 +119,7 @@ impl Query {
                 let automaton = fst::automaton::Subsequence::new(&self.lowercased);
 
                 for index in indices.iter() {
-                    op = op.add(index.map(db).search(&automaton));
+                    op = op.add(index.map.search(&automaton));
                 }
                 self.search_maps(db, indices, op.union(), cb)
             }
@@ -127,7 +127,7 @@ impl Query {
                 let automaton = fst::automaton::Str::new(&self.lowercased).starts_with();
 
                 for index in indices.iter() {
-                    op = op.add(index.map(db).search(&automaton));
+                    op = op.add(index.map.search(&automaton));
                 }
                 self.search_maps(db, indices, op.union(), cb)
             }
@@ -146,7 +146,7 @@ impl Query {
                 let symbol_index = &indices[index];
                 let (start, end) = SymbolIndex::map_value_to_range(value);
 
-                for symbol in &symbol_index.symbols(db)[start..end] {
+                for symbol in &symbol_index.symbols[start..end] {
                     let symbol_name = symbol.name.as_str();
 
                     if let Some(b) = cb(symbol).break_value()
@@ -163,14 +163,37 @@ impl Query {
     }
 }
 
-#[salsa::tracked(debug)]
+#[derive(Debug, Clone)]
 pub struct SymbolIndex<'db> {
-    #[returns(ref)]
     symbols: Box<[NamedSymbol<'db>]>,
-    #[tracked]
-    #[no_eq]
-    #[returns(ref)]
+
     map: fst::Map<Vec<u8>>,
+}
+
+impl PartialEq for SymbolIndex<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.symbols == other.symbols
+    }
+}
+
+impl Eq for SymbolIndex<'_> {}
+
+impl Hash for SymbolIndex<'_> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.symbols.hash(state)
+    }
+}
+
+unsafe impl salsa::Update for SymbolIndex<'_> {
+    unsafe fn maybe_update(old_pointer: *mut Self, new_value: Self) -> bool {
+        let this = unsafe { &mut *old_pointer };
+        if *this == new_value {
+            false
+        } else {
+            *this = new_value;
+            true
+        }
+    }
 }
 
 impl<'db> SymbolIndex<'db> {
@@ -216,7 +239,10 @@ impl<'db> SymbolIndex<'db> {
                 })
             })
             .unwrap();
-        SymbolIndex::new(db, symbols, map)
+        SymbolIndex {
+            symbols,
+            map,
+        }
     }
 
     fn range_to_map_value(start: usize, end: usize) -> u64 {
