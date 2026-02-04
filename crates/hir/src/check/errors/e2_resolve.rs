@@ -3,22 +3,26 @@ use db::WorkspaceDataBase;
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 use crate::{
-    CallSite, HasName, HirNodeInfo, check::errors::analysis_error::ToIdeDiagnostic, hir_def::{
+    CallSite, HasName, HirNodeInfo,
+    check::errors::analysis_error::ToIdeDiagnostic,
+    hir_def::{
         expressions::{
             expression::{Expr, FuncCall, InitExpr, PathExpr},
-            spec::{Spec, SpecKind},
+            spec::Spec,
         },
         interned::{
             identifier::{Ident, SpanIdent},
             namespace::{NamespacePath, SpanNamespaceAccess},
         },
-        pous::variable::VariableDecl,
+        pous::{pou::Pou, variable::VariableDecl},
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
-    }, hir_ty::ty::{CallableType, Type}, query_string::{
-        method::fuzzy_callable_type_parameters, strukt::fuzzy_struct_fields,
-        variables::fuzzy_variables,
-    }
+    },
+    hir_ty::ty::{CallableType, Type},
+    query_string::{
+        method::fuzzy_callable_type_parameters, query::Query, scope::ScopeSearchCtx,
+        strukt::fuzzy_struct_fields,
+    },
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
@@ -53,10 +57,6 @@ pub enum ResolveError<'db> {
     },
     NoItemInScope {
         expr: PathExpr<'db>,
-        scope: ScopeId<'db>,
-    },
-    NoSpecItemInScope {
-        spec: Spec<'db>,
         scope: ScopeId<'db>,
     },
     NoSuchFieldInitExpr {
@@ -99,7 +99,6 @@ impl<'db> ErrorCode for ResolveError<'db> {
     fn code(&self) -> &'static str {
         match self {
             Self::NoItemInScope { .. } => "E0204",
-            Self::NoSpecItemInScope { .. } => "E0204",
             Self::IncorrectNumberOfParameters { .. } => "E0205",
             Self::UnknownNonFormalParameter { .. } => "E0206",
             Self::OutputParameterUsedAsInput { .. } => "E0207",
@@ -119,7 +118,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
 
     fn description(&self) -> &'static str {
         match self {
-            Self::NoItemInScope { .. } | Self::NoSpecItemInScope { .. } => "no item found in scope",
+            Self::NoItemInScope { .. } => "no item found in scope",
             Self::NoNamespaceItemFound { .. } => "no namespace item found",
             Self::NamespaceNotFound { .. } => "namespace not found",
             Self::IncorrectNumberOfParameters { .. }
@@ -223,25 +222,49 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     .range(expr.get_span(db))
                     .call();
 
+                let mut query = Query::new(expr.ident(db).text(db).to_string());
+                query.fuzzy();
+                let items = ScopeSearchCtx::new(*scope)
+                    .with_query(query)
+                    .only_variables()
+                    .search_unfiltered(db);
+
                 if let ScopeKind::Pou(pou) = get_scope(db, *scope).kind {
-                    fuzzy_variables(db, pou, &mut diag, expr.ident(db).as_str(db))
+                    list_variable_candidates(
+                        db,
+                        pou.get_name_ident(db).text(db).as_str(),
+                        &mut diag,
+                        items.variables(),
+                    )
                 }
+
+                let mut query = Query::new(expr.ident(db).text(db).to_string());
+                query.exact();
+                let items = ScopeSearchCtx::new(*scope)
+                    .with_query(query)
+                    .only_pous()
+                    .search(db, |p| matches!(p, Pou::Function(_)));
+
+                list_pou_candidates(
+                    db,
+                    expr.ident(db).text(db).as_str(),
+                    &mut diag,
+                    items.imported_pous(),
+                );
                 diag
             }
-            Self::NoSpecItemInScope { spec, scope } => {
-                let message = if let SpecKind::Target(access) = spec.kind(db) {
-                    format!("no item {:?} found in scope", access.to_string(db))
-                } else {
-                    "no item found in scope".to_string()
-                };
-
-                diag()
-                    .message(message)
-                    .severity(DiagnosticSeverity::ERROR)
-                    .desc(self)
-                    .range(spec.get_span(db))
-                    .call()
-            }
+            Self::NoNamespaceItemFound { path } => diag()
+                .message(format!("io item found for path '{}'", path.to_string(db)))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(path.get_span(db))
+                .call(),
+            Self::NamespaceNotFound { call_site, path } => diag()
+                .message(format!("namespace '{}' not found", path.to_string(db)))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(call_site.get_span(db))
+                .call(), // add recovery checks?
             Self::NoSuchFieldPathExpr { expr, ident, ty } => {
                 let mut diag = diag()
                     .message(format!(
@@ -305,21 +328,6 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 .desc(self)
                 .range(expr.get_span(db))
                 .call(),
-            Self::NoNamespaceItemFound { path } => diag()
-                .message(format!("io item found for path '{}'", path.to_string(db)))
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(path.get_span(db))
-                .call(),
-            Self::NamespaceNotFound { call_site, path } => diag()
-                .message(format!(
-                    "namespace '{}' not found",
-                    path.to_string(db)
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(call_site.get_span(db))
-                .call(), // add recovery checks?
             Self::FunctionAsVariableType { expr, ty } => diag()
                 .message(format!(
                     "'{}' is a function and cannot be used as a variable type",
@@ -330,5 +338,88 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 .range(expr.get_span(db))
                 .call(),
         }
+    }
+}
+
+fn list_variable_candidates<'db, I>(
+    db: &'db dyn WorkspaceDataBase,
+    scope_name: &str,
+    diag: &mut IdeDiagnostic,
+    mut candidates: I,
+) where
+    I: Iterator<Item = &'db VariableDecl<'db>>,
+{
+    // Collect up to 6 candidates to check if there are more than 5
+    let mut collected = Vec::with_capacity(6);
+    for candidate in candidates.by_ref().take(6) {
+        collected.push(candidate);
+    }
+
+    if !collected.is_empty() {
+        let count = collected.len();
+        let display_count = count.min(5);
+
+        let mut note = format!(
+            "'{}' has item{} with similar name:\n",
+            scope_name,
+            if count > 1 { "s" } else { "" }
+        );
+
+        for (i, candidate) in collected.iter().take(display_count).enumerate() {
+            if i > 0 {
+                note.push('\n');
+            }
+            note.push_str(&format!("- {}", candidate.name(db).text(db)));
+        }
+
+        if count > 5 {
+            note.push_str("\n  ...");
+        }
+
+        diag.with_note(note);
+    }
+}
+
+fn list_pou_candidates<'db, I>(
+    db: &'db dyn WorkspaceDataBase,
+    scope_name: &str,
+    diag: &mut IdeDiagnostic,
+    mut candidates: I,
+) where
+    I: Iterator<Item = (NamespacePath, Pou<'db>)>,
+{
+    // Collect up to 6 candidates to check if there are more than 5
+    let mut collected = Vec::with_capacity(6);
+    for candidate in candidates.by_ref().take(6) {
+        collected.push(candidate);
+    }
+
+    if !collected.is_empty() {
+        let count = collected.len();
+        let display_count = count.min(5);
+
+        let mut note = match collected.len() {
+            1 => format!(
+                "an item named '{}' is available, but needs to be imported:\n",
+                scope_name
+            ),
+            _ => format!(
+                "items named '{}' are available, but need to be imported:\n",
+                scope_name
+            ),
+        };
+
+        for (i, (namespace, candidate)) in collected.iter().take(display_count).enumerate() {
+            if i > 0 {
+                note.push('\n');
+            }
+            note.push_str(&format!("- USING {}", namespace.to_string(db)));
+        }
+
+        if count > 5 {
+            note.push_str("\n  ...");
+        }
+
+        diag.with_note(note);
     }
 }

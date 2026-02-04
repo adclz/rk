@@ -76,6 +76,87 @@ fn fuzzy_pou_local_variables(mut with_db: RootDatabase) {
 }
 
 #[rstest]
+fn fuzzy_pou_items_not_in_scope(mut with_db: RootDatabase) {
+    let source = r#"
+NAMESPACE System
+	FUNCTION fn
+
+	END_FUNCTION
+
+	FUNCTION fn2
+
+	END_FUNCTION
+END_NAMESPACE
+
+FUNCTION_BLOCK fb1
+
+	fn();
+
+END_FUNCTION_BLOCK
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
+    [E0204] Error: no item found in scope
+        ,-[ file:///test0.st:14:2 ]
+        |
+     14 |     fn();
+        |     ^|  
+        |      `-- no item "fn" found in scope
+        | 
+        | Note: an item named 'fn' is available, but needs to be imported:
+        |       - USING System
+    ----'
+    "#);
+}
+
+// same test as above but with multiple items with similar name to check that the error message is not duplicated
+// so we also expect a duplicate error
+#[rstest]
+fn deduplicate_fuzzy_pou_items_not_in_scope(mut with_db: RootDatabase) {
+    let source = r#"
+NAMESPACE System
+	FUNCTION fn
+
+	END_FUNCTION
+
+	FUNCTION fn
+
+	END_FUNCTION
+END_NAMESPACE
+
+FUNCTION_BLOCK fb1
+
+	fn();
+
+END_FUNCTION_BLOCK
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
+    [E0204] Error: no item found in scope
+        ,-[ file:///test0.st:14:2 ]
+        |
+     14 |     fn();
+        |     ^|  
+        |      `-- no item "fn" found in scope
+        | 
+        | Note: an item named 'fn' is available, but needs to be imported:
+        |       - USING System
+    ----'
+    [E0101] Error: duplicate definitions
+       ,-[ file:///test0.st:3:11 ]
+       |
+     3 |     FUNCTION fn
+       |              ^|  
+       |               `-- duplicate POU 'fn'
+       | 
+     7 |     FUNCTION fn
+       |              ^|  
+       |               `-- POU 'fn' is already defined here
+    ---'
+    "#);
+}
+
+#[rstest]
 fn fuzzy_func_call_input_variables(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION fn
