@@ -29,6 +29,11 @@ static VAR_DECLS: &str = r#"
  [
     (temp_var_decls)
 ] @temp_var_decls
+
+[
+    (func_body)
+    (fb_body)
+] @body
 "#;
 
 pub static FOLD_QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
@@ -51,13 +56,12 @@ bitflags::bitflags! {
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum HeadLocation {
     BeforeVars, // suggests IMPLEMENTS/EXTENDS and var snippets
-    InVars, // suggests var snippets
+    InVars,     // suggests var snippets
     // Methods are always defined after vars
     BeforeMethods, // suggests var and method snippets
-    InMethods, // suggests method snippets
-    // In statements area
+    InMethods,     // suggests method snippets
     #[default]
-    InStmts, // suggests all stmts
+    InBody, // suggests *nothing*
 }
 
 #[derive(Debug)]
@@ -120,7 +124,6 @@ impl HeadResult {
         let mut vars = None;
         let mut inside_var_section = VarSection::empty();
         let mut method_ranges: Vec<tree_sitter::Range> = Vec::new();
-        let mut inside_method = false;
 
         while let Some((m, capture_index)) = captures.next() {
             let capture = m.captures[*capture_index];
@@ -159,28 +162,6 @@ impl HeadResult {
                     vars = Some(capture.node.range());
                 }
                 "method" => {
-                    // Check if we're truly inside the method body by finding where the actual
-                    // method statements start (after the method header)
-                    let method_node = capture.node;
-                    
-                    // Look for the statement list or body within the method
-                    // If cursor is before that, we're in the method header area, not the body
-                    let mut cursor = method_node.walk();
-                    let mut method_body_start = method_node.end_byte();
-                    
-                    for child in method_node.children(&mut cursor) {
-                        let kind = child.kind();
-                        // Look for statement-related nodes that indicate the body has started
-                        if kind == "stmt_list" || kind == "function_block_body" {
-                            method_body_start = child.start_byte();
-                            break;
-                        }
-                    }
-                    
-                    // Only consider us inside the method if we're in the body area
-                    if offset >= method_body_start && offset < method_node.end_byte() {
-                        inside_method = true;
-                    }
                     method_ranges.push(capture.node.range());
                 }
                 _ => {}
@@ -190,7 +171,6 @@ impl HeadResult {
         let inside_head = Self::determine_head_location(
             offset,
             &inside_var_section,
-            inside_method,
             &[inputs, outputs, in_outs, temps, vars],
             &method_ranges,
         );
@@ -209,54 +189,45 @@ impl HeadResult {
     fn determine_head_location(
         offset: usize,
         inside_var_section: &VarSection,
-        inside_method: bool,
         var_ranges: &[Option<tree_sitter::Range>],
         method_ranges: &[tree_sitter::Range],
     ) -> HeadLocation {
-        // If inside a method body, return InMethods
-        if inside_method {
-            return HeadLocation::InMethods;
-        }
-
         // Find the first and last var section positions
         let first_var_start = var_ranges
             .iter()
             .filter_map(|&r| r.map(|range| range.start_byte))
             .min();
-        
+
         let last_var_end = var_ranges
             .iter()
             .filter_map(|&r| r.map(|range| range.end_byte))
             .max();
 
         // Find the first and last method positions
-        let first_method_start = method_ranges
-            .iter()
-            .map(|range| range.start_byte)
-            .min();
-        
-        let last_method_end = method_ranges
-            .iter()
-            .map(|range| range.end_byte)
-            .max();
+        let first_method_start = method_ranges.iter().map(|range| range.start_byte).min();
 
-        match (first_var_start, last_var_end, first_method_start, last_method_end) {
+        let last_method_end = method_ranges.iter().map(|range| range.end_byte).max();
+
+        match (
+            first_var_start,
+            last_var_end,
+            first_method_start,
+            last_method_end,
+        ) {
             // No vars and no methods - before vars
             (None, None, None, None) => HeadLocation::BeforeVars,
-            
+
             // No vars but methods exist
             (None, None, Some(method_start), Some(method_end)) => {
                 if offset < method_start {
                     HeadLocation::BeforeVars
                 } else if offset <= method_end {
-                    // Between or around method declarations (not in body)
                     HeadLocation::InMethods
                 } else {
-                    // After all methods
-                    HeadLocation::InStmts
+                    HeadLocation::InBody
                 }
             }
-            
+
             // Vars exist but no methods
             (Some(var_start), Some(var_end), None, None) => {
                 if offset < var_start {
@@ -271,7 +242,7 @@ impl HeadResult {
                     HeadLocation::BeforeVars
                 }
             }
-            
+
             // Both vars and methods exist
             (Some(var_start), Some(var_end), Some(method_start), Some(method_end)) => {
                 if offset < var_start {
@@ -282,14 +253,13 @@ impl HeadResult {
                 } else if offset < method_start {
                     HeadLocation::BeforeMethods
                 } else if offset <= method_end {
-                    // Between or around method declarations (not in body)
                     HeadLocation::InMethods
                 } else {
                     // After all methods, in the main body
-                    HeadLocation::InStmts
+                    HeadLocation::InBody
                 }
             }
-            
+
             // Handle any remaining edge cases
             _ => HeadLocation::BeforeVars,
         }
@@ -331,8 +301,7 @@ END_FUNCTION_BLOCK
 
         // Test offset inside VAR_INPUT
         let offset = source.find("in1").unwrap();
-        let results =
-            HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
+        let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
         assert_eq!(results.inputs.is_some(), true);
         assert_eq!(results.outputs.is_some(), true);
         assert_eq!(results.in_outs.is_some(), true);
@@ -419,9 +388,8 @@ END_FUNCTION_BLOCK
 
         // Cursor right after FUNCTION_BLOCK declaration
         let offset = source.find("FUNCTION_BLOCK FB1").unwrap() + "FUNCTION_BLOCK FB1".len();
-        let results =
-            HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
-        
+        let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
+
         assert_eq!(results.inside_head, HeadLocation::BeforeVars);
     }
 
@@ -448,9 +416,8 @@ END_FUNCTION_BLOCK
         // Cursor between VAR_INPUT and VAR_OUTPUT (after first END_VAR)
         let first_end_var = source.find("END_VAR").unwrap() + "END_VAR".len();
         let offset = first_end_var + 1;
-        let results =
-            HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
-        
+        let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
+
         assert_eq!(results.inside_head, HeadLocation::InVars);
         assert_eq!(results.inside_var_section, VarSection::empty());
     }
@@ -476,11 +443,10 @@ END_FUNCTION_BLOCK
 
         // Cursor between END_VAR and METHOD (at the blank line)
         let end_var_pos = source.find("END_VAR").unwrap() + "END_VAR".len();
-        let offset = end_var_pos + 1;  // Position at the first newline after END_VAR
-        
-        let results =
-            HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
-        
+        let offset = end_var_pos + 1; // Position at the first newline after END_VAR
+
+        let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
+
         assert_eq!(results.inside_head, HeadLocation::BeforeMethods);
     }
 
@@ -506,9 +472,8 @@ END_FUNCTION_BLOCK
 
         // Cursor inside method body
         let offset = source.find("// method body").unwrap();
-        let results =
-            HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
-        
+        let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
+
         assert_eq!(results.inside_head, HeadLocation::InMethods);
     }
 
@@ -535,10 +500,9 @@ END_FUNCTION_BLOCK
 
         // Cursor after methods
         let offset = source.find("// statement area").unwrap();
-        let results =
-            HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
-        
-        assert_eq!(results.inside_head, HeadLocation::InStmts);
+        let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
+
+        assert_eq!(results.inside_head, HeadLocation::InBody);
     }
 
     #[test]
@@ -556,9 +520,8 @@ END_FUNCTION_BLOCK
 
         // Cursor in empty function block
         let offset = source.find("FUNCTION_BLOCK FB1").unwrap() + "FUNCTION_BLOCK FB1".len();
-        let results =
-            HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
-        
+        let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
+
         assert_eq!(results.inside_head, HeadLocation::BeforeVars);
     }
 
@@ -589,10 +552,9 @@ END_FUNCTION_BLOCK
         // Cursor between two method declarations
         let first_end = source.find("END_METHOD").unwrap() + "END_METHOD".len();
         let offset = first_end + 2; // Position between the two methods
-        
-        let results =
-            HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
-        
+
+        let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
+
         // Between methods should be InMethods (to allow adding more methods)
         assert_eq!(results.inside_head, HeadLocation::InMethods);
     }

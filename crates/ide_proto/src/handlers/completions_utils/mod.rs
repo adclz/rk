@@ -1,5 +1,58 @@
-pub mod static_snippets;
+use auto_lsp::lsp_types::CompletionItem;
+use db::WorkspaceDataBase;
+use hir::{hir_def::scope::ScopeId, hir_ty::ty::Type};
+
+pub mod completion_item_builder;
+pub mod field_strategy;
 pub mod pou_context;
-pub mod scope;
-pub mod field;
 pub mod pou_strategy;
+pub mod scope_strategy;
+pub mod static_snippets;
+
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum QueryMode {
+    Head,
+    #[default]
+    Body,
+}
+pub struct CompletionCtx {
+    pub offset: usize,
+    pub items: Vec<CompletionItem>,
+    pub mode: QueryMode,
+}
+
+impl CompletionCtx {
+    pub fn new(offset: usize, mode: QueryMode) -> Self {
+        Self {
+            offset,
+            items: vec![],
+            mode,
+        }
+    }
+
+    pub fn with_signature(mut self) -> Self {
+        self.mode = QueryMode::Head;
+        self
+    }
+
+    /// Try field completion first, fall back to scope completion if type is unavailable or Never
+    pub fn field_or_scope<'db>(
+        &mut self,
+        ty: Option<Type<'db>>,
+        scope: ScopeId<'db>,
+        query: &str,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> &mut Self {
+        if let Some(ty) = ty
+            && !ty.is_never() {
+                self.field_completion(ty, db);
+                return self;
+            }
+        self.scope_completion(scope, query, db);
+        self
+    }
+
+    pub fn take_items(self) -> Vec<CompletionItem> {
+        self.items
+    }
+}

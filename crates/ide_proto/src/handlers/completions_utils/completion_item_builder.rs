@@ -1,3 +1,4 @@
+#![allow(unused)]
 use std::fmt::Display;
 
 use auto_lsp::{
@@ -19,98 +20,34 @@ use hir::{
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
-    hir_ty::{signature::infer_signature, ty::Type},
-    query_string::scope::query_scope_items,
+    hir_ty::{
+        signature::{infer_signature, inheritance::MethodRef},
+        ty::Type,
+    },
+    query_string::{query::Query, scope::ScopeSearchCtx},
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum QueryMode {
-    Signature,
-    Body,
-}
-
-pub struct ScopeCompletionCtx<'db> {
-    pub scope: ScopeId<'db>,
-    pub mode: QueryMode,
-    pub offset: usize,
-    pub query: &'db str,
-    pub items: Vec<CompletionItem>,
-}
-
-impl<'db> ScopeCompletionCtx<'db> {
-    pub fn new(mode: QueryMode, scope: ScopeId<'db>, offset: usize, query: &'db str) -> Self {
-        Self {
-            mode,
-            scope,
-            offset,
-            query,
-            items: vec![],
-        }
-    }
-
-    pub fn take_items(&mut self) -> Vec<CompletionItem> {
-        std::mem::take(&mut self.items)
-    }
-
-    pub fn query_scope_items(&mut self, db: &'db dyn WorkspaceDataBase) {
-        let builder = CompletionBuilder::default().with_import(db, self.scope);
-
-        let builder = match self.mode {
-            QueryMode::Body => builder.with_signature(),
-            QueryMode::Signature => builder,
-        };
-
-        // Filter pous based on the query mode
-        // If Signature, we assume it's a datatype or variable declaration
-        // everything but functions should be suggested
-
-        // If Body, Functions are allowed but not other POUs
-        // that's because they have to be declared in var sections
-        let filter = match self.mode {
-            QueryMode::Signature => |pou: &Pou<'db>| {
-                !matches!(pou, Pou::Function(_))
-            },
-            QueryMode::Body => |pou: &Pou<'db>| {
-                matches!(pou, Pou::Function(_))
-            },
-
-        };
-
-        let pous = query_scope_items(db, self.query, self.scope, filter);
-
-        for pou in pous.local_pous {
-            self.items.push(builder.build_pou(db, &pou, None));
-        }
-
-        for (ns, pou) in pous.need_imports {
-            self.items.push(builder.build_pou(db, &pou, Some(&ns)));
-        }
-
-        for var in pous.local_variables {
-            self.items.push(builder.build_variable(db, &var));
-        }
-    }
-}
+use crate::handlers::completions_utils::QueryMode;
 
 /// A builder for creating completion items with various options.
 #[derive(Default)]
 pub struct CompletionBuilder {
     // Whether to include the signature in the completion item.
-    // signature should only be used inside statements
-    signature: bool,
+    // signatures should only be used inside statements
+    mode: QueryMode,
     // Whether to include an import statement for the completion item.
     // this range indicates where to insert the USING statement
     import: Option<(Range, String)>, // Range + indentation
 }
 
 impl<'db> CompletionBuilder {
-    pub fn with_signature(mut self) -> Self {
-        self.signature = true;
+    pub fn with_import(mut self, db: &'db dyn WorkspaceDataBase, scope: ScopeId<'db>) -> Self {
+        self.import = Some(find_using_range(db, scope));
         self
     }
 
-    pub fn with_import(mut self, db: &'db dyn WorkspaceDataBase, scope: ScopeId<'db>) -> Self {
-        self.import = Some(find_using_range(db, scope));
+    pub fn with_mode(mut self, mode: QueryMode) -> Self {
+        self.mode = mode;
         self
     }
 
@@ -127,15 +64,14 @@ impl<'db> CompletionBuilder {
             .copied()
             .unwrap_or_default();
 
-        let insert_text = if self.signature {
-            match typ {
+        let insert_text = match self.mode {
+            QueryMode::Head => variable_name.to_string(),
+            QueryMode::Body => match typ {
                 Type::Function(_) | Type::FunctionBlock(_) => {
-                    signature(db, &variable_name, variable.get_scope_id(db))
+                    build_call_signature(db, &variable_name, variable.get_scope_id(db))
                 }
                 _ => variable_name.to_string(),
-            }
-        } else {
-            variable_name.to_string()
+            },
         };
 
         CompletionItem {
@@ -199,17 +135,40 @@ impl<'db> CompletionBuilder {
                 description: None,
             }),
             kind: Some(kind),
-            insert_text: if self.signature {
-                Some(signature(db, &name, pou.get_scope_id(db)))
-            } else {
-                None
+            insert_text: match self.mode {
+                QueryMode::Head => None,
+                QueryMode::Body => Some(build_call_signature(db, &name, pou.get_scope_id(db))),
             },
-            insert_text_mode: match self.signature {
-                true => Some(InsertTextMode::ADJUST_INDENTATION),
-                false => None,
+            insert_text_mode: match self.mode {
+                QueryMode::Head => None,
+                QueryMode::Body => Some(InsertTextMode::ADJUST_INDENTATION),
             },
             insert_text_format: Some(InsertTextFormat::SNIPPET),
             additional_text_edits: additional_edit.map(|edit| vec![edit]),
+            ..Default::default()
+        }
+    }
+
+    pub fn build_method(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        method: &MethodRef<'db>,
+    ) -> CompletionItem {
+        let name = method.get_name_ident(db).text(db).to_string();
+
+        CompletionItem {
+            label: name.clone(),
+            detail: Some("(METHOD)".into()),
+            kind: Some(CompletionItemKind::METHOD),
+            insert_text: match self.mode {
+                QueryMode::Head => None,
+                QueryMode::Body => Some(build_call_signature(db, &name, method.get_scope_id(db))),
+            },
+            insert_text_mode: match self.mode {
+                QueryMode::Head => None,
+                QueryMode::Body => Some(InsertTextMode::ADJUST_INDENTATION),
+            },
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
             ..Default::default()
         }
     }
@@ -278,7 +237,7 @@ fn go_to_next_line(span: Span) -> lsp_types::Range {
 /// Generate the signature snippet for a scope with input/output variables
 ///
 /// THis will return none if the scope has variables
-pub fn signature<'db>(
+pub fn build_call_signature<'db>(
     db: &'db dyn WorkspaceDataBase,
     name: &impl Display,
     scope: ScopeId<'db>,
