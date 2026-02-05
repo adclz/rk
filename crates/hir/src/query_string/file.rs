@@ -25,6 +25,12 @@ pub fn file_symbol_index<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Sym
 
     // Namespaces POUs
     for ns in sema.namespaces.iter() {
+        items.push(NamedSymbol {
+            name: ns.path(db).to_string(db),
+            namespace: None,
+            kind: SymbolKind::Namespace(*ns),
+        });
+
         for pou in ns.pous(db).iter() {
             items.push(NamedSymbol {
                 name: pou.get_name_ident(db).text(db).to_string(),

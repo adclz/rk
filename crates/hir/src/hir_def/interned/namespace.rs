@@ -176,6 +176,18 @@ impl NamespacePath {
             .collect::<Vec<_>>()
             .join(".")
     }
+
+    pub fn to_string_dotted(&self, db: &dyn WorkspaceDataBase) -> String {
+        let mut result = self.fragments(db)
+            .iter()
+            .map(|i| i.text(db).to_string())
+            .collect::<Vec<_>>()
+            .join(".");
+        if self.fragments(db).len() == 1 {
+            result.push('.');
+        }
+        result
+    }
 }
 
 impl From<(&dyn WorkspaceDataBase, &Ident)> for NamespacePath {

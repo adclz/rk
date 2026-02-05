@@ -186,6 +186,37 @@ END_FUNCTION_BLOCK
 }
 
 #[rstest]
+fn recovery_using_namespace_as_type(mut with_db: RootDatabase) {
+    let source = r#"
+NAMESPACE System
+
+END_NAMESPACE
+
+FUNCTION_BLOCK fb1
+	VAR
+		engine: System;
+	END_VAR
+
+END_FUNCTION_BLOCK
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0210] Error: no namespace item found
+       ,-[ file:///test0.st:8:11 ]
+       |
+     8 |        engine: System;
+       |                ^^^|^^  
+       |                   `---- no item found for path 'System'
+       | 
+       | Note: a namespace named 'System' exists but it cannot be used as an item, you can either:
+       |       - Import the namespace via an USING directive: 'USING System'
+       |       - Import an item from this namespace: 'System.<POU>'
+    ---'
+    ");
+}
+
+
+#[rstest]
 fn fuzzy_func_call_input_variables(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION fn

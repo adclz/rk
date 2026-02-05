@@ -88,6 +88,9 @@ impl<'db> WalkHir<'db> for SemanticIndex<'db> {
         db: &'db dyn WorkspaceDataBase,
         f: &mut F,
     ) -> ControlFlow<()> {
+        for using in self.scope.usings(db) {
+            using.walk_hir(db, f)?;
+        }
         for pou in &self.global_pous {
             pou.walk_hir(db, f)?;
         }

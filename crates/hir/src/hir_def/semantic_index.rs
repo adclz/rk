@@ -35,7 +35,7 @@ pub fn semantic_index<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Semant
 #[derive(Debug, PartialEq, Eq, salsa::Update)]
 pub struct SemanticIndex<'db> {
     /// Global scope
-    pub(crate) scope: ScopeId<'db>,
+    pub scope: ScopeId<'db>,
 
     pub(crate) file: File,
 

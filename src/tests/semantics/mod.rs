@@ -15,7 +15,7 @@ pub mod invocation;
 pub mod loops;
 pub mod path_expr;
 pub mod program;
-pub mod recovery_fuzzy;
+pub mod recovery;
 pub mod recursive;
 pub mod references;
 pub mod scopes;

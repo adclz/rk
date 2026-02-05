@@ -71,6 +71,7 @@ impl<'db> HirNode<'db> {
         offset: usize,
     ) -> Option<Vec<CompletionItem>> {
         match self {
+            HirNode::Using(u) => u.completion(db, offset),
             HirNode::Namespace(ns) => ns.completion(db, offset),
             HirNode::PouDecl(pou) => pou.completion(db, offset),
             HirNode::Spec(s) => s.completion(db, offset),

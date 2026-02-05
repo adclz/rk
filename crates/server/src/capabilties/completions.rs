@@ -38,6 +38,7 @@ pub fn completions(
     let mut latest = None;
 
     Ok(descendant_at_with(db, file, offset, |hirnode| {
+        // list of interesting nodes to consider for completion
         match hirnode {
             HirNode::VariableAccess(_) | HirNode::PathExpr(_) => {
                 prev = latest.clone();
@@ -55,6 +56,16 @@ pub fn completions(
                     prev = latest.clone();
                     latest = Some(hirnode);
                 }
+            }
+            HirNode::Using(u) => {
+                prev = latest.clone();
+                latest = Some(hirnode);
+            }
+            // there is no completion for NamespaceDecl, but forcing it to be the target will prevent completions from appearing 
+            // when the user is typing a namespace declaration which has dots in it
+            HirNode::Namespace(_) => {
+                prev = latest.clone();
+                latest = Some(hirnode);
             }
             _ => (),
         }
