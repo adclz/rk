@@ -5,7 +5,7 @@ use auto_lsp::{
     lsp_types::{CompletionParams, CompletionResponse},
 };
 use db::WorkspaceDataBase;
-use hir::HirNodeInfo;
+use hir::{HirNodeInfo, hir_def::expressions::expression::InitExprKind};
 use ide_proto::{
     hir_node::HirNode,
     walk::descendant_at_with,
@@ -27,10 +27,7 @@ pub fn completions(
     let position = params.text_document_position.position;
     let offset = match doc.offset_at(position) {
         Some(offset) => match params.context.unwrap().trigger_character {
-            Some(str) if str == "." || str == "#" => {
-                eprintln!("character {}", str);
-                offset.saturating_sub(1)
-            }
+            Some(str) if str == "." || str == "#" => offset.saturating_sub(1),
             _ => offset,
         },
         None => return Ok(None),
@@ -46,12 +43,19 @@ pub fn completions(
                 prev = latest.clone();
                 latest = Some(hirnode);
             }
+            HirNode::InitExpr(expr) => {
+                // we only provide completions for struct initializers
+                if let InitExprKind::StructInit { .. } = expr.kind(db) {
+                    prev = latest.clone();
+                    latest = Some(hirnode);
+                }
+            }
             _ => (),
         }
         ControlFlow::Continue(())
     })
     .map(|target| {
-        let s = match latest {
+        let target_hir_node = match latest {
             Some(curr) => {
                 let range = curr.get_span(db);
                 if range.start_byte <= offset && offset <= range.end_byte {
@@ -73,8 +77,8 @@ pub fn completions(
             }
             _ => target,
         };
-        eprintln!("Found HirNode: {:?}", s);
-        CompletionResponse::Array(s.completion(db, offset).unwrap_or_default())
+        eprintln!("Found HirNode: {:?}", target_hir_node);
+        CompletionResponse::Array(target_hir_node.completion(db, offset).unwrap_or_default())
     })
     .or_else(|| {
         Some(CompletionResponse::Array(vec![

@@ -9,10 +9,8 @@ use hir::{
         },
         namespace::NamespaceDecl,
         pous::pou::Pou,
-        scope::ScopeKind,
-        semantic_index::get_scope,
     },
-    hir_ty::body::infer_body,
+    hir_ty::{body::infer_body, signature::infer_signature},
 };
 
 use crate::handlers::{
@@ -70,16 +68,6 @@ impl<'db> CompletionHandler<'db> for Spec<'db> {
     }
 }
 
-impl<'db> CompletionHandler<'db> for InitExpr<'db> {
-    fn completion(
-        &'db self,
-        _db: &'db dyn WorkspaceDataBase,
-        _offset: usize,
-    ) -> Option<Vec<CompletionItem>> {
-        Some(static_snippets::elem_type_names())
-    }
-}
-
 impl<'db> CompletionHandler<'db> for PathExpr<'db> {
     fn completion(
         &'db self,
@@ -91,20 +79,7 @@ impl<'db> CompletionHandler<'db> for PathExpr<'db> {
         let infer = infer_body(db, self.get_scope_id(db));
         let ty = infer.get_type_of_path_expr(db, *self);
 
-        // Try field completion
-        if let Some(ty) = ty
-            && !ty.is_never()
-        {
-            ctx.field_completion(ty, db);
-            return Some(ctx.take_items());
-        }
-
-        if let ScopeKind::Pou(pou) = get_scope(db, self.get_scope_id(db)).kind
-            && ctx.located_pou_completion(pou, db).inside_head.is_in_body()
-        {
-            ctx.scope_completion(self.get_scope_id(db), "", db);
-            ctx.items.extend(static_snippets::all_stmts());
-        }
+        ctx.field_or_scope(ty, self.get_scope_id(db), "", db);
 
         Some(ctx.take_items())
     }
@@ -142,6 +117,30 @@ impl<'db> CompletionHandler<'db> for Expr<'db> {
         // Try field completion, fall back to scope if type is unavailable
         ctx.field_or_scope(ty, self.get_scope_id(db), "", db);
 
+        Some(ctx.take_items())
+    }
+}
+
+impl<'db> CompletionHandler<'db> for InitExpr<'db> {
+    fn completion(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        offset: usize,
+    ) -> Option<Vec<CompletionItem>> {
+        let mut ctx = CompletionCtx::new(offset, QueryMode::Head);
+
+        let infer = infer_signature(db, self.get_scope_id(db));
+        let ty = infer
+            .init_expr_result
+            .type_of_init_expr
+            .get(self)
+            .copied();
+        // Try field completion
+        if let Some(ty) = ty
+            && !ty.is_never()
+        {
+            ctx.field_completion(ty, db);
+        }
         Some(ctx.take_items())
     }
 }

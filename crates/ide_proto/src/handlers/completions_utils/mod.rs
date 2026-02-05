@@ -1,6 +1,6 @@
 use auto_lsp::lsp_types::CompletionItem;
 use db::WorkspaceDataBase;
-use hir::{hir_def::scope::ScopeId, hir_ty::ty::Type};
+use hir::{hir_def::{scope::{ScopeId, ScopeKind}, semantic_index::get_scope}, hir_ty::ty::Type};
 
 pub mod completion_item_builder;
 pub mod field_strategy;
@@ -48,7 +48,13 @@ impl CompletionCtx {
                 self.field_completion(ty, db);
                 return self;
             }
-        self.scope_completion(scope, query, db);
+              // check if we're in a pou body, if so add all statements as completion items
+        if let ScopeKind::Pou(pou) = get_scope(db, scope).kind
+            && self.located_pou_completion(pou, db).inside_head.is_in_body()
+        {
+            self.scope_completion(scope, "", db);
+            self.items.extend(static_snippets::all_stmts());
+        }
         self
     }
 
