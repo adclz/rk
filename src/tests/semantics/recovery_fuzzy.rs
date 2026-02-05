@@ -132,16 +132,6 @@ END_FUNCTION_BLOCK
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
-    [E0204] Error: no item found in scope
-        ,-[ file:///test0.st:14:2 ]
-        |
-     14 |     fn();
-        |     ^|  
-        |      `-- no item "fn" found in scope
-        | 
-        | Note: an item named 'fn' is available, but needs to be imported:
-        |       - USING System
-    ----'
     [E0101] Error: duplicate definitions
        ,-[ file:///test0.st:3:11 ]
        |
@@ -153,7 +143,46 @@ END_FUNCTION_BLOCK
        |              ^|  
        |               `-- POU 'fn' is already defined here
     ---'
+    [E0204] Error: no item found in scope
+        ,-[ file:///test0.st:14:2 ]
+        |
+     14 |     fn();
+        |     ^|  
+        |      `-- no item "fn" found in scope
+        | 
+        | Note: an item named 'fn' is available, but needs to be imported:
+        |       - USING System
+    ----'
     "#);
+}
+
+#[rstest]
+fn fuzzy_namespace_target_not_in_scope(mut with_db: RootDatabase) {
+    let source = r#"
+NAMESPACE System
+	TYPE Engine: INT END_TYPE
+END_NAMESPACE
+
+FUNCTION_BLOCK fb1
+    VAR
+        engine: Engine;
+    END_VAR
+
+END_FUNCTION_BLOCK
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0210] Error: no namespace item found
+       ,-[ file:///test0.st:8:17 ]
+       |
+     8 |         engine: Engine;
+       |                 ^^^|^^  
+       |                    `---- no item found for path 'Engine'
+       | 
+       | Note: an item named 'Engine' is available, but needs to be imported:
+       |       - USING System
+    ---'
+    ");
 }
 
 #[rstest]

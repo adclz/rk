@@ -698,18 +698,18 @@ END_FUNCTION_BLOCK
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0216] Error: namespace not found
-       ,-[ file:///test0.st:7:11 ]
-       |
-     7 |     USING unknown_ns2; // unknown namespace
-       |           ^^^^^|^^^^^  
-       |                `------- namespace 'unknown_ns2' not found
-    ---'
-    [E0216] Error: namespace not found
        ,-[ file:///test0.st:3:11 ]
        |
      3 |     USING unknown_ns; // unknown namespace
        |           ^^^^^|^^^^  
        |                `------ namespace 'unknown_ns' not found
+    ---'
+    [E0216] Error: namespace not found
+       ,-[ file:///test0.st:7:11 ]
+       |
+     7 |     USING unknown_ns2; // unknown namespace
+       |           ^^^^^|^^^^^  
+       |                `------- namespace 'unknown_ns2' not found
     ---'
     ");
 }

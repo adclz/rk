@@ -173,6 +173,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             .insert(global_scope.scope(self.db), Arc::new(scope));
 
         SemanticIndex {
+            scope: global_scope,
             file: self.file,
             ast: Arc::clone(&self.ast.nodes),
             scopes: self.scope_keys,

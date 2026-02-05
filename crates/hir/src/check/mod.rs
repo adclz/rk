@@ -44,9 +44,6 @@ pub fn diagnostics_for_file(db: &dyn WorkspaceDataBase, file: File) -> Arc<Vec<I
 
 impl<'db> SemanticIndex<'db> {
     fn check(&'db self, db: &'db dyn WorkspaceDataBase, errors: &mut Vec<IdeDiagnostic>) {
-        // Check if this file should contains program declarations
-        let config = Configuration::try_get(db);
-
         TypeDependencyGraph::new(db, self).check_recursions(self, errors);
 
         // Get syntax errors
@@ -54,17 +51,7 @@ impl<'db> SemanticIndex<'db> {
             .iter()
             .for_each(|err| errors.push(err.to_diagnostic(db)));
 
-        // POUs declared globally
-        self.global_pous.iter().for_each(|pou| {
-            check_duplicate_pous(db, *pou, errors);
-            pou.get_scope_id(db).check(db, errors);
-        });
-
-        // Namespaces are stored as vec inside SemanticIndex so we don't need to recurse
-        self.namespaces.iter().for_each(|namespace| {
-            check_duplicate_namespaces(db, *namespace, errors);
-            namespace.scope_id(db).check(db, errors)
-        });
+        self.scope.check(db, errors);
 
         // Programs
         self.programs.iter().for_each(|program| {
@@ -89,8 +76,18 @@ impl<'db> ScopeId<'db> {
         // Methods and nested POUs are not inferred by the result of scope inference
         // so we need to treat them separately by calling check again on their scopes
 
+        if let Some(namespaces) = self.namespaces(db) {
+            namespaces.iter().for_each(|ns| {
+                check_duplicate_namespaces(db, *ns, errors);
+                ns.scope_id(db).check(db, errors);
+            });
+        }
+
         if let Some(pous) = self.pous(db) {
             pous.iter().for_each(|pou| {
+                if self.is_global(db) {
+                    check_duplicate_pous(db, *pou, errors);
+                }
                 pou.get_scope_id(db).check(db, errors);
             });
         }

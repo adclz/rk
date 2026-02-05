@@ -4,6 +4,7 @@ use db::WorkspaceDataBase;
 use crate::Visibility;
 use crate::hir_def::pous::interface::MethodPrototype;
 use crate::hir_def::program::ProgramDecl;
+use crate::hir_def::semantic_index::semantic_index;
 use crate::hir_def::{
     namespace::NamespaceDecl,
     pous::{class::MethodDecl, pou::Pou, variable::VariableDecl},
@@ -27,9 +28,22 @@ impl<'db> ScopeId<'db> {
         self.scope(db) == usize::MAX
     }
 
+    pub fn usings(&self, db: &'db dyn WorkspaceDataBase) -> &Vec<Using<'db>> {
+        &get_scope(db, *self).usings
+    }
+
+    pub fn namespaces(&self, db: &'db dyn WorkspaceDataBase) -> Option<&Vec<NamespaceDecl<'db>>> {
+        Some(match get_scope(db, *self).kind {
+            ScopeKind::Namespace(ns) => ns.namespaces(db),
+            ScopeKind::Global => &semantic_index(db, self.file(db)).global_namespaces,
+            _ => None?,
+        })
+    }
+
     pub fn pous(&self, db: &'db dyn WorkspaceDataBase) -> Option<&Vec<Pou<'db>>> {
         Some(match get_scope(db, *self).kind {
             ScopeKind::Namespace(ns) => ns.pous(db),
+            ScopeKind::Global => &semantic_index(db, self.file(db)).global_pous,
             _ => None?,
         })
     }

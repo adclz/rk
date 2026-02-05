@@ -22,11 +22,11 @@ pub fn semantic_index<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Semant
     let ast = info_span!("build AST").in_scope(|| get_ast(db, file));
     let root = match ast.get_root() {
         Some(root) => root,
-        None => return SemanticIndex::empty(file, ast.nodes.clone()),
+        None => return SemanticIndex::empty(db, file, ast.nodes.clone()),
     };
     let source = match root.downcast_ref::<ast::generated::SourceFile>() {
         Some(source) => source,
-        None => return SemanticIndex::empty(file, ast.nodes.clone()),
+        None => return SemanticIndex::empty(db, file, ast.nodes.clone()),
     };
 
     SemanticIndexBuilder::new(db, file, get_ast(db, file), source).build()
@@ -34,6 +34,9 @@ pub fn semantic_index<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Semant
 
 #[derive(Debug, PartialEq, Eq, salsa::Update)]
 pub struct SemanticIndex<'db> {
+    /// Global scope
+    pub(crate) scope: ScopeId<'db>,
+
     pub(crate) file: File,
 
     /// The AST nodes of the file
@@ -59,8 +62,9 @@ pub struct SemanticIndex<'db> {
 }
 
 impl<'db> SemanticIndex<'db> {
-    pub fn empty(file: File, ast: Arc<Vec<Box<dyn AstNode>>>) -> Self {
+    pub fn empty(db: &'db dyn WorkspaceDataBase, file: File, ast: Arc<Vec<Box<dyn AstNode>>>) -> Self {
         SemanticIndex {
+            scope: ScopeId::global(db, file),
             file,
             ast,
             scopes: FxHashMap::default(),

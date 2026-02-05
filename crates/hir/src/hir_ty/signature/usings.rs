@@ -45,7 +45,7 @@ impl<'db> Signature<'db> {
 
             if namespace_index(db, using.path(db).path).is_empty() {
                 self.errors.push(
-                    ResolveError::NamespaceNotFound {
+                    ResolveError::UsingNamespaceNotFound {
                         path: using.path(db).path,
                         call_site: CallSite::from_using(db, *using),
                     }
