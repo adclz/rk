@@ -109,7 +109,14 @@ fn complete_class(
             );
             items.push(static_snippets::method());
         }
-        HeadLocation::InMethods => {
+        HeadLocation::InMethods | HeadLocation::InBodyAfterMethods => {
+            items.push(static_snippets::method());
+        }
+        HeadLocation::InBodyAfterVars => {
+            add_var_snippets(
+                Class::allowed().difference(ctx.active_variable_sections()),
+                items,
+            );
             items.push(static_snippets::method());
         }
         HeadLocation::InBody => {}
@@ -149,7 +156,14 @@ fn complete_fb(
             );
             items.push(static_snippets::method());
         }
-        HeadLocation::InMethods => {
+        HeadLocation::InMethods | HeadLocation::InBodyAfterMethods => {
+            items.push(static_snippets::method());
+        }
+        HeadLocation::InBodyAfterVars => {
+            add_var_snippets(
+                FunctionBlock::allowed().difference(ctx.active_variable_sections()),
+                items,
+            );
             items.push(static_snippets::method());
         }
         HeadLocation::InBody => {}
@@ -171,6 +185,12 @@ fn complete_function(
             );
         }
         HeadLocation::BeforeMethods | HeadLocation::InMethods => {
+            add_var_snippets(
+                Function::allowed().difference(ctx.active_variable_sections()),
+                items,
+            );
+        }
+        HeadLocation::InBodyAfterMethods | HeadLocation::InBodyAfterVars => {
             add_var_snippets(
                 Function::allowed().difference(ctx.active_variable_sections()),
                 items,

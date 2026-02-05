@@ -58,10 +58,24 @@ pub enum HeadLocation {
     BeforeVars, // suggests IMPLEMENTS/EXTENDS and var snippets
     InVars,     // suggests var snippets
     // Methods are always defined after vars
-    BeforeMethods, // suggests var and method snippets
-    InMethods,     // suggests method snippets
+    BeforeMethods,         // suggests var and method snippets
+    InMethods,             // suggests method snippets
+    InBodyAfterVars,    // suggests var and method snippets
+    InBodyAfterMethods, //suggests var and method snippets
     #[default]
-    InBody, // suggests *nothing*
+    InBody,  // suggests *nothing*
+}
+
+impl HeadLocation {
+    /// Returns true if the location is inside the body of the POU (after vars and methods)
+    pub fn is_in_body(&self) -> bool {
+        matches!(
+            self,
+            HeadLocation::InBody
+                | HeadLocation::InBodyAfterMethods
+                | HeadLocation::InBodyAfterVars
+        )
+    }
 }
 
 #[derive(Debug)]
@@ -124,6 +138,7 @@ impl HeadResult {
         let mut vars = None;
         let mut inside_var_section = VarSection::empty();
         let mut method_ranges: Vec<tree_sitter::Range> = Vec::new();
+        let mut body = None;
 
         while let Some((m, capture_index)) = captures.next() {
             let capture = m.captures[*capture_index];
@@ -164,6 +179,9 @@ impl HeadResult {
                 "method" => {
                     method_ranges.push(capture.node.range());
                 }
+                "body" => {
+                    body = Some(capture.node);
+                }
                 _ => {}
             }
         }
@@ -173,6 +191,8 @@ impl HeadResult {
             &inside_var_section,
             &[inputs, outputs, in_outs, temps, vars],
             &method_ranges,
+            body,
+            source,
         );
 
         HeadResult {
@@ -191,6 +211,8 @@ impl HeadResult {
         inside_var_section: &VarSection,
         var_ranges: &[Option<tree_sitter::Range>],
         method_ranges: &[tree_sitter::Range],
+        body: Option<tree_sitter::Node>,
+        source: &str,
     ) -> HeadLocation {
         // Find the first and last var section positions
         let first_var_start = var_ranges
@@ -224,6 +246,14 @@ impl HeadResult {
                 } else if offset <= method_end {
                     HeadLocation::InMethods
                 } else {
+                    // Check if body is empty or starts with head keywords (V, E, M)
+                    if let Some(body_node) = body {
+                        let body_text = &source[body_node.start_byte()..body_node.end_byte()];
+                        let first_char = body_text.trim_start().chars().next();
+                        if matches!(first_char, Some('V') | Some('E') | Some('M')) {
+                            return HeadLocation::InBodyAfterMethods;
+                        }
+                    }
                     HeadLocation::InBody
                 }
             }
@@ -236,7 +266,15 @@ impl HeadResult {
                     // Between var sections (not inside any specific one)
                     HeadLocation::InVars
                 } else if offset > var_end {
-                    HeadLocation::BeforeMethods
+                    // Check if body is empty or starts with head keywords (V, E, M)
+                    if let Some(body_node) = body {
+                        let body_text = &source[body_node.start_byte()..body_node.end_byte()];
+                        let first_char = body_text.trim_start().chars().next();
+                        if matches!(first_char, Some('V') | Some('E') | Some('M')) {
+                            return HeadLocation::InBodyAfterVars;
+                        }
+                    }
+                    HeadLocation::InBody
                 } else {
                     // Inside a var section content - before the first var or in undefined space
                     HeadLocation::BeforeVars
@@ -255,6 +293,14 @@ impl HeadResult {
                 } else if offset <= method_end {
                     HeadLocation::InMethods
                 } else {
+                    // Check if body is empty or starts with head keywords (V, E, M)
+                    if let Some(body_node) = body {
+                        let body_text = &source[body_node.start_byte()..body_node.end_byte()];
+                        let first_char = body_text.trim_start().chars().next();
+                        if matches!(first_char, Some('V') | Some('E') | Some('M')) {
+                            return HeadLocation::InBodyAfterMethods;
+                        }
+                    }
                     // After all methods, in the main body
                     HeadLocation::InBody
                 }
@@ -557,5 +603,103 @@ END_FUNCTION_BLOCK
 
         // Between methods should be InMethods (to allow adding more methods)
         assert_eq!(results.inside_head, HeadLocation::InMethods);
+    }
+
+    #[test]
+    fn test_head_location_in_body_after_vars_with_v_char() {
+        let source = r#"
+FUNCTION_BLOCK FB1
+VAR_INPUT
+    in1 : INT;
+END_VAR
+V
+END_FUNCTION_BLOCK
+"#;
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_rk::LANGUAGE.into())
+            .unwrap();
+        let tree = parser.parse(source, None).unwrap();
+        let root_node = tree.root_node();
+
+        // Cursor inside the body which starts with 'V'
+        let offset = source.find("V\n").unwrap();
+        let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
+
+        // Body starts with 'V', so it should be InBodyAfterVars
+        assert_eq!(results.inside_head, HeadLocation::InBodyAfterVars);
+    }
+
+    #[test]
+    fn test_head_location_in_body_after_vars_with_m_char() {
+        let source = r#"
+FUNCTION_BLOCK FB1
+VAR_INPUT
+    in1 : INT;
+END_VAR
+M
+END_FUNCTION_BLOCK
+"#;
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_rk::LANGUAGE.into())
+            .unwrap();
+        let tree = parser.parse(source, None).unwrap();
+        let root_node = tree.root_node();
+
+        // Cursor at the start, body begins with 'M'
+        let offset = source.find("M\n").unwrap();
+        let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
+
+        // Body starts with 'M', so it should be InBodyAfterVars
+        assert_eq!(results.inside_head, HeadLocation::InBodyAfterVars);
+    }
+
+    #[test]
+    fn test_head_location_in_body_after_methods_with_v_char() {
+        let source = r#"
+FUNCTION_BLOCK FB1
+METHOD MyMethod
+END_METHOD
+V
+END_FUNCTION_BLOCK
+"#;
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_rk::LANGUAGE.into())
+            .unwrap();
+        let tree = parser.parse(source, None).unwrap();
+        let root_node = tree.root_node();
+
+        // Cursor at body which starts with 'V' after method
+        let offset = source.find("V\n").unwrap();
+        let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
+
+        // Body starts with 'V' after methods, so it should be InBodyAfterMethods
+        assert_eq!(results.inside_head, HeadLocation::InBodyAfterMethods);
+    }
+
+    #[test]
+    fn test_head_location_in_body_after_methods_regular_statement() {
+        let source = r#"
+FUNCTION_BLOCK FB1
+METHOD MyMethod
+END_METHOD
+x := 5;
+END_FUNCTION_BLOCK
+"#;
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_rk::LANGUAGE.into())
+            .unwrap();
+        let tree = parser.parse(source, None).unwrap();
+        let root_node = tree.root_node();
+
+        // Cursor at regular statement after method
+        let offset = source.find("x := 5").unwrap();
+        let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
+
+        // Body does NOT start with V/E/M, so it should be regular InBody
+        assert_eq!(results.inside_head, HeadLocation::InBody);
     }
 }

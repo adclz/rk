@@ -17,11 +17,7 @@ use hir::{
 
 use crate::handlers::{
     CompletionHandler,
-    completions_utils::{
-        CompletionCtx, QueryMode,
-        pou_context::HeadLocation,
-        static_snippets,
-    },
+    completions_utils::{CompletionCtx, QueryMode, pou_context::HeadLocation, static_snippets},
 };
 
 impl<'db> CompletionHandler<'db> for NamespaceDecl<'db> {
@@ -97,13 +93,14 @@ impl<'db> CompletionHandler<'db> for PathExpr<'db> {
 
         // Try field completion
         if let Some(ty) = ty
-            && !ty.is_never() {
-                ctx.field_completion(ty, db);
-                return Some(ctx.take_items());
-            }
+            && !ty.is_never()
+        {
+            ctx.field_completion(ty, db);
+            return Some(ctx.take_items());
+        }
 
         if let ScopeKind::Pou(pou) = get_scope(db, self.get_scope_id(db)).kind
-            && let HeadLocation::InBody = ctx.located_pou_completion(pou, db).inside_head
+            && ctx.located_pou_completion(pou, db).inside_head.is_in_body()
         {
             ctx.scope_completion(self.get_scope_id(db), "", db);
             ctx.items.extend(static_snippets::all_stmts());
