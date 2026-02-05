@@ -1,7 +1,7 @@
 use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use hir::HirNodeInfo;
-use ide_proto::handlers::completions_utils::{CompletionCtx, QueryMode};
+use ide_proto::{handlers::completions_utils::{CompletionCtx, QueryMode}, walk::descendant_at};
 use rstest::rstest;
 
 use crate::tests::utils::{add_sources, find_pou_with_name, with_db};
@@ -114,4 +114,32 @@ pub fn deduplicate_scope_and_local_vars(mut with_db: RootDatabase) {
 
     // both should have signatures in insert_text
     assert!(!format!("{completions:?}").contains("fn1();"));
+}
+
+#[rstest]
+pub fn enum_variants_completion(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE
+    List: UINT (A, B, C);
+END_TYPE
+
+FUNCTION_BLOCK fn1
+    VAR
+        test: List;
+    END_VAR
+
+    test := L
+
+END_FUNCTION_BLOCK
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let expr =
+        descendant_at(&with_db, *with_db.get_files().iter().last().unwrap(), 128).unwrap();
+    let completions = expr.completion(&with_db, 128).unwrap();
+
+    assert_eq!(completions.len(), 8); // statements ... + 3 variants
+    assert!(format!("{completions:?}").contains("List#A"));
+    assert!(format!("{completions:?}").contains("List#B"));
+    assert!(format!("{completions:?}").contains("List#C"));
 }

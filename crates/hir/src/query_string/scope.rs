@@ -70,7 +70,7 @@ impl<'db> ScopeSearchCtx<'db> {
     }
 
     /// Execute the search and return results
-    pub fn search<F: Fn(&Pou<'db>) -> bool>(
+    pub fn search<F: Fn(&Pou<'db>, &'db dyn WorkspaceDataBase) -> bool>(
         self,
         db: &'db dyn WorkspaceDataBase,
         filter_pou: F,
@@ -105,7 +105,7 @@ impl<'db> ScopeSearchCtx<'db> {
 
     /// Execute the search without any POU filter
     pub fn search_unfiltered(self, db: &'db dyn WorkspaceDataBase) -> ScopeSearchResult<'db> {
-        self.search(db, |_| true)
+        self.search(db, |_, db| true)
     }
 }
 
@@ -187,7 +187,7 @@ fn search_pous<'db>(
     scope: ScopeId<'db>,
     local: &LocalSearchResult<'db>,
     scope_variables: &FxHashSet<String>,
-    filter_pou: &dyn Fn(&Pou<'db>) -> bool,
+    filter_pou: &dyn Fn(&Pou<'db>, &'db dyn WorkspaceDataBase) -> bool,
     search_result: &mut ScopeSearchResult<'db>,
 ) {
     // Collect all POU symbol indexes from all files
@@ -213,7 +213,7 @@ fn search_pous<'db>(
             }
 
             // Apply the user-provided filter
-            if !filter_pou(&pou) {
+            if !filter_pou(&pou, db) {
                 return ControlFlow::Continue::<()>(());
             }
 

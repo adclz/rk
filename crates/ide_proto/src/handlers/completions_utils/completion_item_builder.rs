@@ -1,5 +1,5 @@
 #![allow(unused)]
-use std::fmt::Display;
+use std::fmt::{Display, format};
 
 use auto_lsp::{
     core::span::Span,
@@ -12,6 +12,7 @@ use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
     hir_def::{
+        expressions::spec::{Enum, SpecKind},
         interned::namespace::NamespacePath,
         pous::{
             pou::Pou,
@@ -106,17 +107,20 @@ impl<'db> CompletionBuilder {
         db: &'db dyn WorkspaceDataBase,
         pou: &Pou<'db>,
         namespace: Option<&NamespacePath>,
-    ) -> CompletionItem {
-        let mut additional_edit = None;
-        if let Some((range, indent)) = &self.import
-            && let Some(ns) = namespace
-        {
-            let namespace_str = ns.to_string(db);
-            additional_edit = Some(TextEdit {
-                range: *range,
-                new_text: format!("{}USING {namespace_str};\n", indent),
-            });
+        items: &mut Vec<CompletionItem>,
+    ) {
+        // Check if this is an enum type and expand variants instead
+        if let Pou::DataType(data_type) = pou {
+            if let SpecKind::Enum(enm) = data_type.spec(db).kind(db) {
+                let name = pou.get_name_ident(db).text(db).to_string();
+                let additional_edit = self.build_import_edit(db, namespace);
+                self.expand_enum_variants(db, &name, *enm, additional_edit, items);
+                return;
+            }
         }
+
+        // Regular POu handling
+        let additional_edit = self.build_import_edit(db, namespace);
 
         let name = pou.get_name_ident(db).text(db).to_string();
         let (detail, kind) = match pou {
@@ -127,7 +131,7 @@ impl<'db> CompletionBuilder {
             Pou::Interface(_) => ("(INTERFACE)", CompletionItemKind::INTERFACE),
         };
 
-        CompletionItem {
+        items.push(CompletionItem {
             label: name.clone(),
             detail: Some(detail.into()),
             label_details: namespace.map(|ns| CompletionItemLabelDetails {
@@ -146,7 +150,26 @@ impl<'db> CompletionBuilder {
             insert_text_format: Some(InsertTextFormat::SNIPPET),
             additional_text_edits: additional_edit.map(|edit| vec![edit]),
             ..Default::default()
-        }
+        });
+    }
+
+    fn expand_enum_variants(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        name: &impl Display,
+        enm: Enum<'db>,
+        additional_edit: Option<TextEdit>,
+        items: &mut Vec<CompletionItem>,
+    ) {
+        enm.enum_variants(db).iter().for_each(|(_, var)| {
+            items.push(CompletionItem {
+                label: format!("{}#{}", name, var.name.text(db)),
+                detail: Some("(ENUM VARIANT)".into()),
+                kind: Some(CompletionItemKind::ENUM_MEMBER),
+                additional_text_edits: additional_edit.as_ref().map(|edit| vec![edit.clone()]),
+                ..Default::default()
+            })
+        });
     }
 
     pub fn build_method(
@@ -170,6 +193,25 @@ impl<'db> CompletionBuilder {
             },
             insert_text_format: Some(InsertTextFormat::SNIPPET),
             ..Default::default()
+        }
+    }
+
+    /// Creates an import TextEdit if both import configuration and namespace are present.
+    fn build_import_edit(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        namespace: Option<&NamespacePath>,
+    ) -> Option<TextEdit> {
+        if let Some((range, indent)) = &self.import
+            && let Some(ns) = namespace
+        {
+            let namespace_str = ns.to_string(db);
+            Some(TextEdit {
+                range: *range,
+                new_text: format!("{}USING {namespace_str};\n", indent),
+            })
+        } else {
+            None
         }
     }
 }

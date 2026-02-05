@@ -5,7 +5,7 @@ use auto_lsp::{
     lsp_types::{CompletionParams, CompletionResponse},
 };
 use db::WorkspaceDataBase;
-use hir::{HirNodeInfo, hir_def::expressions::expression::InitExprKind};
+use hir::{HirNodeInfo, hir_def::expressions::expression::{ExprKind, InitExprKind, PrimaryExpr}};
 use ide_proto::{
     hir_node::HirNode,
     walk::descendant_at_with,
@@ -46,6 +46,12 @@ pub fn completions(
             HirNode::InitExpr(expr) => {
                 // we only provide completions for struct initializers
                 if let InitExprKind::StructInit { .. } = expr.kind(db) {
+                    prev = latest.clone();
+                    latest = Some(hirnode);
+                }
+            }
+            HirNode::Expr(expr) => {
+                if let ExprKind::PrimaryExpr(PrimaryExpr::EnumValue { .. }) = expr.expr(db) {
                     prev = latest.clone();
                     latest = Some(hirnode);
                 }

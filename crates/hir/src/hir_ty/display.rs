@@ -104,6 +104,10 @@ impl<'db> Type<'db> {
                 _ => Type::new_spec(db, typ.spec(db)).type_name(db),
             },
             Self::Enum(_) => "ENUM".into(),
+            Self::EnumVariant(v) => format!(
+                "ENUM VARIANT: {}",
+                v.text(db)
+            ),
             Self::Struct(_) => "STRUCT".into(),
             Self::CallableType(typ) => match typ {
                 CallableType::Function(f) => format!("FUNCTION: {}", f.get_name_ident(db).text(db)),

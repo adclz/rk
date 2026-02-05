@@ -8,7 +8,7 @@ use crate::{
     hir_def::{
         expressions::{
             expression::{Expr, FuncCall, InitExpr, PathExpr},
-            spec::Spec,
+            spec::{Spec, SpecKind},
         },
         interned::{
             identifier::{Ident, SpanIdent},
@@ -243,7 +243,16 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 let items = ScopeSearchCtx::new(*scope)
                     .with_query(query)
                     .only_pous()
-                    .search(db, |p| matches!(p, Pou::Function(_)));
+                    .search(db, |pou, db| {
+                        match pou {
+                            Pou::Function(_) => true,
+                            // enum types are allowed and all variants should be suggested
+                            Pou::DataType(typ) => {
+                                matches!(typ.spec(db).kind(db), SpecKind::Enum(_))
+                            }
+                            _ => false,
+                        }
+                    });
 
                 list_pou_candidates(
                     db,
@@ -254,11 +263,11 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 diag
             }
             Self::NoNamespaceItemFound { path } => diag()
-                .message(format!("io item found for path '{}'", path.to_string(db)))
+                .message(format!("no item found for path '{}'", path.to_string(db)))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(path.get_span(db))
-                .call(),
+                .call(), // todo: add recovery just as above
             Self::NamespaceNotFound { call_site, path } => diag()
                 .message(format!("namespace '{}' not found", path.to_string(db)))
                 .severity(DiagnosticSeverity::ERROR)

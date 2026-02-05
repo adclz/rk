@@ -12,6 +12,7 @@ use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
     hir_def::{
+        expressions::spec::SpecKind,
         interned::namespace::NamespacePath,
         pous::{
             pou::Pou,
@@ -83,8 +84,17 @@ impl<'db> ScopeCompletionCtx<'db> {
         // If Body, Functions are allowed but not other POUs
         // that's because they have to be declared in var sections
         let filter = match self.mode {
-            QueryMode::Head => |pou: &Pou<'db>| !matches!(pou, Pou::Function(_)),
-            QueryMode::Body => |pou: &Pou<'db>| matches!(pou, Pou::Function(_)),
+            QueryMode::Head => {
+                |pou: &Pou<'db>, db: &'db dyn WorkspaceDataBase| matches!(pou, Pou::Function(_))
+            }
+            QueryMode::Body => |pou: &Pou<'db>, db: &'db dyn WorkspaceDataBase| {
+                match pou {
+                    Pou::Function(_) => true,
+                    // enum types are allowed and all variants should be suggested
+                    Pou::DataType(typ) => matches!(typ.spec(db).kind(db), SpecKind::Enum(_)),
+                    _ => false,
+                }
+            },
         };
 
         let pous = ScopeSearchCtx::new(self.scope)
@@ -92,11 +102,11 @@ impl<'db> ScopeCompletionCtx<'db> {
             .search(db, filter);
 
         for pou in pous.local_pous() {
-            self.items.push(builder.build_pou(db, pou, None));
+            builder.build_pou(db, pou, None, &mut self.items);
         }
 
         for (ns, pou) in pous.imported_pous() {
-            self.items.push(builder.build_pou(db, &pou, Some(&ns)));
+            builder.build_pou(db, &pou, Some(&ns), &mut self.items);
         }
 
         for var in pous.variables() {

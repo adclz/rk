@@ -70,3 +70,31 @@ END_FUNCTION_BLOCK
     assert!(format!("{completions:?}").contains("fuel"));
     assert!(format!("{completions:?}").contains("Start()"));
 }
+
+#[rstest]
+pub fn enum_variants_completion(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE
+    List: UINT (A, B, C);
+END_TYPE
+
+FUNCTION fn1
+    VAR
+        test: List;
+    END_VAR
+
+    test := List#
+
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let expr =
+        descendant_at(&with_db, *with_db.get_files().iter().last().unwrap(), 112).unwrap();
+    let completions = expr.completion(&with_db, 112).unwrap();
+
+    assert_eq!(completions.len(), 3);
+    assert!(format!("{completions:?}").contains("A"));
+    assert!(format!("{completions:?}").contains("B"));
+    assert!(format!("{completions:?}").contains("C"));
+}

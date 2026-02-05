@@ -40,7 +40,7 @@ impl CompletionCtx {
         &mut self,
         ty: Option<Type<'db>>,
         scope: ScopeId<'db>,
-        query: &str,
+        _query: &str,
         db: &'db dyn WorkspaceDataBase,
     ) -> &mut Self {
         if let Some(ty) = ty

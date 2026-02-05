@@ -22,7 +22,7 @@ fn unknown_type(mut with_db: RootDatabase) {
        |
      4 |                 input : something;
        |                         ^^^^|^^^^  
-       |                             `------ io item found for path 'something'
+       |                             `------ no item found for path 'something'
     ---'
     ");
 }

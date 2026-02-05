@@ -135,6 +135,7 @@ impl<'db> CompletionHandler<'db> for InitExpr<'db> {
             .type_of_init_expr
             .get(self)
             .copied();
+        
         // Try field completion
         if let Some(ty) = ty
             && !ty.is_never()
