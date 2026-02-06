@@ -4,10 +4,10 @@ use rustc_hash::FxHashMap;
 use crate::{
     HasName,
     check::errors::{
-        analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError, e2_resolve::ResolveError,
+        analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError,
     },
-    hir_def::expressions::spec::{SpecKind, Struct, StructElement},
-    hir_ty::{signature::Signature, ty::Type},
+    hir_def::expressions::spec::{Struct, StructElement},
+    hir_ty::signature::Signature,
 };
 
 impl<'db> Signature<'db> {
@@ -37,16 +37,15 @@ impl<'db> Signature<'db> {
         db: &'db dyn WorkspaceDataBase,
         element: StructElement<'db>,
     ) {
-        let element_type = Type::new_spec(db, element.spec(db));
-        if element_type.is_never()
-            && let SpecKind::Target(target) = element.spec(db).kind(db) {
-                self.errors.push(
-                    ResolveError::NoNamespaceItemFound {
-                        path: target.clone(),
-                    }
-                    .to_diagnostic(db),
-                );
-            }
-        self.type_of_specs.insert(element.spec(db), element_type);
+        let element_type = self.infer_spec(db, element.spec(db));
+
+        if let Some(init_expr) = element.init(db) {
+            self.init_expr_result.resolve_init_expr(
+                db,
+                init_expr,
+                &mut self.body_infer_result,
+                element_type,
+            );
+        }
     }
 }

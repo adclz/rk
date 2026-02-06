@@ -9,10 +9,7 @@ use crate::{
         analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError, e2_resolve::ResolveError,
     },
     hir_def::semantic_index::get_scope,
-    hir_ty::{
-        name_res::namespace_index,
-        signature::Signature,
-    },
+    hir_ty::{name_res::namespace_index, signature::Signature},
 };
 
 impl<'db> Signature<'db> {

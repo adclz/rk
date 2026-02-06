@@ -4,10 +4,10 @@ use rustc_hash::FxHashMap;
 use crate::{
     HasName,
     check::errors::{
-        analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError, e2_resolve::ResolveError,
+        analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError,
     },
     hir_def::expressions::spec::SpecKind,
-    hir_ty::{signature::Signature, ty::Type},
+    hir_ty::signature::Signature,
 };
 
 impl<'db> Signature<'db> {
@@ -18,7 +18,8 @@ impl<'db> Signature<'db> {
         };
 
         let mut seen = FxHashMap::default();
-        for var in variables.iter() {
+
+        for var in variables {
             match seen.get(&var.get_name_ident(db)) {
                 Some(prev) => {
                     self.errors.push(
@@ -34,33 +35,11 @@ impl<'db> Signature<'db> {
                 }
             }
 
-            let var_type = Type::new_spec(db, var.spec(db));
-            match var_type {
-                Type::Never => {
-                    if let SpecKind::Target(target) = var.spec(db).kind(db) {
-                        self.errors.push(
-                            ResolveError::NoNamespaceItemFound {
-                                path: target.clone(),
-                            }
-                            .to_diagnostic(db),
-                        );
-                    }
-                    self.type_of_specs.insert(var.spec(db), Type::Never);
-                    continue;
-                }
-                Type::Function(_) => {
-                    self.errors.push(
-                        ResolveError::FunctionAsVariableType {
-                            expr: var.spec(db),
-                            ty: var_type,
-                        }
-                        .to_diagnostic(db),
-                    );
-                    self.type_of_specs.insert(var.spec(db), var_type);
-                    continue;
-                }
-                _ => self.type_of_specs.insert(var.spec(db), var_type),
-            };
+            if let SpecKind::Struct(strukt) = var.spec(db).kind(db) {
+                self.infer_struct(db, *strukt);
+            }
+
+            let var_type = self.infer_spec(db, var.spec(db));
 
             if let Some(init_expr) = var.init(db) {
                 self.init_expr_result.resolve_init_expr(

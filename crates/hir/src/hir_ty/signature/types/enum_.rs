@@ -14,8 +14,7 @@ use crate::{
 impl<'db> Signature<'db> {
     pub(crate) fn infer_enum(&mut self, db: &'db dyn WorkspaceDataBase, enm: Enum<'db>) {
         if let Some(spec) = enm.typ(db) {
-            let typ = Type::new_spec(db, spec);
-            self.type_of_specs.insert(spec, typ);
+            let typ = self.infer_spec(db, spec);
 
             match typ {
                 Type::Elementary(elementary) => match elementary {
@@ -58,11 +57,11 @@ impl<'db> Signature<'db> {
             }
 
             // Check variant value type
-            if let (Some(value), Some(typ)) = (variant.value, enm.typ(db)) {
+            if let (Some(value), Some(spec)) = (variant.value, enm.typ(db)) {
                 let resolver = Resolver::for_scope(db, value.scope_id(db));
                 let mut infer = InferExprCtx::new(resolver);
 
-                let target = Type::new_spec(db, typ);
+                let target = self.type_of_specs[&spec];
                 infer.resolve_expr(db, value, &mut self.body_infer_result);
                 infer.check_expr(db, value, &mut self.body_infer_result);
 

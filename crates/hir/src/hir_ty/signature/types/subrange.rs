@@ -15,7 +15,7 @@ impl<'db> Signature<'db> {
         db: &'db dyn WorkspaceDataBase,
         subrange: SubRange<'db>,
     ) {
-        let typ = Type::new_spec(db, subrange._type(db));
+        let typ = self.infer_spec(db, subrange._type(db));
 
         match typ {
             Type::Elementary(elementary) => match elementary {
