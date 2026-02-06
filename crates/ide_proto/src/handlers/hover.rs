@@ -27,8 +27,28 @@ use hir::{
 
 use crate::{
     handlers::HoverHandler,
-    hir_node::{HasComment, MaybeHirNode, get_param_start_pos},
+    hir_node::{HasComment, HirNode, MaybeHirNode, get_param_start_pos},
 };
+
+impl<'db> HirNode<'db>  {
+        pub fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
+        match self {
+            HirNode::Namespace(n) => n.hover(db, offset),
+            HirNode::PouDecl(p) => p.hover(db, offset),
+            HirNode::VariableDecl(v) => v.hover(db, offset),
+            HirNode::InitExpr { curr, .. } => curr.hover(db, offset),
+            HirNode::Spec(s) => s.hover(db, offset),
+            HirNode::MethodRef(m) => m.hover(db, offset),
+            HirNode::StructElement(st) => st.hover(db, offset),
+            HirNode::PathExpr { curr, .. } => curr.hover(db, offset),
+            HirNode::VariableAccess(v) => v.hover(db, offset),
+            HirNode::Expr(e) => e.hover(db, offset),
+            HirNode::Using(u) => u.hover(db, offset),
+            HirNode::Param(p) => p.hover(db, offset),
+            _ => None,
+        }
+    }
+}
 
 impl<'db> HoverHandler<'db> for NamespaceDecl<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {

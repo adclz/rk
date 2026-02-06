@@ -10,7 +10,24 @@ use hir::{
     hir_ty::signature::{infer_signature, inheritance::MethodRef},
 };
 
-use crate::handlers::DocumentSymbolsHandler;
+use crate::{handlers::DocumentSymbolsHandler, hir_node::HirNode};
+
+impl<'db> HirNode<'db> {
+    pub fn document_symbols(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        builder: &mut DocumentSymbolsBuilder,
+    ) {
+        match self {
+            HirNode::Namespace(n) => n.document_symbols(db, builder),
+            HirNode::PouDecl(p) => p.document_symbols(db, builder),
+            HirNode::VariableDecl(v) => v.document_symbols(db, builder),
+            HirNode::MethodRef(m) => m.document_symbols(db, builder),
+            _ => (),
+        }
+    }
+
+}
 
 impl<'db> DocumentSymbolsHandler<'db> for NamespaceDecl<'db> {
     fn document_symbols(

@@ -10,7 +10,19 @@ use hir::{
     hir_ty::{body::infer_body, signature::infer_signature, ty::Type},
 };
 
-use crate::{handlers::InlayHintHandler, hir_node::get_param_start_pos};
+use crate::{handlers::InlayHintHandler, hir_node::{HirNode, get_param_start_pos}};
+
+impl<'db> HirNode<'db> {
+    pub fn inlay_hint(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<InlayHint> {
+        match self {
+            HirNode::Namespace(n) => n.inlay_hint(db),
+            HirNode::PouDecl(p) => p.inlay_hint(db),
+            HirNode::Param(p) => p.inlay_hint(db),
+            HirNode::InitExpr { curr, .. } => curr.inlay_hint(db),
+            _ => None,
+        }
+    }
+}
 
 impl<'db> InlayHintHandler<'db> for NamespaceDecl<'db> {
     fn inlay_hint(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<InlayHint> {

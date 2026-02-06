@@ -12,7 +12,24 @@ use hir::{
     hir_ty::{body::infer_body, signature::infer_signature, ty::Type},
 };
 
-use crate::handlers::DefinitionHandler;
+use crate::{handlers::DefinitionHandler, hir_node::HirNode};
+
+impl<'db> HirNode<'db> {
+    pub fn definition(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDefinitionResponse> {
+        match self {
+            HirNode::PouDecl(pou) => pou.definition(db),
+            HirNode::VariableDecl(v) => v.definition(db),
+            HirNode::StructElement(s) => s.definition(db),
+            HirNode::InitExpr { curr, .. } => curr.definition(db),
+            HirNode::Spec(s) => s.definition(db),
+            HirNode::PathExpr { curr, .. } => curr.definition(db),
+            HirNode::VariableAccess(v) => v.definition(db),
+            HirNode::Expr(e) => e.definition(db),
+            HirNode::Param(p) => p.definition(db),
+            _ => None,
+        }
+    }
+}
 
 impl<'db> DefinitionHandler<'db> for Pou<'db> {
     fn definition(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDefinitionResponse> {

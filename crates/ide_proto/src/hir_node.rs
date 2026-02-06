@@ -1,16 +1,6 @@
-use auto_lsp::{
-    core::{
-        document_symbols_builder::DocumentSymbolsBuilder,
-        semantic_tokens_builder::SemanticTokensBuilder,
-    },
-    lsp_types::{
-        CodeLens, CompletionItem, GotoDefinitionResponse, Hover, InlayHint,
-        request::{GotoDeclarationResponse, GotoImplementationResponse},
-    },
-};
 use db::WorkspaceDataBase;
 use hir::{
-    AstId, CallSite, HirNodeInfo,
+    AstId, HirNodeInfo,
     hir_def::{
         expressions::{
             expression::{Expr, InitExpr, ParamAssign, ParamAssignKind, PathExpr, VariableAccess},
@@ -27,11 +17,7 @@ use hir::{
 };
 
 use crate::{
-    comment_index::comment_index,
-    handlers::{
-        CodeLensHandler, CompletionHandler, DeclarationHandler, DefinitionHandler,
-        DocumentSymbolsHandler, HoverHandler, InlayHintHandler, SemanticTokensHandler,
-    },
+    comment_index::comment_index
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -63,145 +49,6 @@ pub enum HirNode<'db> {
         prev: PathExprRoot<'db>,
         curr: PathExpr<'db>,
     },
-}
-
-impl<'db> HirNode<'db> {
-    pub fn document_symbols(
-        &self,
-        db: &'db dyn WorkspaceDataBase,
-        builder: &mut DocumentSymbolsBuilder,
-    ) {
-        match self {
-            HirNode::Namespace(n) => n.document_symbols(db, builder),
-            HirNode::PouDecl(p) => p.document_symbols(db, builder),
-            HirNode::VariableDecl(v) => v.document_symbols(db, builder),
-            HirNode::MethodRef(m) => m.document_symbols(db, builder),
-            _ => (),
-        }
-    }
-
-    pub fn completion(
-        &'db self,
-        db: &'db dyn WorkspaceDataBase,
-        offset: usize,
-        trigger_character: Option<String>,
-        query: String,
-    ) -> Option<Vec<CompletionItem>> {
-        match self {
-            HirNode::Using(u) => u.completion(db, offset, trigger_character, query),
-            HirNode::Namespace(ns) => ns.completion(db, offset, trigger_character, query),
-            HirNode::PouDecl(pou) => pou.completion(db, offset, trigger_character, query),
-            HirNode::Spec(s) => s.completion(
-                db,
-                offset,
-                trigger_character,
-                CallSite::from_spec(db, *s).to_string(db).to_string(),
-            ),
-            HirNode::InitExpr { curr, .. } => curr.completion(db, offset, trigger_character, query),
-            HirNode::PathExpr { curr, .. } => curr.completion(db, offset, trigger_character, query),
-            HirNode::VariableAccess(v) => v.completion(db, offset, trigger_character, query),
-            HirNode::Expr(e) => e.completion(
-                db,
-                offset,
-                trigger_character,
-                CallSite::from_expr(db, *e).to_string(db).to_string(),
-            ),
-            HirNode::Invocation(i) => i.completion(db, offset, trigger_character, query),
-            _ => None,
-        }
-    }
-
-    pub fn code_lens(&self, db: &'db dyn WorkspaceDataBase) -> Option<CodeLens> {
-        match self {
-            HirNode::PouDecl(pou) => pou.code_lens(db),
-            _ => None,
-        }
-    }
-
-    pub fn implementation(
-        &'db self,
-        _db: &'db dyn WorkspaceDataBase,
-    ) -> Option<GotoImplementationResponse> {
-        None
-    }
-
-    pub fn inlay_hint(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<InlayHint> {
-        match self {
-            HirNode::Namespace(n) => n.inlay_hint(db),
-            HirNode::PouDecl(p) => p.inlay_hint(db),
-            HirNode::Param(p) => p.inlay_hint(db),
-            HirNode::InitExpr { curr, .. } => curr.inlay_hint(db),
-            _ => None,
-        }
-    }
-
-    pub fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
-        match self {
-            HirNode::Namespace(n) => n.hover(db, offset),
-            HirNode::PouDecl(p) => p.hover(db, offset),
-            HirNode::VariableDecl(v) => v.hover(db, offset),
-            HirNode::InitExpr { curr, .. } => curr.hover(db, offset),
-            HirNode::Spec(s) => s.hover(db, offset),
-            HirNode::MethodRef(m) => m.hover(db, offset),
-            HirNode::StructElement(st) => st.hover(db, offset),
-            HirNode::PathExpr { curr, .. } => curr.hover(db, offset),
-            HirNode::VariableAccess(v) => v.hover(db, offset),
-            HirNode::Expr(e) => e.hover(db, offset),
-            HirNode::Using(u) => u.hover(db, offset),
-            HirNode::Param(p) => p.hover(db, offset),
-            _ => None,
-        }
-    }
-
-    pub fn declaration(
-        &'db self,
-        db: &'db dyn WorkspaceDataBase,
-    ) -> Option<GotoDeclarationResponse> {
-        match self {
-            HirNode::VariableDecl(v) => v.declaration(db),
-            HirNode::StructElement(s) => s.declaration(db),
-            HirNode::InitExpr { curr, .. } => curr.declaration(db),
-            HirNode::Spec(s) => s.declaration(db),
-            HirNode::PathExpr { curr, .. } => curr.declaration(db),
-            HirNode::VariableAccess(v) => v.declaration(db),
-            HirNode::Expr(e) => e.declaration(db),
-            HirNode::Param(p) => p.declaration(db),
-            _ => None,
-        }
-    }
-
-    pub fn definition(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDefinitionResponse> {
-        match self {
-            HirNode::PouDecl(pou) => pou.definition(db),
-            HirNode::VariableDecl(v) => v.definition(db),
-            HirNode::StructElement(s) => s.definition(db),
-            HirNode::InitExpr { curr, .. } => curr.definition(db),
-            HirNode::Spec(s) => s.definition(db),
-            HirNode::PathExpr { curr, .. } => curr.definition(db),
-            HirNode::VariableAccess(v) => v.definition(db),
-            HirNode::Expr(e) => e.definition(db),
-            HirNode::Param(p) => p.definition(db),
-            _ => None,
-        }
-    }
-
-    pub fn semantic_tokens(
-        &'db self,
-        db: &'db dyn WorkspaceDataBase,
-        builder: &mut SemanticTokensBuilder,
-    ) {
-        match self {
-            HirNode::NamespaceAccess(n) => n.semantic_tokens(db, builder),
-            HirNode::PouDecl(p) => p.semantic_tokens(db, builder),
-            HirNode::MethodRef(m) => m.semantic_tokens(db, builder),
-            HirNode::VariableDecl(v) => v.semantic_tokens(db, builder),
-            HirNode::StructElement(st) => st.semantic_tokens(db, builder),
-            HirNode::PathExpr { curr, .. } => curr.semantic_tokens(db, builder),
-            HirNode::VariableAccess(v) => v.semantic_tokens(db, builder),
-            HirNode::Expr(e) => e.semantic_tokens(db, builder),
-            _ => {}
-        }
-    }
 }
 
 impl<'db> HirNodeInfo<'db> for HirNode<'db> {

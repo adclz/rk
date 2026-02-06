@@ -1,8 +1,7 @@
 use auto_lsp::lsp_types::CompletionItem;
 use db::WorkspaceDataBase;
 use hir::{
-    HirNodeInfo,
-    hir_def::{
+    CallSite, HirNodeInfo, hir_def::{
         expressions::{
             expression::{Expr, InitExpr, PathExpr, VariableAccess},
             invocation::Invocation,
@@ -13,16 +12,49 @@ use hir::{
         scope::ScopeKind,
         semantic_index::get_scope,
         using::Using,
-    },
-    hir_ty::{body::infer_body, signature::infer_signature},
-    query_string::namespace::NamespaceSearchCtx,
+    }, hir_ty::{body::infer_body, signature::infer_signature}, query_string::namespace::NamespaceSearchCtx
 };
 use rustc_hash::FxHashSet;
 
-use crate::handlers::{
+use crate::{handlers::{
     CompletionHandler,
     completions_utils::{CompletionCtx, QueryMode, pou_context::HeadLocation, static_snippets},
-};
+}, hir_node::HirNode};
+
+impl<'db> HirNode<'db> {
+
+    pub fn completion(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        offset: usize,
+        trigger_character: Option<String>,
+        query: String,
+    ) -> Option<Vec<CompletionItem>> {
+        match self {
+            HirNode::Using(u) => u.completion(db, offset, trigger_character, query),
+            HirNode::Namespace(ns) => ns.completion(db, offset, trigger_character, query),
+            HirNode::PouDecl(pou) => pou.completion(db, offset, trigger_character, query),
+            HirNode::Spec(s) => s.completion(
+                db,
+                offset,
+                trigger_character,
+                CallSite::from_spec(db, *s).to_string(db).to_string(),
+            ),
+            HirNode::InitExpr { curr, .. } => curr.completion(db, offset, trigger_character, query),
+            HirNode::PathExpr { curr, .. } => curr.completion(db, offset, trigger_character, query),
+            HirNode::VariableAccess(v) => v.completion(db, offset, trigger_character, query),
+            HirNode::Expr(e) => e.completion(
+                db,
+                offset,
+                trigger_character,
+                CallSite::from_expr(db, *e).to_string(db).to_string(),
+            ),
+            HirNode::Invocation(i) => i.completion(db, offset, trigger_character, query),
+            _ => None,
+        }
+    }
+
+}
 
 impl<'db> CompletionHandler<'db> for NamespaceDecl<'db> {
     fn completion(
