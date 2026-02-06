@@ -208,13 +208,12 @@ END_FUNCTION_BLOCK
        |                ^^^|^^  
        |                   `---- no item found for path 'System'
        | 
-       | Note: a namespace named 'System' exists but it cannot be used as an item, you can either:
+       | Note: namespace named 'System' exists but it cannot be used as an item, you can either:
        |       - Import the namespace via an USING directive: 'USING System'
        |       - Import an item from this namespace: 'System.<POU>'
     ---'
     ");
 }
-
 
 #[rstest]
 fn fuzzy_func_call_input_variables(mut with_db: RootDatabase) {

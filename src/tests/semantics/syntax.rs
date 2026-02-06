@@ -229,7 +229,7 @@ fn function_call_in_init_expression(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK fn
   VAR
-    ml : ARRAY [0..2] OF TON := [10(call(IN := 5, OUT => OUT))]
+    ml : ARRAY [0..2] OF INT := [10(call(IN := 5, OUT => OUT))]
   END_VAR
 
 END_FUNCTION_BLOCK"#;
@@ -238,7 +238,7 @@ END_FUNCTION_BLOCK"#;
     [E0017] Error: syntax
        ,-[ file:///test0.st:4:37 ]
        |
-     4 |     ml : ARRAY [0..2] OF TON := [10(call(IN := 5, OUT => OUT))]
+     4 |     ml : ARRAY [0..2] OF INT := [10(call(IN := 5, OUT => OUT))]
        |                                     ^^^^^^^^^^^^|^^^^^^^^^^^^  
        |                                                 `-------------- function call in initialization expression is not allowed
     ---'

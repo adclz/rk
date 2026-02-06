@@ -306,8 +306,8 @@ END_FUNCTION"#;
     let mut result = vec![];
     let _ = sema.walk_hir(&with_db, &mut |n| {
         match n {
-            HirNode::InitExpr(stmt) => {
-                if let Some(inlay_hint) = stmt.inlay_hint(&with_db) {
+            HirNode::InitExpr { curr, .. } => {
+                if let Some(inlay_hint) = curr.inlay_hint(&with_db) {
                     result.push(inlay_hint);
                 }
             }

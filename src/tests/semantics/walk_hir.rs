@@ -40,7 +40,7 @@ END_FUNCTION_BLOCK"#;
     PouDecl(FunctionBlock(FunctionBlock { [salsa id]: Id(2000) }))
     VariableDecl(VariableDecl { [salsa id]: Id(1c00) })
     Spec(Spec { [salsa id]: Id(c00) })
-    InitExpr(InitExpr { [salsa id]: Id(1800) })
+    InitExpr { prev: InitExpr { [salsa id]: Id(1800) }, curr: InitExpr { [salsa id]: Id(1800) } }
     Expr(Expr { [salsa id]: Id(1400) })
     ");
 }
@@ -139,9 +139,9 @@ END_FUNCTION_BLOCK"#;
     assert_snapshot!(nodes.join("\n"), @r"
     PouDecl(FunctionBlock(FunctionBlock { [salsa id]: Id(2c00) }))
     VariableAccess(VariableAccess { [salsa id]: Id(1400) })
-    PathExpr(PathExpr { [salsa id]: Id(c00) })
+    PathExpr { prev: VariableAccess(VariableAccess { [salsa id]: Id(1400) }), curr: PathExpr { [salsa id]: Id(c00) } }
     Expr(Expr { [salsa id]: Id(1c00) })
-    PathExpr(PathExpr { [salsa id]: Id(c02) })
+    PathExpr { prev: PathExpr(PathExpr { [salsa id]: Id(c02) }), curr: PathExpr { [salsa id]: Id(c02) } }
     Param(ParamAssign { [salsa id]: Id(2800) })
     Param(ParamAssign { [salsa id]: Id(2801) })
     Expr(Expr { [salsa id]: Id(1c04) })
@@ -181,7 +181,8 @@ END_FUNCTION_BLOCK"#;
     MethodRef(Declared(MethodDecl { [salsa id]: Id(3000) }))
     VariableDecl(VariableDecl { [salsa id]: Id(2c00) })
     Spec(Spec { [salsa id]: Id(2800) })
-    PathExpr(PathExpr { [salsa id]: Id(c00) })
+    Invocation(Invocation { [salsa id]: Id(1000) })
+    PathExpr { prev: Invocation(Invocation { [salsa id]: Id(1000) }), curr: PathExpr { [salsa id]: Id(c00) } }
     Param(ParamAssign { [salsa id]: Id(1c00) })
     ");
 }
