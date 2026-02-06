@@ -160,7 +160,7 @@ impl<'db> Resolver<'db> {
         let mut place = PathPlaceBuilder {
             current_typ: current,
             current_path: match steps.first() {
-                Some(step) => *step.get_expr(),
+                Some(step) => step.get_expr(db),
                 None => return,
             },
         };
@@ -170,7 +170,7 @@ impl<'db> Resolver<'db> {
 
             if ctx
                 .type_of_path_expr
-                .get(step.get_expr())
+                .get(&step.get_expr(db))
                 .copied()
                 .unwrap_or_default()
                 .is_never()
@@ -184,7 +184,7 @@ impl<'db> Resolver<'db> {
             }
 
             current = ctx
-                .type_of_path_expr_with_adjustments(*step.get_expr())
+                .type_of_path_expr_with_adjustments(step.get_expr(db))
                 .unwrap_or_default();
         }
     }

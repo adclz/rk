@@ -90,7 +90,7 @@ impl<'db> Type<'db> {
                             current.walk_path_expr(db, true, step, multibits, &mut place, ctx);
                             // it is necessary to apply adjustments at each step
                             current = ctx
-                                .type_of_path_expr_with_adjustments(*step.get_expr())
+                                .type_of_path_expr_with_adjustments(step.get_expr(db))
                                 .unwrap_or_default();
                         }
 
@@ -162,7 +162,7 @@ impl<'db> Type<'db> {
         place: &mut PathPlaceBuilder<'db>,
         ctx: &mut BodyInferenceResult<'db>,
     ) {
-        let expr = step.get_expr();
+        let expr = step.get_expr(db);
 
         match self {
             // both variables and data types can have fields
@@ -205,13 +205,13 @@ impl<'db> Type<'db> {
                     Type::Struct(st) => {
                         if let Some(field) = st.struct_elements(db).get(&ident.ident) {
                             ctx.type_of_path_expr
-                                .insert(*expr, Type::StructElement(*field));
+                                .insert(expr, Type::StructElement(*field));
                             place.current_typ = Type::StructElement(*field);
-                            place.current_path = *step.get_expr();
+                            place.current_path = step.get_expr(db);
                         } else if report_errors {
                             ctx.errors.push(
                                 ResolveError::NoSuchFieldPathExpr {
-                                    expr: *expr,
+                                    expr,
                                     ident: **ident,
                                     ty: place.current_typ,
                                 }
@@ -237,20 +237,20 @@ impl<'db> Type<'db> {
                         // Variables
                         if let Some(var) = def_map.global_variables.get(&ident.ident) {
                             ctx.type_of_path_expr
-                                .insert(*expr, Type::new_var_with_multibits(db, *var, multibits));
+                                .insert(expr, Type::new_var_with_multibits(db, *var, multibits));
                             place.current_typ = Type::new_var_with_multibits(db, *var, multibits);
-                            place.current_path = *step.get_expr();
+                            place.current_path = step.get_expr(db);
                         }
                         // Methods
                         else if let Some(m) = def_map.declared_methods.get(&ident.ident) {
-                            ctx.type_of_path_expr.insert(*expr, Type::MethodDecl(*m));
+                            ctx.type_of_path_expr.insert(expr, Type::MethodDecl(*m));
                             place.current_typ = Type::MethodDecl(*m);
-                            place.current_path = *step.get_expr();
+                            place.current_path = step.get_expr(db);
                             check_visibility(db, &ident.as_call_site(db), *m, &mut ctx.errors);
                         } else if report_errors {
                             ctx.errors.push(
                                 ResolveError::NoSuchFieldPathExpr {
-                                    expr: *expr,
+                                    expr,
                                     ident: **ident,
                                     ty: place.current_typ,
                                 }
@@ -263,7 +263,7 @@ impl<'db> Type<'db> {
                         if report_errors {
                             ctx.errors.push(
                                 ResolveError::NoSuchFieldPathExpr {
-                                    expr: *expr,
+                                    expr,
                                     ident: **ident,
                                     ty: place.current_typ,
                                 }
@@ -282,9 +282,9 @@ impl<'db> Type<'db> {
                                 .or_default()
                                 .push(Adjustment::new_deref(db, ty));
 
-                            ctx.type_of_path_expr.insert(*expr, place.current_typ);
+                            ctx.type_of_path_expr.insert(expr, place.current_typ);
                             ctx.path_expr_adjustments
-                                .entry(*expr)
+                                .entry(expr)
                                 .or_default()
                                 .push(Adjustment::new_deref(db, ty));
                         }
@@ -292,7 +292,7 @@ impl<'db> Type<'db> {
                             if report_errors {
                                 ctx.errors.push(
                                     ResolveError::DerefNonRefType {
-                                        expr: *expr,
+                                        expr,
                                         ty: non_ref,
                                     }
                                     .to_diagnostic(db),
@@ -318,7 +318,7 @@ impl<'db> Type<'db> {
                             if report_errors {
                                 ctx.errors.push(
                                     ResolveError::IndexNonArrayTypePathExpr {
-                                        expr: *expr,
+                                        expr,
                                         ty: place.current_typ,
                                     }
                                     .to_diagnostic(db),
@@ -333,9 +333,9 @@ impl<'db> Type<'db> {
                         .or_default()
                         .push(Adjustment::new_index(db, array_type));
 
-                    ctx.type_of_path_expr.insert(*expr, place.current_typ);
+                    ctx.type_of_path_expr.insert(expr, place.current_typ);
                     ctx.path_expr_adjustments
-                        .entry(*expr)
+                        .entry(expr)
                         .or_default()
                         .push(Adjustment::new_index(db, array_type));
                 }
@@ -343,7 +343,7 @@ impl<'db> Type<'db> {
                     if report_errors {
                         ctx.errors.push(
                             ResolveError::IndexNonArrayTypePathExpr {
-                                expr: *expr,
+                                expr,
                                 // an array will always be declared by a DataType or a Variable
                                 ty: place.current_typ,
                             }

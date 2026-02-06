@@ -81,6 +81,17 @@ impl<'db> Type<'db> {
         match (lhs, &to) {
             // variant is already solved by the resolver
             (Type::Enum(e1), Type::EnumVariant(e2)) => Ok(()),
+            (Type::Enum(e1), Type::Enum(e2)) => {
+                if e1.eq(e2) {
+                    Ok(())
+                } else {
+                    Err(CoerceError {
+                        expected: *self,
+                        actual: to,
+                        adjustment: None,
+                    })
+                }
+            }
             // same types are assignable
             (Type::Struct(s1), Type::Struct(s2)) => match s1.eq(s2) {
                 true => Ok(()),
@@ -127,30 +138,26 @@ impl<'db> Type<'db> {
             }
             (Type::RefTo(_), Type::Null) => Ok(()),
             // self-assignments
-            (Type::Function(f), rhs) => {
-                match f.return_type(db) {
-                    Some(ret) => {
-                        Type::new_spec(db, *ret).coerce_with_type(db, *rhs, adjustments, resolver)
-                    }
-                    None => Err(CoerceError {
-                        expected: Type::Void,
-                        actual: to,
-                        adjustment: None,
-                    }),
+            (Type::Function(f), rhs) => match f.return_type(db) {
+                Some(ret) => {
+                    Type::new_spec(db, *ret).coerce_with_type(db, *rhs, adjustments, resolver)
                 }
-            }
-            (Type::MethodDecl(f), rhs) => {
-                match f.return_type(db) {
-                    Some(ret) => {
-                        Type::new_spec(db, *ret).coerce_with_type(db, *rhs, adjustments, resolver)
-                    }
-                    None => Err(CoerceError {
-                        expected: Type::Void,
-                        actual: to,
-                        adjustment: None,
-                    }),
+                None => Err(CoerceError {
+                    expected: Type::Void,
+                    actual: to,
+                    adjustment: None,
+                }),
+            },
+            (Type::MethodDecl(f), rhs) => match f.return_type(db) {
+                Some(ret) => {
+                    Type::new_spec(db, *ret).coerce_with_type(db, *rhs, adjustments, resolver)
                 }
-            }
+                None => Err(CoerceError {
+                    expected: Type::Void,
+                    actual: to,
+                    adjustment: None,
+                }),
+            },
             _ => Err(CoerceError {
                 expected: *self,
                 actual: to,

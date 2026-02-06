@@ -4,7 +4,7 @@ use auto_lsp::{
     core::errors::ParseErrorAccumulator,
     default::db::{file::File, tracked::get_ast},
 };
-use db::{WorkspaceDataBase};
+use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::{

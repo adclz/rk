@@ -75,7 +75,10 @@ impl<'db> ScopeId<'db> {
         })
     }
 
-    pub fn variables(&self, db: &'db dyn WorkspaceDataBase) -> Option<&Vec<VariableDecl<'db>>> {
+    pub fn variables<'a, 'b>(
+        &'a self,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> Option<&'db Vec<VariableDecl<'db>>> {
         Some(match get_scope(db, *self).kind {
             ScopeKind::Pou(pou) => match pou {
                 Pou::Function(f) => f.variables(db),

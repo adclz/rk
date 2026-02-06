@@ -32,9 +32,9 @@ pub enum PathExprWalkStep<'db> {
     }, // For pointers
 }
 
-impl PathExprWalkStep<'_> {
-    pub fn get_expr(&self) -> &PathExpr<'_> {
-        match self {
+impl<'db> PathExprWalkStep<'db> {
+    pub fn get_expr(&self, db: &'db dyn WorkspaceDataBase) -> PathExpr<'db> {
+        *match self {
             PathExprWalkStep::Field { expr, .. } => expr,
             PathExprWalkStep::Index { expr } => expr,
             PathExprWalkStep::Deref { expr, .. } => expr,
@@ -235,7 +235,7 @@ impl<'db> InitExpr<'db> {
             InitExprKind::ArrayIndexedElement { size, values } => {
                 result.push(InitExprWalkStep::SizedIndex {
                     expr: *self,
-                    size: size,
+                    size,
                     values: values.iter().flat_map(|v| v.flat(db)).collect(),
                 });
             }
@@ -248,7 +248,7 @@ impl<'db> InitExpr<'db> {
             InitExprKind::StructElement { name, value } => {
                 result.push(InitExprWalkStep::Field {
                     expr: *self,
-                    name: name,
+                    name,
                     value: Box::new(value.flat(db).pop().unwrap()),
                 });
             }

@@ -62,7 +62,11 @@ pub struct SemanticIndex<'db> {
 }
 
 impl<'db> SemanticIndex<'db> {
-    pub fn empty(db: &'db dyn WorkspaceDataBase, file: File, ast: Arc<Vec<Box<dyn AstNode>>>) -> Self {
+    pub fn empty(
+        db: &'db dyn WorkspaceDataBase,
+        file: File,
+        ast: Arc<Vec<Box<dyn AstNode>>>,
+    ) -> Self {
         SemanticIndex {
             scope: ScopeId::global(db, file),
             file,

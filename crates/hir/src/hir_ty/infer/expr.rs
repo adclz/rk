@@ -116,7 +116,7 @@ impl<'db> InferExprCtx<'db> {
                                 }
                                 .to_diagnostic(db),
                             );
-                            Type::Never
+                            find_enm
                         }),
                     _ => {
                         // not an enum

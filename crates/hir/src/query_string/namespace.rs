@@ -3,10 +3,7 @@ use std::ops::ControlFlow;
 use db::WorkspaceDataBase;
 
 use crate::{
-    hir_def::{
-        interned::namespace::{NamespacePath},
-        namespace::NamespaceDecl,
-    },
+    hir_def::{interned::namespace::NamespacePath, namespace::NamespaceDecl},
     query_string::{
         file::file_symbol_index,
         query::{Query, SymbolKind},

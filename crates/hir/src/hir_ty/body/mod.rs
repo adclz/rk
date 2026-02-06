@@ -170,10 +170,18 @@ impl<'db> BodyInferenceResult<'db> {
         match begin.expr(db) {
             Some(expr) => self.get_type_of_path_expr(db, expr),
             None => match begin.invocation(db) {
-                Some(invocation) => self.type_of_invocation.get(&invocation).copied(),
+                Some(invocation) => self.get_type_of_invocation(db, invocation),
                 None => None,
             },
         }
+    }
+
+    pub fn get_type_of_invocation(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        invocation: Invocation<'db>,
+    ) -> Option<Type<'db>> {
+        self.type_of_invocation.get(&invocation).copied()
     }
 
     pub fn type_of_path_expr_with_adjustments(&self, expr: PathExpr<'db>) -> Option<Type<'db>> {
