@@ -661,7 +661,7 @@ module.exports = grammar({
           "STRUCT",
           optional(";"),
           field("overlap", optional("OVERLAP")),
-          repeat1(seq($.struct_elem_decl, optional(";"))),
+          repeat(seq($.struct_elem_decl, optional(";"))),
           "END_STRUCT",
         ),
       ($) => seq(":=", "(", commaSep($.init_elem), ")"),
