@@ -21,7 +21,10 @@ use crate::{
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
-    hir_ty::{name_res::namespace_index, ty::{CallableType, Type}},
+    hir_ty::{
+        name_res::namespace_index,
+        ty::{CallableType, Type},
+    },
     query_string::{
         method::fuzzy_callable_type_parameters, namespace::NamespaceSearchCtx, query::Query,
         scope::ScopeSearchCtx, strukt::fuzzy_struct_fields,
@@ -227,10 +230,10 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
 
                 let mut query = Query::new(expr.ident(db).text(db).to_string());
                 query.fuzzy();
-                let items = ScopeSearchCtx::new(*scope)
+                let items = ScopeSearchCtx::new(*scope, |_, _| true)
                     .with_query(query)
                     .only_variables()
-                    .search_unfiltered(db);
+                    .search(db);
 
                 if let ScopeKind::Pou(pou) = get_scope(db, *scope).kind {
                     list_variable_candidates(
@@ -243,19 +246,19 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
 
                 let mut query = Query::new(expr.ident(db).text(db).to_string());
                 query.exact();
-                let items = ScopeSearchCtx::new(*scope)
-                    .with_query(query)
-                    .only_pous()
-                    .search(db, |pou, db| {
-                        match pou {
-                            Pou::Function(_) => true,
-                            // enum types are allowed and all variants should be suggested
-                            Pou::DataType(typ) => {
-                                matches!(typ.spec(db).kind(db), SpecKind::Enum(_))
-                            }
-                            _ => false,
+                let items = ScopeSearchCtx::new(*scope, |pou, db| {
+                    match pou {
+                        Pou::Function(_) => true,
+                        // enum types are allowed and all variants should be suggested
+                        Pou::DataType(typ) => {
+                            matches!(typ.spec(db).kind(db), SpecKind::Enum(_))
                         }
-                    });
+                        _ => false,
+                    }
+                })
+                .with_query(query)
+                .only_pous()
+                .search(db);
 
                 list_pou_candidates(
                     db,
@@ -273,19 +276,21 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     .range(path.get_span(db))
                     .call();
 
+                let path_str = path.path.to_string(db);
+
                 // if there's no namespace path but just a target ident,
                 // we can try to find POUs with that name and suggest importing them
                 match &path.path.namespace {
                     None => {
                         let mut query = Query::new(path.path.target.ident.text(db).to_string());
                         query.exact();
-                        let items = ScopeSearchCtx::new(path.scope_id)
-                            .with_query(query)
-                            .only_pous()
-                            .search(db, |pou, db| match pou {
-                                Pou::Function(_) => false,
-                                _ => true,
-                            });
+                        let items = ScopeSearchCtx::new(path.scope_id, |pou, db| match pou {
+                            Pou::Function(_) => false,
+                            _ => true,
+                        })
+                        .with_query(query)
+                        .only_pous()
+                        .search(db);
 
                         list_pou_candidates(
                             db,
@@ -298,12 +303,12 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
 
                         if !namespace_index(db, ns_kw).is_empty() {
                             diag.with_note(format!(
-                                r#"a namespace named '{}' exists but it cannot be used as an item, you can either:
+                                r#"namespace named '{}' exists but it cannot be used as an item, you can either:
 - Import the namespace via an USING directive: 'USING {}'
 - Import an item from this namespace: '{}.<POU>'"#,
-                                ns_kw.to_string(db),
-                                ns_kw.to_string(db),
-                                ns_kw.to_string(db),
+                                path_str,
+                                path_str,
+                                path_str,
                             ));
                         }
                     }
@@ -311,12 +316,23 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                         let ctx = NamespaceSearchCtx::new(path.path);
                         let items = ctx.search(db);
 
-                        list_namespace_candidates(
-                            db,
-                            path.path.to_string(db).as_str(),
-                            &mut diag,
-                            &items,
-                        );
+                        if !namespace_index(db, path.path).is_empty() {
+                            diag.with_note(format!(
+                                r#"namespace named '{}' exists but it cannot be used as an item, you can either:
+- Import the namespace via an USING directive: 'USING {}'
+- Import an item from this namespace: '{}.<POU>'"#,
+                                path_str,
+                                path_str,
+                                path_str,
+                            ));
+                        } else {
+                            list_namespace_candidates(
+                                db,
+                                path.path.to_string(db).as_str(),
+                                &mut diag,
+                                &items,
+                            );
+                        }
                     }
                 }
 

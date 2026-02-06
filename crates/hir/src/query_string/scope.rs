@@ -19,21 +19,29 @@ use crate::{
     },
 };
 
-pub struct ScopeSearchCtx<'db> {
+pub struct ScopeSearchCtx<
+    'db,
+    F: Fn(&Pou<'db>, &'db dyn WorkspaceDataBase) -> bool = fn(
+        &Pou<'db>,
+        &'db dyn WorkspaceDataBase,
+    ) -> bool,
+> {
     scope: ScopeId<'db>,
     query: Option<Query>,
     include_variables: bool,
     include_pous: bool,
+    filter: F,
 }
 
-impl<'db> ScopeSearchCtx<'db> {
+impl<'db, F: Fn(&Pou<'db>, &'db dyn WorkspaceDataBase) -> bool> ScopeSearchCtx<'db, F> {
     /// Create a new search context for a scope
-    pub fn new(scope: ScopeId<'db>) -> Self {
+    pub fn new(scope: ScopeId<'db>, filter: F) -> Self {
         Self {
             scope,
             query: None,
             include_variables: true,
             include_pous: true,
+            filter,
         }
     }
 
@@ -70,11 +78,7 @@ impl<'db> ScopeSearchCtx<'db> {
     }
 
     /// Execute the search and return results
-    pub fn search<F: Fn(&Pou<'db>, &'db dyn WorkspaceDataBase) -> bool>(
-        self,
-        db: &'db dyn WorkspaceDataBase,
-        filter_pou: F,
-    ) -> ScopeSearchResult<'db> {
+    pub fn search(self, db: &'db dyn WorkspaceDataBase) -> ScopeSearchResult<'db> {
         let query = self.query.unwrap_or_else(|| Query::new(String::new()));
 
         let local = discover_in_scope(db, self.scope);
@@ -95,17 +99,12 @@ impl<'db> ScopeSearchCtx<'db> {
                 self.scope,
                 &local,
                 &scope_variables,
-                &filter_pou,
+                &self.filter,
                 &mut search_result,
             );
         }
 
         search_result
-    }
-
-    /// Execute the search without any POU filter
-    pub fn search_unfiltered(self, db: &'db dyn WorkspaceDataBase) -> ScopeSearchResult<'db> {
-        self.search(db, |_, db| true)
     }
 }
 
