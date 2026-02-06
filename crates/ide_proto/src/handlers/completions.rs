@@ -5,10 +5,13 @@ use hir::{
     hir_def::{
         expressions::{
             expression::{Expr, InitExpr, PathExpr, VariableAccess},
+            invocation::Invocation,
             spec::Spec,
         },
         namespace::NamespaceDecl,
         pous::pou::Pou,
+        scope::ScopeKind,
+        semantic_index::get_scope,
         using::Using,
     },
     hir_ty::{body::infer_body, signature::infer_signature},
@@ -24,9 +27,16 @@ use crate::handlers::{
 impl<'db> CompletionHandler<'db> for NamespaceDecl<'db> {
     fn completion(
         &'db self,
-        _db: &'db dyn WorkspaceDataBase,
-        _offset: usize,
+        db: &'db dyn WorkspaceDataBase,
+        offset: usize,
+        _trigger_character: Option<String>,
+        _query: String,
     ) -> Option<Vec<CompletionItem>> {
+        // only trigger comletion if we're not typing the namespace name
+        if self.name_span(db).end_byte >= offset {
+            return None;
+        }
+
         Some(vec![
             static_snippets::namespace(),
             static_snippets::using(),
@@ -44,12 +54,14 @@ impl<'db> CompletionHandler<'db> for Pou<'db> {
         &'db self,
         db: &'db dyn WorkspaceDataBase,
         offset: usize,
+        _trigger_character: Option<String>,
+        query: String,
     ) -> Option<Vec<CompletionItem>> {
         let mut ctx = CompletionCtx::new(offset, QueryMode::Body);
         let head_result = ctx.located_pou_completion(*self, db);
 
-        if head_result.inside_head == HeadLocation::InBody {
-            ctx.scope_completion(self.get_scope_id(db), "", db);
+        if head_result.head_location == HeadLocation::InBody {
+            ctx.scope_completion(self.get_scope_id(db), &query, db);
             ctx.items.extend(static_snippets::all_stmts());
         }
 
@@ -62,11 +74,12 @@ impl<'db> CompletionHandler<'db> for Spec<'db> {
         &'db self,
         db: &'db dyn WorkspaceDataBase,
         offset: usize,
+        _trigger_character: Option<String>,
+        query: String,
     ) -> Option<Vec<CompletionItem>> {
         let mut ctx = CompletionCtx::new(offset, QueryMode::Head);
-        ctx.scope_completion(self.get_scope_id(db), "", db)
-            .items
-            .extend(static_snippets::elem_type_names());
+        ctx.scope_completion(self.get_scope_id(db), &query, db);
+        ctx.items.extend(static_snippets::elem_type_names());
         Some(ctx.take_items())
     }
 }
@@ -76,13 +89,32 @@ impl<'db> CompletionHandler<'db> for PathExpr<'db> {
         &'db self,
         db: &'db dyn WorkspaceDataBase,
         offset: usize,
+        _trigger_character: Option<String>,
+        query: String,
     ) -> Option<Vec<CompletionItem>> {
         let mut ctx = CompletionCtx::new(offset, QueryMode::Body);
 
         let infer = infer_body(db, self.get_scope_id(db));
         let ty = infer.get_type_of_path_expr(db, *self);
 
-        ctx.field_or_scope(ty, self.get_scope_id(db), "", db);
+        if let Some(ty) = ty
+            && !ty.is_never()
+        {
+            ctx.field_completion(ty, db);
+            return Some(ctx.take_items());
+        }
+
+        // check if we're in a pou body, if so add all statements as completion items
+        if let ScopeKind::Pou(pou) = get_scope(db, self.get_scope_id(db)).kind
+            && ctx
+                .located_pou_completion(pou, db)
+                .head_location
+                .is_in_body()
+        {
+            ctx.scope_completion(self.get_scope_id(db), &query, db);
+            ctx.items.extend(static_snippets::all_stmts());
+            ctx.items.extend(static_snippets::elem_type_names_init());
+        }
 
         Some(ctx.take_items())
     }
@@ -93,14 +125,32 @@ impl<'db> CompletionHandler<'db> for VariableAccess<'db> {
         &'db self,
         db: &'db dyn WorkspaceDataBase,
         offset: usize,
+        _trigger_character: Option<String>,
+        query: String,
     ) -> Option<Vec<CompletionItem>> {
         let mut ctx = CompletionCtx::new(offset, QueryMode::Body);
 
         let infer = infer_body(db, self.get_scope_id(db));
         let ty = infer.get_type_of_variable_access(db, *self);
 
-        // Try field completion, fall back to scope if type is unavailable
-        ctx.field_or_scope(ty, self.get_scope_id(db), "", db);
+        if let Some(ty) = ty
+            && !ty.is_never()
+        {
+            ctx.field_completion(ty, db);
+            return Some(ctx.take_items());
+        }
+
+        // check if we're in a pou body, if so add all statements as completion items
+        if let ScopeKind::Pou(pou) = get_scope(db, self.get_scope_id(db)).kind
+            && ctx
+                .located_pou_completion(pou, db)
+                .head_location
+                .is_in_body()
+        {
+            ctx.scope_completion(self.get_scope_id(db), &query, db);
+            ctx.items.extend(static_snippets::all_stmts());
+            ctx.items.extend(static_snippets::elem_type_names_init());
+        }
 
         Some(ctx.take_items())
     }
@@ -111,14 +161,52 @@ impl<'db> CompletionHandler<'db> for Expr<'db> {
         &'db self,
         db: &'db dyn WorkspaceDataBase,
         offset: usize,
+        _trigger_character: Option<String>,
+        query: String,
     ) -> Option<Vec<CompletionItem>> {
         let mut ctx = CompletionCtx::new(offset, QueryMode::Body);
 
         let infer = infer_body(db, self.get_scope_id(db));
         let ty = infer.get_type_of_expr(*self);
 
+        if let Some(ty) = ty
+            && !ty.is_never()
+        {
+            ctx.field_completion(ty, db);
+            return Some(ctx.take_items());
+        }
+
+        // check if we're in a pou body, if so add all statements as completion items
+        if let ScopeKind::Pou(pou) = get_scope(db, self.get_scope_id(db)).kind
+            && ctx
+                .located_pou_completion(pou, db)
+                .head_location
+                .is_in_body()
+        {
+            ctx.scope_completion(self.get_scope_id(db), &query, db);
+            ctx.items.extend(static_snippets::all_stmts());
+            ctx.items.extend(static_snippets::elem_type_names_init());
+        }
+
+        Some(ctx.take_items())
+    }
+}
+
+impl<'db> CompletionHandler<'db> for Invocation<'db> {
+    fn completion(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        offset: usize,
+        _trigger_character: Option<String>,
+        _query: String,
+    ) -> Option<Vec<CompletionItem>> {
+        let mut ctx = CompletionCtx::new(offset, QueryMode::Body);
+
+        let infer = infer_body(db, self.get_scope_id(db));
+        let ty = infer.get_type_of_invocation(db, *self).unwrap_or_default();
+
         // Try field completion, fall back to scope if type is unavailable
-        ctx.field_or_scope(ty, self.get_scope_id(db), "", db);
+        ctx.field_completion(ty, db);
 
         Some(ctx.take_items())
     }
@@ -129,6 +217,8 @@ impl<'db> CompletionHandler<'db> for InitExpr<'db> {
         &'db self,
         db: &'db dyn WorkspaceDataBase,
         offset: usize,
+        _trigger_character: Option<String>,
+        _query: String,
     ) -> Option<Vec<CompletionItem>> {
         let mut ctx = CompletionCtx::new(offset, QueryMode::Head);
 
@@ -141,6 +231,9 @@ impl<'db> CompletionHandler<'db> for InitExpr<'db> {
         {
             ctx.field_completion(ty, db);
         }
+
+        ctx.items.extend(static_snippets::elem_type_names_init());
+
         Some(ctx.take_items())
     }
 }
@@ -150,6 +243,8 @@ impl<'db> CompletionHandler<'db> for Using<'db> {
         &'db self,
         db: &'db dyn WorkspaceDataBase,
         _offset: usize,
+        trigger_character: Option<String>,
+        _query: String,
     ) -> Option<Vec<CompletionItem>> {
         let mut results = vec![];
         let search = NamespaceSearchCtx::new(self.path(db).path);
@@ -157,38 +252,20 @@ impl<'db> CompletionHandler<'db> for Using<'db> {
 
         let items = search.search(db);
         let mut seen = FxHashSet::default();
+
+        // If dot was the trigger character, show the next level of namespace fragments.
+        // Otherwise, complete the last (current) fragment.
+        let show_index = if trigger_character.as_deref() == Some(".") {
+            current_fragments.len()
+        } else {
+            current_fragments.len().saturating_sub(1)
+        };
+
         for item in items {
             let ns_fragments = item.path(db).fragments(db);
-            
-            // Determine the fragment index to show
-            // Count how many fragments match exactly
-            let mut exact_match_count = 0;
-            for (i, current_frag) in current_fragments.iter().enumerate() {
-                if let Some(ns_frag) = ns_fragments.get(i) {
-                    if current_frag.text(db) == ns_frag.text(db) {
-                        exact_match_count += 1;
-                    } else {
-                        break;
-                    }
-                } else {
-                    break;
-                }
-            }
-            
-            // If we have exact matches and the namespace goes deeper, show the next fragment
-            // Otherwise, show the first fragment (we're completing the first level)
-            let show_index = if exact_match_count == current_fragments.len() && exact_match_count > 0 {
-                // All current fragments match exactly, show the next one
-                exact_match_count
-            } else {
-                // We're completing the current (first) fragment
-                0
-            };
-            
             if let Some(frag) = ns_fragments.get(show_index) {
                 let label = frag.text(db).to_string();
-                if !seen.contains(&label) {
-                    seen.insert(label.clone());
+                if seen.insert(label.clone()) {
                     results.push(CompletionItem::new_simple(label, "NAMESPACE".to_string()));
                 }
             }

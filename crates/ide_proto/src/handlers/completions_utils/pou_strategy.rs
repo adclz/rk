@@ -57,7 +57,6 @@ impl<'db> CompletionCtx {
         let range = *pou.get_span(db).ts();
 
         let ctx = HeadResult::query_var_decls(root_node, source, range, self.offset);
-        eprintln!("POU CONTEXT: {:?}", ctx.inside_head);
 
         // If we're inside a variable declaration, don't provide completions
         // (they should be handled by that context)
@@ -83,7 +82,7 @@ fn complete_class(
     db: &dyn WorkspaceDataBase,
     items: &mut Vec<CompletionItem>,
 ) {
-    match ctx.inside_head {
+    match ctx.head_location {
         HeadLocation::BeforeVars => {
             add_var_snippets(
                 Class::allowed().difference(ctx.active_variable_sections()),
@@ -130,7 +129,7 @@ fn complete_fb(
     db: &dyn WorkspaceDataBase,
     items: &mut Vec<CompletionItem>,
 ) {
-    match ctx.inside_head {
+    match ctx.head_location {
         HeadLocation::BeforeVars => {
             add_var_snippets(
                 FunctionBlock::allowed().difference(ctx.active_variable_sections()),
@@ -177,7 +176,7 @@ fn complete_function(
     _offset: usize,
     items: &mut Vec<CompletionItem>,
 ) {
-    match ctx.inside_head {
+    match ctx.head_location {
         HeadLocation::BeforeVars | HeadLocation::InVars => {
             add_var_snippets(
                 Function::allowed().difference(ctx.active_variable_sections()),

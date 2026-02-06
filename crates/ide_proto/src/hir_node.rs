@@ -10,10 +10,11 @@ use auto_lsp::{
 };
 use db::WorkspaceDataBase;
 use hir::{
-    AstId, HirNodeInfo,
+    AstId, CallSite, HirNodeInfo,
     hir_def::{
         expressions::{
             expression::{Expr, InitExpr, ParamAssign, ParamAssignKind, PathExpr, VariableAccess},
+            invocation::Invocation,
             spec::{Spec, StructElement},
         },
         interned::namespace::SpanNamespaceAccess,
@@ -34,6 +35,13 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PathExprRoot<'db> {
+    VariableAccess(VariableAccess<'db>),
+    Invocation(Invocation<'db>),
+    PathExpr(PathExpr<'db>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HirNode<'db> {
     Namespace(NamespaceDecl<'db>),
     Using(Using<'db>),
@@ -42,12 +50,19 @@ pub enum HirNode<'db> {
     MethodRef(MethodRef<'db>),
     VariableDecl(VariableDecl<'db>),
     Spec(Spec<'db>),
-    InitExpr(InitExpr<'db>),
     StructElement(StructElement<'db>),
-    PathExpr(PathExpr<'db>),
     VariableAccess(VariableAccess<'db>),
+    Invocation(Invocation<'db>),
     Expr(Expr<'db>),
     Param(ParamAssign<'db>),
+    InitExpr {
+        prev: InitExpr<'db>,
+        curr: InitExpr<'db>,
+    },
+    PathExpr {
+        prev: PathExprRoot<'db>,
+        curr: PathExpr<'db>,
+    },
 }
 
 impl<'db> HirNode<'db> {
@@ -69,16 +84,29 @@ impl<'db> HirNode<'db> {
         &'db self,
         db: &'db dyn WorkspaceDataBase,
         offset: usize,
+        trigger_character: Option<String>,
+        query: String,
     ) -> Option<Vec<CompletionItem>> {
         match self {
-            HirNode::Using(u) => u.completion(db, offset),
-            HirNode::Namespace(ns) => ns.completion(db, offset),
-            HirNode::PouDecl(pou) => pou.completion(db, offset),
-            HirNode::Spec(s) => s.completion(db, offset),
-            HirNode::InitExpr(e) => e.completion(db, offset),
-            HirNode::PathExpr(e) => e.completion(db, offset),
-            HirNode::VariableAccess(v) => v.completion(db, offset),
-            HirNode::Expr(e) => e.completion(db, offset),
+            HirNode::Using(u) => u.completion(db, offset, trigger_character, query),
+            HirNode::Namespace(ns) => ns.completion(db, offset, trigger_character, query),
+            HirNode::PouDecl(pou) => pou.completion(db, offset, trigger_character, query),
+            HirNode::Spec(s) => s.completion(
+                db,
+                offset,
+                trigger_character,
+                CallSite::from_spec(db, *s).to_string(db).to_string(),
+            ),
+            HirNode::InitExpr { curr, .. } => curr.completion(db, offset, trigger_character, query),
+            HirNode::PathExpr { curr, .. } => curr.completion(db, offset, trigger_character, query),
+            HirNode::VariableAccess(v) => v.completion(db, offset, trigger_character, query),
+            HirNode::Expr(e) => e.completion(
+                db,
+                offset,
+                trigger_character,
+                CallSite::from_expr(db, *e).to_string(db).to_string(),
+            ),
+            HirNode::Invocation(i) => i.completion(db, offset, trigger_character, query),
             _ => None,
         }
     }
@@ -102,7 +130,7 @@ impl<'db> HirNode<'db> {
             HirNode::Namespace(n) => n.inlay_hint(db),
             HirNode::PouDecl(p) => p.inlay_hint(db),
             HirNode::Param(p) => p.inlay_hint(db),
-            HirNode::InitExpr(init_expr) => init_expr.inlay_hint(db),
+            HirNode::InitExpr { curr, .. } => curr.inlay_hint(db),
             _ => None,
         }
     }
@@ -112,11 +140,11 @@ impl<'db> HirNode<'db> {
             HirNode::Namespace(n) => n.hover(db, offset),
             HirNode::PouDecl(p) => p.hover(db, offset),
             HirNode::VariableDecl(v) => v.hover(db, offset),
-            HirNode::InitExpr(e) => e.hover(db, offset),
+            HirNode::InitExpr { curr, .. } => curr.hover(db, offset),
             HirNode::Spec(s) => s.hover(db, offset),
             HirNode::MethodRef(m) => m.hover(db, offset),
             HirNode::StructElement(st) => st.hover(db, offset),
-            HirNode::PathExpr(p) => p.hover(db, offset),
+            HirNode::PathExpr { curr, .. } => curr.hover(db, offset),
             HirNode::VariableAccess(v) => v.hover(db, offset),
             HirNode::Expr(e) => e.hover(db, offset),
             HirNode::Using(u) => u.hover(db, offset),
@@ -132,9 +160,9 @@ impl<'db> HirNode<'db> {
         match self {
             HirNode::VariableDecl(v) => v.declaration(db),
             HirNode::StructElement(s) => s.declaration(db),
-            HirNode::InitExpr(i) => i.declaration(db),
+            HirNode::InitExpr { curr, .. } => curr.declaration(db),
             HirNode::Spec(s) => s.declaration(db),
-            HirNode::PathExpr(p) => p.declaration(db),
+            HirNode::PathExpr { curr, .. } => curr.declaration(db),
             HirNode::VariableAccess(v) => v.declaration(db),
             HirNode::Expr(e) => e.declaration(db),
             HirNode::Param(p) => p.declaration(db),
@@ -147,9 +175,9 @@ impl<'db> HirNode<'db> {
             HirNode::PouDecl(pou) => pou.definition(db),
             HirNode::VariableDecl(v) => v.definition(db),
             HirNode::StructElement(s) => s.definition(db),
-            HirNode::InitExpr(i) => i.definition(db),
+            HirNode::InitExpr { curr, .. } => curr.definition(db),
             HirNode::Spec(s) => s.definition(db),
-            HirNode::PathExpr(p) => p.definition(db),
+            HirNode::PathExpr { curr, .. } => curr.definition(db),
             HirNode::VariableAccess(v) => v.definition(db),
             HirNode::Expr(e) => e.definition(db),
             HirNode::Param(p) => p.definition(db),
@@ -168,7 +196,7 @@ impl<'db> HirNode<'db> {
             HirNode::MethodRef(m) => m.semantic_tokens(db, builder),
             HirNode::VariableDecl(v) => v.semantic_tokens(db, builder),
             HirNode::StructElement(st) => st.semantic_tokens(db, builder),
-            HirNode::PathExpr(p) => p.semantic_tokens(db, builder),
+            HirNode::PathExpr { curr, .. } => curr.semantic_tokens(db, builder),
             HirNode::VariableAccess(v) => v.semantic_tokens(db, builder),
             HirNode::Expr(e) => e.semantic_tokens(db, builder),
             _ => {}
@@ -187,11 +215,12 @@ impl<'db> HirNodeInfo<'db> for HirNode<'db> {
             HirNode::Spec(s) => s.get_scope_id(db),
             HirNode::MethodRef(m) => m.get_scope_id(db),
             HirNode::Expr(e) => e.get_scope_id(db),
-            HirNode::PathExpr(p) => p.get_scope_id(db),
+            HirNode::PathExpr { curr, .. } => curr.get_scope_id(db),
             HirNode::VariableAccess(v) => v.get_scope_id(db),
             HirNode::Using(u) => u.get_scope_id(db),
             HirNode::Param(p) => p.get_scope_id(db),
-            HirNode::InitExpr(i) => i.get_scope_id(db),
+            HirNode::InitExpr { curr, .. } => curr.get_scope_id(db),
+            HirNode::Invocation(i) => i.get_scope_id(db),
         }
     }
 
@@ -205,11 +234,12 @@ impl<'db> HirNodeInfo<'db> for HirNode<'db> {
             HirNode::Spec(s) => s.get_id(db),
             HirNode::MethodRef(m) => m.get_id(db),
             HirNode::Expr(e) => e.get_id(db),
-            HirNode::PathExpr(p) => p.get_id(db),
+            HirNode::PathExpr { curr, .. } => curr.get_id(db),
             HirNode::VariableAccess(v) => v.get_id(db),
             HirNode::Using(u) => u.get_id(db),
             HirNode::Param(p) => p.get_id(db),
-            HirNode::InitExpr(i) => i.get_id(db),
+            HirNode::InitExpr { curr, .. } => curr.get_id(db),
+            HirNode::Invocation(i) => i.get_id(db),
         }
     }
 }

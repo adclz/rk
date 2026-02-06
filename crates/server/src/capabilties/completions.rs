@@ -1,14 +1,12 @@
-use std::ops::ControlFlow;
-
 use auto_lsp::{
     anyhow,
     lsp_types::{CompletionParams, CompletionResponse},
 };
 use db::WorkspaceDataBase;
-use hir::{HirNodeInfo, hir_def::expressions::expression::{ExprKind, InitExprKind, PrimaryExpr}};
 use ide_proto::{
-    hir_node::HirNode,
-    walk::descendant_at_with,
+    handlers::CompletionHandler,
+    hir_node::{HirNode, PathExprRoot},
+    walk::descendant_at,
 };
 
 pub fn completions(
@@ -25,87 +23,84 @@ pub fn completions(
     let doc = file.document(db);
 
     let position = params.text_document_position.position;
+    let trigger_character = params
+        .context
+        .as_ref()
+        .and_then(|ctx| ctx.trigger_character.clone());
+
     let offset = match doc.offset_at(position) {
-        Some(offset) => match params.context.unwrap().trigger_character {
-            Some(str) if str == "." || str == "#" => offset.saturating_sub(1),
-            _ => offset,
-        },
+        Some(offset) => offset.saturating_sub(1),
         None => return Ok(None),
     };
 
-    // we need to keep track of the previous node in case we need to fallback
-    let mut prev = None;
-    let mut latest = None;
-
-    Ok(descendant_at_with(db, file, offset, |hirnode| {
-        // list of interesting nodes to consider for completion
-        match hirnode {
-            HirNode::VariableAccess(_) | HirNode::PathExpr(_) => {
-                prev = latest.clone();
-                latest = Some(hirnode);
-            }
-            HirNode::InitExpr(expr) => {
-                // we only provide completions for struct initializers
-                if let InitExprKind::StructInit { .. } = expr.kind(db) {
-                    prev = latest.clone();
-                    latest = Some(hirnode);
-                }
-            }
-            HirNode::Expr(expr) => {
-                if let ExprKind::PrimaryExpr(PrimaryExpr::EnumValue { .. }) = expr.expr(db) {
-                    prev = latest.clone();
-                    latest = Some(hirnode);
-                }
-            }
-            HirNode::Using(u) => {
-                prev = latest.clone();
-                latest = Some(hirnode);
-            }
-            // there is no completion for NamespaceDecl, but forcing it to be the target will prevent completions from appearing 
-            // when the user is typing a namespace declaration which has dots in it
-            HirNode::Namespace(_) => {
-                prev = latest.clone();
-                latest = Some(hirnode);
-            }
-            _ => (),
+    let target = match descendant_at(db, file, offset) {
+        Some(target) => target,
+        None => {
+            // no target node, show general completions (namespaces, pou snippets, etc)
+            return Ok(Some(CompletionResponse::Array(vec![
+                ide_proto::handlers::completions_utils::static_snippets::namespace(),
+                ide_proto::handlers::completions_utils::static_snippets::using(),
+                ide_proto::handlers::completions_utils::static_snippets::function(),
+                ide_proto::handlers::completions_utils::static_snippets::function_block(),
+                ide_proto::handlers::completions_utils::static_snippets::class(),
+                ide_proto::handlers::completions_utils::static_snippets::interface(),
+                ide_proto::handlers::completions_utils::static_snippets::type_(),
+            ])));
         }
-        ControlFlow::Continue(())
-    })
-    .map(|target| {
-        let target_hir_node = match latest {
-            Some(curr) => {
-                let range = curr.get_span(db);
-                if range.start_byte <= offset && offset <= range.end_byte {
-                    // Latest is valid (contains offset), use it
-                    curr
-                } else if let Some(parent) = &prev {
-                    // Latest is not valid, check if parent is
-                    let parent_range = parent.get_span(db);
-                    if parent_range.start_byte <= offset && offset <= parent_range.end_byte {
-                        parent.clone()
-                    } else {
-                        // Neither is valid, use target
-                        target
-                    }
-                } else {
-                    // No parent to try, use target
-                    target
-                }
+    };
+
+    // if we hit a PathExpr or InitExpr, we use the previous step to determine the completion items
+    // instead of the current one, as the current one is likely to be incomplete/invalid
+    match target {
+        HirNode::InitExpr { prev, curr } => {
+            Ok(Some(
+                prev.completion(db, offset, trigger_character, curr.to_string(db).to_owned())
+                    .unwrap_or_default()
+                    .into(),
+            ))
+        }
+        HirNode::PathExpr { prev, curr } => match prev {
+            PathExprRoot::Invocation(inv) => {
+                Ok(Some(
+                    inv.completion(
+                        db,
+                        offset,
+                        trigger_character,
+                        curr.ident(db).text(db).to_string(),
+                    )
+                    .unwrap_or_default()
+                    .into(),
+                ))
             }
-            _ => target,
-        };
-        eprintln!("Found HirNode: {:?}", target_hir_node);
-        CompletionResponse::Array(target_hir_node.completion(db, offset).unwrap_or_default())
-    })
-    .or_else(|| {
-        Some(CompletionResponse::Array(vec![
-            ide_proto::handlers::completions_utils::static_snippets::namespace(),
-            ide_proto::handlers::completions_utils::static_snippets::using(),
-            ide_proto::handlers::completions_utils::static_snippets::function(),
-            ide_proto::handlers::completions_utils::static_snippets::function_block(),
-            ide_proto::handlers::completions_utils::static_snippets::class(),
-            ide_proto::handlers::completions_utils::static_snippets::interface(),
-            ide_proto::handlers::completions_utils::static_snippets::type_(),
-        ]))
-    }))
+            PathExprRoot::VariableAccess(inv) => {
+                Ok(Some(
+                    inv.completion(
+                        db,
+                        offset,
+                        trigger_character,
+                        curr.ident(db).text(db).to_string(),
+                    )
+                    .unwrap_or_default()
+                    .into(),
+                ))
+            }
+            PathExprRoot::PathExpr(inv) => {
+                Ok(Some(
+                    inv.completion(
+                        db,
+                        offset,
+                        trigger_character,
+                        curr.ident(db).text(db).to_string(),
+                    )
+                    .unwrap_or_default()
+                    .into(),
+                ))
+            }
+        },
+        _ => Ok(Some(CompletionResponse::Array(
+            target
+                .completion(db, offset, trigger_character, "".into())
+                .unwrap_or_default(),
+        ))),
+    }
 }

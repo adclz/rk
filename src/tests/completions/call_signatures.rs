@@ -42,7 +42,7 @@ END_FUNCTION
     	output_var2 => ${4:output_var2},
     	inout_var1 := ${5:inout_var1},
     	inout_var2 := ${6:inout_var2}
-    );
+    )
     ");
 }
 
@@ -68,5 +68,5 @@ END_FUNCTION
         find_pou_with_name(&with_db, *with_db.get_files().iter().last().unwrap(), "fn").unwrap();
 
     let sig = build_call_signature(&with_db, &"fn".to_owned(), pou.get_scope_id(&with_db));
-    assert_snapshot!(sig, @"fn();");
+    assert_snapshot!(sig, @"fn()");
 }

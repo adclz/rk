@@ -4,7 +4,7 @@ use hir::{
     HasName, HirNodeInfo,
     hir_def::{
         expressions::{
-            expression::{BeginPathExpr, Expr, PathExpr, VariableAccess},
+            expression::{BeginPathExpr, Expr, ExprKind, PathExpr, PrimaryExpr, VariableAccess},
             spec::StructElement,
         },
         interned::namespace::{NamespaceAccess, SpanNamespaceAccess},
@@ -19,7 +19,7 @@ use hir::{
 };
 
 use crate::{
-    CLASS, ENUM, FUNCTION, INTERFACE, METHOD, NAMESPACE, STRUCT, SUPPORTED_TYPES,
+    CLASS, ENUM, ENUM_MEMBER, FUNCTION, INTERFACE, METHOD, NAMESPACE, STRUCT, SUPPORTED_TYPES,
     handlers::SemanticTokensHandler,
 };
 
@@ -150,10 +150,34 @@ impl<'db> SemanticTokensHandler<'db> for Expr<'db> {
     ) {
         if let Some(typ) = infer_signature(db, self.scope_id(db))
             .body_infer_result
-            .get_type_of_expr(*self) { semantic_tokens_for_type(db, typ, builder, self.get_span(db)); }
+            .get_type_of_expr(*self)
+        {
+            if let ExprKind::PrimaryExpr(PrimaryExpr::EnumValue { name, variant }) = self.expr(db) {
+                builder.push(
+                    name.get_span(db).lsp(),
+                    SUPPORTED_TYPES.iter().position(|x| *x == ENUM).unwrap() as u32,
+                    0,
+                );
+                semantic_tokens_for_type(db, typ, builder, variant.get_span(db));
+            } else {
+                semantic_tokens_for_type(db, typ, builder, self.get_span(db));
+            }
+        }
 
-        if let Some(typ) = infer_body(db, self.scope_id(db))
-            .get_type_of_expr(*self) { semantic_tokens_for_type(db, typ, builder, self.get_span(db)); }
+        if let Some(typ) = infer_body(db, self.scope_id(db)).get_type_of_expr(*self) {
+            if let ExprKind::PrimaryExpr(PrimaryExpr::EnumValue { name, variant, .. }) =
+                self.expr(db)
+            {
+                builder.push(
+                    name.get_span(db).lsp(),
+                    SUPPORTED_TYPES.iter().position(|x| *x == ENUM).unwrap() as u32,
+                    0,
+                );
+                semantic_tokens_for_type(db, typ, builder, variant.get_span(db));
+            } else {
+                semantic_tokens_for_type(db, typ, builder, self.get_span(db));
+            }
+        }
     }
 }
 
@@ -246,6 +270,16 @@ fn semantic_tokens_for_type<'db>(
             builder.push(
                 span.lsp(),
                 SUPPORTED_TYPES.iter().position(|x| *x == ENUM).unwrap() as u32,
+                0,
+            );
+        }
+        Type::EnumVariant(_) => {
+            builder.push(
+                span.lsp(),
+                SUPPORTED_TYPES
+                    .iter()
+                    .position(|x| *x == ENUM_MEMBER)
+                    .unwrap() as u32,
                 0,
             );
         }

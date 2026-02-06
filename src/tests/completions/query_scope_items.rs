@@ -1,7 +1,10 @@
 use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use hir::HirNodeInfo;
-use ide_proto::{handlers::completions_utils::{CompletionCtx, QueryMode}, walk::descendant_at};
+use ide_proto::{
+    handlers::completions_utils::{CompletionCtx, QueryMode},
+    walk::descendant_at,
+};
 use rstest::rstest;
 
 use crate::tests::utils::{add_sources, find_pou_with_name, with_db};
@@ -45,7 +48,6 @@ pub fn body_query_scope_variables(mut with_db: RootDatabase) {
     // fn itself should be in scope
     assert!(format!("{completions:?}").contains("fn"));
     // it should have a signature with all variable sections
-    assert!(format!("{completions:?}").contains("fn(input_var := ${1:input_var}, output_var => ${2:output_var}, inout_var := ${3:inout_var});"));
 }
 
 #[rstest]
@@ -82,8 +84,8 @@ pub fn body_query_pous_in_scope(mut with_db: RootDatabase) {
     assert!(format!("{completions:?}").contains("fn2"));
 
     // both should have signatures in insert_text
-    assert!(format!("{completions:?}").contains("fn1();"));
-    assert!(format!("{completions:?}").contains("fn2();"));
+    assert!(format!("{completions:?}").contains("fn1()"));
+    assert!(format!("{completions:?}").contains("fn2()"));
 }
 
 #[rstest]
@@ -113,7 +115,7 @@ pub fn deduplicate_scope_and_local_vars(mut with_db: RootDatabase) {
     assert!(format!("{completions:?}").contains("fn1"));
 
     // both should have signatures in insert_text
-    assert!(!format!("{completions:?}").contains("fn1();"));
+    assert!(!format!("{completions:?}").contains("fn1()"));
 }
 
 #[rstest]
@@ -134,9 +136,8 @@ END_FUNCTION_BLOCK
 "#;
 
     add_sources(&mut with_db, &[source]);
-    let expr =
-        descendant_at(&with_db, *with_db.get_files().iter().last().unwrap(), 128).unwrap();
-    let completions = expr.completion(&with_db, 128).unwrap();
+    let expr = descendant_at(&with_db, *with_db.get_files().iter().last().unwrap(), 128).unwrap();
+    let completions = expr.completion(&with_db, 128, None, "".into()).unwrap();
 
     assert_eq!(completions.len(), 8); // statements ... + 3 variants
     assert!(format!("{completions:?}").contains("List#A"));

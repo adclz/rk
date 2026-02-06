@@ -14,7 +14,8 @@ define_semantic_token_types![
         INTERFACE,
         CLASS,
         STRUCT,
-        ENUM
+        ENUM,
+        ENUM_MEMBER
     }
 
     custom {

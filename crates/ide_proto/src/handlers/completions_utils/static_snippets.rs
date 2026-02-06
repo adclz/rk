@@ -39,7 +39,7 @@ pub fn using() -> CompletionItem {
         label: "USING".into(),
         kind: Some(lsp_types::CompletionItemKind::FOLDER),
         insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
-        insert_text: Some("USING ${1:ns};".into()),
+        insert_text: Some("USING ${1:ns}".into()),
         ..Default::default()
     }
 }
@@ -278,7 +278,7 @@ pub fn elem_type_names_init() -> Vec<CompletionItem> {
 use camelpaste::paste;
 
 macro_rules! gen_elem_data_types_snippets {
-    ($($type_name: ident => $label: ident),*) => {
+    ($($type_name: ident => $label: ident = $dv: expr),*) => {
         $(
             #[inline]
             pub fn $type_name() -> CompletionItem {
@@ -298,7 +298,7 @@ macro_rules! gen_elem_data_types_snippets {
                     label: stringify!($label).into(),
                     kind: Some(lsp_types::CompletionItemKind::VALUE),
                     insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
-                    insert_text: Some(format!("{}#", stringify!($label)).into()),
+                    insert_text: Some(format!("{}#{}", stringify!($label), stringify!($dv)).replace("\"", "").into()),
                     ..Default::default()
                 }
             }}
@@ -307,29 +307,29 @@ macro_rules! gen_elem_data_types_snippets {
 }
 
 gen_elem_data_types_snippets! {
-    sint => SINT,
-    int => INT,
-    dint => DINT,
-    lint => LINT,
-    usint => USINT,
-    uint => UINT,
-    udint => UDINT,
-    ulint => ULINT,
-    byte => BYTE,
-    word => WORD,
-    dword => DWORD,
-    lword => LWORD,
-    date => DATE,
-    ldate => LDATE,
-    dt => DATE_AND_TIME,
-    ldt => LDATE_AND_TIME,
-    tod => TIME_OF_DAY,
-    ltod => LTIME_OF_DAY,
-    time => TIME,
-    ltime => LTIME,
-    bool => BOOL,
-    string => STRING,
-    wstring => WSTRING,
-    char => CHAR,
-    wchar => WCHAR
+    sint => SINT = "0",
+    int => INT  = "0",
+    dint => DINT  = "0",
+    lint => LINT  = "0",
+    usint => USINT  = "0",
+    uint => UINT  = "0",
+    udint => UDINT  = "0",
+    ulint => ULINT  = "0",
+    byte => BYTE  = "0",
+    word => WORD  = "0",
+    dword => DWORD  = "0",
+    lword => LWORD  = "0",
+    date => DATE  = "0",
+    ldate => LDATE  = "0",
+    dt => DATE_AND_TIME  = "",
+    ldt => LDATE_AND_TIME = "LDT#0",
+    tod => TIME_OF_DAY  = "TOD#0",
+    ltod => LTIME_OF_DAY = "LTOD#0",
+    time => TIME = "T#0",
+    ltime => LTIME  = "LT#0",
+    bool => BOOL = "FALSE",
+    string => STRING = "\"\"",
+    wstring => WSTRING = "\"\"",
+    char => CHAR = "''",
+    wchar => WCHAR = "''"
 }

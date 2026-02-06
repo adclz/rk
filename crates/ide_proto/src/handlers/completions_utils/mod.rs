@@ -1,6 +1,4 @@
 use auto_lsp::lsp_types::CompletionItem;
-use db::WorkspaceDataBase;
-use hir::{hir_def::{scope::{ScopeId, ScopeKind}, semantic_index::get_scope}, hir_ty::ty::Type};
 
 pub mod completion_item_builder;
 pub mod field_strategy;
@@ -32,29 +30,6 @@ impl CompletionCtx {
 
     pub fn with_signature(mut self) -> Self {
         self.mode = QueryMode::Head;
-        self
-    }
-
-    /// Try field completion first, fall back to scope completion if type is unavailable or Never
-    pub fn field_or_scope<'db>(
-        &mut self,
-        ty: Option<Type<'db>>,
-        scope: ScopeId<'db>,
-        _query: &str,
-        db: &'db dyn WorkspaceDataBase,
-    ) -> &mut Self {
-        if let Some(ty) = ty
-            && !ty.is_never() {
-                self.field_completion(ty, db);
-                return self;
-            }
-              // check if we're in a pou body, if so add all statements as completion items
-        if let ScopeKind::Pou(pou) = get_scope(db, scope).kind
-            && self.located_pou_completion(pou, db).inside_head.is_in_body()
-        {
-            self.scope_completion(scope, "", db);
-            self.items.extend(static_snippets::all_stmts());
-        }
         self
     }
 

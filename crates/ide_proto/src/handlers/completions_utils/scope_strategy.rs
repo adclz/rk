@@ -85,7 +85,7 @@ impl<'db> ScopeCompletionCtx<'db> {
         // that's because they have to be declared in var sections
         let filter = match self.mode {
             QueryMode::Head => {
-                |pou: &Pou<'db>, db: &'db dyn WorkspaceDataBase| matches!(pou, Pou::Function(_))
+                |pou: &Pou<'db>, db: &'db dyn WorkspaceDataBase| !matches!(pou, Pou::Function(_))
             }
             QueryMode::Body => |pou: &Pou<'db>, db: &'db dyn WorkspaceDataBase| {
                 match pou {
@@ -97,9 +97,23 @@ impl<'db> ScopeCompletionCtx<'db> {
             },
         };
 
-        let pous = ScopeSearchCtx::new(self.scope)
-            .with_query(self.query.clone())
-            .search(db, filter);
+        let scope_search = match self.mode {
+            QueryMode::Head => {
+                // in head mode, we also want to include variables from parent scopes
+                ScopeSearchCtx::new(self.scope, filter)
+                    .only_pous()
+                    .with_query(self.query.clone())
+            }
+            QueryMode::Body => {
+                // in body mode, we want to include local variables and parameters
+                ScopeSearchCtx::new(self.scope, filter)
+                    .with_pous(true)
+                    .with_variables(true)
+                    .with_query(self.query.clone())
+            }
+        };
+
+        let pous = scope_search.search(db);
 
         for pou in pous.local_pous() {
             builder.build_pou(db, pou, None, &mut self.items);
@@ -109,8 +123,10 @@ impl<'db> ScopeCompletionCtx<'db> {
             builder.build_pou(db, &pou, Some(&ns), &mut self.items);
         }
 
-        for var in pous.variables() {
-            self.items.push(builder.build_variable(db, var));
+        if self.mode == QueryMode::Body {
+            for var in pous.variables() {
+                self.items.push(builder.build_variable(db, var));
+            }
         }
     }
 }

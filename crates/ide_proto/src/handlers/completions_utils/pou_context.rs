@@ -58,12 +58,12 @@ pub enum HeadLocation {
     BeforeVars, // suggests IMPLEMENTS/EXTENDS and var snippets
     InVars,     // suggests var snippets
     // Methods are always defined after vars
-    BeforeMethods,         // suggests var and method snippets
-    InMethods,             // suggests method snippets
+    BeforeMethods,      // suggests var and method snippets
+    InMethods,          // suggests method snippets
     InBodyAfterVars,    // suggests var and method snippets
     InBodyAfterMethods, //suggests var and method snippets
     #[default]
-    InBody,  // suggests *nothing*
+    InBody, // suggests *nothing*
 }
 
 impl HeadLocation {
@@ -71,16 +71,14 @@ impl HeadLocation {
     pub fn is_in_body(&self) -> bool {
         matches!(
             self,
-            HeadLocation::InBody
-                | HeadLocation::InBodyAfterMethods
-                | HeadLocation::InBodyAfterVars
+            HeadLocation::InBody | HeadLocation::InBodyAfterMethods | HeadLocation::InBodyAfterVars
         )
     }
 }
 
 #[derive(Debug)]
 pub struct HeadResult {
-    pub inside_head: HeadLocation,
+    pub head_location: HeadLocation,
     pub inside_var_section: VarSection,
     pub inputs: Option<tree_sitter::Range>,
     pub outputs: Option<tree_sitter::Range>,
@@ -202,7 +200,7 @@ impl HeadResult {
             temps,
             vars,
             inside_var_section,
-            inside_head,
+            head_location: inside_head,
         }
     }
 
@@ -436,7 +434,7 @@ END_FUNCTION_BLOCK
         let offset = source.find("FUNCTION_BLOCK FB1").unwrap() + "FUNCTION_BLOCK FB1".len();
         let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
 
-        assert_eq!(results.inside_head, HeadLocation::BeforeVars);
+        assert_eq!(results.head_location, HeadLocation::BeforeVars);
     }
 
     #[test]
@@ -464,7 +462,7 @@ END_FUNCTION_BLOCK
         let offset = first_end_var + 1;
         let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
 
-        assert_eq!(results.inside_head, HeadLocation::InVars);
+        assert_eq!(results.head_location, HeadLocation::InVars);
         assert_eq!(results.inside_var_section, VarSection::empty());
     }
 
@@ -493,7 +491,7 @@ END_FUNCTION_BLOCK
 
         let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
 
-        assert_eq!(results.inside_head, HeadLocation::BeforeMethods);
+        assert_eq!(results.head_location, HeadLocation::BeforeMethods);
     }
 
     #[test]
@@ -520,7 +518,7 @@ END_FUNCTION_BLOCK
         let offset = source.find("// method body").unwrap();
         let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
 
-        assert_eq!(results.inside_head, HeadLocation::InMethods);
+        assert_eq!(results.head_location, HeadLocation::InMethods);
     }
 
     #[test]
@@ -548,7 +546,7 @@ END_FUNCTION_BLOCK
         let offset = source.find("// statement area").unwrap();
         let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
 
-        assert_eq!(results.inside_head, HeadLocation::InBody);
+        assert_eq!(results.head_location, HeadLocation::InBody);
     }
 
     #[test]
@@ -568,7 +566,7 @@ END_FUNCTION_BLOCK
         let offset = source.find("FUNCTION_BLOCK FB1").unwrap() + "FUNCTION_BLOCK FB1".len();
         let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
 
-        assert_eq!(results.inside_head, HeadLocation::BeforeVars);
+        assert_eq!(results.head_location, HeadLocation::BeforeVars);
     }
 
     #[test]
@@ -602,7 +600,7 @@ END_FUNCTION_BLOCK
         let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
 
         // Between methods should be InMethods (to allow adding more methods)
-        assert_eq!(results.inside_head, HeadLocation::InMethods);
+        assert_eq!(results.head_location, HeadLocation::InMethods);
     }
 
     #[test]
@@ -627,7 +625,7 @@ END_FUNCTION_BLOCK
         let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
 
         // Body starts with 'V', so it should be InBodyAfterVars
-        assert_eq!(results.inside_head, HeadLocation::InBodyAfterVars);
+        assert_eq!(results.head_location, HeadLocation::InBodyAfterVars);
     }
 
     #[test]
@@ -652,7 +650,7 @@ END_FUNCTION_BLOCK
         let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
 
         // Body starts with 'M', so it should be InBodyAfterVars
-        assert_eq!(results.inside_head, HeadLocation::InBodyAfterVars);
+        assert_eq!(results.head_location, HeadLocation::InBodyAfterVars);
     }
 
     #[test]
@@ -676,7 +674,7 @@ END_FUNCTION_BLOCK
         let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
 
         // Body starts with 'V' after methods, so it should be InBodyAfterMethods
-        assert_eq!(results.inside_head, HeadLocation::InBodyAfterMethods);
+        assert_eq!(results.head_location, HeadLocation::InBodyAfterMethods);
     }
 
     #[test]
@@ -700,6 +698,6 @@ END_FUNCTION_BLOCK
         let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
 
         // Body does NOT start with V/E/M, so it should be regular InBody
-        assert_eq!(results.inside_head, HeadLocation::InBody);
+        assert_eq!(results.head_location, HeadLocation::InBody);
     }
 }

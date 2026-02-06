@@ -38,6 +38,8 @@ pub trait CompletionHandler<'db> {
         &'db self,
         db: &'db dyn WorkspaceDataBase,
         offset: usize,
+        trigger_character: Option<String>,
+        query: String,
     ) -> Option<Vec<CompletionItem>>;
 }
 
