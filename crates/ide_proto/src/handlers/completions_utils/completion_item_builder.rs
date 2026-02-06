@@ -311,5 +311,5 @@ pub fn build_call_signature<'db>(
         })
         .collect();
 
-    format!("{}({sep}{}{sep});", name, params.join(join_sep))
+    format!("{}({sep}{}{sep})", name, params.join(join_sep))
 }
