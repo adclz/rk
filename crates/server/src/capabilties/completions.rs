@@ -3,11 +3,7 @@ use auto_lsp::{
     lsp_types::{CompletionParams, CompletionResponse},
 };
 use db::WorkspaceDataBase;
-use ide_proto::{
-    handlers::CompletionHandler,
-    hir_node::{HirNode, PathExprRoot},
-    walk::descendant_at,
-};
+use ide_proto::walk::descendant_at;
 
 pub fn completions(
     db: &impl WorkspaceDataBase,
@@ -48,59 +44,9 @@ pub fn completions(
             ])));
         }
     };
-
-    // if we hit a PathExpr or InitExpr, we use the previous step to determine the completion items
-    // instead of the current one, as the current one is likely to be incomplete/invalid
-    match target {
-        HirNode::InitExpr { prev, curr } => {
-            Ok(Some(
-                prev.completion(db, offset, trigger_character, curr.to_string(db).to_owned())
-                    .unwrap_or_default()
-                    .into(),
-            ))
-        }
-        HirNode::PathExpr { prev, curr } => match prev {
-            PathExprRoot::Invocation(inv) => {
-                Ok(Some(
-                    inv.completion(
-                        db,
-                        offset,
-                        trigger_character,
-                        curr.ident(db).text(db).to_string(),
-                    )
-                    .unwrap_or_default()
-                    .into(),
-                ))
-            }
-            PathExprRoot::VariableAccess(inv) => {
-                Ok(Some(
-                    inv.completion(
-                        db,
-                        offset,
-                        trigger_character,
-                        curr.ident(db).text(db).to_string(),
-                    )
-                    .unwrap_or_default()
-                    .into(),
-                ))
-            }
-            PathExprRoot::PathExpr(inv) => {
-                Ok(Some(
-                    inv.completion(
-                        db,
-                        offset,
-                        trigger_character,
-                        curr.ident(db).text(db).to_string(),
-                    )
-                    .unwrap_or_default()
-                    .into(),
-                ))
-            }
-        },
-        _ => Ok(Some(CompletionResponse::Array(
-            target
-                .completion(db, offset, trigger_character, "".into())
-                .unwrap_or_default(),
-        ))),
-    }
+    Ok(Some(CompletionResponse::Array(
+        target
+            .completion(db, offset, trigger_character, "".into())
+            .unwrap_or_default(),
+    )))
 }
