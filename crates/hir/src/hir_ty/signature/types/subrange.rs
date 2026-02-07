@@ -72,7 +72,7 @@ impl<'db> Signature<'db> {
                     lhs: err.expected,
                     rhs: err.actual,
                     adjustment: err.adjustment,
-                    expr: CallSite::from_expr(db, min),
+                    expr: CallSite::from_scoped(db, &min),
                 }
                 .to_diagnostic(db),
             )
@@ -85,7 +85,7 @@ impl<'db> Signature<'db> {
                     lhs: err.expected,
                     rhs: err.actual,
                     adjustment: err.adjustment,
-                    expr: CallSite::from_expr(db, max),
+                    expr: CallSite::from_scoped(db, &max),
                 }
                 .to_diagnostic(db),
             )

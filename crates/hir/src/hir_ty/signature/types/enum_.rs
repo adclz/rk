@@ -74,7 +74,7 @@ impl<'db> Signature<'db> {
                             lhs: err.expected,
                             rhs: err.actual,
                             adjustment: err.adjustment,
-                            expr: CallSite::from_expr(db, value),
+                            expr: CallSite::from_scoped(db, &value),
                         }
                         .to_diagnostic(db),
                     )

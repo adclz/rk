@@ -61,7 +61,7 @@ impl<'db> StmtsResolverCtx<'db> {
                         .get_type_of_variable_access(db, *var)
                         .unwrap_or_default();
 
-                    base_typ.check_assignable(db, CallSite::from_var_access(db, *var), ctx);
+                    base_typ.check_assignable(db, CallSite::from_scoped(db, var), ctx);
 
                     self.infer_and_check_expr(db, &mut infer, *target, ctx);
 
@@ -69,7 +69,7 @@ impl<'db> StmtsResolverCtx<'db> {
                         ctx.errors.push(err.into_non_assignable(
                             db,
                             base_typ,
-                            CallSite::from_expr(db, *target),
+                            CallSite::from_scoped(db, target),
                         ));
                     }
                 }
@@ -88,7 +88,7 @@ impl<'db> StmtsResolverCtx<'db> {
                         ctx.errors.push(err.into_non_assignable(
                             db,
                             Type::new_bool(),
-                            CallSite::from_expr(db, *condition),
+                            CallSite::from_scoped(db, condition),
                         ));
                     }
 
@@ -109,7 +109,7 @@ impl<'db> StmtsResolverCtx<'db> {
                             ctx.errors.push(err.into_non_assignable(
                                 db,
                                 Type::new_bool(),
-                                CallSite::from_expr(db, *condition),
+                                CallSite::from_scoped(db, condition),
                             ));
                         }
 
@@ -131,7 +131,7 @@ impl<'db> StmtsResolverCtx<'db> {
                         ctx.errors.push(err.into_non_assignable(
                             db,
                             Type::new_bool(),
-                            CallSite::from_expr(db, *condition),
+                            CallSite::from_scoped(db, condition),
                         ));
                     }
 
@@ -152,7 +152,7 @@ impl<'db> StmtsResolverCtx<'db> {
 
                     control_typ.check_assignable(
                         db,
-                        CallSite::from_var_access(db, *control_variable),
+                        CallSite::from_scoped(db, control_variable),
                         ctx,
                     );
 
@@ -165,7 +165,7 @@ impl<'db> StmtsResolverCtx<'db> {
                         ctx.errors.push(err.into_non_assignable(
                             db,
                             control_typ,
-                            CallSite::from_expr(db, *start),
+                            CallSite::from_scoped(db, start),
                         ));
                     }
 
@@ -177,7 +177,7 @@ impl<'db> StmtsResolverCtx<'db> {
                                 db,
                                 ctx.get_type_of_variable_access(db, *control_variable)
                                     .unwrap_or_default(),
-                                CallSite::from_expr(db, *end),
+                                CallSite::from_scoped(db, end),
                             ),
                         );
                     }
@@ -193,7 +193,7 @@ impl<'db> StmtsResolverCtx<'db> {
                                     db,
                                     ctx.get_type_of_variable_access(db, *control_variable)
                                         .unwrap_or_default(),
-                                    CallSite::from_expr(db, *step),
+                                    CallSite::from_scoped(db, step),
                                 ),
                             );
                         }
@@ -238,7 +238,7 @@ impl<'db> StmtsResolverCtx<'db> {
                         ctx.errors.push(err.into_non_assignable(
                             db,
                             Type::new_bool(),
-                            CallSite::from_expr(db, *condition),
+                            CallSite::from_scoped(db, condition),
                         ));
                     }
 

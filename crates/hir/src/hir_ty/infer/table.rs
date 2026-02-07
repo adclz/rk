@@ -93,7 +93,7 @@ impl<'db> InferenceTable<'db> {
                     InferMode::NoInfer | InferMode::Unresolved => {
                         self.current_mode = InferMode::ResolvedInfer {
                             ty: infer.to_ty(db),
-                            expr: Some(CallSite::from_expr(db, expr)),
+                            expr: Some(CallSite::from_scoped(db, &expr)),
                         };
                     }
                     // inferred types have no priority over already resolved types
@@ -112,7 +112,7 @@ impl<'db> InferenceTable<'db> {
                     }
                     self.current_mode = InferMode::Resolved {
                         ty: value,
-                        expr: Some(CallSite::from_expr(db, expr)),
+                        expr: Some(CallSite::from_scoped(db, &expr)),
                     };
                 }
                 // already resolved

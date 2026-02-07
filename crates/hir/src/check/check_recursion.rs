@@ -86,7 +86,7 @@ impl<'db> TypeDependencyGraph<'db> {
         // check variables
         for var in def_map.global_variables.values() {
             let typ = Type::new_spec(db, var.spec(db));
-            let callsite = CallSite::from_spec(db, var.spec(db));
+            let callsite = CallSite::from_scoped(db, &var.spec(db));
             Self::extract_pou_from_type(db, pou, typ, deps, callsites, callsite);
         }
 
@@ -98,7 +98,7 @@ impl<'db> TypeDependencyGraph<'db> {
 
         if let Pou::DataType(dt) = pou {
             let typ = Type::new_spec(db, dt.spec(db));
-            let callsite = CallSite::from_spec(db, dt.spec(db));
+            let callsite = CallSite::from_scoped(db, &dt.spec(db));
             Self::extract_pou_from_type(db, pou, typ, deps, callsites, callsite);
         }
     }
@@ -121,7 +121,7 @@ impl<'db> TypeDependencyGraph<'db> {
                         field_ty,
                         deps,
                         callsites,
-                        CallSite::from_struct_element(db, field),
+                        CallSite::from_scoped(db, &field),
                     );
                 }
             }
@@ -133,7 +133,7 @@ impl<'db> TypeDependencyGraph<'db> {
                     elem,
                     deps,
                     callsites,
-                    CallSite::from_spec(db, a.of_type(db)),
+                    CallSite::from_scoped(db, &a.of_type(db)),
                 );
             }
             Type::DataType(dt) => {

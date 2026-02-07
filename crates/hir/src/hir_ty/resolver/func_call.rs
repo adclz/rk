@@ -158,7 +158,7 @@ pub fn resolve_func_call<'db>(
                     let lhs_typ = Type::new_var(db, *lhs_var);
 
                     resolver.resolve_variable_access(db, variable, ctx);
-                    let call_site = CallSite::from_var_access(db, variable);
+                    let call_site = CallSite::from_scoped(db, &variable);
 
                     let rhs_typ = ctx
                         .type_of_variable_access_with_adjustments(db, variable)
@@ -209,7 +209,7 @@ fn coerce_with_var_target<'db>(
                 lhs: e.expected,
                 rhs: e.actual,
                 adjustment: e.adjustment,
-                expr: CallSite::from_expr(db, expr),
+                expr: CallSite::from_scoped(db, &expr),
             }
             .to_diagnostic(db),
         );

@@ -11,20 +11,7 @@ use bitflags::bitflags;
 use compact_str::CompactString;
 use db::WorkspaceDataBase;
 
-use crate::{
-    hir_def::{
-        expressions::{
-            expression::{Expr, InitExpr, VariableAccess},
-            spec::{Spec, StructElement},
-        },
-        interned::{identifier::Ident, namespace::SpanNamespaceAccess},
-        pous::{pou::Pou, variable::VariableDecl},
-        scope::ScopeId,
-        semantic_index::semantic_index,
-        using::Using,
-    },
-    hir_ty::signature::inheritance::MethodRef,
-};
+use crate::hir_def::{interned::identifier::Ident, scope::ScopeId, semantic_index::semantic_index};
 
 pub mod builder;
 pub mod check;
@@ -66,82 +53,10 @@ impl<'db> CallSite<'db> {
         Self { scope, id }
     }
 
-    pub fn from_expr(db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> Self {
+    pub fn from_scoped(db: &'db dyn WorkspaceDataBase, scope: &impl HirNodeInfo<'db>) -> Self {
         Self {
-            scope: expr.get_scope_id(db),
-            id: expr.get_id(db),
-        }
-    }
-
-    pub fn from_init_expr(db: &'db dyn WorkspaceDataBase, expr: InitExpr<'db>) -> Self {
-        Self {
-            scope: expr.get_scope_id(db),
-            id: expr.get_id(db),
-        }
-    }
-
-    pub fn from_var_access(
-        db: &'db dyn WorkspaceDataBase,
-        var_access: VariableAccess<'db>,
-    ) -> Self {
-        Self {
-            scope: var_access.get_scope_id(db),
-            id: var_access.get_id(db),
-        }
-    }
-
-    pub fn from_namespace_access(
-        db: &'db dyn WorkspaceDataBase,
-        access: &SpanNamespaceAccess<'db>,
-    ) -> Self {
-        Self {
-            scope: access.get_scope_id(db),
-            id: access.get_id(db),
-        }
-    }
-
-    pub fn from_var_decl(db: &'db dyn WorkspaceDataBase, var_access: VariableDecl<'db>) -> Self {
-        Self {
-            scope: var_access.get_scope_id(db),
-            id: var_access.get_id(db),
-        }
-    }
-
-    pub fn from_spec(db: &'db dyn WorkspaceDataBase, spec: Spec<'db>) -> Self {
-        Self {
-            scope: spec.get_scope_id(db),
-            id: spec.get_id(db),
-        }
-    }
-
-    pub fn from_struct_element(
-        db: &'db dyn WorkspaceDataBase,
-        element: StructElement<'db>,
-    ) -> Self {
-        Self {
-            scope: element.get_scope_id(db),
-            id: element.get_id(db),
-        }
-    }
-
-    pub fn from_method_ref(db: &'db dyn WorkspaceDataBase, method: MethodRef<'db>) -> Self {
-        Self {
-            scope: method.get_scope_id(db),
-            id: method.get_id(db),
-        }
-    }
-
-    pub fn from_pou(db: &'db dyn WorkspaceDataBase, pou: Pou<'db>) -> Self {
-        Self {
-            scope: pou.get_scope_id(db),
-            id: pou.get_id(db),
-        }
-    }
-
-    pub fn from_using(db: &'db dyn WorkspaceDataBase, using: Using<'db>) -> Self {
-        Self {
-            scope: using.get_scope_id(db),
-            id: using.get_id(db),
+            scope: scope.get_scope_id(db),
+            id: scope.get_id(db),
         }
     }
 

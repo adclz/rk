@@ -44,7 +44,7 @@ impl<'db> Signature<'db> {
                 self.errors.push(
                     ResolveError::UsingNamespaceNotFound {
                         path: using.path(db).path,
-                        call_site: CallSite::from_using(db, *using),
+                        call_site: CallSite::from_scoped(db, using),
                     }
                     .to_diagnostic(db),
                 )

@@ -227,7 +227,7 @@ impl<'db> InitExprInferenceResult<'db> {
                     self.errors.push(err.into_non_assignable(
                         db,
                         place.current_init_typ,
-                        CallSite::from_init_expr(db, *expr),
+                        CallSite::from_scoped(db, expr),
                     ));
                 }
 

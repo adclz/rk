@@ -189,7 +189,7 @@ impl<'db> InferExprCtx<'db> {
                     inference_results.errors.push(err.into_non_addable(
                         db,
                         inference_results.type_of_expr[left],
-                        CallSite::from_expr(db, *right),
+                        CallSite::from_scoped(db, right),
                         *operator,
                     ));
                 }
@@ -203,7 +203,7 @@ impl<'db> InferExprCtx<'db> {
                     inference_results.errors.push(err.into_non_multiplicable(
                         db,
                         inference_results.type_of_expr[left],
-                        CallSite::from_expr(db, *right),
+                        CallSite::from_scoped(db, right),
                         *operator,
                     ));
                 }
@@ -213,7 +213,7 @@ impl<'db> InferExprCtx<'db> {
                     inference_results.errors.push(err.into_non_powerable(
                         db,
                         inference_results.type_of_expr[left],
-                        CallSite::from_expr(db, *right),
+                        CallSite::from_scoped(db, right),
                     ));
                 }
             }
@@ -229,7 +229,7 @@ impl<'db> InferExprCtx<'db> {
                     inference_results.errors.push(err.into_non_assignable(
                         db,
                         Type::new_bool(),
-                        CallSite::from_expr(db, *left),
+                        CallSite::from_scoped(db, left),
                     ));
                 }
 
@@ -240,7 +240,7 @@ impl<'db> InferExprCtx<'db> {
                     inference_results.errors.push(err.into_non_assignable(
                         db,
                         Type::new_bool(),
-                        CallSite::from_expr(db, *right),
+                        CallSite::from_scoped(db, right),
                     ));
                 }
                 // the return type of a boolean expression is bool
@@ -257,7 +257,7 @@ impl<'db> InferExprCtx<'db> {
                     inference_results.errors.push(err.into_non_comparable(
                         db,
                         inference_results.type_of_expr[left],
-                        CallSite::from_expr(db, *right),
+                        CallSite::from_scoped(db, right),
                     ));
                 }
                 // the return type of a comparison expression is bool
@@ -277,7 +277,7 @@ impl<'db> InferExprCtx<'db> {
                             inference_results.errors.push(err.into_non_assignable(
                                 db,
                                 inference_results.type_of_expr[expr],
-                                CallSite::from_expr(db, *expr),
+                                CallSite::from_scoped(db, expr),
                             ));
                         }
                     }
@@ -301,7 +301,7 @@ impl<'db> InferExprCtx<'db> {
         let to = inference_results.type_of_expr[&rhs];
 
         let mut table = InferenceTable::new();
-        table.set_target_type(db, Some(CallSite::from_var_decl(db, var)), lhs);
+        table.set_target_type(db, Some(CallSite::from_scoped(db, &var)), lhs);
         table.add_type(db, rhs, to, self.resolver);
         table.resolve_completly(db, self.resolver, inference_results);
 
@@ -328,7 +328,7 @@ impl<'db> InferExprCtx<'db> {
         let to = inference_results.type_of_expr[&rhs];
 
         let mut table = InferenceTable::new();
-        table.set_target_type(db, Some(CallSite::from_var_access(db, var)), lhs);
+        table.set_target_type(db, Some(CallSite::from_scoped(db, &var)), lhs);
         table.add_type(db, rhs, to, self.resolver);
         table.resolve_completly(db, self.resolver, inference_results);
 

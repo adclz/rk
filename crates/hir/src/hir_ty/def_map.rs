@@ -145,7 +145,7 @@ impl<'db> ScopeId<'db> {
                     if let Some(extends) = interface.extends(db) {
                         for base in extends {
                             if let Some(iface) = resolve_namespace_access(db, &base.path) {
-                                inheritors.insert(CallSite::from_namespace_access(db, base), iface);
+                                inheritors.insert(CallSite::from_scoped(db, base), iface);
                             }
                         }
                     }
@@ -156,11 +156,11 @@ impl<'db> ScopeId<'db> {
                     if let Some(base) = class.extends(db)
                         && let Some(pou) = resolve_namespace_access(db, &base.path)
                     {
-                        inheritors.insert(CallSite::from_namespace_access(db, base), pou);
+                        inheritors.insert(CallSite::from_scoped(db, base), pou);
                     }
                     for base in class.implements(db) {
                         if let Some(iface) = resolve_namespace_access(db, &base.path) {
-                            inheritors.insert(CallSite::from_namespace_access(db, base), iface);
+                            inheritors.insert(CallSite::from_scoped(db, base), iface);
                         }
                     }
                     inheritors
@@ -170,12 +170,12 @@ impl<'db> ScopeId<'db> {
                     if let Some(base) = fb.extends(db)
                         && let Some(pou) = resolve_namespace_access(db, &base.path)
                     {
-                        inheritors.insert(CallSite::from_namespace_access(db, base), pou);
+                        inheritors.insert(CallSite::from_scoped(db, base), pou);
                     }
 
                     for base in fb.implements(db) {
                         if let Some(iface) = resolve_namespace_access(db, &base.path) {
-                            inheritors.insert(CallSite::from_namespace_access(db, base), iface);
+                            inheritors.insert(CallSite::from_scoped(db, base), iface);
                         }
                     }
                     inheritors
