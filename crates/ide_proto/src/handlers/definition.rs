@@ -9,7 +9,7 @@ use hir::{
         },
         pous::{pou::Pou, variable::VariableDecl},
     },
-    hir_ty::{body::infer_body, signature::infer_signature, ty::Type},
+    hir_ty::{body::infer_body, infer::Infer, ty::Type},
 };
 
 use crate::{handlers::DefinitionHandler, hir_node::HirNode};
@@ -66,55 +66,31 @@ impl<'db> DefinitionHandler<'db> for Spec<'db> {
 
 impl<'db> DefinitionHandler<'db> for InitExpr<'db> {
     fn definition(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDefinitionResponse> {
-        let infer = infer_signature(db, self.scope_id(db));
-        infer
-            .init_expr_result
-            .type_of_init_expr
-            .get(self)
-            .and_then(|typ| typ.definition(db))
+        self.infer(db).definition(db)
     }
 }
 
 impl<'db> DefinitionHandler<'db> for BeginPathExpr<'db> {
     fn definition(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDefinitionResponse> {
-        let infer = infer_body(db, self.scope_id(db));
-        infer
-            .get_type_of_begin_path_expr(db, *self)
-            .and_then(|typ| typ.definition(db))
+        self.infer(db).definition(db)
     }
 }
 
 impl<'db> DefinitionHandler<'db> for PathExpr<'db> {
     fn definition(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDefinitionResponse> {
-        let infer = infer_body(db, self.scope_id(db));
-        infer
-            .get_type_of_path_expr(db, *self)
-            .and_then(|typ| typ.definition(db))
+        self.infer(db).definition(db)
     }
 }
 
 impl<'db> DefinitionHandler<'db> for VariableAccess<'db> {
     fn definition(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDefinitionResponse> {
-        let infer = infer_body(db, self.scope_id(db));
-        infer
-            .get_type_of_variable_access(db, *self)
-            .and_then(|typ| typ.definition(db))
+        self.infer(db).definition(db)
     }
 }
 
 impl<'db> DefinitionHandler<'db> for Expr<'db> {
     fn definition(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDefinitionResponse> {
-        if let Some(r) = infer_signature(db, self.scope_id(db))
-            .body_infer_result
-            .get_type_of_expr(*self)
-            .and_then(|typ| typ.definition(db))
-        {
-            return Some(r);
-        }
-
-        infer_body(db, self.scope_id(db))
-            .get_type_of_expr(*self)
-            .and_then(|typ| typ.definition(db))
+        self.infer(db).definition(db)
     }
 }
 

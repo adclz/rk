@@ -16,9 +16,7 @@ use hir::{
     hir_ty::{signature::inheritance::MethodRef, ty::Type},
 };
 
-use crate::{
-    comment_index::comment_index
-};
+use crate::comment_index::comment_index;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PathExprRoot<'db> {

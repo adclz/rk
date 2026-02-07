@@ -21,13 +21,9 @@ pub fn resolve_func_call<'db>(
 ) {
     resolver.resolve_begin_path_expr(db, func_call.path(db), None, ctx);
 
-    let access_typ = ctx
-        .get_type_of_begin_path_expr(db, func_call.path(db))
-        .unwrap_or_default();
+    let access_typ = ctx.get_type_of_begin_path_expr(db, func_call.path(db));
 
-    let typ = ctx
-        .type_of_begin_expr_with_adjustments(db, func_call.path(db))
-        .unwrap_or_default();
+    let typ = ctx.type_of_begin_expr_with_adjustments(db, func_call.path(db));
 
     if access_typ.is_never() || typ.is_never() {
         return;
@@ -160,9 +156,7 @@ pub fn resolve_func_call<'db>(
                     resolver.resolve_variable_access(db, variable, ctx);
                     let call_site = CallSite::from_scoped(db, &variable);
 
-                    let rhs_typ = ctx
-                        .type_of_variable_access_with_adjustments(db, variable)
-                        .unwrap_or_default();
+                    let rhs_typ = ctx.type_of_variable_access_with_adjustments(db, variable);
 
                     // is the variable assignable?
                     rhs_typ.check_assignable(db, call_site, ctx);

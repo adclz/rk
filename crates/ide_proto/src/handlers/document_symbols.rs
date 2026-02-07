@@ -26,7 +26,6 @@ impl<'db> HirNode<'db> {
             _ => (),
         }
     }
-
 }
 
 impl<'db> DocumentSymbolsHandler<'db> for NamespaceDecl<'db> {

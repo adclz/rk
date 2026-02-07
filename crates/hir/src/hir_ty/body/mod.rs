@@ -109,20 +109,20 @@ impl<'db> BodyInferenceResult<'db> {
         }
     }
 
-    pub fn get_type_of_expr(&self, expr: Expr<'db>) -> Option<Type<'db>> {
-        self.type_of_expr.get(&expr).copied()
+    pub(super) fn get_type_of_expr(&self, expr: Expr<'db>) -> Type<'db> {
+        self.type_of_expr.get(&expr).copied().unwrap_or_default()
     }
 
     pub fn type_of_expr_with_adjustments(
         &self,
         db: &'db dyn WorkspaceDataBase,
         expr: Expr<'db>,
-    ) -> Option<Type<'db>> {
+    ) -> Type<'db> {
         match expr.expr(db) {
             ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(var)) => {
                 self.type_of_variable_access_with_adjustments(db, *var)
             }
-            _ => self.type_of_expr.get(&expr).copied(),
+            _ => self.type_of_expr.get(&expr).copied().unwrap_or_default(),
         }
     }
 
@@ -130,21 +130,29 @@ impl<'db> BodyInferenceResult<'db> {
         &self,
         db: &'db dyn WorkspaceDataBase,
         var_access: VariableAccess<'db>,
-    ) -> Option<Type<'db>> {
+    ) -> Type<'db> {
         match var_access.kind(db) {
             VariableAccessKind::Symbolic(sym) => self.type_of_begin_expr_with_adjustments(db, sym),
-            VariableAccessKind::Direct(dv) => self.type_of_direct_variable.get(&dv).copied(),
+            VariableAccessKind::Direct(dv) => self
+                .type_of_direct_variable
+                .get(&dv)
+                .copied()
+                .unwrap_or_default(),
         }
     }
 
-    pub fn get_type_of_variable_access(
+    pub(super) fn get_type_of_variable_access(
         &self,
         db: &'db dyn WorkspaceDataBase,
         var_access: VariableAccess<'db>,
-    ) -> Option<Type<'db>> {
+    ) -> Type<'db> {
         match var_access.kind(db) {
             VariableAccessKind::Symbolic(sym) => self.get_type_of_begin_path_expr(db, sym),
-            VariableAccessKind::Direct(dv) => self.type_of_direct_variable.get(&dv).copied(),
+            VariableAccessKind::Direct(dv) => self
+                .type_of_direct_variable
+                .get(&dv)
+                .copied()
+                .unwrap_or_default(),
         }
     }
 
@@ -152,26 +160,30 @@ impl<'db> BodyInferenceResult<'db> {
         &self,
         db: &'db dyn WorkspaceDataBase,
         begin: BeginPathExpr<'db>,
-    ) -> Option<Type<'db>> {
+    ) -> Type<'db> {
         match begin.expr(db) {
             Some(expr) => self.type_of_path_expr_with_adjustments(expr),
             None => match begin.invocation(db) {
-                Some(invocation) => self.type_of_invocation.get(&invocation).copied(),
-                None => None,
+                Some(invocation) => self
+                    .type_of_invocation
+                    .get(&invocation)
+                    .copied()
+                    .unwrap_or_default(),
+                None => Default::default(),
             },
         }
     }
 
-    pub fn get_type_of_begin_path_expr(
+    pub(super) fn get_type_of_begin_path_expr(
         &self,
         db: &'db dyn WorkspaceDataBase,
         begin: BeginPathExpr<'db>,
-    ) -> Option<Type<'db>> {
+    ) -> Type<'db> {
         match begin.expr(db) {
             Some(expr) => self.get_type_of_path_expr(db, expr),
             None => match begin.invocation(db) {
                 Some(invocation) => self.get_type_of_invocation(db, invocation),
-                None => None,
+                None => Default::default(),
             },
         }
     }
@@ -180,27 +192,37 @@ impl<'db> BodyInferenceResult<'db> {
         &self,
         db: &'db dyn WorkspaceDataBase,
         invocation: Invocation<'db>,
-    ) -> Option<Type<'db>> {
-        self.type_of_invocation.get(&invocation).copied()
+    ) -> Type<'db> {
+        self.type_of_invocation
+            .get(&invocation)
+            .copied()
+            .unwrap_or_default()
     }
 
-    pub fn type_of_path_expr_with_adjustments(&self, expr: PathExpr<'db>) -> Option<Type<'db>> {
+    pub fn type_of_path_expr_with_adjustments(&self, expr: PathExpr<'db>) -> Type<'db> {
         match self
             .path_expr_adjustments
             .get(&expr)
             .and_then(|adjustements| adjustements.last())
         {
-            Some(adjustment) => Some(adjustment.target),
-            None => self.type_of_path_expr.get(&expr).copied(),
+            Some(adjustment) => adjustment.target,
+            None => self
+                .type_of_path_expr
+                .get(&expr)
+                .copied()
+                .unwrap_or_default(),
         }
     }
 
-    pub fn get_type_of_path_expr(
+    pub(super) fn get_type_of_path_expr(
         &self,
         db: &'db dyn WorkspaceDataBase,
         expr: PathExpr<'db>,
-    ) -> Option<Type<'db>> {
-        self.type_of_path_expr.get(&expr).copied()
+    ) -> Type<'db> {
+        self.type_of_path_expr
+            .get(&expr)
+            .copied()
+            .unwrap_or_default()
     }
 
     pub fn adjustments_of_expr(

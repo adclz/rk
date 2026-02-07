@@ -111,12 +111,13 @@ impl<'db> CompletionBuilder {
     ) {
         // Check if this is an enum type and expand variants instead
         if let Pou::DataType(data_type) = pou
-            && let SpecKind::Enum(enm) = data_type.spec(db).kind(db) {
-                let name = pou.get_name_ident(db).text(db).to_string();
-                let additional_edit = self.build_import_edit(db, namespace);
-                self.expand_enum_variants(db, &name, *enm, additional_edit, items);
-                return;
-            }
+            && let SpecKind::Enum(enm) = data_type.spec(db).kind(db)
+        {
+            let name = pou.get_name_ident(db).text(db).to_string();
+            let additional_edit = self.build_import_edit(db, namespace);
+            self.expand_enum_variants(db, &name, *enm, additional_edit, items);
+            return;
+        }
 
         // Regular POu handling
         let additional_edit = self.build_import_edit(db, namespace);

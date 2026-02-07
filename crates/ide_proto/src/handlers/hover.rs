@@ -20,6 +20,7 @@ use hir::{
     },
     hir_ty::{
         body::infer_body,
+        infer::Infer,
         signature::{infer_signature, inheritance::MethodRef},
         ty::Type,
     },
@@ -30,8 +31,8 @@ use crate::{
     hir_node::{HasComment, HirNode, MaybeHirNode, get_param_start_pos},
 };
 
-impl<'db> HirNode<'db>  {
-        pub fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
+impl<'db> HirNode<'db> {
+    pub fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
         match self {
             HirNode::Namespace(n) => n.hover(db, offset),
             HirNode::PouDecl(p) => p.hover(db, offset),
@@ -181,8 +182,7 @@ impl<'db> HoverHandler<'db> for Spec<'db> {
 
 impl<'db> HoverHandler<'db> for InitExpr<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
-        let infer = infer_signature(db, self.scope_id(db));
-        let typ = infer.init_expr_result.type_of_init_expr.get(self)?;
+        let typ = self.infer(db);
 
         let comment = typ
             .as_hir_node(db)
@@ -271,57 +271,25 @@ impl<'db> HoverHandler<'db> for StructElement<'db> {
 
 impl<'db> HoverHandler<'db> for BeginPathExpr<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
-        let infer = infer_body(db, self.scope_id(db));
-        infer
-            .get_type_of_begin_path_expr(db, *self)
-            .and_then(|typ| {
-                typ.hover(db, offset).map(|mut hover| {
-                    hover.range = Some(self.get_span(db).lsp());
-                    hover
-                })
-            })
+        self.infer(db).hover(db, offset)
     }
 }
 
 impl<'db> HoverHandler<'db> for PathExpr<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
-        let infer = infer_body(db, self.scope_id(db));
-        infer.get_type_of_path_expr(db, *self).and_then(|typ| {
-            typ.hover(db, offset).map(|mut hover| {
-                hover.range = Some(self.get_span(db).lsp());
-                hover
-            })
-        })
+        self.infer(db).hover(db, offset)
     }
 }
 
 impl<'db> HoverHandler<'db> for Expr<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
-        if let Some(r) = infer_signature(db, self.scope_id(db))
-            .body_infer_result
-            .get_type_of_expr(*self)
-            .and_then(|typ| typ.hover(db, offset))
-        {
-            return Some(r);
-        }
-
-        infer_body(db, self.scope_id(db))
-            .get_type_of_expr(*self)
-            .and_then(|typ| typ.hover(db, offset))
+        self.infer(db).hover(db, offset)
     }
 }
 
 impl<'db> HoverHandler<'db> for VariableAccess<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
-        let infer = infer_body(db, self.scope_id(db));
-        infer
-            .get_type_of_variable_access(db, *self)
-            .and_then(|typ| {
-                typ.hover(db, offset).map(|mut hover| {
-                    hover.range = Some(self.get_span(db).lsp());
-                    hover
-                })
-            })
+        self.infer(db).hover(db, offset)
     }
 }
 

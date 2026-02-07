@@ -57,9 +57,7 @@ impl<'db> StmtsResolverCtx<'db> {
 
                 StmtKind::Assignment { var, target } => {
                     resolver.resolve_variable_access(db, *var, ctx);
-                    let base_typ = ctx
-                        .get_type_of_variable_access(db, *var)
-                        .unwrap_or_default();
+                    let base_typ = ctx.get_type_of_variable_access(db, *var);
 
                     base_typ.check_assignable(db, CallSite::from_scoped(db, var), ctx);
 
@@ -146,9 +144,8 @@ impl<'db> StmtsResolverCtx<'db> {
                     body,
                 } => {
                     resolver.resolve_variable_access(db, *control_variable, ctx);
-                    let control_typ = ctx
-                        .type_of_variable_access_with_adjustments(db, *control_variable)
-                        .unwrap_or_default();
+                    let control_typ =
+                        ctx.type_of_variable_access_with_adjustments(db, *control_variable);
 
                     control_typ.check_assignable(
                         db,
@@ -172,14 +169,11 @@ impl<'db> StmtsResolverCtx<'db> {
                     if let Err(err) =
                         infer.coerce_var_access_with_expr(db, *control_variable, *end, ctx)
                     {
-                        ctx.errors.push(
-                            err.into_non_comparable(
-                                db,
-                                ctx.get_type_of_variable_access(db, *control_variable)
-                                    .unwrap_or_default(),
-                                CallSite::from_scoped(db, end),
-                            ),
-                        );
+                        ctx.errors.push(err.into_non_comparable(
+                            db,
+                            ctx.get_type_of_variable_access(db, *control_variable),
+                            CallSite::from_scoped(db, end),
+                        ));
                     }
 
                     if let Some(step) = step {
@@ -188,14 +182,11 @@ impl<'db> StmtsResolverCtx<'db> {
                         if let Err(err) =
                             infer.coerce_var_access_with_expr(db, *control_variable, *step, ctx)
                         {
-                            ctx.errors.push(
-                                err.into_non_comparable(
-                                    db,
-                                    ctx.get_type_of_variable_access(db, *control_variable)
-                                        .unwrap_or_default(),
-                                    CallSite::from_scoped(db, step),
-                                ),
-                            );
+                            ctx.errors.push(err.into_non_comparable(
+                                db,
+                                ctx.get_type_of_variable_access(db, *control_variable),
+                                CallSite::from_scoped(db, step),
+                            ));
                         }
                     }
 
@@ -205,9 +196,7 @@ impl<'db> StmtsResolverCtx<'db> {
                 StmtKind::FuncCall(call) => {
                     resolve_func_call(db, resolver, *call, ctx);
 
-                    let typ = ctx
-                        .type_of_begin_expr_with_adjustments(db, call.path(db))
-                        .unwrap_or_default();
+                    let typ = ctx.type_of_begin_expr_with_adjustments(db, call.path(db));
 
                     if typ.with_return_type(db).is_some() {
                         ctx.errors.push(

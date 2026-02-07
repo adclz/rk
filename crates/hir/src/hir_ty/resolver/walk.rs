@@ -89,9 +89,7 @@ impl<'db> Type<'db> {
                         for step in steps {
                             current.walk_path_expr(db, true, step, multibits, &mut place, ctx);
                             // it is necessary to apply adjustments at each step
-                            current = ctx
-                                .type_of_path_expr_with_adjustments(step.get_expr(db))
-                                .unwrap_or_default();
+                            current = ctx.type_of_path_expr_with_adjustments(step.get_expr(db));
                         }
 
                         if current.is_never() {
@@ -291,11 +289,8 @@ impl<'db> Type<'db> {
                         Err(non_ref) => {
                             if report_errors {
                                 ctx.errors.push(
-                                    ResolveError::DerefNonRefType {
-                                        expr,
-                                        ty: non_ref,
-                                    }
-                                    .to_diagnostic(db),
+                                    ResolveError::DerefNonRefType { expr, ty: non_ref }
+                                        .to_diagnostic(db),
                                 );
                             }
                             break;

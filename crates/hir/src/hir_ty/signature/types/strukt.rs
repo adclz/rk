@@ -3,9 +3,7 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     HasName,
-    check::errors::{
-        analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError,
-    },
+    check::errors::{analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError},
     hir_def::expressions::spec::{Struct, StructElement},
     hir_ty::signature::Signature,
 };

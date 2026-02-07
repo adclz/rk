@@ -7,10 +7,13 @@ use hir::{
         namespace::NamespaceDecl,
         pous::pou::Pou,
     },
-    hir_ty::{body::infer_body, signature::infer_signature, ty::Type},
+    hir_ty::{body::infer_body, infer::Infer, ty::Type},
 };
 
-use crate::{handlers::InlayHintHandler, hir_node::{HirNode, get_param_start_pos}};
+use crate::{
+    handlers::InlayHintHandler,
+    hir_node::{HirNode, get_param_start_pos},
+};
 
 impl<'db> HirNode<'db> {
     pub fn inlay_hint(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<InlayHint> {
@@ -80,8 +83,8 @@ impl<'db> InlayHintHandler<'db> for ParamAssign<'db> {
 
 impl<'db> InlayHintHandler<'db> for InitExpr<'db> {
     fn inlay_hint(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<InlayHint> {
-        let infer = infer_signature(db, self.scope_id(db));
-        let typ = infer.init_expr_result.type_of_init_expr.get(self)?;
+        let typ = self.infer(db);
+
         match self.kind(db) {
             InitExprKind::StructElement { name, value: _ } => Some(InlayHint {
                 position: name.get_span(db).lsp().end,

@@ -9,13 +9,12 @@ use hir::{
         },
         pous::variable::VariableDecl,
     },
-    hir_ty::{body::infer_body, signature::infer_signature, ty::Type},
+    hir_ty::{body::infer_body, infer::Infer, ty::Type},
 };
 
 use crate::{handlers::DeclarationHandler, hir_node::HirNode};
 
 impl<'db> HirNode<'db> {
-
     pub fn declaration(
         &'db self,
         db: &'db dyn WorkspaceDataBase,
@@ -32,7 +31,6 @@ impl<'db> HirNode<'db> {
             _ => None,
         }
     }
-
 }
 
 impl<'db> DeclarationHandler<'db> for VariableDecl<'db> {
@@ -55,63 +53,37 @@ impl<'db> DeclarationHandler<'db> for StructElement<'db> {
 
 impl<'db> DeclarationHandler<'db> for Spec<'db> {
     fn declaration(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDeclarationResponse> {
-        let infer = infer_signature(db, self.scope_id(db));
-        let typ = infer.type_of_specs.get(self)?;
-        typ.declaration(db)
+        self.infer(db).declaration(db)
     }
 }
 
 impl<'db> DeclarationHandler<'db> for InitExpr<'db> {
     fn declaration(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDeclarationResponse> {
-        let infer = infer_signature(db, self.scope_id(db));
-        infer
-            .init_expr_result
-            .type_of_init_expr
-            .get(self)
-            .and_then(|typ| typ.declaration(db))
+        self.infer(db).declaration(db)
     }
 }
 
 impl<'db> DeclarationHandler<'db> for BeginPathExpr<'db> {
     fn declaration(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDeclarationResponse> {
-        let infer = infer_body(db, self.scope_id(db));
-        infer
-            .get_type_of_begin_path_expr(db, *self)
-            .and_then(|typ| typ.declaration(db))
+        self.infer(db).declaration(db)
     }
 }
 
 impl<'db> DeclarationHandler<'db> for PathExpr<'db> {
     fn declaration(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDeclarationResponse> {
-        let infer = infer_body(db, self.scope_id(db));
-        infer
-            .get_type_of_path_expr(db, *self)
-            .and_then(|typ| typ.declaration(db))
+        self.infer(db).declaration(db)
     }
 }
 
 impl<'db> DeclarationHandler<'db> for Expr<'db> {
     fn declaration(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDeclarationResponse> {
-        if let Some(r) = infer_signature(db, self.scope_id(db))
-            .body_infer_result
-            .get_type_of_expr(*self)
-            .and_then(|typ| typ.declaration(db))
-        {
-            return Some(r);
-        }
-
-        infer_body(db, self.scope_id(db))
-            .get_type_of_expr(*self)
-            .and_then(|typ| typ.declaration(db))
+        self.infer(db).declaration(db)
     }
 }
 
 impl<'db> DeclarationHandler<'db> for VariableAccess<'db> {
     fn declaration(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDeclarationResponse> {
-        let infer = infer_body(db, self.scope_id(db));
-        infer
-            .get_type_of_variable_access(db, *self)
-            .and_then(|typ| typ.declaration(db))
+        self.infer(db).declaration(db)
     }
 }
 

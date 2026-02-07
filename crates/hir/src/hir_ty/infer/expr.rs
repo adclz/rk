@@ -83,23 +83,17 @@ impl<'db> InferExprCtx<'db> {
                 self.resolver
                     .resolve_variable_access(db, *v, inference_result);
 
-                inference_result
-                    .get_type_of_variable_access(db, *v)
-                    .unwrap_or_default()
+                inference_result.get_type_of_variable_access(db, *v)
             }
             PrimaryExpr::FuncCall(call) => {
                 resolve_func_call(db, self.resolver, *call, inference_result);
-                inference_result
-                    .get_type_of_begin_path_expr(db, call.path(db))
-                    .unwrap_or_default()
+                inference_result.get_type_of_begin_path_expr(db, call.path(db))
             }
             PrimaryExpr::EnumValue { name, variant } => {
                 self.resolver
                     .resolve_begin_path_expr(db, *name, None, inference_result);
 
-                let find_enm = inference_result
-                    .type_of_begin_expr_with_adjustments(db, *name)
-                    .unwrap_or_default();
+                let find_enm = inference_result.type_of_begin_expr_with_adjustments(db, *name);
 
                 // normalizing here is necessary, but the type itself should be stored as is
                 match find_enm.normalize(db) {
@@ -136,9 +130,7 @@ impl<'db> InferExprCtx<'db> {
                     self.resolver
                         .resolve_begin_path_expr(db, *adress, None, inference_result);
 
-                    let typ = inference_result
-                        .type_of_begin_expr_with_adjustments(db, *adress)
-                        .unwrap_or_default();
+                    let typ = inference_result.type_of_begin_expr_with_adjustments(db, *adress);
 
                     if let Some(path) = adress.expr(db) {
                         inference_result
@@ -307,9 +299,7 @@ impl<'db> InferExprCtx<'db> {
 
         lhs.coerce_with_type(
             db,
-            inference_results
-                .type_of_expr_with_adjustments(db, rhs)
-                .unwrap_or_default(),
+            inference_results.type_of_expr_with_adjustments(db, rhs),
             inference_results.adjustments_of_expr(db, rhs),
             self.resolver,
         )
@@ -322,9 +312,7 @@ impl<'db> InferExprCtx<'db> {
         rhs: Expr<'db>,
         inference_results: &mut BodyInferenceResult<'db>,
     ) -> CoerceResult<'db> {
-        let lhs = inference_results
-            .type_of_variable_access_with_adjustments(db, var)
-            .unwrap_or_default();
+        let lhs = inference_results.type_of_variable_access_with_adjustments(db, var);
         let to = inference_results.type_of_expr[&rhs];
 
         let mut table = InferenceTable::new();
@@ -336,9 +324,7 @@ impl<'db> InferExprCtx<'db> {
 
         lhs.coerce_with_type(
             db,
-            inference_results
-                .type_of_expr_with_adjustments(db, rhs)
-                .unwrap_or_default(),
+            inference_results.type_of_expr_with_adjustments(db, rhs),
             inference_results.adjustments_of_expr(db, rhs),
             self.resolver,
         )
@@ -361,9 +347,7 @@ impl<'db> InferExprCtx<'db> {
 
         lhs.coerce_with_type(
             db,
-            inference_results
-                .type_of_expr_with_adjustments(db, rhs)
-                .unwrap_or_default(),
+            inference_results.type_of_expr_with_adjustments(db, rhs),
             inference_results.adjustments_of_expr(db, rhs),
             self.resolver,
         )
@@ -387,12 +371,9 @@ impl<'db> InferExprCtx<'db> {
 
         inference_results
             .type_of_expr_with_adjustments(db, left)
-            .unwrap_or_default()
             .coerce_with_type(
                 db,
-                inference_results
-                    .type_of_expr_with_adjustments(db, right)
-                    .unwrap_or_default(),
+                inference_results.type_of_expr_with_adjustments(db, right),
                 inference_results.adjustments_of_expr(db, right),
                 self.resolver,
             )

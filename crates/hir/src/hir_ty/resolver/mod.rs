@@ -183,9 +183,7 @@ impl<'db> Resolver<'db> {
                 return;
             }
 
-            current = ctx
-                .type_of_path_expr_with_adjustments(step.get_expr(db))
-                .unwrap_or_default();
+            current = ctx.type_of_path_expr_with_adjustments(step.get_expr(db));
         }
     }
 }

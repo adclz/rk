@@ -12,7 +12,7 @@ use hir::{
         using::Using,
     },
     hir_ty::{
-        body::infer_body,
+        infer::Infer,
         signature::{infer_signature, inheritance::MethodRef},
         ty::Type,
     },
@@ -24,7 +24,6 @@ use crate::{
 };
 
 impl<'db> HirNode<'db> {
-
     pub fn semantic_tokens(
         &'db self,
         db: &'db dyn WorkspaceDataBase,
@@ -42,7 +41,6 @@ impl<'db> HirNode<'db> {
             _ => {}
         }
     }
-
 }
 
 impl<'db> SemanticTokensHandler<'db> for Pou<'db> {
@@ -130,11 +128,7 @@ impl<'db> SemanticTokensHandler<'db> for BeginPathExpr<'db> {
         db: &'db dyn WorkspaceDataBase,
         builder: &mut SemanticTokensBuilder,
     ) {
-        let infer = infer_body(db, self.get_scope_id(db));
-        let typ = infer
-            .get_type_of_begin_path_expr(db, *self)
-            .unwrap_or_default();
-        semantic_tokens_for_type(db, typ, builder, self.get_span(db));
+        semantic_tokens_for_type(db, self.infer(db), builder, self.get_span(db));
     }
 }
 
@@ -144,9 +138,7 @@ impl<'db> SemanticTokensHandler<'db> for PathExpr<'db> {
         db: &'db dyn WorkspaceDataBase,
         builder: &mut SemanticTokensBuilder,
     ) {
-        let infer = infer_body(db, self.get_scope_id(db));
-        let typ = infer.get_type_of_path_expr(db, *self).unwrap_or_default();
-        semantic_tokens_for_type(db, typ, builder, self.get_span(db));
+        semantic_tokens_for_type(db, self.infer(db), builder, self.get_span(db));
     }
 }
 
@@ -156,11 +148,7 @@ impl<'db> SemanticTokensHandler<'db> for VariableAccess<'db> {
         db: &'db dyn WorkspaceDataBase,
         builder: &mut SemanticTokensBuilder,
     ) {
-        let infer = infer_body(db, self.get_scope_id(db));
-        let typ = infer
-            .get_type_of_variable_access(db, *self)
-            .unwrap_or_default();
-        semantic_tokens_for_type(db, typ, builder, self.get_span(db));
+        semantic_tokens_for_type(db, self.infer(db), builder, self.get_span(db));
     }
 }
 
@@ -170,35 +158,17 @@ impl<'db> SemanticTokensHandler<'db> for Expr<'db> {
         db: &'db dyn WorkspaceDataBase,
         builder: &mut SemanticTokensBuilder,
     ) {
-        if let Some(typ) = infer_signature(db, self.scope_id(db))
-            .body_infer_result
-            .get_type_of_expr(*self)
-        {
-            if let ExprKind::PrimaryExpr(PrimaryExpr::EnumValue { name, variant }) = self.expr(db) {
-                builder.push(
-                    name.get_span(db).lsp(),
-                    SUPPORTED_TYPES.iter().position(|x| *x == ENUM).unwrap() as u32,
-                    0,
-                );
-                semantic_tokens_for_type(db, typ, builder, variant.get_span(db));
-            } else {
-                semantic_tokens_for_type(db, typ, builder, self.get_span(db));
-            }
-        }
+        let typ = self.infer(db);
 
-        if let Some(typ) = infer_body(db, self.scope_id(db)).get_type_of_expr(*self) {
-            if let ExprKind::PrimaryExpr(PrimaryExpr::EnumValue { name, variant, .. }) =
-                self.expr(db)
-            {
-                builder.push(
-                    name.get_span(db).lsp(),
-                    SUPPORTED_TYPES.iter().position(|x| *x == ENUM).unwrap() as u32,
-                    0,
-                );
-                semantic_tokens_for_type(db, typ, builder, variant.get_span(db));
-            } else {
-                semantic_tokens_for_type(db, typ, builder, self.get_span(db));
-            }
+        if let ExprKind::PrimaryExpr(PrimaryExpr::EnumValue { name, variant }) = self.expr(db) {
+            builder.push(
+                name.get_span(db).lsp(),
+                SUPPORTED_TYPES.iter().position(|x| *x == ENUM).unwrap() as u32,
+                0,
+            );
+            semantic_tokens_for_type(db, typ, builder, variant.get_span(db));
+        } else {
+            semantic_tokens_for_type(db, typ, builder, self.get_span(db));
         }
     }
 }

@@ -14,7 +14,7 @@ use hir::{
         semantic_index::get_scope,
         using::Using,
     },
-    hir_ty::{body::infer_body, signature::infer_signature},
+    hir_ty::{body::infer_body, infer::Infer},
     query_string::namespace::NamespaceSearchCtx,
 };
 use rustc_hash::FxHashSet;
@@ -40,8 +40,7 @@ impl<'db> HirNode<'db> {
         match self {
             HirNode::InitExpr { prev, curr } => Some(
                 prev.completion(db, offset, trigger_character, curr.to_string(db).to_owned())
-                    .unwrap_or_default()
-                    .into(),
+                    .unwrap_or_default(),
             ),
             HirNode::PathExpr { prev, curr } => match prev {
                 PathExprRoot::Invocation(inv) => Some(
@@ -51,8 +50,7 @@ impl<'db> HirNode<'db> {
                         trigger_character,
                         curr.ident(db).text(db).to_string(),
                     )
-                    .unwrap_or_default()
-                    .into(),
+                    .unwrap_or_default(),
                 ),
                 PathExprRoot::VariableAccess(inv) => Some(
                     inv.completion(
@@ -61,8 +59,7 @@ impl<'db> HirNode<'db> {
                         trigger_character,
                         curr.ident(db).text(db).to_string(),
                     )
-                    .unwrap_or_default()
-                    .into(),
+                    .unwrap_or_default(),
                 ),
                 PathExprRoot::PathExpr(inv) => Some(
                     inv.completion(
@@ -71,8 +68,7 @@ impl<'db> HirNode<'db> {
                         trigger_character,
                         curr.ident(db).text(db).to_string(),
                     )
-                    .unwrap_or_default()
-                    .into(),
+                    .unwrap_or_default(),
                 ),
             },
             HirNode::Spec(s) => s.completion(
@@ -166,12 +162,9 @@ impl<'db> CompletionHandler<'db> for PathExpr<'db> {
     ) -> Option<Vec<CompletionItem>> {
         let mut ctx = CompletionCtx::new(offset, QueryMode::Body);
 
-        let infer = infer_body(db, self.get_scope_id(db));
-        let ty = infer.get_type_of_path_expr(db, *self);
+        let ty = self.infer(db);
 
-        if let Some(ty) = ty
-            && !ty.is_never()
-        {
+        if !ty.is_never() {
             ctx.field_completion(ty, db);
             return Some(ctx.take_items());
         }
@@ -202,12 +195,9 @@ impl<'db> CompletionHandler<'db> for VariableAccess<'db> {
     ) -> Option<Vec<CompletionItem>> {
         let mut ctx = CompletionCtx::new(offset, QueryMode::Body);
 
-        let infer = infer_body(db, self.get_scope_id(db));
-        let ty = infer.get_type_of_variable_access(db, *self);
+        let ty: hir::hir_ty::ty::Type<'_> = self.infer(db);
 
-        if let Some(ty) = ty
-            && !ty.is_never()
-        {
+        if !ty.is_never() {
             ctx.field_completion(ty, db);
             return Some(ctx.take_items());
         }
@@ -237,13 +227,9 @@ impl<'db> CompletionHandler<'db> for Expr<'db> {
         query: String,
     ) -> Option<Vec<CompletionItem>> {
         let mut ctx = CompletionCtx::new(offset, QueryMode::Body);
+        let ty = self.infer(db);
 
-        let infer = infer_body(db, self.get_scope_id(db));
-        let ty = infer.get_type_of_expr(*self);
-
-        if let Some(ty) = ty
-            && !ty.is_never()
-        {
+        if !ty.is_never() {
             ctx.field_completion(ty, db);
             return Some(ctx.take_items());
         }
@@ -275,7 +261,7 @@ impl<'db> CompletionHandler<'db> for Invocation<'db> {
         let mut ctx = CompletionCtx::new(offset, QueryMode::Body);
 
         let infer = infer_body(db, self.get_scope_id(db));
-        let ty = infer.get_type_of_invocation(db, *self).unwrap_or_default();
+        let ty = infer.get_type_of_invocation(db, *self);
 
         // Try field completion, fall back to scope if type is unavailable
         ctx.field_completion(ty, db);
@@ -294,13 +280,10 @@ impl<'db> CompletionHandler<'db> for InitExpr<'db> {
     ) -> Option<Vec<CompletionItem>> {
         let mut ctx = CompletionCtx::new(offset, QueryMode::Head);
 
-        let infer = infer_signature(db, self.get_scope_id(db));
-        let ty = infer.init_expr_result.type_of_init_expr.get(self).copied();
+        let ty = self.infer(db);
 
         // Try field completion
-        if let Some(ty) = ty
-            && !ty.is_never()
-        {
+        if !ty.is_never() {
             ctx.field_completion(ty, db);
         }
 
