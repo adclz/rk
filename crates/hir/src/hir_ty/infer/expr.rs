@@ -293,7 +293,7 @@ impl<'db> InferExprCtx<'db> {
         let to = inference_results.type_of_expr[&rhs];
 
         let mut table = InferenceTable::new();
-        table.set_target_type(db, Some(CallSite::from_scoped(db, &var)), lhs);
+        table.set_target_type(db, Some(lhs.into()), lhs);
         table.add_type(db, rhs, to, self.resolver);
         table.resolve_completly(db, self.resolver, inference_results);
 
@@ -316,7 +316,7 @@ impl<'db> InferExprCtx<'db> {
         let to = inference_results.type_of_expr[&rhs];
 
         let mut table = InferenceTable::new();
-        table.set_target_type(db, Some(CallSite::from_scoped(db, &var)), lhs);
+        table.set_target_type(db, Some(inference_results.get_type_of_variable_access(db, var).into()), lhs);
         table.add_type(db, rhs, to, self.resolver);
         table.resolve_completly(db, self.resolver, inference_results);
 

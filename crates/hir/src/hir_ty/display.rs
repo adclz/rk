@@ -175,6 +175,7 @@ impl<'db> Type<'db> {
     }
 
     pub fn with_location(&self, db: &'db dyn WorkspaceDataBase, diag: &mut IdeDiagnostic) {
+        eprintln!("with_location for type: {:?}", self);
         match self {
             Self::Variable((v, multibits)) => match v.spec(db).kind(db) {
                 SpecKind::Target(t) => {

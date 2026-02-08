@@ -153,8 +153,8 @@ END_FUNCTION_BLOCK"#;
         ,-[ file:///test0.st:11:19 ]
         |
       4 |     param1: LINT;
-        |     ^^^^^^|^^^^^  
-        |           `------- 'LINT' is expected due to this
+        |     ^^^|^^  
+        |        `---- type is declared by variable 'param1' here
         | 
      11 |         param1 := 5.5,
         |                   ^|^  

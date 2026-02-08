@@ -85,10 +85,12 @@ fn invalid_subrange_value_type(mut with_db: RootDatabase) {
     [E0309] Error: invalid literal
         ,-[ file:///test0.st:11:22 ]
         |
+      3 |             Range: UINT (0..5);
+        |                  ^^^^^^|^^^^^^  
+        |                        `-------- type is defined by 'Range' here
+        | 
      11 |             test :=  -1 // -1 should not be allowed here (UINT)
-        |             ^^|^     ^|  
-        |               `---------- 'UINT' is expected due to this
-        |                       |  
+        |                      ^|  
         |                       `-- cannot infer '<integer>' to 'UINT': literal can not be negative
     ----'
     ");

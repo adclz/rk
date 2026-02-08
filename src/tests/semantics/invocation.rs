@@ -166,8 +166,8 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:7:12 ]
        |
      4 |         VAR_INPUT input1 : BOOL; END_VAR
-       |                   ^^^^^^|^^^^^^  
-       |                         `-------- 'BOOL' is expected due to this
+       |                   ^^^|^^  
+       |                      `---- type is declared by variable 'input1' here
        | 
      7 |     THIS.decl(0.5);
        |               ^|^  
@@ -199,8 +199,8 @@ END_CLASS
         ,-[ file:///test0.st:10:17 ]
         |
       4 |         VAR_INPUT input1 : BOOL; END_VAR
-        |                   ^^^^^^|^^^^^^  
-        |                         `-------- 'BOOL' is expected due to this
+        |                   ^^^|^^  
+        |                      `---- type is declared by variable 'input1' here
         | 
      10 |         SUPER.decl(0.5);
         |                    ^|^  
@@ -232,8 +232,8 @@ END_FUNCTION_BLOCK
         ,-[ file:///test0.st:10:17 ]
         |
       4 |         VAR_INPUT input1 : BOOL; END_VAR
-        |                   ^^^^^^|^^^^^^  
-        |                         `-------- 'BOOL' is expected due to this
+        |                   ^^^|^^  
+        |                      `---- type is declared by variable 'input1' here
         | 
      10 |         SUPER.decl(0.5);
         |                    ^|^  

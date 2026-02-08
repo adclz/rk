@@ -4,7 +4,7 @@ use rustc_hash::FxHashMap;
 use crate::{
     CallSite,
     check::errors::{analysis_error::ToIdeDiagnostic, e3_type::TypeError},
-    hir_def::expressions::expression::Expr,
+    hir_def::{expressions::expression::Expr},
     hir_ty::{
         body::BodyInferenceResult,
         infer::Infer,
@@ -29,6 +29,25 @@ pub struct InferenceTable<'db> {
     pub types: FxHashMap<Expr<'db>, Type<'db>>,
 }
 
+// Source of the inference, used for error reporting
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum InferSource<'db> {
+    Type(Type<'db>),
+    CallSite(CallSite<'db>)
+}
+
+impl<'db> From<Type<'db>> for InferSource<'db> {
+    fn from(typ: Type<'db>) -> Self {
+        InferSource::Type(typ)
+    }
+}
+
+impl<'db> From<CallSite<'db>> for InferSource<'db> {
+    fn from(callsite: CallSite<'db>) -> Self {
+        InferSource::CallSite(callsite)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum InferMode<'db> {
     // No inference needed
@@ -39,13 +58,13 @@ pub enum InferMode<'db> {
     // Resolved to an infer type
     ResolvedInfer {
         ty: Type<'db>,
-        expr: Option<CallSite<'db>>,
+        expr: Option<InferSource<'db>>,
     },
     // Fully resolved type
     // Resolved has a priority over ResolvedInfer
     Resolved {
         ty: Type<'db>,
-        expr: Option<CallSite<'db>>,
+        expr: Option<InferSource<'db>>,
     },
 }
 
@@ -61,7 +80,7 @@ impl<'db> InferenceTable<'db> {
     pub fn set_target_type(
         &mut self,
         db: &'db dyn WorkspaceDataBase,
-        expr: Option<CallSite<'db>>,
+        expr: Option<InferSource<'db>>,
         ty: Type<'db>,
     ) {
         // only elementary types can be used to resolve the inference
@@ -94,7 +113,7 @@ impl<'db> InferenceTable<'db> {
                     InferMode::NoInfer | InferMode::Unresolved => {
                         self.current_mode = InferMode::ResolvedInfer {
                             ty: infer.to_ty(db),
-                            expr: Some(CallSite::from_scoped(db, &expr)),
+                            expr: Some(CallSite::from_scoped(db, &expr).into()),
                         };
                     }
                     // inferred types have no priority over already resolved types
@@ -103,7 +122,7 @@ impl<'db> InferenceTable<'db> {
                 }
                 self.types.insert(expr, value);
             }
-            Type::Elementary(elem) => match self.current_mode {
+            Type::Elementary(elem) => match &self.current_mode {
                 // sets the inferred type based on the concrete type
                 // the concrete type takes priority over infer types
                 InferMode::NoInfer | InferMode::Unresolved | InferMode::ResolvedInfer { .. } => {
@@ -113,7 +132,7 @@ impl<'db> InferenceTable<'db> {
                     }
                     self.current_mode = InferMode::Resolved {
                         ty: value,
-                        expr: Some(CallSite::from_scoped(db, &expr)),
+                        expr: Some(CallSite::from_scoped(db, &expr).into()),
                     };
                 }
                 // already resolved
@@ -121,7 +140,7 @@ impl<'db> InferenceTable<'db> {
                     // we then perform a promotion if the size of the new type is larger
                     // todo: handle float vs int promotion
                     if value.get_size() > ty.get_size() {
-                        self.current_mode = InferMode::Resolved { ty: value, expr };
+                        self.current_mode = InferMode::Resolved { ty: value, expr: *expr };
                     }
                 }
             },
@@ -200,7 +219,7 @@ impl<'db> InferenceTable<'db> {
                             results.errors.push(
                                 TypeError::InferLiteralError {
                                     expr: *expr,
-                                    source,
+                                    source: source,
                                     target: final_ty,
                                     err,
                                 }

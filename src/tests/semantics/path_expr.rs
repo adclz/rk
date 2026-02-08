@@ -178,10 +178,12 @@ END_FUNCTION
     [E0309] Error: invalid literal
        ,-[ file:///test0.st:7:13 ]
        |
+     4 |        test: ARRAY[0..2] OF BOOL;
+       |        ^^|^  
+       |          `--- type is declared by variable 'test' here
+       | 
      7 |     test[0] := 0.5;
-       |     ^^^|^^^    ^|^  
-       |        `------------ 'BOOL' is expected due to this
-       |                 |   
+       |                ^|^  
        |                 `--- cannot infer '<float>' to 'BOOL': invalid boolean literal
     ---'
     ");

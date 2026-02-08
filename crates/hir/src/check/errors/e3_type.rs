@@ -8,6 +8,7 @@ use crate::{
     hir_def::expressions::expression::{AddOperatorKind, Expr, MultOperatorKind},
     hir_ty::{
         body::{Adjust, Adjustment},
+        infer::table::InferSource,
         ty::Type,
     },
 };
@@ -61,7 +62,7 @@ pub enum TypeError<'db> {
     },
     InferLiteralError {
         expr: Expr<'db>,
-        source: Option<CallSite<'db>>,
+        source: Option<InferSource<'db>>,
         target: Type<'db>,
         err: InferLiteralError,
     },
@@ -249,11 +250,14 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                     .call();
 
                 if let Some(source) = source {
-                    diag.with_related(Related::new(
-                        format!("'{}' is expected due to this", target.full_type_name(db)),
-                        source.get_scope_id(db).file(db),
-                        source.get_span(db),
-                    ));
+                    match source {
+                        InferSource::Type(typ) => typ.with_location(db, &mut diag),
+                        InferSource::CallSite(call) => diag.with_related(Related::new(
+                            format!("'{}' is expected due to this", target.full_type_name(db)),
+                            call.get_scope_id(db).file(db),
+                            call.get_span(db),
+                        )),
+                    }
                 }
 
                 target.with_location(db, &mut diag);
