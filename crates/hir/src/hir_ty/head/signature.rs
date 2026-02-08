@@ -146,6 +146,9 @@ impl<'db> Signature<'db> {
                     self.infer_spec(db, field.spec(db));
                 }
             }
+            SpecKind::Ref(rf) => {
+                self.infer_spec(db, *rf);
+            }
             _ => {}
         }
 
