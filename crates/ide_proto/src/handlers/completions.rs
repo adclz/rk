@@ -14,7 +14,7 @@ use hir::{
         semantic_index::get_scope,
         using::Using,
     },
-    hir_ty::{body::infer_body, infer::Infer},
+    hir_ty::{infer::Infer},
     query_string::namespace::NamespaceSearchCtx,
 };
 use rustc_hash::FxHashSet;
@@ -260,8 +260,7 @@ impl<'db> CompletionHandler<'db> for Invocation<'db> {
     ) -> Option<Vec<CompletionItem>> {
         let mut ctx = CompletionCtx::new(offset, QueryMode::Body);
 
-        let infer = infer_body(db, self.get_scope_id(db));
-        let ty = infer.get_type_of_invocation(db, *self);
+        let ty = self.infer(db);
 
         // Try field completion, fall back to scope if type is unavailable
         ctx.field_completion(ty, db);

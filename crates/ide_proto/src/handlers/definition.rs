@@ -5,11 +5,11 @@ use hir::{
     hir_def::{
         expressions::{
             expression::{BeginPathExpr, Expr, InitExpr, ParamAssign, PathExpr, VariableAccess},
-            spec::{Spec, StructElement},
+            spec::{Spec, SpecKind, StructElement},
         },
         pous::{pou::Pou, variable::VariableDecl},
     },
-    hir_ty::{body::infer_body, infer::Infer, ty::Type},
+    hir_ty::{infer::Infer, ty::Type},
 };
 
 use crate::{handlers::DefinitionHandler, hir_node::HirNode};
@@ -48,19 +48,13 @@ impl<'db> DefinitionHandler<'db> for VariableDecl<'db> {
 
 impl<'db> DefinitionHandler<'db> for StructElement<'db> {
     fn definition(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDefinitionResponse> {
-        Some(GotoDefinitionResponse::Scalar(Location::new(
-            self.scope_id(db).file(db).url(db).to_owned(),
-            self.get_span(db).into(),
-        )))
+        self.spec(db).definition(db)
     }
 }
 
 impl<'db> DefinitionHandler<'db> for Spec<'db> {
     fn definition(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDefinitionResponse> {
-        Some(GotoDefinitionResponse::Scalar(Location::new(
-            self.get_scope_id(db).file(db).url(db).to_owned(),
-            self.get_span(db).into(),
-        )))
+        self.infer(db).definition(db)
     }
 }
 
@@ -96,11 +90,7 @@ impl<'db> DefinitionHandler<'db> for Expr<'db> {
 
 impl<'db> DefinitionHandler<'db> for ParamAssign<'db> {
     fn definition(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDefinitionResponse> {
-        let infer = infer_body(db, self.scope_id(db));
-        infer
-            .variable_of_param
-            .get(self)
-            .and_then(|var| Type::new_var(db, *var).definition(db))
+        self.infer(db).definition(db)
     }
 }
 
@@ -111,9 +101,12 @@ impl<'db> DefinitionHandler<'db> for Type<'db> {
             Type::FunctionBlock(f) => f as _,
             Type::Class(c) => c as _,
             Type::Interface(i) => i as _,
-            Type::DataType(dt) => return dt.spec(db).definition(db),
-            Type::Variable((var, _multibits)) => return var.definition(db),
-            Type::StructElement(st) => return st.definition(db),
+            Type::DataType(dt) => match dt.spec(db).kind(db) {
+                SpecKind::Target(_) => return dt.spec(db).infer(db).definition(db),
+                _ => dt as _, 
+            },
+            Type::Variable((var, _multibits)) => return var.spec(db).infer(db).definition(db),
+            Type::StructElement(st) => return st.spec(db).infer(db).definition(db),
             _ => None?,
         };
 

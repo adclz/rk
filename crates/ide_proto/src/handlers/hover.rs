@@ -19,7 +19,6 @@ use hir::{
         using::Using,
     },
     hir_ty::{
-        body::infer_body,
         head::{inheritance::MethodRef, signature::infer_signature},
         infer::Infer,
         ty::Type,
@@ -295,13 +294,7 @@ impl<'db> HoverHandler<'db> for VariableAccess<'db> {
 
 impl<'db> HoverHandler<'db> for ParamAssign<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
-        let infer = infer_body(db, self.scope_id(db));
-        infer.variable_of_param.get(self).and_then(|var| {
-            Type::new_var(db, *var).hover(db, offset).map(|mut hover| {
-                hover.range = Some(get_param_start_pos(db, self).get_span(db).lsp());
-                hover
-            })
-        })
+        self.infer(db).hover(db, offset)
     }
 }
 

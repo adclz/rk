@@ -9,7 +9,7 @@ use hir::{
         },
         pous::variable::VariableDecl,
     },
-    hir_ty::{body::infer_body, infer::Infer, ty::Type},
+    hir_ty::{infer::Infer, ty::Type},
 };
 
 use crate::{handlers::DeclarationHandler, hir_node::HirNode};
@@ -89,11 +89,7 @@ impl<'db> DeclarationHandler<'db> for VariableAccess<'db> {
 
 impl<'db> DeclarationHandler<'db> for ParamAssign<'db> {
     fn declaration(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDeclarationResponse> {
-        let infer = infer_body(db, self.scope_id(db));
-        infer
-            .variable_of_param
-            .get(self)
-            .and_then(|var| Type::new_var(db, *var).declaration(db))
+        self.infer(db).declaration(db)
     }
 }
 

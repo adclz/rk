@@ -3,8 +3,7 @@ use db::WorkspaceDataBase;
 use crate::{
     HirNodeInfo,
     hir_def::expressions::{
-        expression::{BeginPathExpr, Expr, InitExpr, PathExpr, VariableAccess},
-        spec::Spec,
+        expression::{BeginPathExpr, Expr, InitExpr, ParamAssign, PathExpr, VariableAccess}, invocation::Invocation, spec::Spec
     },
     hir_ty::{
         body::infer_body,
@@ -41,6 +40,22 @@ impl<'db> Infer<'db> for InitExpr<'db> {
             .get(self)
             .copied()
             .unwrap_or_default()
+    }
+}
+
+impl<'db> Infer<'db> for Invocation<'db> {
+    fn infer(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {
+        infer_body(db, self.get_scope_id(db))
+            .get_type_of_invocation(db, *self)
+    }
+}
+
+impl<'db> Infer<'db> for ParamAssign<'db> {
+    fn infer(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {
+        match infer_body(db, self.get_scope_id(db)).variable_for_param(*self) {
+            Some(var) => Type::new_var(db, var),
+            None => Type::Never,
+        }
     }
 }
 
