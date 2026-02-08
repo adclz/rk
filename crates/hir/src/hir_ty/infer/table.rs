@@ -7,6 +7,7 @@ use crate::{
     hir_def::expressions::expression::Expr,
     hir_ty::{
         body::BodyInferenceResult,
+        infer::Infer,
         resolver::Resolver,
         ty::{InferType, Type},
     },
@@ -67,7 +68,7 @@ impl<'db> InferenceTable<'db> {
         // the inference table will only attempt to resolve infer variants, it does not check coercion
         let normalized = ty.normalize(db);
         let ty = match normalized {
-            Type::SubRange(sub) => Type::new_spec(db, sub._type(db)),
+            Type::SubRange(sub) => sub._type(db).infer(db),
             // we also accept bools ... because 0 and 1 literals can be boolean or numeric
             Type::Elementary(_) if normalized.is_numeric() || normalized.is_boolean() => ty,
             _ => return,

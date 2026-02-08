@@ -10,8 +10,8 @@ use hir::{
         semantic_index::{get_scope, semantic_index},
     },
     hir_ty::{
+        head::signature::infer_signature,
         name_res::{namespace_index, pou_name_res_from_scope},
-        signature::infer_signature,
         ty::Type,
     },
 };

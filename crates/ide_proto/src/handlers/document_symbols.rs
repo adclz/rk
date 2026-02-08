@@ -7,7 +7,7 @@ use hir::{
         namespace::NamespaceDecl,
         pous::{pou::Pou, variable::VariableDecl},
     },
-    hir_ty::signature::{infer_signature, inheritance::MethodRef},
+    hir_ty::head::{inheritance::MethodRef, signature::infer_signature},
 };
 
 use crate::{handlers::DocumentSymbolsHandler, hir_node::HirNode};

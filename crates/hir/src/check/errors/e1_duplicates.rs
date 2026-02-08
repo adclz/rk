@@ -15,7 +15,7 @@ use crate::{
         program::ProgramDecl,
         using::Using,
     },
-    hir_ty::signature::inheritance::InheritedMethod,
+    hir_ty::head::inheritance::InheritedMethod,
 };
 
 impl ErrorCode for DuplicateError<'_> {

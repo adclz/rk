@@ -12,8 +12,8 @@ use hir::{
         using::Using,
     },
     hir_ty::{
+        head::{inheritance::MethodRef, signature::infer_signature},
         infer::Infer,
-        signature::{infer_signature, inheritance::MethodRef},
         ty::Type,
     },
 };

@@ -9,10 +9,10 @@ use crate::{
         analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError, e2_resolve::ResolveError,
     },
     hir_def::semantic_index::get_scope,
-    hir_ty::{name_res::namespace_index, signature::Signature},
+    hir_ty::{head::init_inference::InitInference, name_res::namespace_index},
 };
 
-impl<'db> Signature<'db> {
+impl<'db> InitInference<'db> {
     pub(crate) fn check_usings(&mut self, db: &'db dyn WorkspaceDataBase) {
         let scope = get_scope(db, self.scope);
         let usings = &scope.usings;

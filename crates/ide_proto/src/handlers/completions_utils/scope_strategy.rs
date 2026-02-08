@@ -22,7 +22,7 @@ use hir::{
         semantic_index::get_scope,
     },
     hir_ty::{
-        signature::{infer_signature, inheritance::MethodRef},
+        head::{inheritance::MethodRef, signature::infer_signature},
         ty::Type,
     },
     query_string::{query::Query, scope::ScopeSearchCtx},

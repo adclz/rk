@@ -87,6 +87,8 @@ impl<'db> ScopeId<'db> {
                 _ => None?,
             },
             ScopeKind::MethodDecl(m) => m.variables(db),
+            ScopeKind::MethodProt(m) => m.variables(db),
+            ScopeKind::Program(p) => p.variables(db),
             _ => None?,
         })
     }

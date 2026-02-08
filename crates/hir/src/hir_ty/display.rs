@@ -7,7 +7,10 @@ use crate::{
         expression::{Elementary, Expr, ExprKind, InitExpr, InitExprKind, PrimaryExpr, RefValue},
         spec::{ElementarySpec, SpecKind},
     },
-    hir_ty::ty::{CallableType, InferType, Type},
+    hir_ty::{
+        infer::Infer,
+        ty::{CallableType, InferType, Type},
+    },
 };
 
 impl<'db> Type<'db> {
@@ -101,7 +104,7 @@ impl<'db> Type<'db> {
                 | SpecKind::Array(_)
                 | SpecKind::Struct(_)
                 | SpecKind::Subrange(_) => format!("{}", typ.get_name_ident(db).text(db),),
-                _ => Type::new_spec(db, typ.spec(db)).type_name(db),
+                _ => typ.spec(db).infer(db).type_name(db),
             },
             Self::Enum(_) => "ENUM".into(),
             Self::EnumVariant(v) => format!("ENUM VARIANT: {}", v.text(db)),
@@ -115,8 +118,8 @@ impl<'db> Type<'db> {
             },
             Self::Never => "{unknown}".into(),
             Self::Void => "void".into(),
-            Self::StructElement(st) => Type::new_spec(db, st.spec(db)).type_name(db),
-            Self::Variable((var, multibits)) => Type::new_spec(db, var.spec(db)).type_name(db),
+            Self::StructElement(st) => st.spec(db).infer(db).type_name(db),
+            Self::Variable((var, multibits)) => var.spec(db).infer(db).type_name(db),
             Self::DirectVariable((dv, multibits)) => {
                 format!("DIRECT VARIABLE: {}", dv.adress(db).text(db))
             }
@@ -131,7 +134,7 @@ impl<'db> Type<'db> {
     pub fn full_type_name(&self, db: &'db dyn WorkspaceDataBase) -> String {
         match self {
             Self::Array(array) => {
-                let elem_type = Type::new_spec(db, array.of_type(db)).type_name(db);
+                let elem_type = array.of_type(db).infer(db).type_name(db);
                 let dimensions: Vec<String> = array
                     .subranges(db)
                     .iter()
@@ -166,7 +169,7 @@ impl<'db> Type<'db> {
                 format!("SUBRANGE ({lower}..{upper})")
             }
             Self::Struct(ztruct) => format!("STRUCT ({} members)", ztruct.elements(db).len()),
-            Self::RefTo(ref_to) => format!("REF TO {}", Type::new_spec(db, *ref_to).type_name(db),),
+            Self::RefTo(ref_to) => format!("REF TO {}", ref_to.infer(db).type_name(db),),
             _ => self.type_name(db),
         }
     }
@@ -175,7 +178,7 @@ impl<'db> Type<'db> {
         match self {
             Self::Variable((v, multibits)) => match v.spec(db).kind(db) {
                 SpecKind::Target(t) => {
-                    Type::new_spec(db, v.spec(db)).with_location(db, diag);
+                    v.spec(db).infer(db).with_location(db, diag);
                 }
                 _ => diag.with_related(Related::new(
                     format!(
@@ -198,7 +201,7 @@ impl<'db> Type<'db> {
             }
             Self::StructElement(elem) => match elem.spec(db).kind(db) {
                 SpecKind::Target(t) => {
-                    Type::new_spec(db, elem.spec(db)).with_location(db, diag);
+                    elem.spec(db).infer(db).with_location(db, diag);
                 }
                 _ => diag.with_related(Related::new(
                     format!(
@@ -215,10 +218,8 @@ impl<'db> Type<'db> {
                         "FUNCTION '{}' is defined here{}",
                         f.get_name_ident(db).text(db),
                         match f.return_type(db) {
-                            Some(ret) => format!(
-                                ", with return type '{}'",
-                                Type::new_spec(db, *ret).type_name(db)
-                            ),
+                            Some(ret) =>
+                                format!(", with return type '{}'", ret.infer(db).type_name(db)),
                             None => "".to_string(),
                         }
                     ),
@@ -232,10 +233,8 @@ impl<'db> Type<'db> {
                         "METHOD '{}' is defined here{}",
                         f.get_name_ident(db).text(db),
                         match f.return_type(db) {
-                            Some(ret) => format!(
-                                ", with return type '{}'",
-                                Type::new_spec(db, *ret).type_name(db)
-                            ),
+                            Some(ret) =>
+                                format!(", with return type '{}'", ret.infer(db).type_name(db)),
                             None => "".to_string(),
                         }
                     ),

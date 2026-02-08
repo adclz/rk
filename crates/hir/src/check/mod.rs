@@ -14,13 +14,14 @@ use crate::{
         errors::analysis_error::{AnalysisError, ToIdeDiagnostic},
     },
     hir_def::semantic_index::semantic_index,
+    hir_ty::head::init_inference::infer_initialization,
 };
 
 use crate::{
     HirNodeInfo,
     check::check_duplicates::check_duplicate_namespaces,
     hir_def::{scope::ScopeId, semantic_index::SemanticIndex},
-    hir_ty::{body::infer_body, signature::infer_signature},
+    hir_ty::{body::infer_body, head::signature::infer_signature},
 };
 
 pub mod check_duplicates;
@@ -68,6 +69,13 @@ impl<'db> ScopeId<'db> {
         infer_signature(db, *self).errors.iter().for_each(|err| {
             errors.push(err.clone());
         });
+
+        infer_initialization(db, *self)
+            .errors
+            .iter()
+            .for_each(|err| {
+                errors.push(err.clone());
+            });
 
         infer_body(db, *self).errors.iter().for_each(|err| {
             errors.push(err.clone());

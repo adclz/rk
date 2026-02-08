@@ -5,7 +5,7 @@ use crate::{
     hir_def::{
         expressions::{
             expression::{Elementary, Integer, MultibitsPart},
-            spec::{Array, ElementarySpec, Enum, Spec, SpecKind, Struct, StructElement, SubRange},
+            spec::{Array, ElementarySpec, Enum, Spec, Struct, StructElement, SubRange},
         },
         interned::identifier::Ident,
         pous::{
@@ -20,9 +20,7 @@ use crate::{
         program::ProgramDecl,
         scope::ScopeId,
     },
-    hir_ty::{
-        def_map::LocalDefMap, name_res::resolve_namespace_access, signature::inheritance::MethodRef,
-    },
+    hir_ty::{def_map::LocalDefMap, head::inheritance::MethodRef, infer::Infer},
 };
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, salsa::Update, Default)]
@@ -194,22 +192,6 @@ impl PartialOrd for Size {
 
 #[salsa::tracked]
 impl<'db> Type<'db> {
-    pub(crate) fn new_spec(db: &'db dyn WorkspaceDataBase, spec: Spec<'db>) -> Self {
-        match spec.kind(db) {
-            SpecKind::Simple(elem) => Type::Elementary(*elem),
-            SpecKind::Ref(ref_to) => Type::RefTo(*ref_to),
-            SpecKind::Struct(strukt) => Type::Struct(*strukt),
-            SpecKind::Array(arr) => Type::Array(*arr),
-            SpecKind::ArrayConformand(a) => Type::ArrayConformand(*a),
-            SpecKind::Enum(enm) => Type::Enum(*enm),
-            SpecKind::Subrange(sub) => Type::SubRange(*sub),
-            SpecKind::Target(t) => match resolve_namespace_access(db, &t.path) {
-                Some(pou) => Type::new_pou(db, pou),
-                None => Type::Never,
-            },
-        }
-    }
-
     pub const fn new_bool() -> Self {
         Type::Elementary(ElementarySpec::Bool)
     }
@@ -251,7 +233,7 @@ impl<'db> Type<'db> {
             Type::MethodDecl(m) => m.return_type(db),
             _ => None?,
         }
-        .map(|rt| Type::new_spec(db, *rt))
+        .map(|rt| rt.infer(db))
     }
 
     pub const fn get_size(&self) -> Size {

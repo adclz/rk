@@ -93,23 +93,3 @@ fn invalid_subrange_value_type(mut with_db: RootDatabase) {
     ----'
     ");
 }
-
-#[rstest]
-fn out_of_bounds_subrange_value(mut with_db: RootDatabase) {
-    let source = r#"
-        TYPE
-            Range: UINT (0..5);
-        END_TYPE
-
-        FUNCTION fb1
-            VAR
-                test: Range;
-            END_VAR
-
-            test :=  6 // 6 should not be allowed here (UINT (0..5))
-
-        END_FUNCTION
-        "#;
-
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
-}

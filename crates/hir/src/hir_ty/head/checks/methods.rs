@@ -10,15 +10,15 @@ use crate::{
     },
     hir_def::{pous::pou::Pou, scope::ScopeKind, semantic_index::get_scope},
     hir_ty::{
-        signature::{
-            Signature,
+        head::{
             inheritance::{MethodRef, inherited_methods},
+            init_inference::InitInference,
         },
         ty::Type,
     },
 };
 
-impl<'db> Signature<'db> {
+impl<'db> InitInference<'db> {
     pub(crate) fn check_inheritance(&mut self, db: &'db dyn WorkspaceDataBase) {
         let implementer = match get_scope(db, self.scope).kind {
             ScopeKind::Pou(pou) => pou,
@@ -27,9 +27,6 @@ impl<'db> Signature<'db> {
 
         let declared_methods = &implementer.get_scope_id(db).def_map(db).declared_methods;
         let inherited_methods = inherited_methods(db, implementer);
-        for (ns, typ) in &inherited_methods.type_of_namespace_accesses {
-            self.namespace_access_to_pou.insert(ns.clone(), *typ);
-        }
 
         if let Pou::Class(cl) = implementer {
             // If the class is abstract, it must have at least one abstract method
@@ -202,6 +199,10 @@ fn check_signature<'db>(
     for (var1, var2) in sig1.iter().zip(sig2.iter()) {
         let var1_typ = Type::new_var(db, *var1);
         let var2_typ = Type::new_var(db, *var2);
+
+        debug_assert!(var1.scope_id(db) == m1.get_scope_id(db));
+        debug_assert!(var2.scope_id(db) == m2.get_scope_id(db));
+        debug_assert!(var1.scope_id(db) != var2.scope_id(db));
 
         if !var1_typ.normalize(db).eq(&var2_typ.normalize(db)) {
             errors.push(

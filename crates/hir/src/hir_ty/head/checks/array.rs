@@ -3,13 +3,11 @@ use db::WorkspaceDataBase;
 use crate::{
     check::errors::{analysis_error::ToIdeDiagnostic, e6_array::ArrayError},
     hir_def::expressions::spec::Array,
-    hir_ty::signature::Signature,
+    hir_ty::head::init_inference::InitInference,
 };
 
-impl<'db> Signature<'db> {
-    pub(super) fn infer_array(&mut self, db: &'db dyn WorkspaceDataBase, array: Array<'db>) {
-        let array_spec = self.infer_spec(db, array.of_type(db));
-
+impl<'db> InitInference<'db> {
+    pub(super) fn check_array(&mut self, db: &'db dyn WorkspaceDataBase, array: Array<'db>) {
         for range in array.subranges(db) {
             let lower = range.0;
             let upper = range.1;

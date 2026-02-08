@@ -18,7 +18,7 @@ use hir::{
         semantic_index::{SemanticIndex, get_scope, semantic_index},
         using::Using,
     },
-    hir_ty::{expr_store::InitExprIterator, signature::inheritance::MethodRef},
+    hir_ty::{expr_store::InitExprIterator, head::inheritance::MethodRef},
 };
 
 use crate::hir_node::{HirNode, PathExprRoot};

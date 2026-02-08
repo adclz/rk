@@ -1,11 +1,15 @@
 use db::WorkspaceDataBase;
 
 use crate::{
+    HirNodeInfo,
     hir_def::{
         expressions::{expression::MultibitsPart, spec::ElementarySpec},
         pous::variable::DirectVariable,
     },
-    hir_ty::ty::{CallableType, Type},
+    hir_ty::{
+        head::signature::infer_signature,
+        ty::{CallableType, Type},
+    },
 };
 
 /*
@@ -17,33 +21,39 @@ use crate::{
 impl<'db> Type<'db> {
     pub fn normalize(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {
         match self {
-            Type::DataType(dt) => Type::new_spec(db, dt.spec(db)),
+            Type::DataType(dt) => {
+                infer_signature(db, dt.get_scope_id(db)).type_of_specs[&dt.spec(db)].normalize(db)
+            }
             Type::Variable((var, multibits)) => {
-                let var_typ = Type::new_spec(db, var.spec(db)).normalize(db);
                 if let Some(multibits) = multibits {
                     return multibits_to_type(db, *multibits);
                 }
-                var_typ
+                infer_signature(db, var.get_scope_id(db)).type_of_specs[&var.spec(db)].normalize(db)
             }
             Type::CallableType(typ) => match typ {
                 CallableType::Function(f) => match f.return_type(db) {
-                    Some(ret_ty) => Type::new_spec(db, *ret_ty).normalize(db),
+                    Some(ret_ty) => {
+                        infer_signature(db, f.get_scope_id(db)).type_of_specs[ret_ty].normalize(db)
+                    }
                     _ => Type::Void,
                 },
                 CallableType::MethodDecl(m) => match m.return_type(db) {
-                    Some(ret_ty) => Type::new_spec(db, *ret_ty).normalize(db),
+                    Some(ret_ty) => {
+                        infer_signature(db, m.get_scope_id(db)).type_of_specs[ret_ty].normalize(db)
+                    }
                     _ => Type::Void,
                 },
                 _ => *self,
             },
             Type::DirectVariable((dv, multibits)) => {
-                let var_typ = direct_variable_to_type(db, *dv, *multibits);
                 if let Some(multibits) = multibits {
                     return multibits_to_type(db, *multibits);
                 }
-                var_typ
+                direct_variable_to_type(db, *dv, *multibits)
             }
-            Type::StructElement(element) => Type::new_spec(db, element.spec(db)).normalize(db),
+            Type::StructElement(element) => infer_signature(db, element.get_scope_id(db))
+                .type_of_specs[&element.spec(db)]
+                .normalize(db),
             _ => *self,
         }
     }

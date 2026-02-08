@@ -4,12 +4,11 @@ use rustc_hash::FxHashMap;
 use crate::{
     HasName,
     check::errors::{analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError},
-    hir_def::expressions::spec::SpecKind,
-    hir_ty::signature::Signature,
+    hir_ty::{head::init_inference::InitInference, infer::Infer},
 };
 
-impl<'db> Signature<'db> {
-    pub(crate) fn infer_variables(&mut self, db: &'db dyn WorkspaceDataBase) {
+impl<'db> InitInference<'db> {
+    pub(crate) fn check_variables(&mut self, db: &'db dyn WorkspaceDataBase) {
         let variables = match self.scope.variables(db) {
             Some(vars) => vars,
             None => return,
@@ -33,11 +32,7 @@ impl<'db> Signature<'db> {
                 }
             }
 
-            if let SpecKind::Struct(strukt) = var.spec(db).kind(db) {
-                self.infer_struct(db, *strukt);
-            }
-
-            let var_type = self.infer_spec(db, var.spec(db));
+            let var_type = var.spec(db).infer(db);
 
             if let Some(init_expr) = var.init(db) {
                 self.init_expr_result.resolve_init_expr(

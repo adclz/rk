@@ -9,7 +9,7 @@ use crate::{
         expressions::{expression::PathExpr, invocation::Invocation},
         pous::pou::Pou,
     },
-    hir_ty::{signature::inheritance::MethodRef, ty::Type},
+    hir_ty::{head::inheritance::MethodRef, ty::Type},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]

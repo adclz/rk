@@ -6,7 +6,11 @@ use crate::{
         expression::{BeginPathExpr, Expr, InitExpr, PathExpr, VariableAccess},
         spec::Spec,
     },
-    hir_ty::{body::infer_body, signature::infer_signature, ty::Type},
+    hir_ty::{
+        body::infer_body,
+        head::{init_inference::infer_initialization, signature::infer_signature},
+        ty::Type,
+    },
 };
 
 pub mod coerce;
@@ -31,7 +35,7 @@ impl<'db> Infer<'db> for Spec<'db> {
 
 impl<'db> Infer<'db> for InitExpr<'db> {
     fn infer(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {
-        infer_signature(db, self.get_scope_id(db))
+        infer_initialization(db, self.get_scope_id(db))
             .init_expr_result
             .type_of_init_expr
             .get(self)
@@ -60,7 +64,7 @@ impl<'db> Infer<'db> for PathExpr<'db> {
 
 impl<'db> Infer<'db> for Expr<'db> {
     fn infer(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {
-        let head = infer_signature(db, self.get_scope_id(db))
+        let head = infer_initialization(db, self.get_scope_id(db))
             .body_infer_result
             .get_type_of_expr(*self);
         if head.is_never() {

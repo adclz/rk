@@ -8,13 +8,18 @@ use crate::{
         e7_enum::EnumError,
     },
     hir_def::expressions::spec::{ElementarySpec, Enum},
-    hir_ty::{infer::expr::InferExprCtx, resolver::Resolver, signature::Signature, ty::Type},
+    hir_ty::{
+        head::init_inference::InitInference,
+        infer::{Infer, expr::InferExprCtx},
+        resolver::Resolver,
+        ty::Type,
+    },
 };
 
-impl<'db> Signature<'db> {
-    pub(crate) fn infer_enum(&mut self, db: &'db dyn WorkspaceDataBase, enm: Enum<'db>) {
+impl<'db> InitInference<'db> {
+    pub(crate) fn check_enum(&mut self, db: &'db dyn WorkspaceDataBase, enm: Enum<'db>) {
         if let Some(spec) = enm.typ(db) {
-            let typ = self.infer_spec(db, spec);
+            let typ = spec.infer(db);
 
             match typ {
                 Type::Elementary(elementary) => match elementary {
@@ -61,7 +66,7 @@ impl<'db> Signature<'db> {
                 let resolver = Resolver::for_scope(db, value.scope_id(db));
                 let mut infer = InferExprCtx::new(resolver);
 
-                let target = self.type_of_specs[&spec];
+                let target = spec.infer(db);
                 infer.resolve_expr(db, value, &mut self.body_infer_result);
                 infer.check_expr(db, value, &mut self.body_infer_result);
 

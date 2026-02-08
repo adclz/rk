@@ -9,6 +9,7 @@ use crate::{
     hir_def::expressions::expression::{AddOperatorKind, MultOperatorKind},
     hir_ty::{
         body::{Adjustment, AdjustmentInfo, BodyInferenceResult},
+        infer::Infer,
         resolver::Resolver,
         ty::Type,
     },
@@ -54,13 +55,15 @@ impl<'db> Type<'db> {
         let lhs = self.normalize(db);
         let to = to.normalize(db);
 
+        // use the adjustments to allow coercions for references,
+        // but only if the reference can be dereferenced to the expected type
         if let Some(adjs) = adjustments
             && let Some(typ) = adjs.as_reference()
         {
             if let Type::RefTo(spec) = lhs {
-                return match Type::new_spec(db, spec).coerce_with_type(db, to, None, resolver) {
+                return match spec.infer(db).coerce_with_type(db, to, None, resolver) {
                     Ok(()) => Ok(()),
-                    Err(_) => match Type::new_spec(db, spec).eq(&to) {
+                    Err(_) => match spec.infer(db).eq(&to) {
                         true => Ok(()),
                         false => Err(CoerceError {
                             expected: *self,
@@ -103,7 +106,9 @@ impl<'db> Type<'db> {
             },
             // check element spec equality
             (Type::StructElement(elem), rhs) => {
-                Type::new_spec(db, elem.spec(db)).coerce_with_type(db, *rhs, adjustments, resolver)
+                elem.spec(db)
+                    .infer(db)
+                    .coerce_with_type(db, *rhs, adjustments, resolver)
             }
             // same types are assignable
             (Type::Array(a1), Type::Array(a2)) => match a1.eq(a2) {
@@ -116,11 +121,15 @@ impl<'db> Type<'db> {
             },
             // check array spec equality
             (Type::Array(a1), rhs) => {
-                Type::new_spec(db, a1.of_type(db)).coerce_with_type(db, *rhs, adjustments, resolver)
+                a1.of_type(db)
+                    .infer(db)
+                    .coerce_with_type(db, *rhs, adjustments, resolver)
             }
             // check subrange base type equality
             (Type::SubRange(sub), rhs) => {
-                Type::new_spec(db, sub._type(db)).coerce_with_type(db, *rhs, adjustments, resolver)
+                sub._type(db)
+                    .infer(db)
+                    .coerce_with_type(db, *rhs, adjustments, resolver)
             }
             (Type::Elementary(lhs), Type::Elementary(rhs)) => {
                 if lhs == *rhs {
@@ -139,9 +148,9 @@ impl<'db> Type<'db> {
             (Type::RefTo(_), Type::Null) => Ok(()),
             // self-assignments
             (Type::Function(f), rhs) => match f.return_type(db) {
-                Some(ret) => {
-                    Type::new_spec(db, *ret).coerce_with_type(db, *rhs, adjustments, resolver)
-                }
+                Some(ret) => ret
+                    .infer(db)
+                    .coerce_with_type(db, *rhs, adjustments, resolver),
                 None => Err(CoerceError {
                     expected: Type::Void,
                     actual: to,
@@ -149,9 +158,9 @@ impl<'db> Type<'db> {
                 }),
             },
             (Type::MethodDecl(f), rhs) => match f.return_type(db) {
-                Some(ret) => {
-                    Type::new_spec(db, *ret).coerce_with_type(db, *rhs, adjustments, resolver)
-                }
+                Some(ret) => ret
+                    .infer(db)
+                    .coerce_with_type(db, *rhs, adjustments, resolver),
                 None => Err(CoerceError {
                     expected: Type::Void,
                     actual: to,
@@ -191,7 +200,7 @@ impl<'db> Type<'db> {
                 }
 
                 // a variable of callable type cannot be assigned to
-                if let Some(callable_typ) = Type::new_spec(db, variable.spec(db)).as_callable(db) {
+                if let Some(callable_typ) = variable.spec(db).infer(db).as_callable(db) {
                     ctx.errors.push(
                         ControlFlowError::AssignCallableType {
                             typ: callable_typ,

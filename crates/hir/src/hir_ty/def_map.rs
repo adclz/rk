@@ -14,7 +14,7 @@ use crate::{
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
-    hir_ty::{name_res::resolve_namespace_access, signature::inheritance::MethodRef},
+    hir_ty::{head::inheritance::MethodRef, name_res::resolve_namespace_access},
 };
 
 pub type FxIndexMap<K, V> = IndexMap<K, V, rustc_hash::FxBuildHasher>;

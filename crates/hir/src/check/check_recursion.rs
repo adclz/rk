@@ -5,7 +5,7 @@ use crate::{
     CallSite, HirNodeInfo,
     check::errors::{analysis_error::ToIdeDiagnostic, e9_recursion::RecursionError},
     hir_def::{namespace::NamespaceDecl, pous::pou::Pou, semantic_index::SemanticIndex},
-    hir_ty::ty::Type,
+    hir_ty::{infer::Infer, ty::Type},
 };
 
 use db::WorkspaceDataBase;
@@ -85,7 +85,7 @@ impl<'db> TypeDependencyGraph<'db> {
 
         // check variables
         for var in def_map.global_variables.values() {
-            let typ = Type::new_spec(db, var.spec(db));
+            let typ = var.spec(db).infer(db);
             let callsite = CallSite::from_scoped(db, &var.spec(db));
             Self::extract_pou_from_type(db, pou, typ, deps, callsites, callsite);
         }
@@ -97,7 +97,7 @@ impl<'db> TypeDependencyGraph<'db> {
         }
 
         if let Pou::DataType(dt) = pou {
-            let typ = Type::new_spec(db, dt.spec(db));
+            let typ = dt.spec(db).infer(db);
             let callsite = CallSite::from_scoped(db, &dt.spec(db));
             Self::extract_pou_from_type(db, pou, typ, deps, callsites, callsite);
         }
@@ -114,7 +114,7 @@ impl<'db> TypeDependencyGraph<'db> {
         match typ {
             Type::Struct(s) => {
                 for field in s.elements(db) {
-                    let field_ty = Type::new_spec(db, field.spec(db));
+                    let field_ty = field.spec(db).infer(db);
                     Self::extract_pou_from_type(
                         db,
                         from,
@@ -126,7 +126,7 @@ impl<'db> TypeDependencyGraph<'db> {
                 }
             }
             Type::Array(a) => {
-                let elem = Type::new_spec(db, a.of_type(db));
+                let elem = a.of_type(db).infer(db);
                 Self::extract_pou_from_type(
                     db,
                     from,

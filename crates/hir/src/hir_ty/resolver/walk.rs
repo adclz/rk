@@ -12,9 +12,9 @@ use crate::{
     hir_ty::{
         body::{Adjustment, AdjustmentInfo, BodyInferenceResult},
         expr_store::{InitExprWalkStep, PathExprWalkStep},
+        head::{inheritance::inherited_methods, init_inference::InitExprInferenceResult},
+        infer::Infer,
         resolver::{Resolver, invocation::resolve_invocation, visibility::check_visibility},
-        signature::inheritance::inherited_methods,
-        signature::init_inference::InitExprInferenceResult,
         ty::Type,
     },
 };
@@ -166,7 +166,7 @@ impl<'db> Type<'db> {
             // both variables and data types can have fields
             // but we need to inspect their spec type
             Type::Variable((v, multibits)) => {
-                return Type::new_spec(db, v.spec(db)).walk_path_expr(
+                return v.spec(db).infer(db).walk_path_expr(
                     db,
                     report_errors,
                     step,
@@ -176,7 +176,7 @@ impl<'db> Type<'db> {
                 );
             }
             Type::DataType(typ) => {
-                return Type::new_spec(db, typ.spec(db)).walk_path_expr(
+                return typ.spec(db).infer(db).walk_path_expr(
                     db,
                     report_errors,
                     step,
@@ -186,7 +186,7 @@ impl<'db> Type<'db> {
                 );
             }
             Type::StructElement(st) => {
-                return Type::new_spec(db, st.spec(db)).walk_path_expr(
+                return st.spec(db).infer(db).walk_path_expr(
                     db,
                     report_errors,
                     step,
@@ -308,7 +308,7 @@ impl<'db> Type<'db> {
                     let dimensions = arr.subranges(db).len() - 1;
                     let array_type = match curr_dimension.cmp(&dimensions) {
                         Ordering::Less if arr.subranges(db).len() > 1 => *self,
-                        Ordering::Less | Ordering::Equal => Type::new_spec(db, arr.of_type(db)),
+                        Ordering::Less | Ordering::Equal => arr.of_type(db).infer(db),
                         Ordering::Greater => {
                             if report_errors {
                                 ctx.errors.push(
@@ -359,13 +359,13 @@ impl<'db> Type<'db> {
     ) {
         match self {
             Type::DataType(dt) => {
-                return Type::new_spec(db, dt.spec(db)).walk_init_expr(db, step, place, ctx);
+                return dt.spec(db).infer(db).walk_init_expr(db, step, place, ctx);
             }
             Type::Variable((dt, mul)) => {
-                return Type::new_spec(db, dt.spec(db)).walk_init_expr(db, step, place, ctx);
+                return dt.spec(db).infer(db).walk_init_expr(db, step, place, ctx);
             }
             Type::StructElement(elem) => {
-                return Type::new_spec(db, elem.spec(db)).walk_init_expr(db, step, place, ctx);
+                return elem.spec(db).infer(db).walk_init_expr(db, step, place, ctx);
             }
             _ => (),
         }
@@ -470,7 +470,7 @@ fn iter_deref_types<'db>(
 ) -> impl Iterator<Item = Result<Type<'db>, Type<'db>>> {
     std::iter::from_fn(move || match ty {
         Type::RefTo(inner) => {
-            let next = Type::new_spec(db, inner);
+            let next = inner.infer(db);
             ty = next;
             Some(Ok(next))
         }

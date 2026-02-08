@@ -6,16 +6,21 @@ use crate::{
         analysis_error::ToIdeDiagnostic, e3_type::TypeError, e8_subrange::SubRangeError,
     },
     hir_def::expressions::spec::{ElementarySpec, SubRange},
-    hir_ty::{infer::expr::InferExprCtx, resolver::Resolver, signature::Signature, ty::Type},
+    hir_ty::{
+        head::init_inference::InitInference,
+        infer::{Infer, expr::InferExprCtx},
+        resolver::Resolver,
+        ty::Type,
+    },
 };
 
-impl<'db> Signature<'db> {
-    pub(crate) fn infer_subrange(
+impl<'db> InitInference<'db> {
+    pub(crate) fn check_subrange(
         &mut self,
         db: &'db dyn WorkspaceDataBase,
         subrange: SubRange<'db>,
     ) {
-        let typ = self.infer_spec(db, subrange._type(db));
+        let typ = subrange._type(db).infer(db);
 
         match typ {
             Type::Elementary(elementary) => match elementary {

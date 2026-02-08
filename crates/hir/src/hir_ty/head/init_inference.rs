@@ -7,15 +7,83 @@ use crate::{
     check::errors::{
         analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError, e6_array::ArrayError,
     },
-    hir_def::{expressions::expression::InitExpr, interned::identifier::Ident, scope::ScopeId},
+    hir_def::{
+        expressions::expression::InitExpr,
+        interned::identifier::Ident,
+        pous::pou::Pou,
+        scope::{ScopeId, ScopeKind},
+        semantic_index::get_scope,
+    },
     hir_ty::{
         body::BodyInferenceResult,
         expr_store::InitExprWalkStep,
-        infer::expr::InferExprCtx,
+        infer::{Infer, expr::InferExprCtx},
         resolver::{Resolver, walk::InitPlaceBuilder},
         ty::Type,
     },
 };
+
+#[tracing::instrument(skip(db))]
+#[salsa::tracked(returns(ref))]
+pub fn infer_initialization<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    scope: ScopeId<'db>,
+) -> InitInference<'db> {
+    InitInference::new(scope).check_init(db)
+}
+
+#[derive(Debug, PartialEq, Eq, salsa::Update)]
+pub struct InitInference<'db> {
+    // Scope where this InferenceResult was emitted
+    pub scope: ScopeId<'db>,
+
+    /// Initializer expression inference results
+    pub init_expr_result: InitExprInferenceResult<'db>,
+
+    /// BodyInference results (Inference of constant expressions)
+    pub body_infer_result: BodyInferenceResult<'db>,
+
+    /// Errors encountered during inference
+    pub errors: Vec<IdeDiagnostic>,
+}
+
+impl<'db> InitInference<'db> {
+    pub fn new(scope: ScopeId<'db>) -> Self {
+        Self {
+            scope,
+            init_expr_result: InitExprInferenceResult::new(scope),
+            body_infer_result: BodyInferenceResult::new(scope),
+            errors: Vec::new(),
+        }
+    }
+
+    pub fn check_init(mut self, db: &'db dyn WorkspaceDataBase) -> Self {
+        if let ScopeKind::Pou(pou) = get_scope(db, self.scope).kind
+            && let Pou::DataType(dt) = pou
+        {
+            self.check_spec(db, dt.spec(db));
+
+            let typ = dt.spec(db).infer(db);
+            if let Some(expr) = dt.init(db) {
+                self.init_expr_result
+                    .resolve_init_expr(db, expr, &mut self.body_infer_result, typ);
+            };
+        }
+
+        self.check_variables(db);
+        self.check_usings(db);
+        self.check_methods(db);
+
+        for error in &self.init_expr_result.errors {
+            self.errors.push(error.clone());
+        }
+
+        for error in &self.body_infer_result.errors {
+            self.errors.push(error.clone());
+        }
+        self
+    }
+}
 
 /// Information about an element's position in an array initializer
 #[derive(Debug, Clone, Copy, PartialEq, Eq, salsa::Update)]
@@ -106,7 +174,7 @@ impl<'db> InitExprInferenceResult<'db> {
                         if ctx.array_root.is_none() {
                             ctx.array_root = Some(expected);
                         };
-                        Type::new_spec(db, array.of_type(db))
+                        array.of_type(db).infer(db)
                     }
                     _ => expected,
                 };
@@ -156,7 +224,7 @@ impl<'db> InitExprInferenceResult<'db> {
                     .normalize(db);
 
                 let expected = match expected {
-                    Type::Array(array) => Type::new_spec(db, array.of_type(db)),
+                    Type::Array(array) => array.of_type(db).infer(db),
                     _ => expected,
                 };
 

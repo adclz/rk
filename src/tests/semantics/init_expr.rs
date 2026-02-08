@@ -3,7 +3,7 @@ use auto_lsp::default::db::file::File;
 use db::RootDatabase;
 use db::WorkspaceDataBase;
 use hir::HirNodeInfo;
-use hir::hir_ty::signature::infer_signature;
+use hir::hir_ty::head::init_inference::infer_initialization;
 use insta::assert_snapshot;
 use rstest::rstest;
 
@@ -195,7 +195,7 @@ fn collect_init_expressions(db: &dyn WorkspaceDataBase, file: File, pou_name: &s
     let pou = find_pou_with_name(db, file, pou_name).unwrap();
 
     let mut result = vec![];
-    let infer_result = infer_signature(db, pou.get_scope_id(db));
+    let infer_result = infer_initialization(db, pou.get_scope_id(db));
 
     for (init_expr, typ) in &infer_result.init_expr_result.type_of_init_expr {
         result.push(format!("{} {}", init_expr.get_id(db).id(), typ.kind()));

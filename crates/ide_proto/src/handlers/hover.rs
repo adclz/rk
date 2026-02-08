@@ -20,8 +20,8 @@ use hir::{
     },
     hir_ty::{
         body::infer_body,
+        head::{inheritance::MethodRef, signature::infer_signature},
         infer::Infer,
-        signature::{infer_signature, inheritance::MethodRef},
         ty::Type,
     },
 };

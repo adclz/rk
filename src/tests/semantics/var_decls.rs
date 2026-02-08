@@ -20,12 +20,12 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0215] Error: invalid variable type
+    [E0215] Error: invalid type
        ,-[ file:///test0.st:8:15 ]
        |
      8 |         test: fn;
        |               ^|  
-       |                `-- 'FUNCTION: fn' is a function and cannot be used as a variable type
+       |                `-- 'FUNCTION: fn' is a function and cannot be used as a variable or data type
     ---'
     ");
 }

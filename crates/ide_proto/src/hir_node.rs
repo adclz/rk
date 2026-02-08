@@ -13,7 +13,7 @@ use hir::{
         scope::ScopeId,
         using::Using,
     },
-    hir_ty::{signature::inheritance::MethodRef, ty::Type},
+    hir_ty::{head::inheritance::MethodRef, ty::Type},
 };
 
 use crate::comment_index::comment_index;
