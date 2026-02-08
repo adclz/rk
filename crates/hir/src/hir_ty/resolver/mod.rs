@@ -56,42 +56,42 @@ impl<'db> Resolver<'db> {
         Self { root }
     }
 
-    fn allows_fq_fallback(&self) -> bool {
-        matches!(self.root, PathResolutionRoot::Value { .. })
-    }
-
-    fn resolve_as_fq(
+    /// Try to resolve `path_expr` as a fully-qualified namespace access.
+    ///
+    /// Returns `true` if the path was successfully resolved, `false` otherwise
+    /// (an error diagnostic is always pushed on failure).
+    fn try_resolve_as_fq(
         &self,
         db: &'db dyn WorkspaceDataBase,
         path_expr: PathExpr<'db>,
-        infer_results: &mut BodyInferenceResult<'db>,
-    ) {
-        let kind = path_expr.expr(db);
+        ctx: &mut BodyInferenceResult<'db>,
+    ) -> bool {
         let Some((access, _)) = path_expr.to_namespace_access(db) else {
-            infer_results.errors.push(
+            ctx.errors.push(
                 ResolveError::NoItemInScope {
                     expr: path_expr,
                     scope: path_expr.scope_id(db),
                 }
                 .to_diagnostic(db),
             );
-            return;
+            return false;
         };
 
         match resolve_namespace_access(db, access) {
             Some(pou) => {
-                infer_results
-                    .type_of_path_expr
+                ctx.type_of_path_expr
                     .insert(path_expr, Type::new_pou(db, pou));
+                true
             }
             None => {
-                infer_results.errors.push(
+                ctx.errors.push(
                     ResolveError::NoItemInScope {
                         expr: path_expr,
                         scope: path_expr.scope_id(db),
                     }
                     .to_diagnostic(db),
                 );
+                false
             }
         }
     }
@@ -100,16 +100,15 @@ impl<'db> Resolver<'db> {
         &self,
         db: &'db dyn WorkspaceDataBase,
         var_access: VariableAccess<'db>,
-        infer_results: &mut BodyInferenceResult<'db>,
+        ctx: &mut BodyInferenceResult<'db>,
     ) {
         match var_access.kind(db) {
             VariableAccessKind::Direct(dv) => {
-                infer_results
-                    .type_of_direct_variable
+                ctx.type_of_direct_variable
                     .insert(dv, Type::DirectVariable((dv, var_access.multibits(db))));
             }
             VariableAccessKind::Symbolic(s) => {
-                self.resolve_begin_path_expr(db, s, var_access.multibits(db), infer_results);
+                self.resolve_begin_path_expr(db, s, var_access.multibits(db), ctx);
             }
         }
     }
@@ -119,13 +118,13 @@ impl<'db> Resolver<'db> {
         db: &'db dyn WorkspaceDataBase,
         path_expr: BeginPathExpr<'db>,
         multibits: Option<MultibitsPart>,
-        infer_results: &mut BodyInferenceResult<'db>,
+        ctx: &mut BodyInferenceResult<'db>,
     ) {
         match self.root {
             PathResolutionRoot::Value { base } => {
-                base.walk_begin_path_expr(db, path_expr, multibits, infer_results);
+                base.walk_begin_path_expr(db, path_expr, multibits, ctx);
             }
-            PathResolutionRoot::Namespace { scope } => {
+            PathResolutionRoot::Namespace { .. } => {
                 // a begin path expr will always refer to a local variable in this context
             }
         };
@@ -136,19 +135,24 @@ impl<'db> Resolver<'db> {
         db: &'db dyn WorkspaceDataBase,
         path_expr: PathExpr<'db>,
         multibits: Option<MultibitsPart>,
-        infer_results: &mut BodyInferenceResult<'db>,
+        ctx: &mut BodyInferenceResult<'db>,
     ) {
         match self.root {
             PathResolutionRoot::Value { base } => {
-                self.resolve_path_steps(base, db, path_expr, multibits, infer_results)
+                self.resolve_path_steps(base, db, path_expr, multibits, ctx)
             }
-            PathResolutionRoot::Namespace { scope } => {
-                self.resolve_as_fq(db, path_expr, infer_results)
+            PathResolutionRoot::Namespace { .. } => {
+                self.try_resolve_as_fq(db, path_expr, ctx);
             }
         }
     }
 
-    fn resolve_path_steps(
+    /// Walk each step of a path expression against the current type.
+    ///
+    /// On the **first** step, errors are suppressed because a failed local
+    /// lookup may still succeed as a fully-qualified namespace access.
+    /// If step 0 fails and the root is a `Value`, we fall back to FQ resolution.
+    pub(crate) fn resolve_path_steps(
         &self,
         mut current: Type<'db>,
         db: &'db dyn WorkspaceDataBase,
@@ -157,29 +161,28 @@ impl<'db> Resolver<'db> {
         ctx: &mut BodyInferenceResult<'db>,
     ) {
         let steps = path_expr.flatten(db);
+        let Some(first_step) = steps.first() else {
+            return;
+        };
+
         let mut place = PathPlaceBuilder {
             current_typ: current,
-            current_path: match steps.first() {
-                Some(step) => step.get_expr(db),
-                None => return,
-            },
+            current_path: first_step.get_expr(db),
         };
 
         for (index, step) in steps.iter().enumerate() {
-            current.walk_path_expr(db, index != 0, step, multibits, &mut place, ctx);
+            let is_first_step = index == 0;
 
-            if ctx
-                .type_of_path_expr
-                .get(&step.get_expr(db))
-                .copied()
-                .unwrap_or_default()
-                .is_never()
-            {
-                // Fallback ONLY if root allows it
-                if index == 0 && self.allows_fq_fallback() {
-                    self.resolve_as_fq(db, path_expr, ctx);
+            // Suppress errors on the first step: if it fails we may fall back to FQ resolution.
+            current.walk_path_expr(db, !is_first_step, step, multibits, &mut place, ctx);
+
+            // Check whether walk_path_expr actually resolved this step.
+            let resolved = ctx.type_of_path_expr.contains_key(&step.get_expr(db));
+
+            if !resolved {
+                if is_first_step && matches!(self.root, PathResolutionRoot::Value { .. }) {
+                    self.try_resolve_as_fq(db, path_expr, ctx);
                 }
-
                 return;
             }
 
