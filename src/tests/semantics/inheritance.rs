@@ -247,14 +247,14 @@ fn method_signature_type_mismatch(mut with_db: RootDatabase) {
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0511] Error: method signature mismatch
-       ,-[ file:///test0.st:3:20 ]
-       |
-     3 |             METHOD DAYTIME
-       |                    ^^^|^^^  
-       |                       `----- method 'DAYTIME' has incompatible parameter types: expected 'INT', got 'REAL'
-       | 
-       | Note: parameter types must match those of the base method
-    ---'
+        ,-[ file:///test0.st:12:29 ]
+        |
+     12 |             METHOD OVERRIDE DAYTIME
+        |                             ^^^|^^^  
+        |                                `----- method 'DAYTIME' has incompatible parameter types: expected 'INT', got 'REAL'
+        | 
+        | Note: parameter types must match those of the base method
+    ----'
     ");
 }
 

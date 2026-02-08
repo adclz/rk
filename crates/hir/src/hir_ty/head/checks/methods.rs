@@ -209,7 +209,7 @@ fn check_signature<'db>(
                 InheritanceError::SignatureTypeMismatch {
                     expected: var1_typ,
                     got: var2_typ,
-                    method: m1,
+                    method: m2,
                 }
                 .to_diagnostic(db),
             )
