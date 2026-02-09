@@ -36,7 +36,7 @@ fn invalid_ref_to_elementary_type(mut with_db: RootDatabase) {
        |
      5 |             test2: REF_TO INT := REF(test); // Reference to INT, but test is UINT
        |                               ^^^^^^|^^^^^  
-       |                                     `------- expected 'REF TO INT', got 'REF TO UINT'
+       |                                     `------- expected 'REF_TO INT', got 'REF TO UINT'
     ---'
     ");
 }
@@ -96,7 +96,7 @@ fn invalid_ref_to_pou_type(mut with_db: RootDatabase) {
        |
      8 |             test2: REF_TO fb1 := REF(test); // Reference to fb1, but test is fb2
        |                               ^^^^^^|^^^^^  
-       |                                     `------- expected 'REF TO FUNCTION_BLOCK: fb1', got 'REF TO FUNCTION_BLOCK: fb2'
+       |                                     `------- expected 'REF_TO fb1', got 'REF TO fb2'
     ---'
     ");
 }
@@ -124,7 +124,7 @@ fn assign_non_ref_type(mut with_db: RootDatabase) {
        | 
      7 |         test := 0;
        |                 |  
-       |                 `-- expected 'REF TO INT', got 'INT'
+       |                 `-- expected 'REF_TO INT', got 'INT'
     ---'
     ");
 }

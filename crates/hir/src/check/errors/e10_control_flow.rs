@@ -103,10 +103,7 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                 .call(),
             Self::CallNonCallableType { typ, func_call } => {
                 let mut diag = diag()
-                    .message(format!(
-                        "'{}' is not a callable type",
-                        typ.full_type_name(db)
-                    ))
+                    .message(format!("'{}' is not a callable type", typ.type_name(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(func_call.path(db).get_span(db))
@@ -133,10 +130,7 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                 .desc(self)
                 .call(),
             Self::UnusedReturnType { typ, expr } => diag()
-                .message(format!(
-                    "unused return value of '{}'",
-                    typ.full_type_name(db)
-                ))
+                .message(format!("unused return value of '{}'", typ.type_name(db)))
                 .desc(self)
                 .range(expr.get_span(db))
                 .severity(DiagnosticSeverity::INFORMATION)

@@ -57,7 +57,7 @@ pub struct Signature<'db> {
     pub type_of_specs: FxHashMap<Spec<'db>, Type<'db>>,
 
     /// Mapping of namespace accesses to their inferred POUs
-    pub namespace_access_to_pou: FxHashMap<NamespaceAccess<'db>, Type<'db>>,
+    pub namespace_access_to_type: FxHashMap<NamespaceAccess<'db>, Type<'db>>,
 
     /// Errors encountered during inference
     pub errors: Vec<IdeDiagnostic>,
@@ -68,7 +68,7 @@ impl<'db> Signature<'db> {
         Self {
             scope,
             type_of_specs: FxHashMap::default(),
-            namespace_access_to_pou: FxHashMap::default(),
+            namespace_access_to_type: FxHashMap::default(),
             errors: Vec::new(),
         }
     }
@@ -111,7 +111,7 @@ impl<'db> Signature<'db> {
         let declared_methods = &implementer.get_scope_id(db).def_map(db).declared_methods;
         let inherited_methods = inherited_methods(db, implementer);
         for (ns, typ) in &inherited_methods.type_of_namespace_accesses {
-            self.namespace_access_to_pou.insert(ns.clone(), *typ);
+            self.namespace_access_to_type.insert(ns.clone(), *typ);
         }
     }
 

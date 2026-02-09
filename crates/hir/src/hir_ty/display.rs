@@ -3,15 +3,59 @@ use ide_diagnostic::{IdeDiagnostic, Related};
 
 use crate::{
     HasName, HirNodeInfo,
-    hir_def::expressions::{
-        expression::{Elementary, Expr, ExprKind, InitExpr, InitExprKind, PrimaryExpr, RefValue},
-        spec::{ElementarySpec, SpecKind},
+    hir_def::{
+        expressions::{
+            expression::{
+                BeginPathExpr, Elementary, Expr, ExprKind, InitExpr, InitExprKind, Integer,
+                IntegerKind, PrimaryExpr, RefValue,
+            },
+            invocation::InvocationKind,
+            spec::{ElementarySpec, SpecKind},
+        },
+        scope::ScopeKind,
+        semantic_index::semantic_index,
     },
     hir_ty::{
         infer::Infer,
         ty::{CallableType, InferType, Type},
     },
 };
+
+impl ElementarySpec {
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            Self::Bool => "BOOL",
+            Self::REDGEBool => "BOOL (R_EDGE)",
+            Self::FEDGEBool => "BOOL (F_EDGE)",
+            Self::Byte => "BYTE",
+            Self::Word => "WORD",
+            Self::DWord => "DWORD",
+            Self::LWord => "LWORD",
+            Self::SInt => "SINT",
+            Self::USInt => "USINT",
+            Self::UInt => "UINT",
+            Self::Int => "INT",
+            Self::DInt => "DINT",
+            Self::UDInt => "UDINT",
+            Self::LInt => "LINT",
+            Self::ULInt => "ULINT",
+            Self::Real => "REAL",
+            Self::LReal => "LREAL",
+            Self::String => "STRING",
+            Self::WString => "WSTRING",
+            Self::Char => "CHAR",
+            Self::WChar => "WCHAR",
+            Self::Date => "DATE",
+            Self::LDate => "LDATE",
+            Self::DateAndTime => "DT",
+            Self::LDateTime => "LDT",
+            Self::Time => "TIME",
+            Self::LTime => "LTIME",
+            Self::Tod => "TOD",
+            Self::LTod => "LTOD",
+        }
+    }
+}
 
 impl<'db> Type<'db> {
     #[cfg(debug_assertions)]
@@ -43,96 +87,27 @@ impl<'db> Type<'db> {
         }
     }
 
-    pub fn with_name(&self, db: &'db dyn WorkspaceDataBase) -> Option<String> {
-        Some(
-            match self {
-                Self::Function(f) => f.get_name_ident(db).text(db),
-                Self::FunctionBlock(fb) => fb.get_name_ident(db).text(db),
-                Self::MethodDecl(m) => m.get_name_ident(db).text(db),
-                Self::Class(c) => c.get_name_ident(db).text(db),
-                Self::Interface(i) => i.get_name_ident(db).text(db),
-                Self::DataType(typ) => typ.get_name_ident(db).text(db),
-                _ => None?,
-            }
-            .to_string(),
-        )
-    }
     pub fn type_name(&self, db: &'db dyn WorkspaceDataBase) -> String {
         match self {
-            Self::Elementary(elem) => match elem {
-                ElementarySpec::Bool => "BOOL",
-                ElementarySpec::REDGEBool => "BOOL (RISING EDGE)",
-                ElementarySpec::FEDGEBool => "BOOL (FALLING EDGE)",
-                ElementarySpec::Byte => "BYTE",
-                ElementarySpec::Word => "WORD",
-                ElementarySpec::DWord => "DWORD",
-                ElementarySpec::LWord => "LWORD",
-                ElementarySpec::SInt => "SINT",
-                ElementarySpec::USInt => "USINT",
-                ElementarySpec::UInt => "UINT",
-                ElementarySpec::Int => "INT",
-                ElementarySpec::DInt => "DINT",
-                ElementarySpec::UDInt => "UDINT",
-                ElementarySpec::LInt => "LINT",
-                ElementarySpec::ULInt => "ULINT",
-                ElementarySpec::Real => "REAL",
-                ElementarySpec::LReal => "LREAL",
-                ElementarySpec::String => "STRING",
-                ElementarySpec::WString => "WSTRING",
-                ElementarySpec::Char => "CHAR",
-                ElementarySpec::WChar => "WCHAR",
-                ElementarySpec::Date => "DATE",
-                ElementarySpec::LDate => "LDATE",
-                ElementarySpec::DateAndTime => "DT",
-                ElementarySpec::LDateTime => "LDT",
-                ElementarySpec::Time => "TIME",
-                ElementarySpec::LTime => "LTIME",
-                ElementarySpec::Tod => "TOD",
-                ElementarySpec::LTod => "LTOD",
-            }
-            .into(),
-            Self::Program(program) => format!("PROGRAM: {}", program.get_name_ident(db).text(db)),
-            Self::Function(f) => format!("FUNCTION: {}", f.get_name_ident(db).text(db)),
-            Self::FunctionBlock(fb) => {
-                format!("FUNCTION_BLOCK: {}", fb.get_name_ident(db).text(db))
-            }
-            Self::MethodDecl(m) => format!("METHOD: {}", m.get_name_ident(db).text(db)),
-            Self::Class(c) => format!("CLASS: {}", c.get_name_ident(db).text(db)),
-            Self::Interface(i) => format!("INTERFACE: {}", i.get_name_ident(db).text(db)),
-            Self::DataType(typ) => match typ.spec(db).kind(db) {
-                SpecKind::Target(_)
-                | SpecKind::Array(_)
-                | SpecKind::Struct(_)
-                | SpecKind::Subrange(_) => format!("{}", typ.get_name_ident(db).text(db),),
-                _ => typ.spec(db).infer(db).type_name(db),
-            },
-            Self::Enum(_) => "ENUM".into(),
-            Self::EnumVariant(v) => format!("ENUM VARIANT: {}", v.text(db)),
-            Self::Struct(_) => "STRUCT".into(),
-            Self::CallableType(typ) => match typ {
-                CallableType::Function(f) => format!("FUNCTION: {}", f.get_name_ident(db).text(db)),
-                CallableType::FunctionBlock(fb) => {
-                    format!("FUNCTION_BLOCK: {}", fb.get_name_ident(db).text(db))
-                }
-                CallableType::MethodDecl(m) => format!("METHOD: {}", m.get_name_ident(db).text(db)),
-            },
-            Self::Never => "{unknown}".into(),
-            Self::Void => "void".into(),
+            Self::Elementary(elem) => elem.type_name().into(),
+            Self::Program(program) => program.get_name_ident(db).text(db).to_string(),
+            Self::Function(f) => f.get_name_ident(db).text(db).to_string(),
+            Self::FunctionBlock(fb) => fb.get_name_ident(db).text(db).to_string(),
+            Self::MethodDecl(m) => m.get_name_ident(db).text(db).to_string(),
+            Self::Class(c) => c.get_name_ident(db).text(db).to_string(),
+            Self::Interface(i) => i.get_name_ident(db).text(db).to_string(),
+            Self::DataType(typ) => typ.get_name_ident(db).text(db).to_string(),
+            Self::EnumVariant(v) => v.text(db).to_string(),
             Self::StructElement(st) => st.spec(db).infer(db).type_name(db),
-            Self::Variable((var, multibits)) => var.spec(db).infer(db).type_name(db),
-            Self::DirectVariable((dv, multibits)) => {
-                format!("DIRECT VARIABLE: {}", dv.adress(db).text(db))
-            }
-            Self::Infer(infer) => match infer {
-                InferType::Integer(i) => format!("{{integer}} {}", i.ident(db).text(db)),
-                InferType::Float(f) => format!("{{float}} {}", f.text(db)),
+            Self::Variable((var, _multibits)) => var.spec(db).infer(db).type_name(db),
+            Self::DirectVariable((dv, _multibits)) => dv.adress(db).text(db).to_string(),
+            Self::CallableType(typ) => match typ {
+                CallableType::Function(f) => f.get_name_ident(db).text(db).to_string(),
+                CallableType::FunctionBlock(fb) => fb.get_name_ident(db).text(db).to_string(),
+                CallableType::MethodDecl(m) => m.get_name_ident(db).text(db).to_string(),
             },
-            _ => self.full_type_name(db),
-        }
-    }
-
-    pub fn full_type_name(&self, db: &'db dyn WorkspaceDataBase) -> String {
-        match self {
+            Self::Struct(_) => "STRUCT".into(),
+            Self::Enum(_) => "ENUM".into(),
             Self::Array(array) => {
                 let elem_type = array.of_type(db).infer(db).type_name(db);
                 let dimensions: Vec<String> = array
@@ -152,30 +127,124 @@ impl<'db> Type<'db> {
                     .collect();
                 format!("ARRAY [{}] OF {}", dimensions.join(", "), elem_type)
             }
-            Self::Enum(enum_) => format!("ENUM ({} members)", enum_.variants(db).len()),
+            Self::ArrayConformand(spec) => {
+                let elem_type = spec.infer(db).type_name(db);
+                format!("ARRAY [*] OF {}", elem_type)
+            }
             Self::SubRange(subrange) => {
+                let base_type = subrange._type(db).infer(db).type_name(db);
                 let lower = subrange
                     .lower(db)
                     .as_range(db)
                     .map(|n| n.to_string())
                     .unwrap_or_default();
-
                 let upper = subrange
                     .upper(db)
                     .as_range(db)
                     .map(|n| n.to_string())
                     .unwrap_or_default();
-
-                format!("SUBRANGE ({lower}..{upper})")
+                format!("{base_type} ({lower}..{upper})")
             }
-            Self::Struct(ztruct) => format!("STRUCT ({} members)", ztruct.elements(db).len()),
-            Self::RefTo(ref_to) => format!("REF TO {}", ref_to.infer(db).type_name(db),),
+            Self::RefTo(spec) => format!("REF_TO {}", spec.infer(db).type_name(db)),
+            Self::Null => "NULL".into(),
+            Self::Infer(infer) => match infer {
+                InferType::Integer(i) => format!("{{integer}} {}", i.ident(db).text(db)),
+                InferType::Float(f) => format!("{{float}} {}", f.text(db)),
+            },
+            Self::Void => "void".into(),
+            Self::Never => "{unknown}".into(),
+        }
+    }
+
+    pub fn path_name(&self, db: &'db dyn WorkspaceDataBase) -> String {
+        let scope_id = match self {
+            Self::Function(f) => f.get_scope_id(db),
+            Self::FunctionBlock(fb) => fb.get_scope_id(db),
+            Self::MethodDecl(m) => m.get_scope_id(db),
+            Self::Class(c) => c.get_scope_id(db),
+            Self::Interface(i) => i.get_scope_id(db),
+            Self::DataType(dt) => dt.get_scope_id(db),
+            _ => return Default::default(),
+        };
+
+        if scope_id.is_global(db) {
+            return Default::default();
+        }
+
+        let sema = semantic_index(db, scope_id.file(db));
+        let mut result = String::new();
+        for scope in sema.scope_iterator(db, scope_id) {
+            match scope.kind {
+                ScopeKind::Namespace(ns) => {
+                    result = format!("{}\n", ns.path(db).to_string(db));
+                    break;
+                }
+                _ => {}
+            }
+        }
+
+        result
+    }
+
+    pub fn full_type_name(&self, db: &'db dyn WorkspaceDataBase) -> String {
+        match self {
+            Self::Struct(ztruct) => {
+                let all_elements = ztruct.elements(db);
+                if all_elements.is_empty() {
+                    return "STRUCT {}".into();
+                }
+                let fields: Vec<String> = all_elements
+                    .iter()
+                    .take(10)
+                    .map(|elem| {
+                        let name = elem.name(db).text(db);
+                        let ty = elem.spec(db).infer(db).type_name(db);
+                        format!("    {name}: {ty}")
+                    })
+                    .collect();
+                let suffix = if all_elements.len() > 10 {
+                    format!("\n    ... ({} more fields)", all_elements.len() - 10)
+                } else {
+                    String::new()
+                };
+                format!("STRUCT {{\n{}{suffix}\n}}", fields.join(",\n"))
+            }
+            Self::Enum(enum_) => {
+                let all_variants = enum_.variants(db);
+                let base = enum_
+                    .typ(db)
+                    .map(|spec| format!(" ({})", spec.infer(db).type_name(db)))
+                    .unwrap_or_default();
+                if all_variants.is_empty() {
+                    return format!("ENUM{base} {{}}");
+                }
+                let names: Vec<String> = all_variants
+                    .iter()
+                    .take(10)
+                    .map(|v| v.name.text(db).to_string())
+                    .collect();
+                let suffix = if all_variants.len() > 10 {
+                    format!(", ... ({} more)", all_variants.len() - 10)
+                } else {
+                    String::new()
+                };
+                format!("ENUM{base} {{ {}{suffix} }}", names.join(", "))
+            }
+            Self::DataType(typ) => {
+                let name = typ.get_name_ident(db).text(db);
+                let inner = typ.spec(db).infer(db);
+                match &inner {
+                    Type::Struct(_) | Type::Enum(_) => {
+                        format!("{name}: {}", inner.full_type_name(db))
+                    }
+                    _ => format!("{name}: {}", inner.type_name(db)),
+                }
+            }
             _ => self.type_name(db),
         }
     }
 
     pub fn with_location(&self, db: &'db dyn WorkspaceDataBase, diag: &mut IdeDiagnostic) {
-        eprintln!("with_location for type: {:?}", self);
         match self {
             Self::Variable((v, multibits)) => match v.spec(db).kind(db) {
                 SpecKind::Target(t) => {
@@ -287,6 +356,22 @@ impl<'db> InitExpr<'db> {
     }
 }
 
+impl<'db> BeginPathExpr<'db> {
+    pub fn to_string(&self, db: &'db dyn WorkspaceDataBase) -> &'db str {
+        match self.invocation(db) {
+            Some(invocation) => match invocation.kind(db) {
+                InvocationKind::Super => "SUPER",
+                InvocationKind::This => "THIS",
+                InvocationKind::SuperBody => "SUPER()",
+            },
+            None => match self.expr(db) {
+                Some(path_expr) => path_expr.ident(db).text(db).as_str(),
+                None => "<invalid path>",
+            },
+        }
+    }
+}
+
 impl<'db> Expr<'db> {
     pub fn to_string(&self, db: &'db dyn WorkspaceDataBase) -> &str {
         match self.expr(db) {
@@ -357,6 +442,17 @@ impl<'db> PrimaryExpr<'db> {
                 RefValue::Null => "NULL",
             },
             PrimaryExpr::ParenthesizedExpr { expr } => expr.to_string(db),
+        }
+    }
+}
+
+impl<'db> Integer {
+    pub fn to_string(&self, db: &dyn WorkspaceDataBase) -> String {
+        match self.kind(db) {
+            IntegerKind::Binary => format!("[Binary] {}", self.ident(db).text(db)),
+            IntegerKind::Hex => format!("[Hexa] {}", self.ident(db).text(db)),
+            IntegerKind::Octal => format!("[Octal] {}", self.ident(db).text(db)),
+            IntegerKind::Signed => self.ident(db).text(db).to_string(),
         }
     }
 }

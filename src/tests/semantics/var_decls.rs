@@ -25,7 +25,7 @@ END_FUNCTION_BLOCK"#;
        |
      8 |         test: fn;
        |               ^|  
-       |                `-- 'FUNCTION: fn' is a function and cannot be used as a variable or data type
+       |                `-- 'fn' is a function and cannot be used as a variable or data type
     ---'
     ");
 }

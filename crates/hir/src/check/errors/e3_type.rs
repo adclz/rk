@@ -108,7 +108,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 } else {
                     format!(
                         "expected '{}', got '{}'",
-                        target.full_type_name(db),
+                        target.type_name(db),
                         adjustment_to_string(db, *value, adjustment),
                     )
                 };
@@ -132,7 +132,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "can't compare '{}' with '{}'",
-                        lhs.full_type_name(db),
+                        lhs.type_name(db),
                         adjustment_to_string(db, *rhs, adjustment),
                     ))
                     .severity(DiagnosticSeverity::ERROR)
@@ -158,7 +158,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                             AddOperatorKind::Plus => "add",
                             AddOperatorKind::Minus => "subtract",
                         },
-                        lhs.full_type_name(db),
+                        lhs.type_name(db),
                         adjustment_to_string(db, *rhs, adjustment)
                     ))
                     .desc(self)
@@ -184,7 +184,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                             MultOperatorKind::Div => "divide",
                             MultOperatorKind::Mod => "modulus",
                         },
-                        rhs.full_type_name(db),
+                        rhs.type_name(db),
                         adjustment_to_string(db, *rhs, adjustment)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
@@ -205,7 +205,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "can not power '{}' with '{}'",
-                        lhs.full_type_name(db),
+                        lhs.type_name(db),
                         adjustment_to_string(db, *rhs, adjustment)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
@@ -217,10 +217,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 diag
             }
             Self::NotABoolean { typ, expr } => diag()
-                .message(format!(
-                    "expected a boolean, got {}",
-                    typ.full_type_name(db)
-                ))
+                .message(format!("expected a boolean, got {}", typ.type_name(db)))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(expr.get_span(db))
@@ -241,7 +238,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                     .message(format!(
                         "cannot infer '{}' to '{}': {}",
                         expr.to_string(db),
-                        target.full_type_name(db),
+                        target.type_name(db),
                         err.to_string()
                     ))
                     .severity(DiagnosticSeverity::ERROR)
@@ -253,7 +250,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                     match source {
                         InferSource::Type(typ) => typ.with_location(db, &mut diag),
                         InferSource::CallSite(call) => diag.with_related(Related::new(
-                            format!("'{}' is expected due to this", target.full_type_name(db)),
+                            format!("'{}' is expected due to this", target.type_name(db)),
                             call.get_scope_id(db).file(db),
                             call.get_span(db),
                         )),
@@ -276,16 +273,16 @@ fn adjustment_to_string(
     match adj {
         Some(adj) => match adj.kind {
             Adjust::Ref => {
-                format!("REF TO {}", adj.target.full_type_name(db))
+                format!("REF TO {}", adj.target.type_name(db))
             }
             Adjust::Deref => {
-                format!("DEREF {}", adj.target.full_type_name(db))
+                format!("DEREF {}", adj.target.type_name(db))
             }
             Adjust::Index => {
-                format!("INDEX {}", adj.target.full_type_name(db))
+                format!("INDEX {}", adj.target.type_name(db))
             }
         },
-        None => value.full_type_name(db),
+        None => value.type_name(db),
     }
 }
 

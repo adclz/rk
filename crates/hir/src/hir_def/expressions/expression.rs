@@ -1,4 +1,4 @@
-use crate::hir_def::expressions::invocation::{Invocation, InvocationKind};
+use crate::hir_def::expressions::invocation::Invocation;
 use crate::hir_def::interned::identifier::{Ident, SpanIdent};
 use crate::hir_def::pous::variable::DirectVariable;
 use crate::hir_def::scope::ScopeId;
@@ -162,22 +162,6 @@ impl<'db> HirNodeInfo<'db> for PathExpr<'db> {
 
     fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
         self.scope_id(db)
-    }
-}
-
-impl<'db> BeginPathExpr<'db> {
-    pub fn to_string(&self, db: &'db dyn WorkspaceDataBase) -> &'db str {
-        match self.invocation(db) {
-            Some(invocation) => match invocation.kind(db) {
-                InvocationKind::Super => "SUPER",
-                InvocationKind::This => "THIS",
-                InvocationKind::SuperBody => "SUPER()",
-            },
-            None => match self.expr(db) {
-                Some(path_expr) => path_expr.ident(db).text(db).as_str(),
-                None => "<invalid path>",
-            },
-        }
     }
 }
 

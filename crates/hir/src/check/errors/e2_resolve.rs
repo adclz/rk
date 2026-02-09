@@ -356,7 +356,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "'{}' has no field named '{}'",
-                        ty.with_name(db).unwrap_or_else(|| ty.full_type_name(db)),
+                        ty.type_name(db),
                         ident.text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
@@ -371,7 +371,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 let mut diag = ide_diagnostic::diag()
                     .message(format!(
                         "'{}' has no field named '{}'",
-                        ty.with_name(db).unwrap_or_else(|| ty.full_type_name(db)),
+                        ty.type_name(db),
                         ident.text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
@@ -388,7 +388,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
             Self::DerefNonRefType { expr, ty } => diag()
                 .message(format!(
                     "cannot dereference non-reference type '{}'",
-                    ty.full_type_name(db)
+                    ty.type_name(db)
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)

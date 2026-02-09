@@ -45,7 +45,7 @@ END_FUNCTION_BLOCK
        |
      3 |     fb2();
        |     ^|^  
-       |      `--- 'FUNCTION_BLOCK: fb2' is not a callable type
+       |      `--- 'fb2' is not a callable type
        | 
        | Note: to call a FUNCTION_BLOCK, you need to instantiate it first.
     ---'
@@ -377,7 +377,7 @@ END_FUNCTION_BLOCK"#;
         |
      13 |     fn(param1 => b1);
         |                  ^|  
-        |                   `-- cannot use direct type 'INT' here
+        |                   `-- cannot use direct type 'b1' here
     ----'
     ");
 }

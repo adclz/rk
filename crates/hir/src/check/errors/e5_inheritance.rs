@@ -343,8 +343,8 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                     .message(format!(
                         "method '{}' has incompatible parameter types: expected '{}', got '{}'",
                         method.get_name_ident(db).text(db),
-                        expected.full_type_name(db),
-                        got.full_type_name(db),
+                        expected.type_name(db),
+                        got.type_name(db),
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)

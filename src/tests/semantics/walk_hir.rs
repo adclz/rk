@@ -141,6 +141,7 @@ END_FUNCTION_BLOCK"#;
     VariableAccess(VariableAccess { [salsa id]: Id(1400) })
     PathExpr { prev: VariableAccess(VariableAccess { [salsa id]: Id(1400) }), curr: PathExpr { [salsa id]: Id(c00) } }
     Expr(Expr { [salsa id]: Id(1c00) })
+    PathExpr { prev: PathExpr(PathExpr { [salsa id]: Id(c01) }), curr: PathExpr { [salsa id]: Id(c01) } }
     PathExpr { prev: PathExpr(PathExpr { [salsa id]: Id(c02) }), curr: PathExpr { [salsa id]: Id(c02) } }
     Param(ParamAssign { [salsa id]: Id(2800) })
     Param(ParamAssign { [salsa id]: Id(2801) })
@@ -225,6 +226,7 @@ END_FUNCTION_BLOCK"#;
         6,
         10,
         12,
+        16,
         21,
         23,
         32,

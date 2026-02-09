@@ -71,7 +71,7 @@ impl<'db> ToIdeDiagnostic<'db> for EnumError<'db> {
                 diag
             }
             Self::NotAnEnum { expr, item } => diag()
-                .message(format!("'{}' is not an ENUM type", item.full_type_name(db)))
+                .message(format!("'{}' is not an ENUM type", item.type_name(db)))
                 .range(expr.get_span(db))
                 .desc(self)
                 .call(),

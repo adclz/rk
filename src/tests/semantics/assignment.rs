@@ -51,7 +51,7 @@ END_FUNCTION_BLOCK"#;
        |
      8 |     fb2 := ULINT#5;
        |     ^|^  
-       |      `--- cannot use direct type 'FUNCTION_BLOCK: fb2' here
+       |      `--- cannot use direct type 'fb2' here
     ---'
     [E0301] Error: type mismatch
        ,-[ file:///test0.st:8:12 ]
@@ -62,7 +62,7 @@ END_FUNCTION_BLOCK"#;
        | 
      8 |     fb2 := ULINT#5;
        |            ^^^|^^^  
-       |               `----- expected 'FUNCTION_BLOCK: fb2', got 'ULINT'
+       |               `----- expected 'fb2', got 'ULINT'
     ---'
     ");
 }
@@ -110,7 +110,7 @@ END_FUNCTION"#;
        | 
      4 |     fn1 := ULINT#5;
        |            ^^^|^^^  
-       |               `----- 'FUNCTION: fn1' is void and can not be assigned
+       |               `----- 'fn1' is void and can not be assigned
     ---'
     ");
 }
@@ -134,7 +134,7 @@ END_FUNCTION_BLOCK"#;
        |
      8 |     T1 := ULINT#5;
        |     ^|  
-       |      `-- cannot use direct type 'INT' here
+       |      `-- cannot use direct type 'T1' here
     ---'
     [E0301] Error: type mismatch
        ,-[ file:///test0.st:8:11 ]
@@ -145,7 +145,7 @@ END_FUNCTION_BLOCK"#;
        | 
      8 |     T1 := ULINT#5;
        |           ^^^|^^^  
-       |              `----- expected 'INT', got 'ULINT'
+       |              `----- expected 'T1', got 'ULINT'
     ---'
     ");
 }
@@ -183,7 +183,7 @@ END_FUNCTION_BLOCK"#;
         | 
      11 |     d_fb2 := ULINT#5;
         |              ^^^|^^^  
-        |                 `----- expected 'FUNCTION_BLOCK: fb2', got 'ULINT'
+        |                 `----- expected 'fb2', got 'ULINT'
     ----'
     ");
 }

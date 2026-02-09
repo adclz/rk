@@ -183,7 +183,7 @@ fn unexpected_array(mut with_db: RootDatabase) {
        |
      8 |                 Base : Engine := [2];
        |                               ^^^|^^  
-       |                                  `---- cannot index into type 'INT'
+       |                                  `---- cannot index into type 'Engine'
     ---'
     ");
 }
