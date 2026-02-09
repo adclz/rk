@@ -11,6 +11,7 @@ use hir::{
             },
             spec::{Spec, SpecKind, StructElement},
         },
+        interned::namespace::{NamespaceAccess, SpanNamespaceAccess},
         namespace::NamespaceDecl,
         pous::{
             pou::Pou,
@@ -34,6 +35,7 @@ impl<'db> HirNode<'db> {
     pub fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
         match self {
             HirNode::Namespace(n) => n.hover(db, offset),
+            HirNode::NamespaceAccess(a) => a.hover(db, offset),
             HirNode::PouDecl(p) => p.hover(db, offset),
             HirNode::VariableDecl(v) => v.hover(db, offset),
             HirNode::InitExpr { curr, .. } => curr.hover(db, offset),
@@ -52,6 +54,13 @@ impl<'db> HirNode<'db> {
 
 impl<'db> HoverHandler<'db> for NamespaceDecl<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
+        let name_span = self.name_span(db);
+
+        // Return None if the offset is outside the name span
+        if offset < name_span.start_byte || offset >= name_span.end_byte {
+            return None;
+        }
+
         let ns = self.path(db).to_string(db);
         Some(Hover {
             contents: HoverContents::Scalar(MarkedString::from_markdown(
@@ -69,6 +78,12 @@ NAMESPACE {ns}
     }
 }
 
+impl<'db> HoverHandler<'db> for SpanNamespaceAccess<'db> {
+    fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
+        self.infer(db).hover(db, offset)
+    }
+}
+
 impl<'db> HoverHandler<'db> for Pou<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
         let name_span = self.get_name_span(db);
@@ -78,25 +93,26 @@ impl<'db> HoverHandler<'db> for Pou<'db> {
             return None;
         }
 
-        let infer = infer_signature(db, self.get_scope_id(db));
-
         let comment = self.get_comment(db).unwrap_or_default();
         let kind = match self {
             Pou::Function(_) => "FUNCTION".into(),
             Pou::FunctionBlock(_) => "FUNCTION_BLOCK".into(),
             Pou::Class(_) => "CLASS".into(),
             Pou::Interface(_) => "INTERFACE".into(),
-            Pou::DataType(dt) => infer.type_of_specs[&dt.spec(db)].type_name(db),
+            Pou::DataType(dt) => "TYPE",
         };
 
         let name = self.get_name_ident(db).text(db);
         let return_type = match self {
             Pou::Function(f) => f
                 .return_type(db)
-                .map(|spec| format!(": {}", infer.type_of_specs[spec].type_name(db)))
+                .map(|spec| format!(": {}", spec.infer(db).type_name(db)))
                 .unwrap_or_default(),
+            Pou::DataType(dt) => format!(": {}", dt.spec(db).infer(db).full_type_name(db)),
             _ => "".to_string(),
         };
+
+        let path = Type::new_pou(db, *self).path_name(db);
 
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
@@ -105,7 +121,7 @@ impl<'db> HoverHandler<'db> for Pou<'db> {
                     r#"
 {comment}
 ```iecst
-[{kind}] {name}{return_type}
+{path}{kind} {name}{return_type}
 ```
                 "#
                 ),
@@ -130,9 +146,9 @@ impl<'db> HoverHandler<'db> for VariableDecl<'db> {
             VariableKind::Temp => "TEMP",
         };
 
-        let infer = infer_signature(db, self.get_scope_id(db));
+        let infer = self.spec(db).infer(db);
         let name = self.name(db).text(db);
-        let type_name = infer.type_of_specs[&self.spec(db)].type_name(db);
+        let type_name = infer.type_name(db);
 
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
@@ -153,14 +169,15 @@ impl<'db> HoverHandler<'db> for VariableDecl<'db> {
 
 impl<'db> HoverHandler<'db> for Spec<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
-        let infer = infer_signature(db, self.scope_id(db));
+        let infer = self.infer(db);
 
-        let comment = infer.type_of_specs[self]
+        let comment = infer
             .as_hir_node(db)
             .and_then(|n| n.get_comment(db))
             .unwrap_or_default();
 
-        let desc = infer.type_of_specs[self].full_type_name(db);
+        let desc = infer.full_type_name(db);
+        let path = infer.path_name(db);
 
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
@@ -169,7 +186,7 @@ impl<'db> HoverHandler<'db> for Spec<'db> {
                     r#"
 {comment}
 ```iecst
-{desc}
+{path}{desc}
 ```
                 "#
                 ),
@@ -189,6 +206,7 @@ impl<'db> HoverHandler<'db> for InitExpr<'db> {
             .unwrap_or_default();
 
         let desc = typ.full_type_name(db);
+        let path = typ.path_name(db);
 
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
@@ -197,7 +215,7 @@ impl<'db> HoverHandler<'db> for InitExpr<'db> {
                     r#"
 {comment}
 ```iecst
-{desc}
+{path}{desc}
 ```
                 "#
                 ),
@@ -213,19 +231,20 @@ impl<'db> HoverHandler<'db> for MethodRef<'db> {
             MethodRef::Declared(_) => "METHOD",
             MethodRef::Prototype(_) => "METHOD PROTOTYPE",
         };
-        let infer = infer_signature(db, self.get_scope_id(db));
+
         let name = self.get_name_ident(db).text(db);
         let return_type = match self {
             MethodRef::Declared(decl) => match decl.return_type(db) {
-                Some(ret_ty) => format!(": {}", infer.type_of_specs[ret_ty].type_name(db)),
+                Some(ret_ty) => format!(": {}", ret_ty.infer(db).type_name(db)),
                 None => "".to_string(),
             },
             MethodRef::Prototype(proto) => match proto.return_type(db) {
-                Some(ret_ty) => format!(": {}", infer.type_of_specs[ret_ty].type_name(db)),
+                Some(ret_ty) => format!(": {}", ret_ty.infer(db).type_name(db)),
                 None => "".to_string(),
             },
         };
         let comment = self.get_comment(db).unwrap_or_default();
+        let path = Type::MethodDecl(*self).path_name(db);
 
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
@@ -234,7 +253,7 @@ impl<'db> HoverHandler<'db> for MethodRef<'db> {
                     r#"
 {comment}
 ```iecst
-[{kind}] {name}{return_type}
+{path}{kind} {name}{return_type}
 ```
                 "#
                 ),
@@ -248,8 +267,8 @@ impl<'db> HoverHandler<'db> for StructElement<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
         let comment = self.get_comment(db).unwrap_or_default();
         let name = self.name(db).text(db);
-        let infer = infer_signature(db, self.get_scope_id(db));
-        let type_name = infer.type_of_specs[&self.spec(db)].type_name(db);
+        let type_name = self.spec(db).infer(db).type_name(db);
+        let path = Type::StructElement(*self).path_name(db);
 
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
@@ -258,7 +277,7 @@ impl<'db> HoverHandler<'db> for StructElement<'db> {
                     r#"
 {comment}
 ```iecst
-{name}: {type_name}
+{path}{name}: {type_name}
 ```
                 "#
                 ),
@@ -298,9 +317,43 @@ impl<'db> HoverHandler<'db> for ParamAssign<'db> {
     }
 }
 
+impl<'db> HoverHandler<'db> for Using<'db> {
+    fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
+        let mut accumulated_path = vec![];
+
+        for (index, fragment) in self.path(db).fragments(db).iter().enumerate() {
+            let span = self.path(db).get_fragment_ast_node(db, index).get_span();
+            accumulated_path.push(fragment.text(db).to_string());
+
+            if offset >= span.start_byte && offset <= span.end_byte {
+                let full_path = accumulated_path.join(".");
+                return Some(Hover {
+                    contents: HoverContents::Scalar(MarkedString::from_markdown(format!(
+                        r#"
+```iecst
+(USING) NAMESPACE {}
+```
+"#,
+                        full_path
+                    ))),
+                    range: None,
+                });
+            }
+        }
+
+        None
+    }
+}
+
 impl<'db> HoverHandler<'db> for Type<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
+        eprintln!("Hovering type: {:?}", self);
         match self {
+            Type::Function(f) => Pou::Function(*f).hover(db, offset),
+            Type::FunctionBlock(f) => Pou::FunctionBlock(*f).hover(db, offset),
+            Type::Class(f) => Pou::Class(*f).hover(db, offset),
+            Type::Interface(f) => Pou::Interface(*f).hover(db, offset),
+            Type::DataType(f) => Pou::DataType(*f).hover(db, offset),
             Type::Variable((var, _multibits)) => var.hover(db, offset),
             _ => Some(Hover {
                 contents: HoverContents::Markup(MarkupContent {
@@ -318,33 +371,5 @@ impl<'db> HoverHandler<'db> for Type<'db> {
                 range: None,
             }),
         }
-    }
-}
-
-impl<'db> HoverHandler<'db> for Using<'db> {
-    fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
-        let mut accumulated_path = vec![];
-
-        for (index, fragment) in self.path(db).fragments(db).iter().enumerate() {
-            let span = self.path(db).get_fragment_ast_node(db, index).get_span();
-            accumulated_path.push(fragment.text(db).to_string());
-
-            if offset >= span.start_byte && offset <= span.end_byte {
-                let full_path = accumulated_path.join(".");
-                return Some(Hover {
-                    contents: HoverContents::Scalar(MarkedString::from_markdown(format!(
-                        r#"
-```iecst
-(using) NAMESPACE {}
-```
-"#,
-                        full_path
-                    ))),
-                    range: None,
-                });
-            }
-        }
-
-        None
     }
 }
