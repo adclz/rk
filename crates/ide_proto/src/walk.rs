@@ -7,8 +7,8 @@ use hir::{
     hir_def::{
         expressions::{
             expression::{
-                BeginPathExpr, Expr, InitExpr, InitExprKind, ParamAssign, VariableAccess,
-                VariableAccessKind,
+                BeginPathExpr, Expr, ExprKind, InitExpr, InitExprKind, ParamAssign, PrimaryExpr,
+                VariableAccess, VariableAccessKind,
             },
             spec::{Spec, SpecKind},
             statement::{CaseKind, Stmt, StmtKind},
@@ -24,6 +24,27 @@ use hir::{
 use crate::hir_node::{HirNode, PathExprRoot};
 
 pub fn descendant_at<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    file: File,
+    offset: usize,
+) -> Option<HirNode<'db>> {
+    let mut best_match: Option<HirNode<'db>> = None;
+
+    let _ = semantic_index(db, file).walk_hir(db, &mut |node| {
+        let range = node.get_span(db);
+        // Only consider nodes that contain the offset
+        if range.start_byte <= offset && offset <= range.end_byte {
+            // Always update the best match when we find a containing node
+            // This ensures we get the deepest (last visited) node in the tree
+            best_match = Some(node);
+        }
+        ControlFlow::Continue(())
+    });
+
+    best_match
+}
+
+pub fn completion_descendant_at<'db>(
     db: &'db dyn WorkspaceDataBase,
     file: File,
     offset: usize,
@@ -284,10 +305,24 @@ impl<'db> WalkHir<'db> for InitExpr<'db> {
 impl<'db> WalkHir<'db> for Expr<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
         &self,
-        _db: &'db dyn WorkspaceDataBase,
+        db: &'db dyn WorkspaceDataBase,
         f: &mut F,
     ) -> ControlFlow<()> {
         f(HirNode::Expr(*self))?;
+        match self.expr(db) {
+            ExprKind::PrimaryExpr(primary) => match primary {
+                PrimaryExpr::VariableAccess(var) => var.walk_hir(db, f)?,
+                PrimaryExpr::ParenthesizedExpr { expr } => expr.walk_hir(db, f)?,
+                PrimaryExpr::FuncCall(func_call) => {
+                    func_call.path(db).walk_hir(db, f)?;
+                    for param in func_call.params(db) {
+                        param.walk_hir(db, f)?;
+                    }
+                }
+                _ => {}
+            },
+            _ => {}
+        }
 
         ControlFlow::Continue(())
     }
@@ -378,7 +413,7 @@ impl<'db> WalkHir<'db> for Stmt<'db> {
     ) -> ControlFlow<()> {
         match self.stmt(db) {
             StmtKind::EmptyPathExpression(path) => path.walk_hir(db, f)?,
-            StmtKind::Assignment { target, var } => {
+            StmtKind::Assignment { var, target } => {
                 var.walk_hir(db, f)?;
                 target.walk_hir(db, f)?;
             }

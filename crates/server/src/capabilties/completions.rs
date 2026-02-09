@@ -3,7 +3,7 @@ use auto_lsp::{
     lsp_types::{CompletionParams, CompletionResponse},
 };
 use db::WorkspaceDataBase;
-use ide_proto::walk::descendant_at;
+use ide_proto::walk::completion_descendant_at;
 
 pub fn completions(
     db: &impl WorkspaceDataBase,
@@ -29,7 +29,7 @@ pub fn completions(
         None => return Ok(None),
     };
 
-    let target = match descendant_at(db, file, offset) {
+    let target = match completion_descendant_at(db, file, offset) {
         Some(target) => target,
         None => {
             // no target node, show general completions (namespaces, pou snippets, etc)
