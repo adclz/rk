@@ -2,8 +2,13 @@ use db::WorkspaceDataBase;
 
 use crate::{
     HirNodeInfo,
-    hir_def::expressions::{
-        expression::{BeginPathExpr, Expr, InitExpr, ParamAssign, PathExpr, VariableAccess}, invocation::Invocation, spec::Spec
+    hir_def::{
+        expressions::{
+            expression::{BeginPathExpr, Expr, InitExpr, ParamAssign, PathExpr, VariableAccess},
+            invocation::Invocation,
+            spec::Spec,
+        },
+        interned::namespace::SpanNamespaceAccess,
     },
     hir_ty::{
         body::infer_body,
@@ -20,6 +25,16 @@ pub mod table;
 
 pub trait Infer<'db> {
     fn infer(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db>;
+}
+
+impl<'db> Infer<'db> for SpanNamespaceAccess<'db> {
+    fn infer(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {
+        infer_signature(db, self.get_scope_id(db))
+            .namespace_access_to_type
+            .get(&self.path)
+            .copied()
+            .unwrap_or_default()
+    }
 }
 
 impl<'db> Infer<'db> for Spec<'db> {
@@ -45,8 +60,7 @@ impl<'db> Infer<'db> for InitExpr<'db> {
 
 impl<'db> Infer<'db> for Invocation<'db> {
     fn infer(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {
-        infer_body(db, self.get_scope_id(db))
-            .get_type_of_invocation(db, *self)
+        infer_body(db, self.get_scope_id(db)).get_type_of_invocation(db, *self)
     }
 }
 

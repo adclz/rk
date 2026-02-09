@@ -4,7 +4,7 @@ use rustc_hash::FxHashMap;
 use crate::{
     CallSite,
     check::errors::{analysis_error::ToIdeDiagnostic, e3_type::TypeError},
-    hir_def::{expressions::expression::Expr},
+    hir_def::expressions::expression::Expr,
     hir_ty::{
         body::BodyInferenceResult,
         infer::Infer,
@@ -33,7 +33,7 @@ pub struct InferenceTable<'db> {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum InferSource<'db> {
     Type(Type<'db>),
-    CallSite(CallSite<'db>)
+    CallSite(CallSite<'db>),
 }
 
 impl<'db> From<Type<'db>> for InferSource<'db> {
@@ -140,7 +140,10 @@ impl<'db> InferenceTable<'db> {
                     // we then perform a promotion if the size of the new type is larger
                     // todo: handle float vs int promotion
                     if value.get_size() > ty.get_size() {
-                        self.current_mode = InferMode::Resolved { ty: value, expr: *expr };
+                        self.current_mode = InferMode::Resolved {
+                            ty: value,
+                            expr: *expr,
+                        };
                     }
                 }
             },

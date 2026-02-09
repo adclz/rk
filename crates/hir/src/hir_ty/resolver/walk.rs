@@ -8,13 +8,20 @@ use crate::{
     hir_def::{
         expressions::{
             expression::{BeginPathExpr, InitExpr, MultibitsPart, PathExpr},
-            invocation::{Invocation, InvocationKind}, spec::StructElement,
-        }, interned::identifier::{Ident, SpanIdent}, pous::{pou::Pou, variable::VariableDecl}, scope::ScopeId
+            invocation::{Invocation, InvocationKind},
+            spec::StructElement,
+        },
+        interned::identifier::{Ident, SpanIdent},
+        pous::{pou::Pou, variable::VariableDecl},
+        scope::ScopeId,
     },
     hir_ty::{
         body::{Adjustment, AdjustmentInfo, BodyInferenceResult},
         expr_store::{InitExprWalkStep, PathExprWalkStep},
-        head::{inheritance::{MethodRef, inherited_methods}, init_inference::InitExprInferenceResult},
+        head::{
+            inheritance::{MethodRef, inherited_methods},
+            init_inference::InitExprInferenceResult,
+        },
         infer::Infer,
         resolver::{Resolver, invocation::resolve_invocation, visibility::check_visibility},
         ty::Type,
@@ -76,11 +83,7 @@ impl<'db> Type<'db> {
     }
 
     /// Resolve a named field on this (concrete) type.
-    fn resolve_field(
-        &self,
-        db: &'db dyn WorkspaceDataBase,
-        name: &Ident,
-    ) -> FieldLookup<'db> {
+    fn resolve_field(&self, db: &'db dyn WorkspaceDataBase, name: &Ident) -> FieldLookup<'db> {
         match self {
             Type::Struct(st) => match st.struct_elements(db).get(name) {
                 Some(field) => FieldLookup::StructElement(*field),
@@ -103,7 +106,6 @@ impl<'db> Type<'db> {
         }
     }
 }
-
 
 impl<'db> Type<'db> {
     pub fn walk_begin_path_expr(
@@ -237,7 +239,6 @@ impl<'db> Type<'db> {
     }
 }
 
-
 impl<'db> Type<'db> {
     pub fn walk_path_expr(
         &self,
@@ -255,7 +256,15 @@ impl<'db> Type<'db> {
 
         match step {
             PathExprWalkStep::Field { ident, .. } => {
-                self.walk_field(db, report_errors, step.get_expr(db), ident, multibits, place, ctx);
+                self.walk_field(
+                    db,
+                    report_errors,
+                    step.get_expr(db),
+                    ident,
+                    multibits,
+                    place,
+                    ctx,
+                );
             }
             PathExprWalkStep::Deref { count, .. } => {
                 self.walk_deref(db, report_errors, step.get_expr(db), *count, place, ctx);
@@ -336,8 +345,7 @@ impl<'db> Type<'db> {
                 Err(non_ref) => {
                     if report_errors {
                         ctx.errors.push(
-                            ResolveError::DerefNonRefType { expr, ty: non_ref }
-                                .to_diagnostic(db),
+                            ResolveError::DerefNonRefType { expr, ty: non_ref }.to_diagnostic(db),
                         );
                     }
                     break;

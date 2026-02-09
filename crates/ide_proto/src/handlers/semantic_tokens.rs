@@ -66,7 +66,7 @@ impl<'db> SemanticTokensHandler<'db> for SpanNamespaceAccess<'db> {
     ) {
         let infer = infer_signature(db, self.get_scope_id(db));
         push_fragments(db, &self.path, builder);
-        if let Some(resolved) = infer.namespace_access_to_pou.get(&self.path) {
+        if let Some(resolved) = infer.namespace_access_to_type.get(&self.path) {
             semantic_tokens_for_type(db, *resolved, builder, self.get_span(db));
         }
     }

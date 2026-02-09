@@ -828,15 +828,6 @@ impl Integer {
             IntegerKind::Signed => self.ident(db).text(db).parse(),
         }
     }
-
-    pub fn to_string(&self, db: &dyn WorkspaceDataBase) -> String {
-        match self.kind(db) {
-            IntegerKind::Binary => format!("[Binary] {}", self.ident(db).text(db)),
-            IntegerKind::Hex => format!("[Hexa] {}", self.ident(db).text(db)),
-            IntegerKind::Octal => format!("[Octal] {}", self.ident(db).text(db)),
-            IntegerKind::Signed => self.ident(db).text(db).to_string(),
-        }
-    }
 }
 
 pub fn parse_single_byte_string(s: &str) -> Result<Vec<u8>, InferLiteralError> {

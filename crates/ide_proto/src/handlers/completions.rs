@@ -14,7 +14,7 @@ use hir::{
         semantic_index::get_scope,
         using::Using,
     },
-    hir_ty::{infer::Infer},
+    hir_ty::infer::Infer,
     query_string::namespace::NamespaceSearchCtx,
 };
 use rustc_hash::FxHashSet;
