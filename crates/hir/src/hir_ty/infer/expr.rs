@@ -214,31 +214,13 @@ impl<'db> InferExprCtx<'db> {
                 operator,
                 right,
             } => {
-                // check left operand
-                if let Err(err) =
-                    self.coerce_type_with_expr(db, Type::new_bool(), *left, inference_results)
-                {
-                    inference_results.errors.push(err.into_non_assignable(
+                if let Err(err) = self.coerce_expressions(db, *left, *right, inference_results) {
+                    inference_results.errors.push(err.into_non_comparable(
                         db,
-                        Type::new_bool(),
-                        CallSite::from_scoped(db, left),
-                    ));
-                }
-
-                // check right operand
-                if let Err(err) =
-                    self.coerce_type_with_expr(db, Type::new_bool(), *right, inference_results)
-                {
-                    inference_results.errors.push(err.into_non_assignable(
-                        db,
-                        Type::new_bool(),
+                        inference_results.type_of_expr[left],
                         CallSite::from_scoped(db, right),
                     ));
                 }
-                // the return type of a boolean expression is bool
-                inference_results
-                    .type_of_expr
-                    .insert(expr, Type::new_bool());
             }
             ExprKind::ComparisonOperator {
                 left,
