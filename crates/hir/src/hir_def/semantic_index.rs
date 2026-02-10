@@ -46,7 +46,7 @@ pub struct SemanticIndex<'db> {
     pub(crate) scopes: FxHashMap<usize, Arc<Scope<'db>>>,
 
     /// Program declarations in the file
-    pub(crate) programs: Vec<ProgramDecl<'db>>,
+    pub programs: Vec<ProgramDecl<'db>>,
 
     /// All *global* namespaces in the file
     pub global_namespaces: Vec<NamespaceDecl<'db>>,

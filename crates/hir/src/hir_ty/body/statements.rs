@@ -6,7 +6,7 @@ use crate::{
     hir_def::{
         expressions::{
             expression::Expr,
-            statement::{Stmt, StmtKind},
+            statement::{CaseKind, Stmt, StmtKind},
         },
         scope::ScopeId,
     },
@@ -221,18 +221,64 @@ impl<'db> StmtsResolverCtx<'db> {
                 } => {
                     // check condition
                     self.infer_and_check_expr(db, &mut infer, *condition, ctx);
-                    if let Err(err) =
-                        infer.coerce_type_with_expr(db, Type::new_bool(), *condition, ctx)
-                    {
-                        ctx.errors.push(err.into_non_assignable(
-                            db,
-                            Type::new_bool(),
-                            CallSite::from_scoped(db, condition),
-                        ));
-                    }
+
+                    let condition_typ = ctx.get_type_of_expr(*condition);
 
                     // check cases
-                    for (case_kind, stmts) in cases { /* todo */ }
+                    for (case_kind, stmts) in cases {
+                        for case in case_kind {
+                            match case {
+                                CaseKind::Expression(expr) => {
+                                    self.infer_and_check_expr(db, &mut infer, *expr, ctx);
+
+                                    if let Err(err) = infer.coerce_type_with_expr(
+                                        db,
+                                        condition_typ,
+                                        *expr,
+                                        ctx,
+                                    ) {
+                                        ctx.errors.push(err.into_non_comparable(
+                                            db,
+                                            condition_typ,
+                                            CallSite::from_scoped(db, expr),
+                                        ));
+                                    }
+                                }
+                                CaseKind::Subrange { lower, upper } => {
+                                    self.infer_and_check_expr(db, &mut infer, *lower, ctx);
+                                    self.infer_and_check_expr(db, &mut infer, *upper, ctx);
+
+                                    if let Err(err) = infer.coerce_type_with_expr(
+                                        db,
+                                        condition_typ,
+                                        *lower,
+                                        ctx,
+                                    ) {
+                                        ctx.errors.push(err.into_non_comparable(
+                                            db,
+                                            condition_typ,
+                                            CallSite::from_scoped(db, lower),
+                                        ));
+                                    }
+
+                                    if let Err(err) = infer.coerce_type_with_expr(
+                                        db,
+                                        condition_typ,
+                                        *upper,
+                                        ctx,
+                                    ) {
+                                        ctx.errors.push(err.into_non_comparable(
+                                            db,
+                                            condition_typ,
+                                            CallSite::from_scoped(db, upper),
+                                        ));
+                                    }
+                                }
+                            }
+                        }
+
+                        self.check_statements(db, resolver, stmts, NestedScope::None, ctx);
+                    }
 
                     // check else
                     if let Some(else_) = else_ {
