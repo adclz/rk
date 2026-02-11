@@ -70,14 +70,15 @@ impl<'db> Type<'db> {
         }
     }
 
-    /// If this type is a POU (Function / FunctionBlock / Class / Program),
+    /// If this type can have variables/methods (Function / FunctionBlock / Class / Program / Method),
     /// return its scope id.
-    fn as_pou_scope(&self, db: &'db dyn WorkspaceDataBase) -> Option<ScopeId<'db>> {
+    fn as_walkable_scope(&self, db: &'db dyn WorkspaceDataBase) -> Option<ScopeId<'db>> {
         match self {
             Type::Function(f) => Some(f.scope_id(db)),
             Type::FunctionBlock(fb) => Some(fb.scope_id(db)),
             Type::Class(c) => Some(c.scope_id(db)),
             Type::Program(p) => Some(p.scope_id(db)),
+            Type::MethodDecl(m) => Some(m.get_scope_id(db)),
             _ => None,
         }
     }
@@ -90,7 +91,7 @@ impl<'db> Type<'db> {
                 None => FieldLookup::NotFound,
             },
             _ => {
-                if let Some(scope) = self.as_pou_scope(db) {
+                if let Some(scope) = self.as_walkable_scope(db) {
                     let def_map = scope.def_map(db);
                     if let Some(var) = def_map.global_variables.get(name) {
                         FieldLookup::Variable(*var)
@@ -194,18 +195,24 @@ impl<'db> Type<'db> {
             return;
         }
 
-        if let Type::MethodDecl(m) = current {
-            check_visibility(db, &invocation.as_call_site(db), m, &mut ctx.errors);
-            ctx.type_of_path_expr.insert(path_expr, Type::MethodDecl(m));
-        } else {
-            ctx.errors.push(
-                ResolveError::NoSuchFieldPathExpr {
-                    expr: path_expr,
-                    ident: *path_expr.ident(db),
-                    ty: place.current_typ,
-                }
-                .to_diagnostic(db),
-            );
+        match current {
+            Type::MethodDecl(m) => {
+                check_visibility(db, &invocation.as_call_site(db), m, &mut ctx.errors);
+                ctx.type_of_path_expr.insert(path_expr, Type::MethodDecl(m));
+            }
+            Type::Variable((var, multibits)) => {
+                ctx.type_of_path_expr.insert(path_expr, Type::new_var_with_multibits(db, var, multibits));
+            }
+            _ => {
+                ctx.errors.push(
+                    ResolveError::NoSuchFieldPathExpr {
+                        expr: path_expr,
+                        ident: *path_expr.ident(db),
+                        ty: place.current_typ,
+                    }
+                    .to_diagnostic(db),
+                );
+            }
         }
     }
 
@@ -225,7 +232,9 @@ impl<'db> Type<'db> {
                 check_visibility(db, &ident.as_call_site(db), method.method, &mut ctx.errors);
                 ctx.type_of_path_expr
                     .insert(*expr, Type::MethodDecl(method.method));
-            } else {
+            } 
+            //fixme: Should SUPER allow access to variables in the base POU?
+            else {
                 ctx.errors.push(
                     ResolveError::NoSuchFieldPathExpr {
                         expr: path_expr,

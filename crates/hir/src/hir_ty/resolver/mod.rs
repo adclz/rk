@@ -6,6 +6,7 @@ pub mod visibility;
 pub mod walk;
 
 use crate::{
+    HirNodeInfo,
     check::errors::{analysis_error::ToIdeDiagnostic, e2_resolve::ResolveError},
     hir_def::{
         expressions::expression::{
@@ -76,6 +77,22 @@ impl<'db> Resolver<'db> {
             );
             return false;
         };
+
+        // Methods declarations, just like FUNCTIONS, can reference themselves (return type)
+        // but the resolve_namespace_access only searches for POUs,
+        // so we also check if the target matches the name of a method in the current scope
+        // todo: move this logic inside resolve_namespace_access and make it more robust (handle shadowing, etc.)
+        match get_scope(db, path_expr.get_scope_id(db)).kind {
+            ScopeKind::MethodDecl(method) => {
+                // todo: check shadowing
+                if access.target == method.name(db) {
+                    ctx.type_of_path_expr
+                        .insert(path_expr, Type::MethodDecl(method.into()));
+                    return true;
+                }
+            }
+            _ => (),
+        }
 
         match resolve_namespace_access(db, access) {
             Some(pou) => {
