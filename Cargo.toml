@@ -16,6 +16,7 @@ members = [
     "crates/ide_proto",
     "crates/formatter",
     "crates/fuzz",
+    "crates/wasm_codegen",
     "crates/cli",
     "vscode/server",
 ]
@@ -35,6 +36,7 @@ memory_usage = { path = "crates/memory_usage" }
 ide_diagnostic = { path = "crates/ide_diagnostic" }
 ide_proto = { path = "crates/ide_proto" }
 hir = { path = "crates/hir" }
+wasm_codegen = { path = "crates/wasm_codegen" }
 formatter = { path = "crates/formatter" }
 bon = "3.6.4"
 phf = { version = "0.11.3", features = ["macros"] }
@@ -53,14 +55,16 @@ time = { version = "0.3.41", features = ["macros", "parsing"] }
 rstest = "0.26.1"
 insta = "1.13.1"
 serde_json = "1.0.109"
-stderrlog = "0.6.0"
-indexmap = "2.11.4"
+indexmap = "2.13.0"
 # salsa version must be kept in sync with auto-lsp's one
 salsa = "0.23.0"
 # cli dependencies
 clap = { version = "4.5.54" }
 yansi = { version = "1.0.1" }
 notify = "8.1.0"
+# backends
+wasm-encoder = "0.244.0"
+wasmparser = "0.244.0" 
 
 [package]
 name = "rk-tests"
@@ -79,6 +83,7 @@ ast = { workspace = true }
 db = { workspace = true }
 hir = { workspace = true }
 ide_proto = { workspace = true }
+wasm_codegen = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }
@@ -87,3 +92,4 @@ ariadne = { workspace = true }
 tree-sitter-rk = { workspace = true }
 formatter = { workspace = true }
 topiary-core = { workspace = true }
+wasmparser = { workspace = true }
