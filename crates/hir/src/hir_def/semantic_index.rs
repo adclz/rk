@@ -67,11 +67,25 @@ impl<'db> SemanticIndex<'db> {
         file: File,
         ast: Arc<Vec<Box<dyn AstNode>>>,
     ) -> Self {
+        let global_scope = ScopeId::global(db, file);
+        let mut scopes = FxHashMap::default();
+
+        // Register the global scope so it can be looked up later
+        let scope = Scope::new(
+            file,
+            crate::hir_def::scope::ScopeKind::Global,
+            vec![],
+            global_scope,
+            crate::Visibility::PUBLIC,
+            None,
+        );
+        scopes.insert(global_scope.scope(db), Arc::new(scope));
+
         SemanticIndex {
-            scope: ScopeId::global(db, file),
+            scope: global_scope,
             file,
             ast,
-            scopes: FxHashMap::default(),
+            scopes,
             programs: vec![],
             global_namespaces: vec![],
             global_pous: vec![],

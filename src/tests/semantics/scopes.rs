@@ -4,16 +4,14 @@ use auto_lsp::{
 };
 
 use hir::{
-    HasName, HirNodeInfo,
-    hir_def::{
+    HasName, HirNodeInfo, check::diagnostics_for_file, hir_def::{
         pous::pou::Pou,
         semantic_index::{get_scope, semantic_index},
-    },
-    hir_ty::{
+    }, hir_ty::{
         head::signature::infer_signature,
         name_res::{namespace_index, pou_name_res_from_scope},
         ty::Type,
-    },
+    }
 };
 use ide_proto::{hir_node::HirNode, walk::WalkHir};
 
@@ -28,6 +26,27 @@ use hir::hir_def::interned::identifier::Ident;
 use hir::hir_def::semantic_index::SemanticIndex;
 use insta::assert_snapshot;
 use rstest::rstest;
+
+#[test]
+fn diagnostics_on_empty_file() {
+    // Test that we don't panic when trying to get diagnostics for an empty file, which doesn't have a global scope.
+    let mut db = RootDatabase::default();
+    let url = lsp_types::Url::parse("file:///test.st").unwrap();
+    let source = r#""#;
+    let file = File::from_string()
+        .db(&db)
+        .parsers(ast::RK_PARSER.get("structured_text").unwrap())
+        .url(&url)
+        .source(source.to_string())
+        .call()
+        .unwrap();
+
+    db.add_file(file).unwrap();
+
+    let file = db.get_file(&url).unwrap();
+    diagnostics_for_file(&db, file);
+}
+
 
 #[test]
 fn global_scope() {
