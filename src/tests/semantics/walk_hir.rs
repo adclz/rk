@@ -146,11 +146,23 @@ END_FUNCTION_BLOCK"#;
     Param(ParamAssign { [salsa id]: Id(2800) })
     Param(ParamAssign { [salsa id]: Id(2801) })
     Expr(Expr { [salsa id]: Id(1c04) })
+    Expr(Expr { [salsa id]: Id(1c02) })
+    VariableAccess(VariableAccess { [salsa id]: Id(1403) })
+    PathExpr { prev: VariableAccess(VariableAccess { [salsa id]: Id(1403) }), curr: PathExpr { [salsa id]: Id(c05) } }
+    Expr(Expr { [salsa id]: Id(1c03) })
     Expr(Expr { [salsa id]: Id(1c05) })
     Expr(Expr { [salsa id]: Id(1c06) })
     Expr(Expr { [salsa id]: Id(1c07) })
     Expr(Expr { [salsa id]: Id(1c0a) })
+    Expr(Expr { [salsa id]: Id(1c08) })
+    VariableAccess(VariableAccess { [salsa id]: Id(1406) })
+    PathExpr { prev: VariableAccess(VariableAccess { [salsa id]: Id(1406) }), curr: PathExpr { [salsa id]: Id(c08) } }
+    Expr(Expr { [salsa id]: Id(1c09) })
     Expr(Expr { [salsa id]: Id(1c0d) })
+    Expr(Expr { [salsa id]: Id(1c0b) })
+    VariableAccess(VariableAccess { [salsa id]: Id(1408) })
+    PathExpr { prev: VariableAccess(VariableAccess { [salsa id]: Id(1408) }), curr: PathExpr { [salsa id]: Id(c0a) } }
+    Expr(Expr { [salsa id]: Id(1c0c) })
     ");
 }
 
@@ -231,11 +243,23 @@ END_FUNCTION_BLOCK"#;
         23,
         32,
         41,
+        42,
+        42,
+        47,
+        49,
         61,
         66,
         71,
         78,
+        79,
+        79,
+        84,
+        86,
         93,
+        94,
+        94,
+        99,
+        101,
     ]
     ");
 }

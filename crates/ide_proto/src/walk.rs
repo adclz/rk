@@ -310,6 +310,14 @@ impl<'db> WalkHir<'db> for Expr<'db> {
     ) -> ControlFlow<()> {
         f(HirNode::Expr(*self))?;
         match self.expr(db) {
+            ExprKind::AddOperator { left, right, .. }
+            | ExprKind::MultOperator { left, right, .. }
+            | ExprKind::PowerOperator { left, right }
+            | ExprKind::BooleanOperator { left, right, .. }
+            | ExprKind::ComparisonOperator { left, right, .. } => {
+                left.walk_hir(db, f)?;
+                right.walk_hir(db, f)?;
+            }
             ExprKind::PrimaryExpr(primary) => match primary {
                 PrimaryExpr::VariableAccess(var) => var.walk_hir(db, f)?,
                 PrimaryExpr::ParenthesizedExpr { expr } => expr.walk_hir(db, f)?,
