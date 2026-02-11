@@ -42,6 +42,14 @@ pub struct BodyCodegen<'db, 'a> {
 
     /// For methods: the instance type (FunctionBlock or Class) for instance variable access.
     instance: Option<crate::func_codegen::InstanceType<'db>>,
+
+    /// Phase 6: Track current WASM instruction offset for line mappings.
+    #[cfg(feature = "debug_info")]
+    current_offset: u32,
+
+    /// Phase 6: Collect line number mappings (WASM offset → source location).
+    #[cfg(feature = "debug_info")]
+    line_mappings: Vec<crate::debug_info::collector::LineMapping>,
 }
 
 impl<'db, 'a> BodyCodegen<'db, 'a> {
@@ -58,6 +66,10 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
             function_indices,
             this_local: None,
             instance: None,
+            #[cfg(feature = "debug_info")]
+            current_offset: 0,
+            #[cfg(feature = "debug_info")]
+            line_mappings: Vec::new(),
         }
     }
 
@@ -76,12 +88,16 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
             function_indices,
             this_local: Some(this_local),
             instance: Some(instance),
+            #[cfg(feature = "debug_info")]
+            current_offset: 0,
+            #[cfg(feature = "debug_info")]
+            line_mappings: Vec::new(),
         }
     }
 
     /// Emit all statements in the function body.
     pub fn emit_statements(
-        &self,
+        &mut self,
         func: &mut wasm_encoder::Function,
         statements: &[hir::hir_def::expressions::statement::Stmt<'db>],
     ) -> Result<(), String> {
@@ -91,15 +107,31 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
         Ok(())
     }
 
+    /// Phase 6: Get the collected line mappings.
+    #[cfg(feature = "debug_info")]
+    pub fn line_mappings(&self) -> &[crate::debug_info::collector::LineMapping] {
+        &self.line_mappings
+    }
+
     /// Emit a statement.
     fn emit_stmt(
-        &self,
+        &mut self,
         func: &mut wasm_encoder::Function,
         stmt: hir::hir_def::expressions::statement::Stmt<'db>,
     ) -> Result<(), String> {
+        // Phase 6: Record line mapping before emitting the statement
+        #[cfg(feature = "debug_info")]
+        {
+            use hir::HirNodeInfo;
+            let span = stmt.get_span(self.db);
+            self.line_mappings.push(crate::debug_info::collector::LineMapping {
+                wasm_offset: self.current_offset,
+                source_span: span,
+            });
+        }
         use hir::hir_def::expressions::statement::StmtKind;
 
-        match stmt.stmt(self.db) {
+        let result = match stmt.stmt(self.db) {
             StmtKind::Assignment { var, target } => {
                 // Check if the LHS is an array index or struct field
                 if let Some(path_expr) = self.get_path_expr(*var)? {
@@ -398,7 +430,16 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
             }
 
             _ => Err(format!("Unsupported statement kind: {:?}", stmt.stmt(self.db))),
+        };
+
+        // Phase 6: Update offset after emitting the statement
+        // Rough estimate: ~10 bytes per statement (varies by complexity)
+        #[cfg(feature = "debug_info")]
+        {
+            self.current_offset += 10;
         }
+
+        result
     }
 
     /// Emit an expression (leaves one value on the stack).

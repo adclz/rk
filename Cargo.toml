@@ -64,7 +64,8 @@ yansi = { version = "1.0.1" }
 notify = "8.1.0"
 # backends
 wasm-encoder = "0.244.0"
-wasmparser = "0.244.0" 
+wasmparser = "0.244.0"
+gimli = { version = "0.31", features = ["write", "std"], default-features = false } 
 
 [package]
 name = "rk-tests"

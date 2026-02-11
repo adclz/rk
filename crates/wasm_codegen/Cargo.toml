@@ -6,6 +6,10 @@ license = { workspace = true }
 edition = { workspace = true }
 publish = false
 
+[features]
+default = ["debug_info"]
+debug_info = ["dep:gimli"]
+
 [dependencies]
 auto-lsp = { workspace = true, features = ["lsp_server"] }
 ast = { workspace = true }
@@ -20,6 +24,7 @@ rayon = { workspace = true }
 wasm-encoder = { workspace = true }
 rustc-hash = { workspace = true }
 thiserror = "2.0"
+gimli = { workspace = true, optional = true }
 
 [dev-dependencies]
 rstest = { workspace = true }

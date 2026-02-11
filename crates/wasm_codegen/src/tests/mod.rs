@@ -21,6 +21,7 @@ mod references;
 mod function_blocks;
 mod bit_strings;
 mod programs;
+mod debug_embedded;
 
 #[fixture]
 pub fn with_db() -> RootDatabase {
@@ -102,12 +103,30 @@ pub fn compile_to_wasm(db: &mut RootDatabase, source: &str) -> Vec<u8> {
     });
     module.section(&memory_section);
 
+    // Generate debug sections before moving export_section
+    #[cfg(feature = "debug_info")]
+    let debug_sections = codegen.generate_debug_sections().ok();
+
     // Export memory so tests can access it
     let mut export_section = codegen.export_section;
     export_section.export("memory", wasm_encoder::ExportKind::Memory, 0);
     module.section(&export_section);
 
     module.section(&codegen.code_section);
+
+    // Add debug sections if feature is enabled
+    #[cfg(feature = "debug_info")]
+    {
+        if let Some(custom_sections) = debug_sections {
+            for (name, data) in custom_sections {
+                let custom_section = wasm_encoder::CustomSection {
+                    name: std::borrow::Cow::Borrowed(&name),
+                    data: std::borrow::Cow::Borrowed(&data),
+                };
+                module.section(&custom_section);
+            }
+        }
+    }
 
     module.finish()
 }

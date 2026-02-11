@@ -36,14 +36,6 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
 
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
-    stderrlog::new()
-        .modules([module_path!(), "server", "db"])
-        .quiet(false)
-        .verbosity(4)
-        .timestamp(stderrlog::Timestamp::Second)
-        .init()
-        .unwrap();
-
     tracing::info!("VSCode LSP server starting...");
 
     boot()

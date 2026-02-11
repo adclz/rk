@@ -52,6 +52,10 @@ pub struct FunctionCodegen<'db, 'a> {
 
     /// For methods: the instance type (FunctionBlock or Class) for instance variable access.
     instance: Option<InstanceType<'db>>,
+
+    /// Phase 6: Line mappings collected during body generation.
+    #[cfg(feature = "debug_info")]
+    line_mappings: Vec<crate::debug_info::collector::LineMapping>,
 }
 
 impl<'db, 'a> FunctionCodegen<'db, 'a> {
@@ -68,6 +72,8 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
             function_indices,
             this_local: None,
             instance: None,
+            #[cfg(feature = "debug_info")]
+            line_mappings: Vec::new(),
         }
     }
 
@@ -85,6 +91,8 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
             function_indices,
             this_local: Some(0), // 'this' is always the first parameter (index 0)
             instance: Some(InstanceType::FunctionBlock(fb)),
+            #[cfg(feature = "debug_info")]
+            line_mappings: Vec::new(),
         }
     }
 
@@ -102,6 +110,8 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
             function_indices,
             this_local: Some(0), // 'this' is always the first parameter (index 0)
             instance: Some(InstanceType::Class(class)),
+            #[cfg(feature = "debug_info")]
+            line_mappings: Vec::new(),
         }
     }
 
@@ -109,7 +119,7 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
     pub fn generate(
         mut self,
         memory_layout: &mut crate::memory::MemoryLayout,
-    ) -> Result<wasm_encoder::Function, String> {
+    ) -> Result<(wasm_encoder::Function, Vec<crate::debug_info::collector::LineMapping>), String> {
         // Build local variable map and collect non-parameter locals
         let extra_locals = self.build_local_map(memory_layout)?;
 
@@ -126,7 +136,15 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
 
         func.instruction(&Instruction::End);
 
-        Ok(func)
+        // Phase 6: Return function and line mappings
+        #[cfg(feature = "debug_info")]
+        {
+            Ok((func, self.line_mappings))
+        }
+        #[cfg(not(feature = "debug_info"))]
+        {
+            Ok((func, Vec::new()))
+        }
     }
 
     /// Build the local variable map and return extra locals (non-parameters).
@@ -321,7 +339,7 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
     }
 
     /// Generate the function body statements.
-    fn generate_body(&self, func: &mut wasm_encoder::Function) -> Result<(), String> {
+    fn generate_body(&mut self, func: &mut wasm_encoder::Function) -> Result<(), String> {
         let _body_result = infer_body(self.db, self.scope);
 
         // Get statements based on scope kind (similar to infer_body pattern)
@@ -337,7 +355,7 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
         };
 
         // Create body codegen and emit statements
-        let body_codegen = if let (Some(this_local), Some(instance)) = (self.this_local, self.instance) {
+        let mut body_codegen = if let (Some(this_local), Some(instance)) = (self.this_local, self.instance) {
             // Method with 'this' pointer and instance context (FB or Class)
             BodyCodegen::new_with_this(
                 self.db,
@@ -356,7 +374,21 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
                 self.function_indices,
             )
         };
-        body_codegen.emit_statements(func, statements)
+        body_codegen.emit_statements(func, statements)?;
+
+        // Phase 6: Store line mappings collected during body generation
+        #[cfg(feature = "debug_info")]
+        {
+            self.line_mappings = body_codegen.line_mappings().to_vec();
+        }
+
+        Ok(())
+    }
+
+    /// Phase 6: Get line mappings collected during body generation.
+    #[cfg(feature = "debug_info")]
+    pub fn line_mappings(&self) -> &[crate::debug_info::collector::LineMapping] {
+        &self.line_mappings
     }
 
     /// Extract elementary spec from a type (unwrap Type::Elementary).
