@@ -14,7 +14,7 @@ pub fn fmt(document: &Document) -> String {
         &mut output,
         &TOPIARY_LANG,
         Operation::Format {
-            skip_idempotence: true,
+            skip_idempotence: false,
             tolerate_parsing_errors: false,
         },
     )
@@ -820,5 +820,75 @@ END_FUNCTION_BLOCK
 
 
     END_FUNCTION_BLOCK
+    ");
+}
+
+
+#[rstest]
+pub fn dw_variables(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+VAR
+test: REAL;
+END_VAR
+
+test := %IX0.0
+A := COUNTER.UP( 
+        ENO=> %MX1
+        ); 
+
+END_FUNCTION_BLOCK
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    FUNCTION_BLOCK fb1
+    	VAR
+    		test: REAL;
+    	END_VAR
+
+    	test := %IX0.0
+    	A :=
+    	COUNTER.UP(
+    		ENO => %MX1
+    	);
+
+    END_FUNCTION_BLOCK
+    ");
+}
+
+#[rstest]
+pub fn program_with_dw_variables(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM myPrg
+    VAR_ACCESS
+        ABLE: STATION_1.%IX1.1: BOOL READ_ONLY;
+        BAKER: STATION_1.P1.x2: UINT READ_WRITE;
+    END_VAR
+END_PROGRAM
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    PROGRAM myPrg
+    	VAR_ACCESS
+    		ABLE: STATION_1.%IX1.1: BOOLREAD_ONLY;
+    		BAKER: STATION_1.P1.x2: UINTREAD_WRITE;
+    	END_VAR
+    END_PROGRAM
     ");
 }

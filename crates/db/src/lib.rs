@@ -25,7 +25,7 @@ impl RootDatabase {
 
 #[salsa::db]
 impl salsa::Database for RootDatabase {}
-
+ 
 impl std::panic::RefUnwindSafe for RootDatabase {}
 
 #[salsa::db]

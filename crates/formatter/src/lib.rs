@@ -11,6 +11,7 @@ use topiary_core::{Language, Operation, TopiaryQuery, formatter};
 
 static SURROUND_SPACES: &str = r#"
 [
+    "PROGRAM" "END_PROGRAM"
     "NAMESPACE" "END_NAMESPACE"
     "FUNCTION" "END_FUNCTION"
     "FUNCTION_BLOCK" "END_FUNCTION_BLOCK"
@@ -24,10 +25,11 @@ static SURROUND_SPACES: &str = r#"
     "VAR_TEMP"
     "VAR_EXTERNAL"
     "VAR_GLOBAL"
+    "VAR_ACCESS"
     "END_VAR"
     "USING"
     "FINAL" "ABSTRACT" "OVERRIDE"
-    (public) (protected) (private) (internal)
+    (public) (protected) (private) (internal) (ref_to)
     "IMPLEMENTS" "EXTENDS"
     "METHOD" "END_METHOD"
     "IF" "THEN" "ELSE" "ELSIF"
@@ -38,15 +40,15 @@ static SURROUND_SPACES: &str = r#"
     "RETURN"
     "EXIT"
     "CONTINUE"
-    "REF_TO"
-    ":=" "=" "=>" "<=" "<" ">=" ">" "<>" "+" "-" "*" "/" "%"
+   
+    ":=" "=" "=>" "<=" "<" ">=" ">" "<>" "+" "-" "*" "/" 
     "&" "AND" "OR" "NOT"
     (line_comment)
     (c_style_comment)
     (pascal_style_comment)
 ] @prepend_space @append_space
 
-(identifier) @prepend_space
+[(identifier) "%"] @prepend_space
 ["(" "[" "." "END_CASE"] @append_antispace
 [")" "]" ":" ";" "," "." (deref_sign)] @prepend_antispace
 ["NOT" ":"] @append_space
@@ -61,6 +63,7 @@ static NEW_LINES: &str = r#"
     "VAR_TEMP"
     "VAR_EXTERNAL"
     "VAR_GLOBAL"
+    "VAR_ACCESS"
 
     "ELSE"
 ] @prepend_hardline @append_hardline
@@ -186,6 +189,7 @@ static BLOCKS: &str = r#"
 
 static INDENTATIONS: &str = r#"
 [
+    "PROGRAM"
     "NAMESPACE"
     "FUNCTION"
     "FUNCTION_BLOCK"
@@ -200,6 +204,7 @@ static INDENTATIONS: &str = r#"
     "VAR_TEMP"
     "VAR_EXTERNAL"
     "VAR_GLOBAL"
+    "VAR_ACCESS"
     "STRUCT"
 
     "THEN"
@@ -217,7 +222,9 @@ static INDENTATIONS: &str = r#"
     case_do: (stmt_list) @append_indent_end
 )
 
-[   "END_NAMESPACE"
+[   
+    "END_PROGRAM"
+    "END_NAMESPACE"
     "END_FUNCTION"
     "END_CLASS"
     "END_FUNCTION_BLOCK"
@@ -259,6 +266,7 @@ static ALLOW_BLANK_LINE: &str = r#"
 
     "RETURN"
     "CONTINUE"
+    "PROGRAM" "END_PROGRAM"
     "NAMESPACE" "END_NAMESPACE"
     "FUNCTION" "END_FUNCTION"
     "CLASS" "END_CLASS"
