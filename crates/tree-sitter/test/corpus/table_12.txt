@@ -13,6 +13,7 @@ END_TYPE
         (type_decl
           (identifier)
           (ref_type_spec
+            (ref_to)
             (numeric_type_name
               (int_type_name
                 (sign_int_type_name

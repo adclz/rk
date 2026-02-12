@@ -146,6 +146,10 @@ impl<'db> Type<'db> {
                 }
             }
             (Type::RefTo(_), Type::Null) => Ok(()),
+            (Type::RefTo(lhs), Type::RefTo(rhs)) => {
+                lhs.infer(db)
+                    .coerce_with_type(db, rhs.infer(db), None, resolver)
+            }
             // self-assignments
             (Type::Function(f), rhs) => match f.return_type(db) {
                 Some(ret) => ret

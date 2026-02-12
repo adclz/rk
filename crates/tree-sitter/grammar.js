@@ -39,6 +39,9 @@ function dotSep(rule) {
 }
 
 /// Create rules for a new type with a spec and an init
+/// This will create two rules, one for the spec and one for the init,
+/// with the given name as a prefix 
+/// $NAME_type_spec and $NAME_type_init
 function createSpecInit(name, spec, init = null) {
   let result = {
     [`${name}_type_spec`]: ($) => spec($),
@@ -756,7 +759,7 @@ module.exports = grammar({
 
     ...createSpecInit(
       "ref",
-      ($) => seq(":", "REF_TO", $.data_type_access),
+      ($) => seq(":", field("ref_count", repeat1(alias("REF_TO", $.ref_to))), $.data_type_access),
       ($) => seq(":=", $.ref_value),
     ),
 

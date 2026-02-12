@@ -2743,8 +2743,20 @@
           "value": ":"
         },
         {
-          "type": "STRING",
-          "value": "REF_TO"
+          "type": "FIELD",
+          "name": "ref_count",
+          "content": {
+            "type": "REPEAT1",
+            "content": {
+              "type": "ALIAS",
+              "content": {
+                "type": "STRING",
+                "value": "REF_TO"
+              },
+              "named": true,
+              "value": "ref_to"
+            }
+          }
         },
         {
           "type": "SYMBOL",

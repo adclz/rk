@@ -4724,7 +4724,18 @@
   {
     "type": "ref_type_spec",
     "named": true,
-    "fields": {},
+    "fields": {
+      "ref_count": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "ref_to",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": false,
       "required": true,
@@ -7015,6 +7026,10 @@
   },
   {
     "type": "real_value",
+    "named": true
+  },
+  {
+    "type": "ref_to",
     "named": true
   },
   {
