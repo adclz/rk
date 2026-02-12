@@ -19,9 +19,6 @@ pub mod body;
 pub mod cast;
 pub mod memory;
 
-#[cfg(feature = "debug_info")]
-pub mod debug_info;
-
 #[cfg(test)]
 pub mod tests;
 
@@ -47,11 +44,7 @@ pub struct ModuleCodeGen<'db> {
     function_indices: FxHashMap<hir::hir_def::interned::identifier::Ident, u32>,
 
     // Memory layout for arrays, structs, and memory-resident variables
-    memory_layout: MemoryLayout,
-
-    // Debug information collector
-    #[cfg(feature = "debug_info")]
-    debug_collector: debug_info::DebugInfoCollector,
+    memory_layout: MemoryLayout
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -74,8 +67,6 @@ impl<'db> ModuleCodeGen<'db> {
             scopes: Default::default(),
             function_indices: Default::default(),
             memory_layout: MemoryLayout::new(),
-            #[cfg(feature = "debug_info")]
-            debug_collector: debug_info::DebugInfoCollector::new(),
         }
     }
 
@@ -106,19 +97,9 @@ impl<'db> ModuleCodeGen<'db> {
         module.section(&self.export_section);
         module.section(&self.code_section);
 
-        // Generate and embed DWARF debug information
-        #[cfg(feature = "debug_info")]
-        {
-            if let Ok(custom_sections) = self.generate_debug_sections() {
-                for (name, data) in custom_sections {
-                    let custom_section = wasm_encoder::CustomSection {
-                        name: std::borrow::Cow::Borrowed(&name),
-                        data: std::borrow::Cow::Borrowed(&data),
-                    };
-                    module.section(&custom_section);
-                }
-            }
-        }
+        // TODO: Add custom debug sections here
+        // Debug info is collected in self.debug_collector
+        // You can serialize it and add as custom section for the debugger
 
         module
     }
@@ -217,20 +198,12 @@ impl<'db> ModuleCodeGen<'db> {
             ScopeCodegenInfo { type_idx, fn_idx },
         );
 
-        // Collect debug information
-        #[cfg(feature = "debug_info")]
-        self.collect_function_debug_info(func, scope_id, fn_idx);
-
         // Generate function body
         let codegen = FunctionCodegen::new(self.db, scope_id, &self.function_indices);
-        let (func_body, line_mappings) = codegen
+        let func_body = codegen
             .generate(&mut self.memory_layout)
             .expect("Failed to generate function body");
         self.code_section.function(&func_body);
-
-        // Phase 6: Update debug info with line mappings
-        #[cfg(feature = "debug_info")]
-        self.debug_collector.update_function_line_mappings(fn_idx, line_mappings);
     }
 
     /// Generate code for a function block and its methods.
@@ -311,18 +284,10 @@ impl<'db> ModuleCodeGen<'db> {
                 &self.function_indices,
                 fb, // Pass FB for instance variable access
             );
-            let (func_body, line_mappings) = codegen
+            let func_body= codegen
                 .generate(&mut self.memory_layout)
                 .expect("Failed to generate method body");
             self.code_section.function(&func_body);
-
-            // Collect debug information for the method
-            #[cfg(feature = "debug_info")]
-            self.collect_method_debug_info(*method, scope_id, &qualified_name, fn_idx);
-
-            // Phase 6: Update debug info with line mappings
-            #[cfg(feature = "debug_info")]
-            self.debug_collector.update_function_line_mappings(fn_idx, line_mappings);
         }
     }
 
@@ -410,18 +375,10 @@ impl<'db> ModuleCodeGen<'db> {
                 &self.function_indices,
                 class,
             );
-            let (func_body, line_mappings) = codegen
+            let func_body = codegen
                 .generate(&mut self.memory_layout)
                 .expect("Failed to generate method body");
             self.code_section.function(&func_body);
-
-            // Collect debug information for the method
-            #[cfg(feature = "debug_info")]
-            self.collect_method_debug_info(*method, scope_id, &qualified_name, fn_idx);
-
-            // Phase 6: Update debug info with line mappings
-            #[cfg(feature = "debug_info")]
-            self.debug_collector.update_function_line_mappings(fn_idx, line_mappings);
         }
     }
 
@@ -474,238 +431,13 @@ impl<'db> ModuleCodeGen<'db> {
             scope_id,
             &self.function_indices,
         );
-        let (func_body, _line_mappings) = codegen
+        let func_body = codegen
             .generate(&mut self.memory_layout)
             .expect("Failed to generate program body");
         self.code_section.function(&func_body);
 
         // Phase 6: Programs don't collect debug info currently (no fn_idx to reference)
         // TODO: Add program debug collection if needed
-    }
-
-    /// Generate DWARF debug sections.
-    ///
-    /// Collects all debug information and converts it to DWARF sections
-    /// that can be embedded as WASM custom sections.
-    #[cfg(feature = "debug_info")]
-    pub fn generate_debug_sections(&self) -> Result<Vec<(String, Vec<u8>)>, String> {
-        // Phase 3: Basic integration
-        // Get collected debug information (currently empty, will be populated in Phase 4+)
-        let compilation_units = self.debug_collector.compilation_units().to_vec();
-
-        // Generate DWARF sections
-        let mut generator = debug_info::DwarfGenerator::new();
-        generator.generate(compilation_units)?;
-        let sections = generator.finish()?;
-
-        // Convert DWARF sections to WASM custom sections
-        let custom_sections = debug_info::dwarf_gen::sections_to_wasm_custom(sections);
-
-        Ok(custom_sections)
-    }
-
-    /// Convert HIR type to TypeDebugInfo for debug symbols.
-    ///
-    /// Phase 5: Convert elementary types and return Void for others.
-    /// Later phases will add struct, array, pointer type support.
-    #[cfg(feature = "debug_info")]
-    fn hir_type_to_debug_type(&self, ty: hir::hir_ty::ty::Type<'db>) -> debug_info::collector::TypeDebugInfo {
-        use debug_info::collector::TypeDebugInfo;
-        use debug_info::types::{elementary_to_dwarf, elementary_type_name};
-        use hir::hir_ty::ty::Type;
-
-        match ty {
-            Type::Elementary(spec) => {
-                let (encoding, byte_size) = elementary_to_dwarf(spec);
-                TypeDebugInfo::Elementary {
-                    name: elementary_type_name(spec).to_string(),
-                    byte_size,
-                    encoding,
-                }
-            }
-            // Phase 5: Only elementary types for now
-            // Later: Add Struct, Array, Pointer support
-            _ => TypeDebugInfo::Void,
-        }
-    }
-
-    /// Collect variable debug info from a scope's def_map.
-    ///
-    /// Phase 5: Extract parameters and locals with types.
-    /// Variable locations are not yet tracked - will be added when
-    /// we integrate with actual local_map from FunctionCodegen.
-    #[cfg(feature = "debug_info")]
-    fn collect_variables_from_def_map(
-        &self,
-        scope_id: ScopeId<'db>,
-    ) -> (Vec<debug_info::VariableDebugInfo>, Vec<debug_info::VariableDebugInfo>) {
-        use debug_info::VariableDebugInfo;
-        use debug_info::collector::VariableLocation;
-        use hir::hir_def::pous::variable::VariableKind;
-        use hir::HirNodeInfo;
-
-        let def_map = scope_id.def_map(self.db);
-        let mut parameters = Vec::new();
-        let mut locals = Vec::new();
-
-        // Collect variables from both local_variables and global_variables
-        // local_variables contains: Input, Output, InOut parameters
-        // global_variables contains: Var, Temp, Output locals
-        for (name, var) in &def_map.local_variables {
-            let var_type = var.spec(self.db).infer(self.db);
-            let type_debug_info = self.hir_type_to_debug_type(var_type);
-            let decl_span = var.get_span(self.db);
-            let var_name = name.text(self.db).to_string();
-
-            // Phase 5: Use placeholder location (Local(0))
-            // Later: Get actual locations from local_map
-            let location = VariableLocation::Local(0);
-
-            let var_debug_info = VariableDebugInfo {
-                name: var_name,
-                var_type: type_debug_info,
-                location,
-                decl_span,
-            };
-
-            match var.kind(self.db) {
-                VariableKind::Input | VariableKind::InOut => {
-                    parameters.push(var_debug_info);
-                }
-                VariableKind::Var | VariableKind::Temp | VariableKind::Output => {
-                    locals.push(var_debug_info);
-                }
-                _ => {}
-            }
-        }
-
-        // Also check global_variables for VAR, TEMP, OUTPUT locals
-        for (name, var) in &def_map.global_variables {
-            // Skip if already in local_variables
-            if def_map.local_variables.contains_key(name) {
-                continue;
-            }
-
-            let var_type = var.spec(self.db).infer(self.db);
-            let type_debug_info = self.hir_type_to_debug_type(var_type);
-            let decl_span = var.get_span(self.db);
-            let var_name = name.text(self.db).to_string();
-
-            let location = VariableLocation::Local(0);
-
-            let var_debug_info = VariableDebugInfo {
-                name: var_name,
-                var_type: type_debug_info,
-                location,
-                decl_span,
-            };
-
-            match var.kind(self.db) {
-                VariableKind::Var | VariableKind::Temp | VariableKind::Output => {
-                    locals.push(var_debug_info);
-                }
-                _ => {}
-            }
-        }
-
-        (parameters, locals)
-    }
-
-    /// Collect debug information for a function.
-    ///
-    /// Extracts function metadata including name, WASM index, parameters, locals,
-    /// and return type, then adds it to the debug info collector.
-    #[cfg(feature = "debug_info")]
-    fn collect_function_debug_info(
-        &mut self,
-        func: Function<'db>,
-        scope_id: ScopeId<'db>,
-        fn_idx: u32,
-    ) {
-        use debug_info::FunctionDebugInfo;
-        use hir::HirNodeInfo;
-
-        // Get the file this function is defined in
-        let file = scope_id.file(self.db);
-        let file_path = file.url(self.db).path().to_string();
-
-        // Register the file as a compilation unit
-        self.debug_collector.register_file(file, file_path);
-
-        // Get function span
-        let decl_span = func.get_span(self.db);
-
-        // Get function name
-        let name = func.name(self.db).text(self.db).to_string();
-
-        // Get return type
-        let return_type = func.return_type(self.db).map(|spec| {
-            self.hir_type_to_debug_type(spec.infer(self.db))
-        });
-
-        // Phase 5: Collect parameters and locals from def_map
-        let (parameters, locals) = self.collect_variables_from_def_map(scope_id);
-
-        // Phase 6 will add line mappings
-        let func_info = FunctionDebugInfo {
-            name,
-            wasm_index: fn_idx,
-            decl_span,
-            parameters,
-            locals,
-            return_type,
-            line_mappings: Vec::new(), // Phase 6
-        };
-
-        self.debug_collector.add_function(file, func_info);
-    }
-
-    /// Collect debug information for a method (function block or class method).
-    ///
-    /// Phase 4: Basic method metadata (name, WASM index, span)
-    /// Phase 5: Will add parameters, locals, and return type
-    /// Phase 6: Will add line mappings
-    #[cfg(feature = "debug_info")]
-    fn collect_method_debug_info(
-        &mut self,
-        method: hir::hir_def::pous::class::MethodDecl<'db>,
-        scope_id: ScopeId<'db>,
-        qualified_name: &str,
-        fn_idx: u32,
-    ) {
-        use debug_info::FunctionDebugInfo;
-        use hir::HirNodeInfo;
-
-        // Get the file this method is defined in
-        let file = scope_id.file(self.db);
-        let file_path = file.url(self.db).path().to_string();
-
-        // Register the file as a compilation unit
-        self.debug_collector.register_file(file, file_path);
-
-        // Get method span from the method declaration
-        let decl_span = method.get_span(self.db);
-
-        // Get return type
-        let return_type = method.return_type(self.db).map(|spec| {
-            self.hir_type_to_debug_type(spec.infer(self.db))
-        });
-
-        // Phase 5: Collect parameters and locals from def_map
-        let (parameters, locals) = self.collect_variables_from_def_map(scope_id);
-
-        // Phase 6 will add line mappings
-        let func_info = FunctionDebugInfo {
-            name: qualified_name.to_string(),
-            wasm_index: fn_idx,
-            decl_span,
-            parameters,
-            locals,
-            return_type,
-            line_mappings: Vec::new(), // Phase 6
-        };
-
-        self.debug_collector.add_function(file, func_info);
     }
 
     /// Build the final WASM module with all generated code and debug information.
@@ -735,10 +467,6 @@ impl<'db> ModuleCodeGen<'db> {
         });
         module.section(&memory_section);
 
-        // Generate debug sections before moving export_section
-        #[cfg(feature = "debug_info")]
-        let debug_sections = self.generate_debug_sections().ok();
-
         // Export section
         self.export_section.export("memory", wasm_encoder::ExportKind::Memory, 0);
         module.section(&self.export_section);
@@ -746,19 +474,19 @@ impl<'db> ModuleCodeGen<'db> {
         // Code section
         module.section(&self.code_section);
 
-        // Add debug sections if feature is enabled
-        #[cfg(feature = "debug_info")]
-        {
-            if let Some(custom_sections) = debug_sections {
-                for (name, data) in custom_sections {
-                    let custom_section = wasm_encoder::CustomSection {
-                        name: std::borrow::Cow::Owned(name),
-                        data: std::borrow::Cow::Owned(data),
-                    };
-                    module.section(&custom_section);
-                }
-            }
-        }
+        // TODO: Add custom debug sections here
+        // Debug info is available via self.debug_collector.compilation_units()
+        // Example:
+        //
+        // #[cfg(feature = "debug_info")]
+        // {
+        //     let debug_data = serialize_to_json(self.debug_collector.compilation_units());
+        //     let custom_section = wasm_encoder::CustomSection {
+        //         name: std::borrow::Cow::Borrowed("rk_debug"),
+        //         data: std::borrow::Cow::Owned(debug_data),
+        //     };
+        //     module.section(&custom_section);
+        // }
 
         Ok(module.finish())
     }
