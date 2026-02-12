@@ -7,7 +7,7 @@
 use hir::hir_def::expressions::spec::ElementarySpec;
 use wasm_encoder::Instruction;
 
-use crate::wasm_repr::{elementary_to_val_type, is_signed};
+use crate::wasm_repr::elementary::{elementary_to_val_type, is_signed};
 
 /// Emit WASM conversion instructions for implicit type cast.
 ///

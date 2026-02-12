@@ -9,6 +9,8 @@ use hir::hir_ty::{infer::Infer, ty::Type};
 use rustc_hash::FxHashMap;
 use wasm_encoder::{Instruction, ValType};
 
+use crate::wasm_repr::{WasmRepr, elementary::{elementary_to_val_type, is_64bit, is_float, is_signed}, instance::calculate_instance_field_offsets, strukt::calculate_field_offsets};
+
 /// Information about a local variable.
 #[derive(Debug, Clone, Copy)]
 pub enum LocalInfo {
@@ -26,7 +28,7 @@ pub enum LocalInfo {
     /// Stores the local index and the WASM representation of the pointee type.
     Pointer {
         index: u32,
-        pointee_repr: crate::wasm_repr::WasmRepr,
+        pointee_repr: WasmRepr,
     },
 }
 
@@ -110,9 +112,20 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                             // This is an array index or struct field assignment
                             self.emit_path_assignment(func, path_expr, *target)?;
                         }
-                        PathExprKind::VarAccess(_) => {
-                            // This is a simple variable, handle it below
-                            self.emit_simple_assignment(func, *var, *target)?;
+                        PathExprKind::VarAccess(var_access) => {
+                            // Check if this is a dereferenced pointer (ptr^ := value)
+                            use hir::hir_def::expressions::expression::VarAccess;
+
+                            match var_access {
+                                VarAccess::Simple(_) => {
+                                    // Simple variable assignment
+                                    self.emit_simple_assignment(func, *var, *target)?;
+                                }
+                                VarAccess::Deref(span_ident, deref_count) => {
+                                    // Assignment to dereferenced pointer: ptr^ := value
+                                    self.emit_deref_assignment(func, span_ident, deref_count, path_expr, *target)?;
+                                }
+                            }
                         }
                     }
                 } else {
@@ -294,7 +307,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
 
                 // TODO: Handle negative step properly
                 // For now, assume step is always positive
-                if crate::wasm_repr::is_signed(ctrl_spec) {
+                if is_signed(ctrl_spec) {
                     func.instruction(&Instruction::I32GtS);
                 } else {
                     func.instruction(&Instruction::I32GtU);
@@ -502,16 +515,16 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                 let right_spec = self.extract_elementary_spec(right_type)?;
 
                 // Determine common type (simple rule: use the wider/float type)
-                let common_spec = if crate::wasm_repr::is_float(left_spec) || crate::wasm_repr::is_float(right_spec) {
+                let common_spec = if is_float(left_spec) || is_float(right_spec) {
                     // If either is float, promote to float
-                    if crate::wasm_repr::is_64bit(left_spec) || crate::wasm_repr::is_64bit(right_spec) {
+                    if is_64bit(left_spec) || is_64bit(right_spec) {
                         ElementarySpec::LReal // f64
                     } else {
                         ElementarySpec::Real // f32
                     }
-                } else if crate::wasm_repr::is_64bit(left_spec) || crate::wasm_repr::is_64bit(right_spec) {
+                } else if is_64bit(left_spec) || is_64bit(right_spec) {
                     // If either is 64-bit int, promote to i64
-                    if crate::wasm_repr::is_signed(left_spec) || crate::wasm_repr::is_signed(right_spec) {
+                    if is_signed(left_spec) || is_signed(right_spec) {
                         ElementarySpec::LInt
                     } else {
                         ElementarySpec::ULInt
@@ -556,7 +569,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                 // Determine operand type (i32 or i64)
                 let left_type = left.infer(self.db).normalize(self.db);
                 let spec = self.extract_elementary_spec(left_type)?;
-                let val_type = crate::wasm_repr::elementary_to_val_type(spec)
+                let val_type = elementary_to_val_type(spec)
                     .map_err(|e| e.to_string())?;
 
                 match (operator, val_type) {
@@ -602,7 +615,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                         let expr_type = expr.infer(self.db).normalize(self.db);
                         let spec = self.extract_elementary_spec(expr_type)?;
 
-                        if crate::wasm_repr::is_float(spec) {
+                        if is_float(spec) {
                             // For floats, use neg instruction
                             self.emit_expr(func, *expr)?;
                             match spec {
@@ -617,7 +630,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                             Ok(())
                         } else {
                             // For integers: 0 - value
-                            if crate::wasm_repr::is_64bit(spec) {
+                            if is_64bit(spec) {
                                 func.instruction(&Instruction::I64Const(0));
                             } else {
                                 func.instruction(&Instruction::I32Const(0));
@@ -686,39 +699,112 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                             // This is an indexed or field access
                             self.emit_path_access(func, path_expr)?;
                         }
-                        PathExprKind::VarAccess(_) => {
-                            // Simple variable access
-                            let var_name = self.resolve_variable_name(*var_access)?;
+                        PathExprKind::VarAccess(var_acc) => {
+                            // Check if this is a dereferenced variable (ptr^)
+                            use hir::hir_def::expressions::expression::VarAccess;
 
-                            // Try to get from local_map first
-                            if let Some(local_info) = self.local_map.get(&var_name) {
-                                match local_info {
-                                LocalInfo::Scalar { index, .. } => {
-                                    func.instruction(&Instruction::LocalGet(*index));
-                                }
-                                LocalInfo::Memory { address, .. } => {
-                                    // Load from memory location
-                                    func.instruction(&Instruction::I32Const(*address as i32));
-                                    // TODO: Emit appropriate load instruction based on type
-                                    return Err(format!(
-                                        "Load from memory-resident variables not fully implemented yet"
-                                    ));
-                                }
-                                LocalInfo::Pointer {
-                                    index,
-                                    pointee_repr,
-                                } => {
-                                    // VAR_IN_OUT parameter - pointer to value
-                                    // Load the pointer value (address)
-                                    func.instruction(&Instruction::LocalGet(*index));
+                            match var_acc {
+                                VarAccess::Simple(_) => {
+                                    // Simple variable access (no deref)
+                                    let var_name = self.resolve_variable_name(*var_access)?;
 
-                                    // Emit load instruction to dereference the pointer
-                                    self.emit_load_instruction(func, *pointee_repr)?;
+                                    // Try to get from local_map first
+                                    if let Some(local_info) = self.local_map.get(&var_name) {
+                                        match local_info {
+                                        LocalInfo::Scalar { index, .. } => {
+                                            func.instruction(&Instruction::LocalGet(*index));
+                                        }
+                                        LocalInfo::Memory { address, size, .. } => {
+                                            // Load from memory location
+                                            func.instruction(&Instruction::I32Const(*address as i32));
+
+                                            // Determine load instruction based on size
+                                            // Memory variables are scalars that were allocated due to address-taken
+                                            match size {
+                                                4 => {
+                                                    // Could be i32 or f32, assume i32 for now
+                                                    // TODO: Get actual type to distinguish i32/f32
+                                                    func.instruction(&Instruction::I32Load(wasm_encoder::MemArg {
+                                                        offset: 0,
+                                                        align: 2, // 4-byte alignment
+                                                        memory_index: 0,
+                                                    }));
+                                                }
+                                                8 => {
+                                                    // Could be i64 or f64, assume i64 for now
+                                                    func.instruction(&Instruction::I64Load(wasm_encoder::MemArg {
+                                                        offset: 0,
+                                                        align: 3, // 8-byte alignment
+                                                        memory_index: 0,
+                                                    }));
+                                                }
+                                                _ => {
+                                                    return Err(format!(
+                                                        "Unsupported memory variable size: {}",
+                                                        size
+                                                    ));
+                                                }
+                                            }
+                                        }
+                                        LocalInfo::Pointer {
+                                            index,
+                                            pointee_repr,
+                                        } => {
+                                            // VAR_IN_OUT parameter - pointer to value
+                                            // Load the pointer value (address)
+                                            func.instruction(&Instruction::LocalGet(*index));
+
+                                            // Emit load instruction to dereference the pointer
+                                            self.emit_load_instruction(func, *pointee_repr)?;
+                                        }
+                                    }
+                                    } else {
+                                        // Variable not in local_map - check if it's an FB instance variable
+                                        self.emit_instance_var_load(func, var_name)?;
+                                    }
                                 }
-                            }
-                            } else {
-                                // Variable not in local_map - check if it's an FB instance variable
-                                self.emit_instance_var_load(func, var_name)?;
+
+                                VarAccess::Deref(span_ident, deref_count) => {
+                                    // Dereferenced pointer variable (ptr^)
+                                    let var_name = span_ident.ident;
+
+                                    // Load the pointer variable
+                                    if let Some(local_info) = self.local_map.get(&var_name) {
+                                        match local_info {
+                                            LocalInfo::Scalar { index, val_type, spec } => {
+                                                // Load the pointer value (should be i32 address)
+                                                func.instruction(&Instruction::LocalGet(*index));
+
+                                                // Dereference the pointer
+                                                // For each ^ operator, emit a load instruction
+                                                for _ in 0..deref_count {
+                                                    // Get the pointee type from the HIR type system
+                                                    // Use the path expression to infer the type
+                                                    let path_type = path_expr.infer(self.db);
+                                                    let pointee_repr = self.get_deref_pointee_type(path_type)?;
+                                                    self.emit_load_instruction(func, pointee_repr)?;
+                                                }
+                                            }
+                                            LocalInfo::Pointer { index, pointee_repr } => {
+                                                // This is already a pointer (VAR_IN_OUT)
+                                                func.instruction(&Instruction::LocalGet(*index));
+
+                                                // Dereference
+                                                for _ in 0..deref_count {
+                                                    self.emit_load_instruction(func, *pointee_repr)?;
+                                                }
+                                            }
+                                            LocalInfo::Memory { .. } => {
+                                                return Err("Cannot dereference memory-resident variable".to_string());
+                                            }
+                                        }
+                                    } else {
+                                        return Err(format!(
+                                            "Dereferenced variable '{}' not found in scope",
+                                            var_name.text(self.db)
+                                        ));
+                                    }
+                                }
                             }
                         }
                     }
@@ -731,11 +817,35 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                         LocalInfo::Scalar { index, .. } => {
                             func.instruction(&Instruction::LocalGet(*index));
                         }
-                        LocalInfo::Memory { address, .. } => {
+                        LocalInfo::Memory { address, size, .. } => {
+                            // Load from memory location
                             func.instruction(&Instruction::I32Const(*address as i32));
-                            return Err(format!(
-                                "Load from memory-resident variables not fully implemented yet"
-                            ));
+
+                            // Determine load instruction based on size
+                            match size {
+                                4 => {
+                                    // 4-byte value (i32 or f32)
+                                    func.instruction(&Instruction::I32Load(wasm_encoder::MemArg {
+                                        offset: 0,
+                                        align: 2, // 4-byte alignment
+                                        memory_index: 0,
+                                    }));
+                                }
+                                8 => {
+                                    // 8-byte value (i64 or f64)
+                                    func.instruction(&Instruction::I64Load(wasm_encoder::MemArg {
+                                        offset: 0,
+                                        align: 3, // 8-byte alignment
+                                        memory_index: 0,
+                                    }));
+                                }
+                                _ => {
+                                    return Err(format!(
+                                        "Unsupported memory variable size: {}",
+                                        size
+                                    ));
+                                }
+                            }
                         }
                         LocalInfo::Pointer {
                             index,
@@ -840,6 +950,64 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                 func.instruction(&Instruction::Call(*func_idx));
 
                 Ok(())
+            }
+
+            PrimaryExpr::RefValue { value } => {
+                use hir::hir_def::expressions::expression::RefValue;
+
+                match value {
+                    RefValue::Address(begin_path) => {
+                        // REF(variable) - get address of variable
+                        // For now, we'll use a simple approach:
+                        // - Variables in memory: use their memory address
+                        // - Variables in WASM locals: allocate them in memory first (TODO)
+
+                        // Extract variable name from the path expression
+                        let var_name = if let Some(path_expr) = begin_path.expr(self.db) {
+                            path_expr.ident(self.db).ident
+                        } else {
+                            return Err("REF operator requires a simple variable reference".to_string());
+                        };
+
+                        // Check if variable is in local_map
+                        if let Some(local_info) = self.local_map.get(&var_name) {
+                            match local_info {
+                                LocalInfo::Memory { address, .. } => {
+                                    // Variable is already in memory - return its address
+                                    func.instruction(&Instruction::I32Const(*address as i32));
+                                }
+                                LocalInfo::Scalar { .. } => {
+                                    // TODO: For scalar locals stored in WASM locals,
+                                    // we need to allocate them in memory to get an address.
+                                    // For now, return an error.
+                                    return Err(format!(
+                                        "REF operator on WASM local variables not yet supported. \
+                                         Variable '{}' must be allocated in linear memory.",
+                                        var_name.text(self.db)
+                                    ));
+                                }
+                                LocalInfo::Pointer { index, .. } => {
+                                    // This is a VAR_IN_OUT parameter - it's already a pointer
+                                    // Just return the pointer value itself
+                                    func.instruction(&Instruction::LocalGet(*index));
+                                }
+                            }
+                        } else {
+                            return Err(format!(
+                                "Cannot take reference of variable '{}' - not found in scope",
+                                var_name.text(self.db)
+                            ));
+                        }
+
+                        Ok(())
+                    }
+
+                    RefValue::Null => {
+                        // NULL pointer - represented as 0 in WASM
+                        func.instruction(&Instruction::I32Const(0));
+                        Ok(())
+                    }
+                }
             }
 
             _ => Err(format!("Unsupported primary expression: {:?}", primary)),
@@ -1109,7 +1277,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
         func: &mut wasm_encoder::Function,
         spec: ElementarySpec,
     ) -> Result<(), String> {
-        use crate::wasm_repr::{is_64bit, is_float};
+        use {is_64bit, is_float};
 
         if is_float(spec) {
             match spec {
@@ -1134,7 +1302,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
         func: &mut wasm_encoder::Function,
         spec: ElementarySpec,
     ) -> Result<(), String> {
-        use crate::wasm_repr::{is_64bit, is_float};
+        use {is_64bit, is_float};
 
         if is_float(spec) {
             match spec {
@@ -1159,7 +1327,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
         func: &mut wasm_encoder::Function,
         spec: ElementarySpec,
     ) -> Result<(), String> {
-        use crate::wasm_repr::{is_64bit, is_float};
+        use {is_64bit, is_float};
 
         if is_float(spec) {
             match spec {
@@ -1184,7 +1352,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
         func: &mut wasm_encoder::Function,
         spec: ElementarySpec,
     ) -> Result<(), String> {
-        use crate::wasm_repr::{is_64bit, is_float, is_signed};
+        use {is_64bit, is_float, is_signed};
 
         if is_float(spec) {
             match spec {
@@ -1217,7 +1385,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
         func: &mut wasm_encoder::Function,
         spec: ElementarySpec,
     ) -> Result<(), String> {
-        use crate::wasm_repr::{is_64bit, is_signed};
+        use {is_64bit, is_signed};
 
         if is_64bit(spec) {
             if is_signed(spec) {
@@ -1286,7 +1454,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
         func: &mut wasm_encoder::Function,
         spec: ElementarySpec,
     ) -> Result<(), String> {
-        use crate::wasm_repr::{is_64bit, is_float};
+        use {is_64bit, is_float};
 
         if is_float(spec) {
             match spec {
@@ -1311,7 +1479,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
         func: &mut wasm_encoder::Function,
         spec: ElementarySpec,
     ) -> Result<(), String> {
-        use crate::wasm_repr::{is_64bit, is_float};
+        use {is_64bit, is_float};
 
         if is_float(spec) {
             match spec {
@@ -1336,7 +1504,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
         func: &mut wasm_encoder::Function,
         spec: ElementarySpec,
     ) -> Result<(), String> {
-        use crate::wasm_repr::{is_64bit, is_float, is_signed};
+        use {is_64bit, is_float, is_signed};
 
         if is_float(spec) {
             match spec {
@@ -1369,7 +1537,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
         func: &mut wasm_encoder::Function,
         spec: ElementarySpec,
     ) -> Result<(), String> {
-        use crate::wasm_repr::{is_64bit, is_float, is_signed};
+        use {is_64bit, is_float, is_signed};
 
         if is_float(spec) {
             match spec {
@@ -1402,7 +1570,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
         func: &mut wasm_encoder::Function,
         spec: ElementarySpec,
     ) -> Result<(), String> {
-        use crate::wasm_repr::{is_64bit, is_float, is_signed};
+        use {is_64bit, is_float, is_signed};
 
         if is_float(spec) {
             match spec {
@@ -1435,7 +1603,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
         func: &mut wasm_encoder::Function,
         spec: ElementarySpec,
     ) -> Result<(), String> {
-        use crate::wasm_repr::{is_64bit, is_float, is_signed};
+        use {is_64bit, is_float, is_signed};
 
         if is_float(spec) {
             match spec {
@@ -1541,11 +1709,39 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                 func.instruction(&Instruction::LocalSet(*index));
                 Ok(())
             }
-            LocalInfo::Memory { .. } => {
-                // Direct assignment to memory variable (whole array/struct)
-                Err(format!(
-                    "Direct assignment to memory-resident variables not yet implemented"
-                ))
+            LocalInfo::Memory { address, size, .. } => {
+                // Direct assignment to memory-resident scalar variable
+                // Stack order for store: [address, value]
+
+                // 1. Load memory address (constant)
+                func.instruction(&Instruction::I32Const(*address as i32));
+
+                // 2. Emit RHS value
+                self.emit_expr(func, target)?;
+
+                // 3. Emit store instruction based on size
+                match size {
+                    4 => {
+                        // 4-byte value (i32 or f32)
+                        func.instruction(&Instruction::I32Store(wasm_encoder::MemArg {
+                            offset: 0,
+                            align: 2, // 4-byte alignment
+                            memory_index: 0,
+                        }));
+                    }
+                    8 => {
+                        // 8-byte value (i64 or f64)
+                        func.instruction(&Instruction::I64Store(wasm_encoder::MemArg {
+                            offset: 0,
+                            align: 3, // 8-byte alignment
+                            memory_index: 0,
+                        }));
+                    }
+                    _ => {
+                        return Err(format!("Unsupported memory variable size for store: {}", size));
+                    }
+                }
+                Ok(())
             }
             LocalInfo::Pointer {
                 index,
@@ -1569,6 +1765,116 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
             // Variable not in local_map - check if it's an FB instance variable
             self.emit_instance_var_store(func, var_name, target, rhs_type)
         }
+    }
+
+    /// Emit code to assign through a dereferenced pointer (ptr^ := value).
+    fn emit_deref_assignment(
+        &self,
+        func: &mut wasm_encoder::Function,
+        ptr_ident: hir::hir_def::interned::identifier::SpanIdent<'db>,
+        deref_count: u16,
+        path_expr: hir::hir_def::expressions::expression::PathExpr<'db>,
+        rhs: hir::hir_def::expressions::expression::Expr<'db>,
+    ) -> Result<(), String> {
+        use hir::hir_ty::infer::Infer;
+
+        // Get the pointer variable
+        let var_name = ptr_ident.ident;
+
+        // Load the pointer variable
+        if let Some(local_info) = self.local_map.get(&var_name) {
+            match local_info {
+                LocalInfo::Scalar { index, .. } => {
+                    // Load the pointer value (i32 address)
+                    func.instruction(&Instruction::LocalGet(*index));
+
+                    // For multiple derefs (ptr^^ := value), we need to load intermediate pointers
+                    // For all but the last deref, emit load instructions
+                    if deref_count > 1 {
+                        // Get the type from the path expression
+                        let ptr_type = path_expr.infer(self.db);
+                        let mut current_type = ptr_type;
+
+                        for _ in 0..(deref_count - 1) {
+                            let pointee_repr = self.get_deref_pointee_type(current_type)?;
+                            self.emit_load_instruction(func, pointee_repr)?;
+
+                            // Update current_type for next iteration
+                            current_type = match current_type.normalize(self.db) {
+                                hir::hir_ty::ty::Type::RefTo(spec) => spec.infer(self.db),
+                                _ => return Err("Expected RefTo type for multiple dereference".to_string()),
+                            };
+                        }
+                    }
+
+                    // Now we have the final address on the stack
+                    // Emit RHS value
+                    self.emit_expr(func, rhs)?;
+
+                    // Get the pointee type for the store instruction from the path expression
+                    let ptr_type = path_expr.infer(self.db);
+                    let store_repr = self.get_final_deref_type(ptr_type, deref_count)?;
+
+                    // Emit store instruction
+                    self.emit_store_instruction(func, store_repr)?;
+                    Ok(())
+                }
+                LocalInfo::Pointer { index, pointee_repr } => {
+                    // This is a VAR_IN_OUT parameter (already a pointer)
+                    func.instruction(&Instruction::LocalGet(*index));
+
+                    // Handle multiple derefs
+                    for _ in 0..(deref_count - 1) {
+                        self.emit_load_instruction(func, *pointee_repr)?;
+                    }
+
+                    // Emit RHS value
+                    self.emit_expr(func, rhs)?;
+
+                    // Store through pointer
+                    self.emit_store_instruction(func, *pointee_repr)?;
+                    Ok(())
+                }
+                LocalInfo::Memory { .. } => {
+                    Err("Cannot dereference memory-resident variable for assignment".to_string())
+                }
+            }
+        } else {
+            Err(format!(
+                "Pointer variable '{}' not found in scope",
+                var_name.text(self.db)
+            ))
+        }
+    }
+
+    /// Get the final type after applying deref_count dereferenceoperations.
+    /// For ptr : REF_TO REF_TO INT with deref_count=2, returns WasmRepr for INT.
+    fn get_final_deref_type(
+        &self,
+        ref_type: hir::hir_ty::ty::Type<'db>,
+        deref_count: u16,
+    ) -> Result<WasmRepr, String> {
+        use hir::hir_ty::ty::Type;
+        use hir::hir_ty::infer::Infer;
+
+        let mut current_type = ref_type.normalize(self.db);
+
+        for _ in 0..deref_count {
+            match current_type {
+                Type::RefTo(spec) => {
+                    current_type = spec.infer(self.db).normalize(self.db);
+                }
+                _ => {
+                    return Err(format!(
+                        "Cannot dereference non-pointer type: {:?}",
+                        current_type
+                    ));
+                }
+            }
+        }
+
+        WasmRepr::from_type(self.db, current_type)
+            .map_err(|e| format!("Failed to get WASM representation for dereferenced type: {}", e))
     }
 
     /// Emit code to assign to a path expression (array element or struct field).
@@ -1614,7 +1920,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                 };
 
                 let element_type = array_spec.of_type(self.db).infer(self.db);
-                let element_repr = crate::wasm_repr::WasmRepr::from_type(self.db, element_type)
+                let element_repr = WasmRepr::from_type(self.db, element_type)
                     .map_err(|e| format!("Failed to get element representation: {}", e))?;
                 let element_size = element_repr.size_bytes();
 
@@ -1647,7 +1953,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                     self.emit_expr(func, *index)?;
                     let index_type = index.infer(self.db).normalize(self.db);
                     if let hir::hir_ty::ty::Type::Elementary(spec) = index_type {
-                        if crate::wasm_repr::is_64bit(spec) {
+                        if is_64bit(spec) {
                             func.instruction(&Instruction::I32WrapI64);
                         }
                     }
@@ -1738,7 +2044,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                     _ => return Err(format!("Expected struct type, got: {:?}", struct_type)),
                 };
 
-                let field_repr = crate::wasm_repr::WasmRepr::from_type(self.db, field_type)
+                let field_repr = WasmRepr::from_type(self.db, field_type)
                     .map_err(|e| format!("Failed to get field representation: {}", e))?;
 
                 // Store to the field
@@ -1793,7 +2099,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
 
         // Get element type and size
         let element_type = array_spec.of_type(self.db).infer(self.db);
-        let element_repr = crate::wasm_repr::WasmRepr::from_type(self.db, element_type)
+        let element_repr = WasmRepr::from_type(self.db, element_type)
             .map_err(|e| format!("Failed to get element representation: {}", e))?;
         let element_size = element_repr.size_bytes();
 
@@ -1832,7 +2138,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
             // Cast index to i32 if needed
             let index_type = index.infer(self.db).normalize(self.db);
             if let hir::hir_ty::ty::Type::Elementary(spec) = index_type {
-                if crate::wasm_repr::is_64bit(spec) {
+                if is_64bit(spec) {
                     // Need to cast from i64 to i32
                     func.instruction(&Instruction::I32WrapI64);
                 }
@@ -1925,7 +2231,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
             _ => return Err(format!("Expected struct type, got: {:?}", struct_type)),
         };
 
-        let field_repr = crate::wasm_repr::WasmRepr::from_type(self.db, field_type)
+        let field_repr = WasmRepr::from_type(self.db, field_type)
             .map_err(|e| format!("Failed to get field representation: {}", e))?;
 
         // Load the field value
@@ -1973,7 +2279,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                 };
 
                 // Calculate field offsets for this struct
-                let field_offsets = crate::wasm_repr::calculate_field_offsets(self.db, s)
+                let field_offsets = calculate_field_offsets(self.db, s)
                     .map_err(|e| format!("Failed to calculate field offsets: {}", e))?;
 
                 // Find the offset for this field
@@ -1993,12 +2299,12 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
     fn emit_load_instruction(
         &self,
         func: &mut wasm_encoder::Function,
-        repr: crate::wasm_repr::WasmRepr,
+        repr: WasmRepr,
     ) -> Result<(), String> {
         use wasm_encoder::MemArg;
 
         match repr {
-            crate::wasm_repr::WasmRepr::Scalar(val_type) => {
+            WasmRepr::Scalar(val_type) => {
                 // MemArg alignment is log2 of the actual alignment
                 let align = (repr.alignment() as f32).log2() as u32;
 
@@ -2025,7 +2331,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                 }
                 Ok(())
             }
-            crate::wasm_repr::WasmRepr::Memory { .. } => {
+            WasmRepr::Memory { .. } => {
                 // For memory types (structs), the address itself is the value
                 // Don't load, just leave the address on the stack
                 Ok(())
@@ -2039,12 +2345,12 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
     fn emit_store_instruction(
         &self,
         func: &mut wasm_encoder::Function,
-        repr: crate::wasm_repr::WasmRepr,
+        repr: WasmRepr,
     ) -> Result<(), String> {
         use wasm_encoder::MemArg;
 
         match repr {
-            crate::wasm_repr::WasmRepr::Scalar(val_type) => {
+            WasmRepr::Scalar(val_type) => {
                 // MemArg alignment is log2 of the actual alignment
                 let align = (repr.alignment() as f32).log2() as u32;
 
@@ -2071,7 +2377,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                 }
                 Ok(())
             }
-            crate::wasm_repr::WasmRepr::Memory { .. } => {
+            WasmRepr::Memory { .. } => {
                 // For memory types (structs), can't store entire struct at once
                 Err("Direct store of memory-resident types not supported".to_string())
             }
@@ -2102,6 +2408,32 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
         }
     }
 
+    /// Get the pointee type from a RefTo type.
+    /// For REF_TO INT, returns INT type.
+    fn get_deref_pointee_type(
+        &self,
+        ref_type: hir::hir_ty::ty::Type<'db>,
+    ) -> Result<WasmRepr, String> {
+        use hir::hir_ty::ty::Type;
+        use hir::hir_ty::infer::Infer;
+
+        // Normalize the type first
+        let normalized = ref_type.normalize(self.db);
+
+        match normalized {
+            Type::RefTo(spec) => {
+                // Infer the pointee type from the spec
+                let pointee_type = spec.infer(self.db);
+                WasmRepr::from_type(self.db, pointee_type)
+                    .map_err(|e| format!("Failed to get WASM representation for pointee type: {}", e))
+            }
+            _ => Err(format!(
+                "Expected REF_TO type for dereference, got: {:?}",
+                normalized
+            )),
+        }
+    }
+
     /// Emit a load instruction for dereferencing a pointer.
     /// Stack before: [address]
     /// Stack after: [value]
@@ -2111,7 +2443,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
         ty: hir::hir_ty::ty::Type<'db>,
     ) -> Result<(), String> {
         // Convert type to WASM representation
-        let repr = crate::wasm_repr::WasmRepr::from_type(self.db, ty)
+        let repr = WasmRepr::from_type(self.db, ty)
             .map_err(|e| format!("Failed to get type representation for pointer dereference: {}", e))?;
 
         // Emit the appropriate load instruction
@@ -2141,7 +2473,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
             .ok_or_else(|| format!("Instance variable {:?} not found", var_name))?;
 
         // Get variable offset in the instance layout
-        let field_offsets = crate::wasm_repr::calculate_instance_field_offsets(self.db, instance)
+        let field_offsets = calculate_instance_field_offsets(self.db, instance)
             .map_err(|e| format!("Failed to calculate instance field offsets: {}", e))?;
 
         let offset = field_offsets
@@ -2161,7 +2493,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
 
         // Get variable type and emit load instruction
         let var_type = instance_var.spec(self.db).infer(self.db);
-        let var_repr = crate::wasm_repr::WasmRepr::from_type(self.db, var_type)
+        let var_repr = WasmRepr::from_type(self.db, var_type)
             .map_err(|e| format!("Failed to get type representation: {}", e))?;
 
         self.emit_load_instruction(func, var_repr)
@@ -2192,7 +2524,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
             .ok_or_else(|| format!("Instance variable {:?} not found", var_name))?;
 
         // Get variable offset in the instance layout
-        let field_offsets = crate::wasm_repr::calculate_instance_field_offsets(self.db, instance)
+        let field_offsets = calculate_instance_field_offsets(self.db, instance)
             .map_err(|e| format!("Failed to calculate instance field offsets: {}", e))?;
 
         let offset = field_offsets
@@ -2217,7 +2549,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
 
         // 4. Get variable type and emit store instruction
         let var_type = instance_var.spec(self.db).infer(self.db);
-        let var_repr = crate::wasm_repr::WasmRepr::from_type(self.db, var_type)
+        let var_repr = WasmRepr::from_type(self.db, var_type)
             .map_err(|e| format!("Failed to get type representation: {}", e))?;
 
         self.emit_store_instruction(func, var_repr)
