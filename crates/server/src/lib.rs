@@ -20,12 +20,21 @@ use auto_lsp::lsp_types::CompletionOptions;
 use auto_lsp::lsp_types::DeclarationCapability;
 use auto_lsp::lsp_types::DiagnosticOptions;
 use auto_lsp::lsp_types::DiagnosticServerCapabilities;
+use auto_lsp::lsp_types::DidChangeWatchedFilesClientCapabilities;
+use auto_lsp::lsp_types::DidChangeWatchedFilesRegistrationOptions;
+use auto_lsp::lsp_types::FileSystemWatcher;
 use auto_lsp::lsp_types::FoldingRangeProviderCapability;
+use auto_lsp::lsp_types::GlobPattern;
 use auto_lsp::lsp_types::HoverProviderCapability;
 use auto_lsp::lsp_types::ImplementationProviderCapability;
+use auto_lsp::lsp_types::InitializeParams;
+use auto_lsp::lsp_types::Registration;
+use auto_lsp::lsp_types::RegistrationParams;
 use auto_lsp::lsp_types::ServerCapabilities;
 use auto_lsp::lsp_types::Url;
+use auto_lsp::lsp_types::WatchKind;
 use auto_lsp::lsp_types::WorkDoneProgressOptions;
+use auto_lsp::lsp_types::WorkspaceClientCapabilities;
 use auto_lsp::lsp_types::notification::Cancel;
 use auto_lsp::lsp_types::notification::DidChangeTextDocument;
 use auto_lsp::lsp_types::notification::DidChangeWatchedFiles;
@@ -33,6 +42,7 @@ use auto_lsp::lsp_types::notification::DidCloseTextDocument;
 use auto_lsp::lsp_types::notification::DidOpenTextDocument;
 use auto_lsp::lsp_types::notification::DidSaveTextDocument;
 use auto_lsp::lsp_types::notification::LogTrace;
+use auto_lsp::lsp_types::notification::Notification;
 use auto_lsp::lsp_types::notification::SetTrace;
 use auto_lsp::lsp_types::request::CodeActionRequest;
 use auto_lsp::lsp_types::request::CodeLensRequest;
@@ -46,6 +56,7 @@ use auto_lsp::lsp_types::request::GotoDefinition;
 use auto_lsp::lsp_types::request::GotoImplementation;
 use auto_lsp::lsp_types::request::HoverRequest;
 use auto_lsp::lsp_types::request::InlayHintRequest;
+use auto_lsp::lsp_types::request::RegisterCapability;
 use auto_lsp::lsp_types::request::SemanticTokensFullRequest;
 use auto_lsp::lsp_types::request::WorkspaceDiagnosticRequest;
 use auto_lsp::lsp_types::{
@@ -147,6 +158,8 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
         db,
     )?;
 
+    setup_file_watcher_if_necessary(&mut session, &params);
+
     if let Some(uri) = params.root_uri.as_ref() {
         Configuration::init_or_update(&mut session.db, Some(uri.clone()));
     }
@@ -203,6 +216,7 @@ fn on_notifications<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
             }
         })
         .on_mut::<DidChangeTextDocument, _>(|s, p| {
+            eprintln!("Received DidChangeTextDocument notification for {}", p.text_document.uri);
             match p.text_document.uri.as_str().ends_with(".st") {
                 true => Ok(change_text_document(s, p)?),
                 false => {
@@ -212,6 +226,7 @@ fn on_notifications<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
             }
         })
         .on_mut::<DidChangeWatchedFiles, _>(|s, p| {
+            eprintln!("Received DidChangeWatchedFiles notification with {} changes", p.changes.len());
             changed_watched_files(s, p)?;
             send_request::<lsp_types::request::WorkspaceDiagnosticRefresh>(s, ())
         })
@@ -243,4 +258,47 @@ pub fn send_request<N: lsp_types::request::Request>(
     };
     session.connection.sender.send(Message::Request(n))?;
     Ok(())
+}
+
+fn setup_file_watcher_if_necessary(
+    session: &mut Session<impl salsa::Database>,
+    params: &InitializeParams,
+) {
+    match params.capabilities.workspace {
+        Some(WorkspaceClientCapabilities {
+            did_change_watched_files:
+                Some(DidChangeWatchedFilesClientCapabilities {
+                    dynamic_registration: Some(true),
+                    relative_pattern_support,
+                    ..
+                }),
+            ..
+        }) => {
+            eprintln!("Client supports dynamic file watcher registration. Setting up file watcher...");
+            let watchers = vec![
+                FileSystemWatcher {
+                    glob_pattern: GlobPattern::String("**/*.st".to_string()),
+                    kind: Some(WatchKind::Create | WatchKind::Change | WatchKind::Delete),
+                },
+            ];
+
+            send_request::<RegisterCapability>(
+                session,
+                RegistrationParams {
+                    registrations: vec![Registration {
+                        id: "FILEWATCHER".to_owned(),
+                        method: DidChangeWatchedFiles::METHOD.to_owned(),
+                        register_options: Some(
+                            serde_json::to_value(DidChangeWatchedFilesRegistrationOptions {
+                                watchers,
+                            })
+                            .unwrap(),
+                        ),
+                    }],
+                },
+            )
+            .unwrap()
+        }
+        _ => {}
+    }
 }

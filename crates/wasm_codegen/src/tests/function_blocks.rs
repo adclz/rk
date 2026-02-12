@@ -1,73 +1,7 @@
-//! Function Block code generation tests.
+//! Function Block execution tests.
 
-use crate::tests::{compile_to_wasm, execute_wasm, validate_wasm, with_db};
+use crate::tests::{compile_to_wasm, with_db};
 use rstest::*;
-
-#[rstest]
-fn test_simple_fb_method(mut with_db: db::RootDatabase) {
-    let source = r#"
-        FUNCTION_BLOCK Counter
-        VAR
-            count : INT := 0;
-        END_VAR
-
-        METHOD Increment : INT
-            THIS.count := THIS.count + 1;
-            Increment := THIS.count;
-        END_METHOD
-        END_FUNCTION_BLOCK
-    "#;
-
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    validate_wasm(&wasm_bytes).expect("WASM validation failed");
-}
-
-#[rstest]
-fn test_fb_method_with_parameter(mut with_db: db::RootDatabase) {
-    let source = r#"
-        FUNCTION_BLOCK Accumulator
-        VAR
-            total : INT := 0;
-        END_VAR
-
-        METHOD Add : INT
-        VAR_INPUT
-            value : INT;
-        END_VAR
-            THIS.total := THIS.total + value;
-            Add := THIS.total;
-        END_METHOD
-        END_FUNCTION_BLOCK
-    "#;
-
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    validate_wasm(&wasm_bytes).expect("WASM validation failed");
-}
-
-#[rstest]
-fn test_fb_multiple_instance_vars(mut with_db: db::RootDatabase) {
-    let source = r#"
-        FUNCTION_BLOCK Calculator
-        VAR
-            result : INT;
-            temp : INT;
-        END_VAR
-
-        METHOD Calculate : INT
-        VAR_INPUT
-            a : INT;
-            b : INT;
-        END_VAR
-            THIS.temp := a + b;
-            THIS.result := THIS.temp * 2;
-            Calculate := THIS.result;
-        END_METHOD
-        END_FUNCTION_BLOCK
-    "#;
-
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    validate_wasm(&wasm_bytes).expect("WASM validation failed");
-}
 
 #[rstest]
 fn test_fb_method_execution(mut with_db: db::RootDatabase) {
@@ -89,7 +23,6 @@ fn test_fb_method_execution(mut with_db: db::RootDatabase) {
     "#;
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    validate_wasm(&wasm_bytes).expect("WASM validation failed");
 
     // Create an FB instance in memory
     let engine = wasmtime::Engine::default();

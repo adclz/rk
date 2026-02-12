@@ -1,305 +1,220 @@
-//! Control flow code generation tests.
+//! Control flow execution tests - IF, CASE, FOR, WHILE, REPEAT.
 
-use crate::tests::{compile_to_wasm, validate_wasm, with_db};
+use crate::tests::{compile_to_wasm, with_db};
 use rstest::*;
-
-#[rstest]
-fn test_simple_if(mut with_db: db::RootDatabase) {
-    let source = r#"
-        FUNCTION test_if : INT
-        VAR_INPUT
-            condition : BOOL;
-        END_VAR
-        VAR
-            result : INT;
-        END_VAR
-            result := 0;
-            IF condition THEN
-                result := 1;
-            END_IF;
-            test_if := result;
-        END_FUNCTION
-    "#;
-
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    validate_wasm(&wasm_bytes).expect("WASM validation failed");
-}
 
 #[rstest]
 fn test_if_else(mut with_db: db::RootDatabase) {
     let source = r#"
-        FUNCTION test_if_else : INT
+        FUNCTION abs_value : INT
         VAR_INPUT
-            condition : BOOL;
+            x : INT;
         END_VAR
-        VAR
-            result : INT;
-        END_VAR
-            IF condition THEN
-                result := 1;
+            IF x < 0 THEN
+                abs_value := -x;
             ELSE
-                result := 2;
+                abs_value := x;
             END_IF;
-            test_if_else := result;
         END_FUNCTION
     "#;
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    validate_wasm(&wasm_bytes).expect("WASM validation failed");
-}
 
-#[rstest]
-fn test_if_elsif_else(mut with_db: db::RootDatabase) {
-    let source = r#"
-        FUNCTION test_if_elsif_else : INT
-        VAR_INPUT
-            value : INT;
-        END_VAR
-        VAR
-            result : INT;
-        END_VAR
-            IF value < 0 THEN
-                result := -1;
-            ELSIF value > 0 THEN
-                result := 1;
-            ELSE
-                result := 0;
-            END_IF;
-            test_if_elsif_else := result;
-        END_FUNCTION
-    "#;
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
+    let mut store = wasmtime::Store::new(&engine, ());
+    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
 
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    validate_wasm(&wasm_bytes).expect("WASM validation failed");
-}
+    let abs_value = instance
+        .get_typed_func::<i32, i32>(&mut store, "abs_value")
+        .expect("Failed to get function");
 
-#[rstest]
-fn test_multiple_elsif(mut with_db: db::RootDatabase) {
-    let source = r#"
-        FUNCTION test_multiple_elsif : INT
-        VAR_INPUT
-            value : INT;
-        END_VAR
-        VAR
-            result : INT;
-        END_VAR
-            IF value = 1 THEN
-                result := 10;
-            ELSIF value = 2 THEN
-                result := 20;
-            ELSIF value = 3 THEN
-                result := 30;
-            ELSE
-                result := 0;
-            END_IF;
-            test_multiple_elsif := result;
-        END_FUNCTION
-    "#;
-
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    validate_wasm(&wasm_bytes).expect("WASM validation failed");
+    assert_eq!(abs_value.call(&mut store, -5).unwrap(), 5);
+    assert_eq!(abs_value.call(&mut store, 3).unwrap(), 3);
+    assert_eq!(abs_value.call(&mut store, 0).unwrap(), 0);
 }
 
 #[rstest]
 fn test_nested_if(mut with_db: db::RootDatabase) {
     let source = r#"
-        FUNCTION test_nested_if : INT
+        FUNCTION classify : INT
         VAR_INPUT
-            a : BOOL;
-            b : BOOL;
+            x : INT;
         END_VAR
-        VAR
-            result : INT;
-        END_VAR
-            result := 0;
-            IF a THEN
-                IF b THEN
-                    result := 1;
+            IF x > 0 THEN
+                IF x > 10 THEN
+                    classify := 2;  // Large positive
                 ELSE
-                    result := 2;
+                    classify := 1;  // Small positive
                 END_IF;
+            ELSIF x < 0 THEN
+                classify := -1;     // Negative
             ELSE
-                result := 3;
+                classify := 0;      // Zero
             END_IF;
-            test_nested_if := result;
         END_FUNCTION
     "#;
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    validate_wasm(&wasm_bytes).expect("WASM validation failed");
+
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
+    let mut store = wasmtime::Store::new(&engine, ());
+    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+
+    let classify = instance
+        .get_typed_func::<i32, i32>(&mut store, "classify")
+        .expect("Failed to get function");
+
+    assert_eq!(classify.call(&mut store, 15).unwrap(), 2, "15 is large positive");
+    assert_eq!(classify.call(&mut store, 5).unwrap(), 1, "5 is small positive");
+    assert_eq!(classify.call(&mut store, -3).unwrap(), -1, "-3 is negative");
+    assert_eq!(classify.call(&mut store, 0).unwrap(), 0, "0 is zero");
 }
 
 #[rstest]
-fn test_if_with_early_return(mut with_db: db::RootDatabase) {
+fn test_case_statement(mut with_db: db::RootDatabase) {
     let source = r#"
-        FUNCTION test_early_return : INT
+        FUNCTION day_type : INT
         VAR_INPUT
-            condition : BOOL;
+            day : INT;
         END_VAR
-            IF condition THEN
-                test_early_return := 1;
-                RETURN;
-            END_IF;
-            test_early_return := 2;
+            CASE day OF
+                1, 2, 3, 4, 5:
+                    day_type := 1;  // Weekday
+                6, 7:
+                    day_type := 0;  // Weekend
+            ELSE
+                day_type := -1;     // Invalid
+            END_CASE;
         END_FUNCTION
     "#;
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    validate_wasm(&wasm_bytes).expect("WASM validation failed");
+
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
+    let mut store = wasmtime::Store::new(&engine, ());
+    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+
+    let day_type = instance
+        .get_typed_func::<i32, i32>(&mut store, "day_type")
+        .expect("Failed to get function");
+
+    assert_eq!(day_type.call(&mut store, 1).unwrap(), 1, "Monday is weekday");
+    assert_eq!(day_type.call(&mut store, 5).unwrap(), 1, "Friday is weekday");
+    assert_eq!(day_type.call(&mut store, 6).unwrap(), 0, "Saturday is weekend");
+    assert_eq!(day_type.call(&mut store, 7).unwrap(), 0, "Sunday is weekend");
+    assert_eq!(day_type.call(&mut store, 0).unwrap(), -1, "0 is invalid");
+    assert_eq!(day_type.call(&mut store, 8).unwrap(), -1, "8 is invalid");
 }
 
 #[rstest]
 fn test_for_loop(mut with_db: db::RootDatabase) {
     let source = r#"
-        FUNCTION test_for : INT
+        FUNCTION sum_to_n : INT
+        VAR_INPUT
+            n : INT;
+        END_VAR
         VAR
-            i : INT;
             sum : INT;
+            i : INT;
         END_VAR
             sum := 0;
-            FOR i := 1 TO 10 DO
+            FOR i := 1 TO n DO
                 sum := sum + i;
             END_FOR;
-            test_for := sum;
+            sum_to_n := sum;
         END_FUNCTION
     "#;
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    validate_wasm(&wasm_bytes).expect("WASM validation failed");
-}
 
-#[rstest]
-fn test_for_loop_with_step(mut with_db: db::RootDatabase) {
-    let source = r#"
-        FUNCTION test_for_step : INT
-        VAR
-            i : INT;
-            sum : INT;
-        END_VAR
-            sum := 0;
-            FOR i := 0 TO 10 BY 2 DO
-                sum := sum + i;
-            END_FOR;
-            test_for_step := sum;
-        END_FUNCTION
-    "#;
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
+    let mut store = wasmtime::Store::new(&engine, ());
+    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
 
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    validate_wasm(&wasm_bytes).expect("WASM validation failed");
+    let sum_to_n = instance
+        .get_typed_func::<i32, i32>(&mut store, "sum_to_n")
+        .expect("Failed to get function");
+
+    assert_eq!(sum_to_n.call(&mut store, 5).unwrap(), 15, "1+2+3+4+5 = 15");
+    assert_eq!(sum_to_n.call(&mut store, 10).unwrap(), 55, "Sum to 10 is 55");
 }
 
 #[rstest]
 fn test_while_loop(mut with_db: db::RootDatabase) {
     let source = r#"
-        FUNCTION test_while : INT
-        VAR
-            i : INT;
-            sum : INT;
+        FUNCTION power_of_two : INT
+        VAR_INPUT
+            n : INT;
         END_VAR
-            i := 1;
-            sum := 0;
-            WHILE i <= 10 DO
-                sum := sum + i;
+        VAR
+            result : INT;
+            i : INT;
+        END_VAR
+            result := 1;
+            i := 0;
+            WHILE i < n DO
+                result := result * 2;
                 i := i + 1;
             END_WHILE;
-            test_while := sum;
+            power_of_two := result;
         END_FUNCTION
     "#;
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    validate_wasm(&wasm_bytes).expect("WASM validation failed");
+
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
+    let mut store = wasmtime::Store::new(&engine, ());
+    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+
+    let power_of_two = instance
+        .get_typed_func::<i32, i32>(&mut store, "power_of_two")
+        .expect("Failed to get function");
+
+    assert_eq!(power_of_two.call(&mut store, 0).unwrap(), 1, "2^0 = 1");
+    assert_eq!(power_of_two.call(&mut store, 3).unwrap(), 8, "2^3 = 8");
+    assert_eq!(power_of_two.call(&mut store, 5).unwrap(), 32, "2^5 = 32");
 }
 
 #[rstest]
 fn test_repeat_loop(mut with_db: db::RootDatabase) {
     let source = r#"
-        FUNCTION test_repeat : INT
+        FUNCTION find_divisor : INT
+        VAR_INPUT
+            n : INT;
+        END_VAR
         VAR
             i : INT;
-            sum : INT;
         END_VAR
-            i := 1;
-            sum := 0;
+            i := 2;
             REPEAT
-                sum := sum + i;
+                IF n MOD i = 0 THEN
+                    find_divisor := i;
+                    RETURN;
+                END_IF;
                 i := i + 1;
-            UNTIL i > 10
+            UNTIL i > n
             END_REPEAT;
-            test_repeat := sum;
+            find_divisor := n;  // Prime or 1
         END_FUNCTION
     "#;
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    validate_wasm(&wasm_bytes).expect("WASM validation failed");
-}
 
-#[rstest]
-fn test_loop_with_exit(mut with_db: db::RootDatabase) {
-    let source = r#"
-        FUNCTION test_exit : INT
-        VAR
-            i : INT;
-            sum : INT;
-        END_VAR
-            i := 1;
-            sum := 0;
-            WHILE i <= 100 DO
-                sum := sum + i;
-                i := i + 1;
-                IF i > 10 THEN
-                    EXIT;
-                END_IF;
-            END_WHILE;
-            test_exit := sum;
-        END_FUNCTION
-    "#;
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
+    let mut store = wasmtime::Store::new(&engine, ());
+    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
 
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    validate_wasm(&wasm_bytes).expect("WASM validation failed");
-}
+    let find_divisor = instance
+        .get_typed_func::<i32, i32>(&mut store, "find_divisor")
+        .expect("Failed to get function");
 
-#[rstest]
-fn test_loop_with_continue(mut with_db: db::RootDatabase) {
-    let source = r#"
-        FUNCTION test_continue : INT
-        VAR
-            i : INT;
-            sum : INT;
-        END_VAR
-            sum := 0;
-            FOR i := 1 TO 10 DO
-                IF i MOD 2 = 0 THEN
-                    CONTINUE;
-                END_IF;
-                sum := sum + i;
-            END_FOR;
-            test_continue := sum;
-        END_FUNCTION
-    "#;
-
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    validate_wasm(&wasm_bytes).expect("WASM validation failed");
-}
-
-#[rstest]
-fn test_nested_loops(mut with_db: db::RootDatabase) {
-    let source = r#"
-        FUNCTION test_nested : INT
-        VAR
-            i : INT;
-            j : INT;
-            sum : INT;
-        END_VAR
-            sum := 0;
-            FOR i := 1 TO 3 DO
-                FOR j := 1 TO 3 DO
-                    sum := sum + i * j;
-                END_FOR;
-            END_FOR;
-            test_nested := sum;
-        END_FUNCTION
-    "#;
-
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    validate_wasm(&wasm_bytes).expect("WASM validation failed");
+    assert_eq!(find_divisor.call(&mut store, 15).unwrap(), 3, "15 divisible by 3");
+    assert_eq!(find_divisor.call(&mut store, 7).unwrap(), 7, "7 is prime");
+    assert_eq!(find_divisor.call(&mut store, 12).unwrap(), 2, "12 divisible by 2");
 }

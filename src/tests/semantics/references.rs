@@ -272,7 +272,6 @@ END_FUNCTION
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
-
 #[rstest]
 fn valid_multiple_deref(mut with_db: RootDatabase) {
     let source = r#"
@@ -286,7 +285,7 @@ FUNCTION test_double_deref: INT
 	ptr := REF(x);
 	ptrptr := REF(ptr);
 	test_double_deref := ptrptr^^;
-    
+
 END_FUNCTION
         "#;
 

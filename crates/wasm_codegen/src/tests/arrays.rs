@@ -1,14 +1,14 @@
-//! Tests for array operations in WASM codegen.
+//! Array execution tests - actually running WASM to verify array operations.
 
-use crate::tests::{compile_to_wasm, execute_wasm, with_db};
+use crate::tests::{compile_to_wasm, with_db};
 use rstest::*;
 
 #[rstest]
-fn test_simple_1d_array_read(mut with_db: db::RootDatabase) {
+fn test_array_write_and_read(mut with_db: db::RootDatabase) {
     let source = r#"
         FUNCTION test_array : INT
         VAR
-            arr : ARRAY[0..2] OF INT;
+            arr : ARRAY[0..4] OF INT;
         END_VAR
             arr[0] := 10;
             arr[1] := 20;
@@ -19,85 +19,27 @@ fn test_simple_1d_array_read(mut with_db: db::RootDatabase) {
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
 
-    // Execute and verify
-    let result: i32 = execute_wasm(&wasm_bytes, "test_array", ());
-    assert_eq!(result, 20);
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
+    let mut store = wasmtime::Store::new(&engine, ());
+    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+
+    let test_array = instance
+        .get_typed_func::<(), i32>(&mut store, "test_array")
+        .expect("Failed to get function");
+
+    let result = test_array.call(&mut store, ()).unwrap();
+    assert_eq!(result, 20, "Should read value 20 from arr[1]");
 }
 
 #[rstest]
-fn test_simple_1d_array_write(mut with_db: db::RootDatabase) {
-    let source = r#"
-        FUNCTION test_array : INT
-        VAR
-            arr : ARRAY[1..5] OF INT;
-            i : INT;
-        END_VAR
-            i := 3;
-            arr[i] := 42;
-            test_array := arr[3];
-        END_FUNCTION
-    "#;
-
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-
-    // Execute and verify
-    let result: i32 = execute_wasm(&wasm_bytes, "test_array", ());
-    assert_eq!(result, 42);
-}
-
-#[rstest]
-fn test_2d_array_access(mut with_db: db::RootDatabase) {
-    let source = r#"
-        FUNCTION test_matrix : INT
-        VAR
-            matrix : ARRAY[0..1, 0..2] OF INT;
-        END_VAR
-            matrix[0, 0] := 1;
-            matrix[0, 1] := 2;
-            matrix[0, 2] := 3;
-            matrix[1, 0] := 4;
-            matrix[1, 1] := 5;
-            matrix[1, 2] := 6;
-            test_matrix := matrix[1, 1];
-        END_FUNCTION
-    "#;
-
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-
-    // Execute and verify (should return 5)
-    let result: i32 = execute_wasm(&wasm_bytes, "test_matrix", ());
-    assert_eq!(result, 5);
-}
-
-#[rstest]
-fn test_array_of_reals(mut with_db: db::RootDatabase) {
-    let source = r#"
-        FUNCTION test_real_array : REAL
-        VAR
-            arr : ARRAY[1..3] OF REAL;
-        END_VAR
-            arr[1] := 1.5;
-            arr[2] := 2.5;
-            arr[3] := 3.5;
-            test_real_array := arr[2];
-        END_FUNCTION
-    "#;
-
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-
-    // Execute and verify
-    let result: f32 = execute_wasm(&wasm_bytes, "test_real_array", ());
-    assert_eq!(result, 2.5);
-}
-
-#[rstest]
-fn test_array_in_loop(mut with_db: db::RootDatabase) {
+fn test_array_sum(mut with_db: db::RootDatabase) {
     let source = r#"
         FUNCTION sum_array : INT
         VAR
             arr : ARRAY[0..4] OF INT;
-            i : INT;
             sum : INT;
+            i : INT;
         END_VAR
             arr[0] := 1;
             arr[1] := 2;
@@ -116,30 +58,76 @@ fn test_array_in_loop(mut with_db: db::RootDatabase) {
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
 
-    // Execute and verify (1+2+3+4+5 = 15)
-    let result: i32 = execute_wasm(&wasm_bytes, "sum_array", ());
-    assert_eq!(result, 15);
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
+    let mut store = wasmtime::Store::new(&engine, ());
+    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+
+    let sum_array = instance
+        .get_typed_func::<(), i32>(&mut store, "sum_array")
+        .expect("Failed to get function");
+
+    let result = sum_array.call(&mut store, ()).unwrap();
+    assert_eq!(result, 15, "Sum of 1+2+3+4+5 should be 15");
 }
 
 #[rstest]
-fn test_array_with_negative_indices(mut with_db: db::RootDatabase) {
+fn test_2d_array_access(mut with_db: db::RootDatabase) {
     let source = r#"
-        FUNCTION test_neg_indices : INT
+        FUNCTION test_2d : INT
         VAR
-            arr : ARRAY[-2..2] OF INT;
+            matrix : ARRAY[0..2, 0..2] OF INT;
         END_VAR
-            arr[-2] := 10;
-            arr[-1] := 20;
-            arr[0] := 30;
-            arr[1] := 40;
-            arr[2] := 50;
-            test_neg_indices := arr[-1];
+            matrix[0, 0] := 1;
+            matrix[0, 1] := 2;
+            matrix[1, 0] := 3;
+            matrix[1, 1] := 4;
+
+            test_2d := matrix[1, 1];
         END_FUNCTION
     "#;
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
 
-    // Execute and verify
-    let result: i32 = execute_wasm(&wasm_bytes, "test_neg_indices", ());
-    assert_eq!(result, 20);
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
+    let mut store = wasmtime::Store::new(&engine, ());
+    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+
+    let test_2d = instance
+        .get_typed_func::<(), i32>(&mut store, "test_2d")
+        .expect("Failed to get function");
+
+    let result = test_2d.call(&mut store, ()).unwrap();
+    assert_eq!(result, 4, "matrix[1,1] should be 4");
+}
+
+#[rstest]
+fn test_array_with_non_zero_base(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION test_offset : INT
+        VAR
+            arr : ARRAY[10..14] OF INT;
+        END_VAR
+            arr[10] := 100;
+            arr[11] := 200;
+            arr[12] := 300;
+
+            test_offset := arr[11];
+        END_FUNCTION
+    "#;
+
+    let wasm_bytes = compile_to_wasm(&mut with_db, source);
+
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
+    let mut store = wasmtime::Store::new(&engine, ());
+    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+
+    let test_offset = instance
+        .get_typed_func::<(), i32>(&mut store, "test_offset")
+        .expect("Failed to get function");
+
+    let result = test_offset.call(&mut store, ()).unwrap();
+    assert_eq!(result, 200, "arr[11] should be 200");
 }

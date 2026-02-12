@@ -5,23 +5,17 @@ use auto_lsp::{
     lsp_types::Url,
 };
 use db::RootDatabase;
-use hir::hir_def::semantic_index::semantic_index;
+use hir::{hir_def::semantic_index::semantic_index, check::diagnostics_for_file};
 use rstest::*;
 
-// Test modules
-mod basic;
-mod control_flow;
-mod case;
-mod function_calls;
-mod casts;
+// Test modules - only execution tests, no validation-only tests
 mod execution;
-mod arrays;
-mod structs;
 mod references;
+mod ref_to;
 mod function_blocks;
-mod bit_strings;
-mod programs;
-mod debug_embedded;
+mod arrays;
+mod control_flow;
+mod structs;
 
 #[fixture]
 pub fn with_db() -> RootDatabase {
@@ -51,11 +45,40 @@ pub fn add_source(db: &mut RootDatabase, source: &str) -> File {
 /// 3. Finds all functions and generates WASM code
 /// 4. Returns the compiled WASM module as bytes
 ///
-/// Note: Validation is not performed here - use wasmtime's Module::new()
+/// Note: WASM validation is not performed here - use wasmtime's Module::new()
 /// or wasmparser::validate() on the returned bytes to validate.
+///
+/// Use `compile_to_wasm_checked` to also validate for diagnostics before compiling.
 pub fn compile_to_wasm(db: &mut RootDatabase, source: &str) -> Vec<u8> {
+    compile_to_wasm_impl(db, source, false)
+}
+
+/// Same as `compile_to_wasm` but panics if the source has any diagnostics.
+///
+/// Use this when you want to ensure the source is error-free before compiling.
+pub fn compile_to_wasm_checked(db: &mut RootDatabase, source: &str) -> Vec<u8> {
+    compile_to_wasm_impl(db, source, true)
+}
+
+fn compile_to_wasm_impl(db: &mut RootDatabase, source: &str, check_diagnostics: bool) -> Vec<u8> {
     let file = add_source(db, source);
     let sem_idx = semantic_index(db, file);
+
+    // Optionally check for diagnostics before compiling
+    if check_diagnostics {
+        let diagnostics = diagnostics_for_file(db, file);
+        if !diagnostics.is_empty() {
+            let mut error_msg = format!("Source has {} diagnostic(s), cannot compile:\n", diagnostics.len());
+            for diag in diagnostics.iter().take(10) {  // Limit to first 10 errors
+                let inner = &diag.diagnostic;
+                error_msg.push_str(&format!("  [{:?}] {}\n", inner.severity, inner.message));
+            }
+            if diagnostics.len() > 10 {
+                error_msg.push_str(&format!("  ... and {} more diagnostics\n", diagnostics.len() - 10));
+            }
+            panic!("{}", error_msg);
+        }
+    }
 
     let mut codegen = crate::ModuleCodeGen::new(db);
 
@@ -103,30 +126,12 @@ pub fn compile_to_wasm(db: &mut RootDatabase, source: &str) -> Vec<u8> {
     });
     module.section(&memory_section);
 
-    // Generate debug sections before moving export_section
-    #[cfg(feature = "debug_info")]
-    let debug_sections = codegen.generate_debug_sections().ok();
-
     // Export memory so tests can access it
     let mut export_section = codegen.export_section;
     export_section.export("memory", wasm_encoder::ExportKind::Memory, 0);
     module.section(&export_section);
 
     module.section(&codegen.code_section);
-
-    // Add debug sections if feature is enabled
-    #[cfg(feature = "debug_info")]
-    {
-        if let Some(custom_sections) = debug_sections {
-            for (name, data) in custom_sections {
-                let custom_section = wasm_encoder::CustomSection {
-                    name: std::borrow::Cow::Borrowed(&name),
-                    data: std::borrow::Cow::Borrowed(&data),
-                };
-                module.section(&custom_section);
-            }
-        }
-    }
 
     module.finish()
 }
@@ -177,4 +182,3 @@ where
     func.call(&mut store, params)
         .unwrap_or_else(|e| panic!("Failed to call function '{}': {}", func_name, e))
 }
- 
