@@ -44,6 +44,16 @@ pub struct BodyCodegen<'db, 'a> {
 
     /// For methods: the instance type (FunctionBlock or Class) for instance variable access.
     instance: Option<crate::func_codegen::InstanceType<'db>>,
+
+    /// Debug configuration
+    config: &'a crate::debug::CodeGenConfig,
+
+    /// Debug information (mutable for recording traps)
+    debug_info: &'a mut crate::debug::DebugInfo,
+
+    /// Debug global indices
+    debug_enabled_global: Option<u32>,
+    debug_trap_id_global: Option<u32>,
 }
 
 impl<'db, 'a> BodyCodegen<'db, 'a> {
@@ -52,6 +62,10 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
         local_map: &'a FxHashMap<Ident, LocalInfo>,
         return_local: Option<u32>,
         function_indices: &'a FxHashMap<Ident, u32>,
+        config: &'a crate::debug::CodeGenConfig,
+        debug_info: &'a mut crate::debug::DebugInfo,
+        debug_enabled_global: Option<u32>,
+        debug_trap_id_global: Option<u32>,
     ) -> Self {
         Self {
             db,
@@ -60,6 +74,10 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
             function_indices,
             this_local: None,
             instance: None,
+            config,
+            debug_info,
+            debug_enabled_global,
+            debug_trap_id_global,
         }
     }
 
@@ -70,6 +88,10 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
         function_indices: &'a FxHashMap<Ident, u32>,
         this_local: u32,
         instance: crate::func_codegen::InstanceType<'db>,
+        config: &'a crate::debug::CodeGenConfig,
+        debug_info: &'a mut crate::debug::DebugInfo,
+        debug_enabled_global: Option<u32>,
+        debug_trap_id_global: Option<u32>,
     ) -> Self {
         Self {
             db,
@@ -78,12 +100,16 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
             function_indices,
             this_local: Some(this_local),
             instance: Some(instance),
+            config,
+            debug_info,
+            debug_enabled_global,
+            debug_trap_id_global,
         }
     }
 
     /// Emit all statements in the function body.
     pub fn emit_statements(
-        &self,
+        &mut self,
         func: &mut wasm_encoder::Function,
         statements: &[hir::hir_def::expressions::statement::Stmt<'db>],
     ) -> Result<(), String> {
@@ -95,11 +121,32 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
 
     /// Emit a statement.
     fn emit_stmt(
-        &self,
+        &mut self,
         func: &mut wasm_encoder::Function,
         stmt: hir::hir_def::expressions::statement::Stmt<'db>,
     ) -> Result<(), String> {
         use hir::hir_def::expressions::statement::StmtKind;
+
+        // Inject debug trap at statement boundary
+        if self.config.debug_mode != crate::debug::DebugMode::None {
+            // Create a simple placeholder source location
+            // TODO: Get actual file/line/column from AST node
+            let location = crate::debug::SourceLocation {
+                file_id: 0, // Placeholder file ID
+                line: self.debug_info.traps.len() as u32 + 1, // Unique line per trap
+                column: 0,
+            };
+
+            // Create emitter and inject trap
+            let mut emitter = crate::emitter::InstructionEmitter::new(
+                func,
+                self.config,
+                self.debug_info,
+                self.debug_enabled_global,
+                self.debug_trap_id_global,
+            );
+            emitter.begin_statement(location);
+        }
 
         match stmt.stmt(self.db) {
             StmtKind::Assignment { var, target } => {

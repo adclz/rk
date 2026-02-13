@@ -8,6 +8,8 @@ use db::RootDatabase;
 use hir::{hir_def::semantic_index::semantic_index, check::diagnostics_for_file};
 use rstest::*;
 
+use crate::debug::CodeGenConfig;
+
 // Test modules - only execution tests, no validation-only tests
 mod execution;
 mod references;
@@ -16,6 +18,7 @@ mod function_blocks;
 mod arrays;
 mod control_flow;
 mod structs;
+mod debug;
 
 #[fixture]
 pub fn with_db() -> RootDatabase {
@@ -58,6 +61,86 @@ pub fn compile_to_wasm(db: &mut RootDatabase, source: &str) -> Vec<u8> {
 /// Use this when you want to ensure the source is error-free before compiling.
 pub fn compile_to_wasm_checked(db: &mut RootDatabase, source: &str) -> Vec<u8> {
     compile_to_wasm_impl(db, source, true)
+}
+
+/// Compile IEC source to WASM with custom code generation configuration.
+///
+/// Returns both the WASM bytes and debug information.
+pub fn compile_to_wasm_with_config(
+    db: &mut RootDatabase,
+    source: &str,
+    config: CodeGenConfig,
+) -> (Vec<u8>, crate::debug::DebugInfo) {
+    let file = add_source(db, source);
+    let sem_idx = semantic_index(db, file);
+
+    let mut codegen = crate::ModuleCodeGen::new_with_config(db, config);
+
+    // Generate code for all POUs in the source
+    for pou in &sem_idx.global_pous {
+        match pou {
+            hir::hir_def::pous::pou::Pou::Function(func) => {
+                codegen.generate_function(*func);
+            }
+            hir::hir_def::pous::pou::Pou::FunctionBlock(fb) => {
+                codegen.generate_function_block(*fb);
+            }
+            hir::hir_def::pous::pou::Pou::Class(class) => {
+                codegen.generate_class(*class);
+            }
+            _ => {}
+        }
+    }
+
+    // Generate code for all PROGRAMs
+    for program in &sem_idx.programs {
+        codegen.generate_program(*program);
+    }
+
+    // Build the module with all sections
+    let mut module = wasm_encoder::Module::new();
+    module.section(&codegen.type_section);
+    module.section(&codegen.fn_section);
+
+    // Add memory section
+    let memory_size = codegen.memory_layout.total_size();
+    let memory_min_pages = if memory_size > 0 {
+        (memory_size + 65535) / 65536
+    } else {
+        1
+    };
+
+    let mut memory_section = wasm_encoder::MemorySection::new();
+    memory_section.memory(wasm_encoder::MemoryType {
+        minimum: memory_min_pages as u64,
+        maximum: None,
+        memory64: false,
+        shared: false,
+        page_size_log2: None,
+    });
+    module.section(&memory_section);
+
+    // Add global section if it has debug globals
+    if codegen.global_section.len() > 0 {
+        module.section(&codegen.global_section);
+    }
+
+    // Export memory
+    let mut export_section = codegen.export_section;
+    export_section.export("memory", wasm_encoder::ExportKind::Memory, 0);
+
+    // Export debug globals if present
+    if let Some(idx) = codegen.debug_enabled_global {
+        export_section.export("debug_enabled", wasm_encoder::ExportKind::Global, idx);
+    }
+    if let Some(idx) = codegen.debug_trap_id_global {
+        export_section.export("debug_trap_id", wasm_encoder::ExportKind::Global, idx);
+    }
+
+    module.section(&export_section);
+    module.section(&codegen.code_section);
+
+    (module.finish(), codegen.debug_info)
 }
 
 fn compile_to_wasm_impl(db: &mut RootDatabase, source: &str, check_diagnostics: bool) -> Vec<u8> {

@@ -18,10 +18,14 @@ pub mod func_codegen;
 pub mod body;
 pub mod cast;
 pub mod memory;
+pub mod debug;
+pub mod emitter;
 
 #[cfg(test)]
 pub mod tests;
 
+use debug::{CodeGenConfig, DebugInfo};
+use emitter::InstructionEmitter;
 use func_codegen::FunctionCodegen;
 use memory::MemoryLayout;
 use wasm_repr::WasmRepr;
@@ -32,6 +36,7 @@ pub struct ModuleCodeGen<'db> {
     fn_section: wasm_encoder::FunctionSection,
     export_section: wasm_encoder::ExportSection,
     code_section: wasm_encoder::CodeSection,
+    global_section: wasm_encoder::GlobalSection,
 
     // Index tracking
     next_type_idx: u32,
@@ -44,7 +49,13 @@ pub struct ModuleCodeGen<'db> {
     function_indices: FxHashMap<hir::hir_def::interned::identifier::Ident, u32>,
 
     // Memory layout for arrays, structs, and memory-resident variables
-    memory_layout: MemoryLayout
+    memory_layout: MemoryLayout,
+
+    // Debug configuration and tracking
+    pub config: CodeGenConfig,
+    pub debug_info: DebugInfo,
+    pub debug_enabled_global: Option<u32>,
+    pub debug_trap_id_global: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -56,17 +67,57 @@ struct ScopeCodegenInfo {
 
 impl<'db> ModuleCodeGen<'db> {
     pub fn new(db: &'db dyn WorkspaceDataBase) -> Self {
+        Self::new_with_config(db, CodeGenConfig::default())
+    }
+
+    pub fn new_with_config(db: &'db dyn WorkspaceDataBase, config: CodeGenConfig) -> Self {
+        let mut global_section = wasm_encoder::GlobalSection::new();
+
+        // Add debug globals if debug mode is enabled
+        let (debug_enabled_global, debug_trap_id_global) = if config.debug_mode != debug::DebugMode::None {
+            // Global 0: debug_enabled (i32, mutable)
+            let debug_enabled_idx = global_section.len();
+            global_section.global(
+                wasm_encoder::GlobalType {
+                    val_type: wasm_encoder::ValType::I32,
+                    mutable: true,
+                    shared: false,
+                },
+                &wasm_encoder::ConstExpr::i32_const(0), // Default: disabled
+            );
+
+            // Global 1: debug_trap_id (i32, mutable)
+            let debug_trap_id_idx = global_section.len();
+            global_section.global(
+                wasm_encoder::GlobalType {
+                    val_type: wasm_encoder::ValType::I32,
+                    mutable: true,
+                    shared: false,
+                },
+                &wasm_encoder::ConstExpr::i32_const(0),
+            );
+
+            (Some(debug_enabled_idx), Some(debug_trap_id_idx))
+        } else {
+            (None, None)
+        };
+
         Self {
             db,
             type_section: Default::default(),
             fn_section: Default::default(),
             export_section: Default::default(),
             code_section: Default::default(),
+            global_section,
             next_type_idx: 0,
             next_fn_idx: 0,
             scopes: Default::default(),
             function_indices: Default::default(),
             memory_layout: MemoryLayout::new(),
+            config,
+            debug_info: DebugInfo::new(),
+            debug_enabled_global,
+            debug_trap_id_global,
         }
     }
 
@@ -92,6 +143,11 @@ impl<'db> ModuleCodeGen<'db> {
                 page_size_log2: None,
             });
             module.section(&memory_section);
+        }
+
+        // Add global section if we have debug globals
+        if self.global_section.len() > 0 {
+            module.section(&self.global_section);
         }
 
         module.section(&self.export_section);
@@ -199,7 +255,15 @@ impl<'db> ModuleCodeGen<'db> {
         );
 
         // Generate function body
-        let codegen = FunctionCodegen::new(self.db, scope_id, &self.function_indices);
+        let mut codegen = FunctionCodegen::new(
+            self.db,
+            scope_id,
+            &self.function_indices,
+            &self.config,
+            &mut self.debug_info,
+            self.debug_enabled_global,
+            self.debug_trap_id_global,
+        );
         let func_body = codegen
             .generate(&mut self.memory_layout)
             .expect("Failed to generate function body");
@@ -278,13 +342,17 @@ impl<'db> ModuleCodeGen<'db> {
             );
 
             // Generate method body (with implicit 'this' parameter handling)
-            let codegen = FunctionCodegen::new_with_fb(
+            let mut codegen = FunctionCodegen::new_with_fb(
                 self.db,
                 scope_id,
                 &self.function_indices,
                 fb, // Pass FB for instance variable access
+                &self.config,
+                &mut self.debug_info,
+                self.debug_enabled_global,
+                self.debug_trap_id_global,
             );
-            let func_body= codegen
+            let func_body = codegen
                 .generate(&mut self.memory_layout)
                 .expect("Failed to generate method body");
             self.code_section.function(&func_body);
@@ -369,11 +437,15 @@ impl<'db> ModuleCodeGen<'db> {
             // Generate method body (with implicit 'this' parameter handling)
             // We pass the class as a FunctionBlock-like entity for instance variable access
             // TODO: Handle inheritance by traversing parent class fields
-            let codegen = FunctionCodegen::new_with_class(
+            let mut codegen = FunctionCodegen::new_with_class(
                 self.db,
                 scope_id,
                 &self.function_indices,
                 class,
+                &self.config,
+                &mut self.debug_info,
+                self.debug_enabled_global,
+                self.debug_trap_id_global,
             );
             let func_body = codegen
                 .generate(&mut self.memory_layout)
@@ -426,10 +498,14 @@ impl<'db> ModuleCodeGen<'db> {
 
         // Generate program body
         // Note: PROGRAM variables are allocated in linear memory during build_local_map
-        let codegen = FunctionCodegen::new(
+        let mut codegen = FunctionCodegen::new(
             self.db,
             scope_id,
             &self.function_indices,
+            &self.config,
+            &mut self.debug_info,
+            self.debug_enabled_global,
+            self.debug_trap_id_global,
         );
         let func_body = codegen
             .generate(&mut self.memory_layout)

@@ -61,6 +61,16 @@ pub struct FunctionCodegen<'db, 'a> {
 
     /// For methods: the instance type (FunctionBlock or Class) for instance variable access.
     instance: Option<InstanceType<'db>>,
+
+    /// Debug configuration
+    config: &'a crate::debug::CodeGenConfig,
+
+    /// Debug information
+    debug_info: &'a mut crate::debug::DebugInfo,
+
+    /// Debug global indices
+    debug_enabled_global: Option<u32>,
+    debug_trap_id_global: Option<u32>,
 }
 
 impl<'db, 'a> FunctionCodegen<'db, 'a> {
@@ -68,6 +78,10 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
         db: &'db dyn WorkspaceDataBase,
         scope: ScopeId<'db>,
         function_indices: &'a FxHashMap<Ident, u32>,
+        config: &'a crate::debug::CodeGenConfig,
+        debug_info: &'a mut crate::debug::DebugInfo,
+        debug_enabled_global: Option<u32>,
+        debug_trap_id_global: Option<u32>,
     ) -> Self {
         Self {
             db,
@@ -77,6 +91,10 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
             function_indices,
             this_local: None,
             instance: None,
+            config,
+            debug_info,
+            debug_enabled_global,
+            debug_trap_id_global,
         }
     }
 
@@ -85,6 +103,10 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
         scope: ScopeId<'db>,
         function_indices: &'a FxHashMap<Ident, u32>,
         fb: FunctionBlock<'db>,
+        config: &'a crate::debug::CodeGenConfig,
+        debug_info: &'a mut crate::debug::DebugInfo,
+        debug_enabled_global: Option<u32>,
+        debug_trap_id_global: Option<u32>,
     ) -> Self {
         Self {
             db,
@@ -94,6 +116,10 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
             function_indices,
             this_local: Some(0), // 'this' is always the first parameter (index 0)
             instance: Some(InstanceType::FunctionBlock(fb)),
+            config,
+            debug_info,
+            debug_enabled_global,
+            debug_trap_id_global,
         }
     }
 
@@ -102,6 +128,10 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
         scope: ScopeId<'db>,
         function_indices: &'a FxHashMap<Ident, u32>,
         class: Class<'db>,
+        config: &'a crate::debug::CodeGenConfig,
+        debug_info: &'a mut crate::debug::DebugInfo,
+        debug_enabled_global: Option<u32>,
+        debug_trap_id_global: Option<u32>,
     ) -> Self {
         Self {
             db,
@@ -111,6 +141,10 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
             function_indices,
             this_local: Some(0), // 'this' is always the first parameter (index 0)
             instance: Some(InstanceType::Class(class)),
+            config,
+            debug_info,
+            debug_enabled_global,
+            debug_trap_id_global,
         }
     }
 
@@ -568,7 +602,7 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
     }
 
     /// Initialize memory-allocated variables with their initial values.
-    fn initialize_memory_variables(&self, func: &mut wasm_encoder::Function) -> Result<(), String> {
+    fn initialize_memory_variables(&mut self, func: &mut wasm_encoder::Function) -> Result<(), String> {
         use hir::hir_def::expressions::expression::InitExprKind;
 
         let def_map = self.scope.def_map(self.db);
@@ -588,7 +622,7 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
                         match init_kind {
                             InitExprKind::ConstantExpr(expr) => {
                                 // Create a temporary BodyCodegen to emit the initialization expression
-                                let body_codegen = if let (Some(this_local), Some(instance)) =
+                                let mut body_codegen = if let (Some(this_local), Some(instance)) =
                                     (self.this_local, self.instance)
                                 {
                                     BodyCodegen::new_with_this(
@@ -598,6 +632,10 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
                                         self.function_indices,
                                         this_local,
                                         instance,
+                                        self.config,
+                                        self.debug_info,
+                                        self.debug_enabled_global,
+                                        self.debug_trap_id_global,
                                     )
                                 } else {
                                     BodyCodegen::new(
@@ -605,6 +643,10 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
                                         &self.local_map,
                                         self.return_local,
                                         self.function_indices,
+                                        self.config,
+                                        self.debug_info,
+                                        self.debug_enabled_global,
+                                        self.debug_trap_id_global,
                                     )
                                 };
 
@@ -707,6 +749,10 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
                     self.function_indices,
                     this_local,
                     instance,
+                    self.config,
+                    self.debug_info,
+                    self.debug_enabled_global,
+                    self.debug_trap_id_global,
                 )
             } else {
                 // Regular function
@@ -715,6 +761,10 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
                     &self.local_map,
                     self.return_local,
                     self.function_indices,
+                    self.config,
+                    self.debug_info,
+                    self.debug_enabled_global,
+                    self.debug_trap_id_global,
                 )
             };
         body_codegen.emit_statements(func, statements)?;
