@@ -27,7 +27,6 @@ use auto_lsp::lsp_types::FoldingRangeProviderCapability;
 use auto_lsp::lsp_types::GlobPattern;
 use auto_lsp::lsp_types::HoverProviderCapability;
 use auto_lsp::lsp_types::ImplementationProviderCapability;
-use auto_lsp::lsp_types::InitializeParams;
 use auto_lsp::lsp_types::Registration;
 use auto_lsp::lsp_types::RegistrationParams;
 use auto_lsp::lsp_types::ServerCapabilities;
@@ -94,6 +93,7 @@ use crate::capabilties::inlay_hints::inlay_hints;
 use crate::capabilties::semantic_tokens;
 
 pub static WORKSPACE_FOLDER: OnceLock<Url> = OnceLock::new();
+static CLIENT_CAPABILITIES: OnceLock<lsp_types::ClientCapabilities> = OnceLock::new();
 
 pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
     log::info!("Starting IEC LSP");
@@ -150,6 +150,7 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
                 definition_provider: Some(OneOf::Left(true)),
                 document_formatting_provider: Some(OneOf::Left(true)),
                 implementation_provider: Some(ImplementationProviderCapability::Simple(true)),
+                
                 ..Default::default()
             },
             server_info: None,
@@ -158,13 +159,19 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
         db,
     )?;
 
-    setup_file_watcher_if_necessary(&mut session, &params);
-
     if let Some(uri) = params.root_uri.as_ref() {
         Configuration::init_or_update(&mut session.db, Some(uri.clone()));
     }
 
+    // Store client capabilities for use in the initialized notification handler
+    CLIENT_CAPABILITIES.set(params.capabilities.clone()).ok();
+
     session.init_workspace(params)?;
+
+    // Register file watchers after workspace initialization
+    if let Some(capabilities) = CLIENT_CAPABILITIES.get() {
+        setup_file_watcher_if_necessary(&mut session, capabilities);
+    }
 
     session.main_loop(
         on_requests(&mut request_registry),
@@ -216,19 +223,18 @@ fn on_notifications<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
             }
         })
         .on_mut::<DidChangeTextDocument, _>(|s, p| {
-            eprintln!("Received DidChangeTextDocument notification for {}", p.text_document.uri);
             match p.text_document.uri.as_str().ends_with(".st") {
                 true => Ok(change_text_document(s, p)?),
                 false => {
-                    //log::warn!("Ignored opening file: {}", p.text_document.uri);
+                    // tracing::trace!("Ignored DidChangeTextDocument for non-.st file: {}", p.text_document.uri);
                     Ok(())
                 }
             }
         })
         .on_mut::<DidChangeWatchedFiles, _>(|s, p| {
-            eprintln!("Received DidChangeWatchedFiles notification with {} changes", p.changes.len());
             changed_watched_files(s, p)?;
-            send_request::<lsp_types::request::WorkspaceDiagnosticRefresh>(s, ())
+            send_request::<lsp_types::request::WorkspaceDiagnosticRefresh>(s, ())?;
+            Ok(())
         })
         .on_mut::<Cancel, _>(|s, p| {
             let id: lsp_server::RequestId = match p.id {
@@ -250,11 +256,13 @@ pub fn send_request<N: lsp_types::request::Request>(
     session: &Session<impl salsa::Database>,
     params: N::Params,
 ) -> anyhow::Result<()> {
-    let params = serde_json::to_value(&params)?;
+    let params_value = serde_json::to_value(&params)?;
+    let id = lsp_server::RequestId::from(N::METHOD.to_string());
+
     let n = lsp_server::Request {
         method: N::METHOD.into(),
-        id: lsp_server::RequestId::from(0),
-        params,
+        id,
+        params: params_value,
     };
     session.connection.sender.send(Message::Request(n))?;
     Ok(())
@@ -262,9 +270,9 @@ pub fn send_request<N: lsp_types::request::Request>(
 
 fn setup_file_watcher_if_necessary(
     session: &mut Session<impl salsa::Database>,
-    params: &InitializeParams,
+    capabilities: &lsp_types::ClientCapabilities,
 ) {
-    match params.capabilities.workspace {
+    match capabilities.workspace {
         Some(WorkspaceClientCapabilities {
             did_change_watched_files:
                 Some(DidChangeWatchedFilesClientCapabilities {
@@ -274,7 +282,6 @@ fn setup_file_watcher_if_necessary(
                 }),
             ..
         }) => {
-            eprintln!("Client supports dynamic file watcher registration. Setting up file watcher...");
             let watchers = vec![
                 FileSystemWatcher {
                     glob_pattern: GlobPattern::String("**/*.st".to_string()),
@@ -282,23 +289,31 @@ fn setup_file_watcher_if_necessary(
                 },
             ];
 
-            send_request::<RegisterCapability>(
-                session,
-                RegistrationParams {
-                    registrations: vec![Registration {
-                        id: "FILEWATCHER".to_owned(),
-                        method: DidChangeWatchedFiles::METHOD.to_owned(),
-                        register_options: Some(
-                            serde_json::to_value(DidChangeWatchedFilesRegistrationOptions {
-                                watchers,
-                            })
-                            .unwrap(),
-                        ),
-                    }],
-                },
-            )
-            .unwrap()
+            let registration_params = RegistrationParams {
+                registrations: vec![Registration {
+                    id: "FILE_WATCHER".to_owned(),
+                    method: DidChangeWatchedFiles::METHOD.to_owned(),
+                    register_options: Some(
+                        serde_json::to_value(DidChangeWatchedFilesRegistrationOptions {
+                            watchers: watchers.clone(),
+                        })
+                        .unwrap(),
+                    ),
+                }],
+            };
+
+            if let Err(e) = send_request::<RegisterCapability>(session, registration_params) {
+                tracing::error!("Failed to register file watchers: {}", e);
+            }
         }
-        _ => {}
+        Some(WorkspaceClientCapabilities {
+            did_change_watched_files: Some(caps),
+            ..
+        }) => {
+            tracing::error!("Client has did_change_watched_files capability but dynamic_registration is not true: {:?}", caps);
+        }
+        _ => {
+            tracing::error!("Client does not support did_change_watched_files capability");
+        }
     }
 }
