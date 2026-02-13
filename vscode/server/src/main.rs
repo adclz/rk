@@ -18,23 +18,28 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>
 use std::error::Error;
 
 use server::boot;
-use tracing_subscriber::{prelude::*, EnvFilter, Registry};
+use tracing_subscriber::{prelude::*, EnvFilter, fmt};
 
 fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     // Initialize tracing based on build type and environment
     #[cfg(debug_assertions)]
     let default_log_level = "debug";
     #[cfg(not(debug_assertions))]
-    let default_log_level = "off";
+    let default_log_level = "info";
 
     let env_filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_log_level));
 
-    let subscriber = Registry::default()
-        .with(env_filter)
-        .with(tracing_span_tree::SpanTree::default());
+    // Write logs to stderr so they appear in VSCode's output channel
+    let fmt_layer = fmt::layer()
+        .with_writer(std::io::stderr)
+        .with_ansi(false)  // Disable colors for clean output in VSCode
+        .with_target(false); // Hide target module paths for cleaner logs
 
-    tracing::subscriber::set_global_default(subscriber).unwrap();
+    tracing_subscriber::registry()
+        .with(env_filter)
+        .with(fmt_layer)
+        .init();
 
     tracing::info!("VSCode LSP server starting...");
 
