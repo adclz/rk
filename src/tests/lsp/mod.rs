@@ -5,3 +5,4 @@ pub mod hover;
 pub mod implementations;
 pub mod inlay_hints;
 pub mod semantic_tokens;
+pub mod formatter_stdlib;

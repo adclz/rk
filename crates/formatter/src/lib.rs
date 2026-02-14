@@ -64,13 +64,19 @@ static NEW_LINES: &str = r#"
     "VAR_EXTERNAL"
     "VAR_GLOBAL"
     "VAR_ACCESS"
-
-    "ELSE"
 ] @prepend_hardline @append_hardline
 
-("ELSE" (_)) @append_hardline
-
-["USING" "METHOD"] @prepend_hardline
+[
+    "USING" 
+    "NAMESPACE"
+    "PROGRAM"
+    "FUNCTION"
+    "FUNCTION_BLOCK"
+    "TYPE"
+    "CLASS"
+    "INTERFACE"
+    "METHOD"
+] @prepend_hardline
 ["TYPE" "STRUCT"] @append_hardline
 (namespace_decl . (namespace_h_name) @append_hardline)
 
@@ -115,7 +121,7 @@ static NEW_LINES: &str = r#"
     "END_VAR"
     "END_METHOD"
 ] @append_hardline
-("USING" (_) ";" @append_hardline)
+("USING" (_) ";"? @append_hardline)
 
 [
     (assign)
@@ -162,6 +168,8 @@ static NEW_LINES: &str = r#"
 ] @append_hardline
 
 (case_stmt "OF" @append_hardline)
+
+["ELSE" "ELSIF"] @prepend_hardline
 "#;
 
 static BLOCKS: &str = r#"
@@ -207,13 +215,12 @@ static INDENTATIONS: &str = r#"
     "VAR_ACCESS"
     "STRUCT"
 
-    "THEN"
     "ELSE"
+    "THEN"
     "DO"
     "REPEAT"
 ] @append_indent_start
 
-("ELSE" (_) @append_indent_end)
 (case_stmt "OF" @append_indent_start)
 
 ; case selection
@@ -239,6 +246,10 @@ static INDENTATIONS: &str = r#"
     "END_FOR"
     "END_REPEAT"
     "END_CASE"
+
+    "ELSE"
+    "ELSIF"
+    
 ] @prepend_indent_end
 "#;
 

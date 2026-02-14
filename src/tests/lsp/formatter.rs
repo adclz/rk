@@ -217,8 +217,8 @@ END_CLASS
     		IF CV <= Max - INC THEN
     			CV := CV + INC;
     			QU := FALSE;
-    			ELSE
-    				QU := TRUE;
+    		ELSE
+    			QU := TRUE;
     		END_IF
     		UP := CV;
     	END_METHOD
@@ -268,9 +268,9 @@ END_FUNCTION
     		2: DISPLAY := MOTOR_SPEED
     		3: DISPLAY := GROSS - TARE
     		4, 6..10: DISPLAY := STATUS(TW - 4)
-    		ELSE
-    			DISPLAY := 0
-    			TW_ERROR := 1
+    	ELSE
+    		DISPLAY := 0
+    		TW_ERROR := 1
     	END_CASE
     	QW100 := INT_TO_BCD(DISPLAY)
     END_FUNCTION
