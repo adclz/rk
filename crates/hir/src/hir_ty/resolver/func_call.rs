@@ -23,24 +23,36 @@ pub fn resolve_func_call<'db>(
 
     let access_typ = ctx.get_type_of_begin_path_expr(db, func_call.path(db));
 
-    let typ = ctx.type_of_begin_expr_with_adjustments(db, func_call.path(db));
+    let target_typ = ctx
+        .type_of_begin_expr_with_adjustments(db, func_call.path(db))
+        .normalize(db);
 
-    if access_typ.is_never() || typ.is_never() {
+    if access_typ.is_never() || target_typ.is_never() {
         return;
     }
 
     // FUNCTION_BLOCKs can only be called if they are variables
-    if !access_typ.is_variable() && typ.is_fb() {
-        ctx.errors
-            .push(ControlFlowError::CallNonCallableType { typ, func_call }.to_diagnostic(db));
+    if !access_typ.is_variable() && target_typ.is_fb() {
+        ctx.errors.push(
+            ControlFlowError::CallNonCallableType {
+                typ: target_typ,
+                func_call,
+            }
+            .to_diagnostic(db),
+        );
         return;
     }
 
-    let callable = match typ.as_callable(db) {
+    let callable = match target_typ.as_callable(db) {
         Some(callable) => callable,
         None => {
-            ctx.errors
-                .push(ControlFlowError::CallNonCallableType { typ, func_call }.to_diagnostic(db));
+            ctx.errors.push(
+                ControlFlowError::CallNonCallableType {
+                    typ: target_typ,
+                    func_call,
+                }
+                .to_diagnostic(db),
+            );
             return;
         }
     };

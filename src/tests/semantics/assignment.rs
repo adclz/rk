@@ -299,3 +299,71 @@ END_FUNCTION_BLOCK"#;
     ---'
     ");
 }
+
+#[rstest]
+fn assign_parenthesized_comparison_valid(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        a: INT := 5;
+        b: INT := 10;
+        result: BOOL;
+    END_VAR
+
+    // Parenthesized comparison should return BOOL
+    result := (a < b);
+
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn assign_parenthesized_boolean_op_valid(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        a: BOOL := TRUE;
+        b: BOOL := FALSE;
+        result: BOOL;
+    END_VAR
+
+    // Parenthesized boolean operator should work
+    result := (a AND b);
+    result := NOT (a OR b);
+    result := (a >= b) AND (a <= b);
+
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn assign_parenthesized_comparison_to_int_invalid(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        a: INT := 5;
+        b: INT := 10;
+        result: INT;
+    END_VAR
+
+    // Parenthesized comparison returns BOOL, not INT
+    result := (a < b);
+
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:10:15 ]
+        |
+      6 |         result: INT;
+        |         ^^^|^^  
+        |            `---- type is declared by variable 'result' here
+        | 
+     10 |     result := (a < b);
+        |               ^^^|^^^  
+        |                  `----- expected 'INT', got 'BOOL'
+    ----'
+    ");
+}

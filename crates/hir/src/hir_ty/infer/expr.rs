@@ -165,8 +165,14 @@ impl<'db> InferExprCtx<'db> {
                 self.check_expr(db, *left, inference_results);
                 self.check_expr(db, *right, inference_results);
             }
-            ExprKind::UnaryOperator { expr, .. } => {
-                self.check_expr(db, *expr, inference_results);
+            ExprKind::UnaryOperator { expr: inner_expr, .. } => {
+                self.check_expr(db, *inner_expr, inference_results);
+            }
+            ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr: inner_expr }) => {
+                self.check_expr(db, *inner_expr, inference_results);
+                // Update the parenthesized expression's type to match the inner expression
+                let inner_ty = inference_results.type_of_expr[inner_expr];
+                inference_results.type_of_expr.insert(expr, inner_ty);
             }
             ExprKind::PrimaryExpr(_) => {}
         }
