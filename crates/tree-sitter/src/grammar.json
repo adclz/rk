@@ -1535,11 +1535,11 @@
     },
     "time_type_name": {
       "type": "PATTERN",
-      "value": "TIME|T|time|t"
+      "value": "TIME|time"
     },
     "l_time_type_name": {
       "type": "PATTERN",
-      "value": "LTIME|LT|ltime|lt"
+      "value": "LTIME|ltime"
     },
     "any_date_type_name": {
       "type": "CHOICE",
@@ -1556,11 +1556,11 @@
     },
     "date_type_name": {
       "type": "PATTERN",
-      "value": "DATE|D|date|d"
+      "value": "DATE|date"
     },
     "l_date_type_name": {
       "type": "PATTERN",
-      "value": "LDATE|LD|ldate|ld"
+      "value": "LDATE|ldate"
     },
     "any_tod_type_name": {
       "type": "CHOICE",

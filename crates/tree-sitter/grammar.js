@@ -535,13 +535,13 @@ module.exports = grammar({
 
     any_time_type_name: ($) => choice($.time_type_name, $.l_time_type_name),
 
-    time_type_name: ($) => /TIME|T|time|t/,
-    l_time_type_name: ($) => /LTIME|LT|ltime|lt/,
+    time_type_name: ($) => /TIME|time/,
+    l_time_type_name: ($) => /LTIME|ltime/,
 
     any_date_type_name: ($) => choice($.date_type_name, $.l_date_type_name),
 
-    date_type_name: ($) => /DATE|D|date|d/,
-    l_date_type_name: ($) => /LDATE|LD|ldate|ld/,
+    date_type_name: ($) => /DATE|date/,
+    l_date_type_name: ($) => /LDATE|ldate/,
 
     any_tod_type_name: ($) => choice($.tod_type_name, $.ltod_type_name),
 

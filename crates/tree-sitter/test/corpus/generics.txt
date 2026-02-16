@@ -60,11 +60,13 @@ END_FUNCTION_BLOCK
             (generic_rule
               (identifier)
               (identifier)
-              (identifier))
+              (namespace_access
+                (identifier)))
             (generic_rule
               (identifier)
               (identifier)
-              (identifier))))))
+              (namespace_access
+                (identifier)))))))
 
 ================================================================================
 generics with ANY constraints
@@ -84,11 +86,13 @@ END_FUNCTION_BLOCK
             (generic_rule
               (identifier)
               (identifier)
-              (identifier))
+              (namespace_access
+                (identifier)))
             (generic_rule
               (identifier)
               (identifier)
-              (identifier))))))
+              (namespace_access
+                (identifier)))))))
 
 ================================================================================
 generics with Spec constraints
@@ -108,8 +112,12 @@ END_FUNCTION_BLOCK
             (generic_rule
               (identifier)
               (identifier)
-              (identifier))
+              (numeric_type_name
+                (int_type_name
+                  (sign_int_type_name
+                    (int_name)))))
             (generic_rule
               (identifier)
               (identifier)
-              (identifier))))))
+              (namespace_access
+                (identifier)))))))
