@@ -2,6 +2,8 @@ use auto_lsp::default::db::file::File;
 use db::WorkspaceDataBase;
 
 use crate::Visibility;
+use crate::hir_def::expressions::spec::Spec;
+use crate::hir_def::pous::generics::GenericParam;
 use crate::hir_def::pous::interface::MethodPrototype;
 use crate::hir_def::program::ProgramDecl;
 use crate::hir_def::semantic_index::semantic_index;
@@ -44,6 +46,27 @@ impl<'db> ScopeId<'db> {
         Some(match get_scope(db, *self).kind {
             ScopeKind::Namespace(ns) => ns.pous(db),
             ScopeKind::Global => &semantic_index(db, self.file(db)).global_pous,
+            _ => None?,
+        })
+    }
+
+    pub fn return_type(&self, db: &'db dyn WorkspaceDataBase) -> Option<&'db Spec<'db>> {
+        Some(match get_scope(db, *self).kind {
+            ScopeKind::Pou(pou) => match pou {
+                Pou::Function(f) => f.return_type(db)?,
+                _ => None?,
+            },
+            ScopeKind::MethodDecl(m) => m.return_type(db)?,
+            _ => None?,
+        })
+    }
+
+    pub fn generics(&self, db: &'db dyn WorkspaceDataBase) -> Option<&'db Vec<GenericParam<'db>>> {
+        Some(match get_scope(db, *self).kind {
+            ScopeKind::Pou(pou) => match pou {
+                Pou::Function(f) => f.generics(db),
+                _ => None?,
+            },
             _ => None?,
         })
     }
@@ -130,12 +153,24 @@ impl<'db> Scope<'db> {
         matches!(self.kind, ScopeKind::Global)
     }
 
+    pub fn is_program(&self) -> bool {
+        matches!(self.kind, ScopeKind::Program(_))
+    }
+
     pub fn is_namespace(&self) -> bool {
         matches!(self.kind, ScopeKind::Namespace(_))
     }
 
     pub fn is_pou(&self) -> bool {
         matches!(self.kind, ScopeKind::Pou(_))
+    }
+
+    pub fn is_method_decl(&self) -> bool {
+        matches!(self.kind, ScopeKind::MethodDecl(_))
+    }
+
+    pub fn is_method_prot(&self) -> bool {
+        matches!(self.kind, ScopeKind::MethodProt(_))
     }
 }
 

@@ -9,13 +9,7 @@ use crate::{
         },
         interned::identifier::Ident,
         pous::{
-            class::Class,
-            data_type::DataType,
-            function::Function,
-            function_block::FunctionBlock,
-            interface::Interface,
-            pou::Pou,
-            variable::{DirectVariable, VariableDecl},
+            class::Class, data_type::DataType, function::Function, function_block::FunctionBlock, generics::{AnyGeneric, GenericParam}, interface::Interface, pou::Pou, variable::{DirectVariable, VariableDecl}
         },
         program::ProgramDecl,
         scope::ScopeId,
@@ -56,6 +50,8 @@ pub enum Type<'db> {
     CallableType(CallableType<'db>),
     // Void type, usually the result of a call that does not return anything
     Void,
+    // Generic Param
+    Generic(GenericParam<'db>),
     // Never type, represents an unresolvable type
     // Important: this type will stop propagation of errors and
     // therefore *requires* a diagnostic to be emitted when created

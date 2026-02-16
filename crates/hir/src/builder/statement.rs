@@ -1,5 +1,6 @@
 use crate::builder::expression::{ParseExpr, ParseExpression, ParseVariableAccess};
 use crate::builder::semantic_index::SemanticIndexBuilder;
+use crate::builder::ParseSpec;
 use crate::check::errors::analysis_error::AnalysisError;
 use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::expressions::expression::{FuncCall, ParamAssign, ParamAssignKind};
@@ -31,6 +32,23 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
             StmtType::Assign(assign) => assign.to_statement(sema),
             StmtType::FuncCall(call) => {
                 let target = call.function.cast(sema.ast).parse(sema)?;
+
+                // Parse type arguments if present
+                let mut type_args = vec![];
+                if let Some(generic_args) = &call.type_args {
+                    let generic_args_node = generic_args.cast(sema.ast);
+                    for type_arg_id in &generic_args_node.type_arg {
+                        match type_arg_id.cast(sema.ast) {
+                            ast::generated::DataTypeAccess::ElemTypeName(elem) => {
+                                type_args.push(elem.to_spec(sema)?);
+                            }
+                            ast::generated::DataTypeAccess::NamespaceAccess(ns) => {
+                                type_args.push(ns.to_spec(sema)?);
+                            }
+                        }
+                    }
+                }
+
                 let mut parameters = vec![];
                 for params in call.params.iter() {
                     match params.cast(sema.ast) {
@@ -60,7 +78,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                 }
                 Ok(Stmt::new(
                     sema.db,
-                    StmtKind::FuncCall(FuncCall::new(sema.db, target, parameters)),
+                    StmtKind::FuncCall(FuncCall::new(sema.db, target, type_args, parameters)),
                     call.into(),
                     sema.current_scope,
                 ))

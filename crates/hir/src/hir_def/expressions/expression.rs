@@ -1,4 +1,5 @@
 use crate::hir_def::expressions::invocation::Invocation;
+use crate::hir_def::expressions::spec::Spec;
 use crate::hir_def::interned::identifier::{Ident, SpanIdent};
 use crate::hir_def::pous::variable::DirectVariable;
 use crate::hir_def::scope::ScopeId;
@@ -109,6 +110,11 @@ pub enum PrimaryExpr<'db> {
 #[salsa::tracked(debug)]
 pub struct FuncCall<'db> {
     pub path: BeginPathExpr<'db>,
+    
+    #[returns(ref)]
+    pub type_args: Vec<Spec<'db>>,
+
+    #[returns(ref)]
     pub params: Vec<ParamAssign<'db>>,
 }
 

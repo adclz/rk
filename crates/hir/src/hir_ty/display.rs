@@ -83,6 +83,7 @@ impl<'db> Type<'db> {
             Self::Null => "NULL",
             Self::Infer(_) => "INFER",
             Self::Void => "VOID",
+            Self::Generic(_) => "GENERIC",
             Self::Never => "NEVER",
         }
     }
@@ -152,6 +153,10 @@ impl<'db> Type<'db> {
                 InferType::Float(f) => format!("{{float}} {}", f.text(db)),
             },
             Self::Void => "void".into(),
+            Self::Generic(generic) => format!(
+                "{}",
+                generic.generic_contraint(db).value.text(db)
+            ),
             Self::Never => "{unknown}".into(),
         }
     }

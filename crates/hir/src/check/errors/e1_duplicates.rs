@@ -11,34 +11,12 @@ use crate::{
             spec::StructElement,
         },
         interned::identifier::{Ident, SpanIdent},
-        pous::{class::MethodDecl, interface::MethodPrototype, pou::Pou, variable::VariableDecl},
+        pous::{class::MethodDecl, generics::GenericParam, interface::MethodPrototype, pou::Pou, variable::VariableDecl},
         program::ProgramDecl,
         using::Using,
     },
     hir_ty::head::inheritance::InheritedMethod,
 };
-
-impl ErrorCode for DuplicateError<'_> {
-    fn code(&self) -> &'static str {
-        match self {
-            Self::Pou { .. } => "E0101",
-            Self::Variable { .. } => "E0102",
-            Self::StructField { .. } => "E0103",
-            Self::EnumVariant { .. } => "E0104",
-            Self::MethodDecl { .. } => "E0105",
-            Self::MethodProt { .. } => "E0106",
-            Self::InheritedMethod { .. } => "E0107",
-            Self::Parameter { .. } => "E0108",
-            Self::Using { .. } => "E0109",
-            Self::InitExprField { .. } => "E0110",
-            Self::Program { .. } => "E0111",
-        }
-    }
-
-    fn description(&self) -> &'static str {
-        "duplicate definitions"
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum DuplicateError<'db> {
@@ -88,6 +66,33 @@ pub enum DuplicateError<'db> {
         prog1: ProgramDecl<'db>,
         prog2: ProgramDecl<'db>,
     },
+    Generic {
+        param1: GenericParam<'db>,
+        param2: GenericParam<'db>,
+    },
+}
+
+impl ErrorCode for DuplicateError<'_> {
+    fn code(&self) -> &'static str {
+        match self {
+            Self::Pou { .. } => "E0101",
+            Self::Variable { .. } => "E0102",
+            Self::StructField { .. } => "E0103",
+            Self::EnumVariant { .. } => "E0104",
+            Self::MethodDecl { .. } => "E0105",
+            Self::MethodProt { .. } => "E0106",
+            Self::InheritedMethod { .. } => "E0107",
+            Self::Parameter { .. } => "E0108",
+            Self::Using { .. } => "E0109",
+            Self::InitExprField { .. } => "E0110",
+            Self::Program { .. } => "E0111",
+            Self::Generic { .. } => "E0112",
+        } 
+    }
+
+    fn description(&self) -> &'static str {
+        "duplicate definitions"
+    }
 }
 
 impl<'db> From<DuplicateError<'db>> for AnalysisError<'db> {
@@ -343,6 +348,28 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                     ),
                     prog2.get_scope_id(db).file(db),
                     prog2.get_name_span(db),
+                ));
+
+                diag
+            }
+            Self::Generic { param1, param2 } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "duplicate generic parameter '{}'",
+                        param1.name(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(param1.get_name_span(db))
+                    .call();
+
+                diag.with_related(Related::new(
+                    format!(
+                        "generic parameter '{}' is already defined here",
+                        param2.name(db).text(db)
+                    ),
+                    param2.get_scope_id(db).file(db),
+                    param2.get_name_span(db),
                 ));
 
                 diag

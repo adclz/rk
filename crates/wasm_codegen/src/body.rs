@@ -1,5 +1,7 @@
 //! Statement and expression code generation (function body emission).
 
+use std::ops::Add;
+
 use db::WorkspaceDataBase;
 use hir::hir_def::{
     expressions::{expression::{Elementary, PrimaryExpr}, spec::ElementarySpec},
@@ -969,7 +971,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
 
                         // Emit method parameters
                         for param in call.params(self.db) {
-                            self.emit_param(func, param)?;
+                            self.emit_param(func, *param)?;
                         }
 
                         // Emit call instruction
@@ -990,7 +992,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
 
                 // Emit parameters
                 for param in call.params(self.db) {
-                    self.emit_param(func, param)?;
+                    self.emit_param(func, *param)?;
                 }
 
                 // Emit call instruction

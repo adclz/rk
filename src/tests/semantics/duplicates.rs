@@ -402,3 +402,24 @@ fn duplicate_prorams(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+#[rstest]
+fn duplicate_generics(mut with_db: RootDatabase) {
+    let source = r#"
+    FUNCTION fn1<T: ANY_INT, T: ANY_INT>
+
+    END_FUNCTION
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0112] Error: duplicate definitions
+       ,-[ file:///test0.st:2:30 ]
+       |
+     2 |     FUNCTION fn1<T: ANY_INT, T: ANY_INT>
+       |                  |           |  
+       |                  `-------------- generic parameter 'T' is already defined here
+       |                              |  
+       |                              `-- duplicate generic parameter 'T'
+    ---'
+    ");
+}

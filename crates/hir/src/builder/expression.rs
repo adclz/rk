@@ -3,6 +3,7 @@ use auto_lsp::core::ast::AstNode;
 
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::types::ParseMultiBits;
+use crate::builder::ParseSpec;
 use crate::check::errors::analysis_error::AnalysisError;
 use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::expressions::expression::{
@@ -232,6 +233,22 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
             ast::generated::PrimaryExpression::FuncCall(func) => {
                 let target = func.function.cast(sema.ast).parse(sema)?;
 
+                // Parse type arguments if present
+                let mut type_args = vec![];
+                if let Some(generic_args) = &func.type_args {
+                    let generic_args_node = generic_args.cast(sema.ast);
+                    for type_arg_id in &generic_args_node.type_arg {
+                        match type_arg_id.cast(sema.ast) {
+                            ast::generated::DataTypeAccess::ElemTypeName(elem) => {
+                                type_args.push(elem.to_spec(sema)?);
+                            }
+                            ast::generated::DataTypeAccess::NamespaceAccess(ns) => {
+                                type_args.push(ns.to_spec(sema)?);
+                            }
+                        }
+                    }
+                }
+
                 let mut parameters = vec![];
                 for params in func.params.iter() {
                     match params.cast(sema.ast) {
@@ -262,7 +279,7 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                 Ok(Expr::new(
                     sema.db,
                     ExprKind::PrimaryExpr(PrimaryExpr::FuncCall(FuncCall::new(
-                        sema.db, target, parameters,
+                        sema.db, target, type_args, parameters,
                     ))),
                     func.into(),
                     sema.current_scope,

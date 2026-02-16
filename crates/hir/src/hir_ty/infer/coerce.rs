@@ -145,6 +145,43 @@ impl<'db> Type<'db> {
                     }),
                 }
             }
+            (Type::Elementary(elem), Type::Generic(generic)) => {
+                if let Some(generic) = generic.as_builtin_generic(db) {
+                    if let Some(elem_cast) = generic.implicit_cast_with_spec(elem) {
+                        return Ok(());
+                    }
+                }
+                Err(CoerceError {
+                    expected: *self,
+                    actual: to,
+                    adjustment: None,
+                })
+            }
+            (Type::Generic(lhs), Type::Generic(rhs)) => {
+                if let (Some(lhs), Some(rhs)) =
+                    (lhs.as_builtin_generic(db), rhs.as_builtin_generic(db))
+                {
+                    if lhs == rhs {
+                        return Ok(());
+                    }
+                    // try implicit conversions in both directions
+                    match lhs.eq(&rhs)
+                    {
+                        true => Ok(()),
+                        false => Err(CoerceError {
+                            expected: *self,
+                            actual: to,
+                            adjustment: None,
+                        }),
+                    }
+                } else {
+                    Err(CoerceError {
+                        expected: *self,
+                        actual: to,
+                        adjustment: None,
+                    })
+                }
+            }
             (Type::RefTo(_), Type::Null) => Ok(()),
             (Type::RefTo(lhs), Type::RefTo(rhs)) => {
                 lhs.infer(db)

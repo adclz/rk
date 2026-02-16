@@ -5,7 +5,7 @@ use crate::{
     hir_def::{
         expressions::{spec::Spec, statement::Stmt},
         interned::identifier::Ident,
-        pous::variable::VariableDecl,
+        pous::{generics::GenericParam, variable::VariableDecl},
         scope::ScopeId,
     },
 };
@@ -17,6 +17,9 @@ pub struct Function<'db> {
     #[tracked]
     #[no_eq]
     pub name_id: AstId,
+
+    #[returns(ref)]
+    pub generics: Vec<GenericParam<'db>>,
 
     #[returns(ref)]
     pub variables: Vec<VariableDecl<'db>>,

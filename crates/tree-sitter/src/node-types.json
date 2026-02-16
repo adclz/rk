@@ -2311,6 +2311,16 @@
           }
         ]
       },
+      "generic_spec": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "generic_spec",
+            "named": true
+          }
+        ]
+      },
       "implements": {
         "multiple": false,
         "required": false,
@@ -2682,6 +2692,16 @@
             "named": true
           }
         ]
+      },
+      "type_args": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "generic_type_args",
+            "named": true
+          }
+        ]
       }
     }
   },
@@ -2705,6 +2725,16 @@
         "types": [
           {
             "type": "using_directive",
+            "named": true
+          }
+        ]
+      },
+      "generic_spec": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "generic_spec",
             "named": true
           }
         ]
@@ -2745,6 +2775,88 @@
         "types": [
           {
             "type": "_func_variables",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "generic_params",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "generic_rule",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "generic_rule",
+    "named": true,
+    "fields": {
+      "constraint": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "data_type_access",
+            "named": true
+          }
+        ]
+      },
+      "generic_name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "generic_type": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "generic_spec",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "generic_params",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "generic_type_args",
+    "named": true,
+    "fields": {
+      "type_arg": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "data_type_access",
             "named": true
           }
         ]
@@ -6637,6 +6749,10 @@
   },
   {
     "type": "INTERVAL",
+    "named": false
+  },
+  {
+    "type": "INTO",
     "named": false
   },
   {

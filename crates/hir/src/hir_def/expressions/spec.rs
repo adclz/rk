@@ -77,6 +77,46 @@ pub enum ElementarySpec {
     LTod,
 }
 
+impl ElementarySpec {
+    pub fn is_simple(&self) -> bool {
+        match self {
+            ElementarySpec::Bool
+            | ElementarySpec::REDGEBool
+            | ElementarySpec::FEDGEBool
+            | ElementarySpec::Byte
+            | ElementarySpec::Word
+            | ElementarySpec::DWord
+            | ElementarySpec::LWord
+            | ElementarySpec::SInt
+            | ElementarySpec::USInt
+            | ElementarySpec::UInt
+            | ElementarySpec::Int
+            | ElementarySpec::DInt
+            | ElementarySpec::UDInt
+            | ElementarySpec::LInt
+            | ElementarySpec::ULInt
+            | ElementarySpec::Real
+            | ElementarySpec::LReal
+            | ElementarySpec::String
+            | ElementarySpec::WString
+            | ElementarySpec::Char
+            | ElementarySpec::WChar
+            | ElementarySpec::Date
+            | ElementarySpec::LDate
+            | ElementarySpec::DateAndTime
+            | ElementarySpec::LDateTime
+            | ElementarySpec::Time
+            | ElementarySpec::LTime
+            | ElementarySpec::Tod
+            | ElementarySpec::LTod => true,
+        }
+    }
+
+    pub fn is_complex(&self) -> bool {
+        !self.is_simple()   
+    }
+}
+
 impl<'db> HirNodeInfo<'db> for Spec<'db> {
     fn get_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
         self.id(db)

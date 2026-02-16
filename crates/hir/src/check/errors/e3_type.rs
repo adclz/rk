@@ -3,14 +3,9 @@ use db::WorkspaceDataBase;
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 use crate::{
-    CallSite, HirNodeInfo,
-    check::errors::analysis_error::ToIdeDiagnostic,
-    hir_def::expressions::expression::{AddOperatorKind, Expr, MultOperatorKind},
-    hir_ty::{
-        body::{Adjust, Adjustment},
-        infer::table::InferSource,
-        ty::Type,
-    },
+    CallSite, HasName, HirNodeInfo, check::errors::analysis_error::ToIdeDiagnostic, hir_def::{expressions::{expression::{AddOperatorKind, Expr, MultOperatorKind}, spec::Spec}, pous::generics::{AnyGeneric, GenericParam}}, hir_ty::{
+        body::{Adjust, Adjustment}, head::signature::Constraint, infer::{Infer, table::InferSource}, ty::Type
+    }
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
@@ -66,6 +61,32 @@ pub enum TypeError<'db> {
         target: Type<'db>,
         err: InferLiteralError,
     },
+    InvalidGenericType {
+        param: GenericParam<'db>,
+    },
+    UnknownGenericConstraint {
+        param: GenericParam<'db>,
+        constraint: Spec<'db>,
+    },
+    InvalidGenericConstraint {
+        param: GenericParam<'db>,
+        constraint: Spec<'db>,
+    },
+    MissingTypeArguments {
+        func_name: crate::hir_def::interned::identifier::Ident,
+        call_site: crate::CallSite<'db>,
+    },
+    WrongTypeArgumentArity {
+        func_name: crate::hir_def::interned::identifier::Ident,
+        expected: usize,
+        actual: usize,
+        call_site: crate::CallSite<'db>,
+    },
+    TypeArgumentConstraintMismatch {
+        type_arg_name: crate::hir_def::interned::identifier::Ident,
+        constraint: AnyGeneric,
+        call_site: crate::CallSite<'db>,
+    },
 }
 
 impl<'db> ErrorCode for TypeError<'db> {
@@ -78,6 +99,12 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::NotPowerable { .. } => "E0305",
             Self::NotABoolean { .. } => "E0306",
             Self::InferLiteralError { .. } => "E0309",
+            Self::InvalidGenericType { .. } => "E0310",
+            Self::UnknownGenericConstraint { .. } => "E0311",
+            Self::InvalidGenericConstraint { .. } => "E0312",
+            Self::MissingTypeArguments { .. } => "E0313",
+            Self::WrongTypeArgumentArity { .. } => "E0314",
+            Self::TypeArgumentConstraintMismatch { .. } => "E0315",
             Self::Other { .. } => "E0350",
         }
     }
@@ -221,6 +248,64 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(expr.get_span(db))
+                .call(),
+            Self::InvalidGenericType { param } => diag()
+                .message(format!(
+                    "generic '{}' has invalid type '{}'",
+                    param.name(db).text(db),
+                    param.generic_contraint(db).value.text(db)
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(param.generic_contraint(db).value.get_span(db))
+                .call(),
+            Self::UnknownGenericConstraint { param, constraint } => diag()
+                .message(format!(
+                    "generic '{}' has unknown constraint '{}'",
+                    param.name(db).text(db),
+                    constraint.as_call_site(db).to_string(db)
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(constraint.as_call_site(db).get_span(db))
+                .call(),
+            Self::InvalidGenericConstraint { param, constraint } => diag()
+                .message(format!(
+                    "generic '{}' has invalid constraint '{}'",
+                    param.name(db).text(db),
+                    constraint.as_call_site(db).to_string(db)
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(constraint.as_call_site(db).get_span(db))
+                .call(),
+            Self::MissingTypeArguments { func_name, call_site } => diag()
+                .message(format!(
+                    "generic function '{}' requires explicit type arguments",
+                    func_name.text(db)
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(call_site.get_span(db))
+                .call(),
+            Self::WrongTypeArgumentArity { func_name, expected, actual, call_site } => diag()
+                .message(format!(
+                    "expected {} type argument(s), got {}",
+                    expected, actual
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(call_site.get_span(db))
+                .call(),
+            Self::TypeArgumentConstraintMismatch { type_arg_name, constraint, call_site } => diag()
+                .message(format!(
+                    "type '{}' does not satisfy constraint '{}'",
+                    type_arg_name.text(db),
+                    constraint
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(call_site.get_span(db))
                 .call(),
             Self::Other { message, expr } => diag()
                 .message(message.clone())

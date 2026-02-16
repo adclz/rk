@@ -17,8 +17,8 @@ use crate::{
         semantic_index::get_scope,
     },
     hir_ty::{
-        body::BodyInferenceResult, name_res::resolve_namespace_access,
-        resolver::walk::PathPlaceBuilder, ty::Type,
+        body::BodyInferenceResult, head::signature::infer_signature,
+        name_res::resolve_namespace_access, resolver::walk::PathPlaceBuilder, ty::Type,
     },
 };
 
@@ -92,6 +92,14 @@ impl<'db> Resolver<'db> {
                 }
             }
             _ => (),
+        }
+
+        // Generics
+        let signature = infer_signature(db, path_expr.scope_id(db));
+        if let Some(generic_type) = signature.type_of_generic.get(&access.target) {
+            ctx.type_of_path_expr
+                .insert(path_expr, generic_type.clone());
+            return true;
         }
 
         match resolve_namespace_access(db, access) {

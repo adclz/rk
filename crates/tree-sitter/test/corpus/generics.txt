@@ -1,0 +1,115 @@
+================================================================================
+Function with generics
+================================================================================
+
+FUNCTION fn<T: ANY_INT, Y: ANY_INT>
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (generic_spec
+          (generic_params
+            (generic_rule
+              (identifier)
+              (identifier))
+            (generic_rule
+              (identifier)
+              (identifier))))))
+
+================================================================================
+Function blocks with generics
+================================================================================
+
+FUNCTION_BLOCK fn<T: ANY_INT, Y: ANY_INT>
+
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (fb_decl
+        (identifier)
+        (generic_spec
+          (generic_params
+            (generic_rule
+              (identifier)
+              (identifier))
+            (generic_rule
+              (identifier)
+              (identifier))))))
+
+================================================================================
+generics with self-referential constraints
+================================================================================
+
+FUNCTION_BLOCK fn<T: ANY_INT + INTO<T>, Y: ANY_INT + INTO<T>>
+
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (fb_decl
+        (identifier)
+        (generic_spec
+          (generic_params
+            (generic_rule
+              (identifier)
+              (identifier)
+              (identifier))
+            (generic_rule
+              (identifier)
+              (identifier)
+              (identifier))))))
+
+================================================================================
+generics with ANY constraints
+================================================================================
+
+FUNCTION_BLOCK fn<T: ANY_INT + INTO<ANY_REAL>, Y: ANY_INT + INTO<ANY_TIME>>
+
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (fb_decl
+        (identifier)
+        (generic_spec
+          (generic_params
+            (generic_rule
+              (identifier)
+              (identifier)
+              (identifier))
+            (generic_rule
+              (identifier)
+              (identifier)
+              (identifier))))))
+
+================================================================================
+generics with Spec constraints
+================================================================================
+
+FUNCTION_BLOCK fn<T: ANY + INTO<INT>, Y: ANY_INT + INTO<T>>
+
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (fb_decl
+        (identifier)
+        (generic_spec
+          (generic_params
+            (generic_rule
+              (identifier)
+              (identifier)
+              (identifier))
+            (generic_rule
+              (identifier)
+              (identifier)
+              (identifier))))))

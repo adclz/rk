@@ -17,6 +17,8 @@ pub mod path_expr;
 pub mod program;
 pub mod recovery;
 pub mod recursive;
+pub mod generics;
+pub mod generics_calls;
 pub mod references;
 pub mod scopes;
 pub mod subrange;

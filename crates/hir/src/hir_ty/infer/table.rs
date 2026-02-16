@@ -4,7 +4,10 @@ use rustc_hash::FxHashMap;
 use crate::{
     CallSite,
     check::errors::{analysis_error::ToIdeDiagnostic, e3_type::TypeError},
-    hir_def::expressions::expression::Expr,
+    hir_def::{
+        expressions::{expression::Expr, spec::ElementarySpec},
+        pous::generics::{AnyGeneric, GenericParam},
+    },
     hir_ty::{
         body::BodyInferenceResult,
         infer::Infer,
@@ -90,6 +93,11 @@ impl<'db> InferenceTable<'db> {
             Type::SubRange(sub) => sub._type(db).infer(db),
             // we also accept bools ... because 0 and 1 literals can be boolean or numeric
             Type::Elementary(_) if normalized.is_numeric() || normalized.is_boolean() => ty,
+            // generics
+            Type::Generic(generic) => match generic.as_builtin_generic(db) {
+                Some(generic) => ty,
+                None => return,
+            },
             _ => return,
         };
         self.current_mode = InferMode::Resolved { ty, expr };
@@ -147,6 +155,15 @@ impl<'db> InferenceTable<'db> {
                     }
                 }
             },
+            Type::Generic(generic) => match &self.current_mode {
+                InferMode::NoInfer | InferMode::Unresolved => {
+                    self.current_mode = InferMode::Resolved {
+                        ty: value,
+                        expr: Some(CallSite::from_scoped(db, &expr).into()),
+                    };
+                }
+                _ => {}
+            },
             _ => { /*
                 ignore for now:
                 other types cannot be used to resolve infer variants.
@@ -185,16 +202,27 @@ impl<'db> InferenceTable<'db> {
             !final_ty.has_infer(),
             "Final type should not be an infer type"
         );
-        debug_assert!(
-            matches!(final_ty, Type::Elementary(_)),
-            "Final type should be an elementary type"
-        );
 
-        let elem = match final_ty {
-            Type::Elementary(spec) => spec,
+        match final_ty {
+            Type::Elementary(spec) => {
+                self.resolve_with_elementary_spec(db, final_ty, source, spec, resolver, results)
+            }
+            Type::Generic(generic)  => {
+                self.resolve_with_generic(db, final_ty, source, generic, resolver, results)
+            }
             _ => unreachable!("Final type should be an elementary type"),
         };
+    }
 
+    fn resolve_with_elementary_spec(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        final_ty: Type<'db>,
+        source: Option<InferSource<'db>>,
+        elem: ElementarySpec,
+        resolver: Resolver<'db>,
+        results: &mut BodyInferenceResult<'db>,
+    ) {
         // Insert for each expression the final resolved type
         for (expr, target_type) in &self.types {
             match target_type {
@@ -215,10 +243,6 @@ impl<'db> InferenceTable<'db> {
                             results.type_of_expr.insert(*expr, Type::Elementary(cast));
                         }
                         Err(err) => {
-                            let infer_str = match infer {
-                                InferType::Float(fl) => fl.text(db).to_string(),
-                                InferType::Integer(int) => int.ident(db).text(db).to_string(),
-                            };
                             results.errors.push(
                                 TypeError::InferLiteralError {
                                     expr: *expr,
@@ -228,9 +252,60 @@ impl<'db> InferenceTable<'db> {
                                 }
                                 .to_diagnostic(db),
                             );
-                            // set to never on error
-                            // no further infer variants should be propagated
+
+                            // Necessary: the Infer variant MUST be replaced by Type::Never
                             results.type_of_expr.insert(*expr, Type::Never);
+                        }
+                    }
+                }
+                _ => (),
+            };
+        }
+    }
+
+    fn resolve_with_generic(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        final_ty: Type<'db>,
+        source: Option<InferSource<'db>>,
+        generic: GenericParam,
+        resolver: Resolver<'db>,
+        results: &mut BodyInferenceResult<'db>,
+    ) {
+        let generic = match generic.as_builtin_generic(db) {
+            Some(generic) => generic,
+            None => return,
+        };
+
+        // Insert for each expression the final resolved type
+        for (expr, target_type) in &self.types {
+            match target_type {
+                // the inference *does not* use coercion, it just checks if the infer type can be resolved to the final type
+                Type::Infer(infer) => {
+                    // since a literal could either be an INT or REAL by default, we check if any could be casted to the final type
+                    let cast = match generic.implicit_cast_with_spec(infer.to_spec(db)) {
+                        // yes, therefore infer the type directly
+                        Some(generic) => generic,
+                        // no, so infer this type via infer_with without any cast
+                        None => infer.to_spec(db),
+                    };
+
+                    // check the literal value
+                    // since we can't have infer variants, we either replace them with a concrete type or a never type
+                    match infer.check_as(db, cast) {
+                        Ok(typ) => {
+                            results.type_of_expr.insert(*expr, Type::Elementary(infer.to_spec(db)));
+                        }
+                        Err(err) => {
+                            results.errors.push(
+                                TypeError::InferLiteralError {
+                                    expr: *expr,
+                                    source: source,
+                                    target: final_ty,
+                                    err,
+                                }
+                                .to_diagnostic(db),
+                            );
                         }
                     }
                 }

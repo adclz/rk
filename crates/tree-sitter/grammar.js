@@ -1053,6 +1053,7 @@ module.exports = grammar({
         "FUNCTION",
         field("spec", optional($.access_spec)),
         field("name", $.identifier),
+        field("generic_spec", optional($.generic_spec)),
         optional(seq(":", field("return_type", $.data_type_access))),
         field("directives", repeat($.using_directive)),
         field("variables", repeat($._func_variables)),
@@ -1073,6 +1074,7 @@ module.exports = grammar({
         "FUNCTION_BLOCK",
         field("qualifier", optional(choice("FINAL", "ABSTRACT"))),
         field("name", $.identifier),
+        field("generic_spec", optional($.generic_spec)),
         optional($.ERR_implements_before_extends),
         optional(seq("EXTENDS", field("extends", $.namespace_access))),
         optional(repeat($.ERR_extends_multiple_times)),
@@ -1636,17 +1638,25 @@ module.exports = grammar({
       seq(
         optional(seq("%", field("access", $.adress_identifier))),
         $.unsigned_int
-    ),
+      ),
 
     func_call: ($) =>
       seq(
         field("function", $.begin_path_expression),
+        optional(field("type_args", $.generic_type_args)),
         "(",
         prec(
           RK_PREC.parameter_list,
           field("params", commaSep($.param_assign)),
         ),
         ")",
+      ),
+
+    generic_type_args: ($) =>
+      seq(
+        "<",
+        commaSep1(field("type_arg", $.data_type_access)),
+        ">",
       ),
 
     stmt_list: ($) => prec.left(repeat1(seq($._stmt, optional(";")))),
@@ -1866,6 +1876,25 @@ module.exports = grammar({
     index_value: ($) => commaSep1($.constant_expr),
 
     empty_path_expression: ($) => prec(-1, $.path_expression),
+
+    generic_spec: ($) => seq("<", $.generic_params, ">"),
+
+    generic_params: ($) => commaSep1($.generic_rule),
+
+    generic_rule: ($) => seq(
+      field("generic_name", $.identifier),
+      ":",
+      field("generic_type", $.identifier),
+      repeat(
+        seq(
+          "+",
+          "INTO",
+          "<",
+          field("constraint", $.data_type_access),
+          ">"
+        )
+      )
+    ),
 
     IQM: ($) => choice("I", "Q", "M"),
 
