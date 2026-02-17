@@ -68,8 +68,13 @@ pub struct ArrayElementPosition {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum Constraint<'db> {
+    /// Main type bound (e.g., `T: ANY_INT`)
+    TypeBound(AnyGeneric),
+    /// INTO<OtherGenericParam> constraint
     GenericParameter(Ident),
+    /// INTO<ANY_*> constraint (e.g., INTO<ANY_INT>)
     AnyGeneric(AnyGeneric),
+    /// INTO<ConcreteType> constraint (e.g., INTO<INT>)
     Spec(Spec<'db>),
 }
 
@@ -130,9 +135,18 @@ impl<'db> Signature<'db> {
         let generics_hashmap = &self.scope.def_map(db).generics;
 
         for generic in generics {
-            if generic.as_builtin_generic(db).is_none() {
+            let builtin = generic.as_builtin_generic(db);
+            if builtin.is_none() {
                 self.errors
                     .push(TypeError::InvalidGenericType { param: *generic }.to_diagnostic(db));
+            }
+
+            // Store the main type bound (e.g., ANY_INT from `T: ANY_INT`)
+            if let Some(any) = builtin {
+                self.constraint_of_generic
+                    .entry(generic.name(db))
+                    .or_default()
+                    .push(Constraint::TypeBound(any));
             }
 
             for constraint in generic.spec_constraints(db) {

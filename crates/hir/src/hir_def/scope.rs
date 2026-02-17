@@ -65,6 +65,7 @@ impl<'db> ScopeId<'db> {
         Some(match get_scope(db, *self).kind {
             ScopeKind::Pou(pou) => match pou {
                 Pou::Function(f) => f.generics(db),
+                Pou::FunctionBlock(fb) => fb.generics(db),
                 _ => None?,
             },
             _ => None?,

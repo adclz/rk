@@ -98,16 +98,7 @@ FUNCTION test : INT
     test := max(5, 10);
 END_FUNCTION"#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0313] Error: missing type arguments
-       ,-[ file:///test0.st:11:13 ]
-       |
-    11 |     test := max(5, 10);
-       |             ^^^
-       |             |
-       |             `--- generic function 'max' requires explicit type arguments
-    ---'
-    ");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 #[rstest]
@@ -127,13 +118,12 @@ END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0314] Error: wrong number of type arguments
-       ,-[ file:///test0.st:11:13 ]
-       |
-    11 |     test := max<INT, REAL>(5, 10);
-       |             ^^^^^^^^^^^^^^
-       |             |
-       |             `--- expected 1 type argument(s), got 2
-    ---'
+        ,-[ file:///test0.st:11:13 ]
+        |
+     11 |     test := max<INT, REAL>(5, 10);
+        |             ^|^  
+        |              `--- expected 1 type argument(s), got 2
+    ----'
     ");
 }
 
@@ -153,14 +143,13 @@ FUNCTION test : REAL
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0315] Error: type argument does not satisfy constraint
-       ,-[ file:///test0.st:11:17 ]
-       |
-    11 |     test := max<REAL>(1.5, 2.5);
-       |                 ^^^^
-       |                 |
-       |                 `--- type 'REAL' does not satisfy constraint 'ANY_INT'
-    ---'
+    [E0315] Error: type argument constraint mismatch
+        ,-[ file:///test0.st:11:13 ]
+        |
+     11 |     test := max<REAL>(1.5, 2.5);
+        |             ^|^  
+        |              `--- type 'REAL' does not satisfy constraint 'ANY_INT' (on generic parameter 'T')
+    ----'
     ");
 }
 
@@ -201,4 +190,290 @@ FUNCTION test : INT
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+#[rstest]
+fn inferred_generic_function_call_with_int(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION max<T: ANY_INT> : T
+    VAR_INPUT
+        a: T;
+        b: T;
+    END_VAR
+    IF a > b THEN
+        max := a;
+    ELSE
+        max := b;
+    END_IF
+END_FUNCTION
+
+FUNCTION test : INT
+    test := max(5, 10);
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+#[rstest]
+fn inferred_generic_function_with_multiple_params(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION identity<T: ANY_INT, U: ANY_INT> : T
+    VAR_INPUT
+        a: T;
+        b: U;
+    END_VAR
+    identity := a;
+END_FUNCTION
+
+FUNCTION test : INT
+    VAR
+        x : INT := 5;
+        y : DINT := 10;
+    END_VAR
+    test := identity(x, y);
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+#[rstest]
+fn inferred_generic_conflicting_types(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION max<T: ANY_INT> : T
+    VAR_INPUT
+        a: T;
+        b: T;
+    END_VAR
+    max := a;
+END_FUNCTION
+
+FUNCTION test : INT
+    test := max(5, 10.5);
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+// INTO constraint tests
+
+#[rstest]
+fn valid_into_constraint_sint_into_int(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION widen<T: ANY_SIGNED + INTO<INT>> : INT
+    VAR_INPUT
+        a: T;
+    END_VAR
+    widen := a;
+END_FUNCTION
+
+FUNCTION test : INT
+    VAR
+        x : SINT := 5;
+    END_VAR
+    test := widen<SINT>(x);
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+#[rstest]
+fn valid_into_constraint_same_type(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION identity<T: ANY_INT + INTO<INT>> : INT
+    VAR_INPUT
+        a: T;
+    END_VAR
+    identity := a;
+END_FUNCTION
+
+FUNCTION test : INT
+    test := identity<INT>(42);
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+#[rstest]
+fn invalid_into_constraint_dint_into_int(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION widen<T: ANY_INT + INTO<INT>> : INT
+    VAR_INPUT
+        a: T;
+    END_VAR
+    widen := a;
+END_FUNCTION
+
+FUNCTION test : INT
+    VAR
+        x : DINT := 5;
+    END_VAR
+    test := widen<DINT>(x);
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0316] Error: type argument INTO constraint mismatch
+        ,-[ file:///test0.st:13:13 ]
+        |
+     13 |     test := widen<DINT>(x);
+        |             ^^|^^  
+        |               `---- 'DINT' cannot be implicitly cast into 'INT' (INTO constraint on 'T')
+    ----'
+    ");
+}
+
+#[rstest]
+fn invalid_into_constraint_inferred(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION widen<T: ANY_INT + INTO<INT>> : INT
+    VAR_INPUT
+        a: T;
+    END_VAR
+    widen := a;
+END_FUNCTION
+
+FUNCTION test : INT
+    VAR
+        x : DINT := 5;
+    END_VAR
+    test := widen(x);
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0316] Error: type argument INTO constraint mismatch
+        ,-[ file:///test0.st:13:13 ]
+        |
+     13 |     test := widen(x);
+        |             ^^|^^  
+        |               `---- 'DINT' cannot be implicitly cast into 'INT' (INTO constraint on 'T')
+    ----'
+    ");
+}
+
+#[rstest]
+fn valid_into_constraint_with_any_generic(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn<T: ANY + INTO<ANY_INT>> : INT
+    VAR_INPUT
+        a: T;
+    END_VAR
+    fn := a;
+END_FUNCTION
+
+FUNCTION test : INT
+    test := fn<INT>(42);
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+#[rstest]
+fn invalid_into_constraint_real_into_any_int(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn<T: ANY + INTO<ANY_INT>> : INT
+    VAR_INPUT
+        a: T;
+    END_VAR
+    fn := a;
+END_FUNCTION
+
+FUNCTION test : INT
+    test := fn<REAL>(42);
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0315] Error: type argument constraint mismatch
+        ,-[ file:///test0.st:10:13 ]
+        |
+     10 |     test := fn<REAL>(42);
+        |             ^|  
+        |              `-- type 'REAL' does not satisfy constraint 'ANY_INT' (on generic parameter 'T')
+    ----'
+    ");
+}
+
+// FUNCTION_BLOCK generic tests
+
+#[rstest]
+fn valid_generic_fb_definition(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK container<T: ANY_INT>
+    VAR_INPUT
+        value: T;
+    END_VAR
+    VAR
+        stored: T;
+    END_VAR
+    stored := value;
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+#[rstest]
+fn valid_generic_fb_inferred_call(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK container<T: ANY_INT>
+    VAR_INPUT
+        value: T;
+    END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION test : INT
+    VAR
+        c : container;
+    END_VAR
+    c(value := 42);
+    test := 0;
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+#[rstest]
+fn invalid_generic_fb_inferred_constraint_mismatch(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK container<T: ANY_INT>
+    VAR_INPUT
+        value: T;
+    END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION test : INT
+    VAR
+        c : container;
+    END_VAR
+    c(value := 1.5);
+    test := 0;
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0315] Error: type argument constraint mismatch
+        ,-[ file:///test0.st:12:5 ]
+        |
+     12 |     c(value := 1.5);
+        |     |  
+        |     `-- type 'REAL' does not satisfy constraint 'ANY_INT' (on generic parameter 'T')
+    ----'
+    ");
+}
+
+#[rstest]
+fn invalid_generic_body_assignment_violates_constraint(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn<T: ANY_REAL> : T
+    VAR
+        c: T;
+    END_VAR
+    c := TRUE;
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:6:10 ]
+       |
+     6 |     c := TRUE;
+       |          ^^|^  
+       |            `--- expected 'T', got 'BOOL'
+    ---'
+    ");
 }

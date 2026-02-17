@@ -102,12 +102,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         let return_type = method
             .data_type
             .as_ref()
-            .map(|i| match i.cast(self.ast) {
-                ast::generated::DataTypeAccess::ElemTypeName(elem_type_name) => {
-                    elem_type_name.to_spec(self)
-                }
-                ast::generated::DataTypeAccess::NamespaceAccess(target) => target.to_spec(self),
-            })
+            .map(|i| i.cast(self.ast).to_spec(self))
             .transpose()?;
 
         let mut variables = vec![];

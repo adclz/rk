@@ -442,6 +442,10 @@
       {
         "type": "namespace_access",
         "named": true
+      },
+      {
+        "type": "typed_access",
+        "named": true
       }
     ]
   },
@@ -1602,6 +1606,16 @@
         "types": [
           {
             "type": "namespace_access",
+            "named": true
+          }
+        ]
+      },
+      "generic_spec": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "generic_spec",
             "named": true
           }
         ]
@@ -5961,6 +5975,32 @@
           },
           {
             "type": "subrange_type_spec",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "typed_access",
+    "named": true,
+    "fields": {
+      "type_args": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "generic_type_args",
+            "named": true
+          }
+        ]
+      },
+      "type_name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "namespace_access",
             "named": true
           }
         ]

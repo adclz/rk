@@ -38,11 +38,13 @@ pub fn infer_body<'db>(
 
     // Only Scopes with bodies can have statements
     let statements = match get_scope(db, scope).kind {
-        ScopeKind::Pou(pou) => match pou {
-            Pou::Function(f) => f.statements(db),
-            Pou::FunctionBlock(fb) => fb.statements(db),
-            _ => return result,
-        },
+        ScopeKind::Pou(pou) => {
+            match pou {
+                Pou::Function(f) => f.statements(db),
+                Pou::FunctionBlock(fb) => fb.statements(db),
+                _ => return result,
+            }
+        }
         ScopeKind::MethodDecl(m) => m.stmts(db),
         ScopeKind::Program(program) => program.statements(db),
         _ => return result,
@@ -91,6 +93,10 @@ pub struct BodyInferenceResult<'db> {
     // Mapping from path expressions to their adjustment sequences.
     pub path_expr_adjustments: FxHashMap<PathExpr<'db>, Vec<Adjustment<'db>>>,
 
+    // Generic type substitutions for this scope
+    // Maps generic parameter names to their concrete types (e.g., T -> INT)
+    pub generic_substitutions: FxHashMap<crate::hir_def::interned::identifier::Ident, Type<'db>>,
+
     // Errors encountered during inference
     pub errors: Vec<IdeDiagnostic>,
 }
@@ -105,6 +111,7 @@ impl<'db> BodyInferenceResult<'db> {
             type_of_expr: FxHashMap::default(),
             type_of_path_expr: FxHashMap::default(),
             path_expr_adjustments: FxHashMap::default(),
+            generic_substitutions: FxHashMap::default(),
             errors: Vec::new(),
         }
     }

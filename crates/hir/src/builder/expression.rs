@@ -238,14 +238,7 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                 if let Some(generic_args) = &func.type_args {
                     let generic_args_node = generic_args.cast(sema.ast);
                     for type_arg_id in &generic_args_node.type_arg {
-                        match type_arg_id.cast(sema.ast) {
-                            ast::generated::DataTypeAccess::ElemTypeName(elem) => {
-                                type_args.push(elem.to_spec(sema)?);
-                            }
-                            ast::generated::DataTypeAccess::NamespaceAccess(ns) => {
-                                type_args.push(ns.to_spec(sema)?);
-                            }
-                        }
+                        type_args.push(type_arg_id.cast(sema.ast).to_spec(sema)?);
                     }
                 }
 

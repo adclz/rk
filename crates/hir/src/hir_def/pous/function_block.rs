@@ -5,7 +5,7 @@ use crate::{
     hir_def::{
         expressions::statement::Stmt,
         interned::{identifier::Ident, namespace::SpanNamespaceAccess},
-        pous::{class::MethodDecl, variable::VariableDecl},
+        pous::{class::MethodDecl, generics::GenericParam, variable::VariableDecl},
         scope::ScopeId,
     },
 };
@@ -17,6 +17,9 @@ pub struct FunctionBlock<'db> {
     #[tracked]
     #[no_eq]
     pub name_id: AstId,
+
+    #[returns(ref)]
+    pub generics: Vec<GenericParam<'db>>,
 
     #[returns(as_ref)]
     pub extends: Option<SpanNamespaceAccess<'db>>,

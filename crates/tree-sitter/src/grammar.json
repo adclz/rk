@@ -1271,11 +1271,36 @@
       "members": [
         {
           "type": "SYMBOL",
+          "name": "typed_access"
+        },
+        {
+          "type": "SYMBOL",
           "name": "namespace_access"
         },
         {
           "type": "SYMBOL",
           "name": "_elem_type_name"
+        }
+      ]
+    },
+    "typed_access": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "FIELD",
+          "name": "type_name",
+          "content": {
+            "type": "SYMBOL",
+            "name": "namespace_access"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "type_args",
+          "content": {
+            "type": "SYMBOL",
+            "name": "generic_type_args"
+          }
         }
       ]
     },
@@ -5328,6 +5353,22 @@
           "content": {
             "type": "SYMBOL",
             "name": "identifier"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "generic_spec",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "generic_spec"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
           }
         },
         {

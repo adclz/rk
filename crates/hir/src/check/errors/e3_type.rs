@@ -83,8 +83,15 @@ pub enum TypeError<'db> {
         call_site: crate::CallSite<'db>,
     },
     TypeArgumentConstraintMismatch {
-        type_arg_name: crate::hir_def::interned::identifier::Ident,
+        concrete_type: Type<'db>,
+        param_name: crate::hir_def::interned::identifier::Ident,
         constraint: AnyGeneric,
+        call_site: crate::CallSite<'db>,
+    },
+    TypeArgumentIntoConstraintMismatch {
+        type_arg: Type<'db>,
+        into_target: Type<'db>,
+        param_name: crate::hir_def::interned::identifier::Ident,
         call_site: crate::CallSite<'db>,
     },
 }
@@ -105,6 +112,7 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::MissingTypeArguments { .. } => "E0313",
             Self::WrongTypeArgumentArity { .. } => "E0314",
             Self::TypeArgumentConstraintMismatch { .. } => "E0315",
+            Self::TypeArgumentIntoConstraintMismatch { .. } => "E0316",
             Self::Other { .. } => "E0350",
         }
     }
@@ -112,6 +120,10 @@ impl<'db> ErrorCode for TypeError<'db> {
     fn description(&self) -> &'static str {
         match self {
             Self::InferLiteralError { .. } => "invalid literal",
+            Self::MissingTypeArguments { .. } => "missing type arguments",
+            Self::WrongTypeArgumentArity { .. } => "wrong number of type arguments",
+            Self::TypeArgumentConstraintMismatch { .. } => "type argument constraint mismatch",
+            Self::TypeArgumentIntoConstraintMismatch { .. } => "type argument INTO constraint mismatch",
             _ => "type mismatch",
         }
     }
@@ -297,11 +309,23 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 .desc(self)
                 .range(call_site.get_span(db))
                 .call(),
-            Self::TypeArgumentConstraintMismatch { type_arg_name, constraint, call_site } => diag()
+            Self::TypeArgumentConstraintMismatch { concrete_type, param_name, constraint, call_site } => diag()
                 .message(format!(
-                    "type '{}' does not satisfy constraint '{}'",
-                    type_arg_name.text(db),
-                    constraint
+                    "type '{}' does not satisfy constraint '{}' (on generic parameter '{}')",
+                    concrete_type.type_name(db),
+                    constraint,
+                    param_name.text(db),
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(call_site.get_span(db))
+                .call(),
+            Self::TypeArgumentIntoConstraintMismatch { type_arg, into_target, param_name, call_site } => diag()
+                .message(format!(
+                    "'{}' cannot be implicitly cast into '{}' (INTO constraint on '{}')",
+                    type_arg.type_name(db),
+                    into_target.type_name(db),
+                    param_name.text(db),
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)

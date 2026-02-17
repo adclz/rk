@@ -490,7 +490,14 @@ module.exports = grammar({
 
     // Table 10 - Elementary data types
 
-    data_type_access: ($) => choice($.namespace_access, $._elem_type_name),
+    data_type_access: ($) =>
+      choice($.typed_access, $.namespace_access, $._elem_type_name),
+
+    typed_access: ($) =>
+      seq(
+        field("type_name", $.namespace_access),
+        field("type_args", $.generic_type_args),
+      ),
 
     _elem_type_name: ($) =>
       choice(
@@ -1186,6 +1193,7 @@ module.exports = grammar({
         "CLASS",
         field("modifier", optional(choice("FINAL", "ABSTRACT"))),
         field("name", $.identifier),
+        field("generic_spec", optional($.generic_spec)),
         field("directives", repeat($.using_directive)),
         optional($.ERR_implements_before_extends),
         optional(seq("EXTENDS", field("extends", $.namespace_access))),

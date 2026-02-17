@@ -98,7 +98,7 @@ END_FUNCTION_BLOCK
 generics with Spec constraints
 ================================================================================
 
-FUNCTION_BLOCK fn<T: ANY + INTO<INT>, Y: ANY_INT + INTO<T>>
+FUNCTION_BLOCK fn<T: ANY + INTO<INT>, Y: ANY_INT + INTO<INT>>
 
 END_FUNCTION_BLOCK
 
@@ -119,5 +119,135 @@ END_FUNCTION_BLOCK
             (generic_rule
               (identifier)
               (identifier)
-              (namespace_access
-                (identifier)))))))
+              (numeric_type_name
+                (int_type_name
+                  (sign_int_type_name
+                    (int_name)))))))))
+
+================================================================================
+function call with generic
+================================================================================
+
+FUNCTION_BLOCK fb
+
+  fn<T1, T2>();
+
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (fb_decl
+        (identifier)
+        (fb_body
+          (stmt_list
+            (func_call
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))
+              (generic_type_args
+                (namespace_access
+                  (identifier))
+                (namespace_access
+                  (identifier))))))))
+
+================================================================================
+Class with generics
+================================================================================
+
+CLASS MyClass<T: ANY_INT>
+VAR
+    value: T;
+END_VAR
+END_CLASS
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (class_decl
+        (identifier)
+        (generic_spec
+          (generic_params
+            (generic_rule
+              (identifier)
+              (identifier))))
+        (var_decls
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (namespace_access
+                  (identifier))))))))
+
+================================================================================
+Typed access in variable declaration
+================================================================================
+
+FUNCTION test : INT
+VAR
+    c : container<INT>;
+END_VAR
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (numeric_type_name
+          (int_type_name
+            (sign_int_type_name
+              (int_name))))
+        (var_decls
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (typed_access
+                  (namespace_access
+                    (identifier))
+                  (generic_type_args
+                    (numeric_type_name
+                      (int_type_name
+                        (sign_int_type_name
+                          (int_name))))))))))))
+
+================================================================================
+Typed access with multiple type args
+================================================================================
+
+FUNCTION test : INT
+VAR
+    c : map<INT, REAL>;
+END_VAR
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (numeric_type_name
+          (int_type_name
+            (sign_int_type_name
+              (int_name))))
+        (var_decls
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (typed_access
+                  (namespace_access
+                    (identifier))
+                  (generic_type_args
+                    (numeric_type_name
+                      (int_type_name
+                        (sign_int_type_name
+                          (int_name))))
+                    (numeric_type_name
+                      (real_type_name
+                        (real_name)))))))))))

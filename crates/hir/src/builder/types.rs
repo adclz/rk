@@ -69,6 +69,9 @@ impl<'db> ParseSpec<'db> for ast::generated::DataTypeAccess {
                 elem_type_name.to_spec(sema)
             }
             ast::generated::DataTypeAccess::NamespaceAccess(target) => target.to_spec(sema),
+            ast::generated::DataTypeAccess::TypedAccess(typed) => {
+                typed.type_name.cast(sema.ast).to_spec(sema)
+            }
         }
     }
 }
@@ -375,6 +378,9 @@ impl<'db> ParseSpec<'db> for ast::generated::ArrayTypeSpec {
                 elem_type_name.to_spec(sema)
             }
             ast::generated::DataTypeAccess::NamespaceAccess(target) => target.to_spec(sema),
+            ast::generated::DataTypeAccess::TypedAccess(typed) => {
+                typed.type_name.cast(sema.ast).to_spec(sema)
+            }
         }?;
 
         Ok(Spec::new(

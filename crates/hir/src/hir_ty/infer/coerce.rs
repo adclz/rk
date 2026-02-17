@@ -145,9 +145,10 @@ impl<'db> Type<'db> {
                     }),
                 }
             }
+            // Generic types: check constraint compatibility with concrete types
             (Type::Elementary(elem), Type::Generic(generic)) => {
-                if let Some(generic) = generic.as_builtin_generic(db) {
-                    if let Some(elem_cast) = generic.implicit_cast_with_spec(elem) {
+                if let Some(any) = generic.as_builtin_generic(db) {
+                    if any.contains(elem) {
                         return Ok(());
                     }
                 }
@@ -157,31 +158,21 @@ impl<'db> Type<'db> {
                     adjustment: None,
                 })
             }
-            (Type::Generic(lhs), Type::Generic(rhs)) => {
-                if let (Some(lhs), Some(rhs)) =
-                    (lhs.as_builtin_generic(db), rhs.as_builtin_generic(db))
-                {
-                    if lhs == rhs {
+            (Type::Generic(generic), Type::Elementary(elem)) => {
+                if let Some(any) = generic.as_builtin_generic(db) {
+                    if any.contains(*elem) {
                         return Ok(());
                     }
-                    // try implicit conversions in both directions
-                    match lhs.eq(&rhs)
-                    {
-                        true => Ok(()),
-                        false => Err(CoerceError {
-                            expected: *self,
-                            actual: to,
-                            adjustment: None,
-                        }),
-                    }
-                } else {
-                    Err(CoerceError {
-                        expected: *self,
-                        actual: to,
-                        adjustment: None,
-                    })
                 }
+                Err(CoerceError {
+                    expected: *self,
+                    actual: to,
+                    adjustment: None,
+                })
             }
+            // Generic ↔ Generic: always allow within bodies
+            // (actual compatibility checked at instantiation/call site)
+            (Type::Generic(_), Type::Generic(_)) => Ok(()),
             (Type::RefTo(_), Type::Null) => Ok(()),
             (Type::RefTo(lhs), Type::RefTo(rhs)) => {
                 lhs.infer(db)

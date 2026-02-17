@@ -7,7 +7,7 @@ use crate::check::errors::e10_control_flow::ControlFlowError;
 use crate::hir_def::expressions::expression::Expr;
 use crate::hir_def::pous::variable::VariableDecl;
 use crate::{
-    CallSite,
+    CallSite, HasName, HirNodeInfo,
     check::errors::{analysis_error::ToIdeDiagnostic, e2_resolve::ResolveError},
     hir_def::expressions::expression::{FuncCall, ParamAssignKind},
     hir_ty::{body::BodyInferenceResult, infer::{expr::InferExprCtx, Infer}, resolver::Resolver, ty::Type},
@@ -57,14 +57,21 @@ pub fn resolve_func_call<'db>(
         }
     };
 
-    // Validate generic type arguments
-    validate_generic_type_args(db, &callable, func_call, ctx);
-
     // func call requires the type to be a [`CallableType`] otherwise the coercion layer will
     // assume we are calling a non-callable type
     if let Some(expr) = func_call.path(db).expr(db) {
         ctx.type_of_path_expr
             .insert(expr, Type::CallableType(callable));
+    }
+
+    // Validate generic type arguments (returns false if validation failed)
+    if !validate_generic_type_args(db, &callable, func_call, ctx, resolver) {
+        // Set path expr type to Never to prevent cascading errors
+        // (the caller reads this to determine the func call's return type)
+        if let Some(expr) = func_call.path(db).expr(db) {
+            ctx.type_of_path_expr.insert(expr, Type::Never);
+        }
+        return;
     }
 
     let mut seen = FxHashMap::default();
@@ -211,180 +218,393 @@ fn coerce_with_var_target<'db>(
     caller_infer_ctx.resolve_expr(db, expr, ctx);
     caller_infer_ctx.check_expr(db, expr, ctx);
 
-    if let Err(e) = caller_infer_ctx.coerce_var_decl_with_expr(db, var, expr, ctx) {
-        ctx.errors.push(
-            TypeError::NotAssignable {
-                base_target: Type::new_var(db, var),
-                lhs: e.expected,
-                rhs: e.actual,
-                adjustment: e.adjustment,
-                expr: CallSite::from_scoped(db, &expr),
-            }
-            .to_diagnostic(db),
-        );
+    // Check if this variable's type involves generic substitutions
+    let var_type = var.spec(db).infer(db);
+    let has_generic_subst = matches!(var_type, Type::Generic(_)) && !ctx.generic_substitutions.is_empty();
+
+    if has_generic_subst {
+        use crate::hir_ty::infer::table::InferenceTable;
+
+        // Apply generic substitutions to get the concrete expected type
+        let expected_type = var_type.apply_generic_substitution(db, &ctx.generic_substitutions);
+
+        // Use InferenceTable to resolve Type::Infer variants
+        let rhs_type = ctx.type_of_expr[&expr];
+        let mut table = InferenceTable::new();
+        table.set_target_type(db, Some(expected_type.into()), expected_type);
+        table.add_type(db, expr, rhs_type, resolver);
+        table.resolve_completly(db, resolver, ctx);
+
+        // Perform coercion: expected (variable type) coerces TO actual (expression type)
+        let actual_type = ctx.type_of_expr_with_adjustments(db, expr);
+        let call_site = CallSite::from_scoped(db, &expr);
+
+        if let Err(e) = expected_type.coerce_with_type(
+            db,
+            actual_type,
+            ctx.adjustments_of_expr(db, expr),
+            resolver,
+        ) {
+            ctx.errors.push(
+                TypeError::NotAssignable {
+                    base_target: expected_type,
+                    lhs: e.expected,
+                    rhs: e.actual,
+                    adjustment: e.adjustment,
+                    expr: call_site,
+                }
+                .to_diagnostic(db),
+            );
+        }
+    } else {
+        // Non-generic path: use the original coercion logic
+        if let Err(e) = caller_infer_ctx.coerce_var_decl_with_expr(db, var, expr, ctx) {
+            let base_target = Type::new_var(db, var);
+            ctx.errors.push(
+                TypeError::NotAssignable {
+                    base_target,
+                    lhs: e.expected,
+                    rhs: e.actual,
+                    adjustment: e.adjustment,
+                    expr: CallSite::from_scoped(db, &expr),
+                }
+                .to_diagnostic(db),
+            );
+        }
     }
 }
 
+/// Returns true if validation succeeded, false if it failed (and errors were emitted)
 fn validate_generic_type_args<'db>(
     db: &'db dyn WorkspaceDataBase,
     callable: &crate::hir_ty::ty::CallableType<'db>,
     func_call: FuncCall<'db>,
     ctx: &mut BodyInferenceResult<'db>,
-) {
-    use crate::hir_ty::ty::CallableType;
-    use crate::hir_def::pous::pou::Pou;
-
-    // Only validate for generic functions
-    let (func, generics) = match callable {
-        CallableType::Function(f) => {
-            let gens = f.generics(db);
-            if gens.is_empty() {
-                return; // Non-generic function
-            }
-            (f, gens)
-        }
-        _ => return, // FunctionBlocks and Methods don't support generics yet
-    };
+    resolver: Resolver<'db>,
+) -> bool {
+    let generics = callable.generics(db);
+    if generics.is_empty() {
+        return true;
+    }
 
     let type_args = func_call.type_args(db);
-    // Create call site from the function path (which has the location info)
     let call_site = CallSite::from_scoped(db, &func_call.path(db));
+    let callable_name = callable.get_name_ident(db);
+    let callable_scope = callable.get_scope_id(db);
 
-    // E0313: Missing type arguments
+    // Try to infer generic types from arguments if not explicitly provided
     if type_args.is_empty() {
+        let inferred_types = infer_generic_types_from_args(db, callable, func_call, ctx, resolver);
+
+        if inferred_types.len() == generics.len() {
+            // Successfully inferred all generic types — validate and store
+            if !validate_and_store_generic_substitutions(
+                db, generics, &inferred_types, callable_scope, call_site, ctx,
+            ) {
+                return false;
+            }
+            return true;
+        }
+
+        // E0313: Could not infer types - require explicit type arguments
         ctx.errors.push(
             TypeError::MissingTypeArguments {
-                func_name: func.name(db),
+                func_name: callable_name,
                 call_site,
             }
             .to_diagnostic(db),
         );
-        return;
+        return false;
     }
 
     // E0314: Wrong number of type arguments
     if type_args.len() != generics.len() {
         ctx.errors.push(
             TypeError::WrongTypeArgumentArity {
-                func_name: func.name(db),
+                func_name: callable_name,
                 expected: generics.len(),
                 actual: type_args.len(),
                 call_site,
             }
             .to_diagnostic(db),
         );
-        return;
+        return false;
     }
 
-    // E0315: Validate each type argument satisfies its constraint
-    for (generic_param, type_arg_spec) in generics.iter().zip(type_args.iter()) {
-        // Infer the actual type from the spec
-        let type_arg = type_arg_spec.infer(db);
+    // Resolve concrete types from type argument specs
+    // Note: We use Type::resolve_spec directly because type argument specs
+    // are not processed during signature inference (they're in the body, not variable declarations),
+    // so Spec::infer() would return Type::Never.
+    let concrete_types: Vec<_> = type_args.iter().map(|s| Type::resolve_spec(db, *s)).collect();
 
-        // Check if it satisfies the ANY_* constraint
-        if let Some(constraint) = generic_param.as_builtin_generic(db) {
-            if !type_satisfies_any_constraint(db, &type_arg, constraint) {
-                // Get the type argument name from the spec for error reporting
-                use crate::hir_def::expressions::spec::SpecKind;
-                let type_arg_name = match type_arg_spec.kind(db) {
-                    SpecKind::Target(target) => {
-                        target.path.target.ident
-                    }
-                    _ => continue, // Skip complex types for now (we got the name from Target)
-                };
+    // Validate and store
+    validate_and_store_generic_substitutions(
+        db, generics, &concrete_types, callable_scope, call_site, ctx,
+    )
+}
 
-                ctx.errors.push(
-                    TypeError::TypeArgumentConstraintMismatch {
-                        type_arg_name,
-                        constraint,
-                        call_site,
+/// Validate all constraints (type bounds + INTO), then store the substitution map.
+/// Uses the signature's pre-computed `constraint_of_generic` — a single source of truth.
+/// Returns true if all constraints passed, false if any failed.
+fn validate_and_store_generic_substitutions<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    generics: &[crate::hir_def::pous::generics::GenericParam<'db>],
+    concrete_types: &[Type<'db>],
+    callable_scope: crate::hir_def::scope::ScopeId<'db>,
+    call_site: CallSite<'db>,
+    ctx: &mut BodyInferenceResult<'db>,
+) -> bool {
+    use crate::hir_ty::head::signature::{Constraint, infer_signature};
+
+    // Build the substitution map first (needed for GenericParameter constraints)
+    for (generic_param, concrete_type) in generics.iter().zip(concrete_types.iter()) {
+        ctx.generic_substitutions.insert(generic_param.name(db), *concrete_type);
+    }
+
+    // Validate ALL constraints from the signature in one pass
+    let signature = infer_signature(db, callable_scope);
+    let mut ok = true;
+
+    for (generic_param, concrete_type) in generics.iter().zip(concrete_types.iter()) {
+        let param_name = generic_param.name(db);
+
+        let constraints = match signature.constraint_of_generic.get(&param_name) {
+            Some(c) => c,
+            None => continue,
+        };
+
+        for constraint in constraints {
+            match constraint {
+                Constraint::TypeBound(any) => {
+                    // Main type bound (T: ANY_INT) — E0315
+                    if !type_satisfies_any_constraint(concrete_type, *any) {
+                        ctx.errors.push(
+                            TypeError::TypeArgumentConstraintMismatch {
+                                concrete_type: *concrete_type,
+                                param_name,
+                                constraint: *any,
+                                call_site,
+                            }
+                            .to_diagnostic(db),
+                        );
+                        ok = false;
                     }
-                    .to_diagnostic(db),
-                );
+                }
+                Constraint::AnyGeneric(any) => {
+                    // INTO<ANY_*> constraint — E0315
+                    if !type_satisfies_any_constraint(concrete_type, *any) {
+                        ctx.errors.push(
+                            TypeError::TypeArgumentConstraintMismatch {
+                                concrete_type: *concrete_type,
+                                param_name,
+                                constraint: *any,
+                                call_site,
+                            }
+                            .to_diagnostic(db),
+                        );
+                        ok = false;
+                    }
+                }
+                Constraint::Spec(spec) => {
+                    // INTO<ConcreteType> (e.g., INTO<INT>) — E0316
+                    let target_type = Type::resolve_spec(db, *spec);
+                    if !type_satisfies_into_constraint(db, concrete_type, &target_type) {
+                        ctx.errors.push(
+                            TypeError::TypeArgumentIntoConstraintMismatch {
+                                type_arg: *concrete_type,
+                                into_target: target_type,
+                                param_name,
+                                call_site,
+                            }
+                            .to_diagnostic(db),
+                        );
+                        ok = false;
+                    }
+                }
+                Constraint::GenericParameter(other_param_name) => {
+                    // INTO<U> — cross-parameter constraint — E0316
+                    if let Some(&other_concrete) = ctx.generic_substitutions.get(other_param_name) {
+                        if !type_satisfies_into_constraint(db, concrete_type, &other_concrete) {
+                            ctx.errors.push(
+                                TypeError::TypeArgumentIntoConstraintMismatch {
+                                    type_arg: *concrete_type,
+                                    into_target: other_concrete,
+                                    param_name,
+                                    call_site,
+                                }
+                                .to_diagnostic(db),
+                            );
+                            ok = false;
+                        }
+                    }
+                }
             }
         }
     }
 
-    // TODO: Implement type substitution logic
-    // This is the critical missing piece! We need to:
-    //
-    // 1. Create a substitution map: GenericParam -> concrete Type
-    //    For example: T -> INT, U -> REAL
-    //
-    // 2. Store this in BodyInferenceResult (need to add field:
-    //    `generic_substitutions: FxHashMap<Ident, Type<'db>>`)
-    //
-    // 3. When resolving Type::Generic during body inference, look up
-    //    the generic parameter in the substitution map and return the
-    //    concrete type instead
-    //
-    // 4. Pass this context through the resolver chain so generic types
-    //    in variables, return types, and expressions get substituted
-    //
-    // Without this, T will remain as Type::Generic (or infer to Never/TIME)
-    // instead of being replaced with the concrete type argument
+    ok
 }
 
-fn type_satisfies_any_constraint<'db>(
+/// Infer generic type arguments from function call arguments.
+/// Returns a vector of inferred types, one for each generic parameter.
+fn infer_generic_types_from_args<'db>(
     db: &'db dyn WorkspaceDataBase,
-    typ: &Type<'db>,
-    constraint: crate::hir_def::pous::generics::AnyGeneric,
-) -> bool {
-    use crate::hir_def::expressions::spec::ElementarySpec;
-    use crate::hir_def::pous::generics::AnyGeneric;
+    callable: &crate::hir_ty::ty::CallableType<'db>,
+    func_call: FuncCall<'db>,
+    ctx: &mut BodyInferenceResult<'db>,
+    resolver: Resolver<'db>,
+) -> Vec<Type<'db>> {
+    let generics = callable.generics(db);
+    if generics.is_empty() {
+        return vec![];
+    }
 
-    let elementary = match typ {
-        Type::Elementary(elem) => elem,
-        _ => return false, // Non-elementary types don't satisfy ANY_* constraints
+    // Map from generic parameter index to inferred type
+    let mut inferred: FxHashMap<usize, Type<'db>> = FxHashMap::default();
+
+    let params = func_call.params(db);
+    let def_map = callable.def_map(db);
+    let mut formal_idx = 0;
+
+    for parameter in params {
+        match parameter.kind(db) {
+            ParamAssignKind::NonFormal { value } => {
+                let var = def_map.local_variables.values().nth(formal_idx);
+                if let Some(var) = var {
+                    let expected_type = var.spec(db).infer(db);
+                    let actual_type = infer_expr_type_for_inference(db, resolver, value, ctx);
+                    unify_types(db, expected_type, actual_type, generics, &mut inferred);
+                }
+                formal_idx += 1;
+            }
+            ParamAssignKind::FormalInput { param, value } => {
+                let var = def_map.local_variables.get(&param.ident);
+                if let Some(var) = var {
+                    let expected_type = var.spec(db).infer(db);
+                    let actual_type = infer_expr_type_for_inference(db, resolver, value, ctx);
+                    unify_types(db, expected_type, actual_type, generics, &mut inferred);
+                }
+            }
+            ParamAssignKind::FormalOutput { .. } => continue,
+        }
+    }
+
+    // Convert the map to a vector, in the order of generic parameters
+    let mut result = Vec::with_capacity(generics.len());
+    for (idx, _) in generics.iter().enumerate() {
+        match inferred.get(&idx) {
+            Some(&typ) => result.push(typ),
+            None => return vec![], // Could not infer this parameter
+        }
+    }
+    result
+}
+
+/// Helper function to infer the type of an expression for type inference
+/// This is a lightweight version that doesn't do full type checking
+fn infer_expr_type_for_inference<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    resolver: Resolver<'db>,
+    expr: Expr<'db>,
+    ctx: &mut BodyInferenceResult<'db>,
+) -> Type<'db> {
+    // Check if we already resolved this expression
+    if let Some(&typ) = ctx.type_of_expr.get(&expr) {
+        // Normalize Infer types to concrete types
+        return normalize_for_inference(db, typ);
+    }
+
+    // Resolve the expression to infer its type
+    let mut infer_ctx = InferExprCtx::new(resolver);
+    infer_ctx.resolve_expr(db, expr, ctx);
+
+    // Get the inferred type and normalize it
+    let typ = ctx.type_of_expr.get(&expr).copied().unwrap_or(Type::Never);
+    normalize_for_inference(db, typ)
+}
+
+/// Normalize types to their concrete elementary types for inference
+fn normalize_for_inference<'db>(db: &'db dyn WorkspaceDataBase, typ: Type<'db>) -> Type<'db> {
+    match typ {
+        Type::Infer(infer) => infer.to_ty(db),
+        Type::Variable((var, _)) => var.spec(db).infer(db).normalize(db),
+        _ => typ.normalize(db),
+    }
+}
+
+/// Unify expected and actual types to infer generic parameter types
+fn unify_types<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    expected: Type<'db>,
+    actual: Type<'db>,
+    generics: &[crate::hir_def::pous::generics::GenericParam<'db>],
+    inferred: &mut FxHashMap<usize, Type<'db>>,
+) {
+    match expected {
+        Type::Generic(param) => {
+            // Find the index of this generic parameter
+            let param_name = param.name(db);
+            if let Some(idx) = generics.iter().position(|p| p.name(db) == param_name) {
+                // Check if we already inferred a type for this parameter
+                if let Some(&existing) = inferred.get(&idx) {
+                    // Type must match - if it doesn't, inference fails
+                    // We'll let the caller handle this by checking if all params were inferred
+                    if existing != actual {
+                        // Conflicting inference - leave it to fail later
+                        return;
+                    }
+                } else {
+                    // Record the inferred type
+                    inferred.insert(idx, actual);
+                }
+            }
+        }
+        Type::Array(arr) => {
+            // If the expected type is an array of generic element, unify recursively
+            if let Type::Array(actual_arr) = actual {
+                let expected_elem = arr.of_type(db).infer(db);
+                let actual_elem = actual_arr.of_type(db).infer(db);
+                unify_types(db, expected_elem, actual_elem, generics, inferred);
+            }
+        }
+        _ => {
+            // Other types don't help with inference
+        }
+    }
+}
+
+/// Check if a concrete type satisfies an INTO<target> constraint.
+/// The concrete type must either be the same as the target, or implicitly castable to it.
+fn type_satisfies_into_constraint<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    concrete: &Type<'db>,
+    into_target: &Type<'db>,
+) -> bool {
+    
+    // Same type always satisfies
+    if concrete == into_target {
+        return true;
+    }
+
+    // Both must be elementary types for implicit cast checking
+    let concrete_elem = match concrete {
+        Type::Elementary(e) => e,
+        _ => return false,
     };
 
-    match constraint {
-        AnyGeneric::ANY => true, // ANY accepts all elementary types
-        AnyGeneric::ANY_INT => matches!(
-            elementary,
-            ElementarySpec::SInt
-                | ElementarySpec::Int
-                | ElementarySpec::DInt
-                | ElementarySpec::LInt
-                | ElementarySpec::USInt
-                | ElementarySpec::UInt
-                | ElementarySpec::UDInt
-                | ElementarySpec::ULInt
-        ),
-        AnyGeneric::ANY_SIGNED => matches!(
-            elementary,
-            ElementarySpec::SInt
-                | ElementarySpec::Int
-                | ElementarySpec::DInt
-                | ElementarySpec::LInt
-        ),
-        AnyGeneric::ANY_UNSIGNED => matches!(
-            elementary,
-            ElementarySpec::USInt
-                | ElementarySpec::UInt
-                | ElementarySpec::UDInt
-                | ElementarySpec::ULInt
-        ),
-        AnyGeneric::ANY_REAL => matches!(elementary, ElementarySpec::Real | ElementarySpec::LReal),
-        AnyGeneric::ANY_BIT => matches!(
-            elementary,
-            ElementarySpec::Bool
-                | ElementarySpec::Byte
-                | ElementarySpec::Word
-                | ElementarySpec::DWord
-                | ElementarySpec::LWord
-        ),
-        AnyGeneric::ANY_STRING => matches!(
-            elementary,
-            ElementarySpec::String | ElementarySpec::WString | ElementarySpec::Char | ElementarySpec::WChar
-        ),
-        AnyGeneric::ANY_DATE => matches!(
-            elementary,
-            ElementarySpec::Date | ElementarySpec::LDate
-        ),
-        AnyGeneric::ANY_DURATION => matches!(
-            elementary,
-            ElementarySpec::Time | ElementarySpec::LTime
-        ),
+    let target_elem = match into_target {
+        Type::Elementary(e) => e,
+        _ => return false,
+    };
+
+    // Check if concrete can be implicitly cast to target
+    // target.implicit_cast(source) returns Some if source can be implicitly cast to target
+    target_elem.implicit_cast(*concrete_elem).is_some()
+}
+
+fn type_satisfies_any_constraint(typ: &Type, constraint: crate::hir_def::pous::generics::AnyGeneric) -> bool {
+    match typ {
+        Type::Elementary(elem) => constraint.contains(*elem),
+        _ => false,
     }
 }
