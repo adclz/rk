@@ -1,7 +1,11 @@
 use std::fmt::Display;
 
-use auto_lsp::lsp_types::DiagnosticSeverity;
-use db::WorkspaceDataBase;
+use auto_lsp::{
+    core::span::Span,
+    default::db::file::File,
+    lsp_types::{DiagnosticSeverity, DiagnosticTag},
+};
+use db::{WorkspaceDataBase, configuration::Configuration};
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 use crate::{
@@ -99,6 +103,9 @@ pub enum ResolveError<'db> {
         call_site: CallSite<'db>,
         path: NamespacePath,
     },
+    NoConfigFileFound {
+        file: File,
+    },
 }
 
 impl<'db> ErrorCode for ResolveError<'db> {
@@ -119,6 +126,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::NoFieldOnElementaryType { .. } => "E0214",
             Self::FunctionAsType { .. } => "E0215",
             Self::UsingNamespaceNotFound { .. } => "E0216",
+            Self::NoConfigFileFound { .. } => "E0217",
         }
     }
 
@@ -138,6 +146,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             | Self::IndexNonArrayTypeInitExpr { .. }
             | Self::IndexNonArrayTypePathExpr { .. } => "invalid operation",
             Self::FunctionAsType { .. } => "invalid type",
+            Self::NoConfigFileFound { .. } => "configuration error",
         }
     }
 }
@@ -424,9 +433,28 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 .desc(self)
                 .range(expr.get_span(db))
                 .call(),
+            Self::NoConfigFileFound { file } => {
+                let mut diag = diag()
+                    .message(format!("no configuration file found"))
+                    .severity(DiagnosticSeverity::HINT)
+                    .tags(vec![DiagnosticTag::UNNECESSARY])
+                    .desc(self)
+                    .range(Span::from(file.document(db).tree.root_node().range()))
+                    .call();
+
+                diag.with_note(format!(
+                    "a configuration file is required at the root of your workspace (inside '{}')",
+                    Configuration::get(db)
+                        .workspace_folder(db)
+                        .map(|w| w.to_string_lossy())
+                        .unwrap_or_default()
+                ));
+
+                diag
+            }
         }
     }
-}
+} 
 
 fn list_variable_candidates<'db, I>(
     db: &'db dyn WorkspaceDataBase,

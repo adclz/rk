@@ -18,10 +18,10 @@ use crate::{
 
 // todo: for both indexes, use salsa::par_map to parallelize the construction
 
-/// Returns all Namespaces.
+/// Returns namespaces from workspace files only.
 #[tracing::instrument(skip_all)]
 #[salsa::tracked(returns(ref))]
-fn global_namespace_index<'db>(
+fn workspace_namespace_index<'db>(
     db: &'db dyn WorkspaceDataBase,
 ) -> FxHashMap<NamespacePath, Vec<NamespaceDecl<'db>>> {
     let mut result = FxHashMap::default();
@@ -32,6 +32,37 @@ fn global_namespace_index<'db>(
                 .or_insert_with(Vec::new)
                 .push(*ns);
         }
+    }
+    result
+}
+
+/// Returns namespaces from stdlib files only (HIGH durability inputs).
+#[tracing::instrument(skip_all)]
+#[salsa::tracked(returns(ref))]
+fn stdlib_namespace_index<'db>(
+    db: &'db dyn WorkspaceDataBase,
+) -> FxHashMap<NamespacePath, Vec<NamespaceDecl<'db>>> {
+    let mut result = FxHashMap::default();
+    for file in db.get_std_lib_files().iter() {
+        for ns in semantic_index(db, *file).global_namespaces.iter() {
+            result
+                .entry(*ns.path(db))
+                .or_insert_with(Vec::new)
+                .push(*ns);
+        }
+    }
+    result
+}
+
+/// Returns all namespaces (workspace + stdlib).
+#[tracing::instrument(skip_all)]
+#[salsa::tracked(returns(ref))]
+fn global_namespace_index<'db>(
+    db: &'db dyn WorkspaceDataBase,
+) -> FxHashMap<NamespacePath, Vec<NamespaceDecl<'db>>> {
+    let mut result = workspace_namespace_index(db).clone();
+    for (path, decls) in stdlib_namespace_index(db).iter() {
+        result.entry(*path).or_insert_with(Vec::new).extend(decls);
     }
     result
 }
@@ -72,10 +103,10 @@ pub fn namespace_pou_index<'db>(
     global_namespace_pou_index(db, path).get(&name).copied()
 }
 
-/// Returns all POUs *globally declared*.
+/// Returns globally declared POUs from workspace files only.
 #[tracing::instrument(skip_all)]
 #[salsa::tracked(returns(ref))]
-fn global_pou_index<'db>(db: &'db dyn WorkspaceDataBase) -> FxHashMap<Ident, Pou<'db>> {
+fn workspace_pou_index<'db>(db: &'db dyn WorkspaceDataBase) -> FxHashMap<Ident, Pou<'db>> {
     db.get_files()
         .iter()
         .flat_map(|file| {
@@ -87,16 +118,42 @@ fn global_pou_index<'db>(db: &'db dyn WorkspaceDataBase) -> FxHashMap<Ident, Pou
         .collect()
 }
 
+/// Returns globally declared POUs from stdlib files only (HIGH durability inputs).
+#[tracing::instrument(skip_all)]
+#[salsa::tracked(returns(ref))]
+fn stdlib_pou_index<'db>(db: &'db dyn WorkspaceDataBase) -> FxHashMap<Ident, Pou<'db>> {
+    db.get_std_lib_files()
+        .iter()
+        .flat_map(|file| {
+            semantic_index(db, *file)
+                .global_pous
+                .iter()
+                .map(|p| (p.get_name_ident(db), *p))
+        })
+        .collect()
+}
+
+/// Returns all POUs *globally declared* (workspace + stdlib).
+#[tracing::instrument(skip_all)]
+#[salsa::tracked(returns(ref))]
+fn global_pou_index<'db>(db: &'db dyn WorkspaceDataBase) -> FxHashMap<Ident, Pou<'db>> {
+    let mut result = workspace_pou_index(db).clone();
+    result.extend(stdlib_pou_index(db).iter().map(|(k, v)| (*k, *v)));
+    result
+}
+
 #[tracing::instrument(skip(db))]
 #[salsa::tracked(returns(ref))]
 pub fn pou_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<Pou<'db>> {
     global_pou_index(db).get(&name).copied()
 }
 
-/// Returns all POUs *globally declared*.
+/// Returns globally declared programs from workspace files only.
 #[tracing::instrument(skip_all)]
 #[salsa::tracked(returns(ref))]
-fn global_program_index<'db>(db: &'db dyn WorkspaceDataBase) -> FxHashMap<Ident, ProgramDecl<'db>> {
+fn workspace_program_index<'db>(
+    db: &'db dyn WorkspaceDataBase,
+) -> FxHashMap<Ident, ProgramDecl<'db>> {
     db.get_files()
         .iter()
         .flat_map(|file| {
@@ -106,6 +163,34 @@ fn global_program_index<'db>(db: &'db dyn WorkspaceDataBase) -> FxHashMap<Ident,
                 .map(|p| (p.get_name_ident(db), *p))
         })
         .collect()
+}
+
+/// Returns globally declared programs from stdlib files only (HIGH durability inputs).
+#[tracing::instrument(skip_all)]
+#[salsa::tracked(returns(ref))]
+fn stdlib_program_index<'db>(
+    db: &'db dyn WorkspaceDataBase,
+) -> FxHashMap<Ident, ProgramDecl<'db>> {
+    db.get_std_lib_files()
+        .iter()
+        .flat_map(|file| {
+            semantic_index(db, *file)
+                .programs
+                .iter()
+                .map(|p| (p.get_name_ident(db), *p))
+        })
+        .collect()
+}
+
+/// Returns all programs *globally declared* (workspace + stdlib).
+#[tracing::instrument(skip_all)]
+#[salsa::tracked(returns(ref))]
+fn global_program_index<'db>(
+    db: &'db dyn WorkspaceDataBase,
+) -> FxHashMap<Ident, ProgramDecl<'db>> {
+    let mut result = workspace_program_index(db).clone();
+    result.extend(stdlib_program_index(db).iter().map(|(k, v)| (*k, *v)));
+    result
 }
 
 #[tracing::instrument(skip(db))]

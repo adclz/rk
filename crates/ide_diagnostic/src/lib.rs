@@ -5,7 +5,7 @@ use auto_lsp::{
         self, CodeAction, CodeActionKind, CodeDescription, Diagnostic,
         DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, Location, NumberOrString,
         Range, TextEdit, Url,
-    },
+    }, salsa,
 };
 
 pub mod report;
@@ -18,7 +18,6 @@ pub struct IdeDiagnostic {
     notes: Vec<String>,
     code_desc: Option<&'static str>,
 }
-
 impl IdeDiagnostic {
     pub fn inner(&self) -> Diagnostic {
         self.diagnostic.clone()

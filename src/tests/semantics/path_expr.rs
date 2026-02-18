@@ -84,8 +84,8 @@ END_FUNCTION
     add_sources(&mut with_db, &[source]);
     assert_snapshot!(collect_path_expressions(&with_db, *with_db.get_files().iter().last().unwrap(), &"fn"), @r"
     51 STRUCT_ELEMENT [Adjustment { kind: Index, target: Elementary(Int) }]
-    49 VARIABLE <none>
     51 STRUCT_ELEMENT [Adjustment { kind: Index, target: Elementary(Int) }]
+    49 VARIABLE <none>
     ");
 }
 
@@ -109,8 +109,8 @@ END_FUNCTION
         "#;
     add_sources(&mut with_db, &[source]);
     assert_snapshot!(collect_path_expressions(&with_db, *with_db.get_files().iter().last().unwrap(), &"fn"), @r"
-    69 VARIABLE <none>
     78 VARIABLE [Adjustment { kind: Index, target: Elementary(Int) }]
+    69 VARIABLE <none>
     78 VARIABLE [Adjustment { kind: Index, target: Elementary(Int) }, Adjustment { kind: Ref, target: Elementary(Int) }]
     ");
 }
@@ -131,9 +131,9 @@ END_FUNCTION
         "#;
     add_sources(&mut with_db, &[source]);
     assert_snapshot!(collect_path_expressions(&with_db, *with_db.get_files().iter().last().unwrap(), &"fn"), @r"
-    58 VARIABLE <none>
-    69 VARIABLE [Adjustment { kind: Index, target: Array(Array { [salsa id]: Id(1800) }) }, Adjustment { kind: Index, target: Elementary(Int) }]
     69 VARIABLE [Adjustment { kind: Index, target: Elementary(Int) }]
+    69 VARIABLE [Adjustment { kind: Index, target: Array(Array { [salsa id]: Id(1800) }) }, Adjustment { kind: Index, target: Elementary(Int) }]
+    58 VARIABLE <none>
     69 VARIABLE [Adjustment { kind: Index, target: Array(Array { [salsa id]: Id(1800) }) }]
     ");
 }
@@ -154,10 +154,10 @@ END_FUNCTION
         "#;
     add_sources(&mut with_db, &[source]);
     assert_snapshot!(collect_path_expressions(&with_db, *with_db.get_files().iter().last().unwrap(), &"fn"), @r"
-    59 VARIABLE <none>
     70 VARIABLE [Adjustment { kind: Index, target: Array(Array { [salsa id]: Id(1800) }) }]
-    70 VARIABLE [Adjustment { kind: Index, target: Array(Array { [salsa id]: Id(1800) }) }, Adjustment { kind: Index, target: Elementary(Int) }]
+    59 VARIABLE <none>
     70 VARIABLE [Adjustment { kind: Index, target: Elementary(Int) }, Adjustment { kind: Ref, target: Elementary(Int) }]
+    70 VARIABLE [Adjustment { kind: Index, target: Array(Array { [salsa id]: Id(1800) }) }, Adjustment { kind: Index, target: Elementary(Int) }]
     ");
 }
 

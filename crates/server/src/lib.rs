@@ -9,7 +9,6 @@ use auto_lsp::default::server::capabilities::WORKSPACE_PROVIDER;
 use auto_lsp::default::server::file_events::change_text_document;
 use auto_lsp::default::server::file_events::changed_watched_files;
 use auto_lsp::default::server::file_events::open_text_document;
-use auto_lsp::default::server::workspace_init::WorkspaceInit;
 use auto_lsp::lsp_server;
 use auto_lsp::lsp_server::Connection;
 use auto_lsp::lsp_server::Message;
@@ -43,6 +42,7 @@ use auto_lsp::lsp_types::notification::DidSaveTextDocument;
 use auto_lsp::lsp_types::notification::LogTrace;
 use auto_lsp::lsp_types::notification::Notification;
 use auto_lsp::lsp_types::notification::SetTrace;
+use auto_lsp::lsp_types::notification::ShowMessage;
 use auto_lsp::lsp_types::request::CodeActionRequest;
 use auto_lsp::lsp_types::request::CodeLensRequest;
 use auto_lsp::lsp_types::request::Completion;
@@ -70,12 +70,11 @@ use auto_lsp::server::request_registry::RequestRegistry;
 use auto_lsp::server::vendored::intent::ThreadIntent;
 use db::RootDatabase;
 use db::WorkspaceDataBase;
-use db::configuration::Configuration;
+use db::configuration::{Configuration, ConfigurationError};
 use ide_proto::SUPPORTED_MODIFIERS;
 use ide_proto::SUPPORTED_TYPES;
 use std::error::Error;
 use std::panic::RefUnwindSafe;
-use std::sync::OnceLock;
 
 use crate::capabilties::code_actions::code_actions;
 use crate::capabilties::code_lens::code_lens;
@@ -91,9 +90,6 @@ use crate::capabilties::hover::hover;
 use crate::capabilties::implementation::go_to_implementation;
 use crate::capabilties::inlay_hints::inlay_hints;
 use crate::capabilties::semantic_tokens;
-
-pub static WORKSPACE_FOLDER: OnceLock<Url> = OnceLock::new();
-static CLIENT_CAPABILITIES: OnceLock<lsp_types::ClientCapabilities> = OnceLock::new();
 
 pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
     log::info!("Starting IEC LSP");
@@ -159,19 +155,20 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
         db,
     )?;
 
-    if let Some(uri) = params.root_uri.as_ref() {
-        Configuration::init_or_update(&mut session.db, Some(uri.clone()));
+    refresh_configuration(&mut session, params.root_uri.clone())?;
+    db::loader::load_stdlib(&mut session.db);
+
+    // Load workspace files
+    if let Some(folders) = params.workspace_folders {
+        for folder in folders {
+            if let Ok(path) = folder.uri.to_file_path() {
+                db::loader::load_workspace(&mut session.db, &path);
+            }
+        }
     }
-
-    // Store client capabilities for use in the initialized notification handler
-    CLIENT_CAPABILITIES.set(params.capabilities.clone()).ok();
-
-    session.init_workspace(params)?;
 
     // Register file watchers after workspace initialization
-    if let Some(capabilities) = CLIENT_CAPABILITIES.get() {
-        setup_file_watcher_if_necessary(&mut session, capabilities);
-    }
+    setup_file_watcher_if_necessary(&mut session, &params.capabilities);
 
     session.main_loop(
         on_requests(&mut request_registry),
@@ -207,9 +204,9 @@ fn on_requests<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
         .on::<GotoImplementation, _>(ThreadIntent::Worker, go_to_implementation)
 }
 
-fn on_notifications<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
-    registry: &mut NotificationRegistry<Db>,
-) -> &mut NotificationRegistry<Db> {
+fn on_notifications(
+    registry: &mut NotificationRegistry<RootDatabase>,
+) -> &mut NotificationRegistry<RootDatabase> {
     registry
         // DidOpenTextDocument events are also emitted when a LLM / Agent creates temporary files.
         // We only want to process files with the .st extension that are part of the workspace.
@@ -232,7 +229,22 @@ fn on_notifications<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
             }
         })
         .on_mut::<DidChangeWatchedFiles, _>(|s, p| {
-            changed_watched_files(s, p)?;
+            // Check if any changed file is the workspace config.toml
+            let config_changed = Configuration::try_get(&s.db)
+                .and_then(|c| c.workspace_folder(&s.db).cloned())
+                .and_then(|ws| Url::from_file_path(ws.join("config.toml")).ok())
+                .is_some_and(|url| p.changes.iter().any(|e| e.uri == url));
+
+
+            if config_changed {
+                let workspace_uri = Configuration::try_get(&s.db)
+                    .and_then(|c| c.workspace_folder(&s.db).cloned())
+                    .and_then(|path| Url::from_file_path(path).ok());
+                refresh_configuration(s, workspace_uri)?;
+            } else {
+                changed_watched_files(s, p)?;
+            }
+
             send_request::<lsp_types::request::WorkspaceDiagnosticRefresh>(s, ())?;
             Ok(())
         })
@@ -250,6 +262,35 @@ fn on_notifications<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
         .on::<DidCloseTextDocument, _>(ThreadIntent::Worker, |_s, _p| Ok(()))
         .on::<SetTrace, _>(ThreadIntent::Worker, |_s, _p| Ok(()))
         .on::<LogTrace, _>(ThreadIntent::Worker, |_s, _p| Ok(()))
+}
+
+/// Initializes or refreshes workspace configuration and sends any errors
+/// to the client via `window/showMessage`.
+fn refresh_configuration(
+    session: &mut Session<RootDatabase>,
+    workspace_uri: Option<Url>,
+) -> anyhow::Result<()> {
+    let mut errors = vec![];
+    Configuration::init_or_update(&mut session.db, workspace_uri, &mut errors);
+    send_configuration_errors(&session.connection, &errors)?;
+    Ok(())
+}
+
+fn send_configuration_errors(
+    connection: &Connection,
+    errors: &[ConfigurationError],
+) -> anyhow::Result<()> {
+    for error in errors {
+        log::warn!("Configuration: {}", error);
+        let params = lsp_types::ShowMessageParams {
+            typ: lsp_types::MessageType::WARNING,
+            message: error.to_string(),
+        };
+        let notification =
+            lsp_server::Notification::new(ShowMessage::METHOD.to_string(), params);
+        connection.sender.send(Message::Notification(notification))?;
+    }
+    Ok(())
 }
 
 pub fn send_request<N: lsp_types::request::Request>(
@@ -285,6 +326,10 @@ fn setup_file_watcher_if_necessary(
             let watchers = vec![
                 FileSystemWatcher {
                     glob_pattern: GlobPattern::String("**/*.st".to_string()),
+                    kind: Some(WatchKind::Create | WatchKind::Change | WatchKind::Delete),
+                },
+                FileSystemWatcher {
+                    glob_pattern: GlobPattern::String("**/config.toml".to_string()),
                     kind: Some(WatchKind::Create | WatchKind::Change | WatchKind::Delete),
                 },
             ];

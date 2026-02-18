@@ -6,12 +6,15 @@ use dashmap::DashMap;
 use salsa::{Database, Event};
 
 pub mod configuration;
+pub mod loader;
+pub mod config_file;
 
 #[salsa::db]
 #[derive(Default, Clone)]
 pub struct RootDatabase {
     storage: salsa::Storage<Self>,
-    pub(crate) files: DashMap<Url, File>,
+    pub(crate) workspace_files: DashMap<Url, File>,
+    pub(crate) std_lib_files: DashMap<Url, File>,
 }
 
 impl RootDatabase {
@@ -31,16 +34,23 @@ impl std::panic::RefUnwindSafe for RootDatabase {}
 #[salsa::db]
 impl BaseDatabase for RootDatabase {
     fn get_files(&self) -> &DashMap<Url, File> {
-        &self.files
+        &self.workspace_files
     }
 
     fn get_file(&self, url: &Url) -> Option<File> {
-        self.files.get(url).map(|file| *file)
+        self.workspace_files.get(url).map(|file| *file)
     }
 }
 
 #[salsa::db]
-pub trait WorkspaceDataBase: Database + BaseDatabase {}
+pub trait WorkspaceDataBase: Database + BaseDatabase {
+    fn get_std_lib_files(&self) -> &DashMap<Url, File>;
+}
 
 #[salsa::db]
-impl WorkspaceDataBase for RootDatabase {}
+impl WorkspaceDataBase for RootDatabase {
+    fn get_std_lib_files(&self) ->  &DashMap<Url,File> {
+        &self.std_lib_files
+    }
+}
+

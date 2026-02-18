@@ -242,8 +242,8 @@ fn struct_fields(mut with_db: RootDatabase) {
 "#;
     add_sources(&mut with_db, &[source]);
     assert_snapshot!(collect_init_expressions(&with_db, *with_db.get_files().iter().last().unwrap(), &"fn"), @r"
+    28 DATATYPE
     30 STRUCT_ELEMENT
     40 STRUCT_ELEMENT
-    28 DATATYPE
     ");
 }

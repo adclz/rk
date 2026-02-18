@@ -176,7 +176,7 @@ fn inherit_result<'db>(db: &'db dyn WorkspaceDataBase, pou: Pou<'db>) -> Inherit
     InheritedMethodSet::default()
 }
 
-#[salsa::tracked(returns(ref), cycle_result = inherit_result)]
+#[salsa::tracked(returns(ref))]
 pub fn inherited_methods<'db>(
     db: &'db dyn WorkspaceDataBase,
     pou: Pou<'db>,

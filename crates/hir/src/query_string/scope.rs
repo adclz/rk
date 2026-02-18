@@ -189,10 +189,11 @@ fn search_pous<'db>(
     filter_pou: &dyn Fn(&Pou<'db>, &'db dyn WorkspaceDataBase) -> bool,
     search_result: &mut ScopeSearchResult<'db>,
 ) {
-    // Collect all POU symbol indexes from all files
+    // Collect all POU symbol indexes from workspace + stdlib files
     let indexes: Vec<_> = db
         .get_files()
         .iter()
+        .chain(db.get_std_lib_files().iter())
         .map(|file| file_symbol_index(db, *file))
         .collect();
 

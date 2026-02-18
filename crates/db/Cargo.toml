@@ -9,5 +9,9 @@ publish = false
 
 [dependencies]
 auto-lsp = { workspace = true }
+ast = { workspace = true }
+ide_diagnostic = { workspace = true }
 dashmap = { workspace = true, features = ["rayon"] }
 salsa = { workspace = true }
+rayon = { workspace = true }
+dirs = { workspace = true }
