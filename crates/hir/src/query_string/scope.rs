@@ -13,7 +13,7 @@ use crate::{
     },
     hir_ty::name_res::namespace_index,
     query_string::{
-        file::file_symbol_index,
+        file::{file_symbol_index, std_lib_symbol_index},
         query::{Query, SymbolKind},
         variables::variable_symbol_index,
     },
@@ -189,13 +189,13 @@ fn search_pous<'db>(
     filter_pou: &dyn Fn(&Pou<'db>, &'db dyn WorkspaceDataBase) -> bool,
     search_result: &mut ScopeSearchResult<'db>,
 ) {
-    // Collect all POU symbol indexes from workspace + stdlib files
-    let indexes: Vec<_> = db
+    // Collect per-file symbol indexes for workspace files + single stdlib index
+    let mut indexes: Vec<_> = db
         .get_files()
         .iter()
-        .chain(db.get_std_lib_files().iter())
         .map(|file| file_symbol_index(db, *file))
         .collect();
+    indexes.push(std_lib_symbol_index(db));
 
     // Track POUs we've already added to avoid duplicates from the same namespace
     let mut seen_pous: FxHashSet<(Option<NamespacePath>, String)> = FxHashSet::default();

@@ -5,7 +5,7 @@ use db::WorkspaceDataBase;
 use crate::{
     hir_def::{interned::namespace::NamespacePath, namespace::NamespaceDecl},
     query_string::{
-        file::file_symbol_index,
+        file::{file_symbol_index, std_lib_symbol_index},
         query::{Query, SymbolKind},
     },
 };
@@ -24,11 +24,12 @@ impl<'db> NamespaceSearchCtx {
         query.prefix();
 
         // Collect all POU symbol indexes from all files
-        let indexes: Vec<_> = db
+        let mut indexes: Vec<_> = db
             .get_files()
             .iter()
             .map(|file| file_symbol_index(db, *file))
             .collect();
+        indexes.push(std_lib_symbol_index(db));
 
         let mut results = vec![];
 
