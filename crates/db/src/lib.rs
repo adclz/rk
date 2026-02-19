@@ -5,7 +5,7 @@ use auto_lsp::{
 use dashmap::DashMap;
 use salsa::{Database, Event};
 
-pub mod configuration;
+pub mod workspace;
 pub mod loader;
 pub mod config_file;
 
@@ -15,6 +15,9 @@ pub struct RootDatabase {
     storage: salsa::Storage<Self>,
     pub(crate) workspace_files: DashMap<Url, File>,
     pub(crate) std_lib_files: DashMap<Url, File>,
+    /// Files currently open in the editor (managed via DidOpen/DidClose).
+    /// Used to skip redundant DidChangeWatchedFiles CHANGED events.
+    pub open_files: DashMap<Url, ()>,
 }
 
 impl RootDatabase {

@@ -4,7 +4,7 @@ use auto_lsp::{
     core::errors::ParseErrorAccumulator,
     default::db::{file::File, tracked::get_ast},
 };
-use db::{WorkspaceDataBase, configuration::Configuration};
+use db::{WorkspaceDataBase, workspace::Workspace};
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
@@ -29,12 +29,12 @@ pub mod check_recursion;
 pub mod errors;
 
 pub fn diagnostics_for_file(db: &dyn WorkspaceDataBase, file: File) -> Arc<Vec<IdeDiagnostic>> {
-    let config = Configuration::get(db);
-    if config.config_file(db).is_none() {
-
-        return Arc::new(vec![
-            ResolveError::NoConfigFileFound { file }.to_diagnostic(db)
-        ]);
+    if let Some(config) = Workspace::try_get(db) {
+        if config.config_file(db).is_none() {
+            return Arc::new(vec![
+                ResolveError::NoConfigFileFound { file }.to_diagnostic(db)
+            ]);
+        }
     }
     
     let mut all_diagnostics = vec![];

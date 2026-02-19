@@ -10,7 +10,7 @@ use auto_lsp::{
 use rayon::prelude::*;
 
 use crate::RootDatabase;
-use crate::configuration::Configuration;
+use crate::workspace::Workspace;
 
 type ParseResult = Result<(Url, Arc<Document>), Box<dyn std::error::Error + Send + Sync>>;
 
@@ -144,7 +144,7 @@ pub fn load_workspace(db: &mut RootDatabase, path: &Path) -> Vec<Result<File, St
 /// Reads the stdlib path from `Configuration`, discovers files recursively,
 /// and inserts them into `std_lib_files` (not workspace files).
 pub fn load_stdlib(db: &mut RootDatabase) {
-    let Some(config) = Configuration::try_get(db) else {
+    let Some(config) = Workspace::try_get(db) else {
         return;
     };
     let Some(stdlib_path) = config.stdlib_path(db) else {

@@ -5,7 +5,7 @@ use auto_lsp::{
     default::db::file::File,
     lsp_types::{DiagnosticSeverity, DiagnosticTag},
 };
-use db::{WorkspaceDataBase, configuration::Configuration};
+use db::{WorkspaceDataBase, workspace::Workspace};
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 use crate::{
@@ -444,7 +444,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
 
                 diag.with_note(format!(
                     "a configuration file is required at the root of your workspace (inside '{}')",
-                    Configuration::get(db)
+                    Workspace::get(db)
                         .workspace_folder(db)
                         .map(|w| w.to_string_lossy())
                         .unwrap_or_default()
