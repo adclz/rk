@@ -13,19 +13,18 @@ use hir::{
 };
 use rustc_hash::FxHashMap;
 
-pub mod wasm_repr;
-pub mod func_codegen;
 pub mod body;
 pub mod cast;
-pub mod memory;
 pub mod debug;
 pub mod emitter;
+pub mod func_codegen;
+pub mod memory;
+pub mod wasm_repr;
 
 #[cfg(test)]
 pub mod tests;
 
 use debug::{CodeGenConfig, DebugInfo};
-use emitter::InstructionEmitter;
 use func_codegen::FunctionCodegen;
 use memory::MemoryLayout;
 use wasm_repr::WasmRepr;
@@ -74,33 +73,34 @@ impl<'db> ModuleCodeGen<'db> {
         let mut global_section = wasm_encoder::GlobalSection::new();
 
         // Add debug globals if debug mode is enabled
-        let (debug_enabled_global, debug_trap_id_global) = if config.debug_mode != debug::DebugMode::None {
-            // Global 0: debug_enabled (i32, mutable)
-            let debug_enabled_idx = global_section.len();
-            global_section.global(
-                wasm_encoder::GlobalType {
-                    val_type: wasm_encoder::ValType::I32,
-                    mutable: true,
-                    shared: false,
-                },
-                &wasm_encoder::ConstExpr::i32_const(0), // Default: disabled
-            );
+        let (debug_enabled_global, debug_trap_id_global) =
+            if config.debug_mode != debug::DebugMode::None {
+                // Global 0: debug_enabled (i32, mutable)
+                let debug_enabled_idx = global_section.len();
+                global_section.global(
+                    wasm_encoder::GlobalType {
+                        val_type: wasm_encoder::ValType::I32,
+                        mutable: true,
+                        shared: false,
+                    },
+                    &wasm_encoder::ConstExpr::i32_const(0), // Default: disabled
+                );
 
-            // Global 1: debug_trap_id (i32, mutable)
-            let debug_trap_id_idx = global_section.len();
-            global_section.global(
-                wasm_encoder::GlobalType {
-                    val_type: wasm_encoder::ValType::I32,
-                    mutable: true,
-                    shared: false,
-                },
-                &wasm_encoder::ConstExpr::i32_const(0),
-            );
+                // Global 1: debug_trap_id (i32, mutable)
+                let debug_trap_id_idx = global_section.len();
+                global_section.global(
+                    wasm_encoder::GlobalType {
+                        val_type: wasm_encoder::ValType::I32,
+                        mutable: true,
+                        shared: false,
+                    },
+                    &wasm_encoder::ConstExpr::i32_const(0),
+                );
 
-            (Some(debug_enabled_idx), Some(debug_trap_id_idx))
-        } else {
-            (None, None)
-        };
+                (Some(debug_enabled_idx), Some(debug_trap_id_idx))
+            } else {
+                (None, None)
+            };
 
         Self {
             db,
@@ -133,7 +133,7 @@ impl<'db> ModuleCodeGen<'db> {
 
         // Add memory section if we allocated any memory
         if self.memory_layout.total_size() > 0 {
-            let memory_min_pages = (self.memory_layout.total_size() + 65535) / 65536; // Round up to pages
+            let memory_min_pages = self.memory_layout.total_size().div_ceil(65536); // Round up to pages
             let mut memory_section = wasm_encoder::MemorySection::new();
             memory_section.memory(wasm_encoder::MemoryType {
                 minimum: memory_min_pages as u64,
@@ -146,7 +146,7 @@ impl<'db> ModuleCodeGen<'db> {
         }
 
         // Add global section if we have debug globals
-        if self.global_section.len() > 0 {
+        if !self.global_section.is_empty() {
             module.section(&self.global_section);
         }
 
@@ -203,7 +203,8 @@ impl<'db> ModuleCodeGen<'db> {
             match var.kind(self.db) {
                 VariableKind::Input => {
                     // VAR_INPUT parameters are passed by value
-                    if let Ok(repr) = WasmRepr::from_type(self.db, var.spec(self.db).infer(self.db)) {
+                    if let Ok(repr) = WasmRepr::from_type(self.db, var.spec(self.db).infer(self.db))
+                    {
                         param_types.extend(repr.flatten());
                     }
                 }
@@ -219,17 +220,14 @@ impl<'db> ModuleCodeGen<'db> {
 
         // Build return type
         let mut result_types = Vec::new();
-        if let Some(return_spec) = func.return_type(self.db) {
-            if let Ok(repr) = WasmRepr::from_type(self.db, return_spec.infer(self.db)) {
+        if let Some(return_spec) = func.return_type(self.db)
+            && let Ok(repr) = WasmRepr::from_type(self.db, return_spec.infer(self.db)) {
                 result_types.extend(repr.flatten());
             }
-        }
 
         // Add function type signature
         let type_idx = self.next_type_idx;
-        self.type_section
-            .ty()
-            .function(param_types, result_types);
+        self.type_section.ty().function(param_types, result_types);
         self.next_type_idx += 1;
 
         // Declare the function
@@ -239,23 +237,18 @@ impl<'db> ModuleCodeGen<'db> {
 
         // Export the function with its name
         let func_name = func.name(self.db).text(self.db);
-        self.export_section.export(
-            func_name.as_str(),
-            wasm_encoder::ExportKind::Func,
-            fn_idx,
-        );
+        self.export_section
+            .export(func_name.as_str(), wasm_encoder::ExportKind::Func, fn_idx);
 
         // Store function name → index mapping
         self.function_indices.insert(func.name(self.db), fn_idx);
 
         // Store codegen info for memoization
-        self.scopes.insert(
-            scope_id,
-            ScopeCodegenInfo { type_idx, fn_idx },
-        );
+        self.scopes
+            .insert(scope_id, ScopeCodegenInfo { type_idx, fn_idx });
 
         // Generate function body
-        let mut codegen = FunctionCodegen::new(
+        let codegen = FunctionCodegen::new(
             self.db,
             scope_id,
             &self.function_indices,
@@ -271,7 +264,10 @@ impl<'db> ModuleCodeGen<'db> {
     }
 
     /// Generate code for a function block and its methods.
-    pub fn generate_function_block(&mut self, fb: hir::hir_def::pous::function_block::FunctionBlock<'db>) {
+    pub fn generate_function_block(
+        &mut self,
+        fb: hir::hir_def::pous::function_block::FunctionBlock<'db>,
+    ) {
         use hir::hir_def::pous::variable::VariableKind;
 
         // Generate code for each method in the function block
@@ -287,7 +283,9 @@ impl<'db> ModuleCodeGen<'db> {
                 match var.kind(self.db) {
                     VariableKind::Input => {
                         // VAR_INPUT parameters are passed by value
-                        if let Ok(repr) = WasmRepr::from_type(self.db, var.spec(self.db).infer(self.db)) {
+                        if let Ok(repr) =
+                            WasmRepr::from_type(self.db, var.spec(self.db).infer(self.db))
+                        {
                             param_types.extend(repr.flatten());
                         }
                     }
@@ -303,17 +301,14 @@ impl<'db> ModuleCodeGen<'db> {
 
             // Build return type
             let mut result_types = Vec::new();
-            if let Some(return_spec) = method.return_type(self.db) {
-                if let Ok(repr) = WasmRepr::from_type(self.db, return_spec.infer(self.db)) {
+            if let Some(return_spec) = method.return_type(self.db)
+                && let Ok(repr) = WasmRepr::from_type(self.db, return_spec.infer(self.db)) {
                     result_types.extend(repr.flatten());
                 }
-            }
 
             // Add method type signature
             let type_idx = self.next_type_idx;
-            self.type_section
-                .ty()
-                .function(param_types, result_types);
+            self.type_section.ty().function(param_types, result_types);
             self.next_type_idx += 1;
 
             // Declare the method as a WASM function
@@ -325,24 +320,19 @@ impl<'db> ModuleCodeGen<'db> {
             let fb_name = fb.name(self.db).text(self.db);
             let method_name = method.name(self.db).text(self.db);
             let qualified_name = format!("{}${}", fb_name, method_name);
-            self.export_section.export(
-                &qualified_name,
-                wasm_encoder::ExportKind::Func,
-                fn_idx,
-            );
+            self.export_section
+                .export(&qualified_name, wasm_encoder::ExportKind::Func, fn_idx);
 
             // Store qualified method name → index mapping
             let qualified_ident = Ident::from_slice(self.db, &qualified_name);
             self.function_indices.insert(qualified_ident, fn_idx);
 
             // Store codegen info for memoization
-            self.scopes.insert(
-                scope_id,
-                ScopeCodegenInfo { type_idx, fn_idx },
-            );
+            self.scopes
+                .insert(scope_id, ScopeCodegenInfo { type_idx, fn_idx });
 
             // Generate method body (with implicit 'this' parameter handling)
-            let mut codegen = FunctionCodegen::new_with_fb(
+            let codegen = FunctionCodegen::new_with_fb(
                 self.db,
                 scope_id,
                 &self.function_indices,
@@ -380,7 +370,9 @@ impl<'db> ModuleCodeGen<'db> {
                 match var.kind(self.db) {
                     VariableKind::Input => {
                         // VAR_INPUT parameters are passed by value
-                        if let Ok(repr) = WasmRepr::from_type(self.db, var.spec(self.db).infer(self.db)) {
+                        if let Ok(repr) =
+                            WasmRepr::from_type(self.db, var.spec(self.db).infer(self.db))
+                        {
                             param_types.extend(repr.flatten());
                         }
                     }
@@ -396,17 +388,14 @@ impl<'db> ModuleCodeGen<'db> {
 
             // Build return type
             let mut result_types = Vec::new();
-            if let Some(return_spec) = method.return_type(self.db) {
-                if let Ok(repr) = WasmRepr::from_type(self.db, return_spec.infer(self.db)) {
+            if let Some(return_spec) = method.return_type(self.db)
+                && let Ok(repr) = WasmRepr::from_type(self.db, return_spec.infer(self.db)) {
                     result_types.extend(repr.flatten());
                 }
-            }
 
             // Add method type signature
             let type_idx = self.next_type_idx;
-            self.type_section
-                .ty()
-                .function(param_types, result_types);
+            self.type_section.ty().function(param_types, result_types);
             self.next_type_idx += 1;
 
             // Declare the method as a WASM function
@@ -418,26 +407,21 @@ impl<'db> ModuleCodeGen<'db> {
             let class_name = class.name(self.db).text(self.db);
             let method_name = method.name(self.db).text(self.db);
             let qualified_name = format!("{}${}", class_name, method_name);
-            self.export_section.export(
-                &qualified_name,
-                wasm_encoder::ExportKind::Func,
-                fn_idx,
-            );
+            self.export_section
+                .export(&qualified_name, wasm_encoder::ExportKind::Func, fn_idx);
 
             // Store qualified method name → index mapping
             let qualified_ident = Ident::from_slice(self.db, &qualified_name);
             self.function_indices.insert(qualified_ident, fn_idx);
 
             // Store codegen info for memoization
-            self.scopes.insert(
-                scope_id,
-                ScopeCodegenInfo { type_idx, fn_idx },
-            );
+            self.scopes
+                .insert(scope_id, ScopeCodegenInfo { type_idx, fn_idx });
 
             // Generate method body (with implicit 'this' parameter handling)
             // We pass the class as a FunctionBlock-like entity for instance variable access
             // TODO: Handle inheritance by traversing parent class fields
-            let mut codegen = FunctionCodegen::new_with_class(
+            let codegen = FunctionCodegen::new_with_class(
                 self.db,
                 scope_id,
                 &self.function_indices,
@@ -481,24 +465,19 @@ impl<'db> ModuleCodeGen<'db> {
 
         // Export the program with its name
         let program_name = program.name(self.db).text(self.db);
-        self.export_section.export(
-            program_name,
-            wasm_encoder::ExportKind::Func,
-            fn_idx,
-        );
+        self.export_section
+            .export(program_name, wasm_encoder::ExportKind::Func, fn_idx);
 
         // Store program name → index mapping
         self.function_indices.insert(program.name(self.db), fn_idx);
 
         // Store codegen info for memoization
-        self.scopes.insert(
-            scope_id,
-            ScopeCodegenInfo { type_idx, fn_idx },
-        );
+        self.scopes
+            .insert(scope_id, ScopeCodegenInfo { type_idx, fn_idx });
 
         // Generate program body
         // Note: PROGRAM variables are allocated in linear memory during build_local_map
-        let mut codegen = FunctionCodegen::new(
+        let codegen = FunctionCodegen::new(
             self.db,
             scope_id,
             &self.function_indices,
@@ -528,7 +507,7 @@ impl<'db> ModuleCodeGen<'db> {
         // Add memory section
         let memory_size = self.memory_layout.total_size();
         let memory_min_pages = if memory_size > 0 {
-            (memory_size + 65535) / 65536
+            memory_size.div_ceil(65536)
         } else {
             1 // At least 1 page for pointer operations
         };
@@ -544,7 +523,8 @@ impl<'db> ModuleCodeGen<'db> {
         module.section(&memory_section);
 
         // Export section
-        self.export_section.export("memory", wasm_encoder::ExportKind::Memory, 0);
+        self.export_section
+            .export("memory", wasm_encoder::ExportKind::Memory, 0);
         module.section(&self.export_section);
 
         // Code section
@@ -567,4 +547,3 @@ impl<'db> ModuleCodeGen<'db> {
         Ok(module.finish())
     }
 }
-

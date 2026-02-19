@@ -1,9 +1,9 @@
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 
+use crate::builder::ParseSpec;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::types::ParseMultiBits;
-use crate::builder::ParseSpec;
 use crate::check::errors::analysis_error::AnalysisError;
 use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::expressions::expression::{

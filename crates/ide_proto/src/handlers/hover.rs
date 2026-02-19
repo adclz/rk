@@ -95,10 +95,10 @@ impl<'db> HoverHandler<'db> for Pou<'db> {
 
         let comment = self.get_comment(db).unwrap_or_default();
         let kind = match self {
-            Pou::Function(_) => "FUNCTION".into(),
-            Pou::FunctionBlock(_) => "FUNCTION_BLOCK".into(),
-            Pou::Class(_) => "CLASS".into(),
-            Pou::Interface(_) => "INTERFACE".into(),
+            Pou::Function(_) => "FUNCTION",
+            Pou::FunctionBlock(_) => "FUNCTION_BLOCK",
+            Pou::Class(_) => "CLASS",
+            Pou::Interface(_) => "INTERFACE",
             Pou::DataType(dt) => "TYPE",
         };
 

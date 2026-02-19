@@ -11,7 +11,10 @@ use crate::{
     check::{
         check_duplicates::{check_duplicate_pous, check_duplicate_programs},
         check_recursion::TypeDependencyGraph,
-        errors::{analysis_error::{AnalysisError, ToIdeDiagnostic}, e2_resolve::ResolveError},
+        errors::{
+            analysis_error::{AnalysisError, ToIdeDiagnostic},
+            e2_resolve::ResolveError,
+        },
     },
     hir_def::semantic_index::semantic_index,
     hir_ty::head::init_inference::infer_initialization,
@@ -29,14 +32,13 @@ pub mod check_recursion;
 pub mod errors;
 
 pub fn diagnostics_for_file(db: &dyn WorkspaceDataBase, file: File) -> Arc<Vec<IdeDiagnostic>> {
-    if let Some(config) = Workspace::try_get(db) {
-        if config.config_file(db).is_none() {
+    if let Some(config) = Workspace::try_get(db)
+        && config.config_file(db).is_none() {
             return Arc::new(vec![
-                ResolveError::NoConfigFileFound { file }.to_diagnostic(db)
+                ResolveError::NoConfigFileFound { file }.to_diagnostic(db),
             ]);
         }
-    }
-    
+
     let mut all_diagnostics = vec![];
 
     let lexer_errors: Vec<IdeDiagnostic> = get_ast::accumulated::<ParseErrorAccumulator>(db, file)

@@ -3,7 +3,6 @@ use hir::hir_def::expressions::spec::Struct;
 
 use crate::wasm_repr::{WasmRepr, WasmReprError, align_to};
 
-
 /// Calculate struct layout with natural alignment.
 /// Returns (total_size, max_alignment).
 pub fn calculate_struct_layout<'db>(
@@ -36,7 +35,6 @@ pub fn calculate_struct_layout<'db>(
 
     Ok((offset, max_align))
 }
-
 
 /// Calculate field offsets for a struct (used by body.rs for field access).
 pub fn calculate_field_offsets<'db>(

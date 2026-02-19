@@ -1,24 +1,24 @@
 //! Test helpers and modules for WASM codegen.
 
 use auto_lsp::{
-    default::db::{file::File, FileManager},
+    default::db::{FileManager, file::File},
     lsp_types::Url,
 };
 use db::RootDatabase;
-use hir::{hir_def::semantic_index::semantic_index, check::diagnostics_for_file};
+use hir::{check::diagnostics_for_file, hir_def::semantic_index::semantic_index};
 use rstest::*;
 
 use crate::debug::CodeGenConfig;
 
 // Test modules - only execution tests, no validation-only tests
-mod execution;
-mod references;
-mod ref_to;
-mod function_blocks;
 mod arrays;
 mod control_flow;
-mod structs;
 mod debug;
+mod execution;
+mod function_blocks;
+mod ref_to;
+mod references;
+mod structs;
 
 #[fixture]
 pub fn with_db() -> RootDatabase {
@@ -151,13 +151,20 @@ fn compile_to_wasm_impl(db: &mut RootDatabase, source: &str, check_diagnostics: 
     if check_diagnostics {
         let diagnostics = diagnostics_for_file(db, file);
         if !diagnostics.is_empty() {
-            let mut error_msg = format!("Source has {} diagnostic(s), cannot compile:\n", diagnostics.len());
-            for diag in diagnostics.iter().take(10) {  // Limit to first 10 errors
+            let mut error_msg = format!(
+                "Source has {} diagnostic(s), cannot compile:\n",
+                diagnostics.len()
+            );
+            for diag in diagnostics.iter().take(10) {
+                // Limit to first 10 errors
                 let inner = &diag.diagnostic;
                 error_msg.push_str(&format!("  [{:?}] {}\n", inner.severity, inner.message));
             }
             if diagnostics.len() > 10 {
-                error_msg.push_str(&format!("  ... and {} more diagnostics\n", diagnostics.len() - 10));
+                error_msg.push_str(&format!(
+                    "  ... and {} more diagnostics\n",
+                    diagnostics.len() - 10
+                ));
             }
             panic!("{}", error_msg);
         }

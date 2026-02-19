@@ -10,7 +10,12 @@ use crate::{
     CallSite, HasName, HirNodeInfo,
     check::errors::{analysis_error::ToIdeDiagnostic, e2_resolve::ResolveError},
     hir_def::expressions::expression::{FuncCall, ParamAssignKind},
-    hir_ty::{body::BodyInferenceResult, infer::{expr::InferExprCtx, Infer}, resolver::Resolver, ty::Type},
+    hir_ty::{
+        body::BodyInferenceResult,
+        infer::{Infer, expr::InferExprCtx},
+        resolver::Resolver,
+        ty::Type,
+    },
 };
 
 pub fn resolve_func_call<'db>(
@@ -220,7 +225,8 @@ fn coerce_with_var_target<'db>(
 
     // Check if this variable's type involves generic substitutions
     let var_type = var.spec(db).infer(db);
-    let has_generic_subst = matches!(var_type, Type::Generic(_)) && !ctx.generic_substitutions.is_empty();
+    let has_generic_subst =
+        matches!(var_type, Type::Generic(_)) && !ctx.generic_substitutions.is_empty();
 
     if has_generic_subst {
         use crate::hir_ty::infer::table::InferenceTable;
@@ -299,7 +305,12 @@ fn validate_generic_type_args<'db>(
         if inferred_types.len() == generics.len() {
             // Successfully inferred all generic types — validate and store
             if !validate_and_store_generic_substitutions(
-                db, generics, &inferred_types, callable_scope, call_site, ctx,
+                db,
+                generics,
+                &inferred_types,
+                callable_scope,
+                call_site,
+                ctx,
             ) {
                 return false;
             }
@@ -335,11 +346,19 @@ fn validate_generic_type_args<'db>(
     // Note: We use Type::resolve_spec directly because type argument specs
     // are not processed during signature inference (they're in the body, not variable declarations),
     // so Spec::infer() would return Type::Never.
-    let concrete_types: Vec<_> = type_args.iter().map(|s| Type::resolve_spec(db, *s)).collect();
+    let concrete_types: Vec<_> = type_args
+        .iter()
+        .map(|s| Type::resolve_spec(db, *s))
+        .collect();
 
     // Validate and store
     validate_and_store_generic_substitutions(
-        db, generics, &concrete_types, callable_scope, call_site, ctx,
+        db,
+        generics,
+        &concrete_types,
+        callable_scope,
+        call_site,
+        ctx,
     )
 }
 
@@ -358,7 +377,8 @@ fn validate_and_store_generic_substitutions<'db>(
 
     // Build the substitution map first (needed for GenericParameter constraints)
     for (generic_param, concrete_type) in generics.iter().zip(concrete_types.iter()) {
-        ctx.generic_substitutions.insert(generic_param.name(db), *concrete_type);
+        ctx.generic_substitutions
+            .insert(generic_param.name(db), *concrete_type);
     }
 
     // Validate ALL constraints from the signature in one pass
@@ -423,8 +443,8 @@ fn validate_and_store_generic_substitutions<'db>(
                 }
                 Constraint::GenericParameter(other_param_name) => {
                     // INTO<U> — cross-parameter constraint — E0316
-                    if let Some(&other_concrete) = ctx.generic_substitutions.get(other_param_name) {
-                        if !type_satisfies_into_constraint(db, concrete_type, &other_concrete) {
+                    if let Some(&other_concrete) = ctx.generic_substitutions.get(other_param_name)
+                        && !type_satisfies_into_constraint(db, concrete_type, &other_concrete) {
                             ctx.errors.push(
                                 TypeError::TypeArgumentIntoConstraintMismatch {
                                     type_arg: *concrete_type,
@@ -436,7 +456,6 @@ fn validate_and_store_generic_substitutions<'db>(
                             );
                             ok = false;
                         }
-                    }
                 }
             }
         }
@@ -551,7 +570,6 @@ fn unify_types<'db>(
                     // We'll let the caller handle this by checking if all params were inferred
                     if existing != actual {
                         // Conflicting inference - leave it to fail later
-                        return;
                     }
                 } else {
                     // Record the inferred type
@@ -580,7 +598,6 @@ fn type_satisfies_into_constraint<'db>(
     concrete: &Type<'db>,
     into_target: &Type<'db>,
 ) -> bool {
-    
     // Same type always satisfies
     if concrete == into_target {
         return true;
@@ -602,7 +619,10 @@ fn type_satisfies_into_constraint<'db>(
     target_elem.implicit_cast(*concrete_elem).is_some()
 }
 
-fn type_satisfies_any_constraint(typ: &Type, constraint: crate::hir_def::pous::generics::AnyGeneric) -> bool {
+fn type_satisfies_any_constraint(
+    typ: &Type,
+    constraint: crate::hir_def::pous::generics::AnyGeneric,
+) -> bool {
     match typ {
         Type::Elementary(elem) => constraint.contains(*elem),
         _ => false,

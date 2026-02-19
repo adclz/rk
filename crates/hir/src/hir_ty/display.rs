@@ -176,12 +176,9 @@ impl<'db> Type<'db> {
         let sema = semantic_index(db, scope_id.file(db));
         let mut result = String::new();
         for scope in sema.scope_iterator(db, scope_id) {
-            match scope.kind {
-                ScopeKind::Namespace(ns) => {
-                    result = format!("{}\n", ns.path(db).to_string(db));
-                    break;
-                }
-                _ => {}
+            if let ScopeKind::Namespace(ns) = scope.kind {
+                result = format!("{}\n", ns.path(db).to_string(db));
+                break;
             }
         }
 

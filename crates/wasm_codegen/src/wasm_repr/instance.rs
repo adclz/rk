@@ -65,7 +65,6 @@ pub fn calculate_fb_field_offsets<'db>(
     Ok(field_offsets)
 }
 
-
 /// Calculate class instance layout with natural alignment.
 /// Returns (total_size, max_alignment).
 pub fn calculate_class_layout<'db>(
@@ -100,7 +99,6 @@ pub fn calculate_class_layout<'db>(
 
     Ok((offset, max_align))
 }
-
 
 /// Calculate byte offsets for each field in an instance (FunctionBlock or Class).
 ///

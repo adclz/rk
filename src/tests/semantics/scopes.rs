@@ -4,14 +4,17 @@ use auto_lsp::{
 };
 
 use hir::{
-    HasName, HirNodeInfo, check::diagnostics_for_file, hir_def::{
+    HasName, HirNodeInfo,
+    check::diagnostics_for_file,
+    hir_def::{
         pous::pou::Pou,
         semantic_index::{get_scope, semantic_index},
-    }, hir_ty::{
+    },
+    hir_ty::{
         head::signature::infer_signature,
         name_res::{namespace_index, pou_name_res_from_scope},
         ty::Type,
-    }
+    },
 };
 use ide_proto::{hir_node::HirNode, walk::WalkHir};
 
@@ -46,7 +49,6 @@ fn diagnostics_on_empty_file() {
     let file = db.get_file(&url).unwrap();
     diagnostics_for_file(&db, file);
 }
-
 
 #[test]
 fn global_scope() {

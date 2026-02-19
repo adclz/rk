@@ -26,6 +26,7 @@ use auto_lsp::lsp_types::FoldingRangeProviderCapability;
 use auto_lsp::lsp_types::GlobPattern;
 use auto_lsp::lsp_types::HoverProviderCapability;
 use auto_lsp::lsp_types::ImplementationProviderCapability;
+use auto_lsp::lsp_types::PublishDiagnosticsParams;
 use auto_lsp::lsp_types::Registration;
 use auto_lsp::lsp_types::RegistrationParams;
 use auto_lsp::lsp_types::ServerCapabilities;
@@ -41,10 +42,9 @@ use auto_lsp::lsp_types::notification::DidOpenTextDocument;
 use auto_lsp::lsp_types::notification::DidSaveTextDocument;
 use auto_lsp::lsp_types::notification::LogTrace;
 use auto_lsp::lsp_types::notification::Notification;
-use auto_lsp::lsp_types::notification::SetTrace;
 use auto_lsp::lsp_types::notification::PublishDiagnostics;
+use auto_lsp::lsp_types::notification::SetTrace;
 use auto_lsp::lsp_types::notification::ShowMessage;
-use auto_lsp::lsp_types::PublishDiagnosticsParams;
 use auto_lsp::lsp_types::request::CodeActionRequest;
 use auto_lsp::lsp_types::request::CodeLensRequest;
 use auto_lsp::lsp_types::request::Completion;
@@ -72,7 +72,7 @@ use auto_lsp::server::request_registry::RequestRegistry;
 use auto_lsp::server::vendored::intent::ThreadIntent;
 use db::RootDatabase;
 use db::WorkspaceDataBase;
-use db::workspace::{ConfigFileError, ConfigurationNotice, Workspace};
+use db::workspace::{ConfigurationNotice, Workspace};
 use ide_proto::SUPPORTED_MODIFIERS;
 use ide_proto::SUPPORTED_TYPES;
 use std::error::Error;
@@ -148,7 +148,7 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
                 definition_provider: Some(OneOf::Left(true)),
                 document_formatting_provider: Some(OneOf::Left(true)),
                 implementation_provider: Some(ImplementationProviderCapability::Simple(true)),
-                
+
                 ..Default::default()
             },
             server_info: None,
@@ -237,7 +237,6 @@ fn on_notifications(
                 .and_then(|ws| Url::from_file_path(ws.join("config.toml")).ok())
                 .is_some_and(|url| p.changes.iter().any(|e| e.uri == url));
 
-
             if config_changed {
                 let workspace_uri = Workspace::try_get(&s.db)
                     .and_then(|c| c.workspace_folder(&s.db).cloned())
@@ -307,7 +306,10 @@ fn refresh_configuration(
                 version: None,
             },
         );
-        session.connection.sender.send(Message::Notification(notification))?;
+        session
+            .connection
+            .sender
+            .send(Message::Notification(notification))?;
     }
 
     // Locationless notices → window/showMessage
@@ -317,9 +319,11 @@ fn refresh_configuration(
             typ: lsp_types::MessageType::WARNING,
             message: notice.to_string(),
         };
-        let notification =
-            lsp_server::Notification::new(ShowMessage::METHOD.to_string(), params);
-        session.connection.sender.send(Message::Notification(notification))?;
+        let notification = lsp_server::Notification::new(ShowMessage::METHOD.to_string(), params);
+        session
+            .connection
+            .sender
+            .send(Message::Notification(notification))?;
     }
     Ok(())
 }
@@ -386,7 +390,10 @@ fn setup_file_watcher_if_necessary(
             did_change_watched_files: Some(caps),
             ..
         }) => {
-            tracing::error!("Client has did_change_watched_files capability but dynamic_registration is not true: {:?}", caps);
+            tracing::error!(
+                "Client has did_change_watched_files capability but dynamic_registration is not true: {:?}",
+                caps
+            );
         }
         _ => {
             tracing::error!("Client does not support did_change_watched_files capability");

@@ -27,7 +27,9 @@ fn test_execute_simple_arithmetic(mut with_db: db::RootDatabase) {
         .get_typed_func::<(i32, i32), i32>(&mut store, "add")
         .expect("Failed to get function");
 
-    let result = add_func.call(&mut store, (5, 3)).expect("Failed to call function");
+    let result = add_func
+        .call(&mut store, (5, 3))
+        .expect("Failed to call function");
     assert_eq!(result, 8, "5 + 3 should equal 8");
 }
 
@@ -57,7 +59,9 @@ fn test_execute_factorial(mut with_db: db::RootDatabase) {
         .get_typed_func::<i32, i32>(&mut store, "factorial")
         .expect("Failed to get function");
 
-    let result = factorial_func.call(&mut store, 5).expect("Failed to call function");
+    let result = factorial_func
+        .call(&mut store, 5)
+        .expect("Failed to call function");
     assert_eq!(result, 120, "5! should equal 120");
 }
 
@@ -97,7 +101,9 @@ fn test_execute_chained_calls(mut with_db: db::RootDatabase) {
         .get_typed_func::<i32, i32>(&mut store, "process")
         .expect("Failed to get function");
 
-    let result = process_func.call(&mut store, 5).expect("Failed to call function");
+    let result = process_func
+        .call(&mut store, 5)
+        .expect("Failed to call function");
     assert_eq!(result, 12, "double(add_one(5)) = double(6) = 12");
 }
 

@@ -4,9 +4,8 @@ use rustc_hash::FxHashMap;
 use crate::{
     HasName,
     check::errors::{analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError},
-    hir_ty::{head::init_inference::InitInference, infer::Infer},
+    hir_ty::head::init_inference::InitInference,
 };
-
 
 impl<'db> InitInference<'db> {
     pub(crate) fn check_generics(&mut self, db: &'db dyn WorkspaceDataBase) {

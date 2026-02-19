@@ -68,10 +68,7 @@ pub fn find_st_files(path: &Path) -> Vec<PathBuf> {
 // --- Parsing ---
 
 /// Reads and parses a single `.st` file, returning the URL and parsed Document.
-fn read_and_parse(
-    path: &Path,
-    parsers: &'static auto_lsp::core::parsers::Parsers,
-) -> ParseResult {
+fn read_and_parse(path: &Path, parsers: &'static auto_lsp::core::parsers::Parsers) -> ParseResult {
     let content = std::fs::read_to_string(path)?;
     let absolute_path = std::fs::canonicalize(path)?;
     let url = Url::from_file_path(&absolute_path)
@@ -88,10 +85,7 @@ fn read_and_parse(
 // --- Loading ---
 
 /// Loads a single workspace file into the database (LOW durability).
-pub fn load_file(
-    db: &mut RootDatabase,
-    path: &Path,
-) -> Result<File, Box<dyn std::error::Error>> {
+pub fn load_file(db: &mut RootDatabase, path: &Path) -> Result<File, Box<dyn std::error::Error>> {
     let content = std::fs::read_to_string(path)?;
     let absolute_path = std::fs::canonicalize(path)?;
     let url = Url::from_file_path(&absolute_path)

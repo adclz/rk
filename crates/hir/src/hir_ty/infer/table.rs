@@ -6,13 +6,13 @@ use crate::{
     check::errors::{analysis_error::ToIdeDiagnostic, e3_type::TypeError},
     hir_def::{
         expressions::{expression::Expr, spec::ElementarySpec},
-        pous::generics::{AnyGeneric, GenericParam},
+        pous::generics::GenericParam,
     },
     hir_ty::{
         body::BodyInferenceResult,
         infer::Infer,
         resolver::Resolver,
-        ty::{InferType, Type},
+        ty::Type,
     },
 };
 
@@ -207,7 +207,7 @@ impl<'db> InferenceTable<'db> {
             Type::Elementary(spec) => {
                 self.resolve_with_elementary_spec(db, final_ty, source, spec, resolver, results)
             }
-            Type::Generic(generic)  => {
+            Type::Generic(generic) => {
                 self.resolve_with_generic(db, final_ty, source, generic, resolver, results)
             }
             _ => unreachable!("Final type should be an elementary type"),
@@ -246,7 +246,7 @@ impl<'db> InferenceTable<'db> {
                             results.errors.push(
                                 TypeError::InferLiteralError {
                                     expr: *expr,
-                                    source: source,
+                                    source,
                                     target: final_ty,
                                     err,
                                 }
@@ -294,13 +294,15 @@ impl<'db> InferenceTable<'db> {
                     // since we can't have infer variants, we either replace them with a concrete type or a never type
                     match infer.check_as(db, cast) {
                         Ok(typ) => {
-                            results.type_of_expr.insert(*expr, Type::Elementary(infer.to_spec(db)));
+                            results
+                                .type_of_expr
+                                .insert(*expr, Type::Elementary(infer.to_spec(db)));
                         }
                         Err(err) => {
                             results.errors.push(
                                 TypeError::InferLiteralError {
                                     expr: *expr,
-                                    source: source,
+                                    source,
                                     target: final_ty,
                                     err,
                                 }

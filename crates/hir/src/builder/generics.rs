@@ -5,10 +5,7 @@ use crate::{
     check::errors::analysis_error::AnalysisError,
     hir_def::{
         interned::identifier::{Ident, SpanIdent},
-        pous::{
-            generics::{GenericContraint, GenericParam, SpecContraint},
-            variable::VariableDecl,
-        },
+        pous::generics::{GenericContraint, GenericParam, SpecContraint},
     },
 };
 

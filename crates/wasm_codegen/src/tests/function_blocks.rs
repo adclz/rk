@@ -31,9 +31,13 @@ fn test_fb_method_execution(mut with_db: db::RootDatabase) {
     let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
 
     // Get memory and allocate FB instance (just one INT: count = 0)
-    let memory = instance.get_memory(&mut store, "memory").expect("Failed to get memory");
+    let memory = instance
+        .get_memory(&mut store, "memory")
+        .expect("Failed to get memory");
     let fb_address = 0i32; // FB instance at address 0
-    memory.write(&mut store, fb_address as usize, &0i32.to_le_bytes()).unwrap();
+    memory
+        .write(&mut store, fb_address as usize, &0i32.to_le_bytes())
+        .unwrap();
 
     // Call Increment method (should increment count and return 1)
     let increment = instance

@@ -66,8 +66,16 @@ fn test_nested_if(mut with_db: db::RootDatabase) {
         .get_typed_func::<i32, i32>(&mut store, "classify")
         .expect("Failed to get function");
 
-    assert_eq!(classify.call(&mut store, 15).unwrap(), 2, "15 is large positive");
-    assert_eq!(classify.call(&mut store, 5).unwrap(), 1, "5 is small positive");
+    assert_eq!(
+        classify.call(&mut store, 15).unwrap(),
+        2,
+        "15 is large positive"
+    );
+    assert_eq!(
+        classify.call(&mut store, 5).unwrap(),
+        1,
+        "5 is small positive"
+    );
     assert_eq!(classify.call(&mut store, -3).unwrap(), -1, "-3 is negative");
     assert_eq!(classify.call(&mut store, 0).unwrap(), 0, "0 is zero");
 }
@@ -101,10 +109,26 @@ fn test_case_statement(mut with_db: db::RootDatabase) {
         .get_typed_func::<i32, i32>(&mut store, "day_type")
         .expect("Failed to get function");
 
-    assert_eq!(day_type.call(&mut store, 1).unwrap(), 1, "Monday is weekday");
-    assert_eq!(day_type.call(&mut store, 5).unwrap(), 1, "Friday is weekday");
-    assert_eq!(day_type.call(&mut store, 6).unwrap(), 0, "Saturday is weekend");
-    assert_eq!(day_type.call(&mut store, 7).unwrap(), 0, "Sunday is weekend");
+    assert_eq!(
+        day_type.call(&mut store, 1).unwrap(),
+        1,
+        "Monday is weekday"
+    );
+    assert_eq!(
+        day_type.call(&mut store, 5).unwrap(),
+        1,
+        "Friday is weekday"
+    );
+    assert_eq!(
+        day_type.call(&mut store, 6).unwrap(),
+        0,
+        "Saturday is weekend"
+    );
+    assert_eq!(
+        day_type.call(&mut store, 7).unwrap(),
+        0,
+        "Sunday is weekend"
+    );
     assert_eq!(day_type.call(&mut store, 0).unwrap(), -1, "0 is invalid");
     assert_eq!(day_type.call(&mut store, 8).unwrap(), -1, "8 is invalid");
 }
@@ -140,7 +164,11 @@ fn test_for_loop(mut with_db: db::RootDatabase) {
         .expect("Failed to get function");
 
     assert_eq!(sum_to_n.call(&mut store, 5).unwrap(), 15, "1+2+3+4+5 = 15");
-    assert_eq!(sum_to_n.call(&mut store, 10).unwrap(), 55, "Sum to 10 is 55");
+    assert_eq!(
+        sum_to_n.call(&mut store, 10).unwrap(),
+        55,
+        "Sum to 10 is 55"
+    );
 }
 
 #[rstest]
@@ -214,7 +242,15 @@ fn test_repeat_loop(mut with_db: db::RootDatabase) {
         .get_typed_func::<i32, i32>(&mut store, "find_divisor")
         .expect("Failed to get function");
 
-    assert_eq!(find_divisor.call(&mut store, 15).unwrap(), 3, "15 divisible by 3");
+    assert_eq!(
+        find_divisor.call(&mut store, 15).unwrap(),
+        3,
+        "15 divisible by 3"
+    );
     assert_eq!(find_divisor.call(&mut store, 7).unwrap(), 7, "7 is prime");
-    assert_eq!(find_divisor.call(&mut store, 12).unwrap(), 2, "12 divisible by 2");
+    assert_eq!(
+        find_divisor.call(&mut store, 12).unwrap(),
+        2,
+        "12 divisible by 2"
+    );
 }

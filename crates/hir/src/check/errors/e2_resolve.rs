@@ -435,7 +435,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 .call(),
             Self::NoConfigFileFound { file } => {
                 let mut diag = diag()
-                    .message(format!("no configuration file found"))
+                    .message("no configuration file found".to_string())
                     .severity(DiagnosticSeverity::HINT)
                     .tags(vec![DiagnosticTag::UNNECESSARY])
                     .desc(self)
@@ -454,7 +454,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
             }
         }
     }
-} 
+}
 
 fn list_variable_candidates<'db, I>(
     db: &'db dyn WorkspaceDataBase,

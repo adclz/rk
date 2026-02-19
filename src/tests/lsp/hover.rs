@@ -57,7 +57,7 @@ fn marker_string_to_string(marker: MarkedString) -> String {
             let language = l.language;
             let value = l.value;
             format!("```{language}\n{value}\n```")
-        },
+        }
     }
 }
 
@@ -388,7 +388,6 @@ END_TYPE
     ");
 }
 
-
 #[rstest]
 pub fn hover_path_exprs(mut with_db: RootDatabase) {
     let source = r#"
@@ -433,4 +432,3 @@ END_FUNCTION_BLOCK
     ```
     ");
 }
-

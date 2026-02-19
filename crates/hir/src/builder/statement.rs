@@ -1,6 +1,6 @@
+use crate::builder::ParseSpec;
 use crate::builder::expression::{ParseExpr, ParseExpression, ParseVariableAccess};
 use crate::builder::semantic_index::SemanticIndexBuilder;
-use crate::builder::ParseSpec;
 use crate::check::errors::analysis_error::AnalysisError;
 use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::expressions::expression::{FuncCall, ParamAssign, ParamAssignKind};

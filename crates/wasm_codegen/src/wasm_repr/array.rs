@@ -1,5 +1,8 @@
 use db::WorkspaceDataBase;
-use hir::hir_def::expressions::{expression::{Elementary, ExprKind, PrimaryExpr}, spec::Array};
+use hir::hir_def::expressions::{
+    expression::{Elementary, ExprKind, PrimaryExpr},
+    spec::Array,
+};
 
 use crate::wasm_repr::{WasmRepr, WasmReprError};
 
@@ -21,10 +24,12 @@ pub fn calculate_array_layout<'db>(
     let total_elements = calculate_array_total_elements(db, array_type)?;
 
     // Total size = element_size * total_elements
-    let total_size = element_size.checked_mul(total_elements)
-        .ok_or_else(|| WasmReprError::UnsupportedType(
-            format!("Array size overflow: {} * {}", element_size, total_elements)
-        ))?;
+    let total_size = element_size.checked_mul(total_elements).ok_or_else(|| {
+        WasmReprError::UnsupportedType(format!(
+            "Array size overflow: {} * {}",
+            element_size, total_elements
+        ))
+    })?;
 
     Ok((total_size, element_align))
 }
@@ -44,10 +49,12 @@ fn calculate_array_total_elements<'db>(
         // Calculate dimension size: (end - start + 1)
         let dim_size = (end - start + 1).max(0) as u32;
 
-        total = total.checked_mul(dim_size)
-            .ok_or_else(|| WasmReprError::UnsupportedType(
-                format!("Array dimension overflow: {} * {}", total, dim_size)
-            ))?;
+        total = total.checked_mul(dim_size).ok_or_else(|| {
+            WasmReprError::UnsupportedType(format!(
+                "Array dimension overflow: {} * {}",
+                total, dim_size
+            ))
+        })?;
     }
 
     Ok(total)
@@ -61,22 +68,22 @@ fn extract_integer_literal<'db>(
 ) -> Result<i32, WasmReprError> {
     match expr.expr(db) {
         ExprKind::PrimaryExpr(PrimaryExpr::Literal(Elementary::InferInteger(int))) => {
-            int.as_i32(db).map_err(|e| WasmReprError::UnsupportedType(
-                format!("Failed to parse array bound as i32: {}", e)
-            ))
+            int.as_i32(db).map_err(|e| {
+                WasmReprError::UnsupportedType(format!("Failed to parse array bound as i32: {}", e))
+            })
         }
         ExprKind::PrimaryExpr(PrimaryExpr::Literal(Elementary::Int(int))) => {
-            int.as_i32(db).map_err(|e| WasmReprError::UnsupportedType(
-                format!("Failed to parse array bound as i32: {}", e)
-            ))
+            int.as_i32(db).map_err(|e| {
+                WasmReprError::UnsupportedType(format!("Failed to parse array bound as i32: {}", e))
+            })
         }
         ExprKind::PrimaryExpr(PrimaryExpr::Literal(Elementary::DInt(int))) => {
-            int.as_i32(db).map_err(|e| WasmReprError::UnsupportedType(
-                format!("Failed to parse array bound as i32: {}", e)
-            ))
+            int.as_i32(db).map_err(|e| {
+                WasmReprError::UnsupportedType(format!("Failed to parse array bound as i32: {}", e))
+            })
         }
         _ => Err(WasmReprError::UnsupportedType(
-            "Array bounds must be integer literals".to_string()
+            "Array bounds must be integer literals".to_string(),
         )),
     }
 }

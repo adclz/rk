@@ -700,9 +700,8 @@ impl<'db> ParseSpec<'db> for ast::generated::RefTypeSpec {
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<Spec<'db>, AnalysisError<'db>> {
-
         let mut target_type = self.children.cast(sema.ast).to_spec(sema)?;
-        
+
         // for each ref count, we need to create a new spec that wraps the previous one in a RefSpec
         for _ in self.ref_count.iter() {
             target_type = Spec::new(

@@ -1,4 +1,7 @@
-use crate::{hir_def::{expressions::spec::ElementarySpec, pous::generics::AnyGeneric}, hir_ty::ty::Type};
+use crate::{
+    hir_def::{expressions::spec::ElementarySpec, pous::generics::AnyGeneric},
+    hir_ty::ty::Type,
+};
 
 impl<'db> AnyGeneric {
     pub fn implicit_cast_with_spec(&self, spec: ElementarySpec) -> Option<ElementarySpec> {

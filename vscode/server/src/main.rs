@@ -18,7 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>
 use std::error::Error;
 
 use server::boot;
-use tracing_subscriber::{prelude::*, EnvFilter, fmt};
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     // Initialize tracing based on build type and environment
@@ -33,7 +33,7 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     // Write logs to stderr so they appear in VSCode's output channel
     let fmt_layer = fmt::layer()
         .with_writer(std::io::stderr)
-        .with_ansi(false)  // Disable colors for clean output in VSCode
+        .with_ansi(false) // Disable colors for clean output in VSCode
         .with_target(false); // Hide target module paths for cleaner logs
 
     tracing_subscriber::registry()

@@ -113,7 +113,7 @@ impl ElementarySpec {
     }
 
     pub fn is_complex(&self) -> bool {
-        !self.is_simple()   
+        !self.is_simple()
     }
 }
 

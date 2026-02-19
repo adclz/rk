@@ -1,4 +1,7 @@
-use crate::tests::{lsp::formatter::fmt, utils::{add_sources, with_db}};
+use crate::tests::{
+    lsp::formatter::fmt,
+    utils::{add_sources, with_db},
+};
 use auto_lsp::core::document::Document;
 use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;

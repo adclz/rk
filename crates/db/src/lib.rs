@@ -5,16 +5,16 @@ use auto_lsp::{
 use dashmap::DashMap;
 use salsa::{Database, Event};
 
-pub mod workspace;
-pub mod loader;
 pub mod config_file;
+pub mod loader;
+pub mod workspace;
 
 #[salsa::db]
 #[derive(Default, Clone)]
 pub struct RootDatabase {
     storage: salsa::Storage<Self>,
     pub(crate) workspace_files: DashMap<Url, File>,
-    pub(crate) std_lib_files: DashMap<Url, File>
+    pub(crate) std_lib_files: DashMap<Url, File>,
 }
 
 impl RootDatabase {
@@ -53,4 +53,3 @@ impl WorkspaceDataBase for RootDatabase {
         &self.std_lib_files
     }
 }
-

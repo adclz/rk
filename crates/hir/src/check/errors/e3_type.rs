@@ -3,9 +3,20 @@ use db::WorkspaceDataBase;
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 use crate::{
-    CallSite, HasName, HirNodeInfo, check::errors::analysis_error::ToIdeDiagnostic, hir_def::{expressions::{expression::{AddOperatorKind, Expr, MultOperatorKind}, spec::Spec}, pous::generics::{AnyGeneric, GenericParam}}, hir_ty::{
-        body::{Adjust, Adjustment}, head::signature::Constraint, infer::{Infer, table::InferSource}, ty::Type
-    }
+    CallSite, HirNodeInfo,
+    check::errors::analysis_error::ToIdeDiagnostic,
+    hir_def::{
+        expressions::{
+            expression::{AddOperatorKind, Expr, MultOperatorKind},
+            spec::Spec,
+        },
+        pous::generics::{AnyGeneric, GenericParam},
+    },
+    hir_ty::{
+        body::{Adjust, Adjustment},
+        infer::table::InferSource,
+        ty::Type,
+    },
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
@@ -123,7 +134,9 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::MissingTypeArguments { .. } => "missing type arguments",
             Self::WrongTypeArgumentArity { .. } => "wrong number of type arguments",
             Self::TypeArgumentConstraintMismatch { .. } => "type argument constraint mismatch",
-            Self::TypeArgumentIntoConstraintMismatch { .. } => "type argument INTO constraint mismatch",
+            Self::TypeArgumentIntoConstraintMismatch { .. } => {
+                "type argument INTO constraint mismatch"
+            }
             _ => "type mismatch",
         }
     }
@@ -291,7 +304,10 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 .desc(self)
                 .range(constraint.as_call_site(db).get_span(db))
                 .call(),
-            Self::MissingTypeArguments { func_name, call_site } => diag()
+            Self::MissingTypeArguments {
+                func_name,
+                call_site,
+            } => diag()
                 .message(format!(
                     "generic function '{}' requires explicit type arguments",
                     func_name.text(db)
@@ -300,7 +316,12 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 .desc(self)
                 .range(call_site.get_span(db))
                 .call(),
-            Self::WrongTypeArgumentArity { func_name, expected, actual, call_site } => diag()
+            Self::WrongTypeArgumentArity {
+                func_name,
+                expected,
+                actual,
+                call_site,
+            } => diag()
                 .message(format!(
                     "expected {} type argument(s), got {}",
                     expected, actual
@@ -309,7 +330,12 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 .desc(self)
                 .range(call_site.get_span(db))
                 .call(),
-            Self::TypeArgumentConstraintMismatch { concrete_type, param_name, constraint, call_site } => diag()
+            Self::TypeArgumentConstraintMismatch {
+                concrete_type,
+                param_name,
+                constraint,
+                call_site,
+            } => diag()
                 .message(format!(
                     "type '{}' does not satisfy constraint '{}' (on generic parameter '{}')",
                     concrete_type.type_name(db),
@@ -320,7 +346,12 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 .desc(self)
                 .range(call_site.get_span(db))
                 .call(),
-            Self::TypeArgumentIntoConstraintMismatch { type_arg, into_target, param_name, call_site } => diag()
+            Self::TypeArgumentIntoConstraintMismatch {
+                type_arg,
+                into_target,
+                param_name,
+                call_site,
+            } => diag()
                 .message(format!(
                     "'{}' cannot be implicitly cast into '{}' (INTO constraint on '{}')",
                     type_arg.type_name(db),

@@ -3,7 +3,6 @@ use wasm_encoder::ValType;
 
 use crate::wasm_repr::WasmReprError;
 
-
 /// Map IEC elementary types to WASM primitive types.
 pub fn elementary_to_val_type(spec: ElementarySpec) -> Result<ValType, WasmReprError> {
     Ok(match spec {
@@ -63,10 +62,7 @@ pub fn elementary_to_val_type(spec: ElementarySpec) -> Result<ValType, WasmReprE
 pub fn is_signed(spec: ElementarySpec) -> bool {
     matches!(
         spec,
-        ElementarySpec::SInt
-            | ElementarySpec::Int
-            | ElementarySpec::DInt
-            | ElementarySpec::LInt
+        ElementarySpec::SInt | ElementarySpec::Int | ElementarySpec::DInt | ElementarySpec::LInt
     )
 }
 

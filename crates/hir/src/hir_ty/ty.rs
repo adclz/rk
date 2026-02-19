@@ -10,7 +10,14 @@ use crate::{
         },
         interned::identifier::Ident,
         pous::{
-            class::Class, data_type::DataType, function::Function, function_block::FunctionBlock, generics::GenericParam, interface::Interface, pou::Pou, variable::{DirectVariable, VariableDecl}
+            class::Class,
+            data_type::DataType,
+            function::Function,
+            function_block::FunctionBlock,
+            generics::GenericParam,
+            interface::Interface,
+            pou::Pou,
+            variable::{DirectVariable, VariableDecl},
         },
         program::ProgramDecl,
         scope::ScopeId,

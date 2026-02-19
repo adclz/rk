@@ -201,7 +201,8 @@ impl<'db> Type<'db> {
                 ctx.type_of_path_expr.insert(path_expr, Type::MethodDecl(m));
             }
             Type::Variable((var, multibits)) => {
-                ctx.type_of_path_expr.insert(path_expr, Type::new_var_with_multibits(db, var, multibits));
+                ctx.type_of_path_expr
+                    .insert(path_expr, Type::new_var_with_multibits(db, var, multibits));
             }
             _ => {
                 ctx.errors.push(
@@ -232,7 +233,7 @@ impl<'db> Type<'db> {
                 check_visibility(db, &ident.as_call_site(db), method.method, &mut ctx.errors);
                 ctx.type_of_path_expr
                     .insert(*expr, Type::MethodDecl(method.method));
-            } 
+            }
             //fixme: Should SUPER allow access to variables in the base POU?
             else {
                 ctx.errors.push(

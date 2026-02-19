@@ -26,7 +26,9 @@ fn test_var_in_out_read(mut with_db: db::RootDatabase) {
     let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
 
     // Get the memory and write value 42 at address 0
-    let memory = instance.get_memory(&mut store, "memory").expect("Failed to get memory");
+    let memory = instance
+        .get_memory(&mut store, "memory")
+        .expect("Failed to get memory");
     memory.write(&mut store, 0, &42i32.to_le_bytes()).unwrap();
 
     // Call function with pointer to address 0
@@ -61,7 +63,9 @@ fn test_var_in_out_write(mut with_db: db::RootDatabase) {
     let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
 
     // Get memory and initialize with 0
-    let memory = instance.get_memory(&mut store, "memory").expect("Failed to get memory");
+    let memory = instance
+        .get_memory(&mut store, "memory")
+        .expect("Failed to get memory");
     memory.write(&mut store, 0, &0i32.to_le_bytes()).unwrap();
 
     // Call function with pointer
@@ -102,7 +106,9 @@ fn test_var_in_out_increment(mut with_db: db::RootDatabase) {
     let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
 
     // Get memory and initialize with 10
-    let memory = instance.get_memory(&mut store, "memory").expect("Failed to get memory");
+    let memory = instance
+        .get_memory(&mut store, "memory")
+        .expect("Failed to get memory");
     memory.write(&mut store, 0, &10i32.to_le_bytes()).unwrap();
 
     let func = instance
@@ -143,7 +149,9 @@ fn test_var_in_out_real(mut with_db: db::RootDatabase) {
     let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
 
     // Get memory and initialize with 3.5
-    let memory = instance.get_memory(&mut store, "memory").expect("Failed to get memory");
+    let memory = instance
+        .get_memory(&mut store, "memory")
+        .expect("Failed to get memory");
     memory.write(&mut store, 0, &3.5f32.to_le_bytes()).unwrap();
 
     let func = instance
@@ -187,7 +195,9 @@ fn test_var_in_out_with_var_input(mut with_db: db::RootDatabase) {
     let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
 
     // Get memory and initialize target with 100
-    let memory = instance.get_memory(&mut store, "memory").expect("Failed to get memory");
+    let memory = instance
+        .get_memory(&mut store, "memory")
+        .expect("Failed to get memory");
     memory.write(&mut store, 0, &100i32.to_le_bytes()).unwrap();
 
     let func = instance

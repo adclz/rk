@@ -107,26 +107,44 @@ impl AnyGeneric {
             Self::ANY => true,
             Self::ANY_INT => matches!(
                 spec,
-                ElementarySpec::SInt | ElementarySpec::Int | ElementarySpec::DInt | ElementarySpec::LInt
-                | ElementarySpec::USInt | ElementarySpec::UInt | ElementarySpec::UDInt | ElementarySpec::ULInt
+                ElementarySpec::SInt
+                    | ElementarySpec::Int
+                    | ElementarySpec::DInt
+                    | ElementarySpec::LInt
+                    | ElementarySpec::USInt
+                    | ElementarySpec::UInt
+                    | ElementarySpec::UDInt
+                    | ElementarySpec::ULInt
             ),
             Self::ANY_SIGNED => matches!(
                 spec,
-                ElementarySpec::SInt | ElementarySpec::Int | ElementarySpec::DInt | ElementarySpec::LInt
+                ElementarySpec::SInt
+                    | ElementarySpec::Int
+                    | ElementarySpec::DInt
+                    | ElementarySpec::LInt
             ),
             Self::ANY_UNSIGNED => matches!(
                 spec,
-                ElementarySpec::USInt | ElementarySpec::UInt | ElementarySpec::UDInt | ElementarySpec::ULInt
+                ElementarySpec::USInt
+                    | ElementarySpec::UInt
+                    | ElementarySpec::UDInt
+                    | ElementarySpec::ULInt
             ),
             Self::ANY_REAL => matches!(spec, ElementarySpec::Real | ElementarySpec::LReal),
             Self::ANY_BIT => matches!(
                 spec,
-                ElementarySpec::Bool | ElementarySpec::Byte | ElementarySpec::Word
-                | ElementarySpec::DWord | ElementarySpec::LWord
+                ElementarySpec::Bool
+                    | ElementarySpec::Byte
+                    | ElementarySpec::Word
+                    | ElementarySpec::DWord
+                    | ElementarySpec::LWord
             ),
             Self::ANY_STRING => matches!(
                 spec,
-                ElementarySpec::String | ElementarySpec::WString | ElementarySpec::Char | ElementarySpec::WChar
+                ElementarySpec::String
+                    | ElementarySpec::WString
+                    | ElementarySpec::Char
+                    | ElementarySpec::WChar
             ),
             Self::ANY_DATE => matches!(spec, ElementarySpec::Date | ElementarySpec::LDate),
             Self::ANY_DURATION => matches!(spec, ElementarySpec::Time | ElementarySpec::LTime),

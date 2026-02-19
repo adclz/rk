@@ -50,17 +50,29 @@ pub fn emit_cast(from_spec: ElementarySpec, to_spec: ElementarySpec) -> Vec<Inst
     match (from_val_type, to_val_type) {
         // i32 → i64
         (ValType::I32, ValType::I64) => {
-            vec![if from_signed { I64ExtendI32S } else { I64ExtendI32U }]
+            vec![if from_signed {
+                I64ExtendI32S
+            } else {
+                I64ExtendI32U
+            }]
         }
 
         // i32 → f32
         (ValType::I32, ValType::F32) => {
-            vec![if from_signed { F32ConvertI32S } else { F32ConvertI32U }]
+            vec![if from_signed {
+                F32ConvertI32S
+            } else {
+                F32ConvertI32U
+            }]
         }
 
         // i32 → f64
         (ValType::I32, ValType::F64) => {
-            vec![if from_signed { F64ConvertI32S } else { F64ConvertI32U }]
+            vec![if from_signed {
+                F64ConvertI32S
+            } else {
+                F64ConvertI32U
+            }]
         }
 
         // i64 → i32 (truncate) - not typically an implicit cast, but included for completeness
@@ -70,12 +82,20 @@ pub fn emit_cast(from_spec: ElementarySpec, to_spec: ElementarySpec) -> Vec<Inst
 
         // i64 → f32
         (ValType::I64, ValType::F32) => {
-            vec![if from_signed { F32ConvertI64S } else { F32ConvertI64U }]
+            vec![if from_signed {
+                F32ConvertI64S
+            } else {
+                F32ConvertI64U
+            }]
         }
 
         // i64 → f64
         (ValType::I64, ValType::F64) => {
-            vec![if from_signed { F64ConvertI64S } else { F64ConvertI64U }]
+            vec![if from_signed {
+                F64ConvertI64S
+            } else {
+                F64ConvertI64U
+            }]
         }
 
         // f32 → f64 (promote)
@@ -90,29 +110,48 @@ pub fn emit_cast(from_spec: ElementarySpec, to_spec: ElementarySpec) -> Vec<Inst
 
         // f32 → i32
         (ValType::F32, ValType::I32) => {
-            vec![if to_signed { I32TruncF32S } else { I32TruncF32U }]
+            vec![if to_signed {
+                I32TruncF32S
+            } else {
+                I32TruncF32U
+            }]
         }
 
         // f32 → i64
         (ValType::F32, ValType::I64) => {
-            vec![if to_signed { I64TruncF32S } else { I64TruncF32U }]
+            vec![if to_signed {
+                I64TruncF32S
+            } else {
+                I64TruncF32U
+            }]
         }
 
         // f64 → i32
         (ValType::F64, ValType::I32) => {
-            vec![if to_signed { I32TruncF64S } else { I32TruncF64U }]
+            vec![if to_signed {
+                I32TruncF64S
+            } else {
+                I32TruncF64U
+            }]
         }
 
         // f64 → i64
         (ValType::F64, ValType::I64) => {
-            vec![if to_signed { I64TruncF64S } else { I64TruncF64U }]
+            vec![if to_signed {
+                I64TruncF64S
+            } else {
+                I64TruncF64U
+            }]
         }
 
         // Same types - should have been caught earlier, but handle it
         (from, to) if from == to => vec![],
 
         // Unsupported conversion
-        _ => panic!("Unsupported type conversion: {:?} → {:?}", from_val_type, to_val_type),
+        _ => panic!(
+            "Unsupported type conversion: {:?} → {:?}",
+            from_val_type, to_val_type
+        ),
     }
 }
 

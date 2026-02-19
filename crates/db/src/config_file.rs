@@ -2,7 +2,7 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-use crate::{workspace::Workspace, WorkspaceDataBase};
+use crate::{WorkspaceDataBase, workspace::Workspace};
 
 /// Parsed and validated workspace configuration from `config.toml`; serde
 /// rejects unknown keys.
@@ -20,7 +20,7 @@ pub struct ProjectInfo {
     pub name: String,
     pub version: String,
 }
- 
+
 #[derive(Default, Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OutputConfig {

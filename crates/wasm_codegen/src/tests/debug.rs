@@ -24,8 +24,7 @@ fn test_debug_globals_exported(mut with_db: db::RootDatabase) {
 
     // Validate the WASM module
     let engine = wasmtime::Engine::default();
-    let module = wasmtime::Module::new(&engine, &wasm_bytes)
-        .expect("WASM should be valid");
+    let module = wasmtime::Module::new(&engine, &wasm_bytes).expect("WASM should be valid");
 
     // Check that debug globals are exported
     let exports: Vec<_> = module.exports().collect();
@@ -60,8 +59,7 @@ fn test_debug_mode_none_no_globals(mut with_db: db::RootDatabase) {
 
     // Validate the WASM module
     let engine = wasmtime::Engine::default();
-    let module = wasmtime::Module::new(&engine, &wasm_bytes)
-        .expect("WASM should be valid");
+    let module = wasmtime::Module::new(&engine, &wasm_bytes).expect("WASM should be valid");
 
     // Check that debug globals are NOT exported
     let exports: Vec<_> = module.exports().collect();
@@ -111,7 +109,9 @@ fn test_debug_disabled_runs_normally(mut with_db: db::RootDatabase) {
         .get_typed_func::<(i32, i32), i32>(&mut store, "add")
         .expect("Failed to get function");
 
-    let result = add_func.call(&mut store, (5, 3)).expect("Function should execute");
+    let result = add_func
+        .call(&mut store, (5, 3))
+        .expect("Function should execute");
     assert_eq!(result, 8);
 }
 
@@ -142,7 +142,9 @@ fn test_debug_enabled_traps(mut with_db: db::RootDatabase) {
     let debug_enabled = instance
         .get_global(&mut store, "debug_enabled")
         .expect("debug_enabled should exist");
-    debug_enabled.set(&mut store, wasmtime::Val::I32(1)).unwrap();
+    debug_enabled
+        .set(&mut store, wasmtime::Val::I32(1))
+        .unwrap();
 
     // Try to run the function - should trap!
     let test_func = instance

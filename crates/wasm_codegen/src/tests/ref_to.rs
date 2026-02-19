@@ -54,7 +54,9 @@ fn test_ref_to_var_in_out(mut with_db: db::RootDatabase) {
     let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
 
     // Get memory and set value at address 0
-    let memory = instance.get_memory(&mut store, "memory").expect("Failed to get memory");
+    let memory = instance
+        .get_memory(&mut store, "memory")
+        .expect("Failed to get memory");
     memory.write(&mut store, 0, &42i32.to_le_bytes()).unwrap();
 
     // Call function with pointer to address 0
@@ -92,7 +94,9 @@ fn test_ref_to_assignment_var_in_out(mut with_db: db::RootDatabase) {
     let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
 
     // Get memory and initialize
-    let memory = instance.get_memory(&mut store, "memory").expect("Failed to get memory");
+    let memory = instance
+        .get_memory(&mut store, "memory")
+        .expect("Failed to get memory");
     memory.write(&mut store, 0, &0i32.to_le_bytes()).unwrap();
 
     // Call function

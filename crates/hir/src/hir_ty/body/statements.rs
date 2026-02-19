@@ -231,12 +231,9 @@ impl<'db> StmtsResolverCtx<'db> {
                                 CaseKind::Expression(expr) => {
                                     self.infer_and_check_expr(db, &mut infer, *expr, ctx);
 
-                                    if let Err(err) = infer.coerce_type_with_expr(
-                                        db,
-                                        condition_typ,
-                                        *expr,
-                                        ctx,
-                                    ) {
+                                    if let Err(err) =
+                                        infer.coerce_type_with_expr(db, condition_typ, *expr, ctx)
+                                    {
                                         ctx.errors.push(err.into_non_comparable(
                                             db,
                                             condition_typ,
@@ -248,12 +245,9 @@ impl<'db> StmtsResolverCtx<'db> {
                                     self.infer_and_check_expr(db, &mut infer, *lower, ctx);
                                     self.infer_and_check_expr(db, &mut infer, *upper, ctx);
 
-                                    if let Err(err) = infer.coerce_type_with_expr(
-                                        db,
-                                        condition_typ,
-                                        *lower,
-                                        ctx,
-                                    ) {
+                                    if let Err(err) =
+                                        infer.coerce_type_with_expr(db, condition_typ, *lower, ctx)
+                                    {
                                         ctx.errors.push(err.into_non_comparable(
                                             db,
                                             condition_typ,
@@ -261,12 +255,9 @@ impl<'db> StmtsResolverCtx<'db> {
                                         ));
                                     }
 
-                                    if let Err(err) = infer.coerce_type_with_expr(
-                                        db,
-                                        condition_typ,
-                                        *upper,
-                                        ctx,
-                                    ) {
+                                    if let Err(err) =
+                                        infer.coerce_type_with_expr(db, condition_typ, *upper, ctx)
+                                    {
                                         ctx.errors.push(err.into_non_comparable(
                                             db,
                                             condition_typ,

@@ -1,6 +1,6 @@
 use std::{fmt::Display, path::PathBuf};
 
-use auto_lsp::lsp_types::{DiagnosticSeverity, Diagnostic, PositionEncodingKind, Url};
+use auto_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, PositionEncodingKind, Url};
 use ide_diagnostic::IdeDiagnostic;
 use salsa::{Durability, Setter};
 
@@ -19,7 +19,7 @@ pub struct Workspace {
     #[returns(as_ref)]
     pub config_file: Option<PathBuf>,
 
-    pub encoding: PositionEncodingKind
+    pub encoding: PositionEncodingKind,
 }
 
 impl Workspace {
@@ -106,21 +106,23 @@ fn resolve_all(
     let user_stdlib_path = match &config_file {
         Some(path) => match std::fs::read_to_string(path) {
             Ok(source) => match crate::config_file::parse_config(&source) {
-                Ok(config) => config
-                    .stdlib_path
-                    .map(PathBuf::from)
-                    .filter(|p| p.exists()),
+                Ok(config) => config.stdlib_path.map(PathBuf::from).filter(|p| p.exists()),
                 Err(e) => {
-                    if let Ok(uri) = Url::from_file_path(path) {
+                    if let Ok(_uri) = Url::from_file_path(path) {
                         // Reuse the already-read `source` for offset→line/col conversion.
-                        let range = e.span().and_then(|span| {
-                            let parsers = ast::RK_PARSER.get("structured_text")?;
-                            let tree = parsers.parser.write().parse("".as_bytes(), None)?;
-                            let doc = auto_lsp::core::document::Document::new(
-                                source.clone(), tree, Some(encoding),
-                            );
-                            doc.range_at(span).ok()
-                        }).unwrap_or_default();
+                        let range = e
+                            .span()
+                            .and_then(|span| {
+                                let parsers = ast::RK_PARSER.get("structured_text")?;
+                                let tree = parsers.parser.write().parse("".as_bytes(), None)?;
+                                let doc = auto_lsp::core::document::Document::new(
+                                    source.clone(),
+                                    tree,
+                                    Some(encoding),
+                                );
+                                doc.range_at(span).ok()
+                            })
+                            .unwrap_or_default();
                         file_errors.push(IdeDiagnostic::new(Diagnostic {
                             range,
                             severity: Some(DiagnosticSeverity::ERROR),

@@ -17,12 +17,12 @@ use crate::{
     },
 };
 
+pub mod cast;
 pub mod coerce;
 pub mod expr;
 pub mod literals;
 pub mod normalize;
 pub mod table;
-pub mod cast;
 
 pub trait Infer<'db> {
     fn infer(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db>;

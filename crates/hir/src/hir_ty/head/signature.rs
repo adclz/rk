@@ -1,6 +1,6 @@
 use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 
 use crate::{
     HirNodeInfo,
@@ -8,10 +8,10 @@ use crate::{
         analysis_error::ToIdeDiagnostic, e2_resolve::ResolveError, e3_type::TypeError,
     },
     hir_def::{
-        expressions::spec::{ElementarySpec, Spec, SpecKind},
+        expressions::spec::{Spec, SpecKind},
         interned::{identifier::Ident, namespace::NamespaceAccess},
         pous::{
-            generics::{AnyGeneric, GenericParam},
+            generics::AnyGeneric,
             pou::Pou,
         },
         scope::{ScopeId, ScopeKind},
@@ -131,7 +131,7 @@ impl<'db> Signature<'db> {
             Some(generics) => generics,
             None => return,
         };
-        
+
         let generics_hashmap = &self.scope.def_map(db).generics;
 
         for generic in generics {

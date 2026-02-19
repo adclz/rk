@@ -2,7 +2,12 @@ use db::WorkspaceDataBase;
 use hir::hir_ty::ty::Type;
 use wasm_encoder::ValType;
 
-use crate::wasm_repr::{array::calculate_array_layout, elementary::elementary_to_val_type, instance::{calculate_class_layout, calculate_fb_layout}, strukt::calculate_struct_layout};
+use crate::wasm_repr::{
+    array::calculate_array_layout,
+    elementary::elementary_to_val_type,
+    instance::{calculate_class_layout, calculate_fb_layout},
+    strukt::calculate_struct_layout,
+};
 
 pub mod array;
 pub mod elementary;
@@ -61,7 +66,7 @@ impl WasmRepr {
             Type::ArrayConformand(_) => {
                 // Array conformants (open arrays) not supported yet
                 Err(WasmReprError::UnsupportedType(
-                    "Array conformant types not yet supported".to_string()
+                    "Array conformant types not yet supported".to_string(),
                 ))
             }
 

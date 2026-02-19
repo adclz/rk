@@ -5,7 +5,7 @@ use auto_lsp::{
         self, CodeAction, CodeActionKind, CodeDescription, Diagnostic,
         DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, Location, NumberOrString,
         Range, TextEdit, Url,
-    }, salsa,
+    },
 };
 
 pub mod report;

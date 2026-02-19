@@ -110,7 +110,7 @@ pub enum PrimaryExpr<'db> {
 #[salsa::tracked(debug)]
 pub struct FuncCall<'db> {
     pub path: BeginPathExpr<'db>,
-    
+
     #[returns(ref)]
     pub type_args: Vec<Spec<'db>>,
 

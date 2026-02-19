@@ -14,6 +14,7 @@ pub mod data_type;
 pub mod expression;
 pub mod function;
 pub mod function_block;
+pub mod generics;
 pub mod interface;
 pub mod namespace;
 pub mod program;
@@ -22,7 +23,6 @@ pub mod statement;
 pub mod types;
 pub mod using;
 pub mod variables;
-pub mod generics;
 
 pub trait ParseVarSection<'db> {
     fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<VariableDecl<'db>>);

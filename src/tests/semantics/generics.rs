@@ -16,7 +16,8 @@ use crate::tests::utils::with_db;
 #[case("ANY_DATE")]
 #[case("ANY_DURATION")]
 fn valid_generic_type_cases(mut with_db: RootDatabase, #[case] value: &str) {
-    let source = format!(r#"
+    let source = format!(
+        r#"
 FUNCTION fn<GT: {value}, GY: {value}>
 
     VAR
@@ -24,7 +25,8 @@ FUNCTION fn<GT: {value}, GY: {value}>
         y: GY;
     END_VAR
 
-END_FUNCTION"#);
+END_FUNCTION"#
+    );
 
     insta::allow_duplicates! { assert_snapshot!(test_diagnostics(&mut with_db, &[&source]), @""); }
 }
@@ -39,14 +41,16 @@ END_FUNCTION"#);
 #[case("ANY_DATE")]
 #[case("ANY_DURATION")]
 fn valid_generic_constraint_with_generic_cases(mut with_db: RootDatabase, #[case] value: &str) {
-    let source = format!(r#"
+    let source = format!(
+        r#"
 FUNCTION fn<GT: ANY + INTO<{value}>>
 
     VAR
         x: GT;
     END_VAR
 
-END_FUNCTION"#);
+END_FUNCTION"#
+    );
 
     insta::allow_duplicates! { assert_snapshot!(test_diagnostics(&mut with_db, &[&source]), @""); }
 }
@@ -67,14 +71,16 @@ END_FUNCTION"#);
 #[case("ULINT")]
 // todo: add more cases
 fn valid_generic_constraint_with_elementary_cases(mut with_db: RootDatabase, #[case] value: &str) {
-    let source = format!(r#"
+    let source = format!(
+        r#"
 FUNCTION fn<GT: ANY + INTO<{value}>>
 
     VAR
         x: GT;
     END_VAR
 
-END_FUNCTION"#);
+END_FUNCTION"#
+    );
 
     insta::allow_duplicates! { assert_snapshot!(test_diagnostics(&mut with_db, &[&source]), @""); }
 }

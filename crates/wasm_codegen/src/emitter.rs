@@ -63,7 +63,8 @@ impl<'a> InstructionEmitter<'a> {
     /// Mark the start of an expression (for expression-level traps).
     pub fn begin_expression(&mut self, location: SourceLocation) {
         if self.config.debug_mode == DebugMode::ExpressionLevel
-            || self.config.debug_mode == DebugMode::InstructionLevel {
+            || self.config.debug_mode == DebugMode::InstructionLevel
+        {
             self.current_source_location = Some(location.clone());
             self.maybe_inject_trap(TrapPoint::Expression);
         }
@@ -99,18 +100,24 @@ impl<'a> InstructionEmitter<'a> {
         let trap_id = self.debug_info.add_trap(loc);
 
         // Get global indices - they must exist if we're in debug mode
-        let debug_enabled_global = self.debug_enabled_global
+        let debug_enabled_global = self
+            .debug_enabled_global
             .expect("debug_enabled_global should be set in debug mode");
-        let debug_trap_id_global = self.debug_trap_id_global
+        let debug_trap_id_global = self
+            .debug_trap_id_global
             .expect("debug_trap_id_global should be set in debug mode");
 
         // Emit: if (debug_enabled) { trap_id = N; unreachable; }
-        self.func.instruction(&Instruction::GlobalGet(debug_enabled_global));
-        self.func.instruction(&Instruction::If(wasm_encoder::BlockType::Empty));
+        self.func
+            .instruction(&Instruction::GlobalGet(debug_enabled_global));
+        self.func
+            .instruction(&Instruction::If(wasm_encoder::BlockType::Empty));
 
         // Store trap ID in global for debugger inspection
-        self.func.instruction(&Instruction::I32Const(trap_id as i32));
-        self.func.instruction(&Instruction::GlobalSet(debug_trap_id_global));
+        self.func
+            .instruction(&Instruction::I32Const(trap_id as i32));
+        self.func
+            .instruction(&Instruction::GlobalSet(debug_trap_id_global));
 
         // Trigger trap
         self.func.instruction(&Instruction::Unreachable);

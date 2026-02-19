@@ -82,23 +82,20 @@ impl<'db> Resolver<'db> {
         // but the resolve_namespace_access only searches for POUs,
         // so we also check if the target matches the name of a method in the current scope
         // todo: move this logic inside resolve_namespace_access and make it more robust (handle shadowing, etc.)
-        match get_scope(db, path_expr.get_scope_id(db)).kind {
-            ScopeKind::MethodDecl(method) => {
-                // todo: check shadowing
-                if access.target == method.name(db) {
-                    ctx.type_of_path_expr
-                        .insert(path_expr, Type::MethodDecl(method.into()));
-                    return true;
-                }
+        if let ScopeKind::MethodDecl(method) = get_scope(db, path_expr.get_scope_id(db)).kind {
+            // todo: check shadowing
+            if access.target == method.name(db) {
+                ctx.type_of_path_expr
+                    .insert(path_expr, Type::MethodDecl(method.into()));
+                return true;
             }
-            _ => (),
         }
 
         // Generics
         let signature = infer_signature(db, path_expr.scope_id(db));
         if let Some(generic_type) = signature.type_of_generic.get(&access.target) {
             ctx.type_of_path_expr
-                .insert(path_expr, generic_type.clone());
+                .insert(path_expr, *generic_type);
             return true;
         }
 

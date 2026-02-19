@@ -10,7 +10,7 @@ use hir::{
         semantic_index::get_scope,
     },
     hir_ty::{
-        body::infer_body, head::init_inference::infer_initialization,
+        body::infer_body,
         head::signature::infer_signature, infer::Infer,
     },
 };
@@ -449,7 +449,7 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
                                         return Err(format!(
                                             "Unsupported value type for memory allocation: {:?}",
                                             val_type
-                                        ))
+                                        ));
                                     }
                                 };
                                 let align = size; // Natural alignment
@@ -474,7 +474,7 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
                                         return Err(format!(
                                             "Unexpected scalar type that isn't elementary or RefTo: {:?}",
                                             var_type
-                                        ))
+                                        ));
                                     }
                                 };
 
@@ -535,7 +535,7 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
                                         return Err(format!(
                                             "Unsupported value type for memory allocation: {:?}",
                                             val_type
-                                        ))
+                                        ));
                                     }
                                 };
                                 let align = size; // Natural alignment
@@ -560,7 +560,7 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
                                         return Err(format!(
                                             "Unexpected scalar type that isn't elementary or RefTo: {:?}",
                                             var_type
-                                        ))
+                                        ));
                                     }
                                 };
 
@@ -602,7 +602,10 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
     }
 
     /// Initialize memory-allocated variables with their initial values.
-    fn initialize_memory_variables(&mut self, func: &mut wasm_encoder::Function) -> Result<(), String> {
+    fn initialize_memory_variables(
+        &mut self,
+        func: &mut wasm_encoder::Function,
+    ) -> Result<(), String> {
         use hir::hir_def::expressions::expression::InitExprKind;
 
         let def_map = self.scope.def_map(self.db);
@@ -611,7 +614,9 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
         for (var_name, local_info) in &self.local_map {
             if let LocalInfo::Memory { address, .. } = local_info {
                 // Check if this variable has an initializer - try both local and global
-                let var_decl = def_map.local_variables.get(var_name)
+                let var_decl = def_map
+                    .local_variables
+                    .get(var_name)
                     .or_else(|| def_map.global_variables.get(var_name));
 
                 if let Some(var_decl) = var_decl {
@@ -622,7 +627,7 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
                         match init_kind {
                             InitExprKind::ConstantExpr(expr) => {
                                 // Create a temporary BodyCodegen to emit the initialization expression
-                                let mut body_codegen = if let (Some(this_local), Some(instance)) =
+                                let body_codegen = if let (Some(this_local), Some(instance)) =
                                     (self.this_local, self.instance)
                                 {
                                     BodyCodegen::new_with_this(
@@ -651,63 +656,65 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
                                 };
 
                                 // Store the value to memory
-                            // Determine store instruction based on the type
-                            let var_type = var_decl.spec(self.db).infer(self.db);
-                            let repr = crate::wasm_repr::WasmRepr::from_type(self.db, var_type)
-                                .map_err(|e| format!("Failed to get type representation: {}", e))?;
+                                // Determine store instruction based on the type
+                                let var_type = var_decl.spec(self.db).infer(self.db);
+                                let repr = crate::wasm_repr::WasmRepr::from_type(self.db, var_type)
+                                    .map_err(|e| {
+                                        format!("Failed to get type representation: {}", e)
+                                    })?;
 
-                            if let crate::wasm_repr::WasmRepr::Scalar(val_type) = repr {
-                                // Push address first
-                                func.instruction(&Instruction::I32Const(*address as i32));
+                                if let crate::wasm_repr::WasmRepr::Scalar(val_type) = repr {
+                                    // Push address first
+                                    func.instruction(&Instruction::I32Const(*address as i32));
 
-                                // Then emit the initialization expression (pushes value onto stack)
-                                body_codegen.emit_expr(func, expr)?;
+                                    // Then emit the initialization expression (pushes value onto stack)
+                                    body_codegen.emit_expr(func, expr)?;
 
-                                match val_type {
-                                    ValType::I32 => {
-                                        func.instruction(&Instruction::I32Store(
-                                            wasm_encoder::MemArg {
-                                                offset: 0,
-                                                align: 2, // 4-byte alignment
-                                                memory_index: 0,
-                                            },
-                                        ));
-                                    }
-                                    ValType::F32 => {
-                                        func.instruction(&Instruction::F32Store(
-                                            wasm_encoder::MemArg {
-                                                offset: 0,
-                                                align: 2, // 4-byte alignment
-                                                memory_index: 0,
-                                            },
-                                        ));
-                                    }
-                                    ValType::I64 => {
-                                        func.instruction(&Instruction::I64Store(
-                                            wasm_encoder::MemArg {
-                                                offset: 0,
-                                                align: 3, // 8-byte alignment
-                                                memory_index: 0,
-                                            },
-                                        ));
-                                    }
-                                    ValType::F64 => {
-                                        func.instruction(&Instruction::F64Store(
-                                            wasm_encoder::MemArg {
-                                                offset: 0,
-                                                align: 3, // 8-byte alignment
-                                                memory_index: 0,
-                                            },
-                                        ));
-                                    }
-                                    _ => {
-                                        return Err(format!(
-                                            "Unsupported value type for memory initialization: {:?}",
-                                            val_type
-                                        ))
+                                    match val_type {
+                                        ValType::I32 => {
+                                            func.instruction(&Instruction::I32Store(
+                                                wasm_encoder::MemArg {
+                                                    offset: 0,
+                                                    align: 2, // 4-byte alignment
+                                                    memory_index: 0,
+                                                },
+                                            ));
+                                        }
+                                        ValType::F32 => {
+                                            func.instruction(&Instruction::F32Store(
+                                                wasm_encoder::MemArg {
+                                                    offset: 0,
+                                                    align: 2, // 4-byte alignment
+                                                    memory_index: 0,
+                                                },
+                                            ));
+                                        }
+                                        ValType::I64 => {
+                                            func.instruction(&Instruction::I64Store(
+                                                wasm_encoder::MemArg {
+                                                    offset: 0,
+                                                    align: 3, // 8-byte alignment
+                                                    memory_index: 0,
+                                                },
+                                            ));
+                                        }
+                                        ValType::F64 => {
+                                            func.instruction(&Instruction::F64Store(
+                                                wasm_encoder::MemArg {
+                                                    offset: 0,
+                                                    align: 3, // 8-byte alignment
+                                                    memory_index: 0,
+                                                },
+                                            ));
+                                        }
+                                        _ => {
+                                            return Err(format!(
+                                                "Unsupported value type for memory initialization: {:?}",
+                                                val_type
+                                            ));
+                                        }
                                     }
                                 }
-                            }
                             }
                             _ => {
                                 // TODO: Handle other initializer kinds (arrays, structs, etc.)

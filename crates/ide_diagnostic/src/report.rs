@@ -1,6 +1,6 @@
 use ariadne::{Label, Report, Source};
 use auto_lsp::{
-    default::db::{BaseDatabase, file::File},
+    default::db::BaseDatabase,
     lsp_types::{DiagnosticSeverity, NumberOrString, Url},
 };
 use yansi::Paint;

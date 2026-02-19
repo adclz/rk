@@ -7,12 +7,12 @@ use crate::{
 
 pub mod array;
 pub mod enum_;
+pub mod generics;
 pub mod methods;
 pub mod strukt;
 pub mod subrange;
 pub mod usings;
 pub mod variables;
-pub mod generics;
 
 impl<'db> InitInference<'db> {
     pub fn check_spec(&mut self, db: &'db dyn WorkspaceDataBase, spec: Spec<'db>) {

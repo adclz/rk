@@ -16,9 +16,8 @@ use crate::{
     },
 };
 
-
 // Note for later:
-// Ideally, we do not need indexes, we should instead use the semantic index directly to resolve names. 
+// Ideally, we do not need indexes, we should instead use the semantic index directly to resolve names.
 // Therefore it is necessary to add namespaces to ScopeDefMap and iterate over them when resolving names.
 // Such operation woud be O(N) where N is, at worst, the number of files (we use the def maps to check if a pou/namespace is declared inside a scope,
 // which is O(1) by simply looking at an interned identifier key)
@@ -49,7 +48,10 @@ fn workspace_namespace_index<'db>(
         }
     }
 
-    eprintln!("size of stdlib namespace index: {}", db.get_std_lib_files().len());
+    eprintln!(
+        "size of stdlib namespace index: {}",
+        db.get_std_lib_files().len()
+    );
     for file in db.get_std_lib_files().iter() {
         for ns in semantic_index(db, *file).global_namespaces.iter() {
             result
@@ -106,13 +108,13 @@ fn workspace_pou_index<'db>(db: &'db dyn WorkspaceDataBase) -> FxHashMap<Ident, 
         for p in semantic_index(db, *file).global_pous.iter() {
             result.insert(p.get_name_ident(db), *p);
         }
-    };
-    
+    }
+
     for file in db.get_std_lib_files().iter() {
         for p in semantic_index(db, *file).global_pous.iter() {
             result.insert(p.get_name_ident(db), *p);
         }
-    };
+    }
     result
 }
 
@@ -132,14 +134,13 @@ fn workspace_program_index<'db>(
         for p in semantic_index(db, *file).programs.iter() {
             result.insert(p.get_name_ident(db), *p);
         }
-    };
-
+    }
 
     for file in db.get_std_lib_files().iter() {
         for p in semantic_index(db, *file).programs.iter() {
             result.insert(p.get_name_ident(db), *p);
         }
-    };
+    }
 
     result
 }

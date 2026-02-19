@@ -11,7 +11,10 @@ use crate::{
             spec::StructElement,
         },
         interned::identifier::{Ident, SpanIdent},
-        pous::{class::MethodDecl, generics::GenericParam, interface::MethodPrototype, pou::Pou, variable::VariableDecl},
+        pous::{
+            class::MethodDecl, generics::GenericParam, interface::MethodPrototype, pou::Pou,
+            variable::VariableDecl,
+        },
         program::ProgramDecl,
         using::Using,
     },
@@ -87,7 +90,7 @@ impl ErrorCode for DuplicateError<'_> {
             Self::InitExprField { .. } => "E0110",
             Self::Program { .. } => "E0111",
             Self::Generic { .. } => "E0112",
-        } 
+        }
     }
 
     fn description(&self) -> &'static str {

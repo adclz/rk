@@ -38,13 +38,11 @@ pub fn infer_body<'db>(
 
     // Only Scopes with bodies can have statements
     let statements = match get_scope(db, scope).kind {
-        ScopeKind::Pou(pou) => {
-            match pou {
-                Pou::Function(f) => f.statements(db),
-                Pou::FunctionBlock(fb) => fb.statements(db),
-                _ => return result,
-            }
-        }
+        ScopeKind::Pou(pou) => match pou {
+            Pou::Function(f) => f.statements(db),
+            Pou::FunctionBlock(fb) => fb.statements(db),
+            _ => return result,
+        },
         ScopeKind::MethodDecl(m) => m.stmts(db),
         ScopeKind::Program(program) => program.statements(db),
         _ => return result,

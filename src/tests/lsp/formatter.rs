@@ -823,7 +823,6 @@ END_FUNCTION_BLOCK
     ");
 }
 
-
 #[rstest]
 pub fn dw_variables(mut with_db: RootDatabase) {
     let source = r#"
