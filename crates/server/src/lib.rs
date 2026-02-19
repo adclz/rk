@@ -70,7 +70,7 @@ use auto_lsp::server::request_registry::RequestRegistry;
 use auto_lsp::server::vendored::intent::ThreadIntent;
 use db::RootDatabase;
 use db::WorkspaceDataBase;
-use db::configuration::{Configuration, ConfigurationError};
+use db::workspace::{Workspace, ConfigurationError};
 use ide_proto::SUPPORTED_MODIFIERS;
 use ide_proto::SUPPORTED_TYPES;
 use std::error::Error;
@@ -230,14 +230,14 @@ fn on_notifications(
         })
         .on_mut::<DidChangeWatchedFiles, _>(|s, p| {
             // Check if any changed file is the workspace config.toml
-            let config_changed = Configuration::try_get(&s.db)
+            let config_changed = Workspace::try_get(&s.db)
                 .and_then(|c| c.workspace_folder(&s.db).cloned())
                 .and_then(|ws| Url::from_file_path(ws.join("config.toml")).ok())
                 .is_some_and(|url| p.changes.iter().any(|e| e.uri == url));
 
 
             if config_changed {
-                let workspace_uri = Configuration::try_get(&s.db)
+                let workspace_uri = Workspace::try_get(&s.db)
                     .and_then(|c| c.workspace_folder(&s.db).cloned())
                     .and_then(|path| Url::from_file_path(path).ok());
                 refresh_configuration(s, workspace_uri)?;
@@ -271,7 +271,7 @@ fn refresh_configuration(
     workspace_uri: Option<Url>,
 ) -> anyhow::Result<()> {
     let mut errors = vec![];
-    Configuration::init_or_update(&mut session.db, workspace_uri, &mut errors);
+    Workspace::init_or_update(&mut session.db, workspace_uri, session.encoding.clone(), &mut errors);
     send_configuration_errors(&session.connection, &errors)?;
     Ok(())
 }

@@ -15,7 +15,7 @@ pub fn check_duplicate_pous<'db>(
     pou: Pou<'db>,
     errors: &mut Vec<IdeDiagnostic>,
 ) {
-    let indexed = match *pou_index(db, pou.get_name_ident(db)) {
+    let indexed = match pou_index(db, pou.get_name_ident(db)) {
         Some(indexed) => indexed,
         // If a POU is not in the index, we can't say it's a duplicate
         None => return,
@@ -40,7 +40,7 @@ pub fn check_duplicate_programs<'db>(
     program: ProgramDecl<'db>,
     errors: &mut Vec<IdeDiagnostic>,
 ) {
-    let indexed = match *program_index(db, program.get_name_ident(db)) {
+    let indexed = match program_index(db, program.get_name_ident(db)) {
         Some(indexed) => indexed,
         // If a POU is not in the index, we can't say it's a duplicate
         None => return,
@@ -66,7 +66,7 @@ pub fn check_duplicate_namespaces<'db>(
     errors: &mut Vec<IdeDiagnostic>,
 ) {
     for pou in namespace.pous(db).iter() {
-        match *namespace_pou_index(db, *namespace.path(db), pou.get_name_ident(db)) {
+        match namespace_pou_index(db, *namespace.path(db), pou.get_name_ident(db)) {
             Some(indexed) => {
                 // If this POU is not the indexed one, it's a duplicate
                 if *pou != indexed {
