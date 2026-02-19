@@ -2,6 +2,7 @@ use auto_lsp::default::db::file::File;
 use db::WorkspaceDataBase;
 
 use crate::Visibility;
+use crate::hir_def::config::ConfigDecl;
 use crate::hir_def::expressions::spec::Spec;
 use crate::hir_def::pous::generics::GenericParam;
 use crate::hir_def::pous::interface::MethodPrototype;
@@ -113,6 +114,7 @@ impl<'db> ScopeId<'db> {
             ScopeKind::MethodDecl(m) => m.variables(db),
             ScopeKind::MethodProt(m) => m.variables(db),
             ScopeKind::Program(p) => p.variables(db),
+            ScopeKind::Config(c) => c.variables(db),
             _ => None?,
         })
     }
@@ -158,6 +160,10 @@ impl<'db> Scope<'db> {
         matches!(self.kind, ScopeKind::Program(_))
     }
 
+    pub fn is_config(&self) -> bool {
+        matches!(self.kind, ScopeKind::Config(_))
+    }
+
     pub fn is_namespace(&self) -> bool {
         matches!(self.kind, ScopeKind::Namespace(_))
     }
@@ -179,6 +185,7 @@ impl<'db> Scope<'db> {
 pub enum ScopeKind<'db> {
     Global,
     Program(ProgramDecl<'db>),
+    Config(ConfigDecl<'db>),
     Namespace(NamespaceDecl<'db>),
     Pou(Pou<'db>),
     MethodDecl(MethodDecl<'db>),

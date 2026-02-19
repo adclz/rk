@@ -1,3 +1,4 @@
+use crate::AstId;
 use crate::hir_def::{
     expressions::{
         expression::{Expr, InitExpr, PathExpr},
@@ -5,126 +6,101 @@ use crate::hir_def::{
     },
     interned::{identifier::Ident, namespace::SpanNamespaceAccess},
     pous::variable::{DirectVariable, VariableDecl},
+    scope::ScopeId,
 };
 
 #[salsa::tracked(debug)]
 pub struct ConfigDecl<'db> {
-    name: Ident,
+    pub name: Ident,
+
+    pub span: AstId,
 
     #[returns(ref)]
-    variables: Vec<VariableDecl<'db>>,
+    pub variables: Vec<VariableDecl<'db>>,
 
     #[returns(ref)]
-    resources: Vec<Resource<'db>>,
+    pub resources: Vec<ConfigResource<'db>>,
 
     #[returns(ref)]
-    access_decls: Vec<AccessDecl<'db>>,
+    pub access_decls: Vec<AccessDecl<'db>>,
 
-    config_init: ConfigInit<'db>,
+    #[returns(ref)]
+    pub config_init: Vec<ConfigInstInit<'db>>,
+
+    pub scope_id: ScopeId<'db>,
 }
 
+/// A resource entry at the CONFIGURATION level.
+///
+/// A configuration can contain either a full `RESOURCE...END_RESOURCE` block or bare
+/// `TASK`/`PROGRAM` declarations at the top level.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub struct ConfigInit<'db> {
-    config_inst_init: Vec<ConfigInstInit<'db>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub struct ConfigInstInit<'db> {
-    path: PathExpr<'db>,
-
-    located_at: Option<DirectVariable<'db>>, // DV
-
-    init: InitExpr<'db>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum Resource<'db> {
+pub enum ConfigResource<'db> {
+    /// A named `RESOURCE identifier ON type ... END_RESOURCE` block.
     Resource(ResourceDecl<'db>),
-    Single(SingleResourceDecl<'db>),
+    /// A bare `TASK` declaration at the configuration level.
+    Task(TaskConfig<'db>),
+    /// A bare `PROGRAM` declaration at the configuration level.
+    Program(ProgConfig<'db>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct ResourceDecl<'db> {
-    name: Ident,
+    pub name: Ident,
 
-    resource_type_name: Ident,
+    pub resource_type_name: Ident,
 
-    variables: Vec<DirectVariable<'db>>,
-    //resources: Vec<ResourceDecl<'db>>,
+    /// VAR_GLOBAL variables declared inside this resource block.
+    pub variables: Vec<VariableDecl<'db>>,
+
+    pub tasks: Vec<TaskConfig<'db>>,
+
+    pub programs: Vec<ProgConfig<'db>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum SingleResourceDecl<'db> {
-    TaskConfig(TaskConfig<'db>),
-    ProgConfig(ProgConfig<'db>),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub struct AccessDecl<'db> {
-    name: Ident,
-
-    path: AccessPath<'db>,
-
-    access: Spec<'db>,
-
-    direction: AccessDirection,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub struct AccessPath<'db> {
-    path: PathExpr<'db>,
-
-    variable: VariableDecl<'db>, // DV
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum AccessDirection {
-    ReadWrite,
-    ReadOnly,
-}
-
+/// Merged from the old `TaskConfig` + `TaskInit` pair.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct TaskConfig<'db> {
-    name: Ident,
+    pub name: Ident,
 
-    init: TaskInit<'db>,
-}
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub struct TaskInit<'db> {
-    name: Ident,
+    pub single: Option<DataSource<'db>>,
 
-    single: Option<DataSource<'db>>,
-    interval: Option<DataSource<'db>>,
+    pub interval: Option<DataSource<'db>>,
 
-    priority: Expr<'db>,
+    /// Priority value — stored as an `Ident` holding the integer text (e.g. `"5"`).
+    pub priority: Ident,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct ProgConfig<'db> {
-    retain: bool,
+    pub retain: bool,
 
-    name: Ident,
+    pub name: Ident,
 
-    task: Option<Ident>,
+    /// Optional task name from `WITH <task>`.
+    pub task: Option<Ident>,
 
-    access: SpanNamespaceAccess<'db>,
+    /// Reference to the program type (e.g. `MyProgram` or `NS::MyProgram`).
+    pub prog_type: SpanNamespaceAccess<'db>,
 
-    conf_elements: ProgConfElement<'db>,
+    pub conf_elements: Vec<ProgConfElement<'db>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ProgConfElement<'db> {
-    ProgCnxn(ProgCnxn<'db>),
+    Connection(ProgCnxn<'db>),
     FbTask(FbTask<'db>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ProgCnxn<'db> {
-    ProgDataSource {
+    /// `path := source` — assigns a data source to a variable path.
+    Source {
         path: PathExpr<'db>,
         source: DataSource<'db>,
     },
-    DataSink {
+    /// `path => sink` — connects a variable path to a data sink.
+    Sink {
         path: PathExpr<'db>,
         sink: DataSink<'db>,
     },
@@ -133,19 +109,54 @@ pub enum ProgCnxn<'db> {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum DataSource<'db> {
     Constant(Expr<'db>),
-    PathExpr(PathExpr<'db>),
-    Variable(VariableDecl<'db>),
+    Path(PathExpr<'db>),
+    Direct(DirectVariable<'db>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum DataSink<'db> {
-    PathExpr(PathExpr<'db>),
-    Variable(VariableDecl<'db>),
+    Path(PathExpr<'db>),
+    Direct(DirectVariable<'db>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct FbTask<'db> {
-    path: PathExpr<'db>,
+    pub path: PathExpr<'db>,
 
-    task: Ident,
+    pub task: Ident,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub struct AccessDecl<'db> {
+    pub name: Ident,
+
+    pub path: AccessPath<'db>,
+
+    pub access: Spec<'db>,
+
+    pub direction: AccessDirection,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub struct AccessPath<'db> {
+    pub path: PathExpr<'db>,
+
+    /// Optional `direct_variable` (AT address) suffix on the access path.
+    pub direct: Option<DirectVariable<'db>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum AccessDirection {
+    ReadWrite,
+    ReadOnly, 
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub struct ConfigInstInit<'db> {
+    pub path: PathExpr<'db>,
+
+    /// Optional AT address (located variable).
+    pub located_at: Option<DirectVariable<'db>>,
+
+    pub init: InitExpr<'db>,
 }

@@ -10,6 +10,7 @@ use tracing::info_span;
 
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::analysis_error::AnalysisError;
+use crate::hir_def::config::ConfigDecl;
 use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::program::ProgramDecl;
@@ -47,6 +48,9 @@ pub struct SemanticIndex<'db> {
 
     /// Program declarations in the file
     pub programs: Vec<ProgramDecl<'db>>,
+
+    /// Configuration declarations in the file
+    pub configs: Vec<ConfigDecl<'db>>,
 
     /// All *global* namespaces in the file
     pub global_namespaces: Vec<NamespaceDecl<'db>>,
@@ -87,6 +91,7 @@ impl<'db> SemanticIndex<'db> {
             ast,
             scopes,
             programs: vec![],
+            configs: vec![],
             global_namespaces: vec![],
             global_pous: vec![],
             namespaces: vec![],

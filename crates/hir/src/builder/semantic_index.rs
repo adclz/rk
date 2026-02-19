@@ -10,6 +10,7 @@ use rustc_hash::FxHashMap;
 use crate::Visibility;
 use crate::check::errors::analysis_error::AnalysisError;
 use crate::check::errors::e0_syntax::SyntaxError;
+use crate::hir_def::config::ConfigDecl;
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::Pou;
@@ -31,6 +32,7 @@ pub struct SemanticIndexBuilder<'db> {
     pub(crate) scope_keys: FxHashMap<usize, Arc<Scope<'db>>>,
 
     pub(crate) programs: Vec<ProgramDecl<'db>>,
+    pub(crate) configs: Vec<ConfigDecl<'db>>,
     pub(crate) global_namespaces: Vec<NamespaceDecl<'db>>,
     pub(crate) global_pous: Vec<Pou<'db>>,
 
@@ -63,6 +65,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             source,
             scope_keys: FxHashMap::default(),
             programs: vec![],
+            configs: vec![],
             global_namespaces: vec![],
             global_pous: vec![],
             namespaces: vec![],
@@ -152,7 +155,12 @@ impl<'db> SemanticIndexBuilder<'db> {
                     let r = self.parse_interface(interface).unwrap();
                     self.global_pous.push(r);
                 }
-                SourceFileDecl::ConfigDecl(config) => { /* todo */ }
+                SourceFileDecl::ConfigDecl(config) => {
+                    match self.parse_config(config) {
+                        Ok(c) => self.configs.push(c),
+                        Err(err) => self.errors.push(err),
+                    }
+                }
                 SourceFileDecl::ProgDecl(prog) => {
                     let p = self.parse_program(prog).unwrap();
                     self.programs.push(p);
@@ -178,6 +186,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             ast: Arc::clone(&self.ast.nodes),
             scopes: self.scope_keys,
             programs: self.programs,
+            configs: self.configs,
             global_namespaces: self.global_namespaces,
             namespaces: self.namespaces,
             global_pous: self.global_pous,
