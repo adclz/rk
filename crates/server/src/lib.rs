@@ -42,7 +42,9 @@ use auto_lsp::lsp_types::notification::DidSaveTextDocument;
 use auto_lsp::lsp_types::notification::LogTrace;
 use auto_lsp::lsp_types::notification::Notification;
 use auto_lsp::lsp_types::notification::SetTrace;
+use auto_lsp::lsp_types::notification::PublishDiagnostics;
 use auto_lsp::lsp_types::notification::ShowMessage;
+use auto_lsp::lsp_types::PublishDiagnosticsParams;
 use auto_lsp::lsp_types::request::CodeActionRequest;
 use auto_lsp::lsp_types::request::CodeLensRequest;
 use auto_lsp::lsp_types::request::Completion;
@@ -70,7 +72,7 @@ use auto_lsp::server::request_registry::RequestRegistry;
 use auto_lsp::server::vendored::intent::ThreadIntent;
 use db::RootDatabase;
 use db::WorkspaceDataBase;
-use db::workspace::{Workspace, ConfigurationError};
+use db::workspace::{ConfigFileError, ConfigurationNotice, Workspace};
 use ide_proto::SUPPORTED_MODIFIERS;
 use ide_proto::SUPPORTED_TYPES;
 use std::error::Error;
@@ -264,31 +266,60 @@ fn on_notifications(
         .on::<LogTrace, _>(ThreadIntent::Worker, |_s, _p| Ok(()))
 }
 
-/// Initializes or refreshes workspace configuration and sends any errors
-/// to the client via `window/showMessage`.
+/// Initializes or refreshes workspace configuration.
+///
+/// File-attached errors (e.g. config.toml parse errors) are pushed via
+/// `textDocument/publishDiagnostics`. An empty list is always sent so the
+/// client clears stale squiggles when errors are fixed. Errors without a
+/// file location (e.g. stdlib not found) are reported via `window/showMessage`.
 fn refresh_configuration(
     session: &mut Session<RootDatabase>,
     workspace_uri: Option<Url>,
 ) -> anyhow::Result<()> {
-    let mut errors = vec![];
-    Workspace::init_or_update(&mut session.db, workspace_uri, session.encoding.clone(), &mut errors);
-    send_configuration_errors(&session.connection, &errors)?;
-    Ok(())
-}
+    let mut file_errors = vec![];
+    let mut notices: Vec<ConfigurationNotice> = vec![];
+    Workspace::init_or_update(
+        &mut session.db,
+        workspace_uri,
+        session.encoding.clone(),
+        &mut file_errors,
+        &mut notices,
+    );
 
-fn send_configuration_errors(
-    connection: &Connection,
-    errors: &[ConfigurationError],
-) -> anyhow::Result<()> {
-    for error in errors {
-        log::warn!("Configuration: {}", error);
+    // Push diagnostics for the config file via publishDiagnostics.
+    // Always send (even an empty list) so the client clears stale squiggles.
+    if let Some(config_uri) = db::workspace::Workspace::try_get(&session.db)
+        .and_then(|w| w.config_file(&session.db).cloned())
+        .and_then(|path| Url::from_file_path(path).ok())
+    {
+        for error in &file_errors {
+            log::warn!("Configuration: {}", error.diagnostic.message);
+        }
+        let diags: Vec<lsp_types::Diagnostic> = file_errors
+            .iter()
+            .map(|e| e.to_lsp_diagnostic(&session.db))
+            .collect();
+        let notification = lsp_server::Notification::new(
+            PublishDiagnostics::METHOD.to_string(),
+            PublishDiagnosticsParams {
+                uri: config_uri,
+                diagnostics: diags,
+                version: None,
+            },
+        );
+        session.connection.sender.send(Message::Notification(notification))?;
+    }
+
+    // Locationless notices → window/showMessage
+    for notice in &notices {
+        log::warn!("Configuration: {}", notice);
         let params = lsp_types::ShowMessageParams {
             typ: lsp_types::MessageType::WARNING,
-            message: error.to_string(),
+            message: notice.to_string(),
         };
         let notification =
             lsp_server::Notification::new(ShowMessage::METHOD.to_string(), params);
-        connection.sender.send(Message::Notification(notification))?;
+        session.connection.sender.send(Message::Notification(notification))?;
     }
     Ok(())
 }

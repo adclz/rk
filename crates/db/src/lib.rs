@@ -14,10 +14,7 @@ pub mod config_file;
 pub struct RootDatabase {
     storage: salsa::Storage<Self>,
     pub(crate) workspace_files: DashMap<Url, File>,
-    pub(crate) std_lib_files: DashMap<Url, File>,
-    /// Files currently open in the editor (managed via DidOpen/DidClose).
-    /// Used to skip redundant DidChangeWatchedFiles CHANGED events.
-    pub open_files: DashMap<Url, ()>,
+    pub(crate) std_lib_files: DashMap<Url, File>
 }
 
 impl RootDatabase {
@@ -31,7 +28,7 @@ impl RootDatabase {
 
 #[salsa::db]
 impl salsa::Database for RootDatabase {}
- 
+
 impl std::panic::RefUnwindSafe for RootDatabase {}
 
 #[salsa::db]
@@ -52,7 +49,7 @@ pub trait WorkspaceDataBase: Database + BaseDatabase {
 
 #[salsa::db]
 impl WorkspaceDataBase for RootDatabase {
-    fn get_std_lib_files(&self) ->  &DashMap<Url,File> {
+    fn get_std_lib_files(&self) -> &DashMap<Url, File> {
         &self.std_lib_files
     }
 }

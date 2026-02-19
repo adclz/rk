@@ -1,6 +1,7 @@
 use std::{fmt::Display, path::PathBuf};
 
-use auto_lsp::lsp_types::{PositionEncodingKind, Url};
+use auto_lsp::lsp_types::{DiagnosticSeverity, Diagnostic, PositionEncodingKind, Url};
+use ide_diagnostic::IdeDiagnostic;
 use salsa::{Durability, Setter};
 
 use crate::RootDatabase;
@@ -19,21 +20,22 @@ pub struct Workspace {
     pub config_file: Option<PathBuf>,
 
     pub encoding: PositionEncodingKind
-} 
+}
 
 impl Workspace {
     pub fn init_or_update(
         db: &mut RootDatabase,
         workspace_uri: Option<Url>,
         encoding: PositionEncodingKind,
-        errors: &mut Vec<ConfigurationError>,
+        file_errors: &mut Vec<IdeDiagnostic>,
+        notices: &mut Vec<ConfigurationNotice>,
     ) -> Self {
         match Self::try_get(db) {
             Some(config) => {
-                config.update(db, workspace_uri, errors);
+                config.update(db, workspace_uri, file_errors, notices);
                 config
             }
-            None => Self::create(db, workspace_uri, encoding, errors),
+            None => Self::create(db, workspace_uri, encoding, file_errors, notices),
         }
     }
 
@@ -41,9 +43,11 @@ impl Workspace {
         db: &RootDatabase,
         workspace_uri: Option<Url>,
         encoding: PositionEncodingKind,
-        errors: &mut Vec<ConfigurationError>,
+        file_errors: &mut Vec<IdeDiagnostic>,
+        notices: &mut Vec<ConfigurationNotice>,
     ) -> Self {
-        let (workspace_folder, stdlib_path, config_file) = resolve_all(workspace_uri, errors);
+        let (workspace_folder, stdlib_path, config_file) =
+            resolve_all(workspace_uri, &encoding, file_errors, notices);
 
         Self::builder(workspace_folder, stdlib_path, config_file, encoding)
             .durability(Durability::HIGH)
@@ -54,9 +58,11 @@ impl Workspace {
         &self,
         db: &mut RootDatabase,
         workspace_uri: Option<Url>,
-        errors: &mut Vec<ConfigurationError>,
+        file_errors: &mut Vec<IdeDiagnostic>,
+        notices: &mut Vec<ConfigurationNotice>,
     ) {
-        let (workspace_folder, stdlib_path, config_file) = resolve_all(workspace_uri, errors);
+        let (workspace_folder, stdlib_path, config_file) =
+            resolve_all(workspace_uri, &self.encoding(db), file_errors, notices);
 
         self.set_workspace_folder(db).to(workspace_folder);
         self.set_stdlib_path(db).to(stdlib_path);
@@ -66,14 +72,16 @@ impl Workspace {
 
 fn resolve_all(
     workspace_uri: Option<Url>,
-    errors: &mut Vec<ConfigurationError>,
+    encoding: &PositionEncodingKind,
+    file_errors: &mut Vec<IdeDiagnostic>,
+    notices: &mut Vec<ConfigurationNotice>,
 ) -> (Option<PathBuf>, Option<PathBuf>, Option<PathBuf>) {
     // 1. Resolve workspace folder from URI
     let workspace_folder = match workspace_uri {
         Some(uri) => match uri.to_file_path() {
             Ok(path) => Some(path),
             Err(_) => {
-                errors.push(ConfigurationError::InvalidWorkspaceUri { uri });
+                notices.push(ConfigurationNotice::InvalidWorkspaceUri { uri });
                 None
             }
         },
@@ -85,7 +93,7 @@ fn resolve_all(
         Some(ws) => {
             let resolved = crate::loader::resolve_config_file(ws);
             if resolved.is_none() {
-                errors.push(ConfigurationError::ConfigFileNotFound {
+                notices.push(ConfigurationNotice::ConfigFileNotFound {
                     path: ws.join("config.toml"),
                 });
             }
@@ -103,10 +111,24 @@ fn resolve_all(
                     .map(PathBuf::from)
                     .filter(|p| p.exists()),
                 Err(e) => {
-                    errors.push(ConfigurationError::InvalidConfigFile {
-                        path: path.clone(),
-                        message: e.message().to_string(),
-                    });
+                    if let Ok(uri) = Url::from_file_path(path) {
+                        // Reuse the already-read `source` for offset→line/col conversion.
+                        let range = e.span().and_then(|span| {
+                            let parsers = ast::RK_PARSER.get("structured_text")?;
+                            let tree = parsers.parser.write().parse("".as_bytes(), None)?;
+                            let doc = auto_lsp::core::document::Document::new(
+                                source.clone(), tree, Some(encoding),
+                            );
+                            doc.range_at(span).ok()
+                        }).unwrap_or_default();
+                        file_errors.push(IdeDiagnostic::new(Diagnostic {
+                            range,
+                            severity: Some(DiagnosticSeverity::ERROR),
+                            source: Some("rk-lsp".to_string()),
+                            message: e.message().to_string(),
+                            ..Default::default()
+                        }));
+                    }
                     None
                 }
             },
@@ -118,40 +140,35 @@ fn resolve_all(
     // 4. Resolve stdlib: user override from config.toml > default
     let stdlib_path = user_stdlib_path.or_else(crate::loader::resolve_stdlib_path);
     if stdlib_path.is_none() {
-        errors.push(ConfigurationError::StdlibNotFound);
+        notices.push(ConfigurationNotice::StdlibNotFound);
     }
 
     (workspace_folder, stdlib_path, config_file)
 }
 
+/// Configuration-level issue with no specific file location.
+/// Reported via `window/showMessage`.
 #[derive(Clone, Debug)]
-pub enum ConfigurationError {
+pub enum ConfigurationNotice {
     InvalidWorkspaceUri { uri: Url },
     ConfigFileNotFound { path: PathBuf },
-    InvalidConfigFile {
-        path: PathBuf,
-        message: String,
-    },
     StdlibNotFound,
 }
 
-impl Display for ConfigurationError {
+impl Display for ConfigurationNotice {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ConfigurationError::InvalidWorkspaceUri { uri } => {
+            ConfigurationNotice::InvalidWorkspaceUri { uri } => {
                 write!(f, "invalid workspace URI: {}", uri)
             }
-            ConfigurationError::ConfigFileNotFound { path } => {
+            ConfigurationNotice::ConfigFileNotFound { path } => {
                 write!(
                     f,
                     "configuration file not found at path: {}",
                     path.display()
                 )
             }
-            ConfigurationError::InvalidConfigFile { path, message } => {
-                write!(f, "{}: {}", path.display(), message)
-            }
-            ConfigurationError::StdlibNotFound => {
+            ConfigurationNotice::StdlibNotFound => {
                 write!(f, "standard library not found")
             }
         }

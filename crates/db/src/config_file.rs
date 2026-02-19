@@ -11,14 +11,14 @@ use crate::{workspace::Workspace, WorkspaceDataBase};
 pub struct Config {
     pub project: ProjectInfo,
     pub stdlib_path: Option<String>,
-    pub output: OutputConfig,
+    pub output: Option<OutputConfig>,
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProjectInfo {
     pub name: String,
-    pub version: u32,
+    pub version: String,
 }
  
 #[derive(Default, Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
@@ -67,7 +67,7 @@ stdlib_path = "/custom/stdlib"
 
 [project]
 name = "Lisa"
-version = 1
+version = "1"
 
 [output]
 directory = "build"
@@ -78,9 +78,9 @@ directory = "build"
     fn valid_full_config() {
         let config: Config = parse_config(full_config()).unwrap();
         assert_eq!(config.project.name, "Lisa");
-        assert_eq!(config.project.version, 1);
+        assert_eq!(config.project.version, "1");
         assert_eq!(config.stdlib_path.as_deref(), Some("/custom/stdlib"));
-        assert_eq!(config.output.directory, "build");
+        assert_eq!(config.output.unwrap().directory, "build");
     }
 
     #[test]
@@ -89,7 +89,7 @@ directory = "build"
             r#"
 [project]
 name = "Test"
-version = 2
+version = "2"
 
 [output]
 directory = "out"
@@ -97,9 +97,24 @@ directory = "out"
         )
         .unwrap();
         assert_eq!(config.project.name, "Test");
-        assert_eq!(config.project.version, 2);
+        assert_eq!(config.project.version, "2");
         assert_eq!(config.stdlib_path, None);
-        assert_eq!(config.output.directory, "out");
+        assert_eq!(config.output.unwrap().directory, "out");
+    }
+
+    #[test]
+    fn valid_without_output_section() {
+        // output is optional
+        let config: Config = parse_config(
+            r#"
+[project]
+name = "Test"
+version = "1"
+"#,
+        )
+        .unwrap();
+        assert_eq!(config.project.name, "Test");
+        assert!(config.output.is_none());
     }
 
     #[test]
@@ -115,24 +130,11 @@ directory = "build"
     }
 
     #[test]
-    fn missing_output_section() {
-        let err = parse_config(
-            r#"
-[project]
-name = "Test"
-version = 1
-"#,
-        )
-        .unwrap_err();
-        assert!(err.message().contains("missing field `output`"));
-    }
-
-    #[test]
     fn missing_project_name() {
         let err = parse_config(
             r#"
 [project]
-version = 1
+version = "1"
 
 [output]
 directory = "build"
@@ -158,12 +160,12 @@ directory = "build"
     }
 
     #[test]
-    fn wrong_type_version_is_string() {
+    fn wrong_type_name_is_integer() {
         let err = parse_config(
             r#"
 [project]
-name = "Test"
-version = "one"
+name = 123
+version = "1"
 
 [output]
 directory = "build"
@@ -179,7 +181,7 @@ directory = "build"
             r#"
 [project]
 name = "Test"
-version = 1
+version = "1"
 unknown_key = true
 
 [output]
@@ -196,7 +198,7 @@ directory = "build"
             r#"
 [project]
 name = "Test"
-version = 1
+version = "1"
 extra = "nope"
 
 [output]
@@ -215,16 +217,16 @@ directory = "build"
 
     #[test]
     fn error_has_span() {
+        // name is a String field; providing an integer triggers a type error with a span
         let input = r#"
 [project]
-name = "Test"
-version = "bad"
+name = 123
+version = "1"
 
 [output]
 directory = "build"
 "#;
         let err = parse_config(input).unwrap_err();
-        // toml should provide a byte span for the invalid value
         assert!(err.span().is_some());
     }
 }

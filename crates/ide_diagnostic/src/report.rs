@@ -1,7 +1,7 @@
 use ariadne::{Label, Report, Source};
 use auto_lsp::{
     default::db::{BaseDatabase, file::File},
-    lsp_types::{DiagnosticSeverity, NumberOrString},
+    lsp_types::{DiagnosticSeverity, NumberOrString, Url},
 };
 use yansi::Paint;
 
@@ -11,7 +11,8 @@ impl IdeDiagnostic {
     pub fn create_report<'report>(
         &self,
         db: &'report dyn BaseDatabase,
-        file: File,
+        url: &'report Url,
+        content: &'report str,
         config: Option<ariadne::Config>,
         format: bool,
     ) -> Report<'report, (&'report str, std::ops::Range<usize>)> {
@@ -21,14 +22,14 @@ impl IdeDiagnostic {
             _ => ariadne::ReportKind::Error,
         };
 
-        let source = Source::from(file.document(db).as_str());
+        let source = Source::from(content);
         let range = self.diagnostic.range;
         let start_line = source.line(range.start.line as usize).unwrap().offset();
         let end_line = source.line(range.end.line as usize).unwrap().offset();
         let start = start_line + range.start.character as usize;
         let end = end_line + range.end.character as usize;
 
-        let mut report = Report::build(error_kind, (file.url(db).as_str(), start..end));
+        let mut report = Report::build(error_kind, (url.as_str(), start..end));
 
         if let Some(config) = config {
             report = report.with_config(config);
@@ -55,7 +56,7 @@ impl IdeDiagnostic {
         }
 
         report.add_label(
-            Label::new((file.url(db).as_str(), start..end))
+            Label::new((url.as_str(), start..end))
                 .with_message(match format {
                     true => Paint::bold(&self.diagnostic.message).to_string(),
                     false => self.diagnostic.message.clone(),

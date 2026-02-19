@@ -97,7 +97,7 @@ pub fn test_diagnostics<'db>(db: &'db mut RootDatabase, source: &'db [&'db str])
 
     for file in files {
         diagnostics_for_file(db, file).iter().for_each(|d| {
-            d.create_report(db, file, Some(no_color_and_ascii()), false)
+            d.create_report(db, file.url(db), file.document(db).as_str(), Some(no_color_and_ascii()), false)
                 .write(sources(file_sources.clone()), &mut cache)
                 .unwrap();
         });

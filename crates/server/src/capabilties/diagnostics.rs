@@ -50,7 +50,7 @@ pub fn workspace_diagnostics<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
     db: &Db,
     _params: WorkspaceDiagnosticParams,
 ) -> anyhow::Result<WorkspaceDiagnosticReportResult> {
-    let result = db
+    let result: Vec<WorkspaceDocumentDiagnosticReport> = db
         .get_files()
         .into_par_iter()
         .map_with(db.clone(), |db, file| {
