@@ -13,24 +13,31 @@ END_CONFIGURATION
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (config_decl
-        (identifier)
-        (global_var_decls
-          (global_var_decl
-            (global_var_spec
-              (identifier))
-            (namespace_access
-              (identifier))))
-        (resource_decl
-          (identifier)
-          (identifier)
-          (global_var_decls
-            (global_var_decl
-              (global_var_spec
-                (identifier))
-              (namespace_access
-                (identifier)))))))
+(source_file
+  (config_decl
+    (identifier)
+    (global_var_decls
+      (global_var_decl
+        (global_var_spec
+          (identifier))
+        (loc_var_spec_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (unsign_int_type_name
+                  (uint_name))))))))
+    (resource_decl
+      (identifier)
+      (identifier)
+      (global_var_decls
+        (global_var_decl
+          (global_var_spec
+            (identifier))
+          (loc_var_spec_init
+            (simple_type_spec
+              (bit_str_type_name
+                (multibits_type_name
+                  (byte_name))))))))))
 
 ================================================================================
 Periodic TASK - Non-periodic TASK
@@ -48,45 +55,48 @@ END_CONFIGURATION
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (config_decl
-        (identifier)
-        (resource_decl
+(source_file
+  (config_decl
+    (identifier)
+    (resource_decl
+      (identifier)
+      (identifier)
+      (global_var_decls
+        (global_var_decl
+          (global_var_spec
+            (identifier))
+          (loc_var_spec_init
+            (simple_type_spec
+              (bit_str_type_name
+                (multibits_type_name
+                  (byte_name)))))))
+      (single_resource_decl
+        (task_config
           (identifier)
+          (task_init
+            (data_source
+              (constant
+                (time_literal
+                  (duration
+                    (time
+                      (time_type_name)
+                      (time_value))))))
+            (unsigned_int))))
+      (single_resource_decl
+        (task_config
           (identifier)
-          (global_var_decls
-            (global_var_decl
-              (global_var_spec
-                (identifier))
-              (namespace_access
-                (identifier))))
-          (single_resource_decl
-            (task_config
-              (identifier)
-              (task_init
-                (data_source
-                  (constant
-                    (time_literal
-                      (duration
-                        (time
-                          (time_type_name)
-                          (time_value))))))
-                (unsigned_int))))
-          (single_resource_decl
-            (task_config
-              (identifier)
-              (task_init
-                (data_source
-                  (constant
-                    (time_literal
-                      (duration
-                        (time
-                          (time_type_name)
-                          (time_value))))))
-                (unsigned_int)))))))
+          (task_init
+            (data_source
+              (constant
+                (time_literal
+                  (duration
+                    (time
+                      (time_type_name)
+                      (time_value))))))
+            (unsigned_int)))))))
 
 ================================================================================
-WITH for PROGRAM to TASK association 
+WITH for PROGRAM to TASK association
 ================================================================================
 
 CONFIGURATION cfg
@@ -100,52 +110,52 @@ END_CONFIGURATION
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (config_decl
+(source_file
+  (config_decl
+    (identifier)
+    (single_resource_decl
+      (prog_config
         (identifier)
-        (single_resource_decl
-          (prog_config
-            (identifier)
-            (identifier)
-            (namespace_access
-              (identifier))
-            (prog_conf_elems
-              (prog_conf_elem
-                (prog_cnxn
-                  (path_expression
-                    (var_access
-                      (field)))
-                  (prog_data_source
-                    (direct_variable
-                      (adress_identifier)
-                      (offset
-                        (unsigned_int)
-                        (unsigned_int)))))))))
-        (single_resource_decl
-          (prog_config
-            (identifier)
-            (namespace_access
-              (identifier))
-            (prog_conf_elems
-              (prog_conf_elem
-                (fb_task
-                  (path_expression
-                    (var_access
-                      (ref_deref
-                        (identifier)
-                        (deref_sign))))
-                  (identifier)))
-              (prog_conf_elem
-                (fb_task
-                  (path_expression
-                    (var_access
-                      (ref_deref
-                        (identifier)
-                        (deref_sign))))
-                  (identifier))))))))
+        (identifier)
+        (namespace_access
+          (identifier))
+        (prog_conf_elems
+          (prog_conf_elem
+            (prog_cnxn
+              (path_expression
+                (var_access
+                  (field)))
+              (prog_data_source
+                (direct_variable
+                  (adress_identifier)
+                  (offset
+                    (unsigned_int)
+                    (unsigned_int)))))))))
+    (single_resource_decl
+      (prog_config
+        (identifier)
+        (namespace_access
+          (identifier))
+        (prog_conf_elems
+          (prog_conf_elem
+            (fb_task
+              (path_expression
+                (var_access
+                  (ref_deref
+                    (identifier)
+                    (deref_sign))))
+              (identifier)))
+          (prog_conf_elem
+            (fb_task
+              (path_expression
+                (var_access
+                  (ref_deref
+                    (identifier)
+                    (deref_sign))))
+              (identifier))))))))
 
 ================================================================================
-Directly represented variables in VAR_GLOBAL 
+Directly represented variables in VAR_GLOBAL
 ================================================================================
 
 CONFIGURATION cfg
@@ -162,31 +172,37 @@ END_CONFIGURATION
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (config_decl
-        (identifier)
-        (resource_decl
-          (identifier)
-          (identifier)
-          (global_var_decls
-            (global_var_decl
-              (global_var_spec
-                (identifier))
-              (namespace_access
-                (identifier)))
-            (global_var_decl
-              (global_var_spec
-                (identifier)
-                (located_at
-                  (direct_variable
-                    (adress_identifier)
-                    (offset
-                      (unsigned_int)))))
-              (namespace_access
-                (identifier)))))))
+(source_file
+  (config_decl
+    (identifier)
+    (resource_decl
+      (identifier)
+      (identifier)
+      (global_var_decls
+        (global_var_decl
+          (global_var_spec
+            (identifier))
+          (loc_var_spec_init
+            (simple_type_spec
+              (bit_str_type_name
+                (bool_name)))))
+        (global_var_decl
+          (global_var_spec
+            (identifier)
+            (located_at
+              (direct_variable
+                (adress_identifier)
+                (offset
+                  (unsigned_int)))))
+          (loc_var_spec_init
+            (simple_type_spec
+              (numeric_type_name
+                (int_type_name
+                  (sign_int_type_name
+                    (int_name)))))))))))
 
 ================================================================================
-Connection of GLOBAL variables to PROGRAM inputs 
+Connection of GLOBAL variables to PROGRAM inputs
 ================================================================================
 
 CONFIGURATION cfg
@@ -209,7 +225,7 @@ END_CONFIGURATION
 
 --------------------------------------------------------------------------------
 
-    (source_file
+  (source_file
       (config_decl
         (identifier)
         (resource_decl
@@ -219,8 +235,10 @@ END_CONFIGURATION
             (global_var_decl
               (global_var_spec
                 (identifier))
-              (namespace_access
-                (identifier)))
+              (loc_var_spec_init
+                (simple_type_spec
+                  (bit_str_type_name
+                    (bool_name)))))
             (global_var_decl
               (global_var_spec
                 (identifier)
@@ -229,8 +247,12 @@ END_CONFIGURATION
                     (adress_identifier)
                     (offset
                       (unsigned_int)))))
-              (namespace_access
-                (identifier))))
+              (loc_var_spec_init
+                (simple_type_spec
+                  (numeric_type_name
+                    (int_type_name
+                      (sign_int_type_name
+                        (int_name))))))))
           (single_resource_decl
             (task_config
               (identifier)
@@ -327,126 +349,146 @@ END_CONFIGURATION
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (config_decl
+(source_file
+  (config_decl
+    (identifier)
+    (access_decls
+      (access_decl
         (identifier)
-        (access_decls
-          (access_decl
-            (identifier)
-            (access_path
+        (access_path
+          (path_expression
+            (var_access
+              (field)))
+          (direct_variable
+            (adress_identifier)
+            (offset
+              (unsigned_int)
+              (unsigned_int))))
+        (bit_str_type_name
+          (bool_name))
+        (access_direction
+          (read_only)))
+      (access_decl
+        (identifier)
+        (access_path
+          (path_expression
+            (field_expression
+              (path_expression
+                (field_expression
+                  (path_expression
+                    (var_access
+                      (field)))
+                  (var_access
+                    (field))))
+              (var_access
+                (field)))))
+        (numeric_type_name
+          (int_type_name
+            (unsign_int_type_name
+              (uint_name))))
+        (access_direction
+          (read_write)))
+      (access_decl
+        (identifier)
+        (access_path
+          (path_expression
+            (field_expression
               (path_expression
                 (var_access
                   (field)))
-              (direct_variable
-                (adress_identifier)
-                (offset
-                  (unsigned_int)
-                  (unsigned_int))))
-            (bit_str_type_name
-              (bool_name))
-            (access_direction
-              (read_only)))
-          (access_decl
-            (identifier)
-            (access_path
-              (path_expression
-                (field_expression
-                  (path_expression
-                    (field_expression
-                      (path_expression
-                        (var_access
-                          (field)))
-                      (var_access
-                        (field))))
-                  (var_access
-                    (field)))))
-            (numeric_type_name
-              (int_type_name
-                (unsign_int_type_name
-                  (uint_name))))
-            (access_direction
-              (read_write)))
-          (access_decl
-            (identifier)
-            (access_path
+              (var_access
+                (field)))))
+        (bit_str_type_name
+          (multibits_type_name
+            (byte_name))))
+      (access_decl
+        (identifier)
+        (access_path
+          (path_expression
+            (var_access
+              (field))))
+        (numeric_type_name
+          (int_type_name
+            (unsign_int_type_name
+              (uint_name))))
+        (access_direction
+          (read_only)))
+      (access_decl
+        (identifier)
+        (access_path
+          (path_expression
+            (field_expression
               (path_expression
                 (field_expression
                   (path_expression
                     (var_access
                       (field)))
                   (var_access
-                    (field)))))
-            (bit_str_type_name
-              (multibits_type_name
-                (byte_name))))
-          (access_decl
-            (identifier)
-            (access_path
+                    (field))))
+              (var_access
+                (field)))))
+        (bit_str_type_name
+          (multibits_type_name
+            (byte_name)))
+        (access_direction
+          (read_only)))
+      (access_decl
+        (identifier)
+        (access_path
+          (path_expression
+            (field_expression
+              (path_expression
+                (field_expression
+                  (path_expression
+                    (var_access
+                      (field)))
+                  (var_access
+                    (field))))
+              (var_access
+                (field)))))
+        (numeric_type_name
+          (int_type_name
+            (sign_int_type_name
+              (int_name))))
+        (access_direction
+          (read_only)))
+      (access_decl
+        (identifier)
+        (access_path
+          (path_expression
+            (field_expression
               (path_expression
                 (var_access
-                  (field))))
-            (numeric_type_name
-              (int_type_name
-                (unsign_int_type_name
-                  (uint_name))))
-            (access_direction
-              (read_only)))
-          (access_decl
-            (identifier)
-            (access_path
-              (path_expression
-                (field_expression
-                  (path_expression
-                    (field_expression
-                      (path_expression
-                        (var_access
-                          (field)))
-                      (var_access
-                        (field))))
-                  (var_access
-                    (field)))))
-            (bit_str_type_name
-              (multibits_type_name
-                (byte_name)))
-            (access_direction
-              (read_only)))
-          (access_decl
-            (identifier)
-            (access_path
-              (path_expression
-                (field_expression
-                  (path_expression
-                    (field_expression
-                      (path_expression
-                        (var_access
-                          (field)))
-                      (var_access
-                        (field))))
-                  (var_access
-                    (field)))))
-            (numeric_type_name
-              (int_type_name
-                (sign_int_type_name
-                  (int_name))))
-            (access_direction
-              (read_only)))
-          (access_decl
-            (identifier)
-            (access_path
+                  (field)))
+              (var_access
+                (field)))))
+        (bit_str_type_name
+          (bool_name))
+        (access_direction
+          (read_write)))
+      (access_decl
+        (identifier)
+        (access_path
+          (path_expression
+            (field_expression
               (path_expression
                 (field_expression
                   (path_expression
                     (var_access
                       (field)))
                   (var_access
-                    (field)))))
-            (bit_str_type_name
-              (bool_name))
-            (access_direction
-              (read_write)))
-          (access_decl
-            (identifier)
-            (access_path
+                    (field))))
+              (var_access
+                (field)))))
+        (numeric_type_name
+          (int_type_name
+            (sign_int_type_name
+              (int_name)))))
+      (access_decl
+        (identifier)
+        (access_path
+          (path_expression
+            (field_expression
               (path_expression
                 (field_expression
                   (path_expression
@@ -457,79 +499,59 @@ END_CONFIGURATION
                       (var_access
                         (field))))
                   (var_access
-                    (field)))))
-            (numeric_type_name
-              (int_type_name
-                (sign_int_type_name
-                  (int_name)))))
-          (access_decl
-            (identifier)
-            (access_path
+                    (field))))
+              (var_access
+                (field)))))
+        (bit_str_type_name
+          (bool_name))
+        (access_direction
+          (read_write)))
+      (access_decl
+        (identifier)
+        (access_path
+          (path_expression
+            (field_expression
               (path_expression
                 (field_expression
                   (path_expression
                     (field_expression
                       (path_expression
-                        (field_expression
-                          (path_expression
-                            (var_access
-                              (field)))
-                          (var_access
-                            (field))))
+                        (var_access
+                          (field)))
                       (var_access
                         (field))))
                   (var_access
-                    (field)))))
-            (bit_str_type_name
-              (bool_name))
-            (access_direction
-              (read_write)))
-          (access_decl
-            (identifier)
-            (access_path
+                    (field))))
+              (var_access
+                (field)))))
+        (bit_str_type_name
+          (bool_name))
+        (access_direction
+          (read_only)))
+      (access_decl
+        (identifier)
+        (access_path
+          (path_expression
+            (field_expression
               (path_expression
                 (field_expression
                   (path_expression
                     (field_expression
                       (path_expression
-                        (field_expression
-                          (path_expression
-                            (var_access
-                              (field)))
-                          (var_access
-                            (field))))
+                        (var_access
+                          (field)))
                       (var_access
                         (field))))
                   (var_access
-                    (field)))))
-            (bit_str_type_name
-              (bool_name))
-            (access_direction
-              (read_only)))
-          (access_decl
-            (identifier)
-            (access_path
-              (path_expression
-                (field_expression
-                  (path_expression
-                    (field_expression
-                      (path_expression
-                        (field_expression
-                          (path_expression
-                            (var_access
-                              (field)))
-                          (var_access
-                            (field))))
-                      (var_access
-                        (field))))
-                  (var_access
-                    (field)))))
-            (numeric_type_name
-              (int_type_name
-                (sign_int_type_name
-                  (int_name))))
-            (access_direction
-              (read_write))))))
+                    (field))))
+              (var_access
+                (field)))))
+        (numeric_type_name
+          (int_type_name
+            (sign_int_type_name
+              (int_name))))
+        (access_direction
+          (read_write))))))
 
 ================================================================================
 VAR_CONFIG...END_VAR
@@ -549,90 +571,119 @@ END_CONFIGURATION
 
 --------------------------------------------------------------------------------
 
-
-    (source_file
-      (config_decl
-        (identifier)
-        (config_init
-          (config_inst_init
+(source_file
+  (config_decl
+    (identifier)
+    (config_init
+      (config_inst_init
+        (path_expression
+          (field_expression
             (path_expression
               (field_expression
                 (path_expression
-                  (field_expression
-                    (path_expression
-                      (var_access
-                        (field)))
-                    (var_access
-                      (field))))
+                  (var_access
+                    (field)))
                 (var_access
                   (field))))
-            (loc_var_spec_init
-              (simple_type_spec
-                (numeric_type_name
-                  (int_type_name
-                    (sign_int_type_name
-                      (int_name)))))
-              (simple_type_init
-                (constant_expr
-                  (constant
-                    (numeric_literal
-                      (int_literal
-                        (signed_int
-                          (unsigned_int)))))))))
-          (config_inst_init
+            (var_access
+              (field))))
+        (loc_var_spec_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name)))))
+          (simple_type_init
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int)))))))))
+      (config_inst_init
+        (path_expression
+          (field_expression
             (path_expression
               (field_expression
                 (path_expression
-                  (field_expression
-                    (path_expression
-                      (var_access
-                        (field)))
-                    (var_access
-                      (field))))
+                  (var_access
+                    (field)))
                 (var_access
                   (field))))
-            (loc_var_spec_init
-              (simple_type_spec
-                (numeric_type_name
-                  (int_type_name
-                    (sign_int_type_name
-                      (int_name)))))
-              (simple_type_init
-                (constant_expr
-                  (constant
-                    (numeric_literal
-                      (int_literal
-                        (signed_int
-                          (unsigned_int)))))))))
-          (config_inst_init
+            (var_access
+              (field))))
+        (loc_var_spec_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name)))))
+          (simple_type_init
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int)))))))))
+      (config_inst_init
+        (path_expression
+          (field_expression
             (path_expression
               (field_expression
                 (path_expression
-                  (field_expression
-                    (path_expression
-                      (var_access
-                        (field)))
-                    (var_access
-                      (field))))
+                  (var_access
+                    (field)))
                 (var_access
                   (field))))
-            (loc_var_spec_init
-              (simple_type_spec
-                (namespace_access
-                  (identifier)))
-              (struct_type_init
+            (var_access
+              (field))))
+        (loc_var_spec_init
+          (simple_type_spec
+            (namespace_access
+              (identifier)))
+          (struct_type_init
+            (init_elem
+              (struct_elem
+                (identifier)
                 (init_elem
-                  (struct_elem
-                    (identifier)
-                    (init_elem
-                      (constant_expr
-                        (constant
-                          (time_literal
-                            (duration
-                              (time
-                                (time_type_name)
-                                (time_value))))))))))))
-          (config_inst_init
+                  (constant_expr
+                    (constant
+                      (time_literal
+                        (duration
+                          (time
+                            (time_type_name)
+                            (time_value))))))))))))
+      (config_inst_init
+        (path_expression
+          (field_expression
+            (path_expression
+              (field_expression
+                (path_expression
+                  (var_access
+                    (field)))
+                (var_access
+                  (field))))
+            (var_access
+              (field))))
+        (loc_var_spec_init
+          (simple_type_spec
+            (namespace_access
+              (identifier)))
+          (struct_type_init
+            (init_elem
+              (struct_elem
+                (identifier)
+                (init_elem
+                  (constant_expr
+                    (constant
+                      (time_literal
+                        (duration
+                          (time
+                            (time_type_name)
+                            (time_value))))))))))))
+      (config_inst_init
+        (path_expression
+          (field_expression
             (path_expression
               (field_expression
                 (path_expression
@@ -644,45 +695,15 @@ END_CONFIGURATION
                       (field))))
                 (var_access
                   (field))))
-            (loc_var_spec_init
-              (simple_type_spec
-                (namespace_access
-                  (identifier)))
-              (struct_type_init
-                (init_elem
-                  (struct_elem
-                    (identifier)
-                    (init_elem
-                      (constant_expr
-                        (constant
-                          (time_literal
-                            (duration
-                              (time
-                                (time_type_name)
-                                (time_value))))))))))))
-          (config_inst_init
-            (path_expression
-              (field_expression
-                (path_expression
-                  (field_expression
-                    (path_expression
-                      (field_expression
-                        (path_expression
-                          (var_access
-                            (field)))
-                        (var_access
-                          (field))))
-                    (var_access
-                      (field))))
-                (var_access
-                  (field))))
-            (located_at
-              (direct_variable
-                (adress_identifier)
-                (offset
-                  (unsigned_int))))
-            (loc_var_spec_init
-              (simple_type_spec
-                (bit_str_type_name
-                  (multibits_type_name
-                    (byte_name)))))))))
+            (var_access
+              (field))))
+        (located_at
+          (direct_variable
+            (adress_identifier)
+            (offset
+              (unsigned_int))))
+        (loc_var_spec_init
+          (simple_type_spec
+            (bit_str_type_name
+              (multibits_type_name
+                (byte_name)))))))))

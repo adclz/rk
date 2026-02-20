@@ -1003,7 +1003,6 @@ module.exports = grammar({
     global_var_decl: ($) =>
       seq(
         field("spec", $.global_var_spec),
-        ":",
         field("type", $._global_var_kind),
       ),
     _global_var_kind: ($) => choice($.loc_var_spec_init, $.namespace_access),

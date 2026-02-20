@@ -6,9 +6,9 @@ PROGRAM myPrg END_PROGRAM
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (prog_decl
-        (identifier)))
+(source_file
+  (prog_decl
+    (identifier)))
 
 ================================================================================
 Declaration of inputs
@@ -20,23 +20,23 @@ END_PROGRAM
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (prog_decl
-        (identifier)
-        (input_decls
-          (input_var
-            (variable_list
-              (identifier))
-            (var_decl_init
-              (simple_type_spec
-                (bit_str_type_name
-                  (bool_name)))))
-          (input_var
-            (variable_list
-              (identifier))
-            (var_decl_init
-              (simple_type_spec
-                (time_type_name)))))))
+(source_file
+  (prog_decl
+    (identifier)
+    (input_decls
+      (input_var
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (bit_str_type_name
+              (bool_name)))))
+      (input_var
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (time_type_name)))))))
 
 ================================================================================
 Declaration of inputs
@@ -48,23 +48,23 @@ END_PROGRAM
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (prog_decl
-        (identifier)
-        (output_decls
-          (output_var
-            (variable_list
-              (identifier))
-            (var_decl_init
-              (simple_type_spec
-                (bit_str_type_name
-                  (bool_name)))))
-          (output_var
-            (variable_list
-              (identifier))
-            (var_decl_init
-              (simple_type_spec
-                (time_type_name)))))))
+(source_file
+  (prog_decl
+    (identifier)
+    (output_decls
+      (output_var
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (bit_str_type_name
+              (bool_name)))))
+      (output_var
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (time_type_name)))))))
 
 ================================================================================
 Declaration of outputs
@@ -76,23 +76,23 @@ END_PROGRAM
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (prog_decl
-        (identifier)
-        (output_decls
-          (output_var
-            (variable_list
-              (identifier))
-            (var_decl_init
-              (simple_type_spec
-                (bit_str_type_name
-                  (bool_name)))))
-          (output_var
-            (variable_list
-              (identifier))
-            (var_decl_init
-              (simple_type_spec
-                (time_type_name)))))))
+(source_file
+  (prog_decl
+    (identifier)
+    (output_decls
+      (output_var
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (bit_str_type_name
+              (bool_name)))))
+      (output_var
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (time_type_name)))))))
 
 ================================================================================
 Declaration of in-outs
@@ -104,19 +104,19 @@ END_PROGRAM
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (prog_decl
-        (identifier)
-        (in_out_decls
-          (in_out_var
-            (variable_list
-              (identifier))
-            (var_decl
-              (simple_type_spec
-                (numeric_type_name
-                  (int_type_name
-                    (sign_int_type_name
-                      (int_name))))))))))
+(source_file
+  (prog_decl
+    (identifier)
+    (in_out_decls
+      (in_out_var
+        (variable_list
+          (identifier))
+        (var_decl
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))))))))
 
 ================================================================================
 Declaration of temporary variables
@@ -128,19 +128,19 @@ END_PROGRAM
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (prog_decl
-        (identifier)
-        (temp_var_decls
-          (temp_var
-            (variable_list
-              (identifier))
-            (var_decl
-              (simple_type_spec
-                (numeric_type_name
-                  (int_type_name
-                    (sign_int_type_name
-                      (int_name))))))))))
+(source_file
+  (prog_decl
+    (identifier)
+    (temp_var_decls
+      (temp_var
+        (variable_list
+          (identifier))
+        (var_decl
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))))))))
 
 ================================================================================
 Declaration of static variables
@@ -152,19 +152,19 @@ END_PROGRAM
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (prog_decl
-        (identifier)
-        (var_decls
-          (var_decl_init_list
-            (variable_list
-              (identifier))
-            (var_decl_init
-              (simple_type_spec
-                (numeric_type_name
-                  (real_type_name
-                    (real_name)))))))))
-                    
+(source_file
+  (prog_decl
+    (identifier)
+    (var_decls
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (real_type_name
+                (real_name)))))))))
+
 ================================================================================
 Declaration of external variables
 ================================================================================
@@ -175,17 +175,17 @@ END_PROGRAM
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (prog_decl
+(source_file
+  (prog_decl
+    (identifier)
+    (external_var_decls
+      (external_decl
         (identifier)
-        (external_var_decls
-          (external_decl
-            (identifier)
-            (var_decl
-              (simple_type_spec
-                (numeric_type_name
-                  (real_type_name
-                    (real_name)))))))))
+        (var_decl
+          (simple_type_spec
+            (numeric_type_name
+              (real_type_name
+                (real_name)))))))))
 
 ================================================================================
 Declaration of external variables (CONSTANT)
@@ -197,17 +197,17 @@ END_PROGRAM
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (prog_decl
+(source_file
+  (prog_decl
+    (identifier)
+    (external_var_decls
+      (external_decl
         (identifier)
-        (external_var_decls
-          (external_decl
-            (identifier)
-            (var_decl
-              (simple_type_spec
-                (numeric_type_name
-                  (real_type_name
-                    (real_name)))))))))
+        (var_decl
+          (simple_type_spec
+            (numeric_type_name
+              (real_type_name
+                (real_name)))))))))
 
 ================================================================================
 Initialization of variables
@@ -222,75 +222,75 @@ END_PROGRAM
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (prog_decl
-        (identifier)
-        (input_decls
-          (input_var
-            (variable_list
-              (identifier))
-            (var_decl_init
-              (simple_type_spec
-                (numeric_type_name
-                  (int_type_name
-                    (sign_int_type_name
-                      (int_name)))))
-              (simple_type_init
-                (constant_expr
-                  (constant
-                    (numeric_literal
-                      (int_literal
-                        (signed_int
-                          (unsigned_int))))))))))
-        (output_decls
-          (output_var
-            (variable_list
-              (identifier))
-            (var_decl_init
-              (simple_type_spec
-                (numeric_type_name
-                  (int_type_name
-                    (sign_int_type_name
-                      (int_name)))))
-              (simple_type_init
-                (constant_expr
-                  (constant
-                    (numeric_literal
-                      (int_literal
-                        (signed_int
-                          (unsigned_int))))))))))
-        (var_decls
-          (var_decl_init_list
-            (variable_list
-              (identifier))
-            (var_decl_init
-              (simple_type_spec
-                (numeric_type_name
-                  (real_type_name
-                    (real_name))))
-              (simple_type_init
-                (constant_expr
-                  (constant
-                    (numeric_literal
-                      (real_literal
-                        (real_value)))))))))
-        (temp_var_decls
-          (temp_var
-            (variable_list
-              (identifier))
-            (var_decl
-              (simple_type_spec
-                (numeric_type_name
-                  (int_type_name
-                    (sign_int_type_name
-                      (int_name)))))
-              (simple_type_init
-                (constant_expr
-                  (constant
-                    (numeric_literal
-                      (int_literal
-                        (signed_int
-                          (unsigned_int))))))))))))
+(source_file
+  (prog_decl
+    (identifier)
+    (input_decls
+      (input_var
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name)))))
+          (simple_type_init
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))))))
+    (output_decls
+      (output_var
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name)))))
+          (simple_type_init
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))))))
+    (var_decls
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (real_type_name
+                (real_name))))
+          (simple_type_init
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (real_literal
+                    (real_value)))))))))
+    (temp_var_decls
+      (temp_var
+        (variable_list
+          (identifier))
+        (var_decl
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name)))))
+          (simple_type_init
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))))))))
 
 ================================================================================
 Declaration of RETAIN qualifier on variables
@@ -304,36 +304,36 @@ END_PROGRAM
 
 --------------------------------------------------------------------------------
 
-   (source_file
-      (prog_decl
-        (identifier)
-        (input_decls
-          (input_var
-            (variable_list
-              (identifier))
-            (var_decl_init
-              (simple_type_spec
-                (numeric_type_name
-                  (real_type_name
-                    (real_name)))))))
-        (retain_var_decls
-          (var_decl_init_list
-            (variable_list
-              (identifier))
-            (var_decl_init
-              (simple_type_spec
-                (numeric_type_name
-                  (real_type_name
-                    (real_name)))))))
-        (output_decls
-          (output_var
-            (variable_list
-              (identifier))
-            (var_decl_init
-              (simple_type_spec
-                (numeric_type_name
-                  (real_type_name
-                    (real_name)))))))))
+(source_file
+  (prog_decl
+    (identifier)
+    (input_decls
+      (input_var
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (real_type_name
+                (real_name)))))))
+    (retain_var_decls
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (real_type_name
+                (real_name)))))))
+    (output_decls
+      (output_var
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (real_type_name
+                (real_name)))))))))
 
 ================================================================================
 Declaration of NON_RETAIN qualifier on variables
@@ -347,36 +347,36 @@ END_PROGRAM
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (prog_decl
-        (identifier)
-        (input_decls
-          (input_var
-            (variable_list
-              (identifier))
-            (var_decl_init
-              (simple_type_spec
-                (numeric_type_name
-                  (real_type_name
-                    (real_name)))))))
-        (output_decls
-          (output_var
-            (variable_list
-              (identifier))
-            (var_decl_init
-              (simple_type_spec
-                (numeric_type_name
-                  (real_type_name
-                    (real_name)))))))
-        (no_retain_var_decls
-          (var_decl_init_list
-            (variable_list
-              (identifier))
-            (var_decl_init
-              (simple_type_spec
-                (numeric_type_name
-                  (real_type_name
-                    (real_name)))))))))
+(source_file
+  (prog_decl
+    (identifier)
+    (input_decls
+      (input_var
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (real_type_name
+                (real_name)))))))
+    (output_decls
+      (output_var
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (real_type_name
+                (real_name)))))))
+    (no_retain_var_decls
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (real_type_name
+                (real_name)))))))))
 
 ================================================================================
 Declaration of RETAIN qualifier on local FB instances
@@ -388,17 +388,17 @@ END_PROGRAM
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (prog_decl
-        (identifier)
-        (retain_var_decls
-          (var_decl_init_list
-            (variable_list
-              (identifier))
-            (var_decl_init
-              (simple_type_spec
-                (namespace_access
-                  (identifier))))))))
+(source_file
+  (prog_decl
+    (identifier)
+    (retain_var_decls
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (namespace_access
+              (identifier))))))))
 
 ================================================================================
 Declaration of NON_RETAIN qualifier on local FB instances
@@ -410,20 +410,20 @@ END_PROGRAM
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (prog_decl
-        (identifier)
-        (no_retain_var_decls
-          (var_decl_init_list
-            (variable_list
-              (identifier))
-            (var_decl_init
-              (simple_type_spec
-                (namespace_access
-                  (identifier))))))))
+(source_file
+  (prog_decl
+    (identifier)
+    (no_retain_var_decls
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (namespace_access
+              (identifier))))))))
 
 ================================================================================
-Textual declaration of - rising edge inputs 
+Textual declaration of - rising edge inputs
 ================================================================================
 
 PROGRAM AND_EDGE
@@ -440,51 +440,51 @@ END_PROGRAM
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (prog_decl
-        (identifier)
-        (input_decls
-          (input_var
-            (variable_list
-              (identifier))
-            (edge_decl))
-          (input_var
-            (variable_list
-              (identifier))
-            (edge_decl)))
-        (output_decls
-          (output_var
-            (variable_list
-              (identifier))
-            (var_decl_init
-              (simple_type_spec
-                (bit_str_type_name
-                  (bool_name))))))
-        (fb_body
-          (stmt_list
-            (assign
-              (variable
-                (begin_path_expression
-                  (path_expression
-                    (var_access
-                      (field)))))
-              (assignment
-                (boolean_operator
-                  (and_operator
-                    (variable_access
-                      (variable
-                        (begin_path_expression
-                          (path_expression
-                            (var_access
-                              (field))))))
-                    (variable_access
-                      (variable
-                        (begin_path_expression
-                          (path_expression
-                            (var_access
-                              (field))))))))))))
-        (pascal_style_comment
-          (comment_text))))
+(source_file
+  (prog_decl
+    (identifier)
+    (input_decls
+      (input_var
+        (variable_list
+          (identifier))
+        (edge_decl))
+      (input_var
+        (variable_list
+          (identifier))
+        (edge_decl)))
+    (output_decls
+      (output_var
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (bit_str_type_name
+              (bool_name))))))
+    (fb_body
+      (stmt_list
+        (assign
+          (variable
+            (begin_path_expression
+              (path_expression
+                (var_access
+                  (field)))))
+          (assignment
+            (boolean_operator
+              (and_operator
+                (variable_access
+                  (variable
+                    (begin_path_expression
+                      (path_expression
+                        (var_access
+                          (field))))))
+                (variable_access
+                  (variable
+                    (begin_path_expression
+                      (path_expression
+                        (var_access
+                          (field))))))))))))
+    (pascal_style_comment
+      (comment_text))))
 
 ================================================================================
 VAR_GLOBAL...END_VAR declaration within a PROGRAM
@@ -496,15 +496,18 @@ END_PROGRAM
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (prog_decl
-        (identifier)
-        (global_var_decls
-          (global_var_decl
-            (global_var_spec
-              (identifier))
-            (namespace_access
-              (identifier))))))
+(source_file
+  (prog_decl
+    (identifier)
+    (global_var_decls
+      (global_var_decl
+        (global_var_spec
+          (identifier))
+        (loc_var_spec_init
+          (simple_type_spec
+            (bit_str_type_name
+              (multibits_type_name
+                (byte_name)))))))))
 
 ================================================================================
 VAR_GLOBAL CONSTANT declarations within PROGRAM type declarations
@@ -516,15 +519,18 @@ END_PROGRAM
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (prog_decl
-        (identifier)
-        (global_var_decls
-          (global_var_decl
-            (global_var_spec
-              (identifier))
-            (namespace_access
-              (identifier))))))
+(source_file
+  (prog_decl
+    (identifier)
+    (global_var_decls
+      (global_var_decl
+        (global_var_spec
+          (identifier))
+        (loc_var_spec_init
+          (simple_type_spec
+            (bit_str_type_name
+              (multibits_type_name
+                (byte_name)))))))))
 
 ================================================================================
 VAR_ACCESS...END_VAR declaration within a PROGRAM
@@ -539,40 +545,40 @@ END_PROGRAM
 
 --------------------------------------------------------------------------------
 
-     (source_file
-      (prog_decl
+(source_file
+  (prog_decl
+    (identifier)
+    (prog_access_decls
+      (prog_access_decl
         (identifier)
-        (prog_access_decls
-          (prog_access_decl
-            (identifier)
-            (path_expression
-              (var_access
-                (field)))
-            (direct_variable
-              (adress_identifier)
-              (offset
-                (unsigned_int)
-                (unsigned_int)))
-            (bit_str_type_name
-              (bool_name))
-            (access_direction
-              (read_only)))
-          (prog_access_decl
-            (identifier)
+        (path_expression
+          (var_access
+            (field)))
+        (direct_variable
+          (adress_identifier)
+          (offset
+            (unsigned_int)
+            (unsigned_int)))
+        (bit_str_type_name
+          (bool_name))
+        (access_direction
+          (read_only)))
+      (prog_access_decl
+        (identifier)
+        (path_expression
+          (field_expression
             (path_expression
               (field_expression
                 (path_expression
-                  (field_expression
-                    (path_expression
-                      (var_access
-                        (field)))
-                    (var_access
-                      (field))))
+                  (var_access
+                    (field)))
                 (var_access
                   (field))))
-            (numeric_type_name
-              (int_type_name
-                (unsign_int_type_name
-                  (uint_name))))
-            (access_direction
-              (read_write))))))
+            (var_access
+              (field))))
+        (numeric_type_name
+          (int_type_name
+            (unsign_int_type_name
+              (uint_name))))
+        (access_direction
+          (read_write))))))
