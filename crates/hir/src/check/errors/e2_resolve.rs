@@ -125,6 +125,15 @@ pub enum ResolveError<'db> {
         expected: Type<'db>,
         actual: Type<'db>,
     },
+    /// A VAR_CONFIG path's first segment doesn't match any program instance in the configuration.
+    ConfigInstInitUnknownInstance {
+        instance_name: SpanIdent<'db>,
+    },
+    /// A VAR_CONFIG path references a field that doesn't exist on the resolved type.
+    ConfigInstInitFieldNotFound {
+        field: SpanIdent<'db>,
+        parent_type: Type<'db>,
+    },
 }
 
 impl<'db> ErrorCode for ResolveError<'db> {
@@ -150,6 +159,8 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::UnknownTaskRef { .. } => "E0219",
             Self::ExternalVarNotFound { .. } => "E0220",
             Self::AccessDeclTypeMismatch { .. } => "E0221",
+            Self::ConfigInstInitUnknownInstance { .. } => "E0222",
+            Self::ConfigInstInitFieldNotFound { .. } => "E0223",
         }
     }
 
@@ -173,6 +184,8 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::UnknownProgType { .. } | Self::UnknownTaskRef { .. } => "configuration error",
             Self::ExternalVarNotFound { .. } => "external variable not found",
             Self::AccessDeclTypeMismatch { .. } => "access declaration type mismatch",
+            Self::ConfigInstInitUnknownInstance { .. }
+            | Self::ConfigInstInitFieldNotFound { .. } => "configuration error",
         }
     }
 }
@@ -533,6 +546,25 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
 
                 diag
             }
+            Self::ConfigInstInitUnknownInstance { instance_name } => diag()
+                .message(format!(
+                    "no program instance '{}' found in this configuration",
+                    instance_name.text(db)
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(instance_name.get_span(db))
+                .call(),
+            Self::ConfigInstInitFieldNotFound { field, parent_type } => diag()
+                .message(format!(
+                    "'{}' has no field named '{}'",
+                    parent_type.type_name(db),
+                    field.text(db)
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(field.get_span(db))
+                .call(),
         }
     }
 }
