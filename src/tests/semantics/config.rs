@@ -153,6 +153,138 @@ END_CONFIGURATION
     ");
 }
 
+/// A VAR_GLOBAL variable with an elementary type inside CONFIGURATION is valid.
+#[rstest]
+fn valid_config_global_var_basic_type(mut with_db: RootDatabase) {
+    let source = r#"
+CONFIGURATION MyCfg
+    VAR_GLOBAL
+        counter : INT;
+        flag : BOOL;
+        ratio : REAL;
+    END_VAR
+    TASK t1(PRIORITY := 1);
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// A VAR_GLOBAL variable referencing an unknown type should report E0210.
+#[rstest]
+fn invalid_config_global_var_unknown_type(mut with_db: RootDatabase) {
+    let source = r#"
+CONFIGURATION MyCfg
+    VAR_GLOBAL
+        x : UnknownType;
+    END_VAR
+    TASK t1(PRIORITY := 1);
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0210] Error: no namespace item found
+       ,-[ file:///test0.st:4:13 ]
+       |
+     4 |         x : UnknownType;
+       |             ^^^^^|^^^^^  
+       |                  `------- no item found for path 'UnknownType'
+    ---'
+    ");
+}
+
+/// A PROGRAM with VAR_EXTERNAL referencing a VAR_GLOBAL declared in the instantiating config.
+#[rstest]
+fn valid_var_external_from_config(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM MyProg
+    VAR_EXTERNAL
+        counter : INT;
+    END_VAR
+END_PROGRAM
+
+CONFIGURATION MyCfg
+    VAR_GLOBAL
+        counter : INT;
+    END_VAR
+    TASK t1(PRIORITY := 1);
+    PROGRAM RETAIN inst1 WITH t1 : MyProg;
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// A PROGRAM with VAR_EXTERNAL referencing a VAR_GLOBAL from a RESOURCE block.
+#[rstest]
+fn valid_var_external_from_resource(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM MyProg
+    VAR_EXTERNAL
+        flag : BOOL;
+    END_VAR
+END_PROGRAM
+
+CONFIGURATION MyCfg
+    RESOURCE res1 ON CPU_TYPE
+        VAR_GLOBAL
+            flag : BOOL;
+        END_VAR
+        TASK t1(PRIORITY := 1);
+        PROGRAM inst1 WITH t1 : MyProg;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// VAR_EXTERNAL referencing a name absent from the config's VAR_GLOBAL should report E0220.
+#[rstest]
+fn invalid_var_external_not_in_config(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM MyProg
+    VAR_EXTERNAL
+        missing : INT;
+    END_VAR
+END_PROGRAM
+
+CONFIGURATION MyCfg
+    VAR_GLOBAL
+        counter : INT;
+    END_VAR
+    TASK t1(PRIORITY := 1);
+    PROGRAM RETAIN inst1 WITH t1 : MyProg;
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0220] Error: external variable not found
+       ,-[ file:///test0.st:4:9 ]
+       |
+     4 |         missing : INT;
+       |         ^^^^^^|^^^^^^  
+       |               `-------- external variable 'missing' not found in any accessible VAR_GLOBAL
+    ---'
+    ");
+}
+
+/// VAR_EXTERNAL in a program that is not instantiated by any config should report E0220.
+#[rstest]
+fn invalid_var_external_no_config(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM StandaloneProgram
+    VAR_EXTERNAL
+        orphan : INT;
+    END_VAR
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0220] Error: external variable not found
+       ,-[ file:///test0.st:4:9 ]
+       |
+     4 |         orphan : INT;
+       |         ^^^^^^|^^^^^  
+       |               `------- external variable 'orphan' not found in any accessible VAR_GLOBAL
+    ---'
+    ");
+}
+
 /// PROGRAM inside a RESOURCE block with an unknown task reference should report E0219.
 #[rstest]
 fn invalid_resource_unknown_task_ref(mut with_db: RootDatabase) {

@@ -114,6 +114,10 @@ pub enum ResolveError<'db> {
     UnknownTaskRef {
         task: SpanIdent<'db>,
     },
+    /// A VAR_EXTERNAL declaration references a name not present in any accessible VAR_GLOBAL.
+    ExternalVarNotFound {
+        var: VariableDecl<'db>,
+    },
 }
 
 impl<'db> ErrorCode for ResolveError<'db> {
@@ -137,6 +141,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::NoConfigFileFound { .. } => "E0217",
             Self::UnknownProgType { .. } => "E0218",
             Self::UnknownTaskRef { .. } => "E0219",
+            Self::ExternalVarNotFound { .. } => "E0220",
         }
     }
 
@@ -158,6 +163,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::FunctionAsType { .. } => "invalid type",
             Self::NoConfigFileFound { .. } => "configuration error",
             Self::UnknownProgType { .. } | Self::UnknownTaskRef { .. } => "configuration error",
+            Self::ExternalVarNotFound { .. } => "external variable not found",
         }
     }
 }
@@ -480,6 +486,15 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(task.get_span(db))
+                .call(),
+            Self::ExternalVarNotFound { var } => diag()
+                .message(format!(
+                    "external variable '{}' not found in any accessible VAR_GLOBAL",
+                    var.name(db).text(db)
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(var.get_span(db))
                 .call(),
         }
     }

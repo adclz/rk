@@ -4,13 +4,13 @@ use rustc_hash::FxHashMap;
 use crate::{
     HasName, HirNodeInfo,
     hir_def::{
-        config::ConfigDecl,
+        config::{ConfigDecl, ConfigResource},
         interned::{
             identifier::{Ident, SpanIdent},
             namespace::{NamespaceAccess, NamespacePath},
         },
         namespace::NamespaceDecl,
-        pous::pou::Pou,
+        pous::{pou::Pou, variable::VariableDecl},
         program::ProgramDecl,
         scope::{ScopeId, ScopeKind},
         semantic_index::semantic_index,
@@ -239,6 +239,43 @@ pub fn pou_names_res<'db>(
             // Checks for parent POUs and those imported via USING directives
             find_in_parent_pous(db, name, scope).or_else(|| pou_index(db, name))
         })
+}
+
+/// Collects all VAR_GLOBAL variables from every CONFIGURATION and RESOURCE in the workspace.
+///
+/// Used to validate VAR_EXTERNAL declarations: any VAR_EXTERNAL must reference a name
+/// that exists in at least one VAR_GLOBAL across all configs/resources.
+#[tracing::instrument(skip_all)]
+#[salsa::tracked(returns(ref))]
+fn workspace_config_globals<'db>(
+    db: &'db dyn WorkspaceDataBase,
+) -> FxHashMap<Ident, VariableDecl<'db>> {
+    let mut result: FxHashMap<Ident, VariableDecl<'db>> = FxHashMap::default();
+
+    let all_files = db.get_files().iter().chain(db.get_std_lib_files().iter());
+    for file in all_files {
+        for config in semantic_index(db, *file).configs.iter() {
+            for v in config.variables(db).iter() {
+                result.insert(v.get_name_ident(db), *v);
+            }
+            for res in config.resources(db).iter() {
+                if let ConfigResource::Resource(r) = res {
+                    for v in r.variables.iter() {
+                        result.insert(v.get_name_ident(db), *v);
+                    }
+                }
+            }
+        }
+    }
+    result
+}
+
+/// Looks up a VAR_GLOBAL by name across all configs/resources in the workspace.
+pub fn external_var_lookup<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    var_name: Ident,
+) -> Option<VariableDecl<'db>> {
+    workspace_config_globals(db).get(&var_name).copied()
 }
 
 #[cfg(debug_assertions)]

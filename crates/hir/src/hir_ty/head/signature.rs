@@ -3,7 +3,7 @@ use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    HirNodeInfo,
+    HasName, HirNodeInfo,
     check::errors::{
         analysis_error::ToIdeDiagnostic, e2_resolve::ResolveError, e3_type::TypeError,
     },
@@ -13,11 +13,16 @@ use crate::{
         pous::{
             generics::AnyGeneric,
             pou::Pou,
+            variable::VariableKind,
         },
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
-    hir_ty::{head::inheritance::inherited_methods, name_res::resolve_namespace_access, ty::Type},
+    hir_ty::{
+        head::inheritance::inherited_methods,
+        name_res::{external_var_lookup, resolve_namespace_access},
+        ty::Type,
+    },
 };
 
 #[tracing::instrument(skip(db))]
@@ -245,7 +250,17 @@ impl<'db> Signature<'db> {
         };
 
         for var in variables {
-            let var_type = self.infer_spec(db, var.spec(db));
+            self.infer_spec(db, var.spec(db));
+
+            if var.kind(db) == VariableKind::External {
+                let var_name = var.get_name_ident(db);
+                if external_var_lookup(db, var_name).is_none() {
+                    self.errors.push(
+                        ResolveError::ExternalVarNotFound { var: *var }
+                            .to_diagnostic(db),
+                    );
+                }
+            }
         }
     }
 

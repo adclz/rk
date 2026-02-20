@@ -74,6 +74,7 @@ impl<'db> SemanticIndex<'db> {
         self.configs.iter().for_each(|config| {
             check_duplicate_configs(db, *config, errors);
             infer_config(db, *config, errors);
+            config.get_scope_id(db).check(db, errors);
         });
     }
 }

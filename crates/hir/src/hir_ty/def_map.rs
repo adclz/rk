@@ -116,6 +116,7 @@ impl<'db> ScopeId<'db> {
             },
             ScopeKind::MethodDecl(m) => global_variables(db, m.variables(db)),
             ScopeKind::Program(program) => global_variables(db, program.variables(db)),
+            ScopeKind::Config(config) => global_variables(db, config.variables(db)),
             _ => FxHashMap::default(),
         }
     }
