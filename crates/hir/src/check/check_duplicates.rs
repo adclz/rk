@@ -4,8 +4,10 @@ use ide_diagnostic::IdeDiagnostic;
 use crate::{
     HasName,
     check::errors::{analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError},
-    hir_def::{namespace::NamespaceDecl, pous::pou::Pou, program::ProgramDecl},
-    hir_ty::name_res::{namespace_pou_index, pou_index, program_index},
+    hir_def::{
+        config::ConfigDecl, namespace::NamespaceDecl, pous::pou::Pou, program::ProgramDecl,
+    },
+    hir_ty::name_res::{config_index, namespace_pou_index, pou_index, program_index},
 };
 
 /// Check for duplicate global POU names.
@@ -52,6 +54,29 @@ pub fn check_duplicate_programs<'db>(
             DuplicateError::Program {
                 prog1: program,
                 prog2: indexed,
+            }
+            .to_diagnostic(db),
+        )
+    };
+}
+
+/// Check for duplicate CONFIGURATION names.
+/// A config is a duplicate if it differs from the one in the workspace index.
+pub fn check_duplicate_configs<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    config: ConfigDecl<'db>,
+    errors: &mut Vec<IdeDiagnostic>,
+) {
+    let indexed = match config_index(db, config.get_name_ident(db)) {
+        Some(indexed) => indexed,
+        None => return,
+    };
+
+    if config != indexed {
+        errors.push(
+            DuplicateError::Config {
+                config1: config,
+                config2: indexed,
             }
             .to_diagnostic(db),
         )

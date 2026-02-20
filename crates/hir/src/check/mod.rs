@@ -9,7 +9,7 @@ use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
     check::{
-        check_duplicates::{check_duplicate_pous, check_duplicate_programs},
+        check_duplicates::{check_duplicate_configs, check_duplicate_pous, check_duplicate_programs},
         check_recursion::TypeDependencyGraph,
         errors::{
             analysis_error::{AnalysisError, ToIdeDiagnostic},
@@ -17,7 +17,7 @@ use crate::{
         },
     },
     hir_def::semantic_index::semantic_index,
-    hir_ty::head::init_inference::infer_initialization,
+    hir_ty::{config::infer_config, head::init_inference::infer_initialization},
 };
 
 use crate::{
@@ -68,6 +68,12 @@ impl<'db> SemanticIndex<'db> {
         self.programs.iter().for_each(|program| {
             check_duplicate_programs(db, *program, errors);
             program.get_scope_id(db).check(db, errors);
+        });
+
+        // Configurations — validate program type references and task references.
+        self.configs.iter().for_each(|config| {
+            check_duplicate_configs(db, *config, errors);
+            infer_config(db, *config, errors);
         });
     }
 }

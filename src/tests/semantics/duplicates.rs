@@ -423,3 +423,165 @@ fn duplicate_generics(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+
+#[rstest]
+fn duplicate_configurations(mut with_db: RootDatabase) {
+    let source = r#"
+CONFIGURATION cfg
+
+END_CONFIGURATION 
+
+CONFIGURATION cfg
+
+END_CONFIGURATION
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0113] Error: duplicate definitions
+       ,-[ file:///test0.st:2:15 ]
+       |
+     2 | CONFIGURATION cfg
+       |               ^|^  
+       |                `--- duplicate configuration 'cfg'
+       | 
+     6 | CONFIGURATION cfg
+       |               ^|^  
+       |                `--- configuration 'cfg' is already defined here
+    ---'
+    ");
+}
+
+// ── Configuration internal duplicates ─────────────────────────────────────
+
+#[rstest]
+fn duplicate_tasks_in_config(mut with_db: RootDatabase) {
+    let source = r#"
+CONFIGURATION MyCfg
+    TASK t1(PRIORITY := 1);
+    TASK t1(PRIORITY := 2);
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0114] Error: duplicate definitions
+       ,-[ file:///test0.st:4:10 ]
+       |
+     3 |     TASK t1(PRIORITY := 1);
+       |          ^|  
+       |           `-- task 't1' is already defined here
+     4 |     TASK t1(PRIORITY := 2);
+       |          ^|  
+       |           `-- duplicate task 't1'
+    ---'
+    ");
+}
+
+#[rstest]
+fn duplicate_prog_instances_in_config(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM MyProg
+END_PROGRAM
+
+CONFIGURATION MyCfg
+    TASK t1(PRIORITY := 1);
+    PROGRAM inst1 WITH t1 : MyProg;
+    PROGRAM inst1 WITH t1 : MyProg;
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0115] Error: duplicate definitions
+       ,-[ file:///test0.st:8:13 ]
+       |
+     7 |     PROGRAM inst1 WITH t1 : MyProg;
+       |             ^^|^^  
+       |               `---- program instance 'inst1' is already defined here
+     8 |     PROGRAM inst1 WITH t1 : MyProg;
+       |             ^^|^^  
+       |               `---- duplicate program instance 'inst1'
+    ---'
+    ");
+}
+
+#[rstest]
+fn duplicate_resources_in_config(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM MyProg
+END_PROGRAM
+
+CONFIGURATION MyCfg
+    RESOURCE res1 ON CPU_TYPE
+        TASK t1(PRIORITY := 1);
+        PROGRAM inst1 WITH t1 : MyProg;
+    END_RESOURCE
+    RESOURCE res1 ON CPU_TYPE
+        TASK t2(PRIORITY := 2);
+        PROGRAM inst2 WITH t2 : MyProg;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0116] Error: duplicate definitions
+        ,-[ file:///test0.st:10:14 ]
+        |
+      6 |     RESOURCE res1 ON CPU_TYPE
+        |              ^^|^  
+        |                `--- resource 'res1' is already defined here
+        | 
+     10 |     RESOURCE res1 ON CPU_TYPE
+        |              ^^|^  
+        |                `--- duplicate resource 'res1'
+    ----'
+    ");
+}
+
+#[rstest]
+fn duplicate_tasks_in_resource(mut with_db: RootDatabase) {
+    let source = r#"
+CONFIGURATION MyCfg
+    RESOURCE res1 ON CPU_TYPE
+        TASK t1(PRIORITY := 1);
+        TASK t1(PRIORITY := 2);
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0114] Error: duplicate definitions
+       ,-[ file:///test0.st:5:14 ]
+       |
+     4 |         TASK t1(PRIORITY := 1);
+       |              ^|  
+       |               `-- task 't1' is already defined here
+     5 |         TASK t1(PRIORITY := 2);
+       |              ^|  
+       |               `-- duplicate task 't1'
+    ---'
+    ");
+}
+
+#[rstest]
+fn duplicate_prog_instances_in_resource(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM MyProg
+END_PROGRAM
+
+CONFIGURATION MyCfg
+    RESOURCE res1 ON CPU_TYPE
+        TASK t1(PRIORITY := 1);
+        PROGRAM inst1 WITH t1 : MyProg;
+        PROGRAM inst1 WITH t1 : MyProg;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0115] Error: duplicate definitions
+       ,-[ file:///test0.st:9:17 ]
+       |
+     8 |         PROGRAM inst1 WITH t1 : MyProg;
+       |                 ^^|^^  
+       |                   `---- program instance 'inst1' is already defined here
+     9 |         PROGRAM inst1 WITH t1 : MyProg;
+       |                 ^^|^^  
+       |                   `---- duplicate program instance 'inst1'
+    ---'
+    ");
+}

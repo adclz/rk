@@ -15,6 +15,7 @@ use crate::{
             class::MethodDecl, generics::GenericParam, interface::MethodPrototype, pou::Pou,
             variable::VariableDecl,
         },
+        config::ConfigDecl,
         program::ProgramDecl,
         using::Using,
     },
@@ -69,9 +70,28 @@ pub enum DuplicateError<'db> {
         prog1: ProgramDecl<'db>,
         prog2: ProgramDecl<'db>,
     },
+    Config {
+        config1: ConfigDecl<'db>,
+        config2: ConfigDecl<'db>,
+    },
     Generic {
         param1: GenericParam<'db>,
         param2: GenericParam<'db>,
+    },
+    /// Duplicate TASK name within the same configuration or resource scope.
+    Task {
+        task1: SpanIdent<'db>,
+        task2: SpanIdent<'db>,
+    },
+    /// Duplicate PROGRAM instance name within the same configuration or resource scope.
+    ProgInstance {
+        prog1: SpanIdent<'db>,
+        prog2: SpanIdent<'db>,
+    },
+    /// Duplicate RESOURCE name within the same configuration.
+    Resource {
+        res1: SpanIdent<'db>,
+        res2: SpanIdent<'db>,
     },
 }
 
@@ -90,6 +110,10 @@ impl ErrorCode for DuplicateError<'_> {
             Self::InitExprField { .. } => "E0110",
             Self::Program { .. } => "E0111",
             Self::Generic { .. } => "E0112",
+            Self::Config { .. } => "E0113",
+            Self::Task { .. } => "E0114",
+            Self::ProgInstance { .. } => "E0115",
+            Self::Resource { .. } => "E0116",
         }
     }
 
@@ -355,6 +379,28 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
 
                 diag
             }
+            Self::Config { config1, config2 } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "duplicate configuration '{}'",
+                        config1.get_name_ident(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(config1.get_name_span(db))
+                    .call();
+
+                diag.with_related(Related::new(
+                    format!(
+                        "configuration '{}' is already defined here",
+                        config2.get_name_ident(db).text(db)
+                    ),
+                    config2.get_scope_id(db).file(db),
+                    config2.get_name_span(db),
+                ));
+
+                diag
+            }
             Self::Generic { param1, param2 } => {
                 let mut diag = diag()
                     .message(format!(
@@ -373,6 +419,66 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                     ),
                     param2.get_scope_id(db).file(db),
                     param2.get_name_span(db),
+                ));
+
+                diag
+            }
+            Self::Task { task1, task2 } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "duplicate task '{}'",
+                        task1.ident.text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(task1.get_span(db))
+                    .call();
+
+                diag.with_related(Related::new(
+                    format!("task '{}' is already defined here", task2.ident.text(db)),
+                    task2.get_scope_id(db).file(db),
+                    task2.get_span(db),
+                ));
+
+                diag
+            }
+            Self::ProgInstance { prog1, prog2 } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "duplicate program instance '{}'",
+                        prog1.ident.text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(prog1.get_span(db))
+                    .call();
+
+                diag.with_related(Related::new(
+                    format!(
+                        "program instance '{}' is already defined here",
+                        prog2.ident.text(db)
+                    ),
+                    prog2.get_scope_id(db).file(db),
+                    prog2.get_span(db),
+                ));
+
+                diag
+            }
+            Self::Resource { res1, res2 } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "duplicate resource '{}'",
+                        res1.ident.text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(res1.get_span(db))
+                    .call();
+
+                diag.with_related(Related::new(
+                    format!("resource '{}' is already defined here", res2.ident.text(db)),
+                    res2.get_scope_id(db).file(db),
+                    res2.get_span(db),
                 ));
 
                 diag

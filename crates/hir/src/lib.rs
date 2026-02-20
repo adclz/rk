@@ -113,11 +113,15 @@ fn tree_sitter_position_adjusted(
     }
 }
 
+/// Core trait for retrieving information about HIR nodes, used as a bound for all HIR node types.
 pub trait HirNodeInfo<'db> {
+    /// Retrieves the AST ID corresponding to this HIR node.
     fn get_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId;
-
+   
+    /// Retrieves the scope ID corresponding to this HIR node.
     fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db>;
 
+    /// Converts this HIR node into a [`CallSite`], which can be used for diagnostics and other operations that require both the node's ID and its scope.
     fn as_call_site(&self, db: &'db dyn WorkspaceDataBase) -> CallSite<'db> {
         CallSite {
             scope: self.get_scope_id(db),
@@ -134,8 +138,7 @@ pub trait HirNodeInfo<'db> {
                     "invalid ID {} when attempting to retrieve span",
                     *self.get_id(db)
                 )
-            })
-            .get_range();
+            }).get_range();
 
         let document = self.get_scope_id(db).file(db).document(db);
 

@@ -17,7 +17,7 @@ use crate::{
             DataSink, DataSource, FbTask, ProgCnxn, ProgConfElement, ProgConfig, ResourceDecl,
             TaskConfig,
         },
-        interned::{identifier::Ident, namespace::SpanNamespaceAccess},
+        interned::{identifier::{Ident, SpanIdent}, namespace::SpanNamespaceAccess},
         pous::variable::VariableDecl,
         scope::{Scope, ScopeKind},
     },
@@ -94,7 +94,8 @@ impl<'db> SemanticIndexBuilder<'db> {
         let config_decl = ConfigDecl::new(
             self.db,
             name,
-            config.into(),
+            config.name.cast(self.ast).into(), // name_span: just the identifier
+            config.into(),                      // span: full declaration
             variables,
             resources,
             access_decls,
@@ -121,7 +122,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         &mut self,
         rd: &ast::generated::ResourceDecl,
     ) -> anyhow::Result<ResourceDecl<'db>, AnalysisError<'db>> {
-        let name = Ident::from_node(self.db, self.file, rd.name.cast(self.ast))?;
+        let name = SpanIdent::from_node(self.db, self, rd.name.cast(self.ast))?;
         let resource_type_name =
             Ident::from_node(self.db, self.file, rd.resource_type_name.cast(self.ast))?;
 
@@ -162,7 +163,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         &mut self,
         tc: &ast::generated::TaskConfig,
     ) -> anyhow::Result<TaskConfig<'db>, AnalysisError<'db>> {
-        let name = Ident::from_node(self.db, self.file, tc.name.cast(self.ast))?;
+        let name = SpanIdent::from_node(self.db, self, tc.name.cast(self.ast))?;
         let init = tc.init.cast(self.ast);
 
         let single = init
@@ -201,7 +202,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         &mut self,
         pc: &ast::generated::ProgConfig,
     ) -> anyhow::Result<ProgConfig<'db>, AnalysisError<'db>> {
-        let name = Ident::from_node(self.db, self.file, pc.name.cast(self.ast))?;
+        let name = SpanIdent::from_node(self.db, self, pc.name.cast(self.ast))?;
 
         let retain = pc.retain.is_some();
 
@@ -209,7 +210,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         let task = pc.task.iter().find_map(|wid| {
             match wid.cast(self.ast) {
                 ast::generated::WITH_Identifier::Identifier(ident) => {
-                    match Ident::from_node(self.db, self.file, ident) {
+                    match SpanIdent::from_node(self.db, self, ident) {
                         Ok(i) => Some(i),
                         Err(err) => {
                             self.errors.push(err);

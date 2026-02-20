@@ -1,10 +1,12 @@
-use crate::AstId;
+use db::WorkspaceDataBase;
+
+use crate::{AstId, HasName, HirNodeInfo};
 use crate::hir_def::{
     expressions::{
         expression::{Expr, InitExpr, PathExpr},
         spec::Spec,
     },
-    interned::{identifier::Ident, namespace::SpanNamespaceAccess},
+    interned::{identifier::{Ident, SpanIdent}, namespace::SpanNamespaceAccess},
     pous::variable::{DirectVariable, VariableDecl},
     scope::ScopeId,
 };
@@ -12,6 +14,8 @@ use crate::hir_def::{
 #[salsa::tracked(debug)]
 pub struct ConfigDecl<'db> {
     pub name: Ident,
+
+    pub name_span: AstId,
 
     pub span: AstId,
 
@@ -46,7 +50,7 @@ pub enum ConfigResource<'db> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct ResourceDecl<'db> {
-    pub name: Ident,
+    pub name: SpanIdent<'db>,
 
     pub resource_type_name: Ident,
 
@@ -61,7 +65,7 @@ pub struct ResourceDecl<'db> {
 /// Merged from the old `TaskConfig` + `TaskInit` pair.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct TaskConfig<'db> {
-    pub name: Ident,
+    pub name: SpanIdent<'db>,
 
     pub single: Option<DataSource<'db>>,
 
@@ -75,10 +79,10 @@ pub struct TaskConfig<'db> {
 pub struct ProgConfig<'db> {
     pub retain: bool,
 
-    pub name: Ident,
+    pub name: SpanIdent<'db>,
 
-    /// Optional task name from `WITH <task>`.
-    pub task: Option<Ident>,
+    /// Optional task name from `WITH <task>`, with span for diagnostics.
+    pub task: Option<SpanIdent<'db>>,
 
     /// Reference to the program type (e.g. `MyProgram` or `NS::MyProgram`).
     pub prog_type: SpanNamespaceAccess<'db>,
@@ -159,4 +163,24 @@ pub struct ConfigInstInit<'db> {
     pub located_at: Option<DirectVariable<'db>>,
 
     pub init: InitExpr<'db>,
+}
+
+impl<'db> HirNodeInfo<'db> for ConfigDecl<'db> {
+    fn get_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
+        self.span(db)
+    }
+
+    fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> crate::hir_def::scope::ScopeId<'db> {
+        self.scope_id(db)
+    }
+}
+
+impl<'db> HasName<'db> for ConfigDecl<'db> {
+    fn get_name_ident(&self, db: &'db dyn WorkspaceDataBase) -> Ident {
+        self.name(db)
+    }
+
+    fn get_name_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
+        self.name_span(db)
+    }
 }

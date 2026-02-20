@@ -106,6 +106,14 @@ pub enum ResolveError<'db> {
     NoConfigFileFound {
         file: File,
     },
+    /// The program type referenced in a PROGRAM configuration entry does not exist.
+    UnknownProgType {
+        prog_type: SpanNamespaceAccess<'db>,
+    },
+    /// The task name referenced in a `WITH <task>` clause does not exist in the config.
+    UnknownTaskRef {
+        task: SpanIdent<'db>,
+    },
 }
 
 impl<'db> ErrorCode for ResolveError<'db> {
@@ -127,6 +135,8 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::FunctionAsType { .. } => "E0215",
             Self::UsingNamespaceNotFound { .. } => "E0216",
             Self::NoConfigFileFound { .. } => "E0217",
+            Self::UnknownProgType { .. } => "E0218",
+            Self::UnknownTaskRef { .. } => "E0219",
         }
     }
 
@@ -147,6 +157,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             | Self::IndexNonArrayTypePathExpr { .. } => "invalid operation",
             Self::FunctionAsType { .. } => "invalid type",
             Self::NoConfigFileFound { .. } => "configuration error",
+            Self::UnknownProgType { .. } | Self::UnknownTaskRef { .. } => "configuration error",
         }
     }
 }
@@ -452,6 +463,24 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
 
                 diag
             }
+            Self::UnknownProgType { prog_type } => diag()
+                .message(format!(
+                    "program type '{}' not found",
+                    prog_type.to_string(db)
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(prog_type.get_span(db))
+                .call(),
+            Self::UnknownTaskRef { task } => diag()
+                .message(format!(
+                    "task '{}' not found in this configuration",
+                    task.ident.text(db)
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(task.get_span(db))
+                .call(),
         }
     }
 }

@@ -1,4 +1,5 @@
 pub mod body;
+pub mod config;
 pub mod def_map;
 pub mod display;
 pub mod expr_store;

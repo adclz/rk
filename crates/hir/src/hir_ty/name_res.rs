@@ -4,6 +4,7 @@ use rustc_hash::FxHashMap;
 use crate::{
     HasName, HirNodeInfo,
     hir_def::{
+        config::ConfigDecl,
         interned::{
             identifier::{Ident, SpanIdent},
             namespace::{NamespaceAccess, NamespacePath},
@@ -148,6 +149,31 @@ fn workspace_program_index<'db>(
 #[tracing::instrument(skip(db))]
 pub fn program_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<ProgramDecl<'db>> {
     workspace_program_index(db).get(&name).copied()
+}
+
+/// Returns globally declared configurations from workspace files.
+#[tracing::instrument(skip_all)]
+#[salsa::tracked(returns(ref))]
+fn workspace_config_index<'db>(
+    db: &'db dyn WorkspaceDataBase,
+) -> FxHashMap<Ident, ConfigDecl<'db>> {
+    let mut result = FxHashMap::default();
+    for file in db.get_files().iter() {
+        for c in semantic_index(db, *file).configs.iter() {
+            result.insert(c.get_name_ident(db), *c);
+        }
+    }
+    for file in db.get_std_lib_files().iter() {
+        for c in semantic_index(db, *file).configs.iter() {
+            result.insert(c.get_name_ident(db), *c);
+        }
+    }
+    result
+}
+
+#[tracing::instrument(skip(db))]
+pub fn config_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<ConfigDecl<'db>> {
+    workspace_config_index(db).get(&name).copied()
 }
 
 #[tracing::instrument(skip_all)]

@@ -1,6 +1,7 @@
 pub mod array;
 pub mod array_init_multi_dim;
 pub mod assignment;
+pub mod config;
 pub mod direct_variables;
 pub mod duplicates;
 pub mod enums;
