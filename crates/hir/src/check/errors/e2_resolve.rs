@@ -6,7 +6,7 @@ use auto_lsp::{
     lsp_types::{DiagnosticSeverity, DiagnosticTag},
 };
 use db::{WorkspaceDataBase, workspace::Workspace};
-use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
+use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 use crate::{
     CallSite, HasName, HirNodeInfo,
@@ -118,6 +118,13 @@ pub enum ResolveError<'db> {
     ExternalVarNotFound {
         var: VariableDecl<'db>,
     },
+    /// A VAR_ACCESS declaration's type does not match the referenced variable's actual type.
+    AccessDeclTypeMismatch {
+        var_origin: VariableDecl<'db>,
+        spec: Spec<'db>,
+        expected: Type<'db>,
+        actual: Type<'db>,
+    },
 }
 
 impl<'db> ErrorCode for ResolveError<'db> {
@@ -142,6 +149,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::UnknownProgType { .. } => "E0218",
             Self::UnknownTaskRef { .. } => "E0219",
             Self::ExternalVarNotFound { .. } => "E0220",
+            Self::AccessDeclTypeMismatch { .. } => "E0221",
         }
     }
 
@@ -164,6 +172,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::NoConfigFileFound { .. } => "configuration error",
             Self::UnknownProgType { .. } | Self::UnknownTaskRef { .. } => "configuration error",
             Self::ExternalVarNotFound { .. } => "external variable not found",
+            Self::AccessDeclTypeMismatch { .. } => "access declaration type mismatch",
         }
     }
 }
@@ -496,6 +505,34 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 .desc(self)
                 .range(var.get_span(db))
                 .call(),
+            Self::AccessDeclTypeMismatch {
+                var_origin,
+                spec,
+                expected,
+                actual,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "access declaration expects '{}', but variable has type '{}'",
+                        expected.type_name(db),
+                        actual.type_name(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(spec.get_span(db))
+                    .call();
+
+                diag.with_related(Related::new(
+                    format!(
+                        "variable '{}' is declared here",
+                        var_origin.name(db).text(db),
+                    ),
+                    var_origin.get_scope_id(db).file(db),
+                    var_origin.get_name_span(db),
+                ));
+
+                diag
+            }
         }
     }
 }

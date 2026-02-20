@@ -127,6 +127,7 @@ impl<'db> Signature<'db> {
         self.infer_variables(db);
         self.infer_return_type(db);
         self.infer_methods(db);
+        self.infer_access_decls(db);
 
         self
     }
@@ -258,6 +259,55 @@ impl<'db> Signature<'db> {
                     self.errors.push(
                         ResolveError::ExternalVarNotFound { var: *var }
                             .to_diagnostic(db),
+                    );
+                }
+            }
+        }
+    }
+
+    fn infer_access_decls(&mut self, db: &'db dyn WorkspaceDataBase) {
+        let program = match get_scope(db, self.scope).kind {
+            ScopeKind::Program(prog) => prog,
+            _ => return,
+        };
+
+        let def_map = self.scope.def_map(db);
+
+        for decl in program.prog_access_decls(db) {
+            let declared_ty = self.infer_spec(db, decl.spec);
+
+            // Look up the referenced variable in the program's scope
+            let var_name = decl.variable.ident(db).ident;
+            match def_map.global_variables.get(&var_name) {
+                Some(var) => {
+                    // Variable found - compare declared spec type with actual variable type
+                    let var_ty = self
+                        .type_of_specs
+                        .get(&var.spec(db))
+                        .copied()
+                        .unwrap_or(Type::Never);
+                    if declared_ty != Type::Never
+                        && var_ty != Type::Never
+                        && declared_ty != var_ty
+                    {
+                        self.errors.push(
+                            ResolveError::AccessDeclTypeMismatch {
+                                var_origin: *var,
+                                spec: decl.spec,
+                                expected: declared_ty,
+                                actual: var_ty,
+                            }
+                            .to_diagnostic(db),
+                        );
+                    }
+                }
+                None => {
+                    self.errors.push(
+                        ResolveError::NoItemInScope {
+                            expr: decl.variable,
+                            scope: self.scope,
+                        }
+                        .to_diagnostic(db),
                     );
                 }
             }

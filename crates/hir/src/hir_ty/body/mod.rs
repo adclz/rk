@@ -48,9 +48,11 @@ pub fn infer_body<'db>(
         _ => return result,
     };
 
+    let resolver = Resolver::for_scope(db, scope);
+
     ctx.check_statements(
         db,
-        Resolver::for_scope(db, scope),
+        resolver,
         statements,
         NestedScope::None,
         &mut result,

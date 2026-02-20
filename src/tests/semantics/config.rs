@@ -309,3 +309,97 @@ END_CONFIGURATION
     ---'
     ");
 }
+
+// ── VAR_ACCESS tests ──────────────────────────────────────────────────
+
+/// A valid PROGRAM with VAR_ACCESS referencing an existing variable with matching type.
+#[rstest]
+fn valid_prog_access_decl(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM MyProg
+    VAR
+        x : INT;
+    END_VAR
+    VAR_ACCESS
+        ABLE : x : INT READ_ONLY;
+    END_VAR
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// A VAR_ACCESS declaration with an unknown spec type should report E0210.
+#[rstest]
+fn invalid_prog_access_unknown_type(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM MyProg
+    VAR
+        x : INT;
+    END_VAR
+    VAR_ACCESS
+        ABLE : x : UnknownType READ_ONLY;
+    END_VAR
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0210] Error: no namespace item found
+       ,-[ file:///test0.st:7:20 ]
+       |
+     7 |         ABLE : x : UnknownType READ_ONLY;
+       |                    ^^^^^|^^^^^  
+       |                         `------- no item found for path 'UnknownType'
+    ---'
+    ");
+}
+
+/// A VAR_ACCESS declaration referencing a nonexistent variable should report E0204.
+#[rstest]
+fn invalid_prog_access_unknown_var(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM MyProg
+    VAR
+        x : INT;
+    END_VAR
+    VAR_ACCESS
+        ABLE : nonexistent : INT READ_ONLY;
+    END_VAR
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
+    [E0204] Error: no item found in scope
+       ,-[ file:///test0.st:7:16 ]
+       |
+     7 |         ABLE : nonexistent : INT READ_ONLY;
+       |                ^^^^^|^^^^^  
+       |                     `------- no item "nonexistent" found in scope
+    ---'
+    "#);
+}
+
+/// A VAR_ACCESS declared type differs from the actual variable type should report E0221.
+#[rstest]
+fn invalid_prog_access_type_mismatch(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM MyProg
+    VAR
+        x : INT;
+    END_VAR
+    VAR_ACCESS
+        ABLE : x : REAL READ_ONLY;
+    END_VAR
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0221] Error: access declaration type mismatch
+       ,-[ file:///test0.st:7:20 ]
+       |
+     4 |         x : INT;
+       |         |  
+       |         `-- variable 'x' is declared here
+       | 
+     7 |         ABLE : x : REAL READ_ONLY;
+       |                    ^^|^  
+       |                      `--- access declaration expects 'REAL', but variable has type 'INT'
+    ---'
+    ");
+}
