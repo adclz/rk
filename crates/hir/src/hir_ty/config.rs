@@ -4,9 +4,7 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     check::errors::{
-        analysis_error::ToIdeDiagnostic,
-        e1_duplicates::DuplicateError,
-        e2_resolve::ResolveError,
+        analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError, e2_resolve::ResolveError,
     },
     hir_def::{
         config::{ConfigDecl, ConfigResource, ProgConfig, ResourceDecl},
@@ -14,11 +12,8 @@ use crate::{
         program::ProgramDecl,
     },
     hir_ty::{
-        body::BodyInferenceResult,
-        expr_store::PathExprWalkStep,
-        head::init_inference::InitExprInferenceResult,
-        infer::Infer,
-        name_res::program_index,
+        body::BodyInferenceResult, expr_store::PathExprWalkStep,
+        head::init_inference::InitExprInferenceResult, infer::Infer, name_res::program_index,
         ty::Type,
     },
 };
@@ -53,22 +48,33 @@ pub fn infer_config<'db>(
             ConfigResource::Task(t) => {
                 check_or_insert(&mut config_tasks, t.name, |first, second| {
                     errors.push(
-                        DuplicateError::Task { task1: second, task2: first }.to_diagnostic(db),
+                        DuplicateError::Task {
+                            task1: second,
+                            task2: first,
+                        }
+                        .to_diagnostic(db),
                     );
                 });
             }
             ConfigResource::Program(p) => {
                 check_or_insert(&mut config_progs, p.name, |first, second| {
                     errors.push(
-                        DuplicateError::ProgInstance { prog1: second, prog2: first }
-                            .to_diagnostic(db),
+                        DuplicateError::ProgInstance {
+                            prog1: second,
+                            prog2: first,
+                        }
+                        .to_diagnostic(db),
                     );
                 });
             }
             ConfigResource::Resource(r) => {
                 check_or_insert(&mut seen_resources, r.name, |first, second| {
                     errors.push(
-                        DuplicateError::Resource { res1: second, res2: first }.to_diagnostic(db),
+                        DuplicateError::Resource {
+                            res1: second,
+                            res2: first,
+                        }
+                        .to_diagnostic(db),
                     );
                 });
                 check_resource_duplicates(db, r, errors);
@@ -108,7 +114,11 @@ fn check_resource_duplicates<'db>(
     for t in r.tasks.iter() {
         check_or_insert(&mut seen_tasks, t.name, |first, second| {
             errors.push(
-                DuplicateError::Task { task1: second, task2: first }.to_diagnostic(db),
+                DuplicateError::Task {
+                    task1: second,
+                    task2: first,
+                }
+                .to_diagnostic(db),
             );
         });
     }
@@ -117,8 +127,11 @@ fn check_resource_duplicates<'db>(
     for p in r.programs.iter() {
         check_or_insert(&mut seen_progs, p.name, |first, second| {
             errors.push(
-                DuplicateError::ProgInstance { prog1: second, prog2: first }
-                    .to_diagnostic(db),
+                DuplicateError::ProgInstance {
+                    prog1: second,
+                    prog2: first,
+                }
+                .to_diagnostic(db),
             );
         });
     }
@@ -158,10 +171,10 @@ fn validate_prog_config<'db>(
     }
 
     // Validate the WITH <task> reference if present.
-    if let Some(task_ref) = &p.task {
-        if !known_tasks.contains_key(&task_ref.ident) {
-            errors.push(ResolveError::UnknownTaskRef { task: *task_ref }.to_diagnostic(db));
-        }
+    if let Some(task_ref) = &p.task
+        && !known_tasks.contains_key(&task_ref.ident)
+    {
+        errors.push(ResolveError::UnknownTaskRef { task: *task_ref }.to_diagnostic(db));
     }
 }
 
@@ -182,18 +195,18 @@ fn validate_config_inst_inits<'db>(
     for res in config.resources(db).iter() {
         match res {
             ConfigResource::Program(p) => {
-                if p.prog_type.path.namespace.is_none() {
-                    if let Some(prog) = program_index(db, p.prog_type.path.target.ident) {
-                        instances.insert(p.name.ident, prog);
-                    }
+                if p.prog_type.path.namespace.is_none()
+                    && let Some(prog) = program_index(db, p.prog_type.path.target.ident)
+                {
+                    instances.insert(p.name.ident, prog);
                 }
             }
             ConfigResource::Resource(r) => {
                 for p in r.programs.iter() {
-                    if p.prog_type.path.namespace.is_none() {
-                        if let Some(prog) = program_index(db, p.prog_type.path.target.ident) {
-                            instances.insert(p.name.ident, prog);
-                        }
+                    if p.prog_type.path.namespace.is_none()
+                        && let Some(prog) = program_index(db, p.prog_type.path.target.ident)
+                    {
+                        instances.insert(p.name.ident, prog);
                     }
                 }
             }

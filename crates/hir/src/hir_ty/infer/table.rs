@@ -8,12 +8,7 @@ use crate::{
         expressions::{expression::Expr, spec::ElementarySpec},
         pous::generics::GenericParam,
     },
-    hir_ty::{
-        body::BodyInferenceResult,
-        infer::Infer,
-        resolver::Resolver,
-        ty::Type,
-    },
+    hir_ty::{body::BodyInferenceResult, infer::Infer, resolver::Resolver, ty::Type},
 };
 
 /*

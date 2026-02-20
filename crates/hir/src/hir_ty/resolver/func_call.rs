@@ -444,18 +444,19 @@ fn validate_and_store_generic_substitutions<'db>(
                 Constraint::GenericParameter(other_param_name) => {
                     // INTO<U> — cross-parameter constraint — E0316
                     if let Some(&other_concrete) = ctx.generic_substitutions.get(other_param_name)
-                        && !type_satisfies_into_constraint(db, concrete_type, &other_concrete) {
-                            ctx.errors.push(
-                                TypeError::TypeArgumentIntoConstraintMismatch {
-                                    type_arg: *concrete_type,
-                                    into_target: other_concrete,
-                                    param_name,
-                                    call_site,
-                                }
-                                .to_diagnostic(db),
-                            );
-                            ok = false;
-                        }
+                        && !type_satisfies_into_constraint(db, concrete_type, &other_concrete)
+                    {
+                        ctx.errors.push(
+                            TypeError::TypeArgumentIntoConstraintMismatch {
+                                type_arg: *concrete_type,
+                                into_target: other_concrete,
+                                param_name,
+                                call_site,
+                            }
+                            .to_diagnostic(db),
+                        );
+                        ok = false;
+                    }
                 }
             }
         }

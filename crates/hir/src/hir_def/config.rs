@@ -1,15 +1,18 @@
 use db::WorkspaceDataBase;
 
-use crate::{AstId, HasName, HirNodeInfo};
 use crate::hir_def::{
     expressions::{
         expression::{Expr, InitExpr, PathExpr},
         spec::Spec,
     },
-    interned::{identifier::{Ident, SpanIdent}, namespace::SpanNamespaceAccess},
+    interned::{
+        identifier::{Ident, SpanIdent},
+        namespace::SpanNamespaceAccess,
+    },
     pous::variable::{DirectVariable, VariableDecl},
     scope::ScopeId,
 };
+use crate::{AstId, HasName, HirNodeInfo};
 
 #[salsa::tracked(debug)]
 pub struct ConfigDecl<'db> {
@@ -152,7 +155,7 @@ pub struct AccessPath<'db> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum AccessDirection {
     ReadWrite,
-    ReadOnly, 
+    ReadOnly,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]

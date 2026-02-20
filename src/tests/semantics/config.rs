@@ -94,7 +94,7 @@ END_CONFIGURATION
     let sema = semantic_index(&with_db, files[0]);
 
     assert_eq!(sema.configs.len(), 1);
- 
+
     let name = sema.configs[0].name(&with_db);
     let found = config_index(&with_db, name);
     assert!(found.is_some(), "config_index should find MyCfg by name");
@@ -402,4 +402,206 @@ END_PROGRAM
        |                      `--- access declaration expects 'REAL', but variable has type 'INT'
     ---'
     ");
+}
+
+// ── VAR_CONFIG tests ────────────────────────────────────────────────────
+
+/// A valid VAR_CONFIG overriding an INT variable in a program instance.
+#[rstest]
+fn valid_config_inst_init(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM MyProg
+    VAR
+        x : INT;
+    END_VAR
+END_PROGRAM
+
+CONFIGURATION MyCfg
+    TASK t1(PRIORITY := 1);
+    PROGRAM inst1 WITH t1 : MyProg;
+
+    VAR_CONFIG
+        inst1.x : INT := 42;
+    END_VAR
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// A valid VAR_CONFIG overriding a variable inside a nested function block.
+#[rstest]
+fn valid_config_inst_init_nested_fb(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK InnerFB
+    VAR
+        param : BOOL;
+    END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM MyProg
+    VAR
+        fb1 : InnerFB;
+    END_VAR
+END_PROGRAM
+
+CONFIGURATION MyCfg
+    TASK t1(PRIORITY := 1);
+    PROGRAM inst1 WITH t1 : MyProg;
+
+    VAR_CONFIG
+        inst1.fb1.param : BOOL := TRUE;
+    END_VAR
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// VAR_CONFIG with an unknown program instance should report E0222.
+#[rstest]
+fn invalid_config_inst_init_unknown_instance(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM MyProg
+    VAR
+        x : INT;
+    END_VAR
+END_PROGRAM
+
+CONFIGURATION MyCfg
+    TASK t1(PRIORITY := 1);
+    PROGRAM inst1 WITH t1 : MyProg;
+
+    VAR_CONFIG
+        noSuchInst.x : INT := 42;
+    END_VAR
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0222] Error: configuration error
+        ,-[ file:///test0.st:13:9 ]
+        |
+     13 |         noSuchInst.x : INT := 42;
+        |         ^^^^^|^^^^  
+        |              `------ no program instance 'noSuchInst' found in this configuration
+    ----'
+    ");
+}
+
+/// VAR_CONFIG referencing a nonexistent field on a program should report E0223.
+#[rstest]
+fn invalid_config_inst_init_unknown_field(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM MyProg
+    VAR
+        x : INT;
+    END_VAR
+END_PROGRAM
+
+CONFIGURATION MyCfg
+    TASK t1(PRIORITY := 1);
+    PROGRAM inst1 WITH t1 : MyProg;
+
+    VAR_CONFIG
+        inst1.nonexistent : INT := 42;
+    END_VAR
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0223] Error: configuration error
+        ,-[ file:///test0.st:13:15 ]
+        |
+     13 |         inst1.nonexistent : INT := 42;
+        |               ^^^^^|^^^^^  
+        |                    `------- 'MyProg' has no field named 'nonexistent'
+    ----'
+    ");
+}
+
+/// VAR_CONFIG init value type mismatch should report an error from init inference.
+#[rstest]
+fn invalid_config_inst_init_type_mismatch(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM MyProg
+    VAR
+        x : INT;
+    END_VAR
+END_PROGRAM
+
+CONFIGURATION MyCfg
+    TASK t1(PRIORITY := 1);
+    PROGRAM inst1 WITH t1 : MyProg;
+
+    VAR_CONFIG
+        inst1.x : INT := 'hello';
+    END_VAR
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:13:23 ]
+        |
+     13 |         inst1.x : INT := 'hello';
+        |                       ^^^^^|^^^^  
+        |                            `------ expected 'INT', got 'STRING'
+    ----'
+    ");
+}
+
+/// VAR_CONFIG trying to walk through a non-composite type should report E0223.
+#[rstest]
+fn invalid_config_inst_init_not_walkable(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM MyProg
+    VAR
+        x : INT;
+    END_VAR
+END_PROGRAM
+
+CONFIGURATION MyCfg
+    TASK t1(PRIORITY := 1);
+    PROGRAM inst1 WITH t1 : MyProg;
+
+    VAR_CONFIG
+        inst1.x.deeper : INT := 42;
+    END_VAR
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0223] Error: configuration error
+        ,-[ file:///test0.st:13:17 ]
+        |
+     13 |         inst1.x.deeper : INT := 42;
+        |                 ^^^|^^  
+        |                    `---- 'INT' has no field named 'deeper'
+    ----'
+    ");
+}
+
+/// VAR_CONFIG inside a RESOURCE block with a nested FB path.
+#[rstest]
+fn valid_config_inst_init_in_resource(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK InnerFB
+    VAR
+        value : REAL;
+    END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM MyProg
+    VAR
+        fb1 : InnerFB;
+    END_VAR
+END_PROGRAM
+
+CONFIGURATION MyCfg
+    RESOURCE res1 ON CPU_TYPE
+        TASK t1(PRIORITY := 1);
+        PROGRAM inst1 WITH t1 : MyProg;
+    END_RESOURCE
+
+    VAR_CONFIG
+        inst1.fb1.value : REAL := 3.14;
+    END_VAR
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }

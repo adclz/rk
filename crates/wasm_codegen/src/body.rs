@@ -1,6 +1,5 @@
 //! Statement and expression code generation (function body emission).
 
-
 use db::WorkspaceDataBase;
 use hir::hir_def::{
     expressions::{
@@ -2049,9 +2048,10 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                     self.emit_expr(func, *index)?;
                     let index_type = index.infer(self.db).normalize(self.db);
                     if let hir::hir_ty::ty::Type::Elementary(spec) = index_type
-                        && is_64bit(spec) {
-                            func.instruction(&Instruction::I32WrapI64);
-                        }
+                        && is_64bit(spec)
+                    {
+                        func.instruction(&Instruction::I32WrapI64);
+                    }
 
                     func.instruction(&Instruction::I32Const(start));
                     func.instruction(&Instruction::I32Sub);
@@ -2242,10 +2242,11 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
             // Cast index to i32 if needed
             let index_type = index.infer(self.db).normalize(self.db);
             if let hir::hir_ty::ty::Type::Elementary(spec) = index_type
-                && is_64bit(spec) {
-                    // Need to cast from i64 to i32
-                    func.instruction(&Instruction::I32WrapI64);
-                }
+                && is_64bit(spec)
+            {
+                // Need to cast from i64 to i32
+                func.instruction(&Instruction::I32WrapI64);
+            }
 
             func.instruction(&Instruction::I32Const(start));
             func.instruction(&Instruction::I32Sub);

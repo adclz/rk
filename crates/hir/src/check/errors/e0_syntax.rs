@@ -132,80 +132,80 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 .message("multiple extends declarations".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(span.clone())
+                .range(*span)
                 .call(),
             Self::MultipleImplements(span) => diag()
                 .message("multiple implements declarations".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(span.clone())
+                .range(*span)
                 .call(),
             Self::ImplementsBeforeExtends(span) => diag()
                 .message("implements must be declared after extends".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(span.clone())
+                .range(*span)
                 .call(),
             Self::ClassVariablesAfterMethod(span) => diag()
                 .message("class variable declarations must appear before methods".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(span.clone())
+                .range(*span)
                 .call(),
             Self::FbVariablesAfterMethod(span) => diag()
                 .message("FB variable declarations must appear before methods".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(span.clone())
+                .range(*span)
                 .call(),
             Self::MissingVarType(span) => diag()
                 .message("variable type is missing".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(span.clone())
+                .range(*span)
                 .call(),
             Self::IncompleteEdgeQualifier(span) => diag()
                 .message("incomplete edge qualifier".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(span.clone())
+                .range(*span)
                 .call(),
             Self::UnexpectedVarInit(span) => diag()
                 .message("unexpected variable initialization".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(span.clone())
+                .range(*span)
                 .call(),
             Self::UnexpectedThis(span) => diag()
                 .message("'THIS' is not valid in this context".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(span.clone())
+                .range(*span)
                 .call(),
             Self::UnexpectedSuper(span) => diag()
                 .message("'SUPER' is not valid in this context".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(span.clone())
+                .range(*span)
                 .call(),
             Self::AssignToFunctionCall(span) => diag()
                 .message("assignment to function call is not allowed".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(span.clone())
+                .range(*span)
                 .call(),
             Self::EmptyRightHandSide(span) => diag()
                 .message("right-hand side of assignment cannot be empty".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(span.clone())
+                .range(*span)
                 .call(),
             Self::MissingDotInAssignment { file, span } => {
                 let mut diag = diag()
                     .message("'=' is not a valid assignment sign".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(span.clone())
+                    .range(*span)
                     .call();
 
                 // only replace '=' with ':='
@@ -239,7 +239,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .message("':' is not a valid assignment sign".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(span.clone())
+                    .range(*span)
                     .call();
 
                 // only replace '=' with ':='
@@ -273,7 +273,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .message("'=' is not a valid assignment sign".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(span.clone())
+                    .range(*span)
                     .call();
 
                 // only replace '=' with ':='
@@ -307,7 +307,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .message("':' is not a valid assignment sign".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(span.clone())
+                    .range(*span)
                     .call();
 
                 // only replace '=' with ':='
@@ -340,13 +340,13 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 .message("invalid POU keyword".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(span.clone())
+                .range(*span)
                 .call(),
             Self::FunctionCallInInitExpression(span) => diag()
                 .message("function call in initialization expression is not allowed".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(span.clone())
+                .range(*span)
                 .call(),
             Self::MissingNode {
                 file,
@@ -355,7 +355,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 grammar_name,
             } => {
                 let mut diagnostic = diag()
-                    .range(span.clone())
+                    .range(*span)
                     .message(err.to_string())
                     .source("IEC".into())
                     .desc(self)
@@ -365,7 +365,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 diagnostic.with_related(Related::new(
                     format!("add missing {grammar_name} here"),
                     *file,
-                    span.clone(),
+                    *span,
                 ));
 
                 // If the grammar name is an identifier, suggest inserting it.
@@ -381,7 +381,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                                 vec![
                                     edit()
                                         .new_text(format!(" {grammar_name}"))
-                                        .range(span.clone())
+                                        .range(*span)
                                         .call(),
                                 ],
                             )])))
@@ -394,7 +394,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 .message(err.to_string())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(span.clone())
+                .range(*span)
                 .call(),
         }
     }

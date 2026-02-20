@@ -4,9 +4,7 @@ use ide_diagnostic::IdeDiagnostic;
 use crate::{
     HasName,
     check::errors::{analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError},
-    hir_def::{
-        config::ConfigDecl, namespace::NamespaceDecl, pous::pou::Pou, program::ProgramDecl,
-    },
+    hir_def::{config::ConfigDecl, namespace::NamespaceDecl, pous::pou::Pou, program::ProgramDecl},
     hir_ty::name_res::{config_index, namespace_pou_index, pou_index, program_index},
 };
 

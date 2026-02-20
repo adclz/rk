@@ -155,12 +155,10 @@ impl<'db> SemanticIndexBuilder<'db> {
                     let r = self.parse_interface(interface).unwrap();
                     self.global_pous.push(r);
                 }
-                SourceFileDecl::ConfigDecl(config) => {
-                    match self.parse_config(config) {
-                        Ok(c) => self.configs.push(c),
-                        Err(err) => self.errors.push(err),
-                    }
-                }
+                SourceFileDecl::ConfigDecl(config) => match self.parse_config(config) {
+                    Ok(c) => self.configs.push(c),
+                    Err(err) => self.errors.push(err),
+                },
                 SourceFileDecl::ProgDecl(prog) => {
                     let p = self.parse_program(prog).unwrap();
                     self.programs.push(p);

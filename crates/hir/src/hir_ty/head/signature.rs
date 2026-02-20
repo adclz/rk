@@ -10,11 +10,7 @@ use crate::{
     hir_def::{
         expressions::spec::{Spec, SpecKind},
         interned::{identifier::Ident, namespace::NamespaceAccess},
-        pous::{
-            generics::AnyGeneric,
-            pou::Pou,
-            variable::VariableKind,
-        },
+        pous::{generics::AnyGeneric, pou::Pou, variable::VariableKind},
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
@@ -256,10 +252,8 @@ impl<'db> Signature<'db> {
             if var.kind(db) == VariableKind::External {
                 let var_name = var.get_name_ident(db);
                 if external_var_lookup(db, var_name).is_none() {
-                    self.errors.push(
-                        ResolveError::ExternalVarNotFound { var: *var }
-                            .to_diagnostic(db),
-                    );
+                    self.errors
+                        .push(ResolveError::ExternalVarNotFound { var: *var }.to_diagnostic(db));
                 }
             }
         }
@@ -286,9 +280,7 @@ impl<'db> Signature<'db> {
                         .get(&var.spec(db))
                         .copied()
                         .unwrap_or(Type::Never);
-                    if declared_ty != Type::Never
-                        && var_ty != Type::Never
-                        && declared_ty != var_ty
+                    if declared_ty != Type::Never && var_ty != Type::Never && declared_ty != var_ty
                     {
                         self.errors.push(
                             ResolveError::AccessDeclTypeMismatch {

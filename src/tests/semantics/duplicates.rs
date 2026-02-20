@@ -424,7 +424,6 @@ fn duplicate_generics(mut with_db: RootDatabase) {
     ");
 }
 
-
 #[rstest]
 fn duplicate_configurations(mut with_db: RootDatabase) {
     let source = r#"

@@ -9,7 +9,9 @@ use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
     check::{
-        check_duplicates::{check_duplicate_configs, check_duplicate_pous, check_duplicate_programs},
+        check_duplicates::{
+            check_duplicate_configs, check_duplicate_pous, check_duplicate_programs,
+        },
         check_recursion::TypeDependencyGraph,
         errors::{
             analysis_error::{AnalysisError, ToIdeDiagnostic},
@@ -33,11 +35,12 @@ pub mod errors;
 
 pub fn diagnostics_for_file(db: &dyn WorkspaceDataBase, file: File) -> Arc<Vec<IdeDiagnostic>> {
     if let Some(config) = Workspace::try_get(db)
-        && config.config_file(db).is_none() {
-            return Arc::new(vec![
-                ResolveError::NoConfigFileFound { file }.to_diagnostic(db),
-            ]);
-        }
+        && config.config_file(db).is_none()
+    {
+        return Arc::new(vec![
+            ResolveError::NoConfigFileFound { file }.to_diagnostic(db),
+        ]);
+    }
 
     let mut all_diagnostics = vec![];
 

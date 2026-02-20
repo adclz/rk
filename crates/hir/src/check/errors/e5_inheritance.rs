@@ -281,7 +281,7 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(method.get_span(db).clone())
+                .range(method.get_span(db))
                 .call(),
             Self::UnresolvedSuperMethod { ctx, path, method } => {
                 let mut diag = diag()
@@ -291,7 +291,7 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(method.get_span(db).clone())
+                    .range(method.get_span(db))
                     .call();
 
                 if let Some(caller) = ctx {
@@ -321,7 +321,7 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(m2.get_name_span(db).clone())
+                    .range(m2.get_name_span(db))
                     .call();
 
                 diag.with_related(Related::new(
@@ -348,7 +348,7 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(method.get_name_span(db).clone())
+                    .range(method.get_name_span(db))
                     .call();
 
                 diag.with_note("parameter types must match those of the base method".into());

@@ -17,7 +17,10 @@ use crate::{
             DataSink, DataSource, FbTask, ProgCnxn, ProgConfElement, ProgConfig, ResourceDecl,
             TaskConfig,
         },
-        interned::{identifier::{Ident, SpanIdent}, namespace::SpanNamespaceAccess},
+        interned::{
+            identifier::{Ident, SpanIdent},
+            namespace::SpanNamespaceAccess,
+        },
         pous::variable::VariableDecl,
         scope::{Scope, ScopeKind},
     },
@@ -95,7 +98,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             self.db,
             name,
             config.name.cast(self.ast).into(), // name_span: just the identifier
-            config.into(),                      // span: full declaration
+            config.into(),                     // span: full declaration
             variables,
             resources,
             access_decls,
@@ -166,16 +169,16 @@ impl<'db> SemanticIndexBuilder<'db> {
         let name = SpanIdent::from_node(self.db, self, tc.name.cast(self.ast))?;
         let init = tc.init.cast(self.ast);
 
-        let single = init
-            .single
-            .as_ref()
-            .and_then(|ds| match self.parse_data_source(ds.cast(self.ast)) {
-                Ok(s) => Some(s),
-                Err(err) => {
-                    self.errors.push(err);
-                    None
-                }
-            });
+        let single =
+            init.single
+                .as_ref()
+                .and_then(|ds| match self.parse_data_source(ds.cast(self.ast)) {
+                    Ok(s) => Some(s),
+                    Err(err) => {
+                        self.errors.push(err);
+                        None
+                    }
+                });
 
         let interval =
             init.interval
@@ -207,34 +210,29 @@ impl<'db> SemanticIndexBuilder<'db> {
         let retain = pc.retain.is_some();
 
         // `task` is modelled as Vec<WITH_Identifier>: find the Identifier variant.
-        let task = pc.task.iter().find_map(|wid| {
-            match wid.cast(self.ast) {
-                ast::generated::WITH_Identifier::Identifier(ident) => {
-                    match SpanIdent::from_node(self.db, self, ident) {
-                        Ok(i) => Some(i),
-                        Err(err) => {
-                            self.errors.push(err);
-                            None
-                        }
+        let task = pc.task.iter().find_map(|wid| match wid.cast(self.ast) {
+            ast::generated::WITH_Identifier::Identifier(ident) => {
+                match SpanIdent::from_node(self.db, self, ident) {
+                    Ok(i) => Some(i),
+                    Err(err) => {
+                        self.errors.push(err);
+                        None
                     }
                 }
-                ast::generated::WITH_Identifier::Token_WITH(_) => None,
             }
+            ast::generated::WITH_Identifier::Token_WITH(_) => None,
         });
 
-        let prog_type =
-            SpanNamespaceAccess::from_ast(self.db, self, pc.access.cast(self.ast))?;
+        let prog_type = SpanNamespaceAccess::from_ast(self.db, self, pc.access.cast(self.ast))?;
 
         let mut conf_elements: Vec<ProgConfElement<'db>> = vec![];
         if let Some(elems) = &pc.configuration_elements {
             for elem_id in &elems.cast(self.ast).children {
                 match elem_id.cast(self.ast).children.cast(self.ast) {
-                    ast::generated::FbTask_ProgCnxn::FbTask(fb) => {
-                        match self.parse_fb_task(fb) {
-                            Ok(f) => conf_elements.push(ProgConfElement::FbTask(f)),
-                            Err(err) => self.errors.push(err),
-                        }
-                    }
+                    ast::generated::FbTask_ProgCnxn::FbTask(fb) => match self.parse_fb_task(fb) {
+                        Ok(f) => conf_elements.push(ProgConfElement::FbTask(f)),
+                        Err(err) => self.errors.push(err),
+                    },
                     ast::generated::FbTask_ProgCnxn::ProgCnxn(cnxn) => {
                         match self.parse_prog_cnxn(cnxn) {
                             Ok(c) => conf_elements.push(ProgConfElement::Connection(c)),
@@ -290,9 +288,9 @@ impl<'db> SemanticIndexBuilder<'db> {
         }
 
         let path = path.ok_or_else(|| {
-            AnalysisError::Syntax(crate::check::errors::e0_syntax::SyntaxError::InvalidPouKeyword(
-                cnxn.get_span(),
-            ))
+            AnalysisError::Syntax(
+                crate::check::errors::e0_syntax::SyntaxError::InvalidPouKeyword(cnxn.get_span()),
+            )
         })?;
 
         if let Some(source) = source {
@@ -362,16 +360,15 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         let path_node = decl.path.cast(self.ast);
         let path_expr = path_node.path.cast(self.ast).parse(self)?;
-        let direct = path_node
-            .direct
-            .as_ref()
-            .and_then(|dv| match dv.cast(self.ast).to_direct_variable(self) {
+        let direct = path_node.direct.as_ref().and_then(|dv| {
+            match dv.cast(self.ast).to_direct_variable(self) {
                 Ok(d) => Some(d),
                 Err(err) => {
                     self.errors.push(err);
                     None
                 }
-            });
+            }
+        });
         let path = AccessPath {
             path: path_expr,
             direct,
@@ -425,9 +422,9 @@ impl<'db> SemanticIndexBuilder<'db> {
         }
 
         let init = init_expr.ok_or_else(|| {
-            AnalysisError::Syntax(crate::check::errors::e0_syntax::SyntaxError::InvalidPouKeyword(
-                inst.get_span(),
-            ))
+            AnalysisError::Syntax(
+                crate::check::errors::e0_syntax::SyntaxError::InvalidPouKeyword(inst.get_span()),
+            )
         })?;
 
         Ok(crate::hir_def::config::ConfigInstInit {

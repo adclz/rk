@@ -6,6 +6,7 @@ use crate::{
     HasName, HirNodeInfo,
     check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic},
     hir_def::{
+        config::ConfigDecl,
         expressions::{
             expression::{InitExpr, ParamAssign},
             spec::StructElement,
@@ -15,7 +16,6 @@ use crate::{
             class::MethodDecl, generics::GenericParam, interface::MethodPrototype, pou::Pou,
             variable::VariableDecl,
         },
-        config::ConfigDecl,
         program::ProgramDecl,
         using::Using,
     },
@@ -320,7 +320,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(using.get_span(db).clone())
+                    .range(using.get_span(db))
                     .call();
 
                 diag.with_related(Related::new(
@@ -425,10 +425,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
             }
             Self::Task { task1, task2 } => {
                 let mut diag = diag()
-                    .message(format!(
-                        "duplicate task '{}'",
-                        task1.ident.text(db)
-                    ))
+                    .message(format!("duplicate task '{}'", task1.ident.text(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(task1.get_span(db))
@@ -466,10 +463,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
             }
             Self::Resource { res1, res2 } => {
                 let mut diag = diag()
-                    .message(format!(
-                        "duplicate resource '{}'",
-                        res1.ident.text(db)
-                    ))
+                    .message(format!("duplicate resource '{}'", res1.ident.text(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(res1.get_span(db))

@@ -9,10 +9,7 @@ use hir::{
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
-    hir_ty::{
-        body::infer_body,
-        head::signature::infer_signature, infer::Infer,
-    },
+    hir_ty::{body::infer_body, head::signature::infer_signature, infer::Infer},
 };
 use rustc_hash::FxHashMap;
 use wasm_encoder::{Instruction, ValType};

@@ -94,8 +94,7 @@ impl<'db> Resolver<'db> {
         // Generics
         let signature = infer_signature(db, path_expr.scope_id(db));
         if let Some(generic_type) = signature.type_of_generic.get(&access.target) {
-            ctx.type_of_path_expr
-                .insert(path_expr, *generic_type);
+            ctx.type_of_path_expr.insert(path_expr, *generic_type);
             return true;
         }
 

@@ -148,9 +148,10 @@ impl<'db> Type<'db> {
             // Generic types: check constraint compatibility with concrete types
             (Type::Elementary(elem), Type::Generic(generic)) => {
                 if let Some(any) = generic.as_builtin_generic(db)
-                    && any.contains(elem) {
-                        return Ok(());
-                    }
+                    && any.contains(elem)
+                {
+                    return Ok(());
+                }
                 Err(CoerceError {
                     expected: *self,
                     actual: to,
@@ -159,9 +160,10 @@ impl<'db> Type<'db> {
             }
             (Type::Generic(generic), Type::Elementary(elem)) => {
                 if let Some(any) = generic.as_builtin_generic(db)
-                    && any.contains(*elem) {
-                        return Ok(());
-                    }
+                    && any.contains(*elem)
+                {
+                    return Ok(());
+                }
                 Err(CoerceError {
                     expected: *self,
                     actual: to,

@@ -3,9 +3,7 @@
 
 use std::ops::Deref;
 
-use auto_lsp::{
-    core::{ast::AstNode, span::Span},
-};
+use auto_lsp::core::{ast::AstNode, span::Span};
 use bitflags::bitflags;
 use compact_str::CompactString;
 use db::WorkspaceDataBase;

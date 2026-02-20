@@ -221,9 +221,10 @@ impl<'db> ModuleCodeGen<'db> {
         // Build return type
         let mut result_types = Vec::new();
         if let Some(return_spec) = func.return_type(self.db)
-            && let Ok(repr) = WasmRepr::from_type(self.db, return_spec.infer(self.db)) {
-                result_types.extend(repr.flatten());
-            }
+            && let Ok(repr) = WasmRepr::from_type(self.db, return_spec.infer(self.db))
+        {
+            result_types.extend(repr.flatten());
+        }
 
         // Add function type signature
         let type_idx = self.next_type_idx;
@@ -302,9 +303,10 @@ impl<'db> ModuleCodeGen<'db> {
             // Build return type
             let mut result_types = Vec::new();
             if let Some(return_spec) = method.return_type(self.db)
-                && let Ok(repr) = WasmRepr::from_type(self.db, return_spec.infer(self.db)) {
-                    result_types.extend(repr.flatten());
-                }
+                && let Ok(repr) = WasmRepr::from_type(self.db, return_spec.infer(self.db))
+            {
+                result_types.extend(repr.flatten());
+            }
 
             // Add method type signature
             let type_idx = self.next_type_idx;
@@ -389,9 +391,10 @@ impl<'db> ModuleCodeGen<'db> {
             // Build return type
             let mut result_types = Vec::new();
             if let Some(return_spec) = method.return_type(self.db)
-                && let Ok(repr) = WasmRepr::from_type(self.db, return_spec.infer(self.db)) {
-                    result_types.extend(repr.flatten());
-                }
+                && let Ok(repr) = WasmRepr::from_type(self.db, return_spec.infer(self.db))
+            {
+                result_types.extend(repr.flatten());
+            }
 
             // Add method type signature
             let type_idx = self.next_type_idx;
