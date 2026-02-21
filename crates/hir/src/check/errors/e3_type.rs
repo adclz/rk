@@ -1,4 +1,6 @@
-use auto_lsp::lsp_types::DiagnosticSeverity;
+use std::collections::HashMap;
+
+use auto_lsp::lsp_types::{CodeAction, DiagnosticSeverity, WorkspaceEdit};
 use db::WorkspaceDataBase;
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
@@ -172,6 +174,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                     .call();
 
                 base_target.with_location(db, &mut diag);
+                explicit_cast_suggestion(db, *target, *value, *expr, &mut diag);
                 diag
             }
             Self::NotComparable {
@@ -193,6 +196,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                     .call();
 
                 base_target.with_location(db, &mut diag);
+                explicit_cast_suggestion(db, *lhs, *rhs, *expr, &mut diag);
                 diag
             }
             Self::NotAddable {
@@ -218,6 +222,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                     .call();
 
                 base_target.with_location(db, &mut diag);
+                explicit_cast_suggestion(db, *lhs, *rhs, *expr, &mut diag);
                 diag
             }
             Self::NotMultiplicable {
@@ -245,6 +250,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                     .call();
 
                 base_target.with_location(db, &mut diag);
+                explicit_cast_suggestion(db, *lhs, *rhs, *expr, &mut diag);
                 diag
             }
             Self::NotPowerable {
@@ -266,6 +272,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                     .call();
 
                 base_target.with_location(db, &mut diag);
+                explicit_cast_suggestion(db, *lhs, *rhs, *expr, &mut diag);
                 diag
             }
             Self::NotABoolean { typ, expr } => diag()
@@ -523,10 +530,10 @@ impl InferLiteralError {
             InferLiteralError::Invalid_STRING_Literal => "invalid STRING literal",
             InferLiteralError::Invalid_WSTRING_Literal => "invalid WSTRING literal",
             InferLiteralError::Invalid_CHAR_Length(len) => {
-                return format!("CHAR literal must be exactly 1 character, got {len}")
+                return format!("CHAR literal must be exactly 1 character, got {len}");
             }
             InferLiteralError::Invalid_WCHAR_Length(len) => {
-                return format!("WCHAR literal must be exactly 1 character, got {len}")
+                return format!("WCHAR literal must be exactly 1 character, got {len}");
             }
 
             InferLiteralError::ExpectedNumber => "expected number",
@@ -557,5 +564,44 @@ impl InferLiteralError {
             InferLiteralError::Invalid_WSTRING_Unicode_Scalar(st) => return st.to_owned(),
         }
         .to_string()
+    }
+}
+
+fn explicit_cast_suggestion(
+    db: &dyn WorkspaceDataBase,
+    expected: Type,
+    actual: Type,
+    actual_site: CallSite,
+    diag: &mut IdeDiagnostic,
+) {
+    match (expected.normalize(db), actual.normalize(db)) {
+        (Type::Elementary(lhs), Type::Elementary(rhs)) => {
+
+            if lhs.explicit_cast(rhs) {
+                diag.with_related(Related::new(
+                    format!(
+                        "consider explicitly casting with '{}_TO_{}({})'",
+                        lhs.type_name(),
+                        rhs.type_name(),
+                        actual_site.to_string(db)
+                    ),
+                    actual_site.get_scope_id(db).file(db),
+                    actual_site.get_span(db),
+                ));
+
+                diag.with_fix(CodeAction {
+                    title: format!(
+                        "insert explicit cast '{}_TO_{}({})'",
+                        lhs.type_name(),
+                        rhs.type_name(),
+                        actual_site.to_string(db)
+                    ),
+                    edit: Some(WorkspaceEdit::new(HashMap::new())),
+                    is_preferred: Some(true),
+                    ..Default::default()
+                });
+            }
+        }
+        _ => {}
     }
 }

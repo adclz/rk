@@ -183,132 +183,77 @@ impl<'db> ElementarySpec {
     /// Explicit casts according to IEC 61131-3 standard
     ///
     /// See 6.6.1.6 Data type conversion
-    pub fn explicit_cast(&self, typ: ElementarySpec) -> Option<ExplicitCast<'db>> {
+    pub fn explicit_cast(&self, typ: ElementarySpec) -> bool {
         use ElementarySpec::*;
         match typ {
             LReal => match self {
-                Real | LInt | DInt | Int | SInt | ULInt | UDInt | UInt | USInt | LWord => {
-                    Some(ExplicitCast {
-                        from: Type::Elementary(*self),
-                        to: Type::Elementary(LReal),
-                    })
-                }
-                _ => None,
+                Real | LInt | DInt | Int | SInt | ULInt | UDInt | UInt | USInt | LWord => true,
+                _ => false,
             },
             Real => match self {
-                LInt | DInt | Int | SInt | ULInt | UDInt | UInt | USInt | DWord => {
-                    Some(ExplicitCast {
-                        from: Type::Elementary(*self),
-                        to: Type::Elementary(Real),
-                    })
-                }
-                _ => None,
+                LInt | DInt | Int | SInt | ULInt | UDInt | UInt | USInt | DWord => true,
+                _ => false,
             },
             LInt => match self {
                 LReal | Real | DInt | Int | SInt | ULInt | UDInt | UInt | USInt | LWord | DWord
-                | Word | Byte => Some(ExplicitCast {
-                    from: Type::Elementary(*self),
-                    to: Type::Elementary(LInt),
-                }),
-                _ => None,
+                | Word | Byte => true,
+                _ => false,
             },
             DInt => match self {
                 Real | Int | SInt | ULInt | UDInt | UInt | USInt | LWord | DWord | Word | Byte => {
-                    Some(ExplicitCast {
-                        from: Type::Elementary(*self),
-                        to: Type::Elementary(DInt),
-                    })
+                    true
                 }
-                _ => None,
+                _ => false,
             },
             Int => match self {
-                SInt | ULInt | UDInt | UInt | USInt | LWord | DWord | Word | Byte => {
-                    Some(ExplicitCast {
-                        from: Type::Elementary(*self),
-                        to: Type::Elementary(Int),
-                    })
-                }
-                _ => None,
+                SInt | ULInt | UDInt | UInt | USInt | LWord | DWord | Word | Byte => true,
+                _ => false,
             },
             SInt => match self {
-                ULInt | UDInt | UInt | USInt | LWord | DWord | Word | Byte => Some(ExplicitCast {
-                    from: Type::Elementary(*self),
-                    to: Type::Elementary(SInt),
-                }),
-                _ => None,
+                ULInt | UDInt | UInt | USInt | LWord | DWord | Word | Byte => true,
+                _ => false,
             },
             ULInt => match self {
                 LReal | Real | LInt | DInt | Int | SInt | UDInt | UInt | USInt | LWord | DWord
-                | Word | Byte => Some(ExplicitCast {
-                    from: Type::Elementary(*self),
-                    to: Type::Elementary(ULInt),
-                }),
-                _ => None,
+                | Word | Byte => true,
+                _ => false,
             },
             UDInt => match self {
-                Real | DInt | Int | SInt | UInt | USInt | LWord | DWord | Word | Byte => {
-                    Some(ExplicitCast {
-                        from: Type::Elementary(*self),
-                        to: Type::Elementary(UDInt),
-                    })
-                }
-                _ => None,
+                Real | DInt | Int | SInt | UInt | USInt | LWord | DWord | Word | Byte => true,
+                _ => false,
             },
             UInt => match self {
-                Int | SInt | USInt | LWord | DWord | Word | Byte => Some(ExplicitCast {
-                    from: Type::Elementary(*self),
-                    to: Type::Elementary(UInt),
-                }),
-                _ => None,
+                Int | SInt | USInt | LWord | DWord | Word | Byte => true,
+                _ => false,
             },
             USInt => match self {
-                SInt | LWord | DWord | Word | Byte => Some(ExplicitCast {
-                    from: Type::Elementary(*self),
-                    to: Type::Elementary(USInt),
-                }),
-                _ => None,
+                SInt | LWord | DWord | Word | Byte => true,
+                _ => false,
             },
             LWord => match self {
                 LReal | LInt | DInt | Int | SInt | ULInt | UDInt | UInt | USInt | DWord | Word
-                | Byte => Some(ExplicitCast {
-                    from: Type::Elementary(*self),
-                    to: Type::Elementary(LWord),
-                }),
-                _ => None,
+                | Byte => true,
+                _ => false,
             },
             DWord => match self {
                 Real | LInt | DInt | Int | SInt | ULInt | UDInt | UInt | USInt | Word | Byte => {
-                    Some(ExplicitCast {
-                        from: Type::Elementary(*self),
-                        to: Type::Elementary(DWord),
-                    })
+                    true
                 }
-                _ => None,
+                _ => false,
             },
             Word => match self {
-                LInt | DInt | Int | SInt | ULInt | UDInt | UInt | USInt | Byte => {
-                    Some(ExplicitCast {
-                        from: Type::Elementary(*self),
-                        to: Type::Elementary(Word),
-                    })
-                }
-                _ => None,
+                LInt | DInt | Int | SInt | ULInt | UDInt | UInt | USInt | Byte => true,
+                _ => false,
             },
             Byte => match self {
-                LInt | DInt | Int | SInt | ULInt | UDInt | UInt | USInt => Some(ExplicitCast {
-                    from: Type::Elementary(*self),
-                    to: Type::Elementary(Byte),
-                }),
-                _ => None,
+                LInt | DInt | Int | SInt | ULInt | UDInt | UInt | USInt => true,
+                _ => false,
             },
             Bool | REDGEBool | FEDGEBool => match self {
-                LInt | DInt | Int | SInt | ULInt | UDInt | UInt | USInt => Some(ExplicitCast {
-                    from: Type::Elementary(*self),
-                    to: Type::Elementary(*self),
-                }),
-                _ => None,
+                LInt | DInt | Int | SInt | ULInt | UDInt | UInt | USInt => true,
+                _ => false,
             },
-            _ => None,
+            _ => false,
         }
     }
 }
