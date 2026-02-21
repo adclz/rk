@@ -136,7 +136,7 @@ impl<'db> Type<'db> {
                     return Ok(());
                 }
                 // try implicit conversions in both directions
-                match lhs.implicit_cast(*rhs).is_some() || rhs.implicit_cast(lhs).is_some() {
+                match lhs.implicit_cast(*rhs).is_some()  {
                     true => Ok(()),
                     false => Err(CoerceError {
                         expected: *self,

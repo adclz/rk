@@ -123,7 +123,7 @@ END_FUNCTION_BLOCK"#
 
 #[rstest]
 #[case("0")]
-#[case("255")]
+#[case("127")]
 #[case("2#0101")]
 #[case("8#75")]
 #[case("16#A")]
@@ -299,7 +299,7 @@ END_FUNCTION_BLOCK"#
 }
 
 #[rstest]
-#[case("DT#0d")]
+#[case("DT#2000-01-01-00:00:00.0")]
 fn dt_implicit_cast(mut with_db: RootDatabase, #[case] value: &str) {
     let source = format!(
         r#"
@@ -315,7 +315,7 @@ END_FUNCTION_BLOCK"#
 }
 
 #[rstest]
-#[case("TOD#0h")]
+#[case("TOD#00:00:00.0")]
 fn tod_implicit_cast(mut with_db: RootDatabase, #[case] value: &str) {
     let source = format!(
         r#"

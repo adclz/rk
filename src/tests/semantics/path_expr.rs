@@ -250,7 +250,19 @@ FUNCTION fn: BOOL
 END_FUNCTION
         "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0309] Error: invalid literal
+        ,-[ file:///test0.st:14:16 ]
+        |
+      4 |         power : INT;
+        |         ^^|^^  
+        |           `---- type is defined by struct field 'power' here
+        | 
+     14 |     test.power := 0.2;
+        |                   ^|^  
+        |                    `--- cannot infer '<float>' to 'INT': invalid INT literal
+    ----'
+    ");
 }
 
 #[rstest]

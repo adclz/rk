@@ -223,19 +223,11 @@ impl<'db> InferenceTable<'db> {
             match target_type {
                 // the inference *does not* use coercion, it just checks if the infer type can be resolved to the final type
                 Type::Infer(infer) => {
-                    // since a literal could either be an INT or REAL by default, we check if any could be casted to the final type
-                    let cast = match infer.to_spec(db).implicit_cast(elem) {
-                        // yes, therefore infer the type directly
-                        Some(spec) => spec,
-                        // no, so infer this type via infer_with without any cast
-                        None => elem,
-                    };
-
-                    // check the literal value
-                    // since we can't have infer variants, we either replace them with a concrete type or a never type
-                    match infer.check_as(db, cast) {
+                    // check the literal value against the target type directly
+                    // bare literals adapt to the target type; check_as validates the value range
+                    match infer.check_as(db, elem) {
                         Ok(typ) => {
-                            results.type_of_expr.insert(*expr, Type::Elementary(cast));
+                            results.type_of_expr.insert(*expr, Type::Elementary(elem));
                         }
                         Err(err) => {
                             results.errors.push(

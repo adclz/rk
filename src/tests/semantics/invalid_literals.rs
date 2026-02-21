@@ -43,6 +43,13 @@ END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0309] Error: invalid literal
+       ,-[ file:///test0.st:4:25 ]
+       |
+     4 |         test1: USINT := -1;
+       |                         ^|  
+       |                          `-- cannot infer '<integer>' to 'USINT': literal can not be negative
+    ---'
+    [E0309] Error: invalid literal
        ,-[ file:///test0.st:5:24 ]
        |
      5 |         test2: BYTE := 256;
@@ -179,6 +186,20 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0309] Error: invalid literal
+       ,-[ file:///test0.st:4:24 ]
+       |
+     4 |         test1: SINT := -129;
+       |                        ^^|^  
+       |                          `--- cannot infer '<integer>' to 'SINT': number too small to fit in target type
+    ---'
+    [E0309] Error: invalid literal
+       ,-[ file:///test0.st:5:24 ]
+       |
+     5 |         test2: SINT := 128;
+       |                        ^|^  
+       |                         `--- cannot infer '<integer>' to 'SINT': number too large to fit in target type
+    ---'
     [E0309] Error: invalid literal
        ,-[ file:///test0.st:6:24 ]
        |

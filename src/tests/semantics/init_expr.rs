@@ -54,7 +54,7 @@ fn invalid_struct_value(mut with_db: RootDatabase) {
 
         FUNCTION StartEngine
             VAR
-                Base : Engine := (power := 10.5, fuel := 10.0);
+                Base : Engine := (power := 10, fuel := 10.0);
             END_VAR
 
         END_FUNCTION
@@ -63,11 +63,11 @@ fn invalid_struct_value(mut with_db: RootDatabase) {
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0211] Error: no such field
-        ,-[ file:///test0.st:11:50 ]
+        ,-[ file:///test0.st:11:48 ]
         |
-     11 |                 Base : Engine := (power := 10.5, fuel := 10.0);
-        |                                                  ^^^^^^|^^^^^  
-        |                                                        `------- 'Engine' has no field named 'fuel'
+     11 |                 Base : Engine := (power := 10, fuel := 10.0);
+        |                                                ^^^^^^|^^^^^  
+        |                                                      `------- 'Engine' has no field named 'fuel'
     ----'
     ");
 }
@@ -88,7 +88,15 @@ fn invalid_array_value(mut with_db: RootDatabase) {
 
         "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0309] Error: invalid literal
+       ,-[ file:///test0.st:8:37 ]
+       |
+     8 |                 Base : Engine := [3(10.5)];
+       |                                     ^^|^  
+       |                                       `--- cannot infer '<float>' to 'INT': invalid INT literal
+    ---'
+    ");
 }
 
 #[rstest]
@@ -110,7 +118,15 @@ fn invalid_value_in_array_of_struct(mut with_db: RootDatabase) {
         END_FUNCTION
         "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0309] Error: invalid literal
+        ,-[ file:///test0.st:12:64 ]
+        |
+     12 |                 Base : EngineArray := [(Power := 10, Torque := 10.0)];
+        |                                                                ^^|^  
+        |                                                                  `--- cannot infer '<float>' to 'INT': invalid INT literal
+    ----'
+    ");
 }
 
 #[rstest]
@@ -125,13 +141,21 @@ fn invalid_value_in_struct_with_array(mut with_db: RootDatabase) {
 
         FUNCTION StartEngine
             VAR
-                Base : Engine := (Power := [10, 5.3], Torque := 10.0);
+                Base : Engine := (Power := [10, 5.3], Torque := 10);
             END_VAR
 
         END_FUNCTION
         "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0309] Error: invalid literal
+        ,-[ file:///test0.st:11:49 ]
+        |
+     11 |                 Base : Engine := (Power := [10, 5.3], Torque := 10);
+        |                                                 ^|^  
+        |                                                  `--- cannot infer '<float>' to 'INT': invalid INT literal
+    ----'
+    ");
 }
 
 #[rstest]

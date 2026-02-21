@@ -248,7 +248,7 @@ FUNCTION max<T: ANY_INT> : T
 END_FUNCTION
 
 FUNCTION test : INT
-    test := max(5, 10.5);
+    test := max(5, 10);
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");

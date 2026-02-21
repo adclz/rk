@@ -251,11 +251,11 @@ END_FUNCTION
 
 FUNCTION_BLOCK fb1
 
-    fn(param1 := 0, 1.2);
+    fn(param1 := 0, 1);
 
 END_FUNCTION_BLOCK"#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 #[rstest]
