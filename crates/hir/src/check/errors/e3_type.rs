@@ -460,6 +460,8 @@ pub enum InferLiteralError {
 
     Invalid_STRING_Literal,
     Invalid_WSTRING_Literal,
+    Invalid_CHAR_Length(usize),
+    Invalid_WCHAR_Length(usize),
 
     // Inner
     ExpectedNumber,
@@ -520,6 +522,12 @@ impl InferLiteralError {
 
             InferLiteralError::Invalid_STRING_Literal => "invalid STRING literal",
             InferLiteralError::Invalid_WSTRING_Literal => "invalid WSTRING literal",
+            InferLiteralError::Invalid_CHAR_Length(len) => {
+                return format!("CHAR literal must be exactly 1 character, got {len}")
+            }
+            InferLiteralError::Invalid_WCHAR_Length(len) => {
+                return format!("WCHAR literal must be exactly 1 character, got {len}")
+            }
 
             InferLiteralError::ExpectedNumber => "expected number",
             InferLiteralError::InvalidNumber(st) => return st.to_owned(),

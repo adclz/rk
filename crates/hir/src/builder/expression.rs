@@ -370,7 +370,25 @@ impl<'db> ParseExpression<'db> for ast::generated::Constant {
                     }
                 }
                 Constant::CharLiteral(char_literal) => {
-                    Elementary::AnyString(Ident::from_node(sema.db, sema.file, char_literal.value.cast(sema.ast))?)
+                    let value = char_literal.value.cast(sema.ast);
+                    let value_ident = Ident::from_node(sema.db, sema.file, value)?;
+                    match &char_literal.kind {
+                        Some(kind) => {
+                            match kind.cast(sema.ast).children.cast(sema.ast) {
+                                ast::generated::CharName_StringName_WcharName_WstringName::StringName(_) => Elementary::String(value_ident),
+                                ast::generated::CharName_StringName_WcharName_WstringName::WstringName(_) => Elementary::WString(value_ident),
+                                ast::generated::CharName_StringName_WcharName_WstringName::CharName(_) => Elementary::Char(value_ident),
+                                ast::generated::CharName_StringName_WcharName_WstringName::WcharName(_) => Elementary::WChar(value_ident),
+                            }
+                        }
+                        None => {
+                            match value.children.cast(sema.ast) {
+                                ast::generated::DByteCharStr_HexInt_SByteCharStr::SByteCharStr(_) => Elementary::String(value_ident),
+                                ast::generated::DByteCharStr_HexInt_SByteCharStr::DByteCharStr(_) => Elementary::WString(value_ident),
+                                ast::generated::DByteCharStr_HexInt_SByteCharStr::HexInt(_) => Elementary::String(value_ident),
+                            }
+                        }
+                    }
                 }
                 Constant::NumericLiteral(numeric_literal) => {
                     match numeric_literal.children.cast(sema.ast) {

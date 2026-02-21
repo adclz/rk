@@ -22,6 +22,7 @@ pub mod recovery;
 pub mod recursive;
 pub mod references;
 pub mod scopes;
+pub mod strings;
 pub mod subrange;
 pub mod syntax;
 pub mod time;

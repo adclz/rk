@@ -353,8 +353,10 @@ pub enum Elementary {
     LTod(Ident),
 
     // strings
-    AnyString(Ident),
-    AnyChar(Ident),
+    String(Ident),
+    WString(Ident),
+    Char(Ident),
+    WChar(Ident),
 
     // Has to be solved later
     InferInteger(Integer),

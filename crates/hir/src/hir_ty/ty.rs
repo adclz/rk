@@ -93,8 +93,10 @@ impl From<Elementary> for Type<'_> {
             Elementary::LDate(_) => Type::Elementary(ElementarySpec::LDate),
             Elementary::DateAndTime(_) => Type::Elementary(ElementarySpec::DateAndTime),
             Elementary::LDateTime(_) => Type::Elementary(ElementarySpec::LDateTime),
-            Elementary::AnyChar(_) => Type::Elementary(ElementarySpec::Char),
-            Elementary::AnyString(_) => Type::Elementary(ElementarySpec::String),
+            Elementary::String(_) => Type::Elementary(ElementarySpec::String),
+            Elementary::WString(_) => Type::Elementary(ElementarySpec::WString),
+            Elementary::Char(_) => Type::Elementary(ElementarySpec::Char),
+            Elementary::WChar(_) => Type::Elementary(ElementarySpec::WChar),
             Elementary::InferInteger(integer) => Type::Infer(InferType::Integer(integer)),
             Elementary::InferFloat(ident) => Type::Infer(InferType::Float(ident)),
         }

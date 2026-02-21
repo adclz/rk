@@ -47,6 +47,26 @@ impl<'db> Elementary {
                 .map_err(|e| InferLiteralError::Invalid_LDT_Format(e.to_string())),
             Elementary::Time(t) => t.as_time(db).map(|_| ()),
             Elementary::LTime(lt) => lt.as_ltime(db).map(|_| ()),
+            Elementary::String(s) => s
+                .as_single_string(db)
+                .map(|_| ()),
+            Elementary::WString(s) => s
+                .as_double_string(db)
+                .map(|_| ()),
+            Elementary::Char(s) => {
+                let bytes = s.as_single_string(db)?;
+                if bytes.len() != 1 {
+                    return Err(InferLiteralError::Invalid_CHAR_Length(bytes.len()));
+                }
+                Ok(())
+            }
+            Elementary::WChar(s) => {
+                let chars = s.as_double_string(db)?;
+                if chars.len() != 1 {
+                    return Err(InferLiteralError::Invalid_WCHAR_Length(chars.len()));
+                }
+                Ok(())
+            }
             _ => Ok(()),
         }
     }
@@ -76,7 +96,10 @@ impl<'db> InferType {
             ElementarySpec::LInt => check_i64(db, self),
             ElementarySpec::Real => check_f32(db, self),
             ElementarySpec::LReal => check_f64(db, self),
-            _ => todo!(),
+            _ => Err(InferLiteralError::TypeMismatch(format!(
+                "cannot use numeric literal as {}",
+                typ.type_name()
+            ))),
         }
     }
 }

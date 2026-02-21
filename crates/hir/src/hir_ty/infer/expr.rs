@@ -2,7 +2,9 @@ use db::WorkspaceDataBase;
 
 use crate::{
     CallSite,
-    check::errors::{analysis_error::ToIdeDiagnostic, e7_enum::EnumError},
+    check::errors::{
+        analysis_error::ToIdeDiagnostic, e3_type::TypeError, e7_enum::EnumError,
+    },
     hir_def::{
         expressions::expression::{
             Expr, ExprKind, PrimaryExpr, RefValue, UnaryOperatorKind, VariableAccess,
@@ -64,6 +66,20 @@ impl<'db> InferExprCtx<'db> {
                 ty
             }
             ExprKind::PrimaryExpr(primary) => {
+                if let PrimaryExpr::Literal(elem) = primary {
+                    if let Err(err) = elem.check(db) {
+                        let ty: Type = (*elem).into();
+                        inference_results.errors.push(
+                            TypeError::InferLiteralError {
+                                expr: curr_expr,
+                                source: None,
+                                target: ty,
+                                err,
+                            }
+                            .to_diagnostic(db),
+                        );
+                    }
+                }
                 let primary = self.infer_primary(db, primary, inference_results);
                 inference_results.type_of_expr.insert(curr_expr, primary);
                 inference_results.type_of_expr[&curr_expr]

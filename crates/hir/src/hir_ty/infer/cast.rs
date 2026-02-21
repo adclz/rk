@@ -166,6 +166,16 @@ impl<'db> ElementarySpec {
                 LTod => LTod,
                 _ => None?,
             },
+            // CHAR STRING
+            Char => match self {
+                String => String,
+                _ => None?,
+            },
+            // WCHAR WSTRING
+            WChar => match self {
+                WString => WString,
+                _ => None?,
+            },
             _ => None?,
         })
     }
