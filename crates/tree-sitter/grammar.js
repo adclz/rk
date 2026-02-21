@@ -367,11 +367,11 @@ module.exports = grammar({
       ),
 
     char_str: ($) =>
-      choice(prec(-1, $.hex_int), $._s_byte_char_str, $._d_byte_char_str),
+      choice(prec(-1, $.hex_int), $.s_byte_char_str, $.d_byte_char_str),
 
-    _s_byte_char_str: ($) => seq("'", repeat($._s_byte_char_value), "'"),
+    s_byte_char_str: ($) => seq("'", repeat($._s_byte_char_value), "'"),
 
-    _d_byte_char_str: ($) => seq('"', repeat($._d_byte_char_value), '"'),
+    d_byte_char_str: ($) => seq('"', repeat($._d_byte_char_value), '"'),
 
     _s_byte_char_value: ($) =>
       choice(
@@ -534,11 +534,16 @@ module.exports = grammar({
 
     string_type_name: ($) =>
       choice(
-        seq("STRING", optional(seq("[", $.unsigned_int, "]"))),
-        seq("WSTRING", optional(seq("[", $.unsigned_int, "]"))),
-        "CHAR",
-        "WCHAR",
+        $.string_name,
+        $.wstring_name,
+        $.char_name,
+        $.wchar_name,
       ),
+
+    string_name: ($) => seq("STRING", optional(seq("[", $.unsigned_int, "]"))),
+    wstring_name: ($) => seq("WSTRING", optional(seq("[", $.unsigned_int, "]"))),
+    char_name: ($) => "CHAR",
+    wchar_name: ($) => "WCHAR",
 
     any_time_type_name: ($) => choice($.time_type_name, $.l_time_type_name),
 

@@ -717,15 +717,15 @@
         },
         {
           "type": "SYMBOL",
-          "name": "_s_byte_char_str"
+          "name": "s_byte_char_str"
         },
         {
           "type": "SYMBOL",
-          "name": "_d_byte_char_str"
+          "name": "d_byte_char_str"
         }
       ]
     },
-    "_s_byte_char_str": {
+    "s_byte_char_str": {
       "type": "SEQ",
       "members": [
         {
@@ -745,7 +745,7 @@
         }
       ]
     },
-    "_d_byte_char_str": {
+    "d_byte_char_str": {
       "type": "SEQ",
       "members": [
         {
@@ -1468,82 +1468,98 @@
       "type": "CHOICE",
       "members": [
         {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "STRING",
-              "value": "STRING"
-            },
-            {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "SEQ",
-                  "members": [
-                    {
-                      "type": "STRING",
-                      "value": "["
-                    },
-                    {
-                      "type": "SYMBOL",
-                      "name": "unsigned_int"
-                    },
-                    {
-                      "type": "STRING",
-                      "value": "]"
-                    }
-                  ]
-                },
-                {
-                  "type": "BLANK"
-                }
-              ]
-            }
-          ]
+          "type": "SYMBOL",
+          "name": "string_name"
         },
         {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "STRING",
-              "value": "WSTRING"
-            },
-            {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "SEQ",
-                  "members": [
-                    {
-                      "type": "STRING",
-                      "value": "["
-                    },
-                    {
-                      "type": "SYMBOL",
-                      "name": "unsigned_int"
-                    },
-                    {
-                      "type": "STRING",
-                      "value": "]"
-                    }
-                  ]
-                },
-                {
-                  "type": "BLANK"
-                }
-              ]
-            }
-          ]
+          "type": "SYMBOL",
+          "name": "wstring_name"
         },
         {
-          "type": "STRING",
-          "value": "CHAR"
+          "type": "SYMBOL",
+          "name": "char_name"
         },
         {
-          "type": "STRING",
-          "value": "WCHAR"
+          "type": "SYMBOL",
+          "name": "wchar_name"
         }
       ]
+    },
+    "string_name": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "STRING"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "STRING",
+                  "value": "["
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "unsigned_int"
+                },
+                {
+                  "type": "STRING",
+                  "value": "]"
+                }
+              ]
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        }
+      ]
+    },
+    "wstring_name": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "WSTRING"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "STRING",
+                  "value": "["
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "unsigned_int"
+                },
+                {
+                  "type": "STRING",
+                  "value": "]"
+                }
+              ]
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        }
+      ]
+    },
+    "char_name": {
+      "type": "STRING",
+      "value": "CHAR"
+    },
+    "wchar_name": {
+      "type": "STRING",
+      "value": "WCHAR"
     },
     "any_time_type_name": {
       "type": "CHOICE",

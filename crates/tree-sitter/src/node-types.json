@@ -1572,15 +1572,28 @@
     }
   },
   {
+    "type": "char_name",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "char_str",
     "named": true,
     "fields": {},
     "children": {
       "multiple": false,
-      "required": false,
+      "required": true,
       "types": [
         {
+          "type": "d_byte_char_str",
+          "named": true
+        },
+        {
           "type": "hex_int",
+          "named": true
+        },
+        {
+          "type": "s_byte_char_str",
           "named": true
         }
       ]
@@ -1868,6 +1881,11 @@
         }
       ]
     }
+  },
+  {
+    "type": "d_byte_char_str",
+    "named": true,
+    "fields": {}
   },
   {
     "type": "d_byte_str_spec",
@@ -5005,6 +5023,11 @@
     }
   },
   {
+    "type": "s_byte_char_str",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "s_byte_str_spec",
     "named": true,
     "fields": {
@@ -5337,7 +5360,7 @@
     }
   },
   {
-    "type": "string_type_name",
+    "type": "string_name",
     "named": true,
     "fields": {},
     "children": {
@@ -5346,6 +5369,33 @@
       "types": [
         {
           "type": "unsigned_int",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "string_type_name",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "char_name",
+          "named": true
+        },
+        {
+          "type": "string_name",
+          "named": true
+        },
+        {
+          "type": "wchar_name",
+          "named": true
+        },
+        {
+          "type": "wstring_name",
           "named": true
         }
       ]
@@ -6340,6 +6390,11 @@
     }
   },
   {
+    "type": "wchar_name",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "while_stmt",
     "named": true,
     "fields": {
@@ -6363,6 +6418,21 @@
           }
         ]
       }
+    }
+  },
+  {
+    "type": "wstring_name",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "unsigned_int",
+          "named": true
+        }
+      ]
     }
   },
   {
