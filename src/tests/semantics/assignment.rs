@@ -28,6 +28,10 @@ END_FUNCTION_BLOCK"#;
      7 |     test := ULINT#5;
        |             ^^^|^^^  
        |                `----- expected 'INT', got 'ULINT'
+       |                |     
+       |                `----- consider explicitly casting with 'ULINT_TO_INT(ULINT#5)'
+       | 
+       | Help: insert explicit cast 'INT_TO_ULINT(ULINT#5)'
     ---'
     ");
 }
@@ -87,6 +91,10 @@ END_FUNCTION"#;
      4 |     fn1 := ULINT#5;
        |            ^^^|^^^  
        |               `----- expected 'INT', got 'ULINT'
+       |               |     
+       |               `----- consider explicitly casting with 'ULINT_TO_INT(ULINT#5)'
+       | 
+       | Help: insert explicit cast 'INT_TO_ULINT(ULINT#5)'
     ---'
     ");
 }
@@ -146,6 +154,10 @@ END_FUNCTION_BLOCK"#;
      8 |     T1 := ULINT#5;
        |           ^^^|^^^  
        |              `----- expected 'T1', got 'ULINT'
+       |              |     
+       |              `----- consider explicitly casting with 'ULINT_TO_INT(ULINT#5)'
+       | 
+       | Help: insert explicit cast 'INT_TO_ULINT(ULINT#5)'
     ---'
     ");
 }
@@ -269,6 +281,10 @@ END_FUNCTION_BLOCK"#;
      11 |     test := fn1();
         |             ^^|^^  
         |               `---- expected 'INT', got 'BOOL'
+        |               |    
+        |               `---- consider explicitly casting with 'BOOL_TO_INT(fn1())'
+        | 
+        | Help: insert explicit cast 'INT_TO_BOOL(fn1())'
     ----'
     ");
 }
@@ -296,6 +312,10 @@ END_FUNCTION_BLOCK"#;
      7 |     test := TRUE AND FALSE;
        |             ^^^^^^^|^^^^^^  
        |                    `-------- expected 'INT', got 'BOOL'
+       |                    |        
+       |                    `-------- consider explicitly casting with 'BOOL_TO_INT(TRUE AND FALSE)'
+       | 
+       | Help: insert explicit cast 'INT_TO_BOOL(TRUE AND FALSE)'
     ---'
     ");
 }
@@ -364,6 +384,10 @@ END_FUNCTION_BLOCK"#;
      10 |     result := (a < b);
         |               ^^^|^^^  
         |                  `----- expected 'INT', got 'BOOL'
+        |                  |     
+        |                  `----- consider explicitly casting with 'BOOL_TO_INT((a < b))'
+        | 
+        | Help: insert explicit cast 'INT_TO_BOOL((a < b))'
     ----'
     ");
 }

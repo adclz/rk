@@ -212,6 +212,10 @@ END_FUNCTION_BLOCK"#;
      19 |         param1 := TRUE,
         |                   ^^|^  
         |                     `--- expected 'INT', got 'BOOL'
+        |                     |   
+        |                     `--- consider explicitly casting with 'BOOL_TO_INT(TRUE)'
+        | 
+        | Help: insert explicit cast 'INT_TO_BOOL(TRUE)'
     ----'
     [E0301] Error: type mismatch
         ,-[ file:///test0.st:20:19 ]
@@ -234,6 +238,10 @@ END_FUNCTION_BLOCK"#;
      21 |         param3 => variable1
         |                   ^^^^|^^^^  
         |                       `------ expected 'INT', got 'BOOL'
+        |                       |      
+        |                       `------ consider explicitly casting with 'BOOL_TO_INT(variable1)'
+        | 
+        | Help: insert explicit cast 'INT_TO_BOOL(variable1)'
     ----'
     ");
 }

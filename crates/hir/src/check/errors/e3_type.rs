@@ -581,8 +581,8 @@ fn explicit_cast_suggestion(
                 diag.with_related(Related::new(
                     format!(
                         "consider explicitly casting with '{}_TO_{}({})'",
-                        lhs.type_name(),
                         rhs.type_name(),
+                        lhs.type_name(),
                         actual_site.to_string(db)
                     ),
                     actual_site.get_scope_id(db).file(db),
