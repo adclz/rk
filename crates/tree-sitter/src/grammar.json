@@ -1035,7 +1035,7 @@
     },
     "time_value": {
       "type": "PATTERN",
-      "value": "([0-9._]+(d|h|ms|ns|m|s|us|ns))+"
+      "value": "([0-9._]+(d|h|ms|us|ns|m|s))+"
     },
     "fix_point": {
       "type": "SEQ",

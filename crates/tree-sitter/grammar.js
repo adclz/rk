@@ -429,7 +429,7 @@ module.exports = grammar({
         field("value", $.time_value),
       ),
 
-    time_value: ($) => /([0-9._]+(d|h|ms|ns|m|s|us|ns))+/,
+    time_value: ($) => /([0-9._]+(d|h|ms|us|ns|m|s))+/,
 
     fix_point: ($) =>
       seq(field("real", $.unsigned_int), ".", field("frac", $.unsigned_int)),

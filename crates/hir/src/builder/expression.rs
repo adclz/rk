@@ -470,10 +470,10 @@ impl<'db> ParseExpression<'db> for ast::generated::Constant {
                     ast::generated::Date_DateAndTime_Duration_TimeOfDay::Duration(duration) => {
                         match duration.children.cast(sema.ast) {
                             ast::generated::Ltime_Time::Ltime(ltime) => {
-                                Elementary::LTime(Ident::from_node(sema.db, sema.file, ltime.value.cast(sema.ast))?)
+                                Elementary::LTime(Ident::from_node(sema.db, sema.file, ltime)?)
                             }
                             ast::generated::Ltime_Time::Time(time) => {
-                                Elementary::Time(Ident::from_node(sema.db, sema.file, time.value.cast(sema.ast))?)
+                                Elementary::Time(Ident::from_node(sema.db, sema.file, time)?)
                             }
                         }
                     }

@@ -535,7 +535,6 @@ impl InferLiteralError {
 
             InferLiteralError::Invalid_TIME_Unit(st) => return st.to_owned(),
             InferLiteralError::Invalid_TIME_Components => "invalid TIME components",
-
             InferLiteralError::Invalid_TOD_Format(st) => return st.to_owned(),
             InferLiteralError::Invalid_LTOD_Format(st) => return st.to_owned(),
 

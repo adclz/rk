@@ -1,0 +1,121 @@
+use db::RootDatabase;
+use insta::assert_snapshot;
+use rstest::rstest;
+
+use crate::tests::utils::test_diagnostics;
+use crate::tests::utils::with_db;
+
+// IEC 61131-3 Table 9 — Date and time literals
+
+// 5a Date and time literal (long prefix)
+#[rstest]
+#[case("DATE_AND_TIME#1984-06-25-15:36:55.360227400")]
+fn valid_dt_long_prefix(mut with_db: RootDatabase, #[case] value: &str) {
+    let source = format!(
+        r#"
+FUNCTION_BLOCK fb1
+    VAR
+        test1: DT := {value};
+    END_VAR
+END_FUNCTION_BLOCK"#
+    );
+    insta::allow_duplicates! { assert_snapshot!(test_diagnostics(&mut with_db, &[&source]), @""); }
+}
+
+// 5b Date and time literal (short prefix)
+#[rstest]
+#[case("DT#1984-06-25-15:36:55.360_227_400")]
+fn valid_dt_short_prefix(mut with_db: RootDatabase, #[case] value: &str) {
+    let source = format!(
+        r#"
+FUNCTION_BLOCK fb1
+    VAR
+        test1: DT := {value};
+    END_VAR
+END_FUNCTION_BLOCK"#
+    );
+    insta::allow_duplicates! { assert_snapshot!(test_diagnostics(&mut with_db, &[&source]), @""); }
+}
+
+// 6a Long date and time literal (long prefix)
+#[rstest]
+#[case("LDATE_AND_TIME#1984-06-25-15:36:55.360_227_400")]
+fn valid_ldt_long_prefix(mut with_db: RootDatabase, #[case] value: &str) {
+    let source = format!(
+        r#"
+FUNCTION_BLOCK fb1
+    VAR
+        test1: LDT := {value};
+    END_VAR
+END_FUNCTION_BLOCK"#
+    );
+    insta::allow_duplicates! { assert_snapshot!(test_diagnostics(&mut with_db, &[&source]), @""); }
+}
+
+// 6b Long date and time literal (short prefix)
+#[rstest]
+#[case("LDT#1984-06-25-15:36:55.360_227_400")]
+fn valid_ldt_short_prefix(mut with_db: RootDatabase, #[case] value: &str) {
+    let source = format!(
+        r#"
+FUNCTION_BLOCK fb1
+    VAR
+        test1: LDT := {value};
+    END_VAR
+END_FUNCTION_BLOCK"#
+    );
+    insta::allow_duplicates! { assert_snapshot!(test_diagnostics(&mut with_db, &[&source]), @""); }
+}
+
+// DT → LDT implicit cast
+#[rstest]
+fn valid_dt_to_ldt_implicit(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        test1: LDT := DT#1984-06-25-15:36:55.360227400;
+        test2: LDT := DATE_AND_TIME#1984-06-25-15:36:55.360227400;
+    END_VAR
+END_FUNCTION_BLOCK"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+// LDT → DT narrowing is not allowed
+#[rstest]
+fn invalid_ldt_to_dt(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        test1: DT := LDT#1984-06-25-15:36:55.360227400;
+    END_VAR
+END_FUNCTION_BLOCK"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:4:19 ]
+       |
+     4 |         test1: DT := LDT#1984-06-25-15:36:55.360227400;
+       |                   ^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^  
+       |                                     `------------------- expected 'DT', got 'LDT'
+    ---'
+    ");
+}
+
+// Type mismatch: assigning DT literal to non-DT type
+#[rstest]
+fn invalid_dt_wrong_type(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        test1: INT := DT#1984-06-25-15:36:55.360227400;
+    END_VAR
+END_FUNCTION_BLOCK"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:4:20 ]
+       |
+     4 |         test1: INT := DT#1984-06-25-15:36:55.360227400;
+       |                    ^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^  
+       |                                     `------------------- expected 'INT', got 'DT'
+    ---'
+    ");
+}
