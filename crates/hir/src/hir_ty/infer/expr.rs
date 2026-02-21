@@ -38,8 +38,7 @@ impl<'db> InferExprCtx<'db> {
             ExprKind::AddOperator { left, right, .. }
             | ExprKind::MultOperator { left, right, .. }
             | ExprKind::PowerOperator { left, right }
-            | ExprKind::BooleanOperator { left, right, .. }
-            | ExprKind::ComparisonOperator { left, right, .. } => {
+            | ExprKind::BooleanOperator { left, right, .. } => {
                 let lhs = self.resolve_expr(db, *left, inference_results);
                 let rhs = self.resolve_expr(db, *right, inference_results);
 
@@ -57,6 +56,16 @@ impl<'db> InferExprCtx<'db> {
                     _ => lhs,
                 };
 
+                inference_results.type_of_expr.insert(curr_expr, ty);
+                ty
+            }
+            ExprKind::ComparisonOperator { left, right, .. } => {
+                // resolve operands for their side effects (populating type_of_expr)
+                self.resolve_expr(db, *left, inference_results);
+                self.resolve_expr(db, *right, inference_results);
+
+                // comparison operators always return BOOL
+                let ty = Type::new_bool();
                 inference_results.type_of_expr.insert(curr_expr, ty);
                 ty
             }
