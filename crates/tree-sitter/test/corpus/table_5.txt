@@ -391,7 +391,8 @@ END_FUNCTION
               (assignment
                 (constant
                   (char_literal
-                    (string_type_name)
+                    (string_type_name
+                      (char_name))
                     (char_str
                       (hex_int))))))
             (assign

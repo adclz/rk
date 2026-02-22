@@ -1,0 +1,334 @@
+================================================================================
+Function with VAR_INPUT variadics
+================================================================================
+
+FUNCTION fn
+  VAR_INPUT
+      args: INT...
+  END_VAR
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (input_decls
+          (input_var
+            (variable_list
+              (identifier))
+            (variadic_decl
+              (numeric_type_name
+                (int_type_name
+                  (sign_int_type_name
+                    (int_name)))))))))
+
+================================================================================
+math fold operators
+================================================================================
+
+FUNCTION fn
+  VAR_INPUT
+      args: INT...
+  END_VAR
+
+  VAR
+    test: INT;
+  END_VAR
+
+  test := ...args+
+  test := ...args-
+  test := ...args*
+  test := ...args/
+  test := ...args%
+  test := ...args**
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (input_decls
+          (input_var
+            (variable_list
+              (identifier))
+            (variadic_decl
+              (numeric_type_name
+                (int_type_name
+                  (sign_int_type_name
+                    (int_name)))))))
+        (var_decls
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name))))))))
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (fold_expression
+                  (identifier)
+                  (fold_operator
+                    (fold_plus)))))
+            (assign
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (fold_expression
+                  (identifier)
+                  (fold_operator
+                    (fold_minus)))))
+            (assign
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (fold_expression
+                  (identifier)
+                  (fold_operator
+                    (fold_mul)))))
+            (assign
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (fold_expression
+                  (identifier)
+                  (fold_operator
+                    (fold_div)))))
+            (assign
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (fold_expression
+                  (identifier)
+                  (fold_operator
+                    (fold_mod)))))
+            (assign
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (fold_expression
+                  (identifier)
+                  (fold_operator
+                    (fold_power)))))))))
+
+
+================================================================================
+binary fold operators
+================================================================================
+
+FUNCTION fn
+  VAR_INPUT
+      args: INT...
+  END_VAR
+
+  VAR
+    test: INT;
+  END_VAR
+
+  test := ...args&
+  test := ...args|
+  test := ...args^
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (input_decls
+          (input_var
+            (variable_list
+              (identifier))
+            (variadic_decl
+              (numeric_type_name
+                (int_type_name
+                  (sign_int_type_name
+                    (int_name)))))))
+        (var_decls
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name))))))))
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (fold_expression
+                  (identifier)
+                  (fold_operator
+                    (fold_and)))))
+            (assign
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (fold_expression
+                  (identifier)
+                  (fold_operator
+                    (fold_or)))))
+            (assign
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (fold_expression
+                  (identifier)
+                  (fold_operator
+                    (fold_xor)))))))))
+
+================================================================================
+comparison fold operators
+================================================================================
+
+FUNCTION fn
+  VAR_INPUT
+      args: INT...
+  END_VAR
+
+  VAR
+    test: INT;
+  END_VAR
+
+  test := ...args=
+  test := ...args<>
+  test := ...args<
+  test := ...args>
+  test := ...args<=
+  test := ...args>=
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (input_decls
+          (input_var
+            (variable_list
+              (identifier))
+            (variadic_decl
+              (numeric_type_name
+                (int_type_name
+                  (sign_int_type_name
+                    (int_name)))))))
+        (var_decls
+          (var_decl_init_list
+            (variable_list
+              (identifier))
+            (var_decl_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name))))))))
+        (func_body
+          (stmt_list
+            (assign
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (fold_expression
+                  (identifier)
+                  (fold_operator
+                    (fold_eq)))))
+            (assign
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (fold_expression
+                  (identifier)
+                  (fold_operator
+                    (fold_ne)))))
+            (assign
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (fold_expression
+                  (identifier)
+                  (fold_operator
+                    (fold_lt)))))
+            (assign
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (fold_expression
+                  (identifier)
+                  (fold_operator
+                    (fold_gt)))))
+            (assign
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (fold_expression
+                  (identifier)
+                  (fold_operator
+                    (fold_le)))))
+            (assign
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field)))))
+              (assignment
+                (fold_expression
+                  (identifier)
+                  (fold_operator
+                    (fold_ge)))))))))

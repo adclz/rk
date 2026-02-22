@@ -721,7 +721,8 @@ END_FUNCTION
                                               (field)))))))))))))
                       (constant
                         (char_literal
-                          (char_str)))))
+                          (char_str
+                            (s_byte_char_str))))))
                   (stmt_list
                     (assign
                       (variable
@@ -890,4 +891,5 @@ END_FUNCTION
                                               (field)))))))))))))
                       (constant
                         (char_literal
-                          (char_str))))))))))))
+                          (char_str
+                            (s_byte_char_str)))))))))))))

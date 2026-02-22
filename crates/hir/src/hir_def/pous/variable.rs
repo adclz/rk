@@ -22,6 +22,8 @@ pub struct VariableDecl<'db> {
 
     pub kind: VariableKind,
 
+    pub variadic: bool,
+
     pub spec: Spec<'db>,
 
     pub init: Option<InitExpr<'db>>,

@@ -61,6 +61,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Input,
+                                    false,
                                     result.spec,
                                     result.init,
                                     child.into(),
@@ -93,6 +94,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Input,
+                                    false,
                                     spec,
                                     None,
                                     child.into(),
@@ -125,8 +127,42 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Input,
+                                    false,
                                     result.spec,
                                     result.init,
+                                    child.into(),
+                                    sema.current_scope,
+                                ));
+                            }
+                        }
+                        ast::generated::InputVarKind::VariadicDecl(variadic_decl) => {
+                            for variable in child.variables.cast(sema.ast).children.iter() {
+                                let var_name = match Ident::from_node(
+                                    sema.db,
+                                    sema.file,
+                                    variable.cast(sema.ast),
+                                ) {
+                                    Ok(name) => name,
+                                    Err(err) => {
+                                        sema.errors.push(err);
+                                        continue;
+                                    }
+                                };
+                                let spec = match variadic_decl.Type.cast(sema.ast).to_spec(sema) {
+                                    Ok(spec) => spec,
+                                    Err(err) => {
+                                        sema.errors.push(err);
+                                        continue;
+                                    }
+                                };
+                                section.push(VariableDecl::new(
+                                    sema.db,
+                                    var_name,
+                                    variable.cast(sema.ast).into(),
+                                    VariableKind::Input,
+                                    true,
+                                    spec,
+                                    None,
                                     child.into(),
                                     sema.current_scope,
                                 ));
@@ -177,6 +213,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Input,
+                                    false,
                                     result.spec,
                                     result.init,
                                     child.into(),
@@ -209,6 +246,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Input,
+                                    false,
                                     spec,
                                     None,
                                     child.into(),
@@ -241,6 +279,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Input,
+                                    false,
                                     result.spec,
                                     result.init,
                                     child.into(),
@@ -293,6 +332,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::OutputDecls {
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Output,
+                                    false,
                                     result.spec,
                                     result.init,
                                     child.into(),
@@ -325,6 +365,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::OutputDecls {
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Output,
+                                    false,
                                     spec,
                                     None,
                                     child.into(),
@@ -377,6 +418,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbOutputDecls {
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Output,
+                                    false,
                                     result.spec,
                                     result.init,
                                     child.into(),
@@ -409,6 +451,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbOutputDecls {
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Output,
+                                    false,
                                     spec,
                                     None,
                                     child.into(),
@@ -461,6 +504,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::TempVarDecls {
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Temp,
+                                    false,
                                     result.spec,
                                     result.init,
                                     child.into(),
@@ -493,6 +537,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::TempVarDecls {
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Temp,
+                                    false,
                                     result.spec,
                                     result.init,
                                     child.into(),
@@ -545,6 +590,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::InOut,
+                                    false,
                                     spec,
                                     None,
                                     child.into(),
@@ -577,6 +623,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::InOut,
+                                    false,
                                     result.spec,
                                     result.init,
                                     child.into(),
@@ -621,6 +668,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
                                 var_name,
                                 child.name.cast(sema.ast).into(),
                                 VariableKind::External,
+                                false,
                                 result.spec,
                                 result.init,
                                 child.into(),
@@ -651,6 +699,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
                                 var_name,
                                 child.name.cast(sema.ast).into(),
                                 VariableKind::External,
+                                false,
                                 spec,
                                 None,
                                 child.into(),
@@ -763,6 +812,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
                             var_name,
                             variable.cast(sema.ast).into(),
                             VariableKind::Var,
+                            false,
                             result.spec,
                             result.init,
                             var_decl.into(),
@@ -812,6 +862,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::RetainVarDecls {
                             var_name,
                             variable.cast(sema.ast).into(),
                             VariableKind::Var,
+                            false,
                             result.spec,
                             result.init,
                             var_decl.into(),
@@ -861,6 +912,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::NoRetainVarDecls {
                             var_name,
                             variable.cast(sema.ast).into(),
                             VariableKind::Var,
+                            false,
                             result.spec,
                             result.init,
                             var_decl.into(),
@@ -899,6 +951,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::LocPartlyVarDecl {
                 var_name,
                 child.cast(sema.ast).variable_name.cast(sema.ast).into(),
                 VariableKind::Var,
+                false,
                 result.spec,
                 result.init,
                 child.cast(sema.ast).into(),
@@ -1002,6 +1055,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
                         name,
                         child.cast(sema.ast).spec.cast(sema.ast).into(),
                         VariableKind::Global,
+                        false,
                         result.spec,
                         result.init,
                         child.cast(sema.ast).into(),
@@ -1032,6 +1086,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
                         name,
                         child.cast(sema.ast).spec.cast(sema.ast).into(),
                         VariableKind::Global,
+                        false,
                         result.spec,
                         result.init,
                         child.cast(sema.ast).into(),

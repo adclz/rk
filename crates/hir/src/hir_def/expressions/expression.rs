@@ -55,6 +55,42 @@ pub enum UnaryOperatorKind {
     Not,   // NOT
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FoldOperatorKind {
+    // Arithmetic
+    Plus,  // +
+    Minus, // -
+    Mul,   // *
+    Div,   // /
+    Mod,   // MOD
+    Power, // **
+    // Boolean / Bitwise
+    And, // AND, &
+    Or,  // OR
+    Xor, // XOR
+    // Comparison
+    Eq, // =
+    Ne, // <>
+    Lt, // <
+    Gt, // >
+    Le, // <=
+    Ge, // >=
+}
+
+impl FoldOperatorKind {
+    pub fn is_comparison(&self) -> bool {
+        matches!(
+            self,
+            FoldOperatorKind::Eq
+                | FoldOperatorKind::Ne
+                | FoldOperatorKind::Lt
+                | FoldOperatorKind::Gt
+                | FoldOperatorKind::Le
+                | FoldOperatorKind::Ge
+        )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ExprKind<'db> {
     // Normal expressions
@@ -86,6 +122,13 @@ pub enum ExprKind<'db> {
     UnaryOperator {
         expr: Expr<'db>,
         operator: UnaryOperatorKind,
+    },
+    // Fold expression: ...param<op> (variadic parameter fold)
+    FoldExpr {
+        param: Ident,
+        #[allow(dead_code)]
+        param_id: SpanIdent<'db>,
+        operator: FoldOperatorKind,
     },
 }
 

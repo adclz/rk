@@ -24,7 +24,15 @@ pub struct CoerceError<'db> {
 pub type CoerceResult<'db> = Result<(), CoerceError<'db>>;
 
 impl<'db> Type<'db> {
-    pub fn supports_math(&self, rhs: Type) -> bool {
+    pub fn supports_math(&self) -> bool {
+        if self.is_never() {
+            return true;
+        }
+
+        self.is_numeric()
+    }
+
+    pub fn supports_math_with(&self, rhs: Type) -> bool {
         if self.is_never() || rhs.is_never() {
             return true;
         }

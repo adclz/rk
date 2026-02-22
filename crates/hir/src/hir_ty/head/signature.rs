@@ -247,7 +247,7 @@ impl<'db> Signature<'db> {
         };
 
         for var in variables {
-            self.infer_spec(db, var.spec(db));
+            let typ_of_var = self.infer_spec(db, var.spec(db));
 
             if var.kind(db) == VariableKind::External {
                 let var_name = var.get_name_ident(db);

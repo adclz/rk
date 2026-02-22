@@ -3,7 +3,7 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     HasName,
-    check::errors::{analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError},
+    check::errors::{analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError, e2_resolve::ResolveError},
     hir_ty::{head::init_inference::InitInference, infer::Infer},
 };
 
@@ -33,6 +33,16 @@ impl<'db> InitInference<'db> {
             }
 
             let var_type = var.spec(db).infer(db);
+
+            if var.variadic(db) && !var_type.normalize(db).can_be_variadic() {
+                self.errors.push(
+                    ResolveError::NonVariadicTypeForVariable {
+                        var: *var,
+                        typ: var_type,
+                    }
+                    .to_diagnostic(db),
+                );
+            }
 
             if let Some(init_expr) = var.init(db) {
                 self.init_expr_result.resolve_init_expr(

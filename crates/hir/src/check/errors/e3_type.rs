@@ -5,20 +5,16 @@ use db::WorkspaceDataBase;
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 use crate::{
-    CallSite, HirNodeInfo,
-    check::errors::analysis_error::ToIdeDiagnostic,
-    hir_def::{
+    CallSite, HasName, HirNodeInfo, check::errors::analysis_error::ToIdeDiagnostic, hir_def::{
         expressions::{
-            expression::{AddOperatorKind, Expr, MultOperatorKind},
+            expression::{AddOperatorKind, Expr, FoldOperatorKind, MultOperatorKind},
             spec::Spec,
-        },
-        pous::generics::{AnyGeneric, GenericParam},
-    },
-    hir_ty::{
+        }, interned::identifier::Ident, pous::{generics::{AnyGeneric, GenericParam}, variable::VariableDecl}
+    }, hir_ty::{
         body::{Adjust, Adjustment},
-        infer::table::InferSource,
+        infer::{Infer, table::InferSource},
         ty::Type,
-    },
+    }
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
@@ -86,26 +82,35 @@ pub enum TypeError<'db> {
         constraint: Spec<'db>,
     },
     MissingTypeArguments {
-        func_name: crate::hir_def::interned::identifier::Ident,
-        call_site: crate::CallSite<'db>,
+        func_name: Ident,
+        call_site: CallSite<'db>,
     },
     WrongTypeArgumentArity {
-        func_name: crate::hir_def::interned::identifier::Ident,
+        func_name: Ident,
         expected: usize,
         actual: usize,
-        call_site: crate::CallSite<'db>,
+        call_site: CallSite<'db>,
     },
     TypeArgumentConstraintMismatch {
         concrete_type: Type<'db>,
-        param_name: crate::hir_def::interned::identifier::Ident,
+        param_name: Ident,
         constraint: AnyGeneric,
-        call_site: crate::CallSite<'db>,
+        call_site: CallSite<'db>,
     },
     TypeArgumentIntoConstraintMismatch {
         type_arg: Type<'db>,
         into_target: Type<'db>,
-        param_name: crate::hir_def::interned::identifier::Ident,
-        call_site: crate::CallSite<'db>,
+        param_name: Ident,
+        call_site: CallSite<'db>,
+    },
+    NonVariadicFoldParameter {
+        var: VariableDecl<'db>,
+        call_site: CallSite<'db>,
+    },
+    NonNumericFoldParameter {
+        typ: Type<'db>,
+        operator: FoldOperatorKind,
+        call_site: CallSite<'db>,
     },
 }
 
@@ -126,6 +131,8 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::WrongTypeArgumentArity { .. } => "E0314",
             Self::TypeArgumentConstraintMismatch { .. } => "E0315",
             Self::TypeArgumentIntoConstraintMismatch { .. } => "E0316",
+            Self::NonVariadicFoldParameter { .. } => "E0317",
+            Self::NonNumericFoldParameter { .. } => "E0318",
             Self::Other { .. } => "E0350",
         }
     }
@@ -369,6 +376,36 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 .desc(self)
                 .range(call_site.get_span(db))
                 .call(),
+            Self::NonVariadicFoldParameter { var, call_site } => {
+            let mut diag = diag()
+                .message(format!(
+                    "variable '{}' is not variadic",
+                    var.get_name_ident(db).text(db)
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(call_site.get_span(db))
+                .call();
+                
+                diag.with_note("... can only be used on VAR_INPUT variables that are declared variadic with the same operator (e.g: INT...)".into());
+                diag
+            },
+            Self::NonNumericFoldParameter { typ, operator, call_site } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "math operators can not be applied to type '{}'",
+                        typ.type_name(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(call_site.get_span(db))
+                    .call();
+
+                typ.with_location(db, &mut diag);
+
+                diag.with_note("only numeric types can be used with fold operators".into());
+                diag
+            },
             Self::Other { message, expr } => diag()
                 .message(message.clone())
                 .severity(DiagnosticSeverity::ERROR)

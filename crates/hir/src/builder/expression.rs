@@ -16,8 +16,8 @@ use crate::hir_def::pous::variable::DirectVariable;
 use crate::{
     hir_def::expressions::expression::{
         AddOperatorKind, BooleanOperatorKind, ComparisonOperatorKind, Elementary, Expr, ExprKind,
-        MultOperatorKind, ParamAssign, PathExprKind, PrimaryExpr, RefValue, UnaryOperatorKind,
-        VarAccess, VariableAccess,
+        FoldOperatorKind, MultOperatorKind, ParamAssign, PathExprKind, PrimaryExpr, RefValue,
+        UnaryOperatorKind, VarAccess, VariableAccess,
     },
     hir_def::interned::identifier::Ident,
 };
@@ -196,6 +196,41 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                     sema.db,
                     ExprKind::UnaryOperator { expr, operator },
                     unary_operator.into(),
+                    sema.current_scope,
+                ))
+            }
+            ast::generated::Expression::FoldExpression(fold) => {
+                let param = Ident::from_node(sema.db, sema.file, fold.param.cast(sema.ast))?;
+                let param_id =
+                    SpanIdent::from_node(sema.db, sema, fold.param.cast(sema.ast))?;
+
+                use ast::generated::FoldAnd_FoldDiv_FoldEq_FoldGe_FoldGt_FoldLe_FoldLt_FoldMinus_FoldMod_FoldMul_FoldNe_FoldOr_FoldPlus_FoldPower_FoldXor as FoldOp;
+                let operator = match fold.operator.cast(sema.ast).children.cast(sema.ast) {
+                    FoldOp::FoldPlus(_) => FoldOperatorKind::Plus,
+                    FoldOp::FoldMinus(_) => FoldOperatorKind::Minus,
+                    FoldOp::FoldMul(_) => FoldOperatorKind::Mul,
+                    FoldOp::FoldDiv(_) => FoldOperatorKind::Div,
+                    FoldOp::FoldMod(_) => FoldOperatorKind::Mod,
+                    FoldOp::FoldPower(_) => FoldOperatorKind::Power,
+                    FoldOp::FoldAnd(_) => FoldOperatorKind::And,
+                    FoldOp::FoldOr(_) => FoldOperatorKind::Or,
+                    FoldOp::FoldXor(_) => FoldOperatorKind::Xor,
+                    FoldOp::FoldEq(_) => FoldOperatorKind::Eq,
+                    FoldOp::FoldNe(_) => FoldOperatorKind::Ne,
+                    FoldOp::FoldLt(_) => FoldOperatorKind::Lt,
+                    FoldOp::FoldGt(_) => FoldOperatorKind::Gt,
+                    FoldOp::FoldLe(_) => FoldOperatorKind::Le,
+                    FoldOp::FoldGe(_) => FoldOperatorKind::Ge,
+                };
+
+                Ok(Expr::new(
+                    sema.db,
+                    ExprKind::FoldExpr {
+                        param,
+                        param_id,
+                        operator,
+                    },
+                    fold.into(),
                     sema.current_scope,
                 ))
             }

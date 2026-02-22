@@ -824,7 +824,10 @@ module.exports = grammar({
       ),
 
     _input_var_kind: ($) =>
-      choice($.var_decl_init, $.edge_decl, $.array_conformand),
+      choice($.var_decl_init, $.edge_decl, $.array_conformand, $.variadic_decl),
+
+    variadic_decl: ($) =>
+      seq(":", field("type", $.data_type_access), "..."),
 
     edge_decl: ($) =>
       seq(
@@ -1531,6 +1534,7 @@ module.exports = grammar({
     // to allow for better precedence handling and operator overloading.
     _expression: ($) =>
       choice(
+        $.fold_expression,
         $.boolean_operator,
         $.comparison_operator,
         $.add_operator,
@@ -1538,6 +1542,37 @@ module.exports = grammar({
         $.power_operator,
         $.unary_operator,
         $._primary_expression,
+      ),
+
+    // Fold expression: variadic parameter folded with a binary operator
+    // e.g. ...IN+ (left fold: IN[0] + IN[1] + ... + IN[N-1])
+    fold_expression: ($) =>
+      seq(
+        "...",
+        field("param", $.identifier),
+        field("operator", $.fold_operator),
+      ),
+
+    fold_operator: ($) =>
+      choice(
+        // Arithmetic
+        alias("+", $.fold_plus),
+        alias("-", $.fold_minus),
+        alias("*", $.fold_mul),
+        alias("/", $.fold_div),
+        alias("%", $.fold_mod),
+        alias("**", $.fold_power),
+        // Boolean / Bitwise
+        alias("&", $.fold_and),
+        alias("|", $.fold_or),
+        alias("^", $.fold_xor),
+        // Comparison
+        alias("=", $.fold_eq),
+        alias("<>", $.fold_ne),
+        alias("<", $.fold_lt),
+        alias(">", $.fold_gt),
+        alias("<=", $.fold_le),
+        alias(">=", $.fold_ge),
       ),
 
     // Primary_Expr : Constant | Enum_Value | Variable_Access | Func_Call | Ref_Value| '(' Expression ')';

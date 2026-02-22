@@ -134,6 +134,11 @@ pub enum ResolveError<'db> {
         field: SpanIdent<'db>,
         parent_type: Type<'db>,
     },
+    /// Only elementary types can be variadic.
+    NonVariadicTypeForVariable {
+        var: VariableDecl<'db>,
+        typ: Type<'db>,
+    }
 }
 
 impl<'db> ErrorCode for ResolveError<'db> {
@@ -161,6 +166,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::AccessDeclTypeMismatch { .. } => "E0221",
             Self::ConfigInstInitUnknownInstance { .. } => "E0222",
             Self::ConfigInstInitFieldNotFound { .. } => "E0223",
+            Self::NonVariadicTypeForVariable { var, typ } => "E0224",
         }
     }
 
@@ -179,7 +185,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             | Self::NoFieldOnElementaryType { .. }
             | Self::IndexNonArrayTypeInitExpr { .. }
             | Self::IndexNonArrayTypePathExpr { .. } => "invalid operation",
-            Self::FunctionAsType { .. } => "invalid type",
+            Self::FunctionAsType { .. } | Self::NonVariadicTypeForVariable { .. } => "invalid type",
             Self::NoConfigFileFound { .. } => "configuration error",
             Self::UnknownProgType { .. } | Self::UnknownTaskRef { .. } => "configuration error",
             Self::ExternalVarNotFound { .. } => "external variable not found",
@@ -565,6 +571,21 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 .desc(self)
                 .range(field.get_span(db))
                 .call(),
+            Self::NonVariadicTypeForVariable { var, typ } => {
+                let mut diag = diag()
+                .message(format!(
+                    "variable '{}' is declared as variadic but has non-variadic type '{}'",
+                    var.name(db).text(db),
+                    typ.type_name(db)
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(var.get_span(db))
+                .call();
+            
+            diag.with_note("only booleans and numeric types can be variadics".into());
+            diag
+            },
         }
     }
 }

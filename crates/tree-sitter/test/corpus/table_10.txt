@@ -289,7 +289,8 @@ END_FUNCTION
                 (constant_expr
                   (constant
                     (char_literal
-                      (char_str)))))))
+                      (char_str
+                        (s_byte_char_str))))))))
           (var_decl_init_list
             (variable_list
               (identifier))
@@ -300,7 +301,8 @@ END_FUNCTION
                 (constant_expr
                   (constant
                     (char_literal
-                      (char_str)))))))
+                      (char_str
+                        (d_byte_char_str))))))))
           (var_decl_init_list
             (variable_list
               (identifier))
@@ -311,7 +313,8 @@ END_FUNCTION
                 (constant_expr
                   (constant
                     (char_literal
-                      (char_str)))))))
+                      (char_str
+                        (s_byte_char_str))))))))
           (var_decl_init_list
             (variable_list
               (identifier))
@@ -322,7 +325,8 @@ END_FUNCTION
                 (constant_expr
                   (constant
                     (char_literal
-                      (char_str))))))))))
+                      (char_str
+                        (d_byte_char_str)))))))))))
 
 ================================================================================
 Time and Tod

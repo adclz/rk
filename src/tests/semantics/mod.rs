@@ -30,5 +30,6 @@ pub mod syntax;
 pub mod time;
 pub mod tod;
 pub mod var_decls;
+pub mod variadics;
 pub mod visibility;
 pub mod walk_hir;

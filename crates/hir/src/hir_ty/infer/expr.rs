@@ -1,19 +1,17 @@
 use db::WorkspaceDataBase;
 
 use crate::{
-    CallSite,
-    check::errors::{
-        analysis_error::ToIdeDiagnostic, e3_type::TypeError, e7_enum::EnumError,
-    },
+    CallSite, HirNodeInfo,
+    check::errors::{analysis_error::ToIdeDiagnostic, e3_type::TypeError, e7_enum::EnumError},
     hir_def::{
         expressions::expression::{
-            Expr, ExprKind, PrimaryExpr, RefValue, UnaryOperatorKind, VariableAccess,
+            Expr, ExprKind, FoldOperatorKind, PrimaryExpr, RefValue, UnaryOperatorKind, VariableAccess
         },
         pous::variable::VariableDecl,
     },
     hir_ty::{
         body::{Adjustment, BodyInferenceResult},
-        infer::{coerce::CoerceResult, table::InferenceTable},
+        infer::{Infer, coerce::CoerceResult, table::InferenceTable},
         resolver::{Resolver, func_call::resolve_func_call},
         ty::Type,
     },
@@ -92,6 +90,52 @@ impl<'db> InferExprCtx<'db> {
                 let primary = self.infer_primary(db, primary, inference_results);
                 inference_results.type_of_expr.insert(curr_expr, primary);
                 inference_results.type_of_expr[&curr_expr]
+            }
+            ExprKind::FoldExpr {
+                param, operator, ..
+            } => {
+                // Look up the variadic parameter in the current scope
+                let scope = curr_expr.scope_id(db);
+                let def_map = scope.def_map(db);
+                let ty = match def_map.local_variables.get(param) {
+                    Some(var) => {
+                        if !var.variadic(db) {
+                            inference_results.errors.push(
+                                TypeError::NonVariadicFoldParameter {
+                                    call_site: curr_expr.as_call_site(db),
+                                    var: *var,
+                                }
+                                .to_diagnostic(db),
+                            );
+                        }
+
+                        match operator {
+                            FoldOperatorKind::Plus | FoldOperatorKind::Minus | 
+                            FoldOperatorKind::Mul | FoldOperatorKind::Div |
+                            FoldOperatorKind::Power | FoldOperatorKind::Mod => {
+                                if !var.spec(db).infer(db).supports_math() {
+                                    inference_results.errors.push(
+                                        TypeError::NonNumericFoldParameter {
+                                            call_site: curr_expr.as_call_site(db),
+                                            typ: Type::new_var(db, *var),
+                                            operator: *operator,
+                                        }
+                                        .to_diagnostic(db),
+                                    );
+                                }
+                                Type::new_var(db, *var)
+                            }
+                            FoldOperatorKind::Eq | FoldOperatorKind::Ne | FoldOperatorKind::Gt | FoldOperatorKind::Lt |
+                            FoldOperatorKind::Ge | FoldOperatorKind::Le => {
+                                Type::new_bool()
+                            }
+                            _ => Type::new_var(db, *var)
+                        }
+                    }
+                    None => Type::Never,
+                };
+                inference_results.type_of_expr.insert(curr_expr, ty);
+                ty
             }
         }
     }
@@ -201,7 +245,7 @@ impl<'db> InferExprCtx<'db> {
                 let inner_ty = inference_results.type_of_expr[inner_expr];
                 inference_results.type_of_expr.insert(expr, inner_ty);
             }
-            ExprKind::PrimaryExpr(_) => {}
+            ExprKind::PrimaryExpr(_) | ExprKind::FoldExpr { .. } => {}
         }
 
         match expr.expr(db) {
@@ -293,7 +337,8 @@ impl<'db> InferExprCtx<'db> {
                     }
                 }
             }
-            ExprKind::PrimaryExpr(_) => { /* already checked in infer_expr */ }
+            ExprKind::PrimaryExpr(_) | ExprKind::FoldExpr { .. } => { /* already checked in infer_expr */
+            }
         }
     }
 

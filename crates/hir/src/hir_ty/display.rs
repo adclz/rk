@@ -397,6 +397,7 @@ impl<'db> Expr<'db> {
             } => "<multiplicative expression>",
             ExprKind::PowerOperator { left, right } => "<power expression>",
             ExprKind::UnaryOperator { expr, operator } => "<unary expression>",
+            ExprKind::FoldExpr { .. } => "<fold expression>",
         }
     }
 }

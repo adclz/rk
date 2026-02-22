@@ -403,4 +403,8 @@ impl<'db> Type<'db> {
     pub fn is_array(&self) -> bool {
         matches!(self, Type::Array(_))
     }
+
+    pub fn can_be_variadic(&self) -> bool {
+        self.is_boolean() || self.is_numeric()
+    }
 }

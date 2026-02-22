@@ -76,6 +76,10 @@
         "named": true
       },
       {
+        "type": "fold_expression",
+        "named": true
+      },
+      {
         "type": "mult_operator",
         "named": true
       },
@@ -249,6 +253,10 @@
       },
       {
         "type": "var_decl_init",
+        "named": true
+      },
+      {
+        "type": "variadic_decl",
         "named": true
       }
     ]
@@ -2586,6 +2594,103 @@
           }
         ]
       }
+    }
+  },
+  {
+    "type": "fold_expression",
+    "named": true,
+    "fields": {
+      "operator": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "fold_operator",
+            "named": true
+          }
+        ]
+      },
+      "param": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "fold_operator",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "fold_and",
+          "named": true
+        },
+        {
+          "type": "fold_div",
+          "named": true
+        },
+        {
+          "type": "fold_eq",
+          "named": true
+        },
+        {
+          "type": "fold_ge",
+          "named": true
+        },
+        {
+          "type": "fold_gt",
+          "named": true
+        },
+        {
+          "type": "fold_le",
+          "named": true
+        },
+        {
+          "type": "fold_lt",
+          "named": true
+        },
+        {
+          "type": "fold_minus",
+          "named": true
+        },
+        {
+          "type": "fold_mod",
+          "named": true
+        },
+        {
+          "type": "fold_mul",
+          "named": true
+        },
+        {
+          "type": "fold_ne",
+          "named": true
+        },
+        {
+          "type": "fold_or",
+          "named": true
+        },
+        {
+          "type": "fold_plus",
+          "named": true
+        },
+        {
+          "type": "fold_power",
+          "named": true
+        },
+        {
+          "type": "fold_xor",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -6390,6 +6495,22 @@
     }
   },
   {
+    "type": "variadic_decl",
+    "named": true,
+    "fields": {
+      "type": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "data_type_access",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "wchar_name",
     "named": true,
     "fields": {}
@@ -6567,6 +6688,10 @@
   },
   {
     "type": "..",
+    "named": false
+  },
+  {
+    "type": "...",
     "named": false
   },
   {
@@ -7163,6 +7288,66 @@
   },
   {
     "type": "field",
+    "named": true
+  },
+  {
+    "type": "fold_and",
+    "named": true
+  },
+  {
+    "type": "fold_div",
+    "named": true
+  },
+  {
+    "type": "fold_eq",
+    "named": true
+  },
+  {
+    "type": "fold_ge",
+    "named": true
+  },
+  {
+    "type": "fold_gt",
+    "named": true
+  },
+  {
+    "type": "fold_le",
+    "named": true
+  },
+  {
+    "type": "fold_lt",
+    "named": true
+  },
+  {
+    "type": "fold_minus",
+    "named": true
+  },
+  {
+    "type": "fold_mod",
+    "named": true
+  },
+  {
+    "type": "fold_mul",
+    "named": true
+  },
+  {
+    "type": "fold_ne",
+    "named": true
+  },
+  {
+    "type": "fold_or",
+    "named": true
+  },
+  {
+    "type": "fold_plus",
+    "named": true
+  },
+  {
+    "type": "fold_power",
+    "named": true
+  },
+  {
+    "type": "fold_xor",
     "named": true
   },
   {

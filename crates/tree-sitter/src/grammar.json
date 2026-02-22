@@ -3111,6 +3111,31 @@
         {
           "type": "SYMBOL",
           "name": "array_conformand"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "variadic_decl"
+        }
+      ]
+    },
+    "variadic_decl": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": ":"
+        },
+        {
+          "type": "FIELD",
+          "name": "type",
+          "content": {
+            "type": "SYMBOL",
+            "name": "data_type_access"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": "..."
         }
       ]
     },
@@ -7462,6 +7487,10 @@
       "members": [
         {
           "type": "SYMBOL",
+          "name": "fold_expression"
+        },
+        {
+          "type": "SYMBOL",
           "name": "boolean_operator"
         },
         {
@@ -7487,6 +7516,171 @@
         {
           "type": "SYMBOL",
           "name": "_primary_expression"
+        }
+      ]
+    },
+    "fold_expression": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "..."
+        },
+        {
+          "type": "FIELD",
+          "name": "param",
+          "content": {
+            "type": "SYMBOL",
+            "name": "identifier"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "operator",
+          "content": {
+            "type": "SYMBOL",
+            "name": "fold_operator"
+          }
+        }
+      ]
+    },
+    "fold_operator": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "+"
+          },
+          "named": true,
+          "value": "fold_plus"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "-"
+          },
+          "named": true,
+          "value": "fold_minus"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "*"
+          },
+          "named": true,
+          "value": "fold_mul"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "/"
+          },
+          "named": true,
+          "value": "fold_div"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "%"
+          },
+          "named": true,
+          "value": "fold_mod"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "**"
+          },
+          "named": true,
+          "value": "fold_power"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "&"
+          },
+          "named": true,
+          "value": "fold_and"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "|"
+          },
+          "named": true,
+          "value": "fold_or"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "^"
+          },
+          "named": true,
+          "value": "fold_xor"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "="
+          },
+          "named": true,
+          "value": "fold_eq"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "<>"
+          },
+          "named": true,
+          "value": "fold_ne"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "<"
+          },
+          "named": true,
+          "value": "fold_lt"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": ">"
+          },
+          "named": true,
+          "value": "fold_gt"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "<="
+          },
+          "named": true,
+          "value": "fold_le"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": ">="
+          },
+          "named": true,
+          "value": "fold_ge"
         }
       ]
     },
