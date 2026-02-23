@@ -8,7 +8,7 @@ use crate::{
         analysis_error::ToIdeDiagnostic, e2_resolve::ResolveError, e3_type::TypeError,
     },
     hir_def::{
-        expressions::spec::{Spec, SpecKind},
+        expressions::spec::{ElementarySpec, Spec, SpecKind},
         interned::{identifier::Ident, namespace::NamespaceAccess},
         pous::{generics::AnyGeneric, pou::Pou, variable::VariableKind},
         scope::{ScopeId, ScopeKind},
@@ -32,6 +32,8 @@ impl<'db> Type<'db> {
     pub(crate) fn resolve_spec(db: &'db dyn WorkspaceDataBase, spec: Spec<'db>) -> Self {
         match spec.kind(db) {
             SpecKind::Simple(elem) => Type::Elementary(*elem),
+            SpecKind::SizedString(_) => Type::Elementary(ElementarySpec::String),
+            SpecKind::SizedWString(_) => Type::Elementary(ElementarySpec::WString),
             SpecKind::Ref(ref_to) => Type::RefTo(*ref_to),
             SpecKind::Struct(strukt) => Type::Struct(*strukt),
             SpecKind::Array(arr) => Type::Array(*arr),

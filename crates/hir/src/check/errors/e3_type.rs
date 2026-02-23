@@ -505,6 +505,8 @@ pub enum InferLiteralError {
     Invalid_WSTRING_Literal,
     Invalid_CHAR_Length(usize),
     Invalid_WCHAR_Length(usize),
+    Invalid_STRING_Length { max: u64, got: usize },
+    Invalid_WSTRING_Length { max: u64, got: usize },
 
     // Inner
     ExpectedNumber,
@@ -570,6 +572,12 @@ impl InferLiteralError {
             }
             InferLiteralError::Invalid_WCHAR_Length(len) => {
                 return format!("WCHAR literal must be exactly 1 character, got {len}");
+            }
+            InferLiteralError::Invalid_STRING_Length { max, got } => {
+                return format!("STRING literal exceeds maximum length of {max}, got {got}");
+            }
+            InferLiteralError::Invalid_WSTRING_Length { max, got } => {
+                return format!("WSTRING literal exceeds maximum length of {max}, got {got}");
             }
 
             InferLiteralError::ExpectedNumber => "expected number",

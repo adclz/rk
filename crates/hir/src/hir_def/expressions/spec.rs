@@ -37,6 +37,10 @@ pub enum SpecKind<'db> {
     Subrange(SubRange<'db>),
     Enum(Enum<'db>),
 
+    // Sized string types (STRING[N], WSTRING[N])
+    SizedString(Expr<'db>),
+    SizedWString(Expr<'db>),
+
     // Reference to another spec
     Ref(Spec<'db>),
 

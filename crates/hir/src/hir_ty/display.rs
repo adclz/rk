@@ -10,7 +10,7 @@ use crate::{
                 IntegerKind, PrimaryExpr, RefValue,
             },
             invocation::InvocationKind,
-            spec::{ElementarySpec, SpecKind},
+            spec::{ElementarySpec, Spec, SpecKind},
         },
         scope::ScopeKind,
         semantic_index::semantic_index,
@@ -20,6 +20,21 @@ use crate::{
         ty::{CallableType, InferType, Type},
     },
 };
+
+/// Returns the display name for a spec, handling sized strings specially.
+fn spec_type_name<'db>(db: &'db dyn WorkspaceDataBase, spec: Spec<'db>) -> String {
+    match spec.kind(db) {
+        SpecKind::SizedString(length) => {
+            let len = length.as_range(db).map(|n| n.to_string()).unwrap_or_default();
+            format!("STRING[{}]", len)
+        }
+        SpecKind::SizedWString(length) => {
+            let len = length.as_range(db).map(|n| n.to_string()).unwrap_or_default();
+            format!("WSTRING[{}]", len)
+        }
+        _ => spec.infer(db).type_name(db),
+    }
+}
 
 impl ElementarySpec {
     pub fn type_name(&self) -> &'static str {
@@ -99,8 +114,8 @@ impl<'db> Type<'db> {
             Self::Interface(i) => i.get_name_ident(db).text(db).to_string(),
             Self::DataType(typ) => typ.get_name_ident(db).text(db).to_string(),
             Self::EnumVariant(v) => v.text(db).to_string(),
-            Self::StructElement(st) => st.spec(db).infer(db).type_name(db),
-            Self::Variable((var, _multibits)) => var.spec(db).infer(db).type_name(db),
+            Self::StructElement(st) => spec_type_name(db, st.spec(db)),
+            Self::Variable((var, _multibits)) => spec_type_name(db, var.spec(db)),
             Self::DirectVariable((dv, _multibits)) => dv.adress(db).text(db).to_string(),
             Self::CallableType(typ) => match typ {
                 CallableType::Function(f) => f.get_name_ident(db).text(db).to_string(),
@@ -429,10 +444,8 @@ impl<'db> PrimaryExpr<'db> {
                 Elementary::Date(_) => "DATE literal",
                 Elementary::TimeOfDay(_) => "TIME_OF_DAY literal",
                 Elementary::LTod(_) => "LTOD literal",
-                Elementary::String(_) => "STRING literal",
-                Elementary::WString(_) => "WSTRING literal",
-                Elementary::Char(_) => "CHAR literal",
-                Elementary::WChar(_) => "WCHAR literal",
+                Elementary::String(_) | Elementary::WString(_) => "<string>",
+                Elementary::Char(_) | Elementary::WChar(_) => "<char>",
                 Elementary::InferInteger(_) => "<integer>",
                 Elementary::InferFloat(_) => "<float>",
             },

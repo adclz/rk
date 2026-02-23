@@ -14,7 +14,10 @@ use crate::{
     check::errors::analysis_error::AnalysisError,
     hir_def::{
         expressions::{
-            expression::{InitExpr, InitExprKind, Integer, IntegerKind, MultibitsPart},
+            expression::{
+                Elementary, Expr, ExprKind, InitExpr, InitExprKind, Integer, IntegerKind,
+                MultibitsPart, PrimaryExpr,
+            },
             spec::{
                 ElementarySpec, Enum, EnumVariant, Spec, SpecKind, Struct, StructElement, SubRange,
             },
@@ -205,22 +208,68 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
             },
             AstSpec::StringTypeName(string_type_name) => {
                 match string_type_name.children.cast(sema.ast) {
-                    ast::generated::CharName_StringName_WcharName_WstringName::StringName(_) => {
-                        Spec::new(
+                    ast::generated::CharName_StringName_WcharName_WstringName::StringName(
+                        string_name,
+                    ) => match &string_name.children {
+                        Some(unsigned_int) => {
+                            let unsigned_int = unsigned_int.cast(sema.ast);
+                            let ident =
+                                Ident::from_node(sema.db, sema.file, unsigned_int)?;
+                            let integer =
+                                Integer::new(sema.db, ident, IntegerKind::Signed);
+                            let length_expr = Expr::new(
+                                sema.db,
+                                ExprKind::PrimaryExpr(PrimaryExpr::Literal(
+                                    Elementary::InferInteger(integer),
+                                )),
+                                unsigned_int.into(),
+                                sema.current_scope,
+                            );
+                            Spec::new(
+                                sema.db,
+                                SpecKind::SizedString(length_expr),
+                                self.into(),
+                                sema.current_scope,
+                            )
+                        }
+                        None => Spec::new(
                             sema.db,
                             SpecKind::Simple(ElementarySpec::String),
                             self.into(),
                             sema.current_scope,
-                        )
-                    }
-                    ast::generated::CharName_StringName_WcharName_WstringName::WstringName(_) => {
-                        Spec::new(
+                        ),
+                    },
+                    ast::generated::CharName_StringName_WcharName_WstringName::WstringName(
+                        wstring_name,
+                    ) => match &wstring_name.children {
+                        Some(unsigned_int) => {
+                            let unsigned_int = unsigned_int.cast(sema.ast);
+                            let ident =
+                                Ident::from_node(sema.db, sema.file, unsigned_int)?;
+                            let integer =
+                                Integer::new(sema.db, ident, IntegerKind::Signed);
+                            let length_expr = Expr::new(
+                                sema.db,
+                                ExprKind::PrimaryExpr(PrimaryExpr::Literal(
+                                    Elementary::InferInteger(integer),
+                                )),
+                                unsigned_int.into(),
+                                sema.current_scope,
+                            );
+                            Spec::new(
+                                sema.db,
+                                SpecKind::SizedWString(length_expr),
+                                self.into(),
+                                sema.current_scope,
+                            )
+                        }
+                        None => Spec::new(
                             sema.db,
                             SpecKind::Simple(ElementarySpec::WString),
                             self.into(),
                             sema.current_scope,
-                        )
-                    }
+                        ),
+                    },
                     ast::generated::CharName_StringName_WcharName_WstringName::CharName(_) => {
                         Spec::new(
                             sema.db,

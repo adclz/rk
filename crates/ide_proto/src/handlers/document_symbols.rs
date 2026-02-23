@@ -126,6 +126,7 @@ impl<'db> DocumentSymbolsHandler<'db> for Pou<'db> {
                     SpecKind::Array(_) | SpecKind::ArrayConformand(_) | SpecKind::Subrange(_) => {
                         SymbolKind::ARRAY
                     }
+                    SpecKind::SizedString(_) | SpecKind::SizedWString(_) => SymbolKind::STRING,
                     SpecKind::Simple(simple) => match simple {
                         ElementarySpec::Bool
                         | ElementarySpec::FEDGEBool
