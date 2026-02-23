@@ -732,6 +732,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
             }
 
             ExprKind::PowerOperator { .. } => Err("Power operator not yet supported".to_string()),
+            ExprKind::FoldExpr { .. } => Err("Fold expression not yet supported in codegen".to_string()),
         }
     }
 

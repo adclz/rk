@@ -5,7 +5,8 @@ use crate::{
     check::errors::{analysis_error::ToIdeDiagnostic, e3_type::TypeError, e7_enum::EnumError},
     hir_def::{
         expressions::expression::{
-            Expr, ExprKind, FoldOperatorKind, PrimaryExpr, RefValue, UnaryOperatorKind, VariableAccess
+            Expr, ExprKind, FoldOperatorKind, PrimaryExpr, RefValue, UnaryOperatorKind,
+            VariableAccess,
         },
         pous::variable::VariableDecl,
     },
@@ -32,6 +33,8 @@ impl<'db> InferExprCtx<'db> {
         curr_expr: Expr<'db>,
         inference_results: &mut BodyInferenceResult<'db>,
     ) -> Type<'db> {
+        // todo: move operator logic to here and return Type::Never for unsupported operators,
+        // instead of pushing errors in check_expr
         match curr_expr.expr(db) {
             ExprKind::AddOperator { left, right, .. }
             | ExprKind::MultOperator { left, right, .. }
@@ -40,7 +43,7 @@ impl<'db> InferExprCtx<'db> {
                 let lhs = self.resolve_expr(db, *left, inference_results);
                 let rhs = self.resolve_expr(db, *right, inference_results);
 
-                let ty = match (lhs.has_infer(), rhs.has_infer()) {
+                let mut ty = match (lhs.has_infer(), rhs.has_infer()) {
                     (true, false) => rhs,
                     (false, true) => lhs,
                     (true, true) => {
@@ -53,6 +56,33 @@ impl<'db> InferExprCtx<'db> {
                     }
                     _ => lhs,
                 };
+
+                let normalized_ty = ty.normalize(db);
+                let (supported, operator) = match curr_expr.expr(db) {
+                    ExprKind::AddOperator { operator, .. } => {
+                        (normalized_ty.supports_add(db), operator.as_str())
+                    }
+                    ExprKind::MultOperator { operator, .. } => {
+                        (normalized_ty.supports_mul(db), operator.as_str())
+                    }
+                    ExprKind::PowerOperator { .. } => (ty.supports_power(db), "**"),
+                    ExprKind::BooleanOperator { operator, .. } => {
+                        (normalized_ty.supports_bool_op(db), operator.as_str())
+                    }
+                    _ => unreachable!(),
+                };
+
+                if !supported && !ty.is_never() {
+                    inference_results.errors.push(
+                        TypeError::UnsupportedOperator {
+                            call_site: curr_expr.as_call_site(db),
+                            typ: ty,
+                            operator,
+                        }
+                        .to_diagnostic(db),
+                    );
+                    ty = Type::Never;
+                }
 
                 inference_results.type_of_expr.insert(curr_expr, ty);
                 ty
@@ -109,27 +139,43 @@ impl<'db> InferExprCtx<'db> {
                             );
                         }
 
-                        match operator {
-                            FoldOperatorKind::Plus | FoldOperatorKind::Minus | 
-                            FoldOperatorKind::Mul | FoldOperatorKind::Div |
-                            FoldOperatorKind::Power | FoldOperatorKind::Mod => {
-                                if !var.spec(db).infer(db).supports_math() {
-                                    inference_results.errors.push(
-                                        TypeError::NonNumericFoldParameter {
-                                            call_site: curr_expr.as_call_site(db),
-                                            typ: Type::new_var(db, *var),
-                                            operator: *operator,
-                                        }
-                                        .to_diagnostic(db),
-                                    );
+                        let var_ty = var.spec(db).infer(db).normalize(db);
+
+                        // Check operator-type compatibility
+                        let supported = match operator {
+                            FoldOperatorKind::Plus | FoldOperatorKind::Minus => {
+                                var_ty.supports_add(db)
+                            }
+                            FoldOperatorKind::Mul => var_ty.supports_mul(db),
+                            FoldOperatorKind::Div => var_ty.supports_div(db),
+                            FoldOperatorKind::Mod => var_ty.supports_mod(db),
+                            FoldOperatorKind::Power => var_ty.supports_power(db),
+                            FoldOperatorKind::And
+                            | FoldOperatorKind::Or
+                            | FoldOperatorKind::Xor => var_ty.supports_bool_op(db),
+                            FoldOperatorKind::Eq
+                            | FoldOperatorKind::Ne
+                            | FoldOperatorKind::Lt
+                            | FoldOperatorKind::Gt
+                            | FoldOperatorKind::Le
+                            | FoldOperatorKind::Ge => var_ty.supports_comparison(db),
+                        };
+
+                        if !supported && !var_ty.is_never() {
+                            inference_results.errors.push(
+                                TypeError::UnsupportedOperator {
+                                    call_site: curr_expr.as_call_site(db),
+                                    typ: Type::new_var(db, *var),
+                                    operator: &operator.as_str(),
                                 }
-                                Type::new_var(db, *var)
-                            }
-                            FoldOperatorKind::Eq | FoldOperatorKind::Ne | FoldOperatorKind::Gt | FoldOperatorKind::Lt |
-                            FoldOperatorKind::Ge | FoldOperatorKind::Le => {
-                                Type::new_bool()
-                            }
-                            _ => Type::new_var(db, *var)
+                                .to_diagnostic(db),
+                            );
+                        }
+
+                        if operator.is_comparison() {
+                            Type::new_bool()
+                        } else {
+                            Type::new_var(db, *var)
                         }
                     }
                     None => Type::Never,

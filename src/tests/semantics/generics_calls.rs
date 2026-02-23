@@ -473,7 +473,7 @@ END_FUNCTION"#;
        |
      6 |     c := TRUE;
        |          ^^|^  
-       |            `--- expected 'T', got 'BOOL'
+       |            `--- expected 'ANY_REAL', got 'BOOL'
     ---'
     ");
 }

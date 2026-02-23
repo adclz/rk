@@ -59,6 +59,42 @@ impl<'db> GenericParam<'db> {
     pub fn as_builtin_generic(&self, db: &'db dyn WorkspaceDataBase) -> Option<AnyGeneric> {
         AnyGeneric::is_builtin_any(db, &self.generic_contraint(db).value)
     }
+
+    pub fn is_numeric(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+        self.as_builtin_generic(db)
+            .map(|g| g.is_numeric())
+            .unwrap_or(false)
+    }
+
+    pub fn is_binary_integer(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+        self.as_builtin_generic(db)
+            .map(|g| g.is_binary_integer())
+            .unwrap_or(false)
+    }
+
+    pub fn is_signed_integer(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+        self.as_builtin_generic(db)
+            .map(|g| g.is_signed_integer())
+            .unwrap_or(false)
+    }
+
+    pub fn is_unsigned_integer(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+        self.as_builtin_generic(db)
+            .map(|g| g.is_unsigned_integer())
+            .unwrap_or(false)
+    }
+
+    pub fn is_float(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+        self.as_builtin_generic(db)
+            .map(|g| g.is_float())
+            .unwrap_or(false)
+    }
+
+    pub fn is_time(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+        self.as_builtin_generic(db)
+            .map(|g| g.is_time())
+            .unwrap_or(false)
+    }
 }
 
 #[allow(non_camel_case_types)]
@@ -97,6 +133,26 @@ impl AnyGeneric {
             self,
             Self::ANY_INT | Self::ANY_UNSIGNED | Self::ANY_SIGNED | Self::ANY_REAL
         )
+    }
+
+    pub fn is_binary_integer(&self) -> bool {
+        matches!(self, Self::ANY_BIT)
+    }
+
+    pub fn is_signed_integer(&self) -> bool {
+        matches!(self, Self::ANY_SIGNED)
+    }
+
+    pub fn is_unsigned_integer(&self) -> bool {
+        matches!(self, Self::ANY_UNSIGNED)
+    }
+
+    pub fn is_float(&self) -> bool {
+        matches!(self, Self::ANY_REAL)
+    }
+
+    pub fn is_time(&self) -> bool {
+        matches!(self, Self::ANY_DATE | Self::ANY_DURATION)
     }
 
     /// Check if an elementary type is a member of this ANY_* type group.

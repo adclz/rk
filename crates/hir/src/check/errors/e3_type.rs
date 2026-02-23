@@ -7,7 +7,7 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 use crate::{
     CallSite, HasName, HirNodeInfo, check::errors::analysis_error::ToIdeDiagnostic, hir_def::{
         expressions::{
-            expression::{AddOperatorKind, Expr, FoldOperatorKind, MultOperatorKind},
+            expression::{AddOperatorKind, Expr, MultOperatorKind},
             spec::Spec,
         }, interned::identifier::Ident, pous::{generics::{AnyGeneric, GenericParam}, variable::VariableDecl}
     }, hir_ty::{
@@ -107,9 +107,9 @@ pub enum TypeError<'db> {
         var: VariableDecl<'db>,
         call_site: CallSite<'db>,
     },
-    NonNumericFoldParameter {
+    UnsupportedOperator {
         typ: Type<'db>,
-        operator: FoldOperatorKind,
+        operator: &'static str,
         call_site: CallSite<'db>,
     },
 }
@@ -132,7 +132,7 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::TypeArgumentConstraintMismatch { .. } => "E0315",
             Self::TypeArgumentIntoConstraintMismatch { .. } => "E0316",
             Self::NonVariadicFoldParameter { .. } => "E0317",
-            Self::NonNumericFoldParameter { .. } => "E0318",
+            Self::UnsupportedOperator { .. } => "E0318",
             Self::Other { .. } => "E0350",
         }
     }
@@ -390,10 +390,11 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 diag.with_note("... can only be used on VAR_INPUT variables that are declared variadic with the same operator (e.g: INT...)".into());
                 diag
             },
-            Self::NonNumericFoldParameter { typ, operator, call_site } => {
+            Self::UnsupportedOperator { typ, operator, call_site } => {
                 let mut diag = diag()
                     .message(format!(
-                        "math operators can not be applied to type '{}'",
+                        "operator '{}' cannot be applied to type '{}'",
+                        operator,
                         typ.type_name(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
@@ -402,8 +403,6 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                     .call();
 
                 typ.with_location(db, &mut diag);
-
-                diag.with_note("only numeric types can be used with fold operators".into());
                 diag
             },
             Self::Other { message, expr } => diag()

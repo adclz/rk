@@ -24,11 +24,49 @@ pub enum AddOperatorKind {
     Minus,
 }
 
+impl AddOperatorKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            AddOperatorKind::Plus => "+",
+            AddOperatorKind::Minus => "-",
+        }
+    }
+}
+
+impl std::fmt::Display for AddOperatorKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AddOperatorKind::Plus => write!(f, "+"),
+            AddOperatorKind::Minus => write!(f, "-"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BooleanOperatorKind {
     And,
     Or,
     Xor,
+}
+
+impl BooleanOperatorKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            BooleanOperatorKind::And => "AND",
+            BooleanOperatorKind::Or => "OR",
+            BooleanOperatorKind::Xor => "XOR",
+        }
+    }
+}
+
+impl std::fmt::Display for BooleanOperatorKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BooleanOperatorKind::And => write!(f, "AND"),
+            BooleanOperatorKind::Or => write!(f, "OR"),
+            BooleanOperatorKind::Xor => write!(f, "XOR"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -41,11 +79,57 @@ pub enum ComparisonOperatorKind {
     Ge, // >=
 }
 
+impl ComparisonOperatorKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ComparisonOperatorKind::Eq => "=",
+            ComparisonOperatorKind::Ne => "<>",
+            ComparisonOperatorKind::Lt => "<",
+            ComparisonOperatorKind::Gt => ">",
+            ComparisonOperatorKind::Le => "<=",
+            ComparisonOperatorKind::Ge => ">=",
+        }
+    }
+}
+
+impl std::fmt::Display for ComparisonOperatorKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ComparisonOperatorKind::Eq => write!(f, "="),
+            ComparisonOperatorKind::Ne => write!(f, "<>"),
+            ComparisonOperatorKind::Lt => write!(f, "<"),
+            ComparisonOperatorKind::Gt => write!(f, ">"),
+            ComparisonOperatorKind::Le => write!(f, "<="),
+            ComparisonOperatorKind::Ge => write!(f, ">="),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MultOperatorKind {
     Mul, // *
     Div, // /
     Mod, // %
+}
+
+impl MultOperatorKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            MultOperatorKind::Mul => "*",
+            MultOperatorKind::Div => "/",
+            MultOperatorKind::Mod => "MOD",
+        }
+    }
+}
+
+impl std::fmt::Display for MultOperatorKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MultOperatorKind::Mul => write!(f, "*"),
+            MultOperatorKind::Div => write!(f, "/"),
+            MultOperatorKind::Mod => write!(f, "MOD"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -88,6 +172,48 @@ impl FoldOperatorKind {
                 | FoldOperatorKind::Le
                 | FoldOperatorKind::Ge
         )
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            FoldOperatorKind::Plus => "+",
+            FoldOperatorKind::Minus => "-",
+            FoldOperatorKind::Mul => "*",
+            FoldOperatorKind::Div => "/",
+            FoldOperatorKind::Mod => "MOD",
+            FoldOperatorKind::Power => "**",
+            FoldOperatorKind::And => "AND",
+            FoldOperatorKind::Or => "OR",
+            FoldOperatorKind::Xor => "XOR",
+            FoldOperatorKind::Eq => "=",
+            FoldOperatorKind::Ne => "<>",
+            FoldOperatorKind::Lt => "<",
+            FoldOperatorKind::Gt => ">",
+            FoldOperatorKind::Le => "<=",
+            FoldOperatorKind::Ge => ">=",
+        }
+    }
+}
+
+impl std::fmt::Display for FoldOperatorKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FoldOperatorKind::Plus => write!(f, "+"),
+            FoldOperatorKind::Minus => write!(f, "-"),
+            FoldOperatorKind::Mul => write!(f, "*"),
+            FoldOperatorKind::Div => write!(f, "/"),
+            FoldOperatorKind::Mod => write!(f, "MOD"),
+            FoldOperatorKind::Power => write!(f, "**"),
+            FoldOperatorKind::And => write!(f, "AND"),
+            FoldOperatorKind::Or => write!(f, "OR"),
+            FoldOperatorKind::Xor => write!(f, "XOR"),
+            FoldOperatorKind::Eq => write!(f, "="),
+            FoldOperatorKind::Ne => write!(f, "<>"),
+            FoldOperatorKind::Lt => write!(f, "<"),
+            FoldOperatorKind::Gt => write!(f, ">"),
+            FoldOperatorKind::Le => write!(f, "<="),
+            FoldOperatorKind::Ge => write!(f, ">="),
+        }
     }
 }
 

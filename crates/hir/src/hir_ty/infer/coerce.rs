@@ -24,20 +24,69 @@ pub struct CoerceError<'db> {
 pub type CoerceResult<'db> = Result<(), CoerceError<'db>>;
 
 impl<'db> Type<'db> {
-    pub fn supports_math(&self) -> bool {
-        if self.is_never() {
-            return true;
-        }
-
+    pub fn supports_add(&self, db: &'db dyn WorkspaceDataBase) -> bool {
         self.is_numeric()
+            || self.is_time()
+            || match self {
+                Type::Generic(generic) => generic.is_numeric(db) || generic.is_time(db),
+                _ => false,
+            }
     }
 
-    pub fn supports_math_with(&self, rhs: Type) -> bool {
-        if self.is_never() || rhs.is_never() {
-            return true;
-        }
+    pub fn supports_mul(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+        self.is_numeric()
+            || match self {
+                Type::Generic(generic) => generic.is_numeric(db),
+                _ => false,
+            }
+    }
 
-        self.is_numeric() && rhs.is_numeric()
+    pub fn supports_div(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+        self.is_numeric()
+            || match self {
+                Type::Generic(generic) => generic.is_numeric(db),
+                _ => false,
+            }
+    }
+
+    pub fn supports_mod(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+        self.is_signed_integer()
+            || self.is_unsigned_integer()
+            || match self {
+                Type::Generic(generic) => {
+                    generic.is_signed_integer(db) || generic.is_unsigned_integer(db)
+                }
+                _ => false,
+            }
+    }
+
+    pub fn supports_power(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+        self.is_float()
+            || match self {
+                Type::Generic(generic) => generic.is_float(db),
+                _ => false,
+            }
+    }
+
+    pub fn supports_bool_op(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+        self.is_boolean()
+            || self.is_numeric()
+            || match self {
+                Type::Generic(generic) => generic.is_numeric(db),
+                _ => false,
+            }
+    }
+
+    pub fn supports_comparison(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+        matches!(self, Type::Elementary(_)) || matches!(self, Type::Generic(_))
+    }
+
+    pub fn can_be_variadic(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+        matches!(self, Type::Elementary(_))
+            || match self {
+                Type::Generic(generic) => generic.is_numeric(db) || generic.is_time(db),
+                _ => false,
+            }
     }
 
     // Type coercion check
@@ -144,7 +193,7 @@ impl<'db> Type<'db> {
                     return Ok(());
                 }
                 // try implicit conversions in both directions
-                match lhs.implicit_cast(*rhs).is_some()  {
+                match lhs.implicit_cast(*rhs).is_some() {
                     true => Ok(()),
                     false => Err(CoerceError {
                         expected: *self,

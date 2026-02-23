@@ -583,7 +583,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 .range(var.get_span(db))
                 .call();
             
-            diag.with_note("only booleans and numeric types can be variadics".into());
+            diag.with_note("only elementary types can be variadic".into());
             diag
             },
         }

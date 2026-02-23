@@ -47,6 +47,17 @@ FUNCTION fn1
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0318] Error: type mismatch
+       ,-[ file:///test0.st:7:5 ]
+       |
+     4 |        test: BOOL;
+       |        ^^|^  
+       |          `--- type is declared by variable 'test' here
+       | 
+     7 |     IF 0.0 + test = 6 THEN
+       |        ^^^^^|^^^^  
+       |             `------ operator '+' cannot be applied to type 'BOOL'
+    ---'
     [E0309] Error: invalid literal
        ,-[ file:///test0.st:7:5 ]
        |
@@ -55,15 +66,6 @@ END_FUNCTION"#;
        |         `---------- cannot infer '<float>' to 'BOOL': invalid boolean literal
        |                |   
        |                `--- 'BOOL' is expected due to this
-    ---'
-    [E0309] Error: invalid literal
-       ,-[ file:///test0.st:7:18 ]
-       |
-     7 |     IF 0.0 + test = 6 THEN
-       |        ^^^^^|^^^^   |  
-       |             `---------- 'BOOL' is expected due to this
-       |                     |  
-       |                     `-- cannot infer '<integer>' to 'BOOL': invalid boolean literal
     ---'
     ");
 }

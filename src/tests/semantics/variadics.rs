@@ -29,7 +29,7 @@ END_FUNCTION
         |         ^^^^^^^^|^^^^^^^^  
         |                 `---------- variable 'args' is declared as variadic but has non-variadic type 'MyStruct'
         | 
-        | Note: only booleans and numeric types can be variadics
+        | Note: only elementary types can be variadic
     ----'
     ");
 }
@@ -85,14 +85,16 @@ FUNCTION sum_all : BOOL
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0317] Error: type mismatch
-       ,-[ file:///test0.st:6:16 ]
+    [E0318] Error: type mismatch
+       ,-[ file:///test0.st:7:16 ]
        |
-     6 |     sum_all := ...args+
-       |                ^^^^|^^^  
-       |                    `----- variable 'args' is not variadic
+     4 |         args: BOOL...
+       |         ^^|^  
+       |           `--- type is declared by variable 'args' here
        | 
-       | Note: ... can only be used on VAR_INPUT variables that are declared variadic with the same operator (e.g: INT...)
+     7 |     sum_all := ...args+
+       |                ^^^^|^^^  
+       |                    `----- operator '+' cannot be applied to type 'BOOL'
     ---'
     ");
 }
