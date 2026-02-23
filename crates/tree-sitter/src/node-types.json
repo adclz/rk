@@ -52,6 +52,10 @@
       {
         "type": "numeric_type_name",
         "named": true
+      },
+      {
+        "type": "string_type_name",
+        "named": true
       }
     ]
   },
@@ -449,10 +453,6 @@
       },
       {
         "type": "namespace_access",
-        "named": true
-      },
-      {
-        "type": "typed_access",
         "named": true
       }
     ]
@@ -1580,11 +1580,6 @@
     }
   },
   {
-    "type": "char_name",
-    "named": true,
-    "fields": {}
-  },
-  {
     "type": "char_str",
     "named": true,
     "fields": {},
@@ -1894,22 +1889,6 @@
     "type": "d_byte_char_str",
     "named": true,
     "fields": {}
-  },
-  {
-    "type": "d_byte_str_spec",
-    "named": true,
-    "fields": {
-      "size": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "unsigned_int",
-            "named": true
-          }
-        ]
-      }
-    }
   },
   {
     "type": "data_sink",
@@ -3685,10 +3664,6 @@
             "named": true
           },
           {
-            "type": "str_type_spec",
-            "named": true
-          },
-          {
             "type": "struct_type_spec",
             "named": true
           }
@@ -5133,22 +5108,6 @@
     "fields": {}
   },
   {
-    "type": "s_byte_str_spec",
-    "named": true,
-    "fields": {
-      "size": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "unsigned_int",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
     "type": "scoped_identifier",
     "named": true,
     "fields": {
@@ -5432,33 +5391,6 @@
       "types": [
         {
           "type": "_stmt",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "str_type_spec",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "d_byte_str_spec",
-          "named": true
-        },
-        {
-          "type": "d_char",
-          "named": true
-        },
-        {
-          "type": "s_byte_str_spec",
-          "named": true
-        },
-        {
-          "type": "s_char",
           "named": true
         }
       ]
@@ -6121,41 +6053,11 @@
             "named": true
           },
           {
-            "type": "str_type_spec",
-            "named": true
-          },
-          {
             "type": "struct_type_spec",
             "named": true
           },
           {
             "type": "subrange_type_spec",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "typed_access",
-    "named": true,
-    "fields": {
-      "type_args": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "generic_type_args",
-            "named": true
-          }
-        ]
-      },
-      "type_name": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "namespace_access",
             "named": true
           }
         ]
@@ -6292,10 +6194,6 @@
             "named": true
           },
           {
-            "type": "str_type_spec",
-            "named": true
-          },
-          {
             "type": "struct_type_spec",
             "named": true
           }
@@ -6339,10 +6237,6 @@
           },
           {
             "type": "simple_type_spec",
-            "named": true
-          },
-          {
-            "type": "str_type_spec",
             "named": true
           },
           {
@@ -6509,11 +6403,6 @@
         ]
       }
     }
-  },
-  {
-    "type": "wchar_name",
-    "named": true,
-    "fields": {}
   },
   {
     "type": "while_stmt",
@@ -6800,10 +6689,6 @@
   },
   {
     "type": "CASE",
-    "named": false
-  },
-  {
-    "type": "CHAR",
     "named": false
   },
   {
@@ -7199,10 +7084,6 @@
     "named": false
   },
   {
-    "type": "WCHAR",
-    "named": false
-  },
-  {
     "type": "WHILE",
     "named": false
   },
@@ -7239,7 +7120,7 @@
     "named": true
   },
   {
-    "type": "d_char",
+    "type": "char_name",
     "named": true
   },
   {
@@ -7444,10 +7325,6 @@
     "named": true
   },
   {
-    "type": "s_char",
-    "named": true
-  },
-  {
     "type": "sint_name",
     "named": true
   },
@@ -7485,6 +7362,10 @@
   },
   {
     "type": "usint_name",
+    "named": true
+  },
+  {
+    "type": "wchar_name",
     "named": true
   },
   {

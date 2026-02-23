@@ -69,9 +69,6 @@ impl<'db> ParseSpec<'db> for ast::generated::DataTypeAccess {
                 elem_type_name.to_spec(sema)
             }
             ast::generated::DataTypeAccess::NamespaceAccess(target) => target.to_spec(sema),
-            ast::generated::DataTypeAccess::TypedAccess(typed) => {
-                typed.type_name.cast(sema.ast).to_spec(sema)
-            }
         }
     }
 }
@@ -206,6 +203,42 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
                     sema.current_scope,
                 ),
             },
+            AstSpec::StringTypeName(string_type_name) => {
+                match string_type_name.children.cast(sema.ast) {
+                    ast::generated::CharName_StringName_WcharName_WstringName::StringName(_) => {
+                        Spec::new(
+                            sema.db,
+                            SpecKind::Simple(ElementarySpec::String),
+                            self.into(),
+                            sema.current_scope,
+                        )
+                    }
+                    ast::generated::CharName_StringName_WcharName_WstringName::WstringName(_) => {
+                        Spec::new(
+                            sema.db,
+                            SpecKind::Simple(ElementarySpec::WString),
+                            self.into(),
+                            sema.current_scope,
+                        )
+                    }
+                    ast::generated::CharName_StringName_WcharName_WstringName::CharName(_) => {
+                        Spec::new(
+                            sema.db,
+                            SpecKind::Simple(ElementarySpec::Char),
+                            self.into(),
+                            sema.current_scope,
+                        )
+                    }
+                    ast::generated::CharName_StringName_WcharName_WstringName::WcharName(_) => {
+                        Spec::new(
+                            sema.db,
+                            SpecKind::Simple(ElementarySpec::WChar),
+                            self.into(),
+                            sema.current_scope,
+                        )
+                    }
+                }
+            }
         })
     }
 }
@@ -306,46 +339,6 @@ impl<'db> ParseExpr<'db> for ast::generated::SimpleTypeInit {
     }
 }
 
-// String type
-
-impl<'db> ParseSpec<'db> for ast::generated::StrTypeSpec {
-    fn to_spec(
-        &self,
-        sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<Spec<'db>, AnalysisError<'db>> {
-        type AstSpec = ast::generated::DByteStrSpec_DChar_SByteStrSpec_SChar;
-        Ok(match self.children.cast(sema.ast) {
-            AstSpec::DByteStrSpec(_) => Spec::new(
-                sema.db,
-                SpecKind::Simple(ElementarySpec::WString),
-                self.into(),
-                sema.current_scope,
-            ),
-
-            AstSpec::SByteStrSpec(_) => Spec::new(
-                sema.db,
-                SpecKind::Simple(ElementarySpec::String),
-                self.into(),
-                sema.current_scope,
-            ),
-
-            AstSpec::DChar(_) => Spec::new(
-                sema.db,
-                SpecKind::Simple(ElementarySpec::WChar),
-                self.into(),
-                sema.current_scope,
-            ),
-
-            AstSpec::SChar(_) => Spec::new(
-                sema.db,
-                SpecKind::Simple(ElementarySpec::Char),
-                self.into(),
-                sema.current_scope,
-            ),
-        })
-    }
-}
-
 // Array type
 
 impl<'db> ParseSpec<'db> for ast::generated::ArrayTypeSpec {
@@ -378,9 +371,6 @@ impl<'db> ParseSpec<'db> for ast::generated::ArrayTypeSpec {
                 elem_type_name.to_spec(sema)
             }
             ast::generated::DataTypeAccess::NamespaceAccess(target) => target.to_spec(sema),
-            ast::generated::DataTypeAccess::TypedAccess(typed) => {
-                typed.type_name.cast(sema.ast).to_spec(sema)
-            }
         }?;
 
         Ok(Spec::new(

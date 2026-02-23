@@ -24,13 +24,12 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         let name = Ident::from_node(self.db, self.file, data_type.name.cast(self.ast))?;
 
-        type Spec = ast::generated::ArrayTypeSpec_EnumTypeSpec_RefTypeSpec_SimpleTypeSpec_StrTypeSpec_StructTypeSpec_SubrangeTypeSpec;
+        type Spec = ast::generated::ArrayTypeSpec_EnumTypeSpec_RefTypeSpec_SimpleTypeSpec_StructTypeSpec_SubrangeTypeSpec;
 
         let spec = match data_type.spec.cast(self.ast) {
             Spec::ArrayTypeSpec(a) => a.to_spec(self),
             Spec::EnumTypeSpec(a) => a.to_spec(self),
             Spec::SimpleTypeSpec(a) => a.to_spec(self),
-            Spec::StrTypeSpec(a) => a.to_spec(self),
             Spec::StructTypeSpec(a) => a.to_spec(self),
             Spec::SubrangeTypeSpec(a) => a.to_spec(self),
             Spec::RefTypeSpec(a) => a.to_spec(self),

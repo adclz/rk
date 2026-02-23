@@ -1271,36 +1271,11 @@
       "members": [
         {
           "type": "SYMBOL",
-          "name": "typed_access"
-        },
-        {
-          "type": "SYMBOL",
           "name": "namespace_access"
         },
         {
           "type": "SYMBOL",
           "name": "_elem_type_name"
-        }
-      ]
-    },
-    "typed_access": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "FIELD",
-          "name": "type_name",
-          "content": {
-            "type": "SYMBOL",
-            "name": "namespace_access"
-          }
-        },
-        {
-          "type": "FIELD",
-          "name": "type_args",
-          "content": {
-            "type": "SYMBOL",
-            "name": "generic_type_args"
-          }
         }
       ]
     },
@@ -1330,6 +1305,10 @@
         {
           "type": "SYMBOL",
           "name": "any_dt_type_name"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "string_type_name"
         }
       ]
     },
@@ -1780,10 +1759,6 @@
                   {
                     "type": "SYMBOL",
                     "name": "struct_type_spec"
-                  },
-                  {
-                    "type": "SYMBOL",
-                    "name": "str_type_spec"
                   },
                   {
                     "type": "SYMBOL",
@@ -2280,135 +2255,6 @@
         {
           "type": "STRING",
           "value": ")"
-        }
-      ]
-    },
-    "str_type_spec": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "STRING",
-          "value": ":"
-        },
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SYMBOL",
-              "name": "s_byte_str_spec"
-            },
-            {
-              "type": "SYMBOL",
-              "name": "d_byte_str_spec"
-            },
-            {
-              "type": "ALIAS",
-              "content": {
-                "type": "STRING",
-                "value": "CHAR"
-              },
-              "named": true,
-              "value": "s_char"
-            },
-            {
-              "type": "ALIAS",
-              "content": {
-                "type": "STRING",
-                "value": "WCHAR"
-              },
-              "named": true,
-              "value": "d_char"
-            }
-          ]
-        }
-      ]
-    },
-    "str_type_init": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "STRING",
-          "value": ":="
-        },
-        {
-          "type": "SYMBOL",
-          "name": "char_str"
-        }
-      ]
-    },
-    "s_byte_str_spec": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "STRING",
-          "value": "STRING"
-        },
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SEQ",
-              "members": [
-                {
-                  "type": "STRING",
-                  "value": "["
-                },
-                {
-                  "type": "FIELD",
-                  "name": "size",
-                  "content": {
-                    "type": "SYMBOL",
-                    "name": "unsigned_int"
-                  }
-                },
-                {
-                  "type": "STRING",
-                  "value": "]"
-                }
-              ]
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
-        }
-      ]
-    },
-    "d_byte_str_spec": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "STRING",
-          "value": "WSTRING"
-        },
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SEQ",
-              "members": [
-                {
-                  "type": "STRING",
-                  "value": "["
-                },
-                {
-                  "type": "FIELD",
-                  "name": "size",
-                  "content": {
-                    "type": "SYMBOL",
-                    "name": "unsigned_int"
-                  }
-                },
-                {
-                  "type": "STRING",
-                  "value": "]"
-                }
-              ]
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
         }
       ]
     },
@@ -3188,10 +3034,6 @@
               },
               {
                 "type": "SYMBOL",
-                "name": "str_type_spec"
-              },
-              {
-                "type": "SYMBOL",
                 "name": "ref_type_spec"
               },
               {
@@ -3248,10 +3090,6 @@
               {
                 "type": "SYMBOL",
                 "name": "simple_type_spec"
-              },
-              {
-                "type": "SYMBOL",
-                "name": "str_type_spec"
               },
               {
                 "type": "SYMBOL",
@@ -4275,10 +4113,6 @@
               {
                 "type": "SYMBOL",
                 "name": "struct_type_spec"
-              },
-              {
-                "type": "SYMBOL",
-                "name": "str_type_spec"
               }
             ]
           }

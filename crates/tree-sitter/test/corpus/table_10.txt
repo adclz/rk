@@ -283,8 +283,9 @@ END_FUNCTION
             (variable_list
               (identifier))
             (var_decl_init
-              (str_type_spec
-                (s_char))
+              (simple_type_spec
+                (string_type_name
+                  (char_name)))
               (simple_type_init
                 (constant_expr
                   (constant
@@ -295,8 +296,9 @@ END_FUNCTION
             (variable_list
               (identifier))
             (var_decl_init
-              (str_type_spec
-                (d_char))
+              (simple_type_spec
+                (string_type_name
+                  (wchar_name)))
               (simple_type_init
                 (constant_expr
                   (constant
@@ -307,8 +309,9 @@ END_FUNCTION
             (variable_list
               (identifier))
             (var_decl_init
-              (str_type_spec
-                (s_char))
+              (simple_type_spec
+                (string_type_name
+                  (char_name)))
               (simple_type_init
                 (constant_expr
                   (constant
@@ -319,8 +322,9 @@ END_FUNCTION
             (variable_list
               (identifier))
             (var_decl_init
-              (str_type_spec
-                (d_char))
+              (simple_type_spec
+                (string_type_name
+                  (wchar_name)))
               (simple_type_init
                 (constant_expr
                   (constant

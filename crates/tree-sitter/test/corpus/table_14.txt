@@ -32,9 +32,10 @@ END_PROGRAM
             (variable_list
               (identifier))
             (var_decl_init
-              (str_type_spec
-                (s_byte_str_spec
-                  (unsigned_int))))))
+              (simple_type_spec
+                (string_type_name
+                  (string_name
+                    (unsigned_int)))))))
         (loc_var_decls
           (loc_var_decl
             (identifier)

@@ -491,13 +491,7 @@ module.exports = grammar({
     // Table 10 - Elementary data types
 
     data_type_access: ($) =>
-      choice($.typed_access, $.namespace_access, $._elem_type_name),
-
-    typed_access: ($) =>
-      seq(
-        field("type_name", $.namespace_access),
-        field("type_args", $.generic_type_args),
-      ),
+      choice($.namespace_access, $._elem_type_name),
 
     _elem_type_name: ($) =>
       choice(
@@ -507,6 +501,7 @@ module.exports = grammar({
         $.any_time_type_name,
         $.any_tod_type_name,
         $.any_dt_type_name,
+        $.string_type_name
       ),
 
     numeric_type_name: ($) => choice($.int_type_name, $.real_type_name),
@@ -587,14 +582,13 @@ module.exports = grammar({
       seq(
         field("name", $.identifier),
         useSpecInit(
-          ["simple", "subrange", "enum", "array", "struct", "str", "ref"],
+          ["simple", "subrange", "enum", "array", "struct", "ref"],
           [
             "simple",
             //"subrange", handled by simple
             //"enum", handled by simple
             "array",
             "struct",
-            // "str", handled by simple
             // "ref", handled in primary_expression
           ],
         )($),
@@ -681,27 +675,6 @@ module.exports = grammar({
         ),
       ($) => seq(":=", "(", commaSep($.init_elem), ")"),
     ),
-
-    ...createSpecInit(
-      "str",
-      ($) =>
-        seq(
-          ":",
-          choice(
-            $.s_byte_str_spec,
-            $.d_byte_str_spec,
-            alias("CHAR", $.s_char),
-            alias("WCHAR", $.d_char),
-          ),
-        ),
-      ($) => seq(":=", $.char_str),
-    ),
-
-    s_byte_str_spec: ($) =>
-      seq("STRING", optional(seq("[", field("size", $.unsigned_int), "]"))),
-
-    d_byte_str_spec: ($) =>
-      seq("WSTRING", optional(seq("[", field("size", $.unsigned_int), "]"))),
 
     init_elem: ($) =>
       choice(
@@ -845,10 +818,9 @@ module.exports = grammar({
     // RETAIN
     var_decl_init: ($) =>
       useSpecInit(
-        ["simple", "str", "ref", "array", "struct"],
+        ["simple", "ref", "array", "struct"],
         [
           "simple",
-          // "str", handled by simple
           "array",
           "struct",
         ],
@@ -860,10 +832,9 @@ module.exports = grammar({
     // TEMP
     var_decl: ($) =>
       useSpecInit(
-        ["simple", "str", "array", "struct"],
+        ["simple", "array", "struct"],
         [
           "simple",
-          // "str", handled by simple
           "array",
           "struct",
         ],
@@ -1025,12 +996,11 @@ module.exports = grammar({
     // Loc_Var_Spec_Init : Simple_Spec_Init | Array_Spec_Init | Struct_Spec_Init | S_Byte_Str_Spec | D_Byte_Str_Spec;
     loc_var_spec_init: ($) =>
       useSpecInit(
-        ["simple", "array", "struct", "str"],
+        ["simple", "array", "struct"],
         [
           "simple",
           "array",
           "struct",
-          // "str" handled by simple
         ],
       )($),
 
