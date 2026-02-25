@@ -5,10 +5,11 @@ use auto_lsp::core::ast::AstNode;
 use auto_lsp::default::db::file::File;
 use auto_lsp::default::db::tracked::ParsedAst;
 use db::WorkspaceDataBase;
+use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
 use crate::Visibility;
-use crate::check::errors::analysis_error::AnalysisError;
+use crate::check::errors::ToIdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::config::ConfigDecl;
 use crate::hir_def::interned::identifier::SpanIdent;
@@ -48,7 +49,7 @@ pub struct SemanticIndexBuilder<'db> {
     /// writing variables / statements / expressions, will preserve the IDs of scopes.
     pub(crate) scope_ctr: usize,
 
-    pub(crate) errors: Vec<AnalysisError<'db>>,
+    pub(crate) errors: Vec<IdeDiagnostic>,
 }
 
 impl<'db> SemanticIndexBuilder<'db> {
@@ -84,14 +85,14 @@ impl<'db> SemanticIndexBuilder<'db> {
     pub fn get_namespace_path(
         &mut self,
         namespace: &ast::generated::NamespaceDecl,
-    ) -> anyhow::Result<Vec<SpanIdent<'db>>, AnalysisError<'db>> {
+    ) -> anyhow::Result<Vec<SpanIdent<'db>>, IdeDiagnostic> {
         namespace
             .name
             .cast(self.ast)
             .children
             .iter()
             .map(|n| SpanIdent::new(self.db, self, n))
-            .collect::<Result<Vec<_>, AnalysisError<'db>>>()
+            .collect::<Result<Vec<_>, IdeDiagnostic>>()
     }
 
     // Fix me: This function should not panic, but handle errors gracefully.
@@ -107,9 +108,9 @@ impl<'db> SemanticIndexBuilder<'db> {
             match child.cast(self.ast) {
                 SourceFileDecl::ERRInvalidPouKeyword(err) => {
                     self.errors
-                        .push(AnalysisError::Syntax(SyntaxError::InvalidPouKeyword(
+                        .push(SyntaxError::InvalidPouKeyword(
                             err.get_span(),
-                        )))
+                        ).to_diagnostic(self.db))
                 }
                 SourceFileDecl::NamespaceDecl(namespace) => {
                     let path = match self.get_namespace_path(namespace) {
@@ -131,38 +132,45 @@ impl<'db> SemanticIndexBuilder<'db> {
                     }
                 }
                 SourceFileDecl::UsingDirective(directive) => {
-                    usings.extend(self.parse_using(directive).unwrap());
+                    match self.parse_using(directive) {
+                        Ok(u) => usings.extend(u),
+                        Err(err) => self.errors.push(err),
+                    }
                 }
-                SourceFileDecl::FuncDecl(func) => {
-                    let r = self.parse_function(func).unwrap();
-                    self.global_pous.push(r);
-                }
-                SourceFileDecl::FbDecl(fb) => {
-                    let r = self.parse_function_block(fb).unwrap();
-                    self.global_pous.push(r);
-                }
-                SourceFileDecl::ClassDecl(class) => {
-                    let r = self.parse_class(class).unwrap();
-                    self.global_pous.push(r);
-                }
+                SourceFileDecl::FuncDecl(func) => match self.parse_function(func) {
+                    Ok(r) => self.global_pous.push(r),
+                    Err(err) => self.errors.push(err),
+                },
+                SourceFileDecl::FbDecl(fb) => match self.parse_function_block(fb) {
+                    Ok(r) => self.global_pous.push(r),
+                    Err(err) => self.errors.push(err),
+                },
+                SourceFileDecl::ClassDecl(class) => match self.parse_class(class) {
+                    Ok(r) => self.global_pous.push(r),
+                    Err(err) => self.errors.push(err),
+                },
                 SourceFileDecl::DataTypeDecl(data_type) => {
                     for child in &data_type.children {
-                        let r = self.parse_data_type(child.cast(self.ast)).unwrap();
-                        self.global_pous.push(r);
+                        match self.parse_data_type(child.cast(self.ast)) {
+                            Ok(r) => self.global_pous.push(r),
+                            Err(err) => self.errors.push(err),
+                        }
                     }
                 }
                 SourceFileDecl::InterfaceDecl(interface) => {
-                    let r = self.parse_interface(interface).unwrap();
-                    self.global_pous.push(r);
+                    match self.parse_interface(interface) {
+                        Ok(r) => self.global_pous.push(r),
+                        Err(err) => self.errors.push(err),
+                    }
                 }
                 SourceFileDecl::ConfigDecl(config) => match self.parse_config(config) {
                     Ok(c) => self.configs.push(c),
                     Err(err) => self.errors.push(err),
                 },
-                SourceFileDecl::ProgDecl(prog) => {
-                    let p = self.parse_program(prog).unwrap();
-                    self.programs.push(p);
-                }
+                SourceFileDecl::ProgDecl(prog) => match self.parse_program(prog) {
+                    Ok(p) => self.programs.push(p),
+                    Err(err) => self.errors.push(err),
+                },
             }
         }
 

@@ -4,7 +4,7 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 use crate::{
     HirNodeInfo,
-    check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic},
+    check::errors::ToIdeDiagnostic,
     hir_def::expressions::spec::Spec,
     hir_ty::ty::Type,
 };
@@ -13,12 +13,6 @@ use crate::{
 pub enum SubRangeError<'db> {
     // Subrange
     InvalidSubrangeType { spec: Spec<'db>, typ: Type<'db> },
-}
-
-impl<'db> From<SubRangeError<'db>> for AnalysisError<'db> {
-    fn from(err: SubRangeError<'db>) -> Self {
-        AnalysisError::SubRange(err)
-    }
 }
 
 impl<'db> ErrorCode for SubRangeError<'db> {

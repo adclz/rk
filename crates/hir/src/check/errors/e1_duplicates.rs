@@ -4,7 +4,7 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 use crate::{
     HasName, HirNodeInfo,
-    check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic},
+    check::errors::ToIdeDiagnostic,
     hir_def::{
         config::ConfigDecl,
         expressions::{
@@ -119,12 +119,6 @@ impl ErrorCode for DuplicateError<'_> {
 
     fn description(&self) -> &'static str {
         "duplicate definitions"
-    }
-}
-
-impl<'db> From<DuplicateError<'db>> for AnalysisError<'db> {
-    fn from(err: DuplicateError<'db>) -> Self {
-        AnalysisError::Duplicate(err)
     }
 }
 

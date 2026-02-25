@@ -3,13 +3,13 @@ use std::sync::Arc;
 use crate::Visibility;
 use crate::{
     builder::{ParseSpec, expression::ParseExpr, semantic_index::SemanticIndexBuilder},
-    check::errors::analysis_error::AnalysisError,
     hir_def::{
         interned::identifier::Ident,
         pous::{data_type::DataType, pou::Pou},
         scope::{Scope, ScopeKind},
     },
 };
+use ide_diagnostic::IdeDiagnostic;
 use ast::generated::TypeDecl;
 use auto_lsp::anyhow;
 
@@ -17,7 +17,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_data_type(
         &mut self,
         data_type: &TypeDecl,
-    ) -> anyhow::Result<Pou<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<Pou<'db>, IdeDiagnostic> {
         let scope_id = self.generate_scope_id();
         let previous_scope = self.current_scope;
         self.current_scope = scope_id;

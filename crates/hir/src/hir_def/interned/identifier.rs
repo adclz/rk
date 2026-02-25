@@ -5,11 +5,12 @@ use auto_lsp::{
 };
 use compact_str::CompactString;
 use db::WorkspaceDataBase;
+use ide_diagnostic::IdeDiagnostic;
 use std::{hash::Hash, ops::Deref};
 
 use crate::{
     builder::semantic_index::SemanticIndexBuilder,
-    check::errors::analysis_error::AnalysisError,
+    check::errors::{ToIdeDiagnostic, e0_syntax::SyntaxError},
     hir_def::scope::ScopeId,
     {AstId, HirNodeInfo},
 };
@@ -52,7 +53,7 @@ impl<'db> SpanIdent<'db> {
         db: &'db dyn WorkspaceDataBase,
         sema: &SemanticIndexBuilder<'db>,
         ident: &AstNodeId<T>,
-    ) -> anyhow::Result<Self, AnalysisError<'db>> {
+    ) -> anyhow::Result<Self, IdeDiagnostic> {
         let ast = get_ast(db, sema.file);
         let ident = ident.cast(ast);
         Self::from_node(db, sema, ident)
@@ -62,7 +63,7 @@ impl<'db> SpanIdent<'db> {
         db: &'db dyn WorkspaceDataBase,
         sema: &SemanticIndexBuilder<'db>,
         node: &impl AstNode,
-    ) -> anyhow::Result<Self, AnalysisError<'db>> {
+    ) -> anyhow::Result<Self, IdeDiagnostic> {
         Ok(SpanIdent {
             id: node.into(),
             scope_id: sema.current_scope,
@@ -98,10 +99,18 @@ impl<'db> Ident {
         db: &dyn WorkspaceDataBase,
         file: File,
         node: &impl AstNode,
-    ) -> anyhow::Result<Self, AnalysisError<'db>> {
+    ) -> anyhow::Result<Self, IdeDiagnostic> {
         Ok(Ident::new(
             db,
-            CompactString::from(node.get_text(file.document(db).as_bytes())?),
+            CompactString::from(
+                node.get_text(file.document(db).as_bytes()).map_err(|e| {
+                    SyntaxError::SyntaxError {
+                        span: node.get_span(),
+                        err: e.to_string(),
+                    }
+                    .to_diagnostic(db)
+                })?,
+            ),
         ))
     }
 

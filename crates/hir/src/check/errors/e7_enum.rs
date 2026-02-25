@@ -4,7 +4,7 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 use crate::{
     HirNodeInfo,
-    check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic},
+    check::errors::ToIdeDiagnostic,
     hir_def::{
         expressions::{
             expression::BeginPathExpr,
@@ -30,12 +30,6 @@ pub enum EnumError<'db> {
         enum_: Enum<'db>,
         variant_name: SpanIdent<'db>,
     },
-}
-
-impl<'db> From<EnumError<'db>> for AnalysisError<'db> {
-    fn from(err: EnumError<'db>) -> Self {
-        AnalysisError::Enum(err)
-    }
 }
 
 impl<'db> ErrorCode for EnumError<'db> {

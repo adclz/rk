@@ -4,7 +4,7 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 use crate::{
     HirNodeInfo,
-    check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic},
+    check::errors::ToIdeDiagnostic,
     hir_def::{
         expressions::expression::{Expr, InitExpr},
         interned::identifier::SpanIdent,
@@ -42,12 +42,6 @@ pub enum ArrayError<'db> {
         min: u64,
         max: u64,
     },
-}
-
-impl<'db> From<ArrayError<'db>> for AnalysisError<'db> {
-    fn from(err: ArrayError<'db>) -> Self {
-        AnalysisError::Array(err)
-    }
 }
 
 impl<'db> ErrorCode for ArrayError<'db> {

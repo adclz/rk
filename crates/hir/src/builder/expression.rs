@@ -4,8 +4,9 @@ use auto_lsp::core::ast::AstNode;
 use crate::builder::ParseSpec;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::types::ParseMultiBits;
-use crate::check::errors::analysis_error::AnalysisError;
+use crate::check::errors::ToIdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
+use ide_diagnostic::IdeDiagnostic;
 use crate::hir_def::expressions::expression::{
     BeginPathExpr, FieldExpr, FuncCall, IndexExpr, Integer, IntegerKind, ParamAssignKind, PathExpr,
     VariableAccessKind,
@@ -25,14 +26,14 @@ pub trait ParseExpression<'db> {
     fn to_expr(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<Expr<'db>, AnalysisError<'db>>;
+    ) -> anyhow::Result<Expr<'db>, IdeDiagnostic>;
 }
 
 impl<'db> ParseExpression<'db> for ast::generated::Expression {
     fn to_expr(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<Expr<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<Expr<'db>, IdeDiagnostic> {
         match self {
             ast::generated::Expression::PrimaryExpression(p) => p.to_expr(sema),
             ast::generated::Expression::BooleanOperator(boolean_operator) => match boolean_operator
@@ -242,7 +243,7 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
     fn to_expr(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<Expr<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<Expr<'db>, IdeDiagnostic> {
         match self {
             ast::generated::PrimaryExpression::EnumValue(enum_) => {
                 let name = enum_.enum_path.cast(sema.ast).parse(sema)?;
@@ -347,14 +348,14 @@ pub trait ParseNumeric<'db> {
     fn parse(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<Integer, AnalysisError<'db>>;
+    ) -> anyhow::Result<Integer, IdeDiagnostic>;
 }
 
 impl<'db> ParseNumeric<'db> for ast::generated::BinaryInt_HexInt_OctalInt_SignedInt {
     fn parse(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<Integer, AnalysisError<'db>> {
+    ) -> anyhow::Result<Integer, IdeDiagnostic> {
         Ok(match self {
             ast::generated::BinaryInt_HexInt_OctalInt_SignedInt::BinaryInt(binary_int) => {
                 Integer::new(
@@ -390,7 +391,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Constant {
     fn to_expr(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<Expr<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<Expr<'db>, IdeDiagnostic> {
         type Constant = ast::generated::BoolLiteral_CharLiteral_NumericLiteral_TimeLiteral;
 
         let lit = match self.children.cast(sema.ast) {
@@ -538,14 +539,14 @@ pub trait ParseDirectVariable<'db> {
     fn to_direct_variable(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<DirectVariable<'db>, AnalysisError<'db>>;
+    ) -> anyhow::Result<DirectVariable<'db>, IdeDiagnostic>;
 }
 
 impl<'db> ParseDirectVariable<'db> for ast::generated::DirectVariable {
     fn to_direct_variable(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<DirectVariable<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<DirectVariable<'db>, IdeDiagnostic> {
         let adress = Ident::from_node(sema.db, sema.file, self.adress.cast(sema.ast))?;
 
         let (offset, partly) = match self.offset.cast(sema.ast) {
@@ -572,14 +573,14 @@ pub trait ParseVariableAccess<'db> {
     fn to_access(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<VariableAccess<'db>, AnalysisError<'db>>;
+    ) -> anyhow::Result<VariableAccess<'db>, IdeDiagnostic>;
 }
 
 impl<'db> ParseVariableAccess<'db> for ast::generated::VariableAccess {
     fn to_access(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<VariableAccess<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<VariableAccess<'db>, IdeDiagnostic> {
         let multibits = self.access.as_ref().and_then(|multibits| {
             match multibits.cast(sema.ast).to_multibits(sema) {
                 Ok(mb) => Some(mb),
@@ -617,7 +618,7 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::Variable {
     fn to_access(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<VariableAccess<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<VariableAccess<'db>, IdeDiagnostic> {
         match self.children.cast(sema.ast) {
             ast::generated::BeginPathExpression_DirectVariable::DirectVariable(v) => {
                 let adress = Ident::from_node(sema.db, sema.file, v.adress.cast(sema.ast))?;
@@ -654,7 +655,7 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::DirectVariable {
     fn to_access(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<VariableAccess<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<VariableAccess<'db>, IdeDiagnostic> {
         Ok(VariableAccess::new(
             sema.db,
             VariableAccessKind::Direct(self.to_direct_variable(sema)?),
@@ -671,7 +672,7 @@ pub trait ParseExpr<'db> {
     fn parse(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<Self::Output, AnalysisError<'db>>;
+    ) -> anyhow::Result<Self::Output, IdeDiagnostic>;
 }
 
 impl<'db> ParseExpr<'db> for ast::generated::BeginPathExpression {
@@ -680,7 +681,7 @@ impl<'db> ParseExpr<'db> for ast::generated::BeginPathExpression {
     fn parse(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<Self::Output, AnalysisError<'db>> {
+    ) -> anyhow::Result<Self::Output, IdeDiagnostic> {
         match self.children.cast(sema.ast) {
             ast::generated::Invocation_PathExpression::Invocation(i) => {
                 match i.children.cast(sema.ast) {
@@ -761,7 +762,7 @@ impl<'db> ParseExpr<'db> for ast::generated::PathExpression {
     fn parse(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<Self::Output, AnalysisError<'db>> {
+    ) -> anyhow::Result<Self::Output, IdeDiagnostic> {
         Ok(match self.children.cast(sema.ast) {
             ast::generated::FieldExpression_IndexExpression_VarAccess::FieldExpression(
                 field_expr,
@@ -797,7 +798,7 @@ impl<'db> ParseExpr<'db> for ast::generated::FieldExpression {
     fn parse(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<Self::Output, AnalysisError<'db>> {
+    ) -> anyhow::Result<Self::Output, IdeDiagnostic> {
         Ok(FieldExpr {
             path: self.path.cast(sema.ast).parse(sema)?,
             var: self.target.cast(sema.ast).parse(sema)?,
@@ -811,7 +812,7 @@ impl<'db> ParseExpr<'db> for ast::generated::IndexExpression {
     fn parse(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<Self::Output, AnalysisError<'db>> {
+    ) -> anyhow::Result<Self::Output, IdeDiagnostic> {
         Ok(IndexExpr {
             path: self.children.cast(sema.ast).parse(sema)?,
             index: self
@@ -820,7 +821,7 @@ impl<'db> ParseExpr<'db> for ast::generated::IndexExpression {
                 .children
                 .iter()
                 .map(|i| i.cast(sema.ast).children.cast(sema.ast).to_expr(sema))
-                .collect::<Result<Vec<_>, AnalysisError<'db>>>()?,
+                .collect::<Result<Vec<_>, IdeDiagnostic>>()?,
         })
     }
 }
@@ -831,18 +832,18 @@ impl<'db> ParseExpr<'db> for ast::generated::VarAccess {
     fn parse(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<Self::Output, AnalysisError<'db>> {
+    ) -> anyhow::Result<Self::Output, IdeDiagnostic> {
         match self.children.cast(sema.ast) {
             ast::generated::ERRUnexpectedSuperInPath_ERRUnexpectedThisInPath_Field_RefDeref::ERRUnexpectedThisInPath(
                 direct_variable,
-            ) => Err(AnalysisError::Syntax(SyntaxError::UnexpectedThis(
+            ) => Err(SyntaxError::UnexpectedThis(
                 direct_variable.get_span(),
-            ))),
+            ).to_diagnostic(sema.db)),
             ast::generated::ERRUnexpectedSuperInPath_ERRUnexpectedThisInPath_Field_RefDeref::ERRUnexpectedSuperInPath(
                 direct_variable,
-            ) => Err(AnalysisError::Syntax(SyntaxError::UnexpectedSuper(
+            ) => Err(SyntaxError::UnexpectedSuper(
                 direct_variable.get_span(),
-            ))),
+            ).to_diagnostic(sema.db)),
             ast::generated::ERRUnexpectedSuperInPath_ERRUnexpectedThisInPath_Field_RefDeref::Field(field) => Ok(
                 VarAccess::Simple(SpanIdent::from_node(sema.db, sema, field)?),
             ),

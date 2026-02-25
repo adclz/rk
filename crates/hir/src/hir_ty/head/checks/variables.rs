@@ -4,7 +4,7 @@ use rustc_hash::FxHashMap;
 use crate::{
     HasName,
     check::errors::{
-        analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError,
+        ToIdeDiagnostic, e1_duplicates::DuplicateError,
         e2_resolve::ResolveError, e3_type::{InferLiteralError, TypeError},
     },
     hir_def::expressions::{

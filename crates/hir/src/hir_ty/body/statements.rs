@@ -2,7 +2,7 @@ use db::WorkspaceDataBase;
 
 use crate::{
     CallSite,
-    check::errors::{analysis_error::ToIdeDiagnostic, e10_control_flow::ControlFlowError},
+    check::errors::{ToIdeDiagnostic, e10_control_flow::ControlFlowError},
     hir_def::{
         expressions::{
             expression::Expr,

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::Visibility;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::{ParseSpec, ParseVarSection};
-use crate::check::errors::analysis_error::AnalysisError;
+use ide_diagnostic::IdeDiagnostic;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use crate::hir_def::pous::interface::{Interface, MethodPrototype};
@@ -15,7 +15,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_interface(
         &mut self,
         interface: &ast::generated::InterfaceDecl,
-    ) -> anyhow::Result<Pou<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<Pou<'db>, IdeDiagnostic> {
         let scope_id = self.generate_scope_id();
         let previous_scope = self.current_scope;
         self.current_scope = scope_id;
@@ -94,7 +94,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         &mut self,
         method: &ast::generated::MethodPrototype,
         previous_scope: ScopeId<'db>,
-    ) -> anyhow::Result<MethodPrototype<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<MethodPrototype<'db>, IdeDiagnostic> {
         let scope_id = self.generate_scope_id();
         self.current_scope = scope_id;
 

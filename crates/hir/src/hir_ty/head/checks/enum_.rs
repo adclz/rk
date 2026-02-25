@@ -4,7 +4,7 @@ use rustc_hash::FxHashMap;
 use crate::{
     CallSite,
     check::errors::{
-        analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError, e3_type::TypeError,
+        ToIdeDiagnostic, e1_duplicates::DuplicateError, e3_type::TypeError,
         e7_enum::EnumError,
     },
     hir_def::expressions::spec::{ElementarySpec, Enum},

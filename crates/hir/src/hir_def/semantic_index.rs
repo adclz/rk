@@ -5,11 +5,11 @@ use auto_lsp::core::ast::AstNode;
 use auto_lsp::default::db::file::File;
 use auto_lsp::default::db::tracked::get_ast;
 use db::WorkspaceDataBase;
+use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 use tracing::info_span;
 
 use crate::builder::semantic_index::SemanticIndexBuilder;
-use crate::check::errors::analysis_error::AnalysisError;
 use crate::hir_def::config::ConfigDecl;
 use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::Pou;
@@ -62,7 +62,7 @@ pub struct SemanticIndex<'db> {
     pub namespaces: Vec<NamespaceDecl<'db>>,
 
     /// A list of errors encountered during semantic analysis
-    pub(crate) errors: Vec<AnalysisError<'db>>,
+    pub(crate) errors: Vec<IdeDiagnostic>,
 }
 
 impl<'db> SemanticIndex<'db> {
@@ -109,7 +109,7 @@ impl<'db> SemanticIndex<'db> {
     }
 
     /// Returns all errors encountered during semantic analysis.
-    pub fn errors(&self) -> &[AnalysisError<'db>] {
+    pub fn errors(&self) -> &[IdeDiagnostic] {
         &self.errors
     }
 }

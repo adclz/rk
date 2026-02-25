@@ -4,7 +4,7 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     check::errors::{
-        analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError, e2_resolve::ResolveError,
+        ToIdeDiagnostic, e1_duplicates::DuplicateError, e2_resolve::ResolveError,
     },
     hir_def::{
         config::{ConfigDecl, ConfigResource, ProgConfig, ResourceDecl},

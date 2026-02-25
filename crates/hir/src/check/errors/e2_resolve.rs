@@ -10,7 +10,7 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 use crate::{
     CallSite, HasName, HirNodeInfo,
-    check::errors::analysis_error::ToIdeDiagnostic,
+    check::errors::ToIdeDiagnostic,
     hir_def::{
         expressions::{
             expression::{Expr, FuncCall, InitExpr, PathExpr},

@@ -8,7 +8,7 @@ pub mod walk;
 
 use crate::{
     HasName, HirNodeInfo,
-    check::errors::{analysis_error::ToIdeDiagnostic, e2_resolve::ResolveError},
+    check::errors::{ToIdeDiagnostic, e2_resolve::ResolveError},
     hir_def::{
         expressions::expression::{
             BeginPathExpr, MultibitsPart, PathExpr, VariableAccess, VariableAccessKind,

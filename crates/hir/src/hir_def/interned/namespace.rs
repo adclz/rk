@@ -1,6 +1,7 @@
 use crate::AstId;
+use ide_diagnostic::IdeDiagnostic;
+
 use crate::builder::semantic_index::SemanticIndexBuilder;
-use crate::check::errors::analysis_error::AnalysisError;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::scope::ScopeId;
 use crate::{HirNodeInfo, hir_def::interned::identifier::SpanIdent};
@@ -252,7 +253,7 @@ impl<'db> SpanNamespaceAccess<'db> {
         db: &'db dyn WorkspaceDataBase,
         sema: &SemanticIndexBuilder<'db>,
         fq_name: &ast::generated::NamespaceAccess,
-    ) -> anyhow::Result<Self, AnalysisError<'db>> {
+    ) -> anyhow::Result<Self, IdeDiagnostic> {
         Ok(SpanNamespaceAccess {
             id: fq_name.into(),
             scope_id: sema.current_scope,
@@ -283,7 +284,7 @@ impl<'db> NamespaceAccess<'db> {
         db: &'db dyn WorkspaceDataBase,
         sema: &SemanticIndexBuilder<'db>,
         fq_name: &ast::generated::NamespaceAccess,
-    ) -> anyhow::Result<Self, AnalysisError<'db>> {
+    ) -> anyhow::Result<Self, IdeDiagnostic> {
         let ast = get_ast(db, sema.file);
         let mut fragments = Vec::new();
 

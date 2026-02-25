@@ -14,7 +14,8 @@ use crate::{
         },
         check_recursion::TypeDependencyGraph,
         errors::{
-            analysis_error::{AnalysisError, ToIdeDiagnostic},
+            ToIdeDiagnostic,
+            e0_syntax::SyntaxError,
             e2_resolve::ResolveError,
         },
     },
@@ -46,7 +47,7 @@ pub fn diagnostics_for_file(db: &dyn WorkspaceDataBase, file: File) -> Arc<Vec<I
 
     let lexer_errors: Vec<IdeDiagnostic> = get_ast::accumulated::<ParseErrorAccumulator>(db, file)
         .into_iter()
-        .map(|e| AnalysisError::from((file, e)).to_diagnostic(db))
+        .map(|e| SyntaxError::from_parse_error(file, e).to_diagnostic(db))
         .collect::<Vec<_>>();
 
     semantic_index(db, file).check(db, &mut all_diagnostics);
@@ -63,7 +64,7 @@ impl<'db> SemanticIndex<'db> {
         // Get syntax errors
         self.errors
             .iter()
-            .for_each(|err| errors.push(err.to_diagnostic(db)));
+            .for_each(|err| errors.push(err.clone()));
 
         self.scope.check(db, errors);
 

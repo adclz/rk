@@ -6,7 +6,8 @@ use auto_lsp::core::ast::AstNode;
 
 use super::semantic_index::SemanticIndexBuilder;
 use crate::Visibility;
-use crate::check::errors::analysis_error::AnalysisError;
+use crate::check::errors::ToIdeDiagnostic;
+use ide_diagnostic::IdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::interned::namespace::SpanNamespacePath;
@@ -18,7 +19,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         &mut self,
         parent_path: &[SpanIdent],
         nested: &ast::generated::NamespaceDecl,
-    ) -> anyhow::Result<NamespaceDecl<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<NamespaceDecl<'db>, IdeDiagnostic> {
         type Decl =
             ERRInvalidPouKeyword_ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl;
 
@@ -69,10 +70,10 @@ impl<'db> SemanticIndexBuilder<'db> {
                         pous.push(self.parse_interface(interface)?);
                     }
                     Decl::ERRInvalidPouKeyword(err) => {
-                        self.errors
-                            .push(AnalysisError::Syntax(SyntaxError::InvalidPouKeyword(
-                                err.get_span(),
-                            )));
+                        self.errors.push(
+                            SyntaxError::InvalidPouKeyword(err.get_span())
+                                .to_diagnostic(self.db),
+                        );
                     }
                 }
             }

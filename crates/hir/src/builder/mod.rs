@@ -1,8 +1,8 @@
 use auto_lsp::anyhow;
+use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
     builder::semantic_index::SemanticIndexBuilder,
-    check::errors::analysis_error::AnalysisError,
     hir_def::{
         expressions::{expression::InitExpr, spec::Spec},
         pous::variable::VariableDecl,
@@ -33,14 +33,14 @@ pub trait ParseSpec<'db> {
     fn to_spec(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<Spec<'db>, AnalysisError<'db>>;
+    ) -> anyhow::Result<Spec<'db>, IdeDiagnostic>;
 }
 
 pub trait ParseInit<'db> {
     fn to_init(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<InitExpr<'db>, AnalysisError<'db>>;
+    ) -> anyhow::Result<InitExpr<'db>, IdeDiagnostic>;
 }
 
 pub struct SpecInitResult<'db> {
@@ -58,14 +58,14 @@ pub trait ParseSpecInit<'db> {
     fn to_spec_init(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<SpecInitResult<'db>, AnalysisError<'db>>;
+    ) -> anyhow::Result<SpecInitResult<'db>, IdeDiagnostic>;
 }
 
 impl<'db, T: ParseSpec<'db> + ParseInit<'db>> ParseSpecInit<'db> for T {
     fn to_spec_init(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<SpecInitResult<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<SpecInitResult<'db>, IdeDiagnostic> {
         Ok(SpecInitResult::new(
             self.to_spec(sema)?,
             Some(self.to_init(sema)?),

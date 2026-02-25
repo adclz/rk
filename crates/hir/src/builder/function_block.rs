@@ -3,7 +3,8 @@ use std::sync::Arc;
 use crate::builder::ParseVarSection;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::statement::ParseStatement;
-use crate::check::errors::analysis_error::AnalysisError;
+use crate::check::errors::ToIdeDiagnostic;
+use ide_diagnostic::IdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
@@ -20,7 +21,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_function_block(
         &mut self,
         func: &FbDecl,
-    ) -> anyhow::Result<Pou<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<Pou<'db>, IdeDiagnostic> {
         let scope_id = self.generate_scope_id();
         let previous_scope = self.current_scope;
         self.current_scope = scope_id;
@@ -61,16 +62,16 @@ impl<'db> SemanticIndexBuilder<'db> {
             type Error = ast::generated::ERRExtendsMultipleTimes_ERRFbVariablesAfterMethod_ERRImplementsBeforeExtends_ERRImplementsMultipleTimes;
             match f.cast(self.ast) {
                 Error::ERRExtendsMultipleTimes(err) => {
-                    self.errors.push(AnalysisError::Syntax(SyntaxError::MultipleExtends(err.get_span())));
+                    self.errors.push(SyntaxError::MultipleExtends(err.get_span()).to_diagnostic(self.db));
                 },
                 Error::ERRImplementsBeforeExtends(err) => {
-                    self.errors.push(AnalysisError::Syntax(SyntaxError::ImplementsBeforeExtends(err.get_span())));
+                    self.errors.push(SyntaxError::ImplementsBeforeExtends(err.get_span()).to_diagnostic(self.db));
                 },
                 Error::ERRImplementsMultipleTimes(err) => {
-                    self.errors.push(AnalysisError::Syntax(SyntaxError::MultipleImplements(err.get_span())));
+                    self.errors.push(SyntaxError::MultipleImplements(err.get_span()).to_diagnostic(self.db));
                 },
                 Error::ERRFbVariablesAfterMethod(err) => {
-                    self.errors.push(AnalysisError::Syntax(SyntaxError::FbVariablesAfterMethod(err.get_span())));
+                    self.errors.push(SyntaxError::FbVariablesAfterMethod(err.get_span()).to_diagnostic(self.db));
                 },
             }
         });

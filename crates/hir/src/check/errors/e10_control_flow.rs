@@ -4,7 +4,7 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 use crate::{
     CallSite, HasName, HirNodeInfo,
-    check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic},
+    check::errors::ToIdeDiagnostic,
     hir_def::{
         expressions::{expression::FuncCall, statement::Stmt},
         pous::variable::VariableDecl,
@@ -40,12 +40,6 @@ pub enum ControlFlowError<'db> {
         typ: Type<'db>,
         expr: Stmt<'db>,
     },
-}
-
-impl<'db> From<ControlFlowError<'db>> for AnalysisError<'db> {
-    fn from(err: ControlFlowError<'db>) -> Self {
-        AnalysisError::ControlFlow(err)
-    }
 }
 
 impl<'db> ErrorCode for ControlFlowError<'db> {

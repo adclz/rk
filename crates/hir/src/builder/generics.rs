@@ -1,8 +1,8 @@
 use auto_lsp::anyhow;
+use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
     builder::{ParseSpec, semantic_index::SemanticIndexBuilder},
-    check::errors::analysis_error::AnalysisError,
     hir_def::{
         interned::identifier::{Ident, SpanIdent},
         pous::generics::{GenericContraint, GenericParam, SpecContraint},
@@ -13,7 +13,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_generic_params(
         &mut self,
         generic_spec: &ast::generated::GenericSpec,
-    ) -> anyhow::Result<Vec<GenericParam<'db>>, AnalysisError<'db>> {
+    ) -> anyhow::Result<Vec<GenericParam<'db>>, IdeDiagnostic> {
         let mut result = vec![];
 
         for generic in generic_spec.children.cast(self.ast).children.iter() {

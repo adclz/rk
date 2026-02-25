@@ -2,7 +2,7 @@ use db::WorkspaceDataBase;
 
 use crate::{
     CallSite, HirNodeInfo,
-    check::errors::{analysis_error::ToIdeDiagnostic, e3_type::TypeError, e7_enum::EnumError},
+    check::errors::{ToIdeDiagnostic, e3_type::TypeError, e7_enum::EnumError},
     hir_def::{
         expressions::expression::{
             Expr, ExprKind, FoldOperatorKind, PrimaryExpr, RefValue, UnaryOperatorKind,

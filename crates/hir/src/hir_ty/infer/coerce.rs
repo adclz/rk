@@ -4,7 +4,7 @@ use ide_diagnostic::IdeDiagnostic;
 use crate::{
     CallSite, HirNodeInfo,
     check::errors::{
-        analysis_error::ToIdeDiagnostic, e3_type::TypeError, e10_control_flow::ControlFlowError,
+        ToIdeDiagnostic, e3_type::TypeError, e10_control_flow::ControlFlowError,
     },
     hir_def::expressions::expression::{AddOperatorKind, MultOperatorKind},
     hir_ty::{

@@ -4,7 +4,7 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 use crate::{
     CallSite, HasName, HirNodeInfo,
-    check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic},
+    check::errors::ToIdeDiagnostic,
     hir_def::pous::pou::Pou,
 };
 
@@ -19,12 +19,6 @@ pub enum RecursionError<'db> {
         pous: Vec<Pou<'db>>,
         callsite: Vec<CallSite<'db>>,
     },
-}
-
-impl<'db> From<RecursionError<'db>> for AnalysisError<'db> {
-    fn from(err: RecursionError<'db>) -> Self {
-        AnalysisError::Recursion(err)
-    }
 }
 
 impl ErrorCode for RecursionError<'_> {

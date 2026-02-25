@@ -3,6 +3,8 @@ use std::sync::Arc;
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 
+use ide_diagnostic::IdeDiagnostic;
+
 use crate::{
     Visibility,
     builder::{
@@ -10,7 +12,7 @@ use crate::{
         expression::{ParseDirectVariable, ParseExpr, ParseExpression},
         semantic_index::SemanticIndexBuilder,
     },
-    check::errors::analysis_error::AnalysisError,
+    check::errors::ToIdeDiagnostic,
     hir_def::{
         config::{
             AccessDecl, AccessDirection, AccessPath, ConfigDecl, ConfigInstInit, ConfigResource,
@@ -30,7 +32,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_config(
         &mut self,
         config: &ast::generated::ConfigDecl,
-    ) -> anyhow::Result<ConfigDecl<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<ConfigDecl<'db>, IdeDiagnostic> {
         let scope_id = self.generate_scope_id();
         let previous_scope = self.current_scope;
         self.current_scope = scope_id;
@@ -124,7 +126,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     fn parse_resource_decl(
         &mut self,
         rd: &ast::generated::ResourceDecl,
-    ) -> anyhow::Result<ResourceDecl<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<ResourceDecl<'db>, IdeDiagnostic> {
         let name = SpanIdent::from_node(self.db, self, rd.name.cast(self.ast))?;
         let resource_type_name =
             Ident::from_node(self.db, self.file, rd.resource_type_name.cast(self.ast))?;
@@ -165,7 +167,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     fn parse_task_config(
         &mut self,
         tc: &ast::generated::TaskConfig,
-    ) -> anyhow::Result<TaskConfig<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<TaskConfig<'db>, IdeDiagnostic> {
         let name = SpanIdent::from_node(self.db, self, tc.name.cast(self.ast))?;
         let init = tc.init.cast(self.ast);
 
@@ -204,7 +206,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     fn parse_prog_config(
         &mut self,
         pc: &ast::generated::ProgConfig,
-    ) -> anyhow::Result<ProgConfig<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<ProgConfig<'db>, IdeDiagnostic> {
         let name = SpanIdent::from_node(self.db, self, pc.name.cast(self.ast))?;
 
         let retain = pc.retain.is_some();
@@ -255,7 +257,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     fn parse_fb_task(
         &mut self,
         fb: &ast::generated::FbTask,
-    ) -> anyhow::Result<FbTask<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<FbTask<'db>, IdeDiagnostic> {
         let path = fb.children.cast(self.ast).parse(self)?;
         let task = Ident::from_node(self.db, self.file, fb.task.cast(self.ast))?;
         Ok(FbTask { path, task })
@@ -264,7 +266,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     fn parse_prog_cnxn(
         &mut self,
         cnxn: &ast::generated::ProgCnxn,
-    ) -> anyhow::Result<ProgCnxn<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<ProgCnxn<'db>, IdeDiagnostic> {
         // children: [PathExpression, ProgDataSource | DataSink]
         // The first PathExpression is the LHS; the second entry determines direction.
         let mut path = None;
@@ -288,9 +290,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         }
 
         let path = path.ok_or_else(|| {
-            AnalysisError::Syntax(
-                crate::check::errors::e0_syntax::SyntaxError::InvalidPouKeyword(cnxn.get_span()),
-            )
+            crate::check::errors::e0_syntax::SyntaxError::InvalidPouKeyword(cnxn.get_span()).to_diagnostic(self.db)
         })?;
 
         if let Some(source) = source {
@@ -298,16 +298,14 @@ impl<'db> SemanticIndexBuilder<'db> {
         } else if let Some(sink) = sink {
             Ok(ProgCnxn::Sink { path, sink })
         } else {
-            Err(AnalysisError::Syntax(
-                crate::check::errors::e0_syntax::SyntaxError::InvalidPouKeyword(cnxn.get_span()),
-            ))
+            Err(crate::check::errors::e0_syntax::SyntaxError::InvalidPouKeyword(cnxn.get_span()).to_diagnostic(self.db))
         }
     }
 
     fn parse_data_source(
         &mut self,
         ds: &ast::generated::DataSource,
-    ) -> anyhow::Result<DataSource<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<DataSource<'db>, IdeDiagnostic> {
         match ds.children.cast(self.ast) {
             ast::generated::Constant_DirectVariable_PathExpression::Constant(c) => {
                 Ok(DataSource::Constant(c.to_expr(self)?))
@@ -324,7 +322,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     fn parse_prog_data_source(
         &mut self,
         pds: &ast::generated::ProgDataSource,
-    ) -> anyhow::Result<DataSource<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<DataSource<'db>, IdeDiagnostic> {
         match pds.children.cast(self.ast) {
             ast::generated::Constant_DirectVariable_PathExpression::Constant(c) => {
                 Ok(DataSource::Constant(c.to_expr(self)?))
@@ -341,7 +339,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     fn parse_data_sink(
         &mut self,
         ds: &ast::generated::DataSink,
-    ) -> anyhow::Result<DataSink<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<DataSink<'db>, IdeDiagnostic> {
         match ds.children.cast(self.ast) {
             ast::generated::DirectVariable_PathExpression::DirectVariable(dv) => {
                 Ok(DataSink::Direct(dv.to_direct_variable(self)?))
@@ -355,7 +353,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     fn parse_access_decl(
         &mut self,
         decl: &ast::generated::AccessDecl,
-    ) -> anyhow::Result<AccessDecl<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<AccessDecl<'db>, IdeDiagnostic> {
         let name = Ident::from_node(self.db, self.file, decl.name.cast(self.ast))?;
 
         let path_node = decl.path.cast(self.ast);
@@ -395,7 +393,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     fn parse_config_inst_init(
         &mut self,
         inst: &ast::generated::ConfigInstInit,
-    ) -> anyhow::Result<ConfigInstInit<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<ConfigInstInit<'db>, IdeDiagnostic> {
         use crate::builder::ParseSpecInit;
 
         let path = inst.path.cast(self.ast).parse(self)?;
@@ -422,9 +420,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         }
 
         let init = init_expr.ok_or_else(|| {
-            AnalysisError::Syntax(
-                crate::check::errors::e0_syntax::SyntaxError::InvalidPouKeyword(inst.get_span()),
-            )
+            crate::check::errors::e0_syntax::SyntaxError::InvalidPouKeyword(inst.get_span()).to_diagnostic(self.db)
         })?;
 
         Ok(crate::hir_def::config::ConfigInstInit {

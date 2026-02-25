@@ -3,7 +3,7 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     CallSite,
-    check::errors::{analysis_error::ToIdeDiagnostic, e3_type::TypeError},
+    check::errors::{ToIdeDiagnostic, e3_type::TypeError},
     hir_def::{
         expressions::{expression::Expr, spec::ElementarySpec},
         pous::generics::GenericParam,

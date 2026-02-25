@@ -5,7 +5,7 @@ use rustc_hash::FxHashMap;
 use crate::{
     HasName, HirNodeInfo,
     check::errors::{
-        analysis_error::ToIdeDiagnostic, e2_resolve::ResolveError, e3_type::TypeError,
+        ToIdeDiagnostic, e2_resolve::ResolveError, e3_type::TypeError,
     },
     hir_def::{
         expressions::spec::{Spec, SpecKind},

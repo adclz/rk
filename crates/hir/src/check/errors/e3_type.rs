@@ -5,7 +5,7 @@ use db::WorkspaceDataBase;
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 use crate::{
-    CallSite, HasName, HirNodeInfo, check::errors::analysis_error::ToIdeDiagnostic, hir_def::{
+    CallSite, HasName, HirNodeInfo, check::errors::ToIdeDiagnostic, hir_def::{
         expressions::{
             expression::{AddOperatorKind, Expr, MultOperatorKind},
             spec::Spec,

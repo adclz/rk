@@ -4,7 +4,7 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 use crate::{
     CallSite, HasName, HirNodeInfo,
-    check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic},
+    check::errors::ToIdeDiagnostic,
     hir_def::{
         expressions::{expression::PathExpr, invocation::Invocation},
         pous::pou::Pou,
@@ -72,12 +72,6 @@ pub enum InheritanceError<'db> {
         pou: Pou<'db>,
         call_site: CallSite<'db>,
     },
-}
-
-impl<'db> From<InheritanceError<'db>> for AnalysisError<'db> {
-    fn from(err: InheritanceError<'db>) -> Self {
-        AnalysisError::Inheritance(err)
-    }
 }
 
 impl<'db> ErrorCode for InheritanceError<'db> {

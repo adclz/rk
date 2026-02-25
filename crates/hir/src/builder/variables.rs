@@ -14,8 +14,9 @@ use salsa::Accumulator;
 use crate::builder::expression::{ParseDirectVariable, ParseExpr};
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::{ParseInit, ParseSpec, ParseSpecInit, ParseVarSection, SpecInitResult};
-use crate::check::errors::analysis_error::AnalysisError;
+use crate::check::errors::ToIdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
+use ide_diagnostic::IdeDiagnostic;
 use crate::hir_def::config::AccessDirection;
 use crate::hir_def::expressions::spec::{ElementarySpec, Spec, SpecKind};
 use crate::hir_def::interned::identifier::Ident;
@@ -29,9 +30,9 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_InputVar::ERRVariableWithNoSpec(child) => {
                     sema.errors
-                        .push(AnalysisError::Syntax(SyntaxError::MissingVarType(
+                        .push(SyntaxError::MissingVarType(
                             child.get_span(),
-                        )));
+                        ).to_diagnostic(sema.db));
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_InputVar::InputVar(child) => {
@@ -181,9 +182,9 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_FbInputVar::ERRVariableWithNoSpec(child) => {
                     sema.errors
-                        .push(AnalysisError::Syntax(SyntaxError::MissingVarType(
+                        .push(SyntaxError::MissingVarType(
                             child.get_span(),
-                        )));
+                        ).to_diagnostic(sema.db));
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_FbInputVar::FbInputVar(child) => {
@@ -300,9 +301,9 @@ impl<'db> ParseVarSection<'db> for ast::generated::OutputDecls {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_OutputVar::ERRVariableWithNoSpec(child) => {
                     sema.errors
-                        .push(AnalysisError::Syntax(SyntaxError::MissingVarType(
+                        .push(SyntaxError::MissingVarType(
                             child.get_span(),
-                        )));
+                        ).to_diagnostic(sema.db));
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_OutputVar::OutputVar(child) => {
@@ -386,9 +387,9 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbOutputDecls {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_FbOutputVar::ERRVariableWithNoSpec(child) => {
                     sema.errors
-                        .push(AnalysisError::Syntax(SyntaxError::MissingVarType(
+                        .push(SyntaxError::MissingVarType(
                             child.get_span(),
-                        )));
+                        ).to_diagnostic(sema.db));
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_FbOutputVar::FbOutputVar(child) => {
@@ -472,9 +473,9 @@ impl<'db> ParseVarSection<'db> for ast::generated::TempVarDecls {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_TempVar::ERRVariableWithNoSpec(child) => {
                     sema.errors
-                        .push(AnalysisError::Syntax(SyntaxError::MissingVarType(
+                        .push(SyntaxError::MissingVarType(
                             child.get_span(),
-                        )));
+                        ).to_diagnostic(sema.db));
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_TempVar::TempVar(child) => {
@@ -558,9 +559,9 @@ impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_InOutVar::ERRVariableWithNoSpec(child) => {
                     sema.errors
-                        .push(AnalysisError::Syntax(SyntaxError::MissingVarType(
+                        .push(SyntaxError::MissingVarType(
                             child.get_span(),
-                        )));
+                        ).to_diagnostic(sema.db));
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_InOutVar::InOutVar(child) => {
@@ -712,9 +713,9 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
                     child,
                 ) => {
                     sema.errors
-                        .push(AnalysisError::Syntax(SyntaxError::MissingVarType(
+                        .push(SyntaxError::MissingVarType(
                             child.get_span(),
-                        )));
+                        ).to_diagnostic(sema.db));
                     continue;
                 }
             }
@@ -783,9 +784,9 @@ impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
                     child,
                 ) => {
                     sema.errors
-                        .push(AnalysisError::Syntax(SyntaxError::MissingVarType(
+                        .push(SyntaxError::MissingVarType(
                             child.get_span(),
-                        )));
+                        ).to_diagnostic(sema.db));
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_VarDeclInitList::VarDeclInitList(
@@ -833,9 +834,9 @@ impl<'db> ParseVarSection<'db> for ast::generated::RetainVarDecls {
                     child,
                 ) => {
                     sema.errors
-                        .push(AnalysisError::Syntax(SyntaxError::MissingVarType(
+                        .push(SyntaxError::MissingVarType(
                             child.get_span(),
-                        )));
+                        ).to_diagnostic(sema.db));
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_VarDeclInitList::VarDeclInitList(
@@ -883,9 +884,9 @@ impl<'db> ParseVarSection<'db> for ast::generated::NoRetainVarDecls {
                     err,
                 ) => {
                     sema.errors
-                        .push(AnalysisError::Syntax(SyntaxError::MissingVarType(
+                        .push(SyntaxError::MissingVarType(
                             err.get_span(),
-                        )));
+                        ).to_diagnostic(sema.db));
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_VarDeclInitList::VarDeclInitList(
@@ -1102,13 +1103,13 @@ impl<'db> ParseSpecInit<'db> for ast::generated::EdgeDecl {
     fn to_spec_init(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<SpecInitResult<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<SpecInitResult<'db>, IdeDiagnostic> {
         let spec = match self.edge.cast(sema.ast) {
             ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::ERRInvalidEdgeQualifier(err) => {
                 sema.errors
-                    .push(AnalysisError::Syntax(SyntaxError::IncompleteEdgeQualifier(
+                    .push(SyntaxError::IncompleteEdgeQualifier(
                         err.get_span(),
-                    )));
+                    ).to_diagnostic(sema.db));
                 Spec::new(
                     sema.db,
                     SpecKind::Simple(ElementarySpec::Bool),
@@ -1138,7 +1139,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::LocPartlyVar {
     fn to_spec_init(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<SpecInitResult<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<SpecInitResult<'db>, IdeDiagnostic> {
         let spec = self
             .spec
             .cast(sema.ast)
@@ -1153,7 +1154,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::VarDecl {
     fn to_spec_init(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<SpecInitResult<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<SpecInitResult<'db>, IdeDiagnostic> {
         type Spec = ast::generated::ArrayTypeSpec_SimpleTypeSpec_StructTypeSpec;
 
         let spec = match self.spec.cast(sema.ast) {
@@ -1191,9 +1192,9 @@ impl<'db> ParseSpecInit<'db> for ast::generated::VarDecl {
 
         if let Some(init) = &self.init {
             sema.errors
-                .push(AnalysisError::Syntax(SyntaxError::UnexpectedVarInit(
+                .push(SyntaxError::UnexpectedVarInit(
                     init.cast(sema.ast).get_span(),
-                )));
+                ).to_diagnostic(sema.db));
         }
 
         match spec {
@@ -1207,7 +1208,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::VarDeclInit {
     fn to_spec_init(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<SpecInitResult<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<SpecInitResult<'db>, IdeDiagnostic> {
         type Spec =
             ast::generated::ArrayTypeSpec_RefTypeSpec_SimpleTypeSpec_StructTypeSpec;
 
@@ -1255,7 +1256,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::LocVarSpecInit {
     fn to_spec_init(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<SpecInitResult<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<SpecInitResult<'db>, IdeDiagnostic> {
         type Spec = ast::generated::ArrayTypeSpec_SimpleTypeSpec_StructTypeSpec;
 
         let spec = match self.spec.cast(sema.ast) {

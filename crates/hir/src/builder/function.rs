@@ -4,7 +4,7 @@ use crate::Visibility;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::statement::ParseStatement;
 use crate::builder::{ParseSpec, ParseVarSection};
-use crate::check::errors::analysis_error::AnalysisError;
+use ide_diagnostic::IdeDiagnostic;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::pous::function::Function;
 use crate::hir_def::pous::pou::Pou;
@@ -17,7 +17,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_function(
         &mut self,
         func: &ast::generated::FuncDecl,
-    ) -> anyhow::Result<Pou<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<Pou<'db>, IdeDiagnostic> {
         let scope_id = self.generate_scope_id();
         let previous_scope = self.current_scope;
         self.current_scope = scope_id;

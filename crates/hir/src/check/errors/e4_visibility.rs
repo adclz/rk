@@ -4,7 +4,7 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 use crate::{
     CallSite, HirNodeInfo,
-    check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic},
+    check::errors::ToIdeDiagnostic,
     hir_ty::resolver::visibility::SameNamespaceResult,
 };
 
@@ -36,12 +36,6 @@ impl ErrorCode for VisibilityError<'_> {
 
     fn description(&self) -> &'static str {
         "access control violation"
-    }
-}
-
-impl<'db> From<VisibilityError<'db>> for AnalysisError<'db> {
-    fn from(err: VisibilityError<'db>) -> Self {
-        AnalysisError::Visibility(err)
     }
 }
 

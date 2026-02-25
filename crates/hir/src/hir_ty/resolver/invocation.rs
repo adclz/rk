@@ -2,7 +2,7 @@ use db::WorkspaceDataBase;
 
 use crate::{
     CallSite,
-    check::errors::{analysis_error::ToIdeDiagnostic, e5_inheritance::InheritanceError},
+    check::errors::{ToIdeDiagnostic, e5_inheritance::InheritanceError},
     hir_def::{
         expressions::invocation::{Invocation, InvocationKind},
         pous::pou::Pou,

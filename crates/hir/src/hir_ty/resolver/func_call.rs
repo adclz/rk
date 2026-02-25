@@ -8,7 +8,7 @@ use crate::hir_def::expressions::expression::Expr;
 use crate::hir_def::pous::variable::VariableDecl;
 use crate::{
     CallSite, HasName, HirNodeInfo,
-    check::errors::{analysis_error::ToIdeDiagnostic, e2_resolve::ResolveError},
+    check::errors::{ToIdeDiagnostic, e2_resolve::ResolveError},
     hir_def::expressions::expression::{FuncCall, ParamAssignKind},
     hir_ty::{
         body::BodyInferenceResult,

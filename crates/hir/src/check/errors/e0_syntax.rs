@@ -12,13 +12,7 @@ use auto_lsp::{
 use db::WorkspaceDataBase;
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, action, diag, edit};
 
-use crate::check::errors::analysis_error::{AnalysisError, ToIdeDiagnostic};
-
-impl<'db> From<SyntaxError> for AnalysisError<'db> {
-    fn from(err: SyntaxError) -> Self {
-        AnalysisError::Syntax(err)
-    }
-}
+use crate::check::errors::ToIdeDiagnostic;
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum SyntaxError {
@@ -97,28 +91,28 @@ impl ErrorCode for SyntaxError {
     }
 }
 
-impl<'db> From<(File, &ParseErrorAccumulator)> for AnalysisError<'db> {
-    fn from((file, err): (File, &ParseErrorAccumulator)) -> Self {
+impl SyntaxError {
+    pub fn from_parse_error(file: File, err: &ParseErrorAccumulator) -> Self {
         match &err.0 {
             ParseError::LexerError { span, error } => match error {
                 LexerError::Missing {
                     range,
                     error,
                     grammar_name,
-                } => AnalysisError::Syntax(SyntaxError::MissingNode {
+                } => SyntaxError::MissingNode {
                     file,
                     span: range.into(),
                     err: error.to_owned(),
                     grammar_name,
-                }),
+                },
                 LexerError::Syntax {
                     range,
                     error,
                     affected,
-                } => AnalysisError::Syntax(SyntaxError::SyntaxError {
+                } => SyntaxError::SyntaxError {
                     span: range.into(),
                     err: error.to_owned(),
-                }),
+                },
             },
             _ => unreachable!("Only lexer errors should be present here"),
         }

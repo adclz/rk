@@ -3,7 +3,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     CallSite, HirNodeInfo,
-    check::errors::{analysis_error::ToIdeDiagnostic, e9_recursion::RecursionError},
+    check::errors::{ToIdeDiagnostic, e9_recursion::RecursionError},
     hir_def::{namespace::NamespaceDecl, pous::pou::Pou, semantic_index::SemanticIndex},
     hir_ty::{infer::Infer, ty::Type},
 };

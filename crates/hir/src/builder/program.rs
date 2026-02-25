@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use auto_lsp::anyhow;
+use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
     Visibility,
@@ -22,7 +22,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_program(
         &mut self,
         program: &ast::generated::ProgDecl,
-    ) -> anyhow::Result<ProgramDecl<'db>> {
+    ) -> Result<ProgramDecl<'db>, IdeDiagnostic> {
         let scope_id = self.generate_scope_id();
         let previous_scope = self.current_scope;
         self.current_scope = scope_id;

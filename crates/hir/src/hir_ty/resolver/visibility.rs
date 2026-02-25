@@ -25,7 +25,7 @@ use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
     CallSite, HasVisibility, HirNodeInfo, Visibility,
-    check::errors::{analysis_error::ToIdeDiagnostic, e4_visibility::VisibilityError},
+    check::errors::{ToIdeDiagnostic, e4_visibility::VisibilityError},
     hir_def::{
         namespace::NamespaceDecl,
         scope::{ScopeId, ScopeKind},

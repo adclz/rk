@@ -1,7 +1,8 @@
 use crate::builder::ParseSpec;
 use crate::builder::expression::{ParseExpr, ParseExpression, ParseVariableAccess};
 use crate::builder::semantic_index::SemanticIndexBuilder;
-use crate::check::errors::analysis_error::AnalysisError;
+use crate::check::errors::ToIdeDiagnostic;
+use ide_diagnostic::IdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::expressions::expression::{FuncCall, ParamAssign, ParamAssignKind};
 use crate::hir_def::expressions::statement::{CaseKind, Stmt, StmtKind};
@@ -13,14 +14,14 @@ pub trait ParseStatement<'db> {
     fn to_statement(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<Stmt<'db>, AnalysisError<'db>>;
+    ) -> anyhow::Result<Stmt<'db>, IdeDiagnostic>;
 }
 
 impl<'db> ParseStatement<'db> for ast::generated::Stmt {
     fn to_statement(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<Stmt<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<Stmt<'db>, IdeDiagnostic> {
         type StmtType = ast::generated::Stmt;
         match self {
             StmtType::BeginPathExpression(p) => Ok(Stmt::new(
@@ -86,7 +87,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                             .children
                             .iter()
                             .map(|stmt| stmt.cast(sema.ast).to_statement(sema))
-                            .collect::<Result<Vec<_>, AnalysisError<'db>>>()
+                            .collect::<Result<Vec<_>, IdeDiagnostic>>()
                     })
                     .transpose()?;
 
@@ -106,10 +107,10 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                             .children
                             .iter()
                             .map(|stmt| stmt.cast(sema.ast).to_statement(sema))
-                            .collect::<Result<Vec<_>, AnalysisError<'db>>>()?;
+                            .collect::<Result<Vec<_>, IdeDiagnostic>>()?;
                         Ok((condition, then))
                     })
-                    .collect::<Result<Vec<_>, AnalysisError<'db>>>()?;
+                    .collect::<Result<Vec<_>, IdeDiagnostic>>()?;
 
                 let else_ = if_stmt
                     .else_body
@@ -119,7 +120,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                             .children
                             .iter()
                             .map(|stmt| stmt.cast(sema.ast).to_statement(sema))
-                            .collect::<Result<Vec<_>, AnalysisError<'db>>>()
+                            .collect::<Result<Vec<_>, IdeDiagnostic>>()
                     })
                     .transpose()?;
 
@@ -143,16 +144,16 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                 for_list.children.as_ref().map(|err| {
                     match err.cast(sema.ast) {
                         ast::generated::ERRMissingDotInForControl_ERRMissingEqualInForControl::ERRMissingDotInForControl(err) => {
-                            sema.errors.push(AnalysisError::Syntax(SyntaxError::MissingDotInForList {
+                            sema.errors.push(SyntaxError::MissingDotInForList {
                                 file: sema.file,
                                 span: err.get_span(),
-                            }))
+                            }.to_diagnostic(sema.db))
                         }
                         ast::generated::ERRMissingDotInForControl_ERRMissingEqualInForControl::ERRMissingEqualInForControl(err) => {
-                            sema.errors.push(AnalysisError::Syntax(SyntaxError::MissingEqualInForList {
+                            sema.errors.push(SyntaxError::MissingEqualInForList {
                                 file: sema.file,
                                 span: err.get_span(),
-                            }))
+                            }.to_diagnostic(sema.db))
                         }
                     }
                 });
@@ -181,7 +182,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                             .children
                             .iter()
                             .map(|stmt| stmt.cast(sema.ast).to_statement(sema))
-                            .collect::<Result<Vec<_>, AnalysisError<'db>>>()
+                            .collect::<Result<Vec<_>, IdeDiagnostic>>()
                     })
                     .transpose()?
                     .unwrap_or_else(std::vec::Vec::new);
@@ -238,7 +239,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                             .children
                             .iter()
                             .map(|stmt| stmt.cast(sema.ast).to_statement(sema))
-                            .collect::<Result<Vec<_>, AnalysisError<'db>>>()?;
+                            .collect::<Result<Vec<_>, IdeDiagnostic>>()?;
                     }
                     cases.push((case_of, body));
                 }
@@ -251,7 +252,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                             .children
                             .iter()
                             .map(|stmt| stmt.cast(sema.ast).to_statement(sema))
-                            .collect::<Result<Vec<_>, AnalysisError<'db>>>()
+                            .collect::<Result<Vec<_>, IdeDiagnostic>>()
                     })
                     .transpose()?;
 
@@ -275,7 +276,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                             .children
                             .iter()
                             .map(|stmt| stmt.cast(sema.ast).to_statement(sema))
-                            .collect::<Result<Vec<_>, AnalysisError<'db>>>()
+                            .collect::<Result<Vec<_>, IdeDiagnostic>>()
                     })
                     .transpose()?
                     .unwrap_or_else(std::vec::Vec::new);
@@ -298,7 +299,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                             .children
                             .iter()
                             .map(|stmt| stmt.cast(sema.ast).to_statement(sema))
-                            .collect::<Result<Vec<_>, AnalysisError<'db>>>()
+                            .collect::<Result<Vec<_>, IdeDiagnostic>>()
                     })
                     .transpose()?
                     .unwrap_or_else(std::vec::Vec::new);
@@ -336,31 +337,31 @@ impl<'db> ParseStatement<'db> for ast::generated::Assign {
     fn to_statement(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<Stmt<'db>, AnalysisError<'db>> {
+    ) -> anyhow::Result<Stmt<'db>, IdeDiagnostic> {
         let var = match self.variable.cast(sema.ast) {
             ast::generated::ERRAssignFuncCall_Variable::ERRAssignFuncCall(err) => Err(
-                AnalysisError::Syntax(SyntaxError::AssignToFunctionCall(err.get_span())),
+                SyntaxError::AssignToFunctionCall(err.get_span()).to_diagnostic(sema.db),
             ),
             ast::generated::ERRAssignFuncCall_Variable::Variable(var) => var.to_access(sema),
         }?;
 
         type TargetType = ast::generated::ERREmptyRightHandAssignment_ERRMissingDotInAssignment_ERRMissingEqualInAssignment_Assignment_AssignmentAttempt;
         match self.target.cast(sema.ast) {
-            TargetType::ERREmptyRightHandAssignment(err) => Err(AnalysisError::Syntax(
-                SyntaxError::EmptyRightHandSide(err.get_span()),
-            )),
+            TargetType::ERREmptyRightHandAssignment(err) => Err(
+                SyntaxError::EmptyRightHandSide(err.get_span()).to_diagnostic(sema.db),
+            ),
             TargetType::ERRMissingDotInAssignment(err) => {
-                Err(AnalysisError::Syntax(SyntaxError::MissingDotInAssignment {
+                Err(SyntaxError::MissingDotInAssignment {
                     file: sema.file,
                     span: err.get_span(),
-                }))
+                }.to_diagnostic(sema.db))
             }
-            TargetType::ERRMissingEqualInAssignment(err) => Err(AnalysisError::Syntax(
+            TargetType::ERRMissingEqualInAssignment(err) => Err(
                 SyntaxError::MissingEqualInAssignment {
                     file: sema.file,
                     span: err.get_span(),
-                },
-            )),
+                }.to_diagnostic(sema.db),
+            ),
             TargetType::Assignment(assign) => Ok(Stmt::new(
                 sema.db,
                 StmtKind::Assignment {
