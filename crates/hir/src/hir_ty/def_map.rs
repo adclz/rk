@@ -157,7 +157,7 @@ impl<'db> ScopeId<'db> {
                     let mut inheritors = FxHashMap::default();
                     if let Some(extends) = interface.extends(db) {
                         for base in extends {
-                            if let Some(iface) = resolve_namespace_access(db, &base.path) {
+                            if let Some(iface) = resolve_namespace_access(db, &base.path).found() {
                                 inheritors.insert(CallSite::from_scoped(db, base), iface);
                             }
                         }
@@ -167,12 +167,12 @@ impl<'db> ScopeId<'db> {
                 Pou::Class(class) => {
                     let mut inheritors = FxHashMap::default();
                     if let Some(base) = class.extends(db)
-                        && let Some(pou) = resolve_namespace_access(db, &base.path)
+                        && let Some(pou) = resolve_namespace_access(db, &base.path).found()
                     {
                         inheritors.insert(CallSite::from_scoped(db, base), pou);
                     }
                     for base in class.implements(db) {
-                        if let Some(iface) = resolve_namespace_access(db, &base.path) {
+                        if let Some(iface) = resolve_namespace_access(db, &base.path).found() {
                             inheritors.insert(CallSite::from_scoped(db, base), iface);
                         }
                     }
@@ -181,13 +181,13 @@ impl<'db> ScopeId<'db> {
                 Pou::FunctionBlock(fb) => {
                     let mut inheritors = FxHashMap::default();
                     if let Some(base) = fb.extends(db)
-                        && let Some(pou) = resolve_namespace_access(db, &base.path)
+                        && let Some(pou) = resolve_namespace_access(db, &base.path).found()
                     {
                         inheritors.insert(CallSite::from_scoped(db, base), pou);
                     }
 
                     for base in fb.implements(db) {
-                        if let Some(iface) = resolve_namespace_access(db, &base.path) {
+                        if let Some(iface) = resolve_namespace_access(db, &base.path).found() {
                             inheritors.insert(CallSite::from_scoped(db, base), iface);
                         }
                     }

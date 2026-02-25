@@ -92,6 +92,16 @@ impl<'db> Resolver<'db> {
                     .insert(path_expr, Type::new_pou(db, pou));
                 true
             }
+            name::NameResolution::Ambiguous(candidates) => {
+                ctx.errors.push(
+                    ResolveError::AmbiguousUsingImport {
+                        expr: path_expr,
+                        candidates,
+                    }
+                    .to_diagnostic(db),
+                );
+                false
+            }
             name::NameResolution::NotFound => {
                 ctx.errors.push(
                     ResolveError::NoItemInScope {
@@ -202,7 +212,7 @@ impl<'db> Resolver<'db> {
                     ctx.type_of_path_expr.get(&step.get_expr(db))
                 {
                     let var_name = var.get_name_ident(db);
-                    if let Some(pou) =
+                    if let name::PouResolution::Found(pou) =
                         name::pou_names_res(db, var_name, path_expr.scope_id(db))
                     {
                         ctx.variables_shadowing.insert(*var, pou);

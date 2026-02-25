@@ -21,7 +21,7 @@ use hir::hir_def::interned::identifier::Ident;
 use hir::hir_def::namespace::NamespaceDecl;
 use hir::hir_def::pous::pou::Pou;
 use hir::hir_def::semantic_index::semantic_index;
-use hir::hir_ty::resolver::name::pou_names_res;
+use hir::hir_ty::resolver::name::{PouResolution, pou_names_res};
 use rstest::fixture;
 
 #[fixture]
@@ -198,5 +198,8 @@ pub fn pou_name_res_from_scope<'db>(
     scope: impl HirNodeInfo<'db>,
     name: &str,
 ) -> Option<Pou<'db>> {
-    pou_names_res(db, Ident::from_slice(db, name), scope.get_scope_id(db))
+    match pou_names_res(db, Ident::from_slice(db, name), scope.get_scope_id(db)) {
+        PouResolution::Found(pou) => Some(pou),
+        _ => None,
+    }
 }

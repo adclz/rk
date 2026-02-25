@@ -138,6 +138,11 @@ pub enum ResolveError<'db> {
     NonVariadicTypeForVariable {
         var: VariableDecl<'db>,
         typ: Type<'db>,
+    },
+    /// Two or more USING directives import different POUs with the same name.
+    AmbiguousUsingImport {
+        expr: PathExpr<'db>,
+        candidates: Vec<(Pou<'db>, NamespacePath)>,
     }
 }
 
@@ -167,6 +172,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::ConfigInstInitUnknownInstance { .. } => "E0222",
             Self::ConfigInstInitFieldNotFound { .. } => "E0223",
             Self::NonVariadicTypeForVariable { var, typ } => "E0224",
+            Self::AmbiguousUsingImport { .. } => "E0225",
         }
     }
 
@@ -192,6 +198,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::AccessDeclTypeMismatch { .. } => "access declaration type mismatch",
             Self::ConfigInstInitUnknownInstance { .. }
             | Self::ConfigInstInitFieldNotFound { .. } => "configuration error",
+            Self::AmbiguousUsingImport { .. } => "ambiguous import",
         }
     }
 }
@@ -582,10 +589,39 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 .desc(self)
                 .range(var.get_span(db))
                 .call();
-            
+
             diag.with_note("only elementary types can be variadic".into());
             diag
             },
+            Self::AmbiguousUsingImport { expr, candidates } => {
+                let name = expr.ident(db).text(db);
+                let ns_list: Vec<_> = candidates
+                    .iter()
+                    .map(|(_, ns)| ns.to_string(db))
+                    .collect();
+
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' is ambiguous between '{}'",
+                        name,
+                        ns_list.join("' and '"),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(expr.get_span(db))
+                    .call();
+
+                let qualified: Vec<_> = ns_list
+                    .iter()
+                    .map(|ns| format!("{}.{}", ns, name))
+                    .collect();
+                diag.with_note(format!(
+                    "qualify the name to resolve the ambiguity: {}",
+                    qualified.join(" or "),
+                ));
+
+                diag
+            }
         }
     }
 }

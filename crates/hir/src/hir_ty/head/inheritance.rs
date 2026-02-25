@@ -202,7 +202,7 @@ pub fn inherited_methods<'db>(
                 debug_assert!(base.scope_id == pou.get_scope_id(db));
                 debug_assert!(base.path.target.scope_id == pou.get_scope_id(db));
 
-                match resolve_namespace_access(db, &base.path) {
+                match resolve_namespace_access(db, &base.path).found() {
                     Some(pou) => {
                         inherit_from(base.path.clone(), pou);
                     }
@@ -213,7 +213,7 @@ pub fn inherited_methods<'db>(
                 debug_assert!(iface.scope_id == pou.get_scope_id(db));
                 debug_assert!(iface.path.target.scope_id == pou.get_scope_id(db));
 
-                match resolve_namespace_access(db, &iface.path) {
+                match resolve_namespace_access(db, &iface.path).found() {
                     Some(pou) if matches!(pou, Pou::Interface(_)) => {
                         inherit_from(iface.path.clone(), pou);
                     }
@@ -228,7 +228,7 @@ pub fn inherited_methods<'db>(
                     debug_assert!(iface.scope_id == pou.get_scope_id(db));
                     debug_assert!(iface.path.target.scope_id == pou.get_scope_id(db));
 
-                    match resolve_namespace_access(db, &iface.path) {
+                    match resolve_namespace_access(db, &iface.path).found() {
                         Some(pou) => {
                             inherit_from(iface.path.clone(), pou);
                         }
@@ -243,7 +243,7 @@ pub fn inherited_methods<'db>(
                 debug_assert!(base.scope_id == pou.get_scope_id(db));
                 debug_assert!(base.path.target.scope_id == pou.get_scope_id(db));
 
-                match resolve_namespace_access(db, &base.path) {
+                match resolve_namespace_access(db, &base.path).found() {
                     Some(pou) => {
                         inherit_from(base.path.clone(), pou);
                     }
@@ -255,7 +255,7 @@ pub fn inherited_methods<'db>(
                 debug_assert!(iface.scope_id == pou.get_scope_id(db));
                 debug_assert!(iface.path.target.scope_id == pou.get_scope_id(db));
 
-                match resolve_namespace_access(db, &iface.path) {
+                match resolve_namespace_access(db, &iface.path).found() {
                     Some(pou) if matches!(pou, Pou::Interface(_)) => {
                         inherit_from(iface.path.clone(), pou);
                     }
