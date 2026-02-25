@@ -15,3 +15,4 @@ ast = { workspace = true }
 hir = { workspace = true }
 ide_proto = { workspace = true }
 ide_diagnostic = { workspace = true }
+rustc-hash = { workspace = true }

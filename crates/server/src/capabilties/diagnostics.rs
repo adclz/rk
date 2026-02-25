@@ -8,7 +8,7 @@ use auto_lsp::lsp_types::{
     WorkspaceFullDocumentDiagnosticReport,
 };
 use db::WorkspaceDataBase;
-use hir::check::diagnostics_for_file;
+use linter::lint_and_check_file;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 pub fn diagnostics<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
@@ -37,7 +37,7 @@ pub fn diagnostics<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
             related_documents: None,
             full_document_diagnostic_report: FullDocumentDiagnosticReport {
                 result_id: None,
-                items: diagnostics_for_file(db, file)
+                items: lint_and_check_file(db, file)
                     .iter()
                     .map(|d| d.to_lsp_diagnostic(db))
                     .collect::<Vec<_>>(),
@@ -57,7 +57,7 @@ pub fn workspace_diagnostics<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
             let file = *file;
 
             let errors = salsa::Cancelled::catch(|| {
-                diagnostics_for_file(db, file)
+                lint_and_check_file(db, file)
                     .iter()
                     .map(|d| d.to_lsp_diagnostic(db))
                     .collect::<Vec<_>>()

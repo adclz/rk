@@ -10,13 +10,10 @@ use crate::{
                 VariableAccess, VariableAccessKind,
             },
             invocation::Invocation,
-        },
-        pous::{
+        }, interned::identifier::Ident, pous::{
             pou::Pou,
             variable::{DirectVariable, VariableDecl},
-        },
-        scope::{ScopeId, ScopeKind},
-        semantic_index::get_scope,
+        }, scope::{ScopeId, ScopeKind}, semantic_index::get_scope
     },
     hir_ty::{
         body::statements::{NestedScope, StmtsResolverCtx},
@@ -89,7 +86,7 @@ pub struct BodyInferenceResult<'db> {
 
     // Generic type substitutions for this scope
     // Maps generic parameter names to their concrete types (e.g., T -> INT)
-    pub generic_substitutions: FxHashMap<crate::hir_def::interned::identifier::Ident, Type<'db>>,
+    pub generic_substitutions: FxHashMap<Ident, Type<'db>>,
 
     // Errors encountered during inference
     pub errors: Vec<IdeDiagnostic>,
@@ -97,6 +94,10 @@ pub struct BodyInferenceResult<'db> {
     // Set of variables that were referenced in the body.
     // Populated during statement resolution for use by the linter.
     pub variables_used: FxHashSet<VariableDecl<'db>>,
+
+    // Variables that shadow a POU with the same name.
+    // Populated during statement resolution for use by the linter.
+    pub variables_shadowing: FxHashMap<VariableDecl<'db>, Pou<'db>>,
 }
 
 impl<'db> BodyInferenceResult<'db> {
@@ -112,6 +113,7 @@ impl<'db> BodyInferenceResult<'db> {
             generic_substitutions: FxHashMap::default(),
             errors: Vec::new(),
             variables_used: FxHashSet::default(),
+            variables_shadowing: FxHashMap::default(),
         }
     }
 

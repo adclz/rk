@@ -92,6 +92,7 @@ auto-lsp = { workspace = true }
 ast = { workspace = true }
 db = { workspace = true }
 hir = { workspace = true }
+linter = { workspace = true }
 ide_proto = { workspace = true }
 wasm_codegen = { workspace = true }
 

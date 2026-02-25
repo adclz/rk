@@ -11,6 +11,7 @@ auto-lsp = { workspace = true, features = ["lsp_server"] }
 ast = { workspace = true }
 db = { workspace = true }
 hir = { workspace = true }
+linter = { workspace = true }
 formatter = { workspace = true }
 ide_proto = { workspace = true }
 log = { workspace = true }

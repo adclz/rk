@@ -7,7 +7,7 @@ pub mod visibility;
 pub mod walk;
 
 use crate::{
-    HirNodeInfo,
+    HasName, HirNodeInfo,
     check::errors::{analysis_error::ToIdeDiagnostic, e2_resolve::ResolveError},
     hir_def::{
         expressions::expression::{
@@ -193,6 +193,21 @@ impl<'db> Resolver<'db> {
                     self.try_resolve_as_fq(db, path_expr, ctx);
                 }
                 return;
+            }
+
+            // Shadowing detection: on the first step, if a variable was resolved,
+            // check if a POU with the same name is also visible in this scope.
+            if is_first_step {
+                if let Some(Type::Variable((var, _))) =
+                    ctx.type_of_path_expr.get(&step.get_expr(db))
+                {
+                    let var_name = var.get_name_ident(db);
+                    if let Some(pou) =
+                        name::pou_names_res(db, var_name, path_expr.scope_id(db))
+                    {
+                        ctx.variables_shadowing.insert(*var, pou);
+                    }
+                }
             }
 
             current = ctx.type_of_path_expr_with_adjustments(step.get_expr(db));
