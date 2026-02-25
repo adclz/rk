@@ -9,7 +9,7 @@ use crate::{
         pous::{class::MethodDecl, interface::MethodPrototype, pou::Pou, variable::VariableDecl},
         scope::ScopeId,
     },
-    hir_ty::{name_res::resolve_namespace_access, ty::Type},
+    hir_ty::{resolver::name::resolve_namespace_access, ty::Type},
 };
 use db::WorkspaceDataBase;
 use rustc_hash::FxHashMap;

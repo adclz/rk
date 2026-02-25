@@ -8,7 +8,7 @@ use crate::{
         analysis_error::ToIdeDiagnostic, e2_resolve::ResolveError, e3_type::TypeError,
     },
     hir_def::{
-        expressions::spec::{ElementarySpec, Spec, SpecKind},
+        expressions::spec::{Spec, SpecKind},
         interned::{identifier::Ident, namespace::NamespaceAccess},
         pous::{generics::AnyGeneric, pou::Pou, variable::VariableKind},
         scope::{ScopeId, ScopeKind},
@@ -16,7 +16,7 @@ use crate::{
     },
     hir_ty::{
         head::inheritance::inherited_methods,
-        name_res::{external_var_lookup, resolve_namespace_access},
+        index_graphs::external_var_lookup,
         ty::Type,
     },
 };
@@ -25,39 +25,6 @@ use crate::{
 #[salsa::tracked(returns(ref))]
 pub fn infer_signature<'db>(db: &'db dyn WorkspaceDataBase, scope: ScopeId<'db>) -> Signature<'db> {
     Signature::new(scope).infer_signature(db)
-}
-
-impl<'db> Type<'db> {
-    // todo: this belongs in the resolver module
-    pub(crate) fn resolve_spec(db: &'db dyn WorkspaceDataBase, spec: Spec<'db>) -> Self {
-        match spec.kind(db) {
-            SpecKind::Simple(elem) => Type::Elementary(*elem),
-            SpecKind::SizedString(_) => Type::Elementary(ElementarySpec::String),
-            SpecKind::SizedWString(_) => Type::Elementary(ElementarySpec::WString),
-            SpecKind::Ref(ref_to) => Type::RefTo(*ref_to),
-            SpecKind::Struct(strukt) => Type::Struct(*strukt),
-            SpecKind::Array(arr) => Type::Array(*arr),
-            SpecKind::ArrayConformand(a) => Type::ArrayConformand(*a),
-            SpecKind::Enum(enm) => Type::Enum(*enm),
-            SpecKind::Subrange(sub) => Type::SubRange(*sub),
-            SpecKind::Target(t) => {
-                let generics = spec.scope_id(db).generics(db);
-
-                if let Some(generics) = generics {
-                    for generic in generics.iter() {
-                        if generic.name(db) == *t.path.target {
-                            return Type::Generic(*generic);
-                        }
-                    }
-                }
-
-                match resolve_namespace_access(db, &t.path) {
-                    Some(pou) => Type::new_pou(db, pou),
-                    None => Type::Never,
-                }
-            }
-        }
-    }
 }
 
 /// Information about an element's position in an array initializer
@@ -92,9 +59,6 @@ pub struct Signature<'db> {
     /// Mapping of namespace accesses to their inferred POUs
     pub namespace_access_to_type: FxHashMap<NamespaceAccess<'db>, Type<'db>>,
 
-    /// Mapping of generic parameters to their inferred types (for generics declared on this POU)
-    pub type_of_generic: FxHashMap<Ident, Type<'db>>,
-
     //// Mapping of generic parameters to their spec constraints (for generics declared on this POU)
     pub constraint_of_generic: FxHashMap<Ident, Vec<Constraint<'db>>>,
 
@@ -108,7 +72,6 @@ impl<'db> Signature<'db> {
             scope,
             type_of_specs: FxHashMap::default(),
             namespace_access_to_type: FxHashMap::default(),
-            type_of_generic: FxHashMap::default(),
             constraint_of_generic: FxHashMap::default(),
             errors: Vec::new(),
         }

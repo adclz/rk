@@ -12,13 +12,14 @@ use hir::{
     },
     hir_ty::{
         head::signature::infer_signature,
-        name_res::{namespace_index, pou_name_res_from_scope},
+        index_graphs::namespace_index,
         ty::Type,
     },
 };
 use ide_proto::{hir_node::HirNode, walk::WalkHir};
 
 use crate::tests::utils::find_namespace_with_name;
+use crate::tests::utils::pou_name_res_from_scope;
 use crate::tests::utils::test_diagnostics;
 use crate::tests::utils::with_db;
 use crate::tests::utils::{add_sources, find_pou_with_name};

@@ -33,8 +33,6 @@ impl<'db> InferExprCtx<'db> {
         curr_expr: Expr<'db>,
         inference_results: &mut BodyInferenceResult<'db>,
     ) -> Type<'db> {
-        // todo: move operator logic to here and return Type::Never for unsupported operators,
-        // instead of pushing errors in check_expr
         match curr_expr.expr(db) {
             ExprKind::AddOperator { left, right, .. }
             | ExprKind::MultOperator { left, right, .. }

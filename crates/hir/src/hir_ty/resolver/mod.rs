@@ -2,6 +2,7 @@ use db::WorkspaceDataBase;
 
 pub mod func_call;
 pub mod invocation;
+pub mod name;
 pub mod visibility;
 pub mod walk;
 
@@ -16,10 +17,7 @@ use crate::{
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
-    hir_ty::{
-        body::BodyInferenceResult, head::signature::infer_signature,
-        name_res::resolve_namespace_access, resolver::walk::PathPlaceBuilder, ty::Type,
-    },
+    hir_ty::{body::BodyInferenceResult, resolver::walk::PathPlaceBuilder, ty::Type},
 };
 
 #[derive(Debug, Copy, Clone)]
@@ -78,33 +76,23 @@ impl<'db> Resolver<'db> {
             return false;
         };
 
-        // Methods declarations, just like FUNCTIONS, can reference themselves (return type)
-        // but the resolve_namespace_access only searches for POUs,
-        // so we also check if the target matches the name of a method in the current scope
-        // todo: move this logic inside resolve_namespace_access and make it more robust (handle shadowing, etc.)
-        if let ScopeKind::MethodDecl(method) = get_scope(db, path_expr.get_scope_id(db)).kind {
-            // todo: check shadowing
-            if access.target == method.name(db) {
+        match name::resolve_name(db, access, path_expr.get_scope_id(db)) {
+            name::NameResolution::MethodSelf(method) => {
                 ctx.type_of_path_expr
                     .insert(path_expr, Type::MethodDecl(method.into()));
-                return true;
+                true
             }
-        }
-
-        // Generics
-        let signature = infer_signature(db, path_expr.scope_id(db));
-        if let Some(generic_type) = signature.type_of_generic.get(&access.target) {
-            ctx.type_of_path_expr.insert(path_expr, *generic_type);
-            return true;
-        }
-
-        match resolve_namespace_access(db, access) {
-            Some(pou) => {
+            name::NameResolution::Generic(g) => {
+                ctx.type_of_path_expr
+                    .insert(path_expr, Type::Generic(g));
+                true
+            }
+            name::NameResolution::Pou(pou) => {
                 ctx.type_of_path_expr
                     .insert(path_expr, Type::new_pou(db, pou));
                 true
             }
-            None => {
+            name::NameResolution::NotFound => {
                 ctx.errors.push(
                     ResolveError::NoItemInScope {
                         expr: path_expr,

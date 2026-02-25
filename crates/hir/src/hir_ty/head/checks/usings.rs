@@ -9,7 +9,7 @@ use crate::{
         analysis_error::ToIdeDiagnostic, e1_duplicates::DuplicateError, e2_resolve::ResolveError,
     },
     hir_def::semantic_index::get_scope,
-    hir_ty::{head::init_inference::InitInference, name_res::namespace_index},
+    hir_ty::{head::init_inference::InitInference, index_graphs::namespace_index},
 };
 
 impl<'db> InitInference<'db> {

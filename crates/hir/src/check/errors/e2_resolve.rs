@@ -26,7 +26,7 @@ use crate::{
         semantic_index::get_scope,
     },
     hir_ty::{
-        name_res::namespace_index,
+        index_graphs::namespace_index,
         ty::{CallableType, Type},
     },
     query_string::{

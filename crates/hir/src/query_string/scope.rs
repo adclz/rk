@@ -11,7 +11,7 @@ use crate::{
         scope::{ScopeId, ScopeKind},
         semantic_index::semantic_index,
     },
-    hir_ty::name_res::namespace_index,
+    hir_ty::index_graphs::namespace_index,
     query_string::{
         file::{file_symbol_index, std_lib_symbol_index},
         query::{Query, SymbolKind},

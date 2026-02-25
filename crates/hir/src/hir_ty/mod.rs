@@ -5,6 +5,6 @@ pub mod display;
 pub mod expr_store;
 pub mod head;
 pub mod infer;
-pub mod name_res;
+pub mod index_graphs;
 pub mod resolver;
 pub mod ty;

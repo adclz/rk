@@ -305,6 +305,7 @@ impl<'db> Type<'db> {
             FieldLookup::Variable(var) => {
                 let ty = Type::new_var_with_multibits(db, var, multibits);
                 ctx.type_of_path_expr.insert(expr, ty);
+                ctx.variables_used.insert(var);
                 place.current_typ = ty;
                 place.current_path = expr;
             }

@@ -13,7 +13,7 @@ use crate::{
     },
     hir_ty::{
         body::BodyInferenceResult, expr_store::PathExprWalkStep,
-        head::init_inference::InitExprInferenceResult, infer::Infer, name_res::program_index,
+        head::init_inference::InitExprInferenceResult, infer::Infer, index_graphs::program_index,
         ty::Type,
     },
 };

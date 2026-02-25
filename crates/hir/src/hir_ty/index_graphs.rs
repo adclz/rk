@@ -2,17 +2,16 @@ use db::WorkspaceDataBase;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    HasName, HirNodeInfo,
+    HasName,
     hir_def::{
         config::{ConfigDecl, ConfigResource},
         interned::{
-            identifier::{Ident, SpanIdent},
-            namespace::{NamespaceAccess, NamespacePath},
+            identifier::Ident,
+            namespace::NamespacePath,
         },
         namespace::NamespaceDecl,
         pous::{pou::Pou, variable::VariableDecl},
         program::ProgramDecl,
-        scope::{ScopeId, ScopeKind},
         semantic_index::semantic_index,
     },
 };
@@ -176,71 +175,6 @@ pub fn config_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<
     workspace_config_index(db).get(&name).copied()
 }
 
-#[tracing::instrument(skip_all)]
-/// Resolve a namespace access to a POU declaration.
-pub(crate) fn resolve_namespace_access<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    access: &NamespaceAccess<'db>,
-) -> Option<Pou<'db>> {
-    let target = &access.target;
-
-    match &access.namespace {
-        // There's a namespace specified, so we look for it
-        Some(path) => namespace_index(db, **path)
-            .iter()
-            .find_map(|ns| pou_names_res(db, target.ident, ns.scope_id(db))),
-        // None, look for the POU in the current scope
-        None => pou_names_res(db, target.ident, target.scope_id),
-    }
-}
-
-#[tracing::instrument(skip_all)]
-pub fn find_in_parent_pous<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    name: Ident,
-    scope: ScopeId<'db>,
-) -> Option<Pou<'db>> {
-    let it = semantic_index(db, scope.file(db)).scope_iterator(db, scope);
-    for scope in it {
-        // Find POUs in all shared namespaces
-        if let ScopeKind::Namespace(ns) = scope.kind {
-            for ns in namespace_index(db, *ns.path(db)).iter() {
-                if let Some(p) = ns.scope_id(db).def_map(db).local_pous.get(&name) {
-                    return Some(*p);
-                }
-            }
-        }
-
-        // Find POUs in all USING directives
-        for using in &scope.usings {
-            for ns in namespace_index(db, *using.path(db)).iter() {
-                if let Some(p) = ns.scope_id(db).def_map(db).local_pous.get(&name) {
-                    return Some(*p);
-                }
-            }
-        }
-    }
-
-    None
-}
-
-pub fn pou_names_res<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    name: Ident,
-    scope: ScopeId<'db>,
-) -> Option<Pou<'db>> {
-    // Checks for POUs declared in the current scope
-    scope
-        .def_map(db)
-        .local_pous
-        .get(&name)
-        .copied()
-        .or_else(|| {
-            // Checks for parent POUs and those imported via USING directives
-            find_in_parent_pous(db, name, scope).or_else(|| pou_index(db, name))
-        })
-}
-
 /// Collects all VAR_GLOBAL variables from every CONFIGURATION and RESOURCE in the workspace.
 ///
 /// Used to validate VAR_EXTERNAL declarations: any VAR_EXTERNAL must reference a name
@@ -278,15 +212,3 @@ pub fn external_var_lookup<'db>(
     workspace_config_globals(db).get(&var_name).copied()
 }
 
-pub fn pou_name_res_from_scope<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    scope: impl HirNodeInfo<'db>,
-    name: &str,
-) -> Option<Pou<'db>> {
-    let span_ident = SpanIdent {
-        id: crate::AstId(0),
-        ident: Ident::from_slice(db, name),
-        scope_id: scope.get_scope_id(db),
-    };
-    pou_names_res(db, span_ident.ident, scope.get_scope_id(db))
-}

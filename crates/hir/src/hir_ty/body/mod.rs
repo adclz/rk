@@ -1,6 +1,6 @@
 use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     hir_def::{
@@ -93,6 +93,10 @@ pub struct BodyInferenceResult<'db> {
 
     // Errors encountered during inference
     pub errors: Vec<IdeDiagnostic>,
+
+    // Set of variables that were referenced in the body.
+    // Populated during statement resolution for use by the linter.
+    pub variables_used: FxHashSet<VariableDecl<'db>>,
 }
 
 impl<'db> BodyInferenceResult<'db> {
@@ -107,6 +111,7 @@ impl<'db> BodyInferenceResult<'db> {
             path_expr_adjustments: FxHashMap::default(),
             generic_substitutions: FxHashMap::default(),
             errors: Vec::new(),
+            variables_used: FxHashSet::default(),
         }
     }
 
@@ -272,6 +277,7 @@ impl<'db> BodyInferenceResult<'db> {
     pub fn variable_for_param(&self, param: ParamAssign<'db>) -> Option<VariableDecl<'db>> {
         self.variable_of_param.get(&param).copied()
     }
+
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
