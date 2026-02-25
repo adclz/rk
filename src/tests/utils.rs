@@ -15,10 +15,13 @@ use auto_lsp::{
 use db::RootDatabase;
 use db::WorkspaceDataBase;
 use hir::HasName;
+use hir::HirNodeInfo;
 use hir::check::diagnostics_for_file;
+use hir::hir_def::interned::identifier::Ident;
 use hir::hir_def::namespace::NamespaceDecl;
 use hir::hir_def::pous::pou::Pou;
 use hir::hir_def::semantic_index::semantic_index;
+use hir::hir_ty::resolver::name::pou_names_res;
 use rstest::fixture;
 
 #[fixture]
@@ -112,6 +115,43 @@ pub fn test_diagnostics<'db>(db: &'db mut RootDatabase, source: &'db [&'db str])
     String::from_utf8(cache).unwrap()
 }
 
+/// Like [`test_diagnostics`] but also runs the linter, so lint warnings are included.
+pub fn test_lint_diagnostics<'db>(db: &'db mut RootDatabase, source: &'db [&'db str]) -> String {
+    add_sources(db, source);
+    let mut cache = vec![];
+
+    let mut files = db.get_files().iter().map(|file| *file).collect::<Vec<_>>();
+    files.sort_by_key(|file| {
+        let url_str = file.url(db).as_str();
+        url_str
+            .strip_prefix("file:///test")
+            .and_then(|s| s.strip_suffix(".st"))
+            .and_then(|s| s.parse::<u32>().ok())
+            .unwrap_or(0)
+    });
+
+    let file_sources = files
+        .iter()
+        .map(|file| (file.url(db).as_str(), file.document(db).as_str()))
+        .collect::<Vec<_>>();
+
+    for file in files {
+        linter::lint_and_check_file(db, file).iter().for_each(|d| {
+            d.create_report(
+                db,
+                file.url(db),
+                file.document(db).as_str(),
+                Some(no_color_and_ascii()),
+                false,
+            )
+            .write(sources(file_sources.clone()), &mut cache)
+            .unwrap();
+        });
+    }
+
+    String::from_utf8(cache).unwrap()
+}
+
 pub fn find_pou_with_name<'db>(
     db: &'db dyn WorkspaceDataBase,
     file: File,
@@ -150,4 +190,13 @@ pub fn find_namespace_with_name<'db>(
     }
 
     None
+}
+
+/// Convenience wrapper for tests: resolve a POU by name string within a scope.
+pub fn pou_name_res_from_scope<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    scope: impl HirNodeInfo<'db>,
+    name: &str,
+) -> Option<Pou<'db>> {
+    pou_names_res(db, Ident::from_slice(db, name), scope.get_scope_id(db))
 }

@@ -2,7 +2,7 @@ use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use hir::check::diagnostics_for_file;
 use hir::hir_def::semantic_index::semantic_index;
-use hir::hir_ty::name_res::config_index;
+use hir::hir_ty::index_graphs::config_index;
 use insta::assert_snapshot;
 use rstest::rstest;
 
