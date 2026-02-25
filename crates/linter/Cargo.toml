@@ -1,0 +1,17 @@
+[package]
+name = "linter"
+version = "0.1.0"
+authors = { workspace = true }
+license = { workspace = true }
+edition = { workspace = true }
+publish = false
+
+
+[dependencies]
+auto-lsp = { workspace = true }
+tree-sitter-rk = { workspace = true }
+db = { workspace = true }
+ast = { workspace = true }
+hir = { workspace = true }
+ide_proto = { workspace = true }
+ide_diagnostic = { workspace = true }

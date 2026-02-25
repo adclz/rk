@@ -19,6 +19,7 @@ members = [
     "crates/wasm_codegen",
     "crates/cli",
     "crates/benchmark",
+    "crates/linter",
     "vscode/server",
 ]
 
@@ -39,6 +40,7 @@ ide_proto = { path = "crates/ide_proto" }
 hir = { path = "crates/hir" }
 wasm_codegen = { path = "crates/wasm_codegen" }
 formatter = { path = "crates/formatter" }
+linter = { path = "crates/linter" }
 bon = "3.6.4"
 phf = { version = "0.11.3", features = ["macros"] }
 bitflags = "2.9.1"
