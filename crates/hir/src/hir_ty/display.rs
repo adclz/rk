@@ -73,7 +73,6 @@ impl ElementarySpec {
 }
 
 impl<'db> Type<'db> {
-    #[cfg(debug_assertions)]
     pub fn kind(&self) -> &'static str {
         match self {
             Self::Program(program) => "PROGRAM",

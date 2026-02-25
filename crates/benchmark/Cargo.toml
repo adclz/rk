@@ -1,0 +1,25 @@
+[package]
+name = "rk-benchmark"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+publish = false
+
+[lib]
+bench = false
+test = false
+doctest = false
+
+[dependencies]
+auto-lsp = { workspace = true }
+ast = { workspace = true }
+db = { workspace = true }
+hir = { workspace = true }
+
+[[bench]]
+name = "hir"
+harness = false
+
+[dev-dependencies]
+divan = { workspace = true }

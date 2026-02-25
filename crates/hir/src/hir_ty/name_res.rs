@@ -278,7 +278,6 @@ pub fn external_var_lookup<'db>(
     workspace_config_globals(db).get(&var_name).copied()
 }
 
-#[cfg(debug_assertions)]
 pub fn pou_name_res_from_scope<'db>(
     db: &'db dyn WorkspaceDataBase,
     scope: impl HirNodeInfo<'db>,

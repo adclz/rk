@@ -18,6 +18,7 @@ members = [
     "crates/fuzz",
     "crates/wasm_codegen",
     "crates/cli",
+    "crates/benchmark",
     "vscode/server",
 ]
 
@@ -67,6 +68,8 @@ tree-sitter-language = "0.1.7"
 clap = { version = "4.5.54" }
 yansi = { version = "1.0.1" }
 notify = "8.1.0"
+# benchmarks
+divan = "0.1"
 # backends
 wasm-encoder = "0.244.0"
 wasmparser = "0.244.0"
