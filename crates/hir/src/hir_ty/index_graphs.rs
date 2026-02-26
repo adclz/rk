@@ -48,10 +48,6 @@ fn workspace_namespace_index<'db>(
         }
     }
 
-    eprintln!(
-        "size of stdlib namespace index: {}",
-        db.get_std_lib_files().len()
-    );
     for file in db.get_std_lib_files().iter() {
         for ns in semantic_index(db, *file).global_namespaces.iter() {
             result
