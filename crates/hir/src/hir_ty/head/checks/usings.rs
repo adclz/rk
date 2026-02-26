@@ -5,9 +5,7 @@ use rustc_hash::{FxBuildHasher, FxHashMap};
 
 use crate::{
     CallSite,
-    check::errors::{
-        ToIdeDiagnostic, e1_duplicates::DuplicateError, e2_resolve::ResolveError,
-    },
+    check::errors::{ToIdeDiagnostic, e1_duplicates::DuplicateError, e2_resolve::ResolveError},
     hir_def::semantic_index::get_scope,
     hir_ty::{head::init_inference::InitInference, index_graphs::namespace_index},
 };

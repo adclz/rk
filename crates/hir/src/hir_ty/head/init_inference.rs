@@ -4,9 +4,7 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     CallSite,
-    check::errors::{
-        ToIdeDiagnostic, e1_duplicates::DuplicateError, e6_array::ArrayError,
-    },
+    check::errors::{ToIdeDiagnostic, e1_duplicates::DuplicateError, e6_array::ArrayError},
     hir_def::{
         expressions::expression::InitExpr,
         interned::identifier::Ident,

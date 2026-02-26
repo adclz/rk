@@ -1,7 +1,6 @@
 use crate::Visibility;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::{Parse, ParseSpec, ParseVarSection};
-use ide_diagnostic::IdeDiagnostic;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::pous::function::Function;
 use crate::hir_def::pous::pou::Pou;
@@ -9,6 +8,7 @@ use crate::hir_def::pous::variable::VariableDecl;
 use crate::hir_def::scope::ScopeKind;
 use ast::generated::FuncVariables;
 use auto_lsp::anyhow;
+use ide_diagnostic::IdeDiagnostic;
 
 impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_function(
@@ -75,10 +75,7 @@ impl<'db> SemanticIndexBuilder<'db> {
 }
 
 impl<'db> SemanticIndexBuilder<'db> {
-    fn parse_func_variables(
-        &mut self,
-        func: &ast::generated::FuncDecl,
-    ) -> Vec<VariableDecl<'db>> {
+    fn parse_func_variables(&mut self, func: &ast::generated::FuncDecl) -> Vec<VariableDecl<'db>> {
         let mut variables = vec![];
 
         for variable in func.variables.iter() {

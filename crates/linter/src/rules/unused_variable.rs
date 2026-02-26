@@ -34,7 +34,7 @@ pub fn check<'db>(
 ) {
     let def_map = scope.def_map(db);
 
-    for (_, var) in &def_map.global_variables {
+    for var in def_map.global_variables.values() {
         check_variable(db, scope, *var, &body.variables_used, diagnostics);
     }
 }
@@ -80,7 +80,7 @@ fn check_variable<'db>(
         return;
     }
 
-    let mut diag  = diag()
+    let mut diag = diag()
         .message(format!("unused variable '{name}'"))
         .severity(DiagnosticSeverity::WARNING)
         .tags(vec![DiagnosticTag::UNNECESSARY])

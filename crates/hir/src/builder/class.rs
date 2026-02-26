@@ -1,7 +1,6 @@
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::{Parse, ParseSpec, ParseVarSection};
 use crate::check::errors::ToIdeDiagnostic;
-use ide_diagnostic::IdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
@@ -12,20 +11,21 @@ use crate::{Modifier, Visibility};
 use ast::generated::{ClassDecl, ClassVariables};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::{AstNode, AstNodeId};
+use ide_diagnostic::IdeDiagnostic;
 
 impl<'db> SemanticIndexBuilder<'db> {
-    pub fn parse_class(
-        &mut self,
-        class: &ClassDecl,
-    ) -> anyhow::Result<Pou<'db>, IdeDiagnostic> {
+    pub fn parse_class(&mut self, class: &ClassDecl) -> anyhow::Result<Pou<'db>, IdeDiagnostic> {
         let scope_id = self.generate_scope_id();
         let previous_scope = self.current_scope;
         self.current_scope = scope_id;
 
-        let extends = class
-            .extends
-            .as_ref()
-            .and_then(|e| self.try_parse(SpanNamespaceAccess::from_ast(self.db, self, e.cast(self.ast))));
+        let extends = class.extends.as_ref().and_then(|e| {
+            self.try_parse(SpanNamespaceAccess::from_ast(
+                self.db,
+                self,
+                e.cast(self.ast),
+            ))
+        });
 
         let implements = class
             .implements
@@ -34,7 +34,13 @@ impl<'db> SemanticIndexBuilder<'db> {
                 i.cast(self.ast)
                     .children
                     .iter()
-                    .filter_map(|i| self.try_parse(SpanNamespaceAccess::from_ast(self.db, self, i.cast(self.ast))))
+                    .filter_map(|i| {
+                        self.try_parse(SpanNamespaceAccess::from_ast(
+                            self.db,
+                            self,
+                            i.cast(self.ast),
+                        ))
+                    })
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
@@ -128,7 +134,11 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         let method = m.cast(self.ast);
 
-        let name = self.try_parse(Ident::from_node(self.db, self.file, method.name.cast(self.ast)))?;
+        let name = self.try_parse(Ident::from_node(
+            self.db,
+            self.file,
+            method.name.cast(self.ast),
+        ))?;
 
         let mut modifiers = match method.modifier.as_ref().map(|m| m.cast(self.ast)) {
             Some(ast::generated::Operators_2::Token_ABSTRACT(_)) => Modifier::ABSTRACT,
@@ -156,7 +166,8 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         let mut body = vec![];
         if let Some(body_node) = method.body.as_ref()
-            && let ast::generated::FbDiagram_LadderDiagram_StmtList::StmtList(stmts) = body_node.cast(self.ast).children.cast(self.ast)
+            && let ast::generated::FbDiagram_LadderDiagram_StmtList::StmtList(stmts) =
+                body_node.cast(self.ast).children.cast(self.ast)
         {
             for stmt in stmts.children.iter() {
                 let r = stmt.cast(self.ast).parse(self);
@@ -166,15 +177,24 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
         }
 
-        let return_type = method.return_type.as_ref().map(|rt| rt.cast(self.ast).to_spec(self));
+        let return_type = method
+            .return_type
+            .as_ref()
+            .map(|rt| rt.cast(self.ast).to_spec(self));
         let return_type = return_type.and_then(|rt| self.try_parse(rt));
 
         let visibility = match &method.access {
             Some(access) => match access.cast(self.ast).children.cast(self.ast) {
-                ast::generated::Internal_Private_Protected_Public::Private(_) => Visibility::PRIVATE,
-                ast::generated::Internal_Private_Protected_Public::Protected(_) => Visibility::PROTECTED,
+                ast::generated::Internal_Private_Protected_Public::Private(_) => {
+                    Visibility::PRIVATE
+                }
+                ast::generated::Internal_Private_Protected_Public::Protected(_) => {
+                    Visibility::PROTECTED
+                }
                 ast::generated::Internal_Private_Protected_Public::Public(_) => Visibility::PUBLIC,
-                ast::generated::Internal_Private_Protected_Public::Internal(_) => Visibility::INTERNAL,
+                ast::generated::Internal_Private_Protected_Public::Internal(_) => {
+                    Visibility::INTERNAL
+                }
             },
             None => Visibility::PROTECTED,
         };

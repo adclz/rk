@@ -101,8 +101,8 @@ impl<'db> InferExprCtx<'db> {
                 ty
             }
             ExprKind::PrimaryExpr(primary) => {
-                if let PrimaryExpr::Literal(elem) = primary {
-                    if let Err(err) = elem.check(db) {
+                if let PrimaryExpr::Literal(elem) = primary
+                    && let Err(err) = elem.check(db) {
                         let ty: Type = (*elem).into();
                         inference_results.errors.push(
                             TypeError::InferLiteralError {
@@ -114,7 +114,6 @@ impl<'db> InferExprCtx<'db> {
                             .to_diagnostic(db),
                         );
                     }
-                }
                 let primary = self.infer_primary(db, primary, inference_results);
                 inference_results.type_of_expr.insert(curr_expr, primary);
                 inference_results.type_of_expr[&curr_expr]
@@ -164,7 +163,7 @@ impl<'db> InferExprCtx<'db> {
                                 TypeError::UnsupportedOperator {
                                     call_site: curr_expr.as_call_site(db),
                                     typ: Type::new_var(db, *var),
-                                    operator: &operator.as_str(),
+                                    operator: operator.as_str(),
                                 }
                                 .to_diagnostic(db),
                             );

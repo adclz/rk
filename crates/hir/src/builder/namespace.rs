@@ -5,12 +5,12 @@ use auto_lsp::core::ast::AstNode;
 use super::semantic_index::SemanticIndexBuilder;
 use crate::Visibility;
 use crate::check::errors::ToIdeDiagnostic;
-use ide_diagnostic::IdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::interned::namespace::SpanNamespacePath;
 use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::scope::ScopeKind;
+use ide_diagnostic::IdeDiagnostic;
 
 impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_namespace(
@@ -64,8 +64,7 @@ impl<'db> SemanticIndexBuilder<'db> {
                     }
                     Decl::ERRInvalidPouKeyword(err) => {
                         self.errors.push(
-                            SyntaxError::InvalidPouKeyword(err.get_span())
-                                .to_diagnostic(self.db),
+                            SyntaxError::InvalidPouKeyword(err.get_span()).to_diagnostic(self.db),
                         );
                     }
                 }

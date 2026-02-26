@@ -83,8 +83,7 @@ impl<'db> Resolver<'db> {
                 true
             }
             name::NameResolution::Generic(g) => {
-                ctx.type_of_path_expr
-                    .insert(path_expr, Type::Generic(g));
+                ctx.type_of_path_expr.insert(path_expr, Type::Generic(g));
                 true
             }
             name::NameResolution::Pou(pou) => {
@@ -207,8 +206,8 @@ impl<'db> Resolver<'db> {
 
             // Shadowing detection: on the first step, if a variable was resolved,
             // check if a POU with the same name is also visible in this scope.
-            if is_first_step {
-                if let Some(Type::Variable((var, _))) =
+            if is_first_step
+                && let Some(Type::Variable((var, _))) =
                     ctx.type_of_path_expr.get(&step.get_expr(db))
                 {
                     let var_name = var.get_name_ident(db);
@@ -218,7 +217,6 @@ impl<'db> Resolver<'db> {
                         ctx.variables_shadowing.insert(*var, pou);
                     }
                 }
-            }
 
             current = ctx.type_of_path_expr_with_adjustments(step.get_expr(db));
         }

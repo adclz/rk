@@ -143,7 +143,7 @@ pub enum ResolveError<'db> {
     AmbiguousUsingImport {
         expr: PathExpr<'db>,
         candidates: Vec<(Pou<'db>, NamespacePath)>,
-    }
+    },
 }
 
 impl<'db> ErrorCode for ResolveError<'db> {
@@ -580,25 +580,22 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 .call(),
             Self::NonVariadicTypeForVariable { var, typ } => {
                 let mut diag = diag()
-                .message(format!(
-                    "variable '{}' is declared as variadic but has non-variadic type '{}'",
-                    var.name(db).text(db),
-                    typ.type_name(db)
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(var.get_span(db))
-                .call();
+                    .message(format!(
+                        "variable '{}' is declared as variadic but has non-variadic type '{}'",
+                        var.name(db).text(db),
+                        typ.type_name(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(var.get_span(db))
+                    .call();
 
-            diag.with_note("only elementary types can be variadic".into());
-            diag
-            },
+                diag.with_note("only elementary types can be variadic".into());
+                diag
+            }
             Self::AmbiguousUsingImport { expr, candidates } => {
                 let name = expr.ident(db).text(db);
-                let ns_list: Vec<_> = candidates
-                    .iter()
-                    .map(|(_, ns)| ns.to_string(db))
-                    .collect();
+                let ns_list: Vec<_> = candidates.iter().map(|(_, ns)| ns.to_string(db)).collect();
 
                 let mut diag = diag()
                     .message(format!(

@@ -5,16 +5,24 @@ use db::WorkspaceDataBase;
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 use crate::{
-    CallSite, HasName, HirNodeInfo, check::errors::ToIdeDiagnostic, hir_def::{
+    CallSite, HasName, HirNodeInfo,
+    check::errors::ToIdeDiagnostic,
+    hir_def::{
         expressions::{
             expression::{AddOperatorKind, Expr, MultOperatorKind},
             spec::Spec,
-        }, interned::identifier::Ident, pous::{generics::{AnyGeneric, GenericParam}, variable::VariableDecl}
-    }, hir_ty::{
+        },
+        interned::identifier::Ident,
+        pous::{
+            generics::{AnyGeneric, GenericParam},
+            variable::VariableDecl,
+        },
+    },
+    hir_ty::{
         body::{Adjust, Adjustment},
-        infer::{Infer, table::InferSource},
+        infer::table::InferSource,
         ty::Type,
-    }
+    },
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
@@ -377,20 +385,24 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 .range(call_site.get_span(db))
                 .call(),
             Self::NonVariadicFoldParameter { var, call_site } => {
-            let mut diag = diag()
-                .message(format!(
-                    "variable '{}' is not variadic",
-                    var.get_name_ident(db).text(db)
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(call_site.get_span(db))
-                .call();
-                
+                let mut diag = diag()
+                    .message(format!(
+                        "variable '{}' is not variadic",
+                        var.get_name_ident(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(call_site.get_span(db))
+                    .call();
+
                 diag.with_note("... can only be used on VAR_INPUT variables that are declared variadic with the same operator (e.g: INT...)".into());
                 diag
-            },
-            Self::UnsupportedOperator { typ, operator, call_site } => {
+            }
+            Self::UnsupportedOperator {
+                typ,
+                operator,
+                call_site,
+            } => {
                 let mut diag = diag()
                     .message(format!(
                         "operator '{}' cannot be applied to type '{}'",
@@ -404,7 +416,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
 
                 typ.with_location(db, &mut diag);
                 diag
-            },
+            }
             Self::Other { message, expr } => diag()
                 .message(message.clone())
                 .severity(DiagnosticSeverity::ERROR)
@@ -618,34 +630,30 @@ fn explicit_cast_suggestion(
     actual_site: CallSite,
     diag: &mut IdeDiagnostic,
 ) {
-    match (expected.normalize(db), actual.normalize(db)) {
-        (Type::Elementary(lhs), Type::Elementary(rhs)) => {
+    if let (Type::Elementary(lhs), Type::Elementary(rhs)) = (expected.normalize(db), actual.normalize(db)) {
+        if lhs.explicit_cast(rhs) {
+            diag.with_related(Related::new(
+                format!(
+                    "consider explicitly casting with '{}_TO_{}({})'",
+                    rhs.type_name(),
+                    lhs.type_name(),
+                    actual_site.to_string(db)
+                ),
+                actual_site.get_scope_id(db).file(db),
+                actual_site.get_span(db),
+            ));
 
-            if lhs.explicit_cast(rhs) {
-                diag.with_related(Related::new(
-                    format!(
-                        "consider explicitly casting with '{}_TO_{}({})'",
-                        rhs.type_name(),
-                        lhs.type_name(),
-                        actual_site.to_string(db)
-                    ),
-                    actual_site.get_scope_id(db).file(db),
-                    actual_site.get_span(db),
-                ));
-
-                diag.with_fix(CodeAction {
-                    title: format!(
-                        "insert explicit cast '{}_TO_{}({})'",
-                        lhs.type_name(),
-                        rhs.type_name(),
-                        actual_site.to_string(db)
-                    ),
-                    edit: Some(WorkspaceEdit::new(HashMap::new())),
-                    is_preferred: Some(true),
-                    ..Default::default()
-                });
-            }
+            diag.with_fix(CodeAction {
+                title: format!(
+                    "insert explicit cast '{}_TO_{}({})'",
+                    lhs.type_name(),
+                    rhs.type_name(),
+                    actual_site.to_string(db)
+                ),
+                edit: Some(WorkspaceEdit::new(HashMap::new())),
+                is_preferred: Some(true),
+                ..Default::default()
+            });
         }
-        _ => {}
     }
 }

@@ -3,8 +3,7 @@ use ide_diagnostic::IdeDiagnostic;
 use crate::{
     Visibility,
     builder::{
-        Parse,
-        ParseVarSection,
+        Parse, ParseVarSection,
         semantic_index::SemanticIndexBuilder,
         variables::{ParseLocatedVar, ParseProgDecl},
     },

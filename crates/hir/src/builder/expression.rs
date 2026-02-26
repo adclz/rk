@@ -6,7 +6,6 @@ use crate::builder::ParseSpec;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::ToIdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
-use ide_diagnostic::IdeDiagnostic;
 use crate::hir_def::expressions::expression::{
     BeginPathExpr, FieldExpr, FuncCall, IndexExpr, Integer, IntegerKind, ParamAssignKind, PathExpr,
     VariableAccessKind,
@@ -22,6 +21,7 @@ use crate::{
     },
     hir_def::interned::identifier::Ident,
 };
+use ide_diagnostic::IdeDiagnostic;
 impl<'db> Parse<'db> for ast::generated::Expression {
     type Output = Expr<'db>;
 
@@ -197,8 +197,7 @@ impl<'db> Parse<'db> for ast::generated::Expression {
             }
             ast::generated::Expression::FoldExpression(fold) => {
                 let param = Ident::from_node(sema.db, sema.file, fold.param.cast(sema.ast))?;
-                let param_id =
-                    SpanIdent::from_node(sema.db, sema, fold.param.cast(sema.ast))?;
+                let param_id = SpanIdent::from_node(sema.db, sema, fold.param.cast(sema.ast))?;
 
                 use ast::generated::FoldAnd_FoldDiv_FoldEq_FoldGe_FoldGt_FoldLe_FoldLt_FoldMinus_FoldMod_FoldMul_FoldNe_FoldOr_FoldPlus_FoldPower_FoldXor as FoldOp;
                 let operator = match fold.operator.cast(sema.ast).children.cast(sema.ast) {

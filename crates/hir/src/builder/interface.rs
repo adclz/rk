@@ -1,13 +1,13 @@
 use crate::Visibility;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::{ParseSpec, ParseVarSection};
-use ide_diagnostic::IdeDiagnostic;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use crate::hir_def::pous::interface::{Interface, MethodPrototype};
 use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::scope::{ScopeId, ScopeKind};
 use auto_lsp::anyhow;
+use ide_diagnostic::IdeDiagnostic;
 
 impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_interface(
@@ -28,8 +28,12 @@ impl<'db> SemanticIndexBuilder<'db> {
                     .children
                     .iter()
                     .filter_map(|i| {
-                        self.try_parse(SpanNamespaceAccess::from_ast(self.db, self, i.cast(self.ast)))
-                            .map(Some)
+                        self.try_parse(SpanNamespaceAccess::from_ast(
+                            self.db,
+                            self,
+                            i.cast(self.ast),
+                        ))
+                        .map(Some)
                     })
                     .collect()
             })

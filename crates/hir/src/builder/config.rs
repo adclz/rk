@@ -6,8 +6,7 @@ use ide_diagnostic::IdeDiagnostic;
 use crate::{
     Visibility,
     builder::{
-        Parse, ParseSpec, ParseVarSection,
-        expression::ParseDirectVariable,
+        Parse, ParseSpec, ParseVarSection, expression::ParseDirectVariable,
         semantic_index::SemanticIndexBuilder,
     },
     check::errors::ToIdeDiagnostic,
@@ -161,10 +160,16 @@ impl<'db> SemanticIndexBuilder<'db> {
         let name = SpanIdent::from_node(self.db, self, tc.name.cast(self.ast))?;
         let init = tc.init.cast(self.ast);
 
-        let single = init.single.as_ref().map(|ds| self.parse_data_source(ds.cast(self.ast)));
+        let single = init
+            .single
+            .as_ref()
+            .map(|ds| self.parse_data_source(ds.cast(self.ast)));
         let single = single.and_then(|r| self.try_parse(r));
 
-        let interval = init.interval.as_ref().map(|ds| self.parse_data_source(ds.cast(self.ast)));
+        let interval = init
+            .interval
+            .as_ref()
+            .map(|ds| self.parse_data_source(ds.cast(self.ast)));
         let interval = interval.and_then(|r| self.try_parse(r));
 
         let priority = Ident::from_node(self.db, self.file, init.priority.cast(self.ast))?;
@@ -258,7 +263,8 @@ impl<'db> SemanticIndexBuilder<'db> {
         }
 
         let path = path.ok_or_else(|| {
-            crate::check::errors::e0_syntax::SyntaxError::InvalidPouKeyword(cnxn.get_span()).to_diagnostic(self.db)
+            crate::check::errors::e0_syntax::SyntaxError::InvalidPouKeyword(cnxn.get_span())
+                .to_diagnostic(self.db)
         })?;
 
         if let Some(source) = source {
@@ -266,7 +272,10 @@ impl<'db> SemanticIndexBuilder<'db> {
         } else if let Some(sink) = sink {
             Ok(ProgCnxn::Sink { path, sink })
         } else {
-            Err(crate::check::errors::e0_syntax::SyntaxError::InvalidPouKeyword(cnxn.get_span()).to_diagnostic(self.db))
+            Err(
+                crate::check::errors::e0_syntax::SyntaxError::InvalidPouKeyword(cnxn.get_span())
+                    .to_diagnostic(self.db),
+            )
         }
     }
 
@@ -326,7 +335,10 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         let path_node = decl.path.cast(self.ast);
         let path_expr = path_node.path.cast(self.ast).parse(self)?;
-        let direct = path_node.direct.as_ref().map(|dv| dv.cast(self.ast).to_direct_variable(self));
+        let direct = path_node
+            .direct
+            .as_ref()
+            .map(|dv| dv.cast(self.ast).to_direct_variable(self));
         let direct = direct.and_then(|r| self.try_parse(r));
         let path = AccessPath {
             path: path_expr,
@@ -378,7 +390,8 @@ impl<'db> SemanticIndexBuilder<'db> {
         }
 
         let init = init_expr.ok_or_else(|| {
-            crate::check::errors::e0_syntax::SyntaxError::InvalidPouKeyword(inst.get_span()).to_diagnostic(self.db)
+            crate::check::errors::e0_syntax::SyntaxError::InvalidPouKeyword(inst.get_span())
+                .to_diagnostic(self.db)
         })?;
 
         Ok(crate::hir_def::config::ConfigInstInit {

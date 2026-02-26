@@ -16,13 +16,13 @@ use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::{Parse, ParseSpec, ParseSpecInit, ParseVarSection, SpecInitResult};
 use crate::check::errors::ToIdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
-use ide_diagnostic::IdeDiagnostic;
 use crate::hir_def::config::AccessDirection;
 use crate::hir_def::expressions::spec::{ElementarySpec, Spec, SpecKind};
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::pous::variable::{DirectVariable, LocatedVariable, VariableDecl, VariableKind};
 use crate::hir_def::program::ProgAccessDecl;
 use crate::{AstId, HirNodeInfo};
+use ide_diagnostic::IdeDiagnostic;
 
 impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
     fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<VariableDecl<'db>>) {
@@ -30,23 +30,22 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_InputVar::ERRVariableWithNoSpec(child) => {
                     sema.errors
-                        .push(SyntaxError::MissingVarType(
-                            child.get_span(),
-                        ).to_diagnostic(sema.db));
+                        .push(SyntaxError::MissingVarType(child.get_span()).to_diagnostic(sema.db));
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_InputVar::InputVar(child) => {
                     match child.Type.cast(sema.ast) {
                         ast::generated::InputVarKind::VarDeclInit(var_decl) => {
                             for variable in child.variables.cast(sema.ast).children.iter() {
-                                let r = Ident::from_node(
-                                    sema.db,
-                                    sema.file,
-                                    variable.cast(sema.ast),
-                                );
-                                let Some(var_name) = sema.try_parse(r) else { continue };
+                                let r =
+                                    Ident::from_node(sema.db, sema.file, variable.cast(sema.ast));
+                                let Some(var_name) = sema.try_parse(r) else {
+                                    continue;
+                                };
                                 let r = var_decl.to_spec_init(sema);
-                                let Some(result) = sema.try_parse(r) else { continue };
+                                let Some(result) = sema.try_parse(r) else {
+                                    continue;
+                                };
                                 section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
@@ -62,14 +61,15 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
                         }
                         ast::generated::InputVarKind::ArrayConformand(var_decl) => {
                             for variable in child.variables.cast(sema.ast).children.iter() {
-                                let r = Ident::from_node(
-                                    sema.db,
-                                    sema.file,
-                                    variable.cast(sema.ast),
-                                );
-                                let Some(var_name) = sema.try_parse(r) else { continue };
+                                let r =
+                                    Ident::from_node(sema.db, sema.file, variable.cast(sema.ast));
+                                let Some(var_name) = sema.try_parse(r) else {
+                                    continue;
+                                };
                                 let r = var_decl.to_spec(sema);
-                                let Some(spec) = sema.try_parse(r) else { continue };
+                                let Some(spec) = sema.try_parse(r) else {
+                                    continue;
+                                };
                                 section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
@@ -85,14 +85,15 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
                         }
                         ast::generated::InputVarKind::EdgeDecl(edge_decl) => {
                             for variable in child.variables.cast(sema.ast).children.iter() {
-                                let r = Ident::from_node(
-                                    sema.db,
-                                    sema.file,
-                                    variable.cast(sema.ast),
-                                );
-                                let Some(var_name) = sema.try_parse(r) else { continue };
+                                let r =
+                                    Ident::from_node(sema.db, sema.file, variable.cast(sema.ast));
+                                let Some(var_name) = sema.try_parse(r) else {
+                                    continue;
+                                };
                                 let r = edge_decl.to_spec_init(sema);
-                                let Some(result) = sema.try_parse(r) else { continue };
+                                let Some(result) = sema.try_parse(r) else {
+                                    continue;
+                                };
                                 section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
@@ -108,14 +109,15 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
                         }
                         ast::generated::InputVarKind::VariadicDecl(variadic_decl) => {
                             for variable in child.variables.cast(sema.ast).children.iter() {
-                                let r = Ident::from_node(
-                                    sema.db,
-                                    sema.file,
-                                    variable.cast(sema.ast),
-                                );
-                                let Some(var_name) = sema.try_parse(r) else { continue };
+                                let r =
+                                    Ident::from_node(sema.db, sema.file, variable.cast(sema.ast));
+                                let Some(var_name) = sema.try_parse(r) else {
+                                    continue;
+                                };
                                 let r = variadic_decl.Type.cast(sema.ast).to_spec(sema);
-                                let Some(spec) = sema.try_parse(r) else { continue };
+                                let Some(spec) = sema.try_parse(r) else {
+                                    continue;
+                                };
                                 section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
@@ -142,23 +144,22 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_FbInputVar::ERRVariableWithNoSpec(child) => {
                     sema.errors
-                        .push(SyntaxError::MissingVarType(
-                            child.get_span(),
-                        ).to_diagnostic(sema.db));
+                        .push(SyntaxError::MissingVarType(child.get_span()).to_diagnostic(sema.db));
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_FbInputVar::FbInputVar(child) => {
                     match child.Type.cast(sema.ast) {
                         ast::generated::FbInputVarKind::VarDeclInit(var_decl) => {
                             for variable in child.variables.cast(sema.ast).children.iter() {
-                                let r = Ident::from_node(
-                                    sema.db,
-                                    sema.file,
-                                    variable.cast(sema.ast),
-                                );
-                                let Some(var_name) = sema.try_parse(r) else { continue };
+                                let r =
+                                    Ident::from_node(sema.db, sema.file, variable.cast(sema.ast));
+                                let Some(var_name) = sema.try_parse(r) else {
+                                    continue;
+                                };
                                 let r = var_decl.to_spec_init(sema);
-                                let Some(result) = sema.try_parse(r) else { continue };
+                                let Some(result) = sema.try_parse(r) else {
+                                    continue;
+                                };
                                 section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
@@ -174,14 +175,15 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
                         }
                         ast::generated::FbInputVarKind::ArrayConformand(var_decl) => {
                             for variable in child.variables.cast(sema.ast).children.iter() {
-                                let r = Ident::from_node(
-                                    sema.db,
-                                    sema.file,
-                                    variable.cast(sema.ast),
-                                );
-                                let Some(var_name) = sema.try_parse(r) else { continue };
+                                let r =
+                                    Ident::from_node(sema.db, sema.file, variable.cast(sema.ast));
+                                let Some(var_name) = sema.try_parse(r) else {
+                                    continue;
+                                };
                                 let r = var_decl.to_spec(sema);
-                                let Some(spec) = sema.try_parse(r) else { continue };
+                                let Some(spec) = sema.try_parse(r) else {
+                                    continue;
+                                };
                                 section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
@@ -197,14 +199,15 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
                         }
                         ast::generated::FbInputVarKind::EdgeDecl(edge_decl) => {
                             for variable in child.variables.cast(sema.ast).children.iter() {
-                                let r = Ident::from_node(
-                                    sema.db,
-                                    sema.file,
-                                    variable.cast(sema.ast),
-                                );
-                                let Some(var_name) = sema.try_parse(r) else { continue };
+                                let r =
+                                    Ident::from_node(sema.db, sema.file, variable.cast(sema.ast));
+                                let Some(var_name) = sema.try_parse(r) else {
+                                    continue;
+                                };
                                 let r = edge_decl.to_spec_init(sema);
-                                let Some(result) = sema.try_parse(r) else { continue };
+                                let Some(result) = sema.try_parse(r) else {
+                                    continue;
+                                };
                                 section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
@@ -231,23 +234,22 @@ impl<'db> ParseVarSection<'db> for ast::generated::OutputDecls {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_OutputVar::ERRVariableWithNoSpec(child) => {
                     sema.errors
-                        .push(SyntaxError::MissingVarType(
-                            child.get_span(),
-                        ).to_diagnostic(sema.db));
+                        .push(SyntaxError::MissingVarType(child.get_span()).to_diagnostic(sema.db));
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_OutputVar::OutputVar(child) => {
                     match child.Type.cast(sema.ast) {
                         ast::generated::OutputVarKind::VarDeclInit(var_decl) => {
                             for variable in child.variables.cast(sema.ast).children.iter() {
-                                let r = Ident::from_node(
-                                    sema.db,
-                                    sema.file,
-                                    variable.cast(sema.ast),
-                                );
-                                let Some(var_name) = sema.try_parse(r) else { continue };
+                                let r =
+                                    Ident::from_node(sema.db, sema.file, variable.cast(sema.ast));
+                                let Some(var_name) = sema.try_parse(r) else {
+                                    continue;
+                                };
                                 let r = var_decl.to_spec_init(sema);
-                                let Some(result) = sema.try_parse(r) else { continue };
+                                let Some(result) = sema.try_parse(r) else {
+                                    continue;
+                                };
                                 section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
@@ -263,14 +265,15 @@ impl<'db> ParseVarSection<'db> for ast::generated::OutputDecls {
                         }
                         ast::generated::OutputVarKind::ArrayConformand(var_decl) => {
                             for variable in child.variables.cast(sema.ast).children.iter() {
-                                let r = Ident::from_node(
-                                    sema.db,
-                                    sema.file,
-                                    variable.cast(sema.ast),
-                                );
-                                let Some(var_name) = sema.try_parse(r) else { continue };
+                                let r =
+                                    Ident::from_node(sema.db, sema.file, variable.cast(sema.ast));
+                                let Some(var_name) = sema.try_parse(r) else {
+                                    continue;
+                                };
                                 let r = var_decl.to_spec(sema);
-                                let Some(spec) = sema.try_parse(r) else { continue };
+                                let Some(spec) = sema.try_parse(r) else {
+                                    continue;
+                                };
                                 section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
@@ -297,23 +300,22 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbOutputDecls {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_FbOutputVar::ERRVariableWithNoSpec(child) => {
                     sema.errors
-                        .push(SyntaxError::MissingVarType(
-                            child.get_span(),
-                        ).to_diagnostic(sema.db));
+                        .push(SyntaxError::MissingVarType(child.get_span()).to_diagnostic(sema.db));
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_FbOutputVar::FbOutputVar(child) => {
                     match child.Type.cast(sema.ast) {
                         ast::generated::FbOutputVarKind::VarDeclInit(var_decl) => {
                             for variable in child.variables.cast(sema.ast).children.iter() {
-                                let r = Ident::from_node(
-                                    sema.db,
-                                    sema.file,
-                                    variable.cast(sema.ast),
-                                );
-                                let Some(var_name) = sema.try_parse(r) else { continue };
+                                let r =
+                                    Ident::from_node(sema.db, sema.file, variable.cast(sema.ast));
+                                let Some(var_name) = sema.try_parse(r) else {
+                                    continue;
+                                };
                                 let r = var_decl.to_spec_init(sema);
-                                let Some(result) = sema.try_parse(r) else { continue };
+                                let Some(result) = sema.try_parse(r) else {
+                                    continue;
+                                };
                                 section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
@@ -329,14 +331,15 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbOutputDecls {
                         }
                         ast::generated::FbOutputVarKind::ArrayConformand(var_decl) => {
                             for variable in child.variables.cast(sema.ast).children.iter() {
-                                let r = Ident::from_node(
-                                    sema.db,
-                                    sema.file,
-                                    variable.cast(sema.ast),
-                                );
-                                let Some(var_name) = sema.try_parse(r) else { continue };
+                                let r =
+                                    Ident::from_node(sema.db, sema.file, variable.cast(sema.ast));
+                                let Some(var_name) = sema.try_parse(r) else {
+                                    continue;
+                                };
                                 let r = var_decl.to_spec(sema);
-                                let Some(spec) = sema.try_parse(r) else { continue };
+                                let Some(spec) = sema.try_parse(r) else {
+                                    continue;
+                                };
                                 section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
@@ -363,23 +366,22 @@ impl<'db> ParseVarSection<'db> for ast::generated::TempVarDecls {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_TempVar::ERRVariableWithNoSpec(child) => {
                     sema.errors
-                        .push(SyntaxError::MissingVarType(
-                            child.get_span(),
-                        ).to_diagnostic(sema.db));
+                        .push(SyntaxError::MissingVarType(child.get_span()).to_diagnostic(sema.db));
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_TempVar::TempVar(child) => {
                     match child.Type.cast(sema.ast) {
                         ast::generated::TempVarKind::VarDecl(var_decl) => {
                             for variable in child.variables.cast(sema.ast).children.iter() {
-                                let r = Ident::from_node(
-                                    sema.db,
-                                    sema.file,
-                                    variable.cast(sema.ast),
-                                );
-                                let Some(var_name) = sema.try_parse(r) else { continue };
+                                let r =
+                                    Ident::from_node(sema.db, sema.file, variable.cast(sema.ast));
+                                let Some(var_name) = sema.try_parse(r) else {
+                                    continue;
+                                };
                                 let r = var_decl.to_spec_init(sema);
-                                let Some(result) = sema.try_parse(r) else { continue };
+                                let Some(result) = sema.try_parse(r) else {
+                                    continue;
+                                };
                                 section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
@@ -395,14 +397,15 @@ impl<'db> ParseVarSection<'db> for ast::generated::TempVarDecls {
                         }
                         ast::generated::TempVarKind::RefSpec(var_decl) => {
                             for variable in child.variables.cast(sema.ast).children.iter() {
-                                let r = Ident::from_node(
-                                    sema.db,
-                                    sema.file,
-                                    variable.cast(sema.ast),
-                                );
-                                let Some(var_name) = sema.try_parse(r) else { continue };
+                                let r =
+                                    Ident::from_node(sema.db, sema.file, variable.cast(sema.ast));
+                                let Some(var_name) = sema.try_parse(r) else {
+                                    continue;
+                                };
                                 let r = var_decl.to_spec_init(sema);
-                                let Some(result) = sema.try_parse(r) else { continue };
+                                let Some(result) = sema.try_parse(r) else {
+                                    continue;
+                                };
                                 section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
@@ -429,23 +432,22 @@ impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_InOutVar::ERRVariableWithNoSpec(child) => {
                     sema.errors
-                        .push(SyntaxError::MissingVarType(
-                            child.get_span(),
-                        ).to_diagnostic(sema.db));
+                        .push(SyntaxError::MissingVarType(child.get_span()).to_diagnostic(sema.db));
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_InOutVar::InOutVar(child) => {
                     match child.Type.cast(sema.ast) {
                         ast::generated::InOutVarKind::ArrayConformand(var_decl) => {
                             for variable in child.variables.cast(sema.ast).children.iter() {
-                                let r = Ident::from_node(
-                                    sema.db,
-                                    sema.file,
-                                    variable.cast(sema.ast),
-                                );
-                                let Some(var_name) = sema.try_parse(r) else { continue };
+                                let r =
+                                    Ident::from_node(sema.db, sema.file, variable.cast(sema.ast));
+                                let Some(var_name) = sema.try_parse(r) else {
+                                    continue;
+                                };
                                 let r = var_decl.to_spec(sema);
-                                let Some(spec) = sema.try_parse(r) else { continue };
+                                let Some(spec) = sema.try_parse(r) else {
+                                    continue;
+                                };
                                 section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
@@ -461,14 +463,15 @@ impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
                         }
                         ast::generated::InOutVarKind::VarDecl(var_decl) => {
                             for variable in child.variables.cast(sema.ast).children.iter() {
-                                let r = Ident::from_node(
-                                    sema.db,
-                                    sema.file,
-                                    variable.cast(sema.ast),
-                                );
-                                let Some(var_name) = sema.try_parse(r) else { continue };
+                                let r =
+                                    Ident::from_node(sema.db, sema.file, variable.cast(sema.ast));
+                                let Some(var_name) = sema.try_parse(r) else {
+                                    continue;
+                                };
                                 let r = var_decl.to_spec_init(sema);
-                                let Some(result) = sema.try_parse(r) else { continue };
+                                let Some(result) = sema.try_parse(r) else {
+                                    continue;
+                                };
                                 section.push(VariableDecl::new(
                                     sema.db,
                                     var_name,
@@ -496,14 +499,14 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
                 ast::generated::ERRVariableWithNoSpec_ExternalDecl::ExternalDecl(child) => {
                     match child.Type.cast(sema.ast) {
                         ExternalVarKind::VarDecl(var_decl) => {
-                            let r = Ident::from_node(
-                                sema.db,
-                                sema.file,
-                                child.name.cast(sema.ast),
-                            );
-                            let Some(var_name) = sema.try_parse(r) else { continue };
+                            let r = Ident::from_node(sema.db, sema.file, child.name.cast(sema.ast));
+                            let Some(var_name) = sema.try_parse(r) else {
+                                continue;
+                            };
                             let r = var_decl.to_spec_init(sema);
-                            let Some(result) = sema.try_parse(r) else { continue };
+                            let Some(result) = sema.try_parse(r) else {
+                                continue;
+                            };
                             section.push(VariableDecl::new(
                                 sema.db,
                                 var_name,
@@ -517,14 +520,14 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
                             ));
                         }
                         ExternalVarKind::ArrayConformand(var_decl) => {
-                            let r = Ident::from_node(
-                                sema.db,
-                                sema.file,
-                                child.name.cast(sema.ast),
-                            );
-                            let Some(var_name) = sema.try_parse(r) else { continue };
+                            let r = Ident::from_node(sema.db, sema.file, child.name.cast(sema.ast));
+                            let Some(var_name) = sema.try_parse(r) else {
+                                continue;
+                            };
                             let r = var_decl.to_spec(sema);
-                            let Some(spec) = sema.try_parse(r) else { continue };
+                            let Some(spec) = sema.try_parse(r) else {
+                                continue;
+                            };
                             section.push(VariableDecl::new(
                                 sema.db,
                                 var_name,
@@ -543,9 +546,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
                     child,
                 ) => {
                     sema.errors
-                        .push(SyntaxError::MissingVarType(
-                            child.get_span(),
-                        ).to_diagnostic(sema.db));
+                        .push(SyntaxError::MissingVarType(child.get_span()).to_diagnostic(sema.db));
                     continue;
                 }
             }
@@ -563,7 +564,9 @@ impl<'db> ParseLocatedVar<'db> for ast::generated::LocVarDecls {
             let variable = variable.cast(sema.ast);
             let var_name = if let Some(name) = &variable.variable_name {
                 let r = Ident::from_node(sema.db, sema.file, name.cast(sema.ast));
-                let Some(name) = sema.try_parse(r) else { continue };
+                let Some(name) = sema.try_parse(r) else {
+                    continue;
+                };
                 Some(name)
             } else {
                 None
@@ -575,10 +578,14 @@ impl<'db> ParseLocatedVar<'db> for ast::generated::LocVarDecls {
                 .children
                 .cast(sema.ast)
                 .to_direct_variable(sema);
-            let Some(located_at) = sema.try_parse(r) else { continue };
+            let Some(located_at) = sema.try_parse(r) else {
+                continue;
+            };
 
             let r = variable.spec_init.cast(sema.ast).to_spec_init(sema);
-            let Some(spec_init) = sema.try_parse(r) else { continue };
+            let Some(spec_init) = sema.try_parse(r) else {
+                continue;
+            };
 
             section.push(LocatedVariable::new(
                 sema.db,
@@ -599,9 +606,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
                     child,
                 ) => {
                     sema.errors
-                        .push(SyntaxError::MissingVarType(
-                            child.get_span(),
-                        ).to_diagnostic(sema.db));
+                        .push(SyntaxError::MissingVarType(child.get_span()).to_diagnostic(sema.db));
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_VarDeclInitList::VarDeclInitList(
@@ -609,9 +614,13 @@ impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
                 ) => {
                     for variable in var_decl.variables.cast(sema.ast).children.iter() {
                         let r = Ident::from_node(sema.db, sema.file, variable.cast(sema.ast));
-                        let Some(var_name) = sema.try_parse(r) else { continue };
+                        let Some(var_name) = sema.try_parse(r) else {
+                            continue;
+                        };
                         let r = var_decl.Type.cast(sema.ast).to_spec_init(sema);
-                        let Some(result) = sema.try_parse(r) else { continue };
+                        let Some(result) = sema.try_parse(r) else {
+                            continue;
+                        };
                         section.push(VariableDecl::new(
                             sema.db,
                             var_name,
@@ -638,9 +647,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::RetainVarDecls {
                     child,
                 ) => {
                     sema.errors
-                        .push(SyntaxError::MissingVarType(
-                            child.get_span(),
-                        ).to_diagnostic(sema.db));
+                        .push(SyntaxError::MissingVarType(child.get_span()).to_diagnostic(sema.db));
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_VarDeclInitList::VarDeclInitList(
@@ -648,9 +655,13 @@ impl<'db> ParseVarSection<'db> for ast::generated::RetainVarDecls {
                 ) => {
                     for variable in var_decl.variables.cast(sema.ast).children.iter() {
                         let r = Ident::from_node(sema.db, sema.file, variable.cast(sema.ast));
-                        let Some(var_name) = sema.try_parse(r) else { continue };
+                        let Some(var_name) = sema.try_parse(r) else {
+                            continue;
+                        };
                         let r = var_decl.Type.cast(sema.ast).to_spec_init(sema);
-                        let Some(result) = sema.try_parse(r) else { continue };
+                        let Some(result) = sema.try_parse(r) else {
+                            continue;
+                        };
                         section.push(VariableDecl::new(
                             sema.db,
                             var_name,
@@ -677,9 +688,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::NoRetainVarDecls {
                     err,
                 ) => {
                     sema.errors
-                        .push(SyntaxError::MissingVarType(
-                            err.get_span(),
-                        ).to_diagnostic(sema.db));
+                        .push(SyntaxError::MissingVarType(err.get_span()).to_diagnostic(sema.db));
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_VarDeclInitList::VarDeclInitList(
@@ -687,9 +696,13 @@ impl<'db> ParseVarSection<'db> for ast::generated::NoRetainVarDecls {
                 ) => {
                     for variable in var_decl.variables.cast(sema.ast).children.iter() {
                         let r = Ident::from_node(sema.db, sema.file, variable.cast(sema.ast));
-                        let Some(var_name) = sema.try_parse(r) else { continue };
+                        let Some(var_name) = sema.try_parse(r) else {
+                            continue;
+                        };
                         let r = var_decl.Type.cast(sema.ast).to_spec_init(sema);
-                        let Some(result) = sema.try_parse(r) else { continue };
+                        let Some(result) = sema.try_parse(r) else {
+                            continue;
+                        };
                         section.push(VariableDecl::new(
                             sema.db,
                             var_name,
@@ -716,9 +729,13 @@ impl<'db> ParseVarSection<'db> for ast::generated::LocPartlyVarDecl {
                 sema.file,
                 child.cast(sema.ast).variable_name.cast(sema.ast),
             );
-            let Some(var_name) = sema.try_parse(r) else { continue };
+            let Some(var_name) = sema.try_parse(r) else {
+                continue;
+            };
             let r = child.cast(sema.ast).to_spec_init(sema);
-            let Some(result) = sema.try_parse(r) else { continue };
+            let Some(result) = sema.try_parse(r) else {
+                continue;
+            };
             section.push(VariableDecl::new(
                 sema.db,
                 var_name,
@@ -743,22 +760,30 @@ impl<'db> ParseProgDecl<'db> for ast::generated::ProgAccessDecls {
         for child in self.children.iter() {
             let decl = child.cast(sema.ast);
             let r = decl.access.cast(sema.ast).to_spec(sema);
-            let Some(spec) = sema.try_parse(r) else { continue };
+            let Some(spec) = sema.try_parse(r) else {
+                continue;
+            };
 
             let r = Ident::from_node(sema.db, sema.file, decl.name.cast(sema.ast));
-            let Some(name) = sema.try_parse(r) else { continue };
+            let Some(name) = sema.try_parse(r) else {
+                continue;
+            };
 
             let direct_variable = match &decl.children {
                 Some(v) => {
                     let r = v.cast(sema.ast).to_direct_variable(sema);
-                    let Some(dv) = sema.try_parse(r) else { continue };
+                    let Some(dv) = sema.try_parse(r) else {
+                        continue;
+                    };
                     Some(dv)
                 }
                 _ => None,
             };
 
             let r = decl.variable.cast(sema.ast).parse(sema);
-            let Some(variable) = sema.try_parse(r) else { continue };
+            let Some(variable) = sema.try_parse(r) else {
+                continue;
+            };
 
             let direction = match &decl.direction {
                 Some(direction) => match direction.cast(sema.ast).children.cast(sema.ast) {
@@ -793,9 +818,13 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
                         sema.file,
                         child.cast(sema.ast).spec.cast(sema.ast),
                     );
-                    let Some(name) = sema.try_parse(r) else { continue };
+                    let Some(name) = sema.try_parse(r) else {
+                        continue;
+                    };
                     let r = var_decl.to_spec_init(sema);
-                    let Some(result) = sema.try_parse(r) else { continue };
+                    let Some(result) = sema.try_parse(r) else {
+                        continue;
+                    };
                     section.push(VariableDecl::new(
                         sema.db,
                         name,
@@ -814,9 +843,13 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
                         sema.file,
                         child.cast(sema.ast).spec.cast(sema.ast),
                     );
-                    let Some(name) = sema.try_parse(r) else { continue };
+                    let Some(name) = sema.try_parse(r) else {
+                        continue;
+                    };
                     let r = var_decl.to_spec_init(sema);
-                    let Some(result) = sema.try_parse(r) else { continue };
+                    let Some(result) = sema.try_parse(r) else {
+                        continue;
+                    };
                     section.push(VariableDecl::new(
                         sema.db,
                         name,
@@ -841,10 +874,9 @@ impl<'db> ParseSpecInit<'db> for ast::generated::EdgeDecl {
     ) -> anyhow::Result<SpecInitResult<'db>, IdeDiagnostic> {
         let spec = match self.edge.cast(sema.ast) {
             ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::ERRInvalidEdgeQualifier(err) => {
-                sema.errors
-                    .push(SyntaxError::IncompleteEdgeQualifier(
-                        err.get_span(),
-                    ).to_diagnostic(sema.db));
+                sema.errors.push(
+                    SyntaxError::IncompleteEdgeQualifier(err.get_span()).to_diagnostic(sema.db),
+                );
                 Spec::new(
                     sema.db,
                     SpecKind::Simple(ElementarySpec::Bool),
@@ -904,23 +936,23 @@ impl<'db> ParseSpecInit<'db> for ast::generated::VarDecl {
             Some(Init::ArrayTypeInit(a)) => {
                 let r = a.parse(sema);
                 sema.try_parse(r)
-            },
+            }
             Some(Init::SimpleTypeInit(a)) => {
                 let r = a.parse(sema);
                 sema.try_parse(r)
-            },
+            }
             Some(Init::StructTypeInit(a)) => {
                 let r = a.parse(sema);
                 sema.try_parse(r)
-            },
+            }
             None => None,
         };
 
         if let Some(init) = &self.init {
-            sema.errors
-                .push(SyntaxError::UnexpectedVarInit(
-                    init.cast(sema.ast).get_span(),
-                ).to_diagnostic(sema.db));
+            sema.errors.push(
+                SyntaxError::UnexpectedVarInit(init.cast(sema.ast).get_span())
+                    .to_diagnostic(sema.db),
+            );
         }
 
         match spec {
@@ -935,8 +967,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::VarDeclInit {
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<SpecInitResult<'db>, IdeDiagnostic> {
-        type Spec =
-            ast::generated::ArrayTypeSpec_RefTypeSpec_SimpleTypeSpec_StructTypeSpec;
+        type Spec = ast::generated::ArrayTypeSpec_RefTypeSpec_SimpleTypeSpec_StructTypeSpec;
 
         let spec = match self.spec.cast(sema.ast) {
             Spec::ArrayTypeSpec(a) => a.to_spec(sema),
@@ -950,15 +981,15 @@ impl<'db> ParseSpecInit<'db> for ast::generated::VarDeclInit {
             Some(Init::ArrayTypeInit(a)) => {
                 let r = a.parse(sema);
                 sema.try_parse(r)
-            },
+            }
             Some(Init::SimpleTypeInit(a)) => {
                 let r = a.parse(sema);
                 sema.try_parse(r)
-            },
+            }
             Some(Init::StructTypeInit(a)) => {
                 let r = a.parse(sema);
                 sema.try_parse(r)
-            },
+            }
             None => None,
         };
 
@@ -987,15 +1018,15 @@ impl<'db> ParseSpecInit<'db> for ast::generated::LocVarSpecInit {
             Some(Init::ArrayTypeInit(a)) => {
                 let r = a.parse(sema);
                 sema.try_parse(r)
-            },
+            }
             Some(Init::SimpleTypeInit(a)) => {
                 let r = a.parse(sema);
                 sema.try_parse(r)
-            },
+            }
             Some(Init::StructTypeInit(a)) => {
                 let r = a.parse(sema);
                 sema.try_parse(r)
-            },
+            }
             None => None,
         };
 

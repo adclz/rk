@@ -20,11 +20,15 @@ impl<'db> SemanticIndexBuilder<'db> {
             let generic = generic.cast(self.ast);
 
             let r = Ident::from_node(self.db, self.file, generic.generic_name.cast(self.ast));
-            let Some(name) = self.try_parse(r) else { continue };
+            let Some(name) = self.try_parse(r) else {
+                continue;
+            };
             let name_id = generic.generic_name.cast(self.ast).into();
 
             let r = SpanIdent::from_node(self.db, self, generic.generic_type.cast(self.ast));
-            let Some(value) = self.try_parse(r) else { continue };
+            let Some(value) = self.try_parse(r) else {
+                continue;
+            };
             let generic_contraint = GenericContraint {
                 value,
                 ast_id: generic.generic_type.cast(self.ast).into(),
@@ -34,7 +38,9 @@ impl<'db> SemanticIndexBuilder<'db> {
 
             for spec_constraint in generic.constraint.iter() {
                 let r = spec_constraint.cast(self.ast).to_spec(self);
-                let Some(spec) = self.try_parse(r) else { continue };
+                let Some(spec) = self.try_parse(r) else {
+                    continue;
+                };
                 spec_constraints.push(SpecContraint {
                     spec,
                     ast_id: spec_constraint.cast(self.ast).into(),

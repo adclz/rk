@@ -4,8 +4,10 @@ use rustc_hash::FxHashMap;
 use crate::{
     HasName,
     check::errors::{
-        ToIdeDiagnostic, e1_duplicates::DuplicateError,
-        e2_resolve::ResolveError, e3_type::{InferLiteralError, TypeError},
+        ToIdeDiagnostic,
+        e1_duplicates::DuplicateError,
+        e2_resolve::ResolveError,
+        e3_type::{InferLiteralError, TypeError},
     },
     hir_def::expressions::{
         expression::{Elementary, ExprKind, InitExpr, InitExprKind, PrimaryExpr},
@@ -97,8 +99,8 @@ impl<'db> InitInference<'db> {
             _ => None,
         };
 
-        if let Some(actual_len) = actual_len {
-            if actual_len as u64 > max_len {
+        if let Some(actual_len) = actual_len
+            && actual_len as u64 > max_len {
                 let err = if is_wstring {
                     InferLiteralError::Invalid_WSTRING_Length {
                         max: max_len,
@@ -125,6 +127,5 @@ impl<'db> InitInference<'db> {
                     .to_diagnostic(db),
                 );
             }
-        }
     }
 }

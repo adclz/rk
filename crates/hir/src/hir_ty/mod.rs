@@ -4,7 +4,7 @@ pub mod def_map;
 pub mod display;
 pub mod expr_store;
 pub mod head;
-pub mod infer;
 pub mod index_graphs;
+pub mod infer;
 pub mod resolver;
 pub mod ty;

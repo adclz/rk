@@ -83,11 +83,10 @@ pub fn resolve_name<'db>(
     let name = access.target.ident;
 
     // 1. Method self-reference
-    if let ScopeKind::MethodDecl(method) = get_scope(db, scope).kind {
-        if name == method.name(db) {
+    if let ScopeKind::MethodDecl(method) = get_scope(db, scope).kind
+        && name == method.name(db) {
             return NameResolution::MethodSelf(method);
         }
-    }
 
     // 2. Generic parameters (works at both head and body level)
     if let Some(generics) = scope.generics(db) {
@@ -119,8 +118,7 @@ pub(crate) fn resolve_namespace_access<'db>(
         // No ambiguity is possible here — the user specified which namespace.
         Some(path) => {
             for ns in namespace_index(db, **path).iter() {
-                if let PouResolution::Found(pou) =
-                    pou_names_res(db, target.ident, ns.scope_id(db))
+                if let PouResolution::Found(pou) = pou_names_res(db, target.ident, ns.scope_id(db))
                 {
                     return PouResolution::Found(pou);
                 }

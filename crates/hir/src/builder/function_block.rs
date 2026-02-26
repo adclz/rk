@@ -2,7 +2,6 @@ use crate::builder::Parse;
 use crate::builder::ParseVarSection;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::ToIdeDiagnostic;
-use ide_diagnostic::IdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
@@ -14,6 +13,7 @@ use crate::{Modifier, Visibility};
 use ast::generated::{FbDecl, FbVariables};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
+use ide_diagnostic::IdeDiagnostic;
 
 impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_function_block(
@@ -26,10 +26,13 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         let variables = self.parse_fb_variables(func);
 
-        let extends = func
-            .extends
-            .as_ref()
-            .and_then(|e| self.try_parse(SpanNamespaceAccess::from_ast(self.db, self, e.cast(self.ast))));
+        let extends = func.extends.as_ref().and_then(|e| {
+            self.try_parse(SpanNamespaceAccess::from_ast(
+                self.db,
+                self,
+                e.cast(self.ast),
+            ))
+        });
 
         let implements = func
             .implements
@@ -38,7 +41,13 @@ impl<'db> SemanticIndexBuilder<'db> {
                 i.cast(self.ast)
                     .children
                     .iter()
-                    .filter_map(|i| self.try_parse(SpanNamespaceAccess::from_ast(self.db, self, i.cast(self.ast))))
+                    .filter_map(|i| {
+                        self.try_parse(SpanNamespaceAccess::from_ast(
+                            self.db,
+                            self,
+                            i.cast(self.ast),
+                        ))
+                    })
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
@@ -123,10 +132,7 @@ impl<'db> SemanticIndexBuilder<'db> {
 }
 
 impl<'db> SemanticIndexBuilder<'db> {
-    fn parse_fb_variables(
-        &mut self,
-        func: &ast::generated::FbDecl,
-    ) -> Vec<VariableDecl<'db>> {
+    fn parse_fb_variables(&mut self, func: &ast::generated::FbDecl) -> Vec<VariableDecl<'db>> {
         let mut variables = vec![];
 
         for variable in func.variables.iter() {

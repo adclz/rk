@@ -5,10 +5,7 @@ use crate::{
     HasName,
     hir_def::{
         config::{ConfigDecl, ConfigResource},
-        interned::{
-            identifier::Ident,
-            namespace::NamespacePath,
-        },
+        interned::{identifier::Ident, namespace::NamespacePath},
         namespace::NamespaceDecl,
         pous::{pou::Pou, variable::VariableDecl},
         program::ProgramDecl,
@@ -207,4 +204,3 @@ pub fn external_var_lookup<'db>(
 ) -> Option<VariableDecl<'db>> {
     workspace_config_globals(db).get(&var_name).copied()
 }
-

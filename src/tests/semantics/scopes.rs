@@ -10,11 +10,7 @@ use hir::{
         pous::pou::Pou,
         semantic_index::{get_scope, semantic_index},
     },
-    hir_ty::{
-        head::signature::infer_signature,
-        index_graphs::namespace_index,
-        ty::Type,
-    },
+    hir_ty::{head::signature::infer_signature, index_graphs::namespace_index, ty::Type},
 };
 use ide_proto::{hir_node::HirNode, walk::WalkHir};
 

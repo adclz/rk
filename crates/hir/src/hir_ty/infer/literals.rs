@@ -47,12 +47,8 @@ impl<'db> Elementary {
                 .map_err(|e| InferLiteralError::Invalid_LDT_Format(e.to_string())),
             Elementary::Time(t) => t.as_time(db).map(|_| ()),
             Elementary::LTime(lt) => lt.as_ltime(db).map(|_| ()),
-            Elementary::String(s) => s
-                .as_single_string(db)
-                .map(|_| ()),
-            Elementary::WString(s) => s
-                .as_double_string(db)
-                .map(|_| ()),
+            Elementary::String(s) => s.as_single_string(db).map(|_| ()),
+            Elementary::WString(s) => s.as_double_string(db).map(|_| ()),
             Elementary::Char(s) => {
                 let bytes = s.as_single_string(db)?;
                 if bytes.len() != 1 {
@@ -653,10 +649,7 @@ pub fn parse_double_byte_string(s: &str) -> Result<Vec<char>, InferLiteralError>
     Ok(result)
 }
 
-fn parse_duration_components(
-    s: &str,
-    kind: &'static str,
-) -> Result<Duration, InferLiteralError> {
+fn parse_duration_components(s: &str, kind: &'static str) -> Result<Duration, InferLiteralError> {
     // Remove underscores (allowed in literals per IEC 61131-3)
     let cleaned = s.replace('_', "");
 
@@ -706,7 +699,11 @@ fn parse_duration_components(
         remaining = rest;
     }
 
-    let total_nanos = if is_negative { -total_nanos } else { total_nanos };
+    let total_nanos = if is_negative {
+        -total_nanos
+    } else {
+        total_nanos
+    };
     Ok(Duration::nanoseconds(total_nanos))
 }
 

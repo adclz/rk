@@ -102,15 +102,13 @@ impl<'db> Ident {
     ) -> anyhow::Result<Self, IdeDiagnostic> {
         Ok(Ident::new(
             db,
-            CompactString::from(
-                node.get_text(file.document(db).as_bytes()).map_err(|e| {
-                    SyntaxError::SyntaxError {
-                        span: node.get_span(),
-                        err: e.to_string(),
-                    }
-                    .to_diagnostic(db)
-                })?,
-            ),
+            CompactString::from(node.get_text(file.document(db).as_bytes()).map_err(|e| {
+                SyntaxError::SyntaxError {
+                    span: node.get_span(),
+                    err: e.to_string(),
+                }
+                .to_diagnostic(db)
+            })?),
         ))
     }
 

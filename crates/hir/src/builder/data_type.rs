@@ -7,9 +7,9 @@ use crate::{
         scope::ScopeKind,
     },
 };
-use ide_diagnostic::IdeDiagnostic;
 use ast::generated::TypeDecl;
 use auto_lsp::anyhow;
+use ide_diagnostic::IdeDiagnostic;
 
 impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_data_type(

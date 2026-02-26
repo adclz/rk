@@ -5,9 +5,7 @@ use crate::{
     check::errors::{ToIdeDiagnostic, e10_control_flow::ControlFlowError},
     hir_def::{
         expressions::{
-            expression::{
-                Elementary, Expr, ExprKind, PrimaryExpr, UnaryOperatorKind,
-            },
+            expression::{Elementary, Expr, ExprKind, PrimaryExpr, UnaryOperatorKind},
             statement::{CaseKind, Stmt, StmtKind},
         },
         scope::ScopeId,
@@ -38,7 +36,10 @@ fn try_extract_integer(db: &dyn WorkspaceDataBase, expr: Expr<'_>) -> Option<i64
         ExprKind::PrimaryExpr(PrimaryExpr::Literal(Elementary::InferInteger(v))) => {
             v.as_i64(db).ok()
         }
-        ExprKind::UnaryOperator { expr: inner, operator } => match operator {
+        ExprKind::UnaryOperator {
+            expr: inner,
+            operator,
+        } => match operator {
             UnaryOperatorKind::Minus => try_extract_integer(db, *inner).map(|v| -v),
             UnaryOperatorKind::Plus => try_extract_integer(db, *inner),
             _ => None,
@@ -210,9 +211,10 @@ impl<'db> StmtsResolverCtx<'db> {
                     }
 
                     // Check for mismatched step sign (only with literal values)
-                    if let (Some(start_val), Some(end_val)) =
-                        (try_extract_integer(db, *start), try_extract_integer(db, *end))
-                    {
+                    if let (Some(start_val), Some(end_val)) = (
+                        try_extract_integer(db, *start),
+                        try_extract_integer(db, *end),
+                    ) {
                         let step_val = step
                             .as_ref()
                             .and_then(|s| try_extract_integer(db, *s))

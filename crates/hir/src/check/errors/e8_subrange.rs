@@ -3,10 +3,7 @@ use db::WorkspaceDataBase;
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 use crate::{
-    HirNodeInfo,
-    check::errors::ToIdeDiagnostic,
-    hir_def::expressions::spec::Spec,
-    hir_ty::ty::Type,
+    HirNodeInfo, check::errors::ToIdeDiagnostic, hir_def::expressions::spec::Spec, hir_ty::ty::Type,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]

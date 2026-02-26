@@ -13,11 +13,7 @@ use crate::{
             check_duplicate_configs, check_duplicate_pous, check_duplicate_programs,
         },
         check_recursion::TypeDependencyGraph,
-        errors::{
-            ToIdeDiagnostic,
-            e0_syntax::SyntaxError,
-            e2_resolve::ResolveError,
-        },
+        errors::{ToIdeDiagnostic, e0_syntax::SyntaxError, e2_resolve::ResolveError},
     },
     hir_def::semantic_index::semantic_index,
     hir_ty::{config::infer_config, head::init_inference::infer_initialization},
@@ -62,9 +58,7 @@ impl<'db> SemanticIndex<'db> {
         TypeDependencyGraph::new(db, self).check_recursions(self, errors);
 
         // Get syntax errors
-        self.errors
-            .iter()
-            .for_each(|err| errors.push(err.clone()));
+        self.errors.iter().for_each(|err| errors.push(err.clone()));
 
         self.scope.check(db, errors);
 

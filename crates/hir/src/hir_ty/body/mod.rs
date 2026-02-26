@@ -11,10 +11,14 @@ use crate::{
             },
             invocation::Invocation,
             statement::Stmt,
-        }, interned::identifier::Ident, pous::{
+        },
+        interned::identifier::Ident,
+        pous::{
             pou::Pou,
             variable::{DirectVariable, VariableDecl},
-        }, scope::{ScopeId, ScopeKind}, semantic_index::get_scope
+        },
+        scope::{ScopeId, ScopeKind},
+        semantic_index::get_scope,
     },
     hir_ty::{
         body::statements::{NestedScope, StmtsResolverCtx},
@@ -305,7 +309,6 @@ impl<'db> BodyInferenceResult<'db> {
     pub fn variable_for_param(&self, param: ParamAssign<'db>) -> Option<VariableDecl<'db>> {
         self.variable_of_param.get(&param).copied()
     }
-
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

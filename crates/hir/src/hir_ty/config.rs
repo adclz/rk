@@ -3,9 +3,7 @@ use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    check::errors::{
-        ToIdeDiagnostic, e1_duplicates::DuplicateError, e2_resolve::ResolveError,
-    },
+    check::errors::{ToIdeDiagnostic, e1_duplicates::DuplicateError, e2_resolve::ResolveError},
     hir_def::{
         config::{ConfigDecl, ConfigResource, ProgConfig, ResourceDecl},
         interned::identifier::{Ident, SpanIdent},
@@ -13,7 +11,7 @@ use crate::{
     },
     hir_ty::{
         body::BodyInferenceResult, expr_store::PathExprWalkStep,
-        head::init_inference::InitExprInferenceResult, infer::Infer, index_graphs::program_index,
+        head::init_inference::InitExprInferenceResult, index_graphs::program_index, infer::Infer,
         ty::Type,
     },
 };

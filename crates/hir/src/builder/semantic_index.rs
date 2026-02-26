@@ -114,14 +114,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         visibility: Visibility,
         parent: ScopeId<'db>,
     ) {
-        let scope = Scope::new(
-            self.file,
-            kind,
-            usings,
-            scope_id,
-            visibility,
-            Some(parent),
-        );
+        let scope = Scope::new(self.file, kind, usings, scope_id, visibility, Some(parent));
         self.scope_keys
             .insert(scope_id.scope(self.db), Arc::new(scope));
     }
@@ -150,12 +143,9 @@ impl<'db> SemanticIndexBuilder<'db> {
 
             self.current_scope = global_scope;
             match child.cast(self.ast) {
-                SourceFileDecl::ERRInvalidPouKeyword(err) => {
-                    self.errors
-                        .push(SyntaxError::InvalidPouKeyword(
-                            err.get_span(),
-                        ).to_diagnostic(self.db))
-                }
+                SourceFileDecl::ERRInvalidPouKeyword(err) => self
+                    .errors
+                    .push(SyntaxError::InvalidPouKeyword(err.get_span()).to_diagnostic(self.db)),
                 SourceFileDecl::NamespaceDecl(namespace) => {
                     let path = match self.get_namespace_path(namespace) {
                         Ok(path) => path,
@@ -175,12 +165,10 @@ impl<'db> SemanticIndexBuilder<'db> {
                         }
                     }
                 }
-                SourceFileDecl::UsingDirective(directive) => {
-                    match self.parse_using(directive) {
-                        Ok(u) => usings.extend(u),
-                        Err(err) => self.errors.push(err),
-                    }
-                }
+                SourceFileDecl::UsingDirective(directive) => match self.parse_using(directive) {
+                    Ok(u) => usings.extend(u),
+                    Err(err) => self.errors.push(err),
+                },
                 SourceFileDecl::FuncDecl(func) => match self.parse_function(func) {
                     Ok(r) => self.global_pous.push(r),
                     Err(err) => self.errors.push(err),
@@ -201,12 +189,10 @@ impl<'db> SemanticIndexBuilder<'db> {
                         }
                     }
                 }
-                SourceFileDecl::InterfaceDecl(interface) => {
-                    match self.parse_interface(interface) {
-                        Ok(r) => self.global_pous.push(r),
-                        Err(err) => self.errors.push(err),
-                    }
-                }
+                SourceFileDecl::InterfaceDecl(interface) => match self.parse_interface(interface) {
+                    Ok(r) => self.global_pous.push(r),
+                    Err(err) => self.errors.push(err),
+                },
                 SourceFileDecl::ConfigDecl(config) => match self.parse_config(config) {
                     Ok(c) => self.configs.push(c),
                     Err(err) => self.errors.push(err),

@@ -3,13 +3,13 @@ use crate::builder::ParseSpec;
 use crate::builder::expression::ParseVariableAccess;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::ToIdeDiagnostic;
-use ide_diagnostic::IdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::expressions::expression::{FuncCall, ParamAssign, ParamAssignKind};
 use crate::hir_def::expressions::statement::{CaseKind, Stmt, StmtKind};
 use crate::hir_def::interned::identifier::SpanIdent;
 use auto_lsp::anyhow::{self};
 use auto_lsp::core::ast::AstNode;
+use ide_diagnostic::IdeDiagnostic;
 
 impl<'db> Parse<'db> for ast::generated::Stmt {
     type Output = Stmt<'db>;
@@ -337,29 +337,31 @@ impl<'db> Parse<'db> for ast::generated::Assign {
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<Stmt<'db>, IdeDiagnostic> {
         let var = match self.variable.cast(sema.ast) {
-            ast::generated::ERRAssignFuncCall_Variable::ERRAssignFuncCall(err) => Err(
-                SyntaxError::AssignToFunctionCall(err.get_span()).to_diagnostic(sema.db),
-            ),
+            ast::generated::ERRAssignFuncCall_Variable::ERRAssignFuncCall(err) => {
+                Err(SyntaxError::AssignToFunctionCall(err.get_span()).to_diagnostic(sema.db))
+            }
             ast::generated::ERRAssignFuncCall_Variable::Variable(var) => var.to_access(sema),
         }?;
 
         type TargetType = ast::generated::ERREmptyRightHandAssignment_ERRMissingDotInAssignment_ERRMissingEqualInAssignment_Assignment_AssignmentAttempt;
         match self.target.cast(sema.ast) {
-            TargetType::ERREmptyRightHandAssignment(err) => Err(
-                SyntaxError::EmptyRightHandSide(err.get_span()).to_diagnostic(sema.db),
-            ),
+            TargetType::ERREmptyRightHandAssignment(err) => {
+                Err(SyntaxError::EmptyRightHandSide(err.get_span()).to_diagnostic(sema.db))
+            }
             TargetType::ERRMissingDotInAssignment(err) => {
                 Err(SyntaxError::MissingDotInAssignment {
                     file: sema.file,
                     span: err.get_span(),
-                }.to_diagnostic(sema.db))
+                }
+                .to_diagnostic(sema.db))
             }
-            TargetType::ERRMissingEqualInAssignment(err) => Err(
-                SyntaxError::MissingEqualInAssignment {
+            TargetType::ERRMissingEqualInAssignment(err) => {
+                Err(SyntaxError::MissingEqualInAssignment {
                     file: sema.file,
                     span: err.get_span(),
-                }.to_diagnostic(sema.db),
-            ),
+                }
+                .to_diagnostic(sema.db))
+            }
             TargetType::Assignment(assign) => Ok(Stmt::new(
                 sema.db,
                 StmtKind::Assignment {

@@ -7,8 +7,7 @@ use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use crate::{
     builder::{
-        Parse, ParseSpec, ParseSpecInit, SpecInitResult,
-        expression::ParseVariableAccess,
+        Parse, ParseSpec, ParseSpecInit, SpecInitResult, expression::ParseVariableAccess,
         semantic_index::SemanticIndexBuilder,
     },
     check::errors::ToIdeDiagnostic,
@@ -214,10 +213,8 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
                     ) => match &string_name.children {
                         Some(unsigned_int) => {
                             let unsigned_int = unsigned_int.cast(sema.ast);
-                            let ident =
-                                Ident::from_node(sema.db, sema.file, unsigned_int)?;
-                            let integer =
-                                Integer::new(sema.db, ident, IntegerKind::Signed);
+                            let ident = Ident::from_node(sema.db, sema.file, unsigned_int)?;
+                            let integer = Integer::new(sema.db, ident, IntegerKind::Signed);
                             let length_expr = Expr::new(
                                 sema.db,
                                 ExprKind::PrimaryExpr(PrimaryExpr::Literal(
@@ -245,10 +242,8 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
                     ) => match &wstring_name.children {
                         Some(unsigned_int) => {
                             let unsigned_int = unsigned_int.cast(sema.ast);
-                            let ident =
-                                Ident::from_node(sema.db, sema.file, unsigned_int)?;
-                            let integer =
-                                Integer::new(sema.db, ident, IntegerKind::Signed);
+                            let ident = Ident::from_node(sema.db, sema.file, unsigned_int)?;
+                            let integer = Integer::new(sema.db, ident, IntegerKind::Signed);
                             let length_expr = Expr::new(
                                 sema.db,
                                 ExprKind::PrimaryExpr(PrimaryExpr::Literal(
@@ -399,10 +394,26 @@ impl<'db> ParseSpec<'db> for ast::generated::ArrayTypeSpec {
         let mut ranges = vec![];
 
         for range in &self.ranges.cast(sema.ast).children {
-            let r = range.cast(sema.ast).lower.cast(sema.ast).children.cast(sema.ast).parse(sema);
-            let Some(lower) = sema.try_parse(r) else { continue };
-            let r = range.cast(sema.ast).upper.cast(sema.ast).children.cast(sema.ast).parse(sema);
-            let Some(upper) = sema.try_parse(r) else { continue };
+            let r = range
+                .cast(sema.ast)
+                .lower
+                .cast(sema.ast)
+                .children
+                .cast(sema.ast)
+                .parse(sema);
+            let Some(lower) = sema.try_parse(r) else {
+                continue;
+            };
+            let r = range
+                .cast(sema.ast)
+                .upper
+                .cast(sema.ast)
+                .children
+                .cast(sema.ast)
+                .parse(sema);
+            let Some(upper) = sema.try_parse(r) else {
+                continue;
+            };
             ranges.push((lower, upper))
         }
 
@@ -491,7 +502,10 @@ impl<'db> Parse<'db> for ast::generated::InitElem {
                 self.into(),
                 sema.current_scope,
             )),
-            InitElem::ERRFuncCallInInit(err) => Err(SyntaxError::FunctionCallInInitExpression(err.get_span()).to_diagnostic(sema.db)),
+            InitElem::ERRFuncCallInInit(err) => {
+                Err(SyntaxError::FunctionCallInInitExpression(err.get_span())
+                    .to_diagnostic(sema.db))
+            }
         }
     }
 }
@@ -632,25 +646,28 @@ impl<'db> ParseSpec<'db> for ast::generated::StructTypeSpec {
                 Spec::SubrangeTypeSpec(sub) => sub.to_spec(sema),
                 Spec::StructTypeSpec(st) => st.to_spec(sema),
             };
-            let Some(spec) = sema.try_parse(r) else { continue };
+            let Some(spec) = sema.try_parse(r) else {
+                continue;
+            };
 
             type Init = ast::generated::ArrayTypeInit_SimpleTypeInit_StructTypeInit;
 
-            let init = if let Some(init) =
-                elem.cast(sema.ast).init.as_ref().map(|i| i.cast(sema.ast))
-            {
-                let r = match init {
-                    Init::ArrayTypeInit(array_type_init) => array_type_init.parse(sema),
-                    Init::SimpleTypeInit(simple_type_init) => simple_type_init.parse(sema),
-                    Init::StructTypeInit(struct_type_init) => struct_type_init.parse(sema),
+            let init =
+                if let Some(init) = elem.cast(sema.ast).init.as_ref().map(|i| i.cast(sema.ast)) {
+                    let r = match init {
+                        Init::ArrayTypeInit(array_type_init) => array_type_init.parse(sema),
+                        Init::SimpleTypeInit(simple_type_init) => simple_type_init.parse(sema),
+                        Init::StructTypeInit(struct_type_init) => struct_type_init.parse(sema),
+                    };
+                    sema.try_parse(r)
+                } else {
+                    None
                 };
-                sema.try_parse(r)
-            } else {
-                None
-            };
 
             let r = Ident::from_node(sema.db, sema.file, elem.cast(sema.ast).name.cast(sema.ast));
-            let Some(name) = sema.try_parse(r) else { continue };
+            let Some(name) = sema.try_parse(r) else {
+                continue;
+            };
 
             let (located, multibits) = if let Some(attrs) = &elem.cast(sema.ast).attributes {
                 let r = attrs
@@ -774,7 +791,9 @@ impl<'db> ParseSpec<'db> for ast::generated::EnumTypeSpec {
         let mut variants = vec![];
         for spec in &self.children.cast(sema.ast).children {
             let r = SpanIdent::from_node(sema.db, sema, spec.cast(sema.ast).value.cast(sema.ast));
-            let Some(name) = sema.try_parse(r) else { continue };
+            let Some(name) = sema.try_parse(r) else {
+                continue;
+            };
             let value = spec
                 .cast(sema.ast)
                 .children

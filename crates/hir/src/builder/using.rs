@@ -3,10 +3,10 @@ use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNodeId;
 
 use crate::builder::semantic_index::SemanticIndexBuilder;
-use ide_diagnostic::IdeDiagnostic;
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::interned::namespace::SpanNamespacePath;
 use crate::hir_def::using::Using;
+use ide_diagnostic::IdeDiagnostic;
 
 impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_using(

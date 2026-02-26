@@ -3,8 +3,7 @@ use db::WorkspaceDataBase;
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 use crate::{
-    CallSite, HirNodeInfo,
-    check::errors::ToIdeDiagnostic,
+    CallSite, HirNodeInfo, check::errors::ToIdeDiagnostic,
     hir_ty::resolver::visibility::SameNamespaceResult,
 };
 

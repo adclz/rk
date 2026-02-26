@@ -4,9 +4,7 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     HasName, HirNodeInfo,
-    check::errors::{
-        ToIdeDiagnostic, e2_resolve::ResolveError, e3_type::TypeError,
-    },
+    check::errors::{ToIdeDiagnostic, e2_resolve::ResolveError, e3_type::TypeError},
     hir_def::{
         expressions::spec::{Spec, SpecKind},
         interned::{identifier::Ident, namespace::NamespaceAccess},
@@ -14,11 +12,7 @@ use crate::{
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
-    hir_ty::{
-        head::inheritance::inherited_methods,
-        index_graphs::external_var_lookup,
-        ty::Type,
-    },
+    hir_ty::{head::inheritance::inherited_methods, index_graphs::external_var_lookup, ty::Type},
 };
 
 #[tracing::instrument(skip(db))]

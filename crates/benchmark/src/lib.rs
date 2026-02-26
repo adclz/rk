@@ -15,10 +15,7 @@ use db::RootDatabase;
 use hir::{
     HirNodeInfo,
     check::diagnostics_for_file,
-    hir_def::{
-        scope::ScopeId,
-        semantic_index::semantic_index,
-    },
+    hir_def::{scope::ScopeId, semantic_index::semantic_index},
     hir_ty::{body::infer_body, head::signature::infer_signature},
 };
 
@@ -283,10 +280,7 @@ pub fn collect_diagnostics(db: &dyn db::WorkspaceDataBase, file: File) -> usize 
 }
 
 /// Collect all POU scope IDs from a file's semantic index.
-pub fn all_pou_scopes<'db>(
-    db: &'db dyn db::WorkspaceDataBase,
-    file: File,
-) -> Vec<ScopeId<'db>> {
+pub fn all_pou_scopes<'db>(db: &'db dyn db::WorkspaceDataBase, file: File) -> Vec<ScopeId<'db>> {
     let sema = semantic_index(db, file);
     let mut scopes = Vec::new();
 

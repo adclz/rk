@@ -1,9 +1,6 @@
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
-use hir::{
-    HasName, HirNodeInfo,
-    hir_ty::body::BodyInferenceResult,
-};
+use hir::{HasName, HirNodeInfo, hir_ty::body::BodyInferenceResult};
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 pub const NAME: &str = "shadowing-variable";
@@ -30,18 +27,20 @@ pub fn check<'db>(
         let var_name = var.get_name_ident(db).text(db);
 
         let mut diag = diag()
-                .message(format!(
-                    "variable '{var_name}' shadows POU '{var_name}' available in this scope"
-                ))
-                .severity(DiagnosticSeverity::INFORMATION)
-                .desc(&ShadowingVariable)
-                .range(var.get_span(db))
-                .call();
+            .message(format!(
+                "variable '{var_name}' shadows POU '{var_name}' available in this scope"
+            ))
+            .severity(DiagnosticSeverity::INFORMATION)
+            .desc(&ShadowingVariable)
+            .range(var.get_span(db))
+            .call();
 
-        diag.with_related(Related::new(format!("POU {var_name} is declared here"), pou.get_scope_id(db).file(db), pou.get_name_span(db)));
+        diag.with_related(Related::new(
+            format!("POU {var_name} is declared here"),
+            pou.get_scope_id(db).file(db),
+            pou.get_name_span(db),
+        ));
 
-        diagnostics.push(
-            diag
-        );
+        diagnostics.push(diag);
     }
 }

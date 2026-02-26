@@ -25,11 +25,17 @@ use crate::{
 fn spec_type_name<'db>(db: &'db dyn WorkspaceDataBase, spec: Spec<'db>) -> String {
     match spec.kind(db) {
         SpecKind::SizedString(length) => {
-            let len = length.as_range(db).map(|n| n.to_string()).unwrap_or_default();
+            let len = length
+                .as_range(db)
+                .map(|n| n.to_string())
+                .unwrap_or_default();
             format!("STRING[{}]", len)
         }
         SpecKind::SizedWString(length) => {
-            let len = length.as_range(db).map(|n| n.to_string()).unwrap_or_default();
+            let len = length
+                .as_range(db)
+                .map(|n| n.to_string())
+                .unwrap_or_default();
             format!("WSTRING[{}]", len)
         }
         _ => spec.infer(db).type_name(db),
