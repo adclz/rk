@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{collections::BTreeMap, hash::Hash, path::Path};
 
 use serde::Deserialize;
 
@@ -12,6 +12,7 @@ pub struct Config {
     pub project: ProjectInfo,
     pub stdlib_path: Option<String>,
     pub output: Option<OutputConfig>,
+    pub linter: Option<LinterConfig>,
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
@@ -25,6 +26,40 @@ pub struct ProjectInfo {
 #[serde(deny_unknown_fields)]
 pub struct OutputConfig {
     pub directory: String,
+}
+
+#[derive(Default, Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LinterConfig {
+    /// Per-rule toggles keyed by rule name.
+    /// Rules not listed default to enabled.
+    /// Example: `{ unused-variable = false }` disables that lint.
+    pub rules: Option<BTreeMap<String, bool>>,
+}
+
+impl Hash for LinterConfig {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match &self.rules {
+            None => 0u8.hash(state),
+            Some(rules) => {
+                1u8.hash(state);
+                rules.len().hash(state);
+                for (k, v) in rules {
+                    k.hash(state);
+                    v.hash(state);
+                }
+            }
+        }
+    }
+}
+
+impl LinterConfig {
+    pub fn is_enabled(&self, name: &str) -> bool {
+        match &self.rules {
+            None => true,
+            Some(rules) => rules.get(name).copied().unwrap_or(true),
+        }
+    }
 }
 
 /// Parses a TOML string into a `Config`, keeping the toml error for its
@@ -213,6 +248,59 @@ directory = "build"
     fn empty_config_fails() {
         let err = parse_config("").unwrap_err();
         assert!(err.message().contains("missing field"));
+    }
+
+    #[test]
+    fn valid_linter_config() {
+        let config: Config = parse_config(
+            r#"
+[project]
+name = "Test"
+version = "1"
+
+[linter]
+
+[linter.rules]
+unused-variable = false
+shadowing-variable = true
+"#,
+        )
+        .unwrap();
+        let linter = config.linter.unwrap();
+        assert!(!linter.is_enabled("unused-variable"));
+        assert!(linter.is_enabled("shadowing-variable"));
+        // Unlisted rules default to enabled
+        assert!(linter.is_enabled("duplicate-var-section"));
+    }
+
+    #[test]
+    fn linter_section_without_rules() {
+        let config: Config = parse_config(
+            r#"
+[project]
+name = "Test"
+version = "1"
+
+[linter]
+"#,
+        )
+        .unwrap();
+        let linter = config.linter.unwrap();
+        // All rules enabled by default
+        assert!(linter.is_enabled("unused-variable"));
+    }
+
+    #[test]
+    fn no_linter_section() {
+        let config: Config = parse_config(
+            r#"
+[project]
+name = "Test"
+version = "1"
+"#,
+        )
+        .unwrap();
+        assert!(config.linter.is_none());
     }
 
     #[test]

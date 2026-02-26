@@ -10,6 +10,7 @@ use crate::{
                 VariableAccess, VariableAccessKind,
             },
             invocation::Invocation,
+            statement::Stmt,
         }, interned::identifier::Ident, pous::{
             pou::Pou,
             variable::{DirectVariable, VariableDecl},
@@ -54,7 +55,7 @@ pub fn infer_body<'db>(
 
 /// Result of body inference
 ///
-/// When the this struct is emitted via the [`infer_body_scope`] query, it is important to note 2 things about the type mappings:
+/// When the this struct is emitted via the [`infer_body`] query, it is important to note 2 things about the type mappings:
 ///
 /// 1. The types mapped to expressions and invocations are the types *before* any normalization or adjustments are applied.
 /// see the note on normalization in the normalize module.
@@ -98,6 +99,14 @@ pub struct BodyInferenceResult<'db> {
     // Variables that shadow a POU with the same name.
     // Populated during statement resolution for use by the linter.
     pub variables_shadowing: FxHashMap<VariableDecl<'db>, Pou<'db>>,
+
+    // Function calls whose return value is discarded.
+    // Populated during statement resolution for use by the linter.
+    pub unused_return_types: Vec<(Stmt<'db>, Type<'db>)>,
+
+    // Statements that are just expressions with no side effects.
+    // Populated during statement resolution for use by the linter.
+    pub effectless_statements: Vec<Stmt<'db>>,
 }
 
 impl<'db> BodyInferenceResult<'db> {
@@ -114,6 +123,8 @@ impl<'db> BodyInferenceResult<'db> {
             errors: Vec::new(),
             variables_used: FxHashSet::default(),
             variables_shadowing: FxHashMap::default(),
+            unused_return_types: Vec::new(),
+            effectless_statements: Vec::new(),
         }
     }
 

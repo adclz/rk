@@ -51,6 +51,7 @@ impl<'db> StmtsResolverCtx<'db> {
             match stmt.stmt(db) {
                 StmtKind::EmptyPathExpression(expr) => {
                     resolver.resolve_begin_path_expr(db, *expr, None, ctx);
+                    ctx.effectless_statements.push(*stmt);
                 }
 
                 StmtKind::AssignmentAttempt { var, target } => { /* todo */ }
@@ -199,10 +200,7 @@ impl<'db> StmtsResolverCtx<'db> {
                     let typ = ctx.type_of_begin_expr_with_adjustments(db, call.path(db));
 
                     if typ.with_return_type(db).is_some() {
-                        ctx.errors.push(
-                            ControlFlowError::UnusedReturnType { typ, expr: *stmt }
-                                .to_diagnostic(db),
-                        );
+                        ctx.unused_return_types.push((*stmt, typ));
                     }
                 }
 
