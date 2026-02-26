@@ -115,10 +115,12 @@ pub fn test_diagnostics<'db>(db: &'db mut RootDatabase, source: &'db [&'db str])
     String::from_utf8(cache).unwrap()
 }
 
-/// Like [`test_diagnostics`] but also runs the linter, so lint warnings are included.
+/// Like [`test_diagnostics`] but also runs the linter (all rules enabled),
+/// so lint warnings are included.
 pub fn test_lint_diagnostics<'db>(db: &'db mut RootDatabase, source: &'db [&'db str]) -> String {
     add_sources(db, source);
     let mut cache = vec![];
+    let linter_config = db::config_file::LinterConfig::default();
 
     let mut files = db.get_files().iter().map(|file| *file).collect::<Vec<_>>();
     files.sort_by_key(|file| {
@@ -136,7 +138,9 @@ pub fn test_lint_diagnostics<'db>(db: &'db mut RootDatabase, source: &'db [&'db 
         .collect::<Vec<_>>();
 
     for file in files {
-        linter::lint_and_check_file(db, file).iter().for_each(|d| {
+        let mut all = diagnostics_for_file(db, file).as_ref().clone();
+        linter::lint_file(db, file, &linter_config, &mut all);
+        all.iter().for_each(|d| {
             d.create_report(
                 db,
                 file.url(db),
