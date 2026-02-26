@@ -107,6 +107,18 @@ pub struct BodyInferenceResult<'db> {
     // Statements that are just expressions with no side effects.
     // Populated during statement resolution for use by the linter.
     pub effectless_statements: Vec<Stmt<'db>>,
+
+    // CASE statements without an ELSE clause.
+    // Populated during statement resolution for use by the linter.
+    pub case_without_else: Vec<Stmt<'db>>,
+
+    // Statements that are unreachable (after RETURN/EXIT/CONTINUE).
+    // Populated during statement resolution for use by the linter.
+    pub dead_code_statements: Vec<Stmt<'db>>,
+
+    // FOR loops where step sign mismatches bounds direction.
+    // Populated during statement resolution for use by the linter.
+    pub mismatched_for_step: Vec<Stmt<'db>>,
 }
 
 impl<'db> BodyInferenceResult<'db> {
@@ -125,6 +137,9 @@ impl<'db> BodyInferenceResult<'db> {
             variables_shadowing: FxHashMap::default(),
             unused_return_types: Vec::new(),
             effectless_statements: Vec::new(),
+            case_without_else: Vec::new(),
+            dead_code_statements: Vec::new(),
+            mismatched_for_step: Vec::new(),
         }
     }
 

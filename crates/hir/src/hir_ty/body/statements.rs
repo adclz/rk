@@ -5,7 +5,9 @@ use crate::{
     check::errors::{ToIdeDiagnostic, e10_control_flow::ControlFlowError},
     hir_def::{
         expressions::{
-            expression::Expr,
+            expression::{
+                Elementary, Expr, ExprKind, PrimaryExpr, UnaryOperatorKind,
+            },
             statement::{CaseKind, Stmt, StmtKind},
         },
         scope::ScopeId,
@@ -29,6 +31,22 @@ pub struct StmtsResolverCtx<'db> {
     pub nested_scope: NestedScope,
 }
 
+/// Try to extract a constant integer value from a literal expression.
+/// Handles plain literals and unary minus on literals.
+fn try_extract_integer(db: &dyn WorkspaceDataBase, expr: Expr<'_>) -> Option<i64> {
+    match expr.expr(db) {
+        ExprKind::PrimaryExpr(PrimaryExpr::Literal(Elementary::InferInteger(v))) => {
+            v.as_i64(db).ok()
+        }
+        ExprKind::UnaryOperator { expr: inner, operator } => match operator {
+            UnaryOperatorKind::Minus => try_extract_integer(db, *inner).map(|v| -v),
+            UnaryOperatorKind::Plus => try_extract_integer(db, *inner),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 impl<'db> StmtsResolverCtx<'db> {
     pub fn new(scope: ScopeId<'db>) -> Self {
         StmtsResolverCtx {
@@ -47,7 +65,7 @@ impl<'db> StmtsResolverCtx<'db> {
     ) {
         let mut infer = InferExprCtx::new(resolver);
 
-        for stmt in statements {
+        for (i, stmt) in statements.iter().enumerate() {
             match stmt.stmt(db) {
                 StmtKind::EmptyPathExpression(expr) => {
                     resolver.resolve_begin_path_expr(db, *expr, None, ctx);
@@ -191,6 +209,22 @@ impl<'db> StmtsResolverCtx<'db> {
                         }
                     }
 
+                    // Check for mismatched step sign (only with literal values)
+                    if let (Some(start_val), Some(end_val)) =
+                        (try_extract_integer(db, *start), try_extract_integer(db, *end))
+                    {
+                        let step_val = step
+                            .as_ref()
+                            .and_then(|s| try_extract_integer(db, *s))
+                            .unwrap_or(1);
+                        let ascending = end_val > start_val;
+                        if (ascending && step_val < 0)
+                            || (!ascending && step_val > 0 && start_val != end_val)
+                        {
+                            ctx.mismatched_for_step.push(*stmt);
+                        }
+                    }
+
                     self.check_statements(db, resolver, body, NestedScope::Loop, ctx);
                 }
 
@@ -210,6 +244,12 @@ impl<'db> StmtsResolverCtx<'db> {
                             ControlFlowError::ContinueOutsideLoop { stmt: *stmt }.to_diagnostic(db),
                         );
                     }
+
+                    // Remaining statements in this block are unreachable
+                    for dead in &statements[i + 1..] {
+                        ctx.dead_code_statements.push(*dead);
+                    }
+                    break;
                 }
 
                 StmtKind::Case {
@@ -272,10 +312,18 @@ impl<'db> StmtsResolverCtx<'db> {
                     // check else
                     if let Some(else_) = else_ {
                         self.check_statements(db, resolver, else_, NestedScope::None, ctx);
+                    } else {
+                        ctx.case_without_else.push(*stmt);
                     }
                 }
 
-                StmtKind::Return => {}
+                StmtKind::Return => {
+                    // Remaining statements in this block are unreachable
+                    for dead in &statements[i + 1..] {
+                        ctx.dead_code_statements.push(*dead);
+                    }
+                    break;
+                }
             }
         }
     }

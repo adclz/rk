@@ -11,8 +11,11 @@ use hir::{
 };
 use ide_diagnostic::IdeDiagnostic;
 
+pub mod case_without_else;
+pub mod dead_code;
 pub mod duplicate_var_section;
 pub mod effectless_statement;
+pub mod for_loop_step_sign;
 pub mod shadowing_variable;
 pub mod unused_return_type;
 pub mod unused_variable;
@@ -82,5 +85,14 @@ fn lint_scope<'db>(
     }
     if config.is_enabled(effectless_statement::NAME) {
         effectless_statement::check(db, body, diagnostics);
+    }
+    if config.is_enabled(case_without_else::NAME) {
+        case_without_else::check(db, body, diagnostics);
+    }
+    if config.is_enabled(dead_code::NAME) {
+        dead_code::check(db, body, diagnostics);
+    }
+    if config.is_enabled(for_loop_step_sign::NAME) {
+        for_loop_step_sign::check(db, body, diagnostics);
     }
 }
