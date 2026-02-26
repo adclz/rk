@@ -243,7 +243,7 @@ fn walk_array_path_expression(mut with_db: RootDatabase) {
         END_FUNCTION
 "#;
     add_sources(&mut with_db, &[source]);
-    assert_snapshot!(collect_init_expressions(&with_db, *with_db.get_files().iter().last().unwrap(), &"fn"), @"33 DATATYPE");
+    assert_snapshot!(collect_init_expressions(&with_db, *with_db.get_files().iter().last().unwrap(), &"fn"), @"34 DATATYPE");
 }
 
 #[rstest]

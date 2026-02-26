@@ -58,8 +58,8 @@ END_FUNCTION
 
     // in case of index access, the index expression has the same offset as the parent expression
     assert_snapshot!(collect_path_expressions(&with_db, *with_db.get_files().iter().last().unwrap(), &"fn"), @r"
-    38 VARIABLE [Adjustment { kind: Index, target: Elementary(Int) }]
-    38 VARIABLE [Adjustment { kind: Index, target: Elementary(Int) }]
+    39 VARIABLE [Adjustment { kind: Index, target: Elementary(Int) }]
+    39 VARIABLE [Adjustment { kind: Index, target: Elementary(Int) }]
     ");
 }
 
@@ -83,9 +83,9 @@ END_FUNCTION
         "#;
     add_sources(&mut with_db, &[source]);
     assert_snapshot!(collect_path_expressions(&with_db, *with_db.get_files().iter().last().unwrap(), &"fn"), @r"
-    51 STRUCT_ELEMENT [Adjustment { kind: Index, target: Elementary(Int) }]
-    51 STRUCT_ELEMENT [Adjustment { kind: Index, target: Elementary(Int) }]
-    49 VARIABLE <none>
+    52 STRUCT_ELEMENT [Adjustment { kind: Index, target: Elementary(Int) }]
+    52 STRUCT_ELEMENT [Adjustment { kind: Index, target: Elementary(Int) }]
+    50 VARIABLE <none>
     ");
 }
 
@@ -109,9 +109,9 @@ END_FUNCTION
         "#;
     add_sources(&mut with_db, &[source]);
     assert_snapshot!(collect_path_expressions(&with_db, *with_db.get_files().iter().last().unwrap(), &"fn"), @r"
-    78 VARIABLE [Adjustment { kind: Index, target: Elementary(Int) }]
-    69 VARIABLE <none>
-    78 VARIABLE [Adjustment { kind: Index, target: Elementary(Int) }, Adjustment { kind: Ref, target: Elementary(Int) }]
+    79 VARIABLE [Adjustment { kind: Index, target: Elementary(Int) }]
+    70 VARIABLE <none>
+    79 VARIABLE [Adjustment { kind: Index, target: Elementary(Int) }, Adjustment { kind: Ref, target: Elementary(Int) }]
     ");
 }
 
@@ -131,10 +131,10 @@ END_FUNCTION
         "#;
     add_sources(&mut with_db, &[source]);
     assert_snapshot!(collect_path_expressions(&with_db, *with_db.get_files().iter().last().unwrap(), &"fn"), @r"
-    69 VARIABLE [Adjustment { kind: Index, target: Elementary(Int) }]
-    69 VARIABLE [Adjustment { kind: Index, target: Array(Array { [salsa id]: Id(1800) }) }, Adjustment { kind: Index, target: Elementary(Int) }]
-    58 VARIABLE <none>
-    69 VARIABLE [Adjustment { kind: Index, target: Array(Array { [salsa id]: Id(1800) }) }]
+    70 VARIABLE [Adjustment { kind: Index, target: Elementary(Int) }]
+    70 VARIABLE [Adjustment { kind: Index, target: Array(Array { [salsa id]: Id(1800) }) }, Adjustment { kind: Index, target: Elementary(Int) }]
+    59 VARIABLE <none>
+    70 VARIABLE [Adjustment { kind: Index, target: Array(Array { [salsa id]: Id(1800) }) }]
     ");
 }
 
@@ -154,10 +154,10 @@ END_FUNCTION
         "#;
     add_sources(&mut with_db, &[source]);
     assert_snapshot!(collect_path_expressions(&with_db, *with_db.get_files().iter().last().unwrap(), &"fn"), @r"
-    70 VARIABLE [Adjustment { kind: Index, target: Array(Array { [salsa id]: Id(1800) }) }]
-    59 VARIABLE <none>
-    70 VARIABLE [Adjustment { kind: Index, target: Elementary(Int) }, Adjustment { kind: Ref, target: Elementary(Int) }]
-    70 VARIABLE [Adjustment { kind: Index, target: Array(Array { [salsa id]: Id(1800) }) }, Adjustment { kind: Index, target: Elementary(Int) }]
+    71 VARIABLE [Adjustment { kind: Index, target: Array(Array { [salsa id]: Id(1800) }) }]
+    60 VARIABLE <none>
+    71 VARIABLE [Adjustment { kind: Index, target: Elementary(Int) }, Adjustment { kind: Ref, target: Elementary(Int) }]
+    71 VARIABLE [Adjustment { kind: Index, target: Array(Array { [salsa id]: Id(1800) }) }, Adjustment { kind: Index, target: Elementary(Int) }]
     ");
 }
 
@@ -188,8 +188,8 @@ END_FUNCTION
     ---'
     ");
     assert_snapshot!(collect_path_expressions(&with_db, *with_db.get_files().iter().last().unwrap(), &"fn"), @r"
-    36 VARIABLE [Adjustment { kind: Index, target: Elementary(Bool) }]
-    36 VARIABLE [Adjustment { kind: Index, target: Elementary(Bool) }]
+    37 VARIABLE [Adjustment { kind: Index, target: Elementary(Bool) }]
+    37 VARIABLE [Adjustment { kind: Index, target: Elementary(Bool) }]
     ");
 }
 
@@ -217,7 +217,7 @@ END_FUNCTION
     [E0211] Error: no such field
         ,-[ file:///test0.st:14:7 ]
         |
-      2 | ,-> TYPE Engine:
+      3 | ,->     STRUCT
         : :   
       6 | |->     END_STRUCT
         | |                    

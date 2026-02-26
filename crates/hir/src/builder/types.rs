@@ -417,11 +417,22 @@ impl<'db> ParseSpec<'db> for ast::generated::ArrayTypeSpec {
             ranges.push((lower, upper))
         }
 
-        let kind = match self.Type.cast(sema.ast) {
-            ast::generated::DataTypeAccess::ElemTypeName(elem_type_name) => {
-                elem_type_name.to_spec(sema)
+        let kind = match self.spec.cast(sema.ast) {
+            ast::generated::RefTypeSpec_SimpleTypeSpec::SimpleTypeSpec(simple) => {
+                simple.children.cast(sema.ast).to_spec(sema)
             }
-            ast::generated::DataTypeAccess::NamespaceAccess(target) => target.to_spec(sema),
+            ast::generated::RefTypeSpec_SimpleTypeSpec::RefTypeSpec(ref_spec) => {
+                let mut target_type = ref_spec.children.cast(sema.ast).to_spec(sema)?;
+                for _ in ref_spec.ref_count.iter() {
+                    target_type = Spec::new(
+                        sema.db,
+                        SpecKind::Ref(target_type),
+                        self.into(),
+                        sema.current_scope,
+                    );
+                }
+                Ok(target_type)
+            }
         }?;
 
         Ok(Spec::new(
@@ -637,7 +648,7 @@ impl<'db> ParseSpec<'db> for ast::generated::StructTypeSpec {
         let mut elements = vec![];
 
         for elem in &self.children {
-            type Spec = ast::generated::ArrayTypeSpec_EnumTypeSpec_SimpleTypeSpec_StructTypeSpec_SubrangeTypeSpec;
+            type Spec = ast::generated::ArrayTypeSpec_EnumTypeSpec_RefTypeSpec_SimpleTypeSpec_StructTypeSpec_SubrangeTypeSpec;
 
             let r = match elem.cast(sema.ast).spec.cast(sema.ast) {
                 Spec::ArrayTypeSpec(elem) => elem.to_spec(sema),
@@ -645,6 +656,7 @@ impl<'db> ParseSpec<'db> for ast::generated::StructTypeSpec {
                 Spec::EnumTypeSpec(en) => en.to_spec(sema),
                 Spec::SubrangeTypeSpec(sub) => sub.to_spec(sema),
                 Spec::StructTypeSpec(st) => st.to_spec(sema),
+                Spec::RefTypeSpec(rf) => rf.to_spec(sema),
             };
             let Some(spec) = sema.try_parse(r) else {
                 continue;

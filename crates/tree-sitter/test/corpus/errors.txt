@@ -8,13 +8,13 @@ END_NAMESPACE
 
 --------------------------------------------------------------------------------
 
-   (source_file
-      (namespace_decl
-        (namespace_h_name
-          (identifier))
-        (namespace_elements
-          (ERR_invalid_pou_keyword
-            (identifier)))))
+(source_file
+  (namespace_decl
+    (namespace_h_name
+      (identifier))
+    (namespace_elements
+      (ERR_invalid_pou_keyword
+        (identifier)))))
 
 ================================================================================
 Implements before extends
@@ -26,15 +26,15 @@ END_FUNCTION_BLOCK
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (fb_decl
-        (identifier)
-        (ERR_implements_before_extends
-          (interface_name_list
-            (namespace_access
-              (identifier))))
+(source_file
+  (fb_decl
+    (identifier)
+    (ERR_implements_before_extends
+      (interface_name_list
         (namespace_access
-          (identifier)))) 
+          (identifier))))
+    (namespace_access
+      (identifier))))
 
 ================================================================================
 Implements multiple times
@@ -50,25 +50,25 @@ END_CLASS
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (fb_decl
-        (identifier)
-        (interface_name_list
-          (namespace_access
-            (identifier)))
-        (ERR_implements_multiple_times
-          (interface_name_list
-            (namespace_access
-              (identifier)))))
-      (class_decl
-        (identifier)
-        (interface_name_list
-          (namespace_access
-            (identifier)))
-        (ERR_implements_multiple_times
-          (interface_name_list
-            (namespace_access
-              (identifier))))))
+(source_file
+  (fb_decl
+    (identifier)
+    (interface_name_list
+      (namespace_access
+        (identifier)))
+    (ERR_implements_multiple_times
+      (interface_name_list
+        (namespace_access
+          (identifier)))))
+  (class_decl
+    (identifier)
+    (interface_name_list
+      (namespace_access
+        (identifier)))
+    (ERR_implements_multiple_times
+      (interface_name_list
+        (namespace_access
+          (identifier))))))
 
 ================================================================================
 Extends multiple times
@@ -84,22 +84,22 @@ END_INTERFACE
 
 --------------------------------------------------------------------------------
 
-   (source_file
-      (fb_decl
-        (identifier)
-        (namespace_access
-          (identifier))
-        (ERR_extends_multiple_times
-          (namespace_access
-            (identifier))))
-      (interface_decl
-        (identifier)
-        (interface_name_list
-          (namespace_access
-            (identifier)))
-        (ERR_extends_multiple_times
-          (namespace_access
-            (identifier)))))
+(source_file
+  (fb_decl
+    (identifier)
+    (namespace_access
+      (identifier))
+    (ERR_extends_multiple_times
+      (namespace_access
+        (identifier))))
+  (interface_decl
+    (identifier)
+    (interface_name_list
+      (namespace_access
+        (identifier)))
+    (ERR_extends_multiple_times
+      (namespace_access
+        (identifier)))))
 
 ================================================================================
 Variable with no spec
@@ -130,24 +130,24 @@ END_FUNCTION_BLOCK
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (fb_decl
-        (identifier)
-        (fb_input_decls
-          (ERR_variable_with_no_spec
-            (identifier)))
-        (var_decls
-          (ERR_variable_with_no_spec
-            (identifier)))
-        (temp_var_decls
-          (ERR_variable_with_no_spec
-            (identifier)))
-        (in_out_decls
-          (ERR_variable_with_no_spec
-            (identifier)))
-        (fb_output_decls
-          (ERR_variable_with_no_spec
-            (identifier)))))
+(source_file
+  (fb_decl
+    (identifier)
+    (fb_input_decls
+      (ERR_variable_with_no_spec
+        (identifier)))
+    (var_decls
+      (ERR_variable_with_no_spec
+        (identifier)))
+    (temp_var_decls
+      (ERR_variable_with_no_spec
+        (identifier)))
+    (in_out_decls
+      (ERR_variable_with_no_spec
+        (identifier)))
+    (fb_output_decls
+      (ERR_variable_with_no_spec
+        (identifier)))))
 
 ================================================================================
 Invalid edge qualifier
@@ -164,20 +164,20 @@ END_FUNCTION_BLOCK
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (fb_decl
-        (identifier)
-        (fb_input_decls
-          (fb_input_var
-            (variable_list
-              (identifier))
-            (edge_decl
-              (ERR_invalid_edge_qualifier)))
-          (fb_input_var
-            (variable_list
-              (identifier))
-            (edge_decl
-              (ERR_invalid_edge_qualifier))))))
+(source_file
+  (fb_decl
+    (identifier)
+    (fb_input_decls
+      (fb_input_var
+        (variable_list
+          (identifier))
+        (edge_decl
+          (ERR_invalid_edge_qualifier)))
+      (fb_input_var
+        (variable_list
+          (identifier))
+        (edge_decl
+          (ERR_invalid_edge_qualifier))))))
 
 ================================================================================
 Function call as assignment
@@ -189,24 +189,24 @@ END_FUNCTION_BLOCK
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (fb_decl
-        (identifier)
-        (fb_body
-          (stmt_list
-            (assign
-              (ERR_assign_func_call
-                (func_call
-                  (begin_path_expression
-                    (path_expression
-                      (var_access
-                        (field))))))
-              (assignment
-                (constant
-                  (numeric_literal
-                    (int_literal
-                      (signed_int
-                        (unsigned_int)))))))))))
+(source_file
+  (fb_decl
+    (identifier)
+    (fb_body
+      (stmt_list
+        (assign
+          (ERR_assign_func_call
+            (func_call
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int)))))))))))
 
 ================================================================================
 Unexpected THIS in path
@@ -218,31 +218,31 @@ END_FUNCTION_BLOCK
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (fb_decl
-        (identifier)
-        (fb_body
-          (stmt_list
-            (assign
-              (variable
-                (begin_path_expression
+(source_file
+  (fb_decl
+    (identifier)
+    (fb_body
+      (stmt_list
+        (assign
+          (variable
+            (begin_path_expression
+              (path_expression
+                (field_expression
                   (path_expression
                     (field_expression
                       (path_expression
-                        (field_expression
-                          (path_expression
-                            (var_access
-                              (field)))
-                          (var_access
-                            (ERR_unexpected_this_in_path))))
+                        (var_access
+                          (field)))
                       (var_access
-                        (field))))))
-              (assignment
-                (constant
-                  (numeric_literal
-                    (int_literal
-                      (signed_int
-                        (unsigned_int)))))))))))
+                        (ERR_unexpected_this_in_path))))
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int)))))))))))
 
 ================================================================================
 Unexpected SUPER in path
@@ -254,31 +254,31 @@ END_FUNCTION_BLOCK
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (fb_decl
-        (identifier)
-        (fb_body
-          (stmt_list
-            (assign
-              (variable
-                (begin_path_expression
+(source_file
+  (fb_decl
+    (identifier)
+    (fb_body
+      (stmt_list
+        (assign
+          (variable
+            (begin_path_expression
+              (path_expression
+                (field_expression
                   (path_expression
                     (field_expression
                       (path_expression
-                        (field_expression
-                          (path_expression
-                            (var_access
-                              (field)))
-                          (var_access
-                            (ERR_unexpected_super_in_path))))
+                        (var_access
+                          (field)))
                       (var_access
-                        (field))))))
-              (assignment
-                (constant
-                  (numeric_literal
-                    (int_literal
-                      (signed_int
-                        (unsigned_int)))))))))))
+                        (ERR_unexpected_super_in_path))))
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int)))))))))))
 
 ================================================================================
 Empty right hand assignment
@@ -290,18 +290,18 @@ END_FUNCTION_BLOCK
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (fb_decl
-        (identifier)
-        (fb_body
-          (stmt_list
-            (assign
-              (variable
-                (begin_path_expression
-                  (path_expression
-                    (var_access
-                      (field)))))
-              (ERR_empty_right_hand_assignment))))))
+(source_file
+  (fb_decl
+    (identifier)
+    (fb_body
+      (stmt_list
+        (assign
+          (variable
+            (begin_path_expression
+              (path_expression
+                (var_access
+                  (field)))))
+          (ERR_empty_right_hand_assignment))))))
 
 ================================================================================
 Function call in Init Expression
@@ -316,59 +316,60 @@ END_FUNCTION_BLOCK
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (fb_decl
-        (identifier)
-        (var_decls
-          (var_decl_init_list
-            (variable_list
-              (identifier))
-            (var_decl_init
-              (array_type_spec
-                (ranges
-                  (subrange
-                    (constant_expr
-                      (constant
-                        (numeric_literal
-                          (int_literal
-                            (signed_int
-                              (unsigned_int))))))
-                    (constant_expr
-                      (constant
-                        (numeric_literal
-                          (int_literal
-                            (signed_int
-                              (unsigned_int))))))))
-                (namespace_access
-                  (identifier)))
-              (array_type_init
-                (init_elem
-                  (array_index_elem
-                    (unsigned_int)
-                    (array_values
-                      (init_elem
-                        (ERR_func_call_in_init
-                          (func_call
-                            (begin_path_expression
-                              (path_expression
-                                (var_access
-                                  (field))))
-                            (param_assign
-                              (param_assign_input
-                                (identifier)
-                                (constant
-                                  (numeric_literal
-                                    (int_literal
-                                      (signed_int
-                                        (unsigned_int)))))))
-                            (param_assign
-                              (param_assign_output
-                                (identifier)
-                                (variable
-                                  (begin_path_expression
-                                    (path_expression
-                                      (var_access
-                                        (field)))))))))))))))))))
+(source_file
+  (fb_decl
+    (identifier)
+    (var_decls
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (array_type_spec
+            (ranges
+              (subrange
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))
+            (simple_type_spec
+              (namespace_access
+                (identifier))))
+          (array_type_init
+            (init_elem
+              (array_index_elem
+                (unsigned_int)
+                (array_values
+                  (init_elem
+                    (ERR_func_call_in_init
+                      (func_call
+                        (begin_path_expression
+                          (path_expression
+                            (var_access
+                              (field))))
+                        (param_assign
+                          (param_assign_input
+                            (identifier)
+                            (constant
+                              (numeric_literal
+                                (int_literal
+                                  (signed_int
+                                    (unsigned_int)))))))
+                        (param_assign
+                          (param_assign_output
+                            (identifier)
+                            (variable
+                              (begin_path_expression
+                                (path_expression
+                                  (var_access
+                                    (field)))))))))))))))))))
 
 ================================================================================
 Missing dot in assignment sign
@@ -380,23 +381,23 @@ END_FUNCTION_BLOCK
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (fb_decl
-        (identifier)
-        (fb_body
-          (stmt_list
-            (assign
-              (variable
-                (begin_path_expression
-                  (path_expression
-                    (var_access
-                      (field)))))
-              (ERR_missing_dot_in_assignment
-                (constant
-                  (numeric_literal
-                    (int_literal
-                      (signed_int
-                        (unsigned_int)))))))))))
+(source_file
+  (fb_decl
+    (identifier)
+    (fb_body
+      (stmt_list
+        (assign
+          (variable
+            (begin_path_expression
+              (path_expression
+                (var_access
+                  (field)))))
+          (ERR_missing_dot_in_assignment
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int)))))))))))
 
 ================================================================================
 Missing equal in assignment sign
@@ -408,23 +409,23 @@ END_FUNCTION_BLOCK
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (fb_decl
-        (identifier)
-        (fb_body
-          (stmt_list
-            (assign
-              (variable
-                (begin_path_expression
-                  (path_expression
-                    (var_access
-                      (field)))))
-              (ERR_missing_equal_in_assignment
-                (constant
-                  (numeric_literal
-                    (int_literal
-                      (signed_int
-                        (unsigned_int)))))))))))                        
+(source_file
+  (fb_decl
+    (identifier)
+    (fb_body
+      (stmt_list
+        (assign
+          (variable
+            (begin_path_expression
+              (path_expression
+                (var_access
+                  (field)))))
+          (ERR_missing_equal_in_assignment
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int)))))))))))
 
 ================================================================================
 Missing dot in for list
@@ -436,31 +437,31 @@ END_FUNCTION
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (func_decl
-        (identifier)
-        (func_body
-          (stmt_list
-            (for_stmt
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (for_stmt
+          (variable
+            (begin_path_expression
+              (path_expression
+                (var_access
+                  (field)))))
+          (for_list
+            (ERR_missing_dot_in_for_control)
+            (variable_access
               (variable
                 (begin_path_expression
                   (path_expression
                     (var_access
-                      (field)))))
-              (for_list
-                (ERR_missing_dot_in_for_control)
-                (variable_access
-                  (variable
-                    (begin_path_expression
-                      (path_expression
-                        (var_access
-                          (field))))))
-                (variable_access
-                  (variable
-                    (begin_path_expression
-                      (path_expression
-                        (var_access
-                          (field))))))))))))
+                      (field))))))
+            (variable_access
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field))))))))))))
 
 ================================================================================
 Missing dot in for list
@@ -472,31 +473,31 @@ END_FUNCTION
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (func_decl
-        (identifier)
-        (func_body
-          (stmt_list
-            (for_stmt
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (for_stmt
+          (variable
+            (begin_path_expression
+              (path_expression
+                (var_access
+                  (field)))))
+          (for_list
+            (ERR_missing_equal_in_for_control)
+            (variable_access
               (variable
                 (begin_path_expression
                   (path_expression
                     (var_access
-                      (field)))))
-              (for_list
-                (ERR_missing_equal_in_for_control)
-                (variable_access
-                  (variable
-                    (begin_path_expression
-                      (path_expression
-                        (var_access
-                          (field))))))
-                (variable_access
-                  (variable
-                    (begin_path_expression
-                      (path_expression
-                        (var_access
-                          (field))))))))))))                          
+                      (field))))))
+            (variable_access
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field))))))))))))
 
 ================================================================================
 class variables after methods
@@ -518,72 +519,100 @@ END_CLASS
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (class_decl
-        (identifier)
-        (method_decl
-          (access_spec
-            (protected))
-          (identifier))
-        (ERR_class_variables_after_method
-          (var_decls
-            (var_decl_init_list
-              (variable_list
-                (identifier))
-              (var_decl_init
-                (simple_type_spec
-                  (namespace_access
-                    (identifier))))))
-          (var_decls
-            (var_decl_init_list
-              (variable_list
-                (identifier))
-              (var_decl_init
-                (simple_type_spec
-                  (namespace_access
-                    (identifier)))))))))
+(source_file
+  (class_decl
+    (identifier)
+    (method_decl
+      (access_spec
+        (protected))
+      (identifier))
+    (ERR_class_variables_after_method
+      (var_decls
+        (var_decl_init_list
+          (variable_list
+            (identifier))
+          (var_decl_init
+            (simple_type_spec
+              (namespace_access
+                (identifier))))))
+      (var_decls
+        (var_decl_init_list
+          (variable_list
+            (identifier))
+          (var_decl_init
+            (simple_type_spec
+              (namespace_access
+                (identifier)))))))))
 
 ================================================================================
-fb variables after methods
+output assign in assignment
 ================================================================================
 
-FUNCTION_BLOCK fb1
-
-    METHOD PROTECTED myProtectedMethod END_METHOD
-        
-    VAR
-        obj: Base;
-    END_VAR
-    
-    VAR
-        obj: Base;
-    END_VAR
-
+FUNCTION_BLOCK fn
+    a => 0;
 END_FUNCTION_BLOCK
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (fb_decl
-        (identifier)
-        (method_decl
-          (access_spec
-            (protected))
+(source_file
+  (fb_decl
+    (identifier)
+    (fb_body
+      (stmt_list
+        (assign
+          (variable
+            (begin_path_expression
+              (path_expression
+                (var_access
+                  (field)))))
+          (ERR_output_assign_in_assignment
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int)))))))))))
+
+================================================================================
+output_assign_in_for_list
+================================================================================
+
+FUNCTION fn
+  VAR i : INT END_VAR
+  FOR i => 0 TO 10 END_FOR
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (var_decls
+      (var_decl_init_list
+        (variable_list
           (identifier))
-        (ERR_fb_variables_after_method
-          (var_decls
-            (var_decl_init_list
-              (variable_list
-                (identifier))
-              (var_decl_init
-                (simple_type_spec
-                  (namespace_access
-                    (identifier))))))
-          (var_decls
-            (var_decl_init_list
-              (variable_list
-                (identifier))
-              (var_decl_init
-                (simple_type_spec
-                  (namespace_access
-                    (identifier)))))))))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))))))
+    (func_body
+      (stmt_list
+        (for_stmt
+          (variable
+            (begin_path_expression
+              (path_expression
+                (var_access
+                  (field)))))
+          (for_list
+            (ERR_output_assign_in_for_control)
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int)))))
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int)))))))))))

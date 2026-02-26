@@ -86,8 +86,8 @@ fn invalid_subrange_value_type(mut with_db: RootDatabase) {
         ,-[ file:///test0.st:11:22 ]
         |
       3 |             Range: UINT (0..5);
-        |                  ^^^^^^|^^^^^^  
-        |                        `-------- type is defined by 'Range' here
+        |                    ^^^^^|^^^^^  
+        |                         `------- type is defined by 'Range' here
         | 
      11 |             test :=  -1 // -1 should not be allowed here (UINT)
         |                      ^|  

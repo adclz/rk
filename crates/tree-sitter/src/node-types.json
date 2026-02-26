@@ -700,6 +700,26 @@
     "fields": {}
   },
   {
+    "type": "ERR_output_assign_in_assignment",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "_expression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "ERR_output_assign_in_for_control",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "ERR_unexpected_super_in_path",
     "named": true,
     "fields": {}
@@ -1213,12 +1233,16 @@
           }
         ]
       },
-      "type": {
+      "spec": {
         "multiple": false,
         "required": true,
         "types": [
           {
-            "type": "data_type_access",
+            "type": "ref_type_spec",
+            "named": true
+          },
+          {
+            "type": "simple_type_spec",
             "named": true
           }
         ]
@@ -1258,6 +1282,10 @@
           },
           {
             "type": "ERR_missing_equal_in_assignment",
+            "named": true
+          },
+          {
+            "type": "ERR_output_assign_in_assignment",
             "named": true
           },
           {
@@ -2717,6 +2745,10 @@
         },
         {
           "type": "ERR_missing_equal_in_for_control",
+          "named": true
+        },
+        {
+          "type": "ERR_output_assign_in_for_control",
           "named": true
         }
       ]
@@ -5516,6 +5548,10 @@
           },
           {
             "type": "enum_type_spec",
+            "named": true
+          },
+          {
+            "type": "ref_type_spec",
             "named": true
           },
           {

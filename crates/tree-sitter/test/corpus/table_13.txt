@@ -17,43 +17,42 @@ END_PROGRAM
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (prog_decl
+(source_file
+  (prog_decl
+    (identifier)
+    (var_decls
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (bit_str_type_name
+              (bool_name)))))
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (string_type_name
+              (string_name
+                (unsigned_int)))))))
+    (loc_var_decls
+      (loc_var_decl
         (identifier)
-        (var_decls
-          (var_decl_init_list
-            (variable_list
-              (identifier))
-            (var_decl_init
-              (simple_type_spec
-                (bit_str_type_name
-                  (bool_name)))))
-          (var_decl_init_list
-            (variable_list
-              (identifier))
-            (var_decl_init
-              (simple_type_spec
-                (string_type_name
-                  (string_name
-                    (unsigned_int)))))))
-        (loc_var_decls
-          (loc_var_decl
-            (identifier)
-            (located_at
-              (direct_variable
-                (adress_identifier)
-                (offset
-                  (unsigned_int))))
-            (loc_var_spec_init
-              (simple_type_spec
-                (numeric_type_name
-                  (int_type_name
-                    (sign_int_type_name
-                      (int_name))))))))))
-
+        (located_at
+          (direct_variable
+            (adress_identifier)
+            (offset
+              (unsigned_int))))
+        (loc_var_spec_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))))))))
 
 ================================================================================
-Variable with user-defined data type 
+Variable with user-defined data type
 ================================================================================
 
 PROGRAM pgm
@@ -66,17 +65,17 @@ END_PROGRAM
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (prog_decl
-        (identifier)
-        (var_decls
-          (var_decl_init_list
-            (variable_list
-              (identifier))
-            (var_decl_init
-              (simple_type_spec
-                (namespace_access
-                  (identifier))))))))
+(source_file
+  (prog_decl
+    (identifier)
+    (var_decls
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (namespace_access
+              (identifier))))))))
 
 ================================================================================
 Array
@@ -97,95 +96,98 @@ END_PROGRAM
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (prog_decl
+(source_file
+  (prog_decl
+    (identifier)
+    (var_decls
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (array_type_spec
+            (ranges
+              (subrange
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))
+            (simple_type_spec
+              (bit_str_type_name
+                (bool_name))))))
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (array_type_spec
+            (ranges
+              (subrange
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int)))))))
+              (subrange
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))
+            (simple_type_spec
+              (numeric_type_name
+                (int_type_name
+                  (sign_int_type_name
+                    (int_name)))))))))
+    (loc_var_decls
+      (loc_var_decl
         (identifier)
-        (var_decls
-          (var_decl_init_list
-            (variable_list
-              (identifier))
-            (var_decl_init
-              (array_type_spec
-                (ranges
-                  (subrange
-                    (constant_expr
-                      (constant
-                        (numeric_literal
-                          (int_literal
-                            (signed_int
-                              (unsigned_int))))))
-                    (constant_expr
-                      (constant
-                        (numeric_literal
-                          (int_literal
-                            (signed_int
-                              (unsigned_int))))))))
-                (bit_str_type_name
-                  (bool_name)))))
-          (var_decl_init_list
-            (variable_list
-              (identifier))
-            (var_decl_init
-              (array_type_spec
-                (ranges
-                  (subrange
-                    (constant_expr
-                      (constant
-                        (numeric_literal
-                          (int_literal
-                            (signed_int
-                              (unsigned_int))))))
-                    (constant_expr
-                      (constant
-                        (numeric_literal
-                          (int_literal
-                            (signed_int
-                              (unsigned_int)))))))
-                  (subrange
-                    (constant_expr
-                      (constant
-                        (numeric_literal
-                          (int_literal
-                            (signed_int
-                              (unsigned_int))))))
-                    (constant_expr
-                      (constant
-                        (numeric_literal
-                          (int_literal
-                            (signed_int
-                              (unsigned_int))))))))
-                (numeric_type_name
-                  (int_type_name
-                    (sign_int_type_name
-                      (int_name))))))))
-        (loc_var_decls
-          (loc_var_decl
-            (identifier)
-            (located_at
-              (direct_variable
-                (adress_identifier)
-                (offset
-                  (unsigned_int))))
-            (loc_var_spec_init
-              (array_type_spec
-                (ranges
-                  (subrange
-                    (constant_expr
-                      (constant
-                        (numeric_literal
-                          (int_literal
-                            (signed_int
-                              (unsigned_int))))))
-                    (constant_expr
-                      (constant
-                        (numeric_literal
-                          (int_literal
-                            (signed_int
-                              (unsigned_int))))))))
-                (numeric_type_name
-                  (int_type_name
-                    (sign_int_type_name
-                      (int_name))))))))))
+        (located_at
+          (direct_variable
+            (adress_identifier)
+            (offset
+              (unsigned_int))))
+        (loc_var_spec_init
+          (array_type_spec
+            (ranges
+              (subrange
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))
+            (simple_type_spec
+              (numeric_type_name
+                (int_type_name
+                  (sign_int_type_name
+                    (int_name)))))))))))
 
 ================================================================================
 Reference
@@ -201,17 +203,17 @@ END_PROGRAM
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (prog_decl
-        (identifier)
-        (var_decls
-          (var_decl_init_list
-            (variable_list
-              (identifier))
-            (var_decl_init
-              (ref_type_spec
-                (ref_to)
-                (numeric_type_name
-                  (int_type_name
-                    (sign_int_type_name
-                      (int_name))))))))))
+(source_file
+  (prog_decl
+    (identifier)
+    (var_decls
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (ref_type_spec
+            (ref_to)
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))))))))

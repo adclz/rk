@@ -56,12 +56,19 @@ function createSpecInit(name, spec, init = null) {
 function useSpecInit(specs, inits) {
   return ($) =>
     seq(
+      ":",
       field("spec", choice(...specs.map((rule) => $[`${rule}_type_spec`]))),
       field(
         "init",
         optional(choice(...inits.map((rule) => $[`${rule}_type_init`]))),
       ),
     );
+}
+
+/// Use a list of specs without the leading ':' (e.g. for array element types after OF)
+function useSpec(specs) {
+  return ($) =>
+    field("spec", choice(...specs.map((rule) => $[`${rule}_type_spec`])));
 }
 
 // Variable declarations
@@ -279,6 +286,10 @@ module.exports = grammar({
     ERR_missing_dot_in_for_control: ($) => "=",
     // Missing '=' after ':'
     ERR_missing_equal_in_for_control: ($) => ":",
+
+    // Using '=>' (output assign) instead of ':='
+    ERR_output_assign_in_assignment: ($) => seq("=>", $._expression),
+    ERR_output_assign_in_for_control: ($) => "=>",
 
     ERR_unexpected_this_in_path: ($) => prec(-1, "THIS"),
     ERR_unexpected_super_in_path: ($) => prec(-1, "SUPER"),
@@ -596,7 +607,7 @@ module.exports = grammar({
 
     ...createSpecInit(
       "simple",
-      ($) => seq(":", $.data_type_access),
+      ($) => $.data_type_access,
       ($) => seq(":=", $.constant_expr),
     ),
 
@@ -604,7 +615,6 @@ module.exports = grammar({
       "subrange",
       ($) =>
         seq(
-          ":",
           field("type", $._elem_type_name),
           "(",
           field("range", $.subrange),
@@ -624,7 +634,7 @@ module.exports = grammar({
     // Enum_Spec_Init : ( ( '(' Identifier ( ',' Identifier )* ')' ) | Enum_Type_Access ) ( ':=' Enum_Value )?;
     ...createSpecInit(
       "enum",
-      ($) => seq(":", $.enum_spec),
+      ($) => $.enum_spec,
       ($) => seq(":=", $.namespace_access),
     ),
 
@@ -649,13 +659,12 @@ module.exports = grammar({
       "array",
       ($) =>
         seq(
-          ":",
           "ARRAY",
           "[",
           field("ranges", $.ranges),
           "]",
           "OF",
-          field("type", $.data_type_access),
+          useSpec(["simple", "ref"])($),
         ),
       ($) => seq(":=", "[", commaSep($.init_elem), "]"),
     ),
@@ -666,7 +675,6 @@ module.exports = grammar({
       "struct",
       ($) =>
         seq(
-          ":",
           "STRUCT",
           optional(";"),
           field("overlap", optional("OVERLAP")),
@@ -711,7 +719,7 @@ module.exports = grammar({
         field("name", $.identifier),
         field("attributes", optional($.struct_elem_decl_attributes)),
         useSpecInit(
-          ["simple", "subrange", "enum", "array", "struct"],
+          ["simple", "subrange", "enum", "array", "struct", "ref"],
           [
             "simple",
             // "subrange", handled by simple
@@ -744,7 +752,7 @@ module.exports = grammar({
 
     ...createSpecInit(
       "ref",
-      ($) => seq(":", field("ref_count", repeat1(alias("REF_TO", $.ref_to))), $.data_type_access),
+      ($) => seq(field("ref_count", repeat1(alias("REF_TO", $.ref_to))), $.data_type_access),
       ($) => seq(":=", $.ref_value),
     ),
 
@@ -1725,6 +1733,7 @@ module.exports = grammar({
             $.ERR_empty_right_hand_assignment,
             $.ERR_missing_dot_in_assignment,
             $.ERR_missing_equal_in_assignment,
+            $.ERR_output_assign_in_assignment,
           ),
         ),
       ),
@@ -1809,6 +1818,7 @@ module.exports = grammar({
           ":=",
           $.ERR_missing_dot_in_for_control,
           $.ERR_missing_equal_in_for_control,
+          $.ERR_output_assign_in_for_control,
         ),
         field("initial_value", $._expression),
         "TO",

@@ -17,36 +17,36 @@ END_NAMESPACE
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (namespace_decl
-        (namespace_h_name
-          (identifier))
-        (namespace_elements
-          (data_type_decl
-            (type_decl
-              (identifier)
-              (enum_type_spec
-                (enum_spec
-                  (enum_value_spec
-                    (identifier))
-                  (enum_value_spec
-                    (identifier))
-                  (enum_value_spec
-                    (identifier))
-                  (enum_value_spec
-                    (identifier))
-                  (enum_value_spec
-                    (identifier))
-                  (enum_value_spec
-                    (identifier))))
-              (simple_type_init
-                (constant_expr
-                  (variable_access
-                    (variable
-                      (begin_path_expression
-                        (path_expression
-                          (var_access
-                            (field)))))))))))))
+(source_file
+  (namespace_decl
+    (namespace_h_name
+      (identifier))
+    (namespace_elements
+      (data_type_decl
+        (type_decl
+          (identifier)
+          (enum_type_spec
+            (enum_spec
+              (enum_value_spec
+                (identifier))
+              (enum_value_spec
+                (identifier))
+              (enum_value_spec
+                (identifier))
+              (enum_value_spec
+                (identifier))
+              (enum_value_spec
+                (identifier))
+              (enum_value_spec
+                (identifier))))
+          (simple_type_init
+            (constant_expr
+              (variable_access
+                (variable
+                  (begin_path_expression
+                    (path_expression
+                      (var_access
+                        (field)))))))))))))
 
 ================================================================================
 Data types with named values
@@ -64,89 +64,89 @@ END_TYPE
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (data_type_decl
-        (type_decl
-          (identifier)
-          (enum_type_spec
-            (enum_spec
-              (bit_str_type_name
-                (multibits_type_name
-                  (dword_name)))
-              (enum_value_spec
-                (identifier)
-                (constant
-                  (numeric_literal
-                    (int_literal
-                      (hex_int)))))
-              (enum_value_spec
-                (identifier)
-                (constant
-                  (numeric_literal
-                    (int_literal
-                      (hex_int)))))
-              (enum_value_spec
-                (identifier)
-                (constant
-                  (numeric_literal
-                    (int_literal
-                      (hex_int)))))
-              (enum_value_spec
-                (identifier)
+(source_file
+  (data_type_decl
+    (type_decl
+      (identifier)
+      (enum_type_spec
+        (enum_spec
+          (bit_str_type_name
+            (multibits_type_name
+              (dword_name)))
+          (enum_value_spec
+            (identifier)
+            (constant
+              (numeric_literal
+                (int_literal
+                  (hex_int)))))
+          (enum_value_spec
+            (identifier)
+            (constant
+              (numeric_literal
+                (int_literal
+                  (hex_int)))))
+          (enum_value_spec
+            (identifier)
+            (constant
+              (numeric_literal
+                (int_literal
+                  (hex_int)))))
+          (enum_value_spec
+            (identifier)
+            (boolean_operator
+              (or_operator
                 (boolean_operator
                   (or_operator
-                    (boolean_operator
-                      (or_operator
-                        (variable_access
-                          (variable
-                            (begin_path_expression
-                              (path_expression
-                                (var_access
-                                  (field))))))
-                        (variable_access
-                          (variable
-                            (begin_path_expression
-                              (path_expression
-                                (var_access
-                                  (field))))))))
                     (variable_access
                       (variable
                         (begin_path_expression
                           (path_expression
                             (var_access
-                              (field)))))))))
-              (enum_value_spec
-                (identifier)
+                              (field))))))
+                    (variable_access
+                      (variable
+                        (begin_path_expression
+                          (path_expression
+                            (var_access
+                              (field))))))))
+                (variable_access
+                  (variable
+                    (begin_path_expression
+                      (path_expression
+                        (var_access
+                          (field)))))))))
+          (enum_value_spec
+            (identifier)
+            (boolean_operator
+              (and_operator
                 (boolean_operator
                   (and_operator
-                    (boolean_operator
-                      (and_operator
-                        (variable_access
-                          (variable
-                            (begin_path_expression
-                              (path_expression
-                                (var_access
-                                  (field))))))
-                        (variable_access
-                          (variable
-                            (begin_path_expression
-                              (path_expression
-                                (var_access
-                                  (field))))))))
                     (variable_access
                       (variable
                         (begin_path_expression
                           (path_expression
                             (var_access
-                              (field)))))))))))
-          (simple_type_init
-            (constant_expr
-              (variable_access
-                (variable
-                  (begin_path_expression
-                    (path_expression
-                      (var_access
-                        (field)))))))))))
+                              (field))))))
+                    (variable_access
+                      (variable
+                        (begin_path_expression
+                          (path_expression
+                            (var_access
+                              (field))))))))
+                (variable_access
+                  (variable
+                    (begin_path_expression
+                      (path_expression
+                        (var_access
+                          (field)))))))))))
+      (simple_type_init
+        (constant_expr
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field)))))))))))
 
 ================================================================================
 Subrange data types
@@ -158,35 +158,35 @@ END_TYPE
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (data_type_decl
-        (type_decl
-          (identifier)
-          (subrange_type_spec
-            (numeric_type_name
-              (int_type_name
-                (sign_int_type_name
-                  (int_name))))
-            (subrange
-              (constant_expr
-                (constant
-                  (numeric_literal
-                    (int_literal
-                      (signed_int
-                        (unsigned_int))))))
-              (constant_expr
-                (constant
-                  (numeric_literal
-                    (int_literal
-                      (signed_int
-                        (unsigned_int))))))))
-          (simple_type_init
-            (constant_expr
-              (constant
-                (numeric_literal
-                  (int_literal
-                    (signed_int
-                      (unsigned_int))))))))))
+(source_file
+  (data_type_decl
+    (type_decl
+      (identifier)
+      (subrange_type_spec
+        (numeric_type_name
+          (int_type_name
+            (sign_int_type_name
+              (int_name))))
+        (subrange
+          (constant_expr
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int))))))
+          (constant_expr
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int))))))))
+      (simple_type_init
+        (constant_expr
+          (constant
+            (numeric_literal
+              (int_literal
+                (signed_int
+                  (unsigned_int))))))))))
 
 ================================================================================
 Array data types
@@ -198,50 +198,51 @@ END_TYPE
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (data_type_decl
-        (type_decl
-          (identifier)
-          (array_type_spec
-            (ranges
-              (subrange
+(source_file
+  (data_type_decl
+    (type_decl
+      (identifier)
+      (array_type_spec
+        (ranges
+          (subrange
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))))
+        (simple_type_spec
+          (namespace_access
+            (identifier))))
+      (array_type_init
+        (init_elem
+          (array_index_elem
+            (unsigned_int)
+            (array_values
+              (init_elem
                 (constant_expr
                   (constant
                     (numeric_literal
                       (int_literal
                         (signed_int
-                          (unsigned_int))))))
+                          (unsigned_int))))))))))
+        (init_elem
+          (array_index_elem
+            (unsigned_int)
+            (array_values
+              (init_elem
                 (constant_expr
                   (constant
                     (numeric_literal
                       (int_literal
                         (signed_int
-                          (unsigned_int))))))))
-            (namespace_access
-              (identifier)))
-          (array_type_init
-            (init_elem
-              (array_index_elem
-                (unsigned_int)
-                (array_values
-                  (init_elem
-                    (constant_expr
-                      (constant
-                        (numeric_literal
-                          (int_literal
-                            (signed_int
-                              (unsigned_int))))))))))
-            (init_elem
-              (array_index_elem
-                (unsigned_int)
-                (array_values
-                  (init_elem
-                    (constant_expr
-                      (constant
-                        (numeric_literal
-                          (int_literal
-                            (signed_int
-                              (unsigned_int))))))))))))))
+                          (unsigned_int))))))))))))))
 
 ================================================================================
 FB types and classes as array elements
@@ -253,43 +254,44 @@ END_TYPE
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (data_type_decl
-        (type_decl
-          (identifier)
-          (array_type_spec
-            (ranges
-              (subrange
-                (constant_expr
-                  (constant
-                    (numeric_literal
-                      (int_literal
-                        (signed_int
-                          (unsigned_int))))))
-                (constant_expr
-                  (constant
-                    (numeric_literal
-                      (int_literal
-                        (signed_int
-                          (unsigned_int))))))))
-            (namespace_access
-              (identifier)))
-          (array_type_init
-            (init_elem
-              (array_index_elem
-                (unsigned_int)
-                (array_values
+(source_file
+  (data_type_decl
+    (type_decl
+      (identifier)
+      (array_type_spec
+        (ranges
+          (subrange
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))))
+        (simple_type_spec
+          (namespace_access
+            (identifier))))
+      (array_type_init
+        (init_elem
+          (array_index_elem
+            (unsigned_int)
+            (array_values
+              (init_elem
+                (struct_elem
+                  (identifier)
                   (init_elem
-                    (struct_elem
-                      (identifier)
-                      (init_elem
-                        (constant_expr
-                          (constant
-                            (time_literal
-                              (duration
-                                (time
-                                  (time_type_name)
-                                  (time_value))))))))))))))))
+                    (constant_expr
+                      (constant
+                        (time_literal
+                          (duration
+                            (time
+                              (time_type_name)
+                              (time_value))))))))))))))))
 
 ================================================================================
 Structured data type
@@ -305,40 +307,40 @@ END_TYPE
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (data_type_decl
-        (type_decl
+(source_file
+  (data_type_decl
+    (type_decl
+      (identifier)
+      (struct_type_spec
+        (struct_elem_decl
           (identifier)
-          (struct_type_spec
-            (struct_elem_decl
-              (identifier)
-              (simple_type_spec
-                (namespace_access
-                  (identifier))))
-            (struct_elem_decl
-              (identifier)
-              (simple_type_spec
-                (namespace_access
-                  (identifier)))
-              (simple_type_init
-                (constant_expr
-                  (constant
-                    (numeric_literal
-                      (int_literal
-                        (signed_int
-                          (unsigned_int))))))))
-            (struct_elem_decl
-              (identifier)
-              (simple_type_spec
-                (namespace_access
-                  (identifier)))
-              (simple_type_init
-                (constant_expr
-                  (constant
-                    (numeric_literal
-                      (int_literal
-                        (signed_int
-                          (unsigned_int))))))))))))
+          (simple_type_spec
+            (namespace_access
+              (identifier))))
+        (struct_elem_decl
+          (identifier)
+          (simple_type_spec
+            (namespace_access
+              (identifier)))
+          (simple_type_init
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))))
+        (struct_elem_decl
+          (identifier)
+          (simple_type_spec
+            (namespace_access
+              (identifier)))
+          (simple_type_init
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))))))))
 
 ================================================================================
 FB types and classes as structure elements
@@ -353,35 +355,35 @@ END_TYPE
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (data_type_decl
-        (type_decl
+(source_file
+  (data_type_decl
+    (type_decl
+      (identifier)
+      (struct_type_spec
+        (struct_elem_decl
           (identifier)
-          (struct_type_spec
-            (struct_elem_decl
-              (identifier)
-              (simple_type_spec
-                (numeric_type_name
-                  (int_type_name
-                    (sign_int_type_name
-                      (int_name))))))
-            (struct_elem_decl
-              (identifier)
-              (simple_type_spec
-                (namespace_access
-                  (identifier)))
-              (struct_type_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))))
+        (struct_elem_decl
+          (identifier)
+          (simple_type_spec
+            (namespace_access
+              (identifier)))
+          (struct_type_init
+            (init_elem
+              (struct_elem
+                (identifier)
                 (init_elem
-                  (struct_elem
-                    (identifier)
-                    (init_elem
-                      (constant_expr
-                        (constant
-                          (time_literal
-                            (duration
-                              (time
-                                (time_type_name)
-                                (time_value)))))))))))))))
+                  (constant_expr
+                    (constant
+                      (time_literal
+                        (duration
+                          (time
+                            (time_type_name)
+                            (time_value)))))))))))))))
 
 ================================================================================
 Structured data type with relative addressing AT
@@ -396,35 +398,35 @@ END_TYPE
 
 --------------------------------------------------------------------------------
 
-   (source_file
-      (data_type_decl
-        (type_decl
+(source_file
+  (data_type_decl
+    (type_decl
+      (identifier)
+      (struct_type_spec
+        (struct_elem_decl
           (identifier)
-          (struct_type_spec
-            (struct_elem_decl
-              (identifier)
-              (simple_type_spec
-                (numeric_type_name
-                  (int_type_name
-                    (sign_int_type_name
-                      (int_name))))))
-            (struct_elem_decl
-              (identifier)
-              (simple_type_spec
-                (namespace_access
-                  (identifier)))
-              (struct_type_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))))
+        (struct_elem_decl
+          (identifier)
+          (simple_type_spec
+            (namespace_access
+              (identifier)))
+          (struct_type_init
+            (init_elem
+              (struct_elem
+                (identifier)
                 (init_elem
-                  (struct_elem
-                    (identifier)
-                    (init_elem
-                      (constant_expr
-                        (constant
-                          (time_literal
-                            (duration
-                              (time
-                                (time_type_name)
-                                (time_value)))))))))))))))
+                  (constant_expr
+                    (constant
+                      (time_literal
+                        (duration
+                          (time
+                            (time_type_name)
+                            (time_value)))))))))))))))
 
 ================================================================================
 Structured data type with relative addressing AT
@@ -441,70 +443,70 @@ END_TYPE
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (data_type_decl
-        (type_decl
+(source_file
+  (data_type_decl
+    (type_decl
+      (identifier)
+      (struct_type_spec
+        (struct_elem_decl
           (identifier)
-          (struct_type_spec
-            (struct_elem_decl
-              (identifier)
-              (struct_elem_decl_attributes
-                (located_at
-                  (direct_variable
-                    (adress_identifier)
-                    (offset
-                      (unsigned_int)))))
-              (simple_type_spec
-                (numeric_type_name
-                  (int_type_name
-                    (sign_int_type_name
-                      (int_name))))))
-            (struct_elem_decl
-              (identifier)
-              (struct_elem_decl_attributes
-                (located_at
-                  (direct_variable
-                    (adress_identifier)
-                    (offset
-                      (unsigned_int)))))
-              (simple_type_spec
-                (numeric_type_name
-                  (int_type_name
-                    (unsign_int_type_name
-                      (usint_name)))))
-              (simple_type_init
-                (constant_expr
-                  (constant
-                    (numeric_literal
-                      (int_literal
-                        (signed_int
-                          (unsigned_int))))))))
-            (struct_elem_decl
-              (identifier)
-              (struct_elem_decl_attributes
-                (located_at
-                  (direct_variable
-                    (adress_identifier)
-                    (offset
-                      (unsigned_int))))
-                (multibit_part_access
-                  (multibit
-                    (unsigned_int))))
-              (simple_type_spec
-                (bit_str_type_name
-                  (bool_name))))
-            (struct_elem_decl
-              (identifier)
-              (struct_elem_decl_attributes
-                (located_at
-                  (direct_variable
-                    (adress_identifier)
-                    (offset
-                      (unsigned_int)))))
-              (simple_type_spec
-                (bit_str_type_name
-                  (multibits_type_name
-                    (byte_name)))))))))
+          (struct_elem_decl_attributes
+            (located_at
+              (direct_variable
+                (adress_identifier)
+                (offset
+                  (unsigned_int)))))
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))))
+        (struct_elem_decl
+          (identifier)
+          (struct_elem_decl_attributes
+            (located_at
+              (direct_variable
+                (adress_identifier)
+                (offset
+                  (unsigned_int)))))
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (unsign_int_type_name
+                  (usint_name)))))
+          (simple_type_init
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))))
+        (struct_elem_decl
+          (identifier)
+          (struct_elem_decl_attributes
+            (located_at
+              (direct_variable
+                (adress_identifier)
+                (offset
+                  (unsigned_int))))
+            (multibit_part_access
+              (multibit
+                (unsigned_int))))
+          (simple_type_spec
+            (bit_str_type_name
+              (bool_name))))
+        (struct_elem_decl
+          (identifier)
+          (struct_elem_decl_attributes
+            (located_at
+              (direct_variable
+                (adress_identifier)
+                (offset
+                  (unsigned_int)))))
+          (simple_type_spec
+            (bit_str_type_name
+              (multibits_type_name
+                (byte_name)))))))))
 
 ================================================================================
 Structured data type with relative addressing AT and OVERLAP
@@ -523,87 +525,87 @@ END_TYPE
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (data_type_decl
-        (type_decl
+(source_file
+  (data_type_decl
+    (type_decl
+      (identifier)
+      (struct_type_spec
+        (struct_elem_decl
           (identifier)
-          (struct_type_spec
-            (struct_elem_decl
-              (identifier)
-              (struct_elem_decl_attributes
-                (located_at
-                  (direct_variable
-                    (adress_identifier)
-                    (offset
-                      (unsigned_int)))))
-              (simple_type_spec
-                (numeric_type_name
-                  (int_type_name
-                    (sign_int_type_name
-                      (int_name))))))
-            (struct_elem_decl
-              (identifier)
-              (struct_elem_decl_attributes
-                (located_at
-                  (direct_variable
-                    (adress_identifier)
-                    (offset
-                      (unsigned_int)))))
-              (simple_type_spec
-                (numeric_type_name
-                  (int_type_name
-                    (unsign_int_type_name
-                      (usint_name))))))
-            (struct_elem_decl
-              (identifier)
-              (struct_elem_decl_attributes
-                (located_at
-                  (direct_variable
-                    (adress_identifier)
-                    (offset
-                      (unsigned_int))))
-                (multibit_part_access
-                  (multibit
-                    (unsigned_int))))
-              (simple_type_spec
-                (bit_str_type_name
-                  (bool_name))))
-            (struct_elem_decl
-              (identifier)
-              (struct_elem_decl_attributes
-                (located_at
-                  (direct_variable
-                    (adress_identifier)
-                    (offset
-                      (unsigned_int)))))
-              (simple_type_spec
-                (bit_str_type_name
-                  (multibits_type_name
-                    (byte_name)))))
-            (struct_elem_decl
-              (identifier)
-              (struct_elem_decl_attributes
-                (located_at
-                  (direct_variable
-                    (adress_identifier)
-                    (offset
-                      (unsigned_int)))))
-              (simple_type_spec
-                (numeric_type_name
-                  (real_type_name
-                    (real_name)))))
-            (struct_elem_decl
-              (identifier)
-              (struct_elem_decl_attributes
-                (located_at
-                  (direct_variable
-                    (adress_identifier)
-                    (offset
-                      (unsigned_int)))))
-              (simple_type_spec
-                (bit_str_type_name
-                  (multibits_type_name
-                    (byte_name)))))))))
+          (struct_elem_decl_attributes
+            (located_at
+              (direct_variable
+                (adress_identifier)
+                (offset
+                  (unsigned_int)))))
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))))
+        (struct_elem_decl
+          (identifier)
+          (struct_elem_decl_attributes
+            (located_at
+              (direct_variable
+                (adress_identifier)
+                (offset
+                  (unsigned_int)))))
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (unsign_int_type_name
+                  (usint_name))))))
+        (struct_elem_decl
+          (identifier)
+          (struct_elem_decl_attributes
+            (located_at
+              (direct_variable
+                (adress_identifier)
+                (offset
+                  (unsigned_int))))
+            (multibit_part_access
+              (multibit
+                (unsigned_int))))
+          (simple_type_spec
+            (bit_str_type_name
+              (bool_name))))
+        (struct_elem_decl
+          (identifier)
+          (struct_elem_decl_attributes
+            (located_at
+              (direct_variable
+                (adress_identifier)
+                (offset
+                  (unsigned_int)))))
+          (simple_type_spec
+            (bit_str_type_name
+              (multibits_type_name
+                (byte_name)))))
+        (struct_elem_decl
+          (identifier)
+          (struct_elem_decl_attributes
+            (located_at
+              (direct_variable
+                (adress_identifier)
+                (offset
+                  (unsigned_int)))))
+          (simple_type_spec
+            (numeric_type_name
+              (real_type_name
+                (real_name)))))
+        (struct_elem_decl
+          (identifier)
+          (struct_elem_decl_attributes
+            (located_at
+              (direct_variable
+                (adress_identifier)
+                (offset
+                  (unsigned_int)))))
+          (simple_type_spec
+            (bit_str_type_name
+              (multibits_type_name
+                (byte_name)))))))))
 
 ================================================================================
 Directly represented elements of a structure – partly specified using “ * ”
@@ -619,52 +621,52 @@ END_TYPE
 
 --------------------------------------------------------------------------------
 
-  (source_file
-      (data_type_decl
-        (type_decl
+(source_file
+  (data_type_decl
+    (type_decl
+      (identifier)
+      (struct_type_spec
+        (struct_elem_decl
           (identifier)
-          (struct_type_spec
-            (struct_elem_decl
-              (identifier)
-              (struct_elem_decl_attributes
-                (located_at
-                  (direct_variable
-                    (adress_identifier)
-                    (partly))))
-              (simple_type_spec
-                (bit_str_type_name
-                  (bool_name))))
-            (struct_elem_decl
-              (identifier)
-              (struct_elem_decl_attributes
-                (located_at
-                  (direct_variable
-                    (adress_identifier)
-                    (partly))))
-              (simple_type_spec
-                (bit_str_type_name
-                  (multibits_type_name
-                    (word_name))))
-              (simple_type_init
-                (constant_expr
-                  (constant
-                    (numeric_literal
-                      (int_literal
-                        (signed_int
-                          (unsigned_int))))))))
-            (struct_elem_decl
-              (identifier)
-              (simple_type_spec
-                (numeric_type_name
-                  (real_type_name
-                    (real_name))))
-              (simple_type_init
-                (constant_expr
-                  (constant
-                    (numeric_literal
-                      (real_literal
-                        (real_value)))))))
-            (line_comment)))))
+          (struct_elem_decl_attributes
+            (located_at
+              (direct_variable
+                (adress_identifier)
+                (partly))))
+          (simple_type_spec
+            (bit_str_type_name
+              (bool_name))))
+        (struct_elem_decl
+          (identifier)
+          (struct_elem_decl_attributes
+            (located_at
+              (direct_variable
+                (adress_identifier)
+                (partly))))
+          (simple_type_spec
+            (bit_str_type_name
+              (multibits_type_name
+                (word_name))))
+          (simple_type_init
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))))
+        (struct_elem_decl
+          (identifier)
+          (simple_type_spec
+            (numeric_type_name
+              (real_type_name
+                (real_name))))
+          (simple_type_init
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (real_literal
+                    (real_value)))))))
+        (line_comment)))))
 
 ================================================================================
 Directly derived data types
@@ -679,53 +681,53 @@ END_TYPE
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (data_type_decl
-        (type_decl
-          (identifier)
-          (simple_type_spec
-            (numeric_type_name
-              (int_type_name
-                (unsign_int_type_name
-                  (uint_name))))))
-        (type_decl
-          (identifier)
-          (simple_type_spec
-            (numeric_type_name
-              (real_type_name
-                (real_name))))
-          (simple_type_init
-            (constant_expr
-              (constant
-                (numeric_literal
-                  (real_literal
-                    (real_value)))))))
-        (type_decl
-          (identifier)
-          (simple_type_spec
-            (namespace_access
-              (identifier)))
-          (struct_type_init
+(source_file
+  (data_type_decl
+    (type_decl
+      (identifier)
+      (simple_type_spec
+        (numeric_type_name
+          (int_type_name
+            (unsign_int_type_name
+              (uint_name))))))
+    (type_decl
+      (identifier)
+      (simple_type_spec
+        (numeric_type_name
+          (real_type_name
+            (real_name))))
+      (simple_type_init
+        (constant_expr
+          (constant
+            (numeric_literal
+              (real_literal
+                (real_value)))))))
+    (type_decl
+      (identifier)
+      (simple_type_spec
+        (namespace_access
+          (identifier)))
+      (struct_type_init
+        (init_elem
+          (struct_elem
+            (identifier)
             (init_elem
-              (struct_elem
-                (identifier)
-                (init_elem
-                  (constant_expr
-                    (constant
-                      (numeric_literal
-                        (int_literal
-                          (signed_int
-                            (unsigned_int)))))))))
+              (constant_expr
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int)))))))))
+        (init_elem
+          (struct_elem
+            (identifier)
             (init_elem
-              (struct_elem
-                (identifier)
-                (init_elem
-                  (constant_expr
-                    (constant
-                      (numeric_literal
-                        (int_literal
-                          (signed_int
-                            (unsigned_int)))))))))))))
+              (constant_expr
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int)))))))))))))
 
 ================================================================================
 Initialization using constant expressions
@@ -737,23 +739,23 @@ END_TYPE
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (data_type_decl
-        (type_decl
-          (identifier)
-          (simple_type_spec
-            (numeric_type_name
-              (real_type_name
-                (real_name))))
-          (simple_type_init
-            (constant_expr
-              (mult_operator
-                (constant
-                  (numeric_literal
-                    (int_literal
-                      (signed_int
-                        (unsigned_int)))))
-                (constant
-                  (numeric_literal
-                    (real_literal
-                      (real_value))))))))))
+(source_file
+  (data_type_decl
+    (type_decl
+      (identifier)
+      (simple_type_spec
+        (numeric_type_name
+          (real_type_name
+            (real_name))))
+      (simple_type_init
+        (constant_expr
+          (mult_operator
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int)))))
+            (constant
+              (numeric_literal
+                (real_literal
+                  (real_value))))))))))

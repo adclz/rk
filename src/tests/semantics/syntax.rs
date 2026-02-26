@@ -393,3 +393,44 @@ END_FUNCTION_BLOCK"#;
     ----'
     ");
 }
+
+#[rstest]
+fn output_assign_in_assignment(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fn
+    a => 0;
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0020] Error: syntax
+       ,-[ file:///test0.st:3:7 ]
+       |
+     3 |     a => 0;
+       |       ^^|^  
+       |         `--- '=>' is not a valid assignment sign
+       | 
+       | Help: replace '=>' with ':='
+    ---'
+    ");
+}
+
+#[rstest]
+fn output_assign_in_for_list(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn
+  VAR i : INT END_VAR
+  FOR i => 0 TO 10 END_FOR
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0021] Error: syntax
+       ,-[ file:///test0.st:4:9 ]
+       |
+     4 |   FOR i => 0 TO 10 END_FOR
+       |         ^|  
+       |          `-- '=>' is not a valid assignment sign
+       | 
+       | Help: replace '=>' with ':='
+    ---'
+    ");
+}

@@ -46,6 +46,14 @@ pub enum SyntaxError {
         span: Span,
     },
     FunctionCallInInitExpression(Span),
+    OutputAssignInAssignment {
+        file: File,
+        span: Span,
+    },
+    OutputAssignInForList {
+        file: File,
+        span: Span,
+    },
     // tree-sitter
     MissingNode {
         file: File,
@@ -81,6 +89,8 @@ impl ErrorCode for SyntaxError {
             SyntaxError::MissingEqualInForList { .. } => "E0016",
             SyntaxError::FunctionCallInInitExpression(_) => "E0017",
             SyntaxError::InvalidPouKeyword(_) => "E0018",
+            SyntaxError::OutputAssignInAssignment { .. } => "E0020",
+            SyntaxError::OutputAssignInForList { .. } => "E0021",
             SyntaxError::MissingNode { .. } => "E0019",
             SyntaxError::SyntaxError { .. } => "E0050",
         }
@@ -318,6 +328,72 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 diag.with_fix(
                     action()
                         .title("replace ':' with ':='".into())
+                        .kind(auto_lsp::lsp_types::CodeActionKind::QUICKFIX)
+                        .diagnostics(vec![diag.inner()])
+                        .is_preferred(true)
+                        .edit(WorkspaceEdit::new(HashMap::from([(
+                            file.url(db).clone(),
+                            vec![edit().new_text(":=".to_string()).range(range.into()).call()],
+                        )])))
+                        .call(),
+                );
+
+                diag
+            }
+            Self::OutputAssignInAssignment { file, span } => {
+                let mut diag = diag()
+                    .message("'=>' is not a valid assignment sign".into())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(*span)
+                    .call();
+
+                let range = Range {
+                    start_byte: span.start_byte,
+                    end_byte: span.start_byte + 2,
+                    start_point: span.start_point,
+                    end_point: tree_sitter::Point {
+                        row: span.start_point.row,
+                        column: span.start_point.column + 2,
+                    },
+                };
+
+                diag.with_fix(
+                    action()
+                        .title("replace '=>' with ':='".into())
+                        .kind(auto_lsp::lsp_types::CodeActionKind::QUICKFIX)
+                        .diagnostics(vec![diag.inner()])
+                        .is_preferred(true)
+                        .edit(WorkspaceEdit::new(HashMap::from([(
+                            file.url(db).clone(),
+                            vec![edit().new_text(":=".to_string()).range(range.into()).call()],
+                        )])))
+                        .call(),
+                );
+
+                diag
+            }
+            Self::OutputAssignInForList { file, span } => {
+                let mut diag = diag()
+                    .message("'=>' is not a valid assignment sign".into())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(*span)
+                    .call();
+
+                let range = Range {
+                    start_byte: span.start_byte,
+                    end_byte: span.start_byte + 2,
+                    start_point: span.start_point,
+                    end_point: tree_sitter::Point {
+                        row: span.start_point.row,
+                        column: span.start_point.column + 2,
+                    },
+                };
+
+                diag.with_fix(
+                    action()
+                        .title("replace '=>' with ':='".into())
                         .kind(auto_lsp::lsp_types::CodeActionKind::QUICKFIX)
                         .diagnostics(vec![diag.inner()])
                         .is_preferred(true)
