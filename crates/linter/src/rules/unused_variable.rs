@@ -7,9 +7,11 @@ use hir::{
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
-    hir_ty::body::infer_body,
+    hir_ty::body::BodyInferenceResult,
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
+
+pub const NAME: &str = "unused-variable";
 
 /// W0101: variable is declared but never used in the body.
 struct UnusedVariable;
@@ -27,21 +29,9 @@ impl ErrorCode for UnusedVariable {
 pub fn check<'db>(
     db: &'db dyn WorkspaceDataBase,
     scope: ScopeId<'db>,
+    body: &BodyInferenceResult<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
-    // Only scopes with bodies can have unused variables
-    let has_body = matches!(
-        get_scope(db, scope).kind,
-        ScopeKind::Pou(hir::hir_def::pous::pou::Pou::Function(_))
-            | ScopeKind::Pou(hir::hir_def::pous::pou::Pou::FunctionBlock(_))
-            | ScopeKind::MethodDecl(_)
-            | ScopeKind::Program(_)
-    );
-    if !has_body {
-        return;
-    }
-
-    let body = infer_body(db, scope);
     let def_map = scope.def_map(db);
 
     for (_, var) in &def_map.global_variables {
@@ -86,7 +76,7 @@ fn check_variable<'db>(
     let name = var.get_name_ident(db).text(db);
 
     // Skip conventional "don't care" names
-    if name.as_str() == "_" {
+    if name.as_str().starts_with("_") {
         return;
     }
 

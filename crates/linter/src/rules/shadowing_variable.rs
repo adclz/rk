@@ -2,14 +2,11 @@ use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
-    hir_def::{
-        pous::pou::Pou,
-        scope::{ScopeId, ScopeKind},
-        semantic_index::get_scope,
-    },
-    hir_ty::body::infer_body,
+    hir_ty::body::BodyInferenceResult,
 };
-use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
+use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
+
+pub const NAME: &str = "shadowing-variable";
 
 /// W0102: variable name shadows a POU (function, function block, class, etc.)
 struct ShadowingVariable;
@@ -26,42 +23,25 @@ impl ErrorCode for ShadowingVariable {
 
 pub fn check<'db>(
     db: &'db dyn WorkspaceDataBase,
-    scope: ScopeId<'db>,
+    body: &BodyInferenceResult<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
-    // Only scopes with bodies can have shadowing
-    let has_body = matches!(
-        get_scope(db, scope).kind,
-        ScopeKind::Pou(Pou::Function(_))
-            | ScopeKind::Pou(Pou::FunctionBlock(_))
-            | ScopeKind::MethodDecl(_)
-            | ScopeKind::Program(_)
-    );
-    if !has_body {
-        return;
-    }
-
-    let body = infer_body(db, scope);
-
     for (var, pou) in &body.variables_shadowing {
         let var_name = var.get_name_ident(db).text(db);
-        let pou_kind = match pou {
-            Pou::Function(_) => "function",
-            Pou::FunctionBlock(_) => "function block",
-            Pou::Class(_) => "class",
-            Pou::Interface(_) => "interface",
-            Pou::DataType(_) => "data type",
-        };
 
-        diagnostics.push(
-            diag()
+        let mut diag = diag()
                 .message(format!(
-                    "variable '{var_name}' shadows {pou_kind} '{var_name}'"
+                    "variable '{var_name}' shadows POU '{var_name}' available in this scope"
                 ))
                 .severity(DiagnosticSeverity::INFORMATION)
                 .desc(&ShadowingVariable)
                 .range(var.get_span(db))
-                .call(),
+                .call();
+
+        diag.with_related(Related::new(format!("POU {var_name} is declared here"), pou.get_scope_id(db).file(db), pou.get_name_span(db)));
+
+        diagnostics.push(
+            diag
         );
     }
 }
