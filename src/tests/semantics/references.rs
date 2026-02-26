@@ -291,3 +291,111 @@ END_FUNCTION
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
+
+#[rstest]
+fn valid_array_of_ref_to_elementary(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fn1
+    VAR
+        x: INT := 10;
+        arr: ARRAY[0..2] OF REF_TO INT;
+    END_VAR
+
+    arr[0] := REF(x);
+
+END_FUNCTION_BLOCK
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn valid_array_of_ref_to_pou(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        value: INT;
+    END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK fn1
+    VAR
+        inst: fb1;
+        arr: ARRAY[0..2] OF REF_TO fb1;
+    END_VAR
+
+    arr[0] := REF(inst);
+
+END_FUNCTION_BLOCK
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn invalid_array_of_ref_to_type_mismatch(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fn1
+    VAR
+        x: REAL;
+        arr: ARRAY[0..2] OF REF_TO INT;
+    END_VAR
+
+    arr[0] := REF(x);
+
+END_FUNCTION_BLOCK
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:8:15 ]
+       |
+     5 |         arr: ARRAY[0..2] OF REF_TO INT;
+       |         ^|^  
+       |          `--- type is declared by variable 'arr' here
+       | 
+     8 |     arr[0] := REF(x);
+       |               ^^^|^^  
+       |                  `---- expected 'REF_TO INT', got 'REF TO REAL'
+    ---'
+    ");
+}
+
+#[rstest]
+fn valid_array_of_ref_to_null_assign(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fn1
+    VAR
+        arr: ARRAY[0..2] OF REF_TO INT;
+    END_VAR
+
+    arr[0] := NULL;
+
+END_FUNCTION_BLOCK
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn valid_struct_with_ref_field(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE
+    MyStruct: STRUCT
+        ptr: REF_TO INT;
+    END_STRUCT;
+END_TYPE
+
+FUNCTION_BLOCK fn1
+    VAR
+        x: INT := 10;
+        s: MyStruct;
+    END_VAR
+
+    s.ptr := REF(x);
+
+END_FUNCTION_BLOCK
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
