@@ -1,8 +1,6 @@
-use std::sync::Arc;
-
+use crate::builder::Parse;
 use crate::builder::ParseVarSection;
 use crate::builder::semantic_index::SemanticIndexBuilder;
-use crate::builder::statement::ParseStatement;
 use crate::check::errors::ToIdeDiagnostic;
 use ide_diagnostic::IdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
@@ -11,7 +9,7 @@ use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use crate::hir_def::pous::function_block::FunctionBlock;
 use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::pous::variable::VariableDecl;
-use crate::hir_def::scope::{Scope, ScopeKind};
+use crate::hir_def::scope::ScopeKind;
 use crate::{Modifier, Visibility};
 use ast::generated::{FbDecl, FbVariables};
 use auto_lsp::anyhow;
@@ -26,17 +24,12 @@ impl<'db> SemanticIndexBuilder<'db> {
         let previous_scope = self.current_scope;
         self.current_scope = scope_id;
 
-        let variables = func.parse_variables(self);
+        let variables = self.parse_fb_variables(func);
 
-        let extends = func.extends.as_ref().and_then(|e| {
-            match SpanNamespaceAccess::from_ast(self.db, self, e.cast(self.ast)) {
-                Ok(namespace) => Some(namespace),
-                Err(error) => {
-                    self.errors.push(error);
-                    None
-                }
-            }
-        });
+        let extends = func
+            .extends
+            .as_ref()
+            .and_then(|e| self.try_parse(SpanNamespaceAccess::from_ast(self.db, self, e.cast(self.ast))));
 
         let implements = func
             .implements
@@ -45,15 +38,7 @@ impl<'db> SemanticIndexBuilder<'db> {
                 i.cast(self.ast)
                     .children
                     .iter()
-                    .filter_map(|i| {
-                        match SpanNamespaceAccess::from_ast(self.db, self, i.cast(self.ast)) {
-                            Ok(namespace) => Some(namespace),
-                            Err(error) => {
-                                self.errors.push(error);
-                                None
-                            }
-                        }
-                    })
+                    .filter_map(|i| self.try_parse(SpanNamespaceAccess::from_ast(self.db, self, i.cast(self.ast))))
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
@@ -81,12 +66,9 @@ impl<'db> SemanticIndexBuilder<'db> {
                 ast::generated::SFC_FbDiagram_LadderDiagram_StmtList::StmtList(stmts) => stmts
                     .children
                     .iter()
-                    .filter_map(|stmt| match stmt.cast(self.ast).to_statement(self) {
-                        Ok(statement) => Some(statement),
-                        Err(err) => {
-                            self.errors.push(err);
-                            None
-                        }
+                    .filter_map(|stmt| {
+                        let r = stmt.cast(self.ast).parse(self);
+                        self.try_parse(r)
                     })
                     .collect(),
                 _ => vec![],
@@ -104,13 +86,8 @@ impl<'db> SemanticIndexBuilder<'db> {
         }
 
         let name = Ident::from_node(self.db, self.file, func.name.cast(self.ast))?;
-        let usings = match self.parse_usings(&func.directives) {
-            Ok(usings) => usings,
-            Err(error) => {
-                self.errors.push(error);
-                vec![]
-            }
-        };
+        let usings = self.parse_usings(&func.directives);
+        let usings = self.parse_or_default(usings);
 
         let generics = if let Some(generics) = &func.generic_spec {
             self.parse_generic_params(generics.cast(self.ast))?
@@ -133,46 +110,41 @@ impl<'db> SemanticIndexBuilder<'db> {
             scope_id,
         ));
 
-        let scope = Scope::new(
-            self.file,
+        self.register_scope(
             ScopeKind::Pou(result),
             usings,
             scope_id,
             Visibility::empty(),
-            Some(previous_scope),
+            previous_scope,
         );
-
-        self.scope_keys
-            .insert(scope_id.scope(self.db), Arc::new(scope));
 
         Ok(result)
     }
 }
 
-trait ParseVariable<'db> {
-    fn parse_variables(&self, sema: &mut SemanticIndexBuilder<'db>) -> Vec<VariableDecl<'db>>;
-}
-
-impl<'db> ParseVariable<'db> for ast::generated::FbDecl {
-    fn parse_variables(&self, sema: &mut SemanticIndexBuilder<'db>) -> Vec<VariableDecl<'db>> {
+impl<'db> SemanticIndexBuilder<'db> {
+    fn parse_fb_variables(
+        &mut self,
+        func: &ast::generated::FbDecl,
+    ) -> Vec<VariableDecl<'db>> {
         let mut variables = vec![];
 
-        for variable in self.variables.iter() {
-            match variable.cast(sema.ast) {
-                FbVariables::FbInputDecls(decls) => decls.parse(sema, &mut variables),
-                FbVariables::FbOutputDecls(decls) => decls.parse(sema, &mut variables),
-                FbVariables::InOutDecls(decls) => decls.parse(sema, &mut variables),
-                FbVariables::ExternalVarDecls(decls) => decls.parse(sema, &mut variables),
-                FbVariables::TempVarDecls(decls) => decls.parse(sema, &mut variables),
-                FbVariables::VarDecls(decls) => decls.parse(sema, &mut variables),
+        for variable in func.variables.iter() {
+            match variable.cast(self.ast) {
+                FbVariables::FbInputDecls(decls) => decls.parse(self, &mut variables),
+                FbVariables::FbOutputDecls(decls) => decls.parse(self, &mut variables),
+                FbVariables::InOutDecls(decls) => decls.parse(self, &mut variables),
+                FbVariables::ExternalVarDecls(decls) => decls.parse(self, &mut variables),
+                FbVariables::TempVarDecls(decls) => decls.parse(self, &mut variables),
+                FbVariables::VarDecls(decls) => decls.parse(self, &mut variables),
                 FbVariables::LocPartlyVarDecl(loc_partly_var_decl) => {
-                    loc_partly_var_decl.parse(sema, &mut variables)
+                    loc_partly_var_decl.parse(self, &mut variables)
                 }
                 FbVariables::NoRetainVarDecls(no_retain_var_decls) => {
-                    no_retain_var_decls.parse(sema, &mut variables)
+                    no_retain_var_decls.parse(self, &mut variables)
                 }
                 FbVariables::RetainVarDecls(retain_var_decls) => {
-                    retain_var_decls.parse(sema, &mut variables)
+                    retain_var_decls.parse(self, &mut variables)
                 }
             }
         }

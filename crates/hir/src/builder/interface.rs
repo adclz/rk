@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crate::Visibility;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::{ParseSpec, ParseVarSection};
@@ -8,7 +6,7 @@ use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use crate::hir_def::pous::interface::{Interface, MethodPrototype};
 use crate::hir_def::pous::pou::Pou;
-use crate::hir_def::scope::{Scope, ScopeId, ScopeKind};
+use crate::hir_def::scope::{ScopeId, ScopeKind};
 use auto_lsp::anyhow;
 
 impl<'db> SemanticIndexBuilder<'db> {
@@ -21,6 +19,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         self.current_scope = scope_id;
 
         let name = Ident::from_node(self.db, self.file, interface.name.cast(self.ast))?;
+
         let extends = interface
             .extends
             .as_ref()
@@ -29,13 +28,8 @@ impl<'db> SemanticIndexBuilder<'db> {
                     .children
                     .iter()
                     .filter_map(|i| {
-                        match SpanNamespaceAccess::from_ast(self.db, self, i.cast(self.ast)) {
-                            Ok(namespace) => Some(Some(namespace)),
-                            Err(error) => {
-                                self.errors.push(error);
-                                None
-                            }
-                        }
+                        self.try_parse(SpanNamespaceAccess::from_ast(self.db, self, i.cast(self.ast)))
+                            .map(Some)
                     })
                     .collect()
             })
@@ -45,25 +39,13 @@ impl<'db> SemanticIndexBuilder<'db> {
             .prototype
             .iter()
             .filter_map(|m| {
-                let previous_scope = self.current_scope;
-
-                match self.parse_method_prototype(m.cast(self.ast), previous_scope) {
-                    Ok(method) => Some(method),
-                    Err(error) => {
-                        self.errors.push(error);
-                        None
-                    }
-                }
+                let r = self.parse_method_prototype(m.cast(self.ast), previous_scope);
+                self.try_parse(r)
             })
             .collect::<Vec<_>>();
 
-        let usings = match self.parse_usings(&interface.directives) {
-            Ok(usings) => usings,
-            Err(error) => {
-                self.errors.push(error);
-                vec![]
-            }
-        };
+        let usings = self.parse_usings(&interface.directives);
+        let usings = self.parse_or_default(usings);
 
         let result = Pou::Interface(Interface::new(
             self.db,
@@ -75,17 +57,13 @@ impl<'db> SemanticIndexBuilder<'db> {
             scope_id,
         ));
 
-        let scope = Scope::new(
-            self.file,
+        self.register_scope(
             ScopeKind::Pou(result),
             usings,
             scope_id,
             Visibility::empty(),
-            Some(previous_scope),
+            previous_scope,
         );
-
-        self.scope_keys
-            .insert(scope_id.scope(self.db), Arc::new(scope));
 
         Ok(result)
     }
@@ -130,17 +108,13 @@ impl<'db> SemanticIndexBuilder<'db> {
             scope_id,
         );
 
-        let scope = Scope::new(
-            self.file,
+        self.register_scope(
             ScopeKind::MethodProt(result),
             vec![],
             scope_id,
             Visibility::empty(),
-            Some(previous_scope),
+            previous_scope,
         );
-
-        self.scope_keys
-            .insert(scope_id.scope(self.db), Arc::new(scope));
 
         Ok(result)
     }

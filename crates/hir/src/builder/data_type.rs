@@ -1,12 +1,10 @@
-use std::sync::Arc;
-
 use crate::Visibility;
 use crate::{
-    builder::{ParseSpec, expression::ParseExpr, semantic_index::SemanticIndexBuilder},
+    builder::{Parse, ParseSpec, semantic_index::SemanticIndexBuilder},
     hir_def::{
         interned::identifier::Ident,
         pous::{data_type::DataType, pou::Pou},
-        scope::{Scope, ScopeKind},
+        scope::ScopeKind,
     },
 };
 use ide_diagnostic::IdeDiagnostic;
@@ -56,17 +54,13 @@ impl<'db> SemanticIndexBuilder<'db> {
             scope_id,
         ));
 
-        let scope = Scope::new(
-            self.file,
+        self.register_scope(
             ScopeKind::Pou(result),
             vec![],
             scope_id,
             Visibility::empty(),
-            Some(previous_scope),
+            previous_scope,
         );
-
-        self.scope_keys
-            .insert(scope_id.scope(self.db), Arc::new(scope));
 
         Ok(result)
     }

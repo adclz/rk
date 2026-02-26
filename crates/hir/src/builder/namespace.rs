@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use ast::generated::ERRInvalidPouKeyword_ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl;
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
@@ -12,7 +10,7 @@ use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::interned::namespace::SpanNamespacePath;
 use crate::hir_def::namespace::NamespaceDecl;
-use crate::hir_def::scope::{Scope, ScopeKind};
+use crate::hir_def::scope::ScopeKind;
 
 impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_namespace(
@@ -25,13 +23,8 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         let scope_id = self.generate_scope_id();
         let path = SpanNamespacePath::from((self.db, parent_path, self.current_scope));
-        let usings = match self.parse_usings(&nested.directives) {
-            Ok(usings) => usings,
-            Err(error) => {
-                self.errors.push(error);
-                vec![]
-            }
-        };
+        let usings = self.parse_usings(&nested.directives);
+        let usings = self.parse_or_default(usings);
 
         let mut namespaces = vec![];
         let mut pous = vec![];
@@ -89,8 +82,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             scope_id,
         );
 
-        let scope = Scope::new(
-            self.file,
+        self.register_scope(
             ScopeKind::Namespace(result),
             usings,
             scope_id,
@@ -98,11 +90,8 @@ impl<'db> SemanticIndexBuilder<'db> {
                 Some(_) => Visibility::INTERNAL,
                 None => Visibility::PUBLIC,
             },
-            Some(previous_scope),
+            previous_scope,
         );
-
-        self.scope_keys
-            .insert(scope_id.scope(self.db), Arc::new(scope));
 
         // Then insert it into the map with its ID
         self.global_namespaces.push(result);

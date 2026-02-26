@@ -242,6 +242,13 @@ END_FUNCTION_BLOCK"#;
        |                                     ^^^^^^^^^^^^|^^^^^^^^^^^^  
        |                                                 `-------------- function call in initialization expression is not allowed
     ---'
+    [E0605] Error: invalid array access
+       ,-[ file:///test0.st:4:34 ]
+       |
+     4 |     ml : ARRAY [0..2] OF INT := [10(call(IN := 5, OUT => OUT))]
+       |                                  ^^^^^^^^^^^^^^|^^^^^^^^^^^^^^  
+       |                                                `---------------- too many elements in array initializer (expected at most 3)
+    ---'
     ");
 }
 

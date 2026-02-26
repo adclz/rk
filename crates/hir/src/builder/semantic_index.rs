@@ -18,6 +18,7 @@ use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::program::ProgramDecl;
 use crate::hir_def::scope::{Scope, ScopeId, ScopeKind};
 use crate::hir_def::semantic_index::SemanticIndex;
+use crate::hir_def::using::Using;
 
 pub struct SemanticIndexBuilder<'db> {
     pub(crate) source: &'db ast::generated::SourceFile,
@@ -80,6 +81,49 @@ impl<'db> SemanticIndexBuilder<'db> {
         let scope_id = ScopeId::new(self.db, self.file, self.scope_ctr);
         self.scope_ctr += 1;
         scope_id
+    }
+
+    /// Try a fallible parse, collecting the error and returning `None` on failure.
+    pub fn try_parse<T>(&mut self, result: Result<T, IdeDiagnostic>) -> Option<T> {
+        match result {
+            Ok(v) => Some(v),
+            Err(e) => {
+                self.errors.push(e);
+                None
+            }
+        }
+    }
+
+    /// Try a fallible parse, collecting the error and returning `T::default()` on failure.
+    pub fn parse_or_default<T: Default>(&mut self, result: Result<T, IdeDiagnostic>) -> T {
+        match result {
+            Ok(v) => v,
+            Err(e) => {
+                self.errors.push(e);
+                T::default()
+            }
+        }
+    }
+
+    /// Register a scope in the scope map.
+    pub fn register_scope(
+        &mut self,
+        kind: ScopeKind<'db>,
+        usings: Vec<Using<'db>>,
+        scope_id: ScopeId<'db>,
+        visibility: Visibility,
+        parent: ScopeId<'db>,
+    ) {
+        let scope = Scope::new(
+            self.file,
+            kind,
+            usings,
+            scope_id,
+            visibility,
+            Some(parent),
+        );
+        self.scope_keys
+            .insert(scope_id.scope(self.db), Arc::new(scope));
     }
 
     pub fn get_namespace_path(

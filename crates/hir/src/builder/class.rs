@@ -1,16 +1,13 @@
-use std::sync::Arc;
-
 use crate::builder::semantic_index::SemanticIndexBuilder;
-use crate::builder::statement::ParseStatement;
-use crate::builder::{ParseSpec, ParseVarSection};
-use crate::check::errors::ToIdeDiagnostic; 
+use crate::builder::{Parse, ParseSpec, ParseVarSection};
+use crate::check::errors::ToIdeDiagnostic;
 use ide_diagnostic::IdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use crate::hir_def::pous::class::{Class, MethodDecl};
 use crate::hir_def::pous::pou::Pou;
-use crate::hir_def::scope::{Scope, ScopeKind};
+use crate::hir_def::scope::{ScopeId, ScopeKind};
 use crate::{Modifier, Visibility};
 use ast::generated::{ClassDecl, ClassVariables};
 use auto_lsp::anyhow;
@@ -25,15 +22,10 @@ impl<'db> SemanticIndexBuilder<'db> {
         let previous_scope = self.current_scope;
         self.current_scope = scope_id;
 
-        let extends = class.extends.as_ref().and_then(|e| {
-            match SpanNamespaceAccess::from_ast(self.db, self, e.cast(self.ast)) {
-                Ok(namespace) => Some(namespace),
-                Err(error) => {
-                    self.errors.push(error);
-                    None
-                }
-            }
-        });
+        let extends = class
+            .extends
+            .as_ref()
+            .and_then(|e| self.try_parse(SpanNamespaceAccess::from_ast(self.db, self, e.cast(self.ast))));
 
         let implements = class
             .implements
@@ -42,21 +34,12 @@ impl<'db> SemanticIndexBuilder<'db> {
                 i.cast(self.ast)
                     .children
                     .iter()
-                    .filter_map(|i| {
-                        match SpanNamespaceAccess::from_ast(self.db, self, i.cast(self.ast)) {
-                            Ok(namespace) => Some(namespace),
-                            Err(error) => {
-                                self.errors.push(error);
-                                None
-                            }
-                        }
-                    })
+                    .filter_map(|i| self.try_parse(SpanNamespaceAccess::from_ast(self.db, self, i.cast(self.ast))))
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
 
         let mut modifiers = Modifier::empty();
-
         if let Some(class_mod) = &class.modifier {
             match class_mod.cast(self.ast) {
                 ast::generated::Operators_2::Token_ABSTRACT(_) => {
@@ -67,7 +50,6 @@ impl<'db> SemanticIndexBuilder<'db> {
         }
 
         let mut variables = vec![];
-
         for v in class.variables.iter() {
             match v.cast(self.ast) {
                 ClassVariables::ExternalVarDecls(e) => e.parse(self, &mut variables),
@@ -97,13 +79,8 @@ impl<'db> SemanticIndexBuilder<'db> {
         });
 
         let name = Ident::from_node(self.db, self.file, class.name.cast(self.ast))?;
-        let usings = match self.parse_usings(&class.directives) {
-            Ok(usings) => usings,
-            Err(error) => {
-                self.errors.push(error);
-                vec![]
-            }
-        };
+        let usings = self.parse_usings(&class.directives);
+        let usings = self.parse_or_default(usings);
 
         let result = Pou::Class(Class::new(
             self.db,
@@ -118,129 +95,112 @@ impl<'db> SemanticIndexBuilder<'db> {
             scope_id,
         ));
 
-        let scope = Scope::new(
-            self.file,
+        self.register_scope(
             ScopeKind::Pou(result),
             usings,
             scope_id,
             Visibility::empty(),
-            Some(previous_scope),
+            previous_scope,
         );
-
-        self.scope_keys
-            .insert(scope_id.scope(self.db), Arc::new(scope));
 
         Ok(result)
     }
-}
 
-impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_methods(
         &mut self,
-        class: &[AstNodeId<ast::generated::MethodDecl>],
+        methods: &[AstNodeId<ast::generated::MethodDecl>],
     ) -> Vec<MethodDecl<'db>> {
         let previous_scope = self.current_scope;
 
-        class
+        methods
             .iter()
-            .filter_map(|m| {
-                let scope_id = self.generate_scope_id();
-                self.current_scope = scope_id;
+            .filter_map(|m| self.parse_single_method(m, previous_scope))
+            .collect()
+    }
 
-            let name = match Ident::from_node(self.db, self.file, m.cast(self.ast).name.cast(self.ast)) {
-                Ok(name) => name,
-                Err(error) => {
-                self.errors.push(error);
-                return None;
-                }
-            };
+    fn parse_single_method(
+        &mut self,
+        m: &AstNodeId<ast::generated::MethodDecl>,
+        parent_scope: ScopeId<'db>,
+    ) -> Option<MethodDecl<'db>> {
+        let scope_id = self.generate_scope_id();
+        self.current_scope = scope_id;
 
-            let mut modifiers = match m.cast(self.ast).modifier.as_ref().map(|m| m.cast(self.ast)) {
-                Some(ast::generated::Operators_2::Token_ABSTRACT(_)) => Modifier::ABSTRACT,
-                Some(ast::generated::Operators_2::Token_FINAL(_)) => Modifier::FINAL,
-                _ => Modifier::empty(),
-            };
+        let method = m.cast(self.ast);
 
-            if m.cast(self.ast)._override.is_some() {
-                modifiers |= Modifier::OVERRIDE;
+        let name = self.try_parse(Ident::from_node(self.db, self.file, method.name.cast(self.ast)))?;
+
+        let mut modifiers = match method.modifier.as_ref().map(|m| m.cast(self.ast)) {
+            Some(ast::generated::Operators_2::Token_ABSTRACT(_)) => Modifier::ABSTRACT,
+            Some(ast::generated::Operators_2::Token_FINAL(_)) => Modifier::FINAL,
+            _ => Modifier::empty(),
+        };
+
+        if method._override.is_some() {
+            modifiers |= Modifier::OVERRIDE;
+        }
+
+        type MethodBody = ast::generated::ExternalVarDecls_InOutDecls_InputDecls_OutputDecls_TempVarDecls_VarDecls;
+
+        let mut variables = vec![];
+        for v in method.variables.iter() {
+            match v.cast(self.ast) {
+                MethodBody::ExternalVarDecls(decls) => decls.parse(self, &mut variables),
+                MethodBody::InOutDecls(decls) => decls.parse(self, &mut variables),
+                MethodBody::InputDecls(decls) => decls.parse(self, &mut variables),
+                MethodBody::OutputDecls(decls) => decls.parse(self, &mut variables),
+                MethodBody::TempVarDecls(decls) => decls.parse(self, &mut variables),
+                MethodBody::VarDecls(decls) => decls.parse(self, &mut variables),
             }
+        }
 
-            type MethodBody = ast::generated::ExternalVarDecls_InOutDecls_InputDecls_OutputDecls_TempVarDecls_VarDecls;
-
-            let mut method_variables = vec![];
-            for v in m.cast(self.ast).variables.iter() {
-                match v.cast(self.ast) {
-                MethodBody::ExternalVarDecls(decls) => decls.parse(self, &mut method_variables),
-                MethodBody::InOutDecls(decls) => decls.parse(self, &mut method_variables),
-                MethodBody::InputDecls(decls) => decls.parse(self, &mut method_variables),
-                MethodBody::OutputDecls(decls) => decls.parse(self, &mut method_variables),
-                MethodBody::TempVarDecls(decls) => decls.parse(self, &mut method_variables),
-                MethodBody::VarDecls(decls) => decls.parse(self, &mut method_variables),
+        let mut body = vec![];
+        if let Some(body_node) = method.body.as_ref()
+            && let ast::generated::FbDiagram_LadderDiagram_StmtList::StmtList(stmts) = body_node.cast(self.ast).children.cast(self.ast)
+        {
+            for stmt in stmts.children.iter() {
+                let r = stmt.cast(self.ast).parse(self);
+                if let Some(s) = self.try_parse(r) {
+                    body.push(s);
                 }
             }
+        }
 
-            let mut body = vec![];
-            if let Some(body_node) = m.cast(self.ast).body.as_ref()
-                && let ast::generated::FbDiagram_LadderDiagram_StmtList::StmtList(stmts) = body_node.cast(self.ast).children.cast(self.ast) {
-                for stmt in stmts.children.iter() {
-                    match stmt.cast(self.ast).to_statement(self) {
-                    Ok(statement) => body.push(statement),
-                    Err(error) => self.errors.push(error),
-                    }
-                }
-                }
+        let return_type = method.return_type.as_ref().map(|rt| rt.cast(self.ast).to_spec(self));
+        let return_type = return_type.and_then(|rt| self.try_parse(rt));
 
-            let return_type: Option<_> = m
-                .cast(self.ast)
-                .return_type
-                .as_ref()
-                .and_then(|rt| {
-                match rt.cast(self.ast).to_spec(self) {
-                    Ok(spec) => Some(spec),
-                    Err(error) => {
-                    self.errors.push(error);
-                    None
-                    }
-                }
-                });
+        let visibility = match &method.access {
+            Some(access) => match access.cast(self.ast).children.cast(self.ast) {
+                ast::generated::Internal_Private_Protected_Public::Private(_) => Visibility::PRIVATE,
+                ast::generated::Internal_Private_Protected_Public::Protected(_) => Visibility::PROTECTED,
+                ast::generated::Internal_Private_Protected_Public::Public(_) => Visibility::PUBLIC,
+                ast::generated::Internal_Private_Protected_Public::Internal(_) => Visibility::INTERNAL,
+            },
+            None => Visibility::PROTECTED,
+        };
 
-            let _override = m.cast(self.ast)._override.is_some();
+        let result = MethodDecl::new(
+            self.db,
+            name,
+            method.name.cast(self.ast).into(),
+            variables,
+            return_type,
+            modifiers,
+            visibility,
+            method._override.is_some(),
+            body,
+            method.into(),
+            scope_id,
+        );
 
-            let result = MethodDecl::new(
-                self.db,
-                name,
-                m.cast(self.ast).name.cast(self.ast).into(),
-                method_variables,
-                return_type,
-                modifiers,
-                match &m.cast(self.ast).access {
-                    Some(access) => match access.cast(self.ast).children.cast(self.ast) {
-                        ast::generated::Internal_Private_Protected_Public::Private(_) => Visibility::PRIVATE,
-                        ast::generated::Internal_Private_Protected_Public::Protected(_) => Visibility::PROTECTED,
-                        ast::generated::Internal_Private_Protected_Public::Public(_) => Visibility::PUBLIC,
-                        ast::generated::Internal_Private_Protected_Public::Internal(_) => Visibility::INTERNAL,
-                    },
-                    None => Visibility::PROTECTED,
-                },
-                _override,
-                body,
-                m.cast(self.ast).into(),
-                scope_id
-            );
+        self.register_scope(
+            ScopeKind::MethodDecl(result),
+            vec![],
+            scope_id,
+            result.visibility(self.db),
+            parent_scope,
+        );
 
-            let scope = Scope::new(
-                self.file,
-                ScopeKind::MethodDecl(result),
-                vec![],
-                scope_id,
-                result.visibility(self.db),
-                Some(previous_scope),
-            );
-
-            self.scope_keys.insert(scope_id.scope(self.db), Arc::new(scope));
-
-
-            Some(result)
-        }).collect::<Vec<_>>()
+        Some(result)
     }
 }

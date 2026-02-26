@@ -1,5 +1,6 @@
+use crate::builder::Parse;
 use crate::builder::ParseSpec;
-use crate::builder::expression::{ParseExpr, ParseExpression, ParseVariableAccess};
+use crate::builder::expression::ParseVariableAccess;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::ToIdeDiagnostic;
 use ide_diagnostic::IdeDiagnostic;
@@ -10,15 +11,10 @@ use crate::hir_def::interned::identifier::SpanIdent;
 use auto_lsp::anyhow::{self};
 use auto_lsp::core::ast::AstNode;
 
-pub trait ParseStatement<'db> {
-    fn to_statement(
-        &self,
-        sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<Stmt<'db>, IdeDiagnostic>;
-}
+impl<'db> Parse<'db> for ast::generated::Stmt {
+    type Output = Stmt<'db>;
 
-impl<'db> ParseStatement<'db> for ast::generated::Stmt {
-    fn to_statement(
+    fn parse(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<Stmt<'db>, IdeDiagnostic> {
@@ -30,7 +26,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                 p.into(),
                 sema.current_scope,
             )),
-            StmtType::Assign(assign) => assign.to_statement(sema),
+            StmtType::Assign(assign) => assign.parse(sema),
             StmtType::FuncCall(call) => {
                 let target = call.function.cast(sema.ast).parse(sema)?;
 
@@ -52,10 +48,10 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                                     ast::generated::ParamAssignInput_ParamAssignOutput::ParamAssignInput(p) => {
                                         parameters.push(ParamAssign::new(sema.db, p.into(), sema.current_scope, match p.param.as_ref() {
                                             Some(param) => {
-                                                ParamAssignKind::FormalInput { param: SpanIdent::from_node(sema.db, sema, param.cast(sema.ast))?, value: p.value.cast(sema.ast).to_expr(sema)? }
+                                                ParamAssignKind::FormalInput { param: SpanIdent::from_node(sema.db, sema, param.cast(sema.ast))?, value: p.value.cast(sema.ast).parse(sema)? }
                                             },
                                             None => {
-                                                ParamAssignKind::NonFormal { value: p.value.cast(sema.ast).to_expr(sema)? }
+                                                ParamAssignKind::NonFormal { value: p.value.cast(sema.ast).parse(sema)? }
                                             }
                                         }))
                                     }
@@ -78,7 +74,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                 ))
             }
             StmtType::IfStmt(if_stmt) => {
-                let condition = if_stmt.if_cond.cast(sema.ast).to_expr(sema)?;
+                let condition = if_stmt.if_cond.cast(sema.ast).parse(sema)?;
                 let then = if_stmt
                     .if_body
                     .as_ref()
@@ -86,7 +82,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                         b.cast(sema.ast)
                             .children
                             .iter()
-                            .map(|stmt| stmt.cast(sema.ast).to_statement(sema))
+                            .map(|stmt| stmt.cast(sema.ast).parse(sema))
                             .collect::<Result<Vec<_>, IdeDiagnostic>>()
                     })
                     .transpose()?;
@@ -99,14 +95,14 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                             .cast(sema.ast)
                             .else_if_cond
                             .cast(sema.ast)
-                            .to_expr(sema)?;
+                            .parse(sema)?;
                         let then = else_if_stmt
                             .cast(sema.ast)
                             .else_if_body
                             .cast(sema.ast)
                             .children
                             .iter()
-                            .map(|stmt| stmt.cast(sema.ast).to_statement(sema))
+                            .map(|stmt| stmt.cast(sema.ast).parse(sema))
                             .collect::<Result<Vec<_>, IdeDiagnostic>>()?;
                         Ok((condition, then))
                     })
@@ -119,7 +115,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                         b.cast(sema.ast)
                             .children
                             .iter()
-                            .map(|stmt| stmt.cast(sema.ast).to_statement(sema))
+                            .map(|stmt| stmt.cast(sema.ast).parse(sema))
                             .collect::<Result<Vec<_>, IdeDiagnostic>>()
                     })
                     .transpose()?;
@@ -158,20 +154,20 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                     }
                 });
 
-                let start = for_list.initial_value.cast(sema.ast).to_expr(sema)?;
+                let start = for_list.initial_value.cast(sema.ast).parse(sema)?;
 
                 let end = for_stmt
                     .control_list
                     .cast(sema.ast)
                     .end_value
                     .cast(sema.ast)
-                    .to_expr(sema)?;
+                    .parse(sema)?;
                 let step = for_stmt
                     .control_list
                     .cast(sema.ast)
                     .step
                     .as_ref()
-                    .map(|s| s.cast(sema.ast).to_expr(sema))
+                    .map(|s| s.cast(sema.ast).parse(sema))
                     .transpose()?;
 
                 let body = for_stmt
@@ -181,7 +177,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                         body.cast(sema.ast)
                             .children
                             .iter()
-                            .map(|stmt| stmt.cast(sema.ast).to_statement(sema))
+                            .map(|stmt| stmt.cast(sema.ast).parse(sema))
                             .collect::<Result<Vec<_>, IdeDiagnostic>>()
                     })
                     .transpose()?
@@ -201,7 +197,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                 ))
             }
             StmtType::CaseStmt(case_stmt) => {
-                let condition = case_stmt.case_cond.cast(sema.ast).to_expr(sema)?;
+                let condition = case_stmt.case_cond.cast(sema.ast).parse(sema)?;
 
                 let mut cases = vec![];
                 for case in case_stmt.case_selection.iter() {
@@ -211,7 +207,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                         match case.cast(sema.ast).children.cast(sema.ast) {
                             ast::generated::ConstantExpr_Subrange::ConstantExpr(constant) => {
                                 case_of.push(CaseKind::Expression(
-                                    constant.children.cast(sema.ast).to_expr(sema)?,
+                                    constant.children.cast(sema.ast).parse(sema)?,
                                 ));
                             }
                             ast::generated::ConstantExpr_Subrange::Subrange(subrange) => {
@@ -220,13 +216,13 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                                     .cast(sema.ast)
                                     .children
                                     .cast(sema.ast)
-                                    .to_expr(sema)?;
+                                    .parse(sema)?;
                                 let upper = subrange
                                     .upper
                                     .cast(sema.ast)
                                     .children
                                     .cast(sema.ast)
-                                    .to_expr(sema)?;
+                                    .parse(sema)?;
                                 case_of.push(CaseKind::Subrange { lower, upper });
                             }
                         }
@@ -238,7 +234,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                             .cast(sema.ast)
                             .children
                             .iter()
-                            .map(|stmt| stmt.cast(sema.ast).to_statement(sema))
+                            .map(|stmt| stmt.cast(sema.ast).parse(sema))
                             .collect::<Result<Vec<_>, IdeDiagnostic>>()?;
                     }
                     cases.push((case_of, body));
@@ -251,7 +247,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                         b.cast(sema.ast)
                             .children
                             .iter()
-                            .map(|stmt| stmt.cast(sema.ast).to_statement(sema))
+                            .map(|stmt| stmt.cast(sema.ast).parse(sema))
                             .collect::<Result<Vec<_>, IdeDiagnostic>>()
                     })
                     .transpose()?;
@@ -275,13 +271,13 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                         body.cast(sema.ast)
                             .children
                             .iter()
-                            .map(|stmt| stmt.cast(sema.ast).to_statement(sema))
+                            .map(|stmt| stmt.cast(sema.ast).parse(sema))
                             .collect::<Result<Vec<_>, IdeDiagnostic>>()
                     })
                     .transpose()?
                     .unwrap_or_else(std::vec::Vec::new);
 
-                let condition = repeat.repeat_cond.cast(sema.ast).to_expr(sema)?;
+                let condition = repeat.repeat_cond.cast(sema.ast).parse(sema)?;
                 Ok(Stmt::new(
                     sema.db,
                     StmtKind::Repeat { body, condition },
@@ -290,7 +286,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                 ))
             }
             StmtType::WhileStmt(while_stmt) => {
-                let condition = while_stmt.while_cond.cast(sema.ast).to_expr(sema)?;
+                let condition = while_stmt.while_cond.cast(sema.ast).parse(sema)?;
                 let body = while_stmt
                     .while_body
                     .as_ref()
@@ -298,7 +294,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
                         body.cast(sema.ast)
                             .children
                             .iter()
-                            .map(|stmt| stmt.cast(sema.ast).to_statement(sema))
+                            .map(|stmt| stmt.cast(sema.ast).parse(sema))
                             .collect::<Result<Vec<_>, IdeDiagnostic>>()
                     })
                     .transpose()?
@@ -333,8 +329,10 @@ impl<'db> ParseStatement<'db> for ast::generated::Stmt {
     }
 }
 
-impl<'db> ParseStatement<'db> for ast::generated::Assign {
-    fn to_statement(
+impl<'db> Parse<'db> for ast::generated::Assign {
+    type Output = Stmt<'db>;
+
+    fn parse(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<Stmt<'db>, IdeDiagnostic> {
@@ -366,7 +364,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Assign {
                 sema.db,
                 StmtKind::Assignment {
                     var,
-                    target: assign.children.cast(sema.ast).to_expr(sema)?,
+                    target: assign.children.cast(sema.ast).parse(sema)?,
                 },
                 self.into(),
                 sema.current_scope,
@@ -375,7 +373,7 @@ impl<'db> ParseStatement<'db> for ast::generated::Assign {
                 sema.db,
                 StmtKind::AssignmentAttempt {
                     var,
-                    target: attempt.children.cast(sema.ast).to_expr(sema)?,
+                    target: attempt.children.cast(sema.ast).parse(sema)?,
                 },
                 self.into(),
                 sema.current_scope,

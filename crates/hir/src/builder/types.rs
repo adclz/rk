@@ -7,8 +7,8 @@ use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use crate::{
     builder::{
-        ParseSpec, ParseSpecInit, SpecInitResult,
-        expression::{ParseExpr, ParseExpression, ParseVariableAccess},
+        Parse, ParseSpec, ParseSpecInit, SpecInitResult,
+        expression::ParseVariableAccess,
         semantic_index::SemanticIndexBuilder,
     },
     check::errors::ToIdeDiagnostic,
@@ -367,7 +367,7 @@ impl<'db> ParseSpec<'db> for ast::generated::IntTypeName {
     }
 }
 
-impl<'db> ParseExpr<'db> for ast::generated::SimpleTypeInit {
+impl<'db> Parse<'db> for ast::generated::SimpleTypeInit {
     type Output = InitExpr<'db>;
 
     fn parse(
@@ -381,7 +381,7 @@ impl<'db> ParseExpr<'db> for ast::generated::SimpleTypeInit {
                     .cast(sema.ast)
                     .children
                     .cast(sema.ast)
-                    .to_expr(sema)?,
+                    .parse(sema)?,
             ),
             self.into(),
             sema.current_scope,
@@ -399,20 +399,10 @@ impl<'db> ParseSpec<'db> for ast::generated::ArrayTypeSpec {
         let mut ranges = vec![];
 
         for range in &self.ranges.cast(sema.ast).children {
-            let lower = range
-                .cast(sema.ast)
-                .lower
-                .cast(sema.ast)
-                .children
-                .cast(sema.ast)
-                .to_expr(sema)?;
-            let upper = range
-                .cast(sema.ast)
-                .upper
-                .cast(sema.ast)
-                .children
-                .cast(sema.ast)
-                .to_expr(sema)?;
+            let r = range.cast(sema.ast).lower.cast(sema.ast).children.cast(sema.ast).parse(sema);
+            let Some(lower) = sema.try_parse(r) else { continue };
+            let r = range.cast(sema.ast).upper.cast(sema.ast).children.cast(sema.ast).parse(sema);
+            let Some(upper) = sema.try_parse(r) else { continue };
             ranges.push((lower, upper))
         }
 
@@ -432,7 +422,7 @@ impl<'db> ParseSpec<'db> for ast::generated::ArrayTypeSpec {
     }
 }
 
-impl<'db> ParseExpr<'db> for ast::generated::ArrayTypeInit {
+impl<'db> Parse<'db> for ast::generated::ArrayTypeInit {
     type Output = InitExpr<'db>;
 
     fn parse(
@@ -442,8 +432,11 @@ impl<'db> ParseExpr<'db> for ast::generated::ArrayTypeInit {
         let values = self
             .children
             .iter()
-            .map(|elem| elem.cast(sema.ast).parse(sema))
-            .collect::<anyhow::Result<Vec<InitExpr<'db>>, IdeDiagnostic>>()?;
+            .filter_map(|elem| {
+                let r = elem.cast(sema.ast).parse(sema);
+                sema.try_parse(r)
+            })
+            .collect();
 
         Ok(InitExpr::new(
             sema.db,
@@ -454,7 +447,7 @@ impl<'db> ParseExpr<'db> for ast::generated::ArrayTypeInit {
     }
 }
 
-impl<'db> ParseExpr<'db> for ast::generated::StructTypeInit {
+impl<'db> Parse<'db> for ast::generated::StructTypeInit {
     type Output = InitExpr<'db>;
 
     fn parse(
@@ -464,8 +457,11 @@ impl<'db> ParseExpr<'db> for ast::generated::StructTypeInit {
         let values = self
             .children
             .iter()
-            .map(|elem| elem.cast(sema.ast).parse(sema))
-            .collect::<anyhow::Result<Vec<InitExpr<'db>>, IdeDiagnostic>>()?;
+            .filter_map(|elem| {
+                let r = elem.cast(sema.ast).parse(sema);
+                sema.try_parse(r)
+            })
+            .collect();
 
         Ok(InitExpr::new(
             sema.db,
@@ -476,7 +472,7 @@ impl<'db> ParseExpr<'db> for ast::generated::StructTypeInit {
     }
 }
 
-impl<'db> ParseExpr<'db> for ast::generated::InitElem {
+impl<'db> Parse<'db> for ast::generated::InitElem {
     type Output = InitExpr<'db>;
 
     fn parse(
@@ -491,7 +487,7 @@ impl<'db> ParseExpr<'db> for ast::generated::InitElem {
             InitElem::StructInit(struct_type_init) => struct_type_init.parse(sema),
             InitElem::ConstantExpr(expr) => Ok(InitExpr::new(
                 sema.db,
-                InitExprKind::ConstantExpr(expr.children.cast(sema.ast).to_expr(sema)?),
+                InitExprKind::ConstantExpr(expr.children.cast(sema.ast).parse(sema)?),
                 self.into(),
                 sema.current_scope,
             )),
@@ -500,7 +496,7 @@ impl<'db> ParseExpr<'db> for ast::generated::InitElem {
     }
 }
 
-impl<'db> ParseExpr<'db> for ast::generated::ArrayInit {
+impl<'db> Parse<'db> for ast::generated::ArrayInit {
     type Output = InitExpr<'db>;
 
     fn parse(
@@ -512,8 +508,11 @@ impl<'db> ParseExpr<'db> for ast::generated::ArrayInit {
             .cast(sema.ast)
             .children
             .iter()
-            .map(|elem| elem.cast(sema.ast).parse(sema))
-            .collect::<anyhow::Result<Vec<InitExpr<'db>>, IdeDiagnostic>>()?;
+            .filter_map(|elem| {
+                let r = elem.cast(sema.ast).parse(sema);
+                sema.try_parse(r)
+            })
+            .collect();
 
         Ok(InitExpr::new(
             sema.db,
@@ -524,7 +523,7 @@ impl<'db> ParseExpr<'db> for ast::generated::ArrayInit {
     }
 }
 
-impl<'db> ParseExpr<'db> for ast::generated::ArrayIndexElem {
+impl<'db> Parse<'db> for ast::generated::ArrayIndexElem {
     type Output = InitExpr<'db>;
 
     fn parse(
@@ -538,8 +537,11 @@ impl<'db> ParseExpr<'db> for ast::generated::ArrayIndexElem {
             .cast(sema.ast)
             .children
             .iter()
-            .map(|elem| elem.cast(sema.ast).parse(sema))
-            .collect::<anyhow::Result<Vec<InitExpr<'db>>, IdeDiagnostic>>()?;
+            .filter_map(|elem| {
+                let r = elem.cast(sema.ast).parse(sema);
+                sema.try_parse(r)
+            })
+            .collect();
 
         Ok(InitExpr::new(
             sema.db,
@@ -553,7 +555,7 @@ impl<'db> ParseExpr<'db> for ast::generated::ArrayIndexElem {
     }
 }
 
-impl<'db> ParseExpr<'db> for ast::generated::StructInit {
+impl<'db> Parse<'db> for ast::generated::StructInit {
     type Output = InitExpr<'db>;
 
     fn parse(
@@ -563,8 +565,11 @@ impl<'db> ParseExpr<'db> for ast::generated::StructInit {
         let values = self
             .children
             .iter()
-            .map(|elem| elem.cast(sema.ast).parse(sema))
-            .collect::<anyhow::Result<Vec<InitExpr<'db>>, IdeDiagnostic>>()?;
+            .filter_map(|elem| {
+                let r = elem.cast(sema.ast).parse(sema);
+                sema.try_parse(r)
+            })
+            .collect();
 
         Ok(InitExpr::new(
             sema.db,
@@ -575,7 +580,7 @@ impl<'db> ParseExpr<'db> for ast::generated::StructInit {
     }
 }
 
-impl<'db> ParseExpr<'db> for ast::generated::StructElem {
+impl<'db> Parse<'db> for ast::generated::StructElem {
     type Output = InitExpr<'db>;
 
     fn parse(
@@ -620,46 +625,48 @@ impl<'db> ParseSpec<'db> for ast::generated::StructTypeSpec {
         for elem in &self.children {
             type Spec = ast::generated::ArrayTypeSpec_EnumTypeSpec_SimpleTypeSpec_StructTypeSpec_SubrangeTypeSpec;
 
-            let spec = match elem.cast(sema.ast).spec.cast(sema.ast) {
-                Spec::ArrayTypeSpec(elem) => elem.to_spec(sema)?,
-                Spec::SimpleTypeSpec(init) => init.to_spec(sema)?,
-                Spec::EnumTypeSpec(en) => en.to_spec(sema)?,
-                Spec::SubrangeTypeSpec(sub) => sub.to_spec(sema)?,
-                Spec::StructTypeSpec(st) => st.to_spec(sema)?,
+            let r = match elem.cast(sema.ast).spec.cast(sema.ast) {
+                Spec::ArrayTypeSpec(elem) => elem.to_spec(sema),
+                Spec::SimpleTypeSpec(init) => init.to_spec(sema),
+                Spec::EnumTypeSpec(en) => en.to_spec(sema),
+                Spec::SubrangeTypeSpec(sub) => sub.to_spec(sema),
+                Spec::StructTypeSpec(st) => st.to_spec(sema),
             };
+            let Some(spec) = sema.try_parse(r) else { continue };
 
             type Init = ast::generated::ArrayTypeInit_SimpleTypeInit_StructTypeInit;
 
             let init = if let Some(init) =
                 elem.cast(sema.ast).init.as_ref().map(|i| i.cast(sema.ast))
             {
-                match init {
-                    Init::ArrayTypeInit(array_type_init) => Some(array_type_init.parse(sema)?),
-                    Init::SimpleTypeInit(simple_type_init) => Some(simple_type_init.parse(sema)?),
-                    Init::StructTypeInit(struct_type_init) => Some(struct_type_init.parse(sema)?),
-                }
+                let r = match init {
+                    Init::ArrayTypeInit(array_type_init) => array_type_init.parse(sema),
+                    Init::SimpleTypeInit(simple_type_init) => simple_type_init.parse(sema),
+                    Init::StructTypeInit(struct_type_init) => struct_type_init.parse(sema),
+                };
+                sema.try_parse(r)
             } else {
                 None
             };
 
-            let name =
-                Ident::from_node(sema.db, sema.file, elem.cast(sema.ast).name.cast(sema.ast))?;
+            let r = Ident::from_node(sema.db, sema.file, elem.cast(sema.ast).name.cast(sema.ast));
+            let Some(name) = sema.try_parse(r) else { continue };
 
             let (located, multibits) = if let Some(attrs) = &elem.cast(sema.ast).attributes {
-                let located = attrs
+                let r = attrs
                     .cast(sema.ast)
                     .located
                     .cast(sema.ast)
                     .children
                     .cast(sema.ast)
-                    .to_access(sema)
-                    .ok();
-                let multibits = attrs
+                    .to_access(sema);
+                let located = sema.try_parse(r);
+                let r = attrs
                     .cast(sema.ast)
                     .multibits
                     .as_ref()
-                    .map(|mb| mb.cast(sema.ast).to_multibits(sema))
-                    .transpose()?;
+                    .map(|mb| mb.cast(sema.ast).parse(sema));
+                let multibits = r.and_then(|r| sema.try_parse(r));
                 (located, multibits)
             } else {
                 (None, None)
@@ -687,15 +694,10 @@ impl<'db> ParseSpec<'db> for ast::generated::StructTypeSpec {
     }
 }
 
-pub trait ParseMultiBits<'db> {
-    fn to_multibits(
-        &self,
-        sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<MultibitsPart, IdeDiagnostic>;
-}
+impl<'db> Parse<'db> for ast::generated::MultibitPartAccess {
+    type Output = MultibitsPart;
 
-impl<'db> ParseMultiBits<'db> for ast::generated::MultibitPartAccess {
-    fn to_multibits(
+    fn parse(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<MultibitsPart, IdeDiagnostic> {
@@ -771,14 +773,14 @@ impl<'db> ParseSpec<'db> for ast::generated::EnumTypeSpec {
 
         let mut variants = vec![];
         for spec in &self.children.cast(sema.ast).children {
-            let name =
-                SpanIdent::from_node(sema.db, sema, spec.cast(sema.ast).value.cast(sema.ast))?;
+            let r = SpanIdent::from_node(sema.db, sema, spec.cast(sema.ast).value.cast(sema.ast));
+            let Some(name) = sema.try_parse(r) else { continue };
             let value = spec
                 .cast(sema.ast)
                 .children
                 .as_ref()
-                .map(|v| v.cast(sema.ast).to_expr(sema))
-                .transpose()?;
+                .map(|v| v.cast(sema.ast).parse(sema));
+            let value = value.and_then(|r| sema.try_parse(r));
 
             variants.push(EnumVariant { name, value });
         }
@@ -805,13 +807,13 @@ impl<'db> ParseSpec<'db> for ast::generated::SubrangeTypeSpec {
             .cast(sema.ast)
             .children
             .cast(sema.ast)
-            .to_expr(sema)?;
+            .parse(sema)?;
         let upper = range
             .upper
             .cast(sema.ast)
             .children
             .cast(sema.ast)
-            .to_expr(sema)?;
+            .parse(sema)?;
         Ok(Spec::new(
             sema.db,
             SpecKind::Subrange(SubRange::new(sema.db, spec, lower, upper)),

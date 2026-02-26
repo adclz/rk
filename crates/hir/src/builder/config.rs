@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 
@@ -8,8 +6,8 @@ use ide_diagnostic::IdeDiagnostic;
 use crate::{
     Visibility,
     builder::{
-        ParseSpec, ParseVarSection,
-        expression::{ParseDirectVariable, ParseExpr, ParseExpression},
+        Parse, ParseSpec, ParseVarSection,
+        expression::ParseDirectVariable,
         semantic_index::SemanticIndexBuilder,
     },
     check::errors::ToIdeDiagnostic,
@@ -24,7 +22,7 @@ use crate::{
             namespace::SpanNamespaceAccess,
         },
         pous::variable::VariableDecl,
-        scope::{Scope, ScopeKind},
+        scope::ScopeKind,
     },
 };
 
@@ -39,34 +37,32 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         let name = Ident::from_node(self.db, self.file, config.name.cast(self.ast))?;
 
-        // Parse VAR_GLOBAL section at the configuration level.
         let mut variables: Vec<VariableDecl<'db>> = vec![];
         if let Some(global_vars) = &config.global_variables {
             global_vars.cast(self.ast).parse(self, &mut variables);
         }
 
-        // Parse RESOURCE / single_resource_decl entries.
         let mut resources: Vec<ConfigResource<'db>> = vec![];
         for res_id in &config.resources {
             match res_id.cast(self.ast) {
                 ast::generated::ResourceDecl_SingleResourceDecl::ResourceDecl(rd) => {
-                    match self.parse_resource_decl(rd) {
-                        Ok(r) => resources.push(ConfigResource::Resource(r)),
-                        Err(err) => self.errors.push(err),
+                    let r = self.parse_resource_decl(rd);
+                    if let Some(r) = self.try_parse(r) {
+                        resources.push(ConfigResource::Resource(r));
                     }
                 }
                 ast::generated::ResourceDecl_SingleResourceDecl::SingleResourceDecl(srd) => {
                     match srd.children.cast(self.ast) {
                         ast::generated::ProgConfig_TaskConfig::TaskConfig(tc) => {
-                            match self.parse_task_config(tc) {
-                                Ok(t) => resources.push(ConfigResource::Task(t)),
-                                Err(err) => self.errors.push(err),
+                            let r = self.parse_task_config(tc);
+                            if let Some(t) = self.try_parse(r) {
+                                resources.push(ConfigResource::Task(t));
                             }
                         }
                         ast::generated::ProgConfig_TaskConfig::ProgConfig(pc) => {
-                            match self.parse_prog_config(pc) {
-                                Ok(p) => resources.push(ConfigResource::Program(p)),
-                                Err(err) => self.errors.push(err),
+                            let r = self.parse_prog_config(pc);
+                            if let Some(p) = self.try_parse(r) {
+                                resources.push(ConfigResource::Program(p));
                             }
                         }
                     }
@@ -74,24 +70,22 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
         }
 
-        // Parse VAR_ACCESS section.
         let mut access_decls: Vec<AccessDecl<'db>> = vec![];
         if let Some(access_section) = &config.access_decls {
             for decl_id in &access_section.cast(self.ast).children {
-                match self.parse_access_decl(decl_id.cast(self.ast)) {
-                    Ok(d) => access_decls.push(d),
-                    Err(err) => self.errors.push(err),
+                let r = self.parse_access_decl(decl_id.cast(self.ast));
+                if let Some(d) = self.try_parse(r) {
+                    access_decls.push(d);
                 }
             }
         }
 
-        // Parse VAR_CONFIG section.
         let mut config_init: Vec<ConfigInstInit<'db>> = vec![];
         if let Some(init_section) = &config.config_init {
             for inst_id in &init_section.cast(self.ast).children {
-                match self.parse_config_inst_init(inst_id.cast(self.ast)) {
-                    Ok(i) => config_init.push(i),
-                    Err(err) => self.errors.push(err),
+                let r = self.parse_config_inst_init(inst_id.cast(self.ast));
+                if let Some(i) = self.try_parse(r) {
+                    config_init.push(i);
                 }
             }
         }
@@ -99,8 +93,8 @@ impl<'db> SemanticIndexBuilder<'db> {
         let config_decl = ConfigDecl::new(
             self.db,
             name,
-            config.name.cast(self.ast).into(), // name_span: just the identifier
-            config.into(),                     // span: full declaration
+            config.name.cast(self.ast).into(),
+            config.into(),
             variables,
             resources,
             access_decls,
@@ -108,17 +102,13 @@ impl<'db> SemanticIndexBuilder<'db> {
             scope_id,
         );
 
-        let scope = Scope::new(
-            self.file,
+        self.register_scope(
             ScopeKind::Config(config_decl),
             vec![],
             scope_id,
             Visibility::empty(),
-            Some(previous_scope),
+            previous_scope,
         );
-
-        self.scope_keys
-            .insert(scope_id.scope(self.db), Arc::new(scope));
 
         Ok(config_decl)
     }
@@ -141,15 +131,15 @@ impl<'db> SemanticIndexBuilder<'db> {
         for srd_id in &rd.resource {
             match srd_id.cast(self.ast).children.cast(self.ast) {
                 ast::generated::ProgConfig_TaskConfig::TaskConfig(tc) => {
-                    match self.parse_task_config(tc) {
-                        Ok(t) => tasks.push(t),
-                        Err(err) => self.errors.push(err),
+                    let r = self.parse_task_config(tc);
+                    if let Some(t) = self.try_parse(r) {
+                        tasks.push(t);
                     }
                 }
                 ast::generated::ProgConfig_TaskConfig::ProgConfig(pc) => {
-                    match self.parse_prog_config(pc) {
-                        Ok(p) => programs.push(p),
-                        Err(err) => self.errors.push(err),
+                    let r = self.parse_prog_config(pc);
+                    if let Some(p) = self.try_parse(r) {
+                        programs.push(p);
                     }
                 }
             }
@@ -171,27 +161,11 @@ impl<'db> SemanticIndexBuilder<'db> {
         let name = SpanIdent::from_node(self.db, self, tc.name.cast(self.ast))?;
         let init = tc.init.cast(self.ast);
 
-        let single =
-            init.single
-                .as_ref()
-                .and_then(|ds| match self.parse_data_source(ds.cast(self.ast)) {
-                    Ok(s) => Some(s),
-                    Err(err) => {
-                        self.errors.push(err);
-                        None
-                    }
-                });
+        let single = init.single.as_ref().map(|ds| self.parse_data_source(ds.cast(self.ast)));
+        let single = single.and_then(|r| self.try_parse(r));
 
-        let interval =
-            init.interval
-                .as_ref()
-                .and_then(|ds| match self.parse_data_source(ds.cast(self.ast)) {
-                    Ok(s) => Some(s),
-                    Err(err) => {
-                        self.errors.push(err);
-                        None
-                    }
-                });
+        let interval = init.interval.as_ref().map(|ds| self.parse_data_source(ds.cast(self.ast)));
+        let interval = interval.and_then(|r| self.try_parse(r));
 
         let priority = Ident::from_node(self.db, self.file, init.priority.cast(self.ast))?;
 
@@ -211,16 +185,10 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         let retain = pc.retain.is_some();
 
-        // `task` is modelled as Vec<WITH_Identifier>: find the Identifier variant.
         let task = pc.task.iter().find_map(|wid| match wid.cast(self.ast) {
             ast::generated::WITH_Identifier::Identifier(ident) => {
-                match SpanIdent::from_node(self.db, self, ident) {
-                    Ok(i) => Some(i),
-                    Err(err) => {
-                        self.errors.push(err);
-                        None
-                    }
-                }
+                let r = SpanIdent::from_node(self.db, self, ident);
+                self.try_parse(r)
             }
             ast::generated::WITH_Identifier::Token_WITH(_) => None,
         });
@@ -231,14 +199,16 @@ impl<'db> SemanticIndexBuilder<'db> {
         if let Some(elems) = &pc.configuration_elements {
             for elem_id in &elems.cast(self.ast).children {
                 match elem_id.cast(self.ast).children.cast(self.ast) {
-                    ast::generated::FbTask_ProgCnxn::FbTask(fb) => match self.parse_fb_task(fb) {
-                        Ok(f) => conf_elements.push(ProgConfElement::FbTask(f)),
-                        Err(err) => self.errors.push(err),
-                    },
+                    ast::generated::FbTask_ProgCnxn::FbTask(fb) => {
+                        let r = self.parse_fb_task(fb);
+                        if let Some(f) = self.try_parse(r) {
+                            conf_elements.push(ProgConfElement::FbTask(f));
+                        }
+                    }
                     ast::generated::FbTask_ProgCnxn::ProgCnxn(cnxn) => {
-                        match self.parse_prog_cnxn(cnxn) {
-                            Ok(c) => conf_elements.push(ProgConfElement::Connection(c)),
-                            Err(err) => self.errors.push(err),
+                        let r = self.parse_prog_cnxn(cnxn);
+                        if let Some(c) = self.try_parse(r) {
+                            conf_elements.push(ProgConfElement::Connection(c));
                         }
                     }
                 }
@@ -267,8 +237,6 @@ impl<'db> SemanticIndexBuilder<'db> {
         &mut self,
         cnxn: &ast::generated::ProgCnxn,
     ) -> anyhow::Result<ProgCnxn<'db>, IdeDiagnostic> {
-        // children: [PathExpression, ProgDataSource | DataSink]
-        // The first PathExpression is the LHS; the second entry determines direction.
         let mut path = None;
         let mut source = None;
         let mut sink = None;
@@ -308,7 +276,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     ) -> anyhow::Result<DataSource<'db>, IdeDiagnostic> {
         match ds.children.cast(self.ast) {
             ast::generated::Constant_DirectVariable_PathExpression::Constant(c) => {
-                Ok(DataSource::Constant(c.to_expr(self)?))
+                Ok(DataSource::Constant(c.parse(self)?))
             }
             ast::generated::Constant_DirectVariable_PathExpression::DirectVariable(dv) => {
                 Ok(DataSource::Direct(dv.to_direct_variable(self)?))
@@ -325,7 +293,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     ) -> anyhow::Result<DataSource<'db>, IdeDiagnostic> {
         match pds.children.cast(self.ast) {
             ast::generated::Constant_DirectVariable_PathExpression::Constant(c) => {
-                Ok(DataSource::Constant(c.to_expr(self)?))
+                Ok(DataSource::Constant(c.parse(self)?))
             }
             ast::generated::Constant_DirectVariable_PathExpression::DirectVariable(dv) => {
                 Ok(DataSource::Direct(dv.to_direct_variable(self)?))
@@ -358,15 +326,8 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         let path_node = decl.path.cast(self.ast);
         let path_expr = path_node.path.cast(self.ast).parse(self)?;
-        let direct = path_node.direct.as_ref().and_then(|dv| {
-            match dv.cast(self.ast).to_direct_variable(self) {
-                Ok(d) => Some(d),
-                Err(err) => {
-                    self.errors.push(err);
-                    None
-                }
-            }
-        });
+        let direct = path_node.direct.as_ref().map(|dv| dv.cast(self.ast).to_direct_variable(self));
+        let direct = direct.and_then(|r| self.try_parse(r));
         let path = AccessPath {
             path: path_expr,
             direct,
@@ -398,22 +359,19 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         let path = inst.path.cast(self.ast).parse(self)?;
 
-        // children: [optional(LocatedAt), LocVarSpecInit]
         let mut located_at = None;
         let mut init_expr = None;
 
         for child in &inst.children {
             match child.cast(self.ast) {
                 ast::generated::LocVarSpecInit_LocatedAt::LocatedAt(la) => {
-                    match la.children.cast(self.ast).to_direct_variable(self) {
-                        Ok(dv) => located_at = Some(dv),
-                        Err(err) => self.errors.push(err),
-                    }
+                    let r = la.children.cast(self.ast).to_direct_variable(self);
+                    located_at = self.try_parse(r);
                 }
                 ast::generated::LocVarSpecInit_LocatedAt::LocVarSpecInit(lvsi) => {
-                    match lvsi.to_spec_init(self) {
-                        Ok(result) => init_expr = result.init,
-                        Err(err) => self.errors.push(err),
+                    let r = lvsi.to_spec_init(self);
+                    if let Some(result) = self.try_parse(r) {
+                        init_expr = result.init;
                     }
                 }
             }

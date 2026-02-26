@@ -1,15 +1,12 @@
-use std::sync::Arc;
-
 use crate::Visibility;
 use crate::builder::semantic_index::SemanticIndexBuilder;
-use crate::builder::statement::ParseStatement;
-use crate::builder::{ParseSpec, ParseVarSection};
+use crate::builder::{Parse, ParseSpec, ParseVarSection};
 use ide_diagnostic::IdeDiagnostic;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::pous::function::Function;
 use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::pous::variable::VariableDecl;
-use crate::hir_def::scope::{Scope, ScopeKind};
+use crate::hir_def::scope::ScopeKind;
 use ast::generated::FuncVariables;
 use auto_lsp::anyhow;
 
@@ -22,19 +19,16 @@ impl<'db> SemanticIndexBuilder<'db> {
         let previous_scope = self.current_scope;
         self.current_scope = scope_id;
 
-        let variables = func.parse_variables(self);
+        let variables = self.parse_func_variables(func);
 
         let statements = func.body.as_ref().map_or(vec![], |body| {
             match body.cast(self.ast).children.cast(self.ast) {
                 ast::generated::FbDiagram_LadderDiagram_StmtList::StmtList(stmts) => stmts
                     .children
                     .iter()
-                    .filter_map(|stmt| match stmt.cast(self.ast).to_statement(self) {
-                        Ok(statement) => Some(statement),
-                        Err(err) => {
-                            self.errors.push(err);
-                            None
-                        }
+                    .filter_map(|stmt| {
+                        let r = stmt.cast(self.ast).parse(self);
+                        self.try_parse(r)
                     })
                     .collect(),
                 _ => vec![],
@@ -68,38 +62,33 @@ impl<'db> SemanticIndexBuilder<'db> {
             scope_id,
         ));
 
-        let scope = Scope::new(
-            self.file,
+        self.register_scope(
             ScopeKind::Pou(result),
             usings,
             scope_id,
             Visibility::empty(),
-            Some(previous_scope),
+            previous_scope,
         );
-
-        self.scope_keys
-            .insert(scope_id.scope(self.db), Arc::new(scope));
 
         Ok(result)
     }
 }
 
-trait ParseVariable<'db> {
-    fn parse_variables(&self, sema: &mut SemanticIndexBuilder<'db>) -> Vec<VariableDecl<'db>>;
-}
-
-impl<'db> ParseVariable<'db> for ast::generated::FuncDecl {
-    fn parse_variables(&self, sema: &mut SemanticIndexBuilder<'db>) -> Vec<VariableDecl<'db>> {
+impl<'db> SemanticIndexBuilder<'db> {
+    fn parse_func_variables(
+        &mut self,
+        func: &ast::generated::FuncDecl,
+    ) -> Vec<VariableDecl<'db>> {
         let mut variables = vec![];
 
-        for variable in self.variables.iter() {
-            match variable.cast(sema.ast) {
-                FuncVariables::InputDecls(decls) => decls.parse(sema, &mut variables),
-                FuncVariables::OutputDecls(decls) => decls.parse(sema, &mut variables),
-                FuncVariables::InOutDecls(decls) => decls.parse(sema, &mut variables),
-                FuncVariables::ExternalVarDecls(decls) => decls.parse(sema, &mut variables),
-                FuncVariables::TempVarDecls(decls) => decls.parse(sema, &mut variables),
-                FuncVariables::VarDecls(decls) => decls.parse(sema, &mut variables),
+        for variable in func.variables.iter() {
+            match variable.cast(self.ast) {
+                FuncVariables::InputDecls(decls) => decls.parse(self, &mut variables),
+                FuncVariables::OutputDecls(decls) => decls.parse(self, &mut variables),
+                FuncVariables::InOutDecls(decls) => decls.parse(self, &mut variables),
+                FuncVariables::ExternalVarDecls(decls) => decls.parse(self, &mut variables),
+                FuncVariables::TempVarDecls(decls) => decls.parse(self, &mut variables),
+                FuncVariables::VarDecls(decls) => decls.parse(self, &mut variables),
             }
         }
 

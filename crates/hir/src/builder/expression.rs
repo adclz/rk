@@ -1,9 +1,9 @@
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 
+use crate::builder::Parse;
 use crate::builder::ParseSpec;
 use crate::builder::semantic_index::SemanticIndexBuilder;
-use crate::builder::types::ParseMultiBits;
 use crate::check::errors::ToIdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
 use ide_diagnostic::IdeDiagnostic;
@@ -22,27 +22,22 @@ use crate::{
     },
     hir_def::interned::identifier::Ident,
 };
-pub trait ParseExpression<'db> {
-    fn to_expr(
-        &self,
-        sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<Expr<'db>, IdeDiagnostic>;
-}
+impl<'db> Parse<'db> for ast::generated::Expression {
+    type Output = Expr<'db>;
 
-impl<'db> ParseExpression<'db> for ast::generated::Expression {
-    fn to_expr(
+    fn parse(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<Expr<'db>, IdeDiagnostic> {
         match self {
-            ast::generated::Expression::PrimaryExpression(p) => p.to_expr(sema),
+            ast::generated::Expression::PrimaryExpression(p) => p.parse(sema),
             ast::generated::Expression::BooleanOperator(boolean_operator) => match boolean_operator
                 .children
                 .cast(sema.ast)
             {
                 ast::generated::AndOperator_OrOperator_XorOperator::OrOperator(or_operator) => {
-                    let left = or_operator.left.cast(sema.ast).to_expr(sema)?;
-                    let right = or_operator.right.cast(sema.ast).to_expr(sema)?;
+                    let left = or_operator.left.cast(sema.ast).parse(sema)?;
+                    let right = or_operator.right.cast(sema.ast).parse(sema)?;
 
                     Ok(Expr::new(
                         sema.db,
@@ -56,8 +51,8 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                     ))
                 }
                 ast::generated::AndOperator_OrOperator_XorOperator::XorOperator(xor_operator) => {
-                    let left = xor_operator.left.cast(sema.ast).to_expr(sema)?;
-                    let right = xor_operator.right.cast(sema.ast).to_expr(sema)?;
+                    let left = xor_operator.left.cast(sema.ast).parse(sema)?;
+                    let right = xor_operator.right.cast(sema.ast).parse(sema)?;
 
                     Ok(Expr::new(
                         sema.db,
@@ -71,8 +66,8 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                     ))
                 }
                 ast::generated::AndOperator_OrOperator_XorOperator::AndOperator(and_operator) => {
-                    let left = and_operator.left.cast(sema.ast).to_expr(sema)?;
-                    let right = and_operator.right.cast(sema.ast).to_expr(sema)?;
+                    let left = and_operator.left.cast(sema.ast).parse(sema)?;
+                    let right = and_operator.right.cast(sema.ast).parse(sema)?;
 
                     Ok(Expr::new(
                         sema.db,
@@ -89,8 +84,8 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
             ast::generated::Expression::ComparisonOperator(comparison_operator) => {
                 match comparison_operator.children.cast(sema.ast) {
                     ast::generated::EqOperator_OrdOperator::EqOperator(eq_operator) => {
-                        let left = eq_operator.left.cast(sema.ast).to_expr(sema)?;
-                        let right = eq_operator.right.cast(sema.ast).to_expr(sema)?;
+                        let left = eq_operator.left.cast(sema.ast).parse(sema)?;
+                        let right = eq_operator.right.cast(sema.ast).parse(sema)?;
 
                         let operator = match eq_operator.operator.cast(sema.ast) {
                             ast::generated::Eq::Token_Equal(_) => ComparisonOperatorKind::Eq,
@@ -109,8 +104,8 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                         ))
                     }
                     ast::generated::EqOperator_OrdOperator::OrdOperator(ord_operator) => {
-                        let left = ord_operator.left.cast(sema.ast).to_expr(sema)?;
-                        let right = ord_operator.right.cast(sema.ast).to_expr(sema)?;
+                        let left = ord_operator.left.cast(sema.ast).parse(sema)?;
+                        let right = ord_operator.right.cast(sema.ast).parse(sema)?;
 
                         let operator = match ord_operator.operator.cast(sema.ast) {
                             ast::generated::Ord::Token_Less(_) => ComparisonOperatorKind::Lt,
@@ -135,8 +130,8 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                 }
             }
             ast::generated::Expression::AddOperator(add_operator) => {
-                let left = add_operator.left.cast(sema.ast).to_expr(sema)?;
-                let right = add_operator.right.cast(sema.ast).to_expr(sema)?;
+                let left = add_operator.left.cast(sema.ast).parse(sema)?;
+                let right = add_operator.right.cast(sema.ast).parse(sema)?;
                 let operator = match add_operator.operator.cast(sema.ast) {
                     ast::generated::Add::Token_Plus(_) => AddOperatorKind::Plus,
                     ast::generated::Add::Token_Minus(_) => AddOperatorKind::Minus,
@@ -154,8 +149,8 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                 ))
             }
             ast::generated::Expression::MultOperator(mult_operator) => {
-                let left = mult_operator.left.cast(sema.ast).to_expr(sema)?;
-                let right = mult_operator.right.cast(sema.ast).to_expr(sema)?;
+                let left = mult_operator.left.cast(sema.ast).parse(sema)?;
+                let right = mult_operator.right.cast(sema.ast).parse(sema)?;
                 let operator = match mult_operator.operator.cast(sema.ast) {
                     ast::generated::Mult::Token_Star(_) => MultOperatorKind::Mul,
                     ast::generated::Mult::Token_Slash(_) => MultOperatorKind::Div,
@@ -174,8 +169,8 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                 ))
             }
             ast::generated::Expression::PowerOperator(power_operator) => {
-                let left = power_operator.left.cast(sema.ast).to_expr(sema)?;
-                let right = power_operator.right.cast(sema.ast).to_expr(sema)?;
+                let left = power_operator.left.cast(sema.ast).parse(sema)?;
+                let right = power_operator.right.cast(sema.ast).parse(sema)?;
 
                 Ok(Expr::new(
                     sema.db,
@@ -185,7 +180,7 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
                 ))
             }
             ast::generated::Expression::UnaryOperator(unary_operator) => {
-                let expr = unary_operator.expr.cast(sema.ast).to_expr(sema)?;
+                let expr = unary_operator.expr.cast(sema.ast).parse(sema)?;
 
                 let operator = match unary_operator.operator.cast(sema.ast) {
                     ast::generated::Unary::Token_Plus(_) => UnaryOperatorKind::Plus,
@@ -239,8 +234,10 @@ impl<'db> ParseExpression<'db> for ast::generated::Expression {
     }
 }
 
-impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
-    fn to_expr(
+impl<'db> Parse<'db> for ast::generated::PrimaryExpression {
+    type Output = Expr<'db>;
+
+    fn parse(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<Expr<'db>, IdeDiagnostic> {
@@ -256,7 +253,7 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                     sema.current_scope,
                 ))
             }
-            ast::generated::PrimaryExpression::Constant(c) => c.to_expr(sema),
+            ast::generated::PrimaryExpression::Constant(c) => c.parse(sema),
             ast::generated::PrimaryExpression::VariableAccess(v) => {
                 let variable = v.to_access(sema)?;
                 Ok(Expr::new(
@@ -287,10 +284,10 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
                                     ast::generated::ParamAssignInput_ParamAssignOutput::ParamAssignInput(p) => {
                                         parameters.push(ParamAssign::new(sema.db, p.into(), sema.current_scope, match p.param.as_ref() {
                                             Some(param) => {
-                                                ParamAssignKind::FormalInput { param: SpanIdent::from_node(sema.db, sema, param.cast(sema.ast))?, value: p.value.cast(sema.ast).to_expr(sema)? }
+                                                ParamAssignKind::FormalInput { param: SpanIdent::from_node(sema.db, sema, param.cast(sema.ast))?, value: p.value.cast(sema.ast).parse(sema)? }
                                             },
                                             None => {
-                                                ParamAssignKind::NonFormal { value: p.value.cast(sema.ast).to_expr(sema)? }
+                                                ParamAssignKind::NonFormal { value: p.value.cast(sema.ast).parse(sema)? }
                                             }
                                         }))
                                     }
@@ -317,7 +314,7 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
             ast::generated::PrimaryExpression::ParenthesizedExpression(p) => Ok(Expr::new(
                 sema.db,
                 ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr {
-                    expr: p.children.cast(sema.ast).to_expr(sema)?,
+                    expr: p.children.cast(sema.ast).parse(sema)?,
                 }),
                 p.into(),
                 sema.current_scope,
@@ -344,14 +341,9 @@ impl<'db> ParseExpression<'db> for ast::generated::PrimaryExpression {
     }
 }
 
-pub trait ParseNumeric<'db> {
-    fn parse(
-        &self,
-        sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<Integer, IdeDiagnostic>;
-}
+impl<'db> Parse<'db> for ast::generated::BinaryInt_HexInt_OctalInt_SignedInt {
+    type Output = Integer;
 
-impl<'db> ParseNumeric<'db> for ast::generated::BinaryInt_HexInt_OctalInt_SignedInt {
     fn parse(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
@@ -387,8 +379,10 @@ impl<'db> ParseNumeric<'db> for ast::generated::BinaryInt_HexInt_OctalInt_Signed
     }
 }
 
-impl<'db> ParseExpression<'db> for ast::generated::Constant {
-    fn to_expr(
+impl<'db> Parse<'db> for ast::generated::Constant {
+    type Output = Expr<'db>;
+
+    fn parse(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<Expr<'db>, IdeDiagnostic> {
@@ -581,15 +575,8 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::VariableAccess {
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<VariableAccess<'db>, IdeDiagnostic> {
-        let multibits = self.access.as_ref().and_then(|multibits| {
-            match multibits.cast(sema.ast).to_multibits(sema) {
-                Ok(mb) => Some(mb),
-                Err(err) => {
-                    sema.errors.push(err);
-                    None
-                }
-            }
-        });
+        let multibits = self.access.as_ref().map(|mb| mb.cast(sema.ast).parse(sema));
+        let multibits = multibits.and_then(|r| sema.try_parse(r));
 
         match self.variable.cast(sema.ast).children.cast(sema.ast) {
             ast::generated::BeginPathExpression_DirectVariable::DirectVariable(v) => {
@@ -666,16 +653,7 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::DirectVariable {
     }
 }
 
-pub trait ParseExpr<'db> {
-    type Output;
-
-    fn parse(
-        &self,
-        sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<Self::Output, IdeDiagnostic>;
-}
-
-impl<'db> ParseExpr<'db> for ast::generated::BeginPathExpression {
+impl<'db> Parse<'db> for ast::generated::BeginPathExpression {
     type Output = BeginPathExpr<'db>;
 
     fn parse(
@@ -756,7 +734,7 @@ impl<'db> ParseExpr<'db> for ast::generated::BeginPathExpression {
     }
 }
 
-impl<'db> ParseExpr<'db> for ast::generated::PathExpression {
+impl<'db> Parse<'db> for ast::generated::PathExpression {
     type Output = PathExpr<'db>;
 
     fn parse(
@@ -792,7 +770,7 @@ impl<'db> ParseExpr<'db> for ast::generated::PathExpression {
     }
 }
 
-impl<'db> ParseExpr<'db> for ast::generated::FieldExpression {
+impl<'db> Parse<'db> for ast::generated::FieldExpression {
     type Output = FieldExpr<'db>;
 
     fn parse(
@@ -806,7 +784,7 @@ impl<'db> ParseExpr<'db> for ast::generated::FieldExpression {
     }
 }
 
-impl<'db> ParseExpr<'db> for ast::generated::IndexExpression {
+impl<'db> Parse<'db> for ast::generated::IndexExpression {
     type Output = IndexExpr<'db>;
 
     fn parse(
@@ -820,13 +798,13 @@ impl<'db> ParseExpr<'db> for ast::generated::IndexExpression {
                 .cast(sema.ast)
                 .children
                 .iter()
-                .map(|i| i.cast(sema.ast).children.cast(sema.ast).to_expr(sema))
+                .map(|i| i.cast(sema.ast).children.cast(sema.ast).parse(sema))
                 .collect::<Result<Vec<_>, IdeDiagnostic>>()?,
         })
     }
 }
 
-impl<'db> ParseExpr<'db> for ast::generated::VarAccess {
+impl<'db> Parse<'db> for ast::generated::VarAccess {
     type Output = VarAccess<'db>;
 
     fn parse(

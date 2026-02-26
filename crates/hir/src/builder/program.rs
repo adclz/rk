@@ -1,20 +1,18 @@
-use std::sync::Arc;
-
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
     Visibility,
     builder::{
+        Parse,
         ParseVarSection,
         semantic_index::SemanticIndexBuilder,
-        statement::ParseStatement,
         variables::{ParseLocatedVar, ParseProgDecl},
     },
     hir_def::{
         interned::identifier::Ident,
         pous::variable::{LocatedVariable, VariableDecl},
         program::{ProgAccessDecl, ProgramDecl},
-        scope::{Scope, ScopeKind},
+        scope::ScopeKind,
     },
 };
 
@@ -27,7 +25,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         let previous_scope = self.current_scope;
         self.current_scope = scope_id;
 
-        let (prog_access_decls, variables, located_vars) = program.parse_variables(self);
+        let (prog_access_decls, variables, located_vars) = self.parse_prog_variables(program);
 
         let name = Ident::from_node(self.db, self.file, program.name.cast(self.ast))?;
 
@@ -36,12 +34,9 @@ impl<'db> SemanticIndexBuilder<'db> {
                 ast::generated::SFC_FbDiagram_LadderDiagram_StmtList::StmtList(stmts) => stmts
                     .children
                     .iter()
-                    .filter_map(|stmt| match stmt.cast(self.ast).to_statement(self) {
-                        Ok(statement) => Some(statement),
-                        Err(err) => {
-                            self.errors.push(err);
-                            None
-                        }
+                    .filter_map(|stmt| {
+                        let r = stmt.cast(self.ast).parse(self);
+                        self.try_parse(r)
                     })
                     .collect(),
                 _ => vec![],
@@ -60,37 +55,22 @@ impl<'db> SemanticIndexBuilder<'db> {
             scope_id,
         );
 
-        let scope = Scope::new(
-            self.file,
+        self.register_scope(
             ScopeKind::Program(program),
             vec![],
             scope_id,
             Visibility::empty(),
-            Some(previous_scope),
+            previous_scope,
         );
-
-        self.scope_keys
-            .insert(scope_id.scope(self.db), Arc::new(scope));
 
         Ok(program)
     }
 }
 
-trait ParseVariable<'db> {
-    fn parse_variables(
-        &self,
-        sema: &mut SemanticIndexBuilder<'db>,
-    ) -> (
-        Vec<ProgAccessDecl<'db>>,
-        Vec<VariableDecl<'db>>,
-        Vec<LocatedVariable<'db>>,
-    );
-}
-
-impl<'db> ParseVariable<'db> for ast::generated::ProgDecl {
-    fn parse_variables(
-        &self,
-        sema: &mut SemanticIndexBuilder<'db>,
+impl<'db> SemanticIndexBuilder<'db> {
+    fn parse_prog_variables(
+        &mut self,
+        program: &ast::generated::ProgDecl,
     ) -> (
         Vec<ProgAccessDecl<'db>>,
         Vec<VariableDecl<'db>>,
@@ -101,25 +81,25 @@ impl<'db> ParseVariable<'db> for ast::generated::ProgDecl {
         let mut located_variables = vec![];
         type ProgVariables = ast::generated::ExternalVarDecls_GlobalVarDecls_InOutDecls_InputDecls_LocPartlyVarDecl_LocVarDecls_NoRetainVarDecls_OutputDecls_ProgAccessDecls_RetainVarDecls_TempVarDecls_VarDecls;
 
-        for variable in self.declarations.iter() {
-            match variable.cast(sema.ast) {
-                ProgVariables::ProgAccessDecls(decls) => decls.parse(sema, &mut prog_decls),
-                ProgVariables::LocVarDecls(decls) => decls.parse(sema, &mut located_variables),
-                ProgVariables::GlobalVarDecls(decls) => decls.parse(sema, &mut variables),
-                ProgVariables::InputDecls(decls) => decls.parse(sema, &mut variables),
-                ProgVariables::OutputDecls(decls) => decls.parse(sema, &mut variables),
-                ProgVariables::InOutDecls(decls) => decls.parse(sema, &mut variables),
-                ProgVariables::ExternalVarDecls(decls) => decls.parse(sema, &mut variables),
-                ProgVariables::TempVarDecls(decls) => decls.parse(sema, &mut variables),
-                ProgVariables::VarDecls(decls) => decls.parse(sema, &mut variables),
+        for variable in program.declarations.iter() {
+            match variable.cast(self.ast) {
+                ProgVariables::ProgAccessDecls(decls) => decls.parse(self, &mut prog_decls),
+                ProgVariables::LocVarDecls(decls) => decls.parse(self, &mut located_variables),
+                ProgVariables::GlobalVarDecls(decls) => decls.parse(self, &mut variables),
+                ProgVariables::InputDecls(decls) => decls.parse(self, &mut variables),
+                ProgVariables::OutputDecls(decls) => decls.parse(self, &mut variables),
+                ProgVariables::InOutDecls(decls) => decls.parse(self, &mut variables),
+                ProgVariables::ExternalVarDecls(decls) => decls.parse(self, &mut variables),
+                ProgVariables::TempVarDecls(decls) => decls.parse(self, &mut variables),
+                ProgVariables::VarDecls(decls) => decls.parse(self, &mut variables),
                 ProgVariables::LocPartlyVarDecl(loc_partly_var_decl) => {
-                    loc_partly_var_decl.parse(sema, &mut variables)
+                    loc_partly_var_decl.parse(self, &mut variables)
                 }
                 ProgVariables::NoRetainVarDecls(no_retain_var_decls) => {
-                    no_retain_var_decls.parse(sema, &mut variables)
+                    no_retain_var_decls.parse(self, &mut variables)
                 }
                 ProgVariables::RetainVarDecls(retain_var_decls) => {
-                    retain_var_decls.parse(sema, &mut variables)
+                    retain_var_decls.parse(self, &mut variables)
                 }
             }
         }

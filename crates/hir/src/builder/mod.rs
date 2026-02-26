@@ -36,13 +36,6 @@ pub trait ParseSpec<'db> {
     ) -> anyhow::Result<Spec<'db>, IdeDiagnostic>;
 }
 
-pub trait ParseInit<'db> {
-    fn to_init(
-        &self,
-        sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<InitExpr<'db>, IdeDiagnostic>;
-}
-
 pub struct SpecInitResult<'db> {
     pub spec: Spec<'db>,
     pub init: Option<InitExpr<'db>>,
@@ -61,14 +54,11 @@ pub trait ParseSpecInit<'db> {
     ) -> anyhow::Result<SpecInitResult<'db>, IdeDiagnostic>;
 }
 
-impl<'db, T: ParseSpec<'db> + ParseInit<'db>> ParseSpecInit<'db> for T {
-    fn to_spec_init(
+pub trait Parse<'db> {
+    type Output;
+
+    fn parse(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
-    ) -> anyhow::Result<SpecInitResult<'db>, IdeDiagnostic> {
-        Ok(SpecInitResult::new(
-            self.to_spec(sema)?,
-            Some(self.to_init(sema)?),
-        ))
-    }
+    ) -> anyhow::Result<Self::Output, IdeDiagnostic>;
 }
