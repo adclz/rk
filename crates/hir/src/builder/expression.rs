@@ -7,8 +7,8 @@ use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::ToIdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::expressions::expression::{
-    BeginPathExpr, FieldExpr, FuncCall, IndexExpr, Integer, IntegerKind, ParamAssignKind, PathExpr,
-    VariableAccessKind,
+    BeginPathExpr, DerefExpr, FieldExpr, FuncCall, IndexExpr, Integer, IntegerKind,
+    ParamAssignKind, PathExpr, VariableAccessKind,
 };
 use crate::hir_def::expressions::invocation::{Invocation, InvocationKind};
 use crate::hir_def::interned::identifier::SpanIdent;
@@ -741,7 +741,7 @@ impl<'db> Parse<'db> for ast::generated::PathExpression {
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<Self::Output, IdeDiagnostic> {
         Ok(match self.children.cast(sema.ast) {
-            ast::generated::FieldExpression_IndexExpression_VarAccess::FieldExpression(
+            ast::generated::DerefExpression_FieldExpression_IndexExpression_VarAccess::FieldExpression(
                 field_expr,
             ) => PathExpr::new(
                 sema.db,
@@ -749,7 +749,7 @@ impl<'db> Parse<'db> for ast::generated::PathExpression {
                 self.into(),
                 sema.current_scope,
             ),
-            ast::generated::FieldExpression_IndexExpression_VarAccess::IndexExpression(
+            ast::generated::DerefExpression_FieldExpression_IndexExpression_VarAccess::IndexExpression(
                 index_expr,
             ) => PathExpr::new(
                 sema.db,
@@ -757,7 +757,32 @@ impl<'db> Parse<'db> for ast::generated::PathExpression {
                 self.into(),
                 sema.current_scope,
             ),
-            ast::generated::FieldExpression_IndexExpression_VarAccess::VarAccess(var_access) => {
+            ast::generated::DerefExpression_FieldExpression_IndexExpression_VarAccess::DerefExpression(
+                deref_expr,
+            ) => {
+                let mut path = None;
+                let mut count: u16 = 0;
+                for child in deref_expr.children.iter() {
+                    match child.cast(sema.ast) {
+                        ast::generated::DerefSign_PathExpression::PathExpression(path_expr) => {
+                            path = Some(path_expr.parse(sema)?);
+                        }
+                        ast::generated::DerefSign_PathExpression::DerefSign(_) => {
+                            count += 1;
+                        }
+                    }
+                }
+                PathExpr::new(
+                    sema.db,
+                    PathExprKind::Deref(DerefExpr {
+                        path: path.unwrap(),
+                        count,
+                    }),
+                    self.into(),
+                    sema.current_scope,
+                )
+            }
+            ast::generated::DerefExpression_FieldExpression_IndexExpression_VarAccess::VarAccess(var_access) => {
                 PathExpr::new(
                     sema.db,
                     PathExprKind::VarAccess(var_access.parse(sema)?),
@@ -811,26 +836,19 @@ impl<'db> Parse<'db> for ast::generated::VarAccess {
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<Self::Output, IdeDiagnostic> {
         match self.children.cast(sema.ast) {
-            ast::generated::ERRUnexpectedSuperInPath_ERRUnexpectedThisInPath_Field_RefDeref::ERRUnexpectedThisInPath(
+            ast::generated::ERRUnexpectedSuperInPath_ERRUnexpectedThisInPath_Field::ERRUnexpectedThisInPath(
                 direct_variable,
             ) => Err(SyntaxError::UnexpectedThis(
                 direct_variable.get_span(),
             ).to_diagnostic(sema.db)),
-            ast::generated::ERRUnexpectedSuperInPath_ERRUnexpectedThisInPath_Field_RefDeref::ERRUnexpectedSuperInPath(
+            ast::generated::ERRUnexpectedSuperInPath_ERRUnexpectedThisInPath_Field::ERRUnexpectedSuperInPath(
                 direct_variable,
             ) => Err(SyntaxError::UnexpectedSuper(
                 direct_variable.get_span(),
             ).to_diagnostic(sema.db)),
-            ast::generated::ERRUnexpectedSuperInPath_ERRUnexpectedThisInPath_Field_RefDeref::Field(field) => Ok(
+            ast::generated::ERRUnexpectedSuperInPath_ERRUnexpectedThisInPath_Field::Field(field) => Ok(
                 VarAccess::Simple(SpanIdent::from_node(sema.db, sema, field)?),
             ),
-            ast::generated::ERRUnexpectedSuperInPath_ERRUnexpectedThisInPath_Field_RefDeref::RefDeref(ref_deref) => {
-                Ok(VarAccess::Deref(SpanIdent::from_node(
-                    sema.db,
-                    sema,
-                    ref_deref.Ref.cast(sema.ast),
-                )?, ref_deref.children.len() as u16))
-            }
         }
     }
 }

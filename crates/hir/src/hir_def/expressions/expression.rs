@@ -325,12 +325,11 @@ impl<'db> HirNodeInfo<'db> for PathExpr<'db> {
         match &self.expr(db) {
             PathExprKind::Field(field_expr) => match field_expr.var {
                 VarAccess::Simple(ref simple) => simple.id,
-                VarAccess::Deref(ref deref, _) => deref.id,
             },
             PathExprKind::Index(index_expr) => index_expr.path.get_id(db),
+            PathExprKind::Deref(deref_expr) => deref_expr.path.get_id(db),
             PathExprKind::VarAccess(var_access) => match var_access {
                 VarAccess::Simple(simple) => simple.id,
-                VarAccess::Deref(deref, _) => deref.id,
             },
         }
     }
@@ -345,12 +344,11 @@ impl<'db> PathExpr<'db> {
         match &self.expr(db) {
             PathExprKind::Field(field_expr) => match field_expr.var {
                 VarAccess::Simple(ref simple) => *simple,
-                VarAccess::Deref(ref deref, _) => *deref,
             },
             PathExprKind::Index(index_expr) => index_expr.path.ident(db),
+            PathExprKind::Deref(deref_expr) => deref_expr.path.ident(db),
             PathExprKind::VarAccess(var_access) => match var_access {
                 VarAccess::Simple(simple) => *simple,
-                VarAccess::Deref(deref, _) => *deref,
             },
         }
     }
@@ -360,7 +358,8 @@ impl<'db> PathExpr<'db> {
 pub enum PathExprKind<'db> {
     Field(FieldExpr<'db>),     // .
     Index(IndexExpr<'db>),     // []
-    VarAccess(VarAccess<'db>), // Variable access (e.g. "var" or "var^")
+    Deref(DerefExpr<'db>),     // ^
+    VarAccess(VarAccess<'db>), // Variable access (e.g. "var")
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -373,6 +372,12 @@ pub struct FieldExpr<'db> {
 pub struct IndexExpr<'db> {
     pub path: PathExpr<'db>,
     pub index: Vec<Expr<'db>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub struct DerefExpr<'db> {
+    pub path: PathExpr<'db>,
+    pub count: u16,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -482,7 +487,6 @@ impl<'db> HirNodeInfo<'db> for VariableAccess<'db> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum VarAccess<'db> {
     Simple(SpanIdent<'db>),
-    Deref(SpanIdent<'db>, u16), // ^ + count
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]

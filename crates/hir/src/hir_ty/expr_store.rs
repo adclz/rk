@@ -60,36 +60,24 @@ impl<'db> PathExpr<'db> {
                         expr: *self,
                         ident: *simple,
                     }),
-                    VarAccess::Deref(target, count) => {
-                        result.push(PathExprWalkStep::Field {
-                            ident: *target,
-                            expr: *self,
-                        });
-                        result.push(PathExprWalkStep::Deref {
-                            expr: *self,
-                            count: *count,
-                        })
-                    }
                 }
             }
             PathExprKind::Index(index_expr) => {
                 result.extend(index_expr.path.flat(db));
                 result.push(PathExprWalkStep::Index { expr: *self });
             }
+            PathExprKind::Deref(deref_expr) => {
+                result.extend(deref_expr.path.flat(db));
+                result.push(PathExprWalkStep::Deref {
+                    expr: *self,
+                    count: deref_expr.count,
+                });
+            }
             PathExprKind::VarAccess(var_access) => match var_access {
                 VarAccess::Simple(simple) => result.push(PathExprWalkStep::Field {
                     expr: *self,
                     ident: simple,
                 }),
-                VarAccess::Deref(target, count) => {
-                    // deref behaves similar to a field access
-                    // but we don't want to repeat the same logic, so we split it into two steps
-                    result.push(PathExprWalkStep::Field {
-                        expr: *self,
-                        ident: target,
-                    });
-                    result.push(PathExprWalkStep::Deref { expr: *self, count });
-                }
             },
         }
         result

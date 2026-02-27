@@ -164,26 +164,20 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                             // This is an array index or struct field assignment
                             self.emit_path_assignment(func, path_expr, *target)?;
                         }
-                        PathExprKind::VarAccess(var_access) => {
-                            // Check if this is a dereferenced pointer (ptr^ := value)
-                            use hir::hir_def::expressions::expression::VarAccess;
-
-                            match var_access {
-                                VarAccess::Simple(_) => {
-                                    // Simple variable assignment
-                                    self.emit_simple_assignment(func, *var, *target)?;
-                                }
-                                VarAccess::Deref(span_ident, deref_count) => {
-                                    // Assignment to dereferenced pointer: ptr^ := value
-                                    self.emit_deref_assignment(
-                                        func,
-                                        span_ident,
-                                        deref_count,
-                                        path_expr,
-                                        *target,
-                                    )?;
-                                }
-                            }
+                        PathExprKind::Deref(deref_expr) => {
+                            // Assignment to dereferenced pointer: ptr^ := value
+                            let inner_ident = deref_expr.path.ident(self.db);
+                            self.emit_deref_assignment(
+                                func,
+                                inner_ident,
+                                deref_expr.count,
+                                path_expr,
+                                *target,
+                            )?;
+                        }
+                        PathExprKind::VarAccess(_) => {
+                            // Simple variable assignment
+                            self.emit_simple_assignment(func, *var, *target)?;
                         }
                     }
                 } else {
@@ -758,132 +752,73 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                             // This is an indexed or field access
                             self.emit_path_access(func, path_expr)?;
                         }
-                        PathExprKind::VarAccess(var_acc) => {
-                            // Check if this is a dereferenced variable (ptr^)
-                            use hir::hir_def::expressions::expression::VarAccess;
+                        PathExprKind::Deref(_) => {
+                            // Dereferenced pointer variable (ptr^, ptr^^, arr[0]^, etc.)
+                            self.emit_deref_chain(func, path_expr)?;
+                        }
+                        PathExprKind::VarAccess(_) => {
+                            // Simple variable access (no deref)
+                            let var_name = self.resolve_variable_name(*var_access)?;
 
-                            match var_acc {
-                                VarAccess::Simple(_) => {
-                                    // Simple variable access (no deref)
-                                    let var_name = self.resolve_variable_name(*var_access)?;
-
-                                    // Try to get from local_map first
-                                    if let Some(local_info) = self.local_map.get(&var_name) {
-                                        match local_info {
-                                            LocalInfo::Scalar { index, .. } => {
-                                                func.instruction(&Instruction::LocalGet(*index));
-                                            }
-                                            LocalInfo::Memory { address, size, .. } => {
-                                                // Load from memory location
-                                                func.instruction(&Instruction::I32Const(
-                                                    *address as i32,
-                                                ));
-
-                                                // Determine load instruction based on size
-                                                // Memory variables are scalars that were allocated due to address-taken
-                                                match size {
-                                                    4 => {
-                                                        // Could be i32 or f32, assume i32 for now
-                                                        // TODO: Get actual type to distinguish i32/f32
-                                                        func.instruction(&Instruction::I32Load(
-                                                            wasm_encoder::MemArg {
-                                                                offset: 0,
-                                                                align: 2, // 4-byte alignment
-                                                                memory_index: 0,
-                                                            },
-                                                        ));
-                                                    }
-                                                    8 => {
-                                                        // Could be i64 or f64, assume i64 for now
-                                                        func.instruction(&Instruction::I64Load(
-                                                            wasm_encoder::MemArg {
-                                                                offset: 0,
-                                                                align: 3, // 8-byte alignment
-                                                                memory_index: 0,
-                                                            },
-                                                        ));
-                                                    }
-                                                    _ => {
-                                                        return Err(format!(
-                                                            "Unsupported memory variable size: {}",
-                                                            size
-                                                        ));
-                                                    }
-                                                }
-                                            }
-                                            LocalInfo::Pointer {
-                                                index,
-                                                pointee_repr,
-                                            } => {
-                                                // VAR_IN_OUT parameter - pointer to value
-                                                // Load the pointer value (address)
-                                                func.instruction(&Instruction::LocalGet(*index));
-
-                                                // Emit load instruction to dereference the pointer
-                                                self.emit_load_instruction(func, *pointee_repr)?;
-                                            }
-                                        }
-                                    } else {
-                                        // Variable not in local_map - check if it's an FB instance variable
-                                        self.emit_instance_var_load(func, var_name)?;
+                            // Try to get from local_map first
+                            if let Some(local_info) = self.local_map.get(&var_name) {
+                                match local_info {
+                                    LocalInfo::Scalar { index, .. } => {
+                                        func.instruction(&Instruction::LocalGet(*index));
                                     }
-                                }
-
-                                VarAccess::Deref(span_ident, deref_count) => {
-                                    // Dereferenced pointer variable (ptr^)
-                                    let var_name = span_ident.ident;
-
-                                    // Load the pointer variable
-                                    if let Some(local_info) = self.local_map.get(&var_name) {
-                                        match local_info {
-                                            LocalInfo::Scalar {
-                                                index,
-                                                val_type: _,
-                                                spec: _,
-                                            } => {
-                                                // Load the pointer value (should be i32 address)
-                                                func.instruction(&Instruction::LocalGet(*index));
-
-                                                // Dereference the pointer
-                                                // For each ^ operator, emit a load instruction
-                                                for _ in 0..deref_count {
-                                                    // Get the pointee type from the HIR type system
-                                                    // Use the path expression to infer the type
-                                                    let path_type = path_expr.infer(self.db);
-                                                    let pointee_repr =
-                                                        self.get_deref_pointee_type(path_type)?;
-                                                    self.emit_load_instruction(func, pointee_repr)?;
-                                                }
-                                            }
-                                            LocalInfo::Pointer {
-                                                index,
-                                                pointee_repr,
-                                            } => {
-                                                // This is already a pointer (VAR_IN_OUT)
-                                                func.instruction(&Instruction::LocalGet(*index));
-
-                                                // Dereference
-                                                for _ in 0..deref_count {
-                                                    self.emit_load_instruction(
-                                                        func,
-                                                        *pointee_repr,
-                                                    )?;
-                                                }
-                                            }
-                                            LocalInfo::Memory { .. } => {
-                                                return Err(
-                                                    "Cannot dereference memory-resident variable"
-                                                        .to_string(),
-                                                );
-                                            }
-                                        }
-                                    } else {
-                                        return Err(format!(
-                                            "Dereferenced variable '{}' not found in scope",
-                                            var_name.text(self.db)
+                                    LocalInfo::Memory { address, size, .. } => {
+                                        // Load from memory location
+                                        func.instruction(&Instruction::I32Const(
+                                            *address as i32,
                                         ));
+
+                                        // Determine load instruction based on size
+                                        // Memory variables are scalars that were allocated due to address-taken
+                                        match size {
+                                            4 => {
+                                                // Could be i32 or f32, assume i32 for now
+                                                // TODO: Get actual type to distinguish i32/f32
+                                                func.instruction(&Instruction::I32Load(
+                                                    wasm_encoder::MemArg {
+                                                        offset: 0,
+                                                        align: 2, // 4-byte alignment
+                                                        memory_index: 0,
+                                                    },
+                                                ));
+                                            }
+                                            8 => {
+                                                // Could be i64 or f64, assume i64 for now
+                                                func.instruction(&Instruction::I64Load(
+                                                    wasm_encoder::MemArg {
+                                                        offset: 0,
+                                                        align: 3, // 8-byte alignment
+                                                        memory_index: 0,
+                                                    },
+                                                ));
+                                            }
+                                            _ => {
+                                                return Err(format!(
+                                                    "Unsupported memory variable size: {}",
+                                                    size
+                                                ));
+                                            }
+                                        }
+                                    }
+                                    LocalInfo::Pointer {
+                                        index,
+                                        pointee_repr,
+                                    } => {
+                                        // VAR_IN_OUT parameter - pointer to value
+                                        // Load the pointer value (address)
+                                        func.instruction(&Instruction::LocalGet(*index));
+
+                                        // Emit load instruction to dereference the pointer
+                                        self.emit_load_instruction(func, *pointee_repr)?;
                                     }
                                 }
+                            } else {
+                                // Variable not in local_map - check if it's an FB instance variable
+                                self.emit_instance_var_load(func, var_name)?;
                             }
                         }
                     }
@@ -968,7 +903,6 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                         use hir::hir_def::expressions::expression::VarAccess;
                         let method_name = match field_expr.var {
                             VarAccess::Simple(span_ident) => span_ident.ident,
-                            VarAccess::Deref(span_ident, _) => span_ident.ident,
                         };
 
                         // Get the type of the instance
@@ -1740,6 +1674,9 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
             PathExprKind::Field(field_expr) => {
                 self.emit_struct_field(func, &field_expr)?;
             }
+            PathExprKind::Deref(_) => {
+                return Err("Unexpected Deref in emit_path_access".to_string());
+            }
             PathExprKind::VarAccess(_) => {
                 // This shouldn't happen if we check properly, but treat as simple variable
                 return Err("Unexpected VarAccess in PathExpr".to_string());
@@ -1847,6 +1784,54 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
             // Variable not in local_map - check if it's an FB instance variable
             self.emit_instance_var_store(func, var_name, target, rhs_type)
         }
+    }
+
+    /// Emit the value of a deref chain (ptr^, ptr^^, arr[0]^, etc.) onto the wasm stack.
+    /// Recursively emits the inner path expression, then applies a deref load.
+    fn emit_deref_chain(
+        &self,
+        func: &mut wasm_encoder::Function,
+        path_expr: hir::hir_def::expressions::expression::PathExpr<'db>,
+    ) -> Result<(), String> {
+        use hir::hir_def::expressions::expression::PathExprKind;
+        use hir::hir_ty::infer::Infer;
+
+        match path_expr.expr(self.db) {
+            PathExprKind::Deref(deref_expr) => {
+                // Recursively emit the inner path value onto the stack
+                self.emit_deref_chain(func, deref_expr.path)?;
+
+                // Apply dereference: load from the address on the stack
+                let path_type = path_expr.infer(self.db);
+                let pointee_repr = self.get_deref_pointee_type(path_type)?;
+                self.emit_load_instruction(func, pointee_repr)?;
+            }
+            PathExprKind::VarAccess(_) => {
+                // Base case: load the variable value
+                let var_name = path_expr.ident(self.db).ident;
+                if let Some(local_info) = self.local_map.get(&var_name) {
+                    match local_info {
+                        LocalInfo::Scalar { index, .. } | LocalInfo::Pointer { index, .. } => {
+                            func.instruction(&Instruction::LocalGet(*index));
+                        }
+                        LocalInfo::Memory { .. } => {
+                            return Err(
+                                "Cannot dereference memory-resident variable".to_string(),
+                            );
+                        }
+                    }
+                } else {
+                    return Err(format!(
+                        "Dereferenced variable '{}' not found in scope",
+                        var_name.text(self.db)
+                    ));
+                }
+            }
+            PathExprKind::Index(_) | PathExprKind::Field(_) => {
+                self.emit_path_access(func, path_expr)?;
+            }
+        }
+        Ok(())
     }
 
     /// Emit code to assign through a dereferenced pointer (ptr^ := value).
@@ -2133,7 +2118,6 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                 let struct_type = field_expr.path.infer(self.db).normalize(self.db);
                 let field_name = match &field_expr.var {
                     VarAccess::Simple(simple) => simple.ident,
-                    VarAccess::Deref(deref, _) => deref.ident,
                 };
 
                 let field_type = match struct_type {
@@ -2155,6 +2139,9 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                 self.emit_store_instruction(func, field_repr)?;
 
                 Ok(())
+            }
+            PathExprKind::Deref(_) => {
+                Err("Unexpected Deref in emit_path_assignment".to_string())
             }
             PathExprKind::VarAccess(_) => {
                 Err("Unexpected VarAccess in PathExpr for assignment".to_string())
@@ -2327,7 +2314,6 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
         let struct_type = field_expr.path.infer(self.db).normalize(self.db);
         let field_name = match &field_expr.var {
             VarAccess::Simple(simple) => simple.ident,
-            VarAccess::Deref(deref, _) => deref.ident,
         };
 
         let field_type = match struct_type {
@@ -2367,7 +2353,6 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                 // Base case: path is just a variable access
                 let base_ident = match var_access {
                     VarAccess::Simple(simple) => simple.ident,
-                    VarAccess::Deref(deref, _) => deref.ident,
                 };
                 (base_ident, 0u32)
             }
@@ -2386,7 +2371,6 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                 // Get field name
                 let field_name = match field_var {
                     VarAccess::Simple(simple) => simple.ident,
-                    VarAccess::Deref(deref, _) => deref.ident,
                 };
 
                 // Calculate field offsets for this struct

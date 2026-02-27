@@ -399,3 +399,68 @@ END_FUNCTION_BLOCK
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
+
+#[rstest]
+fn valid_deref_array_element(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fn1
+    VAR
+        x: INT := 42;
+        arr: ARRAY[0..2] OF REF_TO INT;
+        result: INT;
+    END_VAR
+
+    arr[0] := REF(x);
+    result := arr[0]^;
+
+END_FUNCTION_BLOCK
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn valid_deref_struct_field(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE
+    PtrHolder: STRUCT
+        ptr: REF_TO INT;
+    END_STRUCT;
+END_TYPE
+
+FUNCTION_BLOCK fn1
+    VAR
+        x: INT := 10;
+        s: PtrHolder;
+        result: INT;
+    END_VAR
+
+    s.ptr := REF(x);
+    result := s.ptr^;
+
+END_FUNCTION_BLOCK
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn valid_double_deref(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fn1
+    VAR
+        x: INT := 5;
+        ptr: REF_TO INT;
+        ptrptr: REF_TO REF_TO INT;
+        result: INT;
+    END_VAR
+
+    ptr := REF(x);
+    ptrptr := REF(ptr);
+    result := ptrptr^^;
+
+END_FUNCTION_BLOCK
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
