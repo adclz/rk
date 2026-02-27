@@ -57,6 +57,7 @@ use auto_lsp::lsp_types::request::GotoDefinition;
 use auto_lsp::lsp_types::request::GotoImplementation;
 use auto_lsp::lsp_types::request::HoverRequest;
 use auto_lsp::lsp_types::request::InlayHintRequest;
+use auto_lsp::lsp_types::request::References;
 use auto_lsp::lsp_types::request::RegisterCapability;
 use auto_lsp::lsp_types::request::SemanticTokensFullRequest;
 use auto_lsp::lsp_types::request::WorkspaceDiagnosticRequest;
@@ -91,6 +92,7 @@ use crate::capabilties::formatting::formatting;
 use crate::capabilties::hover::hover;
 use crate::capabilties::implementation::go_to_implementation;
 use crate::capabilties::inlay_hints::inlay_hints;
+use crate::capabilties::references::references;
 use crate::capabilties::semantic_tokens;
 
 pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -148,6 +150,7 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
                 definition_provider: Some(OneOf::Left(true)),
                 document_formatting_provider: Some(OneOf::Left(true)),
                 implementation_provider: Some(ImplementationProviderCapability::Simple(true)),
+                references_provider: Some(OneOf::Left(true)),
 
                 ..Default::default()
             },
@@ -204,6 +207,7 @@ fn on_requests<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
         .on::<GotoDeclaration, _>(ThreadIntent::Worker, go_to_declaration)
         .on::<GotoDefinition, _>(ThreadIntent::Worker, go_to_definition)
         .on::<GotoImplementation, _>(ThreadIntent::Worker, go_to_implementation)
+        .on::<References, _>(ThreadIntent::Worker, references)
 }
 
 fn on_notifications(

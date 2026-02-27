@@ -19,6 +19,7 @@ pub mod document_symbols;
 pub mod hover;
 pub mod implementation;
 pub mod inlay_hint;
+pub mod references;
 pub mod semantic_tokens;
 
 pub trait SemanticTokensHandler<'db> {
