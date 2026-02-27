@@ -29,5 +29,7 @@ pub fn references(
 
     let include_declaration = params.context.include_declaration;
 
-    Ok(descendant_at(db, file, position).and_then(|s| s.references(db, include_declaration)))
+    Ok(descendant_at(db, file, position)
+        .and_then(|s| s.references(db, include_declaration))
+        .map(|refs| refs.iter().map(|r| r.to_location(db)).collect()))
 }

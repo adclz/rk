@@ -236,7 +236,16 @@ fn on_notifications(
         })
         .on_mut::<DidChangeTextDocument, _>(|s, p| {
             match p.text_document.uri.as_str().ends_with(".st") {
-                true => Ok(change_text_document(s, p)?),
+                true => {
+                    // Don't re-add stdlib files as workspace files.
+                    // auto-lsp's change_text_document only checks workspace_files,
+                    // so opening a stdlib file (e.g. via go-to-definition) would
+                    // create a duplicate entry and cause false "duplicate POU" errors.
+                    if s.db.get_std_lib_files().contains_key(&p.text_document.uri) {
+                        return Ok(());
+                    }
+                    Ok(change_text_document(s, p)?)
+                },
                 false => {
                     // tracing::trace!("Ignored DidChangeTextDocument for non-.st file: {}", p.text_document.uri);
                     Ok(())

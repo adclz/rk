@@ -1,18 +1,98 @@
 use std::ops::ControlFlow;
 
-use auto_lsp::default::db::file::File;
-use auto_lsp::lsp_types::Location;
+use auto_lsp::{
+    core::span::Span,
+    default::db::file::File,
+    lsp_types::Location,
+};
 use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
-    hir_def::semantic_index::semantic_index,
+    hir_def::{
+        interned::namespace::NamespacePath,
+        semantic_index::semantic_index,
+    },
     hir_ty::{
         infer::Infer,
+        index_graphs::namespace_index,
         ty::{CallableType, Type},
     },
 };
 
 use crate::{hir_node::HirNode, walk::WalkHir};
+
+pub struct ReferenceLocation {
+    pub file: File,
+    pub span: Span,
+}
+
+impl ReferenceLocation {
+    pub fn to_location(&self, db: &dyn WorkspaceDataBase) -> Location {
+        Location::new(self.file.url(db).clone(), self.span.into())
+    }
+}
+
+impl<'db> HirNode<'db> {
+    pub fn references(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        include_declaration: bool,
+    ) -> Option<Vec<ReferenceLocation>> {
+        // Namespace references: declarations via namespace_index + USING statements via walk
+        let ns_path = match self {
+            HirNode::Namespace(ns) => Some(*ns.path(db)),
+            HirNode::Using(u) => Some(u.path(db).path),
+            _ => None,
+        };
+        if let Some(path) = ns_path {
+            return find_namespace_references(db, path);
+        }
+
+        let target = resolve_cursor_target(db, self)?;
+        let name = reference_type_name(db, &target)?;
+
+        let mut locations = vec![];
+
+        for file in db.get_files().iter() {
+            // Text pre-filter: skip files that don't contain the symbol name
+            let source = file.document(db).as_str();
+            if !source
+                .to_ascii_lowercase()
+                .contains(&name.to_ascii_lowercase())
+            {
+                continue;
+            }
+
+            find_references_in_file(db, *file, &target, include_declaration, &mut locations);
+        }
+
+        // Deduplicate — the walk can visit overlapping nodes
+        locations.dedup_by(|a, b| {
+            a.file.url(db) == b.file.url(db) && a.span == b.span
+        });
+
+        if locations.is_empty() {
+            None
+        } else {
+            Some(locations)
+        }
+    }
+}
+
+/// Get the name text of a reference target for text pre-filtering
+fn reference_type_name<'db>(db: &'db dyn WorkspaceDataBase, ty: &Type<'db>) -> Option<&'db str> {
+    Some(match ty {
+        Type::Function(f) => f.get_name_ident(db).text(db),
+        Type::FunctionBlock(fb) => fb.get_name_ident(db).text(db),
+        Type::Class(c) => c.get_name_ident(db).text(db),
+        Type::Interface(i) => i.get_name_ident(db).text(db),
+        Type::DataType(dt) => dt.get_name_ident(db).text(db),
+        Type::Variable((var, _)) => var.get_name_ident(db).text(db),
+        Type::StructElement(st) => st.get_name_ident(db).text(db),
+        Type::MethodDecl(m) => m.get_name_ident(db).text(db),
+        _ => return None,
+    })
+}
 
 /// Normalize a Type to its canonical reference identity.
 /// Strips MultibitsPart from variables and unwraps CallableType.
@@ -31,21 +111,6 @@ fn normalize_reference_type<'db>(ty: Type<'db>) -> Option<Type<'db>> {
             CallableType::FunctionBlock(fb) => Type::FunctionBlock(fb),
             CallableType::MethodDecl(m) => Type::MethodDecl(m),
         },
-        _ => return None,
-    })
-}
-
-/// Get the name text of a reference target for text pre-filtering
-fn reference_type_name<'db>(db: &'db dyn WorkspaceDataBase, ty: &Type<'db>) -> Option<&'db str> {
-    Some(match ty {
-        Type::Function(f) => f.get_name_ident(db).text(db),
-        Type::FunctionBlock(fb) => fb.get_name_ident(db).text(db),
-        Type::Class(c) => c.get_name_ident(db).text(db),
-        Type::Interface(i) => i.get_name_ident(db).text(db),
-        Type::DataType(dt) => dt.get_name_ident(db).text(db),
-        Type::Variable((var, _)) => var.get_name_ident(db).text(db),
-        Type::StructElement(st) => st.get_name_ident(db).text(db),
-        Type::MethodDecl(m) => m.get_name_ident(db).text(db),
         _ => return None,
     })
 }
@@ -125,47 +190,12 @@ fn reference_span<'db>(db: &'db dyn WorkspaceDataBase, node: &HirNode<'db>) -> a
     }
 }
 
-impl<'db> HirNode<'db> {
-    pub fn references(
-        &self,
-        db: &'db dyn WorkspaceDataBase,
-        include_declaration: bool,
-    ) -> Option<Vec<Location>> {
-        let target = resolve_cursor_target(db, self)?;
-        let name = reference_type_name(db, &target)?;
-
-        let mut locations = vec![];
-
-        for file in db.get_files().iter() {
-            // Text pre-filter: skip files that don't contain the symbol name
-            let source = file.document(db).as_str();
-            if !source
-                .to_ascii_lowercase()
-                .contains(&name.to_ascii_lowercase())
-            {
-                continue;
-            }
-
-            find_references_in_file(db, *file, &target, include_declaration, &mut locations);
-        }
-
-        // Deduplicate by (url, range) — the walk can visit overlapping nodes
-        locations.dedup_by(|a, b| a.uri == b.uri && a.range == b.range);
-
-        if locations.is_empty() {
-            None
-        } else {
-            Some(locations)
-        }
-    }
-}
-
 fn find_references_in_file<'db>(
     db: &'db dyn WorkspaceDataBase,
     file: File,
     target: &Type<'db>,
     include_declaration: bool,
-    locations: &mut Vec<Location>,
+    locations: &mut Vec<ReferenceLocation>,
 ) {
     let sema = semantic_index(db, file);
 
@@ -177,11 +207,48 @@ fn find_references_in_file<'db>(
         if let Some(resolved) = resolve_walk_target(db, &node) {
             if resolved == *target {
                 let span = reference_span(db, &node);
-                let url = node.get_scope_id(db).file(db).url(db).clone();
-                locations.push(Location::new(url, span.into()));
+                let file = node.get_scope_id(db).file(db);
+                locations.push(ReferenceLocation { file, span });
             }
         }
 
         ControlFlow::Continue(())
     });
+}
+
+fn find_namespace_references<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    path: NamespacePath,
+) -> Option<Vec<ReferenceLocation>> {
+    let mut locations = vec![];
+
+    // All namespace declarations with this path
+    for ns in namespace_index(db, path).iter() {
+        locations.push(ReferenceLocation {
+            file: ns.scope_id(db).file(db),
+            span: ns.name_span(db),
+        });
+    }
+
+    // All USING statements with this path
+    for file in db.get_files().iter() {
+        let sema = semantic_index(db, *file);
+        let _ = sema.walk_hir(db, &mut |node: HirNode<'db>| {
+            if let HirNode::Using(u) = &node {
+                if u.path(db).path == path {
+                    locations.push(ReferenceLocation {
+                        file: u.scope_id(db).file(db),
+                        span: u.get_span(db),
+                    });
+                }
+            }
+            ControlFlow::Continue(())
+        });
+    }
+
+    if locations.is_empty() {
+        None
+    } else {
+        Some(locations)
+    }
 }

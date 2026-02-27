@@ -1,6 +1,7 @@
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::Url;
 use db::RootDatabase;
+use ide_proto::handlers::references::ReferenceLocation;
 use ide_proto::walk::descendant_at;
 use insta::assert_debug_snapshot;
 use rstest::rstest;
@@ -8,16 +9,17 @@ use rstest::rstest;
 use crate::tests::utils::{add_sources, with_db};
 
 /// Helper: format reference locations as (line, col_start, col_end) for readable snapshots
-fn format_references(locations: &[auto_lsp::lsp_types::Location]) -> Vec<String> {
+fn format_references(locations: &[ReferenceLocation]) -> Vec<String> {
     locations
         .iter()
         .map(|loc| {
+            let range: auto_lsp::lsp_types::Range = loc.span.into();
             format!(
                 "{}:{}-{}:{}",
-                loc.range.start.line,
-                loc.range.start.character,
-                loc.range.end.line,
-                loc.range.end.character
+                range.start.line,
+                range.start.character,
+                range.end.line,
+                range.end.character
             )
         })
         .collect()
@@ -201,4 +203,86 @@ END_FUNCTION
         "4:4-4:5",
     ]
     "#);
+}
+
+#[rstest]
+fn namespace_references(mut with_db: RootDatabase) {
+    let source1 = r#"NAMESPACE MyNs
+    FUNCTION fn1 : INT
+    END_FUNCTION
+END_NAMESPACE
+"#;
+
+    let source2 = r#"NAMESPACE MyNs
+    FUNCTION fn2 : INT
+    END_FUNCTION
+END_NAMESPACE
+"#;
+
+    add_sources(&mut with_db, &[source1, source2]);
+    let file1 = with_db
+        .get_file(&Url::parse("file:///test0.st").unwrap())
+        .unwrap();
+
+    // Click on "MyNs" in the first file's namespace declaration
+    let offset = source1.find("MyNs").unwrap();
+    let node = descendant_at(&with_db, file1, offset).unwrap();
+    let refs = node.references(&with_db, true).unwrap();
+
+    // Should find both namespace declarations
+    assert_debug_snapshot!(refs.len(), @"2");
+}
+
+#[rstest]
+fn namespace_references_with_using(mut with_db: RootDatabase) {
+    let source1 = r#"NAMESPACE MyNs
+    FUNCTION fn1 : INT
+    END_FUNCTION
+END_NAMESPACE
+"#;
+
+    let source2 = r#"USING MyNs;
+FUNCTION fn2 : INT
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source1, source2]);
+    let file1 = with_db
+        .get_file(&Url::parse("file:///test0.st").unwrap())
+        .unwrap();
+
+    // Click on "MyNs" in the namespace declaration
+    let offset = source1.find("MyNs").unwrap();
+    let node = descendant_at(&with_db, file1, offset).unwrap();
+    let refs = node.references(&with_db, true).unwrap();
+
+    // Should find the namespace declaration + the USING statement
+    assert_debug_snapshot!(refs.len(), @"2");
+}
+
+#[rstest]
+fn using_references_from_using(mut with_db: RootDatabase) {
+    let source1 = r#"NAMESPACE MyNs
+    FUNCTION fn1 : INT
+    END_FUNCTION
+END_NAMESPACE
+"#;
+
+    let source2 = r#"USING MyNs;
+FUNCTION fn2 : INT
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source1, source2]);
+    let file2 = with_db
+        .get_file(&Url::parse("file:///test1.st").unwrap())
+        .unwrap();
+
+    // Click on "MyNs" in the USING statement
+    let offset = source2.find("MyNs").unwrap();
+    let node = descendant_at(&with_db, file2, offset).unwrap();
+    let refs = node.references(&with_db, true).unwrap();
+
+    // Should find namespace declaration + USING statement
+    assert_debug_snapshot!(refs.len(), @"2");
 }

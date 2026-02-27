@@ -7,9 +7,12 @@ use hir::{
             expression::{BeginPathExpr, Expr, InitExpr, ParamAssign, PathExpr, VariableAccess},
             spec::{Spec, SpecKind, StructElement},
         },
+        interned::namespace::NamespacePath,
+        namespace::NamespaceDecl,
         pous::{pou::Pou, variable::VariableDecl},
+        using::Using,
     },
-    hir_ty::{infer::Infer, ty::Type},
+    hir_ty::{index_graphs::namespace_index, infer::Infer, ty::Type},
 };
 
 use crate::{handlers::DefinitionHandler, hir_node::HirNode};
@@ -17,6 +20,8 @@ use crate::{handlers::DefinitionHandler, hir_node::HirNode};
 impl<'db> HirNode<'db> {
     pub fn definition(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDefinitionResponse> {
         match self {
+            HirNode::Namespace(ns) => ns.definition(db),
+            HirNode::Using(u) => u.definition(db),
             HirNode::PouDecl(pou) => pou.definition(db),
             HirNode::VariableDecl(v) => v.definition(db),
             HirNode::StructElement(s) => s.definition(db),
@@ -28,6 +33,18 @@ impl<'db> HirNode<'db> {
             HirNode::Param(p) => p.definition(db),
             _ => None,
         }
+    }
+}
+
+impl<'db> DefinitionHandler<'db> for NamespaceDecl<'db> {
+    fn definition(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDefinitionResponse> {
+        namespace_definitions(db, *self.path(db))
+    }
+}
+
+impl<'db> DefinitionHandler<'db> for Using<'db> {
+    fn definition(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDefinitionResponse> {
+        namespace_definitions(db, self.path(db).path)
     }
 }
 
@@ -114,5 +131,25 @@ impl<'db> DefinitionHandler<'db> for Type<'db> {
             loc.get_scope_id(db).file(db).url(db).to_owned(),
             loc.get_span(db).into(),
         )))
+    }
+}
+
+fn namespace_definitions<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    path: NamespacePath,
+) -> Option<GotoDefinitionResponse> {
+    let decls: Vec<_> = namespace_index(db, path)
+        .iter()
+        .map(|ns| {
+            Location::new(
+                ns.scope_id(db).file(db).url(db).to_owned(),
+                ns.name_span(db).into(),
+            )
+        })
+        .collect();
+    if decls.is_empty() {
+        None
+    } else {
+        Some(GotoDefinitionResponse::Array(decls))
     }
 }
