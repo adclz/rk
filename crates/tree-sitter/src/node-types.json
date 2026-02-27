@@ -2014,6 +2014,25 @@
     }
   },
   {
+    "type": "deref_expression",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "deref_sign",
+          "named": true
+        },
+        {
+          "type": "path_expression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "direct_variable",
     "named": true,
     "fields": {
@@ -4520,6 +4539,10 @@
       "required": true,
       "types": [
         {
+          "type": "deref_expression",
+          "named": true
+        },
+        {
           "type": "field_expression",
           "named": true
         },
@@ -4931,32 +4954,6 @@
       "types": [
         {
           "type": "begin_path_expression",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "ref_deref",
-    "named": true,
-    "fields": {
-      "ref": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "identifier",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "deref_sign",
           "named": true
         }
       ]
@@ -6186,10 +6183,6 @@
         },
         {
           "type": "field",
-          "named": true
-        },
-        {
-          "type": "ref_deref",
           "named": true
         }
       ]

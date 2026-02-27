@@ -768,23 +768,22 @@ module.exports = grammar({
 
     ref_addr: ($) => seq("REF", "(", $.begin_path_expression, ")"),
 
-    ref_deref: ($) =>
+    deref_expression: ($) =>
       prec(
         RK_PREC.dereference,
-        seq(field("ref", $.identifier), repeat1(alias("^", $.deref_sign))),
+        seq($.path_expression, repeat1(alias("^", $.deref_sign))),
       ),
 
     // Table 13 - Declaration of variables/Table 14 – Initialization of variables
 
     variable: ($) => choice($.begin_path_expression, $.direct_variable),
 
-    // Var_Access : Variable_Name | Ref_Deref;
+    // Var_Access : Variable_Name;
     var_access: ($) =>
       choice(
         $.ERR_unexpected_this_in_path,
         $.ERR_unexpected_super_in_path,
         alias($.identifier, $.field),
-        $.ref_deref,
       ),
 
     input_decls: ($) =>
@@ -1892,7 +1891,7 @@ module.exports = grammar({
     super_body_invocation: ($) => seq(field("SUPER", "SUPER"), "()"),
 
     path_expression: ($) =>
-      choice($.var_access, $.field_expression, $.index_expression),
+      choice($.var_access, $.field_expression, $.index_expression, $.deref_expression),
 
     field_expression: ($) =>
       seq(field("path", $.path_expression), ".", field("target", $.var_access)),

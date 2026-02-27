@@ -2775,19 +2775,15 @@
         }
       ]
     },
-    "ref_deref": {
+    "deref_expression": {
       "type": "PREC",
       "value": 9,
       "content": {
         "type": "SEQ",
         "members": [
           {
-            "type": "FIELD",
-            "name": "ref",
-            "content": {
-              "type": "SYMBOL",
-              "name": "identifier"
-            }
+            "type": "SYMBOL",
+            "name": "path_expression"
           },
           {
             "type": "REPEAT1",
@@ -2836,10 +2832,6 @@
           },
           "named": true,
           "value": "field"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "ref_deref"
         }
       ]
     },
@@ -9141,6 +9133,10 @@
         {
           "type": "SYMBOL",
           "name": "index_expression"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "deref_expression"
         }
       ]
     },

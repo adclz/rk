@@ -140,18 +140,20 @@ END_CONFIGURATION
           (prog_conf_elem
             (fb_task
               (path_expression
-                (var_access
-                  (ref_deref
-                    (identifier)
-                    (deref_sign))))
+                (deref_expression
+                  (path_expression
+                    (var_access
+                      (field)))
+                  (deref_sign)))
               (identifier)))
           (prog_conf_elem
             (fb_task
               (path_expression
-                (var_access
-                  (ref_deref
-                    (identifier)
-                    (deref_sign))))
+                (deref_expression
+                  (path_expression
+                    (var_access
+                      (field)))
+                  (deref_sign)))
               (identifier))))))))
 
 ================================================================================
@@ -225,105 +227,106 @@ END_CONFIGURATION
 
 --------------------------------------------------------------------------------
 
-  (source_file
-      (config_decl
-        (identifier)
-        (resource_decl
+(source_file
+  (config_decl
+    (identifier)
+    (resource_decl
+      (identifier)
+      (identifier)
+      (global_var_decls
+        (global_var_decl
+          (global_var_spec
+            (identifier))
+          (loc_var_spec_init
+            (simple_type_spec
+              (bit_str_type_name
+                (bool_name)))))
+        (global_var_decl
+          (global_var_spec
+            (identifier)
+            (located_at
+              (direct_variable
+                (adress_identifier)
+                (offset
+                  (unsigned_int)))))
+          (loc_var_spec_init
+            (simple_type_spec
+              (numeric_type_name
+                (int_type_name
+                  (sign_int_type_name
+                    (int_name))))))))
+      (single_resource_decl
+        (task_config
+          (identifier)
+          (task_init
+            (data_source
+              (constant
+                (time_literal
+                  (duration
+                    (time
+                      (time_type_name)
+                      (time_value))))))
+            (unsigned_int))))
+      (single_resource_decl
+        (task_config
+          (identifier)
+          (task_init
+            (data_source
+              (path_expression
+                (var_access
+                  (field))))
+            (unsigned_int))))
+      (single_resource_decl
+        (prog_config
           (identifier)
           (identifier)
-          (global_var_decls
-            (global_var_decl
-              (global_var_spec
-                (identifier))
-              (loc_var_spec_init
-                (simple_type_spec
-                  (bit_str_type_name
-                    (bool_name)))))
-            (global_var_decl
-              (global_var_spec
-                (identifier)
-                (located_at
+          (namespace_access
+            (identifier))
+          (prog_conf_elems
+            (prog_conf_elem
+              (prog_cnxn
+                (path_expression
+                  (var_access
+                    (field)))
+                (prog_data_source
+                  (path_expression
+                    (var_access
+                      (field))))))
+            (prog_conf_elem
+              (prog_cnxn
+                (path_expression
+                  (var_access
+                    (field)))
+                (prog_data_source
+                  (path_expression
+                    (var_access
+                      (field)))))))))
+      (single_resource_decl
+        (prog_config
+          (identifier)
+          (identifier)
+          (namespace_access
+            (identifier))
+          (prog_conf_elems
+            (prog_conf_elem
+              (prog_cnxn
+                (path_expression
+                  (var_access
+                    (field)))
+                (data_sink
                   (direct_variable
                     (adress_identifier)
                     (offset
-                      (unsigned_int)))))
-              (loc_var_spec_init
-                (simple_type_spec
-                  (numeric_type_name
-                    (int_type_name
-                      (sign_int_type_name
-                        (int_name))))))))
-          (single_resource_decl
-            (task_config
-              (identifier)
-              (task_init
-                (data_source
-                  (constant
-                    (time_literal
-                      (duration
-                        (time
-                          (time_type_name)
-                          (time_value))))))
-                (unsigned_int))))
-          (single_resource_decl
-            (task_config
-              (identifier)
-              (task_init
-                (data_source
-                  (path_expression
-                    (var_access
-                      (field))))
-                (unsigned_int))))
-          (single_resource_decl
-            (prog_config
-              (identifier)
-              (identifier)
-              (namespace_access
-                (identifier))
-              (prog_conf_elems
-                (prog_conf_elem
-                  (prog_cnxn
+                      (unsigned_int))))))
+            (prog_conf_elem
+              (fb_task
+                (path_expression
+                  (deref_expression
                     (path_expression
                       (var_access
                         (field)))
-                    (prog_data_source
-                      (path_expression
-                        (var_access
-                          (field))))))
-                (prog_conf_elem
-                  (prog_cnxn
-                    (path_expression
-                      (var_access
-                        (field)))
-                    (prog_data_source
-                      (path_expression
-                        (var_access
-                          (field)))))))))
-          (single_resource_decl
-            (prog_config
-              (identifier)
-              (identifier)
-              (namespace_access
-                (identifier))
-              (prog_conf_elems
-                (prog_conf_elem
-                  (prog_cnxn
-                    (path_expression
-                      (var_access
-                        (field)))
-                    (data_sink
-                      (direct_variable
-                        (adress_identifier)
-                        (offset
-                          (unsigned_int))))))
-                (prog_conf_elem
-                  (fb_task
-                    (path_expression
-                      (var_access
-                        (ref_deref
-                          (identifier)
-                          (deref_sign))))
-                    (identifier)))))))))
+                    (deref_sign)))
+                (identifier)))))))))
 
 ================================================================================
 VAR_ACCESS ... END_VAR

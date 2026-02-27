@@ -8,16 +8,16 @@ END_TYPE
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (data_type_decl
-        (type_decl
-          (identifier)
-          (ref_type_spec
-            (ref_to)
-            (numeric_type_name
-              (int_type_name
-                (sign_int_type_name
-                  (int_name))))))))
+(source_file
+  (data_type_decl
+    (type_decl
+      (identifier)
+      (ref_type_spec
+        (ref_to)
+        (numeric_type_name
+          (int_type_name
+            (sign_int_type_name
+              (int_name))))))))
 
 ================================================================================
 Comparison with NULL
@@ -31,22 +31,22 @@ END_FUNCTION
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (func_decl
-        (identifier)
-        (func_body
-          (stmt_list
-            (if_stmt
-              (comparison_operator
-                (eq_operator
-                  (variable_access
-                    (variable
-                      (begin_path_expression
-                        (path_expression
-                          (var_access
-                            (field))))))
-                  (ref_value
-                    (null)))))))))
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (if_stmt
+          (comparison_operator
+            (eq_operator
+              (variable_access
+                (variable
+                  (begin_path_expression
+                    (path_expression
+                      (var_access
+                        (field))))))
+              (ref_value
+                (null)))))))))
 
 ================================================================================
 Referencing
@@ -58,24 +58,24 @@ END_FUNCTION
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (func_decl
-        (identifier)
-        (func_body
-          (stmt_list
-            (assign
-              (variable
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (assign
+          (variable
+            (begin_path_expression
+              (path_expression
+                (var_access
+                  (field)))))
+          (assignment
+            (ref_value
+              (ref_addr
                 (begin_path_expression
                   (path_expression
                     (var_access
-                      (field)))))
-              (assignment
-                (ref_value
-                  (ref_addr
-                    (begin_path_expression
-                      (path_expression
-                        (var_access
-                          (field))))))))))))
+                      (field))))))))))))
 
 ================================================================================
 Dereferencing
@@ -87,36 +87,36 @@ END_FUNCTION
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (func_decl
-        (identifier)
-        (func_body
-          (stmt_list
-            (assign
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (assign
+          (variable
+            (begin_path_expression
+              (path_expression
+                (var_access
+                  (field)))))
+          (assignment
+            (variable_access
               (variable
                 (begin_path_expression
                   (path_expression
-                    (var_access
-                      (field)))))
-              (assignment
-                (variable_access
-                  (variable
-                    (begin_path_expression
+                    (index_expression
                       (path_expression
-                        (index_expression
+                        (deref_expression
                           (path_expression
                             (var_access
-                              (ref_deref
-                                (identifier)
-                                (deref_sign))))
-                          (index_value
-                            (constant_expr
-                              (constant
-                                (numeric_literal
-                                  (int_literal
-                                    (signed_int
-                                      (unsigned_int))))))))))))))))))
-
+                              (field)))
+                          (deref_sign)))
+                      (index_value
+                        (constant_expr
+                          (constant
+                            (numeric_literal
+                              (int_literal
+                                (signed_int
+                                  (unsigned_int))))))))))))))))))
 
 ================================================================================
 Multiple Dereferencing
@@ -128,27 +128,36 @@ END_FUNCTION
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (func_decl
-        (identifier)
-        (func_body
-          (stmt_list
-            (assign
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (assign
+          (variable
+            (begin_path_expression
+              (path_expression
+                (var_access
+                  (field)))))
+          (assignment
+            (variable_access
               (variable
                 (begin_path_expression
                   (path_expression
-                    (var_access
-                      (field)))))
-              (assignment
-                (variable_access
-                  (variable
-                    (begin_path_expression
+                    (deref_expression
                       (path_expression
-                        (var_access
-                          (ref_deref
-                            (identifier)
-                            (deref_sign)
-                            (deref_sign)
-                            (deref_sign)
-                            (deref_sign)
-                            (deref_sign)))))))))))))
+                        (deref_expression
+                          (path_expression
+                            (deref_expression
+                              (path_expression
+                                (deref_expression
+                                  (path_expression
+                                    (deref_expression
+                                      (path_expression
+                                        (var_access
+                                          (field)))
+                                      (deref_sign)))
+                                  (deref_sign)))
+                              (deref_sign)))
+                          (deref_sign)))
+                      (deref_sign))))))))))))
