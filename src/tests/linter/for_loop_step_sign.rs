@@ -47,13 +47,13 @@ fn ascending_with_negative_step_warning(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0108] Error: FOR loop step sign mismatch
+    [W0108] Advice: FOR loop step sign mismatch
        ,-[ file:///test0.st:6:13 ]
        |
      6 | ,->             FOR i := 1 TO 10 BY -1 DO
-       : :   
+       : :
      8 | |->             END_FOR;
-       | |                          
+       | |
        | `-------------------------- FOR loop step direction mismatches bounds direction
     ---'
     ");
@@ -72,13 +72,13 @@ fn descending_with_positive_step_warning(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0108] Error: FOR loop step sign mismatch
+    [W0108] Advice: FOR loop step sign mismatch
        ,-[ file:///test0.st:6:13 ]
        |
      6 | ,->             FOR i := 10 TO 1 BY 1 DO
-       : :   
+       : :
      8 | |->             END_FOR;
-       | |                          
+       | |
        | `-------------------------- FOR loop step direction mismatches bounds direction
     ---'
     ");
@@ -112,13 +112,13 @@ fn descending_default_step_warning(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0108] Error: FOR loop step sign mismatch
+    [W0108] Advice: FOR loop step sign mismatch
        ,-[ file:///test0.st:6:13 ]
        |
      6 | ,->             FOR i := 10 TO 1 DO
-       : :   
+       : :
      8 | |->             END_FOR;
-       | |                          
+       | |
        | `-------------------------- FOR loop step direction mismatches bounds direction
     ---'
     ");

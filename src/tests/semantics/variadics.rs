@@ -26,9 +26,9 @@ END_FUNCTION
         ,-[ file:///test0.st:10:9 ]
         |
      10 |         args: MyStruct...
-        |         ^^^^^^^^|^^^^^^^^  
+        |         ^^^^^^^^|^^^^^^^^
         |                 `---------- variable 'args' is declared as variadic but has non-variadic type 'MyStruct'
-        | 
+        |
         | Note: only elementary types can be variadic
     ----'
     ");
@@ -64,9 +64,9 @@ END_FUNCTION
        ,-[ file:///test0.st:6:16 ]
        |
      6 |     sum_all := ...args+
-       |                ^^^^|^^^  
+       |                ^^^^|^^^
        |                    `----- variable 'args' is not variadic
-       | 
+       |
        | Note: ... can only be used on VAR_INPUT variables that are declared variadic with the same operator (e.g: INT...)
     ---'
     ");
@@ -89,11 +89,11 @@ END_FUNCTION
        ,-[ file:///test0.st:7:16 ]
        |
      4 |         args: BOOL...
-       |         ^^|^  
+       |         ^^|^
        |           `--- type is declared by variable 'args' here
-       | 
+       |
      7 |     sum_all := ...args+
-       |                ^^^^|^^^  
+       |                ^^^^|^^^
        |                    `----- operator '+' cannot be applied to type 'BOOL'
     ---'
     ");

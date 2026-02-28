@@ -21,9 +21,9 @@ fn statement_after_return(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:4:13 ]
        |
      4 |             x : INT;
-       |             ^^^|^^^  
+       |             ^^^|^^^
        |                `----- unused variable 'x'
-       | 
+       |
        | Note: if this is intentional, prefix it with an underscore:
        |       '_x'
     ---'
@@ -31,7 +31,7 @@ fn statement_after_return(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:8:13 ]
        |
      8 |             x := 2;
-       |             ^^^|^^  
+       |             ^^^|^^
        |                `---- unreachable statement
     ---'
     ");
@@ -71,7 +71,7 @@ fn statement_after_exit_in_loop(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:9:17 ]
        |
      9 |                 test := 0;
-       |                 ^^^^|^^^^  
+       |                 ^^^^|^^^^
        |                     `------ unreachable statement
     ---'
     ");
@@ -95,7 +95,7 @@ fn statement_after_continue_in_loop(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:8:17 ]
        |
      8 |                 test := i;
-       |                 ^^^^|^^^^  
+       |                 ^^^^|^^^^
        |                     `------ unreachable statement
     ---'
     ");
@@ -137,9 +137,9 @@ fn multiple_statements_after_return(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:4:13 ]
        |
      4 |             x : INT;
-       |             ^^^|^^^  
+       |             ^^^|^^^
        |                `----- unused variable 'x'
-       | 
+       |
        | Note: if this is intentional, prefix it with an underscore:
        |       '_x'
     ---'
@@ -147,9 +147,9 @@ fn multiple_statements_after_return(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:5:13 ]
        |
      5 |             y : INT;
-       |             ^^^|^^^  
+       |             ^^^|^^^
        |                `----- unused variable 'y'
-       | 
+       |
        | Note: if this is intentional, prefix it with an underscore:
        |       '_y'
     ---'
@@ -157,14 +157,14 @@ fn multiple_statements_after_return(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:9:13 ]
        |
      9 |             x := 2;
-       |             ^^^|^^  
+       |             ^^^|^^
        |                `---- unreachable statement
     ---'
     [W0107] Warning: unreachable code
         ,-[ file:///test0.st:10:13 ]
         |
      10 |             y := 3;
-        |             ^^^|^^  
+        |             ^^^|^^
         |                `---- unreachable statement
     ----'
     ");

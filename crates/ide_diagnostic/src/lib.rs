@@ -177,7 +177,7 @@ pub fn diag(
         description: Some(desc.description()),
         url: Some(desc.url()),
      })]
-    desc: Desc,
+    desc: Option<Desc>,
 ) -> IdeDiagnostic {
     IdeDiagnostic {
         diagnostic: auto_lsp::lsp_types::Diagnostic {
@@ -185,8 +185,10 @@ pub fn diag(
             severity,
             source,
             message,
-            code: desc.code.map(|c| NumberOrString::String(c.to_owned())),
-            code_description: desc.url,
+            code: desc
+                .as_ref()
+                .and_then(|d| d.code.map(|c| NumberOrString::String(c.to_owned()))),
+            code_description: desc.as_ref().and_then(|d| d.url.clone()),
             tags,
             related_information: None,
             data: None,
@@ -194,7 +196,7 @@ pub fn diag(
         fixes: vec![],
         related: vec![],
         notes: vec![],
-        code_desc: desc.description,
+        code_desc: desc.and_then(|d| d.description),
     }
 }
 

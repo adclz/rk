@@ -98,7 +98,7 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:4:20 ]
        |
      4 |         test1: TOD := LTOD#15:36:55.36;
-       |                    ^^^^^^^^^|^^^^^^^^^  
+       |                    ^^^^^^^^^|^^^^^^^^^
        |                             `----------- expected 'TOD', got 'LTOD'
     ---'
     ");
@@ -118,7 +118,7 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:4:20 ]
        |
      4 |         test1: INT := TOD#15:36:55.36;
-       |                    ^^^^^^^^^|^^^^^^^^  
+       |                    ^^^^^^^^^|^^^^^^^^
        |                             `---------- expected 'INT', got 'TOD'
     ---'
     ");

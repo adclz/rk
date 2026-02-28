@@ -10,6 +10,8 @@ use insta::assert_snapshot;
 use rstest::rstest;
 
 use crate::tests::utils::add_sources;
+use crate::tests::utils::test_snapshot;
+use crate::tests::utils::walk_hir_diagnostics;
 use crate::tests::utils::with_db;
 
 #[rstest]
@@ -22,26 +24,24 @@ FUNCTION_BLOCK fb1
 
 END_FUNCTION_BLOCK"#;
 
-    add_sources(&mut with_db, &[source]);
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
-
-    let mut nodes = vec![];
-
-    let _ = sema.walk_hir(&with_db, &mut |node| {
-        nodes.push(format!("{node:?}"));
-        ControlFlow::Continue(())
-    });
-
-    // fb1 = Ty (PouDecl)
-    // test = Ty (VariabeDecl)
-    // test := ** INT#5; ** = InitExpr (ResolvedInitExpr)
-
-    assert_snapshot!(nodes.join("\n"), @r"
-    PouDecl(FunctionBlock(FunctionBlock { [salsa id]: Id(2000) }))
-    VariableDecl(VariableDecl { [salsa id]: Id(1c00) })
-    Spec(Spec { [salsa id]: Id(c00) })
-    InitExpr { prev: InitExpr { [salsa id]: Id(1800) }, curr: InitExpr { [salsa id]: Id(1800) } }
-    Expr(Expr { [salsa id]: Id(1400) })
+    assert_snapshot!(test_snapshot(&mut with_db, &[source], walk_hir_diagnostics), @r"
+    Advice: PouDecl(FunctionBlock)
+       ,-[ file:///test0.st:2:16 ]
+       |
+     2 | FUNCTION_BLOCK fb1
+       |                ^|^
+       |                 `--- PouDecl(FunctionBlock)
+       |
+     4 |         test: INT := INT#5;
+       |         ^^|^  ^|^ ^^^^||^^
+       |           `----------------- VariableDecl
+       |                |      ||
+       |                `------------ Spec
+       |                       ||
+       |                       `----- InitExpr
+       |                        |
+       |                        `---- Expr
+    ---'
     ");
 }
 
@@ -53,26 +53,24 @@ CLASS C2
    METHOD PUBLIC myPublicMethod: INT  END_METHOD
 END_CLASS"#;
 
-    add_sources(&mut with_db, &[source]);
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
-
-    let mut nodes = vec![];
-
-    let _ = sema.walk_hir(&with_db, &mut |node| {
-        nodes.push(format!("{node:?}"));
-        ControlFlow::Continue(())
-    });
-
-    // C2 = Ty (PouDecl)
-    // myInternalMethod = Ty (MethodDecl)
-    // myPublicMethod = Ty (MethodDecl)
-
-    assert_snapshot!(nodes.join("\n"), @r"
-    PouDecl(Class(Class { [salsa id]: Id(1400) }))
-    MethodRef(Declared(MethodDecl { [salsa id]: Id(1000) }))
-    Spec(Spec { [salsa id]: Id(c00) })
-    MethodRef(Declared(MethodDecl { [salsa id]: Id(1001) }))
-    Spec(Spec { [salsa id]: Id(c01) })
+    assert_snapshot!(test_snapshot(&mut with_db, &[source], walk_hir_diagnostics), @r"
+    Advice: PouDecl(Class)
+       ,-[ file:///test0.st:2:7 ]
+       |
+     2 | CLASS C2
+       |       ^|
+       |        `-- PouDecl(Class)
+     3 |    METHOD INTERNAL myInternalMethod: INT  END_METHOD
+       |                    ^^^^^^^^|^^^^^^^  ^|^
+       |                            `-------------- MethodRef(Declared)
+       |                                       |
+       |                                       `--- Spec
+     4 |    METHOD PUBLIC myPublicMethod: INT  END_METHOD
+       |                  ^^^^^^^|^^^^^^  ^|^
+       |                         `------------- MethodRef(Declared)
+       |                                   |
+       |                                   `--- Spec
+    ---'
     ");
 }
 
@@ -84,24 +82,20 @@ INTERFACE ROOM
     METHOD NIGHTTIME END_METHOD // in night-time
 END_INTERFACE "#;
 
-    add_sources(&mut with_db, &[source]);
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
-
-    let mut nodes = vec![];
-
-    let _ = sema.walk_hir(&with_db, &mut |node| {
-        nodes.push(format!("{node:?}"));
-        ControlFlow::Continue(())
-    });
-
-    // ROOM = Ty (PouDecl)
-    // DAYTIME = Ty (MethodProt)
-    // NIGHTTIME = Ty (MethodProt)
-
-    assert_snapshot!(nodes.join("\n"), @r"
-    PouDecl(Interface(Interface { [salsa id]: Id(1000) }))
-    MethodRef(Prototype(MethodPrototype { [salsa id]: Id(c00) }))
-    MethodRef(Prototype(MethodPrototype { [salsa id]: Id(c01) }))
+    assert_snapshot!(test_snapshot(&mut with_db, &[source], walk_hir_diagnostics), @r"
+    Advice: PouDecl(Interface)
+       ,-[ file:///test0.st:2:11 ]
+       |
+     2 | INTERFACE ROOM
+       |           ^^|^
+       |             `--- PouDecl(Interface)
+     3 |     METHOD DAYTIME END_METHOD // Called in day-time
+       |            ^^^|^^^
+       |               `----- MethodRef(Prototype)
+     4 |     METHOD NIGHTTIME END_METHOD // in night-time
+       |            ^^^^|^^^^
+       |                `------ MethodRef(Prototype)
+    ---'
     ");
 }
 
@@ -126,43 +120,75 @@ FUNCTION_BLOCK fb1
     END_WHILE;
 END_FUNCTION_BLOCK"#;
 
-    add_sources(&mut with_db, &[source]);
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
-
-    let mut nodes = vec![];
-
-    let _ = sema.walk_hir(&with_db, &mut |node| {
-        nodes.push(format!("{node:?}"));
-        ControlFlow::Continue(())
-    });
-
-    assert_snapshot!(nodes.join("\n"), @r"
-    PouDecl(FunctionBlock(FunctionBlock { [salsa id]: Id(2c00) }))
-    VariableAccess(VariableAccess { [salsa id]: Id(1400) })
-    PathExpr { prev: VariableAccess(VariableAccess { [salsa id]: Id(1400) }), curr: PathExpr { [salsa id]: Id(c00) } }
-    Expr(Expr { [salsa id]: Id(1c00) })
-    PathExpr { prev: PathExpr(PathExpr { [salsa id]: Id(c01) }), curr: PathExpr { [salsa id]: Id(c01) } }
-    PathExpr { prev: PathExpr(PathExpr { [salsa id]: Id(c02) }), curr: PathExpr { [salsa id]: Id(c02) } }
-    Param(ParamAssign { [salsa id]: Id(2800) })
-    Param(ParamAssign { [salsa id]: Id(2801) })
-    Expr(Expr { [salsa id]: Id(1c04) })
-    Expr(Expr { [salsa id]: Id(1c02) })
-    VariableAccess(VariableAccess { [salsa id]: Id(1403) })
-    PathExpr { prev: VariableAccess(VariableAccess { [salsa id]: Id(1403) }), curr: PathExpr { [salsa id]: Id(c05) } }
-    Expr(Expr { [salsa id]: Id(1c03) })
-    Expr(Expr { [salsa id]: Id(1c05) })
-    Expr(Expr { [salsa id]: Id(1c06) })
-    Expr(Expr { [salsa id]: Id(1c07) })
-    Expr(Expr { [salsa id]: Id(1c0a) })
-    Expr(Expr { [salsa id]: Id(1c08) })
-    VariableAccess(VariableAccess { [salsa id]: Id(1406) })
-    PathExpr { prev: VariableAccess(VariableAccess { [salsa id]: Id(1406) }), curr: PathExpr { [salsa id]: Id(c08) } }
-    Expr(Expr { [salsa id]: Id(1c09) })
-    Expr(Expr { [salsa id]: Id(1c0d) })
-    Expr(Expr { [salsa id]: Id(1c0b) })
-    VariableAccess(VariableAccess { [salsa id]: Id(1408) })
-    PathExpr { prev: VariableAccess(VariableAccess { [salsa id]: Id(1408) }), curr: PathExpr { [salsa id]: Id(c0a) } }
-    Expr(Expr { [salsa id]: Id(1c0c) })
+    assert_snapshot!(test_snapshot(&mut with_db, &[source], walk_hir_diagnostics), @r"
+    Advice: PouDecl(FunctionBlock)
+        ,-[ file:///test0.st:2:16 ]
+        |
+      2 | FUNCTION_BLOCK fb1
+        |                ^|^
+        |                 `--- PouDecl(FunctionBlock)
+      3 |     test := fn_vall();
+        |     ^^|^    ^^^||^^^^
+        |       `---------------- VariableAccess
+        |       |        ||
+        |       `---------------- PathExpr
+        |                ||
+        |                `------- PathExpr
+        |                 |
+        |                 `------ Expr
+        |
+      5 |     fn_call(input := 5, output => test);
+        |     ^^^|^^^ ^^^^^|^^^^  ^^^^^^^|^^^^^^
+        |        `-------------------------------- PathExpr
+        |                  |             |
+        |                  `---------------------- Param
+        |                                |
+        |                                `-------- Param
+        |
+      7 |     IF test > 5 THEN
+        |        ^^|^|^^|
+        |          `------- Expr
+        |          | |  |
+        |          `------- VariableAccess
+        |          | |  |
+        |          `------- PathExpr
+        |            |  |
+        |            `----- Expr
+        |               |
+        |               `-- Expr
+        |
+     10 |     FOR i := 1 TO 10 BY 1 DO
+        |              |    ^|    |
+        |              `------------- Expr
+        |                    |    |
+        |                    `------- Expr
+        |                         |
+        |                         `-- Expr
+        |
+     13 |     REPEAT UNTIL test = 100
+        |                  ^^|^^|^^|^
+        |                    `--------- Expr
+        |                    |  |  |
+        |                    `--------- VariableAccess
+        |                    |  |  |
+        |                    `--------- PathExpr
+        |                       |  |
+        |                       `------ Expr
+        |                          |
+        |                          `--- Expr
+        |
+     16 |     WHILE test < 100 DO
+        |           ^^|^^|^^|^
+        |             `--------- Expr
+        |             |  |  |
+        |             `--------- VariableAccess
+        |             |  |  |
+        |             `--------- PathExpr
+        |                |  |
+        |                `------ Expr
+        |                   |
+        |                   `--- Expr
+    ----'
     ");
 }
 
@@ -178,25 +204,32 @@ FUNCTION_BLOCK fb1 EXTENDS base
 
 END_FUNCTION_BLOCK"#;
 
-    add_sources(&mut with_db, &[source]);
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
-
-    let mut nodes = vec![];
-
-    let _ = sema.walk_hir(&with_db, &mut |node| {
-        nodes.push(format!("{node:?}"));
-        ControlFlow::Continue(())
-    });
-
-    assert_snapshot!(nodes.join("\n"), @r"
-    PouDecl(FunctionBlock(FunctionBlock { [salsa id]: Id(3400) }))
-    NamespaceAccess(SpanNamespaceAccess { id: AstId(3), scope_id: ScopeId { [salsa id]: Id(402) }, path: NamespaceAccess { namespace: None, target: SpanIdent { id: AstId(4), scope_id: ScopeId { [salsa id]: Id(402) }, ident: Ident(Id(800)) } } })
-    MethodRef(Declared(MethodDecl { [salsa id]: Id(3000) }))
-    VariableDecl(VariableDecl { [salsa id]: Id(2c00) })
-    Spec(Spec { [salsa id]: Id(2800) })
-    Invocation(Invocation { [salsa id]: Id(1000) })
-    PathExpr { prev: Invocation(Invocation { [salsa id]: Id(1000) }), curr: PathExpr { [salsa id]: Id(c00) } }
-    Param(ParamAssign { [salsa id]: Id(1c00) })
+    assert_snapshot!(test_snapshot(&mut with_db, &[source], walk_hir_diagnostics), @r"
+    Advice: PouDecl(FunctionBlock)
+       ,-[ file:///test0.st:2:16 ]
+       |
+     2 | FUNCTION_BLOCK fb1 EXTENDS base
+       |                ^|^         ^^|^
+       |                 `---------------- PouDecl(FunctionBlock)
+       |                              |
+       |                              `--- NamespaceAccess
+     3 |     METHOD decl
+       |            ^^|^
+       |              `--- MethodRef(Declared)
+     4 |         VAR_INPUT input1 : INT; END_VAR
+       |                   ^^^|^^   ^|^
+       |                      `---------- VariableDecl
+       |                             |
+       |                             `--- Spec
+       |
+     7 |     THIS.decl(0.5);
+       |     ^^^^|^^|^ ^|^
+       |         `---------- Invocation
+       |            |   |
+       |            `------- PathExpr
+       |                |
+       |                `--- Param
+    ---'
     ");
 }
 

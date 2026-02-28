@@ -33,9 +33,9 @@ fn fuzzy_struct_fields(mut with_db: RootDatabase) {
         ,-[ file:///test0.st:15:49 ]
         |
      15 |                 Base : Engine := (power := 100, fuel := 10.0);
-        |                                                 ^^^^^^|^^^^^  
+        |                                                 ^^^^^^|^^^^^
         |                                                       `------- 'Engine' has no field named 'fuel'
-        | 
+        |
         | Note: STRUCT has fields with similar name:
         |       - fuel1
         |       - fuel2
@@ -65,9 +65,9 @@ fn fuzzy_pou_local_variables(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:9:13 ]
        |
      9 |             engine := ULINT#5;
-       |             ^^^|^^  
+       |             ^^^|^^
        |                `---- no item "engine" found in scope
-       | 
+       |
        | Note: 'fb1' has items with similar name:
        |       - engine2
        |       - no_engine
@@ -100,9 +100,9 @@ END_FUNCTION_BLOCK
         ,-[ file:///test0.st:14:2 ]
         |
      14 |     fn();
-        |     ^|  
+        |     ^|
         |      `-- no item "fn" found in scope
-        | 
+        |
         | Note: an item named 'fn' is available, but needs to be imported:
         |       - USING System
     ----'
@@ -136,20 +136,20 @@ END_FUNCTION_BLOCK
        ,-[ file:///test0.st:3:11 ]
        |
      3 |     FUNCTION fn
-       |              ^|  
+       |              ^|
        |               `-- duplicate POU 'fn'
-       | 
+       |
      7 |     FUNCTION fn
-       |              ^|  
+       |              ^|
        |               `-- POU 'fn' is already defined here
     ---'
     [E0204] Error: no item found in scope
         ,-[ file:///test0.st:14:2 ]
         |
      14 |     fn();
-        |     ^|  
+        |     ^|
         |      `-- no item "fn" found in scope
-        | 
+        |
         | Note: an item named 'fn' is available, but needs to be imported:
         |       - USING System
     ----'
@@ -176,9 +176,9 @@ END_FUNCTION_BLOCK
        ,-[ file:///test0.st:8:17 ]
        |
      8 |         engine: Engine;
-       |                 ^^^|^^  
+       |                 ^^^|^^
        |                    `---- no item found for path 'Engine'
-       | 
+       |
        | Note: an item named 'Engine' is available, but needs to be imported:
        |       - USING System
     ---'
@@ -205,9 +205,9 @@ END_FUNCTION_BLOCK
        ,-[ file:///test0.st:8:11 ]
        |
      8 |        engine: System;
-       |                ^^^|^^  
+       |                ^^^|^^
        |                   `---- no item found for path 'System'
-       | 
+       |
        | Note: namespace named 'System' exists but it cannot be used as an item, you can either:
        |       - Import the namespace via an USING directive: 'USING System'
        |       - Import an item from this namespace: 'System.<POU>'
@@ -236,9 +236,9 @@ END_FUNCTION_BLOCK
         ,-[ file:///test0.st:11:5 ]
         |
      11 |     fn(param := 0);
-        |        ^^|^^  
+        |        ^^|^^
         |          `---- unknown input parameter 'param'
-        | 
+        |
         | Note: 'fn' has parameters with similar name:
         |       - param1
         |       - param2
@@ -270,9 +270,9 @@ END_FUNCTION_BLOCK
         ,-[ file:///test0.st:14:5 ]
         |
      14 |     fn(param => param_out);
-        |        ^^|^^  
+        |        ^^|^^
         |          `---- unknown output parameter 'param'
-        | 
+        |
         | Note: 'fn' has parameters with similar name:
         |       - param1
         |       - param2

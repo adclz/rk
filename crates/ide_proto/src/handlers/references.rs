@@ -36,7 +36,6 @@ impl<'db> HirNode<'db> {
     pub fn references(
         &self,
         db: &'db dyn WorkspaceDataBase,
-        include_declaration: bool,
     ) -> Option<Vec<ReferenceLocation>> {
         // Namespace references: declarations via namespace_index + USING statements via walk
         let ns_path = match self {
@@ -63,7 +62,7 @@ impl<'db> HirNode<'db> {
                 continue;
             }
 
-            find_references_in_file(db, *file, &target, include_declaration, &mut locations);
+            find_references_in_file(db, *file, &target, &mut locations);
         }
 
         // Deduplicate — the walk can visit overlapping nodes
@@ -167,17 +166,6 @@ fn resolve_walk_target<'db>(
     normalize_reference_type(ty)
 }
 
-/// Whether a HirNode represents a declaration (as opposed to a reference/use)
-fn is_declaration_node(node: &HirNode) -> bool {
-    matches!(
-        node,
-        HirNode::PouDecl(_)
-            | HirNode::VariableDecl(_)
-            | HirNode::MethodRef(_)
-            | HirNode::StructElement(_)
-    )
-}
-
 /// Get the span for a reference result.
 /// For declarations, returns just the name span; for references, returns the node span.
 fn reference_span<'db>(db: &'db dyn WorkspaceDataBase, node: &HirNode<'db>) -> auto_lsp::core::span::Span {
@@ -194,16 +182,11 @@ fn find_references_in_file<'db>(
     db: &'db dyn WorkspaceDataBase,
     file: File,
     target: &Type<'db>,
-    include_declaration: bool,
     locations: &mut Vec<ReferenceLocation>,
 ) {
     let sema = semantic_index(db, file);
 
     let _ = sema.walk_hir(db, &mut |node: HirNode<'db>| {
-        if is_declaration_node(&node) && !include_declaration {
-            return ControlFlow::Continue(());
-        }
-
         if let Some(resolved) = resolve_walk_target(db, &node) {
             if resolved == *target {
                 let span = reference_span(db, &node);

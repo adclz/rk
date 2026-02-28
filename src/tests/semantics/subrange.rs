@@ -18,9 +18,9 @@ fn invalid_subrange_type(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:3:20 ]
        |
      3 |             Range: BOOL (0..5);
-       |                    ^^|^  
+       |                    ^^|^
        |                      `--- Invalid subrange type 'BOOL'
-       | 
+       |
        | Note: only numeric integer types are allowed for SUBRANGE
     ---'
     ");
@@ -39,7 +39,7 @@ fn invalid_start_value(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:3:26 ]
        |
      3 |             Range: UINT (-10..0);
-       |                          ^|^  
+       |                          ^|^
        |                           `--- cannot infer '<integer>' to 'UINT': literal can not be negative
     ---'
     ");
@@ -58,7 +58,7 @@ fn invalid_end_value(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:3:29 ]
        |
      3 |             Range: UINT (0..-5);
-       |                             ^|  
+       |                             ^|
        |                              `-- cannot infer '<integer>' to 'UINT': literal can not be negative
     ---'
     ");
@@ -86,11 +86,11 @@ fn invalid_subrange_value_type(mut with_db: RootDatabase) {
         ,-[ file:///test0.st:11:22 ]
         |
       3 |             Range: UINT (0..5);
-        |                    ^^^^^|^^^^^  
+        |                    ^^^^^|^^^^^
         |                         `------- type is defined by 'Range' here
-        | 
+        |
      11 |             test :=  -1 // -1 should not be allowed here (UINT)
-        |                      ^|  
+        |                      ^|
         |                       `-- cannot infer '<integer>' to 'UINT': literal can not be negative
     ----'
     ");

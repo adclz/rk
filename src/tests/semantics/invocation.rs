@@ -21,11 +21,11 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:6:7 ]
        |
      2 | FUNCTION_BLOCK fb1
-       |                ^|^  
+       |                ^|^
        |                 `--- FUNCTION_BLOCK 'fb1' is defined here
-       | 
+       |
      6 |     THIS.decl1();
-       |          ^^|^^  
+       |          ^^|^^
        |            `---- 'fb1' has no field named 'decl1'
     ---'
     ");
@@ -63,11 +63,11 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:8:11 ]
        |
      6 | FUNCTION_BLOCK fb1 EXTENDS base
-       |                ^|^  
+       |                ^|^
        |                 `--- FUNCTION_BLOCK 'fb1' is defined here
-       | 
+       |
      8 |     SUPER.super_method1()
-       |           ^^^^^^|^^^^^^  
+       |           ^^^^^^|^^^^^^
        |                 `-------- 'fb1' has no field named 'super_method1'
     ---'
     ");
@@ -86,7 +86,7 @@ END_CLASS"#;
        ,-[ file:///test0.st:4:9 ]
        |
      4 |         SUPER()
-       |         ^^|^^  
+       |         ^^|^^
        |           `---- 'SUPER()' is not valid in this context
     ---'
     ");
@@ -104,7 +104,7 @@ END_FUNCTION
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     SUPER()
-       |     ^^|^^  
+       |     ^^|^^
        |       `---- 'SUPER()' is not valid in this context
     ---'
     ");
@@ -122,7 +122,7 @@ END_FUNCTION
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     SUPER.something()
-       |     ^^|^^  
+       |     ^^|^^
        |       `---- 'SUPER' is not valid in this context
     ---'
     ");
@@ -140,7 +140,7 @@ END_FUNCTION
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     THIS.something()
-       |     ^^|^  
+       |     ^^|^
        |       `--- 'THIS' is not valid in this context
     ---'
     ");
@@ -166,11 +166,11 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:7:12 ]
        |
      4 |         VAR_INPUT input1 : BOOL; END_VAR
-       |                   ^^^|^^  
+       |                   ^^^|^^
        |                      `---- type is declared by variable 'input1' here
-       | 
+       |
      7 |     THIS.decl(0.5);
-       |               ^|^  
+       |               ^|^
        |                `--- cannot infer '<float>' to 'BOOL': invalid boolean literal
     ---'
     ");
@@ -199,11 +199,11 @@ END_CLASS
         ,-[ file:///test0.st:10:17 ]
         |
       4 |         VAR_INPUT input1 : BOOL; END_VAR
-        |                   ^^^|^^  
+        |                   ^^^|^^
         |                      `---- type is declared by variable 'input1' here
-        | 
+        |
      10 |         SUPER.decl(0.5);
-        |                    ^|^  
+        |                    ^|^
         |                     `--- cannot infer '<float>' to 'BOOL': invalid boolean literal
     ----'
     ");
@@ -232,11 +232,11 @@ END_FUNCTION_BLOCK
         ,-[ file:///test0.st:10:17 ]
         |
       4 |         VAR_INPUT input1 : BOOL; END_VAR
-        |                   ^^^|^^  
+        |                   ^^^|^^
         |                      `---- type is declared by variable 'input1' here
-        | 
+        |
      10 |         SUPER.decl(0.5);
-        |                    ^|^  
+        |                    ^|^
         |                     `--- cannot infer '<float>' to 'BOOL': invalid boolean literal
     ----'
     ");

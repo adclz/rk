@@ -24,10 +24,10 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:5:9 ]
        |
      4 |         test: INT;
-       |         ^^|^  
+       |         ^^|^
        |           `--- variable 'test' is already defined here
      5 |         test: REAL;
-       |         ^^|^  
+       |         ^^|^
        |           `--- duplicate variable 'test'
     ---'
     ");
@@ -48,9 +48,9 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:4:15 ]
        |
      4 |         test, test: INT;
-       |         ^^|^  ^^|^  
+       |         ^^|^  ^^|^
        |           `--------- variable 'test' is already defined here
-       |                 |   
+       |                 |
        |                 `--- duplicate variable 'test'
     ---'
     ");
@@ -71,10 +71,10 @@ END_TYPE"#;
        ,-[ file:///test0.st:5:9 ]
        |
      4 |         test: INT;
-       |         ^^|^  
+       |         ^^|^
        |           `--- field 'test' is already defined here
      5 |         test: REAL;
-       |         ^^|^  
+       |         ^^|^
        |           `--- duplicate field 'test'
     ---'
     ");
@@ -97,11 +97,11 @@ END_FUNCTION_BLOCK
        ,-[ file:///test0.st:2:16 ]
        |
      2 | FUNCTION_BLOCK fb1
-       |                ^|^  
+       |                ^|^
        |                 `--- duplicate POU 'fb1'
-       | 
+       |
      6 | FUNCTION_BLOCK fb1
-       |                ^|^  
+       |                ^|^
        |                 `--- POU 'fb1' is already defined here
     ---'
     ");
@@ -120,9 +120,9 @@ END_TYPE
        ,-[ file:///test0.st:3:11 ]
        |
      3 |     E1 : (A, B, A);
-       |           |     |  
+       |           |     |
        |           `-------- duplicate enum variant 'A'
-       |                 |  
+       |                 |
        |                 `-- enum variant 'A' is already defined here
     ---'
     ");
@@ -147,11 +147,11 @@ END_NAMESPACE
        ,-[ file:///test0.st:3:20 ]
        |
      3 |     FUNCTION_BLOCK fb1
-       |                    ^|^  
+       |                    ^|^
        |                     `--- duplicate POU 'fb1'
-       | 
+       |
      7 |     FUNCTION_BLOCK fb1
-       |                    ^|^  
+       |                    ^|^
        |                     `--- POU 'fb1' is already defined here
     ---'
     ");
@@ -232,10 +232,10 @@ END_INTERFACE
        ,-[ file:///test0.st:4:12 ]
        |
      3 |     METHOD m1 END_METHOD
-       |            ^|  
+       |            ^|
        |             `-- method 'm1' is already defined here
      4 |     METHOD m1 END_METHOD
-       |            ^|  
+       |            ^|
        |             `-- duplicate method 'm1'
     ---'
     ");
@@ -255,10 +255,10 @@ END_CLASS
        ,-[ file:///test0.st:4:12 ]
        |
      3 |     METHOD m1 END_METHOD
-       |            ^|  
+       |            ^|
        |             `-- method 'm1' is already defined here
      4 |     METHOD m1 END_METHOD
-       |            ^|  
+       |            ^|
        |             `-- duplicate method 'm1'
     ---'
     ");
@@ -278,10 +278,10 @@ END_FUNCTION_BLOCK
        ,-[ file:///test0.st:4:12 ]
        |
      3 |     METHOD m1 END_METHOD
-       |            ^|  
+       |            ^|
        |             `-- method 'm1' is already defined here
      4 |     METHOD m1 END_METHOD
-       |            ^|  
+       |            ^|
        |             `-- duplicate method 'm1'
     ---'
     ");
@@ -308,13 +308,13 @@ END_CLASS
        ,-[ file:///test0.st:3:12 ]
        |
      3 |     METHOD m1 END_METHOD
-       |            ^|  
+       |            ^|
        |             `-- duplicate method 'm1'
-       | 
+       |
      7 |     METHOD m1 END_METHOD
-       |            ^|  
+       |            ^|
        |             `-- method 'm1' is already defined here
-       | 
+       |
        | Note: this error happens because both interfaces 'I1' and 'I2' define a method 'm1'
     ---'
     ");
@@ -343,9 +343,9 @@ fn duplicate_init_expr(mut with_db: RootDatabase) {
         ,-[ file:///test0.st:11:35 ]
         |
      11 |                 Base : Engine := (power := 100, power := 100);
-        |                                   ^^^^^^|^^^^^  ^^^^^^|^^^^^  
+        |                                   ^^^^^^|^^^^^  ^^^^^^|^^^^^
         |                                         `--------------------- duplicate field 'power' in initializer expression
-        |                                                       |       
+        |                                                       |
         |                                                       `------- field 'power' is already initialized here
     ----'
     ");
@@ -369,10 +369,10 @@ fn duplicate_usings(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:7:19 ]
        |
      6 |             USING ns1;
-       |                   ^|^  
+       |                   ^|^
        |                    `--- namespace 'ns1' is already imported here
      7 |             USING ns1;
-       |                   ^|^  
+       |                   ^|^
        |                    `--- duplicate `USING` for namespace 'ns1'
     ---'
     ");
@@ -393,11 +393,11 @@ fn duplicate_prorams(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:2:17 ]
        |
      2 |         PROGRAM prog1
-       |                 ^^|^^  
+       |                 ^^|^^
        |                   `---- duplicate program 'prog1'
-       | 
+       |
      5 |         PROGRAM prog1
-       |                 ^^|^^  
+       |                 ^^|^^
        |                   `---- program 'prog1' is already defined here
     ---'
     ");
@@ -416,9 +416,9 @@ fn duplicate_generics(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:2:30 ]
        |
      2 |     FUNCTION fn1<T: ANY_INT, T: ANY_INT>
-       |                  |           |  
+       |                  |           |
        |                  `-------------- generic parameter 'T' is already defined here
-       |                              |  
+       |                              |
        |                              `-- duplicate generic parameter 'T'
     ---'
     ");
@@ -441,11 +441,11 @@ END_CONFIGURATION
        ,-[ file:///test0.st:2:15 ]
        |
      2 | CONFIGURATION cfg
-       |               ^|^  
+       |               ^|^
        |                `--- duplicate configuration 'cfg'
-       | 
+       |
      6 | CONFIGURATION cfg
-       |               ^|^  
+       |               ^|^
        |                `--- configuration 'cfg' is already defined here
     ---'
     ");
@@ -466,10 +466,10 @@ END_CONFIGURATION
        ,-[ file:///test0.st:4:10 ]
        |
      3 |     TASK t1(PRIORITY := 1);
-       |          ^|  
+       |          ^|
        |           `-- task 't1' is already defined here
      4 |     TASK t1(PRIORITY := 2);
-       |          ^|  
+       |          ^|
        |           `-- duplicate task 't1'
     ---'
     ");
@@ -492,10 +492,10 @@ END_CONFIGURATION
        ,-[ file:///test0.st:8:13 ]
        |
      7 |     PROGRAM inst1 WITH t1 : MyProg;
-       |             ^^|^^  
+       |             ^^|^^
        |               `---- program instance 'inst1' is already defined here
      8 |     PROGRAM inst1 WITH t1 : MyProg;
-       |             ^^|^^  
+       |             ^^|^^
        |               `---- duplicate program instance 'inst1'
     ---'
     ");
@@ -523,11 +523,11 @@ END_CONFIGURATION
         ,-[ file:///test0.st:10:14 ]
         |
       6 |     RESOURCE res1 ON CPU_TYPE
-        |              ^^|^  
+        |              ^^|^
         |                `--- resource 'res1' is already defined here
-        | 
+        |
      10 |     RESOURCE res1 ON CPU_TYPE
-        |              ^^|^  
+        |              ^^|^
         |                `--- duplicate resource 'res1'
     ----'
     ");
@@ -548,10 +548,10 @@ END_CONFIGURATION
        ,-[ file:///test0.st:5:14 ]
        |
      4 |         TASK t1(PRIORITY := 1);
-       |              ^|  
+       |              ^|
        |               `-- task 't1' is already defined here
      5 |         TASK t1(PRIORITY := 2);
-       |              ^|  
+       |              ^|
        |               `-- duplicate task 't1'
     ---'
     ");
@@ -576,10 +576,10 @@ END_CONFIGURATION
        ,-[ file:///test0.st:9:17 ]
        |
      8 |         PROGRAM inst1 WITH t1 : MyProg;
-       |                 ^^|^^  
+       |                 ^^|^^
        |                   `---- program instance 'inst1' is already defined here
      9 |         PROGRAM inst1 WITH t1 : MyProg;
-       |                 ^^|^^  
+       |                 ^^|^^
        |                   `---- duplicate program instance 'inst1'
     ---'
     ");

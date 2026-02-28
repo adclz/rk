@@ -16,9 +16,9 @@ END_NAMESPACE"#;
        ,-[ file:///test0.st:2:10 ]
        |
      2 | NAMESPACE
-       |          | 
+       |          |
        |          `- Syntax error: Missing 'identifier'
-       |          | 
+       |          |
        |          `- add missing identifier here
     ---'
     ");
@@ -37,9 +37,9 @@ fn missing_end_keyword(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:2:26 ]
        |
      2 |     FUNCTION myFunc : INT
-       |                          | 
+       |                          |
        |                          `- Syntax error: Missing 'END_FUNCTION'
-       |                          | 
+       |                          |
        |                          `- add missing END_FUNCTION here
     ---'
     ");
@@ -56,7 +56,7 @@ END_NAMESPACE"#;
        ,-[ file:///test0.st:2:16 ]
        |
      2 | NAMESPACE test ;
-       |                |  
+       |                |
        |                `-- Unexpected token(s): ';'
     ---'
     ");
@@ -77,7 +77,7 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:5:19 ]
        |
      5 | FUNCTION_BLOCK fn IMPLEMENTS a EXTENDS b
-       |                   ^^^^^^|^^^^^  
+       |                   ^^^^^^|^^^^^
        |                         `------- implements must be declared after extends
     ---'
     ");
@@ -101,7 +101,7 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:8:32 ]
        |
      8 | FUNCTION_BLOCK fn IMPLEMENTS a IMPLEMENTS b
-       |                                ^^^^^^|^^^^^  
+       |                                ^^^^^^|^^^^^
        |                                      `------- multiple implements declarations
     ---'
     ");
@@ -125,7 +125,7 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:8:29 ]
        |
      8 | FUNCTION_BLOCK fn EXTENDS a EXTENDS b
-       |                             ^^^^|^^^^  
+       |                             ^^^^|^^^^
        |                                 `------ multiple extends declarations
     ---'
     ");
@@ -146,7 +146,7 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:4:9 ]
        |
      4 |         empty
-       |         ^^|^^  
+       |         ^^|^^
        |           `---- variable type is missing
     ---'
     ");
@@ -164,7 +164,7 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     fn() := 0;
-       |     ^^|^  
+       |     ^^|^
        |       `--- assignment to function call is not allowed
     ---'
     ");
@@ -182,7 +182,7 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:3:8 ]
        |
      3 |     fn.THIS.p := 5
-       |        ^^|^  
+       |        ^^|^
        |          `--- 'THIS' is not valid in this context
     ---'
     ");
@@ -200,7 +200,7 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:3:8 ]
        |
      3 |     fn.SUPER.p := 5
-       |        ^^|^^  
+       |        ^^|^^
        |          `---- 'SUPER' is not valid in this context
     ---'
     ");
@@ -218,7 +218,7 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:3:7 ]
        |
      3 |     a :=
-       |       ^|  
+       |       ^|
        |        `-- right-hand side of assignment cannot be empty
     ---'
     ");
@@ -239,14 +239,14 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:4:37 ]
        |
      4 |     ml : ARRAY [0..2] OF INT := [10(call(IN := 5, OUT => OUT))]
-       |                                     ^^^^^^^^^^^^|^^^^^^^^^^^^  
+       |                                     ^^^^^^^^^^^^|^^^^^^^^^^^^
        |                                                 `-------------- function call in initialization expression is not allowed
     ---'
     [E0605] Error: invalid array access
        ,-[ file:///test0.st:4:34 ]
        |
      4 |     ml : ARRAY [0..2] OF INT := [10(call(IN := 5, OUT => OUT))]
-       |                                  ^^^^^^^^^^^^^^|^^^^^^^^^^^^^^  
+       |                                  ^^^^^^^^^^^^^^|^^^^^^^^^^^^^^
        |                                                `---------------- too many elements in array initializer (expected at most 3)
     ---'
     ");
@@ -264,9 +264,9 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:3:7 ]
        |
      3 |     a = 0;
-       |       ^|^  
+       |       ^|^
        |        `--- '=' is not a valid assignment sign
-       | 
+       |
        | Help: replace '=' with ':='
     ---'
     ");
@@ -284,9 +284,9 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:3:7 ]
        |
      3 |     a : 0;
-       |       ^|^  
+       |       ^|^
        |        `--- ':' is not a valid assignment sign
-       | 
+       |
        | Help: replace ':' with ':='
     ---'
     ");
@@ -305,9 +305,9 @@ END_FUNCTION"#;
        ,-[ file:///test0.st:4:8 ]
        |
      4 |     FOR i = 0 TO 10 END_FOR
-       |           |  
+       |           |
        |           `-- '=' is not a valid assignment sign
-       | 
+       |
        | Help: replace '=' with ':='
     ---'
     ");
@@ -326,9 +326,9 @@ END_FUNCTION"#;
        ,-[ file:///test0.st:4:8 ]
        |
      4 |     FOR i : 0 TO 10 END_FOR
-       |           |  
+       |           |
        |           `-- ':' is not a valid assignment sign
-       | 
+       |
        | Help: replace ':' with ':='
     ---'
     ");
@@ -356,9 +356,9 @@ END_CLASS"#;
         ,-[ file:///test0.st:6:5 ]
         |
       6 | ,->     VAR
-        : :   
+        : :
      12 | |->     END_VAR
-        | |                 
+        | |
         | `----------------- class variable declarations must appear before methods
     ----'
     ");
@@ -386,9 +386,9 @@ END_FUNCTION_BLOCK"#;
         ,-[ file:///test0.st:6:5 ]
         |
       6 | ,->     VAR
-        : :   
+        : :
      12 | |->     END_VAR
-        | |                 
+        | |
         | `----------------- FB variable declarations must appear before methods
     ----'
     ");
@@ -406,9 +406,9 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:3:7 ]
        |
      3 |     a => 0;
-       |       ^^|^  
+       |       ^^|^
        |         `--- '=>' is not a valid assignment sign
-       | 
+       |
        | Help: replace '=>' with ':='
     ---'
     ");
@@ -427,9 +427,9 @@ END_FUNCTION"#;
        ,-[ file:///test0.st:4:9 ]
        |
      4 |   FOR i => 0 TO 10 END_FOR
-       |         ^|  
+       |         ^|
        |          `-- '=>' is not a valid assignment sign
-       | 
+       |
        | Help: replace '=>' with ':='
     ---'
     ");

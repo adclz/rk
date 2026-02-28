@@ -22,15 +22,15 @@ END_PROGRAM"#;
        ,-[ file:///test0.st:7:13 ]
        |
      4 |         test: INT;
-       |         ^^|^  
+       |         ^^|^
        |           `--- type is declared by variable 'test' here
-       | 
+       |
      7 |     test := ULINT#5;
-       |             ^^^|^^^  
+       |             ^^^|^^^
        |                `----- expected 'INT', got 'ULINT'
-       |                |     
+       |                |
        |                `----- consider explicitly casting with 'ULINT_TO_INT(ULINT#5)'
-       | 
+       |
        | Help: insert explicit cast 'INT_TO_ULINT(ULINT#5)'
     ---'
     ");

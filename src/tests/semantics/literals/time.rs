@@ -166,7 +166,7 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:4:20 ]
        |
      4 |         test1: INT := T#5s;
-       |                    ^^^|^^^  
+       |                    ^^^|^^^
        |                       `----- expected 'INT', got 'TIME'
     ---'
     ");
@@ -186,7 +186,7 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:4:21 ]
        |
      4 |         test1: TIME := LTIME#5s;
-       |                     ^^^^^|^^^^^  
+       |                     ^^^^^|^^^^^
        |                          `------- expected 'TIME', got 'LTIME'
     ---'
     ");

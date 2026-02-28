@@ -97,7 +97,7 @@ END_FUNCTION"#;
        ,-[ file:///test0.st:2:17 ]
        |
      2 | FUNCTION fn<GT: INT>
-       |                 ^|^  
+       |                 ^|^
        |                  `--- generic 'GT' has invalid type 'INT'
     ---'
     ");
@@ -115,7 +115,7 @@ END_FUNCTION"#;
        ,-[ file:///test0.st:2:33 ]
        |
      2 | FUNCTION fn<GT : ANY_INT + INTO<ARRAY>>
-       |                                 ^^|^^  
+       |                                 ^^|^^
        |                                   `---- generic 'GT' has invalid constraint 'ARRAY'
     ---'
     ");

@@ -24,7 +24,7 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:8:15 ]
        |
      8 |         test: fn;
-       |               ^|  
+       |               ^|
        |                `-- 'fn' is a function and cannot be used as a variable or data type
     ---'
     ");

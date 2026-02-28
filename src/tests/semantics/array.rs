@@ -21,7 +21,7 @@ fn unknown_type(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:4:25 ]
        |
      4 |                 input : something;
-       |                         ^^^^|^^^^  
+       |                         ^^^^|^^^^
        |                             `------ no item found for path 'something'
     ---'
     ");
@@ -40,7 +40,7 @@ fn invalid_lower_bound_in_array(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:3:25 ]
        |
      3 |             List: ARRAY[-1..10] OF INT;
-       |                         ^|  
+       |                         ^|
        |                          `-- invalid lower bound value for ARRAY
     ---'
     ");
@@ -59,7 +59,7 @@ fn invalid_upper_bound_in_array(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:3:28 ]
        |
      3 |             List: ARRAY[0..-10] OF INT;
-       |                            ^|^  
+       |                            ^|^
        |                             `--- invalid upper bound value for ARRAY
     ---'
     ");
@@ -78,7 +78,7 @@ fn inferior_upper_bound_in_array(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:3:29 ]
        |
      3 |             List: ARRAY[10..1] OF INT;
-       |                             |  
+       |                             |
        |                             `-- upper bound value must be greater than lower bound value
     ---'
     ");
@@ -97,7 +97,7 @@ fn nested_array_invalid_bound(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:3:31 ]
        |
      3 |             List: ARRAY[0..3, -2..1] OF INT;
-       |                               ^|  
+       |                               ^|
        |                                `-- invalid lower bound value for ARRAY
     ---'
     ");

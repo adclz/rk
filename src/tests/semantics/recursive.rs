@@ -20,11 +20,11 @@ fn self_referential(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:2:22 ]
        |
      2 |       FUNCTION_BLOCK fb
-       |                      ^|  
+       |                      ^|
        |                       `-- type 'fb' is recursive (contains itself)
-       | 
+       |
      4 |                 invalid : fb;
-       |                           ^|  
+       |                           ^|
        |                            `-- 'fb' references itself here
     ---'
     ");
@@ -53,13 +53,13 @@ fn recursive_function_blocks(mut with_db: RootDatabase) {
         ,-[ file:///test0.st:2:24 ]
         |
       2 |         FUNCTION_BLOCK fb1
-        |                        ^|^  
+        |                        ^|^
         |                         `--- type 'fb1' is recursive
-        | 
+        |
      11 |                   invalid : fb1;
-        |                             ^|^  
+        |                             ^|^
         |                              `--- recurse at this location
-        | 
+        |
         | Note: cycles goes
         |       -> fb1
         |       -> fb2
@@ -82,10 +82,10 @@ fn self_referential_struct(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:2:14 ]
        |
      2 |         TYPE Engine: STRUCT
-       |              ^^^|^^  
+       |              ^^^|^^
        |                 `---- type 'Engine' is recursive (contains itself)
      3 |                 sub_engine: Engine;
-       |                 ^^^^^^^^^|^^^^^^^^  
+       |                 ^^^^^^^^^|^^^^^^^^
        |                          `---------- 'Engine' references itself here
     ---'
     ");
@@ -105,12 +105,12 @@ fn mutually_referential_types(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:3:13 ]
        |
      3 |             A: B;
-       |             |  
+       |             |
        |             `-- type 'A' is recursive
      4 |             B: A;
-       |                |  
+       |                |
        |                `-- recurse at this location
-       | 
+       |
        | Note: cycles goes
        |       -> A
        |       -> B
@@ -133,12 +133,12 @@ fn mutually_referential_type_and_array(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:3:13 ]
        |
      3 |             A: B;
-       |             |  
+       |             |
        |             `-- type 'A' is recursive
      4 |             B: ARRAY[1..2] OF A;
-       |                               |  
+       |                               |
        |                               `-- recurse at this location
-       | 
+       |
        | Note: cycles goes
        |       -> A
        |       -> B
@@ -159,9 +159,9 @@ fn class_extends_itself(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:2:11 ]
        |
      2 |     CLASS MyClass EXTENDS MyClass
-       |           ^^^|^^^         ^^^|^^^  
+       |           ^^^|^^^         ^^^|^^^
        |              `--------------------- type 'MyClass' is recursive (contains itself)
-       |                              |     
+       |                              |
        |                              `----- 'MyClass' references itself here
     ---'
     ");
@@ -179,9 +179,9 @@ fn fb_extends_itself(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:2:20 ]
        |
      2 |     FUNCTION_BLOCK MyFb EXTENDS MyFb
-       |                    ^^|^         ^^|^  
+       |                    ^^|^         ^^|^
        |                      `---------------- type 'MyFb' is recursive (contains itself)
-       |                                   |   
+       |                                   |
        |                                   `--- 'MyFb' references itself here
     ---'
     ");
@@ -199,9 +199,9 @@ fn interface_extends_itself(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:2:15 ]
        |
      2 |     INTERFACE MyInterface EXTENDS MyInterface
-       |               ^^^^^|^^^^^         ^^^^^|^^^^^  
+       |               ^^^^^|^^^^^         ^^^^^|^^^^^
        |                    `--------------------------- type 'MyInterface' is recursive (contains itself)
-       |                                        |       
+       |                                        |
        |                                        `------- 'MyInterface' references itself here
     ---'
     ");
@@ -234,13 +234,13 @@ fn recursion_in_namespace(mut with_db: RootDatabase) {
         ,-[ file:///test0.st:11:28 ]
         |
       5 |                   invalid : ns.ns2.fb2;
-        |                             ^^^^^|^^^^  
+        |                             ^^^^^|^^^^
         |                                  `------ recurse at this location
-        | 
+        |
      11 |             FUNCTION_BLOCK fb2
-        |                            ^|^  
+        |                            ^|^
         |                             `--- type 'fb2' is recursive
-        | 
+        |
         | Note: cycles goes
         |       -> fb2
         |       -> fb1

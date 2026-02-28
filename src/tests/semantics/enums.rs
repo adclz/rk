@@ -18,9 +18,9 @@ fn invalid_enum_type(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:3:19 ]
        |
      3 |             List: BOOL (A, B, C);
-       |                   ^^|^  
+       |                   ^^|^
        |                     `--- I=invalid enum type 'BOOL'
-       | 
+       |
        | Note: only numeric integer types are allowed for ENUM
     ---'
     ");
@@ -39,7 +39,7 @@ fn type_mismatch_enum_variant_decl(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:3:33 ]
        |
      3 |             List: UINT (A, B := -5, C);
-       |                                 ^|  
+       |                                 ^|
        |                                  `-- cannot infer '<integer>' to 'UINT': literal can not be negative
     ---'
     ");
@@ -67,7 +67,7 @@ fn unknown_enum_variant(mut with_db: RootDatabase) {
         ,-[ file:///test0.st:11:26 ]
         |
      11 |             test := List#D; // D is not a valid enum variant
-        |                          |  
+        |                          |
         |                          `-- ENUM has no variant named 'D'
     ----'
     ");

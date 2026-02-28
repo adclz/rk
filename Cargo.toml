@@ -100,6 +100,7 @@ wasm_codegen = { workspace = true }
 rstest = { workspace = true }
 insta = { workspace = true }
 ariadne = { workspace = true }
+ide_diagnostic = { workspace = true }
 tree-sitter-rk = { workspace = true }
 formatter = { workspace = true }
 topiary-core = { workspace = true }

@@ -40,9 +40,9 @@ fn case_without_else_warning(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:6:13 ]
        |
      6 | ,->             CASE x OF
-       : :   
+       : :
      9 | |->             END_CASE;
-       | |                           
+       | |
        | `--------------------------- CASE statement has no ELSE branch
     ---'
     ");
@@ -72,9 +72,9 @@ fn nested_case_inner_missing_else(mut with_db: RootDatabase) {
         ,-[ file:///test0.st:9:21 ]
         |
       9 | ,->                     CASE y OF
-        : :   
+        : :
      11 | |->                     END_CASE;
-        | |                                   
+        | |
         | `----------------------------------- CASE statement has no ELSE branch
     ----'
     ");
@@ -98,9 +98,9 @@ fn case_in_program(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:7:13 ]
        |
      7 | ,->             CASE x OF
-       : :   
+       : :
      9 | |->             END_CASE;
-       | |                           
+       | |
        | `--------------------------- CASE statement has no ELSE branch
     ---'
     ");

@@ -125,7 +125,7 @@ END_CONFIGURATION
        ,-[ file:///test0.st:4:29 ]
        |
      4 |     PROGRAM inst1 WITH t1 : UnknownProg;
-       |                             ^^^^^|^^^^^  
+       |                             ^^^^^|^^^^^
        |                                  `------- program type 'UnknownProg' not found
     ---'
     ");
@@ -147,7 +147,7 @@ END_CONFIGURATION
        ,-[ file:///test0.st:6:24 ]
        |
      6 |     PROGRAM inst1 WITH unknownTask : MyProg;
-       |                        ^^^^^|^^^^^  
+       |                        ^^^^^|^^^^^
        |                             `------- task 'unknownTask' not found in this configuration
     ---'
     ");
@@ -185,7 +185,7 @@ END_CONFIGURATION
        ,-[ file:///test0.st:4:13 ]
        |
      4 |         x : UnknownType;
-       |             ^^^^^|^^^^^  
+       |             ^^^^^|^^^^^
        |                  `------- no item found for path 'UnknownType'
     ---'
     ");
@@ -258,7 +258,7 @@ END_CONFIGURATION
        ,-[ file:///test0.st:4:9 ]
        |
      4 |         missing : INT;
-       |         ^^^^^^|^^^^^^  
+       |         ^^^^^^|^^^^^^
        |               `-------- external variable 'missing' not found in any accessible VAR_GLOBAL
     ---'
     ");
@@ -279,7 +279,7 @@ END_PROGRAM
        ,-[ file:///test0.st:4:9 ]
        |
      4 |         orphan : INT;
-       |         ^^^^^^|^^^^^  
+       |         ^^^^^^|^^^^^
        |               `------- external variable 'orphan' not found in any accessible VAR_GLOBAL
     ---'
     ");
@@ -304,7 +304,7 @@ END_CONFIGURATION
        ,-[ file:///test0.st:8:28 ]
        |
      8 |         PROGRAM inst1 WITH noSuchTask : MyProg;
-       |                            ^^^^^|^^^^  
+       |                            ^^^^^|^^^^
        |                                 `------ task 'noSuchTask' not found in this configuration
     ---'
     ");
@@ -346,7 +346,7 @@ END_PROGRAM
        ,-[ file:///test0.st:7:20 ]
        |
      7 |         ABLE : x : UnknownType READ_ONLY;
-       |                    ^^^^^|^^^^^  
+       |                    ^^^^^|^^^^^
        |                         `------- no item found for path 'UnknownType'
     ---'
     ");
@@ -370,7 +370,7 @@ END_PROGRAM
        ,-[ file:///test0.st:7:16 ]
        |
      7 |         ABLE : nonexistent : INT READ_ONLY;
-       |                ^^^^^|^^^^^  
+       |                ^^^^^|^^^^^
        |                     `------- no item "nonexistent" found in scope
     ---'
     "#);
@@ -394,11 +394,11 @@ END_PROGRAM
        ,-[ file:///test0.st:7:20 ]
        |
      4 |         x : INT;
-       |         |  
+       |         |
        |         `-- variable 'x' is declared here
-       | 
+       |
      7 |         ABLE : x : REAL READ_ONLY;
-       |                    ^^|^  
+       |                    ^^|^
        |                      `--- access declaration expects 'REAL', but variable has type 'INT'
     ---'
     ");
@@ -480,7 +480,7 @@ END_CONFIGURATION
         ,-[ file:///test0.st:13:9 ]
         |
      13 |         noSuchInst.x : INT := 42;
-        |         ^^^^^|^^^^  
+        |         ^^^^^|^^^^
         |              `------ no program instance 'noSuchInst' found in this configuration
     ----'
     ");
@@ -510,7 +510,7 @@ END_CONFIGURATION
         ,-[ file:///test0.st:13:15 ]
         |
      13 |         inst1.nonexistent : INT := 42;
-        |               ^^^^^|^^^^^  
+        |               ^^^^^|^^^^^
         |                    `------- 'MyProg' has no field named 'nonexistent'
     ----'
     ");
@@ -540,7 +540,7 @@ END_CONFIGURATION
         ,-[ file:///test0.st:13:23 ]
         |
      13 |         inst1.x : INT := 'hello';
-        |                       ^^^^^|^^^^  
+        |                       ^^^^^|^^^^
         |                            `------ expected 'INT', got 'STRING'
     ----'
     ");
@@ -570,7 +570,7 @@ END_CONFIGURATION
         ,-[ file:///test0.st:13:17 ]
         |
      13 |         inst1.x.deeper : INT := 42;
-        |                 ^^^|^^  
+        |                 ^^^|^^
         |                    `---- 'INT' has no field named 'deeper'
     ----'
     ");

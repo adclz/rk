@@ -20,17 +20,17 @@ fn variable_shadows_function_block(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source_fb, source_fn]), @r"
-    [W0102] Error: name shadowing
+    [W0102] Advice: name shadowing
        ,-[ file:///test1.st:4:13 ]
        |
      4 |             PrintLog : BOOL;
-       |             ^^^^^^^|^^^^^^^  
+       |             ^^^^^^^|^^^^^^^
        |                    `--------- variable 'PrintLog' shadows POU 'PrintLog' available in this scope
        |
        |-[ file:///test0.st:2:24 ]
        |
      2 |         FUNCTION_BLOCK PrintLog
-       |                        ^^^^|^^^  
+       |                        ^^^^|^^^
        |                            `----- POU PrintLog is declared here
     ---'
     ");
@@ -53,17 +53,17 @@ fn variable_shadows_function(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source_fn1, source_fn2]), @r"
-    [W0102] Error: name shadowing
+    [W0102] Advice: name shadowing
        ,-[ file:///test1.st:4:13 ]
        |
      4 |             helper : INT;
-       |             ^^^^^^|^^^^^  
+       |             ^^^^^^|^^^^^
        |                   `------- variable 'helper' shadows POU 'helper' available in this scope
        |
        |-[ file:///test0.st:2:18 ]
        |
      2 |         FUNCTION helper : INT
-       |                  ^^^|^^  
+       |                  ^^^|^^
        |                     `---- POU helper is declared here
     ---'
     ");
@@ -87,17 +87,17 @@ fn variable_shadows_data_type(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source_type, source_fn]), @r"
-    [W0102] Error: name shadowing
+    [W0102] Advice: name shadowing
        ,-[ file:///test1.st:4:13 ]
        |
      4 |             MyType : INT;
-       |             ^^^^^^|^^^^^  
+       |             ^^^^^^|^^^^^
        |                   `------- variable 'MyType' shadows POU 'MyType' available in this scope
        |
        |-[ file:///test0.st:2:14 ]
        |
      2 |         TYPE MyType : STRUCT
-       |              ^^^|^^  
+       |              ^^^|^^
        |                 `---- POU MyType is declared here
     ---'
     ");
@@ -142,9 +142,9 @@ fn no_shadowing_when_variable_unused(mut with_db: RootDatabase) {
        ,-[ file:///test1.st:4:13 ]
        |
      4 |             PrintLog : BOOL;
-       |             ^^^^^^^|^^^^^^^  
+       |             ^^^^^^^|^^^^^^^
        |                    `--------- unused variable 'PrintLog'
-       | 
+       |
        | Note: if this is intentional, prefix it with an underscore:
        |       '_PrintLog'
     ---'

@@ -22,15 +22,15 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:7:13 ]
        |
      4 |         test: INT;
-       |         ^^|^  
+       |         ^^|^
        |           `--- type is declared by variable 'test' here
-       | 
+       |
      7 |     test := ULINT#5;
-       |             ^^^|^^^  
+       |             ^^^|^^^
        |                `----- expected 'INT', got 'ULINT'
-       |                |     
+       |                |
        |                `----- consider explicitly casting with 'ULINT_TO_INT(ULINT#5)'
-       | 
+       |
        | Help: insert explicit cast 'INT_TO_ULINT(ULINT#5)'
     ---'
     ");
@@ -54,18 +54,18 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:8:5 ]
        |
      8 |     fb2 := ULINT#5;
-       |     ^|^  
+       |     ^|^
        |      `--- cannot use direct type 'fb2' here
     ---'
     [E0301] Error: type mismatch
        ,-[ file:///test0.st:8:12 ]
        |
      2 | FUNCTION_BLOCK fb2
-       |                ^|^  
+       |                ^|^
        |                 `--- FUNCTION_BLOCK 'fb2' is defined here
-       | 
+       |
      8 |     fb2 := ULINT#5;
-       |            ^^^|^^^  
+       |            ^^^|^^^
        |               `----- expected 'fb2', got 'ULINT'
     ---'
     ");
@@ -85,15 +85,15 @@ END_FUNCTION"#;
        ,-[ file:///test0.st:4:12 ]
        |
      2 | FUNCTION fn1 : INT
-       |          ^|^  
+       |          ^|^
        |           `--- FUNCTION 'fn1' is defined here, with return type 'INT'
-       | 
+       |
      4 |     fn1 := ULINT#5;
-       |            ^^^|^^^  
+       |            ^^^|^^^
        |               `----- expected 'INT', got 'ULINT'
-       |               |     
+       |               |
        |               `----- consider explicitly casting with 'ULINT_TO_INT(ULINT#5)'
-       | 
+       |
        | Help: insert explicit cast 'INT_TO_ULINT(ULINT#5)'
     ---'
     ");
@@ -113,11 +113,11 @@ END_FUNCTION"#;
        ,-[ file:///test0.st:4:12 ]
        |
      2 | FUNCTION fn1
-       |          ^|^  
+       |          ^|^
        |           `--- FUNCTION 'fn1' is defined here
-       | 
+       |
      4 |     fn1 := ULINT#5;
-       |            ^^^|^^^  
+       |            ^^^|^^^
        |               `----- 'fn1' is void and can not be assigned
     ---'
     ");
@@ -141,22 +141,22 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:8:5 ]
        |
      8 |     T1 := ULINT#5;
-       |     ^|  
+       |     ^|
        |      `-- cannot use direct type 'T1' here
     ---'
     [E0301] Error: type mismatch
        ,-[ file:///test0.st:8:11 ]
        |
      3 |     T1 : INT;
-       |          ^|^  
+       |          ^|^
        |           `--- type is defined by 'T1' here
-       | 
+       |
      8 |     T1 := ULINT#5;
-       |           ^^^|^^^  
+       |           ^^^|^^^
        |              `----- expected 'T1', got 'ULINT'
-       |              |     
+       |              |
        |              `----- consider explicitly casting with 'ULINT_TO_INT(ULINT#5)'
-       | 
+       |
        | Help: insert explicit cast 'INT_TO_ULINT(ULINT#5)'
     ---'
     ");
@@ -183,18 +183,18 @@ END_FUNCTION_BLOCK"#;
         ,-[ file:///test0.st:11:5 ]
         |
      11 |     d_fb2 := ULINT#5;
-        |     ^^|^^  
+        |     ^^|^^
         |       `---- 'fb2' is a callable type and can not be assigned
     ----'
     [E0301] Error: type mismatch
         ,-[ file:///test0.st:11:14 ]
         |
       2 | FUNCTION_BLOCK fb2
-        |                ^|^  
+        |                ^|^
         |                 `--- FUNCTION_BLOCK 'fb2' is defined here
-        | 
+        |
      11 |     d_fb2 := ULINT#5;
-        |              ^^^|^^^  
+        |              ^^^|^^^
         |                 `----- expected 'fb2', got 'ULINT'
     ----'
     ");
@@ -217,7 +217,7 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:7:5 ]
        |
      7 |     test := 5;
-       |     ^^|^  
+       |     ^^|^
        |       `--- test is an input variable and can not be assigned
     ---'
     ");
@@ -244,11 +244,11 @@ END_FUNCTION_BLOCK"#;
         ,-[ file:///test0.st:11:13 ]
         |
       8 |         test: INT;
-        |         ^^|^  
+        |         ^^|^
         |           `--- type is declared by variable 'test' here
-        | 
+        |
      11 |     test := fn1();
-        |             ^^|^^  
+        |             ^^|^^
         |               `---- expected 'INT', got 'void'
     ----'
     ");
@@ -275,15 +275,15 @@ END_FUNCTION_BLOCK"#;
         ,-[ file:///test0.st:11:13 ]
         |
       8 |         test: INT;
-        |         ^^|^  
+        |         ^^|^
         |           `--- type is declared by variable 'test' here
-        | 
+        |
      11 |     test := fn1();
-        |             ^^|^^  
+        |             ^^|^^
         |               `---- expected 'INT', got 'BOOL'
-        |               |    
+        |               |
         |               `---- consider explicitly casting with 'BOOL_TO_INT(fn1())'
-        | 
+        |
         | Help: insert explicit cast 'INT_TO_BOOL(fn1())'
     ----'
     ");
@@ -306,15 +306,15 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:7:13 ]
        |
      4 |         test: INT;
-       |         ^^|^  
+       |         ^^|^
        |           `--- type is declared by variable 'test' here
-       | 
+       |
      7 |     test := TRUE AND FALSE;
-       |             ^^^^^^^|^^^^^^  
+       |             ^^^^^^^|^^^^^^
        |                    `-------- expected 'INT', got 'BOOL'
-       |                    |        
+       |                    |
        |                    `-------- consider explicitly casting with 'BOOL_TO_INT(TRUE AND FALSE)'
-       | 
+       |
        | Help: insert explicit cast 'INT_TO_BOOL(TRUE AND FALSE)'
     ---'
     ");
@@ -378,15 +378,15 @@ END_FUNCTION_BLOCK"#;
         ,-[ file:///test0.st:10:15 ]
         |
       6 |         result: INT;
-        |         ^^^|^^  
+        |         ^^^|^^
         |            `---- type is declared by variable 'result' here
-        | 
+        |
      10 |     result := (a < b);
-        |               ^^^|^^^  
+        |               ^^^|^^^
         |                  `----- expected 'INT', got 'BOOL'
-        |                  |     
+        |                  |
         |                  `----- consider explicitly casting with 'BOOL_TO_INT((a < b))'
-        | 
+        |
         | Help: insert explicit cast 'INT_TO_BOOL((a < b))'
     ----'
     ");

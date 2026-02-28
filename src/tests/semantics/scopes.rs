@@ -719,14 +719,14 @@ END_FUNCTION_BLOCK
        ,-[ file:///test0.st:3:11 ]
        |
      3 |     USING unknown_ns; // unknown namespace
-       |           ^^^^^|^^^^  
+       |           ^^^^^|^^^^
        |                `------ namespace 'unknown_ns' not found
     ---'
     [E0216] Error: namespace not found
        ,-[ file:///test0.st:7:11 ]
        |
      7 |     USING unknown_ns2; // unknown namespace
-       |           ^^^^^|^^^^^  
+       |           ^^^^^|^^^^^
        |                `------- namespace 'unknown_ns2' not found
     ---'
     ");
@@ -871,9 +871,9 @@ fn ambiguous_using_same_name(mut with_db: RootDatabase) {
         ,-[ file:///test0.st:17:21 ]
         |
      17 |             test := SharedName();
-        |                     ^^^^^|^^^^  
+        |                     ^^^^^|^^^^
         |                          `------ 'SharedName' is ambiguous between 'ns1' and 'ns2'
-        | 
+        |
         | Note: qualify the name to resolve the ambiguity: ns1.SharedName or ns2.SharedName
     ----'
     ");

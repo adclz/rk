@@ -22,11 +22,11 @@ fn duplicate_var_in_function(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:6:9 ]
        |
      6 | ,->         VAR
-       : :   
+       : :
      8 | |->         END_VAR
-       | |                     
+       | |
        | `--------------------- duplicate VAR section
-       |     
+       |
        |     Note: merge this section with the existing one above
     ---'
     ");
@@ -50,11 +50,11 @@ fn duplicate_var_input_in_function(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:6:9 ]
        |
      6 | ,->         VAR_INPUT
-       : :   
+       : :
      8 | |->         END_VAR
-       | |                     
+       | |
        | `--------------------- duplicate VAR_INPUT section
-       |     
+       |
        |     Note: merge this section with the existing one above
     ---'
     ");
@@ -78,11 +78,11 @@ fn duplicate_var_in_function_block(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:6:9 ]
        |
      6 | ,->         VAR
-       : :   
+       : :
      8 | |->         END_VAR
-       | |                     
+       | |
        | `--------------------- duplicate VAR section
-       |     
+       |
        |     Note: merge this section with the existing one above
     ---'
     ");
@@ -106,18 +106,18 @@ fn duplicate_var_input_in_function_block(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:9:13 ]
        |
      9 |             x := y;
-       |             |  
+       |             |
        |             `-- x is an input variable and can not be assigned
     ---'
     [W0103] Warning: duplicate variable section
        ,-[ file:///test0.st:6:9 ]
        |
      6 | ,->         VAR_INPUT
-       : :   
+       : :
      8 | |->         END_VAR
-       | |                     
+       | |
        | `--------------------- duplicate VAR_INPUT section
-       |     
+       |
        |     Note: merge this section with the existing one above
     ---'
     ");
@@ -141,11 +141,11 @@ fn duplicate_var_in_program(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:6:9 ]
        |
      6 | ,->         VAR
-       : :   
+       : :
      8 | |->         END_VAR
-       | |                     
+       | |
        | `--------------------- duplicate VAR section
-       |     
+       |
        |     Note: merge this section with the existing one above
     ---'
     ");
@@ -171,11 +171,11 @@ fn duplicate_var_in_method(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:7:9 ]
        |
      7 | ,->         VAR
-       : :   
+       : :
      9 | |->         END_VAR
-       | |                     
+       | |
        | `--------------------- duplicate VAR section
-       |     
+       |
        |     Note: merge this section with the existing one above
     ---'
     ");

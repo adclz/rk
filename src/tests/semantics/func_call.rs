@@ -22,7 +22,7 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:7:5 ]
        |
      7 |     test();
-       |     ^^|^  
+       |     ^^|^
        |       `--- 'INT' is not a callable type
     ---'
     ");
@@ -44,9 +44,9 @@ END_FUNCTION_BLOCK
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     fb2();
-       |     ^|^  
+       |     ^|^
        |      `--- 'fb2' is not a callable type
-       | 
+       |
        | Note: to call a FUNCTION_BLOCK, you need to instantiate it first.
     ---'
     ");
@@ -93,7 +93,7 @@ END_FUNCTION_BLOCK"#;
         ,-[ file:///test0.st:10:9 ]
         |
      10 |         unknown := TRUE
-        |         ^^^|^^^  
+        |         ^^^|^^^
         |            `----- unknown input parameter 'unknown'
     ----'
     ");
@@ -117,14 +117,14 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:6:5 ]
        |
      6 |     fn(
-       |     ^|  
+       |     ^|
        |      `-- 'fn' expects 0 parameters, but got 1
     ---'
     [E0209] Error: function call parameter mismatch
        ,-[ file:///test0.st:7:9 ]
        |
      7 |         unknown => TRUE
-       |         ^^^|^^^  
+       |         ^^^|^^^
        |            `----- unknown output parameter 'unknown'
     ---'
     ");
@@ -153,22 +153,22 @@ END_FUNCTION_BLOCK"#;
         ,-[ file:///test0.st:11:19 ]
         |
       4 |     param1: LINT;
-        |     ^^^|^^  
+        |     ^^^|^^
         |        `---- type is declared by variable 'param1' here
-        | 
+        |
      11 |         param1 := 5.5,
-        |                   ^|^  
+        |                   ^|^
         |                    `--- cannot infer '<float>' to 'LINT': invalid LINT literal
     ----'
     [E0301] Error: type mismatch
         ,-[ file:///test0.st:12:19 ]
         |
       5 |     param2: LREAL;
-        |     ^^^|^^  
+        |     ^^^|^^
         |        `---- type is declared by variable 'param2' here
-        | 
+        |
      12 |         param2 := TRUE
-        |                   ^^|^  
+        |                   ^^|^
         |                     `--- expected 'LREAL', got 'BOOL'
     ----'
     ");
@@ -206,41 +206,41 @@ END_FUNCTION_BLOCK"#;
         ,-[ file:///test0.st:19:19 ]
         |
       4 |     param1: INT;
-        |     ^^^|^^  
+        |     ^^^|^^
         |        `---- type is declared by variable 'param1' here
-        | 
+        |
      19 |         param1 := TRUE,
-        |                   ^^|^  
+        |                   ^^|^
         |                     `--- expected 'INT', got 'BOOL'
-        |                     |   
+        |                     |
         |                     `--- consider explicitly casting with 'BOOL_TO_INT(TRUE)'
-        | 
+        |
         | Help: insert explicit cast 'INT_TO_BOOL(TRUE)'
     ----'
     [E0301] Error: type mismatch
         ,-[ file:///test0.st:20:19 ]
         |
       5 |     param2: REAL;
-        |     ^^^|^^  
+        |     ^^^|^^
         |        `---- type is declared by variable 'param2' here
-        | 
+        |
      20 |         param2 := TRUE,
-        |                   ^^|^  
+        |                   ^^|^
         |                     `--- expected 'REAL', got 'BOOL'
     ----'
     [E0301] Error: type mismatch
         ,-[ file:///test0.st:21:19 ]
         |
      15 |         variable1: BOOL;
-        |         ^^^^|^^^^  
+        |         ^^^^|^^^^
         |             `------ type is declared by variable 'variable1' here
-        | 
+        |
      21 |         param3 => variable1
-        |                   ^^^^|^^^^  
+        |                   ^^^^|^^^^
         |                       `------ expected 'INT', got 'BOOL'
-        |                       |      
+        |                       |
         |                       `------ consider explicitly casting with 'BOOL_TO_INT(variable1)'
-        | 
+        |
         | Help: insert explicit cast 'INT_TO_BOOL(variable1)'
     ----'
     ");
@@ -286,14 +286,14 @@ END_FUNCTION_BLOCK"#;
         ,-[ file:///test0.st:11:2 ]
         |
      11 |     fn(0, 1.5, 5);
-        |     ^|  
+        |     ^|
         |      `-- 'fn' expects 2 parameters, but got 3
     ----'
     [E0206] Error: function call parameter mismatch
         ,-[ file:///test0.st:11:13 ]
         |
      11 |     fn(0, 1.5, 5);
-        |                |  
+        |                |
         |                `-- no parameter at index '2'
     ----'
     ");
@@ -320,9 +320,9 @@ END_FUNCTION_BLOCK"#;
         ,-[ file:///test0.st:11:21 ]
         |
      11 |     fn(param1 := 0, param1 := 1);
-        |        ^^^^^|^^^^^  ^^^^^|^^^^^  
+        |        ^^^^^|^^^^^  ^^^^^|^^^^^
         |             `-------------------- previously defined here
-        |                          |       
+        |                          |
         |                          `------- duplicate parameter 'param1' found
     ----'
     ");
@@ -353,9 +353,9 @@ END_FUNCTION_BLOCK"#;
         ,-[ file:///test0.st:15:22 ]
         |
      15 |     fn(param1 => a1, param1 => a2);
-        |        ^^^^^^|^^^^^  ^^^^^^|^^^^^  
+        |        ^^^^^^|^^^^^  ^^^^^^|^^^^^
         |              `--------------------- previously defined here
-        |                            |       
+        |                            |
         |                            `------- duplicate parameter 'param1' found
     ----'
     ");
@@ -384,7 +384,7 @@ END_FUNCTION_BLOCK"#;
         ,-[ file:///test0.st:13:18 ]
         |
      13 |     fn(param1 => b1);
-        |                  ^|  
+        |                  ^|
         |                   `-- cannot use direct type 'b1' here
     ----'
     ");
@@ -413,7 +413,7 @@ END_FUNCTION_BLOCK"#;
         ,-[ file:///test0.st:13:18 ]
         |
      13 |     fn(param1 => b1);
-        |                  ^|  
+        |                  ^|
         |                   `-- b1 is an input variable and can not be assigned
     ----'
     ");

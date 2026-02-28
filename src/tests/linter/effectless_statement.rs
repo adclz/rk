@@ -20,7 +20,7 @@ fn bare_variable_reference(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:6:13 ]
        |
      6 |             x;
-       |             |  
+       |             |
        |             `-- statement has no effect
     ---'
     ");
@@ -42,7 +42,7 @@ fn bare_literal(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:6:13 ]
        |
      6 |             42;
-       |             ^|  
+       |             ^|
        |              `-- Unexpected token(s): '42'
     ---'
     ");
@@ -101,7 +101,7 @@ fn effectless_in_program(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:6:13 ]
        |
      6 |             x;
-       |             |  
+       |             |
        |             `-- statement has no effect
     ---'
     ");
@@ -122,7 +122,7 @@ fn effectless_in_function_block(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:6:13 ]
        |
      6 |             x;
-       |             |  
+       |             |
        |             `-- statement has no effect
     ---'
     ");

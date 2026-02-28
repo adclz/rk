@@ -121,7 +121,7 @@ END_FUNCTION"#;
         ,-[ file:///test0.st:11:13 ]
         |
      11 |     test := max<INT, REAL>(5, 10);
-        |             ^|^  
+        |             ^|^
         |              `--- expected 1 type argument(s), got 2
     ----'
     ");
@@ -147,7 +147,7 @@ END_FUNCTION"#;
         ,-[ file:///test0.st:11:13 ]
         |
      11 |     test := max<REAL>(1.5, 2.5);
-        |             ^|^  
+        |             ^|^
         |              `--- type 'REAL' does not satisfy constraint 'ANY_INT' (on generic parameter 'T')
     ----'
     ");
@@ -315,7 +315,7 @@ END_FUNCTION"#;
         ,-[ file:///test0.st:13:13 ]
         |
      13 |     test := widen<DINT>(x);
-        |             ^^|^^  
+        |             ^^|^^
         |               `---- 'DINT' cannot be implicitly cast into 'INT' (INTO constraint on 'T')
     ----'
     ");
@@ -343,7 +343,7 @@ END_FUNCTION"#;
         ,-[ file:///test0.st:13:13 ]
         |
      13 |     test := widen(x);
-        |             ^^|^^  
+        |             ^^|^^
         |               `---- 'DINT' cannot be implicitly cast into 'INT' (INTO constraint on 'T')
     ----'
     ");
@@ -385,7 +385,7 @@ END_FUNCTION"#;
         ,-[ file:///test0.st:10:13 ]
         |
      10 |     test := fn<REAL>(42);
-        |             ^|  
+        |             ^|
         |              `-- type 'REAL' does not satisfy constraint 'ANY_INT' (on generic parameter 'T')
     ----'
     ");
@@ -451,7 +451,7 @@ END_FUNCTION"#;
         ,-[ file:///test0.st:12:5 ]
         |
      12 |     c(value := 1.5);
-        |     |  
+        |     |
         |     `-- type 'REAL' does not satisfy constraint 'ANY_INT' (on generic parameter 'T')
     ----'
     ");
@@ -472,7 +472,7 @@ END_FUNCTION"#;
        ,-[ file:///test0.st:6:10 ]
        |
      6 |     c := TRUE;
-       |          ^^|^  
+       |          ^^|^
        |            `--- expected 'ANY_REAL', got 'BOOL'
     ---'
     ");

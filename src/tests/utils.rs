@@ -1,3 +1,4 @@
+use std::ops::ControlFlow;
 use std::sync::Arc;
 use std::sync::RwLock;
 
@@ -6,7 +7,9 @@ use ariadne::CharSet;
 use ariadne::Config;
 use ariadne::FnCache;
 use ariadne::Source;
+use auto_lsp::core::span::Span;
 use auto_lsp::default::db::BaseDatabase;
+use auto_lsp::lsp_types::DiagnosticSeverity;
 use auto_lsp::salsa::Event;
 use auto_lsp::{
     default::db::{FileManager, file::File},
@@ -21,7 +24,12 @@ use hir::hir_def::interned::identifier::Ident;
 use hir::hir_def::namespace::NamespaceDecl;
 use hir::hir_def::pous::pou::Pou;
 use hir::hir_def::semantic_index::semantic_index;
+use hir::hir_ty::head::inheritance::MethodRef;
 use hir::hir_ty::resolver::name::{PouResolution, pou_names_res};
+use ide_diagnostic::{IdeDiagnostic, Related};
+use ide_proto::hir_node::HirNode;
+use ide_proto::handlers::references::ReferenceLocation;
+use ide_proto::walk::WalkHir;
 use rstest::fixture;
 
 #[fixture]
@@ -112,8 +120,60 @@ pub fn test_diagnostics<'db>(db: &'db mut RootDatabase, source: &'db [&'db str])
         });
     }
 
-    String::from_utf8(cache).unwrap()
+    // Strip trailing whitespace from each line for clean inline snapshots
+    String::from_utf8(cache)
+        .unwrap()
+        .lines()
+        .map(|l| l.trim_end())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
+
+
+pub fn test_snapshot<'db>(db: &'db mut RootDatabase, source: &'db [&'db str], diag_fn: impl Fn(&'db dyn WorkspaceDataBase, File) -> Vec<IdeDiagnostic>) -> String {
+    add_sources(db, source);
+    let mut cache = vec![];
+
+    // we need to sort the files by their URL
+    let mut files = db.get_files().iter().map(|file| *file).collect::<Vec<_>>();
+    files.sort_by_key(|file| {
+        let url_str = file.url(db).as_str();
+        // Extract number from "file:///testN.st" format
+        url_str
+            .strip_prefix("file:///test")
+            .and_then(|s| s.strip_suffix(".st"))
+            .and_then(|s| s.parse::<u32>().ok())
+            .unwrap_or(0)
+    });
+
+    let file_sources = files
+        .iter()
+        .map(|file| (file.url(db).as_str(), file.document(db).as_str()))
+        .collect::<Vec<_>>();
+
+    for file in files {
+        diag_fn(db, file).iter().for_each(|d| {
+            d.create_report(
+                db,
+                file.url(db),
+                file.document(db).as_str(),
+                Some(no_color_and_ascii()),
+                false,
+            )
+            .write(sources(file_sources.clone()), &mut cache)
+            .unwrap();
+        });
+    }
+
+    // Strip trailing whitespace from each line for clean inline snapshots
+    String::from_utf8(cache)
+        .unwrap()
+        .lines()
+        .map(|l| l.trim_end())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 
 /// Like [`test_diagnostics`] but also runs the linter (all rules enabled),
 /// so lint warnings are included.
@@ -153,7 +213,13 @@ pub fn test_lint_diagnostics<'db>(db: &'db mut RootDatabase, source: &'db [&'db 
         });
     }
 
-    String::from_utf8(cache).unwrap()
+    // Strip trailing whitespace from each line for clean inline snapshots
+    String::from_utf8(cache)
+        .unwrap()
+        .lines()
+        .map(|l| l.trim_end())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 pub fn find_pou_with_name<'db>(
@@ -196,6 +262,57 @@ pub fn find_namespace_with_name<'db>(
     None
 }
 
+pub fn render_references(db: &RootDatabase, refs: &[ReferenceLocation], name: &str) -> String {
+    if refs.is_empty() {
+        return String::new();
+    }
+
+    let mut sorted: Vec<&ReferenceLocation> = refs.iter().collect();
+    sorted.sort_by(|a, b| {
+        a.file
+            .url(db)
+            .as_str()
+            .cmp(b.file.url(db).as_str())
+            .then(a.span.start_byte.cmp(&b.span.start_byte))
+    });
+
+    let all_files: Vec<File> = db.get_files().iter().map(|f| *f).collect();
+    let file_sources: Vec<_> = all_files
+        .iter()
+        .map(|f| (f.url(db).as_str(), f.document(db).as_str()))
+        .collect();
+
+    let first = sorted[0];
+    let mut diag = ide_diagnostic::diag()
+        .range(first.span)
+        .message(format!("{} reference(s) to '{name}'", sorted.len()))
+        .severity(DiagnosticSeverity::INFORMATION)
+        .call();
+
+    for r in &sorted[1..] {
+        diag.with_related(Related::new("reference".to_string(), r.file, r.span));
+    }
+
+    let mut output = vec![];
+    diag.create_report(
+        db,
+        first.file.url(db),
+        first.file.document(db).as_str(),
+        Some(no_color_and_ascii()),
+        false,
+    )
+    .write(sources(file_sources), &mut output)
+    .unwrap();
+
+    // Strip trailing whitespace from each line for clean inline snapshots
+    String::from_utf8(output)
+        .unwrap()
+        .lines()
+        .map(|l| l.trim_end())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// Convenience wrapper for tests: resolve a POU by name string within a scope.
 pub fn pou_name_res_from_scope<'db>(
     db: &'db dyn WorkspaceDataBase,
@@ -206,4 +323,118 @@ pub fn pou_name_res_from_scope<'db>(
         PouResolution::Found(pou) => Some(pou),
         _ => None,
     }
+}
+
+/// Renders diagnostics for a file (when sources are already added).
+pub fn render_snapshot(
+    db: &RootDatabase,
+    file: File,
+    diags: Vec<IdeDiagnostic>,
+) -> String {
+    let all_files: Vec<File> = db.get_files().iter().map(|f| *f).collect();
+    let file_sources: Vec<_> = all_files
+        .iter()
+        .map(|f| (f.url(db).as_str(), f.document(db).as_str()))
+        .collect();
+
+    let mut cache = vec![];
+    for d in &diags {
+        d.create_report(
+            db,
+            file.url(db),
+            file.document(db).as_str(),
+            Some(no_color_and_ascii()),
+            false,
+        )
+        .write(sources(file_sources.clone()), &mut cache)
+        .unwrap();
+    }
+
+    String::from_utf8(cache)
+        .unwrap()
+        .lines()
+        .map(|l| l.trim_end())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Returns a descriptive label for a HirNode variant.
+pub fn hir_node_label(node: &HirNode) -> String {
+    match node {
+        HirNode::Namespace(_) => "Namespace".into(),
+        HirNode::Using(_) => "Using".into(),
+        HirNode::PouDecl(pou) => format!(
+            "PouDecl({})",
+            match pou {
+                Pou::Function(_) => "Function",
+                Pou::FunctionBlock(_) => "FunctionBlock",
+                Pou::Class(_) => "Class",
+                Pou::Interface(_) => "Interface",
+                Pou::DataType(_) => "DataType",
+            }
+        ),
+        HirNode::NamespaceAccess(_) => "NamespaceAccess".into(),
+        HirNode::MethodRef(m) => format!(
+            "MethodRef({})",
+            match m {
+                MethodRef::Declared(_) => "Declared",
+                MethodRef::Prototype(_) => "Prototype",
+            }
+        ),
+        HirNode::VariableDecl(_) => "VariableDecl".into(),
+        HirNode::Spec(_) => "Spec".into(),
+        HirNode::StructElement(_) => "StructElement".into(),
+        HirNode::VariableAccess(_) => "VariableAccess".into(),
+        HirNode::Invocation(_) => "Invocation".into(),
+        HirNode::Expr(_) => "Expr".into(),
+        HirNode::Param(_) => "Param".into(),
+        HirNode::InitExpr { .. } => "InitExpr".into(),
+        HirNode::PathExpr { .. } => "PathExpr".into(),
+    }
+}
+
+/// Returns the appropriate span for a HirNode in diagnostic snapshots.
+/// Uses name span for declarations (compact), full span for expressions.
+pub fn hir_node_span<'db>(db: &'db dyn WorkspaceDataBase, node: &HirNode<'db>) -> Span {
+    match node {
+        HirNode::PouDecl(pou) => pou.get_name_span(db),
+        HirNode::VariableDecl(var) => var.get_name_span(db),
+        HirNode::MethodRef(m) => m.get_name_span(db),
+        HirNode::StructElement(st) => st.get_name_span(db),
+        _ => node.get_span(db),
+    }
+}
+
+/// Walks the HIR for a file and returns diagnostics labeling each visited node.
+pub fn walk_hir_diagnostics<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    file: File,
+) -> Vec<IdeDiagnostic> {
+    let sema = semantic_index(db, file);
+    let mut nodes: Vec<(String, Span, File)> = vec![];
+
+    let _ = sema.walk_hir(db, &mut |node: HirNode<'_>| {
+        let label = hir_node_label(&node);
+        let span = hir_node_span(db, &node);
+        let file = node.get_scope_id(db).file(db);
+        nodes.push((label, span, file));
+        ControlFlow::Continue(())
+    });
+
+    if nodes.is_empty() {
+        return vec![];
+    }
+
+    let (first_label, first_span, _) = &nodes[0];
+    let mut diag = ide_diagnostic::diag()
+        .range(*first_span)
+        .message(first_label.clone())
+        .severity(DiagnosticSeverity::INFORMATION)
+        .call();
+
+    for (label, span, file) in &nodes[1..] {
+        diag.with_related(Related::new(label.clone(), *file, *span));
+    }
+
+    vec![diag]
 }

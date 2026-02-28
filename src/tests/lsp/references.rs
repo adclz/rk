@@ -1,29 +1,11 @@
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::Url;
 use db::RootDatabase;
-use ide_proto::handlers::references::ReferenceLocation;
 use ide_proto::walk::descendant_at;
-use insta::assert_debug_snapshot;
+use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{add_sources, with_db};
-
-/// Helper: format reference locations as (line, col_start, col_end) for readable snapshots
-fn format_references(locations: &[ReferenceLocation]) -> Vec<String> {
-    locations
-        .iter()
-        .map(|loc| {
-            let range: auto_lsp::lsp_types::Range = loc.span.into();
-            format!(
-                "{}:{}-{}:{}",
-                range.start.line,
-                range.start.character,
-                range.end.line,
-                range.end.character
-            )
-        })
-        .collect()
-}
+use crate::tests::utils::{add_sources, render_references, with_db};
 
 #[rstest]
 fn pou_references(mut with_db: RootDatabase) {
@@ -40,43 +22,23 @@ END_FUNCTION
     add_sources(&mut with_db, &[source]);
     let file = *with_db.get_files().iter().last().unwrap();
 
-    // Click on "MyFB" in the declaration (byte offset within "FUNCTION_BLOCK MyFB")
     let offset = source.find("MyFB").unwrap();
     let node = descendant_at(&with_db, file, offset).unwrap();
-    let refs = node.references(&with_db, true).unwrap();
+    let refs = node.references(&with_db).unwrap();
 
-    assert_debug_snapshot!(format_references(&refs), @r#"
-    [
-        "0:15-0:19",
-        "5:8-5:12",
-    ]
-    "#);
-}
-
-#[rstest]
-fn pou_references_exclude_declaration(mut with_db: RootDatabase) {
-    let source = r#"FUNCTION_BLOCK MyFB
-END_FUNCTION_BLOCK
-
-FUNCTION fn1
-VAR
-    x : MyFB;
-END_VAR
-END_FUNCTION
-"#;
-
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
-
-    let offset = source.find("MyFB").unwrap();
-    let node = descendant_at(&with_db, file, offset).unwrap();
-    let refs = node.references(&with_db, false).unwrap();
-
-    assert_debug_snapshot!(format_references(&refs), @r#"
-    [
-        "5:8-5:12",
-    ]
-    "#);
+    assert_snapshot!(render_references(&with_db, &refs, "MyFB"), @r"
+    Advice: 2 reference(s) to 'MyFB'
+       ,-[ file:///test0.st:1:16 ]
+       |
+     1 | FUNCTION_BLOCK MyFB
+       |                ^^|^
+       |                  `--- 2 reference(s) to 'MyFB'
+       |
+     6 |     x : MyFB;
+       |         ^^|^
+       |           `--- reference
+    ---'
+    ");
 }
 
 #[rstest]
@@ -93,19 +55,28 @@ END_FUNCTION
     add_sources(&mut with_db, &[source]);
     let file = *with_db.get_files().iter().last().unwrap();
 
-    // Click on "x" in VAR declaration
     let offset = source.find("x : INT").unwrap();
     let node = descendant_at(&with_db, file, offset).unwrap();
-    let refs = node.references(&with_db, true).unwrap();
+    let refs = node.references(&with_db).unwrap();
 
-    assert_debug_snapshot!(format_references(&refs), @r#"
-    [
-        "2:4-2:5",
-        "4:4-4:5",
-        "5:4-5:5",
-        "5:9-5:10",
-    ]
-    "#);
+    assert_snapshot!(render_references(&with_db, &refs, "x"), @r"
+    Advice: 4 reference(s) to 'x'
+       ,-[ file:///test0.st:3:5 ]
+       |
+     3 |     x : INT;
+       |     |
+       |     `-- 4 reference(s) to 'x'
+       |
+     5 |     x := 1;
+       |     |
+       |     `-- reference
+     6 |     x := x + 2;
+       |     |    |
+       |     `------- reference
+       |          |
+       |          `-- reference
+    ---'
+    ");
 }
 
 #[rstest]
@@ -122,19 +93,28 @@ END_FUNCTION
     add_sources(&mut with_db, &[source]);
     let file = *with_db.get_files().iter().last().unwrap();
 
-    // Click on "x" in "x := 1;" (first usage in body)
-    let body_start = source.find("x := 1").unwrap();
-    let node = descendant_at(&with_db, file, body_start).unwrap();
-    let refs = node.references(&with_db, true).unwrap();
+    let offset = source.find("x := 1").unwrap();
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    let refs = node.references(&with_db).unwrap();
 
-    assert_debug_snapshot!(format_references(&refs), @r#"
-    [
-        "2:4-2:5",
-        "4:4-4:5",
-        "5:4-5:5",
-        "5:9-5:10",
-    ]
-    "#);
+    assert_snapshot!(render_references(&with_db, &refs, "x"), @r"
+    Advice: 4 reference(s) to 'x'
+       ,-[ file:///test0.st:3:5 ]
+       |
+     3 |     x : INT;
+       |     |
+       |     `-- 4 reference(s) to 'x'
+       |
+     5 |     x := 1;
+       |     |
+       |     `-- reference
+     6 |     x := x + 2;
+       |     |    |
+       |     `------- reference
+       |          |
+       |          `-- reference
+    ---'
+    ");
 }
 
 #[rstest]
@@ -158,17 +138,35 @@ END_FUNCTION
 "#;
 
     add_sources(&mut with_db, &[source1, source2, source3]);
-    // source1 is file:///test0.st
     let file1 = with_db
         .get_file(&Url::parse("file:///test0.st").unwrap())
         .unwrap();
 
-    // Click on "SharedFB" in the declaration
     let offset = source1.find("SharedFB").unwrap();
     let node = descendant_at(&with_db, file1, offset).unwrap();
-    let refs = node.references(&with_db, true).unwrap();
+    let refs = node.references(&with_db).unwrap();
 
-    assert_debug_snapshot!(refs.len(), @"3");
+    assert_snapshot!(render_references(&with_db, &refs, "SharedFB"), @r"
+    Advice: 3 reference(s) to 'SharedFB'
+       ,-[ file:///test0.st:1:16 ]
+       |
+     1 | FUNCTION_BLOCK SharedFB
+       |                ^^^^|^^^
+       |                    `----- 3 reference(s) to 'SharedFB'
+       |
+       |-[ file:///test1.st:3:9 ]
+       |
+     3 |     a : SharedFB;
+       |         ^^^^|^^^
+       |             `----- reference
+       |
+       |-[ file:///test2.st:3:9 ]
+       |
+     3 |     b : SharedFB;
+       |         ^^^^|^^^
+       |             `----- reference
+    ---'
+    ");
 }
 
 #[rstest]
@@ -191,18 +189,23 @@ END_FUNCTION
     add_sources(&mut with_db, &[source]);
     let file = *with_db.get_files().iter().last().unwrap();
 
-    // Click on "x" in fn1's VAR declaration
     let offset = source.find("x : INT").unwrap();
     let node = descendant_at(&with_db, file, offset).unwrap();
-    let refs = node.references(&with_db, true).unwrap();
+    let refs = node.references(&with_db).unwrap();
 
-    // Should only find references in fn1, not fn2
-    assert_debug_snapshot!(format_references(&refs), @r#"
-    [
-        "2:4-2:5",
-        "4:4-4:5",
-    ]
-    "#);
+    assert_snapshot!(render_references(&with_db, &refs, "x"), @r"
+    Advice: 2 reference(s) to 'x'
+       ,-[ file:///test0.st:3:5 ]
+       |
+     3 |     x : INT;
+       |     |
+       |     `-- 2 reference(s) to 'x'
+       |
+     5 |     x := 1;
+       |     |
+       |     `-- reference
+    ---'
+    ");
 }
 
 #[rstest]
@@ -224,13 +227,25 @@ END_NAMESPACE
         .get_file(&Url::parse("file:///test0.st").unwrap())
         .unwrap();
 
-    // Click on "MyNs" in the first file's namespace declaration
     let offset = source1.find("MyNs").unwrap();
     let node = descendant_at(&with_db, file1, offset).unwrap();
-    let refs = node.references(&with_db, true).unwrap();
+    let refs = node.references(&with_db).unwrap();
 
-    // Should find both namespace declarations
-    assert_debug_snapshot!(refs.len(), @"2");
+    assert_snapshot!(render_references(&with_db, &refs, "MyNs"), @r"
+    Advice: 2 reference(s) to 'MyNs'
+       ,-[ file:///test0.st:1:11 ]
+       |
+     1 | NAMESPACE MyNs
+       |           ^^|^
+       |             `--- 2 reference(s) to 'MyNs'
+       |
+       |-[ file:///test1.st:1:11 ]
+       |
+     1 | NAMESPACE MyNs
+       |           ^^|^
+       |             `--- reference
+    ---'
+    ");
 }
 
 #[rstest]
@@ -251,13 +266,25 @@ END_FUNCTION
         .get_file(&Url::parse("file:///test0.st").unwrap())
         .unwrap();
 
-    // Click on "MyNs" in the namespace declaration
     let offset = source1.find("MyNs").unwrap();
     let node = descendant_at(&with_db, file1, offset).unwrap();
-    let refs = node.references(&with_db, true).unwrap();
+    let refs = node.references(&with_db).unwrap();
 
-    // Should find the namespace declaration + the USING statement
-    assert_debug_snapshot!(refs.len(), @"2");
+    assert_snapshot!(render_references(&with_db, &refs, "MyNs"), @r"
+    Advice: 2 reference(s) to 'MyNs'
+       ,-[ file:///test0.st:1:11 ]
+       |
+     1 | NAMESPACE MyNs
+       |           ^^|^
+       |             `--- 2 reference(s) to 'MyNs'
+       |
+       |-[ file:///test1.st:1:7 ]
+       |
+     1 | USING MyNs;
+       |       ^^|^
+       |         `--- reference
+    ---'
+    ");
 }
 
 #[rstest]
@@ -278,11 +305,23 @@ END_FUNCTION
         .get_file(&Url::parse("file:///test1.st").unwrap())
         .unwrap();
 
-    // Click on "MyNs" in the USING statement
     let offset = source2.find("MyNs").unwrap();
     let node = descendant_at(&with_db, file2, offset).unwrap();
-    let refs = node.references(&with_db, true).unwrap();
+    let refs = node.references(&with_db).unwrap();
 
-    // Should find namespace declaration + USING statement
-    assert_debug_snapshot!(refs.len(), @"2");
+    assert_snapshot!(render_references(&with_db, &refs, "MyNs"), @r"
+    Advice: 2 reference(s) to 'MyNs'
+       ,-[ file:///test0.st:1:11 ]
+       |
+     1 | NAMESPACE MyNs
+       |           ^^|^
+       |             `--- 2 reference(s) to 'MyNs'
+       |
+       |-[ file:///test1.st:1:7 ]
+       |
+     1 | USING MyNs;
+       |       ^^|^
+       |         `--- reference
+    ---'
+    ");
 }

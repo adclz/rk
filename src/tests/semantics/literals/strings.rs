@@ -69,7 +69,7 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:4:21 ]
        |
      4 |         s : WSTRING := 'hello';
-       |                     ^^^^^|^^^^  
+       |                     ^^^^^|^^^^
        |                          `------ expected 'WSTRING', got 'STRING'
     ---'
     ");
@@ -101,7 +101,7 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:4:19 ]
        |
      4 |         c : WCHAR := CHAR#'x';
-       |                   ^^^^^|^^^^^  
+       |                   ^^^^^|^^^^^
        |                        `------- expected 'WCHAR', got 'CHAR'
     ---'
     ");
@@ -121,7 +121,7 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:4:21 ]
        |
      4 |         s : WSTRING := CHAR#'x';
-       |                     ^^^^^|^^^^^  
+       |                     ^^^^^|^^^^^
        |                          `------- expected 'WSTRING', got 'CHAR'
     ---'
     ");
@@ -153,7 +153,7 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:4:21 ]
        |
      4 |         c : CHAR := CHAR#'ab';
-       |                     ^^^^|^^^^  
+       |                     ^^^^|^^^^
        |                         `------ cannot infer '<char>' to 'CHAR': CHAR literal must be exactly 1 character, got 2
     ---'
     ");
@@ -173,7 +173,7 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:4:22 ]
        |
      4 |         c : WCHAR := WCHAR#"ab";
-       |                      ^^^^^|^^^^  
+       |                      ^^^^^|^^^^
        |                           `------ cannot infer '<char>' to 'WCHAR': WCHAR literal must be exactly 1 character, got 2
     ---'
     "#);
@@ -193,7 +193,7 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:4:17 ]
        |
      4 |         x : INT := 'hello';
-       |                 ^^^^^|^^^^  
+       |                 ^^^^^|^^^^
        |                      `------ expected 'INT', got 'STRING'
     ---'
     ");
@@ -213,7 +213,7 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:4:20 ]
        |
      4 |         s : STRING := 42;
-       |                    ^^|^^  
+       |                    ^^|^^
        |                      `---- expected 'STRING', got 'INT'
     ---'
     ");
@@ -287,7 +287,7 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:4:26 ]
        |
      4 |         s : STRING[2] := 'hello';
-       |                          ^^^|^^^  
+       |                          ^^^|^^^
        |                             `----- cannot infer '<string>' to 'STRING': STRING literal exceeds maximum length of 2, got 5
     ---'
     ");
@@ -307,7 +307,7 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:4:27 ]
        |
      4 |         s : WSTRING[3] := "hello world";
-       |                           ^^^^^^|^^^^^^  
+       |                           ^^^^^^|^^^^^^
        |                                 `-------- cannot infer '<string>' to 'WSTRING': WSTRING literal exceeds maximum length of 3, got 11
     ---'
     "#);
@@ -351,7 +351,7 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:4:20 ]
        |
      4 |         s : STRING := "hello";
-       |                    ^^^^^|^^^^  
+       |                    ^^^^^|^^^^
        |                         `------ expected 'STRING', got 'WSTRING'
     ---'
     "#);

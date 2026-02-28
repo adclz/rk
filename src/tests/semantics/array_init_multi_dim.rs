@@ -44,7 +44,7 @@ fn array_initializer_out_of_bounds(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:8:35 ]
        |
      8 |                 Base : Engine := [5(10)];
-       |                                   ^^|^^  
+       |                                   ^^|^^
        |                                     `---- too many elements in array initializer (expected at most 4)
     ---'
     ");
@@ -71,7 +71,7 @@ fn array_initializer_out_of_bounds_with_single_values(mut with_db: RootDatabase)
        ,-[ file:///test0.st:9:45 ]
        |
      9 |                 Base : Engine := [3(10), 5, 6, 4];
-       |                                             |  
+       |                                             |
        |                                             `-- too many elements in array initializer (expected at most 4)
     ---'
     ");
@@ -98,9 +98,9 @@ fn multi_dimensional_array_initializer_out_of_bounds(mut with_db: RootDatabase) 
        ,-[ file:///test0.st:8:37 ]
        |
      8 |                 Base : Engine := [3(10(10))];
-       |                                     ^^^|^^  
+       |                                     ^^^|^^
        |                                        `---- too many elements in array initializer (expected at most 7)
-       | 
+       |
        | Note: this error occurred in array dimension 2
     ---'
     ");
@@ -127,7 +127,7 @@ fn type_check_multi_dimensional_array(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:8:39 ]
        |
      8 |                 Base : Engine := [3(5(10.5))];
-       |                                       ^^|^  
+       |                                       ^^|^
        |                                         `--- cannot infer '<float>' to 'BOOL': invalid boolean literal
     ---'
     ");
@@ -211,7 +211,7 @@ fn multi_dimensional_first_dim_overflow(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:8:35 ]
        |
      8 |                 Base : Engine := [5(7(1))];
-       |                                   ^^^|^^^  
+       |                                   ^^^|^^^
        |                                      `----- too many elements in array initializer (expected at most 4)
     ---'
     ");
@@ -238,16 +238,16 @@ fn multi_dimensional_both_dims_overflow(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:8:35 ]
        |
      8 |                 Base : Engine := [5(10(1))];
-       |                                   ^^^^|^^^  
+       |                                   ^^^^|^^^
        |                                       `----- too many elements in array initializer (expected at most 4)
     ---'
     [E0605] Error: invalid array access
        ,-[ file:///test0.st:8:37 ]
        |
      8 |                 Base : Engine := [5(10(1))];
-       |                                     ^^|^^  
+       |                                     ^^|^^
        |                                       `---- too many elements in array initializer (expected at most 7)
-       | 
+       |
        | Note: this error occurred in array dimension 2
     ---'
     ");
@@ -274,9 +274,9 @@ fn three_dimensional_array(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:8:37 ]
        |
      8 |                 Data : Cube := [2(3(5(1)))];
-       |                                     ^^|^  
+       |                                     ^^|^
        |                                       `--- too many elements in array initializer (expected at most 4)
-       | 
+       |
        | Note: this error occurred in array dimension 3
     ---'
     ");
@@ -306,7 +306,7 @@ fn array_in_struct_overflow(mut with_db: RootDatabase) {
         ,-[ file:///test0.st:11:45 ]
         |
      11 |                 Base : Engine := (Power := [5(10)], Torque := 100);
-        |                                             ^^|^^  
+        |                                             ^^|^^
         |                                               `---- too many elements in array initializer (expected at most 3)
     ----'
     ");
@@ -336,7 +336,7 @@ fn array_of_struct_overflow(mut with_db: RootDatabase) {
         ,-[ file:///test0.st:11:80 ]
         |
      11 |                 Base : EngineArray := [(Power := 10), (Power := 20), (Power := 30)];
-        |                                                                                ^|  
+        |                                                                                ^|
         |                                                                                 `-- too many elements in array initializer (expected at most 2)
     ----'
     ");
@@ -366,7 +366,7 @@ fn nested_array_in_struct_in_array(mut with_db: RootDatabase) {
         ,-[ file:///test0.st:11:52 ]
         |
      11 |                 Base : EngineArray := [(Values := [5(1)])];
-        |                                                    ^^|^  
+        |                                                    ^^|^
         |                                                      `--- too many elements in array initializer (expected at most 2)
     ----'
     ");
@@ -393,7 +393,7 @@ fn single_element_array_overflow(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:8:38 ]
        |
      8 |                 Data : Single := [1, 2];
-       |                                      |  
+       |                                      |
        |                                      `-- too many elements in array initializer (expected at most 1)
     ---'
     ");
@@ -420,7 +420,7 @@ fn non_zero_based_array_overflow(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:8:42 ]
        |
      8 |                 Data : OneBasedArray := [4(10)];
-       |                                          ^^|^^  
+       |                                          ^^|^^
        |                                            `---- too many elements in array initializer (expected at most 3)
     ---'
     ");

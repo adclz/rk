@@ -95,7 +95,7 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:4:21 ]
        |
      4 |         test1: DATE := LDATE#2012-02-29;
-       |                     ^^^^^^^^^|^^^^^^^^^  
+       |                     ^^^^^^^^^|^^^^^^^^^
        |                              `----------- expected 'DATE', got 'LDATE'
     ---'
     ");
@@ -115,7 +115,7 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:4:20 ]
        |
      4 |         test1: INT := DATE#1984-06-25;
-       |                    ^^^^^^^^^|^^^^^^^^  
+       |                    ^^^^^^^^^|^^^^^^^^
        |                             `---------- expected 'INT', got 'DATE'
     ---'
     ");

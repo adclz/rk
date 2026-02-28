@@ -25,15 +25,15 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:8:14 ]
        |
      4 |         I: INT;
-       |         |  
+       |         |
        |         `-- type is declared by variable 'I' here
-       | 
+       |
      8 |     FOR I := O TO 10 DO
-       |              |  
+       |              |
        |              `-- expected 'INT', got 'BOOL'
-       |              |  
+       |              |
        |              `-- consider explicitly casting with 'BOOL_TO_INT(O)'
-       | 
+       |
        | Help: insert explicit cast 'INT_TO_BOOL(O)'
     ---'
     ");
@@ -59,15 +59,15 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:8:20 ]
        |
      4 |         I: INT;
-       |         |  
+       |         |
        |         `-- type is declared by variable 'I' here
-       | 
+       |
      8 |     FOR I := 10 TO O DO
-       |                    |  
+       |                    |
        |                    `-- can't compare 'INT' with 'BOOL'
-       |                    |  
+       |                    |
        |                    `-- consider explicitly casting with 'BOOL_TO_INT(O)'
-       | 
+       |
        | Help: insert explicit cast 'INT_TO_BOOL(O)'
     ---'
     ");
@@ -93,15 +93,15 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:8:25 ]
        |
      4 |         I: INT;
-       |         |  
+       |         |
        |         `-- type is declared by variable 'I' here
-       | 
+       |
      8 |     FOR I := 0 TO 10 BY O DO
-       |                         |  
+       |                         |
        |                         `-- can't compare 'INT' with 'BOOL'
-       |                         |  
+       |                         |
        |                         `-- consider explicitly casting with 'BOOL_TO_INT(O)'
-       | 
+       |
        | Help: insert explicit cast 'INT_TO_BOOL(O)'
     ---'
     ");
@@ -127,7 +127,7 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:8:11 ]
        |
      8 |     WHILE I DO
-       |           |  
+       |           |
        |           `-- expected 'BOOL', got 'INT'
     ---'
     ");
@@ -153,7 +153,7 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:9:15 ]
        |
      9 |         UNTIL I
-       |               |  
+       |               |
        |               `-- expected 'BOOL', got 'INT'
     ---'
     ");

@@ -23,11 +23,11 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:7:13 ]
        |
      4 |         test: REAL;
-       |         ^^|^  
+       |         ^^|^
        |           `--- type is declared by variable 'test' here
-       | 
+       |
      7 |     test := %IX0.0
-       |             ^^^|^^  
+       |             ^^^|^^
        |                `---- expected 'REAL', got 'BOOL'
     ---'
     ");
@@ -51,11 +51,11 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:7:13 ]
        |
      4 |         test: REAL;
-       |         ^^|^  
+       |         ^^|^
        |           `--- type is declared by variable 'test' here
-       | 
+       |
      7 |     test := %IB0.0
-       |             ^^^|^^  
+       |             ^^^|^^
        |                `---- expected 'REAL', got 'BOOL'
     ---'
     ");
@@ -79,11 +79,11 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:7:13 ]
        |
      4 |         test: REAL;
-       |         ^^|^  
+       |         ^^|^
        |           `--- type is declared by variable 'test' here
-       | 
+       |
      7 |     test := %IW0
-       |             ^^|^  
+       |             ^^|^
        |               `--- expected 'REAL', got 'WORD'
     ---'
     ");
@@ -107,15 +107,15 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:7:13 ]
        |
      4 |         test: REAL;
-       |         ^^|^  
+       |         ^^|^
        |           `--- type is declared by variable 'test' here
-       | 
+       |
      7 |     test := %ID0
-       |             ^^|^  
+       |             ^^|^
        |               `--- expected 'REAL', got 'DWORD'
-       |               |   
+       |               |
        |               `--- consider explicitly casting with 'DWORD_TO_REAL(%ID0)'
-       | 
+       |
        | Help: insert explicit cast 'REAL_TO_DWORD(%ID0)'
     ---'
     ");
@@ -139,11 +139,11 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:7:13 ]
        |
      4 |         test: REAL;
-       |         ^^|^  
+       |         ^^|^
        |           `--- type is declared by variable 'test' here
-       | 
+       |
      7 |     test := %IL0
-       |             ^^|^  
+       |             ^^|^
        |               `--- expected 'REAL', got 'LWORD'
     ---'
     ");
@@ -190,22 +190,22 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:8:10 ]
        |
      4 |         By: REAL;
-       |         ^|  
+       |         ^|
        |          `-- type is declared by variable 'By' here
-       | 
+       |
      8 |     By:= Wo.%X0; // bit 0 of Wo (invalid because we expect a REAL)
-       |          ^^^|^^  
+       |          ^^^|^^
        |             `---- expected 'REAL', got 'BOOL'
     ---'
     [E0301] Error: type mismatch
        ,-[ file:///test0.st:9:10 ]
        |
      4 |         By: REAL;
-       |         ^|  
+       |         ^|
        |          `-- type is declared by variable 'By' here
-       | 
+       |
      9 |     By:= Wo.%1; // bit 1 of Wo (same but with omitted %X)
-       |          ^^|^^  
+       |          ^^|^^
        |            `---- expected 'REAL', got 'BOOL'
     ---'
     ");
@@ -229,11 +229,11 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:8:10 ]
        |
      4 |         By: REAL;
-       |         ^|  
+       |         ^|
        |          `-- type is declared by variable 'By' here
-       | 
+       |
      8 |     By:= Wo.%B0; // byte 0 of Wo (invalid because we expect a REAL)
-       |          ^^^|^^  
+       |          ^^^|^^
        |             `---- expected 'REAL', got 'BYTE'
     ---'
     ");
@@ -257,11 +257,11 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:8:10 ]
        |
      4 |         By: REAL;
-       |         ^|  
+       |         ^|
        |          `-- type is declared by variable 'By' here
-       | 
+       |
      8 |     By:= Do.%W0; // word 0 of Do (invalid because we expect a REAL)
-       |          ^^^|^^  
+       |          ^^^|^^
        |             `---- expected 'REAL', got 'WORD'
     ---'
     ");
@@ -285,15 +285,15 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:8:10 ]
        |
      4 |         By: REAL;
-       |         ^|  
+       |         ^|
        |          `-- type is declared by variable 'By' here
-       | 
+       |
      8 |     By:= Lo.%D0; // dword 0 of Lo (invalid because we expect a REAL)
-       |          ^^^|^^  
+       |          ^^^|^^
        |             `---- expected 'REAL', got 'DWORD'
-       |             |    
+       |             |
        |             `---- consider explicitly casting with 'DWORD_TO_REAL(Lo.%D0)'
-       | 
+       |
        | Help: insert explicit cast 'REAL_TO_DWORD(Lo.%D0)'
     ---'
     ");
@@ -317,11 +317,11 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:8:10 ]
        |
      4 |         By: REAL;
-       |         ^|  
+       |         ^|
        |          `-- type is declared by variable 'By' here
-       | 
+       |
      8 |     By:= Lo.%L0; // lword 0 of Lo (invalid because we expect a REAL)
-       |          ^^^|^^  
+       |          ^^^|^^
        |             `---- expected 'REAL', got 'LWORD'
     ---'
     ");
