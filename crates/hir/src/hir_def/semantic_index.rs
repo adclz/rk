@@ -9,8 +9,10 @@ use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 use tracing::info_span;
 
+use crate::AstId;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::hir_def::config::ConfigDecl;
+use crate::hir_def::hir_node::HirNode;
 use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::program::ProgramDecl;
@@ -46,6 +48,9 @@ pub struct SemanticIndex<'db> {
     /// Map of scope IDs to their corresponding scopes
     pub(crate) scopes: FxHashMap<usize, Arc<Scope<'db>>>,
 
+    /// Map of AST node IDs to their corresponding HIR nodes
+    pub(crate) node_index: FxHashMap<AstId, HirNode<'db>>,
+
     /// Program declarations in the file
     pub programs: Vec<ProgramDecl<'db>>,
 
@@ -73,6 +78,7 @@ impl<'db> SemanticIndex<'db> {
     ) -> Self {
         let global_scope = ScopeId::global(db, file);
         let mut scopes = FxHashMap::default();
+        let node_index = FxHashMap::default();
 
         // Register the global scope so it can be looked up later
         let scope = Scope::new(
@@ -90,6 +96,7 @@ impl<'db> SemanticIndex<'db> {
             file,
             ast,
             scopes,
+            node_index,
             programs: vec![],
             configs: vec![],
             global_namespaces: vec![],

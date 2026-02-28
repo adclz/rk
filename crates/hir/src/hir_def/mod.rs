@@ -7,3 +7,4 @@ pub mod program;
 pub mod scope;
 pub mod semantic_index;
 pub mod using;
+pub mod hir_node;

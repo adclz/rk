@@ -2,12 +2,14 @@ use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::{Parse, ParseSpec, ParseVarSection};
 use crate::check::errors::ToIdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
+use crate::hir_def::hir_node::HirNode;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use crate::hir_def::pous::class::{Class, MethodDecl};
 use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::scope::{ScopeId, ScopeKind};
-use crate::{Modifier, Visibility};
+use crate::hir_ty::head::inheritance::MethodRef;
+use crate::{HirNodeInfo, Modifier, Visibility};
 use ast::generated::{ClassDecl, ClassVariables};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::{AstNode, AstNodeId};
@@ -101,6 +103,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             scope_id,
         ));
 
+        self.register_node(class.into(), HirNode::PouDecl(result));
         self.register_scope(
             ScopeKind::Pou(result),
             usings,
@@ -213,6 +216,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             scope_id,
         );
 
+        self.register_node(method.into(), HirNode::MethodRef(MethodRef::Declared(result)));
         self.register_scope(
             ScopeKind::MethodDecl(result),
             vec![],

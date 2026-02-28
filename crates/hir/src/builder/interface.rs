@@ -1,11 +1,13 @@
 use crate::Visibility;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::{ParseSpec, ParseVarSection};
+use crate::hir_def::hir_node::HirNode;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use crate::hir_def::pous::interface::{Interface, MethodPrototype};
 use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::scope::{ScopeId, ScopeKind};
+use crate::hir_ty::head::inheritance::MethodRef;
 use auto_lsp::anyhow;
 use ide_diagnostic::IdeDiagnostic;
 
@@ -61,6 +63,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             scope_id,
         ));
 
+        self.register_node(interface.into(), HirNode::PouDecl(result));
         self.register_scope(
             ScopeKind::Pou(result),
             usings,
@@ -112,6 +115,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             scope_id,
         );
 
+        self.register_node(method.into(), HirNode::MethodRef(MethodRef::Prototype(result)));
         self.register_scope(
             ScopeKind::MethodProt(result),
             vec![],

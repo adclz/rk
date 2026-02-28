@@ -3,6 +3,7 @@ use crate::builder::ParseVarSection;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::ToIdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
+use crate::hir_def::hir_node::HirNode;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use crate::hir_def::pous::function_block::FunctionBlock;
@@ -119,6 +120,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             scope_id,
         ));
 
+        self.register_node(func.into(), HirNode::PouDecl(result));
         self.register_scope(
             ScopeKind::Pou(result),
             usings,

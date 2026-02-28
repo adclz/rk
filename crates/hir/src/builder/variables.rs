@@ -46,8 +46,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
                                 let Some(result) = sema.try_parse(r) else {
                                     continue;
                                 };
-                                section.push(VariableDecl::new(
-                                    sema.db,
+                                section.push(sema.new_variable(
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Input,
@@ -70,8 +69,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
                                 let Some(spec) = sema.try_parse(r) else {
                                     continue;
                                 };
-                                section.push(VariableDecl::new(
-                                    sema.db,
+                                section.push(sema.new_variable(
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Input,
@@ -94,8 +92,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
                                 let Some(result) = sema.try_parse(r) else {
                                     continue;
                                 };
-                                section.push(VariableDecl::new(
-                                    sema.db,
+                                section.push(sema.new_variable(
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Input,
@@ -118,8 +115,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
                                 let Some(spec) = sema.try_parse(r) else {
                                     continue;
                                 };
-                                section.push(VariableDecl::new(
-                                    sema.db,
+                                section.push(sema.new_variable(
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Input,
@@ -160,8 +156,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
                                 let Some(result) = sema.try_parse(r) else {
                                     continue;
                                 };
-                                section.push(VariableDecl::new(
-                                    sema.db,
+                                section.push(sema.new_variable(
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Input,
@@ -184,8 +179,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
                                 let Some(spec) = sema.try_parse(r) else {
                                     continue;
                                 };
-                                section.push(VariableDecl::new(
-                                    sema.db,
+                                section.push(sema.new_variable(
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Input,
@@ -208,8 +202,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
                                 let Some(result) = sema.try_parse(r) else {
                                     continue;
                                 };
-                                section.push(VariableDecl::new(
-                                    sema.db,
+                                section.push(sema.new_variable(
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Input,
@@ -250,8 +243,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::OutputDecls {
                                 let Some(result) = sema.try_parse(r) else {
                                     continue;
                                 };
-                                section.push(VariableDecl::new(
-                                    sema.db,
+                                section.push(sema.new_variable(
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Output,
@@ -274,8 +266,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::OutputDecls {
                                 let Some(spec) = sema.try_parse(r) else {
                                     continue;
                                 };
-                                section.push(VariableDecl::new(
-                                    sema.db,
+                                section.push(sema.new_variable(
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Output,
@@ -316,8 +307,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbOutputDecls {
                                 let Some(result) = sema.try_parse(r) else {
                                     continue;
                                 };
-                                section.push(VariableDecl::new(
-                                    sema.db,
+                                section.push(sema.new_variable(
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Output,
@@ -340,8 +330,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbOutputDecls {
                                 let Some(spec) = sema.try_parse(r) else {
                                     continue;
                                 };
-                                section.push(VariableDecl::new(
-                                    sema.db,
+                                section.push(sema.new_variable(
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Output,
@@ -382,8 +371,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::TempVarDecls {
                                 let Some(result) = sema.try_parse(r) else {
                                     continue;
                                 };
-                                section.push(VariableDecl::new(
-                                    sema.db,
+                                section.push(sema.new_variable(
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Temp,
@@ -406,8 +394,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::TempVarDecls {
                                 let Some(result) = sema.try_parse(r) else {
                                     continue;
                                 };
-                                section.push(VariableDecl::new(
-                                    sema.db,
+                                section.push(sema.new_variable(
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Temp,
@@ -448,8 +435,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
                                 let Some(spec) = sema.try_parse(r) else {
                                     continue;
                                 };
-                                section.push(VariableDecl::new(
-                                    sema.db,
+                                section.push(sema.new_variable(
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::InOut,
@@ -472,8 +458,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
                                 let Some(result) = sema.try_parse(r) else {
                                     continue;
                                 };
-                                section.push(VariableDecl::new(
-                                    sema.db,
+                                section.push(sema.new_variable(
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::InOut,
@@ -507,8 +492,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
                             let Some(result) = sema.try_parse(r) else {
                                 continue;
                             };
-                            section.push(VariableDecl::new(
-                                sema.db,
+                            section.push(sema.new_variable(
                                 var_name,
                                 child.name.cast(sema.ast).into(),
                                 VariableKind::External,
@@ -528,8 +512,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
                             let Some(spec) = sema.try_parse(r) else {
                                 continue;
                             };
-                            section.push(VariableDecl::new(
-                                sema.db,
+                            section.push(sema.new_variable(
                                 var_name,
                                 child.name.cast(sema.ast).into(),
                                 VariableKind::External,
@@ -621,8 +604,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
                         let Some(result) = sema.try_parse(r) else {
                             continue;
                         };
-                        section.push(VariableDecl::new(
-                            sema.db,
+                        section.push(sema.new_variable(
                             var_name,
                             variable.cast(sema.ast).into(),
                             VariableKind::Var,
@@ -662,8 +644,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::RetainVarDecls {
                         let Some(result) = sema.try_parse(r) else {
                             continue;
                         };
-                        section.push(VariableDecl::new(
-                            sema.db,
+                        section.push(sema.new_variable(
                             var_name,
                             variable.cast(sema.ast).into(),
                             VariableKind::Var,
@@ -703,8 +684,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::NoRetainVarDecls {
                         let Some(result) = sema.try_parse(r) else {
                             continue;
                         };
-                        section.push(VariableDecl::new(
-                            sema.db,
+                        section.push(sema.new_variable(
                             var_name,
                             variable.cast(sema.ast).into(),
                             VariableKind::Var,
@@ -736,8 +716,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::LocPartlyVarDecl {
             let Some(result) = sema.try_parse(r) else {
                 continue;
             };
-            section.push(VariableDecl::new(
-                sema.db,
+            section.push(sema.new_variable(
                 var_name,
                 child.cast(sema.ast).variable_name.cast(sema.ast).into(),
                 VariableKind::Var,
@@ -825,8 +804,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
                     let Some(result) = sema.try_parse(r) else {
                         continue;
                     };
-                    section.push(VariableDecl::new(
-                        sema.db,
+                    section.push(sema.new_variable(
                         name,
                         child.cast(sema.ast).spec.cast(sema.ast).into(),
                         VariableKind::Global,
@@ -850,8 +828,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
                     let Some(result) = sema.try_parse(r) else {
                         continue;
                     };
-                    section.push(VariableDecl::new(
-                        sema.db,
+                    section.push(sema.new_variable(
                         name,
                         child.cast(sema.ast).spec.cast(sema.ast).into(),
                         VariableKind::Global,

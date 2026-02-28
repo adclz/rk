@@ -10,13 +10,13 @@ use crate::hir_def::expressions::expression::{
     BeginPathExpr, DerefExpr, FieldExpr, FuncCall, IndexExpr, Integer, IntegerKind,
     ParamAssignKind, PathExpr, VariableAccessKind,
 };
-use crate::hir_def::expressions::invocation::{Invocation, InvocationKind};
+use crate::hir_def::expressions::invocation::InvocationKind;
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::pous::variable::DirectVariable;
 use crate::{
     hir_def::expressions::expression::{
         AddOperatorKind, BooleanOperatorKind, ComparisonOperatorKind, Elementary, Expr, ExprKind,
-        FoldOperatorKind, MultOperatorKind, ParamAssign, PathExprKind, PrimaryExpr, RefValue,
+        FoldOperatorKind, MultOperatorKind, PathExprKind, PrimaryExpr, RefValue,
         UnaryOperatorKind, VarAccess, VariableAccess,
     },
     hir_def::interned::identifier::Ident,
@@ -39,8 +39,7 @@ impl<'db> Parse<'db> for ast::generated::Expression {
                     let left = or_operator.left.cast(sema.ast).parse(sema)?;
                     let right = or_operator.right.cast(sema.ast).parse(sema)?;
 
-                    Ok(Expr::new(
-                        sema.db,
+                    Ok(sema.new_expr(
                         ExprKind::BooleanOperator {
                             left,
                             operator: BooleanOperatorKind::Or,
@@ -54,8 +53,7 @@ impl<'db> Parse<'db> for ast::generated::Expression {
                     let left = xor_operator.left.cast(sema.ast).parse(sema)?;
                     let right = xor_operator.right.cast(sema.ast).parse(sema)?;
 
-                    Ok(Expr::new(
-                        sema.db,
+                    Ok(sema.new_expr(
                         ExprKind::BooleanOperator {
                             left,
                             operator: BooleanOperatorKind::Xor,
@@ -69,8 +67,7 @@ impl<'db> Parse<'db> for ast::generated::Expression {
                     let left = and_operator.left.cast(sema.ast).parse(sema)?;
                     let right = and_operator.right.cast(sema.ast).parse(sema)?;
 
-                    Ok(Expr::new(
-                        sema.db,
+                    Ok(sema.new_expr(
                         ExprKind::BooleanOperator {
                             left,
                             operator: BooleanOperatorKind::And,
@@ -92,8 +89,7 @@ impl<'db> Parse<'db> for ast::generated::Expression {
                             ast::generated::Eq::Token_LessGreater(_) => ComparisonOperatorKind::Ne,
                         };
 
-                        Ok(Expr::new(
-                            sema.db,
+                        Ok(sema.new_expr(
                             ExprKind::ComparisonOperator {
                                 left,
                                 operator,
@@ -116,8 +112,7 @@ impl<'db> Parse<'db> for ast::generated::Expression {
                             }
                         };
 
-                        Ok(Expr::new(
-                            sema.db,
+                        Ok(sema.new_expr(
                             ExprKind::ComparisonOperator {
                                 left,
                                 operator,
@@ -137,8 +132,7 @@ impl<'db> Parse<'db> for ast::generated::Expression {
                     ast::generated::Add::Token_Minus(_) => AddOperatorKind::Minus,
                 };
 
-                Ok(Expr::new(
-                    sema.db,
+                Ok(sema.new_expr(
                     ExprKind::AddOperator {
                         left,
                         operator,
@@ -157,8 +151,7 @@ impl<'db> Parse<'db> for ast::generated::Expression {
                     ast::generated::Mult::Token_MOD(_) => MultOperatorKind::Mod,
                 };
 
-                Ok(Expr::new(
-                    sema.db,
+                Ok(sema.new_expr(
                     ExprKind::MultOperator {
                         left,
                         operator,
@@ -172,8 +165,7 @@ impl<'db> Parse<'db> for ast::generated::Expression {
                 let left = power_operator.left.cast(sema.ast).parse(sema)?;
                 let right = power_operator.right.cast(sema.ast).parse(sema)?;
 
-                Ok(Expr::new(
-                    sema.db,
+                Ok(sema.new_expr(
                     ExprKind::PowerOperator { left, right },
                     power_operator.into(),
                     sema.current_scope,
@@ -188,8 +180,7 @@ impl<'db> Parse<'db> for ast::generated::Expression {
                     ast::generated::Unary::Token_NOT(_) => UnaryOperatorKind::Not,
                 };
 
-                Ok(Expr::new(
-                    sema.db,
+                Ok(sema.new_expr(
                     ExprKind::UnaryOperator { expr, operator },
                     unary_operator.into(),
                     sema.current_scope,
@@ -218,8 +209,7 @@ impl<'db> Parse<'db> for ast::generated::Expression {
                     FoldOp::FoldGe(_) => FoldOperatorKind::Ge,
                 };
 
-                Ok(Expr::new(
-                    sema.db,
+                Ok(sema.new_expr(
                     ExprKind::FoldExpr {
                         param,
                         param_id,
@@ -245,8 +235,7 @@ impl<'db> Parse<'db> for ast::generated::PrimaryExpression {
                 let name = enum_.enum_path.cast(sema.ast).parse(sema)?;
                 let variant = SpanIdent::from_node(sema.db, sema, enum_.children.cast(sema.ast))?;
 
-                Ok(Expr::new(
-                    sema.db,
+                Ok(sema.new_expr(
                     ExprKind::PrimaryExpr(PrimaryExpr::EnumValue { name, variant }),
                     enum_.into(),
                     sema.current_scope,
@@ -255,9 +244,8 @@ impl<'db> Parse<'db> for ast::generated::PrimaryExpression {
             ast::generated::PrimaryExpression::Constant(c) => c.parse(sema),
             ast::generated::PrimaryExpression::VariableAccess(v) => {
                 let variable = v.to_access(sema)?;
-                Ok(Expr::new(
-                    sema.db,
-                    ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(v.to_access(sema)?)),
+                Ok(sema.new_expr(
+                    ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(variable)),
                     v.into(),
                     sema.current_scope,
                 ))
@@ -281,28 +269,26 @@ impl<'db> Parse<'db> for ast::generated::PrimaryExpression {
                         ast::generated::Comma_ParamAssign::ParamAssign(p) => {
                             match p.children.cast(sema.ast) {
                                     ast::generated::ParamAssignInput_ParamAssignOutput::ParamAssignInput(p) => {
-                                        parameters.push(ParamAssign::new(sema.db, p.into(), sema.current_scope, match p.param.as_ref() {
+                                        let kind = match p.param.as_ref() {
                                             Some(param) => {
                                                 ParamAssignKind::FormalInput { param: SpanIdent::from_node(sema.db, sema, param.cast(sema.ast))?, value: p.value.cast(sema.ast).parse(sema)? }
                                             },
                                             None => {
                                                 ParamAssignKind::NonFormal { value: p.value.cast(sema.ast).parse(sema)? }
                                             }
-                                        }))
+                                        };
+                                        parameters.push(sema.new_param(p.into(), sema.current_scope, kind))
                                     }
                                     ast::generated::ParamAssignInput_ParamAssignOutput::ParamAssignOutput(p) => {
                                         let variable = p.variable.cast(sema.ast).to_access(sema)?;
-
-                                        parameters.push(ParamAssign::new(sema.db, p.into(), sema.current_scope,
-                                            ParamAssignKind::FormalOutput { not: p.not.is_some() , param: SpanIdent::from_node(sema.db, sema, p.param.cast(sema.ast))?, variable })
-                                    )
+                                        let kind = ParamAssignKind::FormalOutput { not: p.not.is_some() , param: SpanIdent::from_node(sema.db, sema, p.param.cast(sema.ast))?, variable };
+                                        parameters.push(sema.new_param(p.into(), sema.current_scope, kind))
                                     }
                                 }
                         }
                     }
                 }
-                Ok(Expr::new(
-                    sema.db,
+                Ok(sema.new_expr(
                     ExprKind::PrimaryExpr(PrimaryExpr::FuncCall(FuncCall::new(
                         sema.db, target, type_args, parameters,
                     ))),
@@ -310,31 +296,32 @@ impl<'db> Parse<'db> for ast::generated::PrimaryExpression {
                     sema.current_scope,
                 ))
             }
-            ast::generated::PrimaryExpression::ParenthesizedExpression(p) => Ok(Expr::new(
-                sema.db,
-                ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr {
-                    expr: p.children.cast(sema.ast).parse(sema)?,
-                }),
-                p.into(),
-                sema.current_scope,
-            )),
+            ast::generated::PrimaryExpression::ParenthesizedExpression(p) => {
+                let inner = p.children.cast(sema.ast).parse(sema)?;
+                Ok(sema.new_expr(
+                    ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr: inner }),
+                    p.into(),
+                    sema.current_scope,
+                ))
+            }
             ast::generated::PrimaryExpression::RefValue(r) => match r.children.cast(sema.ast) {
-                ast::generated::Null_RefAddr::Null(_) => Ok(Expr::new(
-                    sema.db,
+                ast::generated::Null_RefAddr::Null(_) => Ok(sema.new_expr(
                     ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
                         value: RefValue::Null,
                     }),
                     r.into(),
                     sema.current_scope,
                 )),
-                ast::generated::Null_RefAddr::RefAddr(a) => Ok(Expr::new(
-                    sema.db,
-                    ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
-                        value: RefValue::Address(a.children.cast(sema.ast).parse(sema)?),
-                    }),
-                    a.into(),
-                    sema.current_scope,
-                )),
+                ast::generated::Null_RefAddr::RefAddr(a) => {
+                    let inner = a.children.cast(sema.ast).parse(sema)?;
+                    Ok(sema.new_expr(
+                        ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
+                            value: RefValue::Address(inner),
+                        }),
+                        a.into(),
+                        sema.current_scope,
+                    ))
+                }
             },
         }
     }
@@ -519,8 +506,7 @@ impl<'db> Parse<'db> for ast::generated::Constant {
                 },
             };
 
-        Ok(Expr::new(
-            sema.db,
+        Ok(sema.new_expr(
             ExprKind::PrimaryExpr(PrimaryExpr::Literal(lit)),
             self.into(),
             sema.current_scope,
@@ -579,22 +565,12 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::VariableAccess {
 
         match self.variable.cast(sema.ast).children.cast(sema.ast) {
             ast::generated::BeginPathExpression_DirectVariable::DirectVariable(v) => {
-                Ok(VariableAccess::new(
-                    sema.db,
-                    VariableAccessKind::Direct(v.to_direct_variable(sema)?),
-                    multibits,
-                    self.into(),
-                    sema.current_scope,
-                ))
+                let kind = VariableAccessKind::Direct(v.to_direct_variable(sema)?);
+                Ok(sema.new_variable_access(kind, multibits, self.into(), sema.current_scope))
             }
             ast::generated::BeginPathExpression_DirectVariable::BeginPathExpression(v) => {
-                Ok(VariableAccess::new(
-                    sema.db,
-                    VariableAccessKind::Symbolic(v.parse(sema)?),
-                    multibits,
-                    self.into(),
-                    sema.current_scope,
-                ))
+                let kind = VariableAccessKind::Symbolic(v.parse(sema)?);
+                Ok(sema.new_variable_access(kind, multibits, self.into(), sema.current_scope))
             }
         }
     }
@@ -616,22 +592,12 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::Variable {
                     ast::generated::Offset_Partly::Partly(partly) => (None, true),
                 };
 
-                Ok(VariableAccess::new(
-                    sema.db,
-                    VariableAccessKind::Direct(v.to_direct_variable(sema)?),
-                    None,
-                    self.into(),
-                    sema.current_scope,
-                ))
+                let kind = VariableAccessKind::Direct(v.to_direct_variable(sema)?);
+                Ok(sema.new_variable_access(kind, None, self.into(), sema.current_scope))
             }
             ast::generated::BeginPathExpression_DirectVariable::BeginPathExpression(v) => {
-                Ok(VariableAccess::new(
-                    sema.db,
-                    VariableAccessKind::Symbolic(v.parse(sema)?),
-                    None,
-                    self.into(),
-                    sema.current_scope,
-                ))
+                let kind = VariableAccessKind::Symbolic(v.parse(sema)?);
+                Ok(sema.new_variable_access(kind, None, self.into(), sema.current_scope))
             }
         }
     }
@@ -642,13 +608,8 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::DirectVariable {
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<VariableAccess<'db>, IdeDiagnostic> {
-        Ok(VariableAccess::new(
-            sema.db,
-            VariableAccessKind::Direct(self.to_direct_variable(sema)?),
-            None,
-            self.into(),
-            sema.current_scope,
-        ))
+        let kind = VariableAccessKind::Direct(self.to_direct_variable(sema)?);
+        Ok(sema.new_variable_access(kind, None, self.into(), sema.current_scope))
     }
 }
 
@@ -663,8 +624,7 @@ impl<'db> Parse<'db> for ast::generated::BeginPathExpression {
             ast::generated::Invocation_PathExpression::Invocation(i) => {
                 match i.children.cast(sema.ast) {
                     ast::generated::AnyInvocation_SuperBodyInvocation::SuperBodyInvocation(s) => {
-                        let invocation = Invocation::new(
-                            sema.db,
+                        let invocation = sema.new_invocation(
                             s.into(),
                             s.SUPER.cast(sema.ast).into(),
                             sema.current_scope,
@@ -693,8 +653,7 @@ impl<'db> Parse<'db> for ast::generated::BeginPathExpression {
 
                         let invocation = match any.invocation.cast(sema.ast) {
                             ast::generated::SuperInvocation_ThisInvocation::SuperInvocation(s) => {
-                                Invocation::new(
-                                    sema.db,
+                                sema.new_invocation(
                                     self.into(),
                                     s.SUPER.cast(sema.ast).into(),
                                     sema.current_scope,
@@ -702,8 +661,7 @@ impl<'db> Parse<'db> for ast::generated::BeginPathExpression {
                                 )
                             }
                             ast::generated::SuperInvocation_ThisInvocation::ThisInvocation(t) => {
-                                Invocation::new(
-                                    sema.db,
+                                sema.new_invocation(
                                     self.into(),
                                     t.THIS.cast(sema.ast).into(),
                                     sema.current_scope,

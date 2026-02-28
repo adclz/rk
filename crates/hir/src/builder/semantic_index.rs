@@ -8,10 +8,11 @@ use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
-use crate::Visibility;
+use crate::{AstId, Visibility};
 use crate::check::errors::ToIdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::config::ConfigDecl;
+use crate::hir_def::hir_node::HirNode;
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::Pou;
@@ -32,6 +33,9 @@ pub struct SemanticIndexBuilder<'db> {
 
     /// Maps scope IDs to their corresponding scopes.
     pub(crate) scope_keys: FxHashMap<usize, Arc<Scope<'db>>>,
+
+    /// Maps AST node IDs to their corresponding HIR nodes.
+    pub(crate) node_index: FxHashMap<AstId, HirNode<'db>>,
 
     pub(crate) programs: Vec<ProgramDecl<'db>>,
     pub(crate) configs: Vec<ConfigDecl<'db>>,
@@ -66,6 +70,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             ast,
             source,
             scope_keys: FxHashMap::default(),
+            node_index: FxHashMap::default(),
             programs: vec![],
             configs: vec![],
             global_namespaces: vec![],
@@ -103,6 +108,121 @@ impl<'db> SemanticIndexBuilder<'db> {
                 T::default()
             }
         }
+    }
+
+    /// Register a HIR node in the node index, keyed by its AstId.
+    pub fn register_node(&mut self, id: AstId, node: HirNode<'db>) {
+        self.node_index.insert(id, node);
+    }
+
+    /// Create a VariableDecl, register it in the node index, and return it.
+    pub fn new_variable(
+        &mut self,
+        name: crate::hir_def::interned::identifier::Ident,
+        name_id: crate::AstId,
+        kind: crate::hir_def::pous::variable::VariableKind,
+        variadic: bool,
+        spec: crate::hir_def::expressions::spec::Spec<'db>,
+        init: Option<crate::hir_def::expressions::expression::InitExpr<'db>>,
+        id: crate::AstId,
+        scope_id: crate::hir_def::scope::ScopeId<'db>,
+    ) -> crate::hir_def::pous::variable::VariableDecl<'db> {
+        let var = crate::hir_def::pous::variable::VariableDecl::new(
+            self.db, name, name_id, kind, variadic, spec, init, id, scope_id,
+        );
+        self.register_node(id, HirNode::VariableDecl(var));
+        var
+    }
+
+    /// Create an Expr, register it in the node index, and return it.
+    pub fn new_expr(
+        &mut self,
+        kind: crate::hir_def::expressions::expression::ExprKind<'db>,
+        id: AstId,
+        scope_id: ScopeId<'db>,
+    ) -> crate::hir_def::expressions::expression::Expr<'db> {
+        let expr = crate::hir_def::expressions::expression::Expr::new(
+            self.db, kind, id, scope_id,
+        );
+        self.register_node(id, HirNode::Expr(expr));
+        expr
+    }
+
+    /// Create a Spec, register it in the node index, and return it.
+    pub fn new_spec(
+        &mut self,
+        kind: crate::hir_def::expressions::spec::SpecKind<'db>,
+        id: AstId,
+        scope_id: ScopeId<'db>,
+    ) -> crate::hir_def::expressions::spec::Spec<'db> {
+        let spec = crate::hir_def::expressions::spec::Spec::new(
+            self.db, kind, id, scope_id,
+        );
+        self.register_node(id, HirNode::Spec(spec));
+        spec
+    }
+
+    /// Create a VariableAccess, register it in the node index, and return it.
+    pub fn new_variable_access(
+        &mut self,
+        kind: crate::hir_def::expressions::expression::VariableAccessKind<'db>,
+        multibits: Option<crate::hir_def::expressions::expression::MultibitsPart>,
+        id: AstId,
+        scope_id: ScopeId<'db>,
+    ) -> crate::hir_def::expressions::expression::VariableAccess<'db> {
+        let access = crate::hir_def::expressions::expression::VariableAccess::new(
+            self.db, kind, multibits, id, scope_id,
+        );
+        self.register_node(id, HirNode::VariableAccess(access));
+        access
+    }
+
+    /// Create an Invocation, register it in the node index, and return it.
+    pub fn new_invocation(
+        &mut self,
+        id: AstId,
+        name_id: AstId,
+        scope_id: ScopeId<'db>,
+        kind: crate::hir_def::expressions::invocation::InvocationKind,
+    ) -> crate::hir_def::expressions::invocation::Invocation<'db> {
+        let inv = crate::hir_def::expressions::invocation::Invocation::new(
+            self.db, id, name_id, scope_id, kind,
+        );
+        self.register_node(id, HirNode::Invocation(inv));
+        inv
+    }
+
+    /// Create a ParamAssign, register it in the node index, and return it.
+    pub fn new_param(
+        &mut self,
+        id: AstId,
+        scope_id: ScopeId<'db>,
+        kind: crate::hir_def::expressions::expression::ParamAssignKind<'db>,
+    ) -> crate::hir_def::expressions::expression::ParamAssign<'db> {
+        let param = crate::hir_def::expressions::expression::ParamAssign::new(
+            self.db, id, scope_id, kind,
+        );
+        self.register_node(id, HirNode::Param(param));
+        param
+    }
+
+    /// Create a StructElement, register it in the node index, and return it.
+    pub fn new_struct_element(
+        &mut self,
+        name: crate::hir_def::interned::identifier::Ident,
+        name_id: AstId,
+        located: Option<crate::hir_def::expressions::expression::VariableAccess<'db>>,
+        multibits: Option<crate::hir_def::expressions::expression::MultibitsPart>,
+        spec: crate::hir_def::expressions::spec::Spec<'db>,
+        init: Option<crate::hir_def::expressions::expression::InitExpr<'db>>,
+        id: AstId,
+        scope_id: ScopeId<'db>,
+    ) -> crate::hir_def::expressions::spec::StructElement<'db> {
+        let elem = crate::hir_def::expressions::spec::StructElement::new(
+            self.db, name, name_id, located, multibits, spec, init, id, scope_id,
+        );
+        self.register_node(id, HirNode::StructElement(elem));
+        elem
     }
 
     /// Register a scope in the scope map.
@@ -221,6 +341,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             file: self.file,
             ast: Arc::clone(&self.ast.nodes),
             scopes: self.scope_keys,
+            node_index: self.node_index,
             programs: self.programs,
             configs: self.configs,
             global_namespaces: self.global_namespaces,

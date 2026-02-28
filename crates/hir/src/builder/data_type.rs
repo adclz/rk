@@ -2,6 +2,7 @@ use crate::Visibility;
 use crate::{
     builder::{Parse, ParseSpec, semantic_index::SemanticIndexBuilder},
     hir_def::{
+        hir_node::HirNode,
         interned::identifier::Ident,
         pous::{data_type::DataType, pou::Pou},
         scope::ScopeKind,
@@ -54,6 +55,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             scope_id,
         ));
 
+        self.register_node(data_type.into(), HirNode::PouDecl(result));
         self.register_scope(
             ScopeKind::Pou(result),
             vec![],

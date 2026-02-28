@@ -1,6 +1,7 @@
 use crate::Visibility;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::{Parse, ParseSpec, ParseVarSection};
+use crate::hir_def::hir_node::HirNode;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::pous::function::Function;
 use crate::hir_def::pous::pou::Pou;
@@ -62,6 +63,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             scope_id,
         ));
 
+        self.register_node(func.into(), HirNode::PouDecl(result));
         self.register_scope(
             ScopeKind::Pou(result),
             usings,

@@ -5,6 +5,7 @@ use super::semantic_index::SemanticIndexBuilder;
 use crate::Visibility;
 use crate::check::errors::ToIdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
+use crate::hir_def::hir_node::HirNode;
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::interned::namespace::SpanNamespacePath;
 use crate::hir_def::namespace::NamespaceDecl;
@@ -92,6 +93,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             scope_id,
         );
 
+        self.register_node(nested.into(), HirNode::Namespace(result));
         self.register_scope(
             ScopeKind::Namespace(result),
             usings,

@@ -14,11 +14,11 @@ use crate::{
     hir_def::{
         expressions::{
             expression::{
-                Elementary, Expr, ExprKind, InitExpr, InitExprKind, Integer, IntegerKind,
+                Elementary, ExprKind, InitExpr, InitExprKind, Integer, IntegerKind,
                 MultibitsPart, PrimaryExpr,
             },
             spec::{
-                ElementarySpec, Enum, EnumVariant, Spec, SpecKind, Struct, StructElement, SubRange,
+                ElementarySpec, Enum, EnumVariant, Spec, SpecKind, Struct, SubRange,
             },
         },
         interned::identifier::Ident,
@@ -42,8 +42,7 @@ impl<'db> ParseSpec<'db> for ast::generated::NamespaceAccess {
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<Spec<'db>, IdeDiagnostic> {
-        Ok(Spec::new(
-            sema.db,
+        Ok(sema.new_spec(
             SpecKind::Target(SpanNamespaceAccess::from_ast(sema.db, sema, self)?),
             self.into(),
             sema.current_scope,
@@ -84,8 +83,7 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
         type AstSpec = ast::generated::ElemTypeName;
         Ok(match self {
             AstSpec::BitStrTypeName(str) => match str.children.cast(sema.ast) {
-                ast::generated::BoolName_MultibitsTypeName::BoolName(_) => Spec::new(
-                    sema.db,
+                ast::generated::BoolName_MultibitsTypeName::BoolName(_) => sema.new_spec(
                     SpecKind::Simple(ElementarySpec::Bool),
                     self.into(),
                     sema.current_scope,
@@ -93,32 +91,28 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
                 ast::generated::BoolName_MultibitsTypeName::MultibitsTypeName(a) => {
                     match a.children.cast(sema.ast) {
                         ast::generated::ByteName_DwordName_LwordName_WordName::ByteName(_) => {
-                            Spec::new(
-                                sema.db,
+                            sema.new_spec(
                                 SpecKind::Simple(ElementarySpec::Byte),
                                 self.into(),
                                 sema.current_scope,
                             )
                         }
                         ast::generated::ByteName_DwordName_LwordName_WordName::WordName(_) => {
-                            Spec::new(
-                                sema.db,
+                            sema.new_spec(
                                 SpecKind::Simple(ElementarySpec::Word),
                                 self.into(),
                                 sema.current_scope,
                             )
                         }
                         ast::generated::ByteName_DwordName_LwordName_WordName::DwordName(_) => {
-                            Spec::new(
-                                sema.db,
+                            sema.new_spec(
                                 SpecKind::Simple(ElementarySpec::DWord),
                                 self.into(),
                                 sema.current_scope,
                             )
                         }
                         ast::generated::ByteName_DwordName_LwordName_WordName::LwordName(_) => {
-                            Spec::new(
-                                sema.db,
+                            sema.new_spec(
                                 SpecKind::Simple(ElementarySpec::LWord),
                                 self.into(),
                                 sema.current_scope,
@@ -134,14 +128,12 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
                     }
                     ast::generated::IntTypeName_RealTypeName::RealTypeName(real) => {
                         match real.children.cast(sema.ast) {
-                            ast::generated::LrealName_RealName::RealName(_) => Spec::new(
-                                sema.db,
+                            ast::generated::LrealName_RealName::RealName(_) => sema.new_spec(
                                 SpecKind::Simple(ElementarySpec::Real),
                                 self.into(),
                                 sema.current_scope,
                             ),
-                            ast::generated::LrealName_RealName::LrealName(_) => Spec::new(
-                                sema.db,
+                            ast::generated::LrealName_RealName::LrealName(_) => sema.new_spec(
                                 SpecKind::Simple(ElementarySpec::LReal),
                                 self.into(),
                                 sema.current_scope,
@@ -151,56 +143,48 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
                 }
             }
             AstSpec::AnyDateTypeName(date_type_name) => match date_type_name {
-                ast::generated::AnyDateTypeName::DateTypeName(_) => Spec::new(
-                    sema.db,
+                ast::generated::AnyDateTypeName::DateTypeName(_) => sema.new_spec(
                     SpecKind::Simple(ElementarySpec::Date),
                     self.into(),
                     sema.current_scope,
                 ),
-                ast::generated::AnyDateTypeName::LDateTypeName(_) => Spec::new(
-                    sema.db,
+                ast::generated::AnyDateTypeName::LDateTypeName(_) => sema.new_spec(
                     SpecKind::Simple(ElementarySpec::LDate),
                     self.into(),
                     sema.current_scope,
                 ),
             },
             AstSpec::AnyTimeTypeName(time_type_name) => match time_type_name {
-                ast::generated::AnyTimeTypeName::TimeTypeName(_) => Spec::new(
-                    sema.db,
+                ast::generated::AnyTimeTypeName::TimeTypeName(_) => sema.new_spec(
                     SpecKind::Simple(ElementarySpec::Time),
                     self.into(),
                     sema.current_scope,
                 ),
-                ast::generated::AnyTimeTypeName::LTimeTypeName(_) => Spec::new(
-                    sema.db,
+                ast::generated::AnyTimeTypeName::LTimeTypeName(_) => sema.new_spec(
                     SpecKind::Simple(ElementarySpec::LTime),
                     self.into(),
                     sema.current_scope,
                 ),
             },
             AstSpec::AnyTodTypeName(tod_type_name) => match tod_type_name {
-                ast::generated::AnyTodTypeName::TodTypeName(_) => Spec::new(
-                    sema.db,
+                ast::generated::AnyTodTypeName::TodTypeName(_) => sema.new_spec(
                     SpecKind::Simple(ElementarySpec::Tod),
                     self.into(),
                     sema.current_scope,
                 ),
-                ast::generated::AnyTodTypeName::LtodTypeName(_) => Spec::new(
-                    sema.db,
+                ast::generated::AnyTodTypeName::LtodTypeName(_) => sema.new_spec(
                     SpecKind::Simple(ElementarySpec::LTod),
                     self.into(),
                     sema.current_scope,
                 ),
             },
             AstSpec::AnyDtTypeName(dt_type_name) => match dt_type_name {
-                ast::generated::AnyDtTypeName::DtTypeName(_) => Spec::new(
-                    sema.db,
+                ast::generated::AnyDtTypeName::DtTypeName(_) => sema.new_spec(
                     SpecKind::Simple(ElementarySpec::DateAndTime),
                     self.into(),
                     sema.current_scope,
                 ),
-                ast::generated::AnyDtTypeName::LDtTypeName(_) => Spec::new(
-                    sema.db,
+                ast::generated::AnyDtTypeName::LDtTypeName(_) => sema.new_spec(
                     SpecKind::Simple(ElementarySpec::LDateTime),
                     self.into(),
                     sema.current_scope,
@@ -215,23 +199,20 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
                             let unsigned_int = unsigned_int.cast(sema.ast);
                             let ident = Ident::from_node(sema.db, sema.file, unsigned_int)?;
                             let integer = Integer::new(sema.db, ident, IntegerKind::Signed);
-                            let length_expr = Expr::new(
-                                sema.db,
+                            let length_expr = sema.new_expr(
                                 ExprKind::PrimaryExpr(PrimaryExpr::Literal(
                                     Elementary::InferInteger(integer),
                                 )),
                                 unsigned_int.into(),
                                 sema.current_scope,
                             );
-                            Spec::new(
-                                sema.db,
+                            sema.new_spec(
                                 SpecKind::SizedString(length_expr),
                                 self.into(),
                                 sema.current_scope,
                             )
                         }
-                        None => Spec::new(
-                            sema.db,
+                        None => sema.new_spec(
                             SpecKind::Simple(ElementarySpec::String),
                             self.into(),
                             sema.current_scope,
@@ -244,39 +225,34 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
                             let unsigned_int = unsigned_int.cast(sema.ast);
                             let ident = Ident::from_node(sema.db, sema.file, unsigned_int)?;
                             let integer = Integer::new(sema.db, ident, IntegerKind::Signed);
-                            let length_expr = Expr::new(
-                                sema.db,
+                            let length_expr = sema.new_expr(
                                 ExprKind::PrimaryExpr(PrimaryExpr::Literal(
                                     Elementary::InferInteger(integer),
                                 )),
                                 unsigned_int.into(),
                                 sema.current_scope,
                             );
-                            Spec::new(
-                                sema.db,
+                            sema.new_spec(
                                 SpecKind::SizedWString(length_expr),
                                 self.into(),
                                 sema.current_scope,
                             )
                         }
-                        None => Spec::new(
-                            sema.db,
+                        None => sema.new_spec(
                             SpecKind::Simple(ElementarySpec::WString),
                             self.into(),
                             sema.current_scope,
                         ),
                     },
                     ast::generated::CharName_StringName_WcharName_WstringName::CharName(_) => {
-                        Spec::new(
-                            sema.db,
+                        sema.new_spec(
                             SpecKind::Simple(ElementarySpec::Char),
                             self.into(),
                             sema.current_scope,
                         )
                     }
                     ast::generated::CharName_StringName_WcharName_WstringName::WcharName(_) => {
-                        Spec::new(
-                            sema.db,
+                        sema.new_spec(
                             SpecKind::Simple(ElementarySpec::WChar),
                             self.into(),
                             sema.current_scope,
@@ -296,26 +272,22 @@ impl<'db> ParseSpec<'db> for ast::generated::IntTypeName {
         Ok(match self.children.cast(sema.ast) {
             ast::generated::SignIntTypeName_UnsignIntTypeName::SignIntTypeName(int) => {
                 match int.children.cast(sema.ast) {
-                    ast::generated::DintName_IntName_LintName_SintName::SintName(_) => Spec::new(
-                        sema.db,
+                    ast::generated::DintName_IntName_LintName_SintName::SintName(_) => sema.new_spec(
                         SpecKind::Simple(ElementarySpec::SInt),
                         self.into(),
                         sema.current_scope,
                     ),
-                    ast::generated::DintName_IntName_LintName_SintName::IntName(_) => Spec::new(
-                        sema.db,
+                    ast::generated::DintName_IntName_LintName_SintName::IntName(_) => sema.new_spec(
                         SpecKind::Simple(ElementarySpec::Int),
                         self.into(),
                         sema.current_scope,
                     ),
-                    ast::generated::DintName_IntName_LintName_SintName::DintName(_) => Spec::new(
-                        sema.db,
+                    ast::generated::DintName_IntName_LintName_SintName::DintName(_) => sema.new_spec(
                         SpecKind::Simple(ElementarySpec::DInt),
                         self.into(),
                         sema.current_scope,
                     ),
-                    ast::generated::DintName_IntName_LintName_SintName::LintName(_) => Spec::new(
-                        sema.db,
+                    ast::generated::DintName_IntName_LintName_SintName::LintName(_) => sema.new_spec(
                         SpecKind::Simple(ElementarySpec::LInt),
                         self.into(),
                         sema.current_scope,
@@ -325,32 +297,28 @@ impl<'db> ParseSpec<'db> for ast::generated::IntTypeName {
             ast::generated::SignIntTypeName_UnsignIntTypeName::UnsignIntTypeName(uint) => {
                 match uint.children.cast(sema.ast) {
                     ast::generated::UdintName_UintName_UlintName_UsintName::UsintName(_) => {
-                        Spec::new(
-                            sema.db,
+                        sema.new_spec(
                             SpecKind::Simple(ElementarySpec::USInt),
                             self.into(),
                             sema.current_scope,
                         )
                     }
                     ast::generated::UdintName_UintName_UlintName_UsintName::UintName(_) => {
-                        Spec::new(
-                            sema.db,
+                        sema.new_spec(
                             SpecKind::Simple(ElementarySpec::UInt),
                             self.into(),
                             sema.current_scope,
                         )
                     }
                     ast::generated::UdintName_UintName_UlintName_UsintName::UdintName(_) => {
-                        Spec::new(
-                            sema.db,
+                        sema.new_spec(
                             SpecKind::Simple(ElementarySpec::UDInt),
                             self.into(),
                             sema.current_scope,
                         )
                     }
                     ast::generated::UdintName_UintName_UlintName_UsintName::UlintName(_) => {
-                        Spec::new(
-                            sema.db,
+                        sema.new_spec(
                             SpecKind::Simple(ElementarySpec::ULInt),
                             self.into(),
                             sema.current_scope,
@@ -424,8 +392,7 @@ impl<'db> ParseSpec<'db> for ast::generated::ArrayTypeSpec {
             ast::generated::RefTypeSpec_SimpleTypeSpec::RefTypeSpec(ref_spec) => {
                 let mut target_type = ref_spec.children.cast(sema.ast).to_spec(sema)?;
                 for _ in ref_spec.ref_count.iter() {
-                    target_type = Spec::new(
-                        sema.db,
+                    target_type = sema.new_spec(
                         SpecKind::Ref(target_type),
                         self.into(),
                         sema.current_scope,
@@ -435,8 +402,7 @@ impl<'db> ParseSpec<'db> for ast::generated::ArrayTypeSpec {
             }
         }?;
 
-        Ok(Spec::new(
-            sema.db,
+        Ok(sema.new_spec(
             SpecKind::Array(Array::new(sema.db, ranges, kind)),
             self.into(),
             sema.current_scope,
@@ -614,7 +580,7 @@ impl<'db> Parse<'db> for ast::generated::StructElem {
     ) -> anyhow::Result<Self::Output, IdeDiagnostic> {
         let name = SpanIdent::from_node(sema.db, sema, self.name.cast(sema.ast))?;
         let value = Box::new(self.value.cast(sema.ast).parse(sema)?);
-
+ 
         Ok(InitExpr::new(
             sema.db,
             InitExprKind::StructElement { name, value },
@@ -631,9 +597,9 @@ impl<'db> ParseSpec<'db> for ast::generated::ArrayConformand {
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<Spec<'db>, IdeDiagnostic> {
-        Ok(Spec::new(
-            sema.db,
-            SpecKind::ArrayConformand(self.children.cast(sema.ast).to_spec(sema)?),
+        let inner = self.children.cast(sema.ast).to_spec(sema)?;
+        Ok(sema.new_spec(
+            SpecKind::ArrayConformand(inner),
             self.into(),
             sema.current_scope,
         ))
@@ -701,8 +667,7 @@ impl<'db> ParseSpec<'db> for ast::generated::StructTypeSpec {
                 (None, None)
             };
 
-            elements.push(StructElement::new(
-                sema.db,
+            elements.push(sema.new_struct_element(
                 name,
                 elem.cast(sema.ast).name.cast(sema.ast).into(),
                 located,
@@ -714,8 +679,7 @@ impl<'db> ParseSpec<'db> for ast::generated::StructTypeSpec {
             ));
         }
 
-        Ok(Spec::new(
-            sema.db,
+        Ok(sema.new_spec(
             SpecKind::Struct(Struct::new(sema.db, self.overlap.is_some(), elements)),
             self.into(),
             sema.current_scope,
@@ -773,8 +737,7 @@ impl<'db> ParseSpec<'db> for ast::generated::RefTypeSpec {
 
         // for each ref count, we need to create a new spec that wraps the previous one in a RefSpec
         for _ in self.ref_count.iter() {
-            target_type = Spec::new(
-                sema.db,
+            target_type = sema.new_spec(
                 SpecKind::Ref(target_type),
                 self.into(),
                 sema.current_scope,
@@ -815,8 +778,7 @@ impl<'db> ParseSpec<'db> for ast::generated::EnumTypeSpec {
 
             variants.push(EnumVariant { name, value });
         }
-        Ok(Spec::new(
-            sema.db,
+        Ok(sema.new_spec(
             SpecKind::Enum(Enum::new(sema.db, typ, variants)),
             self.into(),
             sema.current_scope,
@@ -845,8 +807,7 @@ impl<'db> ParseSpec<'db> for ast::generated::SubrangeTypeSpec {
             .children
             .cast(sema.ast)
             .parse(sema)?;
-        Ok(Spec::new(
-            sema.db,
+        Ok(sema.new_spec(
             SpecKind::Subrange(SubRange::new(sema.db, spec, lower, upper)),
             self.into(),
             sema.current_scope,

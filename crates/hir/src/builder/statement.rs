@@ -4,7 +4,7 @@ use crate::builder::expression::ParseVariableAccess;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::ToIdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
-use crate::hir_def::expressions::expression::{FuncCall, ParamAssign, ParamAssignKind};
+use crate::hir_def::expressions::expression::{FuncCall, ParamAssignKind};
 use crate::hir_def::expressions::statement::{CaseKind, Stmt, StmtKind};
 use crate::hir_def::interned::identifier::SpanIdent;
 use auto_lsp::anyhow::{self};
@@ -46,21 +46,20 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                         ast::generated::Comma_ParamAssign::ParamAssign(p) => {
                             match p.children.cast(sema.ast) {
                                     ast::generated::ParamAssignInput_ParamAssignOutput::ParamAssignInput(p) => {
-                                        parameters.push(ParamAssign::new(sema.db, p.into(), sema.current_scope, match p.param.as_ref() {
+                                        let kind = match p.param.as_ref() {
                                             Some(param) => {
                                                 ParamAssignKind::FormalInput { param: SpanIdent::from_node(sema.db, sema, param.cast(sema.ast))?, value: p.value.cast(sema.ast).parse(sema)? }
                                             },
                                             None => {
                                                 ParamAssignKind::NonFormal { value: p.value.cast(sema.ast).parse(sema)? }
                                             }
-                                        }))
+                                        };
+                                        parameters.push(sema.new_param(p.into(), sema.current_scope, kind))
                                     }
                                     ast::generated::ParamAssignInput_ParamAssignOutput::ParamAssignOutput(p) => {
                                         let variable = p.variable.cast(sema.ast).to_access(sema)?;
-
-                                        parameters.push(ParamAssign::new(sema.db, p.into(), sema.current_scope,
-                                            ParamAssignKind::FormalOutput { not: p.not.is_some() , param: SpanIdent::from_node(sema.db, sema, p.param.cast(sema.ast))?, variable })
-                                    )
+                                        let kind = ParamAssignKind::FormalOutput { not: p.not.is_some() , param: SpanIdent::from_node(sema.db, sema, p.param.cast(sema.ast))?, variable };
+                                        parameters.push(sema.new_param(p.into(), sema.current_scope, kind))
                                     }
                                 }
                         }

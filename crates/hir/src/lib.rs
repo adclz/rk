@@ -16,7 +16,7 @@ pub mod hir_def;
 pub mod hir_ty;
 pub mod query_string;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct AstId(pub(crate) usize);
 
 impl<T: AstNode> From<&T> for AstId {

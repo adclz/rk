@@ -8,6 +8,7 @@ use crate::{
         variables::{ParseLocatedVar, ParseProgDecl},
     },
     hir_def::{
+        hir_node::HirNode,
         interned::identifier::Ident,
         pous::variable::{LocatedVariable, VariableDecl},
         program::{ProgAccessDecl, ProgramDecl},
@@ -42,7 +43,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
         });
 
-        let program = ProgramDecl::new(
+        let result = ProgramDecl::new(
             self.db,
             name,
             program.name.cast(self.ast).into(),
@@ -54,15 +55,16 @@ impl<'db> SemanticIndexBuilder<'db> {
             scope_id,
         );
 
+        self.register_node(program.into(), HirNode::Program(result));
         self.register_scope(
-            ScopeKind::Program(program),
+            ScopeKind::Program(result),
             vec![],
             scope_id,
             Visibility::empty(),
             previous_scope,
         );
 
-        Ok(program)
+        Ok(result)
     }
 }
 
