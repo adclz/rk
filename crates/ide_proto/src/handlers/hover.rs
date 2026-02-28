@@ -107,7 +107,7 @@ impl<'db> HoverHandler<'db> for ProgramDecl<'db> {
                 "#
                 ),
             }),
-            range: Some(self.get_span(db).into()),
+            range: Some(self.get_name_span(db).into()),
         })
     }
 }
@@ -154,7 +154,7 @@ impl<'db> HoverHandler<'db> for Pou<'db> {
                 "#
                 ),
             }),
-            range: Some(self.get_span(db).into()),
+            range: Some(self.get_name_span(db).into()),
         })
     }
 }
@@ -190,7 +190,7 @@ impl<'db> HoverHandler<'db> for VariableDecl<'db> {
                 "#
                 ),
             }),
-            range: Some(self.get_span(db).into()),
+            range: Some(self.get_name_span(db).into()),
         })
     }
 }
@@ -206,35 +206,6 @@ impl<'db> HoverHandler<'db> for Spec<'db> {
 
         let desc = infer.full_type_name(db);
         let path = infer.path_name(db);
-
-        Some(Hover {
-            contents: HoverContents::Markup(MarkupContent {
-                kind: MarkupKind::Markdown,
-                value: format!(
-                    r#"
-{comment}
-```iecst
-{path}{desc}
-```
-                "#
-                ),
-            }),
-            range: Some(self.get_span(db).into()),
-        })
-    }
-}
-
-impl<'db> HoverHandler<'db> for InitExpr<'db> {
-    fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
-        let typ = self.infer(db);
-
-        let comment = typ
-            .as_hir_node(db)
-            .and_then(|n| n.get_comment(db))
-            .unwrap_or_default();
-
-        let desc = typ.full_type_name(db);
-        let path = typ.path_name(db);
 
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
@@ -286,7 +257,7 @@ impl<'db> HoverHandler<'db> for MethodRef<'db> {
                 "#
                 ),
             }),
-            range: Some(self.get_span(db).into()),
+            range: Some(self.get_name_span(db).into()),
         })
     }
 }
@@ -310,8 +281,14 @@ impl<'db> HoverHandler<'db> for StructElement<'db> {
                 "#
                 ),
             }),
-            range: Some(self.get_span(db).into()),
+            range: Some(self.get_name_span(db).into()),
         })
+    }
+}
+
+impl<'db> HoverHandler<'db> for InitExpr<'db> {
+    fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
+        self.infer(db).hover(db, offset)
     }
 }
 
@@ -382,6 +359,8 @@ impl<'db> HoverHandler<'db> for Type<'db> {
             Type::Class(f) => Pou::Class(*f).hover(db, offset),
             Type::Interface(f) => Pou::Interface(*f).hover(db, offset),
             Type::DataType(f) => Pou::DataType(*f).hover(db, offset),
+            Type::StructElement(st) => st.hover(db, offset),
+            Type::MethodDecl(m) => m.hover(db, offset),
             Type::Variable((var, _multibits)) => var.hover(db, offset),
             _ => Some(Hover {
                 contents: HoverContents::Markup(MarkupContent {

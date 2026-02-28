@@ -429,9 +429,11 @@ END_FUNCTION_BLOCK
     ```
                     
 
+
     ```iecst
-    INT
+    oil: INT
     ```
+                    
 
 
     ```iecst
@@ -439,8 +441,9 @@ END_FUNCTION_BLOCK
     ```
                     
 
+
     ```iecst
-    BOOL
+    fuel: BOOL
     ```
     ");
 }

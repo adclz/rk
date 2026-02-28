@@ -114,12 +114,13 @@ impl<'db> DefinitionHandler<'db> for Type<'db> {
             Type::FunctionBlock(f) => f as _,
             Type::Class(c) => c as _,
             Type::Interface(i) => i as _,
+            Type::StructElement(st) => st as _,
+            Type::MethodDecl(m) => m as _,
             Type::DataType(dt) => match dt.spec(db).kind(db) {
                 SpecKind::Target(_) => return dt.spec(db).infer(db).definition(db),
                 _ => dt as _,
             },
             Type::Variable((var, _multibits)) => return var.spec(db).infer(db).definition(db),
-            Type::StructElement(st) => return st.spec(db).infer(db).definition(db),
             _ => None?,
         };
 
