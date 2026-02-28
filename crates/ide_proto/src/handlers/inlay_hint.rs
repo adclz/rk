@@ -19,7 +19,7 @@ impl<'db> InlayHintHandler<'db> for HirNode<'db> {
             HirNode::Namespace(n) => n.inlay_hint(db),
             HirNode::PouDecl(p) => p.inlay_hint(db),
             HirNode::Param(p) => p.inlay_hint(db),
-            HirNode::InitExpr { curr, .. } => curr.inlay_hint(db),
+            HirNode::InitExpr(i) => i.inlay_hint(db),
             _ => None,
         }
     }

@@ -3,7 +3,7 @@ use crate::{
     AstId, HirNodeInfo,
     hir_def::{
         expressions::{
-            expression::{Expr, InitExpr, ParamAssign, ParamAssignKind, PathExpr, VariableAccess},
+            expression::{Expr, InitExpr, ParamAssign, PathExpr, VariableAccess},
             invocation::Invocation,
             spec::{Spec, StructElement},
         },
@@ -14,15 +14,8 @@ use crate::{
         scope::ScopeId,
         using::Using,
     },
-    hir_ty::{head::inheritance::MethodRef, ty::Type},
+    hir_ty::head::inheritance::MethodRef,
 };
-
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
-pub enum PathExprRoot<'db> {
-    VariableAccess(VariableAccess<'db>),
-    Invocation(Invocation<'db>),
-    PathExpr(PathExpr<'db>),
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum HirNode<'db> {
@@ -39,14 +32,8 @@ pub enum HirNode<'db> {
     Invocation(Invocation<'db>),
     Expr(Expr<'db>),
     Param(ParamAssign<'db>),
-    InitExpr {
-        prev: InitExpr<'db>,
-        curr: InitExpr<'db>,
-    },
-    PathExpr {
-        prev: PathExprRoot<'db>,
-        curr: PathExpr<'db>,
-    },
+    InitExpr(InitExpr<'db>),
+    PathExpr(PathExpr<'db>),
 }
 
 impl<'db> HirNodeInfo<'db> for HirNode<'db> {
@@ -61,11 +48,11 @@ impl<'db> HirNodeInfo<'db> for HirNode<'db> {
             HirNode::Spec(s) => s.get_scope_id(db),
             HirNode::MethodRef(m) => m.get_scope_id(db),
             HirNode::Expr(e) => e.get_scope_id(db),
-            HirNode::PathExpr { curr, .. } => curr.get_scope_id(db),
+            HirNode::PathExpr(p) => p.get_scope_id(db),
             HirNode::VariableAccess(v) => v.get_scope_id(db),
             HirNode::Using(u) => u.get_scope_id(db),
             HirNode::Param(p) => p.get_scope_id(db),
-            HirNode::InitExpr { curr, .. } => curr.get_scope_id(db),
+            HirNode::InitExpr(i) => i.get_scope_id(db),
             HirNode::Invocation(i) => i.get_scope_id(db),
         }
     }
@@ -81,11 +68,11 @@ impl<'db> HirNodeInfo<'db> for HirNode<'db> {
             HirNode::Spec(s) => s.get_id(db),
             HirNode::MethodRef(m) => m.get_id(db),
             HirNode::Expr(e) => e.get_id(db),
-            HirNode::PathExpr { curr, .. } => curr.get_id(db),
+            HirNode::PathExpr(p) => p.get_id(db),
             HirNode::VariableAccess(v) => v.get_id(db),
             HirNode::Using(u) => u.get_id(db),
             HirNode::Param(p) => p.get_id(db),
-            HirNode::InitExpr { curr, .. } => curr.get_id(db),
+            HirNode::InitExpr(i) => i.get_id(db),
             HirNode::Invocation(i) => i.get_id(db),
         }
     }

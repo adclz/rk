@@ -9,7 +9,6 @@ use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 use tracing::info_span;
 
-use crate::AstId;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::hir_def::config::ConfigDecl;
 use crate::hir_def::hir_node::HirNode;
@@ -48,8 +47,8 @@ pub struct SemanticIndex<'db> {
     /// Map of scope IDs to their corresponding scopes
     pub(crate) scopes: FxHashMap<usize, Arc<Scope<'db>>>,
 
-    /// Map of AST node IDs to their corresponding HIR nodes
-    pub(crate) node_index: FxHashMap<AstId, HirNode<'db>>,
+    /// HIR nodes indexed by document order
+    pub node_index: Vec<HirNode<'db>>,
 
     /// Program declarations in the file
     pub programs: Vec<ProgramDecl<'db>>,
@@ -78,7 +77,7 @@ impl<'db> SemanticIndex<'db> {
     ) -> Self {
         let global_scope = ScopeId::global(db, file);
         let mut scopes = FxHashMap::default();
-        let node_index = FxHashMap::default();
+        let node_index = vec![];
 
         // Register the global scope so it can be looked up later
         let scope = Scope::new(

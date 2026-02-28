@@ -701,20 +701,16 @@ impl<'db> Parse<'db> for ast::generated::PathExpression {
         Ok(match self.children.cast(sema.ast) {
             ast::generated::DerefExpression_FieldExpression_IndexExpression_VarAccess::FieldExpression(
                 field_expr,
-            ) => PathExpr::new(
-                sema.db,
-                PathExprKind::Field(field_expr.parse(sema)?),
-                self.into(),
-                sema.current_scope,
-            ),
+            ) => {
+                let kind = PathExprKind::Field(field_expr.parse(sema)?);
+                sema.new_path_expr(kind, self.into(), sema.current_scope)
+            }
             ast::generated::DerefExpression_FieldExpression_IndexExpression_VarAccess::IndexExpression(
                 index_expr,
-            ) => PathExpr::new(
-                sema.db,
-                PathExprKind::Index(index_expr.parse(sema)?),
-                self.into(),
-                sema.current_scope,
-            ),
+            ) => {
+                let kind = PathExprKind::Index(index_expr.parse(sema)?);
+                sema.new_path_expr(kind, self.into(), sema.current_scope)
+            }
             ast::generated::DerefExpression_FieldExpression_IndexExpression_VarAccess::DerefExpression(
                 deref_expr,
             ) => {
@@ -730,23 +726,15 @@ impl<'db> Parse<'db> for ast::generated::PathExpression {
                         }
                     }
                 }
-                PathExpr::new(
-                    sema.db,
-                    PathExprKind::Deref(DerefExpr {
-                        path: path.unwrap(),
-                        count,
-                    }),
-                    self.into(),
-                    sema.current_scope,
-                )
+                let kind = PathExprKind::Deref(DerefExpr {
+                    path: path.unwrap(),
+                    count,
+                });
+                sema.new_path_expr(kind, self.into(), sema.current_scope)
             }
             ast::generated::DerefExpression_FieldExpression_IndexExpression_VarAccess::VarAccess(var_access) => {
-                PathExpr::new(
-                    sema.db,
-                    PathExprKind::VarAccess(var_access.parse(sema)?),
-                    self.into(),
-                    sema.current_scope,
-                )
+                let kind = PathExprKind::VarAccess(var_access.parse(sema)?);
+                sema.new_path_expr(kind, self.into(), sema.current_scope)
             }
         })
     }

@@ -32,7 +32,7 @@ impl<'db> SemanticTokensHandler<'db> for HirNode<'db> {
             HirNode::MethodRef(m) => m.semantic_tokens(db, builder),
             HirNode::VariableDecl(v) => v.semantic_tokens(db, builder),
             HirNode::StructElement(st) => st.semantic_tokens(db, builder),
-            HirNode::PathExpr { curr, .. } => curr.semantic_tokens(db, builder),
+            HirNode::PathExpr(p) => p.semantic_tokens(db, builder),
             HirNode::VariableAccess(v) => v.semantic_tokens(db, builder),
             HirNode::Expr(e) => e.semantic_tokens(db, builder),
             _ => {}

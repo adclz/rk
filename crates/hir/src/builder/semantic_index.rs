@@ -8,7 +8,7 @@ use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
-use crate::{AstId, Visibility};
+use crate::{AstId, HirNodeInfo, Visibility};
 use crate::check::errors::ToIdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::config::ConfigDecl;
@@ -34,8 +34,8 @@ pub struct SemanticIndexBuilder<'db> {
     /// Maps scope IDs to their corresponding scopes.
     pub(crate) scope_keys: FxHashMap<usize, Arc<Scope<'db>>>,
 
-    /// Maps AST node IDs to their corresponding HIR nodes.
-    pub(crate) node_index: FxHashMap<AstId, HirNode<'db>>,
+    /// HIR nodes indexed by document order.
+    pub(crate) node_index: Vec<HirNode<'db>>,
 
     pub(crate) programs: Vec<ProgramDecl<'db>>,
     pub(crate) configs: Vec<ConfigDecl<'db>>,
@@ -70,7 +70,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             ast,
             source,
             scope_keys: FxHashMap::default(),
-            node_index: FxHashMap::default(),
+            node_index: vec![],
             programs: vec![],
             configs: vec![],
             global_namespaces: vec![],
@@ -111,8 +111,8 @@ impl<'db> SemanticIndexBuilder<'db> {
     }
 
     /// Register a HIR node in the node index, keyed by its AstId.
-    pub fn register_node(&mut self, id: AstId, node: HirNode<'db>) {
-        self.node_index.insert(id, node);
+    pub fn register_node(&mut self, _id: AstId, node: HirNode<'db>) {
+        self.node_index.push(node);
     }
 
     /// Create a VariableDecl, register it in the node index, and return it.
@@ -225,6 +225,34 @@ impl<'db> SemanticIndexBuilder<'db> {
         elem
     }
 
+    /// Create a PathExpr, register it in the node index, and return it.
+    pub fn new_path_expr(
+        &mut self,
+        kind: crate::hir_def::expressions::expression::PathExprKind<'db>,
+        id: AstId,
+        scope_id: ScopeId<'db>,
+    ) -> crate::hir_def::expressions::expression::PathExpr<'db> {
+        let path = crate::hir_def::expressions::expression::PathExpr::new(
+            self.db, kind, id, scope_id,
+        );
+        self.register_node(id, HirNode::PathExpr(path));
+        path
+    }
+
+    /// Create an InitExpr, register it in the node index, and return it.
+    pub fn new_init_expr(
+        &mut self,
+        kind: crate::hir_def::expressions::expression::InitExprKind<'db>,
+        id: AstId,
+        scope_id: ScopeId<'db>,
+    ) -> crate::hir_def::expressions::expression::InitExpr<'db> {
+        let init = crate::hir_def::expressions::expression::InitExpr::new(
+            self.db, kind, id, scope_id,
+        );
+        self.register_node(id, HirNode::InitExpr(init));
+        init
+    }
+
     /// Register a scope in the scope map.
     pub fn register_scope(
         &mut self,
@@ -335,6 +363,9 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         self.scope_keys
             .insert(global_scope.scope(self.db), Arc::new(scope));
+
+        self.node_index
+            .sort_unstable_by_key(|node| *node.get_id(self.db));
 
         SemanticIndex {
             scope: global_scope,

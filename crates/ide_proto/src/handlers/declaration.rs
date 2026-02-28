@@ -21,9 +21,9 @@ impl<'db> DeclarationHandler<'db> for HirNode<'db> {
         match self {
             HirNode::VariableDecl(v) => v.declaration(db),
             HirNode::StructElement(s) => s.declaration(db),
-            HirNode::InitExpr { curr, .. } => curr.declaration(db),
+            HirNode::InitExpr(i) => i.declaration(db),
             HirNode::Spec(s) => s.declaration(db),
-            HirNode::PathExpr { curr, .. } => curr.declaration(db),
+            HirNode::PathExpr(p) => p.declaration(db),
             HirNode::VariableAccess(v) => v.declaration(db),
             HirNode::Expr(e) => e.declaration(db),
             HirNode::Param(p) => p.declaration(db),

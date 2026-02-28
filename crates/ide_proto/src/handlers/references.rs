@@ -130,11 +130,11 @@ fn resolve_cursor_target<'db>(
         HirNode::StructElement(st) => Type::StructElement(*st),
         // References
         HirNode::Spec(spec) => spec.infer(db),
-        HirNode::PathExpr { curr, .. } => curr.infer(db),
+        HirNode::PathExpr(p) => p.infer(db),
         HirNode::VariableAccess(v) => v.infer(db),
         HirNode::Expr(e) => e.infer(db),
         HirNode::Param(p) => p.infer(db),
-        HirNode::InitExpr { curr, .. } => curr.infer(db),
+        HirNode::InitExpr(i) => i.infer(db),
         HirNode::NamespaceAccess(ns) => ns.infer(db),
         HirNode::Invocation(i) => i.infer(db),
         _ => return None,
@@ -157,7 +157,7 @@ fn resolve_walk_target<'db>(
         HirNode::StructElement(st) => Type::StructElement(*st),
         // Leaf-level reference nodes only
         HirNode::Spec(spec) => spec.infer(db),
-        HirNode::PathExpr { curr, .. } => curr.infer(db),
+        HirNode::PathExpr(p) => p.infer(db),
         HirNode::VariableAccess(v) => v.infer(db),
         HirNode::Param(p) => p.infer(db),
         HirNode::NamespaceAccess(ns) => ns.infer(db),
