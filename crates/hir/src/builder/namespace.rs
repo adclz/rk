@@ -1,4 +1,3 @@
-use ast::generated::ERRInvalidPouKeyword_ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl;
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 
@@ -11,7 +10,7 @@ use crate::hir_def::interned::namespace::SpanNamespacePath;
 use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::scope::ScopeKind;
 use ide_diagnostic::IdeDiagnostic;
-
+ 
 impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_namespace(
         &mut self,
@@ -19,7 +18,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         nested: &ast::generated::NamespaceDecl,
     ) -> anyhow::Result<NamespaceDecl<'db>, IdeDiagnostic> {
         type Decl =
-            ERRInvalidPouKeyword_ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl;
+            ast::generated::ERRConfigNotAllowedInNamespace_ERRInvalidPouKeyword_ERRProgramNotAllowedInNamespace_ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl;
 
         let scope_id = self.generate_scope_id();
         let path = SpanNamespacePath::from((self.db, parent_path, self.current_scope));
@@ -65,6 +64,18 @@ impl<'db> SemanticIndexBuilder<'db> {
                     Decl::ERRInvalidPouKeyword(err) => {
                         self.errors.push(
                             SyntaxError::InvalidPouKeyword(err.get_span()).to_diagnostic(self.db),
+                        );
+                    }
+                    Decl::ERRProgramNotAllowedInNamespace(err) => {
+                        self.errors.push(
+                            SyntaxError::ProgramNotAllowedInNamespace(err.get_span())
+                                .to_diagnostic(self.db),
+                        );
+                    }
+                    Decl::ERRConfigNotAllowedInNamespace(err) => {
+                        self.errors.push(
+                            SyntaxError::ConfigNotAllowedInNamespace(err.get_span())
+                                .to_diagnostic(self.db),
                         );
                     }
                 }

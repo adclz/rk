@@ -303,6 +303,9 @@ module.exports = grammar({
       prec(-1, repeat1($._class_variables)),
     ERR_fb_variables_after_method: ($) => prec(-1, repeat1($._fb_variables)),
 
+    ERR_program_not_allowed_in_namespace : ($) => prec(-1, $.prog_decl),
+    ERR_config_not_allowed_in_namespace: ($) => prec(-1, $.config_decl),
+
     // Table 3 - Comments
 
     line_comment: ($) => token(seq("//", /.*/)),
@@ -1497,6 +1500,8 @@ module.exports = grammar({
           $.interface_decl,
           $.namespace_decl,
           $.ERR_invalid_pou_keyword,
+          $.ERR_program_not_allowed_in_namespace,
+          $.ERR_config_not_allowed_in_namespace,
         ),
       ),
 

@@ -434,3 +434,45 @@ END_FUNCTION"#;
     ---'
     ");
 }
+
+#[rstest]
+fn program_not_allowed_in_namespace(mut with_db: RootDatabase) {
+    let source = r#"
+NAMESPACE test
+    PROGRAM myProgram
+    END_PROGRAM
+END_NAMESPACE
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0022] Error: syntax
+       ,-[ file:///test0.st:3:5 ]
+       |
+     3 | ,->     PROGRAM myProgram
+     4 | |->     END_PROGRAM
+       | |
+       | `--------------------- programs are not allowed in namespaces
+    ---'
+    ");
+}
+
+#[rstest]
+fn config_not_allowed_in_namespace(mut with_db: RootDatabase) {
+    let source = r#"
+NAMESPACE test
+    CONFIGURATION myConfig
+    END_CONFIGURATION
+END_NAMESPACE
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0023] Error: syntax
+       ,-[ file:///test0.st:3:5 ]
+       |
+     3 | ,->     CONFIGURATION myConfig
+     4 | |->     END_CONFIGURATION
+       | |
+       | `--------------------------- configs are not allowed in namespaces
+    ---'
+    ");
+}

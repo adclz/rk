@@ -239,6 +239,22 @@
         }
       }
     },
+    "ERR_program_not_allowed_in_namespace": {
+      "type": "PREC",
+      "value": -1,
+      "content": {
+        "type": "SYMBOL",
+        "name": "prog_decl"
+      }
+    },
+    "ERR_config_not_allowed_in_namespace": {
+      "type": "PREC",
+      "value": -1,
+      "content": {
+        "type": "SYMBOL",
+        "name": "config_decl"
+      }
+    },
     "line_comment": {
       "type": "TOKEN",
       "content": {
@@ -7249,6 +7265,14 @@
           {
             "type": "SYMBOL",
             "name": "ERR_invalid_pou_keyword"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "ERR_program_not_allowed_in_namespace"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "ERR_config_not_allowed_in_namespace"
           }
         ]
       }

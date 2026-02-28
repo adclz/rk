@@ -54,6 +54,8 @@ pub enum SyntaxError {
         file: File,
         span: Span,
     },
+    ProgramNotAllowedInNamespace(Span),
+    ConfigNotAllowedInNamespace(Span),
     // tree-sitter
     MissingNode {
         file: File,
@@ -89,9 +91,11 @@ impl ErrorCode for SyntaxError {
             SyntaxError::MissingEqualInForList { .. } => "E0016",
             SyntaxError::FunctionCallInInitExpression(_) => "E0017",
             SyntaxError::InvalidPouKeyword(_) => "E0018",
+            SyntaxError::MissingNode { .. } => "E0019",
             SyntaxError::OutputAssignInAssignment { .. } => "E0020",
             SyntaxError::OutputAssignInForList { .. } => "E0021",
-            SyntaxError::MissingNode { .. } => "E0019",
+            SyntaxError::ProgramNotAllowedInNamespace(_) => "E0022",
+            SyntaxError::ConfigNotAllowedInNamespace(_) => "E0023",
             SyntaxError::SyntaxError { .. } => "E0050",
         }
     }
@@ -412,6 +416,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 .desc(self)
                 .range(*span)
                 .call(),
+                
             Self::FunctionCallInInitExpression(span) => diag()
                 .message("function call in initialization expression is not allowed".into())
                 .severity(DiagnosticSeverity::ERROR)
@@ -460,6 +465,18 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 };
                 diagnostic
             }
+            Self::ProgramNotAllowedInNamespace(span) => diag()
+                .message("programs are not allowed in namespaces".into())
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(*span)
+                .call(),
+            Self::ConfigNotAllowedInNamespace(span) => diag()
+                .message("configs are not allowed in namespaces".into())
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(*span)
+                .call(),
             Self::SyntaxError { span, err } => diag()
                 .message(err.to_string())
                 .severity(DiagnosticSeverity::ERROR)

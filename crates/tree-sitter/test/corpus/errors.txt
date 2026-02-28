@@ -616,3 +616,41 @@ END_FUNCTION
                 (int_literal
                   (signed_int
                     (unsigned_int)))))))))))
+
+================================================================================
+program decl in namespace
+================================================================================
+
+NAMESPACE ns
+  PROGRAM prgrm END_PROGRAM
+END_NAMESPACE
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (namespace_decl
+        (namespace_h_name
+          (identifier))
+        (namespace_elements
+          (ERR_program_not_allowed_in_namespace
+            (prog_decl
+              (identifier))))))
+
+================================================================================
+config decl in namespace
+================================================================================
+
+NAMESPACE ns
+  CONFIGURATION prgrm END_CONFIGURATION
+END_NAMESPACE
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (namespace_decl
+        (namespace_h_name
+          (identifier))
+        (namespace_elements
+          (ERR_config_not_allowed_in_namespace
+            (config_decl
+              (identifier))))))

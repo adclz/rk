@@ -560,6 +560,21 @@
     }
   },
   {
+    "type": "ERR_config_not_allowed_in_namespace",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "config_decl",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "ERR_empty_right_hand_assignment",
     "named": true,
     "fields": {}
@@ -718,6 +733,21 @@
     "type": "ERR_output_assign_in_for_control",
     "named": true,
     "fields": {}
+  },
+  {
+    "type": "ERR_program_not_allowed_in_namespace",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "prog_decl",
+          "named": true
+        }
+      ]
+    }
   },
   {
     "type": "ERR_unexpected_super_in_path",
@@ -4178,7 +4208,15 @@
       "required": true,
       "types": [
         {
+          "type": "ERR_config_not_allowed_in_namespace",
+          "named": true
+        },
+        {
           "type": "ERR_invalid_pou_keyword",
+          "named": true
+        },
+        {
+          "type": "ERR_program_not_allowed_in_namespace",
           "named": true
         },
         {
