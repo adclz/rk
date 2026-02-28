@@ -6,6 +6,7 @@ use ide_proto::CLASS;
 use ide_proto::FUNCTION;
 use ide_proto::INTERFACE;
 use ide_proto::SUPPORTED_TYPES;
+use ide_proto::handlers::SemanticTokensHandler;
 use ide_proto::walk::WalkHir;
 use rstest::rstest;
 

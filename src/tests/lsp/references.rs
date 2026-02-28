@@ -1,7 +1,7 @@
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::Url;
 use db::RootDatabase;
-use ide_proto::walk::descendant_at;
+use ide_proto::{handlers::ReferencesHandler, walk::descendant_at};
 use insta::assert_snapshot;
 use rstest::rstest;
 
@@ -24,7 +24,7 @@ END_FUNCTION
 
     let offset = source.find("MyFB").unwrap();
     let node = descendant_at(&with_db, file, offset).unwrap();
-    let refs = node.references(&with_db).unwrap();
+    let refs = node.locations(&with_db).unwrap();
 
     assert_snapshot!(render_references(&with_db, &refs, "MyFB"), @r"
     Advice: 2 reference(s) to 'MyFB'
@@ -57,7 +57,7 @@ END_FUNCTION
 
     let offset = source.find("x : INT").unwrap();
     let node = descendant_at(&with_db, file, offset).unwrap();
-    let refs = node.references(&with_db).unwrap();
+    let refs = node.locations(&with_db).unwrap();
 
     assert_snapshot!(render_references(&with_db, &refs, "x"), @r"
     Advice: 4 reference(s) to 'x'
@@ -95,7 +95,7 @@ END_FUNCTION
 
     let offset = source.find("x := 1").unwrap();
     let node = descendant_at(&with_db, file, offset).unwrap();
-    let refs = node.references(&with_db).unwrap();
+    let refs = node.locations(&with_db).unwrap();
 
     assert_snapshot!(render_references(&with_db, &refs, "x"), @r"
     Advice: 4 reference(s) to 'x'
@@ -144,7 +144,7 @@ END_FUNCTION
 
     let offset = source1.find("SharedFB").unwrap();
     let node = descendant_at(&with_db, file1, offset).unwrap();
-    let refs = node.references(&with_db).unwrap();
+    let refs = node.locations(&with_db).unwrap();
 
     assert_snapshot!(render_references(&with_db, &refs, "SharedFB"), @r"
     Advice: 3 reference(s) to 'SharedFB'
@@ -191,7 +191,7 @@ END_FUNCTION
 
     let offset = source.find("x : INT").unwrap();
     let node = descendant_at(&with_db, file, offset).unwrap();
-    let refs = node.references(&with_db).unwrap();
+    let refs = node.locations(&with_db).unwrap();
 
     assert_snapshot!(render_references(&with_db, &refs, "x"), @r"
     Advice: 2 reference(s) to 'x'
@@ -229,7 +229,7 @@ END_NAMESPACE
 
     let offset = source1.find("MyNs").unwrap();
     let node = descendant_at(&with_db, file1, offset).unwrap();
-    let refs = node.references(&with_db).unwrap();
+    let refs = node.locations(&with_db).unwrap();
 
     assert_snapshot!(render_references(&with_db, &refs, "MyNs"), @r"
     Advice: 2 reference(s) to 'MyNs'
@@ -268,7 +268,7 @@ END_FUNCTION
 
     let offset = source1.find("MyNs").unwrap();
     let node = descendant_at(&with_db, file1, offset).unwrap();
-    let refs = node.references(&with_db).unwrap();
+    let refs = node.locations(&with_db).unwrap();
 
     assert_snapshot!(render_references(&with_db, &refs, "MyNs"), @r"
     Advice: 2 reference(s) to 'MyNs'
@@ -307,7 +307,7 @@ END_FUNCTION
 
     let offset = source2.find("MyNs").unwrap();
     let node = descendant_at(&with_db, file2, offset).unwrap();
-    let refs = node.references(&with_db).unwrap();
+    let refs = node.locations(&with_db).unwrap();
 
     assert_snapshot!(render_references(&with_db, &refs, "MyNs"), @r"
     Advice: 2 reference(s) to 'MyNs'

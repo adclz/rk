@@ -2,7 +2,7 @@ use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use hir::HirNodeInfo;
 use ide_proto::{
-    handlers::completions_utils::{CompletionCtx, QueryMode},
+    handlers::{CompletionHandler, completions_utils::{CompletionCtx, QueryMode}},
     walk::descendant_at,
 };
 use rstest::rstest;
@@ -137,7 +137,7 @@ END_FUNCTION_BLOCK
 
     add_sources(&mut with_db, &[source]);
     let expr = descendant_at(&with_db, *with_db.get_files().iter().last().unwrap(), 128).unwrap();
-    let completions = expr.completion(&with_db, 128, None).unwrap();
+    let completions = expr.completion(&with_db, 128, None, "".into()).unwrap();
 
     assert_eq!(completions.len(), 8); // statements ... + 3 variants
     assert!(format!("{completions:?}").contains("List#A"));

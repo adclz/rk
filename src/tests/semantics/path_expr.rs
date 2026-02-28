@@ -210,11 +210,11 @@ END_FUNCTION
        |     ^^|^^    ^^|^
        |       `------------ VARIABLE <none>
        |                |
+       |                `--- VARIABLE [Index -> ARRAY [1..10, 1..10] OF INT]
+       |                |
        |                `--- VARIABLE [Index -> INT]
        |                |
        |                `--- VARIABLE [Index -> ARRAY [1..10, 1..10] OF INT, Index -> INT]
-       |                |
-       |                `--- VARIABLE [Index -> ARRAY [1..10, 1..10] OF INT]
     ---'
     ");
 }

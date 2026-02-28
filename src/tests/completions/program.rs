@@ -1,6 +1,7 @@
 use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use hir::{HasName, hir_def::semantic_index::semantic_index};
+use ide_proto::handlers::CompletionHandler;
 use ide_proto::handlers::completions_utils::{CompletionCtx, QueryMode};
 use ide_proto::walk::completion_descendant_at;
 use rstest::rstest;
@@ -27,7 +28,7 @@ END_PROGRAM
     let offset = source.find("END_PROGRAM").unwrap() - 1;
     let node = completion_descendant_at(&with_db, file, offset).unwrap();
     let completions = node
-        .completion(&with_db, offset, None)
+        .completion(&with_db, offset, None, "".into())
         .unwrap();
 
     let labels: Vec<&str> = completions.iter().map(|c| c.label.as_str()).collect();
@@ -62,7 +63,7 @@ END_PROGRAM
     let offset = source.find("END_PROGRAM").unwrap() - 1;
     let node = completion_descendant_at(&with_db, file, offset).unwrap();
     let completions = node
-        .completion(&with_db, offset, None)
+        .completion(&with_db, offset, None, "".into())
         .unwrap();
 
     let labels: Vec<&str> = completions.iter().map(|c| c.label.as_str()).collect();

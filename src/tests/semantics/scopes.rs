@@ -9,6 +9,7 @@ use hir::{
     hir_def::{
         pous::pou::Pou,
         semantic_index::{get_scope, semantic_index},
+        using::Using,
     },
     hir_ty::{head::signature::infer_signature, index_graphs::namespace_index, ty::Type},
 };
@@ -200,7 +201,7 @@ END_NAMESPACE
 
 /// Utility to collect all using in a given source file.
 fn collect_usings(db: &dyn WorkspaceDataBase, sema: &SemanticIndex) -> String {
-    let mut result = vec![];
+    let mut result: Vec<Using> = vec![];
     let _ = sema.walk_hir(db, &mut |n| {
         if let HirNode::Using(path) = n {
             result.push(path);

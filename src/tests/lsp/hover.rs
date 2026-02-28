@@ -5,9 +5,9 @@ use auto_lsp::lsp_types::HoverContents;
 use auto_lsp::lsp_types::MarkedString;
 use db::RootDatabase;
 use hir::HasName;
+use hir::hir_def::hir_node::HirNode;
 use hir::hir_def::semantic_index::semantic_index;
 use ide_proto::handlers::HoverHandler;
-use ide_proto::hir_node::HirNode;
 use ide_proto::walk::WalkHir;
 use insta::assert_snapshot;
 use rstest::rstest;
@@ -190,15 +190,15 @@ END_NAMESPACE
         hover_markup(ty.hover(db, ty.get_name_span(db).start_byte)?.contents)
     }), @r"
     ```iecst
-    System.Subsystem1.Subsystem1
-    FUNCTION_BLOCK fb2
+    System.Subsystem1
+    FUNCTION_BLOCK fb1
     ```
                     
 
 
     ```iecst
-    System.Subsystem1
-    FUNCTION_BLOCK fb1
+    System.Subsystem1.Subsystem1
+    FUNCTION_BLOCK fb2
     ```
     ");
 }
@@ -293,7 +293,19 @@ END_TYPE
 
 
     ```iecst
+    INT
+    ```
+                    
+
+
+    ```iecst
     INT (0..6)
+    ```
+                    
+
+
+    ```iecst
+    INT
     ```
                     
 
@@ -408,7 +420,7 @@ END_FUNCTION_BLOCK
 "#;
 
     assert_snapshot!(collect_hovers(&mut with_db, source, |db, node| {
-        let HirNode::PathExpr { .. } = node else { return None };
+        let HirNode::PathExpr(_) = node else { return None };
         assert!(node.hover(db, 0).is_some(), "Expected hover on path expression");
         hover_markup(node.hover(db, 0)?.contents)
     }), @r"

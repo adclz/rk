@@ -138,18 +138,24 @@ END_FUNCTION_BLOCK"#;
         |                 `------ Expr
         |
       5 |     fn_call(input := 5, output => test);
-        |     ^^^|^^^ ^^^^^|^^^^  ^^^^^^^|^^^^^^
+        |     ^^^|^^^ ^^^^^|^^^|  ^^^^^^^|^^^^|^
         |        `-------------------------------- PathExpr
-        |                  |             |
+        |                  |   |         |    |
         |                  `---------------------- Param
-        |                                |
+        |                      |         |    |
+        |                      `------------------ Expr
+        |                                |    |
         |                                `-------- Param
+        |                                     |
+        |                                     `--- VariableAccess
+        |                                     |
+        |                                     `--- PathExpr
         |
       7 |     IF test > 5 THEN
         |        ^^|^|^^|
-        |          `------- Expr
-        |          | |  |
         |          `------- VariableAccess
+        |          | |  |
+        |          `------- Expr
         |          | |  |
         |          `------- PathExpr
         |            |  |
@@ -158,7 +164,11 @@ END_FUNCTION_BLOCK"#;
         |               `-- Expr
         |
      10 |     FOR i := 1 TO 10 BY 1 DO
-        |              |    ^|    |
+        |         |    |    ^|    |
+        |         `------------------ VariableAccess
+        |         |    |     |    |
+        |         `------------------ PathExpr
+        |              |     |    |
         |              `------------- Expr
         |                    |    |
         |                    `------- Expr
@@ -167,9 +177,9 @@ END_FUNCTION_BLOCK"#;
         |
      13 |     REPEAT UNTIL test = 100
         |                  ^^|^^|^^|^
-        |                    `--------- Expr
-        |                    |  |  |
         |                    `--------- VariableAccess
+        |                    |  |  |
+        |                    `--------- Expr
         |                    |  |  |
         |                    `--------- PathExpr
         |                       |  |
@@ -179,9 +189,9 @@ END_FUNCTION_BLOCK"#;
         |
      16 |     WHILE test < 100 DO
         |           ^^|^^|^^|^
-        |             `--------- Expr
-        |             |  |  |
         |             `--------- VariableAccess
+        |             |  |  |
+        |             `--------- Expr
         |             |  |  |
         |             `--------- PathExpr
         |                |  |
@@ -209,10 +219,8 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:2:16 ]
        |
      2 | FUNCTION_BLOCK fb1 EXTENDS base
-       |                ^|^         ^^|^
-       |                 `---------------- PouDecl(FunctionBlock)
-       |                              |
-       |                              `--- NamespaceAccess
+       |                ^|^
+       |                 `--- PouDecl(FunctionBlock)
      3 |     METHOD decl
        |            ^^|^
        |              `--- MethodRef(Declared)
@@ -229,6 +237,8 @@ END_FUNCTION_BLOCK"#;
        |            `------- PathExpr
        |                |
        |                `--- Param
+       |                |
+       |                `--- Expr
     ---'
     ");
 }
@@ -274,12 +284,17 @@ END_FUNCTION_BLOCK"#;
         16,
         21,
         23,
+        25,
         32,
+        34,
+        38,
         41,
         42,
         42,
         47,
         49,
+        55,
+        59,
         61,
         66,
         71,
@@ -332,8 +347,11 @@ END_FUNCTION_BLOCK"#;
         21,
         29,
         31,
+        32,
         39,
+        40,
         46,
+        47,
     ]
     ");
 }

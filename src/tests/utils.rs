@@ -389,8 +389,8 @@ pub fn hir_node_label(node: &HirNode) -> String {
         HirNode::Invocation(_) => "Invocation".into(),
         HirNode::Expr(_) => "Expr".into(),
         HirNode::Param(_) => "Param".into(),
-        HirNode::InitExpr { .. } => "InitExpr".into(),
-        HirNode::PathExpr { .. } => "PathExpr".into(),
+        HirNode::InitExpr(_) => "InitExpr".into(),
+        HirNode::PathExpr(_) => "PathExpr".into(),
     }
 }
 
