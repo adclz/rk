@@ -137,7 +137,7 @@ END_FUNCTION_BLOCK
 
     add_sources(&mut with_db, &[source]);
     let expr = descendant_at(&with_db, *with_db.get_files().iter().last().unwrap(), 128).unwrap();
-    let completions = expr.completion(&with_db, 128, None, "".into()).unwrap();
+    let completions = expr.completion(&with_db, 128, None).unwrap();
 
     assert_eq!(completions.len(), 8); // statements ... + 3 variants
     assert!(format!("{completions:?}").contains("List#A"));

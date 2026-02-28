@@ -38,6 +38,7 @@ pub fn completions(
                 ide_proto::handlers::completions_utils::static_snippets::using(),
                 ide_proto::handlers::completions_utils::static_snippets::function(),
                 ide_proto::handlers::completions_utils::static_snippets::function_block(),
+                ide_proto::handlers::completions_utils::static_snippets::program(),
                 ide_proto::handlers::completions_utils::static_snippets::class(),
                 ide_proto::handlers::completions_utils::static_snippets::interface(),
                 ide_proto::handlers::completions_utils::static_snippets::type_(),
@@ -46,7 +47,7 @@ pub fn completions(
     };
     Ok(Some(CompletionResponse::Array(
         target
-            .completion(db, offset, trigger_character, "".into())
+            .completion(db, offset, trigger_character)
             .unwrap_or_default(),
     )))
 }

@@ -2,7 +2,10 @@ use auto_lsp::lsp_types::CompletionItem;
 use db::WorkspaceDataBase;
 use hir::{
     HirNodeInfo,
-    hir_def::pous::{class::Class, function::Function, function_block::FunctionBlock, pou::Pou},
+    hir_def::{
+        pous::{class::Class, function::Function, function_block::FunctionBlock, pou::Pou},
+        program::ProgramDecl,
+    },
 };
 
 use crate::handlers::completions_utils::{
@@ -45,6 +48,16 @@ impl AllowedVarSections for FunctionBlock<'_> {
     }
 }
 
+impl AllowedVarSections for ProgramDecl<'_> {
+    fn allowed() -> VarSection {
+        VarSection::INPUTS
+            | VarSection::OUTPUTS
+            | VarSection::IN_OUTS
+            | VarSection::TEMPS
+            | VarSection::VARS
+    }
+}
+
 impl<'db> CompletionCtx {
     pub fn located_pou_completion(
         &mut self,
@@ -72,6 +85,46 @@ impl<'db> CompletionCtx {
             Pou::DataType(_) => {}  // will be handled by Spec
         }
         ctx
+    }
+
+    pub fn located_program_completion(
+        &mut self,
+        program: ProgramDecl<'db>,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> HeadResult {
+        let doc = program.scope_id(db).file(db).document(db);
+        let root_node = doc.tree.root_node();
+        let source = &doc.texter.text;
+        let range = *program.get_span(db).ts();
+
+        let ctx = HeadResult::query_var_decls(root_node, source, range, self.offset);
+
+        if ctx.is_inside_var_section() {
+            return ctx;
+        }
+
+        complete_program(program, &ctx, &mut self.items);
+        ctx
+    }
+}
+
+fn complete_program(
+    _program: ProgramDecl,
+    ctx: &HeadResult,
+    items: &mut Vec<CompletionItem>,
+) {
+    match ctx.head_location {
+        HeadLocation::BeforeVars
+        | HeadLocation::InVars
+        | HeadLocation::BeforeMethods
+        | HeadLocation::InBodyAfterVars
+        | HeadLocation::InBodyAfterMethods => {
+            add_var_snippets(
+                ProgramDecl::allowed().difference(ctx.active_variable_sections()),
+                items,
+            );
+        }
+        HeadLocation::InMethods | HeadLocation::InBody => {}
     }
 }
 

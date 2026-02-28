@@ -89,6 +89,17 @@ pub fn class() -> CompletionItem {
 }
 
 #[inline]
+pub fn program() -> CompletionItem {
+    CompletionItem {
+        label: "PROGRAM".into(),
+        kind: Some(lsp_types::CompletionItemKind::FUNCTION),
+        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+        insert_text: Some("PROGRAM ${1:prog} \n\nEND_PROGRAM".into()),
+        ..Default::default()
+    }
+}
+
+#[inline]
 pub fn interface() -> CompletionItem {
     CompletionItem {
         label: "INTERFACE".into(),

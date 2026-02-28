@@ -10,14 +10,10 @@ use hir::{
                 BeginPathExpr, Expr, InitExpr, InitExprKind, ParamAssign, PathExpr, VariableAccess,
             },
             spec::{Spec, SpecKind, StructElement},
-        },
-        interned::namespace::{NamespaceAccess, SpanNamespaceAccess},
-        namespace::NamespaceDecl,
-        pous::{
+        }, interned::namespace::{NamespaceAccess, SpanNamespaceAccess}, namespace::NamespaceDecl, pous::{
             pou::Pou,
             variable::{VariableDecl, VariableKind},
-        },
-        using::Using,
+        }, program::ProgramDecl, using::Using
     },
     hir_ty::{
         head::{inheritance::MethodRef, signature::infer_signature},
@@ -34,6 +30,7 @@ use crate::{
 impl<'db> HirNode<'db> {
     pub fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
         match self {
+            HirNode::Program(p) => p.hover(db, offset),
             HirNode::Namespace(n) => n.hover(db, offset),
             HirNode::NamespaceAccess(a) => a.hover(db, offset),
             HirNode::PouDecl(p) => p.hover(db, offset),
@@ -81,6 +78,37 @@ NAMESPACE {ns}
 impl<'db> HoverHandler<'db> for SpanNamespaceAccess<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
         self.infer(db).hover(db, offset)
+    }
+}
+
+impl<'db> HoverHandler<'db> for ProgramDecl<'db> {
+    fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
+        let name_span = self.get_name_span(db);
+
+        // Return None if the offset is outside the name span
+        if offset < name_span.start_byte || offset >= name_span.end_byte {
+            return None;
+        }
+
+        let comment = self.get_comment(db).unwrap_or_default();
+        let name = self.get_name_ident(db).text(db);
+
+        let path = Type::Program(*self).path_name(db);
+
+        Some(Hover {
+            contents: HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: format!(
+                    r#"
+{comment}
+```iecst
+{path}PROGRAM {name}
+```
+                "#
+                ),
+            }),
+            range: Some(self.get_span(db).into()),
+        })
     }
 }
 

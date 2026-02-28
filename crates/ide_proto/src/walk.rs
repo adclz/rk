@@ -15,6 +15,7 @@ use hir::{
         },
         namespace::NamespaceDecl,
         pous::{pou::Pou, variable::VariableDecl},
+        program::ProgramDecl,
         semantic_index::{SemanticIndex, get_scope, semantic_index},
         using::Using,
     },
@@ -59,7 +60,10 @@ pub fn completion_descendant_at<'db>(
             // This ensures we get the deepest (last visited) node in the tree
             best_match = Some(node);
         }
-        if range.start_byte > offset {
+        if best_match
+            .as_ref()
+            .is_some_and(|r| range.start_byte > r.get_span(db).start_byte)
+        {
             return ControlFlow::Break(());
         }
         ControlFlow::Continue(())
@@ -85,6 +89,9 @@ impl<'db> WalkHir<'db> for SemanticIndex<'db> {
         }
         for pou in &self.global_pous {
             pou.walk_hir(db, f)?;
+        }
+        for program in &self.programs {
+            program.walk_hir(db, f)?;
         }
         for namespace in &self.namespaces {
             namespace.walk_hir(db, f)?;
@@ -216,6 +223,26 @@ impl<'db> WalkHir<'db> for Pou<'db> {
                 }
             }
         }
+        ControlFlow::Continue(())
+    }
+}
+
+impl<'db> WalkHir<'db> for ProgramDecl<'db> {
+    fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        f: &mut F,
+    ) -> ControlFlow<()> {
+        f(HirNode::Program(*self))?;
+
+        for var in self.variables(db) {
+            var.walk_hir(db, f)?;
+        }
+
+        for stmt in self.statements(db) {
+            stmt.walk_hir(db, f)?;
+        }
+
         ControlFlow::Continue(())
     }
 }

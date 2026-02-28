@@ -768,3 +768,58 @@ END_TYPE"#;
     ]
     "#);
 }
+
+#[rstest]
+pub fn program_document_symbols(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM prgrm
+
+END_PROGRAM"#;
+
+    add_sources(&mut with_db, &[source]);
+    let mut builder = DocumentSymbolsBuilder::default();
+
+    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    sema.programs
+        .iter()
+        .for_each(|pou| pou.document_symbols(&with_db, &mut builder));
+
+    let result = builder.finalize();
+
+    assert_debug_snapshot!(&result, @r#"
+    [
+        DocumentSymbol {
+            name: "prgrm",
+            detail: Some(
+                "PROGRAM",
+            ),
+            kind: Module,
+            tags: None,
+            deprecated: None,
+            range: Range {
+                start: Position {
+                    line: 1,
+                    character: 0,
+                },
+                end: Position {
+                    line: 3,
+                    character: 11,
+                },
+            },
+            selection_range: Range {
+                start: Position {
+                    line: 1,
+                    character: 8,
+                },
+                end: Position {
+                    line: 1,
+                    character: 13,
+                },
+            },
+            children: Some(
+                [],
+            ),
+        },
+    ]
+    "#);
+}

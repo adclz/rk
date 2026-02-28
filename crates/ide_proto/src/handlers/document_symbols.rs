@@ -5,7 +5,7 @@ use hir::{
     hir_def::{
         expressions::spec::{ElementarySpec, SpecKind},
         namespace::NamespaceDecl,
-        pous::{pou::Pou, variable::VariableDecl},
+        pous::{pou::Pou, variable::VariableDecl}, program::ProgramDecl,
     },
     hir_ty::head::{inheritance::MethodRef, signature::infer_signature},
 };
@@ -19,12 +19,44 @@ impl<'db> HirNode<'db> {
         builder: &mut DocumentSymbolsBuilder,
     ) {
         match self {
+            HirNode::Program(p) => p.document_symbols(db, builder),
             HirNode::Namespace(n) => n.document_symbols(db, builder),
             HirNode::PouDecl(p) => p.document_symbols(db, builder),
             HirNode::VariableDecl(v) => v.document_symbols(db, builder),
             HirNode::MethodRef(m) => m.document_symbols(db, builder),
             _ => (),
         }
+    }
+}
+
+impl<'db> DocumentSymbolsHandler<'db> for ProgramDecl<'db> {
+    fn document_symbols(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        builder: &mut DocumentSymbolsBuilder,
+    ) {
+        let mut nested_builder = DocumentSymbolsBuilder::default();
+
+        let name = self.name(db).text(db).to_string();
+        let name = match name.len() {
+            0 => "?".into(),
+            _ => name,
+        };
+
+        self.variables(db)
+            .iter()
+            .for_each(|var| var.document_symbols(db, &mut nested_builder));
+
+        builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
+            name,
+            detail: Some("PROGRAM".to_string()),
+            kind: auto_lsp::lsp_types::SymbolKind::MODULE, // Program
+            deprecated: None,
+            range: self.get_span(db).lsp(),
+            selection_range: self.get_name_span(db).lsp(),
+            children: Some(nested_builder.finalize()),
+            tags: None,
+        });
     }
 }
 

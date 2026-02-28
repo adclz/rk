@@ -10,6 +10,7 @@ use hir::{
         },
         namespace::NamespaceDecl,
         pous::pou::Pou,
+        program::ProgramDecl,
         scope::ScopeKind,
         semantic_index::get_scope,
         using::Using,
@@ -33,8 +34,8 @@ impl<'db> HirNode<'db> {
         db: &'db dyn WorkspaceDataBase,
         offset: usize,
         trigger_character: Option<String>,
-        query: String,
     ) -> Option<Vec<CompletionItem>> {
+        eprintln!("Completion requested for node {:?} at offset {}, trigger_character: {:?}", self, offset, trigger_character);
         // if we hit a PathExpr or InitExpr, we use the previous step to determine the completion items
         // instead of the current one, as the current one is likely to be incomplete/invalid
         match self {
@@ -83,10 +84,11 @@ impl<'db> HirNode<'db> {
                 trigger_character,
                 CallSite::from_scoped(db, e).to_string(db).to_string(),
             ),
-            HirNode::Using(u) => u.completion(db, offset, trigger_character, query),
-            HirNode::Namespace(ns) => ns.completion(db, offset, trigger_character, query),
-            HirNode::PouDecl(pou) => pou.completion(db, offset, trigger_character, query),
-            HirNode::Invocation(i) => i.completion(db, offset, trigger_character, query),
+            HirNode::Using(u) => u.completion(db, offset, trigger_character, "".into()),
+            HirNode::Namespace(ns) => ns.completion(db, offset, trigger_character, "".into()),
+            HirNode::PouDecl(pou) => pou.completion(db, offset, trigger_character, "".into()),
+            HirNode::Program(p) => p.completion(db, offset, trigger_character, "".into()),
+            HirNode::Invocation(i) => i.completion(db, offset, trigger_character, "".into()),
             _ => None,
         }
     }
@@ -137,6 +139,27 @@ impl<'db> CompletionHandler<'db> for Pou<'db> {
     }
 }
 
+impl<'db> CompletionHandler<'db> for ProgramDecl<'db> {
+    fn completion(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        offset: usize,
+        _trigger_character: Option<String>,
+        query: String,
+    ) -> Option<Vec<CompletionItem>> {
+        let mut ctx = CompletionCtx::new(offset, QueryMode::Body);
+        let head_result = ctx.located_program_completion(*self, db);
+
+        eprintln!("Program completion: head location = {:?}, items = {:?}", head_result.head_location, ctx.items);
+        if head_result.head_location == HeadLocation::InBody {
+            ctx.scope_completion(self.scope_id(db), &query, db);
+            ctx.items.extend(static_snippets::all_stmts());
+        }
+
+        Some(ctx.take_items())
+    }
+}
+
 impl<'db> CompletionHandler<'db> for Spec<'db> {
     fn completion(
         &'db self,
@@ -169,13 +192,14 @@ impl<'db> CompletionHandler<'db> for PathExpr<'db> {
             return Some(ctx.take_items());
         }
 
-        // check if we're in a pou body, if so add all statements as completion items
-        if let ScopeKind::Pou(pou) = get_scope(db, self.get_scope_id(db)).kind
-            && ctx
-                .located_pou_completion(pou, db)
-                .head_location
-                .is_in_body()
-        {
+        // check if we're in a pou/program body, if so add all statements as completion items
+        let scope = get_scope(db, self.get_scope_id(db));
+        let in_body = match scope.kind {
+            ScopeKind::Pou(pou) => ctx.located_pou_completion(pou, db).head_location.is_in_body(),
+            ScopeKind::Program(prog) => ctx.located_program_completion(prog, db).head_location.is_in_body(),
+            _ => false,
+        };
+        if in_body {
             ctx.scope_completion(self.get_scope_id(db), &query, db);
             ctx.items.extend(static_snippets::all_stmts());
             ctx.items.extend(static_snippets::elem_type_names_init());
@@ -202,13 +226,14 @@ impl<'db> CompletionHandler<'db> for VariableAccess<'db> {
             return Some(ctx.take_items());
         }
 
-        // check if we're in a pou body, if so add all statements as completion items
-        if let ScopeKind::Pou(pou) = get_scope(db, self.get_scope_id(db)).kind
-            && ctx
-                .located_pou_completion(pou, db)
-                .head_location
-                .is_in_body()
-        {
+        // check if we're in a pou/program body, if so add all statements as completion items
+        let scope = get_scope(db, self.get_scope_id(db));
+        let in_body = match scope.kind {
+            ScopeKind::Pou(pou) => ctx.located_pou_completion(pou, db).head_location.is_in_body(),
+            ScopeKind::Program(prog) => ctx.located_program_completion(prog, db).head_location.is_in_body(),
+            _ => false,
+        };
+        if in_body {
             ctx.scope_completion(self.get_scope_id(db), &query, db);
             ctx.items.extend(static_snippets::all_stmts());
             ctx.items.extend(static_snippets::elem_type_names_init());
@@ -234,13 +259,14 @@ impl<'db> CompletionHandler<'db> for Expr<'db> {
             return Some(ctx.take_items());
         }
 
-        // check if we're in a pou body, if so add all statements as completion items
-        if let ScopeKind::Pou(pou) = get_scope(db, self.get_scope_id(db)).kind
-            && ctx
-                .located_pou_completion(pou, db)
-                .head_location
-                .is_in_body()
-        {
+        // check if we're in a pou/program body, if so add all statements as completion items
+        let scope = get_scope(db, self.get_scope_id(db));
+        let in_body = match scope.kind {
+            ScopeKind::Pou(pou) => ctx.located_pou_completion(pou, db).head_location.is_in_body(),
+            ScopeKind::Program(prog) => ctx.located_program_completion(prog, db).head_location.is_in_body(),
+            _ => false,
+        };
+        if in_body {
             ctx.scope_completion(self.get_scope_id(db), &query, db);
             ctx.items.extend(static_snippets::all_stmts());
             ctx.items.extend(static_snippets::elem_type_names_init());

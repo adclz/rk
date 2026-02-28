@@ -373,6 +373,7 @@ pub fn hir_node_label(node: &HirNode) -> String {
                 Pou::DataType(_) => "DataType",
             }
         ),
+        HirNode::Program(_) => "Program".into(),
         HirNode::NamespaceAccess(_) => "NamespaceAccess".into(),
         HirNode::MethodRef(m) => format!(
             "MethodRef({})",
@@ -398,6 +399,7 @@ pub fn hir_node_label(node: &HirNode) -> String {
 pub fn hir_node_span<'db>(db: &'db dyn WorkspaceDataBase, node: &HirNode<'db>) -> Span {
     match node {
         HirNode::PouDecl(pou) => pou.get_name_span(db),
+        HirNode::Program(p) => p.get_name_span(db),
         HirNode::VariableDecl(var) => var.get_name_span(db),
         HirNode::MethodRef(m) => m.get_name_span(db),
         HirNode::StructElement(st) => st.get_name_span(db),

@@ -245,8 +245,8 @@ pub fn find_using_range<'db>(
             },
             // Same with namespaces and POUs: insert after their name declaration line.
             ScopeKind::Namespace(ns) => go_to_next_line(ns.name_span(db)),
-            // We want to avoid inserting USING inside POUs because it could break variable declarations.
-            ScopeKind::MethodDecl(_) | ScopeKind::Pou(_) => {
+            // We want to avoid inserting USING inside POUs/Programs because it could break variable declarations.
+            ScopeKind::MethodDecl(_) | ScopeKind::Pou(_) | ScopeKind::Program(_) => {
                 let parent_scope = scope
                     .parent
                     .expect("All methods should have a parent scope");

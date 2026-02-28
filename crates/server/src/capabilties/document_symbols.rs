@@ -25,6 +25,9 @@ pub fn document_symbols(
     sema.global_pous
         .iter()
         .for_each(|pou| pou.document_symbols(db, &mut builder));
+    sema.programs
+        .iter()
+        .for_each(|program| program.document_symbols(db, &mut builder));
     sema.namespaces
         .iter()
         .for_each(|ns| ns.document_symbols(db, &mut builder));

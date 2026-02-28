@@ -29,7 +29,7 @@ END_FUNCTION_BLOCK
     let path_expr =
         descendant_at(&with_db, *with_db.get_files().iter().last().unwrap(), 162).unwrap();
     let completions = path_expr
-        .completion(&with_db, 162, None, "".into())
+        .completion(&with_db, 162, None)
         .unwrap();
 
     assert_eq!(completions.len(), 2);
@@ -64,7 +64,7 @@ END_FUNCTION_BLOCK
     let path_expr =
         descendant_at(&with_db, *with_db.get_files().iter().last().unwrap(), 191).unwrap();
     let completions = path_expr
-        .completion(&with_db, 191, None, "".into())
+        .completion(&with_db, 191, None)
         .unwrap();
 
     assert_eq!(completions.len(), 3);
@@ -92,7 +92,7 @@ END_FUNCTION
 
     add_sources(&mut with_db, &[source]);
     let expr = descendant_at(&with_db, *with_db.get_files().iter().last().unwrap(), 112).unwrap();
-    let completions = expr.completion(&with_db, 112, None, "".into()).unwrap();
+    let completions = expr.completion(&with_db, 112, None).unwrap();
 
     assert_eq!(completions.len(), 3);
     assert!(format!("{completions:?}").contains("A"));
@@ -119,7 +119,7 @@ END_FUNCTION_BLOCK
 
     add_sources(&mut with_db, &[source]);
     let expr = descendant_at(&with_db, *with_db.get_files().iter().last().unwrap(), 108).unwrap();
-    let completions = expr.completion(&with_db, 108, None, "".into()).unwrap();
+    let completions = expr.completion(&with_db, 108, None).unwrap();
 
     assert_eq!(completions.len(), 2);
     assert!(format!("{completions:?}").contains("test"));
