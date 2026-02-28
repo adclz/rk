@@ -6,13 +6,13 @@ use auto_lsp::{
 use db::WorkspaceDataBase;
 use hir::{
     HirNodeInfo,
-    hir_def::{pous::pou::Pou, semantic_index::semantic_index},
+    hir_def::{hir_node::HirNode, pous::pou::Pou, semantic_index::semantic_index},
 };
 
-use crate::{handlers::ImplementationHandler, hir_node::HirNode};
+use crate::{handlers::ImplementationHandler};
 
-impl<'db> HirNode<'db> {
-    pub fn implementation(
+impl<'db> ImplementationHandler<'db> for  HirNode<'db> {
+    fn implementation(
         &self,
         db: &'db dyn WorkspaceDataBase,
     ) -> Option<GotoImplementationResponse> {

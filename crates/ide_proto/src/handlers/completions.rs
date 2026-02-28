@@ -7,13 +7,7 @@ use hir::{
             expression::{Expr, InitExpr, PathExpr, VariableAccess},
             invocation::Invocation,
             spec::Spec,
-        },
-        namespace::NamespaceDecl,
-        pous::pou::Pou,
-        program::ProgramDecl,
-        scope::ScopeKind,
-        semantic_index::get_scope,
-        using::Using,
+        }, hir_node::{HirNode, PathExprRoot}, namespace::NamespaceDecl, pous::pou::Pou, program::ProgramDecl, scope::ScopeKind, semantic_index::get_scope, using::Using
     },
     hir_ty::infer::Infer,
     query_string::namespace::NamespaceSearchCtx,
@@ -25,17 +19,16 @@ use crate::{
         CompletionHandler,
         completions_utils::{CompletionCtx, QueryMode, pou_context::HeadLocation, static_snippets},
     },
-    hir_node::{HirNode, PathExprRoot},
 };
 
-impl<'db> HirNode<'db> {
-    pub fn completion(
+impl<'db> CompletionHandler<'db> for  HirNode<'db> {
+    fn completion(
         &'db self,
         db: &'db dyn WorkspaceDataBase,
         offset: usize,
         trigger_character: Option<String>,
+        _query: String,
     ) -> Option<Vec<CompletionItem>> {
-        eprintln!("Completion requested for node {:?} at offset {}, trigger_character: {:?}", self, offset, trigger_character);
         // if we hit a PathExpr or InitExpr, we use the previous step to determine the completion items
         // instead of the current one, as the current one is likely to be incomplete/invalid
         match self {

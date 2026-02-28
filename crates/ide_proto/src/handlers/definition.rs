@@ -6,19 +6,15 @@ use hir::{
         expressions::{
             expression::{BeginPathExpr, Expr, InitExpr, ParamAssign, PathExpr, VariableAccess},
             spec::{Spec, SpecKind, StructElement},
-        },
-        interned::namespace::NamespacePath,
-        namespace::NamespaceDecl,
-        pous::{pou::Pou, variable::VariableDecl},
-        using::Using,
+        }, hir_node::HirNode, interned::namespace::NamespacePath, namespace::NamespaceDecl, pous::{pou::Pou, variable::VariableDecl}, using::Using
     },
     hir_ty::{index_graphs::namespace_index, infer::Infer, ty::Type},
 };
 
-use crate::{handlers::DefinitionHandler, hir_node::HirNode};
+use crate::{handlers::DefinitionHandler};
 
-impl<'db> HirNode<'db> {
-    pub fn definition(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDefinitionResponse> {
+impl<'db> DefinitionHandler<'db> for HirNode<'db> {
+    fn definition(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDefinitionResponse> {
         match self {
             HirNode::Namespace(ns) => ns.definition(db),
             HirNode::Using(u) => u.definition(db),

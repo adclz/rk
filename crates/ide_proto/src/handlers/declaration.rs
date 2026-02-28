@@ -6,16 +6,15 @@ use hir::{
         expressions::{
             expression::{BeginPathExpr, Expr, InitExpr, ParamAssign, PathExpr, VariableAccess},
             spec::{Spec, StructElement},
-        },
-        pous::variable::VariableDecl,
+        }, hir_node::HirNode, pous::variable::VariableDecl
     },
     hir_ty::{infer::Infer, ty::Type},
 };
 
-use crate::{handlers::DeclarationHandler, hir_node::HirNode};
+use crate::{handlers::DeclarationHandler};
 
-impl<'db> HirNode<'db> {
-    pub fn declaration(
+impl<'db> DeclarationHandler<'db> for HirNode<'db> {
+    fn declaration(
         &'db self,
         db: &'db dyn WorkspaceDataBase,
     ) -> Option<GotoDeclarationResponse> {

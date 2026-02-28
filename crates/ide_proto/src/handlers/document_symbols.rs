@@ -3,17 +3,15 @@ use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
     hir_def::{
-        expressions::spec::{ElementarySpec, SpecKind},
-        namespace::NamespaceDecl,
-        pous::{pou::Pou, variable::VariableDecl}, program::ProgramDecl,
+        expressions::spec::{ElementarySpec, SpecKind}, hir_node::HirNode, namespace::NamespaceDecl, pous::{pou::Pou, variable::VariableDecl}, program::ProgramDecl
     },
     hir_ty::head::{inheritance::MethodRef, signature::infer_signature},
 };
 
-use crate::{handlers::DocumentSymbolsHandler, hir_node::HirNode};
+use crate::{handlers::DocumentSymbolsHandler};
 
-impl<'db> HirNode<'db> {
-    pub fn document_symbols(
+impl<'db>  DocumentSymbolsHandler<'db> for HirNode<'db> {
+    fn document_symbols(
         &self,
         db: &'db dyn WorkspaceDataBase,
         builder: &mut DocumentSymbolsBuilder,

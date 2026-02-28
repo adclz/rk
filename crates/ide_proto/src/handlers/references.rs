@@ -9,17 +9,14 @@ use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
     hir_def::{
-        interned::namespace::NamespacePath,
-        semantic_index::semantic_index,
+        hir_node::HirNode, interned::namespace::NamespacePath, semantic_index::semantic_index
     },
     hir_ty::{
-        infer::Infer,
-        index_graphs::namespace_index,
-        ty::{CallableType, Type},
+        index_graphs::namespace_index, infer::Infer, ty::{CallableType, Type}
     },
 };
 
-use crate::{hir_node::HirNode, walk::WalkHir};
+use crate::{handlers::ReferencesHandler, walk::WalkHir};
 
 pub struct ReferenceLocation {
     pub file: File,
@@ -32,8 +29,13 @@ impl ReferenceLocation {
     }
 }
 
-impl<'db> HirNode<'db> {
-    pub fn references(
+impl<'db> ReferencesHandler<'db> for HirNode<'db> {
+    fn references(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<Vec<Location>> {
+        self.locations(db)
+            .map(|locs| locs.into_iter().map(|loc| loc.to_location(db)).collect())
+    }
+    
+    fn locations(
         &self,
         db: &'db dyn WorkspaceDataBase,
     ) -> Option<Vec<ReferenceLocation>> {

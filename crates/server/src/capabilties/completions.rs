@@ -3,7 +3,7 @@ use auto_lsp::{
     lsp_types::{CompletionParams, CompletionResponse},
 };
 use db::WorkspaceDataBase;
-use ide_proto::walk::completion_descendant_at;
+use ide_proto::{handlers::CompletionHandler, walk::completion_descendant_at};
 
 pub fn completions(
     db: &impl WorkspaceDataBase,
@@ -47,7 +47,7 @@ pub fn completions(
     };
     Ok(Some(CompletionResponse::Array(
         target
-            .completion(db, offset, trigger_character)
+            .completion(db, offset, trigger_character, "".into())
             .unwrap_or_default(),
     )))
 }

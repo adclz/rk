@@ -10,7 +10,7 @@ use hir::{
                 BeginPathExpr, Expr, InitExpr, InitExprKind, ParamAssign, PathExpr, VariableAccess,
             },
             spec::{Spec, SpecKind, StructElement},
-        }, interned::namespace::{NamespaceAccess, SpanNamespaceAccess}, namespace::NamespaceDecl, pous::{
+        }, hir_node::HirNode, interned::namespace::{NamespaceAccess, SpanNamespaceAccess}, namespace::NamespaceDecl, pous::{
             pou::Pou,
             variable::{VariableDecl, VariableKind},
         }, program::ProgramDecl, using::Using
@@ -24,11 +24,11 @@ use hir::{
 
 use crate::{
     handlers::HoverHandler,
-    hir_node::{HasComment, HirNode, MaybeHirNode, get_param_start_pos},
+    hir_node::{HasComment, MaybeHirNode, get_param_start_pos},
 };
 
-impl<'db> HirNode<'db> {
-    pub fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
+impl<'db> HoverHandler<'db> for HirNode<'db> {
+    fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
         match self {
             HirNode::Program(p) => p.hover(db, offset),
             HirNode::Namespace(n) => n.hover(db, offset),

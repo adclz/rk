@@ -3,7 +3,7 @@ use auto_lsp::{
     lsp_types::{Location, ReferenceParams},
 };
 use db::WorkspaceDataBase;
-use ide_proto::walk::descendant_at;
+use ide_proto::{handlers::ReferencesHandler, walk::descendant_at};
 
 pub fn references(
     db: &impl WorkspaceDataBase,
@@ -28,6 +28,5 @@ pub fn references(
         })?;
 
     Ok(descendant_at(db, file, position)
-        .and_then(|s| s.references(db))
-        .map(|refs| refs.iter().map(|r| r.to_location(db)).collect()))
+        .and_then(|s| s.references(db)))
 }

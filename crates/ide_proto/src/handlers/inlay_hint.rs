@@ -3,20 +3,18 @@ use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
     hir_def::{
-        expressions::expression::{InitExpr, InitExprKind, ParamAssign},
-        namespace::NamespaceDecl,
-        pous::pou::Pou,
+        expressions::expression::{InitExpr, InitExprKind, ParamAssign}, hir_node::HirNode, namespace::NamespaceDecl, pous::pou::Pou
     },
     hir_ty::{body::infer_body, infer::Infer, ty::Type},
 };
 
 use crate::{
     handlers::InlayHintHandler,
-    hir_node::{HirNode, get_param_start_pos},
+    hir_node::{get_param_start_pos},
 };
 
-impl<'db> HirNode<'db> {
-    pub fn inlay_hint(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<InlayHint> {
+impl<'db> InlayHintHandler<'db> for HirNode<'db> {
+    fn inlay_hint(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<InlayHint> {
         match self {
             HirNode::Namespace(n) => n.inlay_hint(db),
             HirNode::PouDecl(p) => p.inlay_hint(db),

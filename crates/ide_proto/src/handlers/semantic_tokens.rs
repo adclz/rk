@@ -6,10 +6,7 @@ use hir::{
         expressions::{
             expression::{BeginPathExpr, Expr, ExprKind, PathExpr, PrimaryExpr, VariableAccess},
             spec::StructElement,
-        },
-        interned::namespace::{NamespaceAccess, SpanNamespaceAccess},
-        pous::{pou::Pou, variable::VariableDecl},
-        using::Using,
+        }, hir_node::HirNode, interned::namespace::{NamespaceAccess, SpanNamespaceAccess}, pous::{pou::Pou, variable::VariableDecl}, using::Using
     },
     hir_ty::{
         head::{inheritance::MethodRef, signature::infer_signature},
@@ -20,11 +17,11 @@ use hir::{
 
 use crate::{
     CLASS, ENUM, ENUM_MEMBER, FUNCTION, INTERFACE, METHOD, NAMESPACE, STRUCT, SUPPORTED_TYPES,
-    handlers::SemanticTokensHandler, hir_node::HirNode,
+    handlers::SemanticTokensHandler,
 };
 
-impl<'db> HirNode<'db> {
-    pub fn semantic_tokens(
+impl<'db> SemanticTokensHandler<'db> for HirNode<'db> {
+    fn semantic_tokens(
         &'db self,
         db: &'db dyn WorkspaceDataBase,
         builder: &mut SemanticTokensBuilder,

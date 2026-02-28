@@ -4,11 +4,12 @@ use auto_lsp::{
         semantic_tokens_builder::SemanticTokensBuilder,
     },
     lsp_types::{
-        CodeLens, CompletionItem, GotoDefinitionResponse, Hover, InlayHint,
-        request::{GotoDeclarationResponse, GotoImplementationResponse},
+        CodeLens, CompletionItem, GotoDefinitionResponse, Hover, InlayHint, Location, request::{GotoDeclarationResponse, GotoImplementationResponse}
     },
 };
 use db::WorkspaceDataBase;
+
+use crate::handlers::references::ReferenceLocation;
 
 pub mod code_lens;
 pub mod completions;
@@ -65,6 +66,11 @@ pub trait InlayHintHandler<'db> {
 
 pub trait CodeLensHandler<'db> {
     fn code_lens(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<CodeLens>;
+}
+
+pub trait ReferencesHandler<'db> {
+    fn locations(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<Vec<ReferenceLocation>>;
+    fn references(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<Vec<Location>>;
 }
 
 pub trait DocumentSymbolsHandler<'db> {

@@ -3,7 +3,7 @@ use auto_lsp::{
     lsp_types::request::{GotoImplementationParams, GotoImplementationResponse},
 };
 use db::WorkspaceDataBase;
-use ide_proto::walk::descendant_at;
+use ide_proto::{handlers::ImplementationHandler, walk::descendant_at};
 
 pub fn go_to_implementation(
     db: &impl WorkspaceDataBase,

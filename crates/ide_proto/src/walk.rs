@@ -12,17 +12,10 @@ use hir::{
             },
             spec::{Spec, SpecKind},
             statement::{CaseKind, Stmt, StmtKind},
-        },
-        namespace::NamespaceDecl,
-        pous::{pou::Pou, variable::VariableDecl},
-        program::ProgramDecl,
-        semantic_index::{SemanticIndex, get_scope, semantic_index},
-        using::Using,
+        }, hir_node::{HirNode, PathExprRoot}, namespace::NamespaceDecl, pous::{pou::Pou, variable::VariableDecl}, program::ProgramDecl, semantic_index::{SemanticIndex, get_scope, semantic_index}, using::Using
     },
     hir_ty::{expr_store::InitExprIterator, head::inheritance::MethodRef},
 };
-
-use crate::hir_node::{HirNode, PathExprRoot};
 
 pub fn descendant_at<'db>(
     db: &'db dyn WorkspaceDataBase,
