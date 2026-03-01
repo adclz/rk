@@ -288,6 +288,131 @@ END_FUNCTION
 }
 
 #[rstest]
+fn struct_field_references(mut with_db: RootDatabase) {
+    let source = r#"TYPE
+    Engine: STRUCT
+        oil: INT;
+        fuel: BOOL;
+    END_STRUCT
+END_TYPE
+
+FUNCTION_BLOCK fb
+    VAR
+        my_var: Engine;
+    END_VAR
+
+    my_var.fuel := my_var.fuel;
+
+    my_var.fuel := 0;
+
+END_FUNCTION_BLOCK
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    let offset = source.find("fuel: BOOL").unwrap();
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    let refs = node.locations(&with_db).unwrap();
+
+    assert_snapshot!(render_references(&with_db, &refs, "fuel"), @r"
+    Advice: 4 reference(s) to 'fuel'
+        ,-[ file:///test0.st:4:9 ]
+        |
+      4 |         fuel: BOOL;
+        |         ^^|^
+        |           `--- 4 reference(s) to 'fuel'
+        |
+     13 |     my_var.fuel := my_var.fuel;
+        |            ^^|^           ^^|^
+        |              `------------------ reference
+        |                             |
+        |                             `--- reference
+        |
+     15 |     my_var.fuel := 0;
+        |            ^^|^
+        |              `--- reference
+    ----'
+    ");
+}
+
+#[rstest]
+fn nested_struct_field_references(mut with_db: RootDatabase) {
+    let source = r#"TYPE
+    SubEngine: STRUCT
+        oil: INT;
+        fuel: BOOL;
+    END_STRUCT
+    Engine: STRUCT
+        engine: SubEngine;
+    END_STRUCT
+END_TYPE
+
+FUNCTION_BLOCK fb
+    VAR
+        my_var: Engine;
+    END_VAR
+
+    my_var.engine.fuel := my_var.engine.fuel;
+
+    my_var.engine.fuel := 0;
+
+END_FUNCTION_BLOCK
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    let offset = source.find("fuel: BOOL").unwrap();
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    let refs = node.locations(&with_db).unwrap();
+
+    assert_snapshot!(render_references(&with_db, &refs, "fuel"), @r"
+    Advice: 4 reference(s) to 'fuel'
+        ,-[ file:///test0.st:4:9 ]
+        |
+      4 |         fuel: BOOL;
+        |         ^^|^
+        |           `--- 4 reference(s) to 'fuel'
+        |
+     16 |     my_var.engine.fuel := my_var.engine.fuel;
+        |                   ^^|^                  ^^|^
+        |                     `------------------------- reference
+        |                                           |
+        |                                           `--- reference
+        |
+     18 |     my_var.engine.fuel := 0;
+        |                   ^^|^
+        |                     `--- reference
+    ----'
+    ");
+
+    let offset = source.find("engine: SubEngine").unwrap();
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    let refs = node.locations(&with_db).unwrap();
+
+       assert_snapshot!(render_references(&with_db, &refs, "engine"), @r"
+       Advice: 4 reference(s) to 'engine'
+           ,-[ file:///test0.st:7:9 ]
+           |
+         7 |         engine: SubEngine;
+           |         ^^^|^^
+           |            `---- 4 reference(s) to 'engine'
+           |
+        16 |     my_var.engine.fuel := my_var.engine.fuel;
+           |            ^^^|^^                ^^^|^^
+           |               `-------------------------- reference
+           |                                     |
+           |                                     `---- reference
+           |
+        18 |     my_var.engine.fuel := 0;
+           |            ^^^|^^
+           |               `---- reference
+       ----'
+       ");
+}
+
+#[rstest]
 fn using_references_from_using(mut with_db: RootDatabase) {
     let source1 = r#"NAMESPACE MyNs
     FUNCTION fn1 : INT

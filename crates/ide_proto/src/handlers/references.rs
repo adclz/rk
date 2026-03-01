@@ -64,7 +64,7 @@ impl<'db> ReferencesHandler<'db> for HirNode<'db> {
                 continue;
             }
 
-            find_references_in_file(db, *file, &target, &mut locations);
+            find_references_in_file(db, *file, &target, name, &mut locations);
         }
 
         // Deduplicate — the walk can visit overlapping nodes
@@ -158,24 +158,38 @@ fn resolve_walk_target<'db>(
         // Leaf-level reference nodes only
         HirNode::Spec(spec) => spec.infer(db),
         HirNode::PathExpr(p) => p.infer(db),
-        HirNode::VariableAccess(v) => v.infer(db),
         HirNode::Param(p) => p.infer(db),
         HirNode::NamespaceAccess(ns) => ns.infer(db),
-        // Skip Expr, Invocation, InitExpr — they wrap inner nodes
-        // and would produce duplicate matches
+        // Skip Expr, Invocation, InitExpr, VariableAccess — they wrap inner nodes
+        // and would produce duplicate matches (PathExpr already covers variable accesses)
         _ => return None,
     };
     normalize_reference_type(ty)
 }
 
+/// Extract the identifier text from a HirNode for reference matching.
+/// Returns None for nodes where ident comparison is not applicable.
+fn node_reference_ident<'db>(db: &'db dyn WorkspaceDataBase, node: &HirNode<'db>) -> Option<&'db str> {
+    Some(match node {
+        HirNode::PouDecl(pou) => pou.get_name_ident(db).text(db),
+        HirNode::VariableDecl(var) => var.get_name_ident(db).text(db),
+        HirNode::MethodRef(m) => m.get_name_ident(db).text(db),
+        HirNode::StructElement(st) => st.get_name_ident(db).text(db),
+        HirNode::PathExpr(p) => p.ident(db).text(db),
+        _ => return None,
+    })
+}
+
 /// Get the span for a reference result.
-/// For declarations, returns just the name span; for references, returns the node span.
+/// For declarations, returns just the name span; for path expressions, returns
+/// just the ident span (e.g. `fuel` in `my_var.fuel`); otherwise the full node span.
 fn reference_span<'db>(db: &'db dyn WorkspaceDataBase, node: &HirNode<'db>) -> auto_lsp::core::span::Span {
     match node {
         HirNode::PouDecl(pou) => pou.get_name_span(db),
         HirNode::VariableDecl(var) => var.get_name_span(db),
         HirNode::MethodRef(m) => m.get_name_span(db),
         HirNode::StructElement(st) => st.get_name_span(db),
+        HirNode::PathExpr(p) => p.ident(db).get_span(db),
         _ => node.get_span(db),
     }
 }
@@ -184,6 +198,7 @@ fn find_references_in_file<'db>(
     db: &'db dyn WorkspaceDataBase,
     file: File,
     target: &Type<'db>,
+    target_name: &str,
     locations: &mut Vec<ReferenceLocation>,
 ) {
     let sema = semantic_index(db, file);
@@ -191,6 +206,14 @@ fn find_references_in_file<'db>(
     let _ = sema.walk_hir(db, &mut |node: HirNode<'db>| {
         if let Some(resolved) = resolve_walk_target(db, &node) {
             if resolved == *target {
+                // Verify the node's ident matches the target name to avoid
+                // false positives from path fragments that resolve to the
+                // same type through adjustments (deref, field chains, etc.)
+                if let Some(ident) = node_reference_ident(db, &node) {
+                    if !ident.eq_ignore_ascii_case(target_name) {
+                        return ControlFlow::Continue(());
+                    }
+                }
                 let span = reference_span(db, &node);
                 let file = node.get_scope_id(db).file(db);
                 locations.push(ReferenceLocation { file, span });
