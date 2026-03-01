@@ -352,7 +352,6 @@ impl<'db> HoverHandler<'db> for Using<'db> {
 
 impl<'db> HoverHandler<'db> for Type<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
-        eprintln!("Hovering type: {:?}", self);
         match self {
             Type::Function(f) => Pou::Function(*f).hover(db, offset),
             Type::FunctionBlock(f) => Pou::FunctionBlock(*f).hover(db, offset),

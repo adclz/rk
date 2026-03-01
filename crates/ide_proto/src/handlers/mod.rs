@@ -4,7 +4,8 @@ use auto_lsp::{
         semantic_tokens_builder::SemanticTokensBuilder,
     },
     lsp_types::{
-        CodeLens, CompletionItem, GotoDefinitionResponse, Hover, InlayHint, Location, request::{GotoDeclarationResponse, GotoImplementationResponse}
+        CodeLens, CompletionItem, GotoDefinitionResponse, Hover, InlayHint, Location, WorkspaceEdit,
+        request::{GotoDeclarationResponse, GotoImplementationResponse},
     },
 };
 use db::WorkspaceDataBase;
@@ -21,6 +22,7 @@ pub mod hover;
 pub mod implementation;
 pub mod inlay_hint;
 pub mod references;
+pub mod rename;
 pub mod semantic_tokens;
 
 pub trait SemanticTokensHandler<'db> {
@@ -71,6 +73,14 @@ pub trait CodeLensHandler<'db> {
 pub trait ReferencesHandler<'db> {
     fn locations(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<Vec<ReferenceLocation>>;
     fn references(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<Vec<Location>>;
+}
+
+pub trait RenameHandler<'db> {
+    fn rename(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        new_name: &str,
+    ) -> Option<WorkspaceEdit>;
 }
 
 pub trait DocumentSymbolsHandler<'db> {
