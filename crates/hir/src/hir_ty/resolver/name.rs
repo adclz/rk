@@ -66,6 +66,7 @@ pub fn resolve_name<'db>(
     access: &NamespaceAccess<'db>,
     scope: ScopeId<'db>,
 ) -> NameResolution<'db> {
+    
     // Namespace-qualified names skip directly to namespace lookup (no ambiguity possible)
     if access.namespace.is_some() {
         return match resolve_namespace_access(db, access) {

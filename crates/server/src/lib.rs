@@ -26,6 +26,7 @@ use auto_lsp::lsp_types::FoldingRangeProviderCapability;
 use auto_lsp::lsp_types::GlobPattern;
 use auto_lsp::lsp_types::HoverProviderCapability;
 use auto_lsp::lsp_types::ImplementationProviderCapability;
+use auto_lsp::lsp_types::SignatureHelpOptions;
 use auto_lsp::lsp_types::PublishDiagnosticsParams;
 use auto_lsp::lsp_types::Registration;
 use auto_lsp::lsp_types::RegistrationParams;
@@ -60,6 +61,7 @@ use auto_lsp::lsp_types::request::InlayHintRequest;
 use auto_lsp::lsp_types::request::References;
 use auto_lsp::lsp_types::request::RegisterCapability;
 use auto_lsp::lsp_types::request::Rename;
+use auto_lsp::lsp_types::request::SignatureHelpRequest;
 use auto_lsp::lsp_types::request::SemanticTokensFullRequest;
 use auto_lsp::lsp_types::request::WorkspaceDiagnosticRequest;
 use auto_lsp::lsp_types::{
@@ -95,6 +97,7 @@ use crate::capabilties::implementation::go_to_implementation;
 use crate::capabilties::inlay_hints::inlay_hints;
 use crate::capabilties::references::references;
 use crate::capabilties::rename::rename;
+use crate::capabilties::signature_help::signature_help;
 use crate::capabilties::semantic_tokens;
 
 pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -154,6 +157,11 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
                 implementation_provider: Some(ImplementationProviderCapability::Simple(true)),
                 references_provider: Some(OneOf::Left(true)),
                 rename_provider: Some(OneOf::Left(true)),
+                signature_help_provider: Some(SignatureHelpOptions {
+                    trigger_characters: Some(vec!["(".to_owned(), ",".to_owned()]),
+                    retrigger_characters: None,
+                    work_done_progress_options: Default::default(),
+                }),
 
                 ..Default::default()
             },
@@ -212,6 +220,7 @@ fn on_requests<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
         .on::<GotoImplementation, _>(ThreadIntent::Worker, go_to_implementation)
         .on::<References, _>(ThreadIntent::Worker, references)
         .on::<Rename, _>(ThreadIntent::Worker, rename)
+        .on::<SignatureHelpRequest, _>(ThreadIntent::LatencySensitive, signature_help)
 }
 
 fn on_notifications(

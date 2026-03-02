@@ -13,3 +13,4 @@ pub mod inlay_hints;
 pub mod references;
 pub mod semantic_tokens;
 pub mod rename;
+pub mod signature_help;
