@@ -376,16 +376,14 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                             ));
                         }
                     }
-                    Some(path) => {
-                        let mut ns_query = Query::new(path.path.to_string(db));
-                        ns_query.prefix();
-                        let results = SymbolSearch::new(|_, _| true)
-                            .with_query(ns_query)
-                            .only_namespaces()
-                            .search(db);
-                        let items: Vec<_> = results.namespaces().copied().collect();
+                    Some(namespace) => {
+                        // Build the full path (namespace prefix + target) to check
+                        // if it's a known namespace (e.g. ["Std"] + "Counters" = ["Std", "Counters"])
+                        let mut full_fragments = namespace.fragments(db).to_vec();
+                        full_fragments.push(path.path.target.ident);
+                        let full_path = NamespacePath::new(db, full_fragments);
 
-                        if !namespace_index(db, path.path).is_empty() {
+                        if !namespace_index(db, full_path).is_empty() {
                             diag.with_note(format!(
                                 r#"namespace named '{}' exists but it cannot be used as an item, you can either:
 - Import the namespace via an USING directive: 'USING {}'
@@ -395,9 +393,17 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                                 path_str,
                             ));
                         } else {
+                            let mut ns_query = Query::new(path.to_string(db));
+                            ns_query.prefix();
+                            let results = SymbolSearch::new(|_, _| true)
+                                .with_query(ns_query)
+                                .only_namespaces()
+                                .search(db);
+                            let items: Vec<_> = results.namespaces().copied().collect();
+
                             list_namespace_candidates(
                                 db,
-                                path.path.to_string(db).as_str(),
+                                path.to_string(db),
                                 &mut diag,
                                 &items,
                             );
