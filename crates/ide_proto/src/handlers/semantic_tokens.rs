@@ -62,9 +62,12 @@ impl<'db> SemanticTokensHandler<'db> for SpanNamespaceAccess<'db> {
         builder: &mut SemanticTokensBuilder,
     ) {
         let infer = infer_signature(db, self.get_scope_id(db));
-        push_fragments(db, &self.path, builder);
+        //push_fragments(db, &self.path, builder);
         if let Some(resolved) = infer.namespace_access_to_type.get(&self.path) {
-            semantic_tokens_for_type(db, *resolved, builder, self.get_span(db));
+            semantic_tokens_for_type(db, *resolved, builder, match &self.path.namespace {
+                Some(ns) => ns.get_fragment_ast_node(db, ns.fragments(db).len() - 1).get_span(),
+                None => self.get_span(db),
+            });
         }
     }
 }
@@ -81,8 +84,7 @@ impl<'db> SemanticTokensHandler<'db> for MethodRef<'db> {
             0,
         );
         if let Some(ret) = self.return_type(db) {
-            let infer = infer_signature(db, self.get_scope_id(db));
-            semantic_tokens_for_type(db, infer.type_of_specs[ret], builder, ret.get_span(db));
+            semantic_tokens_for_type(db, ret.infer(db), builder, ret.get_span(db));
         }
     }
 }
@@ -93,10 +95,9 @@ impl<'db> SemanticTokensHandler<'db> for VariableDecl<'db> {
         db: &'db dyn WorkspaceDataBase,
         builder: &mut SemanticTokensBuilder,
     ) {
-        let infer = infer_signature(db, self.get_scope_id(db));
         semantic_tokens_for_type(
             db,
-            infer.type_of_specs[&self.spec(db)],
+            self.spec(db).infer(db),
             builder,
             self.spec(db).get_span(db),
         );
@@ -109,10 +110,9 @@ impl<'db> SemanticTokensHandler<'db> for StructElement<'db> {
         db: &'db dyn WorkspaceDataBase,
         builder: &mut SemanticTokensBuilder,
     ) {
-        let infer = infer_signature(db, self.get_scope_id(db));
         semantic_tokens_for_type(
             db,
-            infer.type_of_specs[&self.spec(db)],
+            self.spec(db).infer(db),
             builder,
             self.spec(db).get_span(db),
         );

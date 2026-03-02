@@ -176,27 +176,27 @@ impl<'db> ScopeCompletionCtx<'db> {
             for var in pous.variables() {
                 self.items.push(builder.build_variable(db, var));
             }
+        }
 
-            // Also include root-level namespace fragments (e.g. "System")
-            // so that typing `S` in a body shows `System` alongside variables/POUs.
-            let ns_results = SymbolSearch::new(|_, _| true)
-                .with_query(self.query.clone())
-                .only_namespaces()
-                .search(db);
+        // Include root-level namespace fragments (e.g. "System")
+        // so typing `S` shows `System` alongside variables/POUs in both head and body.
+        let ns_results = SymbolSearch::new(|_, _| true)
+            .with_query(self.query.clone())
+            .only_namespaces()
+            .search(db);
 
-            let mut seen = FxHashSet::default();
-            for ns_decl in ns_results.namespaces() {
-                let ns_fragments = ns_decl.path(db).fragments(db);
-                if let Some(frag) = ns_fragments.first() {
-                    let label = frag.text(db).to_string();
-                    if seen.insert(label.clone()) {
-                        self.items.push(CompletionItem {
-                            label,
-                            detail: Some("(NAMESPACE)".into()),
-                            kind: Some(CompletionItemKind::MODULE),
-                            ..Default::default()
-                        });
-                    }
+        let mut seen = FxHashSet::default();
+        for ns_decl in ns_results.namespaces() {
+            let ns_fragments = ns_decl.path(db).fragments(db);
+            if let Some(frag) = ns_fragments.first() {
+                let label = frag.text(db).to_string();
+                if seen.insert(label.clone()) {
+                    self.items.push(CompletionItem {
+                        label,
+                        detail: Some("(NAMESPACE)".into()),
+                        kind: Some(CompletionItemKind::MODULE),
+                        ..Default::default()
+                    });
                 }
             }
         }
