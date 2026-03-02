@@ -23,10 +23,12 @@ use hir::{
     },
     hir_ty::{
         head::{inheritance::MethodRef, signature::infer_signature},
+        index_graphs::namespace_index,
         ty::Type,
     },
-    query_string::{query::Query, scope::ScopeSearchCtx},
+    query_string::{query::Query, scope::SymbolSearch},
 };
+use rustc_hash::FxHashSet;
 use serde_json::de;
 
 use crate::handlers::completions_utils::{
@@ -43,6 +45,51 @@ impl CompletionCtx {
         let mut scope_ctx = ScopeCompletionCtx::new(self.mode, scope, self.offset, query);
         scope_ctx.query_scope_items(db);
         self.items.extend(scope_ctx.take_items());
+        self
+    }
+
+    /// Complete POUs inside a namespace and sub-namespace fragments.
+    /// Used for qualified name completion like `System.Math.` in body context.
+    pub fn namespace_completion(
+        &mut self,
+        path: NamespacePath,
+        db: &'_ dyn WorkspaceDataBase,
+    ) -> &mut Self {
+        let builder = CompletionBuilder::default().with_mode(self.mode);
+        let path_fragments = path.fragments(db);
+
+        // 1. Get all POUs inside this namespace
+        for ns_decl in namespace_index(db, path).iter() {
+            for pou in ns_decl.pous(db).iter() {
+                builder.build_pou(db, pou, None, &mut self.items);
+            }
+        }
+
+        // 2. Get sub-namespace fragments via prefix search
+        let mut ns_query = Query::new(path.to_string(db));
+        ns_query.prefix();
+        let results = SymbolSearch::new(|_, _| true)
+            .with_query(ns_query)
+            .only_namespaces()
+            .search(db);
+
+        let mut seen = FxHashSet::default();
+        for ns_decl in results.namespaces() {
+            let ns_fragments = ns_decl.path(db).fragments(db);
+            // Show the next fragment after the current path depth
+            if let Some(frag) = ns_fragments.get(path_fragments.len()) {
+                let label = frag.text(db).to_string();
+                if seen.insert(label.clone()) {
+                    self.items.push(CompletionItem {
+                        label,
+                        detail: Some("(NAMESPACE)".into()),
+                        kind: Some(CompletionItemKind::MODULE),
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+
         self
     }
 }
@@ -100,13 +147,15 @@ impl<'db> ScopeCompletionCtx<'db> {
         let scope_search = match self.mode {
             QueryMode::Head => {
                 // in head mode, we also want to include variables from parent scopes
-                ScopeSearchCtx::new(self.scope, filter)
+                SymbolSearch::new(filter)
+                    .with_scope(self.scope)
                     .only_pous()
                     .with_query(self.query.clone())
             }
             QueryMode::Body => {
                 // in body mode, we want to include local variables and parameters
-                ScopeSearchCtx::new(self.scope, filter)
+                SymbolSearch::new(filter)
+                    .with_scope(self.scope)
                     .with_pous(true)
                     .with_variables(true)
                     .with_query(self.query.clone())
@@ -126,6 +175,29 @@ impl<'db> ScopeCompletionCtx<'db> {
         if self.mode == QueryMode::Body {
             for var in pous.variables() {
                 self.items.push(builder.build_variable(db, var));
+            }
+
+            // Also include root-level namespace fragments (e.g. "System")
+            // so that typing `S` in a body shows `System` alongside variables/POUs.
+            let ns_results = SymbolSearch::new(|_, _| true)
+                .with_query(self.query.clone())
+                .only_namespaces()
+                .search(db);
+
+            let mut seen = FxHashSet::default();
+            for ns_decl in ns_results.namespaces() {
+                let ns_fragments = ns_decl.path(db).fragments(db);
+                if let Some(frag) = ns_fragments.first() {
+                    let label = frag.text(db).to_string();
+                    if seen.insert(label.clone()) {
+                        self.items.push(CompletionItem {
+                            label,
+                            detail: Some("(NAMESPACE)".into()),
+                            kind: Some(CompletionItemKind::MODULE),
+                            ..Default::default()
+                        });
+                    }
+                }
             }
         }
     }

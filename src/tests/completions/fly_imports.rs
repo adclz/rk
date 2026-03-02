@@ -27,7 +27,7 @@ END_FUNCTION
     ctx.scope_completion(pou.get_scope_id(&with_db), "", &with_db);
     let completions = ctx.take_items();
 
-    assert_eq!(completions.len(), 2); // fn1 and fn2
+    assert_eq!(completions.len(), 3); // fn1, fn2, and ns namespace
     assert!(format!("{completions:?}").contains("fn1"));
     assert!(format!("{completions:?}").contains("fn2"));
 
@@ -57,7 +57,7 @@ END_FUNCTION
     ctx.scope_completion(pou.get_scope_id(&with_db), "", &with_db);
     let completions = ctx.take_items();
 
-    assert_eq!(completions.len(), 2); // fn1 and fn2
+    assert_eq!(completions.len(), 3); // fn1, fn2, and ns namespace
     assert!(format!("{completions:?}").contains("fn1"));
     assert!(format!("{completions:?}").contains("fn2"));
 
@@ -91,7 +91,7 @@ END_FUNCTION_BLOCK
     ctx.scope_completion(pou.get_scope_id(&with_db), "", &with_db);
     let completions = ctx.take_items();
 
-    assert_eq!(completions.len(), 1); // fn1
+    assert_eq!(completions.len(), 2); // fn1 and ns namespace
     assert!(format!("{completions:?}").contains("fn1"));
 
     // fn1 should *not* have an additional namespace prefix

@@ -30,8 +30,8 @@ use crate::{
         ty::{CallableType, Type},
     },
     query_string::{
-        method::fuzzy_callable_type_parameters, namespace::NamespaceSearchCtx, query::Query,
-        scope::ScopeSearchCtx, strukt::fuzzy_struct_fields,
+        method::fuzzy_callable_type_parameters, query::Query,
+        scope::SymbolSearch, strukt::fuzzy_struct_fields,
     },
 };
 
@@ -291,7 +291,8 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
 
                 let mut query = Query::new(expr.ident(db).text(db).to_string());
                 query.fuzzy();
-                let items = ScopeSearchCtx::new(*scope, |_, _| true)
+                let items = SymbolSearch::new(|_, _| true)
+                    .with_scope(*scope)
                     .with_query(query)
                     .only_variables()
                     .search(db);
@@ -307,7 +308,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
 
                 let mut query = Query::new(expr.ident(db).text(db).to_string());
                 query.exact();
-                let items = ScopeSearchCtx::new(*scope, |pou, db| {
+                let items = SymbolSearch::new(|pou, db| {
                     match pou {
                         Pou::Function(_) => true,
                         // enum types are allowed and all variants should be suggested
@@ -317,6 +318,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                         _ => false,
                     }
                 })
+                .with_scope(*scope)
                 .with_query(query)
                 .only_pous()
                 .search(db);
@@ -345,10 +347,11 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     None => {
                         let mut query = Query::new(path.path.target.ident.text(db).to_string());
                         query.exact();
-                        let items = ScopeSearchCtx::new(path.scope_id, |pou, db| match pou {
+                        let items = SymbolSearch::new(|pou, db| match pou {
                             Pou::Function(_) => false,
                             _ => true,
                         })
+                        .with_scope(path.scope_id)
                         .with_query(query)
                         .only_pous()
                         .search(db);
@@ -374,8 +377,13 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                         }
                     }
                     Some(path) => {
-                        let ctx = NamespaceSearchCtx::new(path.path);
-                        let items = ctx.search(db);
+                        let mut ns_query = Query::new(path.path.to_string(db));
+                        ns_query.prefix();
+                        let results = SymbolSearch::new(|_, _| true)
+                            .with_query(ns_query)
+                            .only_namespaces()
+                            .search(db);
+                        let items: Vec<_> = results.namespaces().copied().collect();
 
                         if !namespace_index(db, path.path).is_empty() {
                             diag.with_note(format!(
@@ -407,8 +415,13 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     .range(call_site.get_span(db))
                     .call();
 
-                let ctx = NamespaceSearchCtx::new(*path);
-                let items = ctx.search(db);
+                let mut ns_query = Query::new(path.to_string(db));
+                ns_query.prefix();
+                let results = SymbolSearch::new(|_, _| true)
+                    .with_query(ns_query)
+                    .only_namespaces()
+                    .search(db);
+                let items: Vec<_> = results.namespaces().copied().collect();
 
                 list_namespace_candidates(db, path.to_string(db).as_str(), &mut diag, &items);
                 diag

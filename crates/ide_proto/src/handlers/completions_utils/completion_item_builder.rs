@@ -25,7 +25,7 @@ use hir::{
         head::{inheritance::MethodRef, signature::infer_signature},
         ty::Type,
     },
-    query_string::{query::Query, scope::ScopeSearchCtx},
+    query_string::query::Query,
 };
 
 use crate::handlers::completions_utils::QueryMode;
