@@ -6,6 +6,7 @@ use auto_lsp::default::db::file::File;
 use auto_lsp::default::db::tracked::ParsedAst;
 use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
+use index::IndexVec;
 use rustc_hash::FxHashMap;
 
 use crate::{AstId, HirNodeInfo, Visibility};
@@ -18,7 +19,7 @@ use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::program::ProgramDecl;
 use crate::hir_def::scope::{Scope, ScopeId, ScopeKind};
-use crate::hir_def::semantic_index::SemanticIndex;
+use crate::hir_def::semantic_index::{NodeKey, SemanticIndex};
 use crate::hir_def::using::Using;
 
 pub struct SemanticIndexBuilder<'db> {
@@ -35,7 +36,7 @@ pub struct SemanticIndexBuilder<'db> {
     pub(crate) scope_keys: FxHashMap<usize, Arc<Scope<'db>>>,
 
     /// HIR nodes indexed by document order.
-    pub(crate) node_index: Vec<HirNode<'db>>,
+    pub(crate) node_index: IndexVec<NodeKey, HirNode<'db>>,
 
     pub(crate) programs: Vec<ProgramDecl<'db>>,
     pub(crate) configs: Vec<ConfigDecl<'db>>,
@@ -70,7 +71,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             ast,
             source,
             scope_keys: FxHashMap::default(),
-            node_index: vec![],
+            node_index: IndexVec::new(),
             programs: vec![],
             configs: vec![],
             global_namespaces: vec![],
@@ -365,6 +366,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             .insert(global_scope.scope(self.db), Arc::new(scope));
 
         self.node_index
+            .raw
             .sort_unstable_by_key(|node| *node.get_id(self.db));
 
         SemanticIndex {

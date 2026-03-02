@@ -1,6 +1,6 @@
 use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
-use ide_proto::{handlers::CompletionHandler, walk::descendant_at};
+use ide_proto::{handlers::{CompletionHandler, CompletionRequest}, walk::{descendant_at, completion_descendant_at}};
 use rstest::rstest;
 
 use crate::tests::utils::{add_sources, with_db};
@@ -28,13 +28,57 @@ END_FUNCTION_BLOCK
     add_sources(&mut with_db, &[source]);
     let path_expr =
         descendant_at(&with_db, *with_db.get_files().iter().last().unwrap(), 162).unwrap();
+    let req = CompletionRequest { offset: 162, trigger_character: None, query: "".into(), node_index_pos: None, is_last_before: false };
     let completions = path_expr
-        .completion(&with_db, 162, None, "".into())
+        .completion(&with_db, &req)
         .unwrap();
 
     assert_eq!(completions.len(), 2);
     assert!(format!("{completions:?}").contains("oil"));
     assert!(format!("{completions:?}").contains("fuel"));
+}
+
+#[rstest]
+pub fn nested_struct_field_completion(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Inner :
+    STRUCT
+        depth : INT;
+        width : REAL;
+    END_STRUCT
+END_TYPE
+
+TYPE Outer :
+    STRUCT
+        inner : Inner;
+        name : INT;
+    END_STRUCT
+END_TYPE
+
+FUNCTION_BLOCK fb
+    VAR
+        my_var: Outer;
+    END_VAR
+
+    my_var.inner.
+END_FUNCTION_BLOCK
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    // Offset right after the trailing dot — no node contains this position,
+    // so completion_descendant_at falls back to the closest preceding node.
+    let offset = source.find("my_var.inner.").unwrap() + "my_var.inner.".len();
+    let file = *with_db.get_files().iter().last().unwrap();
+    let (path_expr, node_key, is_last_before) = completion_descendant_at(&with_db, file, offset).unwrap();
+    let req = CompletionRequest { offset, trigger_character: Some(".".into()), query: "".into(), node_index_pos: Some(node_key), is_last_before };
+    let completions = path_expr
+        .completion(&with_db, &req)
+        .unwrap();
+
+    // Should show fields of Inner (depth, width), NOT fields of Outer (inner, name)
+    assert!(format!("{completions:?}").contains("depth"), "expected 'depth' in completions: {completions:?}");
+    assert!(format!("{completions:?}").contains("width"), "expected 'width' in completions: {completions:?}");
+    assert!(!format!("{completions:?}").contains("name"), "should NOT contain 'name' from Outer: {completions:?}");
 }
 
 #[rstest]
@@ -63,8 +107,9 @@ END_FUNCTION_BLOCK
     add_sources(&mut with_db, &[source]);
     let path_expr =
         descendant_at(&with_db, *with_db.get_files().iter().last().unwrap(), 191).unwrap();
+    let req = CompletionRequest { offset: 191, trigger_character: None, query: "".into(), node_index_pos: None, is_last_before: false };
     let completions = path_expr
-        .completion(&with_db, 191, None, "".into())
+        .completion(&with_db, &req)
         .unwrap();
 
     assert_eq!(completions.len(), 3);
@@ -92,7 +137,8 @@ END_FUNCTION
 
     add_sources(&mut with_db, &[source]);
     let expr = descendant_at(&with_db, *with_db.get_files().iter().last().unwrap(), 112).unwrap();
-    let completions = expr.completion(&with_db, 112, None, "".into()).unwrap();
+    let req = CompletionRequest { offset: 112, trigger_character: None, query: "".into(), node_index_pos: None, is_last_before: false };
+    let completions = expr.completion(&with_db, &req).unwrap();
 
     assert_eq!(completions.len(), 3);
     assert!(format!("{completions:?}").contains("A"));
@@ -119,7 +165,8 @@ END_FUNCTION_BLOCK
 
     add_sources(&mut with_db, &[source]);
     let expr = descendant_at(&with_db, *with_db.get_files().iter().last().unwrap(), 108).unwrap();
-    let completions = expr.completion(&with_db, 108, None, "".into()).unwrap();
+    let req = CompletionRequest { offset: 108, trigger_character: None, query: "".into(), node_index_pos: None, is_last_before: false };
+    let completions = expr.completion(&with_db, &req).unwrap();
 
     assert_eq!(completions.len(), 2);
     assert!(format!("{completions:?}").contains("test"));

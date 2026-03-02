@@ -16,6 +16,7 @@ use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::program::ProgramDecl;
 use crate::hir_def::scope::{Scope, ScopeId};
+use index::{IndexVec, newtype_index};
 
 /// Returns the semantic index of a given file
 #[tracing::instrument(skip_all, name = "query_semantic_index")]
@@ -34,6 +35,10 @@ pub fn semantic_index<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Semant
     SemanticIndexBuilder::new(db, file, get_ast(db, file), source).build()
 }
 
+#[newtype_index]
+#[derive(Ord, PartialOrd, salsa::Update)]
+pub struct NodeKey;
+
 #[derive(Debug, PartialEq, Eq, salsa::Update)]
 pub struct SemanticIndex<'db> {
     /// Global scope
@@ -48,7 +53,7 @@ pub struct SemanticIndex<'db> {
     pub(crate) scopes: FxHashMap<usize, Arc<Scope<'db>>>,
 
     /// HIR nodes indexed by document order
-    pub node_index: Vec<HirNode<'db>>,
+    pub node_index: IndexVec<NodeKey, HirNode<'db>>,
 
     /// Program declarations in the file
     pub programs: Vec<ProgramDecl<'db>>,
@@ -77,7 +82,7 @@ impl<'db> SemanticIndex<'db> {
     ) -> Self {
         let global_scope = ScopeId::global(db, file);
         let mut scopes = FxHashMap::default();
-        let node_index = vec![];
+        let node_index = IndexVec::new();
 
         // Register the global scope so it can be looked up later
         let scope = Scope::new(

@@ -183,7 +183,6 @@ impl<I: Idx, T, const N: usize> From<[T; N]> for IndexVec<I, T> {
 unsafe impl<I: Idx, T> Send for IndexVec<I, T> where T: Send {}
 
 #[expect(unsafe_code)]
-#[cfg(feature = "salsa")]
 unsafe impl<I, T> salsa::Update for IndexVec<I, T>
 where
     T: salsa::Update,

@@ -3,7 +3,7 @@ use auto_lsp::{
     lsp_types::{CompletionParams, CompletionResponse},
 };
 use db::WorkspaceDataBase;
-use ide_proto::{handlers::CompletionHandler, walk::completion_descendant_at};
+use ide_proto::{handlers::{CompletionHandler, CompletionRequest}, walk::completion_descendant_at};
 
 pub fn completions(
     db: &impl WorkspaceDataBase,
@@ -25,12 +25,12 @@ pub fn completions(
         .and_then(|ctx| ctx.trigger_character.clone());
 
     let offset = match doc.offset_at(position) {
-        Some(offset) => offset.saturating_sub(1),
+        Some(offset) => offset,
         None => return Ok(None),
     };
 
-    let target = match completion_descendant_at(db, file, offset) {
-        Some(target) => target,
+    let (target, node_key, is_last_before) = match completion_descendant_at(db, file, offset) {
+        Some(result) => result,
         None => {
             // no target node, show general completions (namespaces, pou snippets, etc)
             return Ok(Some(CompletionResponse::Array(vec![
@@ -45,9 +45,16 @@ pub fn completions(
             ])));
         }
     };
+    let req = CompletionRequest {
+        offset,
+        trigger_character,
+        query: "".into(),
+        node_index_pos: Some(node_key),
+        is_last_before,
+    };
     Ok(Some(CompletionResponse::Array(
         target
-            .completion(db, offset, trigger_character, "".into())
+            .completion(db, &req)
             .unwrap_or_default(),
     )))
 }

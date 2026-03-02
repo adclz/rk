@@ -11,7 +11,7 @@ doctest = false
 
 [dependencies]
 macros = { workspace = true }
-salsa = { workspace = true, optional = true }
+salsa = { workspace = true }
 
 [dev-dependencies]
 static_assertions = { workspace = true }

@@ -9,6 +9,7 @@ use auto_lsp::{
     },
 };
 use db::WorkspaceDataBase;
+use hir::hir_def::semantic_index::NodeKey;
 
 use crate::handlers::references::ReferenceLocation;
 
@@ -38,13 +39,32 @@ pub trait HoverHandler<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover>;
 }
 
+pub struct CompletionRequest {
+    pub offset: usize,
+    pub trigger_character: Option<String>,
+    pub query: String,
+    pub node_index_pos: Option<NodeKey>,
+    pub is_last_before: bool, // indicates if the node is the closest preceding one (e.g. for `my_var.inner.|`)
+}
+
+impl CompletionRequest {
+    /// Create a new request with a different query, keeping other fields.
+    pub fn with_query(&self, query: String) -> Self {
+        Self {
+            offset: self.offset,
+            trigger_character: self.trigger_character.clone(),
+            query,
+            node_index_pos: self.node_index_pos,
+            is_last_before: self.is_last_before,
+        }
+    }
+}
+
 pub trait CompletionHandler<'db> {
     fn completion(
         &'db self,
         db: &'db dyn WorkspaceDataBase,
-        offset: usize,
-        trigger_character: Option<String>,
-        query: String,
+        req: &CompletionRequest,
     ) -> Option<Vec<CompletionItem>>;
 }
 

@@ -1,7 +1,7 @@
 use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use hir::hir_def::semantic_index::semantic_index;
-use ide_proto::handlers::CompletionHandler;
+use ide_proto::handlers::{CompletionHandler, CompletionRequest};
 use rstest::rstest;
 
 use crate::tests::utils::{add_sources, with_db};
@@ -25,7 +25,8 @@ END_NAMESPACE
     let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
     let using = sema.scope.usings(&with_db).first().unwrap();
 
-    let completions = using.completion(&with_db, 6, None, "".into()).unwrap();
+    let req = CompletionRequest { offset: 6, trigger_character: None, query: "".into(), node_index_pos: None, is_last_before: false };
+    let completions = using.completion(&with_db, &req).unwrap();
 
     assert_eq!(completions.len(), 1);
     assert!(format!("{completions:?}").contains("System"));
@@ -51,7 +52,7 @@ END_NAMESPACE
     let using = sema.scope.usings(&with_db).first().unwrap();
 
     let completions = using
-        .completion(&with_db, 6, Some(".".into()), "".into())
+        .completion(&with_db, &CompletionRequest { offset: 6, trigger_character: Some(".".into()), query: "".into(), node_index_pos: None, is_last_before: false })
         .unwrap();
 
     assert_eq!(completions.len(), 2);
@@ -78,7 +79,8 @@ END_NAMESPACE
     let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
     let using = sema.scope.usings(&with_db).first().unwrap();
 
-    let completions = using.completion(&with_db, 7, None, "".into()).unwrap();
+    let req = CompletionRequest { offset: 7, trigger_character: None, query: "".into(), node_index_pos: None, is_last_before: false };
+    let completions = using.completion(&with_db, &req).unwrap();
 
     assert_eq!(completions.len(), 2);
     assert!(format!("{completions:?}").contains("subsystem1"));
@@ -110,7 +112,7 @@ END_NAMESPACE
     let using = sema.scope.usings(&with_db).first().unwrap();
 
     let completions = using
-        .completion(&with_db, 6, Some(".".into()), "".into())
+        .completion(&with_db, &CompletionRequest { offset: 6, trigger_character: Some(".".into()), query: "".into(), node_index_pos: None, is_last_before: false })
         .unwrap();
 
     assert_eq!(completions.len(), 2);

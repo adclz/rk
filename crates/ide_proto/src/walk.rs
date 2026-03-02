@@ -5,7 +5,8 @@ use db::WorkspaceDataBase;
 use hir::{
     HirNodeInfo,
     hir_def::{
-        hir_node::HirNode, semantic_index::{SemanticIndex, semantic_index},
+        hir_node::HirNode,
+        semantic_index::{NodeKey, SemanticIndex, semantic_index},
     },
 };
 
@@ -61,24 +62,33 @@ pub fn completion_descendant_at<'db>(
     db: &'db dyn WorkspaceDataBase,
     file: File,
     offset: usize,
-) -> Option<HirNode<'db>> {
-    let mut best_match: Option<HirNode<'db>> = None;
-    let mut best_size: usize = usize::MAX;
+) -> Option<(HirNode<'db>, NodeKey, bool)> {
+    let mut best_match: Option<(HirNode<'db>, NodeKey, bool)> = None;
 
-    let _ = semantic_index(db, file).walk_hir(db, &mut |node| {
+    // Track the closest preceding node for cases where the cursor is in
+    // whitespace after a dot (e.g. `my_var.inner. |`).
+    let mut last_before: Option<(HirNode<'db>, NodeKey, bool)> = None;
+
+    let sema = semantic_index(db, file);
+
+    for (idx, node) in sema.node_index.iter_enumerated() {
         let range = node.get_span(db);
+        // Sorted by AstId, so once start_byte > offset no further node can contain it
         if range.start_byte > offset {
-            return ControlFlow::Break(());
+            break;
         }
         if offset <= range.end_byte {
-            let size = range.end_byte - range.start_byte;
-            if size < best_size {
-                best_size = size;
-                best_match = Some(node);
-            }
+            best_match = Some((node.clone(), idx, false));
+        } else {
+            last_before = Some((node.clone(), idx, true));
         }
-        ControlFlow::Continue(())
-    });
+    }
 
-    best_match
+    // Prefer last_before when it appeared later in the source (higher NodeKey),
+    // meaning it's more specific than the containing node (e.g. a Pou).
+    match (&best_match, &last_before) {
+        (Some((_, best_idx, _)), Some((HirNode::PathExpr(_), last_idx, _))) if last_idx > best_idx => last_before,
+        (Some(_), _) => best_match,
+        (None, _) => last_before,
+    }
 }

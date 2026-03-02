@@ -11,6 +11,7 @@ auto-lsp = { workspace = true }
 hir = { workspace = true }
 ast = { workspace = true }
 db = { workspace = true }
+index = { workspace = true }
 serde_json = { workspace = true }
 camelpaste = { workspace = true }
 rustc-hash = { workspace = true }
