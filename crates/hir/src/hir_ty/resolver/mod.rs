@@ -93,7 +93,7 @@ impl<'db> Resolver<'db> {
             }
             name::NameResolution::Ambiguous(candidates) => {
                 ctx.errors.push(
-                    ResolveError::AmbiguousUsingImport {
+                    ResolveError::MultipleItemsInScope {
                         expr: path_expr,
                         candidates,
                     }

@@ -1,6 +1,7 @@
 use db::WorkspaceDataBase;
 
 use crate::{
+    HasName,
     hir_def::{
         expressions::spec::{ElementarySpec, Spec, SpecKind},
         interned::{
@@ -55,14 +56,9 @@ pub enum NameResolution<'db> {
 /// Single entry point for resolving a name ([`NamespaceAccess`]) to its declaration.
 ///
 /// Resolution order (first match wins):
-/// 1. Method self-reference (when inside a [`ScopeKind::MethodDecl`])
+/// 1. Self-reference (method or POU referencing its own name)
 /// 2. Generic type parameters (from [`ScopeId::generics`])
 /// 3. POU via namespace access (local scope → parent/USING → global)
-///
-/// Note: only methods need explicit self-reference handling (step 1) because
-/// [`MethodDecl`]s are not registered in any scope's `local_pous` — they live in
-/// `declared_methods`. POUs (functions, FBs, etc.) self-resolve naturally through
-/// step 3, since they are declared in their parent scope's `local_pous`.
 ///
 /// This function is used by both head-level (spec) and body-level (path expr) resolution.
 pub fn resolve_name<'db>(
@@ -82,11 +78,19 @@ pub fn resolve_name<'db>(
 
     let name = access.target.ident;
 
-    // 1. Method self-reference
-    if let ScopeKind::MethodDecl(method) = get_scope(db, scope).kind
-        && name == method.name(db) {
+    // 1. Self-reference: a POU or method referencing its own name takes priority
+    //    over parent scope lookups (which may return a different duplicate).
+    match get_scope(db, scope).kind {
+        ScopeKind::MethodDecl(method) if name == method.name(db) => {
             return NameResolution::MethodSelf(method);
         }
+        ScopeKind::Pou(pou) if name == pou.get_name_ident(db) => {
+            if let Pou::Function(f) = pou {
+                return NameResolution::Pou(pou);
+            }
+        }
+        _ => {}
+    }
 
     // 2. Generic parameters (works at both head and body level)
     if let Some(generics) = scope.generics(db) {

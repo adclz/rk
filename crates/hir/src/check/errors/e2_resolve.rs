@@ -139,8 +139,8 @@ pub enum ResolveError<'db> {
         var: VariableDecl<'db>,
         typ: Type<'db>,
     },
-    /// Two or more USING directives import different POUs with the same name.
-    AmbiguousUsingImport {
+    /// Two or more items with the same name are available in scope.
+    MultipleItemsInScope {
         expr: PathExpr<'db>,
         candidates: Vec<(Pou<'db>, NamespacePath)>,
     },
@@ -172,7 +172,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::ConfigInstInitUnknownInstance { .. } => "E0222",
             Self::ConfigInstInitFieldNotFound { .. } => "E0223",
             Self::NonVariadicTypeForVariable { var, typ } => "E0224",
-            Self::AmbiguousUsingImport { .. } => "E0225",
+            Self::MultipleItemsInScope { .. } => "E0225",
         }
     }
 
@@ -198,7 +198,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::AccessDeclTypeMismatch { .. } => "access declaration type mismatch",
             Self::ConfigInstInitUnknownInstance { .. }
             | Self::ConfigInstInitFieldNotFound { .. } => "configuration error",
-            Self::AmbiguousUsingImport { .. } => "ambiguous import",
+            Self::MultipleItemsInScope { .. } => "multiple items in scope",
         }
     }
 }
@@ -593,29 +593,49 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 diag.with_note("only elementary types can be variadic".into());
                 diag
             }
-            Self::AmbiguousUsingImport { expr, candidates } => {
+            Self::MultipleItemsInScope { expr, candidates } => {
                 let name = expr.ident(db).text(db);
-                let ns_list: Vec<_> = candidates.iter().map(|(_, ns)| ns.to_string(db)).collect();
 
+                // Count how many times each namespace appears
+                let mut counts = rustc_hash::FxHashMap::default();
+                for (_, ns) in candidates {
+                    *counts.entry(*ns).or_insert(0usize) += 1;
+                }
+
+                let duplicated: Vec<_> = counts.iter()
+                    .filter(|(_, count)| **count > 1)
+                    .map(|(ns, _)| ns.to_string(db))
+                    .collect();
+                let distinct: Vec<_> = counts.iter()
+                    .filter(|(_, count)| **count == 1)
+                    .map(|(ns, _)| ns.to_string(db))
+                    .collect();
+
+                let mut message = format!("multiple items named '{}' available in scope:", name);
                 let mut diag = diag()
-                    .message(format!(
-                        "'{}' is ambiguous between '{}'",
-                        name,
-                        ns_list.join("' and '"),
-                    ))
+                    .message(message)
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(expr.get_span(db))
                     .call();
 
-                let qualified: Vec<_> = ns_list
-                    .iter()
-                    .map(|ns| format!("{}.{}", ns, name))
-                    .collect();
-                diag.with_note(format!(
-                    "qualify the name to resolve the ambiguity: {}",
-                    qualified.join(" or "),
-                ));
+                for ns in &duplicated {
+                    diag.with_note(format!(
+                        "'{}' is declared multiple times in namespace '{}', fix the duplicate declaration first",
+                        name, ns,
+                    ));
+                }
+
+                if distinct.len() > 1 {
+                    let qualified: Vec<_> = distinct
+                        .iter()
+                        .map(|ns| format!("{}.{}", ns, name))
+                        .collect();
+                    diag.with_note(format!(
+                        "qualify the name to resolve the ambiguity: {}",
+                        qualified.join(" or "),
+                    ));
+                }
 
                 diag
             }
