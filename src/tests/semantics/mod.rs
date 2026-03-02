@@ -13,6 +13,7 @@ pub mod inference;
 pub mod inheritance;
 pub mod init_expr;
 pub mod invocation;
+pub mod ambiguous_scopes;
 pub mod literals;
 pub mod loops;
 pub mod path_expr;
