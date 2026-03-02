@@ -20,6 +20,8 @@ members = [
     "crates/cli",
     "crates/benchmark",
     "crates/linter",
+    "crates/index",
+    "crates/macros",
     "vscode/server",
 ]
 
@@ -41,6 +43,8 @@ hir = { path = "crates/hir" }
 wasm_codegen = { path = "crates/wasm_codegen" }
 formatter = { path = "crates/formatter" }
 linter = { path = "crates/linter" }
+index = { path = "crates/index" }
+macros = { path = "crates/macros" }
 bon = "3.6.4"
 phf = { version = "0.11.3", features = ["macros"] }
 bitflags = "2.9.1"
@@ -62,6 +66,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1.0.109"
 toml = "0.8"
 indexmap = "2.13.0"
+static_assertions = "1.1.0"
+proc-macro2 = "1.0.66"
+quote = "1.0.28"
+syn = "2.0.18"
 # salsa and tree-sitter versions must be kept in sync with auto-lsp's one
 salsa = "0.26.0"
 tree-sitter = "0.26.5"
@@ -105,3 +113,4 @@ tree-sitter-rk = { workspace = true }
 formatter = { workspace = true }
 topiary-core = { workspace = true }
 wasmparser = { workspace = true }
+static_assertions = { workspace = true }

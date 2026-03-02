@@ -1,0 +1,17 @@
+[package]
+name = "index"
+version = "0.0.0"
+publish = false
+authors = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+
+[lib]
+doctest = false
+
+[dependencies]
+macros = { workspace = true }
+salsa = { workspace = true, optional = true }
+
+[dev-dependencies]
+static_assertions = { workspace = true }
