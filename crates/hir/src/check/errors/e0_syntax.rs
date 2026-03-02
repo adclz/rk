@@ -63,6 +63,13 @@ pub enum SyntaxError {
         err: String,
         grammar_name: &'static str,
     },
+    VarInOutNotAllowed(Span),
+    VarTempNotAllowed(Span),
+    VarAccessNotAllowed(Span),
+    VarConfigNotAllowed(Span),
+    VarLocatedNotAllowed(Span),
+    VarExternalNotAllowed(Span),
+    VarGlobalNotAllowed(Span),
     // todo: use custom lexer to handle syntax errors unhandled by tree-sitter
     SyntaxError {
         span: Span,
@@ -96,6 +103,13 @@ impl ErrorCode for SyntaxError {
             SyntaxError::OutputAssignInForList { .. } => "E0021",
             SyntaxError::ProgramNotAllowedInNamespace(_) => "E0022",
             SyntaxError::ConfigNotAllowedInNamespace(_) => "E0023",
+            SyntaxError::VarInOutNotAllowed(_) => "E0024",
+            SyntaxError::VarTempNotAllowed(_) => "E0025",
+            SyntaxError::VarAccessNotAllowed(_) => "E0026",
+            SyntaxError::VarConfigNotAllowed(_) => "E0027",
+            SyntaxError::VarLocatedNotAllowed(_) => "E0028",
+            SyntaxError::VarExternalNotAllowed(_) => "E0029",
+            SyntaxError::VarGlobalNotAllowed(_) => "E0030",
             SyntaxError::SyntaxError { .. } => "E0050",
         }
     }
@@ -477,6 +491,83 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 .desc(self)
                 .range(*span)
                 .call(),
+            Self::VarInOutNotAllowed(span ) => {
+                let mut diag = diag()
+                .message("VAR_IN_OUT is not allowed in this context".into())
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(*span)
+                .call();
+            
+                diag.with_note("VAR_IN_OUT can only be used inside FUNCTION, FUNCTION_BLOCK".into());
+                diag
+            },
+            Self::VarTempNotAllowed(span ) => {
+                let mut diag = diag()
+                .message("VAR_TEMP is not allowed in this context".into())
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(*span)
+                .call();
+                
+                diag.with_note("VAR_TEMP can only be used inside FUNCTION, FUNCTION_BLOCK".into());
+                diag
+            },
+            Self::VarAccessNotAllowed(span ) => {
+                let mut diag = diag()
+                .message("VAR_ACCESS is not allowed in this context".into())
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(*span)
+                .call();
+            
+                diag.with_note("VAR_ACCESS can only be used inside PROGRAM".into());
+                diag
+            },
+            Self::VarConfigNotAllowed(span ) => {
+                let mut diag = diag()
+                .message("VAR_CONFIG is not allowed in this context".into())
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(*span)
+                .call();
+            
+                diag.with_note("VAR_CONFIG can only be used inside CONFIGURATION".into());
+                diag
+            },
+            Self::VarLocatedNotAllowed(span ) => {
+                let mut diag = diag()
+                .message("VAR_LOCATED is not allowed in this context".into())
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(*span)
+                .call();
+            
+                diag.with_note("VAR_LOCATED can only be used inside PROGRAM".into());
+                diag
+            },
+            Self::VarExternalNotAllowed(span ) => {
+                let mut diag = diag()
+                .message("VAR_EXTERNAL is not allowed in this context".into())
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)                
+                .range(*span)
+                .call();
+            
+                diag.with_note("VAR_EXTERNAL can only be used inside PROGRAM, FUNCTION_BLOCK, FUNCTION".into());
+                diag
+            },
+            Self::VarGlobalNotAllowed(span) => {
+                let mut diag = diag()
+                .message("VAR_GLOBAL is not allowed in this context".into())
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)                
+                .range(*span)
+                .call();
+            
+                diag.with_note("VAR_GLOBAL can only be used inside PROGRAM, CONFIGURATION".into());
+                diag
+            },
             Self::SyntaxError { span, err } => diag()
                 .message(err.to_string())
                 .severity(DiagnosticSeverity::ERROR)

@@ -60,6 +60,41 @@ impl<'db> SemanticIndexBuilder<'db> {
         let mut variables = vec![];
         for v in class.variables.iter() {
             match v.cast(self.ast) {
+                ClassVariables::ERRVarInOutNotAllowed(err) => {
+                    self.errors.push(
+                        SyntaxError::VarInOutNotAllowed(err.get_span()).to_diagnostic(self.db),
+                    );
+                }
+                ClassVariables::ERRVarTempNotAllowed(err) => {
+                    self.errors.push(
+                        SyntaxError::VarTempNotAllowed(err.get_span()).to_diagnostic(self.db),
+                    );
+                }
+                ClassVariables::ERRVarAccessNotAllowed(err) => {
+                    self.errors.push(
+                        SyntaxError::VarAccessNotAllowed(err.get_span()).to_diagnostic(self.db),
+                    );
+                }
+                ClassVariables::ERRVarConfigNotAllowed(err) => {
+                    self.errors.push(
+                        SyntaxError::VarConfigNotAllowed(err.get_span()).to_diagnostic(self.db),
+                    );
+                }
+                ClassVariables::ERRVarLocatedNotAllowed(err) => {
+                    self.errors.push(
+                        SyntaxError::VarLocatedNotAllowed(err.get_span()).to_diagnostic(self.db),
+                    );
+                }
+                ClassVariables::ERRVarExternalNotAllowed(err) => {
+                    self.errors.push(
+                        SyntaxError::VarExternalNotAllowed(err.get_span()).to_diagnostic(self.db),
+                    );
+                }
+                ClassVariables::ERRVarGlobalNotAllowed(err) => {
+                    self.errors.push(
+                        SyntaxError::VarGlobalNotAllowed(err.get_span()).to_diagnostic(self.db),
+                    );
+                }
                 ClassVariables::ExternalVarDecls(e) => e.parse(self, &mut variables),
                 ClassVariables::LocPartlyVarDecl(i) => i.parse(self, &mut variables),
                 ClassVariables::NoRetainVarDecls(i) => i.parse(self, &mut variables),
@@ -153,17 +188,52 @@ impl<'db> SemanticIndexBuilder<'db> {
             modifiers |= Modifier::OVERRIDE;
         }
 
-        type MethodBody = ast::generated::ExternalVarDecls_InOutDecls_InputDecls_OutputDecls_TempVarDecls_VarDecls;
-
         let mut variables = vec![];
         for v in method.variables.iter() {
             match v.cast(self.ast) {
-                MethodBody::ExternalVarDecls(decls) => decls.parse(self, &mut variables),
-                MethodBody::InOutDecls(decls) => decls.parse(self, &mut variables),
-                MethodBody::InputDecls(decls) => decls.parse(self, &mut variables),
-                MethodBody::OutputDecls(decls) => decls.parse(self, &mut variables),
-                MethodBody::TempVarDecls(decls) => decls.parse(self, &mut variables),
-                MethodBody::VarDecls(decls) => decls.parse(self, &mut variables),
+                ast::generated::MethodDeclVariables::ERRVarAccessNotAllowed(err) => {
+                    self.errors.push(
+                        SyntaxError::VarAccessNotAllowed(err.get_span()).to_diagnostic(self.db),
+                    );
+                }
+                ast::generated::MethodDeclVariables::ERRVarConfigNotAllowed(err) => {
+                    self.errors.push(
+                        SyntaxError::VarConfigNotAllowed(err.get_span()).to_diagnostic(self.db),
+                    );
+                }
+                ast::generated::MethodDeclVariables::ERRVarExternalNotAllowed(err) => {
+                    self.errors.push(
+                        SyntaxError::VarExternalNotAllowed(err.get_span()).to_diagnostic(self.db),
+                    );
+                }
+                ast::generated::MethodDeclVariables::ERRVarGlobalNotAllowed(err) => {
+                    self.errors.push(
+                        SyntaxError::VarGlobalNotAllowed(err.get_span()).to_diagnostic(self.db),
+                    );
+                }
+                ast::generated::MethodDeclVariables::ERRVarLocatedNotAllowed(err) => {
+                    self.errors.push(
+                        SyntaxError::VarLocatedNotAllowed(err.get_span()).to_diagnostic(self.db),
+                    );
+                }
+                ast::generated::MethodDeclVariables::ExternalVarDecls(decls) => {
+                    decls.parse(self, &mut variables)
+                }
+                ast::generated::MethodDeclVariables::InOutDecls(decls) => {
+                    decls.parse(self, &mut variables)
+                }
+                ast::generated::MethodDeclVariables::InputDecls(decls) => {
+                    decls.parse(self, &mut variables)
+                }
+                ast::generated::MethodDeclVariables::OutputDecls(decls) => {
+                    decls.parse(self, &mut variables)
+                }
+                ast::generated::MethodDeclVariables::TempVarDecls(decls) => {
+                    decls.parse(self, &mut variables)
+                }
+                ast::generated::MethodDeclVariables::VarDecls(decls) => {
+                    decls.parse(self, &mut variables)
+                }
             }
         }
 
@@ -216,7 +286,10 @@ impl<'db> SemanticIndexBuilder<'db> {
             scope_id,
         );
 
-        self.register_node(method.into(), HirNode::MethodRef(MethodRef::Declared(result)));
+        self.register_node(
+            method.into(),
+            HirNode::MethodRef(MethodRef::Declared(result)),
+        );
         self.register_scope(
             ScopeKind::MethodDecl(result),
             vec![],

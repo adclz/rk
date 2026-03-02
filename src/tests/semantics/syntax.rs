@@ -476,3 +476,440 @@ END_NAMESPACE
     ---'
     ");
 }
+
+#[rstest]
+fn invalid_class_variable_sections(mut with_db: RootDatabase) {
+    let source = r#"
+CLASS cl
+  VAR_IN_OUT
+
+  END_VAR
+
+  VAR_TEMP
+
+  END_VAR
+
+  VAR_ACCESS
+
+  END_VAR
+
+  VAR_CONFIG
+
+  END_VAR
+
+  VAR_LOCATED
+
+  END_VAR
+
+  VAR_EXTERNAL
+
+  END_VAR
+
+  VAR_GLOBAL
+
+  END_VAR
+END_CLASS
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0024] Error: syntax
+       ,-[ file:///test0.st:3:3 ]
+       |
+     3 | ,->   VAR_IN_OUT
+       : :
+     5 | |->   END_VAR
+       | |
+       | `--------------- VAR_IN_OUT is not allowed in this context
+       |
+       |     Note: VAR_IN_OUT can only be used inside FUNCTION, FUNCTION_BLOCK
+    ---'
+    [E0025] Error: syntax
+       ,-[ file:///test0.st:7:3 ]
+       |
+     7 | ,->   VAR_TEMP
+       : :
+     9 | |->   END_VAR
+       | |
+       | `--------------- VAR_TEMP is not allowed in this context
+       |
+       |     Note: VAR_TEMP can only be used inside FUNCTION, FUNCTION_BLOCK
+    ---'
+    [E0026] Error: syntax
+        ,-[ file:///test0.st:11:3 ]
+        |
+     11 | ,->   VAR_ACCESS
+        : :
+     13 | |->   END_VAR
+        | |
+        | `--------------- VAR_ACCESS is not allowed in this context
+        |
+        |     Note: VAR_ACCESS can only be used inside PROGRAM
+    ----'
+    [E0027] Error: syntax
+        ,-[ file:///test0.st:15:3 ]
+        |
+     15 | ,->   VAR_CONFIG
+        : :
+     17 | |->   END_VAR
+        | |
+        | `--------------- VAR_CONFIG is not allowed in this context
+        |
+        |     Note: VAR_CONFIG can only be used inside CONFIGURATION
+    ----'
+    [E0028] Error: syntax
+        ,-[ file:///test0.st:19:3 ]
+        |
+     19 | ,->   VAR_LOCATED
+        : :
+     21 | |->   END_VAR
+        | |
+        | `--------------- VAR_LOCATED is not allowed in this context
+        |
+        |     Note: VAR_LOCATED can only be used inside PROGRAM
+    ----'
+    [E0030] Error: syntax
+        ,-[ file:///test0.st:27:3 ]
+        |
+     27 | ,->   VAR_GLOBAL
+        : :
+     29 | |->   END_VAR
+        | |
+        | `--------------- VAR_GLOBAL is not allowed in this context
+        |
+        |     Note: VAR_GLOBAL can only be used inside PROGRAM, CONFIGURATION
+    ----'
+    ");
+}
+
+#[rstest]
+fn invalid_fb_variable_sections(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK db
+  VAR_ACCESS
+
+  END_VAR
+
+  VAR_CONFIG
+
+  END_VAR
+
+  VAR_LOCATED
+
+  END_VAR
+
+  VAR_GLOBAL
+
+  END_VAR
+END_FUNCTION_BLOCK
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0026] Error: syntax
+       ,-[ file:///test0.st:3:3 ]
+       |
+     3 | ,->   VAR_ACCESS
+       : :
+     5 | |->   END_VAR
+       | |
+       | `--------------- VAR_ACCESS is not allowed in this context
+       |
+       |     Note: VAR_ACCESS can only be used inside PROGRAM
+    ---'
+    [E0027] Error: syntax
+       ,-[ file:///test0.st:7:3 ]
+       |
+     7 | ,->   VAR_CONFIG
+       : :
+     9 | |->   END_VAR
+       | |
+       | `--------------- VAR_CONFIG is not allowed in this context
+       |
+       |     Note: VAR_CONFIG can only be used inside CONFIGURATION
+    ---'
+    [E0028] Error: syntax
+        ,-[ file:///test0.st:11:3 ]
+        |
+     11 | ,->   VAR_LOCATED
+        : :
+     13 | |->   END_VAR
+        | |
+        | `--------------- VAR_LOCATED is not allowed in this context
+        |
+        |     Note: VAR_LOCATED can only be used inside PROGRAM
+    ----'
+    [E0030] Error: syntax
+        ,-[ file:///test0.st:15:3 ]
+        |
+     15 | ,->   VAR_GLOBAL
+        : :
+     17 | |->   END_VAR
+        | |
+        | `--------------- VAR_GLOBAL is not allowed in this context
+        |
+        |     Note: VAR_GLOBAL can only be used inside PROGRAM, CONFIGURATION
+    ----'
+    ");
+}
+
+#[rstest]
+fn invalid_function_variable_sections(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn
+  VAR_ACCESS
+
+  END_VAR
+
+  VAR_CONFIG
+
+  END_VAR
+
+  VAR_LOCATED
+
+  END_VAR
+
+  VAR_GLOBAL
+
+  END_VAR
+END_FUNCTION
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0026] Error: syntax
+       ,-[ file:///test0.st:3:3 ]
+       |
+     3 | ,->   VAR_ACCESS
+       : :
+     5 | |->   END_VAR
+       | |
+       | `--------------- VAR_ACCESS is not allowed in this context
+       |
+       |     Note: VAR_ACCESS can only be used inside PROGRAM
+    ---'
+    [E0027] Error: syntax
+       ,-[ file:///test0.st:7:3 ]
+       |
+     7 | ,->   VAR_CONFIG
+       : :
+     9 | |->   END_VAR
+       | |
+       | `--------------- VAR_CONFIG is not allowed in this context
+       |
+       |     Note: VAR_CONFIG can only be used inside CONFIGURATION
+    ---'
+    [E0028] Error: syntax
+        ,-[ file:///test0.st:11:3 ]
+        |
+     11 | ,->   VAR_LOCATED
+        : :
+     13 | |->   END_VAR
+        | |
+        | `--------------- VAR_LOCATED is not allowed in this context
+        |
+        |     Note: VAR_LOCATED can only be used inside PROGRAM
+    ----'
+    [E0030] Error: syntax
+        ,-[ file:///test0.st:15:3 ]
+        |
+     15 | ,->   VAR_GLOBAL
+        : :
+     17 | |->   END_VAR
+        | |
+        | `--------------- VAR_GLOBAL is not allowed in this context
+        |
+        |     Note: VAR_GLOBAL can only be used inside PROGRAM, CONFIGURATION
+    ----'
+    ");
+}
+
+
+#[rstest]
+fn invalid_method_prototypes_variable_sections(mut with_db: RootDatabase) {
+    let source = r#"
+INTERFACE in
+  METHOD m
+    VAR_ACCESS
+    
+    END_VAR
+
+    VAR_CONFIG
+
+    END_VAR
+
+    VAR_LOCATED
+
+    END_VAR
+
+    VAR_EXTERNAL
+
+    END_VAR
+
+    VAR_GLOBAL
+
+    END_VAR
+    
+    VAR_TEMP
+
+    END_VAR
+
+    VAR_IN_OUT
+
+    END_VAR
+  END_METHOD
+END_INTERFACE
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0026] Error: syntax
+       ,-[ file:///test0.st:4:5 ]
+       |
+     4 | ,->     VAR_ACCESS
+       : :
+     6 | |->     END_VAR
+       | |
+       | `----------------- VAR_ACCESS is not allowed in this context
+       |
+       |     Note: VAR_ACCESS can only be used inside PROGRAM
+    ---'
+    [E0027] Error: syntax
+        ,-[ file:///test0.st:8:5 ]
+        |
+      8 | ,->     VAR_CONFIG
+        : :
+     10 | |->     END_VAR
+        | |
+        | `----------------- VAR_CONFIG is not allowed in this context
+        |
+        |     Note: VAR_CONFIG can only be used inside CONFIGURATION
+    ----'
+    [E0028] Error: syntax
+        ,-[ file:///test0.st:12:5 ]
+        |
+     12 | ,->     VAR_LOCATED
+        : :
+     14 | |->     END_VAR
+        | |
+        | `----------------- VAR_LOCATED is not allowed in this context
+        |
+        |     Note: VAR_LOCATED can only be used inside PROGRAM
+    ----'
+    [E0029] Error: syntax
+        ,-[ file:///test0.st:16:5 ]
+        |
+     16 | ,->     VAR_EXTERNAL
+        : :
+     18 | |->     END_VAR
+        | |
+        | `----------------- VAR_EXTERNAL is not allowed in this context
+        |
+        |     Note: VAR_EXTERNAL can only be used inside PROGRAM, FUNCTION_BLOCK, FUNCTION
+    ----'
+    [E0030] Error: syntax
+        ,-[ file:///test0.st:20:5 ]
+        |
+     20 | ,->     VAR_GLOBAL
+        : :
+     22 | |->     END_VAR
+        | |
+        | `----------------- VAR_GLOBAL is not allowed in this context
+        |
+        |     Note: VAR_GLOBAL can only be used inside PROGRAM, CONFIGURATION
+    ----'
+    [E0025] Error: syntax
+        ,-[ file:///test0.st:24:5 ]
+        |
+     24 | ,->     VAR_TEMP
+        : :
+     26 | |->     END_VAR
+        | |
+        | `----------------- VAR_TEMP is not allowed in this context
+        |
+        |     Note: VAR_TEMP can only be used inside FUNCTION, FUNCTION_BLOCK
+    ----'
+    ");
+}
+
+
+#[rstest]
+fn invalid_method_declarations_variable_sections(mut with_db: RootDatabase) {
+    let source = r#"
+CLASS cl
+
+  METHOD m
+    VAR_ACCESS
+    
+    END_VAR
+
+    VAR_CONFIG
+
+    END_VAR
+
+    VAR_LOCATED
+
+    END_VAR
+
+    VAR_EXTERNAL
+
+    END_VAR
+
+    VAR_GLOBAL
+
+    END_VAR
+
+    VAR_TEMP
+
+    END_VAR
+
+    VAR_IN_OUT
+
+    END_VAR
+  END_METHOD
+END_CLASS
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0026] Error: syntax
+       ,-[ file:///test0.st:5:5 ]
+       |
+     5 | ,->     VAR_ACCESS
+       : :
+     7 | |->     END_VAR
+       | |
+       | `----------------- VAR_ACCESS is not allowed in this context
+       |
+       |     Note: VAR_ACCESS can only be used inside PROGRAM
+    ---'
+    [E0027] Error: syntax
+        ,-[ file:///test0.st:9:5 ]
+        |
+      9 | ,->     VAR_CONFIG
+        : :
+     11 | |->     END_VAR
+        | |
+        | `----------------- VAR_CONFIG is not allowed in this context
+        |
+        |     Note: VAR_CONFIG can only be used inside CONFIGURATION
+    ----'
+    [E0028] Error: syntax
+        ,-[ file:///test0.st:13:5 ]
+        |
+     13 | ,->     VAR_LOCATED
+        : :
+     15 | |->     END_VAR
+        | |
+        | `----------------- VAR_LOCATED is not allowed in this context
+        |
+        |     Note: VAR_LOCATED can only be used inside PROGRAM
+    ----'
+    [E0030] Error: syntax
+        ,-[ file:///test0.st:21:5 ]
+        |
+     21 | ,->     VAR_GLOBAL
+        : :
+     23 | |->     END_VAR
+        | |
+        | `----------------- VAR_GLOBAL is not allowed in this context
+        |
+        |     Note: VAR_GLOBAL can only be used inside PROGRAM, CONFIGURATION
+    ----'
+    ");
+}

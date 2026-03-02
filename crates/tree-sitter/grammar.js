@@ -137,7 +137,6 @@ const RESERVED_NAMES = [
   "VAR_EXTERNAL",
   "VAR_GLOBAL",
   "VAR_LOCATED",
-  //"VAR_PARTLY",
   "RETAIN",
   "NON_RETAIN",
   "IF",
@@ -188,6 +187,8 @@ module.exports = grammar({
     $._func_variables,
     $._fb_variables,
     $._class_variables,
+    $._method_prot_variables,
+    $._method_decl_variables,
 
     $._input_var_kind,
     $._fb_input_var_kind,
@@ -303,8 +304,17 @@ module.exports = grammar({
       prec(-1, repeat1($._class_variables)),
     ERR_fb_variables_after_method: ($) => prec(-1, repeat1($._fb_variables)),
 
-    ERR_program_not_allowed_in_namespace : ($) => prec(-1, $.prog_decl),
+    ERR_program_not_allowed_in_namespace: ($) => prec(-1, $.prog_decl),
     ERR_config_not_allowed_in_namespace: ($) => prec(-1, $.config_decl),
+
+    // Invalid variable sections
+    ERR_var_in_out_not_allowed: ($) => prec(-1, $.in_out_decls), // VAR_IN_OUT
+    ERR_var_temp_not_allowed: ($) => prec(-1, $.temp_var_decls), // VAR_TEMP
+    ERR_var_access_not_allowed: ($) => prec(-1, $.prog_access_decls), // VAR_ACCESS
+    ERR_var_config_not_allowed: ($) => prec(-1, $.config_init), // VAR_CONFIG
+    ERR_var_located_not_allowed: ($) => prec(-1, $.loc_var_decls), // VAR_LOCATED
+    ERR_var_external_not_allowed: ($) => prec(-1, $.external_var_decls), // VAR_EXTERNAL
+    ERR_var_global_not_allowed: ($) => prec(-1, $.global_var_decls), // VAR_GLOBAL
 
     // Table 3 - Comments
 
@@ -1056,7 +1066,14 @@ module.exports = grammar({
       ),
 
     _func_variables: ($) =>
-      choice(...io_var_decls($), ...func_var_decls($), $.temp_var_decls),
+      choice(...io_var_decls($), ...func_var_decls($),
+        $.temp_var_decls,
+        $.ERR_var_access_not_allowed,
+        $.ERR_var_config_not_allowed,
+        $.ERR_var_located_not_allowed,
+        $.ERR_var_external_not_allowed,
+        $.ERR_var_global_not_allowed
+      ),
 
     func_body: ($) => choice($.ladder_diagram, $.fb_diagram, $.stmt_list),
 
@@ -1090,6 +1107,10 @@ module.exports = grammar({
         $.temp_var_decls,
         ...func_var_decls($),
         ...other_var_decls($),
+        $.ERR_var_access_not_allowed,
+        $.ERR_var_config_not_allowed,
+        $.ERR_var_located_not_allowed,
+        $.ERR_var_global_not_allowed,
       ),
 
     fb_input_decls: ($) =>
@@ -1165,11 +1186,23 @@ module.exports = grammar({
         field(
           "variables",
           repeat(
-            choice(...io_var_decls($), ...func_var_decls($), $.temp_var_decls),
+            $._method_decl_variables
           ),
         ),
         field("body", optional($.func_body)),
         "END_METHOD",
+      ),
+
+    _method_decl_variables: ($) =>
+      choice(
+        ...io_var_decls($),
+        ...func_var_decls($),
+        $.temp_var_decls,
+        $.ERR_var_access_not_allowed,
+        $.ERR_var_config_not_allowed,
+        $.ERR_var_located_not_allowed,
+        $.ERR_var_external_not_allowed,
+        $.ERR_var_global_not_allowed,
       ),
 
     // Table 48 - Class
@@ -1194,7 +1227,15 @@ module.exports = grammar({
       ),
 
     _class_variables: ($) =>
-      choice(...func_var_decls($), ...other_var_decls($)),
+      choice(...func_var_decls($), ...other_var_decls($),
+        $.ERR_var_in_out_not_allowed,
+        $.ERR_var_temp_not_allowed,
+        $.ERR_var_access_not_allowed,
+        $.ERR_var_config_not_allowed,
+        $.ERR_var_located_not_allowed,
+        $.ERR_var_external_not_allowed,
+        $.ERR_var_global_not_allowed
+      ),
 
     interface_decl: ($) =>
       seq(
@@ -1212,8 +1253,20 @@ module.exports = grammar({
         "METHOD",
         field("name", $.identifier),
         optional(seq(":", field("data_type", $.data_type_access))),
-        field("variables", repeat(choice(...io_var_decls($)))),
+        field("variables", repeat($._method_prot_variables)),
         "END_METHOD",
+      ),
+
+    _method_prot_variables: ($) =>
+      choice(...io_var_decls($),
+        $.ERR_var_access_not_allowed,
+        $.ERR_var_config_not_allowed,
+        $.ERR_var_located_not_allowed,
+        $.ERR_var_external_not_allowed,
+        $.ERR_var_global_not_allowed,
+        // temp and in_out are not allowed too
+        $.ERR_var_temp_not_allowed,
+        $.ERR_var_in_out_not_allowed
       ),
 
     interface_spec_init: ($) => seq(":=", $.interface_value),

@@ -139,6 +139,26 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         for variable in func.variables.iter() {
             match variable.cast(self.ast) {
+                FbVariables::ERRVarAccessNotAllowed(err) => {
+                    self.errors.push(
+                        SyntaxError::VarAccessNotAllowed(err.get_span()).to_diagnostic(self.db),
+                    );
+                }
+                FbVariables::ERRVarConfigNotAllowed(err) => {
+                    self.errors.push(
+                        SyntaxError::VarConfigNotAllowed(err.get_span()).to_diagnostic(self.db),
+                    );
+                }
+                FbVariables::ERRVarLocatedNotAllowed(err) => {
+                    self.errors.push(
+                        SyntaxError::VarLocatedNotAllowed(err.get_span()).to_diagnostic(self.db),
+                    );
+                }
+                FbVariables::ERRVarGlobalNotAllowed(err) => {
+                    self.errors.push(
+                        SyntaxError::VarGlobalNotAllowed(err.get_span()).to_diagnostic(self.db),
+                    );
+                }
                 FbVariables::FbInputDecls(decls) => decls.parse(self, &mut variables),
                 FbVariables::FbOutputDecls(decls) => decls.parse(self, &mut variables),
                 FbVariables::InOutDecls(decls) => decls.parse(self, &mut variables),

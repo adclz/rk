@@ -1,6 +1,8 @@
 use crate::Visibility;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::{Parse, ParseSpec, ParseVarSection};
+use crate::check::errors::ToIdeDiagnostic;
+use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::hir_node::HirNode;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::pous::function::Function;
@@ -9,6 +11,7 @@ use crate::hir_def::pous::variable::VariableDecl;
 use crate::hir_def::scope::ScopeKind;
 use ast::generated::FuncVariables;
 use auto_lsp::anyhow;
+use auto_lsp::core::ast::AstNode;
 use ide_diagnostic::IdeDiagnostic;
 
 impl<'db> SemanticIndexBuilder<'db> {
@@ -82,6 +85,31 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         for variable in func.variables.iter() {
             match variable.cast(self.ast) {
+                FuncVariables::ERRVarAccessNotAllowed(err) => {
+                    self.errors.push(
+                        SyntaxError::VarAccessNotAllowed(err.get_span()).to_diagnostic(self.db),
+                    );
+                }
+                FuncVariables::ERRVarConfigNotAllowed(err) => {
+                    self.errors.push(
+                        SyntaxError::VarConfigNotAllowed(err.get_span()).to_diagnostic(self.db),
+                    );
+                }
+                FuncVariables::ERRVarLocatedNotAllowed(err) => {
+                    self.errors.push(
+                        SyntaxError::VarLocatedNotAllowed(err.get_span()).to_diagnostic(self.db),
+                    );
+                }
+                FuncVariables::ERRVarExternalNotAllowed(err) => {
+                    self.errors.push(
+                        SyntaxError::VarExternalNotAllowed(err.get_span()).to_diagnostic(self.db),
+                    );
+                }
+                FuncVariables::ERRVarGlobalNotAllowed(err) => {
+                    self.errors.push(
+                        SyntaxError::VarGlobalNotAllowed(err.get_span()).to_diagnostic(self.db),
+                    );
+                }
                 FuncVariables::InputDecls(decls) => decls.parse(self, &mut variables),
                 FuncVariables::OutputDecls(decls) => decls.parse(self, &mut variables),
                 FuncVariables::InOutDecls(decls) => decls.parse(self, &mut variables),

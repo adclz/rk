@@ -1,6 +1,8 @@
 use crate::Visibility;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::{ParseSpec, ParseVarSection};
+use crate::check::errors::ToIdeDiagnostic;
+use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::hir_node::HirNode;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
@@ -9,6 +11,7 @@ use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::scope::{ScopeId, ScopeKind};
 use crate::hir_ty::head::inheritance::MethodRef;
 use auto_lsp::anyhow;
+use auto_lsp::core::ast::AstNode;
 use ide_diagnostic::IdeDiagnostic;
 
 impl<'db> SemanticIndexBuilder<'db> {
@@ -93,13 +96,48 @@ impl<'db> SemanticIndexBuilder<'db> {
         let mut variables = vec![];
         for variable in method.variables.iter() {
             match variable.cast(self.ast) {
-                ast::generated::InOutDecls_InputDecls_OutputDecls::InputDecls(decls) => {
+                ast::generated::MethodProtVariables::ERRVarAccessNotAllowed(err) => {
+                    self.errors.push(
+                        SyntaxError::VarAccessNotAllowed(err.get_span()).to_diagnostic(self.db),
+                    );
+                }
+                 ast::generated::MethodProtVariables::ERRVarConfigNotAllowed(err) => {
+                    self.errors.push(
+                        SyntaxError::VarConfigNotAllowed(err.get_span()).to_diagnostic(self.db),
+                    );
+                }
+                ast::generated::MethodProtVariables::ERRVarLocatedNotAllowed(err) => {
+                    self.errors.push(
+                        SyntaxError::VarLocatedNotAllowed(err.get_span()).to_diagnostic(self.db),
+                    );
+                }
+                ast::generated::MethodProtVariables::ERRVarExternalNotAllowed(err) => {
+                    self.errors.push(
+                        SyntaxError::VarExternalNotAllowed(err.get_span()).to_diagnostic(self.db),
+                    );
+                }
+                ast::generated::MethodProtVariables::ERRVarGlobalNotAllowed(err) => {
+                    self.errors.push(
+                        SyntaxError::VarGlobalNotAllowed(err.get_span()).to_diagnostic(self.db),
+                    );
+                }
+                ast::generated::MethodProtVariables::ERRVarInOutNotAllowed(err) => {
+                    self.errors.push(
+                        SyntaxError::VarInOutNotAllowed(err.get_span()).to_diagnostic(self.db),
+                    );
+                }
+                ast::generated::MethodProtVariables::ERRVarTempNotAllowed(err) => {
+                    self.errors.push(
+                        SyntaxError::VarTempNotAllowed(err.get_span()).to_diagnostic(self.db),
+                    );
+                }   
+                ast::generated::MethodProtVariables::InputDecls(decls) => {
+                    decls.parse(self, &mut variables)
+                } 
+                ast::generated::MethodProtVariables::InOutDecls(decls) => {
                     decls.parse(self, &mut variables)
                 }
-                ast::generated::InOutDecls_InputDecls_OutputDecls::InOutDecls(decls) => {
-                    decls.parse(self, &mut variables)
-                }
-                ast::generated::InOutDecls_InputDecls_OutputDecls::OutputDecls(decls) => {
+                ast::generated::MethodProtVariables::OutputDecls(decls) => {
                     decls.parse(self, &mut variables)
                 }
             }

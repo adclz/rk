@@ -654,3 +654,242 @@ END_NAMESPACE
           (ERR_config_not_allowed_in_namespace
             (config_decl
               (identifier))))))
+
+================================================================================
+invalid var sections in class
+================================================================================
+
+CLASS cl
+  VAR_IN_OUT
+
+  END_VAR
+
+  VAR_TEMP
+
+  END_VAR
+
+  VAR_ACCESS
+
+  END_VAR
+
+  VAR_CONFIG
+
+  END_VAR
+
+  VAR_LOCATED
+
+  END_VAR
+
+  VAR_EXTERNAL
+
+  END_VAR
+
+  VAR_GLOBAL
+
+  END_VAR
+END_CLASS
+
+--------------------------------------------------------------------------------
+    
+    (source_file
+      (class_decl
+        (identifier)
+        (ERR_var_in_out_not_allowed
+          (in_out_decls))
+        (ERR_var_temp_not_allowed
+          (temp_var_decls))
+        (ERR_var_access_not_allowed
+          (prog_access_decls))
+        (ERR_var_config_not_allowed
+          (config_init))
+        (ERR_var_located_not_allowed
+          (loc_var_decls))
+        (external_var_decls)
+        (ERR_var_global_not_allowed
+          (global_var_decls))))
+
+================================================================================
+invalid var sections in fbs
+================================================================================
+
+FUNCTION_BLOCK db
+  VAR_ACCESS
+
+  END_VAR
+
+  VAR_CONFIG
+
+  END_VAR
+
+  VAR_LOCATED
+
+  END_VAR
+
+  VAR_GLOBAL
+
+  END_VAR
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (fb_decl
+        (identifier)
+        (ERR_var_access_not_allowed
+          (prog_access_decls))
+        (ERR_var_config_not_allowed
+          (config_init))
+        (ERR_var_located_not_allowed
+          (loc_var_decls))
+        (ERR_var_global_not_allowed
+          (global_var_decls))))
+
+================================================================================
+invalid var sections in fns
+================================================================================
+
+FUNCTION fn
+  VAR_ACCESS
+
+  END_VAR
+
+  VAR_CONFIG
+
+  END_VAR
+
+  VAR_LOCATED
+
+  END_VAR
+
+  VAR_GLOBAL
+
+  END_VAR
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (func_decl
+        (identifier)
+        (ERR_var_access_not_allowed
+          (prog_access_decls))
+        (ERR_var_config_not_allowed
+          (config_init))
+        (ERR_var_located_not_allowed
+          (loc_var_decls))
+        (ERR_var_global_not_allowed
+          (global_var_decls))))
+
+
+================================================================================
+invalid var sections in method prototypes
+================================================================================
+
+INTERFACE in
+  METHOD m
+    VAR_ACCESS
+    
+    END_VAR
+
+    VAR_CONFIG
+
+    END_VAR
+
+    VAR_LOCATED
+
+    END_VAR
+
+    VAR_EXTERNAL
+
+    END_VAR
+
+    VAR_GLOBAL
+
+    END_VAR
+    
+    VAR_TEMP
+
+    END_VAR
+
+    VAR_IN_OUT
+
+    END_VAR
+  END_METHOD
+END_INTERFACE
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (interface_decl
+        (identifier)
+        (method_prototype
+          (identifier)
+          (ERR_var_access_not_allowed
+            (prog_access_decls))
+          (ERR_var_config_not_allowed
+            (config_init))
+          (ERR_var_located_not_allowed
+            (loc_var_decls))
+          (ERR_var_external_not_allowed
+            (external_var_decls))
+          (ERR_var_global_not_allowed
+            (global_var_decls))
+          (ERR_var_temp_not_allowed
+            (temp_var_decls))
+          (in_out_decls))))
+
+================================================================================
+invalid var sections in method declarations
+================================================================================
+
+CLASS cl
+
+  METHOD m
+    VAR_ACCESS
+    
+    END_VAR
+
+    VAR_CONFIG
+
+    END_VAR
+
+    VAR_LOCATED
+
+    END_VAR
+
+    VAR_EXTERNAL
+
+    END_VAR
+
+    VAR_GLOBAL
+
+    END_VAR
+
+    VAR_TEMP
+
+    END_VAR
+
+    VAR_IN_OUT
+
+    END_VAR
+  END_METHOD
+END_CLASS
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (class_decl
+        (identifier)
+        (method_decl
+          (identifier)
+          (ERR_var_access_not_allowed
+            (prog_access_decls))
+          (ERR_var_config_not_allowed
+            (config_init))
+          (ERR_var_located_not_allowed
+            (loc_var_decls))
+          (external_var_decls)
+          (ERR_var_global_not_allowed
+            (global_var_decls))
+          (temp_var_decls)
+          (in_out_decls))))

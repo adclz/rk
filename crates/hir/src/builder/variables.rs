@@ -22,7 +22,7 @@ use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::pous::variable::{DirectVariable, LocatedVariable, VariableDecl, VariableKind};
 use crate::hir_def::program::ProgAccessDecl;
 use crate::{AstId, HirNodeInfo};
-use ide_diagnostic::IdeDiagnostic;
+use ide_diagnostic::IdeDiagnostic; 
 
 impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
     fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<VariableDecl<'db>>) {
