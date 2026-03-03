@@ -8,7 +8,6 @@ use crate::{
             invocation::Invocation,
             spec::Spec,
         },
-        interned::namespace::SpanNamespaceAccess,
     },
     hir_ty::{
         body::infer_body,
@@ -26,16 +25,6 @@ pub mod table;
 
 pub trait Infer<'db> {
     fn infer(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db>;
-}
-
-impl<'db> Infer<'db> for SpanNamespaceAccess<'db> {
-    fn infer(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {
-        infer_signature(db, self.get_scope_id(db))
-            .namespace_access_to_type
-            .get(&self.path)
-            .copied()
-            .unwrap_or_default()
-    }
 }
 
 impl<'db> Infer<'db> for Spec<'db> {

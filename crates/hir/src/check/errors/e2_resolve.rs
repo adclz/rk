@@ -108,7 +108,7 @@ pub enum ResolveError<'db> {
     },
     /// The program type referenced in a PROGRAM configuration entry does not exist.
     UnknownProgType {
-        prog_type: SpanNamespaceAccess<'db>,
+        prog_type: Spec<'db>,
     },
     /// The task name referenced in a `WITH <task>` clause does not exist in the config.
     UnknownTaskRef {
@@ -523,15 +523,19 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
 
                 diag
             }
-            Self::UnknownProgType { prog_type } => diag()
-                .message(format!(
-                    "program type '{}' not found",
-                    prog_type.to_string(db)
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(prog_type.get_span(db))
-                .call(),
+            Self::UnknownProgType { prog_type } => {
+                let name = if let SpecKind::Target(target) = prog_type.kind(db) {
+                    target.path.to_string(db)
+                } else {
+                    String::new()
+                };
+                diag()
+                    .message(format!("program type '{name}' not found"))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(prog_type.get_span(db))
+                    .call()
+            }
             Self::UnknownTaskRef { task } => diag()
                 .message(format!(
                     "task '{}' not found in this configuration",
@@ -630,7 +634,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     .map(|(ns, _)| ns.to_string(db))
                     .collect();
 
-                let mut message = format!("multiple items named '{}' available in scope:", name);
+                let message = format!("multiple items named '{}' available in scope:", name);
                 let mut diag = diag()
                     .message(message)
                     .severity(DiagnosticSeverity::ERROR)

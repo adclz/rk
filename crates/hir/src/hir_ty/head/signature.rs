@@ -3,16 +3,16 @@ use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    HasName, HirNodeInfo,
+    HasName,
     check::errors::{ToIdeDiagnostic, e2_resolve::ResolveError, e3_type::TypeError},
     hir_def::{
         expressions::spec::{Spec, SpecKind},
-        interned::{identifier::Ident, namespace::NamespaceAccess},
+        interned::identifier::Ident,
         pous::{generics::AnyGeneric, pou::Pou, variable::VariableKind},
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
-    hir_ty::{head::inheritance::inherited_methods, index_graphs::external_var_lookup, ty::Type},
+    hir_ty::{index_graphs::external_var_lookup, ty::Type},
 };
 
 #[tracing::instrument(skip(db))]
@@ -50,9 +50,6 @@ pub struct Signature<'db> {
     /// Mapping of specs to their inferred types
     pub type_of_specs: FxHashMap<Spec<'db>, Type<'db>>,
 
-    /// Mapping of namespace accesses to their inferred POUs
-    pub namespace_access_to_type: FxHashMap<NamespaceAccess<'db>, Type<'db>>,
-
     //// Mapping of generic parameters to their spec constraints (for generics declared on this POU)
     pub constraint_of_generic: FxHashMap<Ident, Vec<Constraint<'db>>>,
 
@@ -65,7 +62,6 @@ impl<'db> Signature<'db> {
         Self {
             scope,
             type_of_specs: FxHashMap::default(),
-            namespace_access_to_type: FxHashMap::default(),
             constraint_of_generic: FxHashMap::default(),
             errors: Vec::new(),
         }
@@ -78,10 +74,10 @@ impl<'db> Signature<'db> {
             self.infer_spec(db, dt.spec(db));
         }
 
+        self.infer_extends_implements(db);
         self.infer_generics(db);
         self.infer_variables(db);
         self.infer_return_type(db);
-        self.infer_methods(db);
         self.infer_access_decls(db);
 
         self
@@ -186,16 +182,37 @@ impl<'db> Signature<'db> {
         }
     }
 
-    fn infer_methods(&mut self, db: &'db dyn WorkspaceDataBase) {
-        let implementer = match get_scope(db, self.scope).kind {
+    fn infer_extends_implements(&mut self, db: &'db dyn WorkspaceDataBase) {
+        let pou = match get_scope(db, self.scope).kind {
             ScopeKind::Pou(pou) => pou,
             _ => return,
         };
 
-        let declared_methods = &implementer.get_scope_id(db).def_map(db).declared_methods;
-        let inherited_methods = inherited_methods(db, implementer);
-        for (ns, typ) in &inherited_methods.type_of_namespace_accesses {
-            self.namespace_access_to_type.insert(ns.clone(), *typ);
+        match pou {
+            Pou::Class(class) => {
+                if let Some(extends) = class.extends(db) {
+                    self.infer_spec(db, *extends);
+                }
+                for iface in class.implements(db) {
+                    self.infer_spec(db, *iface);
+                }
+            }
+            Pou::FunctionBlock(fb) => {
+                if let Some(extends) = fb.extends(db) {
+                    self.infer_spec(db, *extends);
+                }
+                for iface in fb.implements(db) {
+                    self.infer_spec(db, *iface);
+                }
+            }
+            Pou::Interface(iface) => {
+                if let Some(extends) = iface.extends(db) {
+                    for spec in extends {
+                        self.infer_spec(db, *spec);
+                    }
+                }
+            }
+            _ => {}
         }
     }
 

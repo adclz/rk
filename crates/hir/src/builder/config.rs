@@ -16,10 +16,7 @@ use crate::{
             DataSink, DataSource, FbTask, ProgCnxn, ProgConfElement, ProgConfig, ResourceDecl,
             TaskConfig,
         },
-        interned::{
-            identifier::{Ident, SpanIdent},
-            namespace::SpanNamespaceAccess,
-        },
+        interned::identifier::{Ident, SpanIdent},
         pous::variable::VariableDecl,
         scope::ScopeKind,
     },
@@ -198,7 +195,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             ast::generated::WITH_Identifier::Token_WITH(_) => None,
         });
 
-        let prog_type = SpanNamespaceAccess::from_ast(self.db, self, pc.access.cast(self.ast))?;
+        let prog_type = pc.access.cast(self.ast).to_spec(self)?;
 
         let mut conf_elements: Vec<ProgConfElement<'db>> = vec![];
         if let Some(elems) = &pc.configuration_elements {

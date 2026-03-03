@@ -4,7 +4,7 @@ use crate::{
     AstId, HasName, HirNodeInfo,
     hir_def::{
         expressions::spec::Spec,
-        interned::{identifier::Ident, namespace::SpanNamespaceAccess},
+        interned::identifier::Ident,
         pous::variable::VariableDecl,
         scope::ScopeId,
     },
@@ -19,7 +19,7 @@ pub struct Interface<'db> {
     pub name_id: AstId,
 
     #[returns(as_ref)]
-    pub extends: Option<Vec<SpanNamespaceAccess<'db>>>,
+    pub extends: Option<Vec<Spec<'db>>>,
 
     #[returns(ref)]
     pub methods: Vec<MethodPrototype<'db>>,

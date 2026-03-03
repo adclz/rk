@@ -5,7 +5,7 @@ use rustc_hash::FxHashMap;
 use crate::{
     HirNodeInfo, Modifier,
     check::errors::{
-        ToIdeDiagnostic, e1_duplicates::DuplicateError, e2_resolve::ResolveError,
+        ToIdeDiagnostic, e1_duplicates::DuplicateError,
         e5_inheritance::InheritanceError,
     },
     hir_def::{pous::pou::Pou, scope::ScopeKind, semantic_index::get_scope},
@@ -48,16 +48,6 @@ impl<'db> InitInference<'db> {
                 DuplicateError::InheritedMethod {
                     method1: *m1,
                     method2: *m2,
-                }
-                .to_diagnostic(db),
-            );
-        }
-
-        // check unresolved
-        for unresolved in &inherited_methods.unresolved {
-            self.errors.push(
-                ResolveError::NoNamespaceItemFound {
-                    path: unresolved.clone(),
                 }
                 .to_diagnostic(db),
             );

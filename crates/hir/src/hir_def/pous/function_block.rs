@@ -3,8 +3,8 @@ use db::WorkspaceDataBase;
 use crate::{
     AstId, HasName, HirNodeInfo, Modifier,
     hir_def::{
-        expressions::statement::Stmt,
-        interned::{identifier::Ident, namespace::SpanNamespaceAccess},
+        expressions::{spec::Spec, statement::Stmt},
+        interned::identifier::Ident,
         pous::{class::MethodDecl, generics::GenericParam, variable::VariableDecl},
         scope::ScopeId,
     },
@@ -22,10 +22,10 @@ pub struct FunctionBlock<'db> {
     pub generics: Vec<GenericParam<'db>>,
 
     #[returns(as_ref)]
-    pub extends: Option<SpanNamespaceAccess<'db>>,
+    pub extends: Option<Spec<'db>>,
 
     #[returns(ref)]
-    pub implements: Vec<SpanNamespaceAccess<'db>>,
+    pub implements: Vec<Spec<'db>>,
 
     #[returns(ref)]
     pub variables: Vec<VariableDecl<'db>>,

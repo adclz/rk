@@ -219,8 +219,10 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:2:16 ]
        |
      2 | FUNCTION_BLOCK fb1 EXTENDS base
-       |                ^|^
-       |                 `--- PouDecl(FunctionBlock)
+       |                ^|^         ^^|^
+       |                 `---------------- PouDecl(FunctionBlock)
+       |                              |
+       |                              `--- Spec
      3 |     METHOD decl
        |            ^^|^
        |              `--- MethodRef(Declared)

@@ -5,7 +5,6 @@ use crate::check::errors::ToIdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::hir_node::HirNode;
 use crate::hir_def::interned::identifier::Ident;
-use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use crate::hir_def::pous::interface::{Interface, MethodPrototype};
 use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::scope::{ScopeId, ScopeKind};
@@ -33,12 +32,8 @@ impl<'db> SemanticIndexBuilder<'db> {
                     .children
                     .iter()
                     .filter_map(|i| {
-                        self.try_parse(SpanNamespaceAccess::from_ast(
-                            self.db,
-                            self,
-                            i.cast(self.ast),
-                        ))
-                        .map(Some)
+                        let spec = i.cast(self.ast).to_spec(self);
+                        self.try_parse(spec).map(Some)
                     })
                     .collect()
             })

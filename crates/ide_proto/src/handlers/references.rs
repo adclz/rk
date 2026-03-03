@@ -135,7 +135,6 @@ fn resolve_cursor_target<'db>(
         HirNode::Expr(e) => e.infer(db),
         HirNode::Param(p) => p.infer(db),
         HirNode::InitExpr(i) => i.infer(db),
-        HirNode::NamespaceAccess(ns) => ns.infer(db),
         HirNode::Invocation(i) => i.infer(db),
         _ => return None,
     };
@@ -159,7 +158,6 @@ fn resolve_walk_target<'db>(
         HirNode::Spec(spec) => spec.infer(db),
         HirNode::PathExpr(p) => p.infer(db),
         HirNode::Param(p) => p.infer(db),
-        HirNode::NamespaceAccess(ns) => ns.infer(db),
         // Skip Expr, Invocation, InitExpr, VariableAccess — they wrap inner nodes
         // and would produce duplicate matches (PathExpr already covers variable accesses)
         _ => return None,

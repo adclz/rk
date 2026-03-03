@@ -5,10 +5,7 @@ use crate::hir_def::{
         expression::{Expr, InitExpr, PathExpr},
         spec::Spec,
     },
-    interned::{
-        identifier::{Ident, SpanIdent},
-        namespace::SpanNamespaceAccess,
-    },
+    interned::identifier::{Ident, SpanIdent},
     pous::variable::{DirectVariable, VariableDecl},
     scope::ScopeId,
 };
@@ -88,7 +85,7 @@ pub struct ProgConfig<'db> {
     pub task: Option<SpanIdent<'db>>,
 
     /// Reference to the program type (e.g. `MyProgram` or `NS::MyProgram`).
-    pub prog_type: SpanNamespaceAccess<'db>,
+    pub prog_type: Spec<'db>,
 
     pub conf_elements: Vec<ProgConfElement<'db>>,
 }

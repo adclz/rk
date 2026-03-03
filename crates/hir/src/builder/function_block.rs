@@ -1,11 +1,10 @@
 use crate::builder::Parse;
-use crate::builder::ParseVarSection;
+use crate::builder::{ParseSpec, ParseVarSection};
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::ToIdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::hir_node::HirNode;
 use crate::hir_def::interned::identifier::Ident;
-use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use crate::hir_def::pous::function_block::FunctionBlock;
 use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::pous::variable::VariableDecl;
@@ -28,11 +27,8 @@ impl<'db> SemanticIndexBuilder<'db> {
         let variables = self.parse_fb_variables(func);
 
         let extends = func.extends.as_ref().and_then(|e| {
-            self.try_parse(SpanNamespaceAccess::from_ast(
-                self.db,
-                self,
-                e.cast(self.ast),
-            ))
+            let spec = e.cast(self.ast).to_spec(self);
+            self.try_parse(spec)
         });
 
         let implements = func
@@ -43,11 +39,8 @@ impl<'db> SemanticIndexBuilder<'db> {
                     .children
                     .iter()
                     .filter_map(|i| {
-                        self.try_parse(SpanNamespaceAccess::from_ast(
-                            self.db,
-                            self,
-                            i.cast(self.ast),
-                        ))
+                        let spec = i.cast(self.ast).to_spec(self);
+                        self.try_parse(spec)
                     })
                     .collect::<Vec<_>>()
             })

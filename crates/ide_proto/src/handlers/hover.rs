@@ -10,7 +10,7 @@ use hir::{
                 BeginPathExpr, Expr, InitExpr, InitExprKind, ParamAssign, PathExpr, VariableAccess,
             },
             spec::{Spec, SpecKind, StructElement},
-        }, hir_node::HirNode, interned::namespace::{NamespaceAccess, SpanNamespaceAccess}, namespace::NamespaceDecl, pous::{
+        }, hir_node::HirNode, namespace::NamespaceDecl, pous::{
             pou::Pou,
             variable::{VariableDecl, VariableKind},
         }, program::ProgramDecl, using::Using
@@ -32,7 +32,6 @@ impl<'db> HoverHandler<'db> for HirNode<'db> {
         match self {
             HirNode::Program(p) => p.hover(db, offset),
             HirNode::Namespace(n) => n.hover(db, offset),
-            HirNode::NamespaceAccess(a) => a.hover(db, offset),
             HirNode::PouDecl(p) => p.hover(db, offset),
             HirNode::VariableDecl(v) => v.hover(db, offset),
             HirNode::InitExpr(i) => i.hover(db, offset),
@@ -72,12 +71,6 @@ NAMESPACE {ns}
             )),
             range: None,
         })
-    }
-}
-
-impl<'db> HoverHandler<'db> for SpanNamespaceAccess<'db> {
-    fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
-        self.infer(db).hover(db, offset)
     }
 }
 

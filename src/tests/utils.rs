@@ -374,7 +374,6 @@ pub fn hir_node_label(node: &HirNode) -> String {
             }
         ),
         HirNode::Program(_) => "Program".into(),
-        HirNode::NamespaceAccess(_) => "NamespaceAccess".into(),
         HirNode::MethodRef(m) => format!(
             "MethodRef({})",
             match m {

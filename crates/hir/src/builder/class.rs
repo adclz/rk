@@ -4,12 +4,11 @@ use crate::check::errors::ToIdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::hir_node::HirNode;
 use crate::hir_def::interned::identifier::Ident;
-use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use crate::hir_def::pous::class::{Class, MethodDecl};
 use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::scope::{ScopeId, ScopeKind};
 use crate::hir_ty::head::inheritance::MethodRef;
-use crate::{HirNodeInfo, Modifier, Visibility};
+use crate::{Modifier, Visibility};
 use ast::generated::{ClassDecl, ClassVariables};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::{AstNode, AstNodeId};
@@ -22,11 +21,8 @@ impl<'db> SemanticIndexBuilder<'db> {
         self.current_scope = scope_id;
 
         let extends = class.extends.as_ref().and_then(|e| {
-            self.try_parse(SpanNamespaceAccess::from_ast(
-                self.db,
-                self,
-                e.cast(self.ast),
-            ))
+            let spec = e.cast(self.ast).to_spec(self);
+            self.try_parse(spec)
         });
 
         let implements = class
@@ -37,11 +33,8 @@ impl<'db> SemanticIndexBuilder<'db> {
                     .children
                     .iter()
                     .filter_map(|i| {
-                        self.try_parse(SpanNamespaceAccess::from_ast(
-                            self.db,
-                            self,
-                            i.cast(self.ast),
-                        ))
+                        let spec = i.cast(self.ast).to_spec(self);
+                        self.try_parse(spec)
                     })
                     .collect::<Vec<_>>()
             })

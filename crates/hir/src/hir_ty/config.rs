@@ -6,6 +6,7 @@ use crate::{
     check::errors::{ToIdeDiagnostic, e1_duplicates::DuplicateError, e2_resolve::ResolveError},
     hir_def::{
         config::{ConfigDecl, ConfigResource, ProgConfig, ResourceDecl},
+        expressions::spec::SpecKind,
         interned::identifier::{Ident, SpanIdent},
         program::ProgramDecl,
     },
@@ -156,15 +157,17 @@ fn validate_prog_config<'db>(
     errors: &mut Vec<IdeDiagnostic>,
 ) {
     // Only validate simple (non-namespace-qualified) program types.
-    if p.prog_type.path.namespace.is_none() {
-        let name = p.prog_type.path.target.ident;
-        if program_index(db, name).is_none() {
-            errors.push(
-                ResolveError::UnknownProgType {
-                    prog_type: p.prog_type.clone(),
-                }
-                .to_diagnostic(db),
-            );
+    if let SpecKind::Target(target) = p.prog_type.kind(db) {
+        if target.path.namespace.is_none() {
+            let name = target.path.target.ident;
+            if program_index(db, name).is_none() {
+                errors.push(
+                    ResolveError::UnknownProgType {
+                        prog_type: p.prog_type,
+                    }
+                    .to_diagnostic(db),
+                );
+            }
         }
     }
 
@@ -193,18 +196,22 @@ fn validate_config_inst_inits<'db>(
     for res in config.resources(db).iter() {
         match res {
             ConfigResource::Program(p) => {
-                if p.prog_type.path.namespace.is_none()
-                    && let Some(prog) = program_index(db, p.prog_type.path.target.ident)
-                {
-                    instances.insert(p.name.ident, prog);
+                if let SpecKind::Target(target) = p.prog_type.kind(db) {
+                    if target.path.namespace.is_none()
+                        && let Some(prog) = program_index(db, target.path.target.ident)
+                    {
+                        instances.insert(p.name.ident, prog);
+                    }
                 }
             }
             ConfigResource::Resource(r) => {
                 for p in r.programs.iter() {
-                    if p.prog_type.path.namespace.is_none()
-                        && let Some(prog) = program_index(db, p.prog_type.path.target.ident)
-                    {
-                        instances.insert(p.name.ident, prog);
+                    if let SpecKind::Target(target) = p.prog_type.kind(db) {
+                        if target.path.namespace.is_none()
+                            && let Some(prog) = program_index(db, target.path.target.ident)
+                        {
+                            instances.insert(p.name.ident, prog);
+                        }
                     }
                 }
             }

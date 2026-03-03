@@ -2,21 +2,9 @@ pub use hir::hir_def::hir_node::HirNode;
 
 use db::WorkspaceDataBase;
 use hir::{
-    AstId, HirNodeInfo,
-    hir_def::{
-        expressions::{
-            expression::{Expr, InitExpr, ParamAssign, ParamAssignKind, PathExpr, VariableAccess},
-            invocation::Invocation,
-            spec::{Spec, StructElement},
-        },
-        interned::namespace::SpanNamespaceAccess,
-        namespace::NamespaceDecl,
-        pous::{pou::Pou, variable::VariableDecl},
-        program::ProgramDecl,
-        scope::ScopeId,
-        using::Using,
-    },
-    hir_ty::{head::inheritance::MethodRef, ty::Type},
+    HirNodeInfo,
+    hir_def::expressions::expression::{ParamAssign, ParamAssignKind},
+    hir_ty::ty::Type,
 };
 
 use crate::comment_index::comment_index;

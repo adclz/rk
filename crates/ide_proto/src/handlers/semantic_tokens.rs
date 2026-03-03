@@ -6,10 +6,10 @@ use hir::{
         expressions::{
             expression::{BeginPathExpr, Expr, ExprKind, PathExpr, PrimaryExpr, VariableAccess},
             spec::StructElement,
-        }, hir_node::HirNode, interned::namespace::{NamespaceAccess, SpanNamespaceAccess}, pous::{pou::Pou, variable::VariableDecl}, using::Using
+        }, hir_node::HirNode, interned::namespace::NamespaceAccess, pous::{pou::Pou, variable::VariableDecl}, using::Using
     },
     hir_ty::{
-        head::{inheritance::MethodRef, signature::infer_signature},
+        head::inheritance::MethodRef,
         infer::Infer,
         ty::Type,
     },
@@ -27,7 +27,6 @@ impl<'db> SemanticTokensHandler<'db> for HirNode<'db> {
         builder: &mut SemanticTokensBuilder,
     ) {
         match self {
-            HirNode::NamespaceAccess(n) => n.semantic_tokens(db, builder),
             HirNode::PouDecl(p) => p.semantic_tokens(db, builder),
             HirNode::MethodRef(m) => m.semantic_tokens(db, builder),
             HirNode::VariableDecl(v) => v.semantic_tokens(db, builder),
@@ -52,23 +51,6 @@ impl<'db> SemanticTokensHandler<'db> for Pou<'db> {
             builder,
             self.get_name_span(db),
         );
-    }
-}
-
-impl<'db> SemanticTokensHandler<'db> for SpanNamespaceAccess<'db> {
-    fn semantic_tokens(
-        &'db self,
-        db: &'db dyn WorkspaceDataBase,
-        builder: &mut SemanticTokensBuilder,
-    ) {
-        let infer = infer_signature(db, self.get_scope_id(db));
-        //push_fragments(db, &self.path, builder);
-        if let Some(resolved) = infer.namespace_access_to_type.get(&self.path) {
-            semantic_tokens_for_type(db, *resolved, builder, match &self.path.namespace {
-                Some(ns) => ns.get_fragment_ast_node(db, ns.fragments(db).len() - 1).get_span(),
-                None => self.get_span(db),
-            });
-        }
     }
 }
 
