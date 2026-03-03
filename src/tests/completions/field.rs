@@ -172,3 +172,42 @@ END_FUNCTION_BLOCK
     assert!(format!("{completions:?}").contains("test"));
     assert!(format!("{completions:?}").contains("method()"));
 }
+
+/// Typing `my_var := 0.` should NOT trigger field completions.
+/// The dot after a numeric literal is part of a REAL literal (e.g. `0.0`),
+/// not a field access.
+#[rstest]
+pub fn no_completion_after_numeric_literal_dot(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb
+    VAR
+        my_var: INT;
+    END_VAR
+
+    my_var := 0.
+END_FUNCTION_BLOCK
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let offset = source.find("0.").unwrap() + "0.".len();
+    let file = *with_db.get_files().iter().last().unwrap();
+    let result = completion_descendant_at(&with_db, file, offset);
+
+    if let Some((node, node_key, is_last_before)) = result {
+        let req = CompletionRequest {
+            offset,
+            trigger_character: Some(".".into()),
+            query: "".into(),
+            node_index_pos: Some(node_key),
+            is_last_before,
+        };
+        let completions = node.completion(&with_db, &req).unwrap_or_default();
+        // Should be empty or at least not contain all scope items
+        assert!(
+            completions.len() <= 1,
+            "dot after numeric literal should not trigger completions, got {} items: {:?}",
+            completions.len(),
+            completions.iter().map(|c| &c.label).collect::<Vec<_>>()
+        );
+    }
+}

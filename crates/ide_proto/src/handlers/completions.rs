@@ -160,6 +160,12 @@ impl<'db> CompletionHandler<'db> for Pou<'db> {
         db: &'db dyn WorkspaceDataBase,
         req: &CompletionRequest,
     ) -> Option<Vec<CompletionItem>> {
+        // A dot trigger that lands on the POU itself (no specific child node)
+        // means the dot is not after a valid field-access target (e.g. `0.`).
+        if req.trigger_character.as_deref() == Some(".") {
+            return Some(vec![]);
+        }
+
         let mut ctx = CompletionCtx::new(req.offset, QueryMode::Body);
         let head_result = ctx.located_pou_completion(*self, db);
 
@@ -178,6 +184,12 @@ impl<'db> CompletionHandler<'db> for ProgramDecl<'db> {
         db: &'db dyn WorkspaceDataBase,
         req: &CompletionRequest,
     ) -> Option<Vec<CompletionItem>> {
+        // A dot trigger that lands on the POU itself (no specific child node)
+        // means the dot is not after a valid field-access target (e.g. `0.`).
+        if req.trigger_character.as_deref() == Some(".") {
+            return Some(vec![]);
+        }
+
         let mut ctx = CompletionCtx::new(req.offset, QueryMode::Body);
         let head_result = ctx.located_program_completion(*self, db);
 
@@ -212,25 +224,33 @@ impl<'db> CompletionHandler<'db> for PathExpr<'db> {
         let mut ctx = CompletionCtx::new(req.offset, QueryMode::Body);
 
         if req.is_last_before {
+            let sema = semantic_index(db, self.get_scope_id(db).file(db));
+
             // Current node can't resolve - check if node_index_pos points to
             // a nearby PathExpr that did resolve, and use its type.
             if let Some(key) = req.node_index_pos {
-                let sema = semantic_index(db, self.get_scope_id(db).file(db));
                 let mut last_path = None;
                 let mut key = key;
-                while let Some(node) = sema.node_index.get(key) {
-                    if let HirNode::PathExpr(p) = node && !p.infer(db).is_never() {
-                        last_path = Some(p); 
-                        key = NodeKey::from_usize(key.index().saturating_add(1));
+                loop {
+                    if let Some(node) = sema.node_index.get(key) {
+                        // checks this is both a PathExpr and that it resolved to a non-never type
+                        if let HirNode::PathExpr(p) = node && !p.infer(db).is_never() {
+                            last_path = Some(p); 
+                            key = NodeKey::from_usize(key.index().saturating_add(1));
+                        } else {
+                            break
+                        }
                     } else {
-                        break
+                        break;
                     }
                 }
+
                 if let Some(p) = last_path {
                     ctx.field_completion(p.infer(db), db);
                     return Some(ctx.take_items());
                 }
             }
+            
         }
 
         let ty = self.infer(db);
