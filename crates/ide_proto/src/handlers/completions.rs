@@ -89,11 +89,19 @@ impl<'db> CompletionHandler<'db> for HirNode<'db> {
                 // on-demand and use its completions (the current node is likely incomplete)
                 let child_req = req.with_query(p.ident(db).text(db).to_string());
                 match p.expr(db) {
-                    PathExprKind::Field(f) => Some(
-                        f.path
-                            .completion(db, &child_req)
-                            .unwrap_or_default(),
-                    ),
+                    PathExprKind::Field(f) => {
+                        // Check if the parent path is a namespace before delegating.
+                        // e.g. `System.M|` → parent is `System` → show namespace children
+                        if let Some(parent_ns) = try_build_namespace_path(db, &f.path) {
+                            if is_namespace_prefix(db, parent_ns) {
+                                let mut ctx = CompletionCtx::new(req.offset, QueryMode::Body);
+                                ctx.namespace_completion(parent_ns, db);
+                                return Some(ctx.take_items());
+                            }
+                        }
+                        // Not a namespace → regular field delegation
+                        Some(f.path.completion(db, &child_req).unwrap_or_default())
+                    }
                     PathExprKind::Index(i) => Some(
                         i.path
                             .completion(db, &child_req)

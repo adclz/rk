@@ -3,7 +3,7 @@ use db::RootDatabase;
 use hir::HirNodeInfo;
 use ide_proto::{
     handlers::{CompletionHandler, CompletionRequest, completions_utils::{CompletionCtx, QueryMode}},
-    walk::completion_descendant_at,
+    walk::{completion_descendant_at, descendant_at},
 };
 use rstest::rstest;
 
@@ -275,5 +275,126 @@ END_FUNCTION
     assert!(
         format!("{completions:?}").contains("System"),
         "expected 'System' namespace in body scope completions: {completions:?}"
+    );
+}
+
+/// Editing a namespace fragment (e.g. `System.M|`) should show namespace
+/// children (POUs + sub-namespace fragments), not fall back to scope items.
+#[rstest]
+pub fn editing_namespace_fragment(mut with_db: RootDatabase) {
+    let ns_source = r#"
+NAMESPACE System
+    FUNCTION Sin : REAL
+    VAR_INPUT
+        x : REAL;
+    END_VAR
+    END_FUNCTION
+END_NAMESPACE
+
+NAMESPACE System.Math
+    FUNCTION Cos : REAL
+    VAR_INPUT
+        x : REAL;
+    END_VAR
+    END_FUNCTION
+END_NAMESPACE
+"#;
+
+    let body_source = r#"
+FUNCTION fn1 : REAL
+VAR
+    x : REAL;
+END_VAR
+    x := System.M
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[ns_source, body_source]);
+    let file = with_db.get_file(&Url::parse("file:///test1.st").unwrap()).unwrap();
+    // Cursor at the end of `System.M`
+    let offset = body_source.find("System.M").unwrap() + "System.M".len();
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    let req = CompletionRequest {
+        offset,
+        trigger_character: None,
+        query: "".into(),
+        node_index_pos: None,
+        is_last_before: false,
+    };
+    let completions = node.completion(&with_db, &req).unwrap();
+
+    // Should contain POUs from System (Sin) and sub-namespace fragment (Math)
+    assert!(
+        format!("{completions:?}").contains("Sin"),
+        "expected 'Sin' (POU in System) in completions: {completions:?}"
+    );
+    assert!(
+        format!("{completions:?}").contains("Math"),
+        "expected 'Math' (sub-namespace fragment) in completions: {completions:?}"
+    );
+}
+
+/// Editing a deeper namespace fragment (e.g. `System.Math.S|`) should show
+/// POUs from System.Math, not from System or scope items.
+#[rstest]
+pub fn editing_deep_namespace_fragment(mut with_db: RootDatabase) {
+    let ns_source = r#"
+NAMESPACE System
+    FUNCTION Log : REAL
+    VAR_INPUT
+        x : REAL;
+    END_VAR
+    END_FUNCTION
+END_NAMESPACE
+
+NAMESPACE System.Math
+    FUNCTION Sin : REAL
+    VAR_INPUT
+        x : REAL;
+    END_VAR
+    END_FUNCTION
+
+    FUNCTION Cos : REAL
+    VAR_INPUT
+        x : REAL;
+    END_VAR
+    END_FUNCTION
+END_NAMESPACE
+"#;
+
+    let body_source = r#"
+FUNCTION fn1 : REAL
+VAR
+    x : REAL;
+END_VAR
+    x := System.Math.S
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[ns_source, body_source]);
+    let file = with_db.get_file(&Url::parse("file:///test1.st").unwrap()).unwrap();
+    let offset = body_source.find("System.Math.S").unwrap() + "System.Math.S".len();
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    let req = CompletionRequest {
+        offset,
+        trigger_character: None,
+        query: "".into(),
+        node_index_pos: None,
+        is_last_before: false,
+    };
+    let completions = node.completion(&with_db, &req).unwrap();
+
+    // Should show POUs from System.Math (Sin, Cos), NOT Log from System
+    assert!(
+        format!("{completions:?}").contains("Sin"),
+        "expected 'Sin' in completions: {completions:?}"
+    );
+    assert!(
+        format!("{completions:?}").contains("Cos"),
+        "expected 'Cos' in completions: {completions:?}"
+    );
+    assert!(
+        !format!("{completions:?}").contains("Log"),
+        "should NOT contain 'Log' from parent namespace: {completions:?}"
     );
 }
