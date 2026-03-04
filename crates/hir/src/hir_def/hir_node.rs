@@ -2,6 +2,7 @@ use db::WorkspaceDataBase;
 use crate::{
     AstId, HirNodeInfo,
     hir_def::{
+        config::{ConfigDecl, ProgConfig, ResourceDecl},
         expressions::{
             expression::{Expr, InitExpr, ParamAssign, PathExpr, VariableAccess},
             invocation::Invocation,
@@ -20,6 +21,9 @@ use crate::{
 pub enum HirNode<'db> {
     Namespace(NamespaceDecl<'db>),
     Using(Using<'db>),
+    Config(ConfigDecl<'db>),
+    Resource(ResourceDecl<'db>),
+    ProgConfig(ProgConfig<'db>),
     PouDecl(Pou<'db>),
     Program(ProgramDecl<'db>),
     MethodRef(MethodRef<'db>),
@@ -38,6 +42,9 @@ impl<'db> HirNodeInfo<'db> for HirNode<'db> {
     fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
         match self {
             HirNode::Namespace(n) => n.get_scope_id(db),
+            HirNode::Config(c) => c.get_scope_id(db),
+            HirNode::Resource(r) => r.get_scope_id(db),
+            HirNode::ProgConfig(p) => p.get_scope_id(db),
             HirNode::PouDecl(p) => p.get_scope_id(db),
             HirNode::Program(p) => p.get_scope_id(db),
             HirNode::VariableDecl(v) => v.get_scope_id(db),
@@ -57,6 +64,9 @@ impl<'db> HirNodeInfo<'db> for HirNode<'db> {
     fn get_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
         match self {
             HirNode::Namespace(n) => n.get_id(db),
+            HirNode::Config(c) => c.get_id(db),
+            HirNode::Resource(r) => r.get_id(db),
+            HirNode::ProgConfig(p) => p.get_id(db),
             HirNode::PouDecl(p) => p.get_id(db),
             HirNode::Program(p) => p.get_id(db),
             HirNode::VariableDecl(v) => v.get_id(db),

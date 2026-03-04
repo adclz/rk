@@ -1,14 +1,15 @@
 use auto_lsp::lsp_types::{GotoDefinitionResponse, Location};
 use db::WorkspaceDataBase;
 use hir::{
-    HirNodeInfo,
+    HasName, HirNodeInfo,
     hir_def::{
+        config::{ConfigDecl, ProgConfig},
         expressions::{
             expression::{BeginPathExpr, Expr, InitExpr, ParamAssign, PathExpr, VariableAccess},
             spec::{Spec, SpecKind, StructElement},
         }, hir_node::HirNode, interned::namespace::NamespacePath, namespace::NamespaceDecl, pous::{pou::Pou, variable::VariableDecl}, using::Using
     },
-    hir_ty::{index_graphs::namespace_index, infer::Infer, ty::{CallableType, Type}},
+    hir_ty::{index_graphs::{namespace_index, program_index}, infer::Infer, ty::{CallableType, Type}},
 };
 
 use crate::handlers::{DefinitionHandler, completions::{try_build_namespace_path, is_namespace_prefix}};
@@ -27,6 +28,8 @@ impl<'db> DefinitionHandler<'db> for HirNode<'db> {
             HirNode::VariableAccess(v) => v.definition(db, offset),
             HirNode::Expr(e) => e.definition(db, offset),
             HirNode::Param(p) => p.definition(db, offset),
+            HirNode::Config(c) => c.definition(db, offset),
+            HirNode::ProgConfig(p) => p.definition(db, offset),
             _ => None,
         }
     }
@@ -170,6 +173,29 @@ impl<'db> DefinitionHandler<'db> for CallableType<'db> {
                 m.get_span(db).into(),
             ))),
         }
+    }
+}
+
+impl<'db> DefinitionHandler<'db> for ConfigDecl<'db> {
+    fn definition(&'db self, db: &'db dyn WorkspaceDataBase, _offset: usize) -> Option<GotoDefinitionResponse> {
+        Some(GotoDefinitionResponse::Scalar(Location::new(
+            self.get_scope_id(db).file(db).url(db).to_owned(),
+            self.get_name_span(db).into(),
+        )))
+    }
+}
+
+impl<'db> DefinitionHandler<'db> for ProgConfig<'db> {
+    fn definition(&'db self, db: &'db dyn WorkspaceDataBase, _offset: usize) -> Option<GotoDefinitionResponse> {
+        if let SpecKind::Target(target) = self.prog_type.kind(db) {
+            if let Some(prog) = program_index(db, target.path.target.ident) {
+                return Some(GotoDefinitionResponse::Scalar(Location::new(
+                    prog.get_scope_id(db).file(db).url(db).to_owned(),
+                    prog.get_name_span(db).into(),
+                )));
+            }
+        }
+        None
     }
 }
 

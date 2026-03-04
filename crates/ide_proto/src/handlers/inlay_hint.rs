@@ -3,6 +3,7 @@ use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
     hir_def::{
+        config::ConfigDecl,
         expressions::expression::{InitExpr, InitExprKind, ParamAssign}, hir_node::HirNode, namespace::NamespaceDecl, pous::pou::Pou
     },
     hir_ty::{body::infer_body, infer::Infer},
@@ -20,6 +21,7 @@ impl<'db> InlayHintHandler<'db> for HirNode<'db> {
             HirNode::PouDecl(p) => p.inlay_hint(db),
             HirNode::Param(p) => p.inlay_hint(db),
             HirNode::InitExpr(i) => i.inlay_hint(db),
+            HirNode::Config(c) => c.inlay_hint(db),
             _ => None,
         }
     }
@@ -101,6 +103,21 @@ impl<'db> InlayHintHandler<'db> for InitExpr<'db> {
             }),
             _ => None,
         }
+    }
+}
+
+impl<'db> InlayHintHandler<'db> for ConfigDecl<'db> {
+    fn inlay_hint(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<InlayHint> {
+        Some(InlayHint {
+            label: InlayHintLabel::String(format!("CONFIGURATION {}", self.name(db).text(db))),
+            position: self.get_span(db).lsp().end,
+            kind: Some(InlayHintKind::TYPE),
+            text_edits: None,
+            padding_left: Some(true),
+            padding_right: None,
+            data: None,
+            tooltip: None,
+        })
     }
 }
 

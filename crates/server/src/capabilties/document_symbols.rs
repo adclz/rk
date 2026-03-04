@@ -31,6 +31,9 @@ pub fn document_symbols(
     sema.namespaces
         .iter()
         .for_each(|ns| ns.document_symbols(db, &mut builder));
+    sema.configs
+        .iter()
+        .for_each(|config| config.document_symbols(db, &mut builder));
 
     Ok(Some(DocumentSymbolResponse::Nested(builder.finalize())))
 }

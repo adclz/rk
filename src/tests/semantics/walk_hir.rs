@@ -153,9 +153,9 @@ END_FUNCTION_BLOCK"#;
         |
       7 |     IF test > 5 THEN
         |        ^^|^|^^|
-        |          `------- VariableAccess
-        |          | |  |
         |          `------- Expr
+        |          | |  |
+        |          `------- VariableAccess
         |          | |  |
         |          `------- PathExpr
         |            |  |

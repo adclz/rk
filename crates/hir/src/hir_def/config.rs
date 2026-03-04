@@ -60,6 +60,20 @@ pub struct ResourceDecl<'db> {
     pub tasks: Vec<TaskConfig<'db>>,
 
     pub programs: Vec<ProgConfig<'db>>,
+
+    pub span: AstId,
+
+    pub scope_id: ScopeId<'db>,
+}
+
+impl<'db> HirNodeInfo<'db> for ResourceDecl<'db> {
+    fn get_id(&self, _db: &'db dyn WorkspaceDataBase) -> AstId {
+        self.span
+    }
+
+    fn get_scope_id(&self, _db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
+        self.scope_id
+    }
 }
 
 /// Merged from the old `TaskConfig` + `TaskInit` pair.
@@ -88,6 +102,20 @@ pub struct ProgConfig<'db> {
     pub prog_type: Spec<'db>,
 
     pub conf_elements: Vec<ProgConfElement<'db>>,
+
+    pub span: AstId,
+
+    pub scope_id: ScopeId<'db>,
+}
+
+impl<'db> HirNodeInfo<'db> for ProgConfig<'db> {
+    fn get_id(&self, _db: &'db dyn WorkspaceDataBase) -> AstId {
+        self.span
+    }
+
+    fn get_scope_id(&self, _db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
+        self.scope_id
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]

@@ -343,7 +343,10 @@ impl<'db> SemanticIndexBuilder<'db> {
                     Err(err) => self.errors.push(err),
                 },
                 SourceFileDecl::ConfigDecl(config) => match self.parse_config(config) {
-                    Ok(c) => self.configs.push(c),
+                    Ok(c) => {
+                        self.register_node(c.span(self.db), HirNode::Config(c));
+                        self.configs.push(c);
+                    }
                     Err(err) => self.errors.push(err),
                 },
                 SourceFileDecl::ProgDecl(prog) => match self.parse_program(prog) {

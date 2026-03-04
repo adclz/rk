@@ -16,6 +16,7 @@ use crate::{
             DataSink, DataSource, FbTask, ProgCnxn, ProgConfElement, ProgConfig, ResourceDecl,
             TaskConfig,
         },
+        hir_node::HirNode,
         interned::identifier::{Ident, SpanIdent},
         pous::variable::VariableDecl,
         scope::ScopeKind,
@@ -141,13 +142,17 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
         }
 
-        Ok(ResourceDecl {
+        let resource = ResourceDecl {
             name,
             resource_type_name,
             variables,
             tasks,
             programs,
-        })
+            span: rd.into(),
+            scope_id: self.current_scope,
+        };
+        self.register_node(resource.span, HirNode::Resource(resource.clone()));
+        Ok(resource)
     }
 
     fn parse_task_config(
@@ -217,13 +222,17 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
         }
 
-        Ok(ProgConfig {
+        let prog = ProgConfig {
             retain,
             name,
             task,
             prog_type,
             conf_elements,
-        })
+            span: pc.into(),
+            scope_id: self.current_scope,
+        };
+        self.register_node(prog.span, HirNode::ProgConfig(prog.clone()));
+        Ok(prog)
     }
 
     fn parse_fb_task(

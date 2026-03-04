@@ -3,6 +3,7 @@ use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
     hir_def::{
+        config::{ConfigDecl, ProgConfig, ResourceDecl},
         expressions::spec::{ElementarySpec, SpecKind}, hir_node::HirNode, namespace::NamespaceDecl, pous::{pou::Pou, variable::VariableDecl}, program::ProgramDecl
     },
     hir_ty::head::{inheritance::MethodRef, signature::infer_signature},
@@ -22,6 +23,9 @@ impl<'db>  DocumentSymbolsHandler<'db> for HirNode<'db> {
             HirNode::PouDecl(p) => p.document_symbols(db, builder),
             HirNode::VariableDecl(v) => v.document_symbols(db, builder),
             HirNode::MethodRef(m) => m.document_symbols(db, builder),
+            HirNode::Config(c) => c.document_symbols(db, builder),
+            HirNode::Resource(r) => r.document_symbols(db, builder),
+            HirNode::ProgConfig(p) => p.document_symbols(db, builder),
             _ => (),
         }
     }
@@ -261,6 +265,97 @@ impl<'db> DocumentSymbolsHandler<'db> for MethodRef<'db> {
             range: self.get_span(db).lsp(),
             selection_range: self.get_name_span(db).lsp(),
             children: Some(nested_builder.finalize()),
+            tags: None,
+        });
+    }
+}
+
+impl<'db> DocumentSymbolsHandler<'db> for ConfigDecl<'db> {
+    fn document_symbols(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        builder: &mut DocumentSymbolsBuilder,
+    ) {
+        let mut nested_builder = DocumentSymbolsBuilder::default();
+
+        self.variables(db)
+            .iter()
+            .for_each(|var| var.document_symbols(db, &mut nested_builder));
+
+        for res in self.resources(db) {
+            match res {
+                hir::hir_def::config::ConfigResource::Resource(r) => {
+                    r.document_symbols(db, &mut nested_builder)
+                }
+                hir::hir_def::config::ConfigResource::Program(p) => {
+                    p.document_symbols(db, &mut nested_builder)
+                }
+                _ => {}
+            }
+        }
+
+        let name = self.name(db).text(db).to_string();
+
+        builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
+            name,
+            detail: Some("CONFIGURATION".to_string()),
+            kind: SymbolKind::MODULE,
+            deprecated: None,
+            range: self.get_span(db).lsp(),
+            selection_range: self.get_name_span(db).lsp(),
+            children: Some(nested_builder.finalize()),
+            tags: None,
+        });
+    }
+}
+
+impl<'db> DocumentSymbolsHandler<'db> for ResourceDecl<'db> {
+    fn document_symbols(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        builder: &mut DocumentSymbolsBuilder,
+    ) {
+        let mut nested_builder = DocumentSymbolsBuilder::default();
+
+        self.variables
+            .iter()
+            .for_each(|var| var.document_symbols(db, &mut nested_builder));
+
+        self.programs
+            .iter()
+            .for_each(|p| p.document_symbols(db, &mut nested_builder));
+
+        let name = self.name.ident.text(db).to_string();
+
+        builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
+            name,
+            detail: Some(format!("RESOURCE ON {}", self.resource_type_name.text(db))),
+            kind: SymbolKind::MODULE,
+            deprecated: None,
+            range: self.get_span(db).lsp(),
+            selection_range: self.name.get_span(db).lsp(),
+            children: Some(nested_builder.finalize()),
+            tags: None,
+        });
+    }
+}
+
+impl<'db> DocumentSymbolsHandler<'db> for ProgConfig<'db> {
+    fn document_symbols(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        builder: &mut DocumentSymbolsBuilder,
+    ) {
+        let name = self.name.ident.text(db).to_string();
+
+        builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
+            name,
+            detail: Some("PROGRAM".to_string()),
+            kind: SymbolKind::MODULE,
+            deprecated: None,
+            range: self.get_span(db).lsp(),
+            selection_range: self.name.get_span(db).lsp(),
+            children: None,
             tags: None,
         });
     }

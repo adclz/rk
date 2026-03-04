@@ -5,6 +5,7 @@ use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
     hir_def::{
+        config::{ConfigDecl, ProgConfig, ResourceDecl},
         expressions::{
             expression::{
                 BeginPathExpr, Expr, InitExpr, InitExprKind, ParamAssign, PathExpr, VariableAccess,
@@ -48,6 +49,9 @@ impl<'db> HoverHandler<'db> for HirNode<'db> {
             HirNode::Expr(e) => e.hover(db, offset),
             HirNode::Using(u) => u.hover(db, offset),
             HirNode::Param(p) => p.hover(db, offset),
+            HirNode::Config(c) => c.hover(db, offset),
+            HirNode::Resource(r) => r.hover(db, offset),
+            HirNode::ProgConfig(p) => p.hover(db, offset),
             _ => None,
         }
     }
@@ -404,5 +408,65 @@ impl<'db> HoverHandler<'db> for CallableType<'db> {
             CallableType::FunctionBlock(fb) => Pou::FunctionBlock(*fb).hover(db, offset),
             CallableType::MethodDecl(m) => m.hover(db, offset),
         }
+    }
+}
+
+impl<'db> HoverHandler<'db> for ConfigDecl<'db> {
+    fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
+        let name_span = self.get_name_span(db);
+        if offset < name_span.start_byte || offset >= name_span.end_byte {
+            return None;
+        }
+
+        let name = self.name(db).text(db);
+        Some(Hover {
+            contents: HoverContents::Scalar(MarkedString::from_markdown(format!(
+                "\n```iecst\nCONFIGURATION {name}\n```\n"
+            ))),
+            range: Some(name_span.into()),
+        })
+    }
+}
+
+impl<'db> HoverHandler<'db> for ResourceDecl<'db> {
+    fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
+        let name_span = self.name.get_span(db);
+        if offset < name_span.start_byte || offset >= name_span.end_byte {
+            return None;
+        }
+
+        let name = self.name.ident.text(db);
+        let resource_type = self.resource_type_name.text(db);
+        Some(Hover {
+            contents: HoverContents::Scalar(MarkedString::from_markdown(format!(
+                "\n```iecst\nRESOURCE {name} ON {resource_type}\n```\n"
+            ))),
+            range: Some(name_span.into()),
+        })
+    }
+}
+
+impl<'db> HoverHandler<'db> for ProgConfig<'db> {
+    fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
+        let name_span = self.name.get_span(db);
+        if offset < name_span.start_byte || offset >= name_span.end_byte {
+            return None;
+        }
+
+        let name = self.name.ident.text(db);
+        let prog_type = match self.prog_type.kind(db) {
+            SpecKind::Target(t) => t.path.target.ident.text(db).to_string(),
+            _ => "?".to_string(),
+        };
+        let task_part = match &self.task {
+            Some(task) => format!(" WITH {}", task.ident.text(db)),
+            None => String::new(),
+        };
+        Some(Hover {
+            contents: HoverContents::Scalar(MarkedString::from_markdown(format!(
+                "\n```iecst\nPROGRAM {name}{task_part} : {prog_type}\n```\n"
+            ))),
+            range: Some(name_span.into()),
+        })
     }
 }
