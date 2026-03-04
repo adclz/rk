@@ -177,6 +177,73 @@ pub fn method() -> CompletionItem {
 }
 
 #[inline]
+pub fn configuration() -> CompletionItem {
+    CompletionItem {
+        label: "CONFIGURATION".into(),
+        kind: Some(lsp_types::CompletionItemKind::MODULE),
+        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+        insert_text: Some("CONFIGURATION ${1:config} \n\nEND_CONFIGURATION".into()),
+        ..Default::default()
+    }
+}
+
+#[inline]
+pub fn resource() -> CompletionItem {
+    CompletionItem {
+        label: "RESOURCE".into(),
+        kind: Some(lsp_types::CompletionItemKind::MODULE),
+        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+        insert_text: Some("RESOURCE ${1:res} ON ${2:resource_type} \n\nEND_RESOURCE".into()),
+        ..Default::default()
+    }
+}
+
+#[inline]
+pub fn task_config() -> CompletionItem {
+    CompletionItem {
+        label: "TASK".into(),
+        kind: Some(lsp_types::CompletionItemKind::EVENT),
+        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+        insert_text: Some("TASK ${1:task} (PRIORITY := ${2:0})".into()),
+        ..Default::default()
+    }
+}
+
+#[inline]
+pub fn prog_config() -> CompletionItem {
+    CompletionItem {
+        label: "PROGRAM (config)".into(),
+        kind: Some(lsp_types::CompletionItemKind::MODULE),
+        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+        insert_text: Some("PROGRAM ${1:inst} : ${2:prog_type}".into()),
+        detail: Some("PROGRAM instance configuration".into()),
+        ..Default::default()
+    }
+}
+
+#[inline]
+pub fn var_global() -> CompletionItem {
+    CompletionItem {
+        label: "VAR_GLOBAL".into(),
+        kind: Some(lsp_types::CompletionItemKind::VARIABLE),
+        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+        insert_text: Some("VAR_GLOBAL \n\nEND_VAR".into()),
+        ..Default::default()
+    }
+}
+
+#[inline]
+pub fn var_access() -> CompletionItem {
+    CompletionItem {
+        label: "VAR_ACCESS".into(),
+        kind: Some(lsp_types::CompletionItemKind::VARIABLE),
+        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+        insert_text: Some("VAR_ACCESS \n\nEND_VAR".into()),
+        ..Default::default()
+    }
+}
+
+#[inline]
 pub fn all_stmts() -> Vec<CompletionItem> {
     vec![if_(), for_(), while_(), repeat()]
 }

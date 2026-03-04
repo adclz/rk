@@ -42,6 +42,7 @@ pub fn completions(
                 ide_proto::handlers::completions_utils::static_snippets::class(),
                 ide_proto::handlers::completions_utils::static_snippets::interface(),
                 ide_proto::handlers::completions_utils::static_snippets::type_(),
+                ide_proto::handlers::completions_utils::static_snippets::configuration(),
             ])));
         }
     };

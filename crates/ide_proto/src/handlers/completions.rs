@@ -1,8 +1,9 @@
 use auto_lsp::lsp_types::CompletionItem;
 use db::WorkspaceDataBase;
 use hir::{
-    CallSite, HirNodeInfo,
+    CallSite, HasName, HirNodeInfo,
     hir_def::{
+        config::{ConfigDecl, ResourceDecl},
         expressions::{
             expression::{Expr, InitExpr, PathExpr, PathExprKind, VariableAccess},
             invocation::Invocation,
@@ -129,6 +130,8 @@ impl<'db> CompletionHandler<'db> for HirNode<'db> {
             HirNode::Namespace(ns) => ns.completion(db, req),
             HirNode::PouDecl(pou) => pou.completion(db, req),
             HirNode::Program(p) => p.completion(db, req),
+            HirNode::Config(c) => c.completion(db, req),
+            HirNode::Resource(r) => r.completion(db, req),
             HirNode::Invocation(i) => i.completion(db, req),
             HirNode::VariableAccess(v) => v.completion(
                 db,
@@ -445,6 +448,46 @@ impl<'db> CompletionHandler<'db> for InitExpr<'db> {
         ctx.items.extend(static_snippets::elem_type_names_init());
 
         Some(ctx.take_items())
+    }
+}
+
+impl<'db> CompletionHandler<'db> for ConfigDecl<'db> {
+    fn completion(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        req: &CompletionRequest,
+    ) -> Option<Vec<CompletionItem>> {
+        // Don't trigger on the name
+        if self.get_name_span(db).end_byte >= req.offset {
+            return None;
+        }
+
+        Some(vec![
+            static_snippets::var_global(),
+            static_snippets::resource(),
+            static_snippets::task_config(),
+            static_snippets::prog_config(),
+            static_snippets::var_access(),
+        ])
+    }
+}
+
+impl<'db> CompletionHandler<'db> for ResourceDecl<'db> {
+    fn completion(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        req: &CompletionRequest,
+    ) -> Option<Vec<CompletionItem>> {
+        // Don't trigger on the name
+        if self.name.get_span(db).end_byte >= req.offset {
+            return None;
+        }
+
+        Some(vec![
+            static_snippets::var_global(),
+            static_snippets::task_config(),
+            static_snippets::prog_config(),
+        ])
     }
 }
 
