@@ -12,6 +12,9 @@ static FOLD: &str = r#"
   (fb_decl)
   (class_decl)
   (interface_decl)
+  (prog_decl)
+  (config_decl)
+  (resource_decl)
 
   (input_decls)
   (output_decls)
@@ -27,6 +30,7 @@ static FOLD: &str = r#"
   (retain_var_decls)
   (no_retain_var_decls)
   (loc_var_decls)
+  (global_var_decls)
 ] @fold
 
 [ (c_style_comment) (pascal_style_comment) ] @comment
