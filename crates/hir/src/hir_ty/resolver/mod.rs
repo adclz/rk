@@ -91,6 +91,11 @@ impl<'db> Resolver<'db> {
                     .insert(path_expr, Type::new_pou(db, pou));
                 true
             }
+            name::NameResolution::Program(prog) => {
+                ctx.type_of_path_expr
+                    .insert(path_expr, Type::Program(prog));
+                true
+            }
             name::NameResolution::Ambiguous(candidates) => {
                 ctx.errors.push(
                     ResolveError::MultipleItemsInScope {

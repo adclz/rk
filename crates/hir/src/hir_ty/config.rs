@@ -45,7 +45,7 @@ pub fn infer_config<'db>(
     for res in config.resources(db).iter() {
         match res {
             ConfigResource::Task(t) => {
-                check_or_insert(&mut config_tasks, t.name, |first, second| {
+                check_or_insert(&mut config_tasks, t.name(db), |first, second| {
                     errors.push(
                         DuplicateError::Task {
                             task1: second,
@@ -56,7 +56,7 @@ pub fn infer_config<'db>(
                 });
             }
             ConfigResource::Program(p) => {
-                check_or_insert(&mut config_progs, p.name, |first, second| {
+                check_or_insert(&mut config_progs, p.name(db), |first, second| {
                     errors.push(
                         DuplicateError::ProgInstance {
                             prog1: second,
@@ -67,7 +67,7 @@ pub fn infer_config<'db>(
                 });
             }
             ConfigResource::Resource(r) => {
-                check_or_insert(&mut seen_resources, r.name, |first, second| {
+                check_or_insert(&mut seen_resources, r.name(db), |first, second| {
                     errors.push(
                         DuplicateError::Resource {
                             res1: second,
@@ -90,8 +90,8 @@ pub fn infer_config<'db>(
             ConfigResource::Resource(r) => {
                 // Tasks visible inside a resource are scoped to that resource only.
                 let resource_tasks: FxHashMap<Ident, SpanIdent<'db>> =
-                    r.tasks.iter().map(|t| (t.name.ident, t.name)).collect();
-                for p in r.programs.iter() {
+                    r.tasks(db).iter().map(|t| (t.name(db).ident, t.name(db))).collect();
+                for p in r.programs(db).iter() {
                     validate_prog_config(db, p, &resource_tasks, errors);
                 }
             }
@@ -110,8 +110,8 @@ fn check_resource_duplicates<'db>(
     errors: &mut Vec<IdeDiagnostic>,
 ) {
     let mut seen_tasks: FxHashMap<Ident, SpanIdent<'db>> = FxHashMap::default();
-    for t in r.tasks.iter() {
-        check_or_insert(&mut seen_tasks, t.name, |first, second| {
+    for t in r.tasks(db).iter() {
+        check_or_insert(&mut seen_tasks, t.name(db), |first, second| {
             errors.push(
                 DuplicateError::Task {
                     task1: second,
@@ -123,8 +123,8 @@ fn check_resource_duplicates<'db>(
     }
 
     let mut seen_progs: FxHashMap<Ident, SpanIdent<'db>> = FxHashMap::default();
-    for p in r.programs.iter() {
-        check_or_insert(&mut seen_progs, p.name, |first, second| {
+    for p in r.programs(db).iter() {
+        check_or_insert(&mut seen_progs, p.name(db), |first, second| {
             errors.push(
                 DuplicateError::ProgInstance {
                     prog1: second,
@@ -157,13 +157,13 @@ fn validate_prog_config<'db>(
     errors: &mut Vec<IdeDiagnostic>,
 ) {
     // Only validate simple (non-namespace-qualified) program types.
-    if let SpecKind::Target(target) = p.prog_type.kind(db) {
+    if let SpecKind::Target(target) = p.prog_type(db).kind(db) {
         if target.path.namespace.is_none() {
             let name = target.path.target.ident;
             if program_index(db, name).is_none() {
                 errors.push(
                     ResolveError::UnknownProgType {
-                        prog_type: p.prog_type,
+                        prog_type: p.prog_type(db),
                     }
                     .to_diagnostic(db),
                 );
@@ -172,10 +172,10 @@ fn validate_prog_config<'db>(
     }
 
     // Validate the WITH <task> reference if present.
-    if let Some(task_ref) = &p.task
+    if let Some(task_ref) = p.task(db)
         && !known_tasks.contains_key(&task_ref.ident)
     {
-        errors.push(ResolveError::UnknownTaskRef { task: *task_ref }.to_diagnostic(db));
+        errors.push(ResolveError::UnknownTaskRef { task: task_ref }.to_diagnostic(db));
     }
 }
 
@@ -196,21 +196,21 @@ fn validate_config_inst_inits<'db>(
     for res in config.resources(db).iter() {
         match res {
             ConfigResource::Program(p) => {
-                if let SpecKind::Target(target) = p.prog_type.kind(db) {
+                if let SpecKind::Target(target) = p.prog_type(db).kind(db) {
                     if target.path.namespace.is_none()
                         && let Some(prog) = program_index(db, target.path.target.ident)
                     {
-                        instances.insert(p.name.ident, prog);
+                        instances.insert(p.name(db).ident, prog);
                     }
                 }
             }
             ConfigResource::Resource(r) => {
-                for p in r.programs.iter() {
-                    if let SpecKind::Target(target) = p.prog_type.kind(db) {
+                for p in r.programs(db).iter() {
+                    if let SpecKind::Target(target) = p.prog_type(db).kind(db) {
                         if target.path.namespace.is_none()
                             && let Some(prog) = program_index(db, target.path.target.ident)
                         {
-                            instances.insert(p.name.ident, prog);
+                            instances.insert(p.name(db).ident, prog);
                         }
                     }
                 }

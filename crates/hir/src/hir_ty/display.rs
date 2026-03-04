@@ -82,6 +82,9 @@ impl<'db> Type<'db> {
     pub fn kind(&self) -> &'static str {
         match self {
             Self::Program(program) => "PROGRAM",
+            Self::Config(_) => "CONFIGURATION",
+            Self::Resource(_) => "RESOURCE",
+            Self::Task(_) => "TASK",
             Self::Elementary(_) => "ELEMENTARY",
             Self::Array(arr) => "ARRAY",
             Self::ArrayConformand(_) => "ARRAY_CONFORMAND",
@@ -112,6 +115,9 @@ impl<'db> Type<'db> {
         match self {
             Self::Elementary(elem) => elem.type_name().into(),
             Self::Program(program) => program.get_name_ident(db).text(db).to_string(),
+            Self::Config(c) => c.get_name_ident(db).text(db).to_string(),
+            Self::Resource(r) => r.name(db).ident.text(db).to_string(),
+            Self::Task(t) => t.name(db).ident.text(db).to_string(),
             Self::Function(f) => f.get_name_ident(db).text(db).to_string(),
             Self::FunctionBlock(fb) => fb.get_name_ident(db).text(db).to_string(),
             Self::MethodDecl(m) => m.get_name_ident(db).text(db).to_string(),
@@ -180,6 +186,7 @@ impl<'db> Type<'db> {
 
     pub fn path_name(&self, db: &'db dyn WorkspaceDataBase) -> String {
         let scope_id = match self {
+            Self::Program(p) => p.get_scope_id(db),
             Self::Function(f) => f.get_scope_id(db),
             Self::FunctionBlock(fb) => fb.get_scope_id(db),
             Self::MethodDecl(m) => m.get_scope_id(db),

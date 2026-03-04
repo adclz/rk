@@ -9,11 +9,12 @@ use crate::{
             namespace::{NamespaceAccess, NamespacePath},
         },
         pous::{class::MethodDecl, generics::GenericParam, pou::Pou},
+        program::ProgramDecl,
         scope::{ScopeId, ScopeKind},
         semantic_index::{get_scope, semantic_index},
     },
     hir_ty::{
-        index_graphs::{namespace_index, pou_index},
+        index_graphs::{namespace_index, pou_index, program_index},
         ty::Type,
     },
 };
@@ -45,6 +46,8 @@ pub enum NameResolution<'db> {
     Generic(GenericParam<'db>),
     /// Resolved to a POU (function, function block, class, etc.)
     Pou(Pou<'db>),
+    /// Resolved to a PROGRAM declaration (only visible from config scopes)
+    Program(ProgramDecl<'db>),
     /// Resolved to the method's own name (self-reference)
     MethodSelf(MethodDecl<'db>),
     /// Two or more USING directives import different POUs with the same name.
@@ -106,7 +109,15 @@ pub fn resolve_name<'db>(
     match resolve_namespace_access(db, access) {
         PouResolution::Found(pou) => NameResolution::Pou(pou),
         PouResolution::Ambiguous(candidates) => NameResolution::Ambiguous(candidates),
-        PouResolution::NotFound => NameResolution::NotFound,
+        PouResolution::NotFound => {
+            // 4. Program resolution (config scopes only — programs are not visible to other POUs)
+            if is_config_scope(db, scope) {
+                if let Some(prog) = program_index(db, name) {
+                    return NameResolution::Program(prog);
+                }
+            }
+            NameResolution::NotFound
+        }
     }
 }
 
@@ -196,6 +207,19 @@ pub fn find_in_parent_pous<'db>(
     PouResolution::NotFound
 }
 
+/// Returns true if the given scope (or any of its ancestors) is a config scope.
+fn is_config_scope<'db>(db: &'db dyn WorkspaceDataBase, scope: ScopeId<'db>) -> bool {
+    if get_scope(db, scope).is_config() {
+        return true;
+    }
+    for ancestor in semantic_index(db, scope.file(db)).scope_iterator(db, scope) {
+        if ancestor.is_config() {
+            return true;
+        }
+    }
+    false
+}
+
 impl<'db> Type<'db> {
     /// Resolve a type specification to a [`Type`].
     ///
@@ -216,6 +240,7 @@ impl<'db> Type<'db> {
             SpecKind::Target(t) => match resolve_name(db, &t.path, spec.scope_id(db)) {
                 NameResolution::Generic(g) => Type::Generic(g),
                 NameResolution::Pou(pou) => Type::new_pou(db, pou),
+                NameResolution::Program(p) => Type::Program(p),
                 NameResolution::MethodSelf(m) => Type::MethodDecl(m.into()),
                 NameResolution::Ambiguous(_) | NameResolution::NotFound => Type::Never,
             },

@@ -48,17 +48,20 @@ pub enum ConfigResource<'db> {
     Program(ProgConfig<'db>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+#[salsa::tracked(debug)]
 pub struct ResourceDecl<'db> {
     pub name: SpanIdent<'db>,
 
     pub resource_type_name: Ident,
 
     /// VAR_GLOBAL variables declared inside this resource block.
+    #[returns(ref)]
     pub variables: Vec<VariableDecl<'db>>,
 
+    #[returns(ref)]
     pub tasks: Vec<TaskConfig<'db>>,
 
+    #[returns(ref)]
     pub programs: Vec<ProgConfig<'db>>,
 
     pub span: AstId,
@@ -67,17 +70,17 @@ pub struct ResourceDecl<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for ResourceDecl<'db> {
-    fn get_id(&self, _db: &'db dyn WorkspaceDataBase) -> AstId {
-        self.span
+    fn get_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
+        self.span(db)
     }
 
-    fn get_scope_id(&self, _db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
-        self.scope_id
+    fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
+        self.scope_id(db)
     }
 }
 
 /// Merged from the old `TaskConfig` + `TaskInit` pair.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+#[salsa::tracked(debug)]
 pub struct TaskConfig<'db> {
     pub name: SpanIdent<'db>,
 
@@ -87,9 +90,23 @@ pub struct TaskConfig<'db> {
 
     /// Priority value — stored as an `Ident` holding the integer text (e.g. `"5"`).
     pub priority: Ident,
+
+    pub span: AstId,
+
+    pub scope_id: ScopeId<'db>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+impl<'db> HirNodeInfo<'db> for TaskConfig<'db> {
+    fn get_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
+        self.span(db)
+    }
+
+    fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
+        self.scope_id(db)
+    }
+}
+
+#[salsa::tracked(debug)]
 pub struct ProgConfig<'db> {
     pub retain: bool,
 
@@ -101,6 +118,7 @@ pub struct ProgConfig<'db> {
     /// Reference to the program type (e.g. `MyProgram` or `NS::MyProgram`).
     pub prog_type: Spec<'db>,
 
+    #[returns(ref)]
     pub conf_elements: Vec<ProgConfElement<'db>>,
 
     pub span: AstId,
@@ -109,12 +127,12 @@ pub struct ProgConfig<'db> {
 }
 
 impl<'db> HirNodeInfo<'db> for ProgConfig<'db> {
-    fn get_id(&self, _db: &'db dyn WorkspaceDataBase) -> AstId {
-        self.span
+    fn get_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
+        self.span(db)
     }
 
-    fn get_scope_id(&self, _db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
-        self.scope_id
+    fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
+        self.scope_id(db)
     }
 }
 

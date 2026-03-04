@@ -200,7 +200,7 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         let priority = Ident::from_node(self.db, self.file, init.priority.cast(self.ast))?;
 
-        Ok(TaskConfig::new(
+        let task = TaskConfig::new(
             self.db,
             name,
             single,
@@ -208,7 +208,9 @@ impl<'db> SemanticIndexBuilder<'db> {
             priority,
             tc.into(),
             self.current_scope,
-        ))
+        );
+        self.register_node(task.span(self.db), HirNode::Task(task));
+        Ok(task)
     }
 
     fn parse_prog_config(

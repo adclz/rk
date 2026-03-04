@@ -6,6 +6,7 @@ use crate::{
     HasName,
     check::errors::{ToIdeDiagnostic, e2_resolve::ResolveError, e3_type::TypeError},
     hir_def::{
+        config::ConfigResource,
         expressions::spec::{Spec, SpecKind},
         interned::identifier::Ident,
         pous::{generics::AnyGeneric, pou::Pou, variable::VariableKind},
@@ -79,6 +80,7 @@ impl<'db> Signature<'db> {
         self.infer_variables(db);
         self.infer_return_type(db);
         self.infer_access_decls(db);
+        self.infer_config_resources(db);
 
         self
     }
@@ -231,6 +233,27 @@ impl<'db> Signature<'db> {
                     self.errors
                         .push(ResolveError::ExternalVarNotFound { var: *var }.to_diagnostic(db));
                 }
+            }
+        }
+    }
+
+    fn infer_config_resources(&mut self, db: &'db dyn WorkspaceDataBase) {
+        let config = match get_scope(db, self.scope).kind {
+            ScopeKind::Config(c) => c,
+            _ => return,
+        };
+
+        for res in config.resources(db).iter() {
+            match res {
+                ConfigResource::Program(p) => {
+                    self.infer_spec(db, p.prog_type(db));
+                }
+                ConfigResource::Resource(r) => {
+                    for p in r.programs(db).iter() {
+                        self.infer_spec(db, p.prog_type(db));
+                    }
+                }
+                ConfigResource::Task(_) => {}
             }
         }
     }

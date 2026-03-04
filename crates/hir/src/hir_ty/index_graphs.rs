@@ -187,7 +187,7 @@ fn workspace_config_globals<'db>(
             }
             for res in config.resources(db).iter() {
                 if let ConfigResource::Resource(r) = res {
-                    for v in r.variables.iter() {
+                    for v in r.variables(db).iter() {
                         result.insert(v.get_name_ident(db), *v);
                     }
                 }

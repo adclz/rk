@@ -4,6 +4,7 @@ use rustc_hash::FxHashMap;
 use crate::{
     AstId, HasName, HirNodeInfo,
     hir_def::{
+        config::{ConfigDecl, ResourceDecl, TaskConfig},
         expressions::{
             expression::{Elementary, Integer, MultibitsPart},
             spec::{Array, ElementarySpec, Enum, Spec, Struct, StructElement, SubRange},
@@ -52,8 +53,12 @@ pub enum Type<'db> {
     DirectVariable((DirectVariable<'db>, Option<MultibitsPart>)),
     // A reference created inside a body
     Infer(InferType),
-    // Program (cannot be seen by other types, only used here for body inference)
+    // Program (only visible from config scopes)
     Program(ProgramDecl<'db>),
+    // Config types (only visible internally, not referenced by other POUs)
+    Config(ConfigDecl<'db>),
+    Resource(ResourceDecl<'db>),
+    Task(TaskConfig<'db>),
     // Func call - same as methods, functions, function blocks but we know it's being called
     CallableType(CallableType<'db>),
     // Void type, usually the result of a call that does not return anything
