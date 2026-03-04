@@ -8,7 +8,7 @@ use hir::{
             spec::{Spec, SpecKind, StructElement},
         }, hir_node::HirNode, interned::namespace::NamespacePath, namespace::NamespaceDecl, pous::{pou::Pou, variable::VariableDecl}, using::Using
     },
-    hir_ty::{index_graphs::namespace_index, infer::Infer, ty::Type},
+    hir_ty::{index_graphs::namespace_index, infer::Infer, ty::{CallableType, Type}},
 };
 
 use crate::handlers::{DefinitionHandler, completions::{try_build_namespace_path, is_namespace_prefix}};
@@ -135,6 +135,7 @@ impl<'db> DefinitionHandler<'db> for ParamAssign<'db> {
 impl<'db> DefinitionHandler<'db> for Type<'db> {
     fn definition(&'db self, db: &'db dyn WorkspaceDataBase, _offset: usize) -> Option<GotoDefinitionResponse> {
         let loc: &'db dyn HirNodeInfo<'db> = match self {
+            Type::CallableType(c) => return c.definition(db, _offset),
             Type::Function(f) => f as _,
             Type::FunctionBlock(f) => f as _,
             Type::Class(c) => c as _,
@@ -145,7 +146,10 @@ impl<'db> DefinitionHandler<'db> for Type<'db> {
                 SpecKind::Target(_) => return dt.spec(db).infer(db).definition(db, _offset),
                 _ => dt as _,
             },
-            Type::Variable((var, _multibits)) => return var.spec(db).infer(db).definition(db, _offset),
+            Type::Variable((var, _multibits)) => match var.spec(db).kind(db) {
+                SpecKind::Target(_) => return var.spec(db).infer(db).definition(db, _offset),
+                _ => var as _,
+            },
             _ => None?,
         };
 
@@ -153,6 +157,19 @@ impl<'db> DefinitionHandler<'db> for Type<'db> {
             loc.get_scope_id(db).file(db).url(db).to_owned(),
             loc.get_span(db).into(),
         )))
+    }
+}
+
+impl<'db> DefinitionHandler<'db> for CallableType<'db> {
+    fn definition(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<GotoDefinitionResponse> {
+        match self {
+            CallableType::Function(f) => Pou::Function(*f).definition(db, offset),
+            CallableType::FunctionBlock(fb) => Pou::FunctionBlock(*fb).definition(db, offset),
+            CallableType::MethodDecl(m) => Some(GotoDefinitionResponse::Scalar(Location::new(
+                m.get_scope_id(db).file(db).url(db).to_owned(),
+                m.get_span(db).into(),
+            ))),
+        }
     }
 }
 

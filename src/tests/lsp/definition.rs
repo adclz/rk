@@ -7,7 +7,7 @@ use hir::HirNodeInfo;
 use hir::hir_def::hir_node::HirNode;
 use hir::hir_def::semantic_index::semantic_index;
 use ide_proto::handlers::DefinitionHandler;
-use ide_proto::walk::WalkHir;
+use ide_proto::walk::{WalkHir, descendant_at};
 use insta::assert_snapshot;
 use rstest::rstest;
 
@@ -133,4 +133,101 @@ END_FUNCTION
 
     let def = system_path.definition(&with_db, system_offset).unwrap();
     assert_snapshot!(format_definition_response(&def), @"/test0.st:1:10-1:16");
+}
+
+#[rstest]
+pub fn definition_namespace_path_expr_via_descendant_at(mut with_db: RootDatabase) {
+    let source = r#"
+NAMESPACE System
+    FUNCTION Sin : REAL
+    VAR_INPUT
+        x : REAL;
+    END_VAR
+    END_FUNCTION
+END_NAMESPACE
+
+FUNCTION fn1 : REAL
+VAR
+    x : REAL;
+END_VAR
+    x := System.Sin(x := x);
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    // Use descendant_at (like the server does) to find the node at "System" offset
+    let system_offset = source.find("System.Sin").unwrap();
+    let node = descendant_at(&with_db, file, system_offset);
+    let node = node.expect("should find a node at System offset");
+
+    // Debug: what node type did we find?
+    let node_type = match &node {
+        HirNode::PathExpr(_) => "PathExpr",
+        HirNode::PouDecl(_) => "PouDecl",
+        HirNode::VariableDecl(_) => "VariableDecl",
+        HirNode::Spec(_) => "Spec",
+        HirNode::Expr(_) => "Expr",
+        HirNode::VariableAccess(_) => "VariableAccess",
+        HirNode::Namespace(_) => "Namespace",
+        _ => "Other",
+    };
+    assert_snapshot!(node_type, @"PathExpr");
+
+    let def = node.definition(&with_db, system_offset);
+    assert!(def.is_some(), "definition should return Some for namespace PathExpr");
+    assert_snapshot!(format_definition_response(&def.unwrap()), @"/test0.st:1:10-1:16");
+}
+
+#[rstest]
+pub fn definition_variable_ref_elementary_type(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        x : INT;
+    END_VAR
+        x := 5;
+END_FUNCTION_BLOCK
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    // Find the node at "x" in the body (x := 5)
+    let body_x_offset = source.rfind("x").unwrap();
+    let node = descendant_at(&with_db, file, body_x_offset).expect("should find node at x");
+
+    let def = node.definition(&with_db, body_x_offset).unwrap();
+    // Should go to the variable declaration, not the type
+    assert_snapshot!(format_definition_response(&def), @"/test0.st:3:8-3:15");
+}
+
+#[rstest]
+pub fn definition_variable_ref_target_type(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Engine
+    VAR
+        power : INT;
+    END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK fb1
+    VAR
+        motor : Engine;
+    END_VAR
+        motor.power := 5;
+END_FUNCTION_BLOCK
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    // Find the node at "motor" in the body (motor.power := 5)
+    let motor_offset = source.rfind("motor").unwrap();
+    let node = descendant_at(&with_db, file, motor_offset).expect("should find node at motor");
+
+    let def = node.definition(&with_db, motor_offset).unwrap();
+    // Should go to the Engine FUNCTION_BLOCK definition, not the variable declaration
+    assert_snapshot!(format_definition_response(&def), @"/test0.st:1:0-5:18");
 }
