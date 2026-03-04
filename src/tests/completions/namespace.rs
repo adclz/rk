@@ -398,3 +398,275 @@ END_FUNCTION
         "should NOT contain 'Log' from parent namespace: {completions:?}"
     );
 }
+
+// --- Head context (type spec) namespace completions ---
+
+#[rstest]
+pub fn head_namespace_dot_trigger(mut with_db: RootDatabase) {
+    // Typing `System.` in a VAR type spec should show POUs inside System namespace
+    let ns_source = r#"
+NAMESPACE System
+    FUNCTION_BLOCK Controller
+    END_FUNCTION_BLOCK
+
+    FUNCTION_BLOCK Sensor
+    END_FUNCTION_BLOCK
+END_NAMESPACE
+"#;
+
+    let body_source = r#"
+FUNCTION fn1
+VAR
+    x : System.
+END_VAR
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[ns_source, body_source]);
+    let file = with_db
+        .get_file(&Url::parse("file:///test1.st").unwrap())
+        .unwrap();
+    let offset = body_source.find("System.").unwrap() + "System.".len();
+    let (node, node_key, is_last_before) =
+        completion_descendant_at(&with_db, file, offset).unwrap();
+    let req = CompletionRequest {
+        offset,
+        trigger_character: Some(".".into()),
+        query: "".into(),
+        node_index_pos: Some(node_key),
+        is_last_before,
+    };
+    let completions = node.completion(&with_db, &req).unwrap();
+
+    assert!(
+        format!("{completions:?}").contains("Controller"),
+        "expected 'Controller' in completions: {completions:?}"
+    );
+    assert!(
+        format!("{completions:?}").contains("Sensor"),
+        "expected 'Sensor' in completions: {completions:?}"
+    );
+}
+
+#[rstest]
+pub fn head_namespace_sub_fragments(mut with_db: RootDatabase) {
+    // Typing `System.` in a VAR type spec should also show sub-namespace fragments
+    let ns_source = r#"
+NAMESPACE System.Math
+    FUNCTION_BLOCK Calculator
+    END_FUNCTION_BLOCK
+END_NAMESPACE
+"#;
+
+    let body_source = r#"
+FUNCTION fn1
+VAR
+    x : System.
+END_VAR
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[ns_source, body_source]);
+    let file = with_db
+        .get_file(&Url::parse("file:///test1.st").unwrap())
+        .unwrap();
+    let offset = body_source.find("System.").unwrap() + "System.".len();
+    let (node, node_key, is_last_before) =
+        completion_descendant_at(&with_db, file, offset).unwrap();
+    let req = CompletionRequest {
+        offset,
+        trigger_character: Some(".".into()),
+        query: "".into(),
+        node_index_pos: Some(node_key),
+        is_last_before,
+    };
+    let completions = node.completion(&with_db, &req).unwrap();
+
+    assert!(
+        format!("{completions:?}").contains("Math"),
+        "expected 'Math' sub-namespace fragment in completions: {completions:?}"
+    );
+}
+
+#[rstest]
+pub fn head_nested_namespace_dot_trigger(mut with_db: RootDatabase) {
+    // Typing `System.Math.` in a VAR type spec should show POUs in System.Math only
+    let ns_source = r#"
+NAMESPACE System
+    FUNCTION_BLOCK Controller
+    END_FUNCTION_BLOCK
+END_NAMESPACE
+
+NAMESPACE System.Math
+    FUNCTION_BLOCK Calculator
+    END_FUNCTION_BLOCK
+END_NAMESPACE
+"#;
+
+    let body_source = r#"
+FUNCTION fn1
+VAR
+    x : System.Math.
+END_VAR
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[ns_source, body_source]);
+    let file = with_db
+        .get_file(&Url::parse("file:///test1.st").unwrap())
+        .unwrap();
+    let offset = body_source.find("System.Math.").unwrap() + "System.Math.".len();
+    let (node, node_key, is_last_before) =
+        completion_descendant_at(&with_db, file, offset).unwrap();
+    let req = CompletionRequest {
+        offset,
+        trigger_character: Some(".".into()),
+        query: "".into(),
+        node_index_pos: Some(node_key),
+        is_last_before,
+    };
+    let completions = node.completion(&with_db, &req).unwrap();
+
+    assert!(
+        format!("{completions:?}").contains("Calculator"),
+        "expected 'Calculator' in completions: {completions:?}"
+    );
+    assert!(
+        !format!("{completions:?}").contains("Controller"),
+        "should NOT contain 'Controller' from parent namespace: {completions:?}"
+    );
+}
+
+#[rstest]
+pub fn head_namespace_editing_target(mut with_db: RootDatabase) {
+    // Typing `System.C` in a VAR type spec should show items from System namespace
+    let ns_source = r#"
+NAMESPACE System
+    FUNCTION_BLOCK Controller
+    END_FUNCTION_BLOCK
+
+    FUNCTION_BLOCK Sensor
+    END_FUNCTION_BLOCK
+END_NAMESPACE
+"#;
+
+    let body_source = r#"
+FUNCTION fn1
+VAR
+    x : System.C
+END_VAR
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[ns_source, body_source]);
+    let file = with_db
+        .get_file(&Url::parse("file:///test1.st").unwrap())
+        .unwrap();
+    let offset = body_source.find("System.C").unwrap() + "System.C".len();
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    let req = CompletionRequest {
+        offset,
+        trigger_character: None,
+        query: "".into(),
+        node_index_pos: None,
+        is_last_before: false,
+    };
+    let completions = node.completion(&with_db, &req).unwrap();
+
+    // Should contain POUs from System (Controller, Sensor) — VS Code will filter by "C"
+    assert!(
+        format!("{completions:?}").contains("Controller"),
+        "expected 'Controller' in completions: {completions:?}"
+    );
+    assert!(
+        format!("{completions:?}").contains("Sensor"),
+        "expected 'Sensor' in completions: {completions:?}"
+    );
+}
+
+#[rstest]
+pub fn extends_namespace_dot_trigger(mut with_db: RootDatabase) {
+    // Typing `EXTENDS System.` should show POUs in System namespace
+    let ns_source = r#"
+NAMESPACE System
+    FUNCTION_BLOCK BaseController
+    END_FUNCTION_BLOCK
+END_NAMESPACE
+"#;
+
+    let body_source = r#"
+FUNCTION_BLOCK MyFB EXTENDS System.
+END_FUNCTION_BLOCK
+"#;
+
+    add_sources(&mut with_db, &[ns_source, body_source]);
+    let file = with_db
+        .get_file(&Url::parse("file:///test1.st").unwrap())
+        .unwrap();
+    let offset = body_source.find("System.").unwrap() + "System.".len();
+    let (node, node_key, is_last_before) =
+        completion_descendant_at(&with_db, file, offset).unwrap();
+    let req = CompletionRequest {
+        offset,
+        trigger_character: Some(".".into()),
+        query: "".into(),
+        node_index_pos: Some(node_key),
+        is_last_before,
+    };
+    let completions = node.completion(&with_db, &req).unwrap();
+
+    assert!(
+        format!("{completions:?}").contains("BaseController"),
+        "expected 'BaseController' in completions: {completions:?}"
+    );
+}
+
+#[rstest]
+pub fn head_namespace_editing_middle_fragment(mut with_db: RootDatabase) {
+    // Editing a middle fragment (e.g., Std.C|.Timers) should show items from the parent namespace
+    let ns_source = r#"
+NAMESPACE Std
+    FUNCTION_BLOCK DirectFB
+    END_FUNCTION_BLOCK
+END_NAMESPACE
+
+NAMESPACE Std.Convert
+    FUNCTION_BLOCK Timers
+    END_FUNCTION_BLOCK
+END_NAMESPACE
+"#;
+
+    let body_source = r#"
+FUNCTION fn1
+VAR
+    x : Std.C.Timers
+END_VAR
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[ns_source, body_source]);
+    let file = with_db
+        .get_file(&Url::parse("file:///test1.st").unwrap())
+        .unwrap();
+    // Cursor at Std.C| (after "C", in the middle fragment)
+    let offset = body_source.find("Std.C").unwrap() + "Std.C".len();
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    let req = CompletionRequest {
+        offset,
+        trigger_character: None,
+        query: "".into(),
+        node_index_pos: None,
+        is_last_before: false,
+    };
+    let completions = node.completion(&with_db, &req).unwrap();
+
+    // Should contain items from Std namespace (DirectFB, Convert sub-namespace)
+    assert!(
+        format!("{completions:?}").contains("DirectFB"),
+        "expected 'DirectFB' (POU in Std) in completions: {completions:?}"
+    );
+    assert!(
+        format!("{completions:?}").contains("Convert"),
+        "expected 'Convert' (sub-namespace) in completions: {completions:?}"
+    );
+}

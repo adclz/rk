@@ -6,7 +6,7 @@ use hir::{
         expressions::{
             expression::{Expr, InitExpr, PathExpr, PathExprKind, VariableAccess},
             invocation::Invocation,
-            spec::Spec,
+            spec::{Spec, SpecKind},
         }, hir_node::HirNode, interned::namespace::NamespacePath, namespace::NamespaceDecl, pous::pou::Pou, program::ProgramDecl, scope::ScopeKind, semantic_index::{NodeKey, get_scope, semantic_index}, using::Using
     },
     hir_ty::{infer::Infer, index_graphs::namespace_index},
@@ -216,6 +216,54 @@ impl<'db> CompletionHandler<'db> for Spec<'db> {
         db: &'db dyn WorkspaceDataBase,
         req: &CompletionRequest,
     ) -> Option<Vec<CompletionItem>> {
+        if let SpecKind::Target(target) = self.kind(db) {
+            let is_dot_trigger = req.trigger_character.as_deref() == Some(".");
+
+            if is_dot_trigger {
+                // Build full path: namespace fragments + target ident (skip empty/MISSING target)
+                let mut fragments: Vec<_> = target
+                    .path
+                    .namespace
+                    .as_ref()
+                    .map(|ns| ns.fragments(db).to_vec())
+                    .unwrap_or_default();
+                if !target.path.target.ident.text(db).is_empty() {
+                    fragments.push(target.path.target.ident);
+                }
+                let full_path = NamespacePath::new(db, fragments);
+
+                if is_namespace_prefix(db, full_path) {
+                    let mut ctx = CompletionCtx::new(req.offset, QueryMode::Head);
+                    ctx.namespace_completion(full_path, db);
+                    return Some(ctx.take_items());
+                }
+            } else if let Some(namespace) = &target.path.namespace {
+                // Editing a fragment in a namespace path (e.g., Std.C|.Timers or Std.C|)
+                // Determine which fragment the cursor is in and use the prefix before it.
+                let ns_fragments = namespace.fragments(db);
+
+                // Find how many namespace fragments precede the cursor
+                let mut prefix_len = ns_fragments.len();
+                for (i, ast_id) in namespace.spans.iter().enumerate() {
+                    let site = CallSite::new(namespace.scope_id, *ast_id);
+                    if req.offset <= site.get_span(db).end_byte {
+                        prefix_len = i;
+                        break;
+                    }
+                }
+
+                if prefix_len > 0 {
+                    let prefix = NamespacePath::new(db, ns_fragments[..prefix_len].to_vec());
+                    if is_namespace_prefix(db, prefix) {
+                        let mut ctx = CompletionCtx::new(req.offset, QueryMode::Head);
+                        ctx.namespace_completion(prefix, db);
+                        return Some(ctx.take_items());
+                    }
+                }
+            }
+        }
+
+        // Default: scope completion + elementary types
         let mut ctx = CompletionCtx::new(req.offset, QueryMode::Head);
         ctx.scope_completion(self.get_scope_id(db), &req.query, db);
         ctx.items.extend(static_snippets::elem_type_names());
