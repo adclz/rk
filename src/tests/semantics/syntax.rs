@@ -1067,3 +1067,21 @@ END_CONFIGURATION"#;
     ---'
     ");
 }
+
+#[rstest]
+fn missing_priority(mut with_db: RootDatabase) {
+    let source = r#"
+CONFIGURATION MyCfg
+    TASK t1()
+END_CONFIGURATION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0035] Error: syntax
+       ,-[ file:///test0.st:3:5 ]
+       |
+     3 |     TASK t1()
+       |     ^^^^|^^^^
+       |         `------ PRIORITY is required in TASK configuration
+    ---'
+    ");
+}

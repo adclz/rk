@@ -74,6 +74,7 @@ pub enum SyntaxError {
     SingleAfterInterval(Span),
     IntervalAfterPriority(Span),
     SingleAfterPriority(Span),
+    MissingPriority(Span),
     // todo: use custom lexer to handle syntax errors unhandled by tree-sitter
     SyntaxError {
         span: Span,
@@ -118,6 +119,7 @@ impl ErrorCode for SyntaxError {
             SyntaxError::SingleAfterInterval(_) => "E0032",
             SyntaxError::IntervalAfterPriority(_) => "E0033",
             SyntaxError::SingleAfterPriority(_) => "E0034",
+            SyntaxError::MissingPriority(_) => "E0035",
             SyntaxError::SyntaxError { .. } => "E0050",
         }
     }
@@ -601,6 +603,12 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 .call(),
             Self::SingleAfterPriority(span) => diag()
                 .message("SINGLE cannot be declared after PRIORITY".into())
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(*span)
+                .call(),
+            Self::MissingPriority(span) => diag()
+                .message("PRIORITY is required in TASK configuration".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(*span)

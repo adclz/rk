@@ -210,6 +210,39 @@ pub fn task_config() -> CompletionItem {
 }
 
 #[inline]
+pub fn task_single() -> CompletionItem {
+    CompletionItem {
+        label: "SINGLE".into(),
+        kind: Some(lsp_types::CompletionItemKind::PROPERTY),
+        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+        insert_text: Some("SINGLE := ${1:source}".into()),
+        ..Default::default()
+    }
+}
+
+#[inline]
+pub fn task_interval() -> CompletionItem {
+    CompletionItem {
+        label: "INTERVAL".into(),
+        kind: Some(lsp_types::CompletionItemKind::PROPERTY),
+        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+        insert_text: Some("INTERVAL := ${1:T#20ms}".into()),
+        ..Default::default()
+    }
+}
+
+#[inline]
+pub fn task_priority() -> CompletionItem {
+    CompletionItem {
+        label: "PRIORITY".into(),
+        kind: Some(lsp_types::CompletionItemKind::PROPERTY),
+        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+        insert_text: Some("PRIORITY := ${1:0}".into()),
+        ..Default::default()
+    }
+}
+
+#[inline]
 pub fn prog_config() -> CompletionItem {
     CompletionItem {
         label: "PROGRAM (config)".into(),

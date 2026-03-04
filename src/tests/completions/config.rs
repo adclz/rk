@@ -157,3 +157,103 @@ END_CONFIGURATION
         "missing VAR_ACCESS: {labels:?}"
     );
 }
+
+/// Test completion inside an empty TASK init — all three params offered
+#[rstest]
+pub fn task_config_completion_empty(mut with_db: RootDatabase) {
+    let source = r#"
+CONFIGURATION MyConfig
+    TASK t1()
+END_CONFIGURATION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    let offset = source.find("t1(").unwrap() + "t1(".len();
+    let (node, node_key, is_last_before) =
+        completion_descendant_at(&with_db, file, offset).unwrap();
+    let req = CompletionRequest {
+        offset,
+        trigger_character: None,
+        query: "".into(),
+        node_index_pos: Some(node_key),
+        is_last_before,
+    };
+    let completions = node.completion(&with_db, &req).unwrap();
+
+    let labels: Vec<&str> = completions.iter().map(|c| c.label.as_str()).collect();
+    assert!(labels.contains(&"SINGLE"), "missing SINGLE: {labels:?}");
+    assert!(
+        labels.contains(&"INTERVAL"),
+        "missing INTERVAL: {labels:?}"
+    );
+    assert!(
+        labels.contains(&"PRIORITY"),
+        "missing PRIORITY: {labels:?}"
+    );
+}
+
+/// Test completion inside TASK with PRIORITY already set — only SINGLE and INTERVAL offered
+#[rstest]
+pub fn task_config_completion_with_priority(mut with_db: RootDatabase) {
+    let source = r#"
+CONFIGURATION MyConfig
+    TASK t1(PRIORITY := 5)
+END_CONFIGURATION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    let offset = source.find(')').unwrap();
+    let (node, node_key, is_last_before) =
+        completion_descendant_at(&with_db, file, offset).unwrap();
+    let req = CompletionRequest {
+        offset,
+        trigger_character: None,
+        query: "".into(),
+        node_index_pos: Some(node_key),
+        is_last_before,
+    };
+    let completions = node.completion(&with_db, &req).unwrap();
+
+    let labels: Vec<&str> = completions.iter().map(|c| c.label.as_str()).collect();
+    assert!(labels.contains(&"SINGLE"), "missing SINGLE: {labels:?}");
+    assert!(
+        labels.contains(&"INTERVAL"),
+        "missing INTERVAL: {labels:?}"
+    );
+    assert!(
+        !labels.contains(&"PRIORITY"),
+        "should not offer PRIORITY: {labels:?}"
+    );
+}
+
+/// Test completion inside a fully specified TASK — no params offered
+#[rstest]
+pub fn task_config_completion_full(mut with_db: RootDatabase) {
+    let source = r#"
+CONFIGURATION MyConfig
+    TASK t1(SINGLE := %IX0.0, INTERVAL := T#20ms, PRIORITY := 3)
+END_CONFIGURATION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    let offset = source.find(')').unwrap();
+    let (node, node_key, is_last_before) =
+        completion_descendant_at(&with_db, file, offset).unwrap();
+    let req = CompletionRequest {
+        offset,
+        trigger_character: None,
+        query: "".into(),
+        node_index_pos: Some(node_key),
+        is_last_before,
+    };
+    let completions = node.completion(&with_db, &req).unwrap();
+
+    let labels: Vec<&str> = completions.iter().map(|c| c.label.as_str()).collect();
+    assert!(labels.is_empty(), "should have no completions: {labels:?}");
+}

@@ -89,7 +89,8 @@ pub struct TaskConfig<'db> {
     pub interval: Option<DataSource<'db>>,
 
     /// Priority value — stored as an `Ident` holding the integer text (e.g. `"5"`).
-    pub priority: Ident,
+    /// `None` when PRIORITY is missing from the TASK init (E0035 is emitted).
+    pub priority: Option<Ident>,
 
     pub span: AstId,
 

@@ -3,7 +3,7 @@ use db::WorkspaceDataBase;
 use hir::{
     CallSite, HasName, HirNodeInfo,
     hir_def::{
-        config::{ConfigDecl, ResourceDecl},
+        config::{ConfigDecl, ResourceDecl, TaskConfig},
         expressions::{
             expression::{Expr, InitExpr, PathExpr, PathExprKind, VariableAccess},
             invocation::Invocation,
@@ -132,6 +132,7 @@ impl<'db> CompletionHandler<'db> for HirNode<'db> {
             HirNode::Program(p) => p.completion(db, req),
             HirNode::Config(c) => c.completion(db, req),
             HirNode::Resource(r) => r.completion(db, req),
+            HirNode::Task(t) => t.completion(db, req),
             HirNode::Invocation(i) => i.completion(db, req),
             HirNode::VariableAccess(v) => v.completion(
                 db,
@@ -488,6 +489,31 @@ impl<'db> CompletionHandler<'db> for ResourceDecl<'db> {
             static_snippets::task_config(),
             static_snippets::prog_config(),
         ])
+    }
+}
+
+impl<'db> CompletionHandler<'db> for TaskConfig<'db> {
+    fn completion(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        req: &CompletionRequest,
+    ) -> Option<Vec<CompletionItem>> {
+        if self.name(db).get_span(db).end_byte >= req.offset {
+            return None;
+        }
+
+        let mut items = vec![];
+        if self.single(db).is_none() {
+            items.push(static_snippets::task_single());
+        }
+        if self.interval(db).is_none() {
+            items.push(static_snippets::task_interval());
+        }
+        if self.priority(db).is_none() {
+            items.push(static_snippets::task_priority());
+        }
+
+        Some(items)
     }
 }
 

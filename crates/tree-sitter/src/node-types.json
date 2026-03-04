@@ -6147,7 +6147,7 @@
       },
       "priority": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "unsigned_int",

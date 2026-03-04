@@ -459,7 +459,10 @@ impl<'db> HoverHandler<'db> for TaskConfig<'db> {
         }
 
         let name = self.name(db).ident.text(db);
-        let priority = self.priority(db).text(db);
+        let priority = self
+            .priority(db)
+            .map(|p| p.text(db).to_string())
+            .unwrap_or_else(|| "?".to_string());
         Some(Hover {
             contents: HoverContents::Scalar(MarkedString::from_markdown(format!(
                 "\n```iecst\nTASK {name} (PRIORITY := {priority})\n```\n"

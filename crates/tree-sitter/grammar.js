@@ -1492,14 +1492,13 @@ module.exports = grammar({
     task_init: ($) =>
       seq(
         "(",
-        optional(seq("SINGLE", ":=", field("single", $.data_source), ",")),
-        optional(seq("INTERVAL", ":=", field("interval", $.data_source), ",")),
+        optional(seq("SINGLE", ":=", field("single", $.data_source), optional(","))),
+        optional(seq("INTERVAL", ":=", field("interval", $.data_source), optional(","))),
         optional($.ERR_single_after_interval),
-        "PRIORITY", ":=", field("priority", $.unsigned_int),
+        optional(seq("PRIORITY", ":=", field("priority", $.unsigned_int))),
         optional($.ERR_interval_after_priority),
         optional($.ERR_single_after_priorty),
         ")",
-
       ),
 
     data_source: ($) =>

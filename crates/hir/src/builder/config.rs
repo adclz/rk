@@ -213,7 +213,15 @@ impl<'db> SemanticIndexBuilder<'db> {
             .map(|ds| self.parse_data_source(ds.cast(self.ast)));
         let interval = interval.and_then(|r| self.try_parse(r));
 
-        let priority = Ident::from_node(self.db, self.file, init.priority.cast(self.ast))?;
+        let priority = init
+            .priority
+            .as_ref()
+            .map(|p| Ident::from_node(self.db, self.file, p.cast(self.ast)));
+        let priority = priority.and_then(|r| self.try_parse(r));
+
+        if priority.is_none() {
+            self.errors.push(SyntaxError::MissingPriority(tc.get_span()).to_diagnostic(self.db));
+        }
 
         let task = TaskConfig::new(
             self.db,
