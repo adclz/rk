@@ -8,6 +8,7 @@ use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
     hir_def::{
+        config::TaskConfig,
         expressions::{
             expression::{Expr, ExprKind, FuncCall, PrimaryExpr},
             statement::{CaseKind, Stmt, StmtKind},
@@ -22,8 +23,78 @@ use hir::{
 
 use crate::walk::WalkHir;
 
-/// Find signature help for the function call enclosing the given offset.
+/// Find signature help for the function call or TASK configuration enclosing the given offset.
 pub fn find_signature_help<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    file: File,
+    offset: usize,
+) -> Option<SignatureHelp> {
+    if let Some(help) = find_func_call_signature_help(db, file, offset) {
+        return Some(help);
+    }
+
+    find_task_signature_help(db, file, offset)
+}
+
+/// Find signature help for a TASK configuration init at the given offset.
+fn find_task_signature_help<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    file: File,
+    offset: usize,
+) -> Option<SignatureHelp> {
+    let task = find_enclosing_task(db, file, offset)?;
+
+    // Verify cursor is inside the parentheses (init section)
+    let source = file.document(db).as_str();
+    let span = task.get_span(db);
+    let task_text = &source[span.start_byte..span.end_byte];
+    let paren_offset = task_text.find('(')?;
+    let paren_abs = span.start_byte + paren_offset;
+    if offset <= paren_abs {
+        return None;
+    }
+
+    // Build the static TASK signature label with parameter offsets
+    let params_data: &[(&str, &str)] = &[
+        ("SINGLE", "DataSource"),
+        ("INTERVAL", "DataSource"),
+        ("PRIORITY", "UINT"),
+    ];
+
+    let mut label = String::from("TASK(");
+    let mut param_infos = Vec::with_capacity(params_data.len());
+
+    for (i, (name, ty)) in params_data.iter().enumerate() {
+        if i > 0 {
+            label.push_str(", ");
+        }
+        let start = label.len() as u32;
+        label.push_str(name);
+        label.push_str(" := ");
+        label.push_str(ty);
+        let end = label.len() as u32;
+
+        param_infos.push(ParameterInformation {
+            label: ParameterLabel::LabelOffsets([start, end]),
+            documentation: None,
+        });
+    }
+    label.push(')');
+
+    Some(SignatureHelp {
+        signatures: vec![SignatureInformation {
+            label,
+            documentation: None,
+            parameters: Some(param_infos),
+            active_parameter: None,
+        }],
+        active_signature: Some(0),
+        active_parameter: None,
+    })
+}
+
+/// Find signature help for a function call enclosing the given offset.
+fn find_func_call_signature_help<'db>(
     db: &'db dyn WorkspaceDataBase,
     file: File,
     offset: usize,
@@ -167,6 +238,33 @@ fn find_enclosing_scope<'db>(
     });
 
     best_scope
+}
+
+/// Find the smallest TaskConfig node containing the given offset.
+fn find_enclosing_task<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    file: File,
+    offset: usize,
+) -> Option<TaskConfig<'db>> {
+    let sema = semantic_index(db, file);
+    let mut best: Option<TaskConfig<'db>> = None;
+    let mut best_size = usize::MAX;
+
+    let _ = sema.walk_hir(db, &mut |node: HirNode<'db>| {
+        if let HirNode::Task(t) = node {
+            let span = node.get_span(db);
+            if span.start_byte <= offset && offset <= span.end_byte {
+                let size = span.end_byte - span.start_byte;
+                if size < best_size {
+                    best_size = size;
+                    best = Some(t);
+                }
+            }
+        }
+        std::ops::ControlFlow::Continue(())
+    });
+
+    best
 }
 
 /// Recursively search statements for a FuncCall containing the offset.

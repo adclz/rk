@@ -417,3 +417,124 @@ END_FUNCTION
     )
     "#);
 }
+
+#[rstest]
+fn signature_help_task_config_at_start(mut with_db: RootDatabase) {
+    let source = r#"
+CONFIGURATION MyCfg
+    TASK t1(PRIORITY := 5);
+END_CONFIGURATION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    // Cursor right after `(`
+    let offset = source.find("TASK t1(").unwrap() + "TASK t1(".len();
+    let help = find_signature_help(&with_db, file, offset);
+
+    assert_debug_snapshot!(help, @r#"
+    Some(
+        SignatureHelp {
+            signatures: [
+                SignatureInformation {
+                    label: "TASK(SINGLE := DataSource, INTERVAL := DataSource, PRIORITY := UINT)",
+                    documentation: None,
+                    parameters: Some(
+                        [
+                            ParameterInformation {
+                                label: LabelOffsets(
+                                    [
+                                        5,
+                                        25,
+                                    ],
+                                ),
+                                documentation: None,
+                            },
+                            ParameterInformation {
+                                label: LabelOffsets(
+                                    [
+                                        27,
+                                        49,
+                                    ],
+                                ),
+                                documentation: None,
+                            },
+                            ParameterInformation {
+                                label: LabelOffsets(
+                                    [
+                                        51,
+                                        67,
+                                    ],
+                                ),
+                                documentation: None,
+                            },
+                        ],
+                    ),
+                    active_parameter: None,
+                },
+            ],
+            active_signature: Some(
+                0,
+            ),
+            active_parameter: None,
+        },
+    )
+    "#);
+}
+
+#[rstest]
+fn signature_help_task_config_on_priority(mut with_db: RootDatabase) {
+    let source = r#"
+CONFIGURATION MyCfg
+    TASK t1(PRIORITY := 5);
+END_CONFIGURATION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    // Cursor on PRIORITY value
+    let offset = source.find("PRIORITY := 5").unwrap() + "PRIORITY := ".len();
+    let help = find_signature_help(&with_db, file, offset);
+
+    assert!(help.is_some());
+    assert_eq!(help.unwrap().active_parameter, None);
+}
+
+#[rstest]
+fn signature_help_task_config_full(mut with_db: RootDatabase) {
+    let source = r#"
+CONFIGURATION MyCfg
+    TASK t1(SINGLE := %IX0.0, INTERVAL := T#20ms, PRIORITY := 3);
+END_CONFIGURATION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    // Cursor on INTERVAL value
+    let offset = source.find("INTERVAL := T").unwrap() + "INTERVAL := ".len();
+    let help = find_signature_help(&with_db, file, offset);
+
+    assert!(help.is_some());
+    assert_eq!(help.unwrap().active_parameter, None);
+}
+
+#[rstest]
+fn signature_help_task_config_before_paren(mut with_db: RootDatabase) {
+    let source = r#"
+CONFIGURATION MyCfg
+    TASK t1(PRIORITY := 5);
+END_CONFIGURATION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    // Cursor on task name (before the parenthesis) — no signature help
+    let offset = source.find("TASK t1(").unwrap() + "TASK ".len();
+    let help = find_signature_help(&with_db, file, offset);
+
+    assert!(help.is_none());
+}
