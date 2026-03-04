@@ -69,7 +69,7 @@ pub trait CompletionHandler<'db> {
 }
 
 pub trait DefinitionHandler<'db> {
-    fn definition(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDefinitionResponse>;
+    fn definition(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<GotoDefinitionResponse>;
 }
 
 pub trait DeclarationHandler<'db> {

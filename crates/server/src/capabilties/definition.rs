@@ -26,5 +26,5 @@ pub fn go_to_definition(
                 params.text_document_position_params.position
             )
         })?;
-    Ok(descendant_at(db, file, position).and_then(|s| s.definition(db)))
+    Ok(descendant_at(db, file, position).and_then(|s| s.definition(db, position)))
 }

@@ -24,7 +24,7 @@ use crate::{
 /// Walk up a PathExpr's field chain to collect the full ident path.
 /// For `System.Math.Sin`, this returns `["System", "Math", "Sin"]` as a NamespacePath.
 /// Returns None if the chain contains Index or Deref (can't be namespace paths).
-fn try_build_namespace_path<'db>(
+pub(crate) fn try_build_namespace_path<'db>(
     db: &'db dyn WorkspaceDataBase,
     path: &PathExpr<'db>,
 ) -> Option<NamespacePath> {
@@ -46,7 +46,7 @@ fn try_build_namespace_path<'db>(
 
 /// Check if a path matches any namespace (exact) or is a prefix of any namespace.
 /// E.g. "System" matches even if only "System.Math" exists.
-fn is_namespace_prefix(db: &dyn WorkspaceDataBase, path: NamespacePath) -> bool {
+pub(crate) fn is_namespace_prefix(db: &dyn WorkspaceDataBase, path: NamespacePath) -> bool {
     // Exact match
     if !namespace_index(db, path).is_empty() {
         return true;
