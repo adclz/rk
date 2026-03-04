@@ -5,7 +5,7 @@ use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
     hir_def::{
-        config::{ConfigDecl, ProgConfig, ResourceDecl},
+        config::{ConfigDecl, ProgConfig, ResourceDecl, TaskConfig},
         expressions::{
             expression::{
                 BeginPathExpr, Expr, InitExpr, InitExprKind, ParamAssign, PathExpr, VariableAccess,
@@ -51,6 +51,7 @@ impl<'db> HoverHandler<'db> for HirNode<'db> {
             HirNode::Param(p) => p.hover(db, offset),
             HirNode::Config(c) => c.hover(db, offset),
             HirNode::Resource(r) => r.hover(db, offset),
+            HirNode::Task(t) => t.hover(db, offset),
             HirNode::ProgConfig(p) => p.hover(db, offset),
             _ => None,
         }
@@ -374,6 +375,7 @@ impl<'db> HoverHandler<'db> for Type<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
         match self {
             Type::CallableType(cl) => cl.hover(db, cl.get_name_span(db).start_byte),
+            Type::Program(p) => p.hover(db, p.get_name_span(db).start_byte),
             Type::Function(f) => Pou::Function(*f).hover(db, f.get_name_span(db).start_byte),
             Type::FunctionBlock(f) => Pou::FunctionBlock(*f).hover(db, f.get_name_span(db).start_byte),
             Type::Class(f) => Pou::Class(*f).hover(db, f.get_name_span(db).start_byte),
@@ -430,13 +432,13 @@ impl<'db> HoverHandler<'db> for ConfigDecl<'db> {
 
 impl<'db> HoverHandler<'db> for ResourceDecl<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
-        let name_span = self.name.get_span(db);
+        let name_span = self.name(db).get_span(db);
         if offset < name_span.start_byte || offset >= name_span.end_byte {
             return None;
         }
 
-        let name = self.name.ident.text(db);
-        let resource_type = self.resource_type_name.text(db);
+        let name = self.name(db).ident.text(db);
+        let resource_type = self.resource_type_name(db).text(db);
         Some(Hover {
             contents: HoverContents::Scalar(MarkedString::from_markdown(format!(
                 "\n```iecst\nRESOURCE {name} ON {resource_type}\n```\n"
@@ -446,19 +448,37 @@ impl<'db> HoverHandler<'db> for ResourceDecl<'db> {
     }
 }
 
-impl<'db> HoverHandler<'db> for ProgConfig<'db> {
+impl<'db> HoverHandler<'db> for TaskConfig<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
-        let name_span = self.name.get_span(db);
+        let name_span = self.name(db).get_span(db);
         if offset < name_span.start_byte || offset >= name_span.end_byte {
             return None;
         }
 
-        let name = self.name.ident.text(db);
-        let prog_type = match self.prog_type.kind(db) {
+        let name = self.name(db).ident.text(db);
+        let priority = self.priority(db).text(db);
+        Some(Hover {
+            contents: HoverContents::Scalar(MarkedString::from_markdown(format!(
+                "\n```iecst\nTASK {name} (PRIORITY := {priority})\n```\n"
+            ))),
+            range: Some(name_span.into()),
+        })
+    }
+}
+
+impl<'db> HoverHandler<'db> for ProgConfig<'db> {
+    fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
+        let name_span = self.name(db).get_span(db);
+        if offset < name_span.start_byte || offset >= name_span.end_byte {
+            return None;
+        }
+
+        let name = self.name(db).ident.text(db);
+        let prog_type = match self.prog_type(db).kind(db) {
             SpecKind::Target(t) => t.path.target.ident.text(db).to_string(),
             _ => "?".to_string(),
         };
-        let task_part = match &self.task {
+        let task_part = match self.task(db) {
             Some(task) => format!(" WITH {}", task.ident.text(db)),
             None => String::new(),
         };

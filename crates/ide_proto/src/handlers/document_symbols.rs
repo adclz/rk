@@ -317,23 +317,23 @@ impl<'db> DocumentSymbolsHandler<'db> for ResourceDecl<'db> {
     ) {
         let mut nested_builder = DocumentSymbolsBuilder::default();
 
-        self.variables
+        self.variables(db)
             .iter()
             .for_each(|var| var.document_symbols(db, &mut nested_builder));
 
-        self.programs
+        self.programs(db)
             .iter()
             .for_each(|p| p.document_symbols(db, &mut nested_builder));
 
-        let name = self.name.ident.text(db).to_string();
+        let name = self.name(db).ident.text(db).to_string();
 
         builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
             name,
-            detail: Some(format!("RESOURCE ON {}", self.resource_type_name.text(db))),
+            detail: Some(format!("RESOURCE ON {}", self.resource_type_name(db).text(db))),
             kind: SymbolKind::MODULE,
             deprecated: None,
             range: self.get_span(db).lsp(),
-            selection_range: self.name.get_span(db).lsp(),
+            selection_range: self.name(db).get_span(db).lsp(),
             children: Some(nested_builder.finalize()),
             tags: None,
         });
@@ -346,7 +346,7 @@ impl<'db> DocumentSymbolsHandler<'db> for ProgConfig<'db> {
         db: &'db dyn WorkspaceDataBase,
         builder: &mut DocumentSymbolsBuilder,
     ) {
-        let name = self.name.ident.text(db).to_string();
+        let name = self.name(db).ident.text(db).to_string();
 
         builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
             name,
@@ -354,7 +354,7 @@ impl<'db> DocumentSymbolsHandler<'db> for ProgConfig<'db> {
             kind: SymbolKind::MODULE,
             deprecated: None,
             range: self.get_span(db).lsp(),
-            selection_range: self.name.get_span(db).lsp(),
+            selection_range: self.name(db).get_span(db).lsp(),
             children: None,
             tags: None,
         });

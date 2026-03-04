@@ -479,7 +479,7 @@ impl<'db> CompletionHandler<'db> for ResourceDecl<'db> {
         req: &CompletionRequest,
     ) -> Option<Vec<CompletionItem>> {
         // Don't trigger on the name
-        if self.name.get_span(db).end_byte >= req.offset {
+        if self.name(db).get_span(db).end_byte >= req.offset {
             return None;
         }
 

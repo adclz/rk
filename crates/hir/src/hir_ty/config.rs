@@ -156,20 +156,8 @@ fn validate_prog_config<'db>(
     known_tasks: &FxHashMap<Ident, SpanIdent<'db>>,
     errors: &mut Vec<IdeDiagnostic>,
 ) {
-    // Only validate simple (non-namespace-qualified) program types.
-    if let SpecKind::Target(target) = p.prog_type(db).kind(db) {
-        if target.path.namespace.is_none() {
-            let name = target.path.target.ident;
-            if program_index(db, name).is_none() {
-                errors.push(
-                    ResolveError::UnknownProgType {
-                        prog_type: p.prog_type(db),
-                    }
-                    .to_diagnostic(db),
-                );
-            }
-        }
-    }
+    // Program type resolution is now handled by infer_config_resources in signature inference.
+    // Unknown program types are reported as E0210 (NoNamespaceItemFound) by infer_spec.
 
     // Validate the WITH <task> reference if present.
     if let Some(task_ref) = p.task(db)

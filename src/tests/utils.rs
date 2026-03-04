@@ -392,6 +392,7 @@ pub fn hir_node_label(node: &HirNode) -> String {
         HirNode::PathExpr(_) => "PathExpr".into(),
         HirNode::Config(_) => "Config".into(),
         HirNode::Resource(_) => "Resource".into(),
+        HirNode::Task(_) => "Task".into(),
         HirNode::ProgConfig(_) => "ProgConfig".into(),
     }
 }

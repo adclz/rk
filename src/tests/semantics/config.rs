@@ -121,12 +121,12 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0218] Error: configuration error
+    [E0210] Error: no namespace item found
        ,-[ file:///test0.st:4:29 ]
        |
      4 |     PROGRAM inst1 WITH t1 : UnknownProg;
        |                             ^^^^^|^^^^^
-       |                                  `------- program type 'UnknownProg' not found
+       |                                  `------- no item found for path 'UnknownProg'
     ---'
     ");
 }
