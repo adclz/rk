@@ -54,6 +54,40 @@
     ]
   },
   {
+    "type": "_config_variables",
+    "named": true,
+    "subtypes": [
+      {
+        "type": "ERR_var_config_not_allowed",
+        "named": true
+      },
+      {
+        "type": "ERR_var_external_not_allowed",
+        "named": true
+      },
+      {
+        "type": "ERR_var_in_out_not_allowed",
+        "named": true
+      },
+      {
+        "type": "ERR_var_located_not_allowed",
+        "named": true
+      },
+      {
+        "type": "ERR_var_not_allowed",
+        "named": true
+      },
+      {
+        "type": "ERR_var_temp_not_allowed",
+        "named": true
+      },
+      {
+        "type": "global_var_decls",
+        "named": true
+      }
+    ]
+  },
+  {
     "type": "_elem_type_name",
     "named": true,
     "subtypes": [
@@ -1004,6 +1038,21 @@
       "types": [
         {
           "type": "loc_var_decls",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "ERR_var_not_allowed",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "var_decls",
           "named": true
         }
       ]
@@ -2086,11 +2135,11 @@
         ]
       },
       "global_variables": {
-        "multiple": false,
+        "multiple": true,
         "required": false,
         "types": [
           {
-            "type": "global_var_decls",
+            "type": "_config_variables",
             "named": true
           }
         ]

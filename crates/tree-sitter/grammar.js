@@ -189,6 +189,7 @@ module.exports = grammar({
     $._class_variables,
     $._method_prot_variables,
     $._method_decl_variables,
+    $._config_variables,
 
     $._input_var_kind,
     $._fb_input_var_kind,
@@ -315,6 +316,7 @@ module.exports = grammar({
     ERR_var_located_not_allowed: ($) => prec(-1, $.loc_var_decls), // VAR_LOCATED
     ERR_var_external_not_allowed: ($) => prec(-1, $.external_var_decls), // VAR_EXTERNAL
     ERR_var_global_not_allowed: ($) => prec(-1, $.global_var_decls), // VAR_GLOBAL
+    ERR_var_not_allowed: ($) => prec(-1, $.var_decls), // VAR
 
     // Table 3 - Comments
 
@@ -1415,7 +1417,7 @@ module.exports = grammar({
       seq(
         "CONFIGURATION",
         field("name", $.identifier),
-        field("global_variables", optional($.global_var_decls)),
+        field("global_variables", repeat($._config_variables)),
         field(
           "resources",
           repeat(choice($.single_resource_decl, $.resource_decl)),
@@ -1423,6 +1425,17 @@ module.exports = grammar({
         field("access_decls", optional($.access_decls)),
         field("config_init", optional($.config_init)),
         "END_CONFIGURATION",
+      ),
+
+    _config_variables: ($) =>
+      choice(
+        $.global_var_decls,
+        $.ERR_var_not_allowed,
+        $.ERR_var_in_out_not_allowed,
+        $.ERR_var_temp_not_allowed,
+        $.ERR_var_config_not_allowed,
+        $.ERR_var_located_not_allowed,
+        $.ERR_var_external_not_allowed,
       ),
 
     resource_decl: ($) =>

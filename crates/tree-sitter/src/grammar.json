@@ -311,6 +311,14 @@
         "name": "global_var_decls"
       }
     },
+    "ERR_var_not_allowed": {
+      "type": "PREC",
+      "value": -1,
+      "content": {
+        "type": "SYMBOL",
+        "name": "var_decls"
+      }
+    },
     "line_comment": {
       "type": "TOKEN",
       "content": {
@@ -6558,16 +6566,11 @@
           "type": "FIELD",
           "name": "global_variables",
           "content": {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "global_var_decls"
-              },
-              {
-                "type": "BLANK"
-              }
-            ]
+            "type": "REPEAT",
+            "content": {
+              "type": "SYMBOL",
+              "name": "_config_variables"
+            }
           }
         },
         {
@@ -6625,6 +6628,39 @@
         {
           "type": "STRING",
           "value": "END_CONFIGURATION"
+        }
+      ]
+    },
+    "_config_variables": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "global_var_decls"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "ERR_var_not_allowed"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "ERR_var_in_out_not_allowed"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "ERR_var_temp_not_allowed"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "ERR_var_config_not_allowed"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "ERR_var_located_not_allowed"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "ERR_var_external_not_allowed"
         }
       ]
     },
@@ -9648,6 +9684,7 @@
     "_class_variables",
     "_method_prot_variables",
     "_method_decl_variables",
+    "_config_variables",
     "_input_var_kind",
     "_fb_input_var_kind",
     "_output_var_kind",

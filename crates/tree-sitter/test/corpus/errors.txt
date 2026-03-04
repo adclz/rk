@@ -893,3 +893,51 @@ END_CLASS
             (global_var_decls))
           (temp_var_decls)
           (in_out_decls))))
+
+================================================================================
+invalid var sections in configuration declaration
+================================================================================
+
+CONFIGURATION MyCfg
+  VAR
+
+  END_VAR
+
+  VAR_IN_OUT
+
+  END_VAR
+
+  VAR_TEMP
+
+  END_VAR
+
+  VAR_CONFIG
+
+  END_VAR
+
+  VAR_LOCATED
+
+  END_VAR
+
+  VAR_EXTERNAL
+
+  END_VAR
+END_CONFIGURATION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (config_decl
+        (identifier)
+        (ERR_var_not_allowed
+          (var_decls))
+        (ERR_var_in_out_not_allowed
+          (in_out_decls))
+        (ERR_var_temp_not_allowed
+          (temp_var_decls))
+        (ERR_var_config_not_allowed
+          (config_init))
+        (ERR_var_located_not_allowed
+          (loc_var_decls))
+        (ERR_var_external_not_allowed
+          (external_var_decls))))

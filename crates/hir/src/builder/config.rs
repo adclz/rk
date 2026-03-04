@@ -9,7 +9,7 @@ use crate::{
         Parse, ParseSpec, ParseVarSection, expression::ParseDirectVariable,
         semantic_index::SemanticIndexBuilder,
     },
-    check::errors::ToIdeDiagnostic,
+    check::errors::{ToIdeDiagnostic, e0_syntax::SyntaxError},
     hir_def::{
         config::{
             AccessDecl, AccessDirection, AccessPath, ConfigDecl, ConfigInstInit, ConfigResource,
@@ -35,8 +35,31 @@ impl<'db> SemanticIndexBuilder<'db> {
         let name = Ident::from_node(self.db, self.file, config.name.cast(self.ast))?;
 
         let mut variables: Vec<VariableDecl<'db>> = vec![];
-        if let Some(global_vars) = &config.global_variables {
-            global_vars.cast(self.ast).parse(self, &mut variables);
+        for var in &config.global_variables {
+            use ast::generated::ConfigVariables;
+            match var.cast(self.ast) {
+                ConfigVariables::GlobalVarDecls(decls) => {
+                    decls.parse(self, &mut variables);
+                }
+                ConfigVariables::ERRVarNotAllowed(err) => {
+                    self.errors.push(SyntaxError::VarNotAllowed(err.get_span()).to_diagnostic(self.db));
+                }
+                ConfigVariables::ERRVarInOutNotAllowed(err) => {
+                    self.errors.push(SyntaxError::VarInOutNotAllowed(err.get_span()).to_diagnostic(self.db));
+                }
+                ConfigVariables::ERRVarTempNotAllowed(err) => {
+                    self.errors.push(SyntaxError::VarTempNotAllowed(err.get_span()).to_diagnostic(self.db));
+                }
+                ConfigVariables::ERRVarConfigNotAllowed(err) => {
+                    self.errors.push(SyntaxError::VarConfigNotAllowed(err.get_span()).to_diagnostic(self.db));
+                }
+                ConfigVariables::ERRVarLocatedNotAllowed(err) => {
+                    self.errors.push(SyntaxError::VarLocatedNotAllowed(err.get_span()).to_diagnostic(self.db));
+                }
+                ConfigVariables::ERRVarExternalNotAllowed(err) => {
+                    self.errors.push(SyntaxError::VarExternalNotAllowed(err.get_span()).to_diagnostic(self.db));
+                }
+            }
         }
 
         let mut resources: Vec<ConfigResource<'db>> = vec![];
@@ -142,16 +165,17 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
         }
 
-        let resource = ResourceDecl {
+        let resource = ResourceDecl::new(
+            self.db,
             name,
             resource_type_name,
             variables,
             tasks,
             programs,
-            span: rd.into(),
-            scope_id: self.current_scope,
-        };
-        self.register_node(resource.span, HirNode::Resource(resource.clone()));
+            rd.into(),
+            self.current_scope,
+        );
+        self.register_node(resource.span(self.db), HirNode::Resource(resource));
         Ok(resource)
     }
 
@@ -176,12 +200,15 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         let priority = Ident::from_node(self.db, self.file, init.priority.cast(self.ast))?;
 
-        Ok(TaskConfig {
+        Ok(TaskConfig::new(
+            self.db,
             name,
             single,
             interval,
             priority,
-        })
+            tc.into(),
+            self.current_scope,
+        ))
     }
 
     fn parse_prog_config(
@@ -222,16 +249,17 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
         }
 
-        let prog = ProgConfig {
+        let prog = ProgConfig::new(
+            self.db,
             retain,
             name,
             task,
             prog_type,
             conf_elements,
-            span: pc.into(),
-            scope_id: self.current_scope,
-        };
-        self.register_node(prog.span, HirNode::ProgConfig(prog.clone()));
+            pc.into(),
+            self.current_scope,
+        );
+        self.register_node(prog.span(self.db), HirNode::ProgConfig(prog));
         Ok(prog)
     }
 

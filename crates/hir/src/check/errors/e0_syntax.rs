@@ -70,6 +70,7 @@ pub enum SyntaxError {
     VarLocatedNotAllowed(Span),
     VarExternalNotAllowed(Span),
     VarGlobalNotAllowed(Span),
+    VarNotAllowed(Span),
     // todo: use custom lexer to handle syntax errors unhandled by tree-sitter
     SyntaxError {
         span: Span,
@@ -110,6 +111,7 @@ impl ErrorCode for SyntaxError {
             SyntaxError::VarLocatedNotAllowed(_) => "E0028",
             SyntaxError::VarExternalNotAllowed(_) => "E0029",
             SyntaxError::VarGlobalNotAllowed(_) => "E0030",
+            SyntaxError::VarNotAllowed(_) => "E0031",
             SyntaxError::SyntaxError { .. } => "E0050",
         }
     }
@@ -561,11 +563,22 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 let mut diag = diag()
                 .message("VAR_GLOBAL is not allowed in this context".into())
                 .severity(DiagnosticSeverity::ERROR)
-                .desc(self)                
+                .desc(self)
                 .range(*span)
                 .call();
-            
+
                 diag.with_note("VAR_GLOBAL can only be used inside PROGRAM, CONFIGURATION".into());
+                diag
+            },
+            Self::VarNotAllowed(span) => {
+                let mut diag = diag()
+                .message("VAR is not allowed in this context".into())
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(*span)
+                .call();
+
+                diag.with_note("VAR can only be used inside FUNCTION, FUNCTION_BLOCK, PROGRAM".into());
                 diag
             },
             Self::SyntaxError { span, err } => diag()

@@ -830,6 +830,106 @@ END_INTERFACE
 
 
 #[rstest]
+fn invalid_config_variable_sections(mut with_db: RootDatabase) {
+    let source = r#"
+CONFIGURATION MyCfg
+  VAR
+
+  END_VAR
+
+  VAR_IN_OUT
+
+  END_VAR
+
+  VAR_TEMP
+
+  END_VAR
+
+  VAR_CONFIG
+
+  END_VAR
+
+  VAR_LOCATED
+
+  END_VAR
+
+  VAR_EXTERNAL
+
+  END_VAR
+END_CONFIGURATION
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0031] Error: syntax
+       ,-[ file:///test0.st:3:3 ]
+       |
+     3 | ,->   VAR
+       : :
+     5 | |->   END_VAR
+       | |
+       | `--------------- VAR is not allowed in this context
+       |
+       |     Note: VAR can only be used inside FUNCTION, FUNCTION_BLOCK, PROGRAM
+    ---'
+    [E0024] Error: syntax
+       ,-[ file:///test0.st:7:3 ]
+       |
+     7 | ,->   VAR_IN_OUT
+       : :
+     9 | |->   END_VAR
+       | |
+       | `--------------- VAR_IN_OUT is not allowed in this context
+       |
+       |     Note: VAR_IN_OUT can only be used inside FUNCTION, FUNCTION_BLOCK
+    ---'
+    [E0025] Error: syntax
+        ,-[ file:///test0.st:11:3 ]
+        |
+     11 | ,->   VAR_TEMP
+        : :
+     13 | |->   END_VAR
+        | |
+        | `--------------- VAR_TEMP is not allowed in this context
+        |
+        |     Note: VAR_TEMP can only be used inside FUNCTION, FUNCTION_BLOCK
+    ----'
+    [E0027] Error: syntax
+        ,-[ file:///test0.st:15:3 ]
+        |
+     15 | ,->   VAR_CONFIG
+        : :
+     17 | |->   END_VAR
+        | |
+        | `--------------- VAR_CONFIG is not allowed in this context
+        |
+        |     Note: VAR_CONFIG can only be used inside CONFIGURATION
+    ----'
+    [E0028] Error: syntax
+        ,-[ file:///test0.st:19:3 ]
+        |
+     19 | ,->   VAR_LOCATED
+        : :
+     21 | |->   END_VAR
+        | |
+        | `--------------- VAR_LOCATED is not allowed in this context
+        |
+        |     Note: VAR_LOCATED can only be used inside PROGRAM
+    ----'
+    [E0029] Error: syntax
+        ,-[ file:///test0.st:23:3 ]
+        |
+     23 | ,->   VAR_EXTERNAL
+        : :
+     25 | |->   END_VAR
+        | |
+        | `--------------- VAR_EXTERNAL is not allowed in this context
+        |
+        |     Note: VAR_EXTERNAL can only be used inside PROGRAM, FUNCTION_BLOCK, FUNCTION
+    ----'
+    ");
+}
+
+#[rstest]
 fn invalid_method_declarations_variable_sections(mut with_db: RootDatabase) {
     let source = r#"
 CLASS cl
