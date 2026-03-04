@@ -5,7 +5,7 @@ use hir::{
     hir_def::{
         expressions::{
             expression::{BeginPathExpr, Expr, ExprKind, PathExpr, PrimaryExpr, VariableAccess},
-            spec::StructElement,
+            spec::{Spec, SpecKind, StructElement},
         }, hir_node::HirNode, interned::namespace::NamespaceAccess, pous::{pou::Pou, variable::VariableDecl}, using::Using
     },
     hir_ty::{
@@ -29,8 +29,7 @@ impl<'db> SemanticTokensHandler<'db> for HirNode<'db> {
         match self {
             HirNode::PouDecl(p) => p.semantic_tokens(db, builder),
             HirNode::MethodRef(m) => m.semantic_tokens(db, builder),
-            HirNode::VariableDecl(v) => v.semantic_tokens(db, builder),
-            HirNode::StructElement(st) => st.semantic_tokens(db, builder),
+            HirNode::Spec(v) => v.semantic_tokens(db, builder),
             HirNode::PathExpr(p) => p.semantic_tokens(db, builder),
             HirNode::VariableAccess(v) => v.semantic_tokens(db, builder),
             HirNode::Expr(e) => e.semantic_tokens(db, builder),
@@ -71,7 +70,7 @@ impl<'db> SemanticTokensHandler<'db> for MethodRef<'db> {
     }
 }
 
-impl<'db> SemanticTokensHandler<'db> for VariableDecl<'db> {
+impl<'db> SemanticTokensHandler<'db> for Spec<'db> {
     fn semantic_tokens(
         &'db self,
         db: &'db dyn WorkspaceDataBase,
@@ -79,24 +78,12 @@ impl<'db> SemanticTokensHandler<'db> for VariableDecl<'db> {
     ) {
         semantic_tokens_for_type(
             db,
-            self.spec(db).infer(db),
+            self.infer(db),
             builder,
-            self.spec(db).get_span(db),
-        );
-    }
-}
-
-impl<'db> SemanticTokensHandler<'db> for StructElement<'db> {
-    fn semantic_tokens(
-        &'db self,
-        db: &'db dyn WorkspaceDataBase,
-        builder: &mut SemanticTokensBuilder,
-    ) {
-        semantic_tokens_for_type(
-            db,
-            self.spec(db).infer(db),
-            builder,
-            self.spec(db).get_span(db),
+            match self.kind(db) {
+                SpecKind::Target(t) => t.path.target.get_span(db),
+                _ => self.get_span(db),
+            }
         );
     }
 }

@@ -232,3 +232,80 @@ END_FUNCTION_BLOCK"#;
             .unwrap() as u32
     );
 }
+
+#[rstest]
+pub fn namespace_target_token_in_variable_type(mut with_db: RootDatabase) {
+    // For `x : System.Controller`, only "Controller" should get the token, not the whole spec
+    let source = r#"
+NAMESPACE System
+    FUNCTION_BLOCK Controller
+    END_FUNCTION_BLOCK
+END_NAMESPACE
+
+FUNCTION_BLOCK fb1
+    VAR
+        x : System.Controller;
+    END_VAR
+END_FUNCTION_BLOCK"#;
+
+    add_sources(&mut with_db, &[source]);
+
+    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let mut builder = SemanticTokensBuilder::new("".into());
+
+    let _ = sema.walk_hir(&with_db, &mut |node| {
+        node.semantic_tokens(&with_db, &mut builder);
+        std::ops::ControlFlow::Continue(())
+    });
+
+    let result = builder.build();
+
+    // data[0]: PouDecl Controller → FUNCTION
+    // data[1]: PouDecl fb1 → FUNCTION
+    // data[2]: Spec target "Controller" → FUNCTION (only the target, not "System.Controller")
+    assert_eq!(
+        result.data[2].token_type,
+        SUPPORTED_TYPES.iter().position(|x| *x == FUNCTION).unwrap() as u32
+    );
+    assert_eq!(
+        result.data[2].length, "Controller".len() as u32,
+        "token should span only the target identifier, not the full namespace path"
+    );
+}
+
+#[rstest]
+pub fn namespace_target_token_in_extends(mut with_db: RootDatabase) {
+    // For `EXTENDS System.Base`, only "Base" should get the token
+    let source = r#"
+NAMESPACE System
+    CLASS Base
+    END_CLASS
+END_NAMESPACE
+
+FUNCTION_BLOCK MyFB EXTENDS System.Base
+END_FUNCTION_BLOCK"#;
+
+    add_sources(&mut with_db, &[source]);
+
+    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let mut builder = SemanticTokensBuilder::new("".into());
+
+    let _ = sema.walk_hir(&with_db, &mut |node| {
+        node.semantic_tokens(&with_db, &mut builder);
+        std::ops::ControlFlow::Continue(())
+    });
+
+    let result = builder.build();
+
+    // data[0]: PouDecl Base → CLASS
+    // data[1]: PouDecl MyFB → FUNCTION
+    // data[2]: Spec extends target "Base" → CLASS
+    assert_eq!(
+        result.data[2].token_type,
+        SUPPORTED_TYPES.iter().position(|x| *x == CLASS).unwrap() as u32
+    );
+    assert_eq!(
+        result.data[2].length, "Base".len() as u32,
+        "token should span only the target identifier, not the full namespace path"
+    );
+}
