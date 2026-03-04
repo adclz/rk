@@ -71,6 +71,9 @@ pub enum SyntaxError {
     VarExternalNotAllowed(Span),
     VarGlobalNotAllowed(Span),
     VarNotAllowed(Span),
+    SingleAfterInterval(Span),
+    IntervalAfterPriority(Span),
+    SingleAfterPriority(Span),
     // todo: use custom lexer to handle syntax errors unhandled by tree-sitter
     SyntaxError {
         span: Span,
@@ -112,6 +115,9 @@ impl ErrorCode for SyntaxError {
             SyntaxError::VarExternalNotAllowed(_) => "E0029",
             SyntaxError::VarGlobalNotAllowed(_) => "E0030",
             SyntaxError::VarNotAllowed(_) => "E0031",
+            SyntaxError::SingleAfterInterval(_) => "E0032",
+            SyntaxError::IntervalAfterPriority(_) => "E0033",
+            SyntaxError::SingleAfterPriority(_) => "E0034",
             SyntaxError::SyntaxError { .. } => "E0050",
         }
     }
@@ -581,6 +587,24 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 diag.with_note("VAR can only be used inside FUNCTION, FUNCTION_BLOCK, PROGRAM".into());
                 diag
             },
+            Self::SingleAfterInterval(span) => diag()
+                .message("SINGLE cannot be declared after INTERVAL".into())
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(*span)
+                .call(),
+            Self::IntervalAfterPriority(span) => diag()
+                .message("INTERVAL cannot be declared after PRIORITY".into())
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(*span)
+                .call(),
+            Self::SingleAfterPriority(span) => diag()
+                .message("SINGLE cannot be declared after PRIORITY".into())
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(*span)
+                .call(),
             Self::SyntaxError { span, err } => diag()
                 .message(err.to_string())
                 .severity(DiagnosticSeverity::ERROR)

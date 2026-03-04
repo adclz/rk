@@ -1013,3 +1013,57 @@ END_CLASS
     ----'
     ");
 }
+
+#[rstest]
+fn single_after_interval(mut with_db: RootDatabase) {
+    let source = r#"
+CONFIGURATION MyCfg
+    TASK t1(INTERVAL := 1, SINGLE := 1, PRIORITY := 1);
+END_CONFIGURATION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0032] Error: syntax
+       ,-[ file:///test0.st:3:28 ]
+       |
+     3 |     TASK t1(INTERVAL := 1, SINGLE := 1, PRIORITY := 1);
+       |                            ^^^^^^|^^^^^
+       |                                  `------- SINGLE cannot be declared after INTERVAL
+    ---'
+    ");
+}
+
+#[rstest]
+fn interval_after_priority(mut with_db: RootDatabase) {
+    let source = r#"
+CONFIGURATION MyCfg
+    TASK t1(PRIORITY := 1, INTERVAL := 1);
+END_CONFIGURATION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0033] Error: syntax
+       ,-[ file:///test0.st:3:26 ]
+       |
+     3 |     TASK t1(PRIORITY := 1, INTERVAL := 1);
+       |                          ^^^^^^^|^^^^^^^
+       |                                 `--------- INTERVAL cannot be declared after PRIORITY
+    ---'
+    ");
+}
+
+#[rstest]
+fn single_after_priority(mut with_db: RootDatabase) {
+    let source = r#"
+CONFIGURATION MyCfg
+    TASK t1(PRIORITY := 1, SINGLE := 1);
+END_CONFIGURATION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0034] Error: syntax
+       ,-[ file:///test0.st:3:26 ]
+       |
+     3 |     TASK t1(PRIORITY := 1, SINGLE := 1);
+       |                          ^^^^^^|^^^^^^
+       |                                `-------- SINGLE cannot be declared after PRIORITY
+    ---'
+    ");
+}

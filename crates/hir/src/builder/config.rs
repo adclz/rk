@@ -49,7 +49,7 @@ impl<'db> SemanticIndexBuilder<'db> {
                 }
                 ConfigVariables::ERRVarTempNotAllowed(err) => {
                     self.errors.push(SyntaxError::VarTempNotAllowed(err.get_span()).to_diagnostic(self.db));
-                }
+                } 
                 ConfigVariables::ERRVarConfigNotAllowed(err) => {
                     self.errors.push(SyntaxError::VarConfigNotAllowed(err.get_span()).to_diagnostic(self.db));
                 }
@@ -185,6 +185,21 @@ impl<'db> SemanticIndexBuilder<'db> {
     ) -> anyhow::Result<TaskConfig<'db>, IdeDiagnostic> {
         let name = SpanIdent::from_node(self.db, self, tc.name.cast(self.ast))?;
         let init = tc.init.cast(self.ast);
+
+
+        for err in init.children.iter() {
+            match err.cast(self.ast) {
+                ast::generated::ERRIntervalAfterPriority_ERRSingleAfterInterval_ERRSingleAfterPriorty::ERRSingleAfterInterval(e) => {
+                    self.errors.push(SyntaxError::SingleAfterInterval(e.get_span()).to_diagnostic(self.db));
+                }
+                ast::generated::ERRIntervalAfterPriority_ERRSingleAfterInterval_ERRSingleAfterPriorty::ERRSingleAfterPriorty(e) => {
+                    self.errors.push(SyntaxError::SingleAfterPriority(e.get_span()).to_diagnostic(self.db));
+                }
+                ast::generated::ERRIntervalAfterPriority_ERRSingleAfterInterval_ERRSingleAfterPriorty::ERRIntervalAfterPriority(e) => {
+                    self.errors.push(SyntaxError::IntervalAfterPriority(e.get_span()).to_diagnostic(self.db));
+                }
+            }
+        }
 
         let single = init
             .single

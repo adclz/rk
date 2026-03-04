@@ -849,6 +849,22 @@
     }
   },
   {
+    "type": "ERR_interval_after_priority",
+    "named": true,
+    "fields": {
+      "interval": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "data_source",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "ERR_invalid_edge_qualifier",
     "named": true,
     "fields": {}
@@ -941,6 +957,38 @@
           "named": true
         }
       ]
+    }
+  },
+  {
+    "type": "ERR_single_after_interval",
+    "named": true,
+    "fields": {
+      "single": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "data_source",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ERR_single_after_priorty",
+    "named": true,
+    "fields": {
+      "single": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "data_source",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -6117,6 +6165,24 @@
           }
         ]
       }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "ERR_interval_after_priority",
+          "named": true
+        },
+        {
+          "type": "ERR_single_after_interval",
+          "named": true
+        },
+        {
+          "type": "ERR_single_after_priorty",
+          "named": true
+        }
+      ]
     }
   },
   {

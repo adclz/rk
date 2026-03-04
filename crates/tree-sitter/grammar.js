@@ -308,6 +308,11 @@ module.exports = grammar({
     ERR_program_not_allowed_in_namespace: ($) => prec(-1, $.prog_decl),
     ERR_config_not_allowed_in_namespace: ($) => prec(-1, $.config_decl),
 
+    ERR_single_after_interval: ($) => prec(-1, seq("SINGLE", ":=", field("single", $.data_source), ",")),
+    ERR_interval_before_single: ($) => prec(-1, seq("INTERVAL", ":=", field("interval", $.data_source), ",")),
+    ERR_interval_after_priority: ($) => prec(-1, seq(",", "INTERVAL", ":=", field("interval", $.data_source))),
+    ERR_single_after_priorty: ($) => prec(-1, seq(",", "SINGLE", ":=", field("single", $.data_source))),
+
     // Invalid variable sections
     ERR_var_in_out_not_allowed: ($) => prec(-1, $.in_out_decls), // VAR_IN_OUT
     ERR_var_temp_not_allowed: ($) => prec(-1, $.temp_var_decls), // VAR_TEMP
@@ -1489,10 +1494,12 @@ module.exports = grammar({
         "(",
         optional(seq("SINGLE", ":=", field("single", $.data_source), ",")),
         optional(seq("INTERVAL", ":=", field("interval", $.data_source), ",")),
-        "PRIORITY",
-        ":=",
-        field("priority", $.unsigned_int),
+        optional($.ERR_single_after_interval),
+        "PRIORITY", ":=", field("priority", $.unsigned_int),
+        optional($.ERR_interval_after_priority),
+        optional($.ERR_single_after_priorty),
         ")",
+
       ),
 
     data_source: ($) =>

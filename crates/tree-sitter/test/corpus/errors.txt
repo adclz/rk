@@ -941,3 +941,87 @@ END_CONFIGURATION
           (loc_var_decls))
         (ERR_var_external_not_allowed
           (external_var_decls))))
+
+================================================================================
+single after interval
+================================================================================
+
+CONFIGURATION MyCfg
+    TASK t1(INTERVAL := 1, SINGLE := 1, PRIORITY := 1);
+END_CONFIGURATION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (config_decl
+        (identifier)
+        (single_resource_decl
+          (task_config
+            (identifier)
+            (task_init
+              (data_source
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int))))))
+              (ERR_single_after_interval
+                (data_source
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int)))))))
+              (unsigned_int))))))
+
+================================================================================
+interval after priority
+================================================================================
+
+CONFIGURATION MyCfg
+    TASK t1(PRIORITY := 1, INTERVAL := 1);
+END_CONFIGURATION
+
+--------------------------------------------------------------------------------
+
+    (source_file
+      (config_decl
+        (identifier)
+        (single_resource_decl
+          (task_config
+            (identifier)
+            (task_init
+              (unsigned_int)
+              (ERR_interval_after_priority
+                (data_source
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))))))
+
+================================================================================
+single after priority
+================================================================================
+
+CONFIGURATION MyCfg
+    TASK t1(PRIORITY := 1, SINGLE := 1);
+END_CONFIGURATION
+
+--------------------------------------------------------------------------------
+
+   (source_file
+      (config_decl
+        (identifier)
+        (single_resource_decl
+          (task_config
+            (identifier)
+            (task_init
+              (unsigned_int)
+              (ERR_single_after_priorty
+                (data_source
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))))))
