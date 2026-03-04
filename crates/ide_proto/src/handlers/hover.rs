@@ -28,7 +28,7 @@ use hir::{
 };
 
 use crate::{
-    handlers::HoverHandler,
+    handlers::{HoverHandler, completions::{try_build_namespace_path, is_namespace_prefix}},
     hir_node::{HasComment, MaybeHirNode, get_param_start_pos},
 };
 
@@ -269,7 +269,22 @@ impl<'db> HoverHandler<'db> for BeginPathExpr<'db> {
 
 impl<'db> HoverHandler<'db> for PathExpr<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
-        self.infer(db).hover(db, offset)
+        let ty = self.infer(db);
+        if ty.is_never() {
+            // Check if this PathExpr is part of a namespace path (e.g. "System" in System.Math.Sin)
+            if let Some(ns_path) = try_build_namespace_path(db, self) {
+                if is_namespace_prefix(db, ns_path) {
+                    return Some(Hover {
+                        contents: HoverContents::Scalar(MarkedString::from_markdown(format!(
+                            "\n```iecst\nNAMESPACE {}\n```\n",
+                            ns_path.to_string(db)
+                        ))),
+                        range: None,
+                    });
+                }
+            }
+        }
+        ty.hover(db, offset)
     }
 }
 

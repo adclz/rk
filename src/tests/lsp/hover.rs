@@ -5,6 +5,7 @@ use auto_lsp::lsp_types::HoverContents;
 use auto_lsp::lsp_types::MarkedString;
 use db::RootDatabase;
 use hir::HasName;
+use hir::HirNodeInfo;
 use hir::hir_def::hir_node::HirNode;
 use hir::hir_def::semantic_index::semantic_index;
 use ide_proto::handlers::HoverHandler;
@@ -502,5 +503,54 @@ END_FUNCTION_BLOCK
     Controller
     ```
 
+    ");
+}
+
+#[rstest]
+pub fn hover_namespace_path_expr_in_body(mut with_db: RootDatabase) {
+    let source = r#"
+NAMESPACE System
+    FUNCTION Sin : REAL
+    VAR_INPUT
+        x : REAL;
+    END_VAR
+    END_FUNCTION
+END_NAMESPACE
+
+FUNCTION fn1 : REAL
+VAR
+    x : REAL;
+END_VAR
+    x := System.Sin(x := x);
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+
+    // Find the PathExpr nodes for "System" (the namespace fragment in the body)
+    let mut path_exprs = vec![];
+    let _ = sema.walk_hir(&with_db, &mut |node| {
+        if let HirNode::PathExpr(p) = node {
+            path_exprs.push(p);
+        }
+        ControlFlow::Continue(())
+    });
+
+    // The PathExpr for "System" in the body should show namespace hover
+    let system_offset = source.find("System.Sin").unwrap();
+    let system_path = path_exprs
+        .iter()
+        .find(|p| {
+            let span = p.get_span(&with_db);
+            system_offset >= span.start_byte && system_offset <= span.end_byte
+        })
+        .expect("should find PathExpr at System position");
+
+    let hover = system_path.hover(&with_db, system_offset).unwrap();
+    assert_snapshot!(hover_markup(hover.contents).unwrap(), @r"
+    ```iecst
+    NAMESPACE System
+    ```
     ");
 }
