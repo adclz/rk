@@ -63,6 +63,7 @@ use auto_lsp::lsp_types::request::RegisterCapability;
 use auto_lsp::lsp_types::request::Rename;
 use auto_lsp::lsp_types::request::SignatureHelpRequest;
 use auto_lsp::lsp_types::request::SemanticTokensFullRequest;
+use auto_lsp::lsp_types::request::SemanticTokensRangeRequest;
 use auto_lsp::lsp_types::request::WorkspaceDiagnosticRequest;
 use auto_lsp::lsp_types::{
     OneOf, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
@@ -129,7 +130,7 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
                                 token_types: SUPPORTED_TYPES.to_vec(),
                                 token_modifiers: SUPPORTED_MODIFIERS.to_vec(),
                             },
-                            range: Some(false),
+                            range: Some(true),
                             full: Some(SemanticTokensFullOptions::Bool(true)),
                             ..Default::default()
                         },
@@ -204,6 +205,10 @@ fn on_requests<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
         .on::<SemanticTokensFullRequest, _>(
             ThreadIntent::LatencySensitive,
             semantic_tokens::semantic_tokens_full,
+        )
+        .on::<SemanticTokensRangeRequest, _>(
+            ThreadIntent::LatencySensitive,
+            semantic_tokens::semantic_tokens_range,
         )
         .on::<Completion, _>(ThreadIntent::LatencySensitive, completions)
         .on::<DocumentDiagnosticRequest, _>(ThreadIntent::Worker, diagnostics)
