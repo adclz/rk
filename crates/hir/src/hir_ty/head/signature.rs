@@ -249,6 +249,11 @@ impl<'db> Signature<'db> {
                     self.infer_spec(db, p.prog_type(db));
                 }
                 ConfigResource::Resource(r) => {
+                    // Resource variables share the config scope but aren't in
+                    // ScopeId::variables(), so infer their specs here.
+                    for v in r.variables(db).iter() {
+                        self.infer_spec(db, v.spec(db));
+                    }
                     for p in r.programs(db).iter() {
                         self.infer_spec(db, p.prog_type(db));
                     }
