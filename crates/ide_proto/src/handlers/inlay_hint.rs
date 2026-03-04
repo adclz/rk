@@ -1,11 +1,11 @@
-use auto_lsp::lsp_types::{InlayHint, InlayHintKind, InlayHintLabel, Position};
+use auto_lsp::lsp_types::{InlayHint, InlayHintKind, InlayHintLabel};
 use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
     hir_def::{
         expressions::expression::{InitExpr, InitExprKind, ParamAssign}, hir_node::HirNode, namespace::NamespaceDecl, pous::pou::Pou
     },
-    hir_ty::{body::infer_body, infer::Infer, ty::Type},
+    hir_ty::{body::infer_body, infer::Infer},
 };
 
 use crate::{
@@ -68,13 +68,18 @@ impl<'db> InlayHintHandler<'db> for Pou<'db> {
 impl<'db> InlayHintHandler<'db> for ParamAssign<'db> {
     fn inlay_hint(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<InlayHint> {
         let infer = infer_body(db, self.scope_id(db));
-        infer.variable_of_param.get(self).and_then(|var| {
-            Type::new_var(db, *var)
-                .inlay_hint(db)
-                .map(|inlay_hint| InlayHint {
-                    position: get_param_start_pos(db, self).get_span(db).lsp().end,
-                    ..inlay_hint
-                })
+        infer.variable_of_param.get(self).map(|var| {
+            let name = var.name(db).text(db);
+            InlayHint {
+                position: get_param_start_pos(db, self).get_span(db).lsp().start,
+                label: InlayHintLabel::String(format!("{name}:")),
+                kind: Some(InlayHintKind::PARAMETER),
+                padding_left: Some(false),
+                padding_right: Some(true),
+                text_edits: None,
+                tooltip: None,
+                data: None,
+            }
         })
     }
 }
@@ -99,20 +104,3 @@ impl<'db> InlayHintHandler<'db> for InitExpr<'db> {
     }
 }
 
-impl<'db> InlayHintHandler<'db> for Type<'db> {
-    fn inlay_hint(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<InlayHint> {
-        match self {
-            Type::Variable((_, _multibits)) => Some(InlayHint {
-                position: Position::default(),
-                label: InlayHintLabel::String(format!(": {}", self.type_name(db))),
-                kind: Some(InlayHintKind::TYPE),
-                padding_left: Some(false),
-                padding_right: Some(false),
-                text_edits: None,
-                tooltip: None,
-                data: None,
-            }),
-            _ => None,
-        }
-    }
-}

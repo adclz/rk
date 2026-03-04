@@ -221,13 +221,13 @@ END_FUNCTION_BLOCK"#;
         InlayHint {
             position: Position {
                 line: 11,
-                character: 14,
+                character: 8,
             },
             label: String(
-                ": BYTE",
+                "param1:",
             ),
             kind: Some(
-                Type,
+                Parameter,
             ),
             text_edits: None,
             tooltip: None,
@@ -235,20 +235,20 @@ END_FUNCTION_BLOCK"#;
                 false,
             ),
             padding_right: Some(
-                false,
+                true,
             ),
             data: None,
         },
         InlayHint {
             position: Position {
                 line: 12,
-                character: 14,
+                character: 8,
             },
             label: String(
-                ": INT",
+                "param2:",
             ),
             kind: Some(
-                Type,
+                Parameter,
             ),
             text_edits: None,
             tooltip: None,
@@ -256,20 +256,20 @@ END_FUNCTION_BLOCK"#;
                 false,
             ),
             padding_right: Some(
-                false,
+                true,
             ),
             data: None,
         },
         InlayHint {
             position: Position {
                 line: 13,
-                character: 14,
+                character: 8,
             },
             label: String(
-                ": REAL",
+                "param3:",
             ),
             kind: Some(
-                Type,
+                Parameter,
             ),
             text_edits: None,
             tooltip: None,
@@ -277,7 +277,7 @@ END_FUNCTION_BLOCK"#;
                 false,
             ),
             padding_right: Some(
-                false,
+                true,
             ),
             data: None,
         },
