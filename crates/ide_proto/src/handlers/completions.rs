@@ -145,8 +145,12 @@ impl<'db> CompletionHandler<'db> for NamespaceDecl<'db> {
         db: &'db dyn WorkspaceDataBase,
         req: &CompletionRequest,
     ) -> Option<Vec<CompletionItem>> {
-        // only trigger comletion if we're not typing the namespace name
+        // only trigger completion if we're not typing the namespace name
         if self.name_span(db).end_byte >= req.offset {
+            return None;
+        }
+        // Don't trigger on dot — it's the user typing a dotted namespace name (e.g. System.|)
+        if req.trigger_character.as_deref() == Some(".") {
             return None;
         }
 
