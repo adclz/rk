@@ -15,7 +15,8 @@ define_semantic_token_types![
         CLASS,
         STRUCT,
         ENUM,
-        ENUM_MEMBER
+        ENUM_MEMBER,
+        EVENT
     }
 
     custom {

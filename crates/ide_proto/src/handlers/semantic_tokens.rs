@@ -193,7 +193,7 @@ fn semantic_tokens_for_type<'db>(
                 0,
             );
         }
-        Type::FunctionBlock(_) | Type::Function(_) => {
+        Type::FunctionBlock(_) | Type::Function(_) | Type::Program(_) => {
             builder.push(
                 span.lsp(),
                 SUPPORTED_TYPES.iter().position(|x| *x == FUNCTION).unwrap() as u32,
