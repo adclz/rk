@@ -1,9 +1,17 @@
+use std::ops::ControlFlow;
+
 use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use hir::check::diagnostics_for_file;
+use hir::hir_def::config::ConfigResource;
 use hir::hir_def::semantic_index::semantic_index;
+use hir::hir_ty::config::infer_config_result;
 use hir::hir_ty::index_graphs::config_index;
+use hir::hir_ty::infer::Infer;
+use hir::hir_ty::ty::Type;
 use insta::assert_snapshot;
+use ide_proto::walk::WalkHir;
+use ide_proto::hir_node::HirNode;
 use rstest::rstest;
 
 use crate::tests::utils::{add_sources, test_diagnostics, with_db};
@@ -604,4 +612,135 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// Spec::infer() on a ProgConfig's prog_type should resolve to Type::Program.
+#[rstest]
+fn config_prog_type_resolves_to_type_program(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM MyProg
+END_PROGRAM
+
+CONFIGURATION MyCfg
+    TASK t1(PRIORITY := 5);
+    PROGRAM inst1 WITH t1 : MyProg;
+END_CONFIGURATION
+"#;
+    add_sources(&mut with_db, &[source]);
+
+    let file = *with_db.get_files().iter().last().unwrap();
+    let sema = semantic_index(&with_db, file);
+    let config = sema.configs[0];
+
+    // Find the ProgConfig's prog_type Spec and check it infers to Type::Program
+    let mut found = false;
+    for res in config.resources(&with_db).iter() {
+        if let ConfigResource::Program(p) = res {
+            let ty = p.prog_type(&with_db).infer(&with_db);
+            assert!(matches!(ty, Type::Program(_)), "expected Type::Program, got {ty:?}");
+            found = true;
+        }
+    }
+    assert!(found, "should have found a ProgConfig");
+}
+
+/// infer_config_result should populate task_of_prog for valid WITH references.
+#[rstest]
+fn config_infer_result_resolves_task_of_prog(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM MyProg
+END_PROGRAM
+
+CONFIGURATION MyCfg
+    TASK t1(PRIORITY := 5);
+    PROGRAM inst1 WITH t1 : MyProg;
+END_CONFIGURATION
+"#;
+    add_sources(&mut with_db, &[source]);
+
+    let file = *with_db.get_files().iter().last().unwrap();
+    let sema = semantic_index(&with_db, file);
+    let config = sema.configs[0];
+
+    let result = infer_config_result(&with_db, config);
+    assert_eq!(result.task_of_prog.len(), 1, "should have one task_of_prog entry");
+
+    let (prog, task) = result.task_of_prog.iter().next().unwrap();
+    assert_eq!(task.name(&with_db).ident.text(&with_db), "t1");
+    assert_eq!(prog.name(&with_db).ident.text(&with_db), "inst1");
+}
+
+/// infer_config_result should populate prog_instance for valid program references.
+#[rstest]
+fn config_infer_result_resolves_prog_instance(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM MyProg
+END_PROGRAM
+
+CONFIGURATION MyCfg
+    TASK t1(PRIORITY := 5);
+    PROGRAM inst1 WITH t1 : MyProg;
+END_CONFIGURATION
+"#;
+    add_sources(&mut with_db, &[source]);
+
+    let file = *with_db.get_files().iter().last().unwrap();
+    let sema = semantic_index(&with_db, file);
+    let config = sema.configs[0];
+
+    let result = infer_config_result(&with_db, config);
+    assert_eq!(result.prog_instance.len(), 1, "should have one prog_instance entry");
+
+    let (_, prog_decl) = result.prog_instance.iter().next().unwrap();
+    assert_eq!(prog_decl.name(&with_db).text(&with_db), "MyProg");
+}
+
+/// infer_config_result should resolve tasks scoped within a RESOURCE block.
+#[rstest]
+fn config_infer_result_resource_scoped_task(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM MyProg
+END_PROGRAM
+
+CONFIGURATION MyCfg
+    RESOURCE res1 ON CPU_TYPE
+        TASK t1(PRIORITY := 1);
+        PROGRAM inst1 WITH t1 : MyProg;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    add_sources(&mut with_db, &[source]);
+
+    let file = *with_db.get_files().iter().last().unwrap();
+    let sema = semantic_index(&with_db, file);
+    let config = sema.configs[0];
+
+    let result = infer_config_result(&with_db, config);
+    assert_eq!(result.task_of_prog.len(), 1, "should have one task_of_prog entry from resource");
+    assert_eq!(result.prog_instance.len(), 1, "should have one prog_instance entry from resource");
+    assert!(result.errors.is_empty(), "should have no errors");
+}
+
+/// Programs should NOT be resolvable as types from non-config scopes.
+#[rstest]
+fn program_not_resolvable_from_non_config_scope(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM MyProg
+END_PROGRAM
+
+FUNCTION_BLOCK fb1
+    VAR
+        x : MyProg;
+    END_VAR
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0210] Error: no namespace item found
+       ,-[ file:///test0.st:7:13 ]
+       |
+     7 |         x : MyProg;
+       |             ^^^|^^
+       |                `---- no item found for path 'MyProg'
+    ---'
+    ");
 }

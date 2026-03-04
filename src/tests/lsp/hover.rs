@@ -547,3 +547,123 @@ END_FUNCTION
     ```
     ");
 }
+
+#[rstest]
+pub fn hover_config_task(mut with_db: RootDatabase) {
+    let source = r#"
+CONFIGURATION MyCfg
+    TASK t1(PRIORITY := 5);
+END_CONFIGURATION
+"#;
+
+    assert_snapshot!(collect_hovers(&mut with_db, source, |db, node| {
+        let HirNode::Task(t) = node else { return None };
+        hover_markup(t.hover(db, t.name(db).get_span(db).start_byte)?.contents)
+    }), @r"
+    ```iecst
+    TASK t1 (PRIORITY := 5)
+    ```
+    ");
+}
+
+#[rstest]
+pub fn hover_config_prog_instance(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM MyProg
+END_PROGRAM
+
+CONFIGURATION MyCfg
+    TASK t1(PRIORITY := 5);
+    PROGRAM inst1 WITH t1 : MyProg;
+END_CONFIGURATION
+"#;
+
+    assert_snapshot!(collect_hovers(&mut with_db, source, |db, node| {
+        let HirNode::ProgConfig(p) = node else { return None };
+        hover_markup(p.hover(db, p.name(db).get_span(db).start_byte)?.contents)
+    }), @r"
+    ```iecst
+    PROGRAM inst1 WITH t1 : MyProg
+    ```
+    ");
+}
+
+#[rstest]
+pub fn hover_config_with_task_ref(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM MyProg
+END_PROGRAM
+
+CONFIGURATION MyCfg
+    TASK t1(PRIORITY := 5);
+    PROGRAM inst1 WITH t1 : MyProg;
+END_CONFIGURATION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+
+    let mut prog_configs = vec![];
+    let _ = sema.walk_hir(&with_db, &mut |node| {
+        if let HirNode::ProgConfig(p) = node {
+            prog_configs.push(p);
+        }
+        ControlFlow::Continue(())
+    });
+
+    assert_eq!(prog_configs.len(), 1);
+    let prog = prog_configs[0];
+
+    // Hover on "t1" in "WITH t1" should show the task hover
+    let task_ref = prog.task(&with_db).unwrap();
+    let task_offset = task_ref.get_span(&with_db).start_byte;
+    let hover = prog.hover(&with_db, task_offset).unwrap();
+    assert_snapshot!(hover_markup(hover.contents).unwrap(), @r"
+    ```iecst
+    TASK t1 (PRIORITY := 5)
+    ```
+    ");
+}
+
+#[rstest]
+pub fn hover_config_prog_type_spec(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM MyProg
+END_PROGRAM
+
+CONFIGURATION MyCfg
+    TASK t1(PRIORITY := 5);
+    PROGRAM inst1 WITH t1 : MyProg;
+END_CONFIGURATION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+
+    // Find Spec nodes — the prog_type spec should show PROGRAM hover
+    let mut specs = vec![];
+    let _ = sema.walk_hir(&with_db, &mut |node| {
+        if let HirNode::Spec(s) = node {
+            specs.push(s);
+        }
+        ControlFlow::Continue(())
+    });
+
+    // Find the Spec for MyProg (the one with a Target kind matching "MyProg")
+    let prog_spec = specs
+        .iter()
+        .find(|s| {
+            let kind = s.kind(&with_db);
+            matches!(kind, hir::hir_def::expressions::spec::SpecKind::Target(t) if t.path.target.ident.text(&with_db) == "MyProg")
+        })
+        .expect("should find MyProg Spec");
+
+    let hover = prog_spec.hover(&with_db, 0).unwrap();
+    assert_snapshot!(hover_markup(hover.contents).unwrap(), @r"
+
+    ```iecst
+    PROGRAM MyProg
+    ```
+
+    ");
+}

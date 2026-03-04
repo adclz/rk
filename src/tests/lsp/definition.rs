@@ -6,7 +6,7 @@ use db::RootDatabase;
 use hir::HirNodeInfo;
 use hir::hir_def::hir_node::HirNode;
 use hir::hir_def::semantic_index::semantic_index;
-use ide_proto::handlers::DefinitionHandler;
+use ide_proto::handlers::{DefinitionHandler, HoverHandler};
 use ide_proto::walk::{WalkHir, descendant_at};
 use insta::assert_snapshot;
 use rstest::rstest;
@@ -230,4 +230,102 @@ END_FUNCTION_BLOCK
     let def = node.definition(&with_db, motor_offset).unwrap();
     // Should go to the Engine FUNCTION_BLOCK definition, not the variable declaration
     assert_snapshot!(format_definition_response(&def), @"/test0.st:1:0-5:18");
+}
+
+#[rstest]
+pub fn definition_config_prog_type(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM MyProg
+END_PROGRAM
+
+CONFIGURATION MyCfg
+    TASK t1(PRIORITY := 5);
+    PROGRAM inst1 WITH t1 : MyProg;
+END_CONFIGURATION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+
+    // Find the ProgConfig node
+    let mut prog_configs = vec![];
+    let _ = sema.walk_hir(&with_db, &mut |node| {
+        if let HirNode::ProgConfig(p) = node {
+            prog_configs.push(p);
+        }
+        ControlFlow::Continue(())
+    });
+
+    assert_eq!(prog_configs.len(), 1);
+    let prog = prog_configs[0];
+
+    // Definition on the prog_type (MyProg) should go to the PROGRAM declaration
+    let prog_type_offset = source.rfind("MyProg").unwrap();
+    let def = prog.definition(&with_db, prog_type_offset).unwrap();
+    // Should point to the PROGRAM MyProg declaration (line 1)
+    assert_snapshot!(format_definition_response(&def), @"/test0.st:1:0-2:11");
+}
+
+#[rstest]
+pub fn definition_config_with_task_ref(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM MyProg
+END_PROGRAM
+
+CONFIGURATION MyCfg
+    TASK t1(PRIORITY := 5);
+    PROGRAM inst1 WITH t1 : MyProg;
+END_CONFIGURATION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+
+    // Find the ProgConfig node
+    let mut prog_configs = vec![];
+    let _ = sema.walk_hir(&with_db, &mut |node| {
+        if let HirNode::ProgConfig(p) = node {
+            prog_configs.push(p);
+        }
+        ControlFlow::Continue(())
+    });
+
+    assert_eq!(prog_configs.len(), 1);
+    let prog = prog_configs[0];
+
+    // Definition on "t1" in "WITH t1" should go to the TASK declaration
+    let task_ref = prog.task(&with_db).unwrap();
+    let task_offset = task_ref.get_span(&with_db).start_byte;
+    let def = prog.definition(&with_db, task_offset).unwrap();
+    // Should point to the task name "t1" in the TASK declaration (line 5)
+    assert_snapshot!(format_definition_response(&def), @"/test0.st:5:9-5:11");
+}
+
+#[rstest]
+pub fn definition_config_task_node(mut with_db: RootDatabase) {
+    let source = r#"
+CONFIGURATION MyCfg
+    TASK t1(PRIORITY := 5);
+END_CONFIGURATION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+
+    // Find the Task node
+    let mut tasks = vec![];
+    let _ = sema.walk_hir(&with_db, &mut |node| {
+        if let HirNode::Task(t) = node {
+            tasks.push(t);
+        }
+        ControlFlow::Continue(())
+    });
+
+    assert_eq!(tasks.len(), 1);
+    let task = tasks[0];
+
+    // Definition on the task name should go to itself
+    let name_offset = task.name(&with_db).get_span(&with_db).start_byte;
+    let def = task.definition(&with_db, name_offset).unwrap();
+    assert_snapshot!(format_definition_response(&def), @"/test0.st:2:9-2:11");
 }
