@@ -19,7 +19,9 @@ impl IdeDiagnostic {
         let error_kind = match &self.diagnostic.severity {
             Some(auto_lsp::lsp_types::DiagnosticSeverity::ERROR) => ariadne::ReportKind::Error,
             Some(auto_lsp::lsp_types::DiagnosticSeverity::WARNING) => ariadne::ReportKind::Warning,
-            Some(auto_lsp::lsp_types::DiagnosticSeverity::INFORMATION) => ariadne::ReportKind::Advice,
+            Some(auto_lsp::lsp_types::DiagnosticSeverity::INFORMATION) => {
+                ariadne::ReportKind::Advice
+            }
             Some(auto_lsp::lsp_types::DiagnosticSeverity::HINT) => ariadne::ReportKind::Advice,
             _ => ariadne::ReportKind::Error,
         };

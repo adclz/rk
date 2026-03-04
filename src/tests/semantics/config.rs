@@ -9,9 +9,9 @@ use hir::hir_ty::config::infer_config_result;
 use hir::hir_ty::index_graphs::config_index;
 use hir::hir_ty::infer::Infer;
 use hir::hir_ty::ty::Type;
-use insta::assert_snapshot;
-use ide_proto::walk::WalkHir;
 use ide_proto::hir_node::HirNode;
+use ide_proto::walk::WalkHir;
+use insta::assert_snapshot;
 use rstest::rstest;
 
 use crate::tests::utils::{add_sources, test_diagnostics, with_db};
@@ -637,7 +637,10 @@ END_CONFIGURATION
     for res in config.resources(&with_db).iter() {
         if let ConfigResource::Program(p) = res {
             let ty = p.prog_type(&with_db).infer(&with_db);
-            assert!(matches!(ty, Type::Program(_)), "expected Type::Program, got {ty:?}");
+            assert!(
+                matches!(ty, Type::Program(_)),
+                "expected Type::Program, got {ty:?}"
+            );
             found = true;
         }
     }
@@ -663,7 +666,11 @@ END_CONFIGURATION
     let config = sema.configs[0];
 
     let result = infer_config_result(&with_db, config);
-    assert_eq!(result.task_of_prog.len(), 1, "should have one task_of_prog entry");
+    assert_eq!(
+        result.task_of_prog.len(),
+        1,
+        "should have one task_of_prog entry"
+    );
 
     let (prog, task) = result.task_of_prog.iter().next().unwrap();
     assert_eq!(task.name(&with_db).ident.text(&with_db), "t1");
@@ -689,7 +696,11 @@ END_CONFIGURATION
     let config = sema.configs[0];
 
     let result = infer_config_result(&with_db, config);
-    assert_eq!(result.prog_instance.len(), 1, "should have one prog_instance entry");
+    assert_eq!(
+        result.prog_instance.len(),
+        1,
+        "should have one prog_instance entry"
+    );
 
     let (_, prog_decl) = result.prog_instance.iter().next().unwrap();
     assert_eq!(prog_decl.name(&with_db).text(&with_db), "MyProg");
@@ -716,8 +727,16 @@ END_CONFIGURATION
     let config = sema.configs[0];
 
     let result = infer_config_result(&with_db, config);
-    assert_eq!(result.task_of_prog.len(), 1, "should have one task_of_prog entry from resource");
-    assert_eq!(result.prog_instance.len(), 1, "should have one prog_instance entry from resource");
+    assert_eq!(
+        result.task_of_prog.len(),
+        1,
+        "should have one task_of_prog entry from resource"
+    );
+    assert_eq!(
+        result.prog_instance.len(),
+        1,
+        "should have one prog_instance entry from resource"
+    );
     assert!(result.errors.is_empty(), "should have no errors");
 }
 

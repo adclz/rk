@@ -100,32 +100,33 @@ impl<'db> InitInference<'db> {
         };
 
         if let Some(actual_len) = actual_len
-            && actual_len as u64 > max_len {
-                let err = if is_wstring {
-                    InferLiteralError::Invalid_WSTRING_Length {
-                        max: max_len,
-                        got: actual_len,
-                    }
-                } else {
-                    InferLiteralError::Invalid_STRING_Length {
-                        max: max_len,
-                        got: actual_len,
-                    }
-                };
-                let target = if is_wstring {
-                    Type::Elementary(crate::hir_def::expressions::spec::ElementarySpec::WString)
-                } else {
-                    Type::Elementary(crate::hir_def::expressions::spec::ElementarySpec::String)
-                };
-                self.errors.push(
-                    TypeError::InferLiteralError {
-                        expr,
-                        source: None,
-                        target,
-                        err,
-                    }
-                    .to_diagnostic(db),
-                );
-            }
+            && actual_len as u64 > max_len
+        {
+            let err = if is_wstring {
+                InferLiteralError::Invalid_WSTRING_Length {
+                    max: max_len,
+                    got: actual_len,
+                }
+            } else {
+                InferLiteralError::Invalid_STRING_Length {
+                    max: max_len,
+                    got: actual_len,
+                }
+            };
+            let target = if is_wstring {
+                Type::Elementary(crate::hir_def::expressions::spec::ElementarySpec::WString)
+            } else {
+                Type::Elementary(crate::hir_def::expressions::spec::ElementarySpec::String)
+            };
+            self.errors.push(
+                TypeError::InferLiteralError {
+                    expr,
+                    source: None,
+                    target,
+                    err,
+                }
+                .to_diagnostic(db),
+            );
+        }
     }
 }

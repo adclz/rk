@@ -721,7 +721,6 @@ END_FUNCTION
     ");
 }
 
-
 #[rstest]
 fn invalid_method_prototypes_variable_sections(mut with_db: RootDatabase) {
     let source = r#"
@@ -827,7 +826,6 @@ END_INTERFACE
     ----'
     ");
 }
-
 
 #[rstest]
 fn invalid_config_variable_sections(mut with_db: RootDatabase) {

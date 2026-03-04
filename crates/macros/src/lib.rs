@@ -2,10 +2,9 @@
 
 use crate::newtype_index::generate_newtype_index;
 use proc_macro::TokenStream;
-use syn::{DeriveInput, Error, ItemFn, ItemStruct, parse_macro_input};
+use syn::{ItemStruct, parse_macro_input};
 
 mod newtype_index;
-
 
 /// Derives a newtype wrapper that can be used as an index.
 /// The wrapper can represent indices up to `u32::MAX - 1`.

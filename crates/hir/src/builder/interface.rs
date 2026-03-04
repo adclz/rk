@@ -96,7 +96,7 @@ impl<'db> SemanticIndexBuilder<'db> {
                         SyntaxError::VarAccessNotAllowed(err.get_span()).to_diagnostic(self.db),
                     );
                 }
-                 ast::generated::MethodProtVariables::ERRVarConfigNotAllowed(err) => {
+                ast::generated::MethodProtVariables::ERRVarConfigNotAllowed(err) => {
                     self.errors.push(
                         SyntaxError::VarConfigNotAllowed(err.get_span()).to_diagnostic(self.db),
                     );
@@ -125,10 +125,10 @@ impl<'db> SemanticIndexBuilder<'db> {
                     self.errors.push(
                         SyntaxError::VarTempNotAllowed(err.get_span()).to_diagnostic(self.db),
                     );
-                }   
+                }
                 ast::generated::MethodProtVariables::InputDecls(decls) => {
                     decls.parse(self, &mut variables)
-                } 
+                }
                 ast::generated::MethodProtVariables::InOutDecls(decls) => {
                     decls.parse(self, &mut variables)
                 }
@@ -148,7 +148,10 @@ impl<'db> SemanticIndexBuilder<'db> {
             scope_id,
         );
 
-        self.register_node(method.into(), HirNode::MethodRef(MethodRef::Prototype(result)));
+        self.register_node(
+            method.into(),
+            HirNode::MethodRef(MethodRef::Prototype(result)),
+        );
         self.register_scope(
             ScopeKind::MethodProt(result),
             vec![],

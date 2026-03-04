@@ -27,8 +27,8 @@ use hir::hir_def::semantic_index::semantic_index;
 use hir::hir_ty::head::inheritance::MethodRef;
 use hir::hir_ty::resolver::name::{PouResolution, pou_names_res};
 use ide_diagnostic::{IdeDiagnostic, Related};
-use ide_proto::hir_node::HirNode;
 use ide_proto::handlers::references::ReferenceLocation;
+use ide_proto::hir_node::HirNode;
 use ide_proto::walk::WalkHir;
 use rstest::fixture;
 
@@ -129,8 +129,11 @@ pub fn test_diagnostics<'db>(db: &'db mut RootDatabase, source: &'db [&'db str])
         .join("\n")
 }
 
-
-pub fn test_snapshot<'db>(db: &'db mut RootDatabase, source: &'db [&'db str], diag_fn: impl Fn(&'db dyn WorkspaceDataBase, File) -> Vec<IdeDiagnostic>) -> String {
+pub fn test_snapshot<'db>(
+    db: &'db mut RootDatabase,
+    source: &'db [&'db str],
+    diag_fn: impl Fn(&'db dyn WorkspaceDataBase, File) -> Vec<IdeDiagnostic>,
+) -> String {
     add_sources(db, source);
     let mut cache = vec![];
 
@@ -173,7 +176,6 @@ pub fn test_snapshot<'db>(db: &'db mut RootDatabase, source: &'db [&'db str], di
         .collect::<Vec<_>>()
         .join("\n")
 }
-
 
 /// Like [`test_diagnostics`] but also runs the linter (all rules enabled),
 /// so lint warnings are included.
@@ -326,11 +328,7 @@ pub fn pou_name_res_from_scope<'db>(
 }
 
 /// Renders diagnostics for a file (when sources are already added).
-pub fn render_snapshot(
-    db: &RootDatabase,
-    file: File,
-    diags: Vec<IdeDiagnostic>,
-) -> String {
+pub fn render_snapshot(db: &RootDatabase, file: File, diags: Vec<IdeDiagnostic>) -> String {
     let all_files: Vec<File> = db.get_files().iter().map(|f| *f).collect();
     let file_sources: Vec<_> = all_files
         .iter()
@@ -411,10 +409,7 @@ pub fn hir_node_span<'db>(db: &'db dyn WorkspaceDataBase, node: &HirNode<'db>) -
 }
 
 /// Walks the HIR for a file and returns diagnostics labeling each visited node.
-pub fn walk_hir_diagnostics<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    file: File,
-) -> Vec<IdeDiagnostic> {
+pub fn walk_hir_diagnostics<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Vec<IdeDiagnostic> {
     let sema = semantic_index(db, file);
     let mut nodes: Vec<(String, Span, File)> = vec![];
 

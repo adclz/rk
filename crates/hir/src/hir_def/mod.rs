@@ -1,5 +1,6 @@
 pub mod config;
 pub mod expressions;
+pub mod hir_node;
 pub mod interned;
 pub mod namespace;
 pub mod pous;
@@ -7,4 +8,3 @@ pub mod program;
 pub mod scope;
 pub mod semantic_index;
 pub mod using;
-pub mod hir_node;

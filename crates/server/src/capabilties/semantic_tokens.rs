@@ -46,12 +46,12 @@ pub fn semantic_tokens_range(
 
     let document = file.document(db);
 
-    let start_offset = document.offset_at(params.range.start).ok_or_else(|| {
-        anyhow::format_err!("Invalid range start, {:?}", params.range.start)
-    })?;
-    let end_offset = document.offset_at(params.range.end).ok_or_else(|| {
-        anyhow::format_err!("Invalid range end, {:?}", params.range.end)
-    })?;
+    let start_offset = document
+        .offset_at(params.range.start)
+        .ok_or_else(|| anyhow::format_err!("Invalid range start, {:?}", params.range.start))?;
+    let end_offset = document
+        .offset_at(params.range.end)
+        .ok_or_else(|| anyhow::format_err!("Invalid range end, {:?}", params.range.end))?;
 
     let mut builder = SemanticTokensBuilder::new("".into());
     let sema = semantic_index(db, file);

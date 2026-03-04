@@ -4,14 +4,18 @@ use hir::{
     HasName, HirNodeInfo,
     hir_def::{
         config::{ConfigDecl, ProgConfig, ResourceDecl},
-        expressions::spec::{ElementarySpec, SpecKind}, hir_node::HirNode, namespace::NamespaceDecl, pous::{pou::Pou, variable::VariableDecl}, program::ProgramDecl
+        expressions::spec::{ElementarySpec, SpecKind},
+        hir_node::HirNode,
+        namespace::NamespaceDecl,
+        pous::{pou::Pou, variable::VariableDecl},
+        program::ProgramDecl,
     },
     hir_ty::head::{inheritance::MethodRef, signature::infer_signature},
 };
 
-use crate::{handlers::DocumentSymbolsHandler};
+use crate::handlers::DocumentSymbolsHandler;
 
-impl<'db>  DocumentSymbolsHandler<'db> for HirNode<'db> {
+impl<'db> DocumentSymbolsHandler<'db> for HirNode<'db> {
     fn document_symbols(
         &self,
         db: &'db dyn WorkspaceDataBase,
@@ -329,7 +333,10 @@ impl<'db> DocumentSymbolsHandler<'db> for ResourceDecl<'db> {
 
         builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
             name,
-            detail: Some(format!("RESOURCE ON {}", self.resource_type_name(db).text(db))),
+            detail: Some(format!(
+                "RESOURCE ON {}",
+                self.resource_type_name(db).text(db)
+            )),
             kind: SymbolKind::MODULE,
             deprecated: None,
             range: self.get_span(db).lsp(),

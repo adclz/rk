@@ -176,7 +176,10 @@ END_FUNCTION
     assert_snapshot!(node_type, @"PathExpr");
 
     let def = node.definition(&with_db, system_offset);
-    assert!(def.is_some(), "definition should return Some for namespace PathExpr");
+    assert!(
+        def.is_some(),
+        "definition should return Some for namespace PathExpr"
+    );
     assert_snapshot!(format_definition_response(&def.unwrap()), @"/test0.st:1:10-1:16");
 }
 

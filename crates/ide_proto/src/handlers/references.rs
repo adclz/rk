@@ -1,18 +1,16 @@
 use std::ops::ControlFlow;
 
-use auto_lsp::{
-    core::span::Span,
-    default::db::file::File,
-    lsp_types::Location,
-};
+use auto_lsp::{core::span::Span, default::db::file::File, lsp_types::Location};
 use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
     hir_def::{
-        hir_node::HirNode, interned::namespace::NamespacePath, semantic_index::semantic_index
+        hir_node::HirNode, interned::namespace::NamespacePath, semantic_index::semantic_index,
     },
     hir_ty::{
-        index_graphs::namespace_index, infer::Infer, ty::{CallableType, Type}
+        index_graphs::namespace_index,
+        infer::Infer,
+        ty::{CallableType, Type},
     },
 };
 
@@ -34,11 +32,8 @@ impl<'db> ReferencesHandler<'db> for HirNode<'db> {
         self.locations(db)
             .map(|locs| locs.into_iter().map(|loc| loc.to_location(db)).collect())
     }
-    
-    fn locations(
-        &self,
-        db: &'db dyn WorkspaceDataBase,
-    ) -> Option<Vec<ReferenceLocation>> {
+
+    fn locations(&self, db: &'db dyn WorkspaceDataBase) -> Option<Vec<ReferenceLocation>> {
         // Namespace references: declarations via namespace_index + USING statements via walk
         let ns_path = match self {
             HirNode::Namespace(ns) => Some(*ns.path(db)),
@@ -68,9 +63,7 @@ impl<'db> ReferencesHandler<'db> for HirNode<'db> {
         }
 
         // Deduplicate — the walk can visit overlapping nodes
-        locations.dedup_by(|a, b| {
-            a.file.url(db) == b.file.url(db) && a.span == b.span
-        });
+        locations.dedup_by(|a, b| a.file.url(db) == b.file.url(db) && a.span == b.span);
 
         if locations.is_empty() {
             None
@@ -167,7 +160,10 @@ fn resolve_walk_target<'db>(
 
 /// Extract the identifier text from a HirNode for reference matching.
 /// Returns None for nodes where ident comparison is not applicable.
-fn node_reference_ident<'db>(db: &'db dyn WorkspaceDataBase, node: &HirNode<'db>) -> Option<&'db str> {
+fn node_reference_ident<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    node: &HirNode<'db>,
+) -> Option<&'db str> {
     Some(match node {
         HirNode::PouDecl(pou) => pou.get_name_ident(db).text(db),
         HirNode::VariableDecl(var) => var.get_name_ident(db).text(db),
@@ -181,7 +177,10 @@ fn node_reference_ident<'db>(db: &'db dyn WorkspaceDataBase, node: &HirNode<'db>
 /// Get the span for a reference result.
 /// For declarations, returns just the name span; for path expressions, returns
 /// just the ident span (e.g. `fuel` in `my_var.fuel`); otherwise the full node span.
-fn reference_span<'db>(db: &'db dyn WorkspaceDataBase, node: &HirNode<'db>) -> auto_lsp::core::span::Span {
+fn reference_span<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    node: &HirNode<'db>,
+) -> auto_lsp::core::span::Span {
     match node {
         HirNode::PouDecl(pou) => pou.get_name_span(db),
         HirNode::VariableDecl(var) => var.get_name_span(db),
@@ -202,21 +201,19 @@ fn find_references_in_file<'db>(
     let sema = semantic_index(db, file);
 
     let _ = sema.walk_hir(db, &mut |node: HirNode<'db>| {
-        if let Some(resolved) = resolve_walk_target(db, &node) {
-            if resolved == *target {
+        if let Some(resolved) = resolve_walk_target(db, &node)
+            && resolved == *target {
                 // Verify the node's ident matches the target name to avoid
                 // false positives from path fragments that resolve to the
                 // same type through adjustments (deref, field chains, etc.)
-                if let Some(ident) = node_reference_ident(db, &node) {
-                    if !ident.eq_ignore_ascii_case(target_name) {
+                if let Some(ident) = node_reference_ident(db, &node)
+                    && !ident.eq_ignore_ascii_case(target_name) {
                         return ControlFlow::Continue(());
                     }
-                }
                 let span = reference_span(db, &node);
                 let file = node.get_scope_id(db).file(db);
                 locations.push(ReferenceLocation { file, span });
             }
-        }
 
         ControlFlow::Continue(())
     });
@@ -240,14 +237,13 @@ fn find_namespace_references<'db>(
     for file in db.get_files().iter() {
         let sema = semantic_index(db, *file);
         let _ = sema.walk_hir(db, &mut |node: HirNode<'db>| {
-            if let HirNode::Using(u) = &node {
-                if u.path(db).path == path {
+            if let HirNode::Using(u) = &node
+                && u.path(db).path == path {
                     locations.push(ReferenceLocation {
                         file: u.scope_id(db).file(db),
                         span: u.get_span(db),
                     });
                 }
-            }
             ControlFlow::Continue(())
         });
     }

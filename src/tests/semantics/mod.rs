@@ -1,3 +1,4 @@
+pub mod ambiguous_scopes;
 pub mod array;
 pub mod array_init_multi_dim;
 pub mod assignment;
@@ -13,7 +14,6 @@ pub mod inference;
 pub mod inheritance;
 pub mod init_expr;
 pub mod invocation;
-pub mod ambiguous_scopes;
 pub mod literals;
 pub mod loops;
 pub mod path_expr;

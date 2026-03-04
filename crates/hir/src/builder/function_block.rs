@@ -1,6 +1,6 @@
 use crate::builder::Parse;
-use crate::builder::{ParseSpec, ParseVarSection};
 use crate::builder::semantic_index::SemanticIndexBuilder;
+use crate::builder::{ParseSpec, ParseVarSection};
 use crate::check::errors::ToIdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::hir_node::HirNode;

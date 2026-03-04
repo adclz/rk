@@ -36,10 +36,7 @@ END_CONFIGURATION
         labels.contains(&"VAR_GLOBAL"),
         "missing VAR_GLOBAL: {labels:?}"
     );
-    assert!(
-        labels.contains(&"RESOURCE"),
-        "missing RESOURCE: {labels:?}"
-    );
+    assert!(labels.contains(&"RESOURCE"), "missing RESOURCE: {labels:?}");
     assert!(labels.contains(&"TASK"), "missing TASK: {labels:?}");
     assert!(
         labels.contains(&"PROGRAM (config)"),
@@ -143,10 +140,7 @@ END_CONFIGURATION
     let labels: Vec<&str> = completions.iter().map(|c| c.label.as_str()).collect();
 
     // Should still offer all config-level items
-    assert!(
-        labels.contains(&"RESOURCE"),
-        "missing RESOURCE: {labels:?}"
-    );
+    assert!(labels.contains(&"RESOURCE"), "missing RESOURCE: {labels:?}");
     assert!(labels.contains(&"TASK"), "missing TASK: {labels:?}");
     assert!(
         labels.contains(&"PROGRAM (config)"),
@@ -184,14 +178,8 @@ END_CONFIGURATION
 
     let labels: Vec<&str> = completions.iter().map(|c| c.label.as_str()).collect();
     assert!(labels.contains(&"SINGLE"), "missing SINGLE: {labels:?}");
-    assert!(
-        labels.contains(&"INTERVAL"),
-        "missing INTERVAL: {labels:?}"
-    );
-    assert!(
-        labels.contains(&"PRIORITY"),
-        "missing PRIORITY: {labels:?}"
-    );
+    assert!(labels.contains(&"INTERVAL"), "missing INTERVAL: {labels:?}");
+    assert!(labels.contains(&"PRIORITY"), "missing PRIORITY: {labels:?}");
 }
 
 /// Test completion inside TASK with PRIORITY already set — only SINGLE and INTERVAL offered
@@ -220,10 +208,7 @@ END_CONFIGURATION
 
     let labels: Vec<&str> = completions.iter().map(|c| c.label.as_str()).collect();
     assert!(labels.contains(&"SINGLE"), "missing SINGLE: {labels:?}");
-    assert!(
-        labels.contains(&"INTERVAL"),
-        "missing INTERVAL: {labels:?}"
-    );
+    assert!(labels.contains(&"INTERVAL"), "missing INTERVAL: {labels:?}");
     assert!(
         !labels.contains(&"PRIORITY"),
         "should not offer PRIORITY: {labels:?}"

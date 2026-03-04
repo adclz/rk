@@ -27,10 +27,7 @@ fn apply_rename(db: &RootDatabase, edit: &WorkspaceEdit, sources: &[&str]) -> St
                     .then(b.range.end.cmp(&a.range.end))
             });
 
-            let document = db
-                .get_file(&url)
-                .unwrap()
-                .document(db);
+            let document = db.get_file(&url).unwrap().document(db);
 
             for edit in sorted {
                 let start = document.offset_at(edit.range.start).unwrap();

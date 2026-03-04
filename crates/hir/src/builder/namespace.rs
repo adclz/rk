@@ -11,7 +11,7 @@ use crate::hir_def::interned::namespace::SpanNamespacePath;
 use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::scope::ScopeKind;
 use ide_diagnostic::IdeDiagnostic;
- 
+
 impl<'db> SemanticIndexBuilder<'db> {
     pub fn parse_namespace(
         &mut self,

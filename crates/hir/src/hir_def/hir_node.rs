@@ -1,4 +1,3 @@
-use db::WorkspaceDataBase;
 use crate::{
     AstId, HirNodeInfo,
     hir_def::{
@@ -16,6 +15,7 @@ use crate::{
     },
     hir_ty::head::inheritance::MethodRef,
 };
+use db::WorkspaceDataBase;
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum HirNode<'db> {

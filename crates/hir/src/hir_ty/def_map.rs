@@ -151,13 +151,14 @@ impl<'db> ScopeId<'db> {
 
     #[salsa::tracked(returns(ref))]
     pub fn inheritors(self, db: &'db dyn WorkspaceDataBase) -> FxHashMap<CallSite<'db>, Pou<'db>> {
-        let resolve_spec = |spec: &crate::hir_def::expressions::spec::Spec<'db>| -> Option<Pou<'db>> {
-            if let SpecKind::Target(target) = spec.kind(db) {
-                resolve_namespace_access(db, &target.path).found()
-            } else {
-                None
-            }
-        };
+        let resolve_spec =
+            |spec: &crate::hir_def::expressions::spec::Spec<'db>| -> Option<Pou<'db>> {
+                if let SpecKind::Target(target) = spec.kind(db) {
+                    resolve_namespace_access(db, &target.path).found()
+                } else {
+                    None
+                }
+            };
 
         match get_scope(db, self).kind {
             ScopeKind::Pou(pou) => match pou {

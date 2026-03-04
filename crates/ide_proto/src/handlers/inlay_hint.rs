@@ -4,15 +4,15 @@ use hir::{
     HasName, HirNodeInfo,
     hir_def::{
         config::ConfigDecl,
-        expressions::expression::{InitExpr, InitExprKind, ParamAssign}, hir_node::HirNode, namespace::NamespaceDecl, pous::pou::Pou
+        expressions::expression::{InitExpr, InitExprKind, ParamAssign},
+        hir_node::HirNode,
+        namespace::NamespaceDecl,
+        pous::pou::Pou,
     },
     hir_ty::{body::infer_body, infer::Infer},
 };
 
-use crate::{
-    handlers::InlayHintHandler,
-    hir_node::{get_param_start_pos},
-};
+use crate::{handlers::InlayHintHandler, hir_node::get_param_start_pos};
 
 impl<'db> InlayHintHandler<'db> for HirNode<'db> {
     fn inlay_hint(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<InlayHint> {
@@ -120,4 +120,3 @@ impl<'db> InlayHintHandler<'db> for ConfigDecl<'db> {
         })
     }
 }
-

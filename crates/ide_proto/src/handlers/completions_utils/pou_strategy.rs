@@ -108,11 +108,7 @@ impl<'db> CompletionCtx {
     }
 }
 
-fn complete_program(
-    _program: ProgramDecl,
-    ctx: &HeadResult,
-    items: &mut Vec<CompletionItem>,
-) {
+fn complete_program(_program: ProgramDecl, ctx: &HeadResult, items: &mut Vec<CompletionItem>) {
     match ctx.head_location {
         HeadLocation::BeforeVars
         | HeadLocation::InVars

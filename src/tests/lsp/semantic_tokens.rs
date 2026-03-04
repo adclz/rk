@@ -268,7 +268,8 @@ END_FUNCTION_BLOCK"#;
         SUPPORTED_TYPES.iter().position(|x| *x == FUNCTION).unwrap() as u32
     );
     assert_eq!(
-        result.data[2].length, "Controller".len() as u32,
+        result.data[2].length,
+        "Controller".len() as u32,
         "token should span only the target identifier, not the full namespace path"
     );
 }
@@ -305,7 +306,8 @@ END_FUNCTION_BLOCK"#;
         SUPPORTED_TYPES.iter().position(|x| *x == CLASS).unwrap() as u32
     );
     assert_eq!(
-        result.data[2].length, "Base".len() as u32,
+        result.data[2].length,
+        "Base".len() as u32,
         "token should span only the target identifier, not the full namespace path"
     );
 }

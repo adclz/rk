@@ -32,7 +32,10 @@ use hir::{
 };
 
 use crate::{
-    handlers::{HoverHandler, completions::{try_build_namespace_path, is_namespace_prefix}},
+    handlers::{
+        HoverHandler,
+        completions::{is_namespace_prefix, try_build_namespace_path},
+    },
     hir_node::{HasComment, MaybeHirNode, get_param_start_pos},
 };
 
@@ -280,8 +283,8 @@ impl<'db> HoverHandler<'db> for PathExpr<'db> {
         let ty = self.infer(db);
         if ty.is_never() {
             // Check if this PathExpr is part of a namespace path (e.g. "System" in System.Math.Sin)
-            if let Some(ns_path) = try_build_namespace_path(db, self) {
-                if is_namespace_prefix(db, ns_path) {
+            if let Some(ns_path) = try_build_namespace_path(db, self)
+                && is_namespace_prefix(db, ns_path) {
                     return Some(Hover {
                         contents: HoverContents::Scalar(MarkedString::from_markdown(format!(
                             "\n```iecst\nNAMESPACE {}\n```\n",
@@ -290,7 +293,6 @@ impl<'db> HoverHandler<'db> for PathExpr<'db> {
                         range: None,
                     });
                 }
-            }
         }
         ty.hover(db, offset)
     }
@@ -380,7 +382,9 @@ impl<'db> HoverHandler<'db> for Type<'db> {
             Type::CallableType(cl) => cl.hover(db, cl.get_name_span(db).start_byte),
             Type::Program(p) => p.hover(db, p.get_name_span(db).start_byte),
             Type::Function(f) => Pou::Function(*f).hover(db, f.get_name_span(db).start_byte),
-            Type::FunctionBlock(f) => Pou::FunctionBlock(*f).hover(db, f.get_name_span(db).start_byte),
+            Type::FunctionBlock(f) => {
+                Pou::FunctionBlock(*f).hover(db, f.get_name_span(db).start_byte)
+            }
             Type::Class(f) => Pou::Class(*f).hover(db, f.get_name_span(db).start_byte),
             Type::Interface(f) => Pou::Interface(*f).hover(db, f.get_name_span(db).start_byte),
             Type::DataType(f) => Pou::DataType(*f).hover(db, f.get_name_span(db).start_byte),
@@ -478,11 +482,10 @@ impl<'db> HoverHandler<'db> for ProgConfig<'db> {
         if let Some(task_ref) = self.task(db) {
             let span = task_ref.get_span(db);
             if offset >= span.start_byte && offset < span.end_byte {
-                if let ScopeKind::Config(config) = get_scope(db, self.scope_id(db)).kind {
-                    if let Some(task) = infer_config_result(db, config).task_of_prog.get(self) {
+                if let ScopeKind::Config(config) = get_scope(db, self.scope_id(db)).kind
+                    && let Some(task) = infer_config_result(db, config).task_of_prog.get(self) {
                         return task.hover(db, task.name(db).get_span(db).start_byte);
                     }
-                }
                 return None;
             }
         }

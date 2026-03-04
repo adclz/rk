@@ -7,15 +7,34 @@ use hir::{
         expressions::{
             expression::{BeginPathExpr, Expr, InitExpr, ParamAssign, PathExpr, VariableAccess},
             spec::{Spec, SpecKind, StructElement},
-        }, hir_node::HirNode, interned::namespace::NamespacePath, namespace::NamespaceDecl, pous::{pou::Pou, variable::VariableDecl}, scope::ScopeKind, semantic_index::get_scope, using::Using
+        },
+        hir_node::HirNode,
+        interned::namespace::NamespacePath,
+        namespace::NamespaceDecl,
+        pous::{pou::Pou, variable::VariableDecl},
+        scope::ScopeKind,
+        semantic_index::get_scope,
+        using::Using,
     },
-    hir_ty::{config::infer_config_result, index_graphs::namespace_index, infer::Infer, ty::{CallableType, Type}},
+    hir_ty::{
+        config::infer_config_result,
+        index_graphs::namespace_index,
+        infer::Infer,
+        ty::{CallableType, Type},
+    },
 };
 
-use crate::handlers::{DefinitionHandler, completions::{try_build_namespace_path, is_namespace_prefix}};
+use crate::handlers::{
+    DefinitionHandler,
+    completions::{is_namespace_prefix, try_build_namespace_path},
+};
 
 impl<'db> DefinitionHandler<'db> for HirNode<'db> {
-    fn definition(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<GotoDefinitionResponse> {
+    fn definition(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        offset: usize,
+    ) -> Option<GotoDefinitionResponse> {
         match self {
             HirNode::Namespace(ns) => ns.definition(db, offset),
             HirNode::Using(u) => u.definition(db, offset),
@@ -37,19 +56,31 @@ impl<'db> DefinitionHandler<'db> for HirNode<'db> {
 }
 
 impl<'db> DefinitionHandler<'db> for NamespaceDecl<'db> {
-    fn definition(&'db self, db: &'db dyn WorkspaceDataBase, _offset: usize) -> Option<GotoDefinitionResponse> {
+    fn definition(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        _offset: usize,
+    ) -> Option<GotoDefinitionResponse> {
         namespace_definitions(db, *self.path(db))
     }
 }
 
 impl<'db> DefinitionHandler<'db> for Using<'db> {
-    fn definition(&'db self, db: &'db dyn WorkspaceDataBase, _offset: usize) -> Option<GotoDefinitionResponse> {
+    fn definition(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        _offset: usize,
+    ) -> Option<GotoDefinitionResponse> {
         namespace_definitions(db, self.path(db).path)
     }
 }
 
 impl<'db> DefinitionHandler<'db> for Pou<'db> {
-    fn definition(&'db self, db: &'db dyn WorkspaceDataBase, _offset: usize) -> Option<GotoDefinitionResponse> {
+    fn definition(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        _offset: usize,
+    ) -> Option<GotoDefinitionResponse> {
         Some(GotoDefinitionResponse::Scalar(Location::new(
             self.get_scope_id(db).file(db).url(db).to_owned(),
             self.get_span(db).into(),
@@ -58,19 +89,31 @@ impl<'db> DefinitionHandler<'db> for Pou<'db> {
 }
 
 impl<'db> DefinitionHandler<'db> for VariableDecl<'db> {
-    fn definition(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<GotoDefinitionResponse> {
+    fn definition(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        offset: usize,
+    ) -> Option<GotoDefinitionResponse> {
         self.spec(db).definition(db, offset)
     }
 }
 
 impl<'db> DefinitionHandler<'db> for StructElement<'db> {
-    fn definition(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<GotoDefinitionResponse> {
+    fn definition(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        offset: usize,
+    ) -> Option<GotoDefinitionResponse> {
         self.spec(db).definition(db, offset)
     }
 }
 
 impl<'db> DefinitionHandler<'db> for Spec<'db> {
-    fn definition(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<GotoDefinitionResponse> {
+    fn definition(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        offset: usize,
+    ) -> Option<GotoDefinitionResponse> {
         // Check if offset is on a namespace fragment
         if let SpecKind::Target(target) = self.kind(db)
             && let Some(path) = &target.path.namespace
@@ -93,51 +136,77 @@ impl<'db> DefinitionHandler<'db> for Spec<'db> {
 }
 
 impl<'db> DefinitionHandler<'db> for InitExpr<'db> {
-    fn definition(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<GotoDefinitionResponse> {
+    fn definition(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        offset: usize,
+    ) -> Option<GotoDefinitionResponse> {
         self.infer(db).definition(db, offset)
     }
 }
 
 impl<'db> DefinitionHandler<'db> for BeginPathExpr<'db> {
-    fn definition(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<GotoDefinitionResponse> {
+    fn definition(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        offset: usize,
+    ) -> Option<GotoDefinitionResponse> {
         self.infer(db).definition(db, offset)
     }
 }
 
 impl<'db> DefinitionHandler<'db> for PathExpr<'db> {
-    fn definition(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<GotoDefinitionResponse> {
+    fn definition(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        offset: usize,
+    ) -> Option<GotoDefinitionResponse> {
         let ty = self.infer(db);
-        if ty.is_never() {
-            if let Some(ns_path) = try_build_namespace_path(db, self) {
-                if is_namespace_prefix(db, ns_path) {
+        if ty.is_never()
+            && let Some(ns_path) = try_build_namespace_path(db, self)
+                && is_namespace_prefix(db, ns_path) {
                     return namespace_definitions(db, ns_path);
                 }
-            }
-        }
         ty.definition(db, offset)
     }
 }
 
 impl<'db> DefinitionHandler<'db> for VariableAccess<'db> {
-    fn definition(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<GotoDefinitionResponse> {
+    fn definition(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        offset: usize,
+    ) -> Option<GotoDefinitionResponse> {
         self.infer(db).definition(db, offset)
     }
 }
 
 impl<'db> DefinitionHandler<'db> for Expr<'db> {
-    fn definition(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<GotoDefinitionResponse> {
+    fn definition(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        offset: usize,
+    ) -> Option<GotoDefinitionResponse> {
         self.infer(db).definition(db, offset)
     }
 }
 
 impl<'db> DefinitionHandler<'db> for ParamAssign<'db> {
-    fn definition(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<GotoDefinitionResponse> {
+    fn definition(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        offset: usize,
+    ) -> Option<GotoDefinitionResponse> {
         self.infer(db).definition(db, offset)
     }
 }
 
 impl<'db> DefinitionHandler<'db> for Type<'db> {
-    fn definition(&'db self, db: &'db dyn WorkspaceDataBase, _offset: usize) -> Option<GotoDefinitionResponse> {
+    fn definition(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        _offset: usize,
+    ) -> Option<GotoDefinitionResponse> {
         let loc: &'db dyn HirNodeInfo<'db> = match self {
             Type::CallableType(c) => return c.definition(db, _offset),
             Type::Program(p) => p as _,
@@ -166,7 +235,11 @@ impl<'db> DefinitionHandler<'db> for Type<'db> {
 }
 
 impl<'db> DefinitionHandler<'db> for CallableType<'db> {
-    fn definition(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<GotoDefinitionResponse> {
+    fn definition(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        offset: usize,
+    ) -> Option<GotoDefinitionResponse> {
         match self {
             CallableType::Function(f) => Pou::Function(*f).definition(db, offset),
             CallableType::FunctionBlock(fb) => Pou::FunctionBlock(*fb).definition(db, offset),
@@ -179,7 +252,11 @@ impl<'db> DefinitionHandler<'db> for CallableType<'db> {
 }
 
 impl<'db> DefinitionHandler<'db> for ConfigDecl<'db> {
-    fn definition(&'db self, db: &'db dyn WorkspaceDataBase, _offset: usize) -> Option<GotoDefinitionResponse> {
+    fn definition(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        _offset: usize,
+    ) -> Option<GotoDefinitionResponse> {
         Some(GotoDefinitionResponse::Scalar(Location::new(
             self.get_scope_id(db).file(db).url(db).to_owned(),
             self.get_name_span(db).into(),
@@ -188,7 +265,11 @@ impl<'db> DefinitionHandler<'db> for ConfigDecl<'db> {
 }
 
 impl<'db> DefinitionHandler<'db> for TaskConfig<'db> {
-    fn definition(&'db self, db: &'db dyn WorkspaceDataBase, _offset: usize) -> Option<GotoDefinitionResponse> {
+    fn definition(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        _offset: usize,
+    ) -> Option<GotoDefinitionResponse> {
         Some(GotoDefinitionResponse::Scalar(Location::new(
             self.get_scope_id(db).file(db).url(db).to_owned(),
             self.name(db).get_span(db).into(),
@@ -197,16 +278,19 @@ impl<'db> DefinitionHandler<'db> for TaskConfig<'db> {
 }
 
 impl<'db> DefinitionHandler<'db> for ProgConfig<'db> {
-    fn definition(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<GotoDefinitionResponse> {
+    fn definition(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        offset: usize,
+    ) -> Option<GotoDefinitionResponse> {
         // Check if cursor is on the WITH <task> reference
         if let Some(task_ref) = self.task(db) {
             let span = task_ref.get_span(db);
             if offset >= span.start_byte && offset <= span.end_byte {
-                if let ScopeKind::Config(config) = get_scope(db, self.scope_id(db)).kind {
-                    if let Some(task) = infer_config_result(db, config).task_of_prog.get(self) {
+                if let ScopeKind::Config(config) = get_scope(db, self.scope_id(db)).kind
+                    && let Some(task) = infer_config_result(db, config).task_of_prog.get(self) {
                         return task.definition(db, task.name(db).get_span(db).start_byte);
                     }
-                }
                 return None;
             }
         }
@@ -215,8 +299,8 @@ impl<'db> DefinitionHandler<'db> for ProgConfig<'db> {
     }
 }
 
-fn namespace_definitions<'db>(
-    db: &'db dyn WorkspaceDataBase,
+fn namespace_definitions(
+    db: &dyn WorkspaceDataBase,
     path: NamespacePath,
 ) -> Option<GotoDefinitionResponse> {
     let decls: Vec<_> = namespace_index(db, path)

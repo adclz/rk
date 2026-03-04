@@ -2,7 +2,10 @@ use auto_lsp::{default::db::BaseDatabase, lsp_types::Url};
 use db::RootDatabase;
 use hir::HirNodeInfo;
 use ide_proto::{
-    handlers::{CompletionHandler, CompletionRequest, completions_utils::{CompletionCtx, QueryMode}},
+    handlers::{
+        CompletionHandler, CompletionRequest,
+        completions_utils::{CompletionCtx, QueryMode},
+    },
     walk::{completion_descendant_at, descendant_at},
 };
 use rstest::rstest;
@@ -39,9 +42,12 @@ END_FUNCTION
 
     add_sources(&mut with_db, &[ns_source, body_source]);
     // body_source is the second file (index 1)
-    let file = with_db.get_file(&Url::parse("file:///test1.st").unwrap()).unwrap();
+    let file = with_db
+        .get_file(&Url::parse("file:///test1.st").unwrap())
+        .unwrap();
     let offset = body_source.find("System.").unwrap() + "System.".len();
-    let (node, node_key, is_last_before) = completion_descendant_at(&with_db, file, offset).unwrap();
+    let (node, node_key, is_last_before) =
+        completion_descendant_at(&with_db, file, offset).unwrap();
     let req = CompletionRequest {
         offset,
         trigger_character: Some(".".into()),
@@ -84,9 +90,12 @@ END_FUNCTION
 "#;
 
     add_sources(&mut with_db, &[ns_source, body_source]);
-    let file = with_db.get_file(&Url::parse("file:///test1.st").unwrap()).unwrap();
+    let file = with_db
+        .get_file(&Url::parse("file:///test1.st").unwrap())
+        .unwrap();
     let offset = body_source.find("System.").unwrap() + "System.".len();
-    let (node, node_key, is_last_before) = completion_descendant_at(&with_db, file, offset).unwrap();
+    let (node, node_key, is_last_before) =
+        completion_descendant_at(&with_db, file, offset).unwrap();
     let req = CompletionRequest {
         offset,
         trigger_character: Some(".".into()),
@@ -133,9 +142,12 @@ END_FUNCTION
 "#;
 
     add_sources(&mut with_db, &[ns_source, body_source]);
-    let file = with_db.get_file(&Url::parse("file:///test1.st").unwrap()).unwrap();
+    let file = with_db
+        .get_file(&Url::parse("file:///test1.st").unwrap())
+        .unwrap();
     let offset = body_source.find("System.Math.").unwrap() + "System.Math.".len();
-    let (node, node_key, is_last_before) = completion_descendant_at(&with_db, file, offset).unwrap();
+    let (node, node_key, is_last_before) =
+        completion_descendant_at(&with_db, file, offset).unwrap();
     let req = CompletionRequest {
         offset,
         trigger_character: Some(".".into()),
@@ -173,12 +185,8 @@ END_FUNCTION
 "#;
 
     add_sources(&mut with_db, &[source]);
-    let pou = find_pou_with_name(
-        &with_db,
-        *with_db.get_files().iter().last().unwrap(),
-        "fn1",
-    )
-    .unwrap();
+    let pou =
+        find_pou_with_name(&with_db, *with_db.get_files().iter().last().unwrap(), "fn1").unwrap();
 
     let offset = source.find("x : INT").unwrap() + 1;
     let mut ctx = CompletionCtx::new(offset, QueryMode::Head);
@@ -217,12 +225,8 @@ END_FUNCTION
 "#;
 
     add_sources(&mut with_db, &[source]);
-    let pou = find_pou_with_name(
-        &with_db,
-        *with_db.get_files().iter().last().unwrap(),
-        "fn1",
-    )
-    .unwrap();
+    let pou =
+        find_pou_with_name(&with_db, *with_db.get_files().iter().last().unwrap(), "fn1").unwrap();
 
     let offset = source.find("x : INT").unwrap() + 1;
     let mut ctx = CompletionCtx::new(offset, QueryMode::Head);
@@ -260,12 +264,8 @@ END_FUNCTION
 "#;
 
     add_sources(&mut with_db, &[source]);
-    let pou = find_pou_with_name(
-        &with_db,
-        *with_db.get_files().iter().last().unwrap(),
-        "fn1",
-    )
-    .unwrap();
+    let pou =
+        find_pou_with_name(&with_db, *with_db.get_files().iter().last().unwrap(), "fn1").unwrap();
 
     let offset = source.find("x : REAL;\nEND_VAR").unwrap() + "x : REAL;\nEND_VAR\n".len();
     let mut ctx = CompletionCtx::new(offset, QueryMode::Body);
@@ -310,7 +310,9 @@ END_FUNCTION
 "#;
 
     add_sources(&mut with_db, &[ns_source, body_source]);
-    let file = with_db.get_file(&Url::parse("file:///test1.st").unwrap()).unwrap();
+    let file = with_db
+        .get_file(&Url::parse("file:///test1.st").unwrap())
+        .unwrap();
     // Cursor at the end of `System.M`
     let offset = body_source.find("System.M").unwrap() + "System.M".len();
     let node = descendant_at(&with_db, file, offset).unwrap();
@@ -372,7 +374,9 @@ END_FUNCTION
 "#;
 
     add_sources(&mut with_db, &[ns_source, body_source]);
-    let file = with_db.get_file(&Url::parse("file:///test1.st").unwrap()).unwrap();
+    let file = with_db
+        .get_file(&Url::parse("file:///test1.st").unwrap())
+        .unwrap();
     let offset = body_source.find("System.Math.S").unwrap() + "System.Math.S".len();
     let node = descendant_at(&with_db, file, offset).unwrap();
     let req = CompletionRequest {

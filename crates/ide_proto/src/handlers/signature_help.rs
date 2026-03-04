@@ -1,8 +1,6 @@
 use auto_lsp::{
     default::db::file::File,
-    lsp_types::{
-        ParameterInformation, ParameterLabel, SignatureHelp, SignatureInformation,
-    },
+    lsp_types::{ParameterInformation, ParameterLabel, SignatureHelp, SignatureInformation},
 };
 use db::WorkspaceDataBase;
 use hir::{
@@ -24,8 +22,8 @@ use hir::{
 use crate::walk::WalkHir;
 
 /// Find signature help for the function call or TASK configuration enclosing the given offset.
-pub fn find_signature_help<'db>(
-    db: &'db dyn WorkspaceDataBase,
+pub fn find_signature_help(
+    db: &dyn WorkspaceDataBase,
     file: File,
     offset: usize,
 ) -> Option<SignatureHelp> {
@@ -37,8 +35,8 @@ pub fn find_signature_help<'db>(
 }
 
 /// Find signature help for a TASK configuration init at the given offset.
-fn find_task_signature_help<'db>(
-    db: &'db dyn WorkspaceDataBase,
+fn find_task_signature_help(
+    db: &dyn WorkspaceDataBase,
     file: File,
     offset: usize,
 ) -> Option<SignatureHelp> {
@@ -94,8 +92,8 @@ fn find_task_signature_help<'db>(
 }
 
 /// Find signature help for a function call enclosing the given offset.
-fn find_func_call_signature_help<'db>(
-    db: &'db dyn WorkspaceDataBase,
+fn find_func_call_signature_help(
+    db: &dyn WorkspaceDataBase,
     file: File,
     offset: usize,
 ) -> Option<SignatureHelp> {
@@ -286,7 +284,13 @@ fn find_func_call_in_stmts<'db>(
             StmtKind::Assignment { target, .. } | StmtKind::AssignmentAttempt { target, .. } => {
                 find_func_call_in_expr(db, target, offset, best);
             }
-            StmtKind::If { condition, then, else_if, else_, .. } => {
+            StmtKind::If {
+                condition,
+                then,
+                else_if,
+                else_,
+                ..
+            } => {
                 find_func_call_in_expr(db, condition, offset, best);
                 if let Some(stmts) = then {
                     find_func_call_in_stmts(db, stmts, offset, best);
@@ -299,7 +303,11 @@ fn find_func_call_in_stmts<'db>(
                     find_func_call_in_stmts(db, stmts, offset, best);
                 }
             }
-            StmtKind::Case { condition, cases, else_ } => {
+            StmtKind::Case {
+                condition,
+                cases,
+                else_,
+            } => {
                 find_func_call_in_expr(db, condition, offset, best);
                 for (kinds, stmts) in cases {
                     for kind in kinds {
@@ -317,7 +325,9 @@ fn find_func_call_in_stmts<'db>(
                     find_func_call_in_stmts(db, stmts, offset, best);
                 }
             }
-            StmtKind::For { body, .. } | StmtKind::While { body, .. } | StmtKind::Repeat { body, .. } => {
+            StmtKind::For { body, .. }
+            | StmtKind::While { body, .. }
+            | StmtKind::Repeat { body, .. } => {
                 find_func_call_in_stmts(db, body, offset, best);
             }
             _ => {}

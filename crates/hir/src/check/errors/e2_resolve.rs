@@ -30,8 +30,8 @@ use crate::{
         ty::{CallableType, Type},
     },
     query_string::{
-        method::fuzzy_callable_type_parameters, query::Query,
-        scope::SymbolSearch, strukt::fuzzy_struct_fields,
+        method::fuzzy_callable_type_parameters, query::Query, scope::SymbolSearch,
+        strukt::fuzzy_struct_fields,
     },
 };
 
@@ -401,12 +401,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                                 .search(db);
                             let items: Vec<_> = results.namespaces().copied().collect();
 
-                            list_namespace_candidates(
-                                db,
-                                path.to_string(db),
-                                &mut diag,
-                                &items,
-                            );
+                            list_namespace_candidates(db, path.to_string(db), &mut diag, &items);
                         }
                     }
                 }
@@ -625,11 +620,13 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     *counts.entry(*ns).or_insert(0usize) += 1;
                 }
 
-                let duplicated: Vec<_> = counts.iter()
+                let duplicated: Vec<_> = counts
+                    .iter()
                     .filter(|(_, count)| **count > 1)
                     .map(|(ns, _)| ns.to_string(db))
                     .collect();
-                let distinct: Vec<_> = counts.iter()
+                let distinct: Vec<_> = counts
+                    .iter()
                     .filter(|(_, count)| **count == 1)
                     .map(|(ns, _)| ns.to_string(db))
                     .collect();

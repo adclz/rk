@@ -6,18 +6,17 @@ use hir::{
         expressions::{
             expression::{BeginPathExpr, Expr, InitExpr, ParamAssign, PathExpr, VariableAccess},
             spec::{Spec, StructElement},
-        }, hir_node::HirNode, pous::variable::VariableDecl
+        },
+        hir_node::HirNode,
+        pous::variable::VariableDecl,
     },
     hir_ty::{infer::Infer, ty::Type},
 };
 
-use crate::{handlers::DeclarationHandler};
+use crate::handlers::DeclarationHandler;
 
 impl<'db> DeclarationHandler<'db> for HirNode<'db> {
-    fn declaration(
-        &'db self,
-        db: &'db dyn WorkspaceDataBase,
-    ) -> Option<GotoDeclarationResponse> {
+    fn declaration(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDeclarationResponse> {
         match self {
             HirNode::VariableDecl(v) => v.declaration(db),
             HirNode::StructElement(s) => s.declaration(db),

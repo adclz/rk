@@ -26,11 +26,11 @@ use auto_lsp::lsp_types::FoldingRangeProviderCapability;
 use auto_lsp::lsp_types::GlobPattern;
 use auto_lsp::lsp_types::HoverProviderCapability;
 use auto_lsp::lsp_types::ImplementationProviderCapability;
-use auto_lsp::lsp_types::SignatureHelpOptions;
 use auto_lsp::lsp_types::PublishDiagnosticsParams;
 use auto_lsp::lsp_types::Registration;
 use auto_lsp::lsp_types::RegistrationParams;
 use auto_lsp::lsp_types::ServerCapabilities;
+use auto_lsp::lsp_types::SignatureHelpOptions;
 use auto_lsp::lsp_types::Url;
 use auto_lsp::lsp_types::WatchKind;
 use auto_lsp::lsp_types::WorkDoneProgressOptions;
@@ -61,9 +61,9 @@ use auto_lsp::lsp_types::request::InlayHintRequest;
 use auto_lsp::lsp_types::request::References;
 use auto_lsp::lsp_types::request::RegisterCapability;
 use auto_lsp::lsp_types::request::Rename;
-use auto_lsp::lsp_types::request::SignatureHelpRequest;
 use auto_lsp::lsp_types::request::SemanticTokensFullRequest;
 use auto_lsp::lsp_types::request::SemanticTokensRangeRequest;
+use auto_lsp::lsp_types::request::SignatureHelpRequest;
 use auto_lsp::lsp_types::request::WorkspaceDiagnosticRequest;
 use auto_lsp::lsp_types::{
     OneOf, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
@@ -98,8 +98,8 @@ use crate::capabilties::implementation::go_to_implementation;
 use crate::capabilties::inlay_hints::inlay_hints;
 use crate::capabilties::references::references;
 use crate::capabilties::rename::rename;
-use crate::capabilties::signature_help::signature_help;
 use crate::capabilties::semantic_tokens;
+use crate::capabilties::signature_help::signature_help;
 
 pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
     log::info!("Starting IEC LSP");
@@ -263,7 +263,7 @@ fn on_notifications(
                         return Ok(());
                     }
                     Ok(change_text_document(s, p)?)
-                },
+                }
                 false => {
                     // tracing::trace!("Ignored DidChangeTextDocument for non-.st file: {}", p.text_document.uri);
                     Ok(())

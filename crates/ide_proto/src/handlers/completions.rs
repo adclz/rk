@@ -8,18 +8,24 @@ use hir::{
             expression::{Expr, InitExpr, PathExpr, PathExprKind, VariableAccess},
             invocation::Invocation,
             spec::{Spec, SpecKind},
-        }, hir_node::HirNode, interned::namespace::NamespacePath, namespace::NamespaceDecl, pous::pou::Pou, program::ProgramDecl, scope::ScopeKind, semantic_index::{NodeKey, get_scope, semantic_index}, using::Using
+        },
+        hir_node::HirNode,
+        interned::namespace::NamespacePath,
+        namespace::NamespaceDecl,
+        pous::pou::Pou,
+        program::ProgramDecl,
+        scope::ScopeKind,
+        semantic_index::{NodeKey, get_scope, semantic_index},
+        using::Using,
     },
-    hir_ty::{infer::Infer, index_graphs::namespace_index},
+    hir_ty::{index_graphs::namespace_index, infer::Infer},
     query_string::{query::Query, scope::SymbolSearch},
 };
 use rustc_hash::FxHashSet;
 
-use crate::{
-    handlers::{
-        CompletionHandler, CompletionRequest,
-        completions_utils::{CompletionCtx, QueryMode, pou_context::HeadLocation, static_snippets},
-    },
+use crate::handlers::{
+    CompletionHandler, CompletionRequest,
+    completions_utils::{CompletionCtx, QueryMode, pou_context::HeadLocation, static_snippets},
 };
 
 /// Walk up a PathExpr's field chain to collect the full ident path.
@@ -69,22 +75,17 @@ impl<'db> CompletionHandler<'db> for HirNode<'db> {
         req: &CompletionRequest,
     ) -> Option<Vec<CompletionItem>> {
         match self {
-            HirNode::InitExpr(i) => i.completion(
-                db,
-                &req.with_query(i.to_string(db).to_owned()),
-            ),
+            HirNode::InitExpr(i) => i.completion(db, &req.with_query(i.to_string(db).to_owned())),
             HirNode::PathExpr(p) => {
                 // For is_last_before with trailing dot, try namespace completion
                 // before delegating to parent (Field delegation loses namespace context)
-                if req.is_last_before {
-                    if let Some(ns_path) = try_build_namespace_path(db, p) {
-                        if is_namespace_prefix(db, ns_path) {
+                if req.is_last_before
+                    && let Some(ns_path) = try_build_namespace_path(db, p)
+                        && is_namespace_prefix(db, ns_path) {
                             let mut ctx = CompletionCtx::new(req.offset, QueryMode::Body);
                             ctx.namespace_completion(ns_path, db);
                             return Some(ctx.take_items());
                         }
-                    }
-                }
 
                 // For non-leaf path expressions (field/index/deref), derive the parent
                 // on-demand and use its completions (the current node is likely incomplete)
@@ -93,29 +94,22 @@ impl<'db> CompletionHandler<'db> for HirNode<'db> {
                     PathExprKind::Field(f) => {
                         // Check if the parent path is a namespace before delegating.
                         // e.g. `System.M|` → parent is `System` → show namespace children
-                        if let Some(parent_ns) = try_build_namespace_path(db, &f.path) {
-                            if is_namespace_prefix(db, parent_ns) {
+                        if let Some(parent_ns) = try_build_namespace_path(db, &f.path)
+                            && is_namespace_prefix(db, parent_ns) {
                                 let mut ctx = CompletionCtx::new(req.offset, QueryMode::Body);
                                 ctx.namespace_completion(parent_ns, db);
                                 return Some(ctx.take_items());
                             }
-                        }
                         // Not a namespace → regular field delegation
                         Some(f.path.completion(db, &child_req).unwrap_or_default())
                     }
-                    PathExprKind::Index(i) => Some(
-                        i.path
-                            .completion(db, &child_req)
-                            .unwrap_or_default(),
-                    ),
-                    PathExprKind::Deref(d) => Some(
-                        d.path
-                            .completion(db, &child_req)
-                            .unwrap_or_default(),
-                    ),
-                    PathExprKind::VarAccess(_) => {
-                        p.completion(db, &child_req)
+                    PathExprKind::Index(i) => {
+                        Some(i.path.completion(db, &child_req).unwrap_or_default())
                     }
+                    PathExprKind::Deref(d) => {
+                        Some(d.path.completion(db, &child_req).unwrap_or_default())
+                    }
+                    PathExprKind::VarAccess(_) => p.completion(db, &child_req),
                 }
             }
             HirNode::Spec(s) => s.completion(
@@ -298,11 +292,13 @@ impl<'db> CompletionHandler<'db> for PathExpr<'db> {
                 loop {
                     if let Some(node) = sema.node_index.get(key) {
                         // checks this is both a PathExpr and that it resolved to a non-never type
-                        if let HirNode::PathExpr(p) = node && !p.infer(db).is_never() {
-                            last_path = Some(p); 
+                        if let HirNode::PathExpr(p) = node
+                            && !p.infer(db).is_never()
+                        {
+                            last_path = Some(p);
                             key = NodeKey::from_usize(key.index().saturating_add(1));
                         } else {
-                            break
+                            break;
                         }
                     } else {
                         break;
@@ -314,7 +310,6 @@ impl<'db> CompletionHandler<'db> for PathExpr<'db> {
                     return Some(ctx.take_items());
                 }
             }
-            
         }
 
         let ty = self.infer(db);
@@ -327,18 +322,23 @@ impl<'db> CompletionHandler<'db> for PathExpr<'db> {
         // Check if path chain forms a namespace (e.g. typing `System.Ma|`)
         // Only for multi-fragment paths - single identifiers like `S` are handled
         // by scope_completion which includes root-level namespace fragments.
-        if let Some(ns_path) = try_build_namespace_path(db, self) {
-            if ns_path.fragments(db).len() > 1 && is_namespace_prefix(db, ns_path) {
+        if let Some(ns_path) = try_build_namespace_path(db, self)
+            && ns_path.fragments(db).len() > 1 && is_namespace_prefix(db, ns_path) {
                 ctx.namespace_completion(ns_path, db);
                 return Some(ctx.take_items());
             }
-        }
 
         // check if we're in a pou/program body, if so add all statements as completion items
         let scope = get_scope(db, self.get_scope_id(db));
         let in_body = match scope.kind {
-            ScopeKind::Pou(pou) => ctx.located_pou_completion(pou, db).head_location.is_in_body(),
-            ScopeKind::Program(prog) => ctx.located_program_completion(prog, db).head_location.is_in_body(),
+            ScopeKind::Pou(pou) => ctx
+                .located_pou_completion(pou, db)
+                .head_location
+                .is_in_body(),
+            ScopeKind::Program(prog) => ctx
+                .located_program_completion(prog, db)
+                .head_location
+                .is_in_body(),
             _ => false,
         };
         if in_body {
@@ -369,8 +369,14 @@ impl<'db> CompletionHandler<'db> for VariableAccess<'db> {
         // check if we're in a pou/program body, if so add all statements as completion items
         let scope = get_scope(db, self.get_scope_id(db));
         let in_body = match scope.kind {
-            ScopeKind::Pou(pou) => ctx.located_pou_completion(pou, db).head_location.is_in_body(),
-            ScopeKind::Program(prog) => ctx.located_program_completion(prog, db).head_location.is_in_body(),
+            ScopeKind::Pou(pou) => ctx
+                .located_pou_completion(pou, db)
+                .head_location
+                .is_in_body(),
+            ScopeKind::Program(prog) => ctx
+                .located_program_completion(prog, db)
+                .head_location
+                .is_in_body(),
             _ => false,
         };
         if in_body {
@@ -400,8 +406,14 @@ impl<'db> CompletionHandler<'db> for Expr<'db> {
         // check if we're in a pou/program body, if so add all statements as completion items
         let scope = get_scope(db, self.get_scope_id(db));
         let in_body = match scope.kind {
-            ScopeKind::Pou(pou) => ctx.located_pou_completion(pou, db).head_location.is_in_body(),
-            ScopeKind::Program(prog) => ctx.located_program_completion(prog, db).head_location.is_in_body(),
+            ScopeKind::Pou(pou) => ctx
+                .located_pou_completion(pou, db)
+                .head_location
+                .is_in_body(),
+            ScopeKind::Program(prog) => ctx
+                .located_program_completion(prog, db)
+                .head_location
+                .is_in_body(),
             _ => false,
         };
         if in_body {

@@ -4,7 +4,8 @@ use auto_lsp::{
         semantic_tokens_builder::SemanticTokensBuilder,
     },
     lsp_types::{
-        CodeLens, CompletionItem, GotoDefinitionResponse, Hover, InlayHint, Location, WorkspaceEdit,
+        CodeLens, CompletionItem, GotoDefinitionResponse, Hover, InlayHint, Location,
+        WorkspaceEdit,
         request::{GotoDeclarationResponse, GotoImplementationResponse},
     },
 };
@@ -69,7 +70,11 @@ pub trait CompletionHandler<'db> {
 }
 
 pub trait DefinitionHandler<'db> {
-    fn definition(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<GotoDefinitionResponse>;
+    fn definition(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        offset: usize,
+    ) -> Option<GotoDefinitionResponse>;
 }
 
 pub trait DeclarationHandler<'db> {
@@ -97,11 +102,7 @@ pub trait ReferencesHandler<'db> {
 }
 
 pub trait RenameHandler<'db> {
-    fn rename(
-        &'db self,
-        db: &'db dyn WorkspaceDataBase,
-        new_name: &str,
-    ) -> Option<WorkspaceEdit>;
+    fn rename(&'db self, db: &'db dyn WorkspaceDataBase, new_name: &str) -> Option<WorkspaceEdit>;
 }
 
 pub trait DocumentSymbolsHandler<'db> {

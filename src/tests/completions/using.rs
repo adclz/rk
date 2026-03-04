@@ -26,7 +26,13 @@ END_NAMESPACE
     let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
     let using = sema.scope.usings(&with_db).first().unwrap();
 
-    let req = CompletionRequest { offset: 6, trigger_character: None, query: "".into(), node_index_pos: None, is_last_before: false };
+    let req = CompletionRequest {
+        offset: 6,
+        trigger_character: None,
+        query: "".into(),
+        node_index_pos: None,
+        is_last_before: false,
+    };
     let completions = using.completion(&with_db, &req).unwrap();
 
     assert_eq!(completions.len(), 1);
@@ -53,7 +59,16 @@ END_NAMESPACE
     let using = sema.scope.usings(&with_db).first().unwrap();
 
     let completions = using
-        .completion(&with_db, &CompletionRequest { offset: 6, trigger_character: Some(".".into()), query: "".into(), node_index_pos: None, is_last_before: false })
+        .completion(
+            &with_db,
+            &CompletionRequest {
+                offset: 6,
+                trigger_character: Some(".".into()),
+                query: "".into(),
+                node_index_pos: None,
+                is_last_before: false,
+            },
+        )
         .unwrap();
 
     assert_eq!(completions.len(), 2);
@@ -80,7 +95,13 @@ END_NAMESPACE
     let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
     let using = sema.scope.usings(&with_db).first().unwrap();
 
-    let req = CompletionRequest { offset: 7, trigger_character: None, query: "".into(), node_index_pos: None, is_last_before: false };
+    let req = CompletionRequest {
+        offset: 7,
+        trigger_character: None,
+        query: "".into(),
+        node_index_pos: None,
+        is_last_before: false,
+    };
     let completions = using.completion(&with_db, &req).unwrap();
 
     assert_eq!(completions.len(), 2);
@@ -113,7 +134,16 @@ END_NAMESPACE
     let using = sema.scope.usings(&with_db).first().unwrap();
 
     let completions = using
-        .completion(&with_db, &CompletionRequest { offset: 6, trigger_character: Some(".".into()), query: "".into(), node_index_pos: None, is_last_before: false })
+        .completion(
+            &with_db,
+            &CompletionRequest {
+                offset: 6,
+                trigger_character: Some(".".into()),
+                query: "".into(),
+                node_index_pos: None,
+                is_last_before: false,
+            },
+        )
         .unwrap();
 
     assert_eq!(completions.len(), 2);

@@ -16,8 +16,8 @@ use crate::hir_def::pous::variable::DirectVariable;
 use crate::{
     hir_def::expressions::expression::{
         AddOperatorKind, BooleanOperatorKind, ComparisonOperatorKind, Elementary, Expr, ExprKind,
-        FoldOperatorKind, MultOperatorKind, PathExprKind, PrimaryExpr, RefValue,
-        UnaryOperatorKind, VarAccess, VariableAccess,
+        FoldOperatorKind, MultOperatorKind, PathExprKind, PrimaryExpr, RefValue, UnaryOperatorKind,
+        VarAccess, VariableAccess,
     },
     hir_def::interned::identifier::Ident,
 };

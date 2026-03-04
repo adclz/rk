@@ -92,8 +92,7 @@ impl<'db> Resolver<'db> {
                 true
             }
             name::NameResolution::Program(prog) => {
-                ctx.type_of_path_expr
-                    .insert(path_expr, Type::Program(prog));
+                ctx.type_of_path_expr.insert(path_expr, Type::Program(prog));
                 true
             }
             name::NameResolution::Ambiguous(candidates) => {
@@ -214,14 +213,14 @@ impl<'db> Resolver<'db> {
             if is_first_step
                 && let Some(Type::Variable((var, _))) =
                     ctx.type_of_path_expr.get(&step.get_expr(db))
+            {
+                let var_name = var.get_name_ident(db);
+                if let name::PouResolution::Found(pou) =
+                    name::pou_names_res(db, var_name, path_expr.scope_id(db))
                 {
-                    let var_name = var.get_name_ident(db);
-                    if let name::PouResolution::Found(pou) =
-                        name::pou_names_res(db, var_name, path_expr.scope_id(db))
-                    {
-                        ctx.variables_shadowing.insert(*var, pou);
-                    }
+                    ctx.variables_shadowing.insert(*var, pou);
                 }
+            }
 
             current = ctx.type_of_path_expr_with_adjustments(step.get_expr(db));
         }

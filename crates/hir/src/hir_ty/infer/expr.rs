@@ -102,18 +102,19 @@ impl<'db> InferExprCtx<'db> {
             }
             ExprKind::PrimaryExpr(primary) => {
                 if let PrimaryExpr::Literal(elem) = primary
-                    && let Err(err) = elem.check(db) {
-                        let ty: Type = (*elem).into();
-                        inference_results.errors.push(
-                            TypeError::InferLiteralError {
-                                expr: curr_expr,
-                                source: None,
-                                target: ty,
-                                err,
-                            }
-                            .to_diagnostic(db),
-                        );
-                    }
+                    && let Err(err) = elem.check(db)
+                {
+                    let ty: Type = (*elem).into();
+                    inference_results.errors.push(
+                        TypeError::InferLiteralError {
+                            expr: curr_expr,
+                            source: None,
+                            target: ty,
+                            err,
+                        }
+                        .to_diagnostic(db),
+                    );
+                }
                 let primary = self.infer_primary(db, primary, inference_results);
                 inference_results.type_of_expr.insert(curr_expr, primary);
                 inference_results.type_of_expr[&curr_expr]

@@ -192,13 +192,11 @@ fn resolve_prog_instance<'db>(
     p: &ProgConfig<'db>,
     instances: &mut FxHashMap<Ident, ProgramDecl<'db>>,
 ) {
-    if let SpecKind::Target(target) = p.prog_type(db).kind(db) {
-        if target.path.namespace.is_none() {
-            if let Some(prog) = program_index(db, target.path.target.ident) {
+    if let SpecKind::Target(target) = p.prog_type(db).kind(db)
+        && target.path.namespace.is_none()
+            && let Some(prog) = program_index(db, target.path.target.ident) {
                 instances.insert(p.name(db).ident, prog);
             }
-        }
-    }
 }
 
 fn validate_prog_config<'db>(

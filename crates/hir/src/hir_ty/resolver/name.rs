@@ -69,7 +69,6 @@ pub fn resolve_name<'db>(
     access: &NamespaceAccess<'db>,
     scope: ScopeId<'db>,
 ) -> NameResolution<'db> {
-    
     // Namespace-qualified names skip directly to namespace lookup (no ambiguity possible)
     if access.namespace.is_some() {
         return match resolve_namespace_access(db, access) {
@@ -111,11 +110,10 @@ pub fn resolve_name<'db>(
         PouResolution::Ambiguous(candidates) => NameResolution::Ambiguous(candidates),
         PouResolution::NotFound => {
             // 4. Program resolution (config scopes only — programs are not visible to other POUs)
-            if is_config_scope(db, scope) {
-                if let Some(prog) = program_index(db, name) {
+            if is_config_scope(db, scope)
+                && let Some(prog) = program_index(db, name) {
                     return NameResolution::Program(prog);
                 }
-            }
             NameResolution::NotFound
         }
     }

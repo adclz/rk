@@ -27,6 +27,5 @@ pub fn references(
             )
         })?;
 
-    Ok(descendant_at(db, file, position)
-        .and_then(|s| s.references(db)))
+    Ok(descendant_at(db, file, position).and_then(|s| s.references(db)))
 }

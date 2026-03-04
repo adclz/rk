@@ -391,7 +391,7 @@ END_FUNCTION_BLOCK
     let node = descendant_at(&with_db, file, offset).unwrap();
     let refs = node.locations(&with_db).unwrap();
 
-       assert_snapshot!(render_references(&with_db, &refs, "engine"), @r"
+    assert_snapshot!(render_references(&with_db, &refs, "engine"), @r"
        Advice: 4 reference(s) to 'engine'
            ,-[ file:///test0.st:7:9 ]
            |

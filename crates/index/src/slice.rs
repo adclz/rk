@@ -1,4 +1,3 @@
-
 use crate::Idx;
 use crate::vec::IndexVec;
 use std::fmt::{Debug, Formatter};

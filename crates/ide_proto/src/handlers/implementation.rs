@@ -9,13 +9,10 @@ use hir::{
     hir_def::{hir_node::HirNode, pous::pou::Pou, semantic_index::semantic_index},
 };
 
-use crate::{handlers::ImplementationHandler};
+use crate::handlers::ImplementationHandler;
 
-impl<'db> ImplementationHandler<'db> for  HirNode<'db> {
-    fn implementation(
-        &self,
-        db: &'db dyn WorkspaceDataBase,
-    ) -> Option<GotoImplementationResponse> {
+impl<'db> ImplementationHandler<'db> for HirNode<'db> {
+    fn implementation(&self, db: &'db dyn WorkspaceDataBase) -> Option<GotoImplementationResponse> {
         match self {
             HirNode::PouDecl(pou) => pou.implementation(db),
             _ => None,

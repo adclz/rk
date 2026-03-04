@@ -1,11 +1,9 @@
 use auto_lsp::lsp_types::{CodeLens, Command};
 use db::WorkspaceDataBase;
-use hir::{HasName, HirNodeInfo, hir_def::pous::pou::Pou, hir_def::hir_node::HirNode};
+use hir::{HasName, HirNodeInfo, hir_def::hir_node::HirNode, hir_def::pous::pou::Pou};
 use serde_json::to_value;
 
-use crate::{
-    handlers::{CodeLensHandler, implementation::find_all_implementations},
-};
+use crate::handlers::{CodeLensHandler, implementation::find_all_implementations};
 
 impl<'db> CodeLensHandler<'db> for HirNode<'db> {
     fn code_lens(&self, db: &'db dyn WorkspaceDataBase) -> Option<CodeLens> {

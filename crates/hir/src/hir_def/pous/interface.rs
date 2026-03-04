@@ -3,9 +3,7 @@ use db::WorkspaceDataBase;
 use crate::{
     AstId, HasName, HirNodeInfo,
     hir_def::{
-        expressions::spec::Spec,
-        interned::identifier::Ident,
-        pous::variable::VariableDecl,
+        expressions::spec::Spec, interned::identifier::Ident, pous::variable::VariableDecl,
         scope::ScopeId,
     },
 };

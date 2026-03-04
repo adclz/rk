@@ -3,7 +3,10 @@ use auto_lsp::{
     lsp_types::{CompletionParams, CompletionResponse},
 };
 use db::WorkspaceDataBase;
-use ide_proto::{handlers::{CompletionHandler, CompletionRequest}, walk::completion_descendant_at};
+use ide_proto::{
+    handlers::{CompletionHandler, CompletionRequest},
+    walk::completion_descendant_at,
+};
 
 pub fn completions(
     db: &impl WorkspaceDataBase,
@@ -54,8 +57,6 @@ pub fn completions(
         is_last_before,
     };
     Ok(Some(CompletionResponse::Array(
-        target
-            .completion(db, &req)
-            .unwrap_or_default(),
+        target.completion(db, &req).unwrap_or_default(),
     )))
 }

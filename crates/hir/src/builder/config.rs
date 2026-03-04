@@ -42,22 +42,33 @@ impl<'db> SemanticIndexBuilder<'db> {
                     decls.parse(self, &mut variables);
                 }
                 ConfigVariables::ERRVarNotAllowed(err) => {
-                    self.errors.push(SyntaxError::VarNotAllowed(err.get_span()).to_diagnostic(self.db));
+                    self.errors
+                        .push(SyntaxError::VarNotAllowed(err.get_span()).to_diagnostic(self.db));
                 }
                 ConfigVariables::ERRVarInOutNotAllowed(err) => {
-                    self.errors.push(SyntaxError::VarInOutNotAllowed(err.get_span()).to_diagnostic(self.db));
+                    self.errors.push(
+                        SyntaxError::VarInOutNotAllowed(err.get_span()).to_diagnostic(self.db),
+                    );
                 }
                 ConfigVariables::ERRVarTempNotAllowed(err) => {
-                    self.errors.push(SyntaxError::VarTempNotAllowed(err.get_span()).to_diagnostic(self.db));
-                } 
+                    self.errors.push(
+                        SyntaxError::VarTempNotAllowed(err.get_span()).to_diagnostic(self.db),
+                    );
+                }
                 ConfigVariables::ERRVarConfigNotAllowed(err) => {
-                    self.errors.push(SyntaxError::VarConfigNotAllowed(err.get_span()).to_diagnostic(self.db));
+                    self.errors.push(
+                        SyntaxError::VarConfigNotAllowed(err.get_span()).to_diagnostic(self.db),
+                    );
                 }
                 ConfigVariables::ERRVarLocatedNotAllowed(err) => {
-                    self.errors.push(SyntaxError::VarLocatedNotAllowed(err.get_span()).to_diagnostic(self.db));
+                    self.errors.push(
+                        SyntaxError::VarLocatedNotAllowed(err.get_span()).to_diagnostic(self.db),
+                    );
                 }
                 ConfigVariables::ERRVarExternalNotAllowed(err) => {
-                    self.errors.push(SyntaxError::VarExternalNotAllowed(err.get_span()).to_diagnostic(self.db));
+                    self.errors.push(
+                        SyntaxError::VarExternalNotAllowed(err.get_span()).to_diagnostic(self.db),
+                    );
                 }
             }
         }
@@ -186,7 +197,6 @@ impl<'db> SemanticIndexBuilder<'db> {
         let name = SpanIdent::from_node(self.db, self, tc.name.cast(self.ast))?;
         let init = tc.init.cast(self.ast);
 
-
         for err in init.children.iter() {
             match err.cast(self.ast) {
                 ast::generated::ERRIntervalAfterPriority_ERRSingleAfterInterval_ERRSingleAfterPriorty::ERRSingleAfterInterval(e) => {
@@ -220,7 +230,8 @@ impl<'db> SemanticIndexBuilder<'db> {
         let priority = priority.and_then(|r| self.try_parse(r));
 
         if priority.is_none() {
-            self.errors.push(SyntaxError::MissingPriority(tc.get_span()).to_diagnostic(self.db));
+            self.errors
+                .push(SyntaxError::MissingPriority(tc.get_span()).to_diagnostic(self.db));
         }
 
         let task = TaskConfig::new(

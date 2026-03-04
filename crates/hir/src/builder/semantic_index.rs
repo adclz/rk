@@ -9,7 +9,6 @@ use ide_diagnostic::IdeDiagnostic;
 use index::IndexVec;
 use rustc_hash::FxHashMap;
 
-use crate::{AstId, HirNodeInfo, Visibility};
 use crate::check::errors::ToIdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::config::ConfigDecl;
@@ -21,6 +20,7 @@ use crate::hir_def::program::ProgramDecl;
 use crate::hir_def::scope::{Scope, ScopeId, ScopeKind};
 use crate::hir_def::semantic_index::{NodeKey, SemanticIndex};
 use crate::hir_def::using::Using;
+use crate::{AstId, HirNodeInfo, Visibility};
 
 pub struct SemanticIndexBuilder<'db> {
     pub(crate) source: &'db ast::generated::SourceFile,
@@ -142,9 +142,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         id: AstId,
         scope_id: ScopeId<'db>,
     ) -> crate::hir_def::expressions::expression::Expr<'db> {
-        let expr = crate::hir_def::expressions::expression::Expr::new(
-            self.db, kind, id, scope_id,
-        );
+        let expr = crate::hir_def::expressions::expression::Expr::new(self.db, kind, id, scope_id);
         self.register_node(id, HirNode::Expr(expr));
         expr
     }
@@ -156,9 +154,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         id: AstId,
         scope_id: ScopeId<'db>,
     ) -> crate::hir_def::expressions::spec::Spec<'db> {
-        let spec = crate::hir_def::expressions::spec::Spec::new(
-            self.db, kind, id, scope_id,
-        );
+        let spec = crate::hir_def::expressions::spec::Spec::new(self.db, kind, id, scope_id);
         self.register_node(id, HirNode::Spec(spec));
         spec
     }
@@ -200,9 +196,8 @@ impl<'db> SemanticIndexBuilder<'db> {
         scope_id: ScopeId<'db>,
         kind: crate::hir_def::expressions::expression::ParamAssignKind<'db>,
     ) -> crate::hir_def::expressions::expression::ParamAssign<'db> {
-        let param = crate::hir_def::expressions::expression::ParamAssign::new(
-            self.db, id, scope_id, kind,
-        );
+        let param =
+            crate::hir_def::expressions::expression::ParamAssign::new(self.db, id, scope_id, kind);
         self.register_node(id, HirNode::Param(param));
         param
     }
@@ -233,9 +228,8 @@ impl<'db> SemanticIndexBuilder<'db> {
         id: AstId,
         scope_id: ScopeId<'db>,
     ) -> crate::hir_def::expressions::expression::PathExpr<'db> {
-        let path = crate::hir_def::expressions::expression::PathExpr::new(
-            self.db, kind, id, scope_id,
-        );
+        let path =
+            crate::hir_def::expressions::expression::PathExpr::new(self.db, kind, id, scope_id);
         self.register_node(id, HirNode::PathExpr(path));
         path
     }
@@ -247,9 +241,8 @@ impl<'db> SemanticIndexBuilder<'db> {
         id: AstId,
         scope_id: ScopeId<'db>,
     ) -> crate::hir_def::expressions::expression::InitExpr<'db> {
-        let init = crate::hir_def::expressions::expression::InitExpr::new(
-            self.db, kind, id, scope_id,
-        );
+        let init =
+            crate::hir_def::expressions::expression::InitExpr::new(self.db, kind, id, scope_id);
         self.register_node(id, HirNode::InitExpr(init));
         init
     }

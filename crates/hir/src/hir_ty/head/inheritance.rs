@@ -176,17 +176,15 @@ pub fn inherited_methods<'db>(
 
     match pou {
         Pou::Class(class) => {
-            if let Some(base) = class.extends(db) {
-                if let Some(pou) = resolve_spec_to_pou(db, base) {
+            if let Some(base) = class.extends(db)
+                && let Some(pou) = resolve_spec_to_pou(db, base) {
                     inherit_from(pou);
                 }
-            }
             for iface in class.implements(db) {
-                if let Some(pou) = resolve_spec_to_pou(db, iface) {
-                    if matches!(pou, Pou::Interface(_)) {
+                if let Some(pou) = resolve_spec_to_pou(db, iface)
+                    && matches!(pou, Pou::Interface(_)) {
                         inherit_from(pou);
                     }
-                }
             }
         }
 
@@ -201,18 +199,16 @@ pub fn inherited_methods<'db>(
         }
 
         Pou::FunctionBlock(fb) => {
-            if let Some(base) = fb.extends(db) {
-                if let Some(pou) = resolve_spec_to_pou(db, base) {
+            if let Some(base) = fb.extends(db)
+                && let Some(pou) = resolve_spec_to_pou(db, base) {
                     inherit_from(pou);
                 }
-            }
 
             for iface in fb.implements(db) {
-                if let Some(pou) = resolve_spec_to_pou(db, iface) {
-                    if matches!(pou, Pou::Interface(_)) {
+                if let Some(pou) = resolve_spec_to_pou(db, iface)
+                    && matches!(pou, Pou::Interface(_)) {
                         inherit_from(pou);
                     }
-                }
             }
         }
 

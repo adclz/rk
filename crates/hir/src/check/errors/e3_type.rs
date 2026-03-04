@@ -630,8 +630,9 @@ fn explicit_cast_suggestion(
     actual_site: CallSite,
     diag: &mut IdeDiagnostic,
 ) {
-    if let (Type::Elementary(lhs), Type::Elementary(rhs)) = (expected.normalize(db), actual.normalize(db)) {
-        if lhs.explicit_cast(rhs) {
+    if let (Type::Elementary(lhs), Type::Elementary(rhs)) =
+        (expected.normalize(db), actual.normalize(db))
+        && lhs.explicit_cast(rhs) {
             diag.with_related(Related::new(
                 format!(
                     "consider explicitly casting with '{}_TO_{}({})'",
@@ -655,5 +656,4 @@ fn explicit_cast_suggestion(
                 ..Default::default()
             });
         }
-    }
 }

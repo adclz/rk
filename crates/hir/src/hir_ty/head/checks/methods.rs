@@ -5,8 +5,7 @@ use rustc_hash::FxHashMap;
 use crate::{
     HirNodeInfo, Modifier,
     check::errors::{
-        ToIdeDiagnostic, e1_duplicates::DuplicateError,
-        e5_inheritance::InheritanceError,
+        ToIdeDiagnostic, e1_duplicates::DuplicateError, e5_inheritance::InheritanceError,
     },
     hir_def::{pous::pou::Pou, scope::ScopeKind, semantic_index::get_scope},
     hir_ty::{

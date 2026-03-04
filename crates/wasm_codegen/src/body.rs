@@ -768,9 +768,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                                     }
                                     LocalInfo::Memory { address, size, .. } => {
                                         // Load from memory location
-                                        func.instruction(&Instruction::I32Const(
-                                            *address as i32,
-                                        ));
+                                        func.instruction(&Instruction::I32Const(*address as i32));
 
                                         // Determine load instruction based on size
                                         // Memory variables are scalars that were allocated due to address-taken
@@ -1815,9 +1813,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                             func.instruction(&Instruction::LocalGet(*index));
                         }
                         LocalInfo::Memory { .. } => {
-                            return Err(
-                                "Cannot dereference memory-resident variable".to_string(),
-                            );
+                            return Err("Cannot dereference memory-resident variable".to_string());
                         }
                     }
                 } else {
@@ -2140,9 +2136,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
 
                 Ok(())
             }
-            PathExprKind::Deref(_) => {
-                Err("Unexpected Deref in emit_path_assignment".to_string())
-            }
+            PathExprKind::Deref(_) => Err("Unexpected Deref in emit_path_assignment".to_string()),
             PathExprKind::VarAccess(_) => {
                 Err("Unexpected VarAccess in PathExpr for assignment".to_string())
             }

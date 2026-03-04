@@ -91,7 +91,7 @@ VAR
 END_VAR
     my_func(x, y);
 END_FUNCTION
-"#; 
+"#;
 
     add_sources(&mut with_db, &[source]);
     let file = *with_db.get_files().iter().last().unwrap();

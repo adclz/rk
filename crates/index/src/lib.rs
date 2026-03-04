@@ -1,4 +1,3 @@
-
 //! Provides new-type wrappers for collections that are indexed by a [`Idx`] rather
 //! than `usize`.
 //!

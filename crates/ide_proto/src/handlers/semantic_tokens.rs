@@ -5,14 +5,14 @@ use hir::{
     hir_def::{
         expressions::{
             expression::{BeginPathExpr, Expr, ExprKind, PathExpr, PrimaryExpr, VariableAccess},
-            spec::{Spec, SpecKind, StructElement},
-        }, hir_node::HirNode, interned::namespace::NamespaceAccess, pous::{pou::Pou, variable::VariableDecl}, using::Using
+            spec::{Spec, SpecKind},
+        },
+        hir_node::HirNode,
+        interned::namespace::NamespaceAccess,
+        pous::pou::Pou,
+        using::Using,
     },
-    hir_ty::{
-        head::inheritance::MethodRef,
-        infer::Infer,
-        ty::Type,
-    },
+    hir_ty::{head::inheritance::MethodRef, infer::Infer, ty::Type},
 };
 
 use crate::{
@@ -83,7 +83,7 @@ impl<'db> SemanticTokensHandler<'db> for Spec<'db> {
             match self.kind(db) {
                 SpecKind::Target(t) => t.path.target.get_span(db),
                 _ => self.get_span(db),
-            }
+            },
         );
     }
 }

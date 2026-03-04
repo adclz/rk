@@ -2,12 +2,10 @@ use db::WorkspaceDataBase;
 
 use crate::{
     HirNodeInfo,
-    hir_def::{
-        expressions::{
-            expression::{BeginPathExpr, Expr, InitExpr, ParamAssign, PathExpr, VariableAccess},
-            invocation::Invocation,
-            spec::Spec,
-        },
+    hir_def::expressions::{
+        expression::{BeginPathExpr, Expr, InitExpr, ParamAssign, PathExpr, VariableAccess},
+        invocation::Invocation,
+        spec::Spec,
     },
     hir_ty::{
         body::infer_body,

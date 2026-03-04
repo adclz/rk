@@ -19,7 +19,7 @@ pub trait WalkHir<'db> {
 impl<'db> WalkHir<'db> for SemanticIndex<'db> {
     fn walk_hir<F: FnMut(HirNode<'db>) -> ControlFlow<()>>(
         &self,
-        db: &'db dyn WorkspaceDataBase,
+        _db: &'db dyn WorkspaceDataBase,
         f: &mut F,
     ) -> ControlFlow<()> {
         for node in self.node_index.iter() {
@@ -89,7 +89,11 @@ pub fn completion_descendant_at<'db>(
     // Only use last_before for PathExpr nodes — other node types (Using, Namespace, etc.)
     // should not trigger completions when the cursor is past them.
     match (&best_match, &last_before) {
-        (Some((_, best_idx, _)), Some((HirNode::PathExpr(_), last_idx, _))) if last_idx > best_idx => last_before,
+        (Some((_, best_idx, _)), Some((HirNode::PathExpr(_), last_idx, _)))
+            if last_idx > best_idx =>
+        {
+            last_before
+        }
         (Some(_), _) => best_match,
         (None, Some((HirNode::PathExpr(_), _, _))) => last_before,
         (None, _) => None,
