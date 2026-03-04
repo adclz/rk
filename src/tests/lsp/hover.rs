@@ -447,3 +447,60 @@ END_FUNCTION_BLOCK
     ```
     ");
 }
+
+#[rstest]
+pub fn hover_namespace_fragments_in_spec(mut with_db: RootDatabase) {
+    let source = r#"
+NAMESPACE System
+    FUNCTION_BLOCK Controller
+    END_FUNCTION_BLOCK
+END_NAMESPACE
+
+FUNCTION_BLOCK fb1
+    VAR
+        x : System.Controller;
+    END_VAR
+END_FUNCTION_BLOCK
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+
+    let mut specs = vec![];
+    let _ = sema.walk_hir(&with_db, &mut |node| {
+        if let HirNode::Spec(s) = node {
+            specs.push(s);
+        }
+        ControlFlow::Continue(())
+    });
+
+    // Find the Spec for System.Controller (the one with a namespace)
+    let ns_spec = specs
+        .iter()
+        .find(|s| {
+            let kind = s.kind(&with_db);
+            matches!(kind, hir::hir_def::expressions::spec::SpecKind::Target(t) if t.path.namespace.is_some())
+        })
+        .expect("should find a namespace-qualified Spec");
+
+    // Hover on "System" fragment -> should show namespace hover
+    let system_offset = source.find("System.Controller;").unwrap();
+    let hover_ns = ns_spec.hover(&with_db, system_offset).unwrap();
+    assert_snapshot!(hover_markup(hover_ns.contents).unwrap(), @r"
+    ```iecst
+    NAMESPACE System
+    ```
+    ");
+
+    // Hover on "Controller" target -> should show resolved type hover
+    let ctrl_offset = source.find("System.Controller;").unwrap() + "System.".len();
+    let hover_target = ns_spec.hover(&with_db, ctrl_offset).unwrap();
+    assert_snapshot!(hover_markup(hover_target.contents).unwrap(), @r"
+
+    ```iecst
+    System
+    Controller
+    ```
+
+    ");
+}

@@ -10,10 +10,15 @@ use hir::{
                 BeginPathExpr, Expr, InitExpr, InitExprKind, ParamAssign, PathExpr, VariableAccess,
             },
             spec::{Spec, SpecKind, StructElement},
-        }, hir_node::HirNode, namespace::NamespaceDecl, pous::{
+        },
+        hir_node::HirNode,
+        namespace::NamespaceDecl,
+        pous::{
             pou::Pou,
             variable::{VariableDecl, VariableKind},
-        }, program::ProgramDecl, using::Using
+        },
+        program::ProgramDecl,
+        using::Using,
     },
     hir_ty::{
         head::{inheritance::MethodRef, signature::infer_signature},
@@ -188,35 +193,6 @@ impl<'db> HoverHandler<'db> for VariableDecl<'db> {
     }
 }
 
-impl<'db> HoverHandler<'db> for Spec<'db> {
-    fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
-        let infer = self.infer(db);
-
-        let comment = infer
-            .as_hir_node(db)
-            .and_then(|n| n.get_comment(db))
-            .unwrap_or_default();
-
-        let desc = infer.full_type_name(db);
-        let path = infer.path_name(db);
-
-        Some(Hover {
-            contents: HoverContents::Markup(MarkupContent {
-                kind: MarkupKind::Markdown,
-                value: format!(
-                    r#"
-{comment}
-```iecst
-{path}{desc}
-```
-                "#
-                ),
-            }),
-            range: Some(self.get_span(db).into()),
-        })
-    }
-}
-
 impl<'db> HoverHandler<'db> for MethodRef<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
         let kind = match self {
@@ -340,6 +316,61 @@ impl<'db> HoverHandler<'db> for Using<'db> {
         }
 
         None
+    }
+}
+
+impl<'db> HoverHandler<'db> for Spec<'db> {
+    fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
+        if let SpecKind::Target(target) = self.kind(db)
+            && let Some(path) = &target.path.namespace
+        {
+            let mut accumulated_path = vec![];
+
+            for (index, fragment) in path.fragments(db).iter().enumerate() {
+                let span = path.get_fragment_ast_node(db, index).get_span();
+                accumulated_path.push(fragment.text(db).to_string());
+
+                if offset >= span.start_byte && offset <= span.end_byte {
+                    let full_path = accumulated_path.join(".");
+                    return Some(Hover {
+                        contents: HoverContents::Scalar(MarkedString::from_markdown(format!(
+                            r#"
+```iecst
+NAMESPACE {}
+```
+"#,
+                            full_path
+                        ))),
+                        range: None,
+                    });
+                }
+            }
+        }
+
+        let infer = self.infer(db);
+
+        let comment = infer
+            .as_hir_node(db)
+            .and_then(|n| n.get_comment(db))
+            .unwrap_or_default();
+
+        let desc = infer.full_type_name(db);
+        let path = infer.path_name(db);
+
+        Some(Hover {
+            contents: HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: format!(
+                    r#"
+{comment}
+```iecst
+{path}{desc}
+```
+                "#
+                ),
+            }),
+            range: Some(self.get_span(db).into()),
+        })
     }
 }
 
