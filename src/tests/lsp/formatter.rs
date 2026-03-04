@@ -891,3 +891,59 @@ END_PROGRAM
     END_PROGRAM
     ");
 }
+
+#[rstest]
+pub fn configuration_and_resource(mut with_db: RootDatabase) {
+    let source = r#"
+CONFIGURATION MyCfg
+    VAR_GLOBAL
+        missing : INT;
+        m: INT;
+    END_VAR
+    
+    TASK t1(PRIORITY := 1);
+        PROGRAM RETAIN inst12 WITH t1  : MyProg;
+
+    TASK t10(PRIORITY := 1);
+
+    RESOURCE res ON CPU1
+
+        TASK t2(PRIORITY := 1);
+            PROGRAM RETAIN inst22 WITH t2 : MyProg; 
+
+        TASK task(PRIORITY := 0)
+    
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    CONFIGURATION MyCfg
+    	VAR_GLOBAL
+    		missing: INT;
+    		m: INT;
+    	END_VAR
+
+    	TASK t1(PRIORITY := 1);
+    	PROGRAM RETAIN inst12 WITH t1: MyProg;
+
+    	TASK t10(PRIORITY := 1);
+    	RESOURCE res ON CPU1
+
+    		TASK t2(PRIORITY := 1);
+    		PROGRAM RETAIN inst22 WITH t2: MyProg;
+
+    		TASK task(PRIORITY := 0)
+
+    	END_RESOURCE
+    END_CONFIGURATION
+    ");
+}

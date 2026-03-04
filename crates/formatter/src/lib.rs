@@ -11,6 +11,8 @@ use topiary_core::{Language, Operation, TopiaryQuery, formatter};
 
 static SURROUND_SPACES: &str = r#"
 [
+    "CONFIGURATION" "END_CONFIGURATION"
+    "RESOURCE" "END_RESOURCE"
     "PROGRAM" "END_PROGRAM"
     "NAMESPACE" "END_NAMESPACE"
     "FUNCTION" "END_FUNCTION"
@@ -40,6 +42,7 @@ static SURROUND_SPACES: &str = r#"
     "RETURN"
     "EXIT"
     "CONTINUE"
+    "TASK" "RETAIN" "WITH" "ON"
    
     ":=" "=" "=>" "<=" "<" ">=" ">" "<>" "+" "-" "*" "/" 
     "&" "AND" "OR" "NOT"
@@ -64,11 +67,14 @@ static NEW_LINES: &str = r#"
     "VAR_EXTERNAL"
     "VAR_GLOBAL"
     "VAR_ACCESS"
+    "VAR_LOCATED"
 ] @prepend_hardline @append_hardline
 
 [
     "USING" 
     "NAMESPACE"
+    "CONFIGURATION"
+    "RESOURCE"
     "PROGRAM"
     "FUNCTION"
     "FUNCTION_BLOCK"
@@ -81,6 +87,9 @@ static NEW_LINES: &str = r#"
 (namespace_decl . (namespace_h_name) @append_hardline)
 
 [
+    "END_RESOURCE"
+    "END_CONFIGURATION"
+    "END_PROGRAM"
     "END_NAMESPACE"
     "END_FUNCTION"
     "END_CLASS"
@@ -98,6 +107,9 @@ static NEW_LINES: &str = r#"
     "END_CASE"
     "END_STRUCT"
     (case_selection)
+
+    (task_config)
+    (prog_config)
 
     (var_decl_init_list)
     (input_var) (fb_input_var)
@@ -124,6 +136,9 @@ static NEW_LINES: &str = r#"
 ("USING" (_) ";"? @append_hardline)
 
 [
+    "TASK"
+    "PROGRAM"
+    "RESOURCE"
     (assign)
     (func_call)
     (invocation)
@@ -197,7 +212,8 @@ static BLOCKS: &str = r#"
 
 static INDENTATIONS: &str = r#"
 [
-    "PROGRAM"
+    "CONFIGURATION"
+    "RESOURCE"
     "NAMESPACE"
     "FUNCTION"
     "FUNCTION_BLOCK"
@@ -221,6 +237,8 @@ static INDENTATIONS: &str = r#"
     "REPEAT"
 ] @append_indent_start
 
+(prog_decl name: (identifier) @append_indent_start) ; using "PROGRAM" will break the indentation in CONFIGURATION and RESOURCE
+
 (case_stmt "OF" @append_indent_start)
 
 ; case selection
@@ -229,7 +247,8 @@ static INDENTATIONS: &str = r#"
     case_do: (stmt_list) @append_indent_end
 )
 
-[   
+[   "END_CONFIGURATION"
+    "END_RESOURCE"
     "END_PROGRAM"
     "END_NAMESPACE"
     "END_FUNCTION"
@@ -275,8 +294,14 @@ static ALLOW_BLANK_LINE: &str = r#"
     (func_body)
     (fb_body)
 
+    (task_config)
+    (prog_config)
+    (single_resource_decl)
+
     "RETURN"
     "CONTINUE"
+    "CONFIGURATION" "END_CONFIGURATION"
+    "RESOURCE" "END_RESOURCE"
     "PROGRAM" "END_PROGRAM"
     "NAMESPACE" "END_NAMESPACE"
     "FUNCTION" "END_FUNCTION"
