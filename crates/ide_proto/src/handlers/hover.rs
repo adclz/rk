@@ -23,7 +23,7 @@ use hir::{
     hir_ty::{
         head::{inheritance::MethodRef, signature::infer_signature},
         infer::Infer,
-        ty::Type,
+        ty::{CallableType, Type},
     },
 };
 
@@ -362,41 +362,19 @@ NAMESPACE {}
             }
         }
 
-        let infer = self.infer(db);
-
-        let comment = infer
-            .as_hir_node(db)
-            .and_then(|n| n.get_comment(db))
-            .unwrap_or_default();
-
-        let desc = infer.full_type_name(db);
-        let path = infer.path_name(db);
-
-        Some(Hover {
-            contents: HoverContents::Markup(MarkupContent {
-                kind: MarkupKind::Markdown,
-                value: format!(
-                    r#"
-{comment}
-```iecst
-{path}{desc}
-```
-                "#
-                ),
-            }),
-            range: Some(self.get_span(db).into()),
-        })
+        self.infer(db).hover(db, offset)
     }
 }
 
 impl<'db> HoverHandler<'db> for Type<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
         match self {
-            Type::Function(f) => Pou::Function(*f).hover(db, offset),
-            Type::FunctionBlock(f) => Pou::FunctionBlock(*f).hover(db, offset),
-            Type::Class(f) => Pou::Class(*f).hover(db, offset),
-            Type::Interface(f) => Pou::Interface(*f).hover(db, offset),
-            Type::DataType(f) => Pou::DataType(*f).hover(db, offset),
+            Type::CallableType(cl) => cl.hover(db, cl.get_name_span(db).start_byte),
+            Type::Function(f) => Pou::Function(*f).hover(db, f.get_name_span(db).start_byte),
+            Type::FunctionBlock(f) => Pou::FunctionBlock(*f).hover(db, f.get_name_span(db).start_byte),
+            Type::Class(f) => Pou::Class(*f).hover(db, f.get_name_span(db).start_byte),
+            Type::Interface(f) => Pou::Interface(*f).hover(db, f.get_name_span(db).start_byte),
+            Type::DataType(f) => Pou::DataType(*f).hover(db, f.get_name_span(db).start_byte),
             Type::StructElement(st) => st.hover(db, offset),
             Type::MethodDecl(m) => m.hover(db, offset),
             Type::Variable((var, _multibits)) => var.hover(db, offset),
@@ -415,6 +393,16 @@ impl<'db> HoverHandler<'db> for Type<'db> {
                 }),
                 range: None,
             }),
+        }
+    }
+}
+
+impl<'db> HoverHandler<'db> for CallableType<'db> {
+    fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
+        match self {
+            CallableType::Function(f) => Pou::Function(*f).hover(db, offset),
+            CallableType::FunctionBlock(fb) => Pou::FunctionBlock(*fb).hover(db, offset),
+            CallableType::MethodDecl(m) => m.hover(db, offset),
         }
     }
 }

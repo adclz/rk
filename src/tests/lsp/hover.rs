@@ -290,29 +290,22 @@ END_TYPE
     ```iecst
     ARRAY [1..10] OF INT
     ```
-                    
-
 
     ```iecst
     INT
     ```
-                    
-
 
     ```iecst
     INT (0..6)
     ```
-                    
-
 
     ```iecst
     INT
     ```
-                    
 
 
     ```iecst
-    Array: ARRAY [1..10] OF INT
+    TYPE Array: ARRAY [1..10] OF INT
     ```
     ");
 }
@@ -500,7 +493,7 @@ END_FUNCTION_BLOCK
 
     ```iecst
     System
-    Controller
+    FUNCTION_BLOCK Controller
     ```
 
     ");
