@@ -19,9 +19,12 @@ use hir::{
             variable::{VariableDecl, VariableKind},
         },
         program::ProgramDecl,
+        scope::ScopeKind,
+        semantic_index::get_scope,
         using::Using,
     },
     hir_ty::{
+        config::infer_config_result,
         head::{inheritance::MethodRef, signature::infer_signature},
         infer::Infer,
         ty::{CallableType, Type},
@@ -468,6 +471,19 @@ impl<'db> HoverHandler<'db> for TaskConfig<'db> {
 
 impl<'db> HoverHandler<'db> for ProgConfig<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
+        // Check if cursor is on the WITH <task> reference
+        if let Some(task_ref) = self.task(db) {
+            let span = task_ref.get_span(db);
+            if offset >= span.start_byte && offset < span.end_byte {
+                if let ScopeKind::Config(config) = get_scope(db, self.scope_id(db)).kind {
+                    if let Some(task) = infer_config_result(db, config).task_of_prog.get(self) {
+                        return task.hover(db, task.name(db).get_span(db).start_byte);
+                    }
+                }
+                return None;
+            }
+        }
+
         let name_span = self.name(db).get_span(db);
         if offset < name_span.start_byte || offset >= name_span.end_byte {
             return None;

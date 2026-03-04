@@ -5,7 +5,7 @@ use rustc_hash::FxHashMap;
 use crate::{
     check::errors::{ToIdeDiagnostic, e1_duplicates::DuplicateError, e2_resolve::ResolveError},
     hir_def::{
-        config::{ConfigDecl, ConfigResource, ProgConfig, ResourceDecl},
+        config::{ConfigDecl, ConfigResource, ProgConfig, ResourceDecl, TaskConfig},
         expressions::spec::SpecKind,
         interned::identifier::{Ident, SpanIdent},
         program::ProgramDecl,
@@ -16,6 +16,36 @@ use crate::{
         ty::Type,
     },
 };
+
+/// Resolved references within a CONFIGURATION declaration.
+///
+/// Built during `infer_config` and accessible via `infer_config_result` query.
+/// Stores resolved mappings for IDE features (go-to-definition, hover).
+#[derive(Debug, PartialEq, Eq, salsa::Update)]
+pub struct ConfigInferenceResult<'db> {
+    /// Maps each ProgConfig to its resolved `WITH <task>` TaskConfig (if valid).
+    pub task_of_prog: FxHashMap<ProgConfig<'db>, TaskConfig<'db>>,
+
+    /// Maps each program instance name to the resolved PROGRAM declaration.
+    pub prog_instance: FxHashMap<Ident, ProgramDecl<'db>>,
+
+    pub errors: Vec<IdeDiagnostic>,
+}
+
+/// Returns the resolved config inference result for a given CONFIGURATION.
+#[salsa::tracked(returns(ref))]
+pub fn infer_config_result<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    config: ConfigDecl<'db>,
+) -> ConfigInferenceResult<'db> {
+    let mut result = ConfigInferenceResult {
+        task_of_prog: FxHashMap::default(),
+        prog_instance: FxHashMap::default(),
+        errors: Vec::new(),
+    };
+    infer_config(db, config, &mut result);
+    result
+}
 
 /// Validates a single CONFIGURATION declaration:
 ///
@@ -31,29 +61,33 @@ use crate::{
 /// **Phase 3 — VAR_CONFIG validation**:
 /// - Each `VAR_CONFIG` path is resolved against program instances (E0222, E0223)
 /// - Init expressions are type-checked against the resolved variable type
-pub fn infer_config<'db>(
+fn infer_config<'db>(
     db: &'db dyn WorkspaceDataBase,
     config: ConfigDecl<'db>,
-    errors: &mut Vec<IdeDiagnostic>,
+    result: &mut ConfigInferenceResult<'db>,
 ) {
+    let errors = &mut result.errors;
+
     let mut seen_resources: FxHashMap<Ident, SpanIdent<'db>> = FxHashMap::default();
     // Config-level task map (for validating top-level PROGRAM WITH references).
-    let mut config_tasks: FxHashMap<Ident, SpanIdent<'db>> = FxHashMap::default();
+    let mut config_tasks: FxHashMap<Ident, TaskConfig<'db>> = FxHashMap::default();
     // Config-level program instance map.
     let mut config_progs: FxHashMap<Ident, SpanIdent<'db>> = FxHashMap::default();
 
     for res in config.resources(db).iter() {
         match res {
             ConfigResource::Task(t) => {
-                check_or_insert(&mut config_tasks, t.name(db), |first, second| {
+                if let Some(first) = config_tasks.get(&t.name(db).ident) {
                     errors.push(
                         DuplicateError::Task {
-                            task1: second,
-                            task2: first,
+                            task1: t.name(db),
+                            task2: first.name(db),
                         }
                         .to_diagnostic(db),
                     );
-                });
+                } else {
+                    config_tasks.insert(t.name(db).ident, *t);
+                }
             }
             ConfigResource::Program(p) => {
                 check_or_insert(&mut config_progs, p.name(db), |first, second| {
@@ -81,18 +115,20 @@ pub fn infer_config<'db>(
         }
     }
 
-    // Phase 2: validate top-level PROGRAM references.
+    // Phase 2: validate top-level PROGRAM references, resolve tasks, and build instance map.
     for res in config.resources(db).iter() {
         match res {
             ConfigResource::Program(p) => {
-                validate_prog_config(db, p, &config_tasks, errors);
+                validate_prog_config(db, p, &config_tasks, result);
+                resolve_prog_instance(db, p, &mut result.prog_instance);
             }
             ConfigResource::Resource(r) => {
                 // Tasks visible inside a resource are scoped to that resource only.
-                let resource_tasks: FxHashMap<Ident, SpanIdent<'db>> =
-                    r.tasks(db).iter().map(|t| (t.name(db).ident, t.name(db))).collect();
+                let resource_tasks: FxHashMap<Ident, TaskConfig<'db>> =
+                    r.tasks(db).iter().map(|t| (t.name(db).ident, *t)).collect();
                 for p in r.programs(db).iter() {
-                    validate_prog_config(db, p, &resource_tasks, errors);
+                    validate_prog_config(db, p, &resource_tasks, result);
+                    resolve_prog_instance(db, p, &mut result.prog_instance);
                 }
             }
             ConfigResource::Task(_) => {}
@@ -100,7 +136,7 @@ pub fn infer_config<'db>(
     }
 
     // Phase 3: validate VAR_CONFIG entries.
-    validate_config_inst_inits(db, config, errors);
+    validate_config_inst_inits(db, config, &result.prog_instance, &mut result.errors);
 }
 
 /// Checks for duplicate task and program instance names within a RESOURCE block.
@@ -150,20 +186,42 @@ fn check_or_insert<'db>(
     }
 }
 
+/// Resolves a ProgConfig's prog_type to a ProgramDecl and inserts into the instance map.
+fn resolve_prog_instance<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    p: &ProgConfig<'db>,
+    instances: &mut FxHashMap<Ident, ProgramDecl<'db>>,
+) {
+    if let SpecKind::Target(target) = p.prog_type(db).kind(db) {
+        if target.path.namespace.is_none() {
+            if let Some(prog) = program_index(db, target.path.target.ident) {
+                instances.insert(p.name(db).ident, prog);
+            }
+        }
+    }
+}
+
 fn validate_prog_config<'db>(
     db: &'db dyn WorkspaceDataBase,
     p: &ProgConfig<'db>,
-    known_tasks: &FxHashMap<Ident, SpanIdent<'db>>,
-    errors: &mut Vec<IdeDiagnostic>,
+    known_tasks: &FxHashMap<Ident, TaskConfig<'db>>,
+    result: &mut ConfigInferenceResult<'db>,
 ) {
     // Program type resolution is now handled by infer_config_resources in signature inference.
     // Unknown program types are reported as E0210 (NoNamespaceItemFound) by infer_spec.
 
-    // Validate the WITH <task> reference if present.
-    if let Some(task_ref) = p.task(db)
-        && !known_tasks.contains_key(&task_ref.ident)
-    {
-        errors.push(ResolveError::UnknownTaskRef { task: task_ref }.to_diagnostic(db));
+    // Resolve the WITH <task> reference if present.
+    if let Some(task_ref) = p.task(db) {
+        match known_tasks.get(&task_ref.ident) {
+            Some(task) => {
+                result.task_of_prog.insert(*p, *task);
+            }
+            None => {
+                result
+                    .errors
+                    .push(ResolveError::UnknownTaskRef { task: task_ref }.to_diagnostic(db));
+            }
+        }
     }
 }
 
@@ -172,6 +230,7 @@ fn validate_prog_config<'db>(
 fn validate_config_inst_inits<'db>(
     db: &'db dyn WorkspaceDataBase,
     config: ConfigDecl<'db>,
+    instances: &FxHashMap<Ident, ProgramDecl<'db>>,
     errors: &mut Vec<IdeDiagnostic>,
 ) {
     let config_inits = config.config_init(db);
@@ -179,35 +238,7 @@ fn validate_config_inst_inits<'db>(
         return;
     }
 
-    // Step A: Build instance map (instance name → ProgramDecl).
-    let mut instances: FxHashMap<Ident, ProgramDecl<'db>> = FxHashMap::default();
-    for res in config.resources(db).iter() {
-        match res {
-            ConfigResource::Program(p) => {
-                if let SpecKind::Target(target) = p.prog_type(db).kind(db) {
-                    if target.path.namespace.is_none()
-                        && let Some(prog) = program_index(db, target.path.target.ident)
-                    {
-                        instances.insert(p.name(db).ident, prog);
-                    }
-                }
-            }
-            ConfigResource::Resource(r) => {
-                for p in r.programs(db).iter() {
-                    if let SpecKind::Target(target) = p.prog_type(db).kind(db) {
-                        if target.path.namespace.is_none()
-                            && let Some(prog) = program_index(db, target.path.target.ident)
-                        {
-                            instances.insert(p.name(db).ident, prog);
-                        }
-                    }
-                }
-            }
-            ConfigResource::Task(_) => {}
-        }
-    }
-
-    // Step B & C: Walk each VAR_CONFIG path and validate init expressions.
+    // Walk each VAR_CONFIG path and validate init expressions.
     for decl in config_inits {
         let steps = decl.path.flatten(db);
 

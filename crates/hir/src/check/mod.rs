@@ -16,7 +16,7 @@ use crate::{
         errors::{ToIdeDiagnostic, e0_syntax::SyntaxError, e2_resolve::ResolveError},
     },
     hir_def::semantic_index::semantic_index,
-    hir_ty::{config::infer_config, head::init_inference::infer_initialization},
+    hir_ty::{config::infer_config_result, head::init_inference::infer_initialization},
 };
 
 use crate::{
@@ -71,7 +71,7 @@ impl<'db> SemanticIndex<'db> {
         // Configurations — validate program type references and task references.
         self.configs.iter().for_each(|config| {
             check_duplicate_configs(db, *config, errors);
-            infer_config(db, *config, errors);
+            errors.extend(infer_config_result(db, *config).errors.iter().cloned());
             config.get_scope_id(db).check(db, errors);
         });
     }

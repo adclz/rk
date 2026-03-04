@@ -7,9 +7,9 @@ use hir::{
         expressions::{
             expression::{BeginPathExpr, Expr, InitExpr, ParamAssign, PathExpr, VariableAccess},
             spec::{Spec, SpecKind, StructElement},
-        }, hir_node::HirNode, interned::namespace::NamespacePath, namespace::NamespaceDecl, pous::{pou::Pou, variable::VariableDecl}, using::Using
+        }, hir_node::HirNode, interned::namespace::NamespacePath, namespace::NamespaceDecl, pous::{pou::Pou, variable::VariableDecl}, scope::ScopeKind, semantic_index::get_scope, using::Using
     },
-    hir_ty::{index_graphs::namespace_index, infer::Infer, ty::{CallableType, Type}},
+    hir_ty::{config::infer_config_result, index_graphs::namespace_index, infer::Infer, ty::{CallableType, Type}},
 };
 
 use crate::handlers::{DefinitionHandler, completions::{try_build_namespace_path, is_namespace_prefix}};
@@ -198,6 +198,19 @@ impl<'db> DefinitionHandler<'db> for TaskConfig<'db> {
 
 impl<'db> DefinitionHandler<'db> for ProgConfig<'db> {
     fn definition(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<GotoDefinitionResponse> {
+        // Check if cursor is on the WITH <task> reference
+        if let Some(task_ref) = self.task(db) {
+            let span = task_ref.get_span(db);
+            if offset >= span.start_byte && offset <= span.end_byte {
+                if let ScopeKind::Config(config) = get_scope(db, self.scope_id(db)).kind {
+                    if let Some(task) = infer_config_result(db, config).task_of_prog.get(self) {
+                        return task.definition(db, task.name(db).get_span(db).start_byte);
+                    }
+                }
+                return None;
+            }
+        }
+
         self.prog_type(db).infer(db).definition(db, offset)
     }
 }
