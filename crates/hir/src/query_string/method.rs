@@ -4,7 +4,10 @@ use ide_diagnostic::IdeDiagnostic;
 use crate::{
     HasName, HirNodeInfo,
     hir_ty::ty::CallableType,
-    query_string::query::{NamedSymbol, Query, SymbolIndex, SymbolKind},
+    query_string::{
+        fields::fuzzy_suggest_from_index,
+        query::{NamedSymbol, SymbolIndex, SymbolKind},
+    },
 };
 
 #[salsa::tracked(returns(ref))]
@@ -36,35 +39,12 @@ pub fn fuzzy_callable_type_parameters<'db>(
     query: &str,
 ) {
     let index = method_symbol_index(db, callable);
-
-    let mut candidates = vec![];
-    let mut fast_query = Query::new(query.to_string());
-    fast_query.fuzzy();
-
-    fast_query.search(db, index, |symbol| {
-        candidates.push(symbol.clone());
-        std::ops::ControlFlow::Continue::<()>(())
-    });
-
-    if !candidates.is_empty() {
-        let mut note = format!(
-            "'{}' has parameter{} with similar name:\n",
-            callable.get_name_ident(db).text(db),
-            if candidates.len() > 1 { "s" } else { "" }
-        );
-        let display_count = candidates.len().min(5);
-
-        for (i, candidate) in candidates.iter().take(display_count).enumerate() {
-            if i > 0 {
-                note.push('\n');
-            }
-            note.push_str(&format!("- {}", candidate.name));
-        }
-
-        if candidates.len() > 5 {
-            note.push_str("\n  ...");
-        }
-
-        diag.with_note(note);
-    }
+    fuzzy_suggest_from_index(
+        db,
+        callable.get_name_ident(db).text(db).as_str(),
+        "parameter",
+        index,
+        diag,
+        query,
+    );
 }

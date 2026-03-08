@@ -31,7 +31,7 @@ use crate::{
     },
     query_string::{
         method::fuzzy_callable_type_parameters, query::Query, scope::SymbolSearch,
-        fields::fuzzy_type_fields,
+        fields::{fuzzy_type_fields, suggest_similar_note},
     },
 };
 
@@ -665,39 +665,12 @@ fn list_variable_candidates<'db, I>(
     db: &'db dyn WorkspaceDataBase,
     scope_name: &str,
     diag: &mut IdeDiagnostic,
-    mut candidates: I,
+    candidates: I,
 ) where
     I: Iterator<Item = &'db VariableDecl<'db>>,
 {
-    // Collect up to 6 candidates to check if there are more than 5
-    let mut collected = Vec::with_capacity(6);
-    for candidate in candidates.by_ref().take(6) {
-        collected.push(candidate);
-    }
-
-    if !collected.is_empty() {
-        let count = collected.len();
-        let display_count = count.min(5);
-
-        let mut note = format!(
-            "'{}' has item{} with similar name:\n",
-            scope_name,
-            if count > 1 { "s" } else { "" }
-        );
-
-        for (i, candidate) in collected.iter().take(display_count).enumerate() {
-            if i > 0 {
-                note.push('\n');
-            }
-            note.push_str(&format!("- {}", candidate.name(db).text(db)));
-        }
-
-        if count > 5 {
-            note.push_str("\n  ...");
-        }
-
-        diag.with_note(note);
-    }
+    let names: Vec<_> = candidates.map(|c| c.name(db).text(db).to_string()).collect();
+    suggest_similar_note(scope_name, "item", diag, names.iter().map(|n| n.as_str()));
 }
 
 fn list_pou_candidates<'db, I>(

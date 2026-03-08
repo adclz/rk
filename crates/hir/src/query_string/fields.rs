@@ -38,6 +38,7 @@ pub fn fuzzy_type_fields<'db>(
             fuzzy_suggest_from_index(
                 db,
                 &ty.type_name(db),
+                "field",
                 &struct_symbol_index(db, strukt),
                 diag,
                 query,
@@ -48,7 +49,7 @@ pub fn fuzzy_type_fields<'db>(
                 db,
                 CallableType::FunctionBlock(fb),
             );
-            fuzzy_suggest_from_index(db, fb.get_name_ident(db).text(db).as_str(), index, diag, query);
+            fuzzy_suggest_from_index(db, fb.get_name_ident(db).text(db).as_str(), "field", index, diag, query);
         }
         Type::Class(c) => {
             let scope = c.scope_id(db);
@@ -62,15 +63,16 @@ pub fn fuzzy_type_fields<'db>(
                 });
             }
             let index = vec![SymbolIndex::create(db, symbols.into_boxed_slice())];
-            fuzzy_suggest_from_index(db, c.get_name_ident(db).text(db).as_str(), &index, diag, query);
+            fuzzy_suggest_from_index(db, c.get_name_ident(db).text(db).as_str(), "field", &index, diag, query);
         }
         _ => {}
     }
 }
 
-fn fuzzy_suggest_from_index<'db>(
+pub fn fuzzy_suggest_from_index<'db>(
     db: &'db dyn WorkspaceDataBase,
     type_name: &str,
+    noun: &str,
     index: &[SymbolIndex<'db>],
     diag: &mut IdeDiagnostic,
     query: &str,
@@ -85,24 +87,39 @@ fn fuzzy_suggest_from_index<'db>(
     });
 
     if !candidates.is_empty() {
-        let mut note = format!(
-            "'{}' has field{} with similar name:\n",
-            type_name,
-            if candidates.len() > 1 { "s" } else { "" }
-        );
-        let display_count = candidates.len().min(5);
-
-        for (i, candidate) in candidates.iter().take(display_count).enumerate() {
-            if i > 0 {
-                note.push('\n');
-            }
-            note.push_str(&format!("- {}", candidate.name));
-        }
-
-        if candidates.len() > 5 {
-            note.push_str("\n  ...");
-        }
-
-        diag.with_note(note);
+        suggest_similar_note(type_name, noun, diag, candidates.iter().map(|c| c.name.as_str()));
     }
+}
+
+pub fn suggest_similar_note<'a>(
+    owner_name: &str,
+    noun: &str,
+    diag: &mut IdeDiagnostic,
+    candidates: impl Iterator<Item = &'a str>,
+) {
+    let collected: Vec<_> = candidates.take(6).collect();
+    if collected.is_empty() {
+        return;
+    }
+
+    let display_count = collected.len().min(5);
+    let mut note = format!(
+        "'{}' has {}{} with similar name:\n",
+        owner_name,
+        noun,
+        if display_count > 1 { "s" } else { "" }
+    );
+
+    for (i, name) in collected.iter().take(display_count).enumerate() {
+        if i > 0 {
+            note.push('\n');
+        }
+        note.push_str(&format!("- {}", name));
+    }
+
+    if collected.len() > 5 {
+        note.push_str("\n  ...");
+    }
+
+    diag.with_note(note);
 }
