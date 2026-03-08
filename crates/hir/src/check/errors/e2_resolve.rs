@@ -31,7 +31,7 @@ use crate::{
     },
     query_string::{
         method::fuzzy_callable_type_parameters, query::Query, scope::SymbolSearch,
-        strukt::fuzzy_struct_fields,
+        fields::fuzzy_type_fields,
     },
 };
 
@@ -440,6 +440,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     .call();
 
                 ty.with_location(db, &mut diag);
+                fuzzy_type_fields(db, *ty, &mut diag, ident.text(db).as_str());
                 diag
             }
             Self::NoSuchFieldInitExpr { expr, ident, ty } => {
@@ -454,10 +455,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     .range(expr.get_span(db))
                     .call();
 
-                if let Type::Struct(strukt) = ty.normalize(db) {
-                    fuzzy_struct_fields(db, strukt, &mut diag, ident.text(db).as_str())
-                };
-
+                fuzzy_type_fields(db, *ty, &mut diag, ident.text(db).as_str());
                 diag
             }
             Self::DerefNonRefType { expr, ty } => diag()

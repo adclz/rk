@@ -36,7 +36,7 @@ fn fuzzy_struct_fields(mut with_db: RootDatabase) {
         |                                                 ^^^^^^|^^^^^
         |                                                       `------- 'Engine' has no field named 'fuel'
         |
-        | Note: STRUCT has fields with similar name:
+        | Note: 'Engine' has fields with similar name:
         |       - fuel1
         |       - fuel2
         |       - fuel3
@@ -212,6 +212,123 @@ END_FUNCTION_BLOCK
        |       - Import the namespace via an USING directive: 'USING System'
        |       - Import an item from this namespace: 'System.<POU>'
     ---'
+    ");
+}
+
+#[rstest]
+fn fuzzy_struct_path_expr(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Engine:
+            STRUCT
+                power : INT;
+                fuel1 : REAL;
+                fuel2 : REAL;
+            END_STRUCT
+        END_TYPE
+
+        FUNCTION_BLOCK fb1
+            VAR
+                e : Engine;
+            END_VAR
+
+            e.fule1 := 1.0;
+
+        END_FUNCTION_BLOCK
+
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0211] Error: no such field
+        ,-[ file:///test0.st:15:15 ]
+        |
+      3 | ,->             STRUCT
+        : :
+      7 | |->             END_STRUCT
+        | |
+        | `---------------------------- type is defined by 'Engine' here
+        |
+     15 |                 e.fule1 := 1.0;
+        |                   ^^|^^
+        |                     `---- 'Engine' has no field named 'fule1'
+    ----'
+    ");
+}
+
+#[rstest]
+fn fuzzy_fb_fields(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Motor
+            VAR
+                speed : INT;
+                torque : REAL;
+                running : BOOL;
+            END_VAR
+
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Controller
+            VAR
+                m : Motor;
+            END_VAR
+
+            m.speeed := 100;
+
+        END_FUNCTION_BLOCK
+
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0211] Error: no such field
+        ,-[ file:///test0.st:16:15 ]
+        |
+      2 |         FUNCTION_BLOCK Motor
+        |                        ^^|^^
+        |                          `---- FUNCTION_BLOCK 'Motor' is defined here
+        |
+     16 |             m.speeed := 100;
+        |               ^^^|^^
+        |                  `---- 'Motor' has no field named 'speeed'
+    ----'
+    ");
+}
+
+#[rstest]
+fn fuzzy_class_fields(mut with_db: RootDatabase) {
+    let source = r#"
+        CLASS Pump
+            VAR
+                pressure : REAL;
+                flowRate : REAL;
+            END_VAR
+
+        END_CLASS
+
+        FUNCTION_BLOCK Controller
+            VAR
+                p : Pump;
+            END_VAR
+
+            p.presure := 1.0;
+
+        END_FUNCTION_BLOCK
+
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0211] Error: no such field
+        ,-[ file:///test0.st:15:15 ]
+        |
+      2 |         CLASS Pump
+        |               ^^|^
+        |                 `--- CLASS 'Pump' is defined here
+        |
+     15 |             p.presure := 1.0;
+        |               ^^^|^^^
+        |                  `----- 'Pump' has no field named 'presure'
+        |
+        | Note: 'Pump' has field with similar name:
+        |       - pressure
+    ----'
     ");
 }
 
