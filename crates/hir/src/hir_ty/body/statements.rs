@@ -118,8 +118,8 @@ impl<'db> StmtsResolverCtx<'db> {
                     }
 
                     // ELSE IFs
-                    for (cond, stmts) in else_if {
-                        self.infer_and_check_expr(db, &mut infer, *cond, ctx);
+                    for (condition, stmts) in else_if {
+                        self.infer_and_check_expr(db, &mut infer, *condition, ctx);
 
                         if let Err(err) =
                             infer.coerce_type_with_expr(db, Type::new_bool(), *condition, ctx)
