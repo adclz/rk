@@ -94,15 +94,15 @@ END_FUNCTION_BLOCK
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0101] Error: duplicate definitions
-       ,-[ file:///test0.st:2:16 ]
+       ,-[ file:///test0.st:6:16 ]
        |
      2 | FUNCTION_BLOCK fb1
        |                ^|^
-       |                 `--- duplicate POU 'fb1'
+       |                 `--- POU 'fb1' is already defined here
        |
      6 | FUNCTION_BLOCK fb1
        |                ^|^
-       |                 `--- POU 'fb1' is already defined here
+       |                 `--- duplicate POU 'fb1'
     ---'
     ");
 }
@@ -390,15 +390,15 @@ fn duplicate_prorams(mut with_db: RootDatabase) {
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0111] Error: duplicate definitions
-       ,-[ file:///test0.st:2:17 ]
+       ,-[ file:///test0.st:5:17 ]
        |
      2 |         PROGRAM prog1
        |                 ^^|^^
-       |                   `---- duplicate program 'prog1'
+       |                   `---- program 'prog1' is already defined here
        |
      5 |         PROGRAM prog1
        |                 ^^|^^
-       |                   `---- program 'prog1' is already defined here
+       |                   `---- duplicate program 'prog1'
     ---'
     ");
 }
@@ -438,15 +438,15 @@ END_CONFIGURATION
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0113] Error: duplicate definitions
-       ,-[ file:///test0.st:2:15 ]
+       ,-[ file:///test0.st:6:15 ]
        |
      2 | CONFIGURATION cfg
        |               ^|^
-       |                `--- duplicate configuration 'cfg'
+       |                `--- configuration 'cfg' is already defined here
        |
      6 | CONFIGURATION cfg
        |               ^|^
-       |                `--- configuration 'cfg' is already defined here
+       |                `--- duplicate configuration 'cfg'
     ---'
     ");
 }

@@ -60,15 +60,15 @@ fn ambiguous_using_duplicate_in_same_namespace(mut with_db: RootDatabase) {
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0101] Error: duplicate definitions
-       ,-[ file:///test0.st:3:22 ]
+       ,-[ file:///test0.st:9:22 ]
        |
      3 |             FUNCTION SharedName : INT
        |                      ^^^^^|^^^^
-       |                           `------ duplicate POU 'SharedName'
+       |                           `------ POU 'SharedName' is already defined here
        |
      9 |             FUNCTION SharedName : INT
        |                      ^^^^^|^^^^
-       |                           `------ POU 'SharedName' is already defined here
+       |                           `------ duplicate POU 'SharedName'
     ---'
     [E0225] Error: multiple items in scope
         ,-[ file:///test0.st:16:21 ]
