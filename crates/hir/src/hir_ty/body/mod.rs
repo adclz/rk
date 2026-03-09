@@ -130,6 +130,20 @@ pub enum NullState<'db> {
     NonNull,
 }
 
+impl<'db> NullState<'db> {
+    /// Join two null states at a control flow merge point.
+    /// If both branches agree, use that state. Otherwise, use the more conservative (nullable) one.
+    pub fn join(self, other: NullState<'db>) -> NullState<'db> {
+        match (self, other) {
+            // Both agree → keep
+            (NullState::NonNull, NullState::NonNull) => NullState::NonNull,
+            // Any nullable state wins
+            (s @ NullState::Null(_), _) | (_, s @ NullState::Null(_)) => s,
+            (s @ NullState::Uninitialized(_), _) | (_, s @ NullState::Uninitialized(_)) => s,
+        }
+    }
+}
+
 /// Result of body inference
 ///
 /// When the this struct is emitted via the [`infer_body`] query, it is important to note 2 things about the type mappings:

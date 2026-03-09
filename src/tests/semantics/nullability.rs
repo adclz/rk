@@ -449,3 +449,171 @@ END_FUNCTION_BLOCK
     // Array elements are not individually tracked - no warning expected
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
+
+// --- IF/ELSE null state join tests ---
+
+#[rstest]
+fn if_else_both_assign_non_null(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fn1
+    VAR
+        x: INT := 5;
+        y: INT := 10;
+        ptr: REF_TO INT;
+        flag: BOOL;
+        result: INT;
+    END_VAR
+
+    IF flag THEN
+        ptr := REF(x);
+    ELSE
+        ptr := REF(y);
+    END_IF;
+
+    result := ptr^;
+END_FUNCTION_BLOCK
+    "#;
+
+    // Both branches assign non-null, so no warning
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn if_else_one_branch_null(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fn1
+    VAR
+        x: INT := 5;
+        ptr: REF_TO INT;
+        flag: BOOL;
+        result: INT;
+    END_VAR
+
+    IF flag THEN
+        ptr := REF(x);
+    ELSE
+        ptr := NULL;
+    END_IF;
+
+    result := ptr^;
+END_FUNCTION_BLOCK
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1007] Warning: possibly null dereference
+        ,-[ file:///test0.st:16:15 ]
+        |
+     13 |         ptr := NULL;
+        |         ^^^^^|^^^^^
+        |              `------- 'ptr' set to NULL here
+        |
+     16 |     result := ptr^;
+        |               ^|^
+        |                `--- dereference of reference 'ptr' which is null
+    ----'
+    ");
+}
+
+#[rstest]
+fn if_without_else_stays_nullable(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fn1
+    VAR
+        x: INT := 5;
+        ptr: REF_TO INT;
+        flag: BOOL;
+        result: INT;
+    END_VAR
+
+    IF flag THEN
+        ptr := REF(x);
+    END_IF;
+
+    result := ptr^;
+END_FUNCTION_BLOCK
+    "#;
+
+    // Without ELSE, ptr might still be uninitialized
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1007] Warning: possibly null dereference
+        ,-[ file:///test0.st:14:15 ]
+        |
+      5 |         ptr: REF_TO INT;
+        |         ^^^^^^^|^^^^^^^
+        |                `--------- 'ptr' declared without initializer here
+        |
+     14 |     result := ptr^;
+        |               ^|^
+        |                `--- dereference of reference 'ptr' which is never initialized
+    ----'
+    ");
+}
+
+#[rstest]
+fn if_elsif_else_all_assign_non_null(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fn1
+    VAR
+        x: INT := 5;
+        y: INT := 10;
+        z: INT := 15;
+        ptr: REF_TO INT;
+        flag1: BOOL;
+        flag2: BOOL;
+        result: INT;
+    END_VAR
+
+    IF flag1 THEN
+        ptr := REF(x);
+    ELSIF flag2 THEN
+        ptr := REF(y);
+    ELSE
+        ptr := REF(z);
+    END_IF;
+
+    result := ptr^;
+END_FUNCTION_BLOCK
+    "#;
+
+    // All branches assign non-null
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn if_elsif_no_else_stays_nullable(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fn1
+    VAR
+        x: INT := 5;
+        y: INT := 10;
+        ptr: REF_TO INT;
+        flag1: BOOL;
+        flag2: BOOL;
+        result: INT;
+    END_VAR
+
+    IF flag1 THEN
+        ptr := REF(x);
+    ELSIF flag2 THEN
+        ptr := REF(y);
+    END_IF;
+
+    result := ptr^;
+END_FUNCTION_BLOCK
+    "#;
+
+    // No ELSE, so ptr might still be uninitialized
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1007] Warning: possibly null dereference
+        ,-[ file:///test0.st:18:15 ]
+        |
+      6 |         ptr: REF_TO INT;
+        |         ^^^^^^^|^^^^^^^
+        |                `--------- 'ptr' declared without initializer here
+        |
+     18 |     result := ptr^;
+        |               ^|^
+        |                `--- dereference of reference 'ptr' which is never initialized
+    ----'
+    ");
+}

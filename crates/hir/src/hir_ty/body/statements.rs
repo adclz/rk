@@ -171,15 +171,25 @@ impl<'db> StmtsResolverCtx<'db> {
                         ));
                     }
 
+                    // Snapshot null state before branches
+                    let pre_if_state = ctx.ref_null_state.clone();
+
                     // check branches
 
                     // THEN
                     if let Some(then) = then {
                         self.check_statements(db, resolver, then, NestedScope::None, ctx);
                     }
+                    let then_state = ctx.ref_null_state.clone();
+
+                    // Collect branch states for joining
+                    let mut branch_states = vec![then_state];
 
                     // ELSE IFs
                     for (condition, stmts) in else_if {
+                        // Reset to pre-IF state for each branch
+                        ctx.ref_null_state = pre_if_state.clone();
+
                         self.infer_and_check_expr(db, &mut infer, *condition, ctx);
 
                         if let Err(err) =
@@ -193,12 +203,29 @@ impl<'db> StmtsResolverCtx<'db> {
                         }
 
                         self.check_statements(db, resolver, stmts, NestedScope::None, ctx);
+                        branch_states.push(ctx.ref_null_state.clone());
                     }
 
                     // ELSE
                     if let Some(else_) = else_ {
+                        ctx.ref_null_state = pre_if_state.clone();
                         self.check_statements(db, resolver, else_, NestedScope::None, ctx);
+                        branch_states.push(ctx.ref_null_state.clone());
+                    } else {
+                        // No ELSE means the pre-IF state is a possible path
+                        branch_states.push(pre_if_state);
                     }
+
+                    // Join all branch states
+                    let mut joined = branch_states.remove(0);
+                    for branch in branch_states {
+                        for (var, state) in &branch {
+                            if let Some(existing) = joined.get(var) {
+                                joined.insert(*var, existing.join(*state));
+                            }
+                        }
+                    }
+                    ctx.ref_null_state = joined;
                 }
 
                 StmtKind::While { condition, body } | StmtKind::Repeat { condition, body } => {
