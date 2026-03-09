@@ -77,6 +77,7 @@ impl<'db> Type<'db> {
             Type::Function(f) => Some(f.scope_id(db)),
             Type::FunctionBlock(fb) => Some(fb.scope_id(db)),
             Type::Class(c) => Some(c.scope_id(db)),
+            Type::Interface(i) => Some(i.scope_id(db)),
             Type::Program(p) => Some(p.scope_id(db)),
             Type::MethodDecl(m) => Some(m.get_scope_id(db)),
             _ => None,
@@ -97,6 +98,12 @@ impl<'db> Type<'db> {
                         FieldLookup::Variable(*var)
                     } else if let Some(m) = def_map.declared_methods.get(name) {
                         FieldLookup::Method(*m)
+                    } else if let Some(pou) = self.as_pou(db) {
+                        // Check inherited methods (from EXTENDS / IMPLEMENTS)
+                        match inherited_methods(db, pou).methods.get(name) {
+                            Some(inherited) => FieldLookup::Method(inherited.method),
+                            None => FieldLookup::NotFound,
+                        }
                     } else {
                         FieldLookup::NotFound
                     }

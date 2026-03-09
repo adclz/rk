@@ -226,6 +226,17 @@ impl<'db> Type<'db> {
         }
     }
 
+    pub fn as_pou(&self, db: &'db dyn WorkspaceDataBase) -> Option<Pou<'db>> {
+        Some(match self {
+            Type::Class(cl) => Pou::Class(*cl),
+            Type::Function(f) => Pou::Function(*f),
+            Type::FunctionBlock(fb) => Pou::FunctionBlock(*fb),
+            Type::Interface(i) => Pou::Interface(*i),
+            Type::DataType(dt) => Pou::DataType(*dt),
+            _ => None?,
+        })
+    }
+
     pub fn new_var(db: &'db dyn WorkspaceDataBase, var: VariableDecl<'db>) -> Self {
         Type::Variable((var, None))
     }

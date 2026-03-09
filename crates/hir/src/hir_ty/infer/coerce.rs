@@ -4,10 +4,11 @@ use ide_diagnostic::IdeDiagnostic;
 use crate::{
     CallSite, HirNodeInfo,
     check::errors::{ToIdeDiagnostic, e3_type::TypeError, e10_control_flow::ControlFlowError},
-    hir_def::expressions::expression::{AddOperatorKind, MultOperatorKind},
+    hir_def::{expressions::expression::{AddOperatorKind, MultOperatorKind}, pous::pou::Pou},
     hir_ty::{
         body::{Adjustment, AdjustmentInfo, BodyInferenceResult},
         infer::Infer,
+        polymorphism::{interface_extends, pou_implements_interface},
         resolver::Resolver,
         ty::Type,
     },
@@ -254,6 +255,40 @@ impl<'db> Type<'db> {
                     adjustment: None,
                 }),
             },
+            // Interface coercion: class/FB that implements the interface, or sub-interface
+            (Type::Interface(target_itf), Type::Class(cls)) => {
+                if pou_implements_interface(db, Pou::Class(*cls), target_itf) {
+                    Ok(())
+                } else {
+                    Err(CoerceError {
+                        expected: *self,
+                        actual: to,
+                        adjustment: None,
+                    })
+                }
+            }
+            (Type::Interface(target_itf), Type::FunctionBlock(fb)) => {
+                if pou_implements_interface(db, Pou::FunctionBlock(*fb), target_itf) {
+                    Ok(())
+                } else {
+                    Err(CoerceError {
+                        expected: *self,
+                        actual: to,
+                        adjustment: None,
+                    })
+                }
+            }
+            (Type::Interface(target_itf), Type::Interface(src_itf)) => {
+                if interface_extends(db, *src_itf, target_itf) {
+                    Ok(())
+                } else {
+                    Err(CoerceError {
+                        expected: *self,
+                        actual: to,
+                        adjustment: None,
+                    })
+                }
+            }
             _ => Err(CoerceError {
                 expected: *self,
                 actual: to,

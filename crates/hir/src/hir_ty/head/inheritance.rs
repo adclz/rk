@@ -29,7 +29,7 @@ impl<'db> HasModifiers<'db> for MethodRef<'db> {
 impl<'db> HasVisibility<'db> for MethodRef<'db> {
     fn get_visibility(&self, db: &'db dyn WorkspaceDataBase) -> Visibility {
         match self {
-            MethodRef::Prototype(p) => Visibility::default(),
+            MethodRef::Prototype(_) => Visibility::PUBLIC,
             MethodRef::Declared(d) => d.visibility(db),
         }
     }

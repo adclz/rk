@@ -98,6 +98,7 @@ impl<'db> ScopeId<'db> {
                 _ => IndexMap::default(),
             },
             ScopeKind::MethodDecl(m) => local_variables(db, m.variables(db)),
+            ScopeKind::MethodProt(m) => local_variables(db, m.variables(db)),
             _ => IndexMap::default(),
         }
     }
@@ -115,6 +116,7 @@ impl<'db> ScopeId<'db> {
                 _ => FxHashMap::default(),
             },
             ScopeKind::MethodDecl(m) => global_variables(db, m.variables(db)),
+            ScopeKind::MethodProt(m) => global_variables(db, m.variables(db)),
             ScopeKind::Program(program) => global_variables(db, program.variables(db)),
             ScopeKind::Config(config) => global_variables(db, config.variables(db)),
             _ => FxHashMap::default(),

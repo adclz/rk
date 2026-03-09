@@ -20,6 +20,7 @@ pub mod invocation;
 pub mod literals;
 pub mod loops;
 pub mod path_expr;
+pub mod polymorphism;
 pub mod program;
 pub mod recovery;
 pub mod recursive;

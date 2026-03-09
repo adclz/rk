@@ -58,6 +58,7 @@ impl<'db> ScopeId<'db> {
                 _ => None?,
             },
             ScopeKind::MethodDecl(m) => m.return_type(db)?,
+            ScopeKind::MethodProt(m) => m.return_type(db)?,
             _ => None?,
         })
     }
